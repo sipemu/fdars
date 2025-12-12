@@ -194,86 +194,158 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
 #' Nonparametric Functional Regression
 #'
 #' Fits a functional regression model using kernel smoothing (Nadaraya-Watson).
+#' Supports fixed bandwidth (h), or k-nearest neighbors with global (kNN.gCV)
+#' or local (kNN.lCV) cross-validation.
 #'
 #' @param fdataobj An object of class 'fdata' (functional covariate).
 #' @param y Response vector.
-#' @param h Bandwidth parameter. If NULL, computed automatically.
+#' @param h Bandwidth parameter. If NULL and knn is NULL, computed automatically.
+#' @param knn Number of nearest neighbors to consider for bandwidth selection.
+#'   Only used when \code{type.S} is "kNN.gCV" or "kNN.lCV".
+#' @param type.S Type of smoother: "S.NW" for Nadaraya-Watson with fixed h (default),
+#'   "kNN.gCV" for k-NN with global CV (single k for all observations),
+#'   "kNN.lCV" for k-NN with local CV (different k per observation).
 #' @param Ker Kernel type for smoothing. Default is "norm" (Gaussian).
 #' @param metric Distance metric function. Default is metric.lp.
 #' @param ... Additional arguments passed to metric function.
 #'
 #' @return A fitted regression object of class 'fregre.np' with components:
+#' \describe{
 #'   \item{fitted.values}{Fitted values}
 #'   \item{residuals}{Residuals}
-#'   \item{h.opt}{Optimal/used bandwidth}
+#'   \item{h.opt}{Optimal/used bandwidth (for type.S = "S.NW")}
+#'   \item{knn}{Number of neighbors used (for kNN methods)}
+#'   \item{k.opt}{Optimal k value(s) - scalar for global, vector for local}
+#'   \item{type.S}{Type of smoother used}
 #'   \item{Ker}{Kernel type used}
 #'   \item{fdataobj}{Original functional data}
 #'   \item{y}{Response vector}
 #'   \item{mdist}{Distance matrix}
-#'   \item{H}{Hat/smoother matrix}
 #'   \item{sr2}{Residual variance}
 #'   \item{metric}{Metric function used}
 #'   \item{call}{The function call}
+#' }
+#'
+#' @details
+#' Three smoothing approaches are available:
+#'
+#' \strong{Fixed bandwidth (type.S = "S.NW")}:
+#' Uses a single bandwidth h for all predictions. If h is not provided,
+#' it is set to the median of non-zero pairwise distances.
+#'
+#' \strong{k-NN Global CV (type.S = "kNN.gCV")}:
+#' Selects a single optimal k for all observations using leave-one-out
+#' cross-validation. The bandwidth at each point is set to include k neighbors.
+#'
+#' \strong{k-NN Local CV (type.S = "kNN.lCV")}:
+#' Selects an optimal k_i for each observation i, allowing adaptive smoothing.
+#' Useful when the data has varying density across the functional space.
 #'
 #' @export
-fregre.np <- function(fdataobj, y, h = NULL, Ker = "norm", metric = metric.lp, ...) {
+#' @examples
+#' # Create functional data
+#' t <- seq(0, 1, length.out = 50)
+#' n <- 50
+#' X <- matrix(0, n, 50)
+#' for (i in 1:n) X[i, ] <- sin(2*pi*t) * i/n + rnorm(50, sd = 0.1)
+#' y <- rowMeans(X) + rnorm(n, sd = 0.1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Fixed bandwidth
+#' fit1 <- fregre.np(fd, y, h = 0.5)
+#'
+#' # k-NN with global CV
+#' fit2 <- fregre.np(fd, y, type.S = "kNN.gCV", knn = 20)
+#'
+#' # k-NN with local CV
+#' fit3 <- fregre.np(fd, y, type.S = "kNN.lCV", knn = 20)
+fregre.np <- function(fdataobj, y, h = NULL, knn = NULL,
+                      type.S = c("S.NW", "kNN.gCV", "kNN.lCV"),
+                      Ker = "norm", metric = metric.lp, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
+  type.S <- match.arg(type.S)
   n <- nrow(fdataobj$data)
+
   if (length(y) != n) {
     stop("Length of y must equal number of curves in fdataobj")
   }
 
   # Compute distance matrix
-  D <- metric(fdataobj, ...)
+  D <- as.matrix(metric(fdataobj, ...))
 
-  # Auto-select bandwidth if not provided
-  if (is.null(h)) {
-    # Use median of non-zero distances
-    d_vec <- D[lower.tri(D)]
-    h <- median(d_vec[d_vec > 0])
-  }
+  result <- list(
+    fdataobj = fdataobj,
+    y = y,
+    mdist = D,
+    Ker = Ker,
+    type.S = type.S,
+    metric = metric,
+    call = match.call()
+  )
 
-  # Compute hat matrix H and fitted values
-  H <- matrix(0, n, n)
-  fitted <- numeric(n)
-
-  for (i in seq_len(n)) {
-    # Gaussian kernel weights
-    weights <- exp(-0.5 * (D[i, ] / h)^2)
-    weights[i] <- 0  # Leave-one-out for fitting
-    if (sum(weights) > 0) {
-      weights <- weights / sum(weights)
+  if (type.S == "S.NW") {
+    # Fixed bandwidth Nadaraya-Watson
+    if (is.null(h)) {
+      d_vec <- D[lower.tri(D)]
+      h <- median(d_vec[d_vec > 0])
     }
-    H[i, ] <- weights
-    fitted[i] <- sum(weights * y)
+
+    H <- matrix(0, n, n)
+    fitted <- numeric(n)
+
+    for (i in seq_len(n)) {
+      weights <- exp(-0.5 * (D[i, ] / h)^2)
+      weights[i] <- 0  # Leave-one-out
+      if (sum(weights) > 0) {
+        weights <- weights / sum(weights)
+      }
+      H[i, ] <- weights
+      fitted[i] <- sum(weights * y)
+    }
+
+    result$h.opt <- h
+    result$fitted.values <- fitted
+    result$H <- H
+
+  } else if (type.S == "kNN.gCV") {
+    # k-NN with Global CV
+    if (is.null(knn)) knn <- min(20L, n - 2)
+    knn <- as.integer(min(knn, n - 2))
+
+    cv_result <- .Call("wrap__knn_gcv", D, as.numeric(y), knn)
+
+    result$knn <- knn
+    result$k.opt <- cv_result$k_opt
+    result$fitted.values <- cv_result$yhat
+    result$mse <- cv_result$mse
+
+  } else if (type.S == "kNN.lCV") {
+    # k-NN with Local CV
+    if (is.null(knn)) knn <- min(20L, n - 2)
+    knn <- as.integer(min(knn, n - 2))
+
+    cv_result <- .Call("wrap__knn_lcv", D, as.numeric(y), knn)
+
+    result$knn <- knn
+    result$k.opt <- cv_result$k_opt
+    result$fitted.values <- cv_result$yhat
+    result$mse <- cv_result$mse
   }
 
-  residuals <- y - fitted
+  result$residuals <- y - result$fitted.values
 
   # Residual variance
-  df <- n - sum(diag(H))
+  df <- n - 1
+  if (!is.null(result$H)) {
+    df <- n - sum(diag(result$H))
+  }
   if (df <= 0) df <- 1
-  sr2 <- sum(residuals^2) / df
+  result$sr2 <- sum(result$residuals^2) / df
 
-  structure(
-    list(
-      fitted.values = fitted,
-      residuals = residuals,
-      h.opt = h,
-      Ker = Ker,
-      fdataobj = fdataobj,
-      y = y,
-      mdist = D,
-      H = H,
-      sr2 = sr2,
-      metric = metric,
-      call = match.call()
-    ),
-    class = "fregre.np"
-  )
+  structure(result, class = "fregre.np")
 }
 
 #' Print method for fregre objects
@@ -290,8 +362,20 @@ print.fregre.fd <- function(x, ...) {
 print.fregre.np <- function(x, ...) {
   cat("Nonparametric functional regression model\n")
   cat("  Number of observations:", length(x$y), "\n")
-  cat("  Bandwidth:", x$h, "\n")
-  cat("  R-squared:", 1 - sum(x$residuals^2) / sum((x$y - mean(x$y))^2), "\n")
+  cat("  Smoother type:", x$type.S, "\n")
+  if (!is.null(x$h.opt)) {
+    cat("  Bandwidth:", x$h.opt, "\n")
+  }
+  if (!is.null(x$k.opt)) {
+    if (length(x$k.opt) == 1) {
+      cat("  Optimal k:", x$k.opt, "\n")
+    } else {
+      cat("  Optimal k (local):", "min =", min(x$k.opt), ", max =", max(x$k.opt),
+          ", median =", median(x$k.opt), "\n")
+    }
+  }
+  r2 <- 1 - sum(x$residuals^2) / sum((x$y - mean(x$y))^2)
+  cat("  R-squared:", round(r2, 4), "\n")
   invisible(x)
 }
 
@@ -730,26 +814,42 @@ predict.fregre.np <- function(object, newdata = NULL, ...) {
 
   nn <- nrow(newdata$data)
   n_train <- nrow(object$fdataobj$data)
-  h <- object$h.opt
   y_train <- object$y
 
   # Compute distances from new data to training data
-  # Use the same metric that was used for fitting
   metric_fn <- object$metric
-  D_new <- metric_fn(newdata, object$fdataobj)
+  D_new <- as.matrix(metric_fn(object$fdataobj, newdata))
 
-  # Nadaraya-Watson prediction
-  y_pred <- numeric(nn)
-  for (i in seq_len(nn)) {
-    # Gaussian kernel weights
-    weights <- exp(-0.5 * (D_new[i, ] / h)^2)
-    if (sum(weights) > 0) {
-      weights <- weights / sum(weights)
-    } else {
-      # If all weights are zero, use uniform weights
-      weights <- rep(1/n_train, n_train)
+  type.S <- if (!is.null(object$type.S)) object$type.S else "S.NW"
+
+  if (type.S == "S.NW") {
+    # Fixed bandwidth Nadaraya-Watson prediction
+    h <- object$h.opt
+    y_pred <- numeric(nn)
+
+    for (i in seq_len(nn)) {
+      weights <- exp(-0.5 * (D_new[, i] / h)^2)
+      if (sum(weights) > 0) {
+        weights <- weights / sum(weights)
+      } else {
+        weights <- rep(1/n_train, n_train)
+      }
+      y_pred[i] <- sum(weights * y_train)
     }
-    y_pred[i] <- sum(weights * y_train)
+
+  } else if (type.S %in% c("kNN.gCV", "kNN.lCV")) {
+    # k-NN prediction using Rust backend
+    k_opt <- object$k.opt
+
+    if (length(k_opt) == 1) {
+      # Global k - pass as single integer
+      y_pred <- .Call("wrap__knn_predict", D_new, as.numeric(y_train),
+                      as.integer(k_opt), NULL)
+    } else {
+      # Local k - pass as vector
+      y_pred <- .Call("wrap__knn_predict", D_new, as.numeric(y_train),
+                      0L, as.integer(k_opt))
+    }
   }
 
   names(y_pred) <- rownames(newdata$data)

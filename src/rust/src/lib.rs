@@ -3831,6 +3831,212 @@ fn inprod_fdata(data1: RMatrix<f64>, data2: RMatrix<f64>, argvals: Vec<f64>) -> 
 }
 
 // =============================================================================
+// kNN Regression functions (global and local cross-validation)
+// =============================================================================
+
+/// Kernel prediction with fixed bandwidth for prediction on new data
+#[extendr]
+fn knn_predict(dist_matrix: RMatrix<f64>, response: Vec<f64>, k: i32, local_k: Nullable<Vec<i32>>) -> Robj {
+    let n = dist_matrix.nrows();
+    let m = dist_matrix.ncols();
+    let dist_slice = dist_matrix.as_real_slice().unwrap();
+
+    // Extract distance matrix in column-major format
+    let get_dist = |i: usize, j: usize| dist_slice[i + j * n];
+
+    let predictions: Vec<f64> = (0..m).into_par_iter().map(|j| {
+        // Get distances for column j
+        let mut dists: Vec<(usize, f64)> = (0..n).map(|i| (i, get_dist(i, j))).collect();
+        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+        // Determine bandwidth based on k-th neighbor
+        let k_val = match &local_k {
+            Nullable::NotNull(k_vec) => {
+                // Local: find the nearest training point and use its k
+                let nearest_train_idx = dists[0].0;
+                k_vec[nearest_train_idx] as usize
+            },
+            Nullable::Null => k as usize,
+        };
+
+        // Bandwidth is midpoint between k-th and (k+1)-th neighbor
+        let h = if k_val + 1 < n {
+            0.5 * (dists[k_val].1 + dists[k_val + 1].1)
+        } else {
+            dists[k_val].1 * 1.1
+        };
+
+        // Epanechnikov kernel weights
+        let mut sum_ky = 0.0;
+        let mut sum_k = 0.0;
+        for i in 0..n {
+            let u = get_dist(i, j) / h;
+            if u <= 1.0 {
+                let k_val = 1.0 - u * u;
+                sum_ky += k_val * response[i];
+                sum_k += k_val;
+            }
+        }
+
+        if sum_k > 0.0 { sum_ky / sum_k } else { 0.0 }
+    }).collect();
+
+    Robj::from(predictions)
+}
+
+/// k-NN with Global Cross-Validation
+/// Finds a single optimal k for all observations
+#[extendr]
+fn knn_gcv(dist_matrix: RMatrix<f64>, response: Vec<f64>, max_k: i32) -> Robj {
+    let n = dist_matrix.nrows();
+    let dist_slice = dist_matrix.as_real_slice().unwrap();
+
+    // Extract distance matrix
+    let get_dist = |i: usize, j: usize| dist_slice[i + j * n];
+
+    // Sort distances for each observation (leave-one-out style)
+    let mut sorted_indices: Vec<Vec<usize>> = Vec::with_capacity(n);
+    let mut sorted_dists: Vec<Vec<f64>> = Vec::with_capacity(n);
+
+    for j in 0..n {
+        let mut dists: Vec<(usize, f64)> = (0..n).map(|i| (i, get_dist(i, j))).collect();
+        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        sorted_indices.push(dists.iter().map(|x| x.0).collect());
+        sorted_dists.push(dists.iter().map(|x| x.1).collect());
+    }
+
+    let max_k = (max_k as usize).min(n - 2);
+    let mut mse_vec: Vec<f64> = Vec::with_capacity(max_k);
+
+    // Try each k value
+    for k in 1..=max_k {
+        let mse: f64 = (0..n).into_par_iter().map(|j| {
+            // Leave-one-out: skip self (index 0 in sorted is self with distance 0)
+            // Bandwidth from k-th and (k+1)-th neighbors (excluding self)
+            let h = 0.5 * (sorted_dists[j][k] + sorted_dists[j][k + 1]);
+
+            let mut sum_ky = 0.0;
+            let mut sum_k = 0.0;
+
+            for i in 0..n {
+                if i == j { continue; } // Leave-one-out
+                let u = get_dist(i, j) / h;
+                if u <= 1.0 {
+                    let kernel_val = 1.0 - u * u;
+                    sum_ky += kernel_val * response[i];
+                    sum_k += kernel_val;
+                }
+            }
+
+            let pred = if sum_k > 0.0 { sum_ky / sum_k } else { response[j] };
+            (pred - response[j]).powi(2)
+        }).sum();
+
+        mse_vec.push(mse / n as f64);
+    }
+
+    // Find optimal k
+    let k_opt = mse_vec.iter()
+        .enumerate()
+        .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .map(|(i, _)| i + 1)
+        .unwrap_or(1);
+
+    // Compute final predictions with optimal k
+    let yhat: Vec<f64> = (0..n).into_par_iter().map(|j| {
+        let h = 0.5 * (sorted_dists[j][k_opt] + sorted_dists[j][k_opt + 1]);
+
+        let mut sum_ky = 0.0;
+        let mut sum_k = 0.0;
+
+        for i in 0..n {
+            let u = get_dist(i, j) / h;
+            if u <= 1.0 {
+                let kernel_val = 1.0 - u * u;
+                sum_ky += kernel_val * response[i];
+                sum_k += kernel_val;
+            }
+        }
+
+        if sum_k > 0.0 { sum_ky / sum_k } else { response[j] }
+    }).collect();
+
+    list!(
+        k_opt = k_opt as i32,
+        mse = mse_vec,
+        yhat = yhat
+    ).into()
+}
+
+/// k-NN with Local Cross-Validation
+/// Finds an optimal k for each observation
+#[extendr]
+fn knn_lcv(dist_matrix: RMatrix<f64>, response: Vec<f64>, max_k: i32) -> Robj {
+    let n = dist_matrix.nrows();
+    let dist_slice = dist_matrix.as_real_slice().unwrap();
+
+    let get_dist = |i: usize, j: usize| dist_slice[i + j * n];
+
+    let max_k = (max_k as usize).min(n - 2);
+
+    // For each observation, find optimal local k
+    let results: Vec<(i32, f64)> = (0..n).into_par_iter().map(|j| {
+        // Sort neighbors by distance
+        let mut dists: Vec<(usize, f64)> = (0..n)
+            .filter(|&i| i != j)
+            .map(|i| (i, get_dist(i, j)))
+            .collect();
+        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+        let mut best_k = 1usize;
+        let mut best_error = f64::MAX;
+        let mut best_pred = response[j];
+
+        // Try each k
+        for k in 1..=max_k.min(dists.len() - 1) {
+            let h = 0.5 * (dists[k - 1].1 + dists[k].1);
+
+            let mut sum_ky = 0.0;
+            let mut sum_k = 0.0;
+
+            for (idx, d) in &dists {
+                let u = d / h;
+                if u <= 1.0 {
+                    let kernel_val = 1.0 - u * u;
+                    sum_ky += kernel_val * response[*idx];
+                    sum_k += kernel_val;
+                }
+            }
+
+            let pred = if sum_k > 0.0 { sum_ky / sum_k } else { response[j] };
+            let error = (pred - response[j]).abs();
+
+            if error < best_error {
+                best_error = error;
+                best_k = k;
+                best_pred = pred;
+            }
+        }
+
+        (best_k as i32, best_pred)
+    }).collect();
+
+    let k_opt: Vec<i32> = results.iter().map(|x| x.0).collect();
+    let yhat: Vec<f64> = results.iter().map(|x| x.1).collect();
+
+    // Compute MSE
+    let mse: f64 = yhat.iter().zip(response.iter())
+        .map(|(pred, actual)| (pred - actual).powi(2))
+        .sum::<f64>() / n as f64;
+
+    list!(
+        k_opt = k_opt,
+        mse = mse,
+        yhat = yhat
+    ).into()
+}
+
+// =============================================================================
 // Module exports
 // =============================================================================
 
@@ -3899,4 +4105,9 @@ extendr_module! {
     // Utility functions
     fn int_simpson;
     fn inprod_fdata;
+
+    // kNN regression functions
+    fn knn_predict;
+    fn knn_gcv;
+    fn knn_lcv;
 }

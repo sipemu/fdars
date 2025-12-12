@@ -258,3 +258,93 @@ test_that("predict accepts matrix input and converts to fdata", {
   expect_length(pred, 1)
   expect_true(is.numeric(pred))
 })
+
+# =============================================================================
+# k-NN Nonparametric Regression Tests
+# =============================================================================
+
+test_that("fregre.np with kNN.gCV produces valid results", {
+  set.seed(42)
+  n <- 50
+  m <- 30
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  fd <- fdars::fdata(X, argvals = t_grid)
+  model <- fdars::fregre.np(fd, y, type.S = "kNN.gCV", knn = 20)
+
+  expect_s3_class(model, "fregre.np")
+  expect_equal(model$type.S, "kNN.gCV")
+  expect_length(model$fitted.values, n)
+  expect_length(model$residuals, n)
+  expect_length(model$k.opt, 1)  # Global: single k
+  expect_gte(model$k.opt, 1)
+  expect_lte(model$k.opt, 20)
+})
+
+test_that("fregre.np with kNN.lCV produces valid results", {
+  set.seed(42)
+  n <- 50
+  m <- 30
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  fd <- fdars::fdata(X, argvals = t_grid)
+  model <- fdars::fregre.np(fd, y, type.S = "kNN.lCV", knn = 20)
+
+  expect_s3_class(model, "fregre.np")
+  expect_equal(model$type.S, "kNN.lCV")
+  expect_length(model$fitted.values, n)
+  expect_length(model$residuals, n)
+  expect_length(model$k.opt, n)  # Local: one k per observation
+  expect_true(all(model$k.opt >= 1))
+  expect_true(all(model$k.opt <= 20))
+})
+
+test_that("predict.fregre.np works with kNN models", {
+  set.seed(42)
+  n <- 50
+  m <- 30
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  fd <- fdars::fdata(X, argvals = t_grid)
+
+  # Test with global CV
+  fit_gcv <- fdars::fregre.np(fd, y, type.S = "kNN.gCV", knn = 15)
+
+  # Create new data with correct dimensions (2 rows, m columns)
+  X_new <- matrix(0, 2, m)
+  X_new[1, ] <- sin(2 * pi * t_grid) * 0.5 + rnorm(m, sd = 0.1)
+  X_new[2, ] <- sin(2 * pi * t_grid) * 0.3 + rnorm(m, sd = 0.1)
+  fd_new <- fdars::fdata(X_new, argvals = t_grid)
+
+  pred_gcv <- predict(fit_gcv, fd_new)
+  expect_length(pred_gcv, 2)
+  expect_true(is.numeric(pred_gcv))
+
+  # Test with local CV
+  fit_lcv <- fdars::fregre.np(fd, y, type.S = "kNN.lCV", knn = 15)
+  pred_lcv <- predict(fit_lcv, fd_new)
+  expect_length(pred_lcv, 2)
+  expect_true(is.numeric(pred_lcv))
+
+  # Predict without new data should return fitted values
+  expect_equal(predict(fit_gcv), fit_gcv$fitted.values)
+  expect_equal(predict(fit_lcv), fit_lcv$fitted.values)
+})
