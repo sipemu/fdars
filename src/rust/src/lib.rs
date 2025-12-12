@@ -4037,6 +4037,160 @@ fn knn_lcv(dist_matrix: RMatrix<f64>, response: Vec<f64>, max_k: i32) -> Robj {
 }
 
 // =============================================================================
+// Cluster validation functions
+// =============================================================================
+
+/// Compute silhouette score for clustering
+/// Returns the mean silhouette coefficient across all samples
+#[extendr]
+fn silhouette_score(dist_matrix: RMatrix<f64>, clusters: Vec<i32>) -> f64 {
+    let n = dist_matrix.nrows();
+    let dist_slice = dist_matrix.as_real_slice().unwrap();
+
+    let get_dist = |i: usize, j: usize| dist_slice[i + j * n];
+
+    // Find unique clusters
+    let mut unique_clusters: Vec<i32> = clusters.clone();
+    unique_clusters.sort();
+    unique_clusters.dedup();
+    let k = unique_clusters.len();
+
+    if k <= 1 {
+        return 0.0; // Silhouette undefined for single cluster
+    }
+
+    // Compute silhouette for each point
+    let silhouettes: Vec<f64> = (0..n).into_par_iter().map(|i| {
+        let ci = clusters[i];
+
+        // a(i) = mean distance to points in same cluster
+        let same_cluster: Vec<usize> = (0..n)
+            .filter(|&j| j != i && clusters[j] == ci)
+            .collect();
+
+        if same_cluster.is_empty() {
+            return 0.0; // Single point in cluster
+        }
+
+        let a_i: f64 = same_cluster.iter()
+            .map(|&j| get_dist(i, j))
+            .sum::<f64>() / same_cluster.len() as f64;
+
+        // b(i) = min mean distance to points in other clusters
+        let mut b_i = f64::MAX;
+        for &ck in &unique_clusters {
+            if ck == ci { continue; }
+
+            let other_cluster: Vec<usize> = (0..n)
+                .filter(|&j| clusters[j] == ck)
+                .collect();
+
+            if other_cluster.is_empty() { continue; }
+
+            let mean_dist: f64 = other_cluster.iter()
+                .map(|&j| get_dist(i, j))
+                .sum::<f64>() / other_cluster.len() as f64;
+
+            if mean_dist < b_i {
+                b_i = mean_dist;
+            }
+        }
+
+        // s(i) = (b(i) - a(i)) / max(a(i), b(i))
+        let max_ab = a_i.max(b_i);
+        if max_ab == 0.0 {
+            0.0
+        } else {
+            (b_i - a_i) / max_ab
+        }
+    }).collect();
+
+    silhouettes.iter().sum::<f64>() / n as f64
+}
+
+/// Compute Calinski-Harabasz index (variance ratio criterion)
+/// Higher values indicate better defined clusters
+#[extendr]
+fn calinski_harabasz(data: RMatrix<f64>, clusters: Vec<i32>) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+    let data_slice = data.as_real_slice().unwrap();
+
+    let get_val = |i: usize, j: usize| data_slice[i + j * n];
+
+    // Find unique clusters
+    let mut unique_clusters: Vec<i32> = clusters.clone();
+    unique_clusters.sort();
+    unique_clusters.dedup();
+    let k = unique_clusters.len();
+
+    if k <= 1 || k >= n {
+        return 0.0;
+    }
+
+    // Compute overall centroid
+    let mut global_centroid = vec![0.0; m];
+    for j in 0..m {
+        for i in 0..n {
+            global_centroid[j] += get_val(i, j);
+        }
+        global_centroid[j] /= n as f64;
+    }
+
+    // Compute cluster centroids and sizes
+    let mut cluster_centroids: Vec<Vec<f64>> = vec![vec![0.0; m]; k];
+    let mut cluster_sizes: Vec<usize> = vec![0; k];
+
+    for i in 0..n {
+        let ci = clusters[i];
+        let cluster_idx = unique_clusters.iter().position(|&x| x == ci).unwrap();
+        cluster_sizes[cluster_idx] += 1;
+        for j in 0..m {
+            cluster_centroids[cluster_idx][j] += get_val(i, j);
+        }
+    }
+
+    for (idx, centroid) in cluster_centroids.iter_mut().enumerate() {
+        if cluster_sizes[idx] > 0 {
+            for j in 0..m {
+                centroid[j] /= cluster_sizes[idx] as f64;
+            }
+        }
+    }
+
+    // Between-cluster dispersion (SSB)
+    let mut ssb = 0.0;
+    for (idx, centroid) in cluster_centroids.iter().enumerate() {
+        let mut dist_sq = 0.0;
+        for j in 0..m {
+            let diff = centroid[j] - global_centroid[j];
+            dist_sq += diff * diff;
+        }
+        ssb += cluster_sizes[idx] as f64 * dist_sq;
+    }
+
+    // Within-cluster dispersion (SSW)
+    let mut ssw = 0.0;
+    for i in 0..n {
+        let ci = clusters[i];
+        let cluster_idx = unique_clusters.iter().position(|&x| x == ci).unwrap();
+        let centroid = &cluster_centroids[cluster_idx];
+
+        for j in 0..m {
+            let diff = get_val(i, j) - centroid[j];
+            ssw += diff * diff;
+        }
+    }
+
+    // CH = (SSB / (k-1)) / (SSW / (n-k))
+    if ssw == 0.0 {
+        return f64::MAX;
+    }
+
+    (ssb / (k - 1) as f64) / (ssw / (n - k) as f64)
+}
+
+// =============================================================================
 // Module exports
 // =============================================================================
 
@@ -4110,4 +4264,8 @@ extendr_module! {
     fn knn_predict;
     fn knn_gcv;
     fn knn_lcv;
+
+    // Cluster validation functions
+    fn silhouette_score;
+    fn calinski_harabasz;
 }

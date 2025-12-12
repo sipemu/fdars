@@ -284,6 +284,210 @@ kmeans.center.ini <- function(fdataobj, ncl, metric = "L2", seed = NULL) {
   fdataobj[centers_idx, ]
 }
 
+#' Optimal Number of Clusters for Functional K-Means
+#'
+#' Determines the optimal number of clusters for functional k-means clustering
+#' using various criteria: elbow method, silhouette score, or Calinski-Harabasz index.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param ncl.range Range of number of clusters to evaluate. Default is 2:10.
+#' @param criterion Criterion to use for selecting optimal k:
+#'   \describe{
+#'     \item{"silhouette"}{Mean silhouette coefficient (default). Higher is better.}
+#'     \item{"CH"}{Calinski-Harabasz index. Higher is better.}
+#'     \item{"elbow"}{Within-cluster sum of squares. Look for elbow in plot.}
+#'   }
+#' @param metric Either a string ("L2", "L1", "Linf") or a metric function.
+#' @param max.iter Maximum iterations for k-means (default 100).
+#' @param nstart Number of random starts (default 10).
+#' @param seed Random seed for reproducibility.
+#' @param ... Additional arguments passed to kmeans.fd.
+#'
+#' @return A list of class 'optim.kmeans.fd' with components:
+#' \describe{
+#'   \item{optimal.k}{Optimal number of clusters based on criterion}
+#'   \item{criterion}{Name of criterion used}
+#'   \item{scores}{Vector of criterion values for each k}
+#'   \item{ncl.range}{Range of k values tested}
+#'   \item{models}{List of kmeans.fd objects for each k}
+#'   \item{best.model}{The kmeans.fd object for optimal k}
+#' }
+#'
+#' @details
+#' \strong{Silhouette score}: Measures how similar each curve is to its own cluster
+#' compared to other clusters. Values range from -1 to 1, with higher being better.
+#' Optimal k maximizes the mean silhouette.
+#'
+#' \strong{Calinski-Harabasz index}: Ratio of between-cluster to within-cluster
+#' dispersion. Higher values indicate better defined clusters. Optimal k maximizes CH.
+#'
+#' \strong{Elbow method}: Plots total within-cluster sum of squares vs k. The optimal
+#' k is at the "elbow" where adding more clusters doesn't significantly reduce WSS.
+#' This is subjective and best assessed visually using `plot()`.
+#'
+#' @export
+#' @examples
+#' # Create functional data with 3 groups
+#' set.seed(42)
+#' t <- seq(0, 1, length.out = 50)
+#' n <- 60
+#' X <- matrix(0, n, 50)
+#' true_k <- rep(1:3, each = 20)
+#' for (i in 1:n) {
+#'   if (true_k[i] == 1) {
+#'     X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
+#'   } else if (true_k[i] == 2) {
+#'     X[i, ] <- cos(2*pi*t) + rnorm(50, sd = 0.1)
+#'   } else {
+#'     X[i, ] <- sin(4*pi*t) + rnorm(50, sd = 0.1)
+#'   }
+#' }
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Find optimal k using silhouette
+#' opt <- optim.kmeans.fd(fd, ncl.range = 2:6, criterion = "silhouette")
+#' print(opt)
+#' plot(opt)
+optim.kmeans.fd <- function(fdataobj, ncl.range = 2:10,
+                            criterion = c("silhouette", "CH", "elbow"),
+                            metric = "L2", max.iter = 100, nstart = 10,
+                            seed = NULL, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  criterion <- match.arg(criterion)
+  n <- nrow(fdataobj$data)
+
+  # Validate ncl.range
+  ncl.range <- ncl.range[ncl.range >= 2 & ncl.range < n]
+  if (length(ncl.range) == 0) {
+    stop("ncl.range must contain values between 2 and n-1")
+  }
+
+  # Compute distance matrix once for silhouette calculation
+  if (is.character(metric)) {
+    if (metric == "L2") {
+      dist_mat <- as.matrix(metric.lp(fdataobj))
+    } else if (metric == "L1") {
+      dist_mat <- as.matrix(metric.lp(fdataobj, p = 1))
+    } else {
+      dist_mat <- as.matrix(metric.lp(fdataobj, p = Inf))
+    }
+  } else {
+    dist_mat <- as.matrix(metric(fdataobj, ...))
+  }
+
+  # Run k-means for each k and compute criterion
+  models <- list()
+  scores <- numeric(length(ncl.range))
+
+  for (i in seq_along(ncl.range)) {
+    k <- ncl.range[i]
+
+    # Run k-means
+    model <- kmeans.fd(fdataobj, ncl = k, metric = metric,
+                       max.iter = max.iter, nstart = nstart, seed = seed, ...)
+    models[[i]] <- model
+
+    # Compute criterion
+    if (criterion == "silhouette") {
+      scores[i] <- .Call("wrap__silhouette_score", dist_mat, as.integer(model$cluster))
+    } else if (criterion == "CH") {
+      scores[i] <- .Call("wrap__calinski_harabasz", fdataobj$data, as.integer(model$cluster))
+    } else {  # elbow
+      scores[i] <- model$tot.withinss
+    }
+  }
+
+  names(scores) <- ncl.range
+
+  # Find optimal k
+  if (criterion == "elbow") {
+    # For elbow, we don't automatically select - use second derivative
+    # or let user decide from plot
+    if (length(ncl.range) >= 3) {
+      # Compute second derivative to find elbow
+      d1 <- diff(scores)
+      d2 <- diff(d1)
+      optimal_idx <- which.max(d2) + 1
+    } else {
+      optimal_idx <- 1
+    }
+  } else {
+    # For silhouette and CH, higher is better
+    optimal_idx <- which.max(scores)
+  }
+
+  optimal_k <- ncl.range[optimal_idx]
+
+  structure(
+    list(
+      optimal.k = optimal_k,
+      criterion = criterion,
+      scores = scores,
+      ncl.range = ncl.range,
+      models = models,
+      best.model = models[[optimal_idx]]
+    ),
+    class = "optim.kmeans.fd"
+  )
+}
+
+#' Print Method for optim.kmeans.fd Objects
+#'
+#' @param x An object of class 'optim.kmeans.fd'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.optim.kmeans.fd <- function(x, ...) {
+  cat("Optimal K-Means Clustering\n")
+  cat("==========================\n")
+  cat("Criterion:", x$criterion, "\n")
+  cat("K range tested:", min(x$ncl.range), "-", max(x$ncl.range), "\n")
+  cat("Optimal k:", x$optimal.k, "\n\n")
+
+  cat("Scores by k:\n")
+  score_df <- data.frame(k = x$ncl.range, score = round(x$scores, 4))
+  print(score_df, row.names = FALSE)
+
+  invisible(x)
+}
+
+#' Plot Method for optim.kmeans.fd Objects
+#'
+#' @param x An object of class 'optim.kmeans.fd'.
+#' @param ... Additional arguments passed to plot.
+#'
+#' @export
+plot.optim.kmeans.fd <- function(x, ...) {
+  args <- list(...)
+
+  # Default plot parameters
+  if (is.null(args$xlab)) args$xlab <- "Number of clusters (k)"
+  if (is.null(args$ylab)) {
+    args$ylab <- switch(x$criterion,
+      silhouette = "Mean Silhouette Score",
+      CH = "Calinski-Harabasz Index",
+      elbow = "Total Within-Cluster SS"
+    )
+  }
+  if (is.null(args$main)) {
+    args$main <- paste("Optimal k Selection:", x$criterion)
+  }
+  if (is.null(args$type)) args$type <- "b"
+  if (is.null(args$pch)) args$pch <- 19
+
+  do.call(plot, c(list(x = x$ncl.range, y = x$scores), args))
+
+  # Mark optimal k
+  points(x$optimal.k, x$scores[as.character(x$optimal.k)],
+         col = "red", pch = 19, cex = 1.5)
+  abline(v = x$optimal.k, col = "red", lty = 2)
+
+  invisible(x)
+}
+
 #' Print Method for kmeans.fd Objects
 #'
 #' @param x An object of class 'kmeans.fd'.
