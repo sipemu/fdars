@@ -186,7 +186,7 @@ Use `metric.dist()` for a unified interface:
 ```{r metric-dist}
 # Different methods via single function
 d1 <- metric.dist(fd, method = "lp", p = 2)
-d2 <- metric.dist(fd, method = "DTW")
+d2 <- metric.dist(fd, method = "dtw")
 d3 <- metric.dist(fd, method = "hausdorff")
 ```
 

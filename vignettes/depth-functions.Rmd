@@ -131,7 +131,7 @@ Incorporates derivative information, making it sensitive to shape
 changes in addition to magnitude.
 
 ```{r depth-rpd}
-depths_rpd <- depth.RPD(fd, nproj = 50, nderiv = 1)
+depths_rpd <- depth.RPD(fd, nproj = 50)
 head(depths_rpd)
 ```
 
