@@ -1,0 +1,25 @@
+[package]
+name = "fdars"
+version = "0.1.0"
+edition = "2021"
+description = "Functional Data Analysis with Rust backend"
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+extendr-api = "0.7"
+rayon = "1.10"
+rand = "0.8"
+rand_distr = "0.4"
+rustfft = "6.2"
+num-complex = "0.4"
+nalgebra = "0.33"
+
+# Note: anofox-regression can be added later via crates.io once published
+# For now, we implement the required functionality directly
+
+[profile.release]
+lto = true
+codegen-units = 1

@@ -1,0 +1,21 @@
+Package: fdars
+Title: Functional Data Analysis in Rust
+Version: 0.1.0
+Authors@R:
+    person("Simon", "Müller", role = c("aut", "cre"),
+           email = "simon@example.com")
+Description: Functional data analysis tools with a high-performance Rust backend.
+    Provides methods for functional data manipulation, depth computation,
+    distance metrics, regression, and statistical testing. Supports both
+    1D functional data (curves) and 2D functional data (surfaces).
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+SystemRequirements: Cargo (Rust's package manager), rustc
+Imports:
+    methods
+Suggests:
+    testthat (>= 3.0.0),
+    fda.usc
+Config/testthat/edition: 3
