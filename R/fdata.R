@@ -279,23 +279,40 @@ summary.fdata <- function(object, ...) {
 #' Plot method for fdata objects
 #'
 #' @param x An object of class 'fdata'.
-#' @param ... Additional arguments passed to matplot.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return A ggplot object.
 #'
 #' @export
+#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal
 plot.fdata <- function(x, ...) {
   if (x$fdata2d) {
     warning("2D fdata plotting not yet implemented")
     return(invisible(x))
   }
 
-  args <- list(...)
-  if (is.null(args$type)) args$type <- "l"
-  if (is.null(args$xlab)) args$xlab <- x$names$xlab
-  if (is.null(args$ylab)) args$ylab <- x$names$ylab
-  if (is.null(args$main)) args$main <- x$names$main
+  n <- nrow(x$data)
+  m <- ncol(x$data)
 
-  do.call(matplot, c(list(x = x$argvals, y = t(x$data)), args))
-  invisible(x)
+  # Reshape to long format
+  df <- data.frame(
+    curve_id = rep(seq_len(n), each = m),
+    argval = rep(x$argvals, n),
+    value = as.vector(t(x$data))
+  )
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
+                                         group = .data$curve_id)) +
+    ggplot2::geom_line(alpha = 0.7) +
+    ggplot2::labs(
+      x = x$names$xlab %||% "t",
+      y = x$names$ylab %||% "X(t)",
+      title = x$names$main
+    ) +
+    ggplot2::theme_minimal()
+
+  print(p)
+  invisible(p)
 }
 
 #' Compute functional derivative

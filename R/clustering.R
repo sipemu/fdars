@@ -457,35 +457,45 @@ print.optim.kmeans.fd <- function(x, ...) {
 #' Plot Method for optim.kmeans.fd Objects
 #'
 #' @param x An object of class 'optim.kmeans.fd'.
-#' @param ... Additional arguments passed to plot.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return A ggplot object.
 #'
 #' @export
 plot.optim.kmeans.fd <- function(x, ...) {
-  args <- list(...)
+  ylab <- switch(x$criterion,
+    silhouette = "Mean Silhouette Score",
+    CH = "Calinski-Harabasz Index",
+    elbow = "Total Within-Cluster SS"
+  )
 
-  # Default plot parameters
-  if (is.null(args$xlab)) args$xlab <- "Number of clusters (k)"
-  if (is.null(args$ylab)) {
-    args$ylab <- switch(x$criterion,
-      silhouette = "Mean Silhouette Score",
-      CH = "Calinski-Harabasz Index",
-      elbow = "Total Within-Cluster SS"
-    )
-  }
-  if (is.null(args$main)) {
-    args$main <- paste("Optimal k Selection:", x$criterion)
-  }
-  if (is.null(args$type)) args$type <- "b"
-  if (is.null(args$pch)) args$pch <- 19
+  df <- data.frame(
+    k = x$ncl.range,
+    score = x$scores
+  )
 
-  do.call(plot, c(list(x = x$ncl.range, y = x$scores), args))
+  optimal_score <- x$scores[as.character(x$optimal.k)]
 
-  # Mark optimal k
-  points(x$optimal.k, x$scores[as.character(x$optimal.k)],
-         col = "red", pch = 19, cex = 1.5)
-  abline(v = x$optimal.k, col = "red", lty = 2)
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$k, y = .data$score)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 3) +
+    ggplot2::geom_vline(xintercept = x$optimal.k, linetype = "dashed",
+                        color = "red", linewidth = 0.8) +
+    ggplot2::geom_point(
+      data = data.frame(k = x$optimal.k, score = optimal_score),
+      ggplot2::aes(x = .data$k, y = .data$score),
+      color = "red", size = 5
+    ) +
+    ggplot2::labs(
+      x = "Number of clusters (k)",
+      y = ylab,
+      title = paste("Optimal k Selection:", x$criterion)
+    ) +
+    ggplot2::scale_x_continuous(breaks = x$ncl.range) +
+    ggplot2::theme_minimal()
 
-  invisible(x)
+  print(p)
+  invisible(p)
 }
 
 #' Print Method for kmeans.fd Objects
@@ -514,32 +524,54 @@ print.kmeans.fd <- function(x, ...) {
 #' Plot Method for kmeans.fd Objects
 #'
 #' @param x An object of class 'kmeans.fd'.
-#' @param ... Additional arguments passed to matplot.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return A ggplot object.
 #'
 #' @export
 plot.kmeans.fd <- function(x, ...) {
-  args <- list(...)
-  ncl <- length(x$size)
-
-  # Default colors for clusters
-  if (is.null(args$col)) {
-    args$col <- x$cluster
-  }
-
-  # Plot curves colored by cluster
   fd <- x$fdataobj
-  if (is.null(args$type)) args$type <- "l"
-  if (is.null(args$xlab)) args$xlab <- fd$names$xlab
-  if (is.null(args$ylab)) args$ylab <- fd$names$ylab
-  if (is.null(args$main)) args$main <- "Functional K-Means Clustering"
+  ncl <- length(x$size)
+  n <- nrow(fd$data)
+  m <- ncol(fd$data)
 
-  do.call(matplot, c(list(x = fd$argvals, y = t(fd$data)), args))
+  # Reshape curves to long format
+  df_curves <- data.frame(
+    curve_id = rep(seq_len(n), each = m),
+    argval = rep(fd$argvals, n),
+    value = as.vector(t(fd$data)),
+    cluster = factor(rep(x$cluster, each = m))
+  )
 
-  # Add centers
-  lines_args <- list(lwd = 3, lty = 2)
-  for (k in 1:ncl) {
-    lines(fd$argvals, x$centers$data[k, ], col = k, lwd = 3, lty = 2)
-  }
+  # Reshape centers to long format
+  df_centers <- data.frame(
+    center_id = rep(seq_len(ncl), each = m),
+    argval = rep(fd$argvals, ncl),
+    value = as.vector(t(x$centers$data)),
+    cluster = factor(rep(seq_len(ncl), each = m))
+  )
 
-  invisible(x)
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_line(
+      data = df_curves,
+      ggplot2::aes(x = .data$argval, y = .data$value,
+                   group = .data$curve_id, color = .data$cluster),
+      alpha = 0.5
+    ) +
+    ggplot2::geom_line(
+      data = df_centers,
+      ggplot2::aes(x = .data$argval, y = .data$value,
+                   group = .data$center_id, color = .data$cluster),
+      linetype = "dashed", linewidth = 1.2
+    ) +
+    ggplot2::labs(
+      x = fd$names$xlab %||% "t",
+      y = fd$names$ylab %||% "X(t)",
+      title = "Functional K-Means Clustering",
+      color = "Cluster"
+    ) +
+    ggplot2::theme_minimal()
+
+  print(p)
+  invisible(p)
 }

@@ -135,21 +135,47 @@ print.outliers.fdata <- function(x, ...) {
 }
 
 #' Plot method for outliers.fdata objects
+#'
+#' @param x An object of class 'outliers.fdata'.
+#' @param col.outliers Color for outlier curves (default "red").
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return A ggplot object.
+#'
 #' @export
 plot.outliers.fdata <- function(x, col.outliers = "red", ...) {
   fd <- x$fdataobj
   n <- nrow(fd$data)
+  m <- ncol(fd$data)
 
-  # Colors: outliers in red, others in gray
-  cols <- rep("gray", n)
-  cols[x$outliers] <- col.outliers
+  # Create status factor
+  status <- rep("Normal", n)
+  status[x$outliers] <- "Outlier"
 
-  # Plot
-  matplot(fd$argvals, t(fd$data), type = "l", col = cols,
-          xlab = fd$names$xlab, ylab = fd$names$ylab,
-          main = paste("Outliers detected:", length(x$outliers)), ...)
+  # Reshape to long format
+  df <- data.frame(
+    curve_id = rep(seq_len(n), each = m),
+    argval = rep(fd$argvals, n),
+    value = as.vector(t(fd$data)),
+    status = factor(rep(status, each = m), levels = c("Normal", "Outlier"))
+  )
 
-  invisible(x)
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
+                                         group = .data$curve_id,
+                                         color = .data$status)) +
+    ggplot2::geom_line(alpha = 0.7) +
+    ggplot2::scale_color_manual(values = c("Normal" = "gray60",
+                                           "Outlier" = col.outliers)) +
+    ggplot2::labs(
+      x = fd$names$xlab %||% "t",
+      y = fd$names$ylab %||% "X(t)",
+      title = paste("Outliers detected:", length(x$outliers)),
+      color = "Status"
+    ) +
+    ggplot2::theme_minimal()
+
+  print(p)
+  invisible(p)
 }
 
 #' LRT Outlier Detection Threshold
