@@ -134,3 +134,127 @@ test_that("fregre.np.cv selects optimal bandwidth", {
   expect_true(cv_result$optimal.h %in% h_range)
   expect_length(cv_result$cv.errors, length(h_range))
 })
+
+# =============================================================================
+# Predict Method Tests
+# =============================================================================
+
+test_that("predict.fregre.fd works for fregre.pc", {
+  set.seed(123)
+  n <- 30
+  m <- 50
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  # Split into train/test
+  train_idx <- 1:20
+  test_idx <- 21:30
+  fd_train <- fdars::fdata(X[train_idx, ], argvals = t_grid)
+  fd_test <- fdars::fdata(X[test_idx, ], argvals = t_grid)
+  y_train <- y[train_idx]
+  y_test <- y[test_idx]
+
+  # Fit model
+  fit <- fdars::fregre.pc(fd_train, y_train, ncomp = 3)
+
+  # Test predict with new data
+  pred <- predict(fit, fd_test)
+  expect_length(pred, length(test_idx))
+  expect_true(is.numeric(pred))
+
+  # Test predict without new data returns fitted values
+  pred_fitted <- predict(fit)
+  expect_equal(pred_fitted, fit$fitted.values)
+})
+
+test_that("predict.fregre.fd works for fregre.basis", {
+  set.seed(123)
+  n <- 30
+  m <- 50
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  # Split into train/test
+  train_idx <- 1:20
+  test_idx <- 21:30
+  fd_train <- fdars::fdata(X[train_idx, ], argvals = t_grid)
+  fd_test <- fdars::fdata(X[test_idx, ], argvals = t_grid)
+  y_train <- y[train_idx]
+
+  # Fit model
+  fit <- fdars::fregre.basis(fd_train, y_train, lambda = 0.1)
+
+  # Test predict with new data
+  pred <- predict(fit, fd_test)
+  expect_length(pred, length(test_idx))
+  expect_true(is.numeric(pred))
+
+  # Test predict without new data returns fitted values
+  pred_fitted <- predict(fit)
+  expect_equal(pred_fitted, fit$fitted.values)
+})
+
+test_that("predict.fregre.np works", {
+  set.seed(123)
+  n <- 30
+  m <- 50
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  # Split into train/test
+  train_idx <- 1:20
+  test_idx <- 21:30
+  fd_train <- fdars::fdata(X[train_idx, ], argvals = t_grid)
+  fd_test <- fdars::fdata(X[test_idx, ], argvals = t_grid)
+  y_train <- y[train_idx]
+
+  # Fit model
+  fit <- fdars::fregre.np(fd_train, y_train)
+
+  # Test predict with new data
+  pred <- predict(fit, fd_test)
+  expect_length(pred, length(test_idx))
+  expect_true(is.numeric(pred))
+
+  # Test predict without new data returns fitted values
+  pred_fitted <- predict(fit)
+  expect_equal(pred_fitted, fit$fitted.values)
+})
+
+test_that("predict accepts matrix input and converts to fdata", {
+  set.seed(123)
+  n <- 30
+  m <- 50
+  t_grid <- seq(0, 1, length.out = m)
+
+  X <- matrix(0, n, m)
+  for (i in 1:n) {
+    X[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X) + rnorm(n, sd = 0.1)
+
+  fd <- fdars::fdata(X, argvals = t_grid)
+  fit <- fdars::fregre.pc(fd, y, ncomp = 3)
+
+  # Predict with raw matrix (should be converted to fdata internally)
+  X_new <- matrix(sin(2 * pi * t_grid) * 0.5, nrow = 1)
+  pred <- predict(fit, X_new)
+
+  expect_length(pred, 1)
+  expect_true(is.numeric(pred))
+})

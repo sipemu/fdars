@@ -11,7 +11,21 @@
 #' @param ncomp Number of principal components to use.
 #' @param ... Additional arguments.
 #'
-#' @return A fitted regression object.
+#' @return A fitted regression object of class 'fregre.fd' with components:
+#'   \item{coefficients}{Beta coefficient function values}
+#'   \item{intercept}{Intercept term}
+#'   \item{fitted.values}{Fitted values}
+#'   \item{residuals}{Residuals}
+#'   \item{ncomp}{Number of components used}
+#'   \item{mean.X}{Mean of functional covariate (for prediction)}
+#'   \item{mean.y}{Mean of response (for prediction)}
+#'   \item{rotation}{PC loadings (for prediction)}
+#'   \item{l}{Indices of selected components}
+#'   \item{lm}{Underlying linear model}
+#'   \item{sr2}{Residual variance}
+#'   \item{fdataobj}{Original functional data}
+#'   \item{y}{Response vector}
+#'   \item{call}{The function call}
 #'
 #' @export
 fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
@@ -19,7 +33,7 @@ fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
     stop("fdataobj must be of class 'fdata'")
   }
 
-  if (fdataobj$fdata2d) {
+  if (isTRUE(fdataobj$fdata2d)) {
     stop("fregre.pc not yet implemented for 2D functional data")
   }
 
@@ -28,9 +42,13 @@ fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
     stop("Length of y must equal number of curves in fdataobj")
   }
 
+  # Store means for prediction
+  X_mean <- colMeans(fdataobj$data)
+  y_mean <- mean(y)
+
   # Center the functional data
   X_centered <- scale(fdataobj$data, center = TRUE, scale = FALSE)
-  y_centered <- y - mean(y)
+  y_centered <- y - y_mean
 
   # Compute SVD
   svd_result <- svd(X_centered)
@@ -44,31 +62,45 @@ fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
   }
 
   ncomp <- min(ncomp, length(svd_result$d))
+  l <- seq_len(ncomp)
 
-  # Get PC scores
-  scores <- X_centered %*% svd_result$v[, seq_len(ncomp), drop = FALSE]
+  # Get PC scores (rotation/loadings)
+  rotation <- svd_result$v[, l, drop = FALSE]
+  scores <- X_centered %*% rotation
+  colnames(scores) <- paste0("PC", l)
 
   # Fit OLS on scores
-  fit <- lm(y_centered ~ scores - 1)
+  scores_df <- as.data.frame(scores)
+  lm_fit <- lm(y_centered ~ ., data = scores_df)
 
   # Compute beta coefficient function
-  beta_coef <- svd_result$v[, seq_len(ncomp), drop = FALSE] %*% coef(fit)
+  beta_coef <- rotation %*% coef(lm_fit)[-1]  # Exclude intercept
 
   # Compute intercept and fitted values
-  X_mean <- colMeans(fdataobj$data)
-  intercept <- as.numeric(mean(y) - sum(X_mean * beta_coef))
+  intercept <- as.numeric(y_mean - sum(X_mean * beta_coef))
   fitted_values <- as.vector(fdataobj$data %*% beta_coef) + intercept
+
+  # Residual variance
+  residuals <- y - fitted_values
+  sr2 <- sum(residuals^2) / (n - ncomp - 1)
 
   structure(
     list(
       coefficients = beta_coef,
       intercept = intercept,
       fitted.values = fitted_values,
-      residuals = y - fitted_values,
+      residuals = residuals,
       ncomp = ncomp,
+      mean.X = X_mean,
+      mean.y = y_mean,
+      rotation = rotation,
+      l = l,
+      lm = lm_fit,
+      sr2 = sr2,
       svd = svd_result,
       fdataobj = fdataobj,
-      y = y
+      y = y,
+      call = match.call()
     ),
     class = "fregre.fd"
   )
@@ -76,16 +108,27 @@ fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
 
 #' Functional Basis Regression
 #'
-#' Fits a functional linear model using basis expansion.
+#' Fits a functional linear model using basis expansion (ridge regression).
 #'
 #' @param fdataobj An object of class 'fdata' (functional covariate).
 #' @param y Response vector.
 #' @param basis.x Basis for the functional covariate (currently ignored).
 #' @param basis.b Basis for the coefficient function (currently ignored).
-#' @param lambda Smoothing parameter.
+#' @param lambda Smoothing/regularization parameter.
 #' @param ... Additional arguments.
 #'
-#' @return A fitted regression object.
+#' @return A fitted regression object of class 'fregre.fd' with components:
+#'   \item{coefficients}{Beta coefficient function values}
+#'   \item{intercept}{Intercept term}
+#'   \item{fitted.values}{Fitted values}
+#'   \item{residuals}{Residuals}
+#'   \item{lambda}{Regularization parameter used}
+#'   \item{mean.X}{Mean of functional covariate (for prediction)}
+#'   \item{mean.y}{Mean of response (for prediction)}
+#'   \item{sr2}{Residual variance}
+#'   \item{fdataobj}{Original functional data}
+#'   \item{y}{Response vector}
+#'   \item{call}{The function call}
 #'
 #' @export
 fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
@@ -102,29 +145,47 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
     stop("Length of y must equal number of curves in fdataobj")
   }
 
-  X <- fdataobj$data
-  y <- as.vector(y)
+  # Store means for prediction
+  X_mean <- colMeans(fdataobj$data)
+  y_mean <- mean(y)
 
-  # Ridge regression: beta = (X'X + lambda*I)^-1 X'y
-  XtX <- crossprod(X)
-  Xty <- crossprod(X, y)
+  # Center the data
+  X_centered <- scale(fdataobj$data, center = TRUE, scale = FALSE)
+  y_centered <- y - y_mean
+
+  # Ridge regression on centered data: beta = (X'X + lambda*I)^-1 X'y
+  XtX <- crossprod(X_centered)
+  Xty <- crossprod(X_centered, y_centered)
 
   if (lambda > 0) {
     XtX <- XtX + lambda * diag(m)
   }
 
   beta <- solve(XtX, Xty)
-  fitted <- as.vector(X %*% beta)
+
+  # Compute intercept and fitted values
+  intercept <- as.numeric(y_mean - sum(X_mean * beta))
+  fitted <- as.vector(fdataobj$data %*% beta) + intercept
   residuals <- y - fitted
+
+  # Residual variance
+  df <- n - m - 1
+  if (df <= 0) df <- 1
+  sr2 <- sum(residuals^2) / df
 
   structure(
     list(
       coefficients = beta,
+      intercept = intercept,
       fitted.values = fitted,
       residuals = residuals,
       lambda = lambda,
+      mean.X = X_mean,
+      mean.y = y_mean,
+      sr2 = sr2,
       fdataobj = fdataobj,
-      y = y
+      y = y,
+      call = match.call()
     ),
     class = "fregre.fd"
   )
@@ -132,18 +193,30 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
 
 #' Nonparametric Functional Regression
 #'
-#' Fits a functional regression model using kernel smoothing.
+#' Fits a functional regression model using kernel smoothing (Nadaraya-Watson).
 #'
 #' @param fdataobj An object of class 'fdata' (functional covariate).
 #' @param y Response vector.
 #' @param h Bandwidth parameter. If NULL, computed automatically.
+#' @param Ker Kernel type for smoothing. Default is "norm" (Gaussian).
 #' @param metric Distance metric function. Default is metric.lp.
 #' @param ... Additional arguments passed to metric function.
 #'
-#' @return A fitted regression object.
+#' @return A fitted regression object of class 'fregre.np' with components:
+#'   \item{fitted.values}{Fitted values}
+#'   \item{residuals}{Residuals}
+#'   \item{h.opt}{Optimal/used bandwidth}
+#'   \item{Ker}{Kernel type used}
+#'   \item{fdataobj}{Original functional data}
+#'   \item{y}{Response vector}
+#'   \item{mdist}{Distance matrix}
+#'   \item{H}{Hat/smoother matrix}
+#'   \item{sr2}{Residual variance}
+#'   \item{metric}{Metric function used}
+#'   \item{call}{The function call}
 #'
 #' @export
-fregre.np <- function(fdataobj, y, h = NULL, metric = metric.lp, ...) {
+fregre.np <- function(fdataobj, y, h = NULL, Ker = "norm", metric = metric.lp, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -163,24 +236,41 @@ fregre.np <- function(fdataobj, y, h = NULL, metric = metric.lp, ...) {
     h <- median(d_vec[d_vec > 0])
   }
 
-  # Nadaraya-Watson estimator
+  # Compute hat matrix H and fitted values
+  H <- matrix(0, n, n)
   fitted <- numeric(n)
+
   for (i in seq_len(n)) {
     # Gaussian kernel weights
     weights <- exp(-0.5 * (D[i, ] / h)^2)
-    weights[i] <- 0  # Leave-one-out
-    weights <- weights / sum(weights)
+    weights[i] <- 0  # Leave-one-out for fitting
+    if (sum(weights) > 0) {
+      weights <- weights / sum(weights)
+    }
+    H[i, ] <- weights
     fitted[i] <- sum(weights * y)
   }
+
+  residuals <- y - fitted
+
+  # Residual variance
+  df <- n - sum(diag(H))
+  if (df <= 0) df <- 1
+  sr2 <- sum(residuals^2) / df
 
   structure(
     list(
       fitted.values = fitted,
-      residuals = y - fitted,
-      h = h,
+      residuals = residuals,
+      h.opt = h,
+      Ker = Ker,
       fdataobj = fdataobj,
       y = y,
-      D = D
+      mdist = D,
+      H = H,
+      sr2 = sr2,
+      metric = metric,
+      call = match.call()
     ),
     class = "fregre.np"
   )
@@ -513,4 +603,149 @@ fregre.np.cv <- function(fdataobj, y, kfold = 10, h.range = NULL,
     cv.se = se_cv,
     model = final_model
   )
+}
+
+# =============================================================================
+# Predict Methods
+# =============================================================================
+
+#' Predict Method for Functional Regression (fregre.fd)
+#'
+#' Predictions from a fitted functional regression model (fregre.pc or fregre.basis).
+#'
+#' @param object A fitted model object of class 'fregre.fd'.
+#' @param newdata An fdata object containing new functional data for prediction.
+#'   If NULL, returns fitted values from training data.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return A numeric vector of predicted values.
+#'
+#' @export
+#' @examples
+#' # Create functional data
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 30, 50)
+#' for (i in 1:30) X[i, ] <- sin(2*pi*t) * i/30 + rnorm(50, sd = 0.1)
+#' y <- rowMeans(X) + rnorm(30, sd = 0.1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Fit model
+#' fit <- fregre.pc(fd, y, ncomp = 3)
+#'
+#' # Predict on new data
+#' X_new <- matrix(sin(2*pi*t) * 0.5, nrow = 1)
+#' fd_new <- fdata(X_new, argvals = t)
+#' predict(fit, fd_new)
+predict.fregre.fd <- function(object, newdata = NULL, ...) {
+  if (is.null(object)) {
+    stop("No fregre.fd object provided")
+  }
+
+  # If no new data, return fitted values
+  if (is.null(newdata)) {
+    return(object$fitted.values)
+  }
+
+  # Convert to fdata if needed
+  if (!inherits(newdata, "fdata")) {
+    newdata <- fdata(newdata,
+                     argvals = object$fdataobj$argvals,
+                     rangeval = object$fdataobj$rangeval)
+  }
+
+  # Get new data matrix
+  X_new <- newdata$data
+  nn <- nrow(X_new)
+
+  # Check dimensions match
+  if (ncol(X_new) != ncol(object$fdataobj$data)) {
+    stop("Number of evaluation points in newdata must match training data")
+  }
+
+  # Compute predictions using stored coefficients and intercept
+  if (!is.null(object$intercept)) {
+    y_pred <- as.vector(X_new %*% object$coefficients) + object$intercept
+  } else {
+    y_pred <- as.vector(X_new %*% object$coefficients)
+  }
+
+  names(y_pred) <- rownames(X_new)
+  y_pred
+}
+
+#' Predict Method for Nonparametric Functional Regression (fregre.np)
+#'
+#' Predictions from a fitted nonparametric functional regression model.
+#'
+#' @param object A fitted model object of class 'fregre.np'.
+#' @param newdata An fdata object containing new functional data for prediction.
+#'   If NULL, returns fitted values from training data.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return A numeric vector of predicted values.
+#'
+#' @export
+#' @examples
+#' # Create functional data
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 30, 50)
+#' for (i in 1:30) X[i, ] <- sin(2*pi*t) * i/30 + rnorm(50, sd = 0.1)
+#' y <- rowMeans(X) + rnorm(30, sd = 0.1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Fit model
+#' fit <- fregre.np(fd, y)
+#'
+#' # Predict on new data
+#' X_new <- matrix(sin(2*pi*t) * 0.5, nrow = 1)
+#' fd_new <- fdata(X_new, argvals = t)
+#' predict(fit, fd_new)
+predict.fregre.np <- function(object, newdata = NULL, ...) {
+  if (is.null(object)) {
+    stop("No fregre.np object provided")
+  }
+
+  # If no new data, return fitted values
+  if (is.null(newdata)) {
+    return(object$fitted.values)
+  }
+
+  # Convert to fdata if needed
+  if (!inherits(newdata, "fdata")) {
+    newdata <- fdata(newdata,
+                     argvals = object$fdataobj$argvals,
+                     rangeval = object$fdataobj$rangeval)
+  }
+
+  # Check dimensions match
+  if (ncol(newdata$data) != ncol(object$fdataobj$data)) {
+    stop("Number of evaluation points in newdata must match training data")
+  }
+
+  nn <- nrow(newdata$data)
+  n_train <- nrow(object$fdataobj$data)
+  h <- object$h.opt
+  y_train <- object$y
+
+  # Compute distances from new data to training data
+  # Use the same metric that was used for fitting
+  metric_fn <- object$metric
+  D_new <- metric_fn(newdata, object$fdataobj)
+
+  # Nadaraya-Watson prediction
+  y_pred <- numeric(nn)
+  for (i in seq_len(nn)) {
+    # Gaussian kernel weights
+    weights <- exp(-0.5 * (D_new[i, ] / h)^2)
+    if (sum(weights) > 0) {
+      weights <- weights / sum(weights)
+    } else {
+      # If all weights are zero, use uniform weights
+      weights <- rep(1/n_train, n_train)
+    }
+    y_pred[i] <- sum(weights * y_train)
+  }
+
+  names(y_pred) <- rownames(newdata$data)
+  y_pred
 }
