@@ -18,13 +18,15 @@
 #' @param draw Logical. If TRUE, plot the clustered curves (not yet implemented).
 #' @param ... Additional arguments (ignored).
 #'
-#' @return A list with components:
+#' @return A list of class 'kmeans.fd' with components:
+#' \describe{
 #'   \item{cluster}{Integer vector of cluster assignments (1 to ncl).}
 #'   \item{centers}{An fdata object containing the cluster centers.}
 #'   \item{withinss}{Within-cluster sum of squares for each cluster.}
 #'   \item{tot.withinss}{Total within-cluster sum of squares.}
 #'   \item{size}{Number of observations in each cluster.}
 #'   \item{fdataobj}{The input functional data object.}
+#' }
 #'
 #' @export
 #' @examples

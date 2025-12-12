@@ -12,10 +12,12 @@
 #' @param quan Quantile for outlier cutoff. Default is 0.5.
 #' @param ... Additional arguments passed to depth function.
 #'
-#' @return A list containing:
+#' @return A list of class 'outliers.fdata' with components:
+#' \describe{
 #'   \item{outliers}{Indices of detected outliers}
 #'   \item{depths}{Depth values for all curves}
 #'   \item{cutoff}{Depth cutoff used}
+#' }
 #'
 #' @export
 #' @examples
@@ -74,10 +76,12 @@ outliers.depth.pond <- function(fdataobj, nb = 200, dfunc = depth.mode,
 #' @param dfunc Depth function to use. Default is depth.mode.
 #' @param ... Additional arguments passed to depth function.
 #'
-#' @return A list containing:
+#' @return A list of class 'outliers.fdata' with components:
+#' \describe{
 #'   \item{outliers}{Indices of detected outliers}
 #'   \item{depths}{Depth values for all curves}
 #'   \item{cutoff}{Depth cutoff used}
+#' }
 #'
 #' @export
 #' @examples
@@ -200,11 +204,13 @@ outliers.thres.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed 
 #' @param trim Proportion of curves to trim for robust estimation (default 0.1).
 #' @param seed Random seed for reproducibility.
 #'
-#' @return A list containing:
+#' @return A list of class 'outliers.fdata' with components:
+#' \describe{
 #'   \item{outliers}{Indices of detected outliers}
 #'   \item{distances}{Normalized distances for all curves}
 #'   \item{threshold}{Bootstrap threshold used}
 #'   \item{fdataobj}{Original fdata object}
+#' }
 #'
 #' @export
 #' @examples

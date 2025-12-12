@@ -308,11 +308,13 @@ print.fregre.np <- function(x, ...) {
 #' @param seed Random seed for fold assignment.
 #' @param ... Additional arguments passed to fregre.pc.
 #'
-#' @return A list containing:
+#' @return A list with components:
+#' \describe{
 #'   \item{optimal.ncomp}{Optimal number of components}
 #'   \item{cv.errors}{Mean squared prediction error for each ncomp}
 #'   \item{cv.se}{Standard error of cv.errors}
 #'   \item{model}{Fitted model with optimal ncomp}
+#' }
 #'
 #' @export
 #' @examples
@@ -420,11 +422,13 @@ fregre.pc.cv <- function(fdataobj, y, kfold = 10, ncomp.range = NULL,
 #' @param seed Random seed for fold assignment.
 #' @param ... Additional arguments passed to fregre.basis.
 #'
-#' @return A list containing:
+#' @return A list with components:
+#' \describe{
 #'   \item{optimal.lambda}{Optimal regularization parameter}
 #'   \item{cv.errors}{Mean squared prediction error for each lambda}
 #'   \item{cv.se}{Standard error of cv.errors}
 #'   \item{model}{Fitted model with optimal lambda}
+#' }
 #'
 #' @export
 fregre.basis.cv <- function(fdataobj, y, kfold = 10, lambda.range = NULL,
@@ -514,11 +518,13 @@ fregre.basis.cv <- function(fdataobj, y, kfold = 10, lambda.range = NULL,
 #' @param seed Random seed for fold assignment.
 #' @param ... Additional arguments passed to the metric function.
 #'
-#' @return A list containing:
+#' @return A list with components:
+#' \describe{
 #'   \item{optimal.h}{Optimal bandwidth parameter}
 #'   \item{cv.errors}{Mean squared prediction error for each h}
 #'   \item{cv.se}{Standard error of cv.errors}
 #'   \item{model}{Fitted model with optimal h}
+#' }
 #'
 #' @export
 fregre.np.cv <- function(fdataobj, y, kfold = 10, h.range = NULL,

@@ -11,7 +11,7 @@ Description: Functional data analysis tools with a high-performance Rust backend
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc
 Imports:
     methods

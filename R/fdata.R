@@ -15,11 +15,13 @@
 #' @param fdata2d Logical. If TRUE, create 2D functional data (surface).
 #'
 #' @return An object of class 'fdata' containing:
+#' \describe{
 #'   \item{data}{The data matrix}
 #'   \item{argvals}{Evaluation points}
 #'   \item{rangeval}{Range of arguments}
 #'   \item{names}{Plot labels}
 #'   \item{fdata2d}{Logical indicating if 2D}
+#' }
 #'
 #' @export
 #' @examples
@@ -487,11 +489,13 @@ fdata.deriv <- function(fdataobj, nderiv = 1, method = "diff",
 #'   If NULL, estimated from the data.
 #' @param seed Optional seed for reproducibility.
 #'
-#' @return A list with:
+#' @return A list of class 'fdata.bootstrap' with components:
+#' \describe{
 #'   \item{boot.samples}{List of n.boot fdata objects, each a bootstrap sample}
 #'   \item{original}{The original fdata object}
 #'   \item{method}{The bootstrap method used}
 #'   \item{n.boot}{Number of bootstrap replications}
+#' }
 #'
 #' @export
 #' @examples
@@ -603,13 +607,15 @@ fdata.bootstrap <- function(fdataobj, n.boot = 200, method = c("naive", "smooth"
 #'   (default "percentile").
 #' @param seed Optional seed for reproducibility.
 #'
-#' @return A list with:
+#' @return A list of class 'fdata.bootstrap.ci' with components:
+#' \describe{
 #'   \item{estimate}{The statistic computed on the original data}
 #'   \item{ci.lower}{Lower confidence bound}
 #'   \item{ci.upper}{Upper confidence bound}
 #'   \item{boot.stats}{Matrix of bootstrap statistics (n.boot x length(statistic))}
 #'   \item{alpha}{The significance level used}
 #'   \item{method}{The CI method used}
+#' }
 #'
 #' @export
 #' @examples
@@ -725,13 +731,15 @@ print.fdata.bootstrap.ci <- function(x, ...) {
 #' @param lambda Regularization parameter (default 0, not currently used).
 #' @param norm Logical. If TRUE (default), normalize the scores.
 #'
-#' @return A list with:
+#' @return A list with components:
+#' \describe{
 #'   \item{d}{Singular values (proportional to sqrt of eigenvalues)}
 #'   \item{rotation}{fdata object containing PC loadings}
 #'   \item{x}{Matrix of PC scores (n x ncomp)}
 #'   \item{mean}{Mean function (numeric vector)}
 #'   \item{fdataobj.cen}{Centered fdata object}
 #'   \item{call}{The function call}
+#' }
 #'
 #' @export
 #' @examples
@@ -786,11 +794,13 @@ fdata2pc <- function(fdataobj, ncomp = 2, lambda = 0, norm = TRUE) {
 #' @param lambda Regularization parameter (default 0, not currently used).
 #' @param norm Logical. If TRUE (default), normalize the scores.
 #'
-#' @return A list with:
+#' @return A list with components:
+#' \describe{
 #'   \item{weights}{Matrix of PLS weights (m x ncomp)}
 #'   \item{scores}{Matrix of PLS scores (n x ncomp)}
 #'   \item{loadings}{Matrix of PLS loadings (m x ncomp)}
 #'   \item{call}{The function call}
+#' }
 #'
 #' @export
 #' @examples

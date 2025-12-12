@@ -12,10 +12,12 @@
 #' @param B Number of bootstrap samples for p-value computation.
 #' @param ... Additional arguments.
 #'
-#' @return A list containing:
+#' @return A list of class 'htest' with components:
+#' \describe{
 #'   \item{statistic}{The test statistic}
 #'   \item{p.value}{Bootstrap p-value}
 #'   \item{method}{Name of the test}
+#' }
 #'
 #' @export
 #' @examples
@@ -87,10 +89,12 @@ flm.test <- function(fdataobj, y, B = 500, ...) {
 #' @param B Number of bootstrap samples for p-value computation.
 #' @param ... Additional arguments.
 #'
-#' @return A list containing:
+#' @return A list of class 'htest' with components:
+#' \describe{
 #'   \item{statistic}{The test statistic}
 #'   \item{p.value}{Bootstrap p-value}
 #'   \item{method}{Name of the test}
+#' }
 #'
 #' @export
 #' @examples

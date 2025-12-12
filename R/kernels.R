@@ -23,7 +23,7 @@ Ker.norm <- function(u) {
 #' Epanechnikov Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [-1, 1]).
+#' @return Kernel values at u (0 outside \[-1, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-1.5, 1.5, length.out = 100)
@@ -35,7 +35,7 @@ Ker.epa <- function(u) {
 #' Triweight Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [-1, 1]).
+#' @return Kernel values at u (0 outside \[-1, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-1.5, 1.5, length.out = 100)
@@ -47,7 +47,7 @@ Ker.tri <- function(u) {
 #' Quartic (Biweight) Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [-1, 1]).
+#' @return Kernel values at u (0 outside \[-1, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-1.5, 1.5, length.out = 100)
@@ -59,7 +59,7 @@ Ker.quar <- function(u) {
 #' Cosine Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [-1, 1]).
+#' @return Kernel values at u (0 outside \[-1, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-1.5, 1.5, length.out = 100)
@@ -71,7 +71,7 @@ Ker.cos <- function(u) {
 #' Uniform (Rectangular) Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [-1, 1]).
+#' @return Kernel values at u (0 outside \[-1, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-1.5, 1.5, length.out = 100)
@@ -100,7 +100,7 @@ AKer.norm <- function(u) {
 #' Asymmetric Epanechnikov Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [0, 1]).
+#' @return Kernel values at u (0 outside \[0, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-0.5, 1.5, length.out = 100)
@@ -112,7 +112,7 @@ AKer.epa <- function(u) {
 #' Asymmetric Triweight Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [0, 1]).
+#' @return Kernel values at u (0 outside \[0, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-0.5, 1.5, length.out = 100)
@@ -124,7 +124,7 @@ AKer.tri <- function(u) {
 #' Asymmetric Quartic Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [0, 1]).
+#' @return Kernel values at u (0 outside \[0, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-0.5, 1.5, length.out = 100)
@@ -148,7 +148,7 @@ AKer.cos <- function(u) {
 #' Asymmetric Uniform Kernel
 #'
 #' @param u Numeric vector of evaluation points.
-#' @return Kernel values at u (0 outside [0, 1]).
+#' @return Kernel values at u (0 outside \[0, 1\]).
 #' @export
 #' @examples
 #' u <- seq(-0.5, 1.5, length.out = 100)

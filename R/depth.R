@@ -11,9 +11,9 @@
 #' @param fdataori An object of class 'fdata' as reference sample.
 #'   If NULL, uses fdataobj as reference.
 #' @param trim Trimming proportion (0 to 0.5). Default is 0.25.
-#' @param scale Logical. If TRUE (default), scales depth to [0, 1] range
+#' @param scale Logical. If TRUE (default), scales depth to \[0, 1\] range
 #'   using the FM1 formula from fda.usc. If FALSE, returns unscaled values
-#'   in [0, 0.5] range.
+#'   in \[0, 0.5\] range.
 #' @param ... Additional arguments (ignored).
 #'
 #' @return A numeric vector of depth values, one per curve in fdataobj.
