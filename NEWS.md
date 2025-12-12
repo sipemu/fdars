@@ -1,0 +1,63 @@
+# fdars 0.2.0
+
+## New Features
+
+### Optimal Cluster Selection
+- Added `optim.kmeans.fd()` function to automatically determine the optimal number of clusters for functional k-means
+- Three selection criteria available:
+  - **Silhouette score**: Measures cluster cohesion vs separation (-1 to 1, higher is better)
+  - **Calinski-Harabasz index**: Ratio of between/within cluster variance (higher is better)
+  - **Elbow method**: Visual inspection of within-cluster sum of squares
+- Added `print()` and `plot()` methods for `optim.kmeans.fd` objects
+- Silhouette and Calinski-Harabasz computations implemented in Rust for performance
+
+### k-NN Bandwidth Selection for Nonparametric Regression
+- Added k-nearest neighbors support to `fregre.np()` via the `type.S` parameter:
+  - `"kNN.gCV"`: Global cross-validation (single k for all observations)
+  - `"kNN.lCV"`: Local cross-validation (adaptive k per observation)
+- Extended `predict.fregre.np()` to handle k-NN models
+
+### Flexible Metrics in Clustering
+- `kmeans.fd()` now accepts both string metrics (`"L2"`, `"L1"`, `"Linf"`) and metric/semimetric functions
+- String metrics use fast Rust-only path; function metrics provide flexibility for custom distances
+
+## Improvements
+
+### ggplot2 Visualizations
+- All plot methods now use ggplot2 instead of base R graphics:
+  - `plot.fdata()`: Functional data curves with minimal theme
+  - `plot.kmeans.fd()`: Cluster-colored curves with dashed cluster centers
+  - `plot.optim.kmeans.fd()`: Criterion scores with optimal k highlighted
+  - `plot.outliers.fdata()`: Outlier/normal curves with color legend
+
+## Documentation
+
+### Vignettes
+Added 6 comprehensive vignettes:
+- Introduction to fdars
+- Functional Depth Functions
+- Distance Metrics and Semimetrics
+- Functional Regression
+- Functional Clustering
+- Outlier Detection
+
+### API Documentation
+- Complete roxygen2 documentation for all exported functions
+
+## Bug Fixes
+- Fixed namespace issues with stats and utils imports
+- Fixed ggplot2 `.data` pronoun import for R CMD check compliance
+
+# fdars 0.1.0
+
+- Initial release
+- Core functional data class (`fdata`) with 1D and 2D support
+- 7 depth functions: FM, mode, RP, RT, FSD, KFSD, RPD
+- Distance metrics: Lp, Hausdorff, DTW, KL
+- Semimetrics: PCA, derivative, basis, Fourier, hshift
+- Functional regression: PC, basis, nonparametric
+- K-means clustering with k-means++ initialization
+- Outlier detection: depth-based and LRT methods
+- Statistical tests: flm.test, fmean.test
+- Bootstrap inference and confidence intervals
+- High-performance Rust backend with parallel processing
