@@ -175,6 +175,7 @@ plot(out)
 
 Explore the other vignettes for detailed coverage of specific topics:
 
+- **Covariance Functions**: Generate Gaussian process samples with various kernels
 - **Depth Functions**: Comprehensive guide to functional depth measures
 - **Distance Metrics**: Distance and semimetric functions
 - **Regression**: Functional regression methods
