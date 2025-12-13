@@ -51,7 +51,7 @@ remotes::install_github("sipemu/fdars")
 ```bash
 cd fdars
 R CMD build .
-R CMD INSTALL fdars_0.3.0.tar.gz
+R CMD INSTALL fdars_0.3.1.tar.gz
 ```
 
 ## Quick Start
@@ -216,6 +216,8 @@ trimvar(fd, trim = 0.1, method = "mode")
 
 - `boxplot.fdata` - Functional boxplot with depth-based envelopes
 - `MS.plot` - Magnitude-Shape plot for outlier visualization
+- `outliergram` - Outliergram for shape outlier detection (MEI vs MBD plot)
+- `plot.fdata2pc` - FPCA visualization (components, variance, scores)
 
 ### Clustering
 
@@ -308,7 +310,7 @@ fdars uses a clean, unified API with method parameters:
 
 | Function | Description |
 |----------|-------------|
-| `depth(fd, method = "FM")` | Compute depth (FM, BD, MBD, mode, RP, RT, FSD, KFSD, RPD) |
+| `depth(fd, method = "FM")` | Compute depth (FM, BD, MBD, MEI, mode, RP, RT, FSD, KFSD, RPD) |
 | `metric(fd, method = "lp")` | Compute distance matrix (lp, hausdorff, dtw, pca, deriv) |
 | `median(fd, method = "FM")` | Depth-based median |
 | `trimmed(fd, trim, method = "FM")` | Trimmed mean |
@@ -318,6 +320,8 @@ fdars uses a clean, unified API with method parameters:
 | `cluster.optim(fd, ncl.range)` | Optimal k selection |
 | `make_gaussian_process(n, t, cov)` | Generate GP samples |
 | `cov.Gaussian()`, `cov.Matern()`, etc. | Covariance kernel functions |
+| `outliergram(fd)` | Outliergram for shape outlier detection |
+| `plot(fdata2pc_obj)` | FPCA visualization |
 
 ## License
 
