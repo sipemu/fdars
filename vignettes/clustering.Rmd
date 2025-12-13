@@ -65,7 +65,7 @@ plot(fd)
 
 ```{r kmeans-basic}
 # Cluster into 3 groups
-km <- kmeans.fd(fd, ncl = 3, seed = 123)
+km <- cluster.kmeans(fd, ncl = 3, seed = 123)
 print(km)
 ```
 
@@ -94,7 +94,7 @@ Use `nstart` to run k-means multiple times and keep the best result:
 
 ```{r nstart}
 # 20 random starts
-km_multi <- kmeans.fd(fd, ncl = 3, nstart = 20, seed = 123)
+km_multi <- cluster.kmeans(fd, ncl = 3, nstart = 20, seed = 123)
 cat("Total within-cluster SS:", km_multi$tot.withinss, "\n")
 ```
 
@@ -106,13 +106,13 @@ For maximum speed, use string metrics that run entirely in Rust:
 
 ```{r string-metrics}
 # L2 (Euclidean) - default
-km_l2 <- kmeans.fd(fd, ncl = 3, metric = "L2", seed = 123)
+km_l2 <- cluster.kmeans(fd, ncl = 3, metric = "L2", seed = 123)
 
 # L1 (Manhattan)
-km_l1 <- kmeans.fd(fd, ncl = 3, metric = "L1", seed = 123)
+km_l1 <- cluster.kmeans(fd, ncl = 3, metric = "L1", seed = 123)
 
 # L-infinity
-km_linf <- kmeans.fd(fd, ncl = 3, metric = "Linf", seed = 123)
+km_linf <- cluster.kmeans(fd, ncl = 3, metric = "Linf", seed = 123)
 
 cat("Total WSS - L2:", km_l2$tot.withinss, "\n")
 cat("Total WSS - L1:", km_l1$tot.withinss, "\n")
@@ -125,18 +125,18 @@ For flexibility, pass a metric function:
 
 ```{r custom-metrics}
 # Dynamic Time Warping
-km_dtw <- kmeans.fd(fd, ncl = 3, metric = metric.DTW, seed = 123)
+km_dtw <- cluster.kmeans(fd, ncl = 3, metric = metric.DTW, seed = 123)
 
 # Hausdorff distance
-km_haus <- kmeans.fd(fd, ncl = 3, metric = metric.hausdorff, seed = 123)
+km_haus <- cluster.kmeans(fd, ncl = 3, metric = metric.hausdorff, seed = 123)
 
 # PCA-based semimetric
-km_pca <- kmeans.fd(fd, ncl = 3, metric = semimetric.pca, ncomp = 5, seed = 123)
+km_pca <- cluster.kmeans(fd, ncl = 3, metric = semimetric.pca, ncomp = 5, seed = 123)
 ```
 
 ## Optimal Number of Clusters
 
-Choosing the right number of clusters is crucial. `optim.kmeans.fd` provides
+Choosing the right number of clusters is crucial. `cluster.optim` provides
 three criteria for selecting k.
 
 ### Silhouette Score
@@ -145,8 +145,8 @@ Measures how similar curves are to their own cluster vs other clusters.
 Higher is better.
 
 ```{r silhouette}
-opt_sil <- optim.kmeans.fd(fd, ncl.range = 2:6,
-                            criterion = "silhouette", seed = 123)
+opt_sil <- cluster.optim(fd, ncl.range = 2:6,
+                         criterion = "silhouette", seed = 123)
 print(opt_sil)
 plot(opt_sil)
 ```
@@ -156,8 +156,8 @@ plot(opt_sil)
 Ratio of between-cluster to within-cluster variance. Higher is better.
 
 ```{r calinski}
-opt_ch <- optim.kmeans.fd(fd, ncl.range = 2:6,
-                          criterion = "CH", seed = 123)
+opt_ch <- cluster.optim(fd, ncl.range = 2:6,
+                        criterion = "CH", seed = 123)
 print(opt_ch)
 plot(opt_ch)
 ```
@@ -168,8 +168,8 @@ Plots within-cluster SS vs k. Look for the "elbow" where adding more
 clusters doesn't help much.
 
 ```{r elbow}
-opt_elbow <- optim.kmeans.fd(fd, ncl.range = 2:6,
-                              criterion = "elbow", seed = 123)
+opt_elbow <- cluster.optim(fd, ncl.range = 2:6,
+                           criterion = "elbow", seed = 123)
 print(opt_elbow)
 plot(opt_elbow)
 ```
@@ -190,7 +190,7 @@ k-means++ selects initial centers to be spread out, improving convergence:
 
 ```{r kmeanspp}
 # Get initial centers using k-means++
-init_centers <- kmeans.center.ini(fd, ncl = 3, seed = 123)
+init_centers <- cluster.init(fd, ncl = 3, seed = 123)
 plot(init_centers)
 ```
 
@@ -249,10 +249,10 @@ for (i in 31:60) {
 fd_overlap <- fdata(X_overlap, argvals = t_grid)
 
 # L2 may struggle with phase shifts
-km_overlap_l2 <- kmeans.fd(fd_overlap, ncl = 2, metric = "L2", seed = 123)
+km_overlap_l2 <- cluster.kmeans(fd_overlap, ncl = 2, metric = "L2", seed = 123)
 
 # DTW handles phase shifts better
-km_overlap_dtw <- kmeans.fd(fd_overlap, ncl = 2, metric = metric.DTW, seed = 123)
+km_overlap_dtw <- cluster.kmeans(fd_overlap, ncl = 2, metric = metric.DTW, seed = 123)
 
 cat("L2 cluster balance:", km_overlap_l2$size, "\n")
 cat("DTW cluster balance:", km_overlap_dtw$size, "\n")
@@ -267,11 +267,11 @@ The Rust backend provides fast clustering:
 X_large <- matrix(rnorm(500 * 200), 500, 200)
 fd_large <- fdata(X_large)
 
-system.time(kmeans.fd(fd_large, ncl = 5, metric = "L2", nstart = 10))
+system.time(cluster.kmeans(fd_large, ncl = 5, metric = "L2", nstart = 10))
 #>    user  system elapsed
 #>   0.234   0.000   0.078
 
-system.time(kmeans.fd(fd_large, ncl = 5, metric = metric.DTW, nstart = 10))
+system.time(cluster.kmeans(fd_large, ncl = 5, metric = metric.DTW, nstart = 10))
 #>    user  system elapsed
 #>   4.567   0.000   1.234
 ```
@@ -280,7 +280,7 @@ system.time(kmeans.fd(fd_large, ncl = 5, metric = metric.DTW, nstart = 10))
 
 1. **Standardize data** if curves have different scales
 2. **Use multiple random starts** (`nstart >= 10`)
-3. **Try different k values** with `optim.kmeans.fd`
+3. **Try different k values** with `cluster.optim`
 4. **Compare metrics** when clusters may have phase shifts
 5. **Visualize results** to verify cluster quality
 

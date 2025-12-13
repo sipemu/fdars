@@ -116,11 +116,11 @@ a more typical curve:
 
 ```{r depth}
 # Fraiman-Muniz depth
-depths <- depth.FM(fd)
+depths <- depth(fd, method = "FM")
 head(depths)
 
 # Find the median curve (deepest)
-median_curve <- median.FM(fd)
+median_curve <- median(fd, method = "FM")
 ```
 
 ### Distance Metrics
@@ -153,7 +153,7 @@ Group curves into clusters:
 
 ```{r clustering}
 # K-means clustering
-km <- kmeans.fd(fd, ncl = 2, seed = 123)
+km <- cluster.kmeans(fd, ncl = 2, seed = 123)
 plot(km)
 ```
 
@@ -192,7 +192,7 @@ X_large <- matrix(rnorm(1000 * 200), 1000, 200)
 fd_large <- fdata(X_large)
 
 # Depth computation is fast even for large datasets
-system.time(depth.FM(fd_large))
+system.time(depth(fd_large, method = "FM"))
 #>    user  system elapsed
 #>   0.045   0.000   0.045
 ```

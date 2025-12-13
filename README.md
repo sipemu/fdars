@@ -83,7 +83,7 @@ model <- fregre.pc(fd, y, ncomp = 3)
 predictions <- predict(model, fd)
 
 # Cluster curves into groups
-clusters <- kmeans.fd(fd, ncl = 2)
+clusters <- cluster.kmeans(fd, ncl = 2)
 
 # Smooth noisy curves
 S <- S.NW(t, h = 0.1)  # Nadaraya-Watson smoother
@@ -118,8 +118,6 @@ depth(fd, method = "KFSD")   # Kernel functional spatial depth
 depth(fd, method = "RPD")    # Random projection with derivatives
 ```
 
-Individual functions (`depth.FM`, `depth.mode`, etc.) are also available for backward compatibility.
-
 ### Functional Regression
 
 Predict a scalar response from functional predictors:
@@ -132,11 +130,17 @@ All models support `predict()` for new data.
 
 ### Distance Metrics
 
-Measure similarity between curves:
+Measure similarity between curves using `metric()` with a method parameter:
 
-- `metric.lp` - Lp distance (L2 = Euclidean)
-- `metric.hausdorff` - Hausdorff distance
-- `metric.DTW` - Dynamic time warping
+```r
+metric(fd, method = "lp")        # Lp distance (default, L2 = Euclidean)
+metric(fd, method = "hausdorff") # Hausdorff distance
+metric(fd, method = "dtw")       # Dynamic time warping
+metric(fd, method = "pca")       # PCA-based semimetric
+metric(fd, method = "deriv")     # Derivative-based semimetric
+```
+
+Individual functions are also available: `metric.lp`, `metric.hausdorff`, `metric.DTW`, `semimetric.pca`, `semimetric.deriv`.
 
 ### Outlier Detection
 
@@ -174,8 +178,6 @@ trimvar(fd, trim = 0.1)             # default: FM method
 trimvar(fd, trim = 0.1, method = "mode")
 ```
 
-Individual functions (e.g., `median.FM`, `trimmed.mode`) remain available for backward compatibility.
-
 ### Visualization
 
 - `boxplot.fdata` - Functional boxplot with depth-based envelopes
@@ -183,9 +185,10 @@ Individual functions (e.g., `median.FM`, `trimmed.mode`) remain available for ba
 
 ### Clustering
 
-- `kmeans.fd` - K-means clustering for functional data
-- `optim.kmeans.fd` - Optimal k selection
-- `fuzzycmeans.fd` - Fuzzy C-means clustering with soft membership
+- `cluster.kmeans` - K-means clustering for functional data
+- `cluster.optim` - Optimal k selection using silhouette, CH, or elbow
+- `cluster.fcm` - Fuzzy C-means clustering with soft membership
+- `cluster.init` - K-means++ center initialization
 
 ### Curve Registration
 
@@ -247,9 +250,9 @@ All functions are documented. Access help with `?function_name`:
 
 ```r
 ?fdata
-?depth.FM
+?depth
 ?fregre.pc
-?kmeans.fd
+?cluster.kmeans
 ```
 
 ## Performance
@@ -263,47 +266,22 @@ The Rust backend provides significant speedups:
 | Smoothing matrices | 10-50x |
 | K-means clustering | 50-200x |
 
-## Compatibility
+## API Reference
 
-fdars is designed to be compatible with [fda.usc](https://cran.r-project.org/package=fda.usc). Most functions have the same names, arguments, and output structures, making migration straightforward.
+### Unified Functions
 
-## Comparison with fda.usc
+fdars uses a clean, unified API with method parameters:
 
-### Extended Functionality
-
-fdars provides several features not available in fda.usc:
-
-| Feature | Description |
-|---------|-------------|
-| **10-200x Performance** | Rust backend with parallel processing for computationally intensive operations |
-| **Band Depth Functions** | `depth.BD()` and `depth.MBD()` with Rust backend for fast computation |
-| **Functional Boxplot** | `boxplot.fdata()` for depth-based functional boxplots |
-| **MS Plot** | `MS.plot()` for magnitude-shape outlier visualization |
-| **Fuzzy C-Means** | `fuzzycmeans.fd()` for soft clustering with membership degrees |
-| **Geometric Median** | `gmed()` L1 median via Weiszfeld algorithm |
-| **Curve Registration** | `register.fd()` shift registration using cross-correlation |
-| **Local Averages** | `localavg.fdata()` for feature extraction |
-| **Optimal k Selection** | `optim.kmeans.fd()` automatically finds optimal clusters using silhouette, Calinski-Harabasz, or elbow methods |
-| **Local k-NN Bandwidth** | `fregre.np()` supports local cross-validation (`kNN.lCV`) for adaptive bandwidth per observation |
-| **2D Functional Data** | Native support for surfaces/images as functional data with 2D plotting (heatmap + contours) |
-| **Modern Visualizations** | All plots use ggplot2 instead of base R graphics |
-| **Dynamic Time Warping** | Built-in `metric.DTW()` for time series alignment |
-
-### Not Yet Implemented
-
-The following fda.usc features are not yet available in fdars:
-
-| Category | Functions |
-|----------|-----------|
-| **Classification** | `classif.depth`, `classif.DD`, `classif.np`, `classif.glm`, `classif.gkam`, `classif.gsam` |
-| **PLS Regression** | `fregre.pls`, `fregre.pls.cv` |
-| **GLM/GAM Models** | `fregre.glm`, `fregre.gkam`, `fregre.gsam`, `fregre.lm`, `fregre.plm` |
-| **Functional ANOVA** | `fanova.onefactor`, `fanova.hetero`, `fanova.RPm` |
-| **Functional Response** | `fregre.basis.fr` (functional-on-functional regression) |
-| **Multivariate FDA** | `depth.mdata`, `depth.mfdata` |
-| **Additional Tests** | `dfv.test`, `fEqDistrib.test`, `fEqMoments.test` |
-
-Contributions are welcome! See the [GitHub repository](https://github.com/sipemu/fdars) to get involved.
+| Function | Description |
+|----------|-------------|
+| `depth(fd, method = "FM")` | Compute depth (FM, BD, MBD, mode, RP, RT, FSD, KFSD, RPD) |
+| `metric(fd, method = "lp")` | Compute distance matrix (lp, hausdorff, dtw, pca, deriv) |
+| `median(fd, method = "FM")` | Depth-based median |
+| `trimmed(fd, trim, method = "FM")` | Trimmed mean |
+| `trimvar(fd, trim, method = "FM")` | Trimmed variance |
+| `cluster.kmeans(fd, ncl)` | K-means clustering |
+| `cluster.fcm(fd, ncl)` | Fuzzy C-means clustering |
+| `cluster.optim(fd, ncl.range)` | Optimal k selection |
 
 ## License
 
@@ -315,6 +293,5 @@ Simon Mueller
 
 ## Acknowledgments
 
-- API compatible with [fda.usc](https://cran.r-project.org/package=fda.usc) by Manuel Febrero-Bande and Manuel Oviedo de la Fuente
 - Built with [extendr](https://extendr.github.io/) for R-Rust integration
 - Uses [rayon](https://github.com/rayon-rs/rayon) for parallelization

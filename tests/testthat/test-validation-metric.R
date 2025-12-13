@@ -203,7 +203,7 @@ test_that("metric.kl produces valid distances", {
   expect_equal(D, t(D), tolerance = 1e-10)
 })
 
-test_that("metric.dist dispatches correctly", {
+test_that("metric dispatches correctly", {
   set.seed(42)
   n <- 10
   m <- 30
@@ -217,10 +217,10 @@ test_that("metric.dist dispatches correctly", {
   fd <- fdars::fdata(X, argvals = t_grid)
 
   # Test various methods
-  D_lp <- fdars::metric.dist(fd, method = "lp")
-  D_hausdorff <- fdars::metric.dist(fd, method = "hausdorff")
-  D_dtw <- fdars::metric.dist(fd, method = "dtw")
-  D_pca <- fdars::metric.dist(fd, method = "pca")
+  D_lp <- fdars::metric(fd, method = "lp")
+  D_hausdorff <- fdars::metric(fd, method = "hausdorff")
+  D_dtw <- fdars::metric(fd, method = "dtw")
+  D_pca <- fdars::metric(fd, method = "pca")
 
   # All should be matrices of correct size
   expect_equal(dim(D_lp), c(n, n))

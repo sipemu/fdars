@@ -2,7 +2,7 @@
 #'
 #' Functions for computing various distance metrics between functional data.
 
-#' Generic Distance Function for Functional Data
+#' Compute Distance Metric for Functional Data
 #'
 #' Unified interface for computing various distance metrics between functional
 #' data objects. This function dispatches to the appropriate specialized
@@ -32,15 +32,15 @@
 #' to the underlying distance function:
 #'
 #' \itemize{
-#'   \item \code{metric.lp}: lp, w
-#'   \item \code{metric.hausdorff}: (none)
-#'   \item \code{metric.DTW}: p, w
-#'   \item \code{semimetric.pca}: ncomp
-#'   \item \code{semimetric.deriv}: nderiv, lp
-#'   \item \code{semimetric.basis}: nbasis, basis, nderiv
-#'   \item \code{semimetric.fourier}: nfreq
-#'   \item \code{semimetric.hshift}: max_shift
-#'   \item \code{metric.kl}: eps, normalize
+#'   \item lp: lp, w
+#'   \item hausdorff: (none)
+#'   \item dtw: p, w
+#'   \item pca: ncomp
+#'   \item deriv: nderiv, lp
+#'   \item basis: nbasis, basis, nderiv
+#'   \item fourier: nfreq
+#'   \item hshift: max_shift
+#'   \item kl: eps, normalize
 #' }
 #'
 #' @export
@@ -48,14 +48,14 @@
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
 #'
 #' # Using different distance methods
-#' D_lp <- metric.dist(fd, method = "lp")
-#' D_hausdorff <- metric.dist(fd, method = "hausdorff")
-#' D_pca <- metric.dist(fd, method = "pca", ncomp = 3)
+#' D_lp <- metric(fd, method = "lp")
+#' D_hausdorff <- metric(fd, method = "hausdorff")
+#' D_pca <- metric(fd, method = "pca", ncomp = 3)
 #'
 #' # Cross-distances
 #' fd2 <- fdata(matrix(rnorm(100), 10, 10))
-#' D_cross <- metric.dist(fd, fd2, method = "lp")
-metric.dist <- function(fdata1, fdata2 = NULL, method = "lp", ...) {
+#' D_cross <- metric(fd, fd2, method = "lp")
+metric <- function(fdata1, fdata2 = NULL, method = "lp", ...) {
   if (!inherits(fdata1, "fdata")) {
     stop("fdata1 must be of class 'fdata'")
   }

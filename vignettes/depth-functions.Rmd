@@ -51,14 +51,17 @@ plot(fd)
 
 ## Available Depth Functions
 
-### Fraiman-Muniz Depth (depth.FM)
+All depth functions are accessed through the unified `depth()` function with
+a `method` parameter.
+
+### Fraiman-Muniz Depth (method = "FM")
 
 The Fraiman-Muniz depth integrates univariate depths across the domain.
 For each time point, it computes the proportion of curves above and below
 the given curve, then averages across time.
 
 ```{r depth-fm}
-depths_fm <- depth.FM(fd)
+depths_fm <- depth(fd, method = "FM")
 
 # Show depths (outliers should have lower depth)
 data.frame(
@@ -71,67 +74,67 @@ data.frame(
 The FM depth can be scaled to [0, 1] using the `scale` parameter:
 
 ```{r depth-fm-scaled}
-depths_fm_scaled <- depth.FM(fd, scale = TRUE)
+depths_fm_scaled <- depth(fd, method = "FM", scale = TRUE)
 range(depths_fm_scaled)
 ```
 
-### Modal Depth (depth.mode)
+### Modal Depth (method = "mode")
 
 Modal depth uses kernel density estimation in function space. Curves in
 high-density regions have high depth.
 
 ```{r depth-mode}
-depths_mode <- depth.mode(fd)
+depths_mode <- depth(fd, method = "mode")
 head(depths_mode)
 ```
 
-### Random Projection Depth (depth.RP)
+### Random Projection Depth (method = "RP")
 
 Projects curves onto random directions and computes univariate depths
 of the projections. More robust to local variations.
 
 ```{r depth-rp}
-depths_rp <- depth.RP(fd, nproj = 50)
+depths_rp <- depth(fd, method = "RP", nproj = 50)
 head(depths_rp)
 ```
 
-### Random Tukey Depth (depth.RT)
+### Random Tukey Depth (method = "RT")
 
 Takes the minimum depth across random projections, similar to Tukey's
 halfspace depth. Very robust to outliers.
 
 ```{r depth-rt}
-depths_rt <- depth.RT(fd, nproj = 50)
+depths_rt <- depth(fd, method = "RT", nproj = 50)
 head(depths_rt)
 ```
 
-### Functional Spatial Depth (depth.FSD)
+### Functional Spatial Depth (method = "FSD")
 
 Based on unit vectors pointing from each curve to all others. Measures
 centrality in a geometric sense.
 
 ```{r depth-fsd}
-depths_fsd <- depth.FSD(fd)
+depths_fsd <- depth(fd, method = "FSD")
 head(depths_fsd)
 ```
 
-### Kernel Functional Spatial Depth (depth.KFSD)
+### Kernel Functional Spatial Depth (method = "KFSD")
 
 Smoothed version of FSD using a Gaussian kernel. The bandwidth `h`
 controls the smoothing.
 
 ```{r depth-kfsd}
-depths_kfsd <- depth.KFSD(fd, h = 0.15)
+depths_kfsd <- depth(fd, method = "KFSD", h = 0.15)
 head(depths_kfsd)
 ```
 
-### Random Projection Depth with Derivatives (depth.RPD)
+### Random Projection Depth with Derivatives (method = "RPD")
 
 Incorporates derivative information, making it sensitive to shape
 changes in addition to magnitude.
 
 ```{r depth-rpd}
-depths_rpd <- depth.RPD(fd, nproj = 50)
+depths_rpd <- depth(fd, method = "RPD", nproj = 50)
 head(depths_rpd)
 ```
 
@@ -141,13 +144,13 @@ Different depth functions have different properties and may rank curves
 differently:
 
 ```{r compare-depths}
-# Compute all depths
+# Compute all depths using unified depth() function
 all_depths <- data.frame(
-  FM = depth.FM(fd),
-  mode = depth.mode(fd),
-  RP = depth.RP(fd, nproj = 50),
-  RT = depth.RT(fd, nproj = 50),
-  FSD = depth.FSD(fd)
+  FM = depth(fd, method = "FM"),
+  mode = depth(fd, method = "mode"),
+  RP = depth(fd, method = "RP", nproj = 50),
+  RT = depth(fd, method = "RT", nproj = 50),
+  FSD = depth(fd, method = "FSD")
 )
 
 # Correlation between depth functions
@@ -169,13 +172,13 @@ All depth functions correctly identify curves 1 and 2 as having low depth.
 The median is the curve with maximum depth:
 
 ```{r median}
-# Using different depth functions
-med_fm <- median.FM(fd)
-med_mode <- median.mode(fd)
-med_rp <- median.RP(fd, nproj = 50)
+# Using different depth functions via method parameter
+med_fm <- median(fd, method = "FM")
+med_mode <- median(fd, method = "mode")
+med_rp <- median(fd, method = "RP", nproj = 50)
 
 # The median is one of the original curves
-which.max(depth.FM(fd))
+which.max(depth(fd, method = "FM"))
 ```
 
 ### Trimmed Mean
@@ -183,9 +186,9 @@ which.max(depth.FM(fd))
 Remove a proportion of curves with lowest depth, then compute the mean:
 
 ```{r trimmed-mean}
-# 10% trimmed mean
-trim_fm <- trimmed.FM(fd, trim = 0.1)
-trim_mode <- trimmed.mode(fd, trim = 0.1)
+# 10% trimmed mean using different depth methods
+trim_fm <- trimmed(fd, trim = 0.1, method = "FM")
+trim_mode <- trimmed(fd, trim = 0.1, method = "mode")
 
 # Compare trimmed mean to regular mean
 mean_curve <- mean(fd)
@@ -214,7 +217,7 @@ ggplot(df_compare, aes(x = t, y = value, color = type)) +
 var_fd <- var(fd)
 
 # Trimmed variance (more robust)
-trimvar_fd <- trimvar.FM(fd, trim = 0.1)
+trimvar_fd <- trimvar(fd, trim = 0.1, method = "FM")
 ```
 
 ## Choosing a Depth Function
@@ -238,11 +241,11 @@ All depth computations use a parallel Rust backend:
 X_large <- matrix(rnorm(500 * 200), 500, 200)
 fd_large <- fdata(X_large)
 
-system.time(depth.FM(fd_large))
+system.time(depth(fd_large, method = "FM"))
 #>    user  system elapsed
 #>   0.032   0.000   0.032
 
-system.time(depth.RP(fd_large, nproj = 100))
+system.time(depth(fd_large, method = "RP", nproj = 100))
 #>    user  system elapsed
 #>   0.089   0.000   0.089
 ```

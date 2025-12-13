@@ -45,39 +45,21 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   method <- match.arg(method)
 
   switch(method,
-    "FM" = depth.FM(fdataobj, fdataori, ...),
-    "mode" = depth.mode(fdataobj, fdataori, ...),
-    "RP" = depth.RP(fdataobj, fdataori, ...),
-    "RT" = depth.RT(fdataobj, fdataori, ...),
-    "BD" = depth.BD(fdataobj, fdataori, ...),
-    "MBD" = depth.MBD(fdataobj, fdataori, ...),
-    "FSD" = depth.FSD(fdataobj, fdataori, ...),
-    "KFSD" = depth.KFSD(fdataobj, fdataori, ...),
-    "RPD" = depth.RPD(fdataobj, fdataori, ...)
+    "FM" = .depth.FM(fdataobj, fdataori, ...),
+    "mode" = .depth.mode(fdataobj, fdataori, ...),
+    "RP" = .depth.RP(fdataobj, fdataori, ...),
+    "RT" = .depth.RT(fdataobj, fdataori, ...),
+    "BD" = .depth.BD(fdataobj, fdataori, ...),
+    "MBD" = .depth.MBD(fdataobj, fdataori, ...),
+    "FSD" = .depth.FSD(fdataobj, fdataori, ...),
+    "KFSD" = .depth.KFSD(fdataobj, fdataori, ...),
+    "RPD" = .depth.RPD(fdataobj, fdataori, ...)
   )
 }
 
-#' Fraiman-Muniz Depth
-#'
-#' Computes the Fraiman-Muniz depth for functional data. The FM depth
-#' integrates the univariate depth over the domain.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param trim Trimming proportion (0 to 0.5). Default is 0.25.
-#' @param scale Logical. If TRUE (default), scales depth to \[0, 1\] range
-#'   using the FM1 formula from fda.usc. If FALSE, returns unscaled values
-#'   in \[0, 0.5\] range.
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' depths <- depth.FM(fd)
-depth.FM <- function(fdataobj, fdataori = NULL, trim = 0.25, scale = TRUE, ...) {
+# Internal: Fraiman-Muniz Depth implementation
+# @noRd
+.depth.FM <- function(fdataobj, fdataori = NULL, trim = 0.25, scale = TRUE, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -119,44 +101,9 @@ depth.FM <- function(fdataobj, fdataori = NULL, trim = 0.25, scale = TRUE, ...) 
   .Call("wrap__depth_fm_1d", fdataobj$data, fdataori$data, as.numeric(trim), as.logical(scale))
 }
 
-#' Band Depth
-#'
-#' Computes the band depth for functional data. The band depth measures
-#' how often a curve lies completely within the band formed by pairs of
-#' other curves.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'   Values range from 0 to 1, with higher values indicating more central curves.
-#'
-#' @details
-#' For a curve x and reference sample Y_1, ..., Y_n, the band depth is:
-#' \deqn{BD(x) = \binom{n}{2}^{-1} \sum_{1 \le i < j \le n} I(x \in B(Y_i, Y_j))}
-#' where B(Y_i, Y_j) is the band formed by Y_i and Y_j, and I() is the indicator
-#' function that equals 1 if x lies completely within the band at all time points.
-#'
-#' Band depth is computationally efficient but can be 0 for curves that cross
-#' the reference curves at any point. For a more robust alternative, see
-#' \code{\link{depth.MBD}}.
-#'
-#' @seealso \code{\link{depth.MBD}} for modified band depth
-#'
-#' @export
-#' @examples
-#' # Create functional data
-#' t <- seq(0, 1, length.out = 50)
-#' X <- matrix(0, 20, 50)
-#' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
-#' fd <- fdata(X, argvals = t)
-#'
-#' # Compute band depth
-#' depths <- depth.BD(fd)
-#' print(depths)
-depth.BD <- function(fdataobj, fdataori = NULL, ...) {
+# Internal: Band Depth implementation
+# @noRd
+.depth.BD <- function(fdataobj, fdataori = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -184,52 +131,9 @@ depth.BD <- function(fdataobj, fdataori = NULL, ...) {
   .Call("wrap__depth_bd_1d", fdataobj$data, fdataori$data)
 }
 
-#' Modified Band Depth
-#'
-#' Computes the modified band depth for functional data. Unlike standard band
-#' depth, MBD measures the proportion of the domain where each curve lies
-#' within the band, averaged over all pairs.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'   Values range from 0 to 1, with higher values indicating more central curves.
-#'
-#' @details
-#' For a curve x and reference sample Y_1, ..., Y_n, the modified band depth is:
-#' \deqn{MBD(x) = \binom{n}{2}^{-1} \sum_{1 \le i < j \le n} \lambda_r(A(x; Y_i, Y_j))}
-#' where A(x; Y_i, Y_j) is the set of time points where x lies within the band
-#' formed by Y_i and Y_j, and lambda_r is the Lebesgue measure normalized by
-#' the domain length.
-#'
-#' MBD is more robust than standard band depth because it doesn't require
-#' complete containment. A curve that crosses the band boundaries still receives
-#' partial depth based on the proportion of time it spends inside.
-#'
-#' MBD is the recommended depth for functional boxplots and outlier detection.
-#'
-#' @seealso \code{\link{depth.BD}} for standard band depth,
-#'   \code{\link{boxplot.fdata}} for functional boxplots using MBD
-#'
-#' @export
-#' @examples
-#' # Create functional data with an outlier
-#' t <- seq(0, 1, length.out = 50)
-#' X <- matrix(0, 20, 50)
-#' for (i in 1:19) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
-#' X[20, ] <- sin(2*pi*t) + 2  # magnitude outlier
-#' fd <- fdata(X, argvals = t)
-#'
-#' # Compute modified band depth
-#' depths <- depth.MBD(fd)
-#' print(depths)
-#'
-#' # The outlier should have lower depth
-#' which.min(depths)  # Should be 20
-depth.MBD <- function(fdataobj, fdataori = NULL, ...) {
+# Internal: Modified Band Depth implementation
+# @noRd
+.depth.MBD <- function(fdataobj, fdataori = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -257,25 +161,9 @@ depth.MBD <- function(fdataobj, fdataori = NULL, ...) {
   .Call("wrap__depth_mbd_1d", fdataobj$data, fdataori$data)
 }
 
-#' Modal Depth
-#'
-#' Computes the modal depth for functional data based on kernel density
-#' estimation in function space.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param h Bandwidth parameter. If NULL, computed automatically.
-#' @param metric Distance metric function (currently ignored, uses L2).
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' depths <- depth.mode(fd)
-depth.mode <- function(fdataobj, fdataori = NULL, h = NULL, metric = NULL, ...) {
+# Internal: Modal Depth implementation
+# @noRd
+.depth.mode <- function(fdataobj, fdataori = NULL, h = NULL, metric = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -325,24 +213,9 @@ depth.mode <- function(fdataobj, fdataori = NULL, h = NULL, metric = NULL, ...) 
   .Call("wrap__depth_mode_1d", fdataobj$data, fdataori$data, as.numeric(h))
 }
 
-#' Random Projection Depth
-#'
-#' Computes depth using random projections. Projects curves onto random
-#' directions and averages the univariate depths.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' depths <- depth.RP(fd, nproj = 100)
-depth.RP <- function(fdataobj, fdataori = NULL, nproj = 50, ...) {
+# Internal: Random Projection Depth implementation
+# @noRd
+.depth.RP <- function(fdataobj, fdataori = NULL, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -384,24 +257,9 @@ depth.RP <- function(fdataobj, fdataori = NULL, nproj = 50, ...) {
   .Call("wrap__depth_rp_1d", fdataobj$data, fdataori$data, as.integer(nproj))
 }
 
-#' Random Tukey Depth
-#'
-#' Computes depth using random projections, taking the minimum depth
-#' across all projections (Tukey halfspace depth approximation).
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' depths <- depth.RT(fd, nproj = 100)
-depth.RT <- function(fdataobj, fdataori = NULL, nproj = 50, ...) {
+# Internal: Random Tukey Depth implementation
+# @noRd
+.depth.RT <- function(fdataobj, fdataori = NULL, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -443,23 +301,9 @@ depth.RT <- function(fdataobj, fdataori = NULL, nproj = 50, ...) {
   .Call("wrap__depth_rt_1d", fdataobj$data, fdataori$data, as.integer(nproj))
 }
 
-#' Functional Spatial Depth
-#'
-#' Computes the functional spatial depth based on the average of unit
-#' vectors pointing from the curve to other curves.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' depths <- depth.FSD(fd)
-depth.FSD <- function(fdataobj, fdataori = NULL, ...) {
+# Internal: Functional Spatial Depth implementation
+# @noRd
+.depth.FSD <- function(fdataobj, fdataori = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -501,29 +345,10 @@ depth.FSD <- function(fdataobj, fdataori = NULL, ...) {
   .Call("wrap__depth_fsd_1d", fdataobj$data, fdataori$data)
 }
 
-#' Kernel Functional Spatial Depth (KFSD)
-#'
-#' Computes the kernel functional spatial depth, which is a smoothed version
-#' of the functional spatial depth (FSD) using Gaussian kernel weighting.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param trim Trimming proportion (not used, for compatibility).
-#' @param h Bandwidth parameter for Gaussian kernel. If NULL, computed
-#'   automatically using Silverman's rule.
-#' @param scale Logical. Not used (for compatibility).
-#' @param draw Logical. Not used (for compatibility).
-#' @param ... Additional arguments (ignored).
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' depths <- depth.KFSD(fd)
-depth.KFSD <- function(fdataobj, fdataori = NULL, trim = 0.25, h = NULL,
-                       scale = FALSE, draw = FALSE, ...) {
+# Internal: Kernel Functional Spatial Depth (KFSD) implementation
+# @noRd
+.depth.KFSD <- function(fdataobj, fdataori = NULL, trim = 0.25, h = NULL,
+                        scale = FALSE, draw = FALSE, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -573,30 +398,10 @@ depth.KFSD <- function(fdataobj, fdataori = NULL, trim = 0.25, h = NULL,
   .Call("wrap__depth_kfsd_1d", fdataobj$data, fdataori$data, as.numeric(fdataori$argvals), as.numeric(h))
 }
 
-#' Random Projection Depth with Derivatives (RPD)
-#'
-#' Computes depth using random projections that include derivative information.
-#' This combines the original curves with their derivatives for a more robust
-#' depth measure that is sensitive to shape changes.
-#'
-#' @param fdataobj An object of class 'fdata' to compute depth for.
-#' @param fdataori An object of class 'fdata' as reference sample.
-#'   If NULL, uses fdataobj as reference.
-#' @param nproj Number of random projections. Default is 20.
-#' @param deriv Vector of derivative orders to include. Default is c(0, 1)
-#'   meaning original curves and first derivatives.
-#' @param trim Trimming proportion (not used, for compatibility).
-#' @param draw Logical. Not used (for compatibility).
-#' @param ... Additional arguments passed to fdata.deriv.
-#'
-#' @return A numeric vector of depth values, one per curve in fdataobj.
-#'
-#' @export
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' depths <- depth.RPD(fd)
-depth.RPD <- function(fdataobj, fdataori = NULL, nproj = 20, deriv = c(0, 1),
-                      trim = 0.25, draw = FALSE, ...) {
+# Internal: Random Projection Depth with Derivatives (RPD) implementation
+# @noRd
+.depth.RPD <- function(fdataobj, fdataori = NULL, nproj = 20, deriv = c(0, 1),
+                       trim = 0.25, draw = FALSE, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -755,9 +560,6 @@ median <- function(fdataobj, method = c("FM", "mode", "RP", "RT", "BD", "MBD",
   result
 }
 
-# Keep old function names for backward compatibility (internal use)
-median.FM <- function(fdataobj, ...) median(fdataobj, method = "FM", ...)
-
 #' Compute Functional Trimmed Mean
 #'
 #' Computes the trimmed mean by excluding curves with lowest depth.
@@ -795,24 +597,6 @@ trimmed <- function(fdataobj, trim = 0.1, method = c("FM", "mode", "RP", "RT",
         names = list(main = paste0("Trimmed Mean (", method, ")"),
                      xlab = fdataobj$names$xlab, ylab = fdataobj$names$ylab))
 }
-
-# Keep old function names for backward compatibility (internal use)
-trimmed.FM <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "FM", ...)
-
-# Backward compatibility wrappers
-median.mode <- function(fdataobj, ...) median(fdataobj, method = "mode", ...)
-median.RP <- function(fdataobj, ...) median(fdataobj, method = "RP", ...)
-median.RPD <- function(fdataobj, ...) median(fdataobj, method = "RPD", ...)
-median.RT <- function(fdataobj, ...) median(fdataobj, method = "RT", ...)
-median.BD <- function(fdataobj, ...) median(fdataobj, method = "BD", ...)
-median.MBD <- function(fdataobj, ...) median(fdataobj, method = "MBD", ...)
-
-trimmed.mode <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "mode", ...)
-trimmed.RP <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "RP", ...)
-trimmed.RPD <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "RPD", ...)
-trimmed.RT <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "RT", ...)
-trimmed.BD <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "BD", ...)
-trimmed.MBD <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "MBD", ...)
 
 #' Functional Variance
 #'
@@ -933,7 +717,7 @@ sd <- function(fdataobj, ...) {
 #' that converges to the geometric median.
 #'
 #' @seealso \code{\link{mean.fdata}} for the (non-robust) mean function,
-#'   \code{\link{median.FM}} for depth-based median
+#'   \code{\link{median}} for depth-based median
 #'
 #' @export
 #' @examples
@@ -1072,12 +856,3 @@ trimvar <- function(fdataobj, trim = 0.1, method = c("FM", "mode", "RP", "RT",
                      xlab = fdataobj$names$xlab, ylab = "Var(X(t))"))
 }
 
-# Backward compatibility wrappers for trimvar
-trimvar.FM <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "FM", ...)
-trimvar.mode <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "mode", ...)
-trimvar.RP <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "RP", ...)
-trimvar.RPD <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "RPD", ...)
-trimvar.RT <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "RT", ...)
-
-# The backward compatibility wrappers for median.BD, median.MBD, trimmed.BD, trimmed.MBD
-# are already defined above with the other wrappers

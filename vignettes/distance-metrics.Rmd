@@ -181,13 +181,13 @@ dist_kl <- metric.kl(fd_pos)
 
 ## Unified Interface
 
-Use `metric.dist()` for a unified interface:
+Use `metric()` for a unified interface:
 
-```{r metric-dist}
+```{r metric-unified}
 # Different methods via single function
-d1 <- metric.dist(fd, method = "lp", p = 2)
-d2 <- metric.dist(fd, method = "dtw")
-d3 <- metric.dist(fd, method = "hausdorff")
+d1 <- metric(fd, method = "lp", p = 2)
+d2 <- metric(fd, method = "dtw")
+d3 <- metric(fd, method = "hausdorff")
 ```
 
 ## Comparing Distance Measures
@@ -265,10 +265,10 @@ Distance functions can be passed to clustering and regression:
 
 ```{r use-in-methods}
 # K-means with L1 distance
-km_l1 <- kmeans.fd(fd_large, ncl = 3, metric = "L1", seed = 42)
+km_l1 <- cluster.kmeans(fd_large, ncl = 3, metric = "L1", seed = 42)
 
 # K-means with custom metric function
-km_dtw <- kmeans.fd(fd_large, ncl = 3, metric = metric.DTW, seed = 42)
+km_dtw <- cluster.kmeans(fd_large, ncl = 3, metric = metric.DTW, seed = 42)
 
 # Nonparametric regression uses distances internally
 y <- rnorm(n)

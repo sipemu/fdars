@@ -211,7 +211,7 @@ test_that("GCV.S computes GCV score", {
 # Clustering Tests
 # =============================================================================
 
-test_that("kmeans.fd clusters correctly", {
+test_that("cluster.kmeans clusters correctly", {
   set.seed(123)
   t <- seq(0, 1, length.out = 50)
   n <- 30
@@ -228,10 +228,10 @@ test_that("kmeans.fd clusters correctly", {
   }
   fd <- fdata(X, argvals = t)
 
-  result <- kmeans.fd(fd, ncl = 2, seed = 42)
+  result <- cluster.kmeans(fd, ncl = 2, seed = 42)
 
   # Check structure
-  expect_s3_class(result, "kmeans.fd")
+  expect_s3_class(result, "cluster.kmeans")
   expect_length(result$cluster, n)
   expect_equal(nrow(result$centers$data), 2)
   expect_length(result$size, 2)
@@ -247,23 +247,23 @@ test_that("kmeans.fd clusters correctly", {
   expect_gt(accuracy, 0.7)
 })
 
-test_that("kmeans.fd handles single cluster", {
+test_that("cluster.kmeans handles single cluster", {
   t <- seq(0, 1, length.out = 50)
   X <- matrix(rnorm(20 * 50), 20, 50)
   fd <- fdata(X, argvals = t)
 
-  result <- kmeans.fd(fd, ncl = 1, seed = 123)
+  result <- cluster.kmeans(fd, ncl = 1, seed = 123)
 
   expect_equal(unique(result$cluster), 1)
   expect_equal(result$size, 20)
 })
 
-test_that("kmeans.center.ini returns correct number of centers", {
+test_that("cluster.init returns correct number of centers", {
   t <- seq(0, 1, length.out = 50)
   X <- matrix(rnorm(20 * 50), 20, 50)
   fd <- fdata(X, argvals = t)
 
-  centers <- kmeans.center.ini(fd, ncl = 3, seed = 123)
+  centers <- cluster.init(fd, ncl = 3, seed = 123)
 
   expect_equal(nrow(centers$data), 3)
 })

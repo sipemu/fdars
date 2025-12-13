@@ -21,7 +21,7 @@
 #' @param draw Logical. If TRUE, plot the clustered curves (not yet implemented).
 #' @param ... Additional arguments passed to the metric function.
 #'
-#' @return A list of class 'kmeans.fd' with components:
+#' @return A list of class 'cluster.kmeans' with components:
 #' \describe{
 #'   \item{cluster}{Integer vector of cluster assignments (1 to ncl).}
 #'   \item{centers}{An fdata object containing the cluster centers.}
@@ -57,17 +57,17 @@
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Cluster with string metric (fast Rust path)
-#' result <- kmeans.fd(fd, ncl = 2, metric = "L2")
+#' result <- cluster.kmeans(fd, ncl = 2, metric = "L2")
 #' table(result$cluster, true_cluster)
 #'
 #' # Cluster with metric function (also fast - Rust backend)
-#' result2 <- kmeans.fd(fd, ncl = 2, metric = metric.lp)
+#' result2 <- cluster.kmeans(fd, ncl = 2, metric = metric.lp)
 #'
 #' # Cluster with semimetric (flexible but slower)
-#' result3 <- kmeans.fd(fd, ncl = 2, metric = semimetric.pca, ncomp = 3)
-kmeans.fd <- function(fdataobj, ncl, metric = "L2",
-                      max.iter = 100, nstart = 10, seed = NULL,
-                      draw = FALSE, ...) {
+#' result3 <- cluster.kmeans(fd, ncl = 2, metric = semimetric.pca, ncomp = 3)
+cluster.kmeans <- function(fdataobj, ncl, metric = "L2",
+                           max.iter = 100, nstart = 10, seed = NULL,
+                           draw = FALSE, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -107,7 +107,7 @@ kmeans.fd <- function(fdataobj, ncl, metric = "L2",
       size = result$size,
       fdataobj = fdataobj
     ),
-    class = "kmeans.fd"
+    class = "cluster.kmeans"
   )
 }
 
@@ -236,8 +236,8 @@ kmeans.fd <- function(fdataobj, ncl, metric = "L2",
 #' t <- seq(0, 1, length.out = 50)
 #' X <- matrix(rnorm(30 * 50), 30, 50)
 #' fd <- fdata(X, argvals = t)
-#' init_centers <- kmeans.center.ini(fd, ncl = 3)
-kmeans.center.ini <- function(fdataobj, ncl, metric = "L2", seed = NULL) {
+#' init_centers <- cluster.init(fd, ncl = 3)
+cluster.init <- function(fdataobj, ncl, metric = "L2", seed = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -301,16 +301,16 @@ kmeans.center.ini <- function(fdataobj, ncl, metric = "L2", seed = NULL) {
 #' @param max.iter Maximum iterations for k-means (default 100).
 #' @param nstart Number of random starts (default 10).
 #' @param seed Random seed for reproducibility.
-#' @param ... Additional arguments passed to kmeans.fd.
+#' @param ... Additional arguments passed to cluster.kmeans.
 #'
-#' @return A list of class 'optim.kmeans.fd' with components:
+#' @return A list of class 'cluster.optim' with components:
 #' \describe{
 #'   \item{optimal.k}{Optimal number of clusters based on criterion}
 #'   \item{criterion}{Name of criterion used}
 #'   \item{scores}{Vector of criterion values for each k}
 #'   \item{ncl.range}{Range of k values tested}
-#'   \item{models}{List of kmeans.fd objects for each k}
-#'   \item{best.model}{The kmeans.fd object for optimal k}
+#'   \item{models}{List of cluster.kmeans objects for each k}
+#'   \item{best.model}{The cluster.kmeans object for optimal k}
 #' }
 #'
 #' @details
@@ -345,10 +345,10 @@ kmeans.center.ini <- function(fdataobj, ncl, metric = "L2", seed = NULL) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Find optimal k using silhouette
-#' opt <- optim.kmeans.fd(fd, ncl.range = 2:6, criterion = "silhouette")
+#' opt <- cluster.optim(fd, ncl.range = 2:6, criterion = "silhouette")
 #' print(opt)
 #' plot(opt)
-optim.kmeans.fd <- function(fdataobj, ncl.range = 2:10,
+cluster.optim <- function(fdataobj, ncl.range = 2:10,
                             criterion = c("silhouette", "CH", "elbow"),
                             metric = "L2", max.iter = 100, nstart = 10,
                             seed = NULL, ...) {
@@ -386,8 +386,8 @@ optim.kmeans.fd <- function(fdataobj, ncl.range = 2:10,
     k <- ncl.range[i]
 
     # Run k-means
-    model <- kmeans.fd(fdataobj, ncl = k, metric = metric,
-                       max.iter = max.iter, nstart = nstart, seed = seed, ...)
+    model <- cluster.kmeans(fdataobj, ncl = k, metric = metric,
+                            max.iter = max.iter, nstart = nstart, seed = seed, ...)
     models[[i]] <- model
 
     # Compute criterion
@@ -430,17 +430,17 @@ optim.kmeans.fd <- function(fdataobj, ncl.range = 2:10,
       models = models,
       best.model = models[[optimal_idx]]
     ),
-    class = "optim.kmeans.fd"
+    class = "cluster.optim"
   )
 }
 
-#' Print Method for optim.kmeans.fd Objects
+#' Print Method for cluster.optim Objects
 #'
-#' @param x An object of class 'optim.kmeans.fd'.
+#' @param x An object of class 'cluster.optim'.
 #' @param ... Additional arguments (ignored).
 #'
 #' @export
-print.optim.kmeans.fd <- function(x, ...) {
+print.cluster.optim <- function(x, ...) {
   cat("Optimal K-Means Clustering\n")
   cat("==========================\n")
   cat("Criterion:", x$criterion, "\n")
@@ -454,15 +454,15 @@ print.optim.kmeans.fd <- function(x, ...) {
   invisible(x)
 }
 
-#' Plot Method for optim.kmeans.fd Objects
+#' Plot Method for cluster.optim Objects
 #'
-#' @param x An object of class 'optim.kmeans.fd'.
+#' @param x An object of class 'cluster.optim'.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A ggplot object.
 #'
 #' @export
-plot.optim.kmeans.fd <- function(x, ...) {
+plot.cluster.optim <- function(x, ...) {
   ylab <- switch(x$criterion,
     silhouette = "Mean Silhouette Score",
     CH = "Calinski-Harabasz Index",
@@ -498,13 +498,13 @@ plot.optim.kmeans.fd <- function(x, ...) {
   invisible(p)
 }
 
-#' Print Method for kmeans.fd Objects
+#' Print Method for cluster.kmeans Objects
 #'
-#' @param x An object of class 'kmeans.fd'.
+#' @param x An object of class 'cluster.kmeans'.
 #' @param ... Additional arguments (ignored).
 #'
 #' @export
-print.kmeans.fd <- function(x, ...) {
+print.cluster.kmeans <- function(x, ...) {
   cat("Functional K-Means Clustering\n")
   cat("=============================\n")
   cat("Number of clusters:", length(x$size), "\n")
@@ -521,15 +521,15 @@ print.kmeans.fd <- function(x, ...) {
   invisible(x)
 }
 
-#' Plot Method for kmeans.fd Objects
+#' Plot Method for cluster.kmeans Objects
 #'
-#' @param x An object of class 'kmeans.fd'.
+#' @param x An object of class 'cluster.kmeans'.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A ggplot object.
 #'
 #' @export
-plot.kmeans.fd <- function(x, ...) {
+plot.cluster.kmeans <- function(x, ...) {
   fd <- x$fdataobj
   ncl <- length(x$size)
   n <- nrow(fd$data)
@@ -611,7 +611,7 @@ plot.kmeans.fd <- function(x, ...) {
 #' As m increases, the clusters become softer (more overlap).
 #' m = 2 is the most common choice.
 #'
-#' @seealso \code{\link{kmeans.fd}} for hard clustering
+#' @seealso \code{\link{cluster.kmeans}} for hard clustering
 #'
 #' @export
 #' @examples
@@ -625,19 +625,19 @@ plot.kmeans.fd <- function(x, ...) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Fuzzy clustering
-#' fcm <- fuzzycmeans.fd(fd, ncl = 2)
+#' fcm <- cluster.fcm(fd, ncl = 2)
 #' print(fcm)
 #' plot(fcm)
 #'
 #' # View membership degrees for first few curves
 #' head(fcm$membership)
-fuzzycmeans.fd <- function(fdataobj, ncl, m = 2, max.iter = 100, tol = 1e-6, seed = NULL) {
+cluster.fcm <- function(fdataobj, ncl, m = 2, max.iter = 100, tol = 1e-6, seed = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("fuzzycmeans.fd for 2D functional data not yet implemented")
+    stop("cluster.fcm for 2D functional data not yet implemented")
   }
 
   n <- nrow(fdataobj$data)
@@ -671,17 +671,17 @@ fuzzycmeans.fd <- function(fdataobj, ncl, m = 2, max.iter = 100, tol = 1e-6, see
       m = m,
       fdataobj = fdataobj
     ),
-    class = "fuzzycmeans.fd"
+    class = "cluster.fcm"
   )
 }
 
-#' Print Method for fuzzycmeans.fd Objects
+#' Print Method for cluster.fcm Objects
 #'
-#' @param x An object of class 'fuzzycmeans.fd'.
+#' @param x An object of class 'cluster.fcm'.
 #' @param ... Additional arguments (ignored).
 #'
 #' @export
-print.fuzzycmeans.fd <- function(x, ...) {
+print.cluster.fcm <- function(x, ...) {
   cat("Fuzzy C-Means Clustering\n")
   cat("========================\n")
   cat("Number of clusters:", ncol(x$membership), "\n")
@@ -702,16 +702,16 @@ print.fuzzycmeans.fd <- function(x, ...) {
   invisible(x)
 }
 
-#' Plot Method for fuzzycmeans.fd Objects
+#' Plot Method for cluster.fcm Objects
 #'
-#' @param x An object of class 'fuzzycmeans.fd'.
+#' @param x An object of class 'cluster.fcm'.
 #' @param type Type of plot: "curves" (default) or "membership".
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A ggplot object.
 #'
 #' @export
-plot.fuzzycmeans.fd <- function(x, type = c("curves", "membership"), ...) {
+plot.cluster.fcm <- function(x, type = c("curves", "membership"), ...) {
   type <- match.arg(type)
 
   if (type == "curves") {

@@ -1,7 +1,7 @@
 # Validation tests for depth functions
 # Compare fdars results with fda.usc reference implementation
 
-test_that("depth.FM matches fda.usc implementation", {
+test_that("depth with method='FM' matches fda.usc implementation", {
   skip_if_not_installed("fda.usc")
 
   set.seed(42)
@@ -18,13 +18,13 @@ test_that("depth.FM matches fda.usc implementation", {
   fd_rust <- fdars::fdata(X, argvals = t_grid)
 
   D_orig <- fda.usc::depth.FM(fd_orig)$dep
-  D_rust <- fdars::depth.FM(fd_rust)
+  D_rust <- fdars::depth(fd_rust, method = "FM")
 
   # Compare ignoring names attribute
   expect_equal(as.numeric(D_orig), D_rust, tolerance = 1e-6)
 })
 
-test_that("depth.mode produces valid depths", {
+test_that("depth with method='mode' produces valid depths", {
   # Note: fda.usc and fdars may have different mode depth implementations
   # (different kernel normalizations). We test correctness properties instead.
   set.seed(42)
@@ -39,7 +39,7 @@ test_that("depth.mode produces valid depths", {
 
   fd_rust <- fdars::fdata(X, argvals = t_grid)
   h <- 0.5
-  D_rust <- fdars::depth.mode(fd_rust, h = h)
+  D_rust <- fdars::depth(fd_rust, method = "mode", h = h)
 
   # Depths should be positive (mode depth not bounded to [0,1])
   expect_true(all(D_rust >= 0))
@@ -53,7 +53,7 @@ test_that("depth.mode produces valid depths", {
   expect_true(sum((deepest_curve - mean_curve)^2) < quantile(rowSums((X - rep(mean_curve, each = n))^2), 0.5))
 })
 
-test_that("depth.RP produces valid depths", {
+test_that("depth with method='RP' produces valid depths", {
   # RP depth uses random projections - different implementations may not correlate well
   # because random projections are generated independently
   set.seed(42)
@@ -68,7 +68,7 @@ test_that("depth.RP produces valid depths", {
 
   fd_rust <- fdars::fdata(X, argvals = t_grid)
   nproj <- 50
-  D_rust <- fdars::depth.RP(fd_rust, nproj = nproj)
+  D_rust <- fdars::depth(fd_rust, method = "RP", nproj = nproj)
 
   # Depths should be in [0, 1]
   expect_true(all(D_rust >= 0 & D_rust <= 1))
@@ -83,7 +83,7 @@ test_that("depth.RP produces valid depths", {
   expect_true(all_dists[deepest_idx] < quantile(all_dists, 0.75))
 })
 
-test_that("depth.RT produces valid depths", {
+test_that("depth with method='RT' produces valid depths", {
   # Note: RT depth implementations may differ in tie-breaking behavior
   # We test correctness properties instead of exact matching
   set.seed(42)
@@ -97,7 +97,7 @@ test_that("depth.RT produces valid depths", {
   }
 
   fd_rust <- fdars::fdata(X, argvals = t_grid)
-  D_rust <- fdars::depth.RT(fd_rust)
+  D_rust <- fdars::depth(fd_rust, method = "RT")
 
   # Depths should be in [0, 1]
   expect_true(all(D_rust >= 0 & D_rust <= 1))
@@ -112,7 +112,7 @@ test_that("depth.RT produces valid depths", {
   expect_gt(length(intersect(top_depth_idx, inner_dist_idx)), 0)
 })
 
-test_that("depth.FSD produces valid depths", {
+test_that("depth with method='FSD' produces valid depths", {
   set.seed(42)
   n <- 30
   m <- 50
@@ -124,14 +124,14 @@ test_that("depth.FSD produces valid depths", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  D <- fdars::depth.FSD(fd)
+  D <- fdars::depth(fd, method = "FSD")
 
   # Depths should be in [0, 1]
   expect_true(all(D >= 0 & D <= 1))
   expect_length(D, n)
 })
 
-test_that("depth.KFSD produces valid depths", {
+test_that("depth with method='KFSD' produces valid depths", {
   set.seed(42)
   n <- 30
   m <- 50
@@ -143,14 +143,14 @@ test_that("depth.KFSD produces valid depths", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  D <- fdars::depth.KFSD(fd, h = 0.5)
+  D <- fdars::depth(fd, method = "KFSD", h = 0.5)
 
   # Depths should be in [0, 1]
   expect_true(all(D >= 0 & D <= 1))
   expect_length(D, n)
 })
 
-test_that("depth.RPD produces valid depths", {
+test_that("depth with method='RPD' produces valid depths", {
   set.seed(42)
   n <- 30
   m <- 50
@@ -162,7 +162,7 @@ test_that("depth.RPD produces valid depths", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  D <- fdars::depth.RPD(fd, nproj = 50, deriv = c(0, 1))
+  D <- fdars::depth(fd, method = "RPD", nproj = 50, deriv = c(0, 1))
 
   # Depths should be in [0, 1]
   expect_true(all(D >= 0 & D <= 1))
