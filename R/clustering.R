@@ -575,3 +575,223 @@ plot.kmeans.fd <- function(x, ...) {
   print(p)
   invisible(p)
 }
+
+#' Fuzzy C-Means Clustering for Functional Data
+#'
+#' Performs fuzzy c-means clustering on functional data, where each curve has
+#' a membership degree to each cluster rather than a hard assignment.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param ncl Number of clusters.
+#' @param m Fuzziness parameter (default 2). Must be > 1. Higher values give
+#'   softer cluster boundaries.
+#' @param max.iter Maximum number of iterations (default 100).
+#' @param tol Convergence tolerance (default 1e-6).
+#' @param seed Optional random seed for reproducibility.
+#'
+#' @return A list of class 'fuzzycmeans.fd' with components:
+#' \describe{
+#'   \item{membership}{Matrix of membership degrees (n x ncl). Each row sums to 1.}
+#'   \item{cluster}{Hard cluster assignments (argmax of membership).}
+#'   \item{centers}{An fdata object containing the cluster centers.}
+#'   \item{objective}{Final value of the objective function.}
+#'   \item{fdataobj}{The input functional data object.}
+#' }
+#'
+#' @details
+#' Fuzzy c-means minimizes the objective function:
+#' \deqn{J = \sum_{i=1}^n \sum_{c=1}^k u_{ic}^m ||X_i - v_c||^2}
+#' where u_ic is the membership of curve i in cluster c, v_c is the cluster
+#' center, and m is the fuzziness parameter.
+#'
+#' The membership degrees are updated as:
+#' \deqn{u_{ic} = 1 / \sum_{j=1}^k (d_{ic}/d_{ij})^{2/(m-1)}}
+#'
+#' When m approaches 1, FCM becomes equivalent to hard k-means.
+#' As m increases, the clusters become softer (more overlap).
+#' m = 2 is the most common choice.
+#'
+#' @seealso \code{\link{kmeans.fd}} for hard clustering
+#'
+#' @export
+#' @examples
+#' # Create functional data with two overlapping groups
+#' set.seed(42)
+#' t <- seq(0, 1, length.out = 50)
+#' n <- 30
+#' X <- matrix(0, n, 50)
+#' for (i in 1:15) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
+#' for (i in 16:30) X[i, ] <- cos(2*pi*t) + rnorm(50, sd = 0.2)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Fuzzy clustering
+#' fcm <- fuzzycmeans.fd(fd, ncl = 2)
+#' print(fcm)
+#' plot(fcm)
+#'
+#' # View membership degrees for first few curves
+#' head(fcm$membership)
+fuzzycmeans.fd <- function(fdataobj, ncl, m = 2, max.iter = 100, tol = 1e-6, seed = NULL) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("fuzzycmeans.fd for 2D functional data not yet implemented")
+  }
+
+  n <- nrow(fdataobj$data)
+
+  if (ncl < 1 || ncl > n) {
+    stop("ncl must be between 1 and the number of curves")
+  }
+
+  if (m <= 1) {
+    stop("m (fuzziness) must be > 1")
+  }
+
+  seed_val <- if (!is.null(seed)) as.integer(seed) else NULL
+
+  result <- .Call("wrap__fuzzycmeans_fd", fdataobj$data,
+                  as.numeric(fdataobj$argvals), as.integer(ncl),
+                  as.numeric(m), as.integer(max.iter), as.numeric(tol), seed_val)
+
+  # Create fdata object for centers
+  centers <- fdata(result$centers, argvals = fdataobj$argvals,
+                   names = list(main = "Cluster Centers",
+                                xlab = fdataobj$names$xlab,
+                                ylab = fdataobj$names$ylab))
+
+  structure(
+    list(
+      membership = result$membership,
+      cluster = result$cluster,
+      centers = centers,
+      objective = result$objective,
+      m = m,
+      fdataobj = fdataobj
+    ),
+    class = "fuzzycmeans.fd"
+  )
+}
+
+#' Print Method for fuzzycmeans.fd Objects
+#'
+#' @param x An object of class 'fuzzycmeans.fd'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.fuzzycmeans.fd <- function(x, ...) {
+  cat("Fuzzy C-Means Clustering\n")
+  cat("========================\n")
+  cat("Number of clusters:", ncol(x$membership), "\n")
+  cat("Number of observations:", nrow(x$membership), "\n")
+  cat("Fuzziness parameter m:", x$m, "\n\n")
+
+  cat("Cluster sizes (hard assignment):\n")
+  print(table(x$cluster))
+
+  cat("\nObjective function:", round(x$objective, 4), "\n")
+
+  # Show average membership
+  cat("\nAverage membership per cluster:\n")
+  avg_mem <- colMeans(x$membership)
+  names(avg_mem) <- paste0("C", seq_along(avg_mem))
+  print(round(avg_mem, 3))
+
+  invisible(x)
+}
+
+#' Plot Method for fuzzycmeans.fd Objects
+#'
+#' @param x An object of class 'fuzzycmeans.fd'.
+#' @param type Type of plot: "curves" (default) or "membership".
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return A ggplot object.
+#'
+#' @export
+plot.fuzzycmeans.fd <- function(x, type = c("curves", "membership"), ...) {
+  type <- match.arg(type)
+
+  if (type == "curves") {
+    .plot_fuzzycmeans_curves(x)
+  } else {
+    .plot_fuzzycmeans_membership(x)
+  }
+}
+
+#' @noRd
+.plot_fuzzycmeans_curves <- function(x) {
+  fd <- x$fdataobj
+  ncl <- ncol(x$membership)
+  n <- nrow(fd$data)
+  m <- ncol(fd$data)
+
+  # Reshape curves to long format
+  df_curves <- data.frame(
+    curve_id = rep(seq_len(n), each = m),
+    argval = rep(fd$argvals, n),
+    value = as.vector(t(fd$data)),
+    cluster = factor(rep(x$cluster, each = m))
+  )
+
+  # Reshape centers to long format
+  df_centers <- data.frame(
+    center_id = rep(seq_len(ncl), each = m),
+    argval = rep(fd$argvals, ncl),
+    value = as.vector(t(x$centers$data)),
+    cluster = factor(rep(seq_len(ncl), each = m))
+  )
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_line(
+      data = df_curves,
+      ggplot2::aes(x = .data$argval, y = .data$value,
+                   group = .data$curve_id, color = .data$cluster),
+      alpha = 0.5
+    ) +
+    ggplot2::geom_line(
+      data = df_centers,
+      ggplot2::aes(x = .data$argval, y = .data$value,
+                   group = .data$center_id, color = .data$cluster),
+      linetype = "dashed", linewidth = 1.2
+    ) +
+    ggplot2::labs(
+      x = fd$names$xlab %||% "t",
+      y = fd$names$ylab %||% "X(t)",
+      title = "Fuzzy C-Means Clustering",
+      color = "Cluster"
+    ) +
+    ggplot2::theme_minimal()
+
+  print(p)
+  invisible(p)
+}
+
+#' @noRd
+.plot_fuzzycmeans_membership <- function(x) {
+  n <- nrow(x$membership)
+  ncl <- ncol(x$membership)
+
+  # Create long format data
+  df <- data.frame(
+    curve = rep(seq_len(n), ncl),
+    cluster = factor(rep(seq_len(ncl), each = n)),
+    membership = as.vector(x$membership)
+  )
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$curve, y = .data$membership,
+                                         fill = .data$cluster)) +
+    ggplot2::geom_bar(stat = "identity", position = "stack") +
+    ggplot2::labs(
+      x = "Curve Index",
+      y = "Membership Degree",
+      title = "Fuzzy Cluster Membership",
+      fill = "Cluster"
+    ) +
+    ggplot2::theme_minimal()
+
+  print(p)
+  invisible(p)
+}

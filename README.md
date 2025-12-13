@@ -104,6 +104,8 @@ fd <- fdata(data_matrix, argvals = time_points, rangeval = c(0, 1))
 Depth measures how "central" or "typical" a curve is relative to a sample. Higher depth = more central:
 
 - `depth.FM` - Fraiman-Muniz depth (integrates univariate depths)
+- `depth.BD` - Band depth (proportion of pairs where curve is enveloped)
+- `depth.MBD` - Modified band depth (more robust, allows partial envelopment)
 - `depth.mode` - Modal depth (based on kernel density estimation)
 - `depth.RP` - Random projection depth
 - `depth.RT` - Random Tukey depth
@@ -125,6 +127,43 @@ Measure similarity between curves:
 - `metric.lp` - Lp distance (L2 = Euclidean)
 - `metric.hausdorff` - Hausdorff distance
 - `metric.DTW` - Dynamic time warping
+
+### Outlier Detection
+
+Identify unusual curves:
+
+- `outliers.depth.trim` - Trimmed depth-based detection
+- `outliers.depth.pond` - Weighted depth-based detection
+- `outliers.lrt` - Likelihood ratio test
+- `outliers.boxplot` - Functional boxplot-based detection
+- `MS.plot` - Magnitude-Shape plot for visualizing outliers
+
+### Functional Statistics
+
+- `func.mean` - Functional mean
+- `func.var` - Functional variance
+- `func.sd` - Functional standard deviation
+- `func.cov` - Functional covariance
+- `func.gmed` - Geometric median (L1 median via Weiszfeld algorithm)
+
+### Visualization
+
+- `boxplot.fdata` - Functional boxplot with depth-based envelopes
+- `MS.plot` - Magnitude-Shape plot for outlier visualization
+
+### Clustering
+
+- `kmeans.fd` - K-means clustering for functional data
+- `optim.kmeans.fd` - Optimal k selection
+- `fuzzycmeans.fd` - Fuzzy C-means clustering with soft membership
+
+### Curve Registration
+
+- `register.fd` - Shift registration using cross-correlation
+
+### Feature Extraction
+
+- `localavg.fdata` - Extract local average features from curves
 
 ## Documentation
 
@@ -161,6 +200,13 @@ fdars provides several features not available in fda.usc:
 | Feature | Description |
 |---------|-------------|
 | **10-200x Performance** | Rust backend with parallel processing for computationally intensive operations |
+| **Band Depth Functions** | `depth.BD()` and `depth.MBD()` with Rust backend for fast computation |
+| **Functional Boxplot** | `boxplot.fdata()` for depth-based functional boxplots |
+| **MS Plot** | `MS.plot()` for magnitude-shape outlier visualization |
+| **Fuzzy C-Means** | `fuzzycmeans.fd()` for soft clustering with membership degrees |
+| **Geometric Median** | `func.gmed()` L1 median via Weiszfeld algorithm |
+| **Curve Registration** | `register.fd()` shift registration using cross-correlation |
+| **Local Averages** | `localavg.fdata()` for feature extraction |
 | **Optimal k Selection** | `optim.kmeans.fd()` automatically finds optimal clusters using silhouette, Calinski-Harabasz, or elbow methods |
 | **Local k-NN Bandwidth** | `fregre.np()` supports local cross-validation (`kNN.lCV`) for adaptive bandwidth per observation |
 | **2D Functional Data** | Native support for surfaces/images as functional data (`fdata2d`) |

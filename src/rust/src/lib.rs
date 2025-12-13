@@ -359,6 +359,80 @@ fn fdata_deriv_2d(
     ).into()
 }
 
+/// Compute the geometric median (L1 median) of functional data using Weiszfeld's algorithm
+/// The geometric median minimizes sum of L2 distances to all curves
+#[extendr]
+fn geometric_median_1d(data: RMatrix<f64>, argvals: Vec<f64>, max_iter: i32, tol: f64) -> Robj {
+    let nrow = data.nrows();
+    let ncol = data.ncols();
+
+    if nrow == 0 || ncol == 0 || argvals.len() != ncol {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let weights = simpsons_weights(&argvals);
+
+    // Initialize with the mean
+    let mut median: Vec<f64> = (0..ncol)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..nrow {
+                sum += data_slice[i + j * nrow];
+            }
+            sum / nrow as f64
+        })
+        .collect();
+
+    let max_iter = max_iter as usize;
+
+    for _ in 0..max_iter {
+        // Compute distances from current median to all curves
+        let distances: Vec<f64> = (0..nrow)
+            .map(|i| {
+                let mut dist_sq = 0.0;
+                for j in 0..ncol {
+                    let diff = data_slice[i + j * nrow] - median[j];
+                    dist_sq += diff * diff * weights[j];
+                }
+                dist_sq.sqrt()
+            })
+            .collect();
+
+        // Compute weights (1/distance), handling zero distances
+        let eps = 1e-10;
+        let inv_distances: Vec<f64> = distances.iter()
+            .map(|d| if *d > eps { 1.0 / d } else { 1.0 / eps })
+            .collect();
+
+        let sum_inv_dist: f64 = inv_distances.iter().sum();
+
+        // Update median using Weiszfeld iteration
+        let new_median: Vec<f64> = (0..ncol)
+            .map(|j| {
+                let mut weighted_sum = 0.0;
+                for i in 0..nrow {
+                    weighted_sum += data_slice[i + j * nrow] * inv_distances[i];
+                }
+                weighted_sum / sum_inv_dist
+            })
+            .collect();
+
+        // Check convergence
+        let diff: f64 = median.iter().zip(new_median.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f64>() / ncol as f64;
+
+        median = new_median;
+
+        if diff < tol {
+            break;
+        }
+    }
+
+    Robj::from(median)
+}
+
 // =============================================================================
 // depth functions
 // =============================================================================
@@ -899,6 +973,121 @@ fn depth_kfsd_2d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, _m1: i32, _m2: 
             } else {
                 0.0
             }
+        })
+        .collect();
+
+    Robj::from(depths)
+}
+
+/// Band Depth (BD) for 1D functional data
+/// BD(x) = proportion of pairs (i,j) where x lies within the band formed by curves i and j
+/// A curve lies in the band if at every time point t, min(X_i(t), X_j(t)) <= x(t) <= max(X_i(t), X_j(t))
+#[extendr]
+fn depth_bd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>) -> Robj {
+    let nobj = fdataobj.nrows();
+    let nori = fdataori.nrows();
+    let ncol_obj = fdataobj.ncols();
+    let ncol_ori = fdataori.ncols();
+
+    if ncol_obj != ncol_ori || nobj == 0 || nori < 2 {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let n_points = ncol_obj;
+    let data_obj = fdataobj.as_real_slice().unwrap();
+    let data_ori = fdataori.as_real_slice().unwrap();
+
+    // Number of pairs C(n, 2) = n * (n-1) / 2
+    let n_pairs = (nori * (nori - 1)) / 2;
+
+    let depths: Vec<f64> = (0..nobj)
+        .into_par_iter()
+        .map(|i| {
+            let mut count_in_band = 0usize;
+
+            // For each pair (j, k) with j < k
+            for j in 0..nori {
+                for k in (j + 1)..nori {
+                    // Check if curve i is completely inside the band formed by j and k
+                    let mut inside_band = true;
+
+                    for t in 0..n_points {
+                        let x_t = data_obj[i + t * nobj];
+                        let y_j_t = data_ori[j + t * nori];
+                        let y_k_t = data_ori[k + t * nori];
+
+                        let band_min = y_j_t.min(y_k_t);
+                        let band_max = y_j_t.max(y_k_t);
+
+                        if x_t < band_min || x_t > band_max {
+                            inside_band = false;
+                            break;
+                        }
+                    }
+
+                    if inside_band {
+                        count_in_band += 1;
+                    }
+                }
+            }
+
+            count_in_band as f64 / n_pairs as f64
+        })
+        .collect();
+
+    Robj::from(depths)
+}
+
+/// Modified Band Depth (MBD) for 1D functional data
+/// MBD(x) = average over pairs (i,j) of the proportion of the domain where x is inside the band
+/// This is more robust than BD as it doesn't require complete containment
+#[extendr]
+fn depth_mbd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>) -> Robj {
+    let nobj = fdataobj.nrows();
+    let nori = fdataori.nrows();
+    let ncol_obj = fdataobj.ncols();
+    let ncol_ori = fdataori.ncols();
+
+    if ncol_obj != ncol_ori || nobj == 0 || nori < 2 {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let n_points = ncol_obj;
+    let data_obj = fdataobj.as_real_slice().unwrap();
+    let data_ori = fdataori.as_real_slice().unwrap();
+
+    // Number of pairs C(n, 2) = n * (n-1) / 2
+    let n_pairs = (nori * (nori - 1)) / 2;
+
+    let depths: Vec<f64> = (0..nobj)
+        .into_par_iter()
+        .map(|i| {
+            let mut total_proportion = 0.0;
+
+            // For each pair (j, k) with j < k
+            for j in 0..nori {
+                for k in (j + 1)..nori {
+                    // Count the proportion of time points where curve i is inside the band
+                    let mut count_inside = 0usize;
+
+                    for t in 0..n_points {
+                        let x_t = data_obj[i + t * nobj];
+                        let y_j_t = data_ori[j + t * nori];
+                        let y_k_t = data_ori[k + t * nori];
+
+                        let band_min = y_j_t.min(y_k_t);
+                        let band_max = y_j_t.max(y_k_t);
+
+                        if x_t >= band_min && x_t <= band_max {
+                            count_inside += 1;
+                        }
+                    }
+
+                    total_proportion += count_inside as f64 / n_points as f64;
+                }
+            }
+
+            total_proportion / n_pairs as f64
         })
         .collect();
 
@@ -3762,6 +3951,244 @@ fn kmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, max_iter: i3
     ).into()
 }
 
+/// Fuzzy C-Means clustering for functional data
+/// m_fuzz is the fuzziness parameter (typically 2)
+#[extendr]
+fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz: f64,
+                  max_iter: i32, tol: f64, seed: Nullable<i32>) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+    let k = nclusters as usize;
+
+    if n == 0 || m == 0 || k == 0 || k > n || m_fuzz <= 1.0 {
+        return r!(list!(
+            membership = RMatrix::new_matrix(0, 0, |_, _| 0.0),
+            centers = RMatrix::new_matrix(0, 0, |_, _| 0.0),
+            cluster = Vec::<i32>::new(),
+            objective = 0.0
+        ));
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let weights = simpsons_weights(&argvals);
+
+    // Initialize RNG
+    let mut rng = match seed {
+        Nullable::NotNull(s) => rand::rngs::StdRng::seed_from_u64(s as u64),
+        Nullable::Null => rand::rngs::StdRng::from_entropy(),
+    };
+
+    // Initialize membership matrix randomly and normalize rows to sum to 1
+    let mut membership: Vec<f64> = (0..(n * k))
+        .map(|_| rng.gen::<f64>())
+        .collect();
+
+    // Normalize each row
+    for i in 0..n {
+        let row_sum: f64 = (0..k).map(|c| membership[i * k + c]).sum();
+        for c in 0..k {
+            membership[i * k + c] /= row_sum;
+        }
+    }
+
+    // Helper to compute squared L2 distance
+    let dist_sq = |i: usize, center_j: usize, centers: &[f64]| -> f64 {
+        let mut d = 0.0;
+        for t in 0..m {
+            let diff = data_slice[i + t * n] - centers[center_j + t * k];
+            d += diff * diff * weights[t];
+        }
+        d
+    };
+
+    let mut centers = vec![0.0; k * m];
+    let max_iter = max_iter as usize;
+    let exponent = 2.0 / (m_fuzz - 1.0);
+
+    for _ in 0..max_iter {
+        // Update centers
+        // c_j = sum_i (u_ij^m * x_i) / sum_i (u_ij^m)
+        for c in 0..k {
+            let mut weighted_sum = vec![0.0; m];
+            let mut weight_total = 0.0;
+
+            for i in 0..n {
+                let u_pow = membership[i * k + c].powf(m_fuzz);
+                weight_total += u_pow;
+                for t in 0..m {
+                    weighted_sum[t] += u_pow * data_slice[i + t * n];
+                }
+            }
+
+            if weight_total > 1e-10 {
+                for t in 0..m {
+                    centers[c + t * k] = weighted_sum[t] / weight_total;
+                }
+            }
+        }
+
+        // Update membership matrix
+        let old_membership = membership.clone();
+
+        for i in 0..n {
+            // Compute distances to all centers
+            let dists: Vec<f64> = (0..k)
+                .map(|c| dist_sq(i, c, &centers))
+                .collect();
+
+            // Check for zero distances
+            let has_zero = dists.iter().any(|&d| d < 1e-20);
+
+            if has_zero {
+                // Assign full membership to closest center
+                for c in 0..k {
+                    membership[i * k + c] = if dists[c] < 1e-20 { 1.0 } else { 0.0 };
+                }
+            } else {
+                // Standard FCM update
+                for c in 0..k {
+                    let mut sum = 0.0;
+                    for c2 in 0..k {
+                        sum += (dists[c] / dists[c2]).powf(exponent);
+                    }
+                    membership[i * k + c] = 1.0 / sum;
+                }
+            }
+        }
+
+        // Check convergence
+        let diff: f64 = membership.iter().zip(old_membership.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f64>() / (n * k) as f64;
+
+        if diff < tol {
+            break;
+        }
+    }
+
+    // Compute final objective function
+    let mut objective = 0.0;
+    for i in 0..n {
+        for c in 0..k {
+            let u_pow = membership[i * k + c].powf(m_fuzz);
+            objective += u_pow * dist_sq(i, c, &centers);
+        }
+    }
+
+    // Compute hard cluster assignments (argmax of membership)
+    let cluster: Vec<i32> = (0..n)
+        .map(|i| {
+            let mut best_c = 0;
+            let mut best_u = membership[i * k];
+            for c in 1..k {
+                if membership[i * k + c] > best_u {
+                    best_u = membership[i * k + c];
+                    best_c = c;
+                }
+            }
+            (best_c + 1) as i32  // 1-indexed
+        })
+        .collect();
+
+    // Create output matrices
+    let membership_mat = RMatrix::new_matrix(n, k, |i, c| membership[i * k + c]);
+    let centers_mat = RMatrix::new_matrix(k, m, |c, t| centers[c + t * k]);
+
+    list!(
+        membership = membership_mat,
+        centers = centers_mat,
+        cluster = cluster,
+        objective = objective
+    ).into()
+}
+
+/// Shift registration: find optimal horizontal shift for each curve
+/// to align with a target (usually the mean)
+#[extendr]
+fn register_shift_1d(data: RMatrix<f64>, target: Vec<f64>, argvals: Vec<f64>, max_shift: f64) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m == 0 || argvals.len() != m || target.len() != m {
+        return r!(list!(
+            shifts = Vec::<f64>::new(),
+            registered = RMatrix::new_matrix(0, 0, |_, _| 0.0)
+        ));
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let dt = if m > 1 { argvals[1] - argvals[0] } else { 1.0 };
+
+    // Maximum shift in indices
+    let max_shift_idx = ((max_shift / dt).abs().ceil() as usize).min(m / 4);
+
+    // Find optimal shift for each curve using cross-correlation
+    let results: Vec<(f64, Vec<f64>)> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+
+            let mut best_shift = 0i64;
+            let mut best_corr = f64::NEG_INFINITY;
+
+            // Try different shifts
+            for shift in -(max_shift_idx as i64)..=(max_shift_idx as i64) {
+                let mut corr = 0.0;
+                let mut count = 0;
+
+                for j in 0..m {
+                    let shifted_j = (j as i64 + shift) as usize;
+                    if shifted_j < m {
+                        corr += curve[shifted_j] * target[j];
+                        count += 1;
+                    }
+                }
+
+                if count > 0 {
+                    corr /= count as f64;
+                    if corr > best_corr {
+                        best_corr = corr;
+                        best_shift = shift;
+                    }
+                }
+            }
+
+            // Apply the shift (using linear interpolation for sub-index shifts)
+            let shift_amount = best_shift as f64 * dt;
+            let registered: Vec<f64> = (0..m)
+                .map(|j| {
+                    let src_idx = j as f64 - best_shift as f64;
+                    if src_idx < 0.0 || src_idx >= (m - 1) as f64 {
+                        // Extrapolate with boundary value
+                        if src_idx < 0.0 {
+                            curve[0]
+                        } else {
+                            curve[m - 1]
+                        }
+                    } else {
+                        // Linear interpolation
+                        let lo = src_idx.floor() as usize;
+                        let hi = (lo + 1).min(m - 1);
+                        let frac = src_idx - lo as f64;
+                        curve[lo] * (1.0 - frac) + curve[hi] * frac
+                    }
+                })
+                .collect();
+
+            (shift_amount, registered)
+        })
+        .collect();
+
+    // Collect results
+    let shifts: Vec<f64> = results.iter().map(|(s, _)| *s).collect();
+    let registered_mat = RMatrix::new_matrix(n, m, |i, j| results[i].1[j]);
+
+    list!(
+        shifts = shifts,
+        registered = registered_mat
+    ).into()
+}
+
 // =============================================================================
 // Utility Functions
 // =============================================================================
@@ -4202,6 +4629,7 @@ extendr_module! {
     fn fdata_norm_lp_1d;
     fn fdata_deriv_1d;
     fn fdata_deriv_2d;
+    fn geometric_median_1d;
 
     fn depth_fm_1d;
     fn depth_mode_1d;
@@ -4209,6 +4637,8 @@ extendr_module! {
     fn depth_rt_1d;
     fn depth_fsd_1d;
     fn depth_kfsd_1d;
+    fn depth_bd_1d;
+    fn depth_mbd_1d;
 
     fn depth_fm_2d;
     fn depth_mode_2d;
@@ -4255,6 +4685,10 @@ extendr_module! {
 
     // Clustering functions
     fn kmeans_fd;
+    fn fuzzycmeans_fd;
+
+    // Registration functions
+    fn register_shift_1d;
 
     // Utility functions
     fn int_simpson;

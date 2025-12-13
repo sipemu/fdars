@@ -315,6 +315,472 @@ plot.fdata <- function(x, ...) {
   invisible(p)
 }
 
+#' Functional Boxplot
+#'
+#' Creates a functional boxplot for visualizing the distribution of functional
+#' data. The boxplot shows the median curve, central 50\% envelope, fence
+#' (equivalent to whiskers), and outliers.
+#'
+#' @param x An object of class 'fdata'.
+#' @importFrom graphics boxplot
+#' @param prob Proportion of curves for the central region (default 0.5 for 50\%).
+#' @param factor Factor for fence calculation (default 1.5, as in standard boxplots).
+#' @param depth.func Depth function to use. Default is depth.MBD.
+#' @param show.outliers Logical. If TRUE (default), show outlier curves.
+#' @param col.median Color for median curve (default "black").
+#' @param col.envelope Color for central envelope (default "magenta").
+#' @param col.fence Color for fence region (default "pink").
+#' @param col.outliers Color for outlier curves (default "red").
+#' @param ... Additional arguments passed to depth function.
+#'
+#' @return A list of class 'fbplot' with components:
+#' \describe{
+#'   \item{median}{Index of the median curve}
+#'   \item{central}{Indices of curves in the central region}
+#'   \item{outliers}{Indices of outlier curves}
+#'   \item{depth}{Depth values for all curves}
+#'   \item{plot}{The ggplot object}
+#' }
+#'
+#' @details
+#' The functional boxplot (Sun & Genton, 2011) generalizes the standard boxplot
+#' to functional data using depth ordering:
+#'
+#' \itemize{
+#'   \item \strong{Median}: The curve with maximum depth
+#'   \item \strong{Central region}: Envelope of curves with top 50\% depth
+#'   \item \strong{Fence}: 1.5 times the envelope width beyond the central region
+#'   \item \strong{Outliers}: Curves that exceed the fence at any point
+#' }
+#'
+#' @references
+#' Sun, Y. and Genton, M.G. (2011). Functional boxplots.
+#' \emph{Journal of Computational and Graphical Statistics}, 20(2), 316-334.
+#'
+#' @seealso \code{\link{depth.MBD}} for the default depth function,
+#'   \code{\link{outliers.boxplot}} for outlier detection using functional boxplots
+#'
+#' @export
+#' @examples
+#' # Create functional data with outliers
+#' set.seed(42)
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 30, 50)
+#' for (i in 1:28) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
+#' X[29, ] <- sin(2*pi*t) + 2  # Magnitude outlier
+#' X[30, ] <- cos(2*pi*t)       # Shape outlier
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Create functional boxplot
+#' fbp <- boxplot.fdata(fd)
+boxplot.fdata <- function(x, prob = 0.5, factor = 1.5,
+                          depth.func = depth.MBD,
+                          show.outliers = TRUE,
+                          col.median = "black",
+                          col.envelope = "magenta",
+                          col.fence = "pink",
+                          col.outliers = "red", ...) {
+  if (!inherits(x, "fdata")) {
+    stop("x must be of class 'fdata'")
+  }
+
+  if (isTRUE(x$fdata2d)) {
+    stop("boxplot.fdata not yet implemented for 2D functional data")
+  }
+
+  n <- nrow(x$data)
+  m <- ncol(x$data)
+  argvals <- x$argvals
+
+  # Compute depths
+  depths <- depth.func(x, x, ...)
+
+  # Order curves by depth
+  depth_order <- order(depths, decreasing = TRUE)
+
+  # Median: curve with maximum depth
+  median_idx <- depth_order[1]
+
+  # Central region: top prob proportion of curves
+  n_central <- max(1, ceiling(n * prob))
+  central_idx <- depth_order[seq_len(n_central)]
+
+  # Compute central envelope (pointwise min/max of central curves)
+  central_data <- x$data[central_idx, , drop = FALSE]
+  env_min <- apply(central_data, 2, min)
+  env_max <- apply(central_data, 2, max)
+
+  # Compute fence: envelope expanded by factor * envelope width
+  env_width <- env_max - env_min
+  fence_min <- env_min - factor * env_width
+  fence_max <- env_max + factor * env_width
+
+  # Identify outliers: curves that exceed the fence at any point
+  outlier_idx <- integer(0)
+  for (i in seq_len(n)) {
+    curve <- x$data[i, ]
+    if (any(curve < fence_min) || any(curve > fence_max)) {
+      outlier_idx <- c(outlier_idx, i)
+    }
+  }
+
+  # Non-outlier curves
+  normal_idx <- setdiff(seq_len(n), outlier_idx)
+
+  # Create ggplot visualization
+  # Build data frames for plotting
+
+  # Fence region (ribbon)
+  df_fence <- data.frame(
+    argval = argvals,
+    ymin = fence_min,
+    ymax = fence_max
+  )
+
+  # Central envelope
+  df_envelope <- data.frame(
+    argval = argvals,
+    ymin = env_min,
+    ymax = env_max
+  )
+
+  # Median curve
+  df_median <- data.frame(
+    argval = argvals,
+    value = x$data[median_idx, ]
+  )
+
+  # Start building plot
+  p <- ggplot2::ggplot()
+
+  # Add fence region
+  p <- p + ggplot2::geom_ribbon(
+    data = df_fence,
+    ggplot2::aes(x = .data$argval, ymin = .data$ymin, ymax = .data$ymax),
+    fill = col.fence, alpha = 0.5
+  )
+
+  # Add central envelope
+  p <- p + ggplot2::geom_ribbon(
+    data = df_envelope,
+    ggplot2::aes(x = .data$argval, ymin = .data$ymin, ymax = .data$ymax),
+    fill = col.envelope, alpha = 0.5
+  )
+
+  # Add outlier curves if requested
+  if (show.outliers && length(outlier_idx) > 0) {
+    df_outliers <- data.frame(
+      curve_id = rep(outlier_idx, each = m),
+      argval = rep(argvals, length(outlier_idx)),
+      value = as.vector(t(x$data[outlier_idx, , drop = FALSE]))
+    )
+    p <- p + ggplot2::geom_line(
+      data = df_outliers,
+      ggplot2::aes(x = .data$argval, y = .data$value, group = .data$curve_id),
+      color = col.outliers, alpha = 0.7
+    )
+  }
+
+  # Add median curve
+  p <- p + ggplot2::geom_line(
+    data = df_median,
+    ggplot2::aes(x = .data$argval, y = .data$value),
+    color = col.median, linewidth = 1.2
+  )
+
+  # Add labels and theme
+  p <- p + ggplot2::labs(
+    x = x$names$xlab %||% "t",
+    y = x$names$ylab %||% "X(t)",
+    title = "Functional Boxplot"
+  ) + ggplot2::theme_minimal()
+
+  print(p)
+
+  # Return result invisibly
+  result <- structure(
+    list(
+      median = median_idx,
+      central = central_idx,
+      outliers = outlier_idx,
+      depth = depths,
+      envelope = list(min = env_min, max = env_max),
+      fence = list(min = fence_min, max = fence_max),
+      fdataobj = x,
+      plot = p
+    ),
+    class = "fbplot"
+  )
+
+  invisible(result)
+}
+
+#' Print Method for fbplot Objects
+#'
+#' @param x An object of class 'fbplot'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.fbplot <- function(x, ...) {
+  cat("Functional Boxplot\n")
+  cat("==================\n")
+  cat("Number of curves:", nrow(x$fdataobj$data), "\n")
+  cat("Median curve index:", x$median, "\n")
+  cat("Central region curves:", length(x$central), "\n")
+  cat("Outliers detected:", length(x$outliers), "\n")
+  if (length(x$outliers) > 0) {
+    cat("Outlier indices:", paste(x$outliers, collapse = ", "), "\n")
+  }
+  invisible(x)
+}
+
+#' Curve Registration (Alignment)
+#'
+#' Aligns functional data by horizontal shifting to a target curve.
+#' This reduces phase variation in the sample.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param target Target curve to align to. If NULL (default), uses the mean.
+#' @param max.shift Maximum allowed shift as proportion of domain (default 0.2).
+#'
+#' @return A list of class 'register.fd' with components:
+#' \describe{
+#'   \item{registered}{An fdata object with registered (aligned) curves.}
+#'   \item{shifts}{Numeric vector of shift amounts for each curve.}
+#'   \item{target}{The target curve used for alignment.}
+#'   \item{fdataobj}{Original (unregistered) functional data.}
+#' }
+#'
+#' @details
+#' Shift registration finds the horizontal translation that maximizes the
+#' cross-correlation between each curve and the target. This is appropriate
+#' when curves have similar shapes but differ mainly in timing.
+#'
+#' For more complex warping, consider DTW-based methods.
+#'
+#' @seealso \code{\link{metric.DTW}} for dynamic time warping distance
+#'
+#' @export
+#' @examples
+#' # Create phase-shifted curves
+#' set.seed(42)
+#' t <- seq(0, 1, length.out = 100)
+#' X <- matrix(0, 20, 100)
+#' for (i in 1:20) {
+#'   phase <- runif(1, -0.1, 0.1)
+#'   X[i, ] <- sin(2*pi*(t + phase)) + rnorm(100, sd = 0.1)
+#' }
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Register curves
+#' reg <- register.fd(fd)
+#' print(reg)
+#'
+#' # Compare original vs registered
+#' par(mfrow = c(1, 2))
+#' plot(fd)
+#' plot(reg$registered)
+register.fd <- function(fdataobj, target = NULL, max.shift = 0.2) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("register.fd not yet implemented for 2D functional data")
+  }
+
+  n <- nrow(fdataobj$data)
+  m <- ncol(fdataobj$data)
+  argvals <- fdataobj$argvals
+
+  # Determine target curve
+  if (is.null(target)) {
+    target <- colMeans(fdataobj$data)
+  } else if (inherits(target, "fdata")) {
+    if (ncol(target$data) != m) {
+      stop("target must have same number of evaluation points as fdataobj")
+    }
+    target <- as.vector(target$data[1, ])
+  } else if (!is.numeric(target) || length(target) != m) {
+    stop("target must be NULL, an fdata object, or a numeric vector of length m")
+  }
+
+  # Compute max shift in domain units
+  domain_range <- max(argvals) - min(argvals)
+  max_shift_val <- max.shift * domain_range
+
+  # Call Rust function
+  result <- .Call("wrap__register_shift_1d", fdataobj$data,
+                  as.numeric(target), as.numeric(argvals), as.numeric(max_shift_val))
+
+  # Create registered fdata object
+  registered <- fdata(result$registered, argvals = argvals,
+                      names = list(main = "Registered Curves",
+                                   xlab = fdataobj$names$xlab,
+                                   ylab = fdataobj$names$ylab))
+
+  structure(
+    list(
+      registered = registered,
+      shifts = result$shifts,
+      target = target,
+      fdataobj = fdataobj
+    ),
+    class = "register.fd"
+  )
+}
+
+#' Print Method for register.fd Objects
+#'
+#' @param x An object of class 'register.fd'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.register.fd <- function(x, ...) {
+  cat("Curve Registration\n")
+  cat("==================\n")
+  cat("Number of curves:", nrow(x$fdataobj$data), "\n")
+  cat("Shift statistics:\n")
+  cat("  Min:", round(min(x$shifts), 4), "\n")
+  cat("  Max:", round(max(x$shifts), 4), "\n")
+  cat("  Mean:", round(mean(x$shifts), 4), "\n")
+  cat("  SD:", round(sd(x$shifts), 4), "\n")
+  invisible(x)
+}
+
+#' Plot Method for register.fd Objects
+#'
+#' @param x An object of class 'register.fd'.
+#' @param type Type of plot: "registered" (default), "original", or "both".
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return A ggplot object.
+#'
+#' @export
+plot.register.fd <- function(x, type = c("registered", "original", "both"), ...) {
+  type <- match.arg(type)
+
+  if (type == "original") {
+    plot(x$fdataobj)
+  } else if (type == "registered") {
+    plot(x$registered)
+  } else {
+    # Side-by-side comparison
+    fd_orig <- x$fdataobj
+    fd_reg <- x$registered
+    n <- nrow(fd_orig$data)
+    m <- ncol(fd_orig$data)
+
+    df <- data.frame(
+      curve_id = rep(rep(seq_len(n), each = m), 2),
+      argval = rep(fd_orig$argvals, n * 2),
+      value = c(as.vector(t(fd_orig$data)), as.vector(t(fd_reg$data))),
+      type = factor(rep(c("Original", "Registered"), each = n * m),
+                    levels = c("Original", "Registered"))
+    )
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
+                                           group = .data$curve_id)) +
+      ggplot2::geom_line(alpha = 0.5) +
+      ggplot2::facet_wrap(~ .data$type) +
+      ggplot2::labs(
+        x = fd_orig$names$xlab %||% "t",
+        y = fd_orig$names$ylab %||% "X(t)",
+        title = "Curve Registration: Before vs After"
+      ) +
+      ggplot2::theme_minimal()
+
+    print(p)
+    invisible(p)
+  }
+}
+
+#' Local Averages Feature Extraction
+#'
+#' Extracts features from functional data by computing local averages over
+#' specified intervals. This is a simple but effective dimension reduction
+#' technique for functional data.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param n.intervals Number of equal-width intervals (default 10).
+#' @param intervals Optional matrix of custom intervals (2 columns: start, end).
+#'   If provided, \code{n.intervals} is ignored.
+#'
+#' @return A matrix with n rows (curves) and one column per interval, containing
+#'   the local average for each curve in each interval.
+#'
+#' @details
+#' Local averages provide a simple way to convert functional data to
+#' multivariate data while preserving local structure. Each curve is
+#' summarized by its average value over each interval.
+#'
+#' This can be useful as a preprocessing step for classification or
+#' clustering methods that require fixed-dimensional input.
+#'
+#' @export
+#' @examples
+#' # Create functional data
+#' t <- seq(0, 1, length.out = 100)
+#' X <- matrix(0, 20, 100)
+#' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(100, sd = 0.1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Extract 5 local average features
+#' features <- localavg.fdata(fd, n.intervals = 5)
+#' dim(features)  # 20 x 5
+#'
+#' # Use custom intervals
+#' intervals <- cbind(c(0, 0.25, 0.5), c(0.25, 0.5, 1))
+#' features2 <- localavg.fdata(fd, intervals = intervals)
+localavg.fdata <- function(fdataobj, n.intervals = 10, intervals = NULL) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("localavg.fdata not yet implemented for 2D functional data")
+  }
+
+  n <- nrow(fdataobj$data)
+  m <- ncol(fdataobj$data)
+  argvals <- fdataobj$argvals
+  range_val <- range(argvals)
+
+  # Create intervals if not provided
+  if (is.null(intervals)) {
+    breaks <- seq(range_val[1], range_val[2], length.out = n.intervals + 1)
+    intervals <- cbind(breaks[-length(breaks)], breaks[-1])
+  } else {
+    intervals <- as.matrix(intervals)
+    if (ncol(intervals) != 2) {
+      stop("intervals must be a matrix with 2 columns (start, end)")
+    }
+  }
+
+  n_int <- nrow(intervals)
+
+  # Compute local averages for each curve and interval
+  features <- matrix(0, n, n_int)
+
+  for (k in seq_len(n_int)) {
+    int_start <- intervals[k, 1]
+    int_end <- intervals[k, 2]
+
+    # Find indices within this interval
+    idx <- which(argvals >= int_start & argvals <= int_end)
+
+    if (length(idx) > 0) {
+      # Compute mean within interval for each curve
+      features[, k] <- rowMeans(fdataobj$data[, idx, drop = FALSE])
+    }
+  }
+
+  # Add column names
+  colnames(features) <- paste0("int_", seq_len(n_int))
+
+  features
+}
+
 #' Compute functional derivative
 #'
 #' Compute the numerical derivative of functional data. Uses finite differences

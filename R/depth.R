@@ -64,6 +64,144 @@ depth.FM <- function(fdataobj, fdataori = NULL, trim = 0.25, scale = TRUE, ...) 
   .Call("wrap__depth_fm_1d", fdataobj$data, fdataori$data, as.numeric(trim), as.logical(scale))
 }
 
+#' Band Depth
+#'
+#' Computes the band depth for functional data. The band depth measures
+#' how often a curve lies completely within the band formed by pairs of
+#' other curves.
+#'
+#' @param fdataobj An object of class 'fdata' to compute depth for.
+#' @param fdataori An object of class 'fdata' as reference sample.
+#'   If NULL, uses fdataobj as reference.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return A numeric vector of depth values, one per curve in fdataobj.
+#'   Values range from 0 to 1, with higher values indicating more central curves.
+#'
+#' @details
+#' For a curve x and reference sample Y_1, ..., Y_n, the band depth is:
+#' \deqn{BD(x) = \binom{n}{2}^{-1} \sum_{1 \le i < j \le n} I(x \in B(Y_i, Y_j))}
+#' where B(Y_i, Y_j) is the band formed by Y_i and Y_j, and I() is the indicator
+#' function that equals 1 if x lies completely within the band at all time points.
+#'
+#' Band depth is computationally efficient but can be 0 for curves that cross
+#' the reference curves at any point. For a more robust alternative, see
+#' \code{\link{depth.MBD}}.
+#'
+#' @seealso \code{\link{depth.MBD}} for modified band depth
+#'
+#' @export
+#' @examples
+#' # Create functional data
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 20, 50)
+#' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Compute band depth
+#' depths <- depth.BD(fd)
+#' print(depths)
+depth.BD <- function(fdataobj, fdataori = NULL, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (is.null(fdataori)) {
+    fdataori <- fdataobj
+  }
+
+  if (!inherits(fdataori, "fdata")) {
+    stop("fdataori must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d) || isTRUE(fdataori$fdata2d)) {
+    stop("depth.BD not yet implemented for 2D functional data")
+  }
+
+  if (ncol(fdataobj$data) != ncol(fdataori$data)) {
+    stop("fdataobj and fdataori must have the same number of evaluation points")
+  }
+
+  if (nrow(fdataori$data) < 2) {
+    stop("fdataori must have at least 2 curves")
+  }
+
+  .Call("wrap__depth_bd_1d", fdataobj$data, fdataori$data)
+}
+
+#' Modified Band Depth
+#'
+#' Computes the modified band depth for functional data. Unlike standard band
+#' depth, MBD measures the proportion of the domain where each curve lies
+#' within the band, averaged over all pairs.
+#'
+#' @param fdataobj An object of class 'fdata' to compute depth for.
+#' @param fdataori An object of class 'fdata' as reference sample.
+#'   If NULL, uses fdataobj as reference.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return A numeric vector of depth values, one per curve in fdataobj.
+#'   Values range from 0 to 1, with higher values indicating more central curves.
+#'
+#' @details
+#' For a curve x and reference sample Y_1, ..., Y_n, the modified band depth is:
+#' \deqn{MBD(x) = \binom{n}{2}^{-1} \sum_{1 \le i < j \le n} \lambda_r(A(x; Y_i, Y_j))}
+#' where A(x; Y_i, Y_j) is the set of time points where x lies within the band
+#' formed by Y_i and Y_j, and lambda_r is the Lebesgue measure normalized by
+#' the domain length.
+#'
+#' MBD is more robust than standard band depth because it doesn't require
+#' complete containment. A curve that crosses the band boundaries still receives
+#' partial depth based on the proportion of time it spends inside.
+#'
+#' MBD is the recommended depth for functional boxplots and outlier detection.
+#'
+#' @seealso \code{\link{depth.BD}} for standard band depth,
+#'   \code{\link{boxplot.fdata}} for functional boxplots using MBD
+#'
+#' @export
+#' @examples
+#' # Create functional data with an outlier
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 20, 50)
+#' for (i in 1:19) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
+#' X[20, ] <- sin(2*pi*t) + 2  # magnitude outlier
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Compute modified band depth
+#' depths <- depth.MBD(fd)
+#' print(depths)
+#'
+#' # The outlier should have lower depth
+#' which.min(depths)  # Should be 20
+depth.MBD <- function(fdataobj, fdataori = NULL, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (is.null(fdataori)) {
+    fdataori <- fdataobj
+  }
+
+  if (!inherits(fdataori, "fdata")) {
+    stop("fdataori must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d) || isTRUE(fdataori$fdata2d)) {
+    stop("depth.MBD not yet implemented for 2D functional data")
+  }
+
+  if (ncol(fdataobj$data) != ncol(fdataori$data)) {
+    stop("fdataobj and fdataori must have the same number of evaluation points")
+  }
+
+  if (nrow(fdataori$data) < 2) {
+    stop("fdataori must have at least 2 curves")
+  }
+
+  .Call("wrap__depth_mbd_1d", fdataobj$data, fdataori$data)
+}
+
 #' Modal Depth
 #'
 #' Computes the modal depth for functional data based on kernel density
@@ -854,6 +992,135 @@ func.var <- function(fdataobj) {
                      ylab = "Var(X(t))"))
 }
 
+#' Functional Standard Deviation
+#'
+#' Computes the pointwise standard deviation function of functional data.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#'
+#' @return An fdata object containing the standard deviation function.
+#'
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(100), 10, 10))
+#' s <- func.sd(fd)
+func.sd <- function(fdataobj) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  sd_vals <- apply(fdataobj$data, 2, sd)
+
+  fdata(matrix(sd_vals, nrow = 1), argvals = fdataobj$argvals,
+        names = list(main = "Standard Deviation", xlab = fdataobj$names$xlab,
+                     ylab = "SD(X(t))"))
+}
+
+#' Geometric Median of Functional Data
+#'
+#' Computes the geometric median (L1 median) of functional data using
+#' Weiszfeld's iterative algorithm. The geometric median minimizes the
+#' sum of L2 distances to all curves, making it robust to outliers.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param max.iter Maximum number of iterations (default 100).
+#' @param tol Convergence tolerance (default 1e-6).
+#'
+#' @return An fdata object containing the geometric median function.
+#'
+#' @details
+#' The geometric median y minimizes:
+#' \deqn{\sum_{i=1}^n ||X_i - y||_{L2}}
+#'
+#' Unlike the mean (L2 center), the geometric median is robust to outliers
+#' because extreme values have bounded influence (influence function is bounded).
+#'
+#' The Weiszfeld algorithm is an iteratively reweighted least squares method
+#' that converges to the geometric median.
+#'
+#' @seealso \code{\link{func.mean}} for the (non-robust) mean function,
+#'   \code{\link{func.med.FM}} for depth-based median
+#'
+#' @export
+#' @examples
+#' # Create functional data with an outlier
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 20, 50)
+#' for (i in 1:19) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
+#' X[20, ] <- sin(2*pi*t) + 5  # Large outlier
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Compare mean vs geometric median
+#' mean_curve <- func.mean(fd)
+#' gmed_curve <- func.gmed(fd)
+#'
+#' # The geometric median is less affected by the outlier
+func.gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("func.gmed not yet implemented for 2D functional data")
+  }
+
+  gmed_vals <- .Call("wrap__geometric_median_1d", fdataobj$data,
+                     as.numeric(fdataobj$argvals),
+                     as.integer(max.iter), as.numeric(tol))
+
+  fdata(matrix(gmed_vals, nrow = 1), argvals = fdataobj$argvals,
+        names = list(main = "Geometric Median", xlab = fdataobj$names$xlab,
+                     ylab = fdataobj$names$ylab))
+}
+
+#' Functional Covariance Function
+#'
+#' Computes the covariance function (surface) for functional data.
+#' \code{Cov(s, t) = E[(X(s) - mu(s))(X(t) - mu(t))]} where mu is the mean function.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{cov}{The covariance matrix (m x m) where m is number of time points}
+#'   \item{argvals}{The evaluation points (same as input)}
+#'   \item{mean}{The mean function}
+#' }
+#'
+#' @export
+#' @examples
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 20, 50)
+#' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
+#' fd <- fdata(X, argvals = t)
+#' cov_result <- func.cov(fd)
+#' image(cov_result$cov, main = "Covariance Surface")
+func.cov <- function(fdataobj) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("func.cov not yet implemented for 2D functional data")
+  }
+
+  # Compute mean and centered data
+  n <- nrow(fdataobj$data)
+  m <- ncol(fdataobj$data)
+
+  mean_func <- colMeans(fdataobj$data)
+  centered <- sweep(fdataobj$data, 2, mean_func)
+
+  # Compute covariance matrix: (1/(n-1)) * t(X_centered) %*% X_centered
+  cov_mat <- crossprod(centered) / (n - 1)
+
+  list(
+    cov = cov_mat,
+    argvals = fdataobj$argvals,
+    mean = mean_func
+  )
+}
+
 #' Functional Trimmed Variance using FM Depth
 #'
 #' Computes the trimmed variance by excluding curves with lowest FM depth.
@@ -1021,4 +1288,120 @@ func.trimvar.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
   fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
         names = list(main = "Trimmed Variance (RT)", xlab = fdataobj$names$xlab,
                      ylab = "Var(X(t))"))
+}
+
+#' Functional Median using Band Depth
+#'
+#' Returns the curve with maximum band depth.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param ... Additional arguments passed to depth.BD.
+#'
+#' @return The curve (as fdata object) with maximum band depth.
+#'
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(200), 20, 10))
+#' med <- func.med.BD(fd)
+func.med.BD <- function(fdataobj, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  depths <- depth.BD(fdataobj, fdataobj, ...)
+  max_idx <- which.max(depths)
+
+  result <- fdataobj[max_idx, ]
+  result$names$main <- "BD Median"
+  result
+}
+
+#' Functional Median using Modified Band Depth
+#'
+#' Returns the curve with maximum modified band depth.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param ... Additional arguments passed to depth.MBD.
+#'
+#' @return The curve (as fdata object) with maximum modified band depth.
+#'
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(200), 20, 10))
+#' med <- func.med.MBD(fd)
+func.med.MBD <- function(fdataobj, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  depths <- depth.MBD(fdataobj, fdataobj, ...)
+  max_idx <- which.max(depths)
+
+  result <- fdataobj[max_idx, ]
+  result$names$main <- "MBD Median"
+  result
+}
+
+#' Functional Trimmed Mean using Band Depth
+#'
+#' Computes the trimmed mean by excluding curves with lowest band depth.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param trim Proportion of curves to trim (default 0.1).
+#' @param ... Additional arguments passed to depth.BD.
+#'
+#' @return An fdata object containing the trimmed mean function.
+#'
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(200), 20, 10))
+#' tm <- func.trim.BD(fd, trim = 0.2)
+func.trim.BD <- function(fdataobj, trim = 0.1, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  n <- nrow(fdataobj$data)
+  n_keep <- ceiling(n * (1 - trim))
+
+  depths <- depth.BD(fdataobj, fdataobj, ...)
+  depth_order <- order(depths, decreasing = TRUE)
+  keep_idx <- depth_order[seq_len(n_keep)]
+
+  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
+  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
+        names = list(main = "Trimmed Mean (BD)", xlab = fdataobj$names$xlab,
+                     ylab = fdataobj$names$ylab))
+}
+
+#' Functional Trimmed Mean using Modified Band Depth
+#'
+#' Computes the trimmed mean by excluding curves with lowest modified band depth.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param trim Proportion of curves to trim (default 0.1).
+#' @param ... Additional arguments passed to depth.MBD.
+#'
+#' @return An fdata object containing the trimmed mean function.
+#'
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(200), 20, 10))
+#' tm <- func.trim.MBD(fd, trim = 0.2)
+func.trim.MBD <- function(fdataobj, trim = 0.1, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  n <- nrow(fdataobj$data)
+  n_keep <- ceiling(n * (1 - trim))
+
+  depths <- depth.MBD(fdataobj, fdataobj, ...)
+  depth_order <- order(depths, decreasing = TRUE)
+  keep_idx <- depth_order[seq_len(n_keep)]
+
+  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
+  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
+        names = list(main = "Trimmed Mean (MBD)", xlab = fdataobj$names$xlab,
+                     ylab = fdataobj$names$ylab))
 }
