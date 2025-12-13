@@ -1,6 +1,6 @@
 Package: fdars
 Title: Functional Data Analysis in Rust
-Version: 0.3.3
+Version: 0.3.4
 Authors@R:
     person("Simon", "Müller", role = c("aut", "cre"),
            email = "simon@example.com")
