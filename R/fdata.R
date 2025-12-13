@@ -2157,6 +2157,30 @@ plot.group.distance <- function(x, type = c("heatmap", "dendrogram"),
 #' Tests whether groups of functional data are significantly different using
 #' permutation testing.
 #'
+#' @details
+#' **Null Hypothesis (H0):** All groups come from the same distribution. That is,
+#' the group labels are exchangeable and there is no systematic difference between
+#' the functional curves in different groups.
+#'
+#' **Alternative Hypothesis (H1):** At least one group differs from the others in
+#' terms of location (mean function) or dispersion.
+#'
+#' The test works by:
+#' 1. Computing a test statistic on the observed data
+#' 2. Repeatedly permuting the group labels and recomputing the statistic
+#' 3. Calculating the p-value as the proportion of permuted statistics >= observed
+#'
+#' Two test statistics are available:
+#' \itemize{
+#'   \item \code{"centroid"}: Sum of pairwise L2 distances between group mean
+#'     functions. Sensitive to differences in group locations (means).
+#'   \item \code{"ratio"}: Ratio of between-group to within-group variance,
+#'     similar to an F-statistic. Sensitive to both location and dispersion.
+#' }
+#'
+#' A small p-value (e.g., < 0.05) indicates evidence against H0, suggesting
+#' that the groups are significantly different.
+#'
 #' @param fdataobj An object of class 'fdata'.
 #' @param groups A factor or character vector specifying group membership.
 #' @param n.perm Number of permutations (default 1000).
