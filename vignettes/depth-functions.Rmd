@@ -170,9 +170,9 @@ The median is the curve with maximum depth:
 
 ```{r median}
 # Using different depth functions
-med_fm <- func.med.FM(fd)
-med_mode <- func.med.mode(fd)
-med_rp <- func.med.RP(fd, nproj = 50)
+med_fm <- median.FM(fd)
+med_mode <- median.mode(fd)
+med_rp <- median.RP(fd, nproj = 50)
 
 # The median is one of the original curves
 which.max(depth.FM(fd))
@@ -184,11 +184,11 @@ Remove a proportion of curves with lowest depth, then compute the mean:
 
 ```{r trimmed-mean}
 # 10% trimmed mean
-trim_fm <- func.trim.FM(fd, trim = 0.1)
-trim_mode <- func.trim.mode(fd, trim = 0.1)
+trim_fm <- trimmed.FM(fd, trim = 0.1)
+trim_mode <- trimmed.mode(fd, trim = 0.1)
 
 # Compare trimmed mean to regular mean
-mean_curve <- func.mean(fd)
+mean_curve <- mean(fd)
 ```
 
 ```{r plot-robust}
@@ -211,10 +211,10 @@ ggplot(df_compare, aes(x = t, y = value, color = type)) +
 
 ```{r variance}
 # Regular variance
-var_fd <- func.var(fd)
+var_fd <- var(fd)
 
 # Trimmed variance (more robust)
-trimvar_fd <- func.trimvar.FM(fd, trim = 0.1)
+trimvar_fd <- trimvar.FM(fd, trim = 0.1)
 ```
 
 ## Choosing a Depth Function

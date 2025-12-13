@@ -18,7 +18,7 @@ test_that("fdata creation matches fda.usc", {
   expect_equal(as.vector(fd_orig$argvals), as.vector(fd_rust$argvals))
 })
 
-test_that("func.mean matches fda.usc", {
+test_that("mean matches fda.usc", {
   skip_if_not_installed("fda.usc")
 
   set.seed(42)
@@ -30,8 +30,8 @@ test_that("func.mean matches fda.usc", {
   fd_orig <- fda.usc::fdata(X, argvals = t_grid)
   fd_rust <- fdars::fdata(X, argvals = t_grid)
 
-  mean_orig <- fda.usc::func.mean(fd_orig)
-  mean_rust <- fdars::func.mean(fd_rust)
+  mean_orig <- mean(fd_orig)
+  mean_rust <- mean(fd_rust)
 
   # fda.usc returns an fdata object
   if (inherits(mean_orig, "fdata")) {

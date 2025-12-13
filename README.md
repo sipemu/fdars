@@ -71,7 +71,7 @@ fd <- fdata(X, argvals = t)
 depths <- depth.FM(fd)
 
 # Find the functional median (most central curve)
-median_curve <- func.med.FM(fd)
+median_curve <- median.FM(fd)
 
 # Detect outliers
 outliers <- outliers.depth.trim(fd, trim = 0.1)
@@ -140,11 +140,17 @@ Identify unusual curves:
 
 ### Functional Statistics
 
-- `func.mean` - Functional mean
-- `func.var` - Functional variance
-- `func.sd` - Functional standard deviation
-- `func.cov` - Functional covariance
-- `func.gmed` - Geometric median (L1 median via Weiszfeld algorithm)
+- `mean(fd)` - Functional mean (S3 method)
+- `var.fdata(fd)` - Functional variance
+- `sd.fdata(fd)` - Functional standard deviation
+- `cov.fdata(fd)` - Functional covariance
+- `gmed(fd)` - Geometric median (L1 median via Weiszfeld algorithm)
+
+### Depth-Based Medians and Trimmed Means
+
+- `median.FM`, `median.MBD`, `median.BD`, `median.mode`, `median.RP`, `median.RPD`, `median.RT` - Depth-based medians
+- `trimmed.FM`, `trimmed.MBD`, `trimmed.BD`, `trimmed.mode`, `trimmed.RP`, `trimmed.RPD`, `trimmed.RT` - Trimmed means
+- `trimvar.FM`, `trimvar.RP`, `trimvar.RPD`, `trimvar.RT`, `trimvar.mode` - Trimmed variances
 
 ### Visualization
 
@@ -164,6 +170,41 @@ Identify unusual curves:
 ### Feature Extraction
 
 - `localavg.fdata` - Extract local average features from curves
+
+### 2D Functional Data (Surfaces)
+
+fdars supports 2D functional data (surfaces/images) with most statistical functions:
+
+```r
+# Create 2D functional data (e.g., 10 surfaces on a 20x30 grid)
+n <- 10
+m1 <- 20
+m2 <- 30
+s <- seq(0, 1, length.out = m1)
+t <- seq(0, 1, length.out = m2)
+
+# Generate surfaces: f(s,t) = sin(2*pi*s) * cos(2*pi*t) + noise
+X <- array(0, dim = c(n, m1, m2))
+for (i in 1:n) {
+  for (si in 1:m1) {
+    for (ti in 1:m2) {
+      X[i, si, ti] <- sin(2*pi*s[si]) * cos(2*pi*t[ti]) + rnorm(1, sd = 0.1)
+    }
+  }
+}
+
+fd2d <- fdata(X, argvals = list(s, t), fdata2d = TRUE)
+
+# All these work with 2D data:
+mean_surface <- mean(fd2d)           # Mean surface
+var_surface <- var.fdata(fd2d)       # Pointwise variance
+depths <- depth.FM(fd2d)             # Depth values
+median_surface <- median.FM(fd2d)    # Depth-based median
+gmed_surface <- gmed(fd2d)           # Geometric median
+
+# Plot 2D data (heatmap + contours)
+plot(fd2d)
+```
 
 ## Documentation
 
@@ -204,12 +245,12 @@ fdars provides several features not available in fda.usc:
 | **Functional Boxplot** | `boxplot.fdata()` for depth-based functional boxplots |
 | **MS Plot** | `MS.plot()` for magnitude-shape outlier visualization |
 | **Fuzzy C-Means** | `fuzzycmeans.fd()` for soft clustering with membership degrees |
-| **Geometric Median** | `func.gmed()` L1 median via Weiszfeld algorithm |
+| **Geometric Median** | `gmed()` L1 median via Weiszfeld algorithm |
 | **Curve Registration** | `register.fd()` shift registration using cross-correlation |
 | **Local Averages** | `localavg.fdata()` for feature extraction |
 | **Optimal k Selection** | `optim.kmeans.fd()` automatically finds optimal clusters using silhouette, Calinski-Harabasz, or elbow methods |
 | **Local k-NN Bandwidth** | `fregre.np()` supports local cross-validation (`kNN.lCV`) for adaptive bandwidth per observation |
-| **2D Functional Data** | Native support for surfaces/images as functional data (`fdata2d`) |
+| **2D Functional Data** | Native support for surfaces/images as functional data with 2D plotting (heatmap + contours) |
 | **Modern Visualizations** | All plots use ggplot2 instead of base R graphics |
 | **Dynamic Time Warping** | Built-in `metric.DTW()` for time series alignment |
 

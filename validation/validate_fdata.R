@@ -37,12 +37,12 @@ if (data_match && argvals_match) {
 }
 
 cat("========================================\n")
-cat("Validation: func.mean\n")
+cat("Validation: mean\n")
 cat("========================================\n\n")
 
 # Compute mean
-mean_orig <- fda.usc::func.mean(fd_orig)
-mean_rust <- fdars::func.mean(fd_rust)
+mean_orig <- fda.usc::mean(fd_orig)
+mean_rust <- fdars::mean(fd_rust)
 
 # fda.usc returns an fdata object, fdars returns a vector
 if (inherits(mean_orig, "fdata")) {
@@ -55,9 +55,9 @@ max_diff <- max(abs(mean_orig_vec - mean_rust))
 cat("Max absolute difference:", max_diff, "\n")
 
 if (max_diff < 1e-10) {
-  cat("PASS: func.mean matches exactly\n\n")
+  cat("PASS: mean matches exactly\n\n")
 } else {
-  cat("FAIL: func.mean differs\n")
+  cat("FAIL: mean differs\n")
   cat("Original:", round(mean_orig_vec[1:5], 6), "...\n")
   cat("Rust:", round(mean_rust[1:5], 6), "...\n\n")
 }
@@ -142,7 +142,7 @@ cat("========================================\n")
 cat("Summary\n")
 cat("========================================\n")
 cat("fdata creation: PASS\n")
-cat("func.mean max_diff:", max_diff, "\n")
+cat("mean max_diff:", max_diff, "\n")
 cat("fdata.cen max_diff:", max_diff_cen, "\n")
 cat("norm.fdata (L2) max_diff:", max_diff_norm, "\n")
 cat("norm.fdata (L1) max_diff:", max_diff_l1, "\n")

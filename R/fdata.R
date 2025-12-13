@@ -184,23 +184,52 @@ fdata.cen <- function(fdataobj) {
 
 #' Compute functional mean
 #'
-#' @param fdataobj An object of class 'fdata'.
+#' Computes the pointwise mean function across all observations.
+#' This is an S3 method for the generic \code{mean} function.
 #'
-#' @return A numeric vector containing the mean function values.
+#' @param x An object of class 'fdata'.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return For 1D fdata: a numeric vector containing the mean function values.
+#'   For 2D fdata: an fdata object containing the mean surface.
 #' @export
 #' @examples
+#' # 1D functional data
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' fm <- func.mean(fd)
-func.mean <- function(fdataobj) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
+#' fm <- mean(fd)
+#'
+#' # 2D functional data
+#' X <- array(rnorm(500), dim = c(5, 10, 10))
+#' fd2d <- fdata(X, argvals = list(1:10, 1:10), fdata2d = TRUE)
+#' fm2d <- mean(fd2d)
+mean.fdata <- function(x, ...) {
+  if (!inherits(x, "fdata")) {
+    stop("x must be of class 'fdata'")
   }
 
-  if (fdataobj$fdata2d) {
-    stop("func.mean not yet implemented for 2D functional data")
+  if (isTRUE(x$fdata2d)) {
+    # 2D case
+    mean_vals <- .Call("wrap__fdata_mean_2d", x$data)
+    # Return as fdata2d object
+    result <- list(
+      data = matrix(mean_vals, nrow = 1),
+      argvals = x$argvals,
+      rangeval = x$rangeval,
+      names = list(
+        main = "Mean surface",
+        xlab = x$names$xlab,
+        ylab = x$names$ylab,
+        zlab = x$names$zlab
+      ),
+      fdata2d = TRUE,
+      dims = x$dims
+    )
+    class(result) <- "fdata"
+    return(result)
   }
 
-  .Call("wrap__fdata_mean_1d", fdataobj$data)
+  # 1D case
+  .Call("wrap__fdata_mean_1d", x$data)
 }
 
 #' Compute Lp norm of functional data
@@ -278,19 +307,61 @@ summary.fdata <- function(object, ...) {
 
 #' Plot method for fdata objects
 #'
+#' For 1D functional data, plots curves as lines.
+#' For 2D functional data, plots surfaces as heatmaps with contour lines.
+#'
 #' @param x An object of class 'fdata'.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A ggplot object.
 #'
 #' @export
-#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal
+#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal geom_tile geom_contour scale_fill_viridis_c facet_wrap
 plot.fdata <- function(x, ...) {
-  if (x$fdata2d) {
-    warning("2D fdata plotting not yet implemented")
-    return(invisible(x))
+  if (isTRUE(x$fdata2d)) {
+    # 2D surface plotting
+    n <- nrow(x$data)
+    m1 <- x$dims[1]
+    m2 <- x$dims[2]
+    s <- x$argvals[[1]]
+    t <- x$argvals[[2]]
+
+    # Create grid for plotting
+    grid <- expand.grid(s = s, t = t)
+
+    # Build long-format data frame
+    df_list <- lapply(seq_len(n), function(i) {
+      data.frame(
+        surface_id = i,
+        s = grid$s,
+        t = grid$t,
+        value = as.vector(matrix(x$data[i, ], m1, m2))
+      )
+    })
+    df <- do.call(rbind, df_list)
+
+    # Plot with facets if multiple surfaces
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$s, y = .data$t, fill = .data$value)) +
+      ggplot2::geom_tile() +
+      ggplot2::geom_contour(ggplot2::aes(z = .data$value), color = "black", alpha = 0.5) +
+      ggplot2::scale_fill_viridis_c() +
+      ggplot2::labs(
+        x = x$names$xlab %||% "s",
+        y = x$names$ylab %||% "t",
+        fill = x$names$zlab %||% "value",
+        title = x$names$main
+      ) +
+      ggplot2::theme_minimal()
+
+    if (n > 1) {
+      p <- p + ggplot2::facet_wrap(~ surface_id)
+    }
+
+    print(p)
+    return(invisible(p))
   }
 
+  # 1D curve plotting
   n <- nrow(x$data)
   m <- ncol(x$data)
 
@@ -1109,7 +1180,7 @@ fdata.bootstrap <- function(fdataobj, n.boot = 200, method = c("naive", "smooth"
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Bootstrap CI for the mean function
-#' ci_mean <- fdata.bootstrap.ci(fd, statistic = func.mean, n.boot = 100)
+#' ci_mean <- fdata.bootstrap.ci(fd, statistic = mean, n.boot = 100)
 #'
 #' # Bootstrap CI for depth values
 #' ci_depth <- fdata.bootstrap.ci(fd,

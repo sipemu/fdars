@@ -169,7 +169,7 @@ test_that("depth.RPD produces valid depths", {
   expect_length(D, n)
 })
 
-test_that("func.med.FM returns valid median", {
+test_that("median.FM returns valid median", {
   set.seed(42)
   n <- 30
   m <- 50
@@ -181,14 +181,14 @@ test_that("func.med.FM returns valid median", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  med <- fdars::func.med.FM(fd)
+  med <- fdars::median.FM(fd)
 
   expect_s3_class(med, "fdata")
   expect_equal(nrow(med$data), 1)
   expect_equal(ncol(med$data), m)
 })
 
-test_that("func.trim.FM returns valid trimmed mean", {
+test_that("trimmed.FM returns valid trimmed mean", {
   set.seed(42)
   n <- 30
   m <- 50
@@ -200,7 +200,7 @@ test_that("func.trim.FM returns valid trimmed mean", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  trimmed <- fdars::func.trim.FM(fd, trim = 0.1)
+  trimmed <- fdars::trimmed.FM(fd, trim = 0.1)
 
   expect_s3_class(trimmed, "fdata")
   expect_equal(nrow(trimmed$data), 1)

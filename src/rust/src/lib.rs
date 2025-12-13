@@ -62,7 +62,7 @@ fn simpsons_weights_2d(argvals_s: &[f64], argvals_t: &[f64]) -> Vec<f64> {
 // fdata functions
 // =============================================================================
 
-/// Compute the mean function across all samples
+/// Compute the mean function across all samples (1D)
 #[extendr]
 fn fdata_mean_1d(data: RMatrix<f64>) -> Robj {
     let nrow = data.nrows();
@@ -74,6 +74,34 @@ fn fdata_mean_1d(data: RMatrix<f64>) -> Robj {
 
     let data_slice = data.as_real_slice().unwrap();
 
+    let mean: Vec<f64> = (0..ncol)
+        .into_par_iter()
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..nrow {
+                sum += data_slice[i + j * nrow];
+            }
+            sum / nrow as f64
+        })
+        .collect();
+
+    Robj::from(mean)
+}
+
+/// Compute the mean function across all samples (2D surfaces)
+/// Data is stored as n x (m1*m2) matrix where each row is a flattened surface
+#[extendr]
+fn fdata_mean_2d(data: RMatrix<f64>) -> Robj {
+    let nrow = data.nrows();
+    let ncol = data.ncols();
+
+    if nrow == 0 || ncol == 0 {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Same computation as 1D - just compute pointwise mean
     let mean: Vec<f64> = (0..ncol)
         .into_par_iter()
         .map(|j| {
@@ -388,6 +416,81 @@ fn geometric_median_1d(data: RMatrix<f64>, argvals: Vec<f64>, max_iter: i32, tol
 
     for _ in 0..max_iter {
         // Compute distances from current median to all curves
+        let distances: Vec<f64> = (0..nrow)
+            .map(|i| {
+                let mut dist_sq = 0.0;
+                for j in 0..ncol {
+                    let diff = data_slice[i + j * nrow] - median[j];
+                    dist_sq += diff * diff * weights[j];
+                }
+                dist_sq.sqrt()
+            })
+            .collect();
+
+        // Compute weights (1/distance), handling zero distances
+        let eps = 1e-10;
+        let inv_distances: Vec<f64> = distances.iter()
+            .map(|d| if *d > eps { 1.0 / d } else { 1.0 / eps })
+            .collect();
+
+        let sum_inv_dist: f64 = inv_distances.iter().sum();
+
+        // Update median using Weiszfeld iteration
+        let new_median: Vec<f64> = (0..ncol)
+            .map(|j| {
+                let mut weighted_sum = 0.0;
+                for i in 0..nrow {
+                    weighted_sum += data_slice[i + j * nrow] * inv_distances[i];
+                }
+                weighted_sum / sum_inv_dist
+            })
+            .collect();
+
+        // Check convergence
+        let diff: f64 = median.iter().zip(new_median.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f64>() / ncol as f64;
+
+        median = new_median;
+
+        if diff < tol {
+            break;
+        }
+    }
+
+    Robj::from(median)
+}
+
+/// Compute the geometric median (L1 median) of 2D functional data using Weiszfeld's algorithm
+/// Data is stored as n x (m1*m2) matrix where each row is a flattened surface
+#[extendr]
+fn geometric_median_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>, max_iter: i32, tol: f64) -> Robj {
+    let nrow = data.nrows();
+    let ncol = data.ncols();
+    let expected_cols = argvals_s.len() * argvals_t.len();
+
+    if nrow == 0 || ncol == 0 || ncol != expected_cols {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let weights = simpsons_weights_2d(&argvals_s, &argvals_t);
+
+    // Initialize with the mean
+    let mut median: Vec<f64> = (0..ncol)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..nrow {
+                sum += data_slice[i + j * nrow];
+            }
+            sum / nrow as f64
+        })
+        .collect();
+
+    let max_iter = max_iter as usize;
+
+    for _ in 0..max_iter {
+        // Compute distances from current median to all surfaces
         let distances: Vec<f64> = (0..nrow)
             .map(|i| {
                 let mut dist_sq = 0.0;
@@ -4625,11 +4728,13 @@ extendr_module! {
     mod fdars;
 
     fn fdata_mean_1d;
+    fn fdata_mean_2d;
     fn fdata_center_1d;
     fn fdata_norm_lp_1d;
     fn fdata_deriv_1d;
     fn fdata_deriv_2d;
     fn geometric_median_1d;
+    fn geometric_median_2d;
 
     fn depth_fm_1d;
     fn depth_mode_1d;

@@ -679,11 +679,11 @@ depth.RPD <- function(fdataobj, fdataori = NULL, nproj = 20, deriv = c(0, 1),
 #'
 #' @return The curve (as fdata object) with maximum depth.
 #'
-#' @export
+#' @export median.FM
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- func.med.FM(fd)
-func.med.FM <- function(fdataobj, depth.func = depth.FM, ...) {
+#' med <- median.FM(fd)
+median.FM <- function(fdataobj, depth.func = depth.FM, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -705,11 +705,11 @@ func.med.FM <- function(fdataobj, depth.func = depth.FM, ...) {
 #'
 #' @return A numeric vector containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.FM
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- func.trim.FM(fd, trim = 0.2)
-func.trim.FM <- function(fdataobj, trim = 0.1, depth.func = depth.FM, ...) {
+#' tm <- trimmed.FM(fd, trim = 0.2)
+trimmed.FM <- function(fdataobj, trim = 0.1, depth.func = depth.FM, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -737,11 +737,11 @@ func.trim.FM <- function(fdataobj, trim = 0.1, depth.func = depth.FM, ...) {
 #'
 #' @return The curve (as fdata object) with maximum modal depth.
 #'
-#' @export
+#' @export median.mode
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- func.med.mode(fd)
-func.med.mode <- function(fdataobj, ...) {
+#' med <- median.mode(fd)
+median.mode <- function(fdataobj, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -764,11 +764,11 @@ func.med.mode <- function(fdataobj, ...) {
 #'
 #' @return The curve (as fdata object) with maximum RP depth.
 #'
-#' @export
+#' @export median.RP
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- func.med.RP(fd)
-func.med.RP <- function(fdataobj, nproj = 50, ...) {
+#' med <- median.RP(fd)
+median.RP <- function(fdataobj, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -792,11 +792,11 @@ func.med.RP <- function(fdataobj, nproj = 50, ...) {
 #'
 #' @return The curve (as fdata object) with maximum RPD depth.
 #'
-#' @export
+#' @export median.RPD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' med <- func.med.RPD(fd)
-func.med.RPD <- function(fdataobj, nproj = 20, deriv = c(0, 1), ...) {
+#' med <- median.RPD(fd)
+median.RPD <- function(fdataobj, nproj = 20, deriv = c(0, 1), ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -819,11 +819,11 @@ func.med.RPD <- function(fdataobj, nproj = 20, deriv = c(0, 1), ...) {
 #'
 #' @return The curve (as fdata object) with maximum RT depth.
 #'
-#' @export
+#' @export median.RT
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- func.med.RT(fd)
-func.med.RT <- function(fdataobj, nproj = 50, ...) {
+#' med <- median.RT(fd)
+median.RT <- function(fdataobj, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -846,11 +846,11 @@ func.med.RT <- function(fdataobj, nproj = 50, ...) {
 #'
 #' @return An fdata object containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.mode
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- func.trim.mode(fd, trim = 0.2)
-func.trim.mode <- function(fdataobj, trim = 0.1, ...) {
+#' tm <- trimmed.mode(fd, trim = 0.2)
+trimmed.mode <- function(fdataobj, trim = 0.1, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -879,11 +879,11 @@ func.trim.mode <- function(fdataobj, trim = 0.1, ...) {
 #'
 #' @return An fdata object containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.RP
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- func.trim.RP(fd, trim = 0.2)
-func.trim.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
+#' tm <- trimmed.RP(fd, trim = 0.2)
+trimmed.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -913,11 +913,11 @@ func.trim.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
 #'
 #' @return An fdata object containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.RPD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tm <- func.trim.RPD(fd, trim = 0.2)
-func.trim.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...) {
+#' tm <- trimmed.RPD(fd, trim = 0.2)
+trimmed.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -946,11 +946,11 @@ func.trim.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...
 #'
 #' @return An fdata object containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.RT
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- func.trim.RT(fd, trim = 0.2)
-func.trim.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
+#' tm <- trimmed.RT(fd, trim = 0.2)
+trimmed.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -971,48 +971,96 @@ func.trim.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
 #' Functional Variance
 #'
 #' Computes the pointwise variance function of functional data.
+#' This is an S3 method for the generic \code{var} function.
 #'
-#' @param fdataobj An object of class 'fdata'.
+#' @param x An object of class 'fdata'.
+#' @param ... Additional arguments (currently ignored).
 #'
-#' @return An fdata object containing the variance function.
+#' @return An fdata object containing the variance function (1D or 2D).
 #'
-#' @export
+#' @export var.fdata
 #' @examples
+#' # 1D functional data
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' v <- func.var(fd)
-func.var <- function(fdataobj) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
+#' v <- var(fd)
+#'
+#' # 2D functional data
+#' X <- array(rnorm(500), dim = c(5, 10, 10))
+#' fd2d <- fdata(X, argvals = list(1:10, 1:10), fdata2d = TRUE)
+#' v2d <- var(fd2d)
+var.fdata <- function(x, ...) {
+  if (!inherits(x, "fdata")) {
+    stop("x must be of class 'fdata'")
   }
 
-  var_vals <- apply(fdataobj$data, 2, var)
+  var_vals <- apply(x$data, 2, var)
 
-  fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Variance", xlab = fdataobj$names$xlab,
+  if (isTRUE(x$fdata2d)) {
+    # Return as fdata2d
+    result <- list(
+      data = matrix(var_vals, nrow = 1),
+      argvals = x$argvals,
+      rangeval = x$rangeval,
+      names = list(main = "Variance", xlab = x$names$xlab,
+                   ylab = x$names$ylab, zlab = "Var"),
+      fdata2d = TRUE,
+      dims = x$dims
+    )
+    class(result) <- "fdata"
+    return(result)
+  }
+
+  # 1D case
+  fdata(matrix(var_vals, nrow = 1), argvals = x$argvals,
+        names = list(main = "Variance", xlab = x$names$xlab,
                      ylab = "Var(X(t))"))
 }
 
 #' Functional Standard Deviation
 #'
 #' Computes the pointwise standard deviation function of functional data.
+#' This is an S3 method for the generic \code{sd} function.
 #'
-#' @param fdataobj An object of class 'fdata'.
+#' @param x An object of class 'fdata'.
+#' @param ... Additional arguments (currently ignored).
 #'
-#' @return An fdata object containing the standard deviation function.
+#' @return An fdata object containing the standard deviation function (1D or 2D).
 #'
-#' @export
+#' @export sd.fdata
 #' @examples
+#' # 1D functional data
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' s <- func.sd(fd)
-func.sd <- function(fdataobj) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
+#' s <- sd(fd)
+#'
+#' # 2D functional data
+#' X <- array(rnorm(500), dim = c(5, 10, 10))
+#' fd2d <- fdata(X, argvals = list(1:10, 1:10), fdata2d = TRUE)
+#' s2d <- sd(fd2d)
+sd.fdata <- function(x, ...) {
+  if (!inherits(x, "fdata")) {
+    stop("x must be of class 'fdata'")
   }
 
-  sd_vals <- apply(fdataobj$data, 2, sd)
+  sd_vals <- apply(x$data, 2, sd)
 
-  fdata(matrix(sd_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Standard Deviation", xlab = fdataobj$names$xlab,
+  if (isTRUE(x$fdata2d)) {
+    # Return as fdata2d
+    result <- list(
+      data = matrix(sd_vals, nrow = 1),
+      argvals = x$argvals,
+      rangeval = x$rangeval,
+      names = list(main = "Standard Deviation", xlab = x$names$xlab,
+                   ylab = x$names$ylab, zlab = "SD"),
+      fdata2d = TRUE,
+      dims = x$dims
+    )
+    class(result) <- "fdata"
+    return(result)
+  }
+
+  # 1D case
+  fdata(matrix(sd_vals, nrow = 1), argvals = x$argvals,
+        names = list(main = "Standard Deviation", xlab = x$names$xlab,
                      ylab = "SD(X(t))"))
 }
 
@@ -1020,13 +1068,13 @@ func.sd <- function(fdataobj) {
 #'
 #' Computes the geometric median (L1 median) of functional data using
 #' Weiszfeld's iterative algorithm. The geometric median minimizes the
-#' sum of L2 distances to all curves, making it robust to outliers.
+#' sum of L2 distances to all curves/surfaces, making it robust to outliers.
 #'
 #' @param fdataobj An object of class 'fdata'.
 #' @param max.iter Maximum number of iterations (default 100).
 #' @param tol Convergence tolerance (default 1e-6).
 #'
-#' @return An fdata object containing the geometric median function.
+#' @return An fdata object containing the geometric median function (1D or 2D).
 #'
 #' @details
 #' The geometric median y minimizes:
@@ -1038,8 +1086,8 @@ func.sd <- function(fdataobj) {
 #' The Weiszfeld algorithm is an iteratively reweighted least squares method
 #' that converges to the geometric median.
 #'
-#' @seealso \code{\link{func.mean}} for the (non-robust) mean function,
-#'   \code{\link{func.med.FM}} for depth-based median
+#' @seealso \code{\link{mean.fdata}} for the (non-robust) mean function,
+#'   \code{\link{median.FM}} for depth-based median
 #'
 #' @export
 #' @examples
@@ -1051,19 +1099,36 @@ func.sd <- function(fdataobj) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Compare mean vs geometric median
-#' mean_curve <- func.mean(fd)
-#' gmed_curve <- func.gmed(fd)
+#' mean_curve <- mean(fd)
+#' gmed_curve <- gmed(fd)
 #'
 #' # The geometric median is less affected by the outlier
-func.gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
+gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("func.gmed not yet implemented for 2D functional data")
+    # 2D case
+    gmed_vals <- .Call("wrap__geometric_median_2d", fdataobj$data,
+                       as.numeric(fdataobj$argvals[[1]]),
+                       as.numeric(fdataobj$argvals[[2]]),
+                       as.integer(max.iter), as.numeric(tol))
+
+    result <- list(
+      data = matrix(gmed_vals, nrow = 1),
+      argvals = fdataobj$argvals,
+      rangeval = fdataobj$rangeval,
+      names = list(main = "Geometric Median", xlab = fdataobj$names$xlab,
+                   ylab = fdataobj$names$ylab, zlab = fdataobj$names$zlab),
+      fdata2d = TRUE,
+      dims = fdataobj$dims
+    )
+    class(result) <- "fdata"
+    return(result)
   }
 
+  # 1D case
   gmed_vals <- .Call("wrap__geometric_median_1d", fdataobj$data,
                      as.numeric(fdataobj$argvals),
                      as.integer(max.iter), as.numeric(tol))
@@ -1076,48 +1141,50 @@ func.gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
 #' Functional Covariance Function
 #'
 #' Computes the covariance function (surface) for functional data.
-#' \code{Cov(s, t) = E[(X(s) - mu(s))(X(t) - mu(t))]} where mu is the mean function.
+#' For 1D: \code{Cov(s, t) = E[(X(s) - mu(s))(X(t) - mu(t))]}
+#' For 2D: Covariance across the flattened domain.
+#' This is an S3 method for the generic \code{cov} function.
 #'
-#' @param fdataobj An object of class 'fdata'.
+#' @param x An object of class 'fdata'.
+#' @param ... Additional arguments (currently ignored).
 #'
 #' @return A list with components:
 #' \describe{
-#'   \item{cov}{The covariance matrix (m x m) where m is number of time points}
+#'   \item{cov}{The covariance matrix (m x m for 1D, (m1*m2) x (m1*m2) for 2D)}
 #'   \item{argvals}{The evaluation points (same as input)}
 #'   \item{mean}{The mean function}
 #' }
 #'
-#' @export
+#' @export cov.fdata
 #' @examples
+#' # 1D functional data
 #' t <- seq(0, 1, length.out = 50)
 #' X <- matrix(0, 20, 50)
 #' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
 #' fd <- fdata(X, argvals = t)
-#' cov_result <- func.cov(fd)
+#' cov_result <- cov(fd)
 #' image(cov_result$cov, main = "Covariance Surface")
-func.cov <- function(fdataobj) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  if (isTRUE(fdataobj$fdata2d)) {
-    stop("func.cov not yet implemented for 2D functional data")
+cov.fdata <- function(x, ...) {
+  if (!inherits(x, "fdata")) {
+    stop("x must be of class 'fdata'")
   }
 
   # Compute mean and centered data
-  n <- nrow(fdataobj$data)
-  m <- ncol(fdataobj$data)
+  n <- nrow(x$data)
+  m <- ncol(x$data)
 
-  mean_func <- colMeans(fdataobj$data)
-  centered <- sweep(fdataobj$data, 2, mean_func)
+  mean_func <- colMeans(x$data)
+  centered <- sweep(x$data, 2, mean_func)
 
   # Compute covariance matrix: (1/(n-1)) * t(X_centered) %*% X_centered
   cov_mat <- crossprod(centered) / (n - 1)
 
   list(
     cov = cov_mat,
-    argvals = fdataobj$argvals,
-    mean = mean_func
+    argvals = x$argvals,
+    mean = mean_func,
+    fdata2d = isTRUE(x$fdata2d),
+    dims = x$dims
   )
 }
 
@@ -1131,11 +1198,11 @@ func.cov <- function(fdataobj) {
 #'
 #' @return An fdata object containing the trimmed variance function.
 #'
-#' @export
+#' @export trimvar.FM
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- func.trimvar.FM(fd, trim = 0.2)
-func.trimvar.FM <- function(fdataobj, trim = 0.1, ...) {
+#' tv <- trimvar.FM(fd, trim = 0.2)
+trimvar.FM <- function(fdataobj, trim = 0.1, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1164,11 +1231,11 @@ func.trimvar.FM <- function(fdataobj, trim = 0.1, ...) {
 #'
 #' @return An fdata object containing the trimmed variance function.
 #'
-#' @export
+#' @export trimvar.mode
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- func.trimvar.mode(fd, trim = 0.2)
-func.trimvar.mode <- function(fdataobj, trim = 0.1, ...) {
+#' tv <- trimvar.mode(fd, trim = 0.2)
+trimvar.mode <- function(fdataobj, trim = 0.1, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1198,11 +1265,11 @@ func.trimvar.mode <- function(fdataobj, trim = 0.1, ...) {
 #'
 #' @return An fdata object containing the trimmed variance function.
 #'
-#' @export
+#' @export trimvar.RP
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- func.trimvar.RP(fd, trim = 0.2)
-func.trimvar.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
+#' tv <- trimvar.RP(fd, trim = 0.2)
+trimvar.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1233,11 +1300,11 @@ func.trimvar.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
 #'
 #' @return An fdata object containing the trimmed variance function.
 #'
-#' @export
+#' @export trimvar.RPD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tv <- func.trimvar.RPD(fd, trim = 0.2)
-func.trimvar.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...) {
+#' tv <- trimvar.RPD(fd, trim = 0.2)
+trimvar.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1267,11 +1334,11 @@ func.trimvar.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), 
 #'
 #' @return An fdata object containing the trimmed variance function.
 #'
-#' @export
+#' @export trimvar.RT
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- func.trimvar.RT(fd, trim = 0.2)
-func.trimvar.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
+#' tv <- trimvar.RT(fd, trim = 0.2)
+trimvar.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1299,11 +1366,11 @@ func.trimvar.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
 #'
 #' @return The curve (as fdata object) with maximum band depth.
 #'
-#' @export
+#' @export median.BD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' med <- func.med.BD(fd)
-func.med.BD <- function(fdataobj, ...) {
+#' med <- median.BD(fd)
+median.BD <- function(fdataobj, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1325,11 +1392,11 @@ func.med.BD <- function(fdataobj, ...) {
 #'
 #' @return The curve (as fdata object) with maximum modified band depth.
 #'
-#' @export
+#' @export median.MBD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' med <- func.med.MBD(fd)
-func.med.MBD <- function(fdataobj, ...) {
+#' med <- median.MBD(fd)
+median.MBD <- function(fdataobj, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1352,11 +1419,11 @@ func.med.MBD <- function(fdataobj, ...) {
 #'
 #' @return An fdata object containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.BD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tm <- func.trim.BD(fd, trim = 0.2)
-func.trim.BD <- function(fdataobj, trim = 0.1, ...) {
+#' tm <- trimmed.BD(fd, trim = 0.2)
+trimmed.BD <- function(fdataobj, trim = 0.1, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -1384,11 +1451,11 @@ func.trim.BD <- function(fdataobj, trim = 0.1, ...) {
 #'
 #' @return An fdata object containing the trimmed mean function.
 #'
-#' @export
+#' @export trimmed.MBD
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tm <- func.trim.MBD(fd, trim = 0.2)
-func.trim.MBD <- function(fdataobj, trim = 0.1, ...) {
+#' tm <- trimmed.MBD(fd, trim = 0.2)
+trimmed.MBD <- function(fdataobj, trim = 0.1, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }

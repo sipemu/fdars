@@ -86,13 +86,13 @@ plot(fd)
 
 ```{r basic-ops}
 # Compute mean function
-mean_curve <- func.mean(fd)
+mean_curve <- mean(fd)
 
 # Center the data
 fd_centered <- fdata.cen(fd)
 
 # Compute functional variance
-variance <- func.var(fd)
+variance <- var(fd)
 ```
 
 ### Subsetting
@@ -120,7 +120,7 @@ depths <- depth.FM(fd)
 head(depths)
 
 # Find the median curve (deepest)
-median_curve <- func.med.FM(fd)
+median_curve <- median.FM(fd)
 ```
 
 ### Distance Metrics

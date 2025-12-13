@@ -25,9 +25,9 @@ create_test_data <- function(n = 30, m = 50, seed = 42) {
 # Functional Medians (depth-based)
 # =============================================================================
 
-test_that("func.med.mode returns valid median", {
+test_that("median.mode returns valid median", {
   data <- create_test_data()
-  med <- fdars::func.med.mode(data$fd)
+  med <- fdars::median.mode(data$fd)
 
   expect_s3_class(med, "fdata")
   expect_equal(nrow(med$data), 1)
@@ -35,27 +35,27 @@ test_that("func.med.mode returns valid median", {
   expect_equal(length(med$argvals), data$m)
 })
 
-test_that("func.med.RP returns valid median", {
+test_that("median.RP returns valid median", {
   data <- create_test_data()
-  med <- fdars::func.med.RP(data$fd, nproj = 50)
+  med <- fdars::median.RP(data$fd, nproj = 50)
 
   expect_s3_class(med, "fdata")
   expect_equal(nrow(med$data), 1)
   expect_equal(ncol(med$data), data$m)
 })
 
-test_that("func.med.RPD returns valid median", {
+test_that("median.RPD returns valid median", {
   data <- create_test_data()
-  med <- fdars::func.med.RPD(data$fd, nproj = 50)
+  med <- fdars::median.RPD(data$fd, nproj = 50)
 
   expect_s3_class(med, "fdata")
   expect_equal(nrow(med$data), 1)
   expect_equal(ncol(med$data), data$m)
 })
 
-test_that("func.med.RT returns valid median", {
+test_that("median.RT returns valid median", {
   data <- create_test_data()
-  med <- fdars::func.med.RT(data$fd)
+  med <- fdars::median.RT(data$fd)
 
   expect_s3_class(med, "fdata")
   expect_equal(nrow(med$data), 1)
@@ -66,43 +66,43 @@ test_that("func.med.RT returns valid median", {
 # Functional Trimmed Means (depth-based)
 # =============================================================================
 
-test_that("func.trim.mode returns valid trimmed mean", {
+test_that("trimmed.mode returns valid trimmed mean", {
   data <- create_test_data()
-  trim <- fdars::func.trim.mode(data$fd, trim = 0.1)
+  trim <- fdars::trimmed.mode(data$fd, trim = 0.1)
 
   expect_s3_class(trim, "fdata")
   expect_equal(nrow(trim$data), 1)
   expect_equal(ncol(trim$data), data$m)
 })
 
-test_that("func.trim.RP returns valid trimmed mean", {
+test_that("trimmed.RP returns valid trimmed mean", {
   data <- create_test_data()
-  trim <- fdars::func.trim.RP(data$fd, trim = 0.1, nproj = 50)
+  trim <- fdars::trimmed.RP(data$fd, trim = 0.1, nproj = 50)
 
   expect_s3_class(trim, "fdata")
   expect_equal(nrow(trim$data), 1)
   expect_equal(ncol(trim$data), data$m)
 })
 
-test_that("func.trim.RPD returns valid trimmed mean", {
+test_that("trimmed.RPD returns valid trimmed mean", {
   data <- create_test_data()
-  trim <- fdars::func.trim.RPD(data$fd, trim = 0.1, nproj = 50)
+  trim <- fdars::trimmed.RPD(data$fd, trim = 0.1, nproj = 50)
 
   expect_s3_class(trim, "fdata")
   expect_equal(nrow(trim$data), 1)
   expect_equal(ncol(trim$data), data$m)
 })
 
-test_that("func.trim.RT returns valid trimmed mean", {
+test_that("trimmed.RT returns valid trimmed mean", {
   data <- create_test_data()
-  trim <- fdars::func.trim.RT(data$fd, trim = 0.1)
+  trim <- fdars::trimmed.RT(data$fd, trim = 0.1)
 
   expect_s3_class(trim, "fdata")
   expect_equal(nrow(trim$data), 1)
   expect_equal(ncol(trim$data), data$m)
 })
 
-test_that("func.trim variants are more robust than mean", {
+test_that("trimmed variants are more robust than mean", {
   # Create data with outliers
   set.seed(42)
   n <- 30
@@ -117,14 +117,14 @@ test_that("func.trim variants are more robust than mean", {
   X[2, ] <- X[2, ] - 5
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  mean_curve <- fdars::func.mean(fd)
-  trim_curve <- fdars::func.trim.FM(fd, trim = 0.1)
+  mean_curve <- mean(fd)
+  trim_curve <- fdars::trimmed.FM(fd, trim = 0.1)
 
   # True mean (without outliers)
   true_mean <- colMeans(X[3:n, ])
 
   # Both methods should be reasonably close to the true mean
-  # func.mean returns a vector, not fdata
+  # mean returns a vector, not fdata
   mean_error <- sum((as.numeric(mean_curve) - true_mean)^2)
   trim_error <- sum((trim_curve$data[1, ] - true_mean)^2)
 
@@ -137,9 +137,9 @@ test_that("func.trim variants are more robust than mean", {
 # Functional Variance
 # =============================================================================
 
-test_that("func.var returns valid variance", {
+test_that("var returns valid variance", {
   data <- create_test_data()
-  fvar <- fdars::func.var(data$fd)
+  fvar <- fdars::var.fdata(data$fd)
 
   expect_s3_class(fvar, "fdata")
   expect_equal(nrow(fvar$data), 1)
@@ -149,9 +149,9 @@ test_that("func.var returns valid variance", {
   expect_true(all(fvar$data >= 0))
 })
 
-test_that("func.var returns reasonable variance values", {
+test_that("var returns reasonable variance values", {
   data <- create_test_data()
-  fvar <- fdars::func.var(data$fd)
+  fvar <- fdars::var.fdata(data$fd)
 
   # Check variance is positive and reasonable
   expect_true(all(fvar$data > 0))
@@ -165,9 +165,9 @@ test_that("func.var returns reasonable variance values", {
 # Functional Trimmed Variance (depth-based)
 # =============================================================================
 
-test_that("func.trimvar.FM returns valid trimmed variance", {
+test_that("trimvar.FM returns valid trimmed variance", {
   data <- create_test_data()
-  trimvar <- fdars::func.trimvar.FM(data$fd, trim = 0.1)
+  trimvar <- fdars::trimvar.FM(data$fd, trim = 0.1)
 
   expect_s3_class(trimvar, "fdata")
   expect_equal(nrow(trimvar$data), 1)
@@ -175,36 +175,36 @@ test_that("func.trimvar.FM returns valid trimmed variance", {
   expect_true(all(trimvar$data >= 0))
 })
 
-test_that("func.trimvar.mode returns valid trimmed variance", {
+test_that("trimvar.mode returns valid trimmed variance", {
   data <- create_test_data()
-  trimvar <- fdars::func.trimvar.mode(data$fd, trim = 0.1)
+  trimvar <- fdars::trimvar.mode(data$fd, trim = 0.1)
 
   expect_s3_class(trimvar, "fdata")
   expect_equal(nrow(trimvar$data), 1)
   expect_true(all(trimvar$data >= 0))
 })
 
-test_that("func.trimvar.RP returns valid trimmed variance", {
+test_that("trimvar.RP returns valid trimmed variance", {
   data <- create_test_data()
-  trimvar <- fdars::func.trimvar.RP(data$fd, trim = 0.1, nproj = 50)
+  trimvar <- fdars::trimvar.RP(data$fd, trim = 0.1, nproj = 50)
 
   expect_s3_class(trimvar, "fdata")
   expect_equal(nrow(trimvar$data), 1)
   expect_true(all(trimvar$data >= 0))
 })
 
-test_that("func.trimvar.RPD returns valid trimmed variance", {
+test_that("trimvar.RPD returns valid trimmed variance", {
   data <- create_test_data()
-  trimvar <- fdars::func.trimvar.RPD(data$fd, trim = 0.1, nproj = 50)
+  trimvar <- fdars::trimvar.RPD(data$fd, trim = 0.1, nproj = 50)
 
   expect_s3_class(trimvar, "fdata")
   expect_equal(nrow(trimvar$data), 1)
   expect_true(all(trimvar$data >= 0))
 })
 
-test_that("func.trimvar.RT returns valid trimmed variance", {
+test_that("trimvar.RT returns valid trimmed variance", {
   data <- create_test_data()
-  trimvar <- fdars::func.trimvar.RT(data$fd, trim = 0.1)
+  trimvar <- fdars::trimvar.RT(data$fd, trim = 0.1)
 
   expect_s3_class(trimvar, "fdata")
   expect_equal(nrow(trimvar$data), 1)
@@ -254,12 +254,12 @@ test_that("fdata2pc scores are orthogonal", {
   expect_true(max(abs(off_diag)) < 1e-6)
 })
 
-test_that("fdata2pc mean matches func.mean", {
+test_that("fdata2pc mean matches mean", {
   data <- create_test_data()
   pca <- fdars::fdata2pc(data$fd, ncomp = 3)
-  fmean <- fdars::func.mean(data$fd)
+  fmean <- mean(data$fd)
 
-  # func.mean returns a numeric vector
+  # mean returns a numeric vector
   expect_equal(pca$mean, as.numeric(fmean), tolerance = 1e-10)
 })
 
@@ -408,24 +408,24 @@ test_that("outliers.lrt is reproducible with seed", {
 test_that("functions reject non-fdata input", {
   X <- matrix(rnorm(100), 10, 10)
 
-  expect_error(fdars::func.med.mode(X))
-  expect_error(fdars::func.trim.mode(X))
-  expect_error(fdars::func.var(X))
-  expect_error(fdars::func.trimvar.FM(X))
+  expect_error(fdars::median.mode(X))
+  expect_error(fdars::trimmed.mode(X))
+  expect_error(fdars::var(X))
+  expect_error(fdars::trimvar.FM(X))
   expect_error(fdars::fdata2pc(X))
   expect_error(fdars::fdata2basis(X))
   expect_error(fdars::outliers.lrt(X))
 })
 
-test_that("func.trim handles edge cases", {
+test_that("trimmed handles edge cases", {
   data <- create_test_data()
 
   # Very small trim should work
-  result_small <- fdars::func.trim.FM(data$fd, trim = 0.01)
+  result_small <- fdars::trimmed.FM(data$fd, trim = 0.01)
   expect_s3_class(result_small, "fdata")
 
   # Moderate trim should work
-  result_mod <- fdars::func.trim.FM(data$fd, trim = 0.2)
+  result_mod <- fdars::trimmed.FM(data$fd, trim = 0.2)
   expect_s3_class(result_mod, "fdata")
 })
 
@@ -436,10 +436,10 @@ test_that("func.trim handles edge cases", {
 test_that("all median functions return curves from original data", {
   data <- create_test_data()
 
-  med_fm <- fdars::func.med.FM(data$fd)
-  med_mode <- fdars::func.med.mode(data$fd)
-  med_rp <- fdars::func.med.RP(data$fd, nproj = 50)
-  med_rt <- fdars::func.med.RT(data$fd)
+  med_fm <- fdars::median.FM(data$fd)
+  med_mode <- fdars::median.mode(data$fd)
+  med_rp <- fdars::median.RP(data$fd, nproj = 50)
+  med_rt <- fdars::median.RT(data$fd)
 
   # Each median should be one of the original curves
   check_is_original <- function(med, X) {
@@ -455,8 +455,8 @@ test_that("all median functions return curves from original data", {
 test_that("trimmed variance is less than or equal to full variance", {
   data <- create_test_data()
 
-  full_var <- fdars::func.var(data$fd)
-  trim_var <- fdars::func.trimvar.FM(data$fd, trim = 0.2)
+  full_var <- fdars::var.fdata(data$fd)
+  trim_var <- fdars::trimvar.FM(data$fd, trim = 0.2)
 
   # With outliers removed, variance should typically be smaller
   # (not always guaranteed, but usually true)
