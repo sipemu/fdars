@@ -51,7 +51,7 @@ remotes::install_github("sipemu/fdars")
 ```bash
 cd fdars
 R CMD build .
-R CMD INSTALL fdars_0.1.0.tar.gz
+R CMD INSTALL fdars_0.3.0.tar.gz
 ```
 
 ## Quick Start
@@ -159,6 +159,40 @@ Identify unusual curves:
 - `sd(fd)` - Functional standard deviation
 - `cov(fd)` - Functional covariance
 - `gmed(fd)` - Geometric median (L1 median via Weiszfeld algorithm)
+
+### Covariance Functions and Gaussian Process Generation
+
+Generate synthetic functional data from Gaussian processes with various covariance kernels:
+
+```r
+# Smooth samples with Gaussian (squared exponential) kernel
+fd_smooth <- make_gaussian_process(n = 20, t = seq(0, 1, 100),
+                                   cov = cov.Gaussian(length_scale = 0.2))
+
+# Rough samples with Matern kernel
+fd_rough <- make_gaussian_process(n = 20, t = seq(0, 1, 100),
+                                  cov = cov.Matern(nu = 1.5))
+
+# Periodic samples
+fd_periodic <- make_gaussian_process(n = 10, t = seq(0, 2, 200),
+                                     cov = cov.Periodic(period = 0.5))
+
+# Combine kernels: signal + noise
+cov_total <- cov.add(cov.Gaussian(variance = 1), cov.WhiteNoise(variance = 0.1))
+fd_noisy <- make_gaussian_process(n = 10, t = seq(0, 1, 100), cov = cov_total)
+```
+
+Available covariance functions:
+- `cov.Gaussian` - Squared exponential (RBF) kernel, infinitely smooth
+- `cov.Exponential` - Exponential kernel (Matern ν=0.5), rough
+- `cov.Matern` - Matern family with smoothness parameter ν
+- `cov.Brownian` - Brownian motion covariance (1D only)
+- `cov.Linear` - Linear kernel
+- `cov.Polynomial` - Polynomial kernel
+- `cov.WhiteNoise` - Independent noise at each point
+- `cov.Periodic` - Periodic kernel (1D only)
+- `cov.add` - Combine kernels by addition
+- `cov.mult` - Combine kernels by multiplication
 
 ### Depth-Based Medians and Trimmed Means
 
@@ -282,6 +316,8 @@ fdars uses a clean, unified API with method parameters:
 | `cluster.kmeans(fd, ncl)` | K-means clustering |
 | `cluster.fcm(fd, ncl)` | Fuzzy C-means clustering |
 | `cluster.optim(fd, ncl.range)` | Optimal k selection |
+| `make_gaussian_process(n, t, cov)` | Generate GP samples |
+| `cov.Gaussian()`, `cov.Matern()`, etc. | Covariance kernel functions |
 
 ## License
 
