@@ -152,6 +152,37 @@ The Rust backend provides significant speedups:
 
 fdars is designed to be compatible with [fda.usc](https://cran.r-project.org/package=fda.usc). Most functions have the same names, arguments, and output structures, making migration straightforward.
 
+## Comparison with fda.usc
+
+### Extended Functionality
+
+fdars provides several features not available in fda.usc:
+
+| Feature | Description |
+|---------|-------------|
+| **10-200x Performance** | Rust backend with parallel processing for computationally intensive operations |
+| **Optimal k Selection** | `optim.kmeans.fd()` automatically finds optimal clusters using silhouette, Calinski-Harabasz, or elbow methods |
+| **Local k-NN Bandwidth** | `fregre.np()` supports local cross-validation (`kNN.lCV`) for adaptive bandwidth per observation |
+| **2D Functional Data** | Native support for surfaces/images as functional data (`fdata2d`) |
+| **Modern Visualizations** | All plots use ggplot2 instead of base R graphics |
+| **Dynamic Time Warping** | Built-in `metric.DTW()` for time series alignment |
+
+### Not Yet Implemented
+
+The following fda.usc features are not yet available in fdars:
+
+| Category | Functions |
+|----------|-----------|
+| **Classification** | `classif.depth`, `classif.DD`, `classif.np`, `classif.glm`, `classif.gkam`, `classif.gsam` |
+| **PLS Regression** | `fregre.pls`, `fregre.pls.cv` |
+| **GLM/GAM Models** | `fregre.glm`, `fregre.gkam`, `fregre.gsam`, `fregre.lm`, `fregre.plm` |
+| **Functional ANOVA** | `fanova.onefactor`, `fanova.hetero`, `fanova.RPm` |
+| **Functional Response** | `fregre.basis.fr` (functional-on-functional regression) |
+| **Multivariate FDA** | `depth.mdata`, `depth.mfdata` |
+| **Additional Tests** | `dfv.test`, `fEqDistrib.test`, `fEqMoments.test` |
+
+Contributions are welcome! See the [GitHub repository](https://github.com/sipemu/fdars) to get involved.
+
 ## License
 
 MIT
