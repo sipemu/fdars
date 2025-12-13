@@ -348,3 +348,194 @@ test_that("predict.fregre.np works with kNN models", {
   expect_equal(predict(fit_gcv), fit_gcv$fitted.values)
   expect_equal(predict(fit_lcv), fit_lcv$fitted.values)
 })
+
+# =============================================================================
+# fregre.np.multi Tests
+# =============================================================================
+
+test_that("fregre.np.multi with equal weights works", {
+  set.seed(42)
+  n <- 40
+  m <- 20
+  t_grid <- seq(0, 1, length.out = m)
+
+  X1 <- matrix(0, n, m)
+  X2 <- matrix(0, n, m)
+  for (i in 1:n) {
+    X1[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+    X2[i, ] <- cos(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X1) + 0.5 * rowMeans(X2) + rnorm(n, sd = 0.1)
+
+  fd1 <- fdars::fdata(X1, argvals = t_grid)
+  fd2 <- fdars::fdata(X2, argvals = t_grid)
+
+  fit <- fdars::fregre.np.multi(list(fd1, fd2), y)
+
+  expect_s3_class(fit, "fregre.np.multi")
+  expect_length(fit$fitted.values, n)
+  expect_length(fit$residuals, n)
+  expect_equal(fit$weights, c(0.5, 0.5))
+  expect_equal(length(fit$D.list), 2)
+})
+
+test_that("fregre.np.multi with fixed weights works", {
+  set.seed(42)
+  n <- 40
+  m <- 20
+  t_grid <- seq(0, 1, length.out = m)
+
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm(n * m), n, m)
+  y <- rnorm(n)
+
+  fd1 <- fdars::fdata(X1, argvals = t_grid)
+  fd2 <- fdars::fdata(X2, argvals = t_grid)
+
+  fit <- fdars::fregre.np.multi(list(fd1, fd2), y, weights = c(0.7, 0.3))
+
+  expect_equal(fit$weights, c(0.7, 0.3))
+})
+
+test_that("fregre.np.multi with CV weights works", {
+  set.seed(42)
+  n <- 40
+  m <- 20
+  t_grid <- seq(0, 1, length.out = m)
+
+  X1 <- matrix(0, n, m)
+  X2 <- matrix(0, n, m)
+  for (i in 1:n) {
+    X1[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+    X2[i, ] <- cos(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+  }
+  y <- rowMeans(X1) + 0.5 * rowMeans(X2) + rnorm(n, sd = 0.1)
+
+  fd1 <- fdars::fdata(X1, argvals = t_grid)
+  fd2 <- fdars::fdata(X2, argvals = t_grid)
+
+  fit <- fdars::fregre.np.multi(list(fd1, fd2), y, weights = "cv", cv.folds = 3)
+
+  expect_s3_class(fit, "fregre.np.multi")
+  expect_true(!is.null(fit$weights.cv))
+  expect_equal(sum(fit$weights), 1)
+  expect_true(all(fit$weights >= 0))
+})
+
+test_that("fregre.np.multi with kNN works", {
+  set.seed(42)
+  n <- 40
+  m <- 20
+  t_grid <- seq(0, 1, length.out = m)
+
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm(n * m), n, m)
+  y <- rnorm(n)
+
+  fd1 <- fdars::fdata(X1, argvals = t_grid)
+  fd2 <- fdars::fdata(X2, argvals = t_grid)
+
+  fit_gcv <- fdars::fregre.np.multi(list(fd1, fd2), y, type.S = "kNN.gCV", knn = 15)
+  fit_lcv <- fdars::fregre.np.multi(list(fd1, fd2), y, type.S = "kNN.lCV", knn = 15)
+
+  expect_s3_class(fit_gcv, "fregre.np.multi")
+  expect_s3_class(fit_lcv, "fregre.np.multi")
+  expect_true(!is.null(fit_gcv$k.opt))
+  expect_true(!is.null(fit_lcv$k.opt))
+})
+
+test_that("fregre.np.multi print method works", {
+  set.seed(42)
+  n <- 30
+  m <- 15
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm(n * m), n, m)
+  y <- rnorm(n)
+
+  fd1 <- fdars::fdata(X1)
+  fd2 <- fdars::fdata(X2)
+
+  fit <- fdars::fregre.np.multi(list(fd1, fd2), y)
+
+  expect_output(print(fit), "multiple predictors")
+  expect_output(print(fit), "Weights:")
+  expect_output(print(fit), "R-squared:")
+})
+
+test_that("fregre.np.multi predict method works", {
+  set.seed(42)
+  n <- 40
+  m <- 20
+  t_grid <- seq(0, 1, length.out = m)
+
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm(n * m), n, m)
+  y <- rnorm(n)
+
+  fd1 <- fdars::fdata(X1, argvals = t_grid)
+  fd2 <- fdars::fdata(X2, argvals = t_grid)
+
+  fit <- fdars::fregre.np.multi(list(fd1, fd2), y)
+
+  # Predict without new data returns fitted values
+  expect_equal(predict(fit), fit$fitted.values)
+
+  # Predict with new data
+  X1_new <- matrix(rnorm(5 * m), 5, m)
+  X2_new <- matrix(rnorm(5 * m), 5, m)
+  fd1_new <- fdars::fdata(X1_new, argvals = t_grid)
+  fd2_new <- fdars::fdata(X2_new, argvals = t_grid)
+
+  pred <- predict(fit, list(fd1_new, fd2_new))
+  expect_length(pred, 5)
+  expect_true(is.numeric(pred))
+})
+
+test_that("fregre.np.multi with three predictors works", {
+  set.seed(42)
+  n <- 40
+  m <- 15
+
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm(n * m), n, m)
+  X3 <- matrix(rnorm(n * m), n, m)
+  y <- rnorm(n)
+
+  fd1 <- fdars::fdata(X1)
+  fd2 <- fdars::fdata(X2)
+  fd3 <- fdars::fdata(X3)
+
+  fit <- fdars::fregre.np.multi(list(fd1, fd2, fd3), y)
+
+  expect_s3_class(fit, "fregre.np.multi")
+  expect_length(fit$weights, 3)
+  expect_equal(sum(fit$weights), 1)
+})
+
+test_that("fregre.np.multi rejects mismatched inputs", {
+  n <- 30
+  m <- 15
+
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm((n + 5) * m), n + 5, m)  # Different n
+  y <- rnorm(n)
+
+  fd1 <- fdars::fdata(X1)
+  fd2 <- fdars::fdata(X2)
+
+  expect_error(fdars::fregre.np.multi(list(fd1, fd2), y), "same number of observations")
+})
+
+test_that("fregre.np.multi rejects wrong y length", {
+  n <- 30
+  m <- 15
+
+  X1 <- matrix(rnorm(n * m), n, m)
+  X2 <- matrix(rnorm(n * m), n, m)
+  y <- rnorm(n + 5)  # Wrong length
+
+  fd1 <- fdars::fdata(X1)
+  fd2 <- fdars::fdata(X2)
+
+  expect_error(fdars::fregre.np.multi(list(fd1, fd2), y), "Length of y")
+})

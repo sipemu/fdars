@@ -855,3 +855,415 @@ predict.fregre.np <- function(object, newdata = NULL, ...) {
   names(y_pred) <- rownames(newdata$data)
   y_pred
 }
+
+#' Nonparametric Regression with Multiple Functional Predictors
+#'
+#' Fits a nonparametric regression model with multiple functional predictors
+#' using a weighted combination of distance matrices.
+#'
+#' @param fdataobj.list A list of fdata objects (functional predictors).
+#'   All must have the same number of observations.
+#' @param y Response vector (scalar).
+#' @param weights Weights for combining distances. Can be:
+#'   \itemize{
+#'     \item NULL: Equal weights (1/p for each predictor)
+#'     \item Numeric vector: Fixed weights (will be normalized to sum to 1)
+#'     \item "cv": Cross-validate to find optimal weights
+#'   }
+#' @param h Bandwidth for Nadaraya-Watson kernel (optional).
+#' @param knn Maximum k for k-NN methods.
+#' @param type.S Smoother type: "S.NW", "kNN.gCV", or "kNN.lCV".
+#' @param Ker Kernel type (default "norm" for Gaussian).
+#' @param metric Distance metric function (default metric.lp).
+#' @param cv.grid Grid of weight values for CV (only used if weights = "cv").
+#'   Default is seq(0, 1, by = 0.1) for 2 predictors.
+#' @param cv.folds Number of folds for weight CV (default 5).
+#' @param ... Additional arguments passed to metric function.
+#'
+#' @return An object of class 'fregre.np.multi' containing:
+#' \describe{
+#'   \item{fdataobj.list}{List of functional predictors}
+#'   \item{y}{Response vector}
+#'   \item{weights}{Weights used (or optimized)}
+#'   \item{weights.cv}{CV results if weights = "cv"}
+#'   \item{fitted.values}{Fitted values}
+#'   \item{residuals}{Residuals}
+#'   \item{D.list}{List of distance matrices}
+#'   \item{D.combined}{Combined distance matrix}
+#' }
+#'
+#' @export
+#' @examples
+#' # Create two functional predictors
+#' set.seed(42)
+#' n <- 50
+#' m <- 30
+#' t_grid <- seq(0, 1, length.out = m)
+#'
+#' X1 <- matrix(0, n, m)
+#' X2 <- matrix(0, n, m)
+#' for (i in 1:n) {
+#'   X1[i, ] <- sin(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+#'   X2[i, ] <- cos(2 * pi * t_grid) * i/n + rnorm(m, sd = 0.1)
+#' }
+#' y <- rowMeans(X1) + 0.5 * rowMeans(X2) + rnorm(n, sd = 0.1)
+#'
+#' fd1 <- fdata(X1, argvals = t_grid)
+#' fd2 <- fdata(X2, argvals = t_grid)
+#'
+#' # Fit with equal weights
+#' fit1 <- fregre.np.multi(list(fd1, fd2), y)
+#'
+#' # Fit with cross-validated weights
+#' fit2 <- fregre.np.multi(list(fd1, fd2), y, weights = "cv")
+fregre.np.multi <- function(fdataobj.list, y, weights = NULL,
+                            h = NULL, knn = NULL,
+                            type.S = c("S.NW", "kNN.gCV", "kNN.lCV"),
+                            Ker = "norm", metric = metric.lp,
+                            cv.grid = NULL, cv.folds = 5, ...) {
+
+  # Validate inputs
+  if (!is.list(fdataobj.list)) {
+    stop("fdataobj.list must be a list of fdata objects")
+  }
+
+  p <- length(fdataobj.list)
+  if (p < 1) {
+    stop("Need at least one functional predictor")
+  }
+
+  # Check all are fdata with same n
+  n_vec <- sapply(fdataobj.list, function(fd) {
+    if (!inherits(fd, "fdata")) {
+      stop("All elements of fdataobj.list must be fdata objects")
+    }
+    nrow(fd$data)
+  })
+
+  if (length(unique(n_vec)) > 1) {
+    stop("All functional predictors must have the same number of observations")
+  }
+
+  n <- n_vec[1]
+  type.S <- match.arg(type.S)
+
+  if (length(y) != n) {
+    stop("Length of y must equal number of observations (", n, ")")
+  }
+
+  # Compute distance matrices for each predictor
+  D.list <- lapply(fdataobj.list, function(fd) {
+    as.matrix(metric(fd, ...))
+  })
+
+  # Normalize each distance matrix to [0, 1] range for fair comparison
+  D.list.norm <- lapply(D.list, function(D) {
+    max_d <- max(D)
+    if (max_d > 0) D / max_d else D
+  })
+
+  # Handle weights
+  cv_result <- NULL
+
+  if (is.null(weights)) {
+    # Equal weights
+    weights <- rep(1 / p, p)
+
+  } else if (is.character(weights) && weights == "cv") {
+    # Cross-validate weights
+    cv_result <- .cv_weights_multi(D.list.norm, y, type.S, h, knn, Ker,
+                                   cv.grid, cv.folds, p)
+    weights <- cv_result$optimal.weights
+
+  } else if (is.numeric(weights)) {
+    if (length(weights) != p) {
+      stop("Length of weights must equal number of predictors (", p, ")")
+    }
+    # Normalize to sum to 1
+    weights <- weights / sum(weights)
+  }
+
+  # Combine distance matrices
+  D.combined <- matrix(0, n, n)
+  for (i in seq_len(p)) {
+    D.combined <- D.combined + weights[i] * D.list.norm[[i]]
+  }
+
+  # Fit using combined distance
+  result <- .fit_np_with_distance(D.combined, y, h, knn, type.S, Ker)
+
+  # Build result object
+  result$fdataobj.list <- fdataobj.list
+  result$y <- y
+  result$weights <- weights
+  result$weights.cv <- cv_result
+  result$D.list <- D.list
+  result$D.combined <- D.combined
+  result$metric <- metric
+  result$type.S <- type.S
+  result$Ker <- Ker
+  result$call <- match.call()
+
+  class(result) <- "fregre.np.multi"
+  result
+}
+
+# Internal: Cross-validate weights for multiple predictors
+.cv_weights_multi <- function(D.list.norm, y, type.S, h, knn, Ker,
+                              cv.grid, cv.folds, p) {
+  n <- length(y)
+
+  # Generate weight grid
+  if (is.null(cv.grid)) {
+    if (p == 2) {
+      # For 2 predictors, simple 1D grid
+      w1_grid <- seq(0, 1, by = 0.1)
+      weight_grid <- lapply(w1_grid, function(w1) c(w1, 1 - w1))
+    } else {
+      # For >2 predictors, use simplex grid (simplified)
+      # Generate random points on simplex
+      set.seed(123)
+      n_grid <- 20
+      weight_grid <- lapply(seq_len(n_grid), function(i) {
+        w <- runif(p)
+        w / sum(w)
+      })
+      # Add equal weights and extreme weights
+      weight_grid <- c(weight_grid, list(rep(1/p, p)))
+      for (i in seq_len(p)) {
+        extreme <- rep(0, p)
+        extreme[i] <- 1
+        weight_grid <- c(weight_grid, list(extreme))
+      }
+    }
+  } else {
+    weight_grid <- cv.grid
+  }
+
+  # Create folds
+  fold_ids <- sample(rep(seq_len(cv.folds), length.out = n))
+
+  # Evaluate each weight combination
+  cv_errors <- sapply(weight_grid, function(w) {
+    # Combine distances
+    D.combined <- matrix(0, n, n)
+    for (i in seq_len(p)) {
+      D.combined <- D.combined + w[i] * D.list.norm[[i]]
+    }
+
+    # K-fold CV
+    fold_errors <- sapply(seq_len(cv.folds), function(fold) {
+      test_idx <- which(fold_ids == fold)
+      train_idx <- which(fold_ids != fold)
+
+      # Fit on training, predict on test
+      D_train <- D.combined[train_idx, train_idx]
+      y_train <- y[train_idx]
+      D_test <- D.combined[test_idx, train_idx]
+
+      # Simple NW prediction for CV
+      if (is.null(h)) {
+        d_vec <- D_train[lower.tri(D_train)]
+        h_cv <- median(d_vec[d_vec > 0])
+      } else {
+        h_cv <- h
+      }
+
+      y_pred <- sapply(seq_len(nrow(D_test)), function(i) {
+        weights_nw <- exp(-0.5 * (D_test[i, ] / h_cv)^2)
+        if (sum(weights_nw) > 0) {
+          sum(weights_nw * y_train) / sum(weights_nw)
+        } else {
+          mean(y_train)
+        }
+      })
+
+      mean((y[test_idx] - y_pred)^2)
+    })
+
+    mean(fold_errors)
+  })
+
+  # Find best weights
+  best_idx <- which.min(cv_errors)
+  optimal_weights <- weight_grid[[best_idx]]
+
+  list(
+    optimal.weights = optimal_weights,
+    cv.errors = cv_errors,
+    weight.grid = weight_grid,
+    best.idx = best_idx
+  )
+}
+
+# Internal: Fit NP regression with pre-computed distance matrix
+.fit_np_with_distance <- function(D, y, h, knn, type.S, Ker) {
+  n <- length(y)
+
+  result <- list()
+
+  if (type.S == "S.NW") {
+    # Fixed bandwidth Nadaraya-Watson
+    if (is.null(h)) {
+      d_vec <- D[lower.tri(D)]
+      h <- median(d_vec[d_vec > 0])
+    }
+
+    H <- matrix(0, n, n)
+    fitted <- numeric(n)
+
+    for (i in seq_len(n)) {
+      weights <- exp(-0.5 * (D[i, ] / h)^2)
+      weights[i] <- 0  # Leave-one-out
+      if (sum(weights) > 0) {
+        weights <- weights / sum(weights)
+      }
+      H[i, ] <- weights
+      fitted[i] <- sum(weights * y)
+    }
+
+    result$h.opt <- h
+    result$fitted.values <- fitted
+    result$H <- H
+
+  } else if (type.S == "kNN.gCV") {
+    # k-NN with Global CV
+    if (is.null(knn)) knn <- min(20L, n - 2)
+    knn <- as.integer(min(knn, n - 2))
+
+    cv_result <- .Call("wrap__knn_gcv", D, as.numeric(y), knn)
+
+    result$knn <- knn
+    result$k.opt <- cv_result$k_opt
+    result$fitted.values <- cv_result$yhat
+    result$mse <- cv_result$mse
+
+  } else if (type.S == "kNN.lCV") {
+    # k-NN with Local CV
+    if (is.null(knn)) knn <- min(20L, n - 2)
+    knn <- as.integer(min(knn, n - 2))
+
+    cv_result <- .Call("wrap__knn_lcv", D, as.numeric(y), knn)
+
+    result$knn <- knn
+    result$k.opt <- cv_result$k_opt
+    result$fitted.values <- cv_result$yhat
+    result$mse <- cv_result$mse
+  }
+
+  result$residuals <- y - result$fitted.values
+
+  # Residual variance
+  df <- n - 1
+  if (!is.null(result$H)) {
+    df <- n - sum(diag(result$H))
+  }
+  if (df <= 0) df <- 1
+  result$sr2 <- sum(result$residuals^2) / df
+
+  result
+}
+
+#' Print method for fregre.np.multi
+#' @export
+print.fregre.np.multi <- function(x, ...) {
+  cat("Nonparametric functional regression with multiple predictors\n")
+  cat("=============================================================\n")
+  cat("Number of observations:", length(x$y), "\n")
+  cat("Number of functional predictors:", length(x$fdataobj.list), "\n")
+  cat("Smoother type:", x$type.S, "\n")
+  cat("Weights:", paste(round(x$weights, 3), collapse = ", "), "\n")
+
+  if (!is.null(x$weights.cv)) {
+    cat("  (cross-validated)\n")
+  }
+
+  if (!is.null(x$h.opt)) {
+    cat("Bandwidth:", round(x$h.opt, 4), "\n")
+  }
+  if (!is.null(x$k.opt)) {
+    if (length(x$k.opt) == 1) {
+      cat("Optimal k:", x$k.opt, "\n")
+    } else {
+      cat("Optimal k (local): min =", min(x$k.opt), ", max =", max(x$k.opt), "\n")
+    }
+  }
+
+  r2 <- 1 - sum(x$residuals^2) / sum((x$y - mean(x$y))^2)
+  cat("R-squared:", round(r2, 4), "\n")
+
+  invisible(x)
+}
+
+#' Predict method for fregre.np.multi
+#'
+#' @param object Fitted fregre.np.multi object.
+#' @param newdata.list List of new fdata objects (same length as original).
+#' @param ... Additional arguments.
+#'
+#' @return Predicted values.
+#' @export
+predict.fregre.np.multi <- function(object, newdata.list = NULL, ...) {
+  if (is.null(newdata.list)) {
+    return(object$fitted.values)
+  }
+
+  p <- length(object$fdataobj.list)
+  if (length(newdata.list) != p) {
+    stop("newdata.list must have same length as original fdataobj.list (", p, ")")
+  }
+
+  # Compute distances from new data to training data
+  n_new <- nrow(newdata.list[[1]]$data)
+  n_train <- nrow(object$fdataobj.list[[1]]$data)
+
+  D_new_list <- lapply(seq_len(p), function(i) {
+    # Combine new and training data
+    combined <- fdata(
+      rbind(newdata.list[[i]]$data, object$fdataobj.list[[i]]$data),
+      argvals = object$fdataobj.list[[i]]$argvals
+    )
+    D_full <- as.matrix(object$metric(combined, ...))
+
+    # Extract new-to-train distances and normalize
+    D_sub <- D_full[seq_len(n_new), (n_new + 1):(n_new + n_train), drop = FALSE]
+
+    # Normalize using training max
+    max_train <- max(object$D.list[[i]])
+    if (max_train > 0) D_sub / max_train else D_sub
+  })
+
+  # Combine with weights
+  D_new <- matrix(0, n_new, n_train)
+  for (i in seq_len(p)) {
+    D_new <- D_new + object$weights[i] * D_new_list[[i]]
+  }
+
+  y_train <- object$y
+  type.S <- object$type.S
+
+  if (type.S == "S.NW") {
+    h <- object$h.opt
+    y_pred <- sapply(seq_len(n_new), function(i) {
+      weights <- exp(-0.5 * (D_new[i, ] / h)^2)
+      if (sum(weights) > 0) {
+        sum(weights * y_train) / sum(weights)
+      } else {
+        mean(y_train)
+      }
+    })
+
+  } else if (type.S %in% c("kNN.gCV", "kNN.lCV")) {
+    k_opt <- object$k.opt
+
+    if (length(k_opt) == 1) {
+      y_pred <- .Call("wrap__knn_predict", D_new, as.numeric(y_train),
+                      as.integer(k_opt), NULL)
+    } else {
+      y_pred <- .Call("wrap__knn_predict", D_new, as.numeric(y_train),
+                      0L, as.integer(k_opt))
+    }
+  }
+
+  y_pred
+}
