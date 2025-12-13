@@ -34,12 +34,15 @@ jobs:
       - name: Install dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck, any::devtools
+          extra-packages: any::rcmdcheck, any::devtools, any::roxygen2
           needs: check
 
       - name: Build Binary Package
         run: |
-          pkg_path <- devtools::build(binary = TRUE, path = ".")
+          # Generate documentation first
+          roxygen2::roxygenize()
+          # Build binary with manual
+          pkg_path <- devtools::build(binary = TRUE, path = ".", args = c("--no-build-vignettes"))
           writeLines(pkg_path, "pkg_path.txt")
         shell: Rscript {0}
 
