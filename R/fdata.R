@@ -3,6 +3,9 @@
 #' Functions for creating and manipulating functional data objects.
 #' Supports both 1D functional data (curves) and 2D functional data (surfaces).
 
+# Null-coalescing operator (use left if not NULL, otherwise right)
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 #' Create a functional data object
 #'
 #' @param mdata A matrix (for 1D) or 3D array (for 2D) of observations.
