@@ -53,7 +53,7 @@ remotes::install_github("sipemu/fdars", build_vignettes = TRUE)
 ```bash
 cd fdars
 R CMD build .
-R CMD INSTALL fdars_0.3.2.tar.gz
+R CMD INSTALL fdars_0.3.3.tar.gz
 ```
 
 ## Quick Start
