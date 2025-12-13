@@ -95,7 +95,7 @@ test_that("fdata.bootstrap.ci works with different methods", {
   expect_equal(ci_norm$method, "normal")
 })
 
-test_that("fdata.deriv works for 1D data", {
+test_that("deriv works for 1D data", {
   set.seed(42)
   m <- 100
   t_grid <- seq(0, 2 * pi, length.out = m)
@@ -103,7 +103,7 @@ test_that("fdata.deriv works for 1D data", {
   # sin(t) -> cos(t)
   X <- matrix(sin(t_grid), nrow = 1)
   fd <- fdars::fdata(X, argvals = t_grid)
-  fd_deriv <- fdars::fdata.deriv(fd, nderiv = 1)
+  fd_deriv <- fdars::deriv(fd, nderiv = 1)
 
   expect_s3_class(fd_deriv, "fdata")
   expect_equal(nrow(fd_deriv$data), 1)
@@ -113,7 +113,7 @@ test_that("fdata.deriv works for 1D data", {
   expect_equal(fd_deriv$data[1, mid_idx], cos(t_grid[mid_idx]), tolerance = 0.02)
 })
 
-test_that("fdata.deriv works for 2D data", {
+test_that("deriv works for 2D data", {
   set.seed(42)
   n <- 5
   m1 <- 10
@@ -132,7 +132,7 @@ test_that("fdata.deriv works for 2D data", {
   }
 
   fd2d <- fdars::fdata(X, argvals = list(s_grid, t_grid), fdata2d = TRUE)
-  derivs <- fdars::fdata.deriv(fd2d, nderiv = 1)
+  derivs <- fdars::deriv(fd2d, nderiv = 1)
 
   expect_true(is.list(derivs))
   expect_true(all(c("ds", "dt", "dsdt") %in% names(derivs)))

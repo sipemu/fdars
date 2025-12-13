@@ -427,7 +427,7 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
 #' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
 #' @param nderiv Derivative order (1, 2, ...). Default is 1.
 #' @param lp The p in Lp metric. Default is 2 (L2 distance).
-#' @param ... Additional arguments passed to fdata.deriv.
+#' @param ... Additional arguments passed to deriv.
 #'
 #' @return A distance matrix based on derivative distances.
 #'
@@ -449,9 +449,9 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
   is_2d <- isTRUE(fdata1$fdata2d)
 
   if (is_2d) {
-    # 2D case: fdata.deriv returns a list of derivatives (ds, dt, dsdt)
+    # 2D case: deriv returns a list of derivatives (ds, dt, dsdt)
     # Use the sum of all derivative Lp distances
-    fdata1_derivs <- fdata.deriv(fdata1, nderiv = nderiv, ...)
+    fdata1_derivs <- deriv(fdata1, nderiv = nderiv, ...)
 
     if (is.null(fdata2)) {
       # Self-distances - combine derivative distances
@@ -466,7 +466,7 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
         stop("Cannot compute distances between 1D and 2D functional data")
       }
 
-      fdata2_derivs <- fdata.deriv(fdata2, nderiv = nderiv, ...)
+      fdata2_derivs <- deriv(fdata2, nderiv = nderiv, ...)
       D_ds <- metric.lp(fdata1_derivs$ds, fdata2_derivs$ds, lp = lp)
       D_dt <- metric.lp(fdata1_derivs$dt, fdata2_derivs$dt, lp = lp)
       D <- sqrt(D_ds^2 + D_dt^2)
@@ -474,7 +474,7 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
   } else {
     # 1D case
     # Compute derivative of fdata1
-    fdata1_deriv <- fdata.deriv(fdata1, nderiv = nderiv, ...)
+    fdata1_deriv <- deriv(fdata1, nderiv = nderiv, ...)
 
     if (is.null(fdata2)) {
       # Self-distances
@@ -489,7 +489,7 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
       }
 
       # Compute derivative of fdata2
-      fdata2_deriv <- fdata.deriv(fdata2, nderiv = nderiv, ...)
+      fdata2_deriv <- deriv(fdata2, nderiv = nderiv, ...)
 
       D <- metric.lp(fdata1_deriv, fdata2_deriv, lp = lp)
     }

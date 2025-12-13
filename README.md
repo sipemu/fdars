@@ -240,7 +240,7 @@ fdars supports 2D functional data (surfaces/images). The following functions hav
 |----------|-----------|
 | **Depth** | `depth` (methods: FM, mode, RP, RT, FSD, KFSD) |
 | **Distance** | `metric.lp`, `metric.hausdorff`, `semimetric.pca`, `semimetric.deriv` |
-| **Statistics** | `mean`, `var`, `sd`, `cov`, `gmed`, `fdata.deriv` |
+| **Statistics** | `mean`, `var`, `sd`, `cov`, `gmed`, `deriv` |
 | **Centrality** | `median`, `trimmed`, `trimvar` (all methods except BD, MBD, RPD) |
 | **Regression** | `fregre.np` (nonparametric) |
 | **Visualization** | `plot` (heatmap + contours) |

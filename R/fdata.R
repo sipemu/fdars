@@ -887,8 +887,8 @@ localavg.fdata <- function(fdataobj, n.intervals = 10, intervals = NULL) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # First derivative (should be approximately cos)
-#' fd_deriv <- fdata.deriv(fd, nderiv = 1)
-fdata.deriv <- function(fdataobj, nderiv = 1, method = "diff",
+#' fd_deriv <- deriv(fd, nderiv = 1)
+deriv <- function(fdataobj, nderiv = 1, method = "diff",
                         class.out = "fdata", nbasis = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")

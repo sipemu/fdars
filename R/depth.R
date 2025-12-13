@@ -438,8 +438,8 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
       derivs_obj[[as.character(d)]] <- fdataobj$data
       derivs_ori[[as.character(d)]] <- fdataori$data
     } else {
-      fd_deriv_obj <- fdata.deriv(fdataobj, nderiv = d, ...)
-      fd_deriv_ori <- fdata.deriv(fdataori, nderiv = d, ...)
+      fd_deriv_obj <- deriv(fdataobj, nderiv = d, ...)
+      fd_deriv_ori <- deriv(fdataori, nderiv = d, ...)
       derivs_obj[[as.character(d)]] <- fd_deriv_obj$data
       derivs_ori[[as.character(d)]] <- fd_deriv_ori$data
     }
