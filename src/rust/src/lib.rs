@@ -442,7 +442,7 @@ fn geometric_median_1d(data: RMatrix<f64>, argvals: Vec<f64>, max_iter: i32, tol
 /// Uses the FM1 formula from fda.usc: d = 1 - |0.5 - Fn(x)|
 /// With scale=TRUE (default): d = (1 - |0.5 - Fn(x)| - 0.5) * 2 = 2 * min(Fn(x), 1-Fn(x))
 #[extendr]
-fn depth_fm_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, trim: f64, scale: bool) -> Robj {
+fn depth_fm_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, _trim: f64, scale: bool) -> Robj {
     let nobj = fdataobj.nrows();
     let nori = fdataori.nrows();
     let ncol_obj = fdataobj.ncols();
@@ -3228,7 +3228,7 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
     }
 
     let data_slice = data.as_real_slice().unwrap().to_vec();
-    let n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
+    let _n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
 
     // Compute threshold
     let threshold = outliers_thres_lrt(data, argvals.clone(), nb, smo, trim, seed);
