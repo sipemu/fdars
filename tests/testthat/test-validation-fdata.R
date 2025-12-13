@@ -33,14 +33,15 @@ test_that("mean matches fda.usc", {
   mean_orig <- mean(fd_orig)
   mean_rust <- mean(fd_rust)
 
-  # fda.usc returns an fdata object
+  # Both fda.usc and fdars return fdata objects
   if (inherits(mean_orig, "fdata")) {
     mean_orig_vec <- as.vector(mean_orig$data)
   } else {
     mean_orig_vec <- mean_orig
   }
 
-  expect_equal(mean_orig_vec, mean_rust, tolerance = 1e-10)
+  mean_rust_vec <- as.vector(mean_rust$data)
+  expect_equal(mean_orig_vec, mean_rust_vec, tolerance = 1e-10)
 })
 
 test_that("fdata.cen matches fda.usc", {

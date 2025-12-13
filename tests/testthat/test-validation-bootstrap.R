@@ -57,7 +57,9 @@ test_that("fdata.bootstrap.ci produces valid intervals", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  ci <- fdars::fdata.bootstrap.ci(fd, statistic = mean,
+  # mean returns fdata, extract data vector for bootstrap CI
+  mean_vec <- function(x) as.numeric(mean(x)$data)
+  ci <- fdars::fdata.bootstrap.ci(fd, statistic = mean_vec,
                                    n.boot = 50, alpha = 0.05, seed = 123)
 
   expect_s3_class(ci, "fdata.bootstrap.ci")
@@ -82,12 +84,14 @@ test_that("fdata.bootstrap.ci works with different methods", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
+  # mean returns fdata, extract data vector for bootstrap CI
+  mean_vec <- function(x) as.numeric(mean(x)$data)
 
-  ci_perc <- fdars::fdata.bootstrap.ci(fd, statistic = mean,
+  ci_perc <- fdars::fdata.bootstrap.ci(fd, statistic = mean_vec,
                                         n.boot = 30, method = "percentile", seed = 123)
-  ci_basic <- fdars::fdata.bootstrap.ci(fd, statistic = mean,
+  ci_basic <- fdars::fdata.bootstrap.ci(fd, statistic = mean_vec,
                                          n.boot = 30, method = "basic", seed = 123)
-  ci_norm <- fdars::fdata.bootstrap.ci(fd, statistic = mean,
+  ci_norm <- fdars::fdata.bootstrap.ci(fd, statistic = mean_vec,
                                         n.boot = 30, method = "normal", seed = 123)
 
   expect_equal(ci_perc$method, "percentile")
@@ -178,8 +182,8 @@ test_that("mean computes correct mean", {
   fd <- fdars::fdata(X, argvals = t_grid)
   mean_func <- mean(fd)
 
-  expect_length(mean_func, m)
-  expect_equal(mean_func, colMeans(X), tolerance = 1e-10)
+  expect_s3_class(mean_func, "fdata")
+  expect_equal(as.numeric(mean_func$data), colMeans(X), tolerance = 1e-10)
 })
 
 test_that("norm.fdata computes correct norms", {

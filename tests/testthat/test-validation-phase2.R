@@ -124,8 +124,8 @@ test_that("trimmed is more robust than mean", {
   true_mean <- colMeans(X[3:n, ])
 
   # Both methods should be reasonably close to the true mean
-  # mean returns a vector, not fdata
-  mean_error <- sum((as.numeric(mean_curve) - true_mean)^2)
+  # mean returns an fdata object
+  mean_error <- sum((mean_curve$data[1, ] - true_mean)^2)
   trim_error <- sum((trim_curve$data[1, ] - true_mean)^2)
 
   # Both errors should be small (less than 0.5 with this level of outlier contamination)
@@ -259,8 +259,8 @@ test_that("fdata2pc mean matches mean", {
   pca <- fdars::fdata2pc(data$fd, ncomp = 3)
   fmean <- mean(data$fd)
 
-  # mean returns a numeric vector
-  expect_equal(pca$mean, as.numeric(fmean), tolerance = 1e-10)
+  # mean returns an fdata object
+  expect_equal(pca$mean, as.numeric(fmean$data), tolerance = 1e-10)
 })
 
 # =============================================================================

@@ -232,7 +232,20 @@ mean.fdata <- function(x, ...) {
   }
 
   # 1D case
-  .Call("wrap__fdata_mean_1d", x$data)
+  mean_vals <- .Call("wrap__fdata_mean_1d", x$data)
+  result <- list(
+    data = matrix(mean_vals, nrow = 1),
+    argvals = x$argvals,
+    rangeval = x$rangeval,
+    names = list(
+      main = "Mean curve",
+      xlab = x$names$xlab,
+      ylab = x$names$ylab
+    ),
+    fdata2d = FALSE
+  )
+  class(result) <- "fdata"
+  result
 }
 
 #' Compute Lp norm of functional data
