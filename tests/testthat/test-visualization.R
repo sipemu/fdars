@@ -248,3 +248,248 @@ test_that("outliergram rejects 2D data", {
 test_that("outliergram rejects non-fdata input", {
   expect_error(outliergram(matrix(1:10, 2, 5)), "fdata")
 })
+
+# =============================================================================
+# Enhanced plot.fdata Tests
+# =============================================================================
+
+test_that("plot.fdata with numeric color works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  y <- rnorm(20)
+
+  p <- plot(fd, color = y)
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.fdata with categorical color works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  p <- plot(fd, color = groups)
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.fdata with show.mean works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  p <- plot(fd, color = groups, show.mean = TRUE)
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.fdata with show.ci works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  p <- plot(fd, color = groups, show.ci = TRUE, ci.level = 0.90)
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.fdata with show.mean and show.ci together works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  p <- plot(fd, color = groups, show.mean = TRUE, show.ci = TRUE)
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.fdata with custom palette works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  p <- plot(fd, color = groups, palette = c("A" = "blue", "B" = "red"))
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.fdata rejects mismatched color length", {
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+
+  expect_error(plot(fd, color = 1:5), "length\\(color\\)")
+})
+
+# =============================================================================
+# group.distance Tests
+# =============================================================================
+
+test_that("group.distance with centroid method works", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gd <- group.distance(fd, groups, method = "centroid")
+
+  expect_s3_class(gd, "group.distance")
+  expect_equal(length(gd$groups), 2)
+  expect_equal(dim(gd$centroid), c(2, 2))
+  expect_equal(gd$centroid[1, 1], 0)
+  expect_equal(gd$centroid[2, 2], 0)
+  expect_equal(gd$centroid[1, 2], gd$centroid[2, 1])  # symmetric
+})
+
+test_that("group.distance with hausdorff method works", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gd <- group.distance(fd, groups, method = "hausdorff")
+
+  expect_s3_class(gd, "group.distance")
+  expect_equal(dim(gd$hausdorff), c(2, 2))
+  expect_equal(gd$hausdorff[1, 1], 0)
+  expect_true(gd$hausdorff[1, 2] > 0)
+})
+
+test_that("group.distance with depth method works", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gd <- group.distance(fd, groups, method = "depth")
+
+  expect_s3_class(gd, "group.distance")
+  expect_equal(dim(gd$depth), c(2, 2))
+  expect_equal(gd$depth[1, 1], 1)  # self-similarity is 1
+  expect_equal(gd$depth[2, 2], 1)
+  expect_true(gd$depth[1, 2] >= 0 && gd$depth[1, 2] <= 1)
+})
+
+test_that("group.distance with method='all' computes all methods", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gd <- group.distance(fd, groups, method = "all")
+
+  expect_true(!is.null(gd$centroid))
+  expect_true(!is.null(gd$hausdorff))
+  expect_true(!is.null(gd$depth))
+})
+
+test_that("group.distance print method works", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gd <- group.distance(fd, groups, method = "centroid")
+
+  expect_output(print(gd), "Group Distance Analysis")
+  expect_output(print(gd), "Centroid Distance")
+})
+
+test_that("group.distance plot method works", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gd <- group.distance(fd, groups, method = "centroid")
+
+  p <- plot(gd, type = "heatmap")
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("group.distance rejects mismatched groups length", {
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+
+  expect_error(group.distance(fd, factor(c("A", "B"))), "length\\(groups\\)")
+})
+
+test_that("group.distance rejects single group", {
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep("A", 20))
+
+  expect_error(group.distance(fd, groups), "at least 2 groups")
+})
+
+# =============================================================================
+# group.test Tests
+# =============================================================================
+
+test_that("group.test basic functionality works", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  t_grid <- seq(0, 1, length.out = m)
+
+  # Create two clearly different groups
+  X <- matrix(0, n, m)
+  for (i in 1:10) X[i, ] <- sin(2 * pi * t_grid) + rnorm(m, sd = 0.1)
+  for (i in 11:20) X[i, ] <- cos(2 * pi * t_grid) + rnorm(m, sd = 0.1)
+  fd <- fdata(X, argvals = t_grid)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gt <- group.test(fd, groups, n.perm = 50)  # small n.perm for speed
+
+  expect_s3_class(gt, "group.test")
+  expect_true(gt$statistic > 0)
+  expect_true(gt$p.value >= 0 && gt$p.value <= 1)
+  expect_length(gt$perm.dist, 50)
+})
+
+test_that("group.test print method works", {
+  set.seed(42)
+  m <- 30
+  X <- matrix(rnorm(20 * m), 20, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  gt <- group.test(fd, groups, n.perm = 20)
+
+  expect_output(print(gt), "Permutation Test")
+  expect_output(print(gt), "P-value")
+})

@@ -42,9 +42,11 @@ The Rust backend provides 10-200x speedups over pure R implementations for compu
 # Install remotes if needed
 install.packages("remotes")
 
-# Install fdars
-remotes::install_github("sipemu/fdars")
+# Install fdars (with documentation)
+remotes::install_github("sipemu/fdars", build_vignettes = TRUE)
 ```
+
+**Note:** On Windows, you may need [Rtools](https://cran.r-project.org/bin/windows/Rtools/) installed.
 
 ### From Source
 
@@ -214,10 +216,19 @@ trimvar(fd, trim = 0.1, method = "mode")
 
 ### Visualization
 
+- `plot(fd, color = ...)` - Plot curves with coloring by numeric or categorical variables
+  - `show.mean = TRUE` - Overlay group mean curves
+  - `show.ci = TRUE` - Show confidence interval ribbons per group
 - `boxplot.fdata` - Functional boxplot with depth-based envelopes
 - `MS.plot` - Magnitude-Shape plot for outlier visualization
 - `outliergram` - Outliergram for shape outlier detection (MEI vs MBD plot)
 - `plot.fdata2pc` - FPCA visualization (components, variance, scores)
+
+### Group Comparison
+
+- `group.distance` - Compute distances between groups (centroid, Hausdorff, depth-based)
+- `group.test` - Permutation test for significant group differences
+- `plot.group.distance` - Visualize group distances (heatmap, dendrogram)
 
 ### Clustering
 
@@ -322,6 +333,9 @@ fdars uses a clean, unified API with method parameters:
 | `cov.Gaussian()`, `cov.Matern()`, etc. | Covariance kernel functions |
 | `outliergram(fd)` | Outliergram for shape outlier detection |
 | `plot(fdata2pc_obj)` | FPCA visualization |
+| `plot(fd, color = groups)` | Plot with coloring by groups/values |
+| `group.distance(fd, groups)` | Distance between groups (centroid, hausdorff, depth) |
+| `group.test(fd, groups)` | Permutation test for group differences |
 
 ## License
 

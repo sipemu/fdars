@@ -323,19 +323,47 @@ summary.fdata <- function(object, ...) {
 
 #' Plot method for fdata objects
 #'
-#' For 1D functional data, plots curves as lines.
-#' For 2D functional data, plots surfaces as heatmaps with contour lines.
+#' For 1D functional data, plots curves as lines with optional coloring by
+#' external variables. For 2D functional data, plots surfaces as heatmaps
+#' with contour lines.
 #'
 #' @param x An object of class 'fdata'.
+#' @param color Optional vector for coloring curves. Can be:
+#'   \itemize{
+#'     \item Numeric vector: curves colored by continuous scale (viridis)
+#'     \item Factor/character: curves colored by discrete groups
+#'   }
+#'   Must have length equal to number of curves.
+#' @param alpha Transparency of curve lines (default 0.7).
+#' @param show.mean Logical. If TRUE and color is categorical, overlay group
+#'   mean curves with thicker lines (default FALSE).
+#' @param show.ci Logical. If TRUE and color is categorical, show pointwise
+#'   confidence interval ribbons per group (default FALSE).
+#' @param ci.level Confidence level for CI ribbons (default 0.90 for 90\%).
+#' @param palette Optional named vector of colors for categorical coloring,
+#'   e.g., c("A" = "blue", "B" = "red").
 #' @param ... Additional arguments (currently ignored).
 #'
-#' @return A ggplot object.
+#' @return A ggplot object (invisibly).
 #'
 #' @export
-#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal geom_tile geom_contour scale_fill_viridis_c facet_wrap
-plot.fdata <- function(x, ...) {
+#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal geom_tile geom_contour scale_fill_viridis_c scale_color_viridis_c facet_wrap geom_ribbon scale_color_manual scale_fill_manual geom_text coord_equal
+#' @examples
+#' # Basic plot
+#' fd <- fdata(matrix(rnorm(200), 20, 10))
+#' plot(fd)
+#'
+#' # Color by numeric variable
+#' y <- rnorm(20)
+#' plot(fd, color = y)
+#'
+#' # Color by category with mean and CI
+#' groups <- factor(rep(c("A", "B"), each = 10))
+#' plot(fd, color = groups, show.mean = TRUE, show.ci = TRUE)
+plot.fdata <- function(x, color = NULL, alpha = 0.7, show.mean = FALSE,
+                       show.ci = FALSE, ci.level = 0.90, palette = NULL, ...) {
   if (isTRUE(x$fdata2d)) {
-    # 2D surface plotting
+    # 2D surface plotting (color parameters not supported for 2D)
     n <- nrow(x$data)
     m1 <- x$dims[1]
     m2 <- x$dims[2]
@@ -381,6 +409,13 @@ plot.fdata <- function(x, ...) {
   n <- nrow(x$data)
   m <- ncol(x$data)
 
+  # Validate color parameter
+ if (!is.null(color)) {
+    if (length(color) != n) {
+      stop("length(color) must equal the number of curves (", n, ")")
+    }
+  }
+
   # Reshape to long format
   df <- data.frame(
     curve_id = rep(seq_len(n), each = m),
@@ -388,9 +423,67 @@ plot.fdata <- function(x, ...) {
     value = as.vector(t(x$data))
   )
 
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
-                                         group = .data$curve_id)) +
-    ggplot2::geom_line(alpha = 0.7) +
+  # Determine coloring type
+  is_categorical <- !is.null(color) && (is.factor(color) || is.character(color))
+  is_numeric <- !is.null(color) && is.numeric(color)
+
+  if (is_categorical) {
+    # Categorical coloring
+    df$group <- factor(rep(color, each = m))
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
+                                           group = .data$curve_id,
+                                           color = .data$group)) +
+      ggplot2::geom_line(alpha = alpha)
+
+    # Add confidence interval ribbons if requested
+    if (show.ci) {
+      ci_df <- .compute_group_ci(df, ci.level)
+      p <- p + ggplot2::geom_ribbon(
+        data = ci_df,
+        ggplot2::aes(x = .data$argval, ymin = .data$lower, ymax = .data$upper,
+                     fill = .data$group, group = .data$group),
+        alpha = 0.2, inherit.aes = FALSE
+      )
+    }
+
+    # Add group means if requested
+    if (show.mean) {
+      mean_df <- .compute_group_mean(df)
+      p <- p + ggplot2::geom_line(
+        data = mean_df,
+        ggplot2::aes(x = .data$argval, y = .data$mean_val, color = .data$group,
+                     group = .data$group),
+        linewidth = 1.2, inherit.aes = FALSE
+      )
+    }
+
+    # Apply custom palette if provided
+    if (!is.null(palette)) {
+      p <- p + ggplot2::scale_color_manual(values = palette)
+      if (show.ci) {
+        p <- p + ggplot2::scale_fill_manual(values = palette)
+      }
+    }
+
+  } else if (is_numeric) {
+    # Numeric coloring with continuous scale
+    df$color_var <- rep(color, each = m)
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
+                                           group = .data$curve_id,
+                                           color = .data$color_var)) +
+      ggplot2::geom_line(alpha = alpha) +
+      ggplot2::scale_color_viridis_c()
+
+  } else {
+    # No coloring (default behavior)
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$argval, y = .data$value,
+                                           group = .data$curve_id)) +
+      ggplot2::geom_line(alpha = alpha)
+  }
+
+  p <- p +
     ggplot2::labs(
       x = x$names$xlab %||% "t",
       y = x$names$ylab %||% "X(t)",
@@ -400,6 +493,55 @@ plot.fdata <- function(x, ...) {
 
   print(p)
   invisible(p)
+}
+
+# Helper function to compute pointwise group means
+.compute_group_mean <- function(df) {
+  groups <- unique(df$group)
+  argvals <- unique(df$argval)
+
+  result_list <- lapply(groups, function(g) {
+    group_data <- df[df$group == g, ]
+    means <- tapply(group_data$value, group_data$argval, mean, na.rm = TRUE)
+    data.frame(
+      group = g,
+      argval = as.numeric(names(means)),
+      mean_val = as.numeric(means)
+    )
+  })
+  do.call(rbind, result_list)
+}
+
+# Helper function to compute pointwise group confidence intervals
+.compute_group_ci <- function(df, ci.level) {
+  groups <- unique(df$group)
+  argvals <- unique(df$argval)
+
+  result_list <- lapply(groups, function(g) {
+    group_data <- df[df$group == g, ]
+
+    # Compute stats for each argval
+    stats <- tapply(seq_len(nrow(group_data)), group_data$argval, function(idx) {
+      vals <- group_data$value[idx]
+      n_obs <- sum(!is.na(vals))
+      if (n_obs < 2) {
+        return(c(mean = mean(vals, na.rm = TRUE), lower = NA, upper = NA))
+      }
+      m <- mean(vals, na.rm = TRUE)
+      se <- sd(vals, na.rm = TRUE) / sqrt(n_obs)
+      t_crit <- qt((1 + ci.level) / 2, n_obs - 1)
+      c(mean = m, lower = m - t_crit * se, upper = m + t_crit * se)
+    })
+
+    data.frame(
+      group = g,
+      argval = as.numeric(names(stats)),
+      mean_val = sapply(stats, function(s) s["mean"]),
+      lower = sapply(stats, function(s) s["lower"]),
+      upper = sapply(stats, function(s) s["upper"])
+    )
+  })
+  do.call(rbind, result_list)
 }
 
 #' Functional Boxplot
@@ -1731,4 +1873,422 @@ fdata2fd <- function(fdataobj, nbasis = 10, type = c("bspline", "fourier")) {
   # Create fd object
   # Note: fda::fd expects coefs as (nbasis x n), we have (n x nbasis)
   fda::fd(coef = t(coefs), basisobj = basis)
+}
+
+#' Compute Distance/Similarity Between Groups of Functional Data
+#'
+#' Computes various distance and similarity measures between pre-defined groups
+#' of functional curves.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param groups A factor or character vector specifying group membership for each curve.
+#'   Must have length equal to the number of curves.
+#' @param method Distance/similarity method:
+#'   \itemize{
+#'     \item "centroid": L2 distance between group mean curves
+#'     \item "hausdorff": Hausdorff-style distance between groups
+#'     \item "depth": Depth-based overlap (similarity, not distance)
+#'     \item "all": Compute all methods
+#'   }
+#' @param metric Distance metric for centroid method (default "lp").
+#' @param p Power for Lp metric (default 2 for L2).
+#' @param depth.method Depth method for depth-based overlap (default "FM").
+#' @param ... Additional arguments passed to metric functions.
+#'
+#' @return An object of class 'group.distance' containing:
+#' \describe{
+#'   \item{centroid}{Centroid distance matrix (if method includes centroid)}
+#'   \item{hausdorff}{Hausdorff distance matrix (if method includes hausdorff)}
+#'   \item{depth}{Depth-based similarity matrix (if method includes depth)}
+#'   \item{groups}{Unique group labels}
+#'   \item{group.sizes}{Number of curves per group}
+#'   \item{method}{Methods used}
+#' }
+#'
+#' @export
+#' @examples
+#' # Create grouped functional data
+#' set.seed(42)
+#' n <- 30
+#' m <- 50
+#' t_grid <- seq(0, 1, length.out = m)
+#' X <- matrix(0, n, m)
+#' for (i in 1:15) X[i, ] <- sin(2 * pi * t_grid) + rnorm(m, sd = 0.1)
+#' for (i in 16:30) X[i, ] <- cos(2 * pi * t_grid) + rnorm(m, sd = 0.1)
+#' fd <- fdata(X, argvals = t_grid)
+#' groups <- factor(rep(c("A", "B"), each = 15))
+#'
+#' # Compute all distance measures
+#' gd <- group.distance(fd, groups, method = "all")
+#' print(gd)
+group.distance <- function(fdataobj, groups,
+                           method = c("centroid", "hausdorff", "depth", "all"),
+                           metric = "lp", p = 2, depth.method = "FM", ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  n <- nrow(fdataobj$data)
+  if (length(groups) != n) {
+    stop("length(groups) must equal the number of curves (", n, ")")
+  }
+
+  groups <- as.factor(groups)
+  group_levels <- levels(groups)
+  n_groups <- length(group_levels)
+
+  if (n_groups < 2) {
+    stop("Need at least 2 groups to compute distances")
+  }
+
+  method <- match.arg(method)
+  compute_all <- method == "all"
+
+  result <- list(
+    groups = group_levels,
+    group.sizes = table(groups),
+    method = if (compute_all) c("centroid", "hausdorff", "depth") else method
+  )
+
+  # Compute centroid distances
+  if (method == "centroid" || compute_all) {
+    result$centroid <- .group_centroid_distance(fdataobj, groups, group_levels, metric, p, ...)
+  }
+
+  # Compute Hausdorff distances
+  if (method == "hausdorff" || compute_all) {
+    result$hausdorff <- .group_hausdorff_distance(fdataobj, groups, group_levels, metric, p, ...)
+  }
+
+  # Compute depth-based overlap
+  if (method == "depth" || compute_all) {
+    result$depth <- .group_depth_overlap(fdataobj, groups, group_levels, depth.method)
+  }
+
+  class(result) <- "group.distance"
+  result
+}
+
+# Internal: Compute centroid (mean curve) distances between groups
+.group_centroid_distance <- function(fdataobj, groups, group_levels, metric, p, ...) {
+  n_groups <- length(group_levels)
+
+  # Compute group means
+  group_means <- lapply(group_levels, function(g) {
+    idx <- which(groups == g)
+    mean(fdataobj[idx])
+  })
+
+  # Compute pairwise distances between means
+  dist_mat <- matrix(0, n_groups, n_groups)
+  rownames(dist_mat) <- colnames(dist_mat) <- group_levels
+
+  for (i in seq_len(n_groups)) {
+    for (j in seq_len(n_groups)) {
+      if (i < j) {
+        # Combine means into single fdata for distance calculation
+        combined <- fdata(
+          rbind(group_means[[i]]$data, group_means[[j]]$data),
+          argvals = fdataobj$argvals
+        )
+        d <- metric.lp(combined, p = p, ...)[1, 2]
+        dist_mat[i, j] <- d
+        dist_mat[j, i] <- d
+      }
+    }
+  }
+
+  dist_mat
+}
+
+# Internal: Compute Hausdorff-style distances between groups
+.group_hausdorff_distance <- function(fdataobj, groups, group_levels, metric, p, ...) {
+  n_groups <- length(group_levels)
+
+  # Pre-compute full distance matrix
+  full_dist <- metric.lp(fdataobj, p = p, ...)
+
+  dist_mat <- matrix(0, n_groups, n_groups)
+  rownames(dist_mat) <- colnames(dist_mat) <- group_levels
+
+  for (i in seq_len(n_groups)) {
+    for (j in seq_len(n_groups)) {
+      if (i < j) {
+        idx_i <- which(groups == group_levels[i])
+        idx_j <- which(groups == group_levels[j])
+
+        # Hausdorff: max(max_a min_b d(a,b), max_b min_a d(a,b))
+        # For each curve in group i, find minimum distance to group j
+        min_dists_i_to_j <- apply(full_dist[idx_i, idx_j, drop = FALSE], 1, min)
+        # For each curve in group j, find minimum distance to group i
+        min_dists_j_to_i <- apply(full_dist[idx_j, idx_i, drop = FALSE], 1, min)
+
+        hausdorff_dist <- max(max(min_dists_i_to_j), max(min_dists_j_to_i))
+        dist_mat[i, j] <- hausdorff_dist
+        dist_mat[j, i] <- hausdorff_dist
+      }
+    }
+  }
+
+  dist_mat
+}
+
+# Internal: Compute depth-based overlap (similarity) between groups
+.group_depth_overlap <- function(fdataobj, groups, group_levels, depth.method) {
+  n_groups <- length(group_levels)
+
+  sim_mat <- matrix(0, n_groups, n_groups)
+  rownames(sim_mat) <- colnames(sim_mat) <- group_levels
+
+  for (i in seq_len(n_groups)) {
+    for (j in seq_len(n_groups)) {
+      idx_i <- which(groups == group_levels[i])
+      idx_j <- which(groups == group_levels[j])
+
+      if (i == j) {
+        # Self-overlap is 1 (curves in group have depth w.r.t. themselves)
+        sim_mat[i, j] <- 1
+      } else {
+        # Compute mean depth of curves in group i w.r.t. group j
+        depth_i_in_j <- depth(fdataobj[idx_i], fdataobj[idx_j], method = depth.method)
+        sim_mat[i, j] <- mean(depth_i_in_j)
+      }
+    }
+  }
+
+  sim_mat
+}
+
+#' Print method for group.distance
+#' @export
+print.group.distance <- function(x, digits = 3, ...) {
+  cat("Group Distance Analysis\n")
+  cat("=======================\n")
+  cat("Groups:", paste(x$groups, collapse = ", "), "\n")
+  cat("Group sizes:", paste(paste0(names(x$group.sizes), "=", x$group.sizes), collapse = ", "), "\n\n")
+
+  if (!is.null(x$centroid)) {
+    cat("Centroid Distance (L2 between group means):\n")
+    print(round(x$centroid, digits))
+    cat("\n")
+  }
+
+  if (!is.null(x$hausdorff)) {
+    cat("Hausdorff Distance (worst-case between groups):\n")
+    print(round(x$hausdorff, digits))
+    cat("\n")
+  }
+
+  if (!is.null(x$depth)) {
+    cat("Depth Overlap (similarity, higher = more similar):\n")
+    print(round(x$depth, digits))
+    cat("\n")
+  }
+
+  invisible(x)
+}
+
+#' Plot method for group.distance
+#'
+#' @param x An object of class 'group.distance'.
+#' @param type Plot type: "heatmap" or "dendrogram".
+#' @param which Which distance matrix to plot (default "centroid").
+#' @param ... Additional arguments.
+#'
+#' @return A ggplot object (for heatmap) or NULL (for dendrogram, uses base graphics).
+#' @export
+plot.group.distance <- function(x, type = c("heatmap", "dendrogram"),
+                                which = c("centroid", "hausdorff", "depth"), ...) {
+  type <- match.arg(type)
+  which <- match.arg(which)
+
+  # Get the appropriate matrix
+  mat <- x[[which]]
+  if (is.null(mat)) {
+    stop("Distance matrix '", which, "' not available. Run group.distance with method='all' or method='", which, "'")
+  }
+
+  if (type == "heatmap") {
+    # Convert to long format for ggplot
+    n <- nrow(mat)
+    df <- data.frame(
+      group1 = rep(rownames(mat), n),
+      group2 = rep(colnames(mat), each = n),
+      value = as.vector(mat)
+    )
+    df$group1 <- factor(df$group1, levels = rownames(mat))
+    df$group2 <- factor(df$group2, levels = colnames(mat))
+
+    title <- switch(which,
+      centroid = "Centroid Distance",
+      hausdorff = "Hausdorff Distance",
+      depth = "Depth Overlap (Similarity)"
+    )
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$group1, y = .data$group2, fill = .data$value)) +
+      ggplot2::geom_tile() +
+      ggplot2::geom_text(ggplot2::aes(label = round(.data$value, 2)), color = "white", size = 4) +
+      ggplot2::scale_fill_viridis_c() +
+      ggplot2::labs(x = "Group", y = "Group", fill = "Value", title = title) +
+      ggplot2::theme_minimal() +
+      ggplot2::coord_equal()
+
+    print(p)
+    invisible(p)
+
+  } else {
+    # Dendrogram using base R
+    if (which == "depth") {
+      # Convert similarity to distance for clustering
+      dist_mat <- 1 - mat
+    } else {
+      dist_mat <- mat
+    }
+
+    hc <- hclust(as.dist(dist_mat), method = "complete")
+    plot(hc, main = paste("Hierarchical Clustering -", which),
+         xlab = "Group", ylab = "Distance")
+    invisible(NULL)
+  }
+}
+
+#' Permutation Test for Group Differences
+#'
+#' Tests whether groups of functional data are significantly different using
+#' permutation testing.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param groups A factor or character vector specifying group membership.
+#' @param n.perm Number of permutations (default 1000).
+#' @param statistic Test statistic: "centroid" (distance between group means) or
+#'   "ratio" (between/within group variance ratio).
+#' @param ... Additional arguments passed to distance functions.
+#'
+#' @return An object of class 'group.test' containing:
+#' \describe{
+#'   \item{statistic}{Observed test statistic}
+#'   \item{p.value}{Permutation p-value}
+#'   \item{perm.dist}{Permutation distribution of test statistic}
+#'   \item{n.perm}{Number of permutations used}
+#' }
+#'
+#' @export
+#' @examples
+#' \dontrun{
+#' set.seed(42)
+#' n <- 30
+#' m <- 50
+#' t_grid <- seq(0, 1, length.out = m)
+#' X <- matrix(0, n, m)
+#' for (i in 1:15) X[i, ] <- sin(2 * pi * t_grid) + rnorm(m, sd = 0.1)
+#' for (i in 16:30) X[i, ] <- cos(2 * pi * t_grid) + rnorm(m, sd = 0.1)
+#' fd <- fdata(X, argvals = t_grid)
+#' groups <- factor(rep(c("A", "B"), each = 15))
+#'
+#' # Test for significant difference
+#' gt <- group.test(fd, groups, n.perm = 500)
+#' print(gt)
+#' }
+group.test <- function(fdataobj, groups, n.perm = 1000,
+                       statistic = c("centroid", "ratio"), ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  n <- nrow(fdataobj$data)
+  if (length(groups) != n) {
+    stop("length(groups) must equal the number of curves (", n, ")")
+  }
+
+  groups <- as.factor(groups)
+  statistic <- match.arg(statistic)
+
+  # Compute observed test statistic
+  obs_stat <- .compute_group_stat(fdataobj, groups, statistic, ...)
+
+  # Permutation distribution
+  perm_stats <- numeric(n.perm)
+  for (i in seq_len(n.perm)) {
+    perm_groups <- sample(groups)
+    perm_stats[i] <- .compute_group_stat(fdataobj, perm_groups, statistic, ...)
+  }
+
+  # Compute p-value (proportion of permuted stats >= observed)
+  p_value <- mean(perm_stats >= obs_stat)
+
+  result <- list(
+    statistic = obs_stat,
+    p.value = p_value,
+    perm.dist = perm_stats,
+    n.perm = n.perm,
+    stat.type = statistic
+  )
+  class(result) <- "group.test"
+  result
+}
+
+# Internal: Compute test statistic for group comparison
+.compute_group_stat <- function(fdataobj, groups, statistic, ...) {
+  group_levels <- levels(groups)
+
+  if (statistic == "centroid") {
+    # Sum of pairwise centroid distances
+    gd <- group.distance(fdataobj, groups, method = "centroid", ...)
+    # Return sum of upper triangle (total between-group distance)
+    return(sum(gd$centroid[upper.tri(gd$centroid)]))
+
+  } else {
+    # Between/within variance ratio
+    # Between: sum of distances from group means to overall mean
+    # Within: sum of distances from curves to their group means
+
+    overall_mean <- mean(fdataobj)
+    n_groups <- length(group_levels)
+
+    between_var <- 0
+    within_var <- 0
+
+    for (g in group_levels) {
+      idx <- which(groups == g)
+      n_g <- length(idx)
+      group_data <- fdataobj[idx]
+      group_mean <- mean(group_data)
+
+      # Between: distance from group mean to overall mean, weighted by group size
+      combined <- fdata(rbind(group_mean$data, overall_mean$data), argvals = fdataobj$argvals)
+      between_var <- between_var + n_g * metric.lp(combined, p = 2)[1, 2]^2
+
+      # Within: distances from curves to group mean
+      for (i in seq_len(n_g)) {
+        curve_mean <- fdata(rbind(group_data$data[i, ], group_mean$data), argvals = fdataobj$argvals)
+        within_var <- within_var + metric.lp(curve_mean, p = 2)[1, 2]^2
+      }
+    }
+
+    # F-like ratio (higher = more separation)
+    return(between_var / max(within_var, 1e-10))
+  }
+}
+
+#' Print method for group.test
+#' @export
+print.group.test <- function(x, ...) {
+  cat("Permutation Test for Group Differences\n")
+  cat("======================================\n")
+  cat("Test statistic type:", x$stat.type, "\n")
+  cat("Observed statistic:", round(x$statistic, 4), "\n")
+  cat("Number of permutations:", x$n.perm, "\n")
+  cat("P-value:", format.pval(x$p.value, digits = 3))
+
+  if (x$p.value < 0.001) {
+    cat(" ***\n")
+  } else if (x$p.value < 0.01) {
+    cat(" **\n")
+  } else if (x$p.value < 0.05) {
+    cat(" *\n")
+  } else {
+    cat("\n")
+  }
+
+  invisible(x)
 }
