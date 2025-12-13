@@ -180,6 +180,7 @@ fdars supports 2D functional data (surfaces/images). The following functions hav
 | **Depth** | `depth.FM`, `depth.mode`, `depth.RP`, `depth.RT`, `depth.FSD`, `depth.KFSD` |
 | **Distance** | `metric.lp`, `metric.hausdorff` |
 | **Statistics** | `mean`, `var.fdata`, `sd.fdata`, `cov.fdata`, `gmed`, `fdata.deriv` |
+| **Regression** | `fregre.np` (nonparametric) |
 | **Visualization** | `plot` (heatmap + contours) |
 
 **Note:** Band depths (`depth.BD`, `depth.MBD`) and DTW do not support 2D data.
