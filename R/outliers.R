@@ -548,3 +548,224 @@ print.ms.plot <- function(x, ...) {
   cat("Chi-squared cutoff:", round(x$cutoff, 3), "\n")
   invisible(x)
 }
+
+#' Outliergram for Functional Data
+#'
+#' Creates an outliergram plot that displays MEI (Modified Epigraph Index) versus
+#' MBD (Modified Band Depth) for outlier detection. Points below the parabolic
+#' boundary are identified as outliers.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param factor Factor to adjust the outlier detection threshold. Higher values
+#'   make detection less sensitive. Default is 1.5.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return An object of class 'outliergram' with components:
+#' \describe{
+#'   \item{fdataobj}{The input functional data}
+#'   \item{mei}{MEI values for each curve}
+#'   \item{mbd}{MBD values for each curve}
+#'   \item{outliers}{Indices of detected outliers}
+#'   \item{n_outliers}{Number of outliers detected}
+#'   \item{factor}{The factor used for threshold adjustment}
+#'   \item{parabola}{Coefficients of the parabolic boundary (a0, a1, a2)}
+#' }
+#'
+#' @details
+#' The outliergram plots MEI on the x-axis versus MBD on the y-axis. For standard
+#' functional data, these values lie near a parabola. The theoretical relationship
+#' for uniformly distributed data is:
+#' \deqn{MBD = a_0 + a_1 \cdot MEI + a_2 \cdot MEI^2}
+#'
+#' Points that fall significantly below this parabola are identified as outliers.
+#' The \code{factor} parameter controls the sensitivity: lower values detect more
+#' outliers.
+#'
+#' @references
+#' Lopez-Pintado, S. and Romo, J. (2011). A half-region depth for functional data.
+#' \emph{Computational Statistics & Data Analysis}, 55(4), 1679-1695.
+#'
+#' @seealso \code{\link{depth}} for depth computation, \code{\link{MS.plot}} for
+#'   an alternative outlier visualization.
+#'
+#' @export
+#' @examples
+#' # Create functional data with an outlier
+#' set.seed(42)
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 30, 50)
+#' for (i in 1:29) X[i, ] <- sin(2 * pi * t) + rnorm(50, sd = 0.2)
+#' X[30, ] <- sin(2 * pi * t) + 2  # magnitude outlier
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Create outliergram
+#' og <- outliergram(fd)
+#' plot(og)
+outliergram <- function(fdataobj, factor = 1.5, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("outliergram not yet implemented for 2D functional data")
+  }
+
+  n <- nrow(fdataobj$data)
+
+  # Compute MEI and MBD
+  mei <- depth(fdataobj, method = "MEI")
+  mbd <- depth(fdataobj, method = "MBD")
+
+  # Theoretical parabola coefficients for uniform data
+  # MBD_max occurs at MEI = 0.5, with MBD_max = 0.5
+  # Parabola: MBD = a0 + a1*MEI + a2*MEI^2
+  # For uniform: passes through (0,0), (0.5, 0.5), (1,0)
+  # This gives: a0 = 0, a1 = 2, a2 = -2
+  # So: MBD_theoretical = 2*MEI - 2*MEI^2 = 2*MEI*(1 - MEI)
+  a0 <- 0
+  a1 <- 2
+  a2 <- -2
+
+  # Compute expected MBD based on MEI
+  mbd_expected <- a0 + a1 * mei + a2 * mei^2
+
+  # Compute vertical distance from parabola
+  dist_to_parabola <- mbd - mbd_expected
+
+  # Compute threshold based on the distribution of distances
+  # Use median and MAD for robust estimation
+  med_dist <- stats::median(dist_to_parabola)
+  mad_dist <- stats::mad(dist_to_parabola, constant = 1.4826)
+
+  # Outliers are points significantly below the parabola
+  threshold <- med_dist - factor * mad_dist
+  outliers <- which(dist_to_parabola < threshold)
+
+  structure(
+    list(
+      fdataobj = fdataobj,
+      mei = mei,
+      mbd = mbd,
+      outliers = outliers,
+      n_outliers = length(outliers),
+      factor = factor,
+      parabola = c(a0 = a0, a1 = a1, a2 = a2),
+      threshold = threshold,
+      dist_to_parabola = dist_to_parabola
+    ),
+    class = "outliergram"
+  )
+}
+
+#' Plot Method for Outliergram Objects
+#'
+#' Creates a scatter plot of MEI vs MBD with the parabolic boundary and
+#' identified outliers highlighted.
+#'
+#' @param x An object of class 'outliergram'.
+#' @param col_normal Color for normal observations. Default is "gray60".
+#' @param col_outlier Color for outliers. Default is "red".
+#' @param show_parabola Logical. If TRUE, draw the theoretical parabola. Default TRUE.
+#' @param show_threshold Logical. If TRUE, draw the adjusted threshold parabola. Default TRUE.
+#' @param ... Additional arguments passed to plotting functions.
+#'
+#' @export
+plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
+                              show_parabola = TRUE, show_threshold = TRUE, ...) {
+  n <- length(x$mei)
+
+  # Create status factor
+  status <- rep("Normal", n)
+  if (length(x$outliers) > 0) {
+    status[x$outliers] <- "Outlier"
+  }
+  status <- factor(status, levels = c("Normal", "Outlier"))
+
+  # Create data frame for plotting
+  df <- data.frame(
+    mei = x$mei,
+    mbd = x$mbd,
+    status = status,
+    id = seq_len(n)
+  )
+
+  # Create parabola data for plotting
+  mei_seq <- seq(0, 1, length.out = 100)
+  parabola_df <- data.frame(
+    mei = mei_seq,
+    mbd_theoretical = x$parabola["a0"] + x$parabola["a1"] * mei_seq +
+                      x$parabola["a2"] * mei_seq^2,
+    mbd_threshold = x$parabola["a0"] + x$parabola["a1"] * mei_seq +
+                    x$parabola["a2"] * mei_seq^2 + x$threshold
+  )
+
+  # Build ggplot
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = mei, y = mbd, color = status)) +
+    ggplot2::geom_point(size = 2, alpha = 0.7) +
+    ggplot2::scale_color_manual(values = c("Normal" = col_normal, "Outlier" = col_outlier)) +
+    ggplot2::labs(
+      title = "Outliergram",
+      x = "MEI (Modified Epigraph Index)",
+      y = "MBD (Modified Band Depth)",
+      color = ""
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "bottom")
+
+  # Add theoretical parabola
+  if (show_parabola) {
+    p <- p + ggplot2::geom_line(
+      data = parabola_df,
+      ggplot2::aes(x = mei, y = mbd_theoretical),
+      inherit.aes = FALSE,
+      color = "blue",
+      linetype = "dashed",
+      linewidth = 0.8
+    )
+  }
+
+  # Add threshold parabola
+  if (show_threshold) {
+    p <- p + ggplot2::geom_line(
+      data = parabola_df,
+      ggplot2::aes(x = mei, y = mbd_threshold),
+      inherit.aes = FALSE,
+      color = "darkred",
+      linetype = "dotted",
+      linewidth = 0.8
+    )
+  }
+
+  # Add labels for outliers
+  if (length(x$outliers) > 0) {
+    outlier_df <- df[x$outliers, ]
+    p <- p + ggplot2::geom_text(
+      data = outlier_df,
+      ggplot2::aes(label = id),
+      nudge_y = 0.02,
+      size = 3,
+      color = col_outlier
+    )
+  }
+
+  print(p)
+  invisible(p)
+}
+
+#' Print Method for Outliergram Objects
+#'
+#' @param x An object of class 'outliergram'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.outliergram <- function(x, ...) {
+  cat("Outliergram\n")
+  cat("===========\n")
+  cat("Number of curves:", length(x$mei), "\n")
+  cat("Outliers detected:", x$n_outliers, "\n")
+  if (x$n_outliers > 0) {
+    cat("Outlier indices:", paste(x$outliers, collapse = ", "), "\n")
+  }
+  cat("Factor:", x$factor, "\n")
+  invisible(x)
+}

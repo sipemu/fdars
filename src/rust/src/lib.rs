@@ -1197,6 +1197,54 @@ fn depth_mbd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>) -> Robj {
     Robj::from(depths)
 }
 
+/// Modified Epigraph Index (MEI) for 1D functional data
+/// MEI measures the proportion of time a curve is below other curves
+/// MEI(x_i) = (1/n) * sum_j (1/m) * sum_t I(x_i(t) < x_j(t)) + 0.5*I(x_i(t) = x_j(t))
+#[extendr]
+fn depth_mei_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>) -> Robj {
+    let nobj = fdataobj.nrows();
+    let nori = fdataori.nrows();
+    let ncol_obj = fdataobj.ncols();
+    let ncol_ori = fdataori.ncols();
+
+    if ncol_obj != ncol_ori || nobj == 0 || nori == 0 {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let n_points = ncol_obj;
+    let data_obj = fdataobj.as_real_slice().unwrap();
+    let data_ori = fdataori.as_real_slice().unwrap();
+
+    let mei: Vec<f64> = (0..nobj)
+        .into_par_iter()
+        .map(|i| {
+            let mut total = 0.0;
+
+            for j in 0..nori {
+                let mut count = 0.0;
+
+                for t in 0..n_points {
+                    let xi = data_obj[i + t * nobj];
+                    let xj = data_ori[j + t * nori];
+
+                    if xi < xj {
+                        count += 1.0;
+                    } else if (xi - xj).abs() < 1e-12 {
+                        // Handle equality with small tolerance
+                        count += 0.5;
+                    }
+                }
+
+                total += count / n_points as f64;
+            }
+
+            total / nori as f64
+        })
+        .collect();
+
+    Robj::from(mei)
+}
+
 // =============================================================================
 // 2D depth functions (for surfaces)
 // =============================================================================
@@ -4744,6 +4792,7 @@ extendr_module! {
     fn depth_kfsd_1d;
     fn depth_bd_1d;
     fn depth_mbd_1d;
+    fn depth_mei_1d;
 
     fn depth_fm_2d;
     fn depth_mode_2d;

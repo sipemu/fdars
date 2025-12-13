@@ -1327,14 +1327,262 @@ fdata2pc <- function(fdataobj, ncomp = 2, lambda = 0, norm = TRUE) {
                                      xlab = fdataobj$names$xlab,
                                      ylab = fdataobj$names$ylab))
 
-  list(
-    d = result$d,
-    rotation = rotation,
-    x = result$scores,
-    mean = result$mean,
-    fdataobj.cen = fdataobj.cen,
-    call = match.call()
+  structure(
+    list(
+      d = result$d,
+      rotation = rotation,
+      x = result$scores,
+      mean = result$mean,
+      fdataobj.cen = fdataobj.cen,
+      argvals = fdataobj$argvals,
+      call = match.call()
+    ),
+    class = "fdata2pc"
   )
+}
+
+#' Plot FPCA Results
+#'
+#' Visualize functional principal component analysis results with multiple
+#' plot types: component perturbation plots, variance explained (scree plot),
+#' or score plots.
+#'
+#' @param x An object of class 'fdata2pc' from \code{\link{fdata2pc}}.
+#' @param type Type of plot: "components" (default) shows mean +/- scaled PC loadings,
+#'   "variance" shows a scree plot of variance explained, "scores" shows PC1 vs PC2
+#'   scatter plot of observations.
+#' @param ncomp Number of components to display (default 3 or fewer if not available).
+#' @param multiple Factor for scaling PC perturbations. Default is 2 (shows +/- 2*sqrt(eigenvalue)*PC).
+#' @param ... Additional arguments passed to plotting functions.
+#'
+#' @return A ggplot object (invisibly).
+#'
+#' @details
+#' The "components" plot shows the mean function (black) with perturbations
+#' in the direction of each principal component. The perturbation is computed as:
+#' mean +/- multiple * sqrt(variance_explained) * PC_loading
+#'
+#' The "variance" plot shows a scree plot with the proportion of variance
+#' explained by each component as a bar chart.
+#'
+#' The "scores" plot shows a scatter plot of observations in PC space,
+#' typically PC1 vs PC2.
+#'
+#' @seealso \code{\link{fdata2pc}} for computing FPCA.
+#'
+#' @export
+#' @examples
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 30, 50)
+#' for (i in 1:30) X[i, ] <- sin(2*pi*t + runif(1, 0, pi)) + rnorm(50, sd = 0.1)
+#' fd <- fdata(X, argvals = t)
+#' pc <- fdata2pc(fd, ncomp = 3)
+#'
+#' # Plot PC components (mean +/- perturbations)
+#' plot(pc, type = "components")
+#'
+#' # Scree plot
+#' plot(pc, type = "variance")
+#'
+#' # Score plot
+#' plot(pc, type = "scores")
+plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
+                          ncomp = 3, multiple = 2, ...) {
+  type <- match.arg(type)
+
+  ncomp <- min(ncomp, length(x$d), ncol(x$x))
+
+  switch(type,
+    "components" = .plot_fpca_components(x, ncomp, multiple),
+    "variance" = .plot_fpca_variance(x, ncomp),
+    "scores" = .plot_fpca_scores(x, ncomp)
+  )
+}
+
+# Internal: Plot FPCA components (mean +/- perturbations)
+# @noRd
+.plot_fpca_components <- function(x, ncomp, multiple) {
+  m <- length(x$argvals)
+
+  # Compute variance explained (proportional to d^2)
+  var_explained <- x$d^2
+  total_var <- sum(var_explained)
+  prop_var <- var_explained / total_var
+
+  # Build data frame for plotting
+  plot_data <- list()
+
+  # Add mean function
+  plot_data[[1]] <- data.frame(
+    t = x$argvals,
+    value = x$mean,
+    type = "Mean",
+    component = "Mean",
+    direction = "mean"
+  )
+
+  # Add PC perturbations
+  for (k in seq_len(ncomp)) {
+    loading <- x$rotation$data[k, ]
+    scale_factor <- multiple * sqrt(var_explained[k])
+
+    # Plus direction
+    plot_data[[length(plot_data) + 1]] <- data.frame(
+      t = x$argvals,
+      value = x$mean + scale_factor * loading,
+      type = paste0("PC", k),
+      component = paste0("PC", k, " (", round(100 * prop_var[k], 1), "%)"),
+      direction = "plus"
+    )
+
+    # Minus direction
+    plot_data[[length(plot_data) + 1]] <- data.frame(
+      t = x$argvals,
+      value = x$mean - scale_factor * loading,
+      type = paste0("PC", k),
+      component = paste0("PC", k, " (", round(100 * prop_var[k], 1), "%)"),
+      direction = "minus"
+    )
+  }
+
+  df <- do.call(rbind, plot_data)
+  df$component <- factor(df$component, levels = unique(df$component))
+
+  # Create plot
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = t, y = value, color = component,
+                                         linetype = direction)) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::scale_linetype_manual(
+      values = c("mean" = "solid", "plus" = "dashed", "minus" = "dotted"),
+      guide = "none"
+    ) +
+    ggplot2::labs(
+      title = "FPCA: Principal Component Perturbations",
+      subtitle = paste0("Mean \u00B1 ", multiple, " \u00D7 sqrt(eigenvalue) \u00D7 PC"),
+      x = "t",
+      y = "X(t)",
+      color = ""
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "bottom")
+
+  print(p)
+  invisible(p)
+}
+
+# Internal: Plot FPCA variance explained (scree plot)
+# @noRd
+.plot_fpca_variance <- function(x, ncomp) {
+  # Compute variance explained
+  var_explained <- x$d^2
+  total_var <- sum(var_explained)
+  prop_var <- var_explained / total_var
+  cum_var <- cumsum(prop_var)
+
+  # Limit to ncomp
+  ncomp <- min(ncomp, length(var_explained))
+
+  df <- data.frame(
+    component = factor(seq_len(ncomp), levels = seq_len(ncomp)),
+    prop = prop_var[seq_len(ncomp)] * 100,
+    cumulative = cum_var[seq_len(ncomp)] * 100
+  )
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = component, y = prop)) +
+    ggplot2::geom_col(fill = "steelblue", alpha = 0.7) +
+    ggplot2::geom_line(ggplot2::aes(y = cumulative, group = 1),
+                        color = "darkred", linewidth = 1) +
+    ggplot2::geom_point(ggplot2::aes(y = cumulative), color = "darkred", size = 2) +
+    ggplot2::geom_text(ggplot2::aes(label = paste0(round(prop, 1), "%")),
+                       vjust = -0.5, size = 3) +
+    ggplot2::scale_y_continuous(
+      name = "Variance Explained (%)",
+      sec.axis = ggplot2::sec_axis(~., name = "Cumulative (%)")
+    ) +
+    ggplot2::labs(
+      title = "FPCA: Variance Explained (Scree Plot)",
+      x = "Principal Component"
+    ) +
+    ggplot2::theme_minimal()
+
+  print(p)
+  invisible(p)
+}
+
+# Internal: Plot FPCA scores
+# @noRd
+.plot_fpca_scores <- function(x, ncomp) {
+  scores <- x$x
+  n <- nrow(scores)
+
+  # Compute variance explained for axis labels
+  var_explained <- x$d^2
+  total_var <- sum(var_explained)
+  prop_var <- var_explained / total_var * 100
+
+  if (ncol(scores) >= 2) {
+    # 2D scatter plot: PC1 vs PC2
+    df <- data.frame(
+      PC1 = scores[, 1],
+      PC2 = scores[, 2],
+      id = seq_len(n)
+    )
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = PC1, y = PC2)) +
+      ggplot2::geom_point(color = "steelblue", size = 2, alpha = 0.7) +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+      ggplot2::labs(
+        title = "FPCA: Score Plot",
+        x = paste0("PC1 (", round(prop_var[1], 1), "%)"),
+        y = paste0("PC2 (", round(prop_var[2], 1), "%)")
+      ) +
+      ggplot2::theme_minimal()
+  } else {
+    # Only 1 PC: plot scores as bar chart
+    df <- data.frame(
+      id = factor(seq_len(n)),
+      PC1 = scores[, 1]
+    )
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = id, y = PC1)) +
+      ggplot2::geom_col(fill = "steelblue", alpha = 0.7) +
+      ggplot2::labs(
+        title = "FPCA: Score Plot",
+        x = "Observation",
+        y = paste0("PC1 (", round(prop_var[1], 1), "%)")
+      ) +
+      ggplot2::theme_minimal()
+  }
+
+  print(p)
+  invisible(p)
+}
+
+#' Print Method for FPCA Results
+#'
+#' @param x An object of class 'fdata2pc'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @export
+print.fdata2pc <- function(x, ...) {
+  cat("Functional Principal Component Analysis\n")
+  cat("========================================\n")
+  cat("Number of observations:", nrow(x$x), "\n")
+  cat("Number of components:", length(x$d), "\n\n")
+
+  # Compute variance explained
+  var_explained <- x$d^2
+  total_var <- sum(var_explained)
+  prop_var <- var_explained / total_var * 100
+  cum_var <- cumsum(prop_var)
+
+  cat("Variance explained:\n")
+  for (k in seq_along(x$d)) {
+    cat(sprintf("  PC%d: %.1f%% (cumulative: %.1f%%)\n",
+                k, prop_var[k], cum_var[k]))
+  }
+  invisible(x)
 }
 
 #' Convert Functional Data to PLS Scores

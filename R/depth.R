@@ -11,9 +11,9 @@
 #'   If NULL, uses fdataobj as reference.
 #' @param method Depth method to use. One of "FM" (Fraiman-Muniz), "mode" (modal),
 #'   "RP" (random projection), "RT" (random Tukey), "BD" (band depth),
-#'   "MBD" (modified band depth), "FSD" (functional spatial depth),
-#'   "KFSD" (kernel functional spatial depth), or "RPD" (random projection
-#'   with derivatives). Default is "FM".
+#'   "MBD" (modified band depth), "MEI" (modified epigraph index),
+#'   "FSD" (functional spatial depth), "KFSD" (kernel functional spatial depth),
+#'   or "RPD" (random projection with derivatives). Default is "FM".
 #' @param ... Additional arguments passed to the specific depth function.
 #'
 #' @return A numeric vector of depth values, one per curve in fdataobj.
@@ -27,6 +27,7 @@
 #'   \item{RT}{Random Tukey depth - halfspace depth via random projections}
 #'   \item{BD}{Band depth - proportion of bands containing the curve (1D only)}
 #'   \item{MBD}{Modified band depth - allows partial containment (1D only)}
+#'   \item{MEI}{Modified epigraph index - proportion of time below other curves (1D only)}
 #'   \item{FSD}{Functional spatial depth - based on spatial signs}
 #'   \item{KFSD}{Kernel functional spatial depth - smoothed FSD}
 #'   \item{RPD}{Random projection with derivatives - includes curve derivatives}
@@ -41,7 +42,7 @@
 #' depth(fd, method = "mode")
 #' depth(fd, method = "RP")
 depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT",
-                  "BD", "MBD", "FSD", "KFSD", "RPD"), ...) {
+                  "BD", "MBD", "MEI", "FSD", "KFSD", "RPD"), ...) {
   method <- match.arg(method)
 
   switch(method,
@@ -51,6 +52,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     "RT" = .depth.RT(fdataobj, fdataori, ...),
     "BD" = .depth.BD(fdataobj, fdataori, ...),
     "MBD" = .depth.MBD(fdataobj, fdataori, ...),
+    "MEI" = .depth.MEI(fdataobj, fdataori, ...),
     "FSD" = .depth.FSD(fdataobj, fdataori, ...),
     "KFSD" = .depth.KFSD(fdataobj, fdataori, ...),
     "RPD" = .depth.RPD(fdataobj, fdataori, ...)
@@ -159,6 +161,32 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   .Call("wrap__depth_mbd_1d", fdataobj$data, fdataori$data)
+}
+
+# Internal: Modified Epigraph Index implementation
+# @noRd
+.depth.MEI <- function(fdataobj, fdataori = NULL, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (is.null(fdataori)) {
+    fdataori <- fdataobj
+  }
+
+  if (!inherits(fdataori, "fdata")) {
+    stop("fdataori must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d) || isTRUE(fdataori$fdata2d)) {
+    stop("depth.MEI not yet implemented for 2D functional data")
+  }
+
+  if (ncol(fdataobj$data) != ncol(fdataori$data)) {
+    stop("fdataobj and fdataori must have the same number of evaluation points")
+  }
+
+  .Call("wrap__depth_mei_1d", fdataobj$data, fdataori$data)
 }
 
 # Internal: Modal Depth implementation
