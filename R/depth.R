@@ -2,6 +2,61 @@
 #'
 #' Functions for computing various depth measures for functional data.
 
+#' Compute Functional Data Depth
+#'
+#' Unified interface for computing various depth measures for functional data.
+#'
+#' @param fdataobj An object of class 'fdata' to compute depth for.
+#' @param fdataori An object of class 'fdata' as reference sample.
+#'   If NULL, uses fdataobj as reference.
+#' @param method Depth method to use. One of "FM" (Fraiman-Muniz), "mode" (modal),
+#'   "RP" (random projection), "RT" (random Tukey), "BD" (band depth),
+#'   "MBD" (modified band depth), "FSD" (functional spatial depth),
+#'   "KFSD" (kernel functional spatial depth), or "RPD" (random projection
+#'   with derivatives). Default is "FM".
+#' @param ... Additional arguments passed to the specific depth function.
+#'
+#' @return A numeric vector of depth values, one per curve in fdataobj.
+#'
+#' @details
+#' Available methods:
+#' \describe{
+#'   \item{FM}{Fraiman-Muniz depth - integrates univariate depths over domain}
+#'   \item{mode}{Modal depth - based on kernel density estimation}
+#'   \item{RP}{Random projection depth - projects to random directions}
+#'   \item{RT}{Random Tukey depth - halfspace depth via random projections}
+#'   \item{BD}{Band depth - proportion of bands containing the curve (1D only)}
+#'   \item{MBD}{Modified band depth - allows partial containment (1D only)}
+#'   \item{FSD}{Functional spatial depth - based on spatial signs}
+#'   \item{KFSD}{Kernel functional spatial depth - smoothed FSD}
+#'   \item{RPD}{Random projection with derivatives - includes curve derivatives}
+#' }
+#'
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(100), 10, 10))
+#'
+#' # Different depth methods
+#' depth(fd, method = "FM")
+#' depth(fd, method = "mode")
+#' depth(fd, method = "RP")
+depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT",
+                  "BD", "MBD", "FSD", "KFSD", "RPD"), ...) {
+  method <- match.arg(method)
+
+  switch(method,
+    "FM" = depth.FM(fdataobj, fdataori, ...),
+    "mode" = depth.mode(fdataobj, fdataori, ...),
+    "RP" = depth.RP(fdataobj, fdataori, ...),
+    "RT" = depth.RT(fdataobj, fdataori, ...),
+    "BD" = depth.BD(fdataobj, fdataori, ...),
+    "MBD" = depth.MBD(fdataobj, fdataori, ...),
+    "FSD" = depth.FSD(fdataobj, fdataori, ...),
+    "KFSD" = depth.KFSD(fdataobj, fdataori, ...),
+    "RPD" = depth.RPD(fdataobj, fdataori, ...)
+  )
+}
+
 #' Fraiman-Muniz Depth
 #'
 #' Computes the Fraiman-Muniz depth for functional data. The FM depth
@@ -669,316 +724,106 @@ depth.RPD <- function(fdataobj, fdataori = NULL, nproj = 20, deriv = c(0, 1),
   depths / nproj
 }
 
-#' Compute functional median based on depth
+#' Compute Functional Median
 #'
-#' Returns the curve with maximum depth.
+#' Returns the curve with maximum depth using the specified depth method.
 #'
 #' @param fdataobj An object of class 'fdata'.
-#' @param depth.func Depth function to use. Default is depth.FM.
-#' @param ... Additional arguments passed to depth function.
+#' @param method Depth method to use. One of "FM", "mode", "RP", "RT", "BD",
+#'   "MBD", "FSD", "KFSD", or "RPD". Default is "FM".
+#' @param ... Additional arguments passed to the depth function.
 #'
 #' @return The curve (as fdata object) with maximum depth.
 #'
-#' @export median.FM
+#' @export
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- median.FM(fd)
-median.FM <- function(fdataobj, depth.func = depth.FM, ...) {
+#' med <- median(fd)
+#' med_mode <- median(fd, method = "mode")
+median <- function(fdataobj, method = c("FM", "mode", "RP", "RT", "BD", "MBD",
+                   "FSD", "KFSD", "RPD"), ...) {
   if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
+    return(stats::median(fdataobj, ...))
   }
 
-  depths <- depth.func(fdataobj, fdataobj, ...)
+  method <- match.arg(method)
+  depths <- depth(fdataobj, fdataobj, method = method, ...)
   max_idx <- which.max(depths)
 
-  fdataobj[max_idx, ]
+  result <- fdataobj[max_idx, ]
+  result$names$main <- paste0("Median (", method, ")")
+  result
 }
 
-#' Compute functional trimmed mean
+# Keep old function names for backward compatibility (internal use)
+median.FM <- function(fdataobj, ...) median(fdataobj, method = "FM", ...)
+
+#' Compute Functional Trimmed Mean
 #'
 #' Computes the trimmed mean by excluding curves with lowest depth.
 #'
 #' @param fdataobj An object of class 'fdata'.
 #' @param trim Proportion of curves to trim (default 0.1).
-#' @param depth.func Depth function to use. Default is depth.FM.
-#' @param ... Additional arguments passed to depth function.
+#' @param method Depth method to use. One of "FM", "mode", "RP", "RT", "BD",
+#'   "MBD", "FSD", "KFSD", or "RPD". Default is "FM".
+#' @param ... Additional arguments passed to the depth function.
 #'
-#' @return A numeric vector containing the trimmed mean function.
+#' @return An fdata object containing the trimmed mean function.
 #'
-#' @export trimmed.FM
+#' @export
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- trimmed.FM(fd, trim = 0.2)
-trimmed.FM <- function(fdataobj, trim = 0.1, depth.func = depth.FM, ...) {
+#' tm <- trimmed(fd, trim = 0.2)
+#' tm_mode <- trimmed(fd, trim = 0.2, method = "mode")
+trimmed <- function(fdataobj, trim = 0.1, method = c("FM", "mode", "RP", "RT",
+                    "BD", "MBD", "FSD", "KFSD", "RPD"), ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
+  method <- match.arg(method)
   n <- nrow(fdataobj$data)
   n_keep <- ceiling(n * (1 - trim))
 
-  depths <- depth.func(fdataobj, fdataobj, ...)
+  depths <- depth(fdataobj, fdataobj, method = method, ...)
   depth_order <- order(depths, decreasing = TRUE)
   keep_idx <- depth_order[seq_len(n_keep)]
 
   # Compute mean of kept curves and return as fdata object
   mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
   fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
+        names = list(main = paste0("Trimmed Mean (", method, ")"),
+                     xlab = fdataobj$names$xlab, ylab = fdataobj$names$ylab))
 }
 
-#' Functional Median using Modal Depth
-#'
-#' Returns the curve with maximum modal depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param ... Additional arguments passed to depth.mode.
-#'
-#' @return The curve (as fdata object) with maximum modal depth.
-#'
-#' @export median.mode
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- median.mode(fd)
-median.mode <- function(fdataobj, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
+# Keep old function names for backward compatibility (internal use)
+trimmed.FM <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "FM", ...)
 
-  depths <- depth.mode(fdataobj, fdataobj, ...)
-  max_idx <- which.max(depths)
+# Backward compatibility wrappers
+median.mode <- function(fdataobj, ...) median(fdataobj, method = "mode", ...)
+median.RP <- function(fdataobj, ...) median(fdataobj, method = "RP", ...)
+median.RPD <- function(fdataobj, ...) median(fdataobj, method = "RPD", ...)
+median.RT <- function(fdataobj, ...) median(fdataobj, method = "RT", ...)
+median.BD <- function(fdataobj, ...) median(fdataobj, method = "BD", ...)
+median.MBD <- function(fdataobj, ...) median(fdataobj, method = "MBD", ...)
 
-  result <- fdataobj[max_idx, ]
-  result$names$main <- "Modal Median"
-  result
-}
-
-#' Functional Median using Random Projection Depth
-#'
-#' Returns the curve with maximum RP depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments passed to depth.RP.
-#'
-#' @return The curve (as fdata object) with maximum RP depth.
-#'
-#' @export median.RP
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- median.RP(fd)
-median.RP <- function(fdataobj, nproj = 50, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  depths <- depth.RP(fdataobj, fdataobj, nproj = nproj, ...)
-  max_idx <- which.max(depths)
-
-  result <- fdataobj[max_idx, ]
-  result$names$main <- "RP Median"
-  result
-}
-
-#' Functional Median using Random Projection Depth with Derivatives
-#'
-#' Returns the curve with maximum RPD depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param nproj Number of random projections. Default is 20.
-#' @param deriv Vector of derivative orders to include. Default is c(0, 1).
-#' @param ... Additional arguments passed to depth.RPD.
-#'
-#' @return The curve (as fdata object) with maximum RPD depth.
-#'
-#' @export median.RPD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' med <- median.RPD(fd)
-median.RPD <- function(fdataobj, nproj = 20, deriv = c(0, 1), ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  depths <- depth.RPD(fdataobj, fdataobj, nproj = nproj, deriv = deriv, ...)
-  max_idx <- which.max(depths)
-
-  result <- fdataobj[max_idx, ]
-  result$names$main <- "RPD Median"
-  result
-}
-
-#' Functional Median using Random Tukey Depth
-#'
-#' Returns the curve with maximum RT (Random Tukey) depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments passed to depth.RT.
-#'
-#' @return The curve (as fdata object) with maximum RT depth.
-#'
-#' @export median.RT
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' med <- median.RT(fd)
-median.RT <- function(fdataobj, nproj = 50, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  depths <- depth.RT(fdataobj, fdataobj, nproj = nproj, ...)
-  max_idx <- which.max(depths)
-
-  result <- fdataobj[max_idx, ]
-  result$names$main <- "RT Median"
-  result
-}
-
-#' Functional Trimmed Mean using Modal Depth
-#'
-#' Computes the trimmed mean by excluding curves with lowest modal depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param ... Additional arguments passed to depth.mode.
-#'
-#' @return An fdata object containing the trimmed mean function.
-#'
-#' @export trimmed.mode
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- trimmed.mode(fd, trim = 0.2)
-trimmed.mode <- function(fdataobj, trim = 0.1, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.mode(fdataobj, fdataobj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
-  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean (mode)", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
-}
-
-#' Functional Trimmed Mean using Random Projection Depth
-#'
-#' Computes the trimmed mean by excluding curves with lowest RP depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments passed to depth.RP.
-#'
-#' @return An fdata object containing the trimmed mean function.
-#'
-#' @export trimmed.RP
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- trimmed.RP(fd, trim = 0.2)
-trimmed.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.RP(fdataobj, fdataobj, nproj = nproj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
-  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean (RP)", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
-}
-
-#' Functional Trimmed Mean using Random Projection Depth with Derivatives
-#'
-#' Computes the trimmed mean by excluding curves with lowest RPD depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param nproj Number of random projections. Default is 20.
-#' @param deriv Vector of derivative orders to include. Default is c(0, 1).
-#' @param ... Additional arguments passed to depth.RPD.
-#'
-#' @return An fdata object containing the trimmed mean function.
-#'
-#' @export trimmed.RPD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tm <- trimmed.RPD(fd, trim = 0.2)
-trimmed.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.RPD(fdataobj, fdataobj, nproj = nproj, deriv = deriv, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
-  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean (RPD)", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
-}
-
-#' Functional Trimmed Mean using Random Tukey Depth
-#'
-#' Computes the trimmed mean by excluding curves with lowest RT depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments passed to depth.RT.
-#'
-#' @return An fdata object containing the trimmed mean function.
-#'
-#' @export trimmed.RT
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tm <- trimmed.RT(fd, trim = 0.2)
-trimmed.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.RT(fdataobj, fdataobj, nproj = nproj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
-  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean (RT)", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
-}
+trimmed.mode <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "mode", ...)
+trimmed.RP <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "RP", ...)
+trimmed.RPD <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "RPD", ...)
+trimmed.RT <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "RT", ...)
+trimmed.BD <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "BD", ...)
+trimmed.MBD <- function(fdataobj, trim = 0.1, ...) trimmed(fdataobj, trim, method = "MBD", ...)
 
 #' Functional Variance
 #'
 #' Computes the pointwise variance function of functional data.
-#' This is an S3 method for the generic \code{var} function.
 #'
-#' @param x An object of class 'fdata'.
+#' @param fdataobj An object of class 'fdata'.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return An fdata object containing the variance function (1D or 2D).
 #'
-#' @export var.fdata
+#' @export
 #' @examples
 #' # 1D functional data
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
@@ -988,12 +833,13 @@ trimmed.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
 #' X <- array(rnorm(500), dim = c(5, 10, 10))
 #' fd2d <- fdata(X, argvals = list(1:10, 1:10), fdata2d = TRUE)
 #' v2d <- var(fd2d)
-var.fdata <- function(x, ...) {
-  if (!inherits(x, "fdata")) {
-    stop("x must be of class 'fdata'")
+var <- function(fdataobj, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    return(stats::var(fdataobj, ...))
   }
+  x <- fdataobj
 
-  var_vals <- apply(x$data, 2, var)
+  var_vals <- apply(x$data, 2, stats::var)
 
   if (isTRUE(x$fdata2d)) {
     # Return as fdata2d
@@ -1019,14 +865,13 @@ var.fdata <- function(x, ...) {
 #' Functional Standard Deviation
 #'
 #' Computes the pointwise standard deviation function of functional data.
-#' This is an S3 method for the generic \code{sd} function.
 #'
-#' @param x An object of class 'fdata'.
+#' @param fdataobj An object of class 'fdata'.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return An fdata object containing the standard deviation function (1D or 2D).
 #'
-#' @export sd.fdata
+#' @export
 #' @examples
 #' # 1D functional data
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
@@ -1036,12 +881,13 @@ var.fdata <- function(x, ...) {
 #' X <- array(rnorm(500), dim = c(5, 10, 10))
 #' fd2d <- fdata(X, argvals = list(1:10, 1:10), fdata2d = TRUE)
 #' s2d <- sd(fd2d)
-sd.fdata <- function(x, ...) {
-  if (!inherits(x, "fdata")) {
-    stop("x must be of class 'fdata'")
+sd <- function(fdataobj, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    return(stats::sd(fdataobj, ...))
   }
+  x <- fdataobj
 
-  sd_vals <- apply(x$data, 2, sd)
+  sd_vals <- apply(x$data, 2, stats::sd)
 
   if (isTRUE(x$fdata2d)) {
     # Return as fdata2d
@@ -1143,9 +989,8 @@ gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
 #' Computes the covariance function (surface) for functional data.
 #' For 1D: \code{Cov(s, t) = E[(X(s) - mu(s))(X(t) - mu(t))]}
 #' For 2D: Covariance across the flattened domain.
-#' This is an S3 method for the generic \code{cov} function.
 #'
-#' @param x An object of class 'fdata'.
+#' @param fdataobj An object of class 'fdata'.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return A list with components:
@@ -1155,7 +1000,7 @@ gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
 #'   \item{mean}{The mean function}
 #' }
 #'
-#' @export cov.fdata
+#' @export
 #' @examples
 #' # 1D functional data
 #' t <- seq(0, 1, length.out = 50)
@@ -1164,10 +1009,11 @@ gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
 #' fd <- fdata(X, argvals = t)
 #' cov_result <- cov(fd)
 #' image(cov_result$cov, main = "Covariance Surface")
-cov.fdata <- function(x, ...) {
-  if (!inherits(x, "fdata")) {
-    stop("x must be of class 'fdata'")
+cov <- function(fdataobj, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    return(stats::cov(fdataobj, ...))
   }
+  x <- fdataobj
 
   # Compute mean and centered data
   n <- nrow(x$data)
@@ -1188,287 +1034,50 @@ cov.fdata <- function(x, ...) {
   )
 }
 
-#' Functional Trimmed Variance using FM Depth
+#' Compute Functional Trimmed Variance
 #'
-#' Computes the trimmed variance by excluding curves with lowest FM depth.
+#' Computes the trimmed variance by excluding curves with lowest depth.
 #'
 #' @param fdataobj An object of class 'fdata'.
 #' @param trim Proportion of curves to trim (default 0.1).
-#' @param ... Additional arguments passed to depth.FM.
+#' @param method Depth method to use. One of "FM", "mode", "RP", "RT", "BD",
+#'   "MBD", "FSD", "KFSD", or "RPD". Default is "FM".
+#' @param ... Additional arguments passed to the depth function.
 #'
 #' @return An fdata object containing the trimmed variance function.
 #'
-#' @export trimvar.FM
+#' @export
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- trimvar.FM(fd, trim = 0.2)
-trimvar.FM <- function(fdataobj, trim = 0.1, ...) {
+#' tv <- trimvar(fd, trim = 0.2)
+#' tv_mode <- trimvar(fd, trim = 0.2, method = "mode")
+trimvar <- function(fdataobj, trim = 0.1, method = c("FM", "mode", "RP", "RT",
+                    "BD", "MBD", "FSD", "KFSD", "RPD"), ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
+  method <- match.arg(method)
   n <- nrow(fdataobj$data)
   n_keep <- ceiling(n * (1 - trim))
 
-  depths <- depth.FM(fdataobj, fdataobj, ...)
+  depths <- depth(fdataobj, fdataobj, method = method, ...)
   depth_order <- order(depths, decreasing = TRUE)
   keep_idx <- depth_order[seq_len(n_keep)]
 
-  var_vals <- apply(fdataobj$data[keep_idx, , drop = FALSE], 2, var)
+  var_vals <- apply(fdataobj$data[keep_idx, , drop = FALSE], 2, stats::var)
 
   fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Variance (FM)", xlab = fdataobj$names$xlab,
-                     ylab = "Var(X(t))"))
+        names = list(main = paste0("Trimmed Variance (", method, ")"),
+                     xlab = fdataobj$names$xlab, ylab = "Var(X(t))"))
 }
 
-#' Functional Trimmed Variance using Modal Depth
-#'
-#' Computes the trimmed variance by excluding curves with lowest modal depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param ... Additional arguments passed to depth.mode.
-#'
-#' @return An fdata object containing the trimmed variance function.
-#'
-#' @export trimvar.mode
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- trimvar.mode(fd, trim = 0.2)
-trimvar.mode <- function(fdataobj, trim = 0.1, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
+# Backward compatibility wrappers for trimvar
+trimvar.FM <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "FM", ...)
+trimvar.mode <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "mode", ...)
+trimvar.RP <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "RP", ...)
+trimvar.RPD <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "RPD", ...)
+trimvar.RT <- function(fdataobj, trim = 0.1, ...) trimvar(fdataobj, trim, method = "RT", ...)
 
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.mode(fdataobj, fdataobj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  var_vals <- apply(fdataobj$data[keep_idx, , drop = FALSE], 2, var)
-
-  fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Variance (mode)", xlab = fdataobj$names$xlab,
-                     ylab = "Var(X(t))"))
-}
-
-#' Functional Trimmed Variance using Random Projection Depth
-#'
-#' Computes the trimmed variance by excluding curves with lowest RP depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments passed to depth.RP.
-#'
-#' @return An fdata object containing the trimmed variance function.
-#'
-#' @export trimvar.RP
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- trimvar.RP(fd, trim = 0.2)
-trimvar.RP <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.RP(fdataobj, fdataobj, nproj = nproj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  var_vals <- apply(fdataobj$data[keep_idx, , drop = FALSE], 2, var)
-
-  fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Variance (RP)", xlab = fdataobj$names$xlab,
-                     ylab = "Var(X(t))"))
-}
-
-#' Functional Trimmed Variance using Random Projection Depth with Derivatives
-#'
-#' Computes the trimmed variance by excluding curves with lowest RPD depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param nproj Number of random projections. Default is 20.
-#' @param deriv Vector of derivative orders to include. Default is c(0, 1).
-#' @param ... Additional arguments passed to depth.RPD.
-#'
-#' @return An fdata object containing the trimmed variance function.
-#'
-#' @export trimvar.RPD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tv <- trimvar.RPD(fd, trim = 0.2)
-trimvar.RPD <- function(fdataobj, trim = 0.1, nproj = 20, deriv = c(0, 1), ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.RPD(fdataobj, fdataobj, nproj = nproj, deriv = deriv, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  var_vals <- apply(fdataobj$data[keep_idx, , drop = FALSE], 2, var)
-
-  fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Variance (RPD)", xlab = fdataobj$names$xlab,
-                     ylab = "Var(X(t))"))
-}
-
-#' Functional Trimmed Variance using Random Tukey Depth
-#'
-#' Computes the trimmed variance by excluding curves with lowest RT depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param nproj Number of random projections. Default is 50.
-#' @param ... Additional arguments passed to depth.RT.
-#'
-#' @return An fdata object containing the trimmed variance function.
-#'
-#' @export trimvar.RT
-#' @examples
-#' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' tv <- trimvar.RT(fd, trim = 0.2)
-trimvar.RT <- function(fdataobj, trim = 0.1, nproj = 50, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.RT(fdataobj, fdataobj, nproj = nproj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  var_vals <- apply(fdataobj$data[keep_idx, , drop = FALSE], 2, var)
-
-  fdata(matrix(var_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Variance (RT)", xlab = fdataobj$names$xlab,
-                     ylab = "Var(X(t))"))
-}
-
-#' Functional Median using Band Depth
-#'
-#' Returns the curve with maximum band depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param ... Additional arguments passed to depth.BD.
-#'
-#' @return The curve (as fdata object) with maximum band depth.
-#'
-#' @export median.BD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' med <- median.BD(fd)
-median.BD <- function(fdataobj, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  depths <- depth.BD(fdataobj, fdataobj, ...)
-  max_idx <- which.max(depths)
-
-  result <- fdataobj[max_idx, ]
-  result$names$main <- "BD Median"
-  result
-}
-
-#' Functional Median using Modified Band Depth
-#'
-#' Returns the curve with maximum modified band depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param ... Additional arguments passed to depth.MBD.
-#'
-#' @return The curve (as fdata object) with maximum modified band depth.
-#'
-#' @export median.MBD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' med <- median.MBD(fd)
-median.MBD <- function(fdataobj, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  depths <- depth.MBD(fdataobj, fdataobj, ...)
-  max_idx <- which.max(depths)
-
-  result <- fdataobj[max_idx, ]
-  result$names$main <- "MBD Median"
-  result
-}
-
-#' Functional Trimmed Mean using Band Depth
-#'
-#' Computes the trimmed mean by excluding curves with lowest band depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param ... Additional arguments passed to depth.BD.
-#'
-#' @return An fdata object containing the trimmed mean function.
-#'
-#' @export trimmed.BD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tm <- trimmed.BD(fd, trim = 0.2)
-trimmed.BD <- function(fdataobj, trim = 0.1, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.BD(fdataobj, fdataobj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
-  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean (BD)", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
-}
-
-#' Functional Trimmed Mean using Modified Band Depth
-#'
-#' Computes the trimmed mean by excluding curves with lowest modified band depth.
-#'
-#' @param fdataobj An object of class 'fdata'.
-#' @param trim Proportion of curves to trim (default 0.1).
-#' @param ... Additional arguments passed to depth.MBD.
-#'
-#' @return An fdata object containing the trimmed mean function.
-#'
-#' @export trimmed.MBD
-#' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' tm <- trimmed.MBD(fd, trim = 0.2)
-trimmed.MBD <- function(fdataobj, trim = 0.1, ...) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
-
-  n <- nrow(fdataobj$data)
-  n_keep <- ceiling(n * (1 - trim))
-
-  depths <- depth.MBD(fdataobj, fdataobj, ...)
-  depth_order <- order(depths, decreasing = TRUE)
-  keep_idx <- depth_order[seq_len(n_keep)]
-
-  mean_vals <- colMeans(fdataobj$data[keep_idx, , drop = FALSE])
-  fdata(matrix(mean_vals, nrow = 1), argvals = fdataobj$argvals,
-        names = list(main = "Trimmed Mean (MBD)", xlab = fdataobj$names$xlab,
-                     ylab = fdataobj$names$ylab))
-}
+# The backward compatibility wrappers for median.BD, median.MBD, trimmed.BD, trimmed.MBD
+# are already defined above with the other wrappers

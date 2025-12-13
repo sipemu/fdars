@@ -68,10 +68,11 @@ for (i in 1:20) {
 fd <- fdata(X, argvals = t)
 
 # Compute depth - measures how "central" each curve is
-depths <- depth.FM(fd)
+depths <- depth(fd)  # default: FM method
+depths <- depth(fd, method = "mode")  # or specify method
 
 # Find the functional median (most central curve)
-median_curve <- median.FM(fd)
+median_curve <- median(fd)  # default: FM method
 
 # Detect outliers
 outliers <- outliers.depth.trim(fd, trim = 0.1)
@@ -101,14 +102,23 @@ fd <- fdata(data_matrix, argvals = time_points, rangeval = c(0, 1))
 
 ### Depth Functions
 
-Depth measures how "central" or "typical" a curve is relative to a sample. Higher depth = more central:
+Depth measures how "central" or "typical" a curve is relative to a sample. Higher depth = more central.
 
-- `depth.FM` - Fraiman-Muniz depth (integrates univariate depths)
-- `depth.BD` - Band depth (proportion of pairs where curve is enveloped)
-- `depth.MBD` - Modified band depth (more robust, allows partial envelopment)
-- `depth.mode` - Modal depth (based on kernel density estimation)
-- `depth.RP` - Random projection depth
-- `depth.RT` - Random Tukey depth
+Use the unified `depth()` function with a `method` parameter:
+
+```r
+depth(fd, method = "FM")     # Fraiman-Muniz depth (default)
+depth(fd, method = "BD")     # Band depth
+depth(fd, method = "MBD")    # Modified band depth
+depth(fd, method = "mode")   # Modal depth (kernel density)
+depth(fd, method = "RP")     # Random projection depth
+depth(fd, method = "RT")     # Random Tukey depth
+depth(fd, method = "FSD")    # Functional spatial depth
+depth(fd, method = "KFSD")   # Kernel functional spatial depth
+depth(fd, method = "RPD")    # Random projection with derivatives
+```
+
+Individual functions (`depth.FM`, `depth.mode`, etc.) are also available for backward compatibility.
 
 ### Functional Regression
 
@@ -140,17 +150,31 @@ Identify unusual curves:
 
 ### Functional Statistics
 
-- `mean(fd)` - Functional mean (S3 method)
-- `var.fdata(fd)` - Functional variance
-- `sd.fdata(fd)` - Functional standard deviation
-- `cov.fdata(fd)` - Functional covariance
+- `mean(fd)` - Functional mean
+- `var(fd)` - Functional variance
+- `sd(fd)` - Functional standard deviation
+- `cov(fd)` - Functional covariance
 - `gmed(fd)` - Geometric median (L1 median via Weiszfeld algorithm)
 
 ### Depth-Based Medians and Trimmed Means
 
-- `median.FM`, `median.MBD`, `median.BD`, `median.mode`, `median.RP`, `median.RPD`, `median.RT` - Depth-based medians
-- `trimmed.FM`, `trimmed.MBD`, `trimmed.BD`, `trimmed.mode`, `trimmed.RP`, `trimmed.RPD`, `trimmed.RT` - Trimmed means
-- `trimvar.FM`, `trimvar.RP`, `trimvar.RPD`, `trimvar.RT`, `trimvar.mode` - Trimmed variances
+Use the unified functions with a `method` parameter:
+
+```r
+# Median (curve with maximum depth)
+median(fd)                          # default: FM method
+median(fd, method = "mode")         # modal depth-based median
+
+# Trimmed mean (mean of deepest curves)
+trimmed(fd, trim = 0.1)             # default: FM method
+trimmed(fd, trim = 0.1, method = "RP")  # RP depth-based trimmed mean
+
+# Trimmed variance
+trimvar(fd, trim = 0.1)             # default: FM method
+trimvar(fd, trim = 0.1, method = "mode")
+```
+
+Individual functions (e.g., `median.FM`, `trimmed.mode`) remain available for backward compatibility.
 
 ### Visualization
 
@@ -177,13 +201,14 @@ fdars supports 2D functional data (surfaces/images). The following functions hav
 
 | Category | Functions |
 |----------|-----------|
-| **Depth** | `depth.FM`, `depth.mode`, `depth.RP`, `depth.RT`, `depth.FSD`, `depth.KFSD` |
-| **Distance** | `metric.lp`, `metric.hausdorff` |
-| **Statistics** | `mean`, `var.fdata`, `sd.fdata`, `cov.fdata`, `gmed`, `fdata.deriv` |
+| **Depth** | `depth` (methods: FM, mode, RP, RT, FSD, KFSD) |
+| **Distance** | `metric.lp`, `metric.hausdorff`, `semimetric.pca`, `semimetric.deriv` |
+| **Statistics** | `mean`, `var`, `sd`, `cov`, `gmed`, `fdata.deriv` |
+| **Centrality** | `median`, `trimmed`, `trimvar` (all methods except BD, MBD, RPD) |
 | **Regression** | `fregre.np` (nonparametric) |
 | **Visualization** | `plot` (heatmap + contours) |
 
-**Note:** Band depths (`depth.BD`, `depth.MBD`) and DTW do not support 2D data.
+**Note:** Band depths (BD, MBD), RPD, and DTW do not support 2D data.
 
 ```r
 # Create 2D functional data (e.g., 10 surfaces on a 20x30 grid)
@@ -207,9 +232,9 @@ fd2d <- fdata(X, argvals = list(s, t), fdata2d = TRUE)
 
 # All these work with 2D data:
 mean_surface <- mean(fd2d)           # Mean surface
-var_surface <- var.fdata(fd2d)       # Pointwise variance
-depths <- depth.FM(fd2d)             # Depth values
-median_surface <- median.FM(fd2d)    # Depth-based median
+var_surface <- var(fd2d)             # Pointwise variance
+depths <- depth(fd2d)                # Depth values
+median_surface <- median(fd2d)       # Depth-based median
 gmed_surface <- gmed(fd2d)           # Geometric median
 
 # Plot 2D data (heatmap + contours)

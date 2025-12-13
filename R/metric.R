@@ -368,11 +368,7 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
     stop("fdata1 must be of class 'fdata'")
   }
 
-  if (fdata1$fdata2d) {
-    stop("semimetric.pca not yet implemented for 2D functional data")
-  }
-
-  # Compute PCA on combined data
+  # Compute PCA on combined data (works for both 1D and 2D - data is flattened)
   if (is.null(fdata2)) {
     combined <- fdata1$data
     n1 <- nrow(fdata1$data)
@@ -381,6 +377,12 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
   } else {
     if (!inherits(fdata2, "fdata")) {
       stop("fdata2 must be of class 'fdata'")
+    }
+    if (isTRUE(fdata1$fdata2d) != isTRUE(fdata2$fdata2d)) {
+      stop("Cannot compute distances between 1D and 2D functional data")
+    }
+    if (ncol(fdata1$data) != ncol(fdata2$data)) {
+      stop("fdata1 and fdata2 must have the same number of evaluation points")
     }
     combined <- rbind(fdata1$data, fdata2$data)
     n1 <- nrow(fdata1$data)
@@ -444,29 +446,53 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
     stop("fdata1 must be of class 'fdata'")
   }
 
-  if (isTRUE(fdata1$fdata2d)) {
-    stop("semimetric.deriv not yet implemented for 2D functional data")
-  }
+  is_2d <- isTRUE(fdata1$fdata2d)
 
-  # Compute derivative of fdata1
-  fdata1_deriv <- fdata.deriv(fdata1, nderiv = nderiv, ...)
+  if (is_2d) {
+    # 2D case: fdata.deriv returns a list of derivatives (ds, dt, dsdt)
+    # Use the sum of all derivative Lp distances
+    fdata1_derivs <- fdata.deriv(fdata1, nderiv = nderiv, ...)
 
-  if (is.null(fdata2)) {
-    # Self-distances
-    D <- metric.lp(fdata1_deriv, lp = lp)
+    if (is.null(fdata2)) {
+      # Self-distances - combine derivative distances
+      D_ds <- metric.lp(fdata1_derivs$ds, lp = lp)
+      D_dt <- metric.lp(fdata1_derivs$dt, lp = lp)
+      D <- sqrt(D_ds^2 + D_dt^2)
+    } else {
+      if (!inherits(fdata2, "fdata")) {
+        stop("fdata2 must be of class 'fdata'")
+      }
+      if (!isTRUE(fdata2$fdata2d)) {
+        stop("Cannot compute distances between 1D and 2D functional data")
+      }
+
+      fdata2_derivs <- fdata.deriv(fdata2, nderiv = nderiv, ...)
+      D_ds <- metric.lp(fdata1_derivs$ds, fdata2_derivs$ds, lp = lp)
+      D_dt <- metric.lp(fdata1_derivs$dt, fdata2_derivs$dt, lp = lp)
+      D <- sqrt(D_ds^2 + D_dt^2)
+    }
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    # 1D case
+    # Compute derivative of fdata1
+    fdata1_deriv <- fdata.deriv(fdata1, nderiv = nderiv, ...)
+
+    if (is.null(fdata2)) {
+      # Self-distances
+      D <- metric.lp(fdata1_deriv, lp = lp)
+    } else {
+      if (!inherits(fdata2, "fdata")) {
+        stop("fdata2 must be of class 'fdata'")
+      }
+
+      if (isTRUE(fdata2$fdata2d)) {
+        stop("Cannot compute distances between 1D and 2D functional data")
+      }
+
+      # Compute derivative of fdata2
+      fdata2_deriv <- fdata.deriv(fdata2, nderiv = nderiv, ...)
+
+      D <- metric.lp(fdata1_deriv, fdata2_deriv, lp = lp)
     }
-
-    if (isTRUE(fdata2$fdata2d)) {
-      stop("semimetric.deriv not yet implemented for 2D functional data")
-    }
-
-    # Compute derivative of fdata2
-    fdata2_deriv <- fdata.deriv(fdata2, nderiv = nderiv, ...)
-
-    D <- metric.lp(fdata1_deriv, fdata2_deriv, lp = lp)
   }
 
   D
