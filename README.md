@@ -173,7 +173,16 @@ Identify unusual curves:
 
 ### 2D Functional Data (Surfaces)
 
-fdars supports 2D functional data (surfaces/images) with most statistical functions:
+fdars supports 2D functional data (surfaces/images). The following functions have full 2D support:
+
+| Category | Functions |
+|----------|-----------|
+| **Depth** | `depth.FM`, `depth.mode`, `depth.RP`, `depth.RT`, `depth.FSD`, `depth.KFSD` |
+| **Distance** | `metric.lp`, `metric.hausdorff` |
+| **Statistics** | `mean`, `var.fdata`, `sd.fdata`, `cov.fdata`, `gmed`, `fdata.deriv` |
+| **Visualization** | `plot` (heatmap + contours) |
+
+**Note:** Band depths (`depth.BD`, `depth.MBD`) and DTW do not support 2D data.
 
 ```r
 # Create 2D functional data (e.g., 10 surfaces on a 20x30 grid)
