@@ -2092,21 +2092,37 @@ print.group.distance <- function(x, digits = 3, ...) {
 #'
 #' @param x An object of class 'group.distance'.
 #' @param type Plot type: "heatmap" or "dendrogram".
-#' @param which Which distance matrix to plot (default "centroid").
+#' @param which Which distance matrix to plot. If NULL (default), uses the first
+#'   available matrix from the group.distance object.
 #' @param ... Additional arguments.
 #'
 #' @return A ggplot object (for heatmap) or NULL (for dendrogram, uses base graphics).
 #' @export
 plot.group.distance <- function(x, type = c("heatmap", "dendrogram"),
-                                which = c("centroid", "hausdorff", "depth"), ...) {
+                                which = NULL, ...) {
   type <- match.arg(type)
-  which <- match.arg(which)
 
-  # Get the appropriate matrix
-  mat <- x[[which]]
-  if (is.null(mat)) {
-    stop("Distance matrix '", which, "' not available. Run group.distance with method='all' or method='", which, "'")
+  # Auto-detect which matrix to use if not specified
+  available <- c("centroid", "hausdorff", "depth")
+  available <- available[vapply(available, function(m) !is.null(x[[m]]), logical(1))]
+
+
+  if (length(available) == 0) {
+    stop("No distance matrices available in the group.distance object")
   }
+
+  if (is.null(which)) {
+    which <- available[1]
+  } else {
+    which <- match.arg(which, choices = c("centroid", "hausdorff", "depth"))
+    if (!(which %in% available)) {
+      stop("Distance matrix '", which, "' not available. ",
+           "Available: ", paste(available, collapse = ", "), ". ",
+           "Run group.distance with method='all' or method='", which, "'")
+    }
+  }
+
+  mat <- x[[which]]
 
   if (type == "heatmap") {
     # Convert to long format for ggplot

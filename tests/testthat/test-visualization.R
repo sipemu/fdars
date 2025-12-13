@@ -439,6 +439,62 @@ test_that("group.distance plot method works", {
   expect_s3_class(p, "ggplot")
 })
 
+test_that("group.distance plot works with hausdorff method", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  # Create with hausdorff method only
+  gd <- group.distance(fd, groups, method = "hausdorff")
+
+  # Should auto-detect and use hausdorff
+
+  p <- plot(gd, type = "heatmap")
+  expect_s3_class(p, "ggplot")
+
+  # Explicit which = "hausdorff" should also work
+  p2 <- plot(gd, type = "heatmap", which = "hausdorff")
+  expect_s3_class(p2, "ggplot")
+})
+
+test_that("group.distance plot works with depth method", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  # Create with depth method only
+  gd <- group.distance(fd, groups, method = "depth")
+
+  # Should auto-detect and use depth
+  p <- plot(gd, type = "heatmap")
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("group.distance plot errors on unavailable method", {
+  set.seed(42)
+  m <- 30
+  n <- 20
+  X <- matrix(rnorm(n * m), n, m)
+  fd <- fdata(X)
+  groups <- factor(rep(c("A", "B"), each = 10))
+
+  # Create with hausdorff only
+  gd <- group.distance(fd, groups, method = "hausdorff")
+
+  # Asking for centroid should error with helpful message
+  expect_error(plot(gd, which = "centroid"), "not available.*Available.*hausdorff")
+})
+
 test_that("group.distance rejects mismatched groups length", {
   m <- 30
   X <- matrix(rnorm(20 * m), 20, m)

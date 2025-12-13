@@ -884,3 +884,158 @@ trimvar <- function(fdataobj, trim = 0.1, method = c("FM", "mode", "RP", "RT",
                      xlab = fdataobj$names$xlab, ylab = "Var(X(t))"))
 }
 
+
+# =============================================================================
+# Depth Function Wrappers (for backward compatibility and use as function args)
+# =============================================================================
+
+#' Modified Band Depth
+#'
+#' Wrapper for \code{depth(method = "MBD")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.MBD <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "MBD", ...)
+}
+
+#' Fraiman-Muniz Depth
+#'
+#' Wrapper for \code{depth(method = "FM")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.FM <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "FM", ...)
+}
+
+#' Modal Depth
+#'
+#' Wrapper for \code{depth(method = "mode")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.mode <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "mode", ...)
+}
+
+#' Random Projection Depth
+#'
+#' Wrapper for \code{depth(method = "RP")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.RP <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "RP", ...)
+}
+
+#' Random Tukey Depth
+#'
+#' Wrapper for \code{depth(method = "RT")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.RT <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "RT", ...)
+}
+
+#' Band Depth
+#'
+#' Wrapper for \code{depth(method = "BD")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.BD <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "BD", ...)
+}
+
+#' Modified Epigraph Index
+#'
+#' Wrapper for \code{depth(method = "MEI")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.MEI <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "MEI", ...)
+}
+
+#' Functional Spatial Depth
+#'
+#' Wrapper for \code{depth(method = "FSD")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.FSD <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "FSD", ...)
+}
+
+#' Kernel Functional Spatial Depth
+#'
+#' Wrapper for \code{depth(method = "KFSD")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.KFSD <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "KFSD", ...)
+}
+
+#' Random Projection Depth with Derivatives
+#'
+#' Wrapper for \code{depth(method = "RPD")}. Useful as a function argument.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataori Reference sample (default: fdataobj itself).
+#' @param ... Additional arguments.
+#'
+#' @return Numeric vector of depth values.
+#' @seealso \code{\link{depth}}
+#' @export
+depth.RPD <- function(fdataobj, fdataori = NULL, ...) {
+  depth(fdataobj, fdataori, method = "RPD", ...)
+}
+
