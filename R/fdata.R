@@ -334,7 +334,10 @@ summary.fdata <- function(object, ...) {
 #'     \item Factor/character: curves colored by discrete groups
 #'   }
 #'   Must have length equal to number of curves.
-#' @param alpha Transparency of curve lines (default 0.7).
+#' @param alpha Transparency of individual curve lines. Default is 0.7 for
+#'   basic plots, but automatically reduced to 0.3 when \code{show.mean = TRUE}
+#'   or \code{show.ci = TRUE} to reduce visual clutter and allow mean curves
+#'   to stand out. Can be explicitly set to override the default.
 #' @param show.mean Logical. If TRUE and color is categorical, overlay group
 #'   mean curves with thicker lines (default FALSE).
 #' @param show.ci Logical. If TRUE and color is categorical, show pointwise
@@ -360,8 +363,14 @@ summary.fdata <- function(object, ...) {
 #' # Color by category with mean and CI
 #' groups <- factor(rep(c("A", "B"), each = 10))
 #' plot(fd, color = groups, show.mean = TRUE, show.ci = TRUE)
-plot.fdata <- function(x, color = NULL, alpha = 0.7, show.mean = FALSE,
+plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
                        show.ci = FALSE, ci.level = 0.90, palette = NULL, ...) {
+  # Set default alpha based on whether means are shown
+
+  # Lower alpha when showing means to reduce visual clutter
+  if (is.null(alpha)) {
+    alpha <- if (show.mean || show.ci) 0.3 else 0.7
+  }
   if (isTRUE(x$fdata2d)) {
     # 2D surface plotting (color parameters not supported for 2D)
     n <- nrow(x$data)
