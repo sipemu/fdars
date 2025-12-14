@@ -286,6 +286,51 @@ system.time(outliers.lrt(fd_large, nb = 200, seed = 123))
 #>   0.456   0.000   0.123
 ```
 
+## Outliergram and MS-Plot
+
+For visual outlier detection, use the outliergram (MEI vs MBD) or MS-plot
+(Magnitude vs Shape outlyingness):
+
+```{r outliergram}
+# Outliergram
+og <- outliergram(fd)
+plot(og)
+```
+
+```{r msplot}
+# Magnitude-Shape plot
+ms <- MS.plot(fd)
+```
+
+### Labeling Outliers by ID or Metadata
+
+When fdata has IDs or metadata, you can label outliers in plots:
+```{r outlier-labeling}
+# Create fdata with IDs and metadata
+meta <- data.frame(
+  subject = paste0("S", sprintf("%02d", 1:n)),
+  group = rep(c("A", "B"), length.out = n)
+)
+fd_labeled <- fdata(X, argvals = t_grid,
+                    id = paste0("patient_", 1:n),
+                    metadata = meta)
+
+# Outliergram with patient IDs
+og_labeled <- outliergram(fd_labeled)
+plot(og_labeled, label = "id")
+
+# Or with metadata column
+plot(og_labeled, label = "subject")
+
+# Label ALL points, not just outliers
+plot(og_labeled, label = "id", label_all = TRUE)
+```
+
+```{r ms-labeling}
+# MS-plot with custom labels
+MS.plot(fd_labeled, label = "subject")
+```
+
 ## Method Selection Guide
 
 | Method | Best For | Sensitivity |
@@ -293,6 +338,8 @@ system.time(outliers.lrt(fd_large, nb = 200, seed = 123))
 | depth.pond | General purpose | Moderate |
 | depth.trim | Known contamination rate | Controllable |
 | LRT | Magnitude outliers | High |
+| outliergram | Shape outliers | Visual |
+| MS.plot | Both magnitude & shape | Visual |
 
 ## Best Practices
 

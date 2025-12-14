@@ -76,6 +76,37 @@ fd <- fdata(X, argvals = t_grid)
 fd
 ```
 
+### Adding Identifiers and Metadata
+
+You can attach identifiers and metadata (covariates) to functional data:
+
+```{r metadata}
+# Create metadata with covariates
+meta <- data.frame(
+  group = factor(rep(c("control", "treatment"), each = 10)),
+  age = sample(20:60, n, replace = TRUE),
+  response = rnorm(n)
+)
+
+# Create fdata with IDs and metadata
+fd_meta <- fdata(X, argvals = t_grid,
+                 id = paste0("patient_", 1:n),
+                 metadata = meta)
+fd_meta
+
+# Access metadata
+fd_meta$id[1:5]
+head(fd_meta$metadata)
+```
+
+Metadata is preserved when subsetting:
+
+```{r metadata-subset}
+fd_sub <- fd_meta[1:5, ]
+fd_sub$id
+fd_sub$metadata
+```
+
 ### Visualizing Functional Data
 
 ```{r plot-fdata}

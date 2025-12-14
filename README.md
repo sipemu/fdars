@@ -53,7 +53,7 @@ remotes::install_github("sipemu/fdars", build_vignettes = TRUE)
 ```bash
 cd fdars
 R CMD build .
-R CMD INSTALL fdars_0.3.3.tar.gz
+R CMD INSTALL fdars_0.4.0.tar.gz
 ```
 
 ## Quick Start
@@ -101,6 +101,33 @@ The `fdata` class stores functional data as a matrix where rows are observations
 ```r
 fd <- fdata(data_matrix, argvals = time_points, rangeval = c(0, 1))
 ```
+
+#### Identifiers and Metadata
+
+You can attach identifiers and metadata (covariates) to functional data objects:
+
+```r
+# Create fdata with IDs and metadata
+meta <- data.frame(
+  group = factor(c("control", "treatment", ...)),
+  age = c(25, 32, ...),
+  response = c(0.5, 0.8, ...)
+)
+fd <- fdata(X, id = paste0("patient_", 1:n), metadata = meta)
+
+# Access fields
+fd$id              # Character vector of identifiers
+fd$metadata$group  # Access metadata columns
+
+# Subsetting preserves metadata
+fd_sub <- fd[1:10, ]  # id and metadata are also subsetted
+
+# View metadata info
+print(fd)    # Shows metadata columns
+summary(fd)  # Shows metadata types and ranges
+```
+
+**Note:** If metadata contains an `id` column or has non-default row names, they must match the fdata identifiers. An error is thrown on mismatch.
 
 ### Depth Functions
 
@@ -153,6 +180,27 @@ Identify unusual curves:
 - `outliers.lrt` - Likelihood ratio test
 - `outliers.boxplot` - Functional boxplot-based detection
 - `MS.plot` - Magnitude-Shape plot for visualizing outliers
+- `outliergram` - Outliergram (MEI vs MBD plot)
+
+#### Labeling Outliers by ID or Metadata
+
+Both `MS.plot` and `plot.outliergram` support labeling points by ID or metadata columns:
+
+```r
+# Create fdata with IDs and metadata
+fd <- fdata(X, id = paste0("patient_", 1:n),
+            metadata = data.frame(subject_id = paste0("S", 1:n)))
+
+# Outliergram with custom labels
+og <- outliergram(fd)
+plot(og, label = "id")           # Label outliers with patient IDs
+plot(og, label = "subject_id")   # Label with metadata column
+plot(og, label_all = TRUE)       # Label ALL points, not just outliers
+
+# MS.plot with custom labels
+MS.plot(fd, label = "id")        # Label outliers with patient IDs
+MS.plot(fd, label = NULL)        # No labels
+```
 
 ### Functional Statistics
 
@@ -291,6 +339,22 @@ gmed_surface <- gmed(fd2d)           # Geometric median
 plot(fd2d)
 ```
 
+#### Converting DataFrames to 2D fdata
+
+Use `df_to_fdata2d()` to convert long-format DataFrames to 2D functional data:
+
+```r
+# DataFrame structure: id column, s-index column, t-value columns
+df <- data.frame(
+  id = rep(c("surf1", "surf2"), each = 5),
+  s = rep(1:5, 2),
+  t1 = rnorm(10), t2 = rnorm(10), t3 = rnorm(10)
+)
+
+# Convert to 2D fdata
+fd2d <- df_to_fdata2d(df, id_col = 1, s_col = 2)
+```
+
 ## Documentation
 
 All functions are documented. Access help with `?function_name`:
@@ -321,6 +385,8 @@ fdars uses a clean, unified API with method parameters:
 
 | Function | Description |
 |----------|-------------|
+| `fdata(X, id, metadata)` | Create fdata with optional IDs and metadata |
+| `df_to_fdata2d(df)` | Convert DataFrame to 2D fdata |
 | `depth(fd, method = "FM")` | Compute depth (FM, BD, MBD, MEI, mode, RP, RT, FSD, KFSD, RPD) |
 | `metric(fd, method = "lp")` | Compute distance matrix (lp, hausdorff, dtw, pca, deriv) |
 | `median(fd, method = "FM")` | Depth-based median |
@@ -332,6 +398,8 @@ fdars uses a clean, unified API with method parameters:
 | `make_gaussian_process(n, t, cov)` | Generate GP samples |
 | `cov.Gaussian()`, `cov.Matern()`, etc. | Covariance kernel functions |
 | `outliergram(fd)` | Outliergram for shape outlier detection |
+| `plot(outliergram, label)` | Plot outliergram with ID/metadata labels |
+| `MS.plot(fd, label)` | MS plot with ID/metadata labels |
 | `plot(fdata2pc_obj)` | FPCA visualization |
 | `plot(fd, color = groups)` | Plot with coloring by groups/values |
 | `group.distance(fd, groups)` | Distance between groups (centroid, hausdorff, depth) |
