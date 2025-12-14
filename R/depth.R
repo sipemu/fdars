@@ -83,7 +83,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   if (is_2d_obj) {
-    # 2D functional data (surfaces)
+    # 2D functional data (surfaces) - flatten 3D arrays for Rust
     if (!identical(fdataobj$dims, fdataori$dims)) {
       stop("fdataobj and fdataori must have the same grid dimensions")
     }
@@ -91,7 +91,10 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     m1 <- as.integer(fdataobj$dims[1])
     m2 <- as.integer(fdataobj$dims[2])
 
-    return(.Call("wrap__depth_fm_2d", fdataobj$data, fdataori$data, m1, m2, as.logical(scale)))
+    data_obj <- fdataobj$data
+    data_ori <- fdataori$data
+
+    return(.Call("wrap__depth_fm_2d", data_obj, data_ori, m1, m2, as.logical(scale)))
   }
 
   # 1D functional data (curves)
@@ -221,7 +224,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   if (is_2d_obj) {
-    # 2D functional data (surfaces)
+    # 2D functional data (surfaces) - flatten 3D arrays for Rust
     if (!identical(fdataobj$dims, fdataori$dims)) {
       stop("fdataobj and fdataori must have the same grid dimensions")
     }
@@ -229,7 +232,10 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     m1 <- as.integer(fdataobj$dims[1])
     m2 <- as.integer(fdataobj$dims[2])
 
-    return(.Call("wrap__depth_mode_2d", fdataobj$data, fdataori$data, m1, m2, as.numeric(h)))
+    data_obj <- fdataobj$data
+    data_ori <- fdataori$data
+
+    return(.Call("wrap__depth_mode_2d", data_obj, data_ori, m1, m2, as.numeric(h)))
   }
 
   # 1D functional data (curves)
@@ -265,7 +271,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   if (is_2d_obj) {
-    # 2D functional data (surfaces)
+    # 2D functional data (surfaces) - flatten 3D arrays for Rust
     if (!identical(fdataobj$dims, fdataori$dims)) {
       stop("fdataobj and fdataori must have the same grid dimensions")
     }
@@ -273,7 +279,10 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     m1 <- as.integer(fdataobj$dims[1])
     m2 <- as.integer(fdataobj$dims[2])
 
-    return(.Call("wrap__depth_rp_2d", fdataobj$data, fdataori$data, m1, m2, as.integer(nproj)))
+    data_obj <- fdataobj$data
+    data_ori <- fdataori$data
+
+    return(.Call("wrap__depth_rp_2d", data_obj, data_ori, m1, m2, as.integer(nproj)))
   }
 
   # 1D functional data (curves)
@@ -309,7 +318,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   if (is_2d_obj) {
-    # 2D functional data (surfaces)
+    # 2D functional data (surfaces) - flatten 3D arrays for Rust
     if (!identical(fdataobj$dims, fdataori$dims)) {
       stop("fdataobj and fdataori must have the same grid dimensions")
     }
@@ -317,7 +326,10 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     m1 <- as.integer(fdataobj$dims[1])
     m2 <- as.integer(fdataobj$dims[2])
 
-    return(.Call("wrap__depth_rt_2d", fdataobj$data, fdataori$data, m1, m2, as.integer(nproj)))
+    data_obj <- fdataobj$data
+    data_ori <- fdataori$data
+
+    return(.Call("wrap__depth_rt_2d", data_obj, data_ori, m1, m2, as.integer(nproj)))
   }
 
   # 1D functional data (curves)
@@ -353,7 +365,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   if (is_2d_obj) {
-    # 2D functional data (surfaces)
+    # 2D functional data (surfaces) - flatten 3D arrays for Rust
     if (!identical(fdataobj$dims, fdataori$dims)) {
       stop("fdataobj and fdataori must have the same grid dimensions")
     }
@@ -361,7 +373,10 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     m1 <- as.integer(fdataobj$dims[1])
     m2 <- as.integer(fdataobj$dims[2])
 
-    return(.Call("wrap__depth_fsd_2d", fdataobj$data, fdataori$data, m1, m2))
+    data_obj <- fdataobj$data
+    data_ori <- fdataori$data
+
+    return(.Call("wrap__depth_fsd_2d", data_obj, data_ori, m1, m2))
   }
 
   # 1D functional data (curves)
@@ -406,7 +421,7 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
   }
 
   if (is_2d_obj) {
-    # 2D functional data (surfaces)
+    # 2D functional data (surfaces) - flatten 3D arrays for Rust
     if (!identical(fdataobj$dims, fdataori$dims)) {
       stop("fdataobj and fdataori must have the same grid dimensions")
     }
@@ -414,7 +429,10 @@ depth <- function(fdataobj, fdataori = NULL, method = c("FM", "mode", "RP", "RT"
     m1 <- as.integer(fdataobj$dims[1])
     m2 <- as.integer(fdataobj$dims[2])
 
-    return(.Call("wrap__depth_kfsd_2d", fdataobj$data, fdataori$data, m1, m2, as.numeric(h)))
+    data_obj <- fdataobj$data
+    data_ori <- fdataori$data
+
+    return(.Call("wrap__depth_kfsd_2d", data_obj, data_ori, m1, m2, as.numeric(h)))
   }
 
   # 1D functional data (curves)
@@ -767,12 +785,13 @@ gmed <- function(fdataobj, max.iter = 100, tol = 1e-6) {
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    # 2D case
+    # 2D case - data is already flattened [n, m1*m2]
     gmed_vals <- .Call("wrap__geometric_median_2d", fdataobj$data,
                        as.numeric(fdataobj$argvals[[1]]),
                        as.numeric(fdataobj$argvals[[2]]),
                        as.integer(max.iter), as.numeric(tol))
 
+    # Return as flattened matrix [1, m1*m2]
     result <- list(
       data = matrix(gmed_vals, nrow = 1),
       argvals = fdataobj$argvals,

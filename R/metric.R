@@ -125,6 +125,7 @@ metric.lp <- function(fdata1, fdata2 = NULL, lp = 2, w = 1, ...) {
     argvals_s <- as.numeric(fdata1$argvals[[1]])
     argvals_t <- as.numeric(fdata1$argvals[[2]])
 
+    # Data is already flattened [n, m1*m2]
     if (is.null(fdata2)) {
       D <- .Call("wrap__metric_lp_self_2d", fdata1$data, argvals_s, argvals_t,
                  as.numeric(lp), as.numeric(as.vector(t(w))))
@@ -223,6 +224,7 @@ metric.hausdorff <- function(fdata1, fdata2 = NULL, ...) {
     argvals_s <- as.numeric(fdata1$argvals[[1]])
     argvals_t <- as.numeric(fdata1$argvals[[2]])
 
+    # Data is already flattened [n, m1*m2]
     if (is.null(fdata2)) {
       # Self-distances (symmetric)
       D <- .Call("wrap__metric_hausdorff_2d", fdata1$data, argvals_s, argvals_t)
@@ -368,10 +370,14 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
     stop("fdata1 must be of class 'fdata'")
   }
 
-  # Compute PCA on combined data (works for both 1D and 2D - data is flattened)
+  # Data is already flattened [n, m1*m2] for 2D fdata
+  is_2d <- isTRUE(fdata1$fdata2d)
+  data1 <- fdata1$data
+  n1 <- nrow(fdata1$data)
+
+  # Compute PCA on combined data
   if (is.null(fdata2)) {
-    combined <- fdata1$data
-    n1 <- nrow(fdata1$data)
+    combined <- data1
     n2 <- n1
     same_data <- TRUE
   } else {
@@ -381,12 +387,18 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
     if (isTRUE(fdata1$fdata2d) != isTRUE(fdata2$fdata2d)) {
       stop("Cannot compute distances between 1D and 2D functional data")
     }
-    if (ncol(fdata1$data) != ncol(fdata2$data)) {
-      stop("fdata1 and fdata2 must have the same number of evaluation points")
+    if (is_2d) {
+      if (!identical(fdata1$dims, fdata2$dims)) {
+        stop("fdata1 and fdata2 must have the same grid dimensions")
+      }
+    } else {
+      if (ncol(fdata1$data) != ncol(fdata2$data)) {
+        stop("fdata1 and fdata2 must have the same number of evaluation points")
+      }
     }
-    combined <- rbind(fdata1$data, fdata2$data)
-    n1 <- nrow(fdata1$data)
+    data2 <- fdata2$data
     n2 <- nrow(fdata2$data)
+    combined <- rbind(data1, data2)
     same_data <- FALSE
   }
 

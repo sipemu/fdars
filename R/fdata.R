@@ -8,22 +8,58 @@
 
 #' Create a functional data object
 #'
-#' @param mdata A matrix (for 1D) or 3D array (for 2D) of observations.
-#'   Rows are samples, columns are evaluation points.
+#' Creates an fdata object for 1D functional data (curves) or 2D functional
+#' data (surfaces). For 2D data, the internal storage uses a flattened matrix
+#' format \code{[n, m1*m2]} where each row represents a surface stored in
+#' row-major order.
+#'
+#' @param mdata Input data. Can be:
+#'   \itemize{
+#'     \item For 1D: A matrix \code{[n, m]} where n is number of curves, m is
+#'       number of evaluation points
+#'     \item For 2D: A 3D array \code{[n, m1, m2]} where n is number of surfaces,
+#'       m1 x m2 is the grid size. Automatically detected and converted to
+#'       flattened storage.
+#'     \item For 2D: A matrix \code{[n, m1*m2]} (already flattened) with argvals
+#'       specifying grid dimensions
+#'     \item For 2D: A single surface matrix \code{[m1, m2]} with argvals
+#'       specifying grid dimensions
+#'   }
 #' @param argvals Evaluation points. For 1D: a numeric vector.
-#'   For 2D: a list with two numeric vectors.
+#'   For 2D: a list with two numeric vectors specifying the s and t coordinates.
 #' @param rangeval Range of the argument values. For 1D: a numeric vector of
 #'   length 2. For 2D: a list with two numeric vectors of length 2.
 #' @param names List with components 'main', 'xlab', 'ylab' for plot titles.
+#'   For 2D, also 'zlab' for the surface value label.
 #' @param fdata2d Logical. If TRUE, create 2D functional data (surface).
+#'   Automatically set to TRUE if mdata is a 3D array.
+#' @param id Optional character vector of identifiers for each observation.
+#'   If NULL, uses row names of mdata or generates "obs_1", "obs_2", etc.
+#' @param metadata Optional data.frame with additional covariates (one row per
+#'   observation). If metadata has an "id" column or non-default row names,
+#'   they must match the \code{id} parameter.
 #'
 #' @return An object of class 'fdata' containing:
 #' \describe{
-#'   \item{data}{The data matrix}
+#'   \item{data}{The data matrix. For 2D: flattened \code{[n, m1*m2]} format}
 #'   \item{argvals}{Evaluation points}
 #'   \item{rangeval}{Range of arguments}
 #'   \item{names}{Plot labels}
 #'   \item{fdata2d}{Logical indicating if 2D}
+#'   \item{dims}{For 2D only: \code{c(m1, m2)} grid dimensions}
+#'   \item{id}{Character vector of observation identifiers}
+#'   \item{metadata}{Data frame of additional covariates (or NULL)}
+#' }
+#'
+#' @details
+#' For 2D functional data, surfaces are stored internally as a flattened matrix
+#' where each row is a surface in row-major order. To extract a single surface
+#' as a matrix, use subsetting with \code{drop = TRUE} or reshape manually:
+#' \preformatted{
+#' # Extract surface i as matrix
+#' surface_i <- fd[i, drop = TRUE]
+#' # Or manually:
+#' surface_i <- matrix(fd$data[i, ], nrow = fd$dims[1], ncol = fd$dims[2])
 #' }
 #'
 #' @export
@@ -32,27 +68,43 @@
 #' x <- matrix(rnorm(100), nrow = 10, ncol = 10)
 #' fd <- fdata(x, argvals = seq(0, 1, length.out = 10))
 #'
-#' # Create 2D functional data (surfaces) - future
-#' # x2d <- array(rnorm(1000), dim = c(10, 10, 10))
-#' # fd2d <- fdata(x2d, fdata2d = TRUE)
+#' # Create with identifiers and metadata
+#' meta <- data.frame(group = rep(c("A", "B"), 5), endpoint = rnorm(10))
+#' fd <- fdata(x, id = paste0("patient_", 1:10), metadata = meta)
+#'
+#' # Access metadata
+#' fd$id
+#' fd$metadata$group
+#'
+#' # Create 2D functional data from 3D array [n, m1, m2]
+#' surfaces <- array(rnorm(500), dim = c(5, 10, 10))
+#' fd2d <- fdata(surfaces)
+#'
+#' # Access individual surface as matrix
+#' surface_1 <- fd2d[1, drop = TRUE]
 fdata <- function(mdata, argvals = NULL, rangeval = NULL,
-                  names = NULL, fdata2d = FALSE) {
+                  names = NULL, fdata2d = FALSE, id = NULL, metadata = NULL) {
 
   # Detect 2D data from input
   if (is.array(mdata) && length(dim(mdata)) == 3) {
     fdata2d <- TRUE
   }
+  # Also detect 2D if argvals is a list with two components
+  if (is.list(argvals) && length(argvals) == 2) {
+    fdata2d <- TRUE
+  }
 
   if (fdata2d) {
-    return(.fdata2d(mdata, argvals, rangeval, names))
+    return(.fdata2d(mdata, argvals, rangeval, names, id, metadata))
   } else {
-    return(.fdata1d(mdata, argvals, rangeval, names))
+    return(.fdata1d(mdata, argvals, rangeval, names, id, metadata))
   }
 }
 
 #' Internal: Create 1D functional data
 #' @noRd
-.fdata1d <- function(mdata, argvals = NULL, rangeval = NULL, names = NULL) {
+.fdata1d <- function(mdata, argvals = NULL, rangeval = NULL, names = NULL,
+                     id = NULL, metadata = NULL) {
 
   # Convert vector to matrix
   if (is.vector(mdata)) {
@@ -85,48 +137,109 @@ fdata <- function(mdata, argvals = NULL, rangeval = NULL,
     names <- list(main = "", xlab = "t", ylab = "X(t)")
   }
 
+  # Handle id parameter
+  if (is.null(id)) {
+    # Use row names if they exist and are not default
+    if (!is.null(rownames(mdata)) &&
+        !identical(rownames(mdata), as.character(seq_len(n)))) {
+      id <- rownames(mdata)
+    } else {
+      id <- paste0("obs_", seq_len(n))
+    }
+  } else {
+    if (length(id) != n) {
+      stop("id must have length ", n, " (one per observation)")
+    }
+    id <- as.character(id)
+  }
+
+  # Validate metadata
+  if (!is.null(metadata)) {
+    if (!is.data.frame(metadata)) {
+      stop("metadata must be a data.frame")
+    }
+    if (nrow(metadata) != n) {
+      stop("metadata must have ", n, " rows (one per observation)")
+    }
+
+    # Check ID matching if metadata has IDs
+    meta_ids <- NULL
+    if ("id" %in% colnames(metadata)) {
+      meta_ids <- as.character(metadata$id)
+    } else if (!is.null(rownames(metadata)) &&
+               !identical(rownames(metadata), as.character(seq_len(nrow(metadata))))) {
+      meta_ids <- rownames(metadata)
+    }
+
+    if (!is.null(meta_ids)) {
+      if (!identical(id, meta_ids)) {
+        stop("IDs in metadata do not match fdata identifiers")
+      }
+    }
+  }
+
   structure(
     list(
       data = mdata,
       argvals = argvals,
       rangeval = rangeval,
       names = names,
-      fdata2d = FALSE
+      fdata2d = FALSE,
+      id = id,
+      metadata = metadata
     ),
     class = "fdata"
   )
 }
 
 #' Internal: Create 2D functional data (surfaces)
+#'
+#' Data is stored internally as a flattened matrix [n, m1*m2] where each row
+#' is a surface stored in row-major order. Use dims to reshape for visualization.
+#'
 #' @noRd
-.fdata2d <- function(mdata, argvals = NULL, rangeval = NULL, names = NULL) {
+.fdata2d <- function(mdata, argvals = NULL, rangeval = NULL, names = NULL,
+                     id = NULL, metadata = NULL) {
 
   if (is.array(mdata) && length(dim(mdata)) == 3) {
+    # Input is 3D array [n, m1, m2] - flatten to [n, m1*m2]
     dims <- dim(mdata)
     n <- dims[1]
     m1 <- dims[2]
     m2 <- dims[3]
-
-    # Flatten to matrix: n x (m1*m2)
-    data_mat <- matrix(mdata, nrow = n, ncol = m1 * m2)
+    # Flatten each surface: row i becomes mdata[i,,] as vector
+    data_mat <- matrix(0, nrow = n, ncol = m1 * m2)
+    for (i in seq_len(n)) {
+      data_mat[i, ] <- as.vector(mdata[i, , ])
+    }
   } else if (is.matrix(mdata)) {
-    # Assume already flattened, need argvals to determine shape
-    data_mat <- mdata
-    n <- nrow(mdata)
+    # Matrix input: assume already flattened or single surface
+    if (is.null(argvals)) {
+      stop("argvals must be provided for 2D fdata from matrix input")
+    }
+    m1 <- length(argvals[[1]])
+    m2 <- length(argvals[[2]])
+    if (ncol(mdata) == m1 * m2) {
+      # Already flattened format [n, m1*m2]
+      n <- nrow(mdata)
+      data_mat <- mdata
+    } else if (nrow(mdata) == m1 && ncol(mdata) == m2) {
+      # Single surface as matrix [m1, m2] - flatten to [1, m1*m2]
+      n <- 1
+      data_mat <- matrix(as.vector(mdata), nrow = 1)
+    } else {
+      stop("Matrix dimensions do not match argvals for 2D fdata")
+    }
   } else {
     stop("For 2D fdata, mdata must be a 3D array or matrix")
   }
 
   # Set default argvals
   if (is.null(argvals)) {
-    if (exists("m1") && exists("m2")) {
-      argvals <- list(
-        s = seq_len(m1),
-        t = seq_len(m2)
-      )
-    } else {
-      stop("argvals must be provided for 2D fdata from matrix input")
-    }
+    argvals <- list(
+      s = seq_len(m1),
+      t = seq_len(m2)
+    )
   }
 
   if (!is.list(argvals) || length(argvals) != 2) {
@@ -146,6 +259,47 @@ fdata <- function(mdata, argvals = NULL, rangeval = NULL,
     names <- list(main = "", xlab = "s", ylab = "t", zlab = "X(s,t)")
   }
 
+  # Handle id parameter
+  if (is.null(id)) {
+    # Use row names if they exist and are not default
+    if (!is.null(rownames(data_mat)) &&
+        !identical(rownames(data_mat), as.character(seq_len(n)))) {
+      id <- rownames(data_mat)
+    } else {
+      id <- paste0("obs_", seq_len(n))
+    }
+  } else {
+    if (length(id) != n) {
+      stop("id must have length ", n, " (one per observation)")
+    }
+    id <- as.character(id)
+  }
+
+  # Validate metadata
+  if (!is.null(metadata)) {
+    if (!is.data.frame(metadata)) {
+      stop("metadata must be a data.frame")
+    }
+    if (nrow(metadata) != n) {
+      stop("metadata must have ", n, " rows (one per observation)")
+    }
+
+    # Check ID matching if metadata has IDs
+    meta_ids <- NULL
+    if ("id" %in% colnames(metadata)) {
+      meta_ids <- as.character(metadata$id)
+    } else if (!is.null(rownames(metadata)) &&
+               !identical(rownames(metadata), as.character(seq_len(nrow(metadata))))) {
+      meta_ids <- rownames(metadata)
+    }
+
+    if (!is.null(meta_ids)) {
+      if (!identical(id, meta_ids)) {
+        stop("IDs in metadata do not match fdata identifiers")
+      }
+    }
+  }
+
   structure(
     list(
       data = data_mat,
@@ -153,10 +307,119 @@ fdata <- function(mdata, argvals = NULL, rangeval = NULL,
       rangeval = rangeval,
       names = names,
       fdata2d = TRUE,
-      dims = c(length(argvals[[1]]), length(argvals[[2]]))
+      dims = c(m1, m2),
+      id = id,
+      metadata = metadata
     ),
     class = "fdata"
   )
+}
+
+#' Convert DataFrame to 2D functional data
+#'
+#' Converts a data frame in long format to a 2D fdata object (surfaces).
+#' The expected format is: one identifier column, one column for the s-dimension
+#' index, and multiple columns for the t-dimension values.
+#'
+#' @param df A data frame with the structure described below.
+#' @param id_col Name or index of the identifier column (default: 1).
+#' @param s_col Name or index of the s-dimension column (default: 2).
+#' @param t_cols Names or indices of the t-dimension value columns. If NULL
+#'   (default), uses all columns after \code{s_col}.
+#' @param names Optional list with 'main', 'xlab', 'ylab', 'zlab' for labels.
+#'
+#' @return An object of class 'fdata' with 2D functional data.
+#'
+#' @details
+#' The expected data frame structure is:
+#' \itemize{
+#'   \item Column 1 (id_col): Surface identifier (e.g., "surface_1", "surface_2")
+#'   \item Column 2 (s_col): Index for the s-dimension (row index of surface)
+#'   \item Columns 3+ (t_cols): Values for each t-dimension point (columns of surface)
+#' }
+#'
+#' Each unique identifier represents one surface. For each surface, there should
+#' be m1 rows (one per s-value), and m2 t-columns, resulting in an m1 x m2 surface.
+#'
+#' @export
+#' @examples
+#' # Create example data frame
+#' df <- data.frame(
+#'   id = rep(c("surf1", "surf2"), each = 5),
+#'   s = rep(1:5, 2),
+#'   t1 = rnorm(10),
+#'   t2 = rnorm(10),
+#'   t3 = rnorm(10)
+#' )
+#' fd <- df_to_fdata2d(df)
+#' print(fd)
+df_to_fdata2d <- function(df, id_col = 1, s_col = 2, t_cols = NULL, names = NULL) {
+  if (!is.data.frame(df)) {
+    stop("df must be a data frame")
+  }
+
+  # Convert column names to indices if needed
+  if (is.character(id_col)) {
+    id_col <- which(colnames(df) == id_col)
+  }
+  if (is.character(s_col)) {
+    s_col <- which(colnames(df) == s_col)
+  }
+
+  # Determine t_cols if not specified
+  if (is.null(t_cols)) {
+    all_cols <- seq_len(ncol(df))
+    t_cols <- setdiff(all_cols, c(id_col, s_col))
+  } else if (is.character(t_cols)) {
+    t_cols <- which(colnames(df) %in% t_cols)
+  }
+
+  # Extract components
+  ids <- df[[id_col]]
+  s_vals <- df[[s_col]]
+  t_data <- as.matrix(df[, t_cols, drop = FALSE])
+
+  # Get unique identifiers and s values
+
+  unique_ids <- unique(ids)
+  unique_s <- sort(unique(s_vals))
+  n <- length(unique_ids)
+  m1 <- length(unique_s)
+  m2 <- length(t_cols)
+
+  # Build flattened matrix [n, m1*m2]
+  data_mat <- matrix(0, nrow = n, ncol = m1 * m2)
+
+  for (i in seq_len(n)) {
+    id <- unique_ids[i]
+    rows <- which(ids == id)
+
+    # Sort by s-value to ensure correct order
+    row_order <- order(s_vals[rows])
+    sorted_rows <- rows[row_order]
+
+    # Each surface row corresponds to one s-value
+    # t_data[sorted_rows, ] is [m1, m2] matrix
+    surface_mat <- t_data[sorted_rows, , drop = FALSE]
+
+    # Flatten to row-major order
+    data_mat[i, ] <- as.vector(surface_mat)
+  }
+
+  # Set row names to identifiers
+  rownames(data_mat) <- as.character(unique_ids)
+
+  # Get t values from column names if numeric, otherwise use indices
+  t_vals <- suppressWarnings(as.numeric(colnames(df)[t_cols]))
+  if (any(is.na(t_vals))) {
+    t_vals <- seq_len(m2)
+  }
+
+  # Create argvals
+  argvals <- list(s = unique_s, t = t_vals)
+
+  # Create fdata object
+  fdata(data_mat, argvals = argvals, names = names)
 }
 
 #' Center functional data
@@ -211,9 +474,9 @@ mean.fdata <- function(x, ...) {
   }
 
   if (isTRUE(x$fdata2d)) {
-    # 2D case
+    # 2D case - data is already flattened [n, m1*m2]
     mean_vals <- .Call("wrap__fdata_mean_2d", x$data)
-    # Return as fdata2d object
+    # Return as fdata2d object with flattened matrix [1, m1*m2]
     result <- list(
       data = matrix(mean_vals, nrow = 1),
       argvals = x$argvals,
@@ -279,7 +542,7 @@ norm.fdata <- function(fdataobj, lp = 2) {
 print.fdata <- function(x, ...) {
   cat("Functional data object\n")
   cat("  Type:", if (isTRUE(x$fdata2d)) "2D (surface)" else "1D (curve)", "\n")
-  cat("  Number of curves:", nrow(x$data), "\n")
+  cat("  Number of observations:", nrow(x$data), "\n")
 
   if (isTRUE(x$fdata2d)) {
     cat("  Grid dimensions:", x$dims[1], "x", x$dims[2], "\n")
@@ -288,6 +551,11 @@ print.fdata <- function(x, ...) {
   } else {
     cat("  Number of points:", ncol(x$data), "\n")
     cat("  Range:", x$rangeval[1], "-", x$rangeval[2], "\n")
+  }
+
+  # Show metadata info if present
+  if (!is.null(x$metadata)) {
+    cat("  Metadata columns:", paste(colnames(x$metadata), collapse = ", "), "\n")
   }
 
   invisible(x)
@@ -315,8 +583,28 @@ summary.fdata <- function(object, ...) {
   cat("\nData range:\n")
   cat("  Min:", min(object$data), "\n")
   cat("  Max:", max(object$data), "\n")
-  cat("  Mean:", mean(object$data), "\n")
-  cat("  SD:", sd(object$data), "\n")
+  cat("  Mean:", base::mean(object$data), "\n")
+  cat("  SD:", stats::sd(object$data), "\n")
+
+  # Show metadata summary if present
+  if (!is.null(object$metadata)) {
+    cat("\nMetadata:\n")
+    cat("  Columns:", paste(colnames(object$metadata), collapse = ", "), "\n")
+    for (col in colnames(object$metadata)) {
+      val <- object$metadata[[col]]
+      if (is.numeric(val)) {
+        cat("  ", col, ": numeric, range [", min(val), ", ", max(val), "]\n", sep = "")
+      } else if (is.factor(val)) {
+        lvls <- levels(val)
+        cat("  ", col, ": factor with ", length(lvls), " levels (",
+            paste(utils::head(lvls, 3), collapse = ", "),
+            if (length(lvls) > 3) ", ..." else "", ")\n", sep = "")
+      } else {
+        uniq <- unique(val)
+        cat("  ", col, ": ", class(val)[1], " with ", length(uniq), " unique values\n", sep = "")
+      }
+    }
+  }
 
   invisible(object)
 }
@@ -373,7 +661,7 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
   }
   if (isTRUE(x$fdata2d)) {
     # 2D surface plotting (color parameters not supported for 2D)
-    n <- nrow(x$data)
+    n <- nrow(x$data)  # Number of surfaces
     m1 <- x$dims[1]
     m2 <- x$dims[2]
     s <- x$argvals[[1]]
@@ -382,20 +670,21 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
     # Create grid for plotting
     grid <- expand.grid(s = s, t = t)
 
-    # Build long-format data frame
+    # Build long-format data frame from flattened matrix
     df_list <- lapply(seq_len(n), function(i) {
+      # x$data[i, ] is flattened surface, reshape for plotting
       data.frame(
         surface_id = i,
         s = grid$s,
         t = grid$t,
-        value = as.vector(matrix(x$data[i, ], m1, m2))
+        value = x$data[i, ]
       )
     })
     df <- do.call(rbind, df_list)
 
     # Plot with facets if multiple surfaces
-    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$s, y = .data$t, fill = .data$value)) +
-      ggplot2::geom_tile() +
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$s, y = .data$t)) +
+      ggplot2::geom_tile(ggplot2::aes(fill = .data$value)) +
       ggplot2::geom_contour(ggplot2::aes(z = .data$value), color = "black", alpha = 0.5) +
       ggplot2::scale_fill_viridis_c() +
       ggplot2::labs(
@@ -1080,12 +1369,14 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
     argvals_s <- fdataobj$argvals[[1]]
     argvals_t <- fdataobj$argvals[[2]]
 
+    # Data is already flattened [n, m1*m2]
     # Call Rust implementation for 2D derivatives
     result <- .Call("wrap__fdata_deriv_2d", fdataobj$data,
                     as.numeric(argvals_s), as.numeric(argvals_t),
                     as.integer(m1), as.integer(m2))
 
     # Create fdata objects for each derivative type
+    # Result is already in flattened format [n, m1*m2]
     make_deriv_fdata <- function(deriv_data, deriv_name) {
       new_names <- fdataobj$names
       if (!is.null(new_names$zlab)) {
@@ -1156,32 +1447,47 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
 #'
 #' @export
 `[.fdata` <- function(x, i, j, drop = FALSE) {
-  if (missing(i)) i <- seq_len(nrow(x$data))
-  if (missing(j)) j <- seq_len(ncol(x$data))
-
-  new_data <- x$data[i, j, drop = FALSE]
-
   # Check for 2D fdata - handle NULL or missing fdata2d (e.g., from fda.usc objects)
   is_2d <- isTRUE(x$fdata2d)
 
   if (is_2d) {
-    # For 2D fdata, subsetting only rows (surfaces) preserves argvals and dims
-    # Subsetting columns (grid points) is not well-defined for 2D
-    if (!missing(j) && !identical(j, seq_len(ncol(x$data)))) {
-      stop("Column subsetting is not supported for 2D fdata")
+    # 2D fdata: data is flattened matrix [n, m1*m2]
+    n <- nrow(x$data)
+    if (missing(i)) i <- seq_len(n)
+
+    # Column subsetting not supported for 2D
+    if (!missing(j)) {
+      stop("Column subsetting is not supported for 2D fdata. Use i to select surfaces.")
     }
+
+    # Subset surfaces (rows of flattened matrix)
+    new_data <- x$data[i, , drop = FALSE]
     new_argvals <- x$argvals
     new_rangeval <- x$rangeval
     new_dims <- x$dims
+
+    if (drop && nrow(new_data) == 1) {
+      # Return single surface as matrix [m1, m2]
+      return(matrix(new_data[1, ], nrow = x$dims[1], ncol = x$dims[2]))
+    }
   } else {
+    # 1D fdata: data is 2D matrix [n, m]
+    if (missing(i)) i <- seq_len(nrow(x$data))
+    if (missing(j)) j <- seq_len(ncol(x$data))
+
+    new_data <- x$data[i, j, drop = FALSE]
     new_argvals <- x$argvals[j]
     new_rangeval <- range(new_argvals)
     new_dims <- NULL
+
+    if (drop && nrow(new_data) == 1) {
+      return(as.vector(new_data))
+    }
   }
 
-  if (drop && nrow(new_data) == 1) {
-    return(as.vector(new_data))
-  }
+  # Subset id and metadata
+  new_id <- if (!is.null(x$id)) x$id[i] else NULL
+  new_metadata <- if (!is.null(x$metadata)) x$metadata[i, , drop = FALSE] else NULL
 
   structure(
     list(
@@ -1190,7 +1496,9 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
       rangeval = new_rangeval,
       names = x$names,
       fdata2d = is_2d,
-      dims = new_dims
+      dims = new_dims,
+      id = new_id,
+      metadata = new_metadata
     ),
     class = "fdata"
   )

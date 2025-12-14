@@ -374,6 +374,14 @@ outliers.boxplot <- function(fdataobj, prob = 0.5, factor = 1.5,
 #' @param cutoff.quantile Quantile for outlier cutoff (default 0.993).
 #' @param col.normal Color for normal curves (default "black").
 #' @param col.outliers Color for outlier curves (default "red").
+#' @param label What to use for labeling outlier points. Options:
+#'   \itemize{
+#'     \item \code{"index"}: Use numeric indices (default)
+#'     \item \code{"id"}: Use observation IDs from the fdata object
+#'     \item A column name from the fdata metadata (e.g., \code{"patient_id"})
+#'     \item \code{NULL}: No labels
+#'   }
+#' @param label_all Logical. If TRUE, label all points, not just outliers. Default FALSE.
 #' @param ... Additional arguments passed to depth function.
 #' @importFrom stats qchisq
 #'
@@ -415,9 +423,14 @@ outliers.boxplot <- function(fdataobj, prob = 0.5, factor = 1.5,
 #'
 #' # Create MS plot
 #' ms <- MS.plot(fd)
+#'
+#' # With IDs and metadata
+#' fd <- fdata(X, argvals = t, id = paste0("curve_", 1:30))
+#' ms <- MS.plot(fd, label = "id")
 MS.plot <- function(fdataobj, depth.func = depth.MBD,
                     cutoff.quantile = 0.993,
-                    col.normal = "black", col.outliers = "red", ...) {
+                    col.normal = "black", col.outliers = "red",
+                    label = "index", label_all = FALSE, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -478,12 +491,37 @@ MS.plot <- function(fdataobj, depth.func = depth.MBD,
   status <- rep("Normal", n)
   status[outliers] <- "Outlier"
 
+  # Determine labels based on label parameter
+  if (is.null(label)) {
+    labels <- as.character(seq_len(n))
+    show_labels <- FALSE
+  } else if (label == "index") {
+    labels <- as.character(seq_len(n))
+    show_labels <- TRUE
+  } else if (label == "id") {
+    if (!is.null(fdataobj$id)) {
+      labels <- fdataobj$id
+    } else {
+      labels <- as.character(seq_len(n))
+    }
+    show_labels <- TRUE
+  } else {
+    # Try to get from metadata
+    if (!is.null(fdataobj$metadata) && label %in% colnames(fdataobj$metadata)) {
+      labels <- as.character(fdataobj$metadata[[label]])
+    } else {
+      warning("Label column '", label, "' not found in metadata. Using index.")
+      labels <- as.character(seq_len(n))
+    }
+    show_labels <- TRUE
+  }
+
   # Create data frame for plotting
   df <- data.frame(
     MO = MO,
     VO = VO,
     status = factor(status, levels = c("Normal", "Outlier")),
-    curve_id = seq_len(n)
+    label = labels
   )
 
   # Create ggplot
@@ -511,6 +549,28 @@ MS.plot <- function(fdataobj, depth.func = depth.MBD,
                               ggplot2::aes(x = .data$x, y = .data$y),
                               color = "blue", linetype = "dashed",
                               inherit.aes = FALSE)
+
+  # Add labels
+  if (show_labels) {
+    if (label_all) {
+      p <- p + ggplot2::geom_text(
+        data = df,
+        ggplot2::aes(label = .data$label),
+        nudge_y = 0.05,
+        size = 3,
+        show.legend = FALSE
+      )
+    } else if (length(outliers) > 0) {
+      outlier_df <- df[outliers, ]
+      p <- p + ggplot2::geom_text(
+        data = outlier_df,
+        ggplot2::aes(label = .data$label),
+        nudge_y = 0.05,
+        size = 3,
+        color = col.outliers
+      )
+    }
+  }
 
   print(p)
 
@@ -667,11 +727,19 @@ outliergram <- function(fdataobj, factor = 1.5, ...) {
 #' @param col_outlier Color for outliers. Default is "red".
 #' @param show_parabola Logical. If TRUE, draw the theoretical parabola. Default TRUE.
 #' @param show_threshold Logical. If TRUE, draw the adjusted threshold parabola. Default TRUE.
+#' @param label What to use for labeling outlier points. Options:
+#'   \itemize{
+#'     \item \code{"index"}: Use numeric indices (default)
+#'     \item \code{"id"}: Use observation IDs from the fdata object
+#'     \item A column name from the fdata metadata (e.g., \code{"patient_id"})
+#'   }
+#' @param label_all Logical. If TRUE, label all points, not just outliers. Default FALSE.
 #' @param ... Additional arguments passed to plotting functions.
 #'
 #' @export
 plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
-                              show_parabola = TRUE, show_threshold = TRUE, ...) {
+                              show_parabola = TRUE, show_threshold = TRUE,
+                              label = "index", label_all = FALSE, ...) {
   n <- length(x$mei)
 
   # Create status factor
@@ -681,12 +749,31 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
   }
   status <- factor(status, levels = c("Normal", "Outlier"))
 
+  # Determine labels based on label parameter
+  if (label == "index") {
+    labels <- as.character(seq_len(n))
+  } else if (label == "id") {
+    if (!is.null(x$fdataobj$id)) {
+      labels <- x$fdataobj$id
+    } else {
+      labels <- as.character(seq_len(n))
+    }
+  } else {
+    # Try to get from metadata
+    if (!is.null(x$fdataobj$metadata) && label %in% colnames(x$fdataobj$metadata)) {
+      labels <- as.character(x$fdataobj$metadata[[label]])
+    } else {
+      warning("Label column '", label, "' not found in metadata. Using index.")
+      labels <- as.character(seq_len(n))
+    }
+  }
+
   # Create data frame for plotting
   df <- data.frame(
     mei = x$mei,
     mbd = x$mbd,
     status = status,
-    id = seq_len(n)
+    label = labels
   )
 
   # Create parabola data for plotting
@@ -736,12 +823,20 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
     )
   }
 
-  # Add labels for outliers
-  if (length(x$outliers) > 0) {
+  # Add labels
+  if (label_all) {
+    p <- p + ggplot2::geom_text(
+      data = df,
+      ggplot2::aes(label = label),
+      nudge_y = 0.02,
+      size = 3,
+      show.legend = FALSE
+    )
+  } else if (length(x$outliers) > 0) {
     outlier_df <- df[x$outliers, ]
     p <- p + ggplot2::geom_text(
       data = outlier_df,
-      ggplot2::aes(label = id),
+      ggplot2::aes(label = label),
       nudge_y = 0.02,
       size = 3,
       color = col_outlier
