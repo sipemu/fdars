@@ -171,10 +171,8 @@ plot.outliers.fdata <- function(x, col.outliers = "red", ...) {
       y = fd$names$ylab %||% "X(t)",
       title = paste("Outliers detected:", length(x$outliers)),
       color = "Status"
-    ) +
-    ggplot2::theme_minimal()
+    )
 
-  print(p)
   invisible(p)
 }
 
@@ -535,8 +533,7 @@ MS.plot <- function(fdataobj, depth.func = depth.MBD,
       y = "Shape Outlyingness (VO)",
       title = "Magnitude-Shape Plot",
       color = "Status"
-    ) +
-    ggplot2::theme_minimal()
+    )
 
   # Add chi-squared contour at cutoff
   theta <- seq(0, 2*pi, length.out = 100)
@@ -571,8 +568,6 @@ MS.plot <- function(fdataobj, depth.func = depth.MBD,
       )
     }
   }
-
-  print(p)
 
   # Return result
   result <- structure(
@@ -796,7 +791,6 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
       y = "MBD (Modified Band Depth)",
       color = ""
     ) +
-    ggplot2::theme_minimal() +
     ggplot2::theme(legend.position = "bottom")
 
   # Add theoretical parabola
@@ -843,7 +837,6 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
     )
   }
 
-  print(p)
   invisible(p)
 }
 

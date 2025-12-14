@@ -4,7 +4,7 @@ use rand::prelude::*;
 use rand_distr::StandardNormal;
 use std::f64::consts::PI;
 use rustfft::{FftPlanner, num_complex::Complex};
-use nalgebra::{DMatrix, SVD};
+use nalgebra::{DMatrix, DVector, SVD};
 
 // =============================================================================
 // Helper functions
@@ -3229,6 +3229,716 @@ fn fdata2basis_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type
 }
 
 // =============================================================================
+// Basis representation: reconstruction, GCV, AIC, BIC, P-splines
+// =============================================================================
+
+/// Reconstruct functional data from basis coefficients
+/// Returns data matrix [n x m]
+#[extendr]
+fn basis2fdata_1d(coefs: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32) -> Robj {
+    let n = coefs.nrows();
+    let nbasis_in = coefs.ncols();
+    let m = argvals.len();
+    let nbasis = nbasis as usize;
+
+    if n == 0 || m == 0 || nbasis < 2 {
+        return r!(RMatrix::new_matrix(0, 0, |_, _| 0.0));
+    }
+
+    let coefs_slice = coefs.as_real_slice().unwrap();
+
+    // Compute basis matrix (m x nbasis)
+    let basis = if basis_type == 1 {
+        fourier_basis(&argvals, nbasis)
+    } else {
+        bspline_basis(&argvals, nbasis + 2, 4)
+    };
+
+    let actual_nbasis = basis.len() / m;
+
+    // Reconstruct: data = coefs * B^T
+    // coefs: [n x nbasis], B: [m x nbasis] => data: [n x m]
+    let data: Vec<f64> = (0..n)
+        .into_par_iter()
+        .flat_map(|i| {
+            (0..m)
+                .map(|j| {
+                    let mut sum = 0.0;
+                    for k in 0..actual_nbasis.min(nbasis_in) {
+                        sum += coefs_slice[i + k * n] * basis[j + k * m];
+                    }
+                    sum
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let result = RMatrix::new_matrix(n, m, |i, j| data[i * m + j]);
+    r!(result)
+}
+
+/// Compute difference matrix for P-spline penalty
+/// order 1: first differences, order 2: second differences, etc.
+fn difference_matrix(n: usize, order: usize) -> DMatrix<f64> {
+    if order == 0 {
+        return DMatrix::identity(n, n);
+    }
+
+    // First-order difference matrix [n-1 x n]
+    let mut d = DMatrix::zeros(n - 1, n);
+    for i in 0..(n - 1) {
+        d[(i, i)] = -1.0;
+        d[(i, i + 1)] = 1.0;
+    }
+
+    // Apply recursively for higher orders
+    let mut result = d;
+    for _ in 1..order {
+        if result.nrows() <= 1 {
+            break;
+        }
+        let rows = result.nrows() - 1;
+        let cols = result.ncols();
+        let mut d_next = DMatrix::zeros(rows, cols);
+        for i in 0..rows {
+            for j in 0..cols {
+                d_next[(i, j)] = -result[(i, j)] + result[(i + 1, j)];
+            }
+        }
+        result = d_next;
+    }
+
+    result
+}
+
+/// Compute GCV score for basis fit
+/// GCV = RSS/n / (1 - edf/n)^2
+#[extendr]
+fn basis_gcv_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32, lambda: f64) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+    let nbasis = nbasis as usize;
+
+    if n == 0 || m == 0 || nbasis < 2 {
+        return f64::INFINITY;
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute basis matrix
+    let basis = if basis_type == 1 {
+        fourier_basis(&argvals, nbasis)
+    } else {
+        bspline_basis(&argvals, nbasis + 2, 4)
+    };
+
+    let actual_nbasis = basis.len() / m;
+    let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+    // Compute B'B
+    let btb = &b_mat.transpose() * &b_mat;
+
+    // Add penalty if lambda > 0
+    let btb_penalized = if lambda > 0.0 {
+        let d = difference_matrix(actual_nbasis, 2);
+        let penalty = &d.transpose() * &d;
+        btb + lambda * penalty
+    } else {
+        btb
+    };
+
+    // Solve for coefficients and compute hat matrix trace
+    let btb_inv = match btb_penalized.clone().try_inverse() {
+        Some(inv) => inv,
+        None => return f64::INFINITY,
+    };
+
+    // Hat matrix H = B * (B'B + lambda*P)^-1 * B'
+    // edf = trace(H) = trace(B * btb_inv * B')
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
+
+    // Compute RSS for all curves
+    let mut total_rss = 0.0;
+    let total_points = n * m;
+
+    for i in 0..n {
+        // Extract curve
+        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+        let curve_vec = DVector::from_vec(curve.clone());
+
+        // Coefficients: c = (B'B + lambda*P)^-1 * B' * y
+        let bt_y = b_mat.transpose() * &curve_vec;
+        let coefs = &btb_inv * bt_y;
+
+        // Fitted values
+        let fitted = &b_mat * &coefs;
+
+        // RSS
+        for j in 0..m {
+            let resid = curve[j] - fitted[j];
+            total_rss += resid * resid;
+        }
+    }
+
+    // GCV = (RSS/n_total) / (1 - edf/m)^2
+    let gcv_denom = 1.0 - edf / m as f64;
+    if gcv_denom.abs() < 1e-10 {
+        return f64::INFINITY;
+    }
+
+    (total_rss / total_points as f64) / (gcv_denom * gcv_denom)
+}
+
+/// Compute AIC for basis fit
+/// AIC = n * log(RSS/n) + 2 * edf
+#[extendr]
+fn basis_aic_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32, lambda: f64) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+    let nbasis = nbasis as usize;
+
+    if n == 0 || m == 0 || nbasis < 2 {
+        return f64::INFINITY;
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute basis matrix
+    let basis = if basis_type == 1 {
+        fourier_basis(&argvals, nbasis)
+    } else {
+        bspline_basis(&argvals, nbasis + 2, 4)
+    };
+
+    let actual_nbasis = basis.len() / m;
+    let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+    let btb = &b_mat.transpose() * &b_mat;
+    let btb_penalized = if lambda > 0.0 {
+        let d = difference_matrix(actual_nbasis, 2);
+        let penalty = &d.transpose() * &d;
+        btb + lambda * penalty
+    } else {
+        btb
+    };
+
+    let btb_inv = match btb_penalized.clone().try_inverse() {
+        Some(inv) => inv,
+        None => return f64::INFINITY,
+    };
+
+    // EDF
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
+
+    // RSS
+    let mut total_rss = 0.0;
+    let total_points = n * m;
+
+    for i in 0..n {
+        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+        let curve_vec = DVector::from_vec(curve.clone());
+        let bt_y = b_mat.transpose() * &curve_vec;
+        let coefs = &btb_inv * bt_y;
+        let fitted = &b_mat * &coefs;
+
+        for j in 0..m {
+            let resid = curve[j] - fitted[j];
+            total_rss += resid * resid;
+        }
+    }
+
+    // AIC = n * log(RSS/n) + 2 * edf
+    let mse = total_rss / total_points as f64;
+    (total_points as f64) * mse.ln() + 2.0 * edf
+}
+
+/// Compute BIC for basis fit
+/// BIC = n * log(RSS/n) + log(n) * edf
+#[extendr]
+fn basis_bic_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32, lambda: f64) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+    let nbasis = nbasis as usize;
+
+    if n == 0 || m == 0 || nbasis < 2 {
+        return f64::INFINITY;
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let basis = if basis_type == 1 {
+        fourier_basis(&argvals, nbasis)
+    } else {
+        bspline_basis(&argvals, nbasis + 2, 4)
+    };
+
+    let actual_nbasis = basis.len() / m;
+    let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+    let btb = &b_mat.transpose() * &b_mat;
+    let btb_penalized = if lambda > 0.0 {
+        let d = difference_matrix(actual_nbasis, 2);
+        let penalty = &d.transpose() * &d;
+        btb + lambda * penalty
+    } else {
+        btb
+    };
+
+    let btb_inv = match btb_penalized.clone().try_inverse() {
+        Some(inv) => inv,
+        None => return f64::INFINITY,
+    };
+
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
+
+    let mut total_rss = 0.0;
+    let total_points = n * m;
+
+    for i in 0..n {
+        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+        let curve_vec = DVector::from_vec(curve.clone());
+        let bt_y = b_mat.transpose() * &curve_vec;
+        let coefs = &btb_inv * bt_y;
+        let fitted = &b_mat * &coefs;
+
+        for j in 0..m {
+            let resid = curve[j] - fitted[j];
+            total_rss += resid * resid;
+        }
+    }
+
+    // BIC = n * log(RSS/n) + log(n) * edf
+    let mse = total_rss / total_points as f64;
+    (total_points as f64) * mse.ln() + (total_points as f64).ln() * edf
+}
+
+/// P-spline fitting: returns coefficients, fitted values, and diagnostics
+#[extendr]
+fn pspline_fit_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, lambda: f64, order: i32) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+    let nbasis = nbasis as usize;
+    let order = order as usize;
+
+    if n == 0 || m == 0 || nbasis < 2 {
+        return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                     fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                     edf = 0.0, rss = 0.0, gcv = f64::INFINITY,
+                     aic = f64::INFINITY, bic = f64::INFINITY).into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // B-spline basis for P-splines
+    let basis = bspline_basis(&argvals, nbasis + 2, 4);
+    let actual_nbasis = basis.len() / m;
+    let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+    // Penalty matrix
+    let d = difference_matrix(actual_nbasis, order);
+    let penalty = &d.transpose() * &d;
+
+    // B'B + lambda * D'D
+    let btb = &b_mat.transpose() * &b_mat;
+    let btb_penalized = &btb + lambda * &penalty;
+
+    let btb_inv = match btb_penalized.clone().try_inverse() {
+        Some(inv) => inv,
+        None => {
+            return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                         fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                         edf = 0.0, rss = 0.0, gcv = f64::INFINITY,
+                         aic = f64::INFINITY, bic = f64::INFINITY).into();
+        }
+    };
+
+    // EDF = trace(H) where H = B * (B'B + lambda*P)^-1 * B'
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
+
+    // Fit each curve
+    let mut all_coefs = vec![0.0; n * actual_nbasis];
+    let mut all_fitted = vec![0.0; n * m];
+    let mut total_rss = 0.0;
+
+    for i in 0..n {
+        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+        let curve_vec = DVector::from_vec(curve.clone());
+
+        // Coefficients
+        let bt_y = b_mat.transpose() * &curve_vec;
+        let coefs = &btb_inv * bt_y;
+
+        // Store coefficients
+        for k in 0..actual_nbasis {
+            all_coefs[i + k * n] = coefs[k];
+        }
+
+        // Fitted values
+        let fitted = &b_mat * &coefs;
+        for j in 0..m {
+            all_fitted[i + j * n] = fitted[j];
+            let resid = curve[j] - fitted[j];
+            total_rss += resid * resid;
+        }
+    }
+
+    let total_points = (n * m) as f64;
+
+    // GCV
+    let gcv_denom = 1.0 - edf / m as f64;
+    let gcv = if gcv_denom.abs() > 1e-10 {
+        (total_rss / total_points) / (gcv_denom * gcv_denom)
+    } else {
+        f64::INFINITY
+    };
+
+    // AIC and BIC
+    let mse = total_rss / total_points;
+    let aic = total_points * mse.ln() + 2.0 * edf;
+    let bic = total_points * mse.ln() + total_points.ln() * edf;
+
+    let coefs_mat = RMatrix::new_matrix(n, actual_nbasis, |i, k| all_coefs[i + k * n]);
+    let fitted_mat = RMatrix::new_matrix(n, m, |i, j| all_fitted[i + j * n]);
+
+    list!(
+        coefs = r!(coefs_mat),
+        fitted = r!(fitted_mat),
+        edf = edf,
+        rss = total_rss,
+        gcv = gcv,
+        aic = aic,
+        bic = bic
+    ).into()
+}
+
+// =============================================================================
+// 2D Tensor Product Basis Functions
+// =============================================================================
+
+/// Compute tensor product basis matrix for 2D functional data
+fn tensor_product_basis(argvals_s: &[f64], argvals_t: &[f64],
+                        nbasis_s: usize, nbasis_t: usize, basis_type: i32) -> Vec<f64> {
+    let m1 = argvals_s.len();
+    let m2 = argvals_t.len();
+
+    // Compute 1D bases
+    let b_s = if basis_type == 1 {
+        fourier_basis(argvals_s, nbasis_s)
+    } else {
+        bspline_basis(argvals_s, nbasis_s + 2, 4)
+    };
+
+    let b_t = if basis_type == 1 {
+        fourier_basis(argvals_t, nbasis_t)
+    } else {
+        bspline_basis(argvals_t, nbasis_t + 2, 4)
+    };
+
+    let actual_nbasis_s = b_s.len() / m1;
+    let actual_nbasis_t = b_t.len() / m2;
+    let total_basis = actual_nbasis_s * actual_nbasis_t;
+
+    // Tensor product: B_2d[(i*m2+j), (k*nbasis_t+l)] = B_s[i,k] * B_t[j,l]
+    let mut b_2d = vec![0.0; m1 * m2 * total_basis];
+
+    for i in 0..m1 {
+        for j in 0..m2 {
+            let row_idx = i * m2 + j;
+            for k in 0..actual_nbasis_s {
+                for l in 0..actual_nbasis_t {
+                    let col_idx = k * actual_nbasis_t + l;
+                    b_2d[row_idx + col_idx * (m1 * m2)] = b_s[i + k * m1] * b_t[j + l * m2];
+                }
+            }
+        }
+    }
+
+    b_2d
+}
+
+/// Project 2D functional data to tensor product basis coefficients
+#[extendr]
+fn fdata2basis_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
+                  nbasis_s: i32, nbasis_t: i32, basis_type: i32) -> Robj {
+    let n = data.nrows();
+    let m_total = data.ncols();
+    let m1 = argvals_s.len();
+    let m2 = argvals_t.len();
+
+    if n == 0 || m_total != m1 * m2 {
+        return r!(RMatrix::new_matrix(0, 0, |_, _| 0.0));
+    }
+
+    let nbasis_s = nbasis_s as usize;
+    let nbasis_t = nbasis_t as usize;
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute tensor product basis
+    let basis = tensor_product_basis(&argvals_s, &argvals_t, nbasis_s, nbasis_t, basis_type);
+
+    // Determine actual basis sizes
+    let b_s_test = if basis_type == 1 {
+        fourier_basis(&argvals_s, nbasis_s)
+    } else {
+        bspline_basis(&argvals_s, nbasis_s + 2, 4)
+    };
+    let actual_nbasis_s = b_s_test.len() / m1;
+
+    let b_t_test = if basis_type == 1 {
+        fourier_basis(&argvals_t, nbasis_t)
+    } else {
+        bspline_basis(&argvals_t, nbasis_t + 2, 4)
+    };
+    let actual_nbasis_t = b_t_test.len() / m2;
+
+    let total_basis = actual_nbasis_s * actual_nbasis_t;
+    let total_points = m1 * m2;
+
+    let b_mat = DMatrix::from_column_slice(total_points, total_basis, &basis);
+
+    // Least squares projection
+    let btb = &b_mat.transpose() * &b_mat;
+    let btb_svd = SVD::new(btb, true, true);
+
+    let max_sv = btb_svd.singular_values.iter().cloned().fold(0.0, f64::max);
+    let eps = 1e-10 * max_sv;
+
+    let s_inv: Vec<f64> = btb_svd.singular_values
+        .iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let v = btb_svd.v_t.as_ref().unwrap().transpose();
+    let u_t = btb_svd.u.as_ref().unwrap().transpose();
+
+    let mut btb_inv = DMatrix::zeros(total_basis, total_basis);
+    for i in 0..total_basis {
+        for j in 0..total_basis {
+            let mut sum = 0.0;
+            for k in 0..total_basis.min(s_inv.len()) {
+                sum += v[(i, k)] * s_inv[k] * u_t[(k, j)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
+
+    let proj = &btb_inv * b_mat.transpose();
+
+    // Compute coefficients for each surface
+    let coefs: Vec<f64> = (0..n)
+        .into_par_iter()
+        .flat_map(|i| {
+            let surface: Vec<f64> = (0..total_points).map(|j| data_slice[i + j * n]).collect();
+            (0..total_basis)
+                .map(|k| {
+                    let mut sum = 0.0;
+                    for j in 0..total_points {
+                        sum += proj[(k, j)] * surface[j];
+                    }
+                    sum
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let result = RMatrix::new_matrix(n, total_basis, |i, k| coefs[i * total_basis + k]);
+    r!(result)
+}
+
+/// Reconstruct 2D functional data from tensor product basis coefficients
+#[extendr]
+fn basis2fdata_2d(coefs: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
+                  nbasis_s: i32, nbasis_t: i32, basis_type: i32) -> Robj {
+    let n = coefs.nrows();
+    let m1 = argvals_s.len();
+    let m2 = argvals_t.len();
+    let total_points = m1 * m2;
+
+    let nbasis_s = nbasis_s as usize;
+    let nbasis_t = nbasis_t as usize;
+    let coefs_slice = coefs.as_real_slice().unwrap();
+    let coefs_ncols = coefs.ncols();
+
+    // Compute tensor product basis
+    let basis = tensor_product_basis(&argvals_s, &argvals_t, nbasis_s, nbasis_t, basis_type);
+    let total_basis = basis.len() / total_points;
+    let k_max = total_basis.min(coefs_ncols);
+
+    // Reconstruct: data = coefs * B^T
+    let data: Vec<f64> = (0..n)
+        .into_par_iter()
+        .flat_map(|i| {
+            (0..total_points)
+                .map(|j| {
+                    let mut sum = 0.0;
+                    for k in 0..k_max {
+                        sum += coefs_slice[i + k * n] * basis[j + k * total_points];
+                    }
+                    sum
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let result = RMatrix::new_matrix(n, total_points, |i, j| data[i * total_points + j]);
+    r!(result)
+}
+
+/// 2D P-spline fitting with anisotropic penalties
+#[extendr]
+fn pspline_fit_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
+                  nbasis_s: i32, nbasis_t: i32, lambda_s: f64, lambda_t: f64, order: i32) -> Robj {
+    let n = data.nrows();
+    let m1 = argvals_s.len();
+    let m2 = argvals_t.len();
+    let total_points = m1 * m2;
+
+    if n == 0 || data.ncols() != total_points {
+        return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                     fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                     edf = 0.0, gcv = f64::INFINITY, aic = f64::INFINITY, bic = f64::INFINITY).into();
+    }
+
+    let nbasis_s = nbasis_s as usize;
+    let nbasis_t = nbasis_t as usize;
+    let order = order as usize;
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Tensor product B-spline basis
+    let basis = tensor_product_basis(&argvals_s, &argvals_t, nbasis_s, nbasis_t, 0);
+
+    // Get actual basis dimensions
+    let b_s_test = bspline_basis(&argvals_s, nbasis_s + 2, 4);
+    let actual_nbasis_s = b_s_test.len() / m1;
+
+    let b_t_test = bspline_basis(&argvals_t, nbasis_t + 2, 4);
+    let actual_nbasis_t = b_t_test.len() / m2;
+
+    let total_basis = actual_nbasis_s * actual_nbasis_t;
+    let b_mat = DMatrix::from_column_slice(total_points, total_basis, &basis);
+
+    // Create 1D penalty matrices
+    let d_s = difference_matrix(actual_nbasis_s, order);
+    let p_s = &d_s.transpose() * &d_s;
+
+    let d_t = difference_matrix(actual_nbasis_t, order);
+    let p_t = &d_t.transpose() * &d_t;
+
+    // Kronecker product penalty: P = lambda_s*(I_t ⊗ P_s) + lambda_t*(P_t ⊗ I_s)
+    let i_s = DMatrix::<f64>::identity(actual_nbasis_s, actual_nbasis_s);
+    let i_t = DMatrix::<f64>::identity(actual_nbasis_t, actual_nbasis_t);
+
+    // I_t ⊗ P_s
+    let mut penalty_s = DMatrix::zeros(total_basis, total_basis);
+    for it in 0..actual_nbasis_t {
+        for jt in 0..actual_nbasis_t {
+            if it == jt {
+                for is in 0..actual_nbasis_s {
+                    for js in 0..actual_nbasis_s {
+                        let row = is * actual_nbasis_t + it;
+                        let col = js * actual_nbasis_t + jt;
+                        penalty_s[(row, col)] = p_s[(is, js)];
+                    }
+                }
+            }
+        }
+    }
+
+    // P_t ⊗ I_s
+    let mut penalty_t = DMatrix::zeros(total_basis, total_basis);
+    for is in 0..actual_nbasis_s {
+        for js in 0..actual_nbasis_s {
+            if is == js {
+                for it in 0..actual_nbasis_t {
+                    for jt in 0..actual_nbasis_t {
+                        let row = is * actual_nbasis_t + it;
+                        let col = js * actual_nbasis_t + jt;
+                        penalty_t[(row, col)] = p_t[(it, jt)];
+                    }
+                }
+            }
+        }
+    }
+
+    let penalty = lambda_s * penalty_s + lambda_t * penalty_t;
+
+    let btb = &b_mat.transpose() * &b_mat;
+    let btb_penalized = &btb + &penalty;
+
+    let btb_inv = match btb_penalized.clone().try_inverse() {
+        Some(inv) => inv,
+        None => {
+            return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                         fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                         edf = 0.0, gcv = f64::INFINITY, aic = f64::INFINITY, bic = f64::INFINITY).into();
+        }
+    };
+
+    // EDF
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..total_points).map(|i| h_mat[(i, i)]).sum();
+
+    // Fit each surface
+    let mut all_coefs = vec![0.0; n * total_basis];
+    let mut all_fitted = vec![0.0; n * total_points];
+    let mut total_rss = 0.0;
+
+    for i in 0..n {
+        let surface: Vec<f64> = (0..total_points).map(|j| data_slice[i + j * n]).collect();
+        let surface_vec = DVector::from_vec(surface.clone());
+
+        let bt_y = b_mat.transpose() * &surface_vec;
+        let coefs = &btb_inv * bt_y;
+
+        for k in 0..total_basis {
+            all_coefs[i + k * n] = coefs[k];
+        }
+
+        let fitted = &b_mat * &coefs;
+        for j in 0..total_points {
+            all_fitted[i + j * n] = fitted[j];
+            let resid = surface[j] - fitted[j];
+            total_rss += resid * resid;
+        }
+    }
+
+    let total_obs = (n * total_points) as f64;
+
+    let gcv_denom = 1.0 - edf / total_points as f64;
+    let gcv = if gcv_denom.abs() > 1e-10 {
+        (total_rss / total_obs) / (gcv_denom * gcv_denom)
+    } else {
+        f64::INFINITY
+    };
+
+    let mse = total_rss / total_obs;
+    let aic = total_obs * mse.ln() + 2.0 * edf;
+    let bic = total_obs * mse.ln() + total_obs.ln() * edf;
+
+    let coefs_mat = RMatrix::new_matrix(n, total_basis, |i, k| all_coefs[i + k * n]);
+    let fitted_mat = RMatrix::new_matrix(n, total_points, |i, j| all_fitted[i + j * n]);
+
+    list!(
+        coefs = r!(coefs_mat),
+        fitted = r!(fitted_mat),
+        edf = edf,
+        rss = total_rss,
+        gcv = gcv,
+        aic = aic,
+        bic = bic
+    ).into()
+}
+
+// =============================================================================
 // Outlier detection (LRT-based)
 // =============================================================================
 
@@ -4828,6 +5538,17 @@ extendr_module! {
     fn fdata2pc_1d;
     fn fdata2pls_1d;
     fn fdata2basis_1d;
+
+    // Basis representation functions
+    fn basis2fdata_1d;
+    fn basis_gcv_1d;
+    fn basis_aic_1d;
+    fn basis_bic_1d;
+    fn pspline_fit_1d;
+    fn fdata2basis_2d;
+    fn basis2fdata_2d;
+    fn pspline_fit_2d;
+
     fn outliers_thres_lrt;
     fn outliers_lrt;
 

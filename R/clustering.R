@@ -491,10 +491,8 @@ plot.cluster.optim <- function(x, ...) {
       y = ylab,
       title = paste("Optimal k Selection:", x$criterion)
     ) +
-    ggplot2::scale_x_continuous(breaks = x$ncl.range) +
-    ggplot2::theme_minimal()
+    ggplot2::scale_x_continuous(breaks = x$ncl.range)
 
-  print(p)
   invisible(p)
 }
 
@@ -569,10 +567,8 @@ plot.cluster.kmeans <- function(x, ...) {
       y = fd$names$ylab %||% "X(t)",
       title = "Functional K-Means Clustering",
       color = "Cluster"
-    ) +
-    ggplot2::theme_minimal()
+    )
 
-  print(p)
   invisible(p)
 }
 
@@ -762,10 +758,8 @@ plot.cluster.fcm <- function(x, type = c("curves", "membership"), ...) {
       y = fd$names$ylab %||% "X(t)",
       title = "Fuzzy C-Means Clustering",
       color = "Cluster"
-    ) +
-    ggplot2::theme_minimal()
+    )
 
-  print(p)
   invisible(p)
 }
 
@@ -789,9 +783,7 @@ plot.cluster.fcm <- function(x, type = c("curves", "membership"), ...) {
       y = "Membership Degree",
       title = "Fuzzy Cluster Membership",
       fill = "Cluster"
-    ) +
-    ggplot2::theme_minimal()
+    )
 
-  print(p)
   invisible(p)
 }

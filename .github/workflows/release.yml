@@ -16,8 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: macos-latest, type: 'macOS'}
-          - {os: windows-latest, type: 'Windows'}
+          - {os: macos-latest, type: 'macOS', r-version: 'release'}
+          - {os: windows-latest, type: 'Windows', r-version: '4.2.2'}
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: 'release'
+          r-version: ${{ matrix.config.r-version }}
 
       - name: Install Rust GNU Toolchain (Windows)
         if: runner.os == 'Windows'
@@ -77,31 +77,20 @@ jobs:
             *.tgz
             *.zip
           body: |
-            ## fdars v0.1.0: Initial Release
-
-            This is the first release of `fdars`, a high-performance Functional Data Analysis package with a Rust backend.
-
-            ### Features
-            *   **97 Exported Functions**: Comprehensive FDA toolkit
-            *   **Rust Backend**: Core algorithms in Rust for speed and safety
-            *   **Parallel Processing**: Uses `rayon` for multithreaded operations
-            *   **fda.usc Compatible**: Same API as the popular fda.usc package
-
-            ### Included Functionality
-            - Depth functions (FM, mode, RP, RT, FSD, KFSD, RPD)
-            - Functional statistics (mean, median, trimmed mean, variance)
-            - Distance metrics (Lp, Hausdorff, DTW, KL)
-            - Regression (PC, basis, nonparametric)
-            - Outlier detection
-            - Kernel smoothing
-            - K-means clustering
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
 
             ### Installation
 
             **Windows / macOS:**
-            Download the attached `.zip` (Windows) or `.tgz` (macOS) file and install via:
+            Download the attached `.zip` (Windows) or `.tgz` (macOS) file and install:
             ```r
-            install.packages("path/to/fdars_0.1.0.zip", repos = NULL)
+            install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  # Windows
+            install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")  # macOS
+            ```
+
+            **From source (Linux/any platform with Rust):**
+            ```r
+            devtools::install_github("${{ github.repository }}")
             ```
           draft: false
           prerelease: false

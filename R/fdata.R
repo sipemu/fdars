@@ -667,6 +667,10 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
     s <- x$argvals[[1]]
     t <- x$argvals[[2]]
 
+    # Compute tile dimensions to avoid white lines between tiles
+    tile_width <- if (length(s) > 1) mean(diff(s)) else 1
+    tile_height <- if (length(t) > 1) mean(diff(t)) else 1
+
     # Create grid for plotting
     grid <- expand.grid(s = s, t = t)
 
@@ -684,7 +688,8 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
 
     # Plot with facets if multiple surfaces
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$s, y = .data$t)) +
-      ggplot2::geom_tile(ggplot2::aes(fill = .data$value)) +
+      ggplot2::geom_tile(ggplot2::aes(fill = .data$value),
+                         width = tile_width, height = tile_height) +
       ggplot2::geom_contour(ggplot2::aes(z = .data$value), color = "black", alpha = 0.5) +
       ggplot2::scale_fill_viridis_c() +
       ggplot2::labs(
@@ -692,14 +697,12 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
         y = x$names$ylab %||% "t",
         fill = x$names$zlab %||% "value",
         title = x$names$main
-      ) +
-      ggplot2::theme_minimal()
+      )
 
     if (n > 1) {
       p <- p + ggplot2::facet_wrap(~ surface_id)
     }
 
-    print(p)
     return(invisible(p))
   }
 
@@ -786,10 +789,8 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
       x = x$names$xlab %||% "t",
       y = x$names$ylab %||% "X(t)",
       title = x$names$main
-    ) +
-    ggplot2::theme_minimal()
+    )
 
-  print(p)
   invisible(p)
 }
 
@@ -1020,9 +1021,7 @@ boxplot.fdata <- function(x, prob = 0.5, factor = 1.5,
     x = x$names$xlab %||% "t",
     y = x$names$ylab %||% "X(t)",
     title = "Functional Boxplot"
-  ) + ggplot2::theme_minimal()
-
-  print(p)
+  )
 
   # Return result invisibly
   result <- structure(
@@ -1214,10 +1213,8 @@ plot.register.fd <- function(x, type = c("registered", "original", "both"), ...)
         x = fd_orig$names$xlab %||% "t",
         y = fd_orig$names$ylab %||% "X(t)",
         title = "Curve Registration: Before vs After"
-      ) +
-      ggplot2::theme_minimal()
+      )
 
-    print(p)
     invisible(p)
   }
 }
@@ -1938,10 +1935,8 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
       y = "X(t)",
       color = ""
     ) +
-    ggplot2::theme_minimal() +
     ggplot2::theme(legend.position = "bottom")
 
-  print(p)
   invisible(p)
 }
 
@@ -1977,10 +1972,8 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
     ggplot2::labs(
       title = "FPCA: Variance Explained (Scree Plot)",
       x = "Principal Component"
-    ) +
-    ggplot2::theme_minimal()
+    )
 
-  print(p)
   invisible(p)
 }
 
@@ -2011,8 +2004,7 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
         title = "FPCA: Score Plot",
         x = paste0("PC1 (", round(prop_var[1], 1), "%)"),
         y = paste0("PC2 (", round(prop_var[2], 1), "%)")
-      ) +
-      ggplot2::theme_minimal()
+      )
   } else {
     # Only 1 PC: plot scores as bar chart
     df <- data.frame(
@@ -2026,11 +2018,9 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
         title = "FPCA: Score Plot",
         x = "Observation",
         y = paste0("PC1 (", round(prop_var[1], 1), "%)")
-      ) +
-      ggplot2::theme_minimal()
+      )
   }
 
-  print(p)
   invisible(p)
 }
 
@@ -2463,10 +2453,8 @@ plot.group.distance <- function(x, type = c("heatmap", "dendrogram"),
       ggplot2::geom_text(ggplot2::aes(label = round(.data$value, 2)), color = "white", size = 4) +
       ggplot2::scale_fill_viridis_c() +
       ggplot2::labs(x = "Group", y = "Group", fill = "Value", title = title) +
-      ggplot2::theme_minimal() +
       ggplot2::coord_equal()
 
-    print(p)
     invisible(p)
 
   } else {
