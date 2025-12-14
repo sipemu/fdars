@@ -198,7 +198,7 @@ mean_curve <- mean(fd)
 # Visualize: trimmed mean is more robust to outliers
 df_compare <- data.frame(
   t = rep(t_grid, 2),
-  value = c(mean_curve, trim_fm$data[1, ]),
+  value = c(mean_curve$data[1, ], trim_fm$data[1, ]),
   type = rep(c("Mean", "Trimmed Mean (FM)"), each = m)
 )
 
