@@ -109,12 +109,13 @@ fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
 #' Functional Basis Regression
 #'
 #' Fits a functional linear model using basis expansion (ridge regression).
+#' Uses the anofox-regression Rust backend for efficient L2-regularized regression.
 #'
 #' @param fdataobj An object of class 'fdata' (functional covariate).
 #' @param y Response vector.
 #' @param basis.x Basis for the functional covariate (currently ignored).
 #' @param basis.b Basis for the coefficient function (currently ignored).
-#' @param lambda Smoothing/regularization parameter.
+#' @param lambda Smoothing/regularization parameter (L2 penalty).
 #' @param ... Additional arguments.
 #'
 #' @return A fitted regression object of class 'fregre.fd' with components:
@@ -123,6 +124,7 @@ fregre.pc <- function(fdataobj, y, ncomp = NULL, ...) {
 #'   \item{fitted.values}{Fitted values}
 #'   \item{residuals}{Residuals}
 #'   \item{lambda}{Regularization parameter used}
+#'   \item{r.squared}{R-squared (coefficient of determination)}
 #'   \item{mean.X}{Mean of functional covariate (for prediction)}
 #'   \item{mean.y}{Mean of response (for prediction)}
 #'   \item{sr2}{Residual variance}
@@ -137,7 +139,6 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
     stop("fdataobj must be of class 'fdata'")
   }
 
-  # For now, use a simple ridge regression approach
   n <- nrow(fdataobj$data)
   m <- ncol(fdataobj$data)
 
@@ -148,6 +149,62 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
   # Store means for prediction
   X_mean <- colMeans(fdataobj$data)
   y_mean <- mean(y)
+
+  # Use Rust backend when n > m (more observations than features)
+  # Fall back to R implementation for underdetermined systems (n <= m)
+  if (n > m) {
+    # Call Rust ridge regression backend (with intercept)
+    result <- .Call("wrap__ridge_regression_fit",
+                    fdataobj$data,
+                    as.numeric(y),
+                    as.numeric(lambda),
+                    TRUE)  # with_intercept = TRUE
+
+    if (nchar(result$error) > 0) {
+      # Fall back to R implementation on error
+      return(.fregre_basis_r(fdataobj, y, lambda, X_mean, y_mean))
+    }
+
+    # Extract results
+    beta <- as.matrix(result$coefficients)
+    intercept <- result$intercept
+    fitted <- result$fitted_values
+    residuals <- result$residuals
+    r_squared <- result$r_squared
+  } else {
+    # Underdetermined system (n <= m): use R implementation
+    # This handles the common case in FDA where we have more time points than curves
+    return(.fregre_basis_r(fdataobj, y, lambda, X_mean, y_mean))
+  }
+
+  # Residual variance
+  df <- n - m - 1
+  if (df <= 0) df <- 1
+  sr2 <- sum(residuals^2) / df
+
+  structure(
+    list(
+      coefficients = beta,
+      intercept = intercept,
+      fitted.values = fitted,
+      residuals = residuals,
+      lambda = lambda,
+      r.squared = r_squared,
+      mean.X = X_mean,
+      mean.y = y_mean,
+      sr2 = sr2,
+      fdataobj = fdataobj,
+      y = y,
+      call = match.call()
+    ),
+    class = "fregre.fd"
+  )
+}
+
+# Internal R implementation for underdetermined systems
+.fregre_basis_r <- function(fdataobj, y, lambda, X_mean, y_mean) {
+  n <- nrow(fdataobj$data)
+  m <- ncol(fdataobj$data)
 
   # Center the data
   X_centered <- scale(fdataobj$data, center = TRUE, scale = FALSE)
@@ -168,6 +225,11 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
   fitted <- as.vector(fdataobj$data %*% beta) + intercept
   residuals <- y - fitted
 
+  # Compute R-squared
+  ss_tot <- sum((y - y_mean)^2)
+  ss_res <- sum(residuals^2)
+  r_squared <- if (ss_tot > 0) 1 - ss_res / ss_tot else 0
+
   # Residual variance
   df <- n - m - 1
   if (df <= 0) df <- 1
@@ -180,6 +242,7 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
       fitted.values = fitted,
       residuals = residuals,
       lambda = lambda,
+      r.squared = r_squared,
       mean.X = X_mean,
       mean.y = y_mean,
       sr2 = sr2,

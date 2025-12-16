@@ -5,6 +5,8 @@ use rand_distr::StandardNormal;
 use std::f64::consts::PI;
 use rustfft::{FftPlanner, num_complex::Complex};
 use nalgebra::{DMatrix, DVector, SVD};
+use anofox_regression::solvers::RidgeRegressor;
+use anofox_regression::{Regressor, FittedRegressor};
 
 // =============================================================================
 // Helper functions
@@ -5476,6 +5478,105 @@ fn calinski_harabasz(data: RMatrix<f64>, clusters: Vec<i32>) -> f64 {
 }
 
 // =============================================================================
+// Ridge Regression using anofox-regression
+// =============================================================================
+
+/// Fit ridge regression model
+///
+/// Uses the anofox-regression crate for efficient L2-regularized regression.
+///
+/// # Arguments
+/// * `x` - Design matrix (n x m), column-major
+/// * `y` - Response vector (n)
+/// * `lambda` - Regularization parameter (L2 penalty)
+/// * `with_intercept` - Whether to include an intercept term
+///
+/// # Returns
+/// A list with coefficients, intercept, fitted values, residuals, and R-squared
+#[extendr]
+fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercept: bool) -> Robj {
+    let n = x.nrows();
+    let m = x.ncols();
+
+    if n == 0 || m == 0 || y.len() != n {
+        return list!(
+            coefficients = Vec::<f64>::new(),
+            intercept = 0.0,
+            fitted_values = Vec::<f64>::new(),
+            residuals = Vec::<f64>::new(),
+            r_squared = 0.0,
+            error = "Invalid input dimensions"
+        ).into();
+    }
+
+    let x_slice = x.as_real_slice().unwrap();
+
+    // Convert to faer Mat format (column-major)
+    // faer uses column-major storage, same as R
+    let x_faer = faer::Mat::from_fn(n, m, |i, j| x_slice[i + j * n]);
+    let y_faer = faer::Col::from_fn(n, |i| y[i]);
+
+    // Build and fit the ridge regressor
+    let regressor = RidgeRegressor::builder()
+        .with_intercept(with_intercept)
+        .lambda(lambda)
+        .build();
+
+    let fitted = match regressor.fit(&x_faer, &y_faer) {
+        Ok(f) => f,
+        Err(e) => {
+            return list!(
+                coefficients = Vec::<f64>::new(),
+                intercept = 0.0,
+                fitted_values = Vec::<f64>::new(),
+                residuals = Vec::<f64>::new(),
+                r_squared = 0.0,
+                error = format!("Fit failed: {:?}", e)
+            ).into();
+        }
+    };
+
+    // Extract coefficients
+    let coefs = fitted.coefficients();
+    let coefficients: Vec<f64> = (0..coefs.nrows()).map(|i| coefs[i]).collect();
+
+    // Get intercept
+    let intercept = fitted.intercept().unwrap_or(0.0);
+
+    // Compute fitted values: y_hat = X * beta + intercept
+    let mut fitted_values = vec![0.0; n];
+    for i in 0..n {
+        let mut pred = intercept;
+        for j in 0..m {
+            pred += x_slice[i + j * n] * coefficients[j];
+        }
+        fitted_values[i] = pred;
+    }
+
+    // Compute residuals
+    let residuals: Vec<f64> = y.iter()
+        .zip(fitted_values.iter())
+        .map(|(&yi, &yhat)| yi - yhat)
+        .collect();
+
+    // Compute R-squared
+    let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
+    let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
+    let ss_res: f64 = residuals.iter().map(|&r| r.powi(2)).sum();
+    let r_squared = if ss_tot > 0.0 { 1.0 - ss_res / ss_tot } else { 0.0 };
+
+    list!(
+        coefficients = coefficients,
+        intercept = intercept,
+        fitted_values = fitted_values,
+        residuals = residuals,
+        r_squared = r_squared,
+        lambda = lambda,
+        error = ""
+    ).into()
+}
+
+// =============================================================================
 // Module exports
 // =============================================================================
 
@@ -5574,4 +5675,7 @@ extendr_module! {
     // Cluster validation functions
     fn silhouette_score;
     fn calinski_harabasz;
+
+    // Ridge regression
+    fn ridge_regression_fit;
 }

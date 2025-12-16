@@ -17,6 +17,7 @@ rustfft = "6.2"
 num-complex = "0.4"
 nalgebra = "0.33"
 anofox-regression = "0.4"
+faer = "0.23"
 
 [profile.release]
 lto = true
