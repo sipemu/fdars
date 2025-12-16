@@ -70,7 +70,7 @@ test_that("fdata.cen matches fda.usc", {
   expect_equal(mean_cen, rep(0, m), tolerance = 1e-10)
 })
 
-test_that("norm.fdata L2 matches fda.usc", {
+test_that("norm L2 matches fda.usc", {
   skip_if_not_installed("fda.usc")
 
   set.seed(42)
@@ -83,13 +83,13 @@ test_that("norm.fdata L2 matches fda.usc", {
   fd_rust <- fdars::fdata(X, argvals = t_grid)
 
   norm_orig <- fda.usc::norm.fdata(fd_orig)
-  norm_rust <- fdars::norm.fdata(fd_rust)
+  norm_rust <- fdars::norm(fd_rust)
 
   # Allow small differences due to integration method
   expect_equal(norm_orig, norm_rust, tolerance = 1e-4)
 })
 
-test_that("norm.fdata L1 matches fda.usc", {
+test_that("norm L1 matches fda.usc", {
   skip_if_not_installed("fda.usc")
 
   set.seed(42)
@@ -102,9 +102,34 @@ test_that("norm.fdata L1 matches fda.usc", {
   fd_rust <- fdars::fdata(X, argvals = t_grid)
 
   norm_orig <- fda.usc::norm.fdata(fd_orig, lp = 1)
-  norm_rust <- fdars::norm.fdata(fd_rust, lp = 1)
+  norm_rust <- fdars::norm(fd_rust, lp = 1)
 
   expect_equal(norm_orig, norm_rust, tolerance = 1e-4)
+})
+
+test_that("normalize produces unit norms", {
+  set.seed(42)
+  fd <- fdars::fdata(matrix(rnorm(200), 20, 10), argvals = seq(0, 1, length.out = 10))
+  fd_norm <- fdars::normalize(fd)
+  norms <- fdars::norm(fd_norm)
+  expect_equal(norms, rep(1, 20), tolerance = 1e-10)
+})
+
+test_that("normalize handles zero curves", {
+  X <- matrix(rnorm(30), 3, 10)
+  X[2, ] <- 0  # Zero curve
+  fd <- fdars::fdata(X, argvals = seq(0, 1, length.out = 10))
+  fd_norm <- fdars::normalize(fd)
+  # Zero curve stays zero
+  expect_equal(fd_norm$data[2, ], rep(0, 10))
+})
+
+test_that("normalize works with different lp", {
+  set.seed(42)
+  fd <- fdars::fdata(matrix(rnorm(100), 10, 10), argvals = seq(0, 1, length.out = 10))
+  fd_norm <- fdars::normalize(fd, lp = 1)
+  norms <- fdars::norm(fd_norm, lp = 1)
+  expect_equal(norms, rep(1, 10), tolerance = 1e-10)
 })
 
 test_that("fdata subsetting matches fda.usc", {

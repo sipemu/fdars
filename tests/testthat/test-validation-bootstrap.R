@@ -186,7 +186,7 @@ test_that("mean computes correct mean", {
   expect_equal(as.numeric(mean_func$data), colMeans(X), tolerance = 1e-10)
 })
 
-test_that("norm.fdata computes correct norms", {
+test_that("norm computes correct norms", {
   set.seed(42)
   n <- 10
   m <- 50
@@ -198,7 +198,7 @@ test_that("norm.fdata computes correct norms", {
   }
 
   fd <- fdars::fdata(X, argvals = t_grid)
-  norms <- fdars::norm.fdata(fd, lp = 2)
+  norms <- fdars::norm(fd, lp = 2)
 
   expect_length(norms, n)
   expect_true(all(norms >= 0))

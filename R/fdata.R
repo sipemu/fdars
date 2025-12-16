@@ -520,17 +520,51 @@ mean.fdata <- function(x, ...) {
 #' @export
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
-#' norms <- norm.fdata(fd)
-norm.fdata <- function(fdataobj, lp = 2) {
+#' norms <- norm(fd)
+norm <- function(fdataobj, lp = 2) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (fdataobj$fdata2d) {
-    stop("norm.fdata not yet implemented for 2D functional data")
+    stop("norm not yet implemented for 2D functional data")
   }
 
   .Call("wrap__fdata_norm_lp_1d", fdataobj$data, as.numeric(fdataobj$argvals), as.numeric(lp))
+}
+
+#' Normalize functional data
+#'
+#' Scales each curve to have Lp norm equal to 1.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param lp The p in Lp norm (default 2 for L2 norm).
+#'
+#' @return A normalized 'fdata' object where each curve has unit norm.
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(100), 10, 10), argvals = seq(0, 1, length.out = 10))
+#' fd_norm <- normalize(fd)
+#' norm(fd_norm)  # All values should be 1
+normalize <- function(fdataobj, lp = 2) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (fdataobj$fdata2d) {
+    stop("normalize not yet implemented for 2D functional data")
+  }
+
+  # Compute norms
+  norms <- norm(fdataobj, lp = lp)
+
+  # Handle zero norms (avoid division by zero)
+  norms[norms == 0] <- 1
+
+  # Divide each row by its norm
+  fdataobj$data <- fdataobj$data / norms
+
+  fdataobj
 }
 
 #' Print method for fdata objects

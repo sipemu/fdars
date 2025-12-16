@@ -86,31 +86,31 @@ if (max_diff_cen < 1e-10 && max_mean < 1e-10) {
 }
 
 cat("========================================\n")
-cat("Validation: norm.fdata (L2 norm)\n")
+cat("Validation: norm (L2 norm)\n")
 cat("========================================\n\n")
 
 # Compute L2 norms
 norm_orig <- fda.usc::norm.fdata(fd_orig)
-norm_rust <- fdars::norm.fdata(fd_rust)
+norm_rust <- fdars::norm(fd_rust)
 
 max_diff_norm <- max(abs(norm_orig - norm_rust))
 cat("Max absolute difference:", max_diff_norm, "\n")
 
 if (max_diff_norm < 1e-6) {
-  cat("PASS: norm.fdata matches within tolerance\n\n")
+  cat("PASS: norm matches within tolerance\n\n")
 } else {
-  cat("INFO: norm.fdata differs (may be integration method)\n")
+  cat("INFO: norm differs (may be integration method)\n")
   cat("Original norms (first 5):", round(norm_orig[1:5], 6), "\n")
   cat("Rust norms (first 5):", round(norm_rust[1:5], 6), "\n\n")
 }
 
 cat("========================================\n")
-cat("Validation: norm.fdata (L1 norm)\n")
+cat("Validation: norm (L1 norm)\n")
 cat("========================================\n\n")
 
 # Compute L1 norms
 norm_l1_orig <- fda.usc::norm.fdata(fd_orig, lp = 1)
-norm_l1_rust <- fdars::norm.fdata(fd_rust, lp = 1)
+norm_l1_rust <- fdars::norm(fd_rust, lp = 1)
 
 max_diff_l1 <- max(abs(norm_l1_orig - norm_l1_rust))
 cat("Max absolute difference (L1):", max_diff_l1, "\n")
@@ -144,5 +144,5 @@ cat("========================================\n")
 cat("fdata creation: PASS\n")
 cat("mean max_diff:", max_diff, "\n")
 cat("fdata.cen max_diff:", max_diff_cen, "\n")
-cat("norm.fdata (L2) max_diff:", max_diff_norm, "\n")
-cat("norm.fdata (L1) max_diff:", max_diff_l1, "\n")
+cat("norm (L2) max_diff:", max_diff_norm, "\n")
+cat("norm (L1) max_diff:", max_diff_l1, "\n")
