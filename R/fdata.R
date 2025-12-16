@@ -1,9 +1,5 @@
-#' Functional Data Class and Operations
-#'
-#' Functions for creating and manipulating functional data objects.
-#' Supports both 1D functional data (curves) and 2D functional data (surfaces).
-
 # Null-coalescing operator (use left if not NULL, otherwise right)
+# Internal helper function - not exported
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 #' Create a functional data object
@@ -194,7 +190,7 @@ fdata <- function(mdata, argvals = NULL, rangeval = NULL,
 
 #' Internal: Create 2D functional data (surfaces)
 #'
-#' Data is stored internally as a flattened matrix [n, m1*m2] where each row
+#' Data is stored internally as a flattened matrix (n x m1*m2) where each row
 #' is a surface stored in row-major order. Use dims to reshape for visualization.
 #'
 #' @noRd
@@ -643,13 +639,16 @@ summary.fdata <- function(object, ...) {
   invisible(object)
 }
 
-#' Plot method for fdata objects
+#' Create a ggplot for fdata objects
 #'
 #' For 1D functional data, plots curves as lines with optional coloring by
 #' external variables. For 2D functional data, plots surfaces as heatmaps
 #' with contour lines.
 #'
-#' @param x An object of class 'fdata'.
+#' Use \code{autoplot()} to get the ggplot object without displaying it.
+#' Use \code{plot()} to display the plot (returns invisibly).
+#'
+#' @param object An object of class 'fdata'.
 #' @param color Optional vector for coloring curves. Can be:
 #'   \itemize{
 #'     \item Numeric vector: curves colored by continuous scale (viridis)
@@ -664,29 +663,33 @@ summary.fdata <- function(object, ...) {
 #'   mean curves with thicker lines (default FALSE).
 #' @param show.ci Logical. If TRUE and color is categorical, show pointwise
 #'   confidence interval ribbons per group (default FALSE).
-#' @param ci.level Confidence level for CI ribbons (default 0.90 for 90\%).
+#' @param ci.level Confidence level for CI ribbons (default 0.90 for 90 percent).
 #' @param palette Optional named vector of colors for categorical coloring,
 #'   e.g., c("A" = "blue", "B" = "red").
 #' @param ... Additional arguments (currently ignored).
 #'
-#' @return A ggplot object (invisibly).
+#' @return A ggplot object.
 #'
 #' @export
-#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal geom_tile geom_contour scale_fill_viridis_c scale_color_viridis_c facet_wrap geom_ribbon scale_color_manual scale_fill_manual geom_text coord_equal
+#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal geom_tile geom_contour scale_fill_viridis_c scale_color_viridis_c facet_wrap geom_ribbon scale_color_manual scale_fill_manual geom_text coord_equal autoplot
 #' @examples
-#' # Basic plot
+#' # Get ggplot object without displaying
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' plot(fd)
+#' p <- autoplot(fd)
+#'
+#' # Customize the plot
+#' p + ggplot2::theme_minimal()
 #'
 #' # Color by numeric variable
 #' y <- rnorm(20)
-#' plot(fd, color = y)
+#' autoplot(fd, color = y)
 #'
 #' # Color by category with mean and CI
 #' groups <- factor(rep(c("A", "B"), each = 10))
-#' plot(fd, color = groups, show.mean = TRUE, show.ci = TRUE)
-plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
-                       show.ci = FALSE, ci.level = 0.90, palette = NULL, ...) {
+#' autoplot(fd, color = groups, show.mean = TRUE, show.ci = TRUE)
+autoplot.fdata <- function(object, color = NULL, alpha = NULL, show.mean = FALSE,
+                           show.ci = FALSE, ci.level = 0.90, palette = NULL, ...) {
+  x <- object
   # Set default alpha based on whether means are shown
 
   # Lower alpha when showing means to reduce visual clutter
@@ -828,6 +831,36 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
   p
 }
 
+#' Plot method for fdata objects
+#'
+#' Displays a plot of functional data. For 1D functional data, plots curves
+#' as lines with optional coloring. For 2D functional data, plots surfaces
+#' as heatmaps with contour lines.
+#'
+#' This function displays the plot immediately. To get the ggplot object
+#' without displaying (e.g., for customization), use \code{\link{autoplot.fdata}}.
+#'
+#' @inheritParams autoplot.fdata
+#' @param x An object of class 'fdata'.
+#'
+#' @return The ggplot object (invisibly).
+#'
+#' @export
+#' @examples
+#' # Display plot immediately
+#' fd <- fdata(matrix(rnorm(200), 20, 10))
+#' plot(fd)
+#'
+#' # To get ggplot object without displaying, use autoplot:
+#' p <- autoplot(fd)
+plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
+                       show.ci = FALSE, ci.level = 0.90, palette = NULL, ...) {
+  p <- autoplot.fdata(x, color = color, alpha = alpha, show.mean = show.mean,
+                      show.ci = show.ci, ci.level = ci.level, palette = palette, ...)
+  # Return the ggplot - it will auto-print at top level
+  p
+}
+
 # Helper function to compute pointwise group means
 .compute_group_mean <- function(df) {
   groups <- unique(df$group)
@@ -880,12 +913,12 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
 #' Functional Boxplot
 #'
 #' Creates a functional boxplot for visualizing the distribution of functional
-#' data. The boxplot shows the median curve, central 50\% envelope, fence
+#' data. The boxplot shows the median curve, central 50 percent envelope, fence
 #' (equivalent to whiskers), and outliers.
 #'
 #' @param x An object of class 'fdata'.
 #' @importFrom graphics boxplot
-#' @param prob Proportion of curves for the central region (default 0.5 for 50\%).
+#' @param prob Proportion of curves for the central region (default 0.5 for 50 percent).
 #' @param factor Factor for fence calculation (default 1.5, as in standard boxplots).
 #' @param depth.func Depth function to use. Default is depth.MBD.
 #' @param show.outliers Logical. If TRUE (default), show outlier curves.
@@ -910,7 +943,7 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
 #'
 #' \itemize{
 #'   \item \strong{Median}: The curve with maximum depth
-#'   \item \strong{Central region}: Envelope of curves with top 50\% depth
+#'   \item \strong{Central region}: Envelope of curves with top 50 percent depth
 #'   \item \strong{Fence}: 1.5 times the envelope width beyond the central region
 #'   \item \strong{Outliers}: Curves that exceed the fence at any point
 #' }
@@ -934,7 +967,7 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Create functional boxplot
-#' fbp <- boxplot.fdata(fd)
+#' fbp <- boxplot(fd)
 boxplot.fdata <- function(x, prob = 0.5, factor = 1.5,
                           depth.func = depth.MBD,
                           show.outliers = TRUE,
@@ -1661,7 +1694,7 @@ fdata.bootstrap <- function(fdataobj, n.boot = 200, method = c("naive", "smooth"
 #'   Must take an fdata object and return a numeric vector.
 #' @param n.boot Number of bootstrap replications (default 200).
 #' @param alpha Significance level for confidence intervals (default 0.05
-#'   for 95\% CI).
+#'   for 95 percent CI).
 #' @param method CI method: "percentile" for simple percentile method,
 #'   "basic" for basic bootstrap, "normal" for normal approximation
 #'   (default "percentile").
@@ -1685,8 +1718,10 @@ fdata.bootstrap <- function(fdataobj, n.boot = 200, method = c("naive", "smooth"
 #' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
 #' fd <- fdata(X, argvals = t)
 #'
-#' # Bootstrap CI for the mean function
-#' ci_mean <- fdata.bootstrap.ci(fd, statistic = mean, n.boot = 100)
+#' # Bootstrap CI for the mean function (returns numeric vector)
+#' ci_mean <- fdata.bootstrap.ci(fd,
+#'   statistic = function(x) as.numeric(mean(x)$data),
+#'   n.boot = 100)
 #'
 #' # Bootstrap CI for depth values
 #' ci_depth <- fdata.bootstrap.ci(fd,
@@ -1757,6 +1792,8 @@ fdata.bootstrap.ci <- function(fdataobj, statistic, n.boot = 200,
 }
 
 #' Print method for bootstrap CI
+#' @param x A fdata.bootstrap.ci object.
+#' @param ... Additional arguments (ignored).
 #' @export
 print.fdata.bootstrap.ci <- function(x, ...) {
   cat("Bootstrap Confidence Intervals\n")
@@ -2401,6 +2438,9 @@ group.distance <- function(fdataobj, groups,
 }
 
 #' Print method for group.distance
+#' @param x A group.distance object.
+#' @param digits Number of digits for printing (default 3).
+#' @param ... Additional arguments (ignored).
 #' @export
 print.group.distance <- function(x, digits = 3, ...) {
   cat("Group Distance Analysis\n")
@@ -2650,6 +2690,8 @@ group.test <- function(fdataobj, groups, n.perm = 1000,
 }
 
 #' Print method for group.test
+#' @param x A group.test object.
+#' @param ... Additional arguments (ignored).
 #' @export
 print.group.test <- function(x, ...) {
   cat("Permutation Test for Group Differences\n")

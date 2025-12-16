@@ -311,6 +311,8 @@ fdata2basis.cv <- function(fdataobj, nbasis.range = 4:20,
 }
 
 #' Print method for basis.cv objects
+#' @param x A basis.cv object.
+#' @param ... Additional arguments (ignored).
 #' @export
 print.basis.cv <- function(x, ...) {
   cat("Basis Cross-Validation Results\n")
@@ -323,6 +325,8 @@ print.basis.cv <- function(x, ...) {
 }
 
 #' Plot method for basis.cv objects
+#' @param x A basis.cv object.
+#' @param ... Additional arguments (ignored).
 #' @export
 plot.basis.cv <- function(x, ...) {
   df <- data.frame(
@@ -476,6 +480,8 @@ pspline <- function(fdataobj, nbasis = 20, lambda = 1, order = 2,
 }
 
 #' Print method for pspline objects
+#' @param x A pspline object.
+#' @param ... Additional arguments (ignored).
 #' @export
 print.pspline <- function(x, ...) {
   cat("P-spline Smoothing Results\n")
@@ -490,6 +496,8 @@ print.pspline <- function(x, ...) {
 }
 
 #' Plot method for pspline objects
+#' @param x A pspline object.
+#' @param ... Additional arguments passed to plot.fdata.
 #' @export
 plot.pspline <- function(x, ...) {
   plot(x$fdata, ...)
@@ -538,10 +546,14 @@ fdata2basis.2d <- function(fdataobj, nbasis.s = 10, nbasis.t = 10,
   type <- match.arg(type)
   basis_type <- if (type == "fourier") 1L else 0L
 
-  argvals_s <- fdataobj$argvals[[1]]
-  argvals_t <- fdataobj$argvals[[2]]
+  argvals_s <- as.numeric(fdataobj$argvals[[1]])
+  argvals_t <- as.numeric(fdataobj$argvals[[2]])
 
-  .Call("wrap__fdata2basis_2d", fdataobj$data, argvals_s, argvals_t,
+  # Ensure data is numeric (Rust expects doubles)
+  data_mat <- as.matrix(fdataobj$data)
+  storage.mode(data_mat) <- "double"
+
+  .Call("wrap__fdata2basis_2d", data_mat, argvals_s, argvals_t,
         as.integer(nbasis.s), as.integer(nbasis.t), basis_type)
 }
 
@@ -700,6 +712,8 @@ pspline.2d <- function(fdataobj, nbasis.s = 10, nbasis.t = 10,
 }
 
 #' Print method for pspline.2d objects
+#' @param x A pspline.2d object.
+#' @param ... Additional arguments (ignored).
 #' @export
 print.pspline.2d <- function(x, ...) {
   cat("2D P-spline Smoothing Results\n")
@@ -715,6 +729,8 @@ print.pspline.2d <- function(x, ...) {
 }
 
 #' Plot method for pspline.2d objects
+#' @param x A pspline.2d object.
+#' @param ... Additional arguments passed to plot.fdata.
 #' @export
 plot.pspline.2d <- function(x, ...) {
   plot(x$fdata, ...)

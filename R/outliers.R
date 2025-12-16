@@ -120,6 +120,8 @@ outliers.depth.trim <- function(fdataobj, trim = 0.1, dfunc = depth.mode, ...) {
 }
 
 #' Print method for outliers.fdata objects
+#' @param x An outliers.fdata object.
+#' @param ... Additional arguments (ignored).
 #' @export
 print.outliers.fdata <- function(x, ...) {
   cat("Functional data outlier detection\n")
