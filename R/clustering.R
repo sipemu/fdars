@@ -493,7 +493,7 @@ plot.cluster.optim <- function(x, ...) {
     ) +
     ggplot2::scale_x_continuous(breaks = x$ncl.range)
 
-  invisible(p)
+  p
 }
 
 #' Print Method for cluster.kmeans Objects
@@ -569,7 +569,7 @@ plot.cluster.kmeans <- function(x, ...) {
       color = "Cluster"
     )
 
-  invisible(p)
+  p
 }
 
 #' Fuzzy C-Means Clustering for Functional Data
@@ -760,7 +760,7 @@ plot.cluster.fcm <- function(x, type = c("curves", "membership"), ...) {
       color = "Cluster"
     )
 
-  invisible(p)
+  p
 }
 
 #' @noRd
@@ -785,5 +785,5 @@ plot.cluster.fcm <- function(x, type = c("curves", "membership"), ...) {
       fill = "Cluster"
     )
 
-  invisible(p)
+  p
 }

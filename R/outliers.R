@@ -173,7 +173,7 @@ plot.outliers.fdata <- function(x, col.outliers = "red", ...) {
       color = "Status"
     )
 
-  invisible(p)
+  p
 }
 
 #' LRT Outlier Detection Threshold
@@ -837,7 +837,7 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
     )
   }
 
-  invisible(p)
+  p
 }
 
 #' Print Method for Outliergram Objects

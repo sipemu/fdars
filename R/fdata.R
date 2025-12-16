@@ -703,7 +703,7 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
       p <- p + ggplot2::facet_wrap(~ surface_id)
     }
 
-    return(invisible(p))
+    return(p)
   }
 
   # 1D curve plotting
@@ -791,7 +791,7 @@ plot.fdata <- function(x, color = NULL, alpha = NULL, show.mean = FALSE,
       title = x$names$main
     )
 
-  invisible(p)
+  p
 }
 
 # Helper function to compute pointwise group means
@@ -1215,7 +1215,7 @@ plot.register.fd <- function(x, type = c("registered", "original", "both"), ...)
         title = "Curve Registration: Before vs After"
       )
 
-    invisible(p)
+    p
   }
 }
 
@@ -1937,7 +1937,7 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
     ) +
     ggplot2::theme(legend.position = "bottom")
 
-  invisible(p)
+  p
 }
 
 # Internal: Plot FPCA variance explained (scree plot)
@@ -1974,7 +1974,7 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
       x = "Principal Component"
     )
 
-  invisible(p)
+  p
 }
 
 # Internal: Plot FPCA scores
@@ -2021,7 +2021,7 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
       )
   }
 
-  invisible(p)
+  p
 }
 
 #' Print Method for FPCA Results
@@ -2455,7 +2455,7 @@ plot.group.distance <- function(x, type = c("heatmap", "dendrogram"),
       ggplot2::labs(x = "Group", y = "Group", fill = "Value", title = title) +
       ggplot2::coord_equal()
 
-    invisible(p)
+    p
 
   } else {
     # Dendrogram using base R

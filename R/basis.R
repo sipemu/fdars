@@ -343,7 +343,7 @@ plot.basis.cv <- function(x, ...) {
                       label = paste("optimal =", x$optimal.nbasis),
                       hjust = -0.1, color = "red")
 
-  invisible(p)
+  p
 }
 
 # ==============================================================================
