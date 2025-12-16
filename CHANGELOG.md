@@ -2,6 +2,20 @@
 
 All notable changes to fdars are documented in this file.
 
+## [0.5.1] - 2024-12-16
+
+### Added
+- `normalize()` function to scale curves to unit Lp norm
+- Vignette on basis representation and optimal basis selection
+
+### Changed
+- Renamed `norm.fdata()` to `norm()` for cleaner API
+- Renamed covariance kernel functions from `cov.*` to `kernel_*` to avoid S3 dispatch conflicts
+
+### Fixed
+- Plot functions now display when called directly (`plot(fd)` shows plot, `p <- plot(fd)` does not)
+- S3 method dispatch conflict with `cov()` generic function
+
 ## [0.5.0] - 2024-12-14
 
 ### Added
