@@ -3833,9 +3833,6 @@ fn pspline_fit_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
     let p_t = &d_t.transpose() * &d_t;
 
     // Kronecker product penalty: P = lambda_s*(I_t ⊗ P_s) + lambda_t*(P_t ⊗ I_s)
-    let i_s = DMatrix::<f64>::identity(actual_nbasis_s, actual_nbasis_s);
-    let i_t = DMatrix::<f64>::identity(actual_nbasis_t, actual_nbasis_t);
-
     // I_t ⊗ P_s
     let mut penalty_s = DMatrix::zeros(total_basis, total_basis);
     for it in 0..actual_nbasis_t {
