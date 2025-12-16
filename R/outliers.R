@@ -608,11 +608,14 @@ print.ms.plot <- function(x, ...) {
 #'
 #' Creates an outliergram plot that displays MEI (Modified Epigraph Index) versus
 #' MBD (Modified Band Depth) for outlier detection. Points below the parabolic
-#' boundary are identified as outliers.
+#' boundary are identified as outliers, and each outlier is classified by type.
 #'
 #' @param fdataobj An object of class 'fdata'.
 #' @param factor Factor to adjust the outlier detection threshold. Higher values
 #'   make detection less sensitive. Default is 1.5.
+#' @param mei_threshold Threshold for classifying magnitude outliers based on MEI.
+#'   Curves with MEI < mei_threshold or MEI > (1 - mei_threshold) are considered
+#'   to have extreme magnitude. Default is 0.25.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @return An object of class 'outliergram' with components:
@@ -621,6 +624,8 @@ print.ms.plot <- function(x, ...) {
 #'   \item{mei}{MEI values for each curve}
 #'   \item{mbd}{MBD values for each curve}
 #'   \item{outliers}{Indices of detected outliers}
+#'   \item{outlier_type}{Character vector of outlier types for each detected outlier:
+#'     "shape", "magnitude_high", "magnitude_low", or "mixed"}
 #'   \item{n_outliers}{Number of outliers detected}
 #'   \item{factor}{The factor used for threshold adjustment}
 #'   \item{parabola}{Coefficients of the parabolic boundary (a0, a1, a2)}
@@ -636,27 +641,42 @@ print.ms.plot <- function(x, ...) {
 #' The \code{factor} parameter controls the sensitivity: lower values detect more
 #' outliers.
 #'
+#' \strong{Outlier Type Classification:}
+#' \itemize{
+#'   \item \strong{shape}: Curves with unusual shape but typical magnitude
+#'     (moderate MEI, low MBD). These curves cross other curves frequently.
+#'   \item \strong{magnitude_high}: Curves shifted upward (high MEI, typically
+#'     above most other curves).
+#'   \item \strong{magnitude_low}: Curves shifted downward (low MEI, typically
+#'     below most other curves).
+#'   \item \strong{mixed}: Curves with both unusual shape and extreme magnitude
+#'     (extreme MEI and low MBD).
+#' }
+#'
 #' @references
-#' Lopez-Pintado, S. and Romo, J. (2011). A half-region depth for functional data.
-#' \emph{Computational Statistics & Data Analysis}, 55(4), 1679-1695.
+#' Arribas-Gil, A. and Romo, J. (2014). Shape outlier detection and visualization
+#' for functional data: the outliergram. \emph{Biostatistics}, 15(4), 603-619.
 #'
 #' @seealso \code{\link{depth}} for depth computation, \code{\link{MS.plot}} for
 #'   an alternative outlier visualization.
 #'
 #' @export
 #' @examples
-#' # Create functional data with an outlier
+#' # Create functional data with different outlier types
 #' set.seed(42)
 #' t <- seq(0, 1, length.out = 50)
-#' X <- matrix(0, 30, 50)
+#' X <- matrix(0, 32, 50)
 #' for (i in 1:29) X[i, ] <- sin(2 * pi * t) + rnorm(50, sd = 0.2)
-#' X[30, ] <- sin(2 * pi * t) + 2  # magnitude outlier
+#' X[30, ] <- sin(2 * pi * t) + 2       # magnitude outlier (high)
+#' X[31, ] <- sin(2 * pi * t) - 2       # magnitude outlier (low)
+#' X[32, ] <- sin(4 * pi * t)           # shape outlier
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Create outliergram
 #' og <- outliergram(fd)
-#' plot(og)
-outliergram <- function(fdataobj, factor = 1.5, ...) {
+#' print(og)
+#' plot(og, color_by_type = TRUE)
+outliergram <- function(fdataobj, factor = 1.5, mei_threshold = 0.25, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -692,9 +712,46 @@ outliergram <- function(fdataobj, factor = 1.5, ...) {
   med_dist <- stats::median(dist_to_parabola)
   mad_dist <- stats::mad(dist_to_parabola, constant = 1.4826)
 
-  # Outliers are points significantly below the parabola
+  # Outliers are points significantly below the parabola (shape outliers)
   threshold <- med_dist - factor * mad_dist
-  outliers <- which(dist_to_parabola < threshold)
+  shape_outliers <- which(dist_to_parabola < threshold)
+
+  # Also detect magnitude outliers based on extreme MEI
+  # These may lie on the parabola but have unusual position
+  magnitude_high_outliers <- which(mei < mei_threshold)
+  magnitude_low_outliers <- which(mei > (1 - mei_threshold))
+
+  # Combine all outliers (unique indices)
+  all_outliers <- unique(c(shape_outliers, magnitude_high_outliers, magnitude_low_outliers))
+  all_outliers <- sort(all_outliers)
+
+  # Classify outlier types
+  outlier_type <- character(length(all_outliers))
+  if (length(all_outliers) > 0) {
+    for (i in seq_along(all_outliers)) {
+      idx <- all_outliers[i]
+      mei_val <- mei[idx]
+      is_shape_outlier <- idx %in% shape_outliers
+      is_magnitude_high <- mei_val < mei_threshold
+      is_magnitude_low <- mei_val > (1 - mei_threshold)
+
+      if (is_shape_outlier && (is_magnitude_high || is_magnitude_low)) {
+        # Both unusual shape and extreme magnitude
+        outlier_type[i] <- "mixed"
+      } else if (is_magnitude_high) {
+        # Curve typically above others (low MEI = above)
+        outlier_type[i] <- "magnitude_high"
+      } else if (is_magnitude_low) {
+        # Curve typically below others (high MEI = below)
+        outlier_type[i] <- "magnitude_low"
+      } else {
+        # Only shape outlier (moderate MEI, low MBD)
+        outlier_type[i] <- "shape"
+      }
+    }
+  }
+
+  outliers <- all_outliers
 
   structure(
     list(
@@ -702,8 +759,10 @@ outliergram <- function(fdataobj, factor = 1.5, ...) {
       mei = mei,
       mbd = mbd,
       outliers = outliers,
+      outlier_type = outlier_type,
       n_outliers = length(outliers),
       factor = factor,
+      mei_threshold = mei_threshold,
       parabola = c(a0 = a0, a1 = a1, a2 = a2),
       threshold = threshold,
       dist_to_parabola = dist_to_parabola
@@ -719,7 +778,10 @@ outliergram <- function(fdataobj, factor = 1.5, ...) {
 #'
 #' @param x An object of class 'outliergram'.
 #' @param col_normal Color for normal observations. Default is "gray60".
-#' @param col_outlier Color for outliers. Default is "red".
+#' @param col_outlier Color for outliers (used when \code{color_by_type = FALSE}).
+#'   Default is "red".
+#' @param color_by_type Logical. If TRUE, color outliers by their type (shape,
+#'   magnitude_high, magnitude_low, mixed). Default is FALSE.
 #' @param show_parabola Logical. If TRUE, draw the theoretical parabola. Default TRUE.
 #' @param show_threshold Logical. If TRUE, draw the adjusted threshold parabola. Default TRUE.
 #' @param label What to use for labeling outlier points. Options:
@@ -733,16 +795,10 @@ outliergram <- function(fdataobj, factor = 1.5, ...) {
 #'
 #' @export
 plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
+                              color_by_type = FALSE,
                               show_parabola = TRUE, show_threshold = TRUE,
                               label = "index", label_all = FALSE, ...) {
   n <- length(x$mei)
-
-  # Create status factor
-  status <- rep("Normal", n)
-  if (length(x$outliers) > 0) {
-    status[x$outliers] <- "Outlier"
-  }
-  status <- factor(status, levels = c("Normal", "Outlier"))
 
   # Determine labels based on label parameter
   if (label == "index") {
@@ -761,6 +817,26 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
       warning("Label column '", label, "' not found in metadata. Using index.")
       labels <- as.character(seq_len(n))
     }
+  }
+
+  # Create status/type factor for coloring
+  if (color_by_type && length(x$outliers) > 0) {
+    status <- rep("Normal", n)
+    status[x$outliers] <- x$outlier_type
+    status <- factor(status, levels = c("Normal", "shape", "magnitude_high",
+                                         "magnitude_low", "mixed"))
+    color_values <- c("Normal" = col_normal,
+                      "shape" = "#E69F00",        # orange
+                      "magnitude_high" = "#D55E00", # red-orange
+                      "magnitude_low" = "#0072B2",  # blue
+                      "mixed" = "#CC79A7")          # pink
+  } else {
+    status <- rep("Normal", n)
+    if (length(x$outliers) > 0) {
+      status[x$outliers] <- "Outlier"
+    }
+    status <- factor(status, levels = c("Normal", "Outlier"))
+    color_values <- c("Normal" = col_normal, "Outlier" = col_outlier)
   }
 
   # Create data frame for plotting
@@ -784,7 +860,7 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
   # Build ggplot
   p <- ggplot2::ggplot(df, ggplot2::aes(x = mei, y = mbd, color = status)) +
     ggplot2::geom_point(size = 2, alpha = 0.7) +
-    ggplot2::scale_color_manual(values = c("Normal" = col_normal, "Outlier" = col_outlier)) +
+    ggplot2::scale_color_manual(values = color_values, drop = FALSE) +
     ggplot2::labs(
       title = "Outliergram",
       x = "MEI (Modified Epigraph Index)",
@@ -833,7 +909,7 @@ plot.outliergram <- function(x, col_normal = "gray60", col_outlier = "red",
       ggplot2::aes(label = label),
       nudge_y = 0.02,
       size = 3,
-      color = col_outlier
+      show.legend = FALSE
     )
   }
 
@@ -851,9 +927,32 @@ print.outliergram <- function(x, ...) {
   cat("===========\n")
   cat("Number of curves:", length(x$mei), "\n")
   cat("Outliers detected:", x$n_outliers, "\n")
+
   if (x$n_outliers > 0) {
-    cat("Outlier indices:", paste(x$outliers, collapse = ", "), "\n")
+    # Count by type
+    type_counts <- table(x$outlier_type)
+    cat("\nOutlier types:\n")
+    if ("shape" %in% names(type_counts)) {
+      cat("  Shape:          ", type_counts["shape"], "\n")
+    }
+    if ("magnitude_high" %in% names(type_counts)) {
+      cat("  Magnitude (high):", type_counts["magnitude_high"], "\n")
+    }
+    if ("magnitude_low" %in% names(type_counts)) {
+      cat("  Magnitude (low): ", type_counts["magnitude_low"], "\n")
+    }
+    if ("mixed" %in% names(type_counts)) {
+      cat("  Mixed:          ", type_counts["mixed"], "\n")
+    }
+
+    cat("\nOutlier details:\n")
+    for (i in seq_along(x$outliers)) {
+      cat("  Index", x$outliers[i], ":", x$outlier_type[i], "\n")
+    }
   }
-  cat("Factor:", x$factor, "\n")
+
+  cat("\nParameters:\n")
+  cat("  Factor:", x$factor, "\n")
+  cat("  MEI threshold:", x$mei_threshold, "\n")
   invisible(x)
 }
