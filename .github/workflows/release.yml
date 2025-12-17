@@ -36,14 +36,16 @@ jobs:
         with:
           extra-packages: any::rcmdcheck, any::devtools, any::roxygen2
           needs: check
+          working-directory: fdars
 
       - name: Build Binary Package
         run: |
+          setwd("fdars")
           # Generate documentation first
           roxygen2::roxygenize()
           # Build binary with manual
-          pkg_path <- devtools::build(binary = TRUE, path = ".", args = c("--no-build-vignettes"))
-          writeLines(pkg_path, "pkg_path.txt")
+          pkg_path <- devtools::build(binary = TRUE, path = "..", args = c("--no-build-vignettes"))
+          writeLines(pkg_path, "../pkg_path.txt")
         shell: Rscript {0}
 
       - name: Upload Artifact
@@ -90,7 +92,7 @@ jobs:
 
             **From source (Linux/any platform with Rust):**
             ```r
-            devtools::install_github("${{ github.repository }}")
+            devtools::install_github("${{ github.repository }}", subdir = "fdars")
             ```
           draft: false
           prerelease: false

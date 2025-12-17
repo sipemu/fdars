@@ -20,7 +20,7 @@ fdars/src/rust/target/
 *.rdx
 
 # Documentation
-man/*.Rd
+fdars/man/*.Rd
 docs/
 
 # Compiled shared libraries

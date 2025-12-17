@@ -104,17 +104,33 @@ Generate synthetic functional data:
 install.packages("remotes")
 
 # Install fdars (with documentation)
-remotes::install_github("sipemu/fdars", build_vignettes = TRUE)
+remotes::install_github("sipemu/fdars", subdir = "fdars", build_vignettes = TRUE)
 ```
 
 **Note:** On Windows, you may need [Rtools](https://cran.r-project.org/bin/windows/Rtools/) installed.
 
+### From Binary Release (No Rust Required)
+
+Download the pre-built binary from [GitHub Releases](https://github.com/sipemu/fdars/releases):
+
+```r
+# macOS
+install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")
+
+# Windows
+install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")
+```
+
 ### From Source
 
 ```bash
-cd fdars
+# Clone the repository
+git clone https://github.com/sipemu/fdars.git
+cd fdars/fdars
+
+# Build and install
 R CMD build .
-R CMD INSTALL fdars_0.4.0.tar.gz
+R CMD INSTALL fdars_*.tar.gz
 ```
 
 ## Quick Start

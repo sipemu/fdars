@@ -27,9 +27,11 @@ jobs:
         with:
           extra-packages: any::rcmdcheck
           needs: check
+          working-directory: fdars
 
       - name: Check
         uses: r-lib/actions/check-r-package@v2
         with:
           args: 'c("--no-manual")'
           error-on: '"error"'
+          working-directory: fdars

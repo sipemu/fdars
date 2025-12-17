@@ -6,6 +6,22 @@ Pure Rust algorithms for Functional Data Analysis (FDA).
 
 `fdars-core` provides high-performance implementations of various FDA methods, designed to be used as a library in Rust projects or as the backend for R/Python bindings.
 
+## Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+fdars-core = "0.1"
+```
+
+Or install from the repository:
+
+```toml
+[dependencies]
+fdars-core = { git = "https://github.com/sipemu/fdars" }
+```
+
 ## Features
 
 - **Functional Data Operations**: Mean, centering, derivatives, Lp norms, geometric median
