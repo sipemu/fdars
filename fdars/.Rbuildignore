@@ -1,0 +1,10 @@
+^\.github$
+^.*\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.Rmd$
+^src/.*\.o$
+^src/.*\.so$
+^src/.*\.a$
+^src/libfdars\.a$
+^src/rust/target$

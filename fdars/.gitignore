@@ -1,12 +1,7 @@
-# Rust build artifacts
-target/
-Cargo.lock
-
 # R package build artifacts
 *.tar.gz
 *.Rcheck/
 *.Rproj.user/
-fdars/src/rust/target/
 
 # R session files
 .Rhistory
@@ -23,25 +18,25 @@ fdars/src/rust/target/
 man/*.Rd
 docs/
 
+# Rust build artifacts
+src/rust/target/
+src/rust/Cargo.lock
+
 # Compiled shared libraries
 src/*.o
 src/*.so
 src/*.dll
 src/*.dylib
 src/*.a
-fdars/src/*.o
-fdars/src/*.so
-fdars/src/fdars.so
-fdars/src/fdars.dll
-fdars/src/entrypoint.o
-fdars/src/libfdars.a
+src/fdars.so
+src/fdars.dll
+src/entrypoint.o
+src/libfdars.a
 
 # IDE
 .vscode/
 .idea/
 *.Rproj
-*.swp
-*.swo
 
 # OS files
 .DS_Store

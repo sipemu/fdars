@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.config.os }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: macos-latest, type: 'macOS', r-version: 'release'}
+          - {os: windows-latest, type: 'Windows', r-version: '4.2.2'}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r-version }}
+
+      - name: Install Rust GNU Toolchain (Windows)
+        if: runner.os == 'Windows'
+        run: rustup target add x86_64-pc-windows-gnu
+
+      - name: Install dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck, any::devtools, any::roxygen2
+          needs: check
+
+      - name: Build Binary Package
+        run: |
+          # Generate documentation first
+          roxygen2::roxygenize()
+          # Build binary with manual
+          pkg_path <- devtools::build(binary = TRUE, path = ".", args = c("--no-build-vignettes"))
+          writeLines(pkg_path, "pkg_path.txt")
+        shell: Rscript {0}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.type }}-binary
+          path: |
+            *.tgz
+            *.zip
+
+  release:
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macOS-binary
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Windows-binary
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.tgz
+            *.zip
+          body: |
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+            ### Installation
+
+            **Windows / macOS:**
+            Download the attached `.zip` (Windows) or `.tgz` (macOS) file and install:
+            ```r
+            install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  # Windows
+            install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")  # macOS
+            ```
+
+            **From source (Linux/any platform with Rust):**
+            ```r
+            devtools::install_github("${{ github.repository }}")
+            ```
+          draft: false
+          prerelease: false

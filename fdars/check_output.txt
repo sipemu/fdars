@@ -1,0 +1,288 @@
+* using log directory ‘/home/simonm/projects/rust/functional-data-analysis/fdars/fdars.Rcheck’
+* using R version 4.5.2 (2025-10-31)
+* using platform: x86_64-pc-linux-gnu
+* R was compiled by
+    gcc (GCC) 15.2.1 20250813
+    GNU Fortran (GCC) 15.2.1 20250813
+* running under: Manjaro Linux
+* using session charset: UTF-8
+* using option ‘--as-cran’
+* checking for file ‘fdars/DESCRIPTION’ ... OK
+* this is package ‘fdars’ version ‘0.5.1’
+* package encoding: UTF-8
+* checking CRAN incoming feasibility ... NOTE
+Maintainer: ‘Simon Müller <sm@data-zoo.de>’
+
+New submission
+
+License components with restrictions and base license permitting such:
+  MIT + file LICENSE
+File 'LICENSE':
+  MIT License
+  
+  Copyright (c) 2024 Simon Müller
+  
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+  
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+Package has a VignetteBuilder field but no prebuilt vignette index.
+
+Found the following (possibly) invalid URLs:
+  URL: https://extendr.github.io/ (moved to https://extendr.rs/)
+    From: README.md
+    Status: 200
+    Message: OK
+* checking package namespace information ... OK
+* checking package dependencies ... INFO
+Package suggested but not available for checking: ‘rmarkdown’
+* checking if this is a source package ... OK
+* checking if there is a namespace ... OK
+* checking for executable files ... OK
+* checking for hidden files and directories ... OK
+* checking for portable file names ... OK
+* checking for sufficient/correct file permissions ... OK
+* checking serialization versions ... OK
+* checking whether package ‘fdars’ can be installed ... [314s/129s] OK
+* used C compiler: ‘gcc (GCC) 15.2.1 20251112’
+* checking installed package size ... INFO
+  installed size is  8.3Mb
+  sub-directories of 1Mb or more:
+    libs   7.6Mb
+* checking package directory ... OK
+* checking for future file timestamps ... OK
+* checking DESCRIPTION meta-information ... NOTE
+License stub is invalid DCF.
+* checking top-level files ... NOTE
+Non-standard files/directories found at top level:
+  ‘CHANGELOG.md’ ‘Rplots.pdf’ ‘validation’
+* checking for left-over files ... OK
+* checking index information ... OK
+* checking package subdirectories ... OK
+* checking code files for non-ASCII characters ... OK
+* checking R files for syntax errors ... OK
+* checking whether the package can be loaded ... OK
+* checking whether the package can be loaded with stated dependencies ... OK
+* checking whether the package can be unloaded cleanly ... OK
+* checking whether the namespace can be loaded with stated dependencies ... OK
+* checking whether the namespace can be unloaded cleanly ... OK
+* checking loading without being on the library search path ... OK
+* checking whether startup messages can be suppressed ... OK
+* checking use of S3 registration ... OK
+* checking dependencies in R code ... OK
+* checking S3 generic/method consistency ... OK
+* checking replacement functions ... OK
+* checking foreign function calls ... OK
+* checking R code for possible problems ... [13s/13s] NOTE
+.compute_group_ci : <anonymous> : <anonymous>: no visible global
+  function definition for ‘qt’
+.cv_weights_multi : <anonymous>: no visible global function definition
+  for ‘runif’
+.plot_fpca_components: no visible binding for global variable ‘value’
+.plot_fpca_components: no visible binding for global variable
+  ‘component’
+.plot_fpca_components: no visible binding for global variable
+  ‘direction’
+.plot_fpca_scores: no visible binding for global variable ‘PC1’
+.plot_fpca_scores: no visible binding for global variable ‘PC2’
+.plot_fpca_scores: no visible binding for global variable ‘id’
+.plot_fpca_variance: no visible binding for global variable ‘component’
+.plot_fpca_variance: no visible binding for global variable ‘prop’
+.plot_fpca_variance: no visible binding for global variable
+  ‘cumulative’
+plot.group.distance: no visible global function definition for ‘hclust’
+plot.group.distance: no visible global function definition for
+  ‘as.dist’
+plot.outliergram: no visible binding for global variable ‘mei’
+plot.outliergram: no visible binding for global variable ‘mbd’
+plot.outliergram: no visible binding for global variable
+  ‘mbd_theoretical’
+plot.outliergram: no visible binding for global variable
+  ‘mbd_threshold’
+Undefined global functions or variables:
+  PC1 PC2 as.dist component cumulative direction hclust id mbd
+  mbd_theoretical mbd_threshold mei prop qt runif value
+Consider adding
+  importFrom("stats", "as.dist", "hclust", "qt", "runif")
+to your NAMESPACE file.
+* checking Rd files ... OK
+* checking Rd metadata ... OK
+* checking Rd line widths ... OK
+* checking Rd cross-references ... OK
+* checking for missing documentation entries ... OK
+* checking for code/documentation mismatches ... OK
+* checking Rd \usage sections ... OK
+* checking Rd contents ... OK
+* checking for unstated dependencies in examples ... OK
+* checking line endings in C/C++/Fortran sources/headers ... OK
+* checking line endings in Makefiles ... OK
+* checking compilation flags in Makevars ... OK
+* checking for GNU extensions in Makefiles ... WARNING
+Found the following file(s) containing GNU extensions:
+  src/Makevars
+Portable Makefiles do not use GNU extensions such as +=, :=, $(shell),
+$(wildcard), ifeq ... endif, .NOTPARALLEL See section ‘Writing portable
+packages’ in the ‘Writing R Extensions’ manual.
+* checking for portable use of $(BLAS_LIBS) and $(LAPACK_LIBS) ... OK
+* checking use of PKG_*FLAGS in Makefiles ... OK
+* checking use of SHLIB_OPENMP_*FLAGS in Makefiles ... OK
+* checking pragmas in C/C++ headers and code ... OK
+* checking compilation flags used ... NOTE
+Compilation used the following non-portable flag(s):
+  ‘-Werror=format-security’ ‘-Wformat’ ‘-Wp,-D_FORTIFY_SOURCE=3’
+  ‘-march=x86-64’ ‘-mno-omit-leaf-frame-pointer’
+* checking compiled code ... NOTE
+Datei ‘fdars/libs/fdars.so’:
+  ‘_exit’ gefunden, vielleicht aus ‘_exit’ (C)
+    Object: ‘rust/target/release/libfdars.a’
+  ‘abort’ gefunden, vielleicht aus ‘abort’ (C)
+    Object: ‘rust/target/release/libfdars.a’
+
+
+See ‘Writing portable packages’ in the ‘Writing R Extensions’ manual.
+* checking Rust compilation ... WARNING
+  No rustc version reported prior to compilation
+* checking files in ‘vignettes’ ... WARNING
+Files in the 'vignettes' directory but no files in 'inst/doc':
+  ‘basis-representation.Rmd’ ‘clustering.Rmd’
+  ‘covariance-functions.Rmd’ ‘depth-functions.Rmd’
+  ‘distance-metrics.Rmd’ ‘introduction.Rmd’ ‘outlier-detection.Rmd’
+  ‘regression.Rmd’
+* checking examples ... [16s/16s] OK
+* checking for unstated dependencies in ‘tests’ ... OK
+* checking tests ...
+  Running ‘testthat.R’ [16s/12s]
+ [17s/12s] OK
+* checking for unstated dependencies in vignettes ... OK
+* checking package vignettes ... WARNING
+Directory 'inst/doc' does not exist.
+Package vignettes without corresponding single PDF/HTML:
+  ‘basis-representation.Rmd’
+  ‘clustering.Rmd’
+  ‘covariance-functions.Rmd’
+  ‘depth-functions.Rmd’
+  ‘distance-metrics.Rmd’
+  ‘introduction.Rmd’
+  ‘outlier-detection.Rmd’
+  ‘regression.Rmd’
+* checking re-building of vignette outputs ... OK
+* checking PDF version of manual ... [27s/26s] WARNING
+LaTeX errors when creating PDF version.
+This typically indicates Rd problems.
+LaTeX errors found:
+! Font T1/ptm/m/n/10=ptmr8t at 10.0pt not loadable: Metric (TFM) file not found
+.
+<to be read again> 
+                   relax 
+l.8 \begin{document}
+! Font T1/ptm/m/n/24.88=ptmr8t at 24.88pt not loadable: Metric (TFM) file not f
+ound.
+<to be read again> 
+                   relax 
+l.9 \chapter*{}
+! Font T1/ptm/b/n/24.88=ptmb8t at 24.88pt not loadable: Metric (TFM) file not f
+ound.
+<to be read again> 
+                   relax 
+l.9 \chapter*{}
+! Font T1/ptm/b/n/10=ptmb8t at 10.0pt not loadable: Metric (TFM) file not found
+.
+<to be read again> 
+                   relax 
+l.11 {\textbf{\huge Package `fdars'}
+! Font T1/ptm/b/n/20.74=ptmb8t at 20.74pt not loadable: Metric (TFM) file not f
+ound.
+<to be read again> 
+                   relax 
+l.11 {\textbf{\huge Package `fdars'}
+! Font T1/ptm/m/n/12=ptmr8t at 12.0pt not loadable: Metric (TFM) file not found
+.
+<to be read again> 
+                   relax 
+l.12 \par\bigskip{\large
+! Font T1/pcr/m/n/10=pcrr8t at 10.0pt not loadable: Metric (TFM) file not found
+.
+<to be read again> 
+                   relax 
+l.21 ...AsIs{Simon Müller }\email{sm@data-zoo.de}
+! Font TS1/ptm/m/n/10=ptmr8c at 10.0pt not loadable: Metric (TFM) file not foun
+d.
+<to be read again> 
+                   relax 
+l.30 ...sIs{Cargo (Rust's package manager), rustc}
+! Font T1/ptm/m/n/14.4=ptmr8t at 14.4pt not loadable: Metric (TFM) file not fou
+nd.
+<to be read again> 
+                   relax 
+l.1 ...line {subsection}{fdars-package}{4}{page.4}
+! Font T1/ptm/b/n/14.4=ptmb8t at 14.4pt not loadable: Metric (TFM) file not fou
+nd.
+<to be read again> 
+                   relax 
+l.1 ...line {subsection}{fdars-package}{4}{page.4}
+! Font T1/ptm/m/sl/10=ptmro8t at 10.0pt not loadable: Metric (TFM) file not fou
+nd.
+<to be read again> 
+                   relax 
+l.71 ...tsline {subsection}{Ker.unif}{49}{page.49}
+! Font T1/ptm/m/it/10=ptmri8t at 10.0pt not loadable: Metric (TFM) file not fou
+nd.
+<to be read again> 
+                   relax 
+l.38 ...ata Analysis in Rust}{fdars.Rdash.package}
+! Font T1/ptm/m/n/9=ptmr8t at 9.0pt not loadable: Metric (TFM) file not found.
+<to be read again> 
+                   relax 
+l.85 \begin{ExampleCode}
+                        
+! Font T1/pcr/m/n/9=pcrr8t at 9.0pt not loadable: Metric (TFM) file not found.
+<to be read again> 
+                   relax 
+l.85 \begin{ExampleCode}
+                        
+! Font TS1/pcr/m/n/10=pcrr8c at 10.0pt not loadable: Metric (TFM) file not foun
+d.
+<to be read again> 
+                   relax 
+l.449 ## S3 method for class 'fdata'
+! Font T1/pcr/m/it/10=pcrro8t at 10.0pt not loadable: Metric (TFM) file not fou
+nd.
+<to be read again> 
+                   relax 
+l.59 ...ars} \textit  {(\texttt  {fdars-package})}
+! Font \T1/pcr/m/sl/10=nullfont not loadable: Metric (TFM) file not found.
+<to be read again> 
+                   \relax 
+l.59 ...ars} \textit  {(\texttt  {fdars-package})}
+                                                  ,
+* checking PDF version of manual without index ... ERROR
+* checking HTML version of manual ... NOTE
+Skipping checking HTML validation: no command 'tidy' found.
+Please obtain a recent version of HTML Tidy by downloading a binary
+release or compiling the source code from <https://www.html-tidy.org/>.
+Skipping checking math rendering: package 'V8' unavailable
+* checking for non-standard things in the check directory ... NOTE
+Found the following files/directories:
+  ‘fdars-manual.tex’
+* checking for detritus in the temp directory ... OK
+* DONE
+
+Status: 1 ERROR, 5 WARNINGs, 8 NOTEs
+See
+  ‘/home/simonm/projects/rust/functional-data-analysis/fdars/fdars.Rcheck/00check.log’
+for details.
+
