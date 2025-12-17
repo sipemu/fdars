@@ -277,33 +277,33 @@ Generate synthetic functional data from Gaussian processes with various covarian
 
 ```r
 # Smooth samples with Gaussian (squared exponential) kernel
-fd_smooth <- make_gaussian_process(n = 20, t = seq(0, 1, 100),
-                                   cov = cov.Gaussian(length_scale = 0.2))
+fd_smooth <- make_gaussian_process(n = 20, t = seq(0, 1, length.out = 100),
+                                   cov = kernel_gaussian(length_scale = 0.2))
 
 # Rough samples with Matern kernel
-fd_rough <- make_gaussian_process(n = 20, t = seq(0, 1, 100),
-                                  cov = cov.Matern(nu = 1.5))
+fd_rough <- make_gaussian_process(n = 20, t = seq(0, 1, length.out = 100),
+                                  cov = kernel_matern(nu = 1.5))
 
 # Periodic samples
-fd_periodic <- make_gaussian_process(n = 10, t = seq(0, 2, 200),
-                                     cov = cov.Periodic(period = 0.5))
+fd_periodic <- make_gaussian_process(n = 10, t = seq(0, 2, length.out = 200),
+                                     cov = kernel_periodic(period = 0.5))
 
 # Combine kernels: signal + noise
-cov_total <- cov.add(cov.Gaussian(variance = 1), cov.WhiteNoise(variance = 0.1))
-fd_noisy <- make_gaussian_process(n = 10, t = seq(0, 1, 100), cov = cov_total)
+cov_total <- kernel_add(kernel_gaussian(variance = 1), kernel_whitenoise(variance = 0.1))
+fd_noisy <- make_gaussian_process(n = 10, t = seq(0, 1, length.out = 100), cov = cov_total)
 ```
 
 Available covariance functions:
-- `cov.Gaussian` - Squared exponential (RBF) kernel, infinitely smooth
-- `cov.Exponential` - Exponential kernel (Matern ν=0.5), rough
-- `cov.Matern` - Matern family with smoothness parameter ν
-- `cov.Brownian` - Brownian motion covariance (1D only)
-- `cov.Linear` - Linear kernel
-- `cov.Polynomial` - Polynomial kernel
-- `cov.WhiteNoise` - Independent noise at each point
-- `cov.Periodic` - Periodic kernel (1D only)
-- `cov.add` - Combine kernels by addition
-- `cov.mult` - Combine kernels by multiplication
+- `kernel_gaussian` - Squared exponential (RBF) kernel, infinitely smooth
+- `kernel_exponential` - Exponential kernel (Matern ν=0.5), rough
+- `kernel_matern` - Matern family with smoothness parameter ν
+- `kernel_brownian` - Brownian motion covariance (1D only)
+- `kernel_linear` - Linear kernel
+- `kernel_polynomial` - Polynomial kernel
+- `kernel_whitenoise` - Independent noise at each point
+- `kernel_periodic` - Periodic kernel (1D only)
+- `kernel_add` - Combine kernels by addition
+- `kernel_mult` - Combine kernels by multiplication
 
 ### Depth-Based Medians and Trimmed Means
 
