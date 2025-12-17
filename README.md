@@ -416,56 +416,6 @@ df <- data.frame(
 fd2d <- df_to_fdata2d(df, id_col = 1, s_col = 2)
 ```
 
-## Documentation
-
-All functions are documented. Access help with `?function_name`:
-
-```r
-?fdata
-?depth
-?fregre.pc
-?cluster.kmeans
-```
-
-## Performance
-
-The Rust backend provides significant speedups:
-
-| Operation | Speedup vs Pure R |
-|-----------|------------------|
-| Depth computation | 10-50x |
-| Distance matrices | 20-100x |
-| Smoothing matrices | 10-50x |
-| K-means clustering | 50-200x |
-
-## API Reference
-
-### Unified Functions
-
-fdars uses a clean, unified API with method parameters:
-
-| Function | Description |
-|----------|-------------|
-| `fdata(X, id, metadata)` | Create fdata with optional IDs and metadata |
-| `df_to_fdata2d(df)` | Convert DataFrame to 2D fdata |
-| `depth(fd, method = "FM")` | Compute depth (FM, BD, MBD, MEI, mode, RP, RT, FSD, KFSD, RPD) |
-| `metric(fd, method = "lp")` | Compute distance matrix (lp, hausdorff, dtw, pca, deriv) |
-| `median(fd, method = "FM")` | Depth-based median |
-| `trimmed(fd, trim, method = "FM")` | Trimmed mean |
-| `trimvar(fd, trim, method = "FM")` | Trimmed variance |
-| `cluster.kmeans(fd, ncl)` | K-means clustering |
-| `cluster.fcm(fd, ncl)` | Fuzzy C-means clustering |
-| `cluster.optim(fd, ncl.range)` | Optimal k selection |
-| `make_gaussian_process(n, t, cov)` | Generate GP samples |
-| `cov.Gaussian()`, `cov.Matern()`, etc. | Covariance kernel functions |
-| `outliergram(fd)` | Outliergram for shape outlier detection |
-| `plot(outliergram, label)` | Plot outliergram with ID/metadata labels |
-| `magnitudeshape(fd, label)` | Magnitude-Shape outlier detection with labels |
-| `plot(fdata2pc_obj)` | FPCA visualization |
-| `plot(fd, color = groups)` | Plot with coloring by groups/values |
-| `group.distance(fd, groups)` | Distance between groups (centroid, hausdorff, depth) |
-| `group.test(fd, groups)` | Permutation test for group differences |
-
 ## License
 
 MIT
