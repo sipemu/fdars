@@ -3,7 +3,9 @@ Title: Functional Data Analysis in Rust
 Version: 0.5.1
 Authors@R:
     person("Simon", "Müller", role = c("aut", "cre"),
-           email = "simon@example.com")
+           email = "sm@data-zoo.de")
+Author: Simon Müller [aut, cre]
+Maintainer: Simon Müller <sm@data-zoo.de>
 Description: Functional data analysis tools with a high-performance Rust backend.
     Provides methods for functional data manipulation, depth computation,
     distance metrics, regression, and statistical testing. Supports both

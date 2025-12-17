@@ -5,6 +5,7 @@
 #' to generate synthetic functional data.
 #'
 #' @name kernels
+NULL
 
 #' Gaussian (Squared Exponential) Covariance Function
 #'

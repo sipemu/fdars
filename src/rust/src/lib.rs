@@ -1,12 +1,15 @@
+// Allow indexed loops - this is numerical code where indexed loops are clearer
+#![allow(clippy::needless_range_loop)]
+
+use anofox_regression::solvers::RidgeRegressor;
+use anofox_regression::{FittedRegressor, Regressor};
 use extendr_api::prelude::*;
-use rayon::prelude::*;
+use nalgebra::{DMatrix, DVector, SVD};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
+use rayon::prelude::*;
+use rustfft::{num_complex::Complex, FftPlanner};
 use std::f64::consts::PI;
-use rustfft::{FftPlanner, num_complex::Complex};
-use nalgebra::{DMatrix, DVector, SVD};
-use anofox_regression::solvers::RidgeRegressor;
-use anofox_regression::{Regressor, FittedRegressor};
 
 // =============================================================================
 // Helper functions
@@ -214,15 +217,17 @@ fn fdata_deriv_1d(data: RMatrix<f64>, argvals: Vec<f64>, nderiv: i32) -> Robj {
                 let mut row_deriv = vec![0.0; ncol];
 
                 // Forward difference at left boundary
-                row_deriv[0] = (current[i + 1 * nrow] - current[i + 0 * nrow]) / h0;
+                row_deriv[0] = (current[i + nrow] - current[i]) / h0;
 
                 // Central differences for interior points
                 for j in 1..(ncol - 1) {
-                    row_deriv[j] = (current[i + (j + 1) * nrow] - current[i + (j - 1) * nrow]) / h_central[j - 1];
+                    row_deriv[j] = (current[i + (j + 1) * nrow] - current[i + (j - 1) * nrow])
+                        / h_central[j - 1];
                 }
 
                 // Backward difference at right boundary
-                row_deriv[ncol - 1] = (current[i + (ncol - 1) * nrow] - current[i + (ncol - 2) * nrow]) / hn;
+                row_deriv[ncol - 1] =
+                    (current[i + (ncol - 1) * nrow] - current[i + (ncol - 2) * nrow]) / hn;
 
                 row_deriv
             })
@@ -269,38 +274,41 @@ fn fdata_deriv_2d(
             ds = r!(RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0)),
             dt = r!(RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0)),
             dsdt = r!(RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0))
-        ).into();
+        )
+        .into();
     }
 
     let data_slice = data.as_real_slice().unwrap();
 
     // Helper to access data: surface i, position (si, ti)
     // Data is stored as: data[i + (si + ti * m1) * n]
-    let get_val = |i: usize, si: usize, ti: usize| -> f64 {
-        data_slice[i + (si + ti * m1) * n]
-    };
+    let get_val = |i: usize, si: usize, ti: usize| -> f64 { data_slice[i + (si + ti * m1) * n] };
 
     // Pre-compute step sizes for s direction
-    let hs: Vec<f64> = (0..m1).map(|j| {
-        if j == 0 {
-            argvals_s[1] - argvals_s[0]
-        } else if j == m1 - 1 {
-            argvals_s[m1 - 1] - argvals_s[m1 - 2]
-        } else {
-            argvals_s[j + 1] - argvals_s[j - 1]
-        }
-    }).collect();
+    let hs: Vec<f64> = (0..m1)
+        .map(|j| {
+            if j == 0 {
+                argvals_s[1] - argvals_s[0]
+            } else if j == m1 - 1 {
+                argvals_s[m1 - 1] - argvals_s[m1 - 2]
+            } else {
+                argvals_s[j + 1] - argvals_s[j - 1]
+            }
+        })
+        .collect();
 
     // Pre-compute step sizes for t direction
-    let ht: Vec<f64> = (0..m2).map(|j| {
-        if j == 0 {
-            argvals_t[1] - argvals_t[0]
-        } else if j == m2 - 1 {
-            argvals_t[m2 - 1] - argvals_t[m2 - 2]
-        } else {
-            argvals_t[j + 1] - argvals_t[j - 1]
-        }
-    }).collect();
+    let ht: Vec<f64> = (0..m2)
+        .map(|j| {
+            if j == 0 {
+                argvals_t[1] - argvals_t[0]
+            } else if j == m2 - 1 {
+                argvals_t[m2 - 1] - argvals_t[m2 - 2]
+            } else {
+                argvals_t[j + 1] - argvals_t[j - 1]
+            }
+        })
+        .collect();
 
     // Compute all derivatives in parallel over surfaces
     let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = (0..n)
@@ -344,31 +352,61 @@ fn fdata_deriv_2d(
 
                     if si == 0 && ti == 0 {
                         // Forward-forward
-                        dsdt[idx] = (get_val(i, 1, 1) - get_val(i, 0, 1) - get_val(i, 1, 0) + get_val(i, 0, 0)) / denom;
+                        dsdt[idx] = (get_val(i, 1, 1) - get_val(i, 0, 1) - get_val(i, 1, 0)
+                            + get_val(i, 0, 0))
+                            / denom;
                     } else if si == m1 - 1 && ti == 0 {
                         // Backward-forward
-                        dsdt[idx] = (get_val(i, m1 - 1, 1) - get_val(i, m1 - 2, 1) - get_val(i, m1 - 1, 0) + get_val(i, m1 - 2, 0)) / denom;
+                        dsdt[idx] =
+                            (get_val(i, m1 - 1, 1) - get_val(i, m1 - 2, 1) - get_val(i, m1 - 1, 0)
+                                + get_val(i, m1 - 2, 0))
+                                / denom;
                     } else if si == 0 && ti == m2 - 1 {
                         // Forward-backward
-                        dsdt[idx] = (get_val(i, 1, m2 - 1) - get_val(i, 0, m2 - 1) - get_val(i, 1, m2 - 2) + get_val(i, 0, m2 - 2)) / denom;
+                        dsdt[idx] =
+                            (get_val(i, 1, m2 - 1) - get_val(i, 0, m2 - 1) - get_val(i, 1, m2 - 2)
+                                + get_val(i, 0, m2 - 2))
+                                / denom;
                     } else if si == m1 - 1 && ti == m2 - 1 {
                         // Backward-backward
-                        dsdt[idx] = (get_val(i, m1 - 1, m2 - 1) - get_val(i, m1 - 2, m2 - 1) - get_val(i, m1 - 1, m2 - 2) + get_val(i, m1 - 2, m2 - 2)) / denom;
+                        dsdt[idx] = (get_val(i, m1 - 1, m2 - 1)
+                            - get_val(i, m1 - 2, m2 - 1)
+                            - get_val(i, m1 - 1, m2 - 2)
+                            + get_val(i, m1 - 2, m2 - 2))
+                            / denom;
                     } else if si == 0 {
                         // Forward-central
-                        dsdt[idx] = (get_val(i, 1, ti + 1) - get_val(i, 0, ti + 1) - get_val(i, 1, ti - 1) + get_val(i, 0, ti - 1)) / denom;
+                        dsdt[idx] =
+                            (get_val(i, 1, ti + 1) - get_val(i, 0, ti + 1) - get_val(i, 1, ti - 1)
+                                + get_val(i, 0, ti - 1))
+                                / denom;
                     } else if si == m1 - 1 {
                         // Backward-central
-                        dsdt[idx] = (get_val(i, m1 - 1, ti + 1) - get_val(i, m1 - 2, ti + 1) - get_val(i, m1 - 1, ti - 1) + get_val(i, m1 - 2, ti - 1)) / denom;
+                        dsdt[idx] = (get_val(i, m1 - 1, ti + 1)
+                            - get_val(i, m1 - 2, ti + 1)
+                            - get_val(i, m1 - 1, ti - 1)
+                            + get_val(i, m1 - 2, ti - 1))
+                            / denom;
                     } else if ti == 0 {
                         // Central-forward
-                        dsdt[idx] = (get_val(i, si + 1, 1) - get_val(i, si - 1, 1) - get_val(i, si + 1, 0) + get_val(i, si - 1, 0)) / denom;
+                        dsdt[idx] =
+                            (get_val(i, si + 1, 1) - get_val(i, si - 1, 1) - get_val(i, si + 1, 0)
+                                + get_val(i, si - 1, 0))
+                                / denom;
                     } else if ti == m2 - 1 {
                         // Central-backward
-                        dsdt[idx] = (get_val(i, si + 1, m2 - 1) - get_val(i, si - 1, m2 - 1) - get_val(i, si + 1, m2 - 2) + get_val(i, si - 1, m2 - 2)) / denom;
+                        dsdt[idx] = (get_val(i, si + 1, m2 - 1)
+                            - get_val(i, si - 1, m2 - 1)
+                            - get_val(i, si + 1, m2 - 2)
+                            + get_val(i, si - 1, m2 - 2))
+                            / denom;
                     } else {
                         // Central-central
-                        dsdt[idx] = (get_val(i, si + 1, ti + 1) - get_val(i, si - 1, ti + 1) - get_val(i, si + 1, ti - 1) + get_val(i, si - 1, ti - 1)) / denom;
+                        dsdt[idx] = (get_val(i, si + 1, ti + 1)
+                            - get_val(i, si - 1, ti + 1)
+                            - get_val(i, si + 1, ti - 1)
+                            + get_val(i, si - 1, ti - 1))
+                            / denom;
                     }
                 }
             }
@@ -382,11 +420,7 @@ fn fdata_deriv_2d(
     let dt_mat = RMatrix::new_matrix(n, m1 * m2, |i, j| results[i].1[j]);
     let dsdt_mat = RMatrix::new_matrix(n, m1 * m2, |i, j| results[i].2[j]);
 
-    list!(
-        ds = r!(ds_mat),
-        dt = r!(dt_mat),
-        dsdt = r!(dsdt_mat)
-    ).into()
+    list!(ds = r!(ds_mat), dt = r!(dt_mat), dsdt = r!(dsdt_mat)).into()
 }
 
 /// Compute the geometric median (L1 median) of functional data using Weiszfeld's algorithm
@@ -431,7 +465,8 @@ fn geometric_median_1d(data: RMatrix<f64>, argvals: Vec<f64>, max_iter: i32, tol
 
         // Compute weights (1/distance), handling zero distances
         let eps = 1e-10;
-        let inv_distances: Vec<f64> = distances.iter()
+        let inv_distances: Vec<f64> = distances
+            .iter()
             .map(|d| if *d > eps { 1.0 / d } else { 1.0 / eps })
             .collect();
 
@@ -449,9 +484,12 @@ fn geometric_median_1d(data: RMatrix<f64>, argvals: Vec<f64>, max_iter: i32, tol
             .collect();
 
         // Check convergence
-        let diff: f64 = median.iter().zip(new_median.iter())
+        let diff: f64 = median
+            .iter()
+            .zip(new_median.iter())
             .map(|(a, b)| (a - b).abs())
-            .sum::<f64>() / ncol as f64;
+            .sum::<f64>()
+            / ncol as f64;
 
         median = new_median;
 
@@ -466,7 +504,13 @@ fn geometric_median_1d(data: RMatrix<f64>, argvals: Vec<f64>, max_iter: i32, tol
 /// Compute the geometric median (L1 median) of 2D functional data using Weiszfeld's algorithm
 /// Data is stored as n x (m1*m2) matrix where each row is a flattened surface
 #[extendr]
-fn geometric_median_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>, max_iter: i32, tol: f64) -> Robj {
+fn geometric_median_2d(
+    data: RMatrix<f64>,
+    argvals_s: Vec<f64>,
+    argvals_t: Vec<f64>,
+    max_iter: i32,
+    tol: f64,
+) -> Robj {
     let nrow = data.nrows();
     let ncol = data.ncols();
     let expected_cols = argvals_s.len() * argvals_t.len();
@@ -506,7 +550,8 @@ fn geometric_median_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f
 
         // Compute weights (1/distance), handling zero distances
         let eps = 1e-10;
-        let inv_distances: Vec<f64> = distances.iter()
+        let inv_distances: Vec<f64> = distances
+            .iter()
             .map(|d| if *d > eps { 1.0 / d } else { 1.0 / eps })
             .collect();
 
@@ -524,9 +569,12 @@ fn geometric_median_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f
             .collect();
 
         // Check convergence
-        let diff: f64 = median.iter().zip(new_median.iter())
+        let diff: f64 = median
+            .iter()
+            .zip(new_median.iter())
             .map(|(a, b)| (a - b).abs())
-            .sum::<f64>() / ncol as f64;
+            .sum::<f64>()
+            / ncol as f64;
 
         median = new_median;
 
@@ -658,9 +706,7 @@ fn depth_rp_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, nproj: i32) -> Ro
     let mut rng = rand::thread_rng();
     let projections: Vec<Vec<f64>> = (0..nproj)
         .map(|_| {
-            let mut proj: Vec<f64> = (0..n_points)
-                .map(|_| rng.sample(StandardNormal))
-                .collect();
+            let mut proj: Vec<f64> = (0..n_points).map(|_| rng.sample(StandardNormal)).collect();
             let norm: f64 = proj.iter().map(|x| x * x).sum::<f64>().sqrt();
             proj.iter_mut().for_each(|x| *x /= norm);
             proj
@@ -724,9 +770,7 @@ fn depth_rt_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, nproj: i32) -> Ro
     let mut rng = rand::thread_rng();
     let projections: Vec<Vec<f64>> = (0..nproj)
         .map(|_| {
-            let mut proj: Vec<f64> = (0..n_points)
-                .map(|_| rng.sample(StandardNormal))
-                .collect();
+            let mut proj: Vec<f64> = (0..n_points).map(|_| rng.sample(StandardNormal)).collect();
             let norm: f64 = proj.iter().map(|x| x * x).sum::<f64>().sqrt();
             proj.iter_mut().for_each(|x| *x /= norm);
             proj
@@ -839,9 +883,9 @@ fn depth_kfsd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, argvals: Robj, 
     let data_ori = fdataori.as_real_slice().unwrap();
 
     // Get argvals for trapezoidal integration
-    let argvals_vec: Vec<f64> = argvals.as_real_vector().unwrap_or_else(||
-        (0..n_points).map(|i| i as f64).collect()
-    );
+    let argvals_vec: Vec<f64> = argvals
+        .as_real_vector()
+        .unwrap_or_else(|| (0..n_points).map(|i| i as f64).collect());
 
     // Compute trapezoidal integration weights
     let weights = simpsons_weights(&argvals_vec);
@@ -850,8 +894,13 @@ fn depth_kfsd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, argvals: Robj, 
 
     // Helper function to compute integrated L2 norm squared between two curves
     // using trapezoidal rule: ||f - g||^2 = integral((f(t) - g(t))^2 dt)
-    let norm_sq_integrated = |data1: &[f64], row1: usize, nrow1: usize,
-                              data2: &[f64], row2: usize, nrow2: usize| -> f64 {
+    let norm_sq_integrated = |data1: &[f64],
+                              row1: usize,
+                              nrow1: usize,
+                              data2: &[f64],
+                              row2: usize,
+                              nrow2: usize|
+     -> f64 {
         let mut sum = 0.0;
         for t in 0..n_points {
             let diff = data1[row1 + t * nrow1] - data2[row2 + t * nrow2];
@@ -861,9 +910,7 @@ fn depth_kfsd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, argvals: Robj, 
     };
 
     // Gaussian kernel: K(x,y) = exp(-||x-y||^2 / h^2)
-    let kern = |dist_sq: f64| -> f64 {
-        (-dist_sq / h_sq).exp()
-    };
+    let kern = |dist_sq: f64| -> f64 { (-dist_sq / h_sq).exp() };
 
     // Pre-compute M1[j,k] = K(X_j, X_k) for all pairs in reference data
     // This is symmetric, so we only compute upper triangle (parallelized)
@@ -886,7 +933,7 @@ fn depth_kfsd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, argvals: Robj, 
 
     let mut m1 = vec![vec![0.0; nori]; nori];
     for j in 0..nori {
-        m1[j][j] = 1.0;  // K(X_j, X_j) = 1
+        m1[j][j] = 1.0; // K(X_j, X_j) = 1
     }
     for (j, k, kval) in m1_upper {
         m1[j][k] = kval;
@@ -967,7 +1014,13 @@ fn depth_kfsd_1d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, argvals: Robj, 
 /// Kernel Functional Spatial Depth (KFSD) for 2D functional data
 /// Implements the RKHS-based formulation matching fda.usc
 #[extendr]
-fn depth_kfsd_2d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, _m1: i32, _m2: i32, h: f64) -> Robj {
+fn depth_kfsd_2d(
+    fdataobj: RMatrix<f64>,
+    fdataori: RMatrix<f64>,
+    _m1: i32,
+    _m2: i32,
+    h: f64,
+) -> Robj {
     let nobj = fdataobj.nrows();
     let nori = fdataori.nrows();
     let ncol_obj = fdataobj.ncols();
@@ -984,8 +1037,13 @@ fn depth_kfsd_2d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, _m1: i32, _m2: 
     let h_sq = h * h;
 
     // Helper function to compute L2 norm squared between two surfaces
-    let norm_sq = |data1: &[f64], row1: usize, nrow1: usize,
-                   data2: &[f64], row2: usize, nrow2: usize| -> f64 {
+    let norm_sq = |data1: &[f64],
+                   row1: usize,
+                   nrow1: usize,
+                   data2: &[f64],
+                   row2: usize,
+                   nrow2: usize|
+     -> f64 {
         let mut sum = 0.0;
         for t in 0..n_points {
             let diff = data1[row1 + t * nrow1] - data2[row2 + t * nrow2];
@@ -995,9 +1053,7 @@ fn depth_kfsd_2d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, _m1: i32, _m2: 
     };
 
     // Gaussian kernel: K(x,y) = exp(-||x-y||^2 / h^2)
-    let kern = |dist_sq: f64| -> f64 {
-        (-dist_sq / h_sq).exp()
-    };
+    let kern = |dist_sq: f64| -> f64 { (-dist_sq / h_sq).exp() };
 
     // Pre-compute M1[j,k] = K(X_j, X_k) for all pairs in reference data (parallelized)
     let m1_upper: Vec<(usize, usize, f64)> = (0..nori)
@@ -1310,13 +1366,7 @@ fn depth_fm_2d(
 /// Modal depth for 2D functional data (surfaces)
 /// Uses L2 distance in the flattened surface space
 #[extendr]
-fn depth_mode_2d(
-    fdataobj: RMatrix<f64>,
-    fdataori: RMatrix<f64>,
-    m1: i32,
-    m2: i32,
-    h: f64,
-) -> Robj {
+fn depth_mode_2d(fdataobj: RMatrix<f64>, fdataori: RMatrix<f64>, m1: i32, m2: i32, h: f64) -> Robj {
     let nobj = fdataobj.nrows();
     let nori = fdataori.nrows();
     let ncol_obj = fdataobj.ncols();
@@ -1385,9 +1435,7 @@ fn depth_rp_2d(
     let mut rng = rand::thread_rng();
     let projections: Vec<Vec<f64>> = (0..nproj)
         .map(|_| {
-            let mut proj: Vec<f64> = (0..n_points)
-                .map(|_| rng.sample(StandardNormal))
-                .collect();
+            let mut proj: Vec<f64> = (0..n_points).map(|_| rng.sample(StandardNormal)).collect();
             let norm: f64 = proj.iter().map(|x| x * x).sum::<f64>().sqrt();
             proj.iter_mut().for_each(|x| *x /= norm);
             proj
@@ -1464,9 +1512,7 @@ fn depth_rt_2d(
     let mut rng = rand::thread_rng();
     let projections: Vec<Vec<f64>> = (0..nproj)
         .map(|_| {
-            let mut proj: Vec<f64> = (0..n_points)
-                .map(|_| rng.sample(StandardNormal))
-                .collect();
+            let mut proj: Vec<f64> = (0..n_points).map(|_| rng.sample(StandardNormal)).collect();
             let norm: f64 = proj.iter().map(|x| x * x).sum::<f64>().sqrt();
             proj.iter_mut().for_each(|x| *x /= norm);
             proj
@@ -1589,7 +1635,11 @@ fn metric_lp_1d(
 
     let base_weights = simpsons_weights(&argvals);
     let weights: Vec<f64> = if w.len() == n_points {
-        base_weights.iter().zip(w.iter()).map(|(b, u)| b * u).collect()
+        base_weights
+            .iter()
+            .zip(w.iter())
+            .map(|(b, u)| b * u)
+            .collect()
     } else {
         base_weights
     };
@@ -1616,12 +1666,7 @@ fn metric_lp_1d(
 
 /// Compute Lp distance matrix for self-distances (symmetric)
 #[extendr]
-fn metric_lp_self_1d(
-    fdata: RMatrix<f64>,
-    argvals: Vec<f64>,
-    p: f64,
-    w: Vec<f64>,
-) -> Robj {
+fn metric_lp_self_1d(fdata: RMatrix<f64>, argvals: Vec<f64>, p: f64, w: Vec<f64>) -> Robj {
     let n = fdata.nrows();
     let ncol = fdata.ncols();
 
@@ -1634,7 +1679,11 @@ fn metric_lp_self_1d(
 
     let base_weights = simpsons_weights(&argvals);
     let weights: Vec<f64> = if w.len() == n_points {
-        base_weights.iter().zip(w.iter()).map(|(b, u)| b * u).collect()
+        base_weights
+            .iter()
+            .zip(w.iter())
+            .map(|(b, u)| b * u)
+            .collect()
     } else {
         base_weights
     };
@@ -2128,11 +2177,7 @@ fn metric_lp_self_2d(
 ///
 /// The Hausdorff distance measures how far apart two such point clouds are.
 #[extendr]
-fn metric_hausdorff_2d(
-    fdata: RMatrix<f64>,
-    argvals_s: Vec<f64>,
-    argvals_t: Vec<f64>,
-) -> Robj {
+fn metric_hausdorff_2d(fdata: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>) -> Robj {
     let n = fdata.nrows();
     let ncol = fdata.ncols();
     let m1 = argvals_s.len();
@@ -2292,25 +2337,24 @@ fn metric_hausdorff_cross_2d(
 /// Returns magnitude of first nfreq Fourier coefficients
 fn fft_coefficients(data: &[f64], nfreq: usize) -> Vec<f64> {
     let n = data.len();
-    let nfreq = nfreq.min(n / 2);  // Can't have more than n/2 meaningful frequencies
+    let nfreq = nfreq.min(n / 2); // Can't have more than n/2 meaningful frequencies
 
     // Create a planner and get the FFT
     let mut planner = FftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n);
 
     // Create complex input buffer
-    let mut buffer: Vec<Complex<f64>> = data.iter()
-        .map(|&x| Complex::new(x, 0.0))
-        .collect();
+    let mut buffer: Vec<Complex<f64>> = data.iter().map(|&x| Complex::new(x, 0.0)).collect();
 
     // Perform FFT in place
     fft.process(&mut buffer);
 
     // Return magnitudes of first nfreq frequencies (including DC)
     // Note: FFT output has DC at index 0, then positive frequencies 1 to n/2
-    buffer.iter()
-        .take(nfreq + 1)  // DC + nfreq frequencies
-        .map(|c| c.norm() / n as f64)  // Normalize by n
+    buffer
+        .iter()
+        .take(nfreq + 1) // DC + nfreq frequencies
+        .map(|c| c.norm() / n as f64) // Normalize by n
         .collect()
 }
 
@@ -2346,7 +2390,8 @@ fn semimetric_fourier_self_1d(fdata: RMatrix<f64>, nfreq: i32) -> Robj {
             ((i + 1)..n)
                 .map(|j| {
                     // L2 distance between Fourier coefficients
-                    let dist_sq: f64 = coeffs[i].iter()
+                    let dist_sq: f64 = coeffs[i]
+                        .iter()
                         .zip(coeffs[j].iter())
                         .map(|(a, b)| (a - b).powi(2))
                         .sum();
@@ -2411,7 +2456,8 @@ fn semimetric_fourier_cross_1d(fdata1: RMatrix<f64>, fdata2: RMatrix<f64>, nfreq
         .flat_map(|i| {
             (0..n2)
                 .map(|j| {
-                    let dist_sq: f64 = coeffs1[i].iter()
+                    let dist_sq: f64 = coeffs1[i]
+                        .iter()
                         .zip(coeffs2[j].iter())
                         .map(|(a, b)| (a - b).powi(2))
                         .sum();
@@ -2474,7 +2520,11 @@ fn semimetric_hshift_self_1d(fdata: RMatrix<f64>, argvals: Vec<f64>, max_shift: 
 
     let data = fdata.as_real_slice().unwrap();
     let weights = simpsons_weights(&argvals);
-    let max_shift = if max_shift < 0 { m / 4 } else { max_shift as usize };
+    let max_shift = if max_shift < 0 {
+        m / 4
+    } else {
+        max_shift as usize
+    };
 
     // Extract curves as vectors
     let curves: Vec<Vec<f64>> = (0..n)
@@ -2507,7 +2557,12 @@ fn semimetric_hshift_self_1d(fdata: RMatrix<f64>, argvals: Vec<f64>, max_shift: 
 
 /// Compute semimetric based on horizontal shift for cross-distances
 #[extendr]
-fn semimetric_hshift_cross_1d(fdata1: RMatrix<f64>, fdata2: RMatrix<f64>, argvals: Vec<f64>, max_shift: i32) -> Robj {
+fn semimetric_hshift_cross_1d(
+    fdata1: RMatrix<f64>,
+    fdata2: RMatrix<f64>,
+    argvals: Vec<f64>,
+    max_shift: i32,
+) -> Robj {
     let n1 = fdata1.nrows();
     let n2 = fdata2.nrows();
     let m1 = fdata1.ncols();
@@ -2521,7 +2576,11 @@ fn semimetric_hshift_cross_1d(fdata1: RMatrix<f64>, fdata2: RMatrix<f64>, argval
     let data1 = fdata1.as_real_slice().unwrap();
     let data2 = fdata2.as_real_slice().unwrap();
     let weights = simpsons_weights(&argvals);
-    let max_shift = if max_shift < 0 { m / 4 } else { max_shift as usize };
+    let max_shift = if max_shift < 0 {
+        m / 4
+    } else {
+        max_shift as usize
+    };
 
     // Extract curves as vectors
     let curves1: Vec<Vec<f64>> = (0..n1)
@@ -2627,7 +2686,13 @@ fn metric_kl_self_1d(fdata: RMatrix<f64>, argvals: Vec<f64>, eps: f64, normalize
 
 /// Compute symmetric KL divergence matrix for cross-distances (1D)
 #[extendr]
-fn metric_kl_cross_1d(fdata1: RMatrix<f64>, fdata2: RMatrix<f64>, argvals: Vec<f64>, eps: f64, normalize: bool) -> Robj {
+fn metric_kl_cross_1d(
+    fdata1: RMatrix<f64>,
+    fdata2: RMatrix<f64>,
+    argvals: Vec<f64>,
+    eps: f64,
+    normalize: bool,
+) -> Robj {
     let n1 = fdata1.nrows();
     let n2 = fdata2.nrows();
     let m1 = fdata1.ncols();
@@ -2707,9 +2772,7 @@ fn compute_adot(n: i32, inprod: Vec<f64>) -> Robj {
     adot_vec[0] = PI * (n + 1) as f64;
 
     // Collect all (i, j) pairs for parallel processing
-    let pairs: Vec<(usize, usize)> = (2..=n)
-        .flat_map(|i| (1..i).map(move |j| (i, j)))
-        .collect();
+    let pairs: Vec<(usize, usize)> = (2..=n).flat_map(|i| (1..i).map(move |j| (i, j))).collect();
 
     // Compute adot values in parallel
     let results: Vec<(usize, f64)> = pairs
@@ -2841,7 +2904,8 @@ fn fdata2pc_1d(data: RMatrix<f64>, ncomp: i32, _lambda: f64) -> Robj {
             scores = RMatrix::new_matrix(0, 0, |_, _| 0.0),
             mean = Vec::<f64>::new(),
             centered = RMatrix::new_matrix(0, 0, |_, _| 0.0)
-        ).into();
+        )
+        .into();
     }
 
     let data_slice = data.as_real_slice().unwrap();
@@ -2906,7 +2970,8 @@ fn fdata2pc_1d(data: RMatrix<f64>, ncomp: i32, _lambda: f64) -> Robj {
         scores = scores,
         mean = means,
         centered = centered
-    ).into()
+    )
+    .into()
 }
 
 /// Perform PLS via NIPALS algorithm
@@ -2921,7 +2986,8 @@ fn fdata2pls_1d(data: RMatrix<f64>, y: Vec<f64>, ncomp: i32, _lambda: f64) -> Ro
             weights = RMatrix::new_matrix(0, 0, |_, _| 0.0),
             scores = RMatrix::new_matrix(0, 0, |_, _| 0.0),
             loadings = RMatrix::new_matrix(0, 0, |_, _| 0.0)
-        ).into();
+        )
+        .into();
     }
 
     let data_slice = data.as_real_slice().unwrap();
@@ -3031,7 +3097,8 @@ fn fdata2pls_1d(data: RMatrix<f64>, y: Vec<f64>, ncomp: i32, _lambda: f64) -> Ro
         weights = weights_mat,
         scores = scores_mat,
         loadings = loadings_mat
-    ).into()
+    )
+    .into()
 }
 
 /// Compute B-spline basis matrix for given knots and grid points
@@ -3181,7 +3248,8 @@ fn fdata2basis_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type
     let eps = 1e-10 * max_sv;
 
     // Pseudo-inverse of singular values
-    let s_inv: Vec<f64> = btb_svd.singular_values
+    let s_inv: Vec<f64> = btb_svd
+        .singular_values
         .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
@@ -3316,7 +3384,13 @@ fn difference_matrix(n: usize, order: usize) -> DMatrix<f64> {
 /// Compute GCV score for basis fit
 /// GCV = RSS/n / (1 - edf/n)^2
 #[extendr]
-fn basis_gcv_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32, lambda: f64) -> f64 {
+fn basis_gcv_1d(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nbasis: i32,
+    basis_type: i32,
+    lambda: f64,
+) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
     let nbasis = nbasis as usize;
@@ -3396,7 +3470,13 @@ fn basis_gcv_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: 
 /// Compute AIC for basis fit
 /// AIC = n * log(RSS/n) + 2 * edf
 #[extendr]
-fn basis_aic_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32, lambda: f64) -> f64 {
+fn basis_aic_1d(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nbasis: i32,
+    basis_type: i32,
+    lambda: f64,
+) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
     let nbasis = nbasis as usize;
@@ -3461,7 +3541,13 @@ fn basis_aic_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: 
 /// Compute BIC for basis fit
 /// BIC = n * log(RSS/n) + log(n) * edf
 #[extendr]
-fn basis_bic_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: i32, lambda: f64) -> f64 {
+fn basis_bic_1d(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nbasis: i32,
+    basis_type: i32,
+    lambda: f64,
+) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
     let nbasis = nbasis as usize;
@@ -3522,17 +3608,29 @@ fn basis_bic_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type: 
 
 /// P-spline fitting: returns coefficients, fitted values, and diagnostics
 #[extendr]
-fn pspline_fit_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, lambda: f64, order: i32) -> Robj {
+fn pspline_fit_1d(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nbasis: i32,
+    lambda: f64,
+    order: i32,
+) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
     let nbasis = nbasis as usize;
     let order = order as usize;
 
     if n == 0 || m == 0 || nbasis < 2 {
-        return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                     fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                     edf = 0.0, rss = 0.0, gcv = f64::INFINITY,
-                     aic = f64::INFINITY, bic = f64::INFINITY).into();
+        return list!(
+            coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+            fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+            edf = 0.0,
+            rss = 0.0,
+            gcv = f64::INFINITY,
+            aic = f64::INFINITY,
+            bic = f64::INFINITY
+        )
+        .into();
     }
 
     let data_slice = data.as_real_slice().unwrap();
@@ -3553,10 +3651,16 @@ fn pspline_fit_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, lambda: f6
     let btb_inv = match btb_penalized.clone().try_inverse() {
         Some(inv) => inv,
         None => {
-            return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                         fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                         edf = 0.0, rss = 0.0, gcv = f64::INFINITY,
-                         aic = f64::INFINITY, bic = f64::INFINITY).into();
+            return list!(
+                coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                edf = 0.0,
+                rss = 0.0,
+                gcv = f64::INFINITY,
+                aic = f64::INFINITY,
+                bic = f64::INFINITY
+            )
+            .into();
         }
     };
 
@@ -3618,7 +3722,8 @@ fn pspline_fit_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, lambda: f6
         gcv = gcv,
         aic = aic,
         bic = bic
-    ).into()
+    )
+    .into()
 }
 
 // =============================================================================
@@ -3626,8 +3731,13 @@ fn pspline_fit_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, lambda: f6
 // =============================================================================
 
 /// Compute tensor product basis matrix for 2D functional data
-fn tensor_product_basis(argvals_s: &[f64], argvals_t: &[f64],
-                        nbasis_s: usize, nbasis_t: usize, basis_type: i32) -> Vec<f64> {
+fn tensor_product_basis(
+    argvals_s: &[f64],
+    argvals_t: &[f64],
+    nbasis_s: usize,
+    nbasis_t: usize,
+    basis_type: i32,
+) -> Vec<f64> {
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
 
@@ -3668,8 +3778,14 @@ fn tensor_product_basis(argvals_s: &[f64], argvals_t: &[f64],
 
 /// Project 2D functional data to tensor product basis coefficients
 #[extendr]
-fn fdata2basis_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
-                  nbasis_s: i32, nbasis_t: i32, basis_type: i32) -> Robj {
+fn fdata2basis_2d(
+    data: RMatrix<f64>,
+    argvals_s: Vec<f64>,
+    argvals_t: Vec<f64>,
+    nbasis_s: i32,
+    nbasis_t: i32,
+    basis_type: i32,
+) -> Robj {
     let n = data.nrows();
     let m_total = data.ncols();
     let m1 = argvals_s.len();
@@ -3713,7 +3829,8 @@ fn fdata2basis_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
     let max_sv = btb_svd.singular_values.iter().cloned().fold(0.0, f64::max);
     let eps = 1e-10 * max_sv;
 
-    let s_inv: Vec<f64> = btb_svd.singular_values
+    let s_inv: Vec<f64> = btb_svd
+        .singular_values
         .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
@@ -3757,8 +3874,14 @@ fn fdata2basis_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
 
 /// Reconstruct 2D functional data from tensor product basis coefficients
 #[extendr]
-fn basis2fdata_2d(coefs: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
-                  nbasis_s: i32, nbasis_t: i32, basis_type: i32) -> Robj {
+fn basis2fdata_2d(
+    coefs: RMatrix<f64>,
+    argvals_s: Vec<f64>,
+    argvals_t: Vec<f64>,
+    nbasis_s: i32,
+    nbasis_t: i32,
+    basis_type: i32,
+) -> Robj {
     let n = coefs.nrows();
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
@@ -3796,17 +3919,32 @@ fn basis2fdata_2d(coefs: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
 
 /// 2D P-spline fitting with anisotropic penalties
 #[extendr]
-fn pspline_fit_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
-                  nbasis_s: i32, nbasis_t: i32, lambda_s: f64, lambda_t: f64, order: i32) -> Robj {
+#[allow(clippy::too_many_arguments)]
+fn pspline_fit_2d(
+    data: RMatrix<f64>,
+    argvals_s: Vec<f64>,
+    argvals_t: Vec<f64>,
+    nbasis_s: i32,
+    nbasis_t: i32,
+    lambda_s: f64,
+    lambda_t: f64,
+    order: i32,
+) -> Robj {
     let n = data.nrows();
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
     let total_points = m1 * m2;
 
     if n == 0 || data.ncols() != total_points {
-        return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                     fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                     edf = 0.0, gcv = f64::INFINITY, aic = f64::INFINITY, bic = f64::INFINITY).into();
+        return list!(
+            coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+            fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+            edf = 0.0,
+            gcv = f64::INFINITY,
+            aic = f64::INFINITY,
+            bic = f64::INFINITY
+        )
+        .into();
     }
 
     let nbasis_s = nbasis_s as usize;
@@ -3875,9 +4013,15 @@ fn pspline_fit_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
     let btb_inv = match btb_penalized.clone().try_inverse() {
         Some(inv) => inv,
         None => {
-            return list!(coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                         fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
-                         edf = 0.0, gcv = f64::INFINITY, aic = f64::INFINITY, bic = f64::INFINITY).into();
+            return list!(
+                coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+                edf = 0.0,
+                gcv = f64::INFINITY,
+                aic = f64::INFINITY,
+                bic = f64::INFINITY
+            )
+            .into();
         }
     };
 
@@ -3934,7 +4078,8 @@ fn pspline_fit_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
         gcv = gcv,
         aic = aic,
         bic = bic
-    ).into()
+    )
+    .into()
 }
 
 // =============================================================================
@@ -3944,7 +4089,14 @@ fn pspline_fit_2d(data: RMatrix<f64>, argvals_s: Vec<f64>, argvals_t: Vec<f64>,
 /// Compute bootstrap threshold for LRT outlier detection
 /// Highly parallelized across bootstrap iterations
 #[extendr]
-fn outliers_thres_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: f64, seed: u64) -> f64 {
+fn outliers_thres_lrt(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nb: i32,
+    smo: f64,
+    trim: f64,
+    seed: u64,
+) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
 
@@ -3994,7 +4146,8 @@ fn outliers_thres_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, 
             let depths = compute_fm_depth_internal(&boot_data, n, m);
 
             // Get indices of top n_keep curves by depth
-            let mut depth_idx: Vec<(usize, f64)> = depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
+            let mut depth_idx: Vec<(usize, f64)> =
+                depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
             depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep).map(|(i, _)| *i).collect();
 
@@ -4075,7 +4228,14 @@ fn compute_fm_depth_internal(data: &[f64], n: usize, m: usize) -> Vec<f64> {
 /// LRT-based outlier detection
 /// Returns indices of detected outliers
 #[extendr]
-fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: f64, seed: u64) -> Robj {
+fn outliers_lrt(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nb: i32,
+    smo: f64,
+    trim: f64,
+    seed: u64,
+) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
 
@@ -4084,7 +4244,8 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
             outliers = Vec::<i32>::new(),
             distances = Vec::<f64>::new(),
             threshold = 0.0
-        ).into();
+        )
+        .into();
     }
 
     let data_slice = data.as_real_slice().unwrap().to_vec();
@@ -4104,7 +4265,8 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
         }
 
         // Get current active indices
-        let active_idx: Vec<usize> = current_mask.iter()
+        let active_idx: Vec<usize> = current_mask
+            .iter()
             .enumerate()
             .filter(|(_, &active)| active)
             .map(|(i, _)| i)
@@ -4123,7 +4285,8 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
 
         // Get indices of top n_keep_cur curves by depth
         let n_keep_cur = ((1.0 - trim) * active_n as f64).ceil() as usize;
-        let mut depth_idx: Vec<(usize, f64)> = depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
+        let mut depth_idx: Vec<(usize, f64)> =
+            depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
         depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep_cur).map(|(i, _)| *i).collect();
 
@@ -4170,7 +4333,8 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
     }
 
     // Compute final distances for all curves
-    let final_active_idx: Vec<usize> = current_mask.iter()
+    let final_active_idx: Vec<usize> = current_mask
+        .iter()
         .enumerate()
         .filter(|(_, &active)| active)
         .map(|(i, _)| i)
@@ -4179,10 +4343,14 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
     let final_n = final_active_idx.len();
     if final_n < 3 {
         return list!(
-            outliers = detected_outliers.iter().map(|&i| (i + 1) as i32).collect::<Vec<_>>(),
+            outliers = detected_outliers
+                .iter()
+                .map(|&i| (i + 1) as i32)
+                .collect::<Vec<_>>(),
             distances = vec![0.0; n],
             threshold = threshold
-        ).into();
+        )
+        .into();
     }
 
     let mut final_data: Vec<f64> = Vec::with_capacity(final_n * m);
@@ -4195,9 +4363,17 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
     let final_depths = compute_fm_depth_internal(&final_data, final_n, m);
 
     let n_keep_final = ((1.0 - trim) * final_n as f64).ceil() as usize;
-    let mut depth_idx: Vec<(usize, f64)> = final_depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
+    let mut depth_idx: Vec<(usize, f64)> = final_depths
+        .iter()
+        .enumerate()
+        .map(|(i, &d)| (i, d))
+        .collect();
     depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep_final).map(|(i, _)| *i).collect();
+    let keep_idx: Vec<usize> = depth_idx
+        .iter()
+        .take(n_keep_final)
+        .map(|(i, _)| *i)
+        .collect();
 
     let mut final_mean = vec![0.0; m];
     let mut final_var = vec![0.0; m];
@@ -4235,7 +4411,8 @@ fn outliers_lrt(data: RMatrix<f64>, argvals: Vec<f64>, nb: i32, smo: f64, trim: 
         outliers = outlier_indices,
         distances = distances,
         threshold = threshold
-    ).into()
+    )
+    .into()
 }
 
 // =============================================================================
@@ -4247,19 +4424,39 @@ fn kernel_value(u: f64, kernel_type: &str) -> f64 {
     match kernel_type {
         "norm" | "normal" | "gaussian" => (-0.5 * u * u).exp() / (2.0 * PI).sqrt(),
         "epa" | "epanechnikov" => {
-            if u.abs() <= 1.0 { 0.75 * (1.0 - u * u) } else { 0.0 }
+            if u.abs() <= 1.0 {
+                0.75 * (1.0 - u * u)
+            } else {
+                0.0
+            }
         }
         "tri" | "triweight" => {
-            if u.abs() <= 1.0 { (35.0/32.0) * (1.0 - u * u).powi(3) } else { 0.0 }
+            if u.abs() <= 1.0 {
+                (35.0 / 32.0) * (1.0 - u * u).powi(3)
+            } else {
+                0.0
+            }
         }
         "quar" | "quartic" | "biweight" => {
-            if u.abs() <= 1.0 { (15.0/16.0) * (1.0 - u * u).powi(2) } else { 0.0 }
+            if u.abs() <= 1.0 {
+                (15.0 / 16.0) * (1.0 - u * u).powi(2)
+            } else {
+                0.0
+            }
         }
         "cos" | "cosine" => {
-            if u.abs() <= 1.0 { (PI/4.0) * (PI * u / 2.0).cos() } else { 0.0 }
+            if u.abs() <= 1.0 {
+                (PI / 4.0) * (PI * u / 2.0).cos()
+            } else {
+                0.0
+            }
         }
         "unif" | "uniform" => {
-            if u.abs() <= 1.0 { 0.5 } else { 0.0 }
+            if u.abs() <= 1.0 {
+                0.5
+            } else {
+                0.0
+            }
         }
         _ => (-0.5 * u * u).exp() / (2.0 * PI).sqrt(), // default to normal
     }
@@ -4274,7 +4471,11 @@ fn s_nw(argvals: Vec<f64>, h: f64, kernel_type: &str, weights: Vec<f64>, cv: boo
         return r!(RMatrix::new_matrix(0, 0, |_, _| 0.0));
     }
 
-    let w = if weights.len() == n { weights } else { vec![1.0; n] };
+    let w = if weights.len() == n {
+        weights
+    } else {
+        vec![1.0; n]
+    };
 
     // Compute smoother matrix (parallelized over rows)
     let s_mat: Vec<Vec<f64>> = (0..n)
@@ -4317,10 +4518,18 @@ fn s_nw(argvals: Vec<f64>, h: f64, kernel_type: &str, weights: Vec<f64>, cv: boo
 fn s_llr(argvals: Vec<f64>, h: f64, kernel_type: &str, weights: Vec<f64>, cv: bool) -> Robj {
     let n = argvals.len();
     if n < 2 {
-        return r!(RMatrix::new_matrix(n, n, |i, j| if i == j { 1.0 } else { 0.0 }));
+        return r!(RMatrix::new_matrix(n, n, |i, j| if i == j {
+            1.0
+        } else {
+            0.0
+        }));
     }
 
-    let w = if weights.len() == n { weights } else { vec![1.0; n] };
+    let w = if weights.len() == n {
+        weights
+    } else {
+        vec![1.0; n]
+    };
 
     // Compute smoother matrix (parallelized over rows)
     let s_mat: Vec<Vec<f64>> = (0..n)
@@ -4389,15 +4598,30 @@ fn s_llr(argvals: Vec<f64>, h: f64, kernel_type: &str, weights: Vec<f64>, cv: bo
 /// Local Polynomial Regression smoother matrix
 /// Solves (p+1)×(p+1) weighted least squares system for each point
 #[extendr]
-fn s_lpr(argvals: Vec<f64>, h: f64, p: i32, kernel_type: &str, weights: Vec<f64>, cv: bool) -> Robj {
+fn s_lpr(
+    argvals: Vec<f64>,
+    h: f64,
+    p: i32,
+    kernel_type: &str,
+    weights: Vec<f64>,
+    cv: bool,
+) -> Robj {
     let n = argvals.len();
     let degree = p as usize;
 
     if n <= degree {
-        return r!(RMatrix::new_matrix(n, n, |i, j| if i == j { 1.0 } else { 0.0 }));
+        return r!(RMatrix::new_matrix(n, n, |i, j| if i == j {
+            1.0
+        } else {
+            0.0
+        }));
     }
 
-    let w = if weights.len() == n { weights } else { vec![1.0; n] };
+    let w = if weights.len() == n {
+        weights
+    } else {
+        vec![1.0; n]
+    };
 
     // Compute smoother matrix (parallelized over rows)
     let s_mat: Vec<Vec<f64>> = (0..n)
@@ -4429,7 +4653,7 @@ fn s_lpr(argvals: Vec<f64>, h: f64, p: i32, kernel_type: &str, weights: Vec<f64>
                 // Compute powers of delta
                 let mut powers = vec![1.0; p1];
                 for d in 1..p1 {
-                    powers[d] = powers[d-1] * delta;
+                    powers[d] = powers[d - 1] * delta;
                 }
 
                 // Accumulate X'W and X'WX
@@ -4491,10 +4715,18 @@ fn s_knn(argvals: Vec<f64>, k: i32, kernel_type: &str, weights: Vec<f64>, cv: bo
     let knn = (k as usize).min(n);
 
     if n == 0 || knn == 0 {
-        return r!(RMatrix::new_matrix(n, n, |i, j| if i == j { 1.0 } else { 0.0 }));
+        return r!(RMatrix::new_matrix(n, n, |i, j| if i == j {
+            1.0
+        } else {
+            0.0
+        }));
     }
 
-    let w = if weights.len() == n { weights } else { vec![1.0; n] };
+    let w = if weights.len() == n {
+        weights
+    } else {
+        vec![1.0; n]
+    };
 
     // Compute smoother matrix (parallelized over rows)
     let s_mat: Vec<Vec<f64>> = (0..n)
@@ -4504,7 +4736,8 @@ fn s_knn(argvals: Vec<f64>, k: i32, kernel_type: &str, weights: Vec<f64>, cv: bo
             let mut row = vec![0.0; n];
 
             // Compute distances and find k-th nearest
-            let mut distances: Vec<(usize, f64)> = argvals.iter()
+            let mut distances: Vec<(usize, f64)> = argvals
+                .iter()
                 .enumerate()
                 .filter(|(j, _)| !cv || *j != i)
                 .map(|(j, &t)| (j, (t - t0).abs()))
@@ -4550,7 +4783,13 @@ fn s_knn(argvals: Vec<f64>, k: i32, kernel_type: &str, weights: Vec<f64>, cv: bo
 // =============================================================================
 
 /// Helper: compute distance matrix using specified metric
-fn compute_distance_matrix(data: &[f64], n: usize, m: usize, argvals: &[f64], metric: &str) -> Vec<Vec<f64>> {
+fn compute_distance_matrix(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    metric: &str,
+) -> Vec<Vec<f64>> {
     let weights = simpsons_weights(argvals);
 
     (0..n)
@@ -4603,8 +4842,15 @@ fn compute_distance_matrix(data: &[f64], n: usize, m: usize, argvals: &[f64], me
 
 /// Functional k-means clustering
 #[extendr]
-fn kmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, max_iter: i32,
-             nstart: i32, metric: &str, seed: Nullable<i32>) -> Robj {
+fn kmeans_fd(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nclusters: i32,
+    max_iter: i32,
+    nstart: i32,
+    metric: &str,
+    seed: Nullable<i32>,
+) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
     let k = nclusters as usize;
@@ -4808,14 +5054,22 @@ fn kmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, max_iter: i3
         withinss = withinss,
         tot_withinss = best_withinss,
         size = best_sizes
-    ).into()
+    )
+    .into()
 }
 
 /// Fuzzy C-Means clustering for functional data
 /// m_fuzz is the fuzziness parameter (typically 2)
 #[extendr]
-fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz: f64,
-                  max_iter: i32, tol: f64, seed: Nullable<i32>) -> Robj {
+fn fuzzycmeans_fd(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    nclusters: i32,
+    m_fuzz: f64,
+    max_iter: i32,
+    tol: f64,
+    seed: Nullable<i32>,
+) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
     let k = nclusters as usize;
@@ -4839,9 +5093,7 @@ fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz:
     };
 
     // Initialize membership matrix randomly and normalize rows to sum to 1
-    let mut membership: Vec<f64> = (0..(n * k))
-        .map(|_| rng.gen::<f64>())
-        .collect();
+    let mut membership: Vec<f64> = (0..(n * k)).map(|_| rng.gen::<f64>()).collect();
 
     // Normalize each row
     for i in 0..n {
@@ -4892,9 +5144,7 @@ fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz:
 
         for i in 0..n {
             // Compute distances to all centers
-            let dists: Vec<f64> = (0..k)
-                .map(|c| dist_sq(i, c, &centers))
-                .collect();
+            let dists: Vec<f64> = (0..k).map(|c| dist_sq(i, c, &centers)).collect();
 
             // Check for zero distances
             let has_zero = dists.iter().any(|&d| d < 1e-20);
@@ -4917,9 +5167,12 @@ fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz:
         }
 
         // Check convergence
-        let diff: f64 = membership.iter().zip(old_membership.iter())
+        let diff: f64 = membership
+            .iter()
+            .zip(old_membership.iter())
             .map(|(a, b)| (a - b).abs())
-            .sum::<f64>() / (n * k) as f64;
+            .sum::<f64>()
+            / (n * k) as f64;
 
         if diff < tol {
             break;
@@ -4946,7 +5199,7 @@ fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz:
                     best_c = c;
                 }
             }
-            (best_c + 1) as i32  // 1-indexed
+            (best_c + 1) as i32 // 1-indexed
         })
         .collect();
 
@@ -4959,13 +5212,19 @@ fn fuzzycmeans_fd(data: RMatrix<f64>, argvals: Vec<f64>, nclusters: i32, m_fuzz:
         centers = centers_mat,
         cluster = cluster,
         objective = objective
-    ).into()
+    )
+    .into()
 }
 
 /// Shift registration: find optimal horizontal shift for each curve
 /// to align with a target (usually the mean)
 #[extendr]
-fn register_shift_1d(data: RMatrix<f64>, target: Vec<f64>, argvals: Vec<f64>, max_shift: f64) -> Robj {
+fn register_shift_1d(
+    data: RMatrix<f64>,
+    target: Vec<f64>,
+    argvals: Vec<f64>,
+    max_shift: f64,
+) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
 
@@ -5043,10 +5302,7 @@ fn register_shift_1d(data: RMatrix<f64>, target: Vec<f64>, argvals: Vec<f64>, ma
     let shifts: Vec<f64> = results.iter().map(|(s, _)| *s).collect();
     let registered_mat = RMatrix::new_matrix(n, m, |i, j| results[i].1[j]);
 
-    list!(
-        shifts = shifts,
-        registered = registered_mat
-    ).into()
+    list!(shifts = shifts, registered = registered_mat).into()
 }
 
 // =============================================================================
@@ -5123,7 +5379,12 @@ fn inprod_fdata(data1: RMatrix<f64>, data2: RMatrix<f64>, argvals: Vec<f64>) -> 
 
 /// Kernel prediction with fixed bandwidth for prediction on new data
 #[extendr]
-fn knn_predict(dist_matrix: RMatrix<f64>, response: Vec<f64>, k: i32, local_k: Nullable<Vec<i32>>) -> Robj {
+fn knn_predict(
+    dist_matrix: RMatrix<f64>,
+    response: Vec<f64>,
+    k: i32,
+    local_k: Nullable<Vec<i32>>,
+) -> Robj {
     let n = dist_matrix.nrows();
     let m = dist_matrix.ncols();
     let dist_slice = dist_matrix.as_real_slice().unwrap();
@@ -5131,42 +5392,49 @@ fn knn_predict(dist_matrix: RMatrix<f64>, response: Vec<f64>, k: i32, local_k: N
     // Extract distance matrix in column-major format
     let get_dist = |i: usize, j: usize| dist_slice[i + j * n];
 
-    let predictions: Vec<f64> = (0..m).into_par_iter().map(|j| {
-        // Get distances for column j
-        let mut dists: Vec<(usize, f64)> = (0..n).map(|i| (i, get_dist(i, j))).collect();
-        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    let predictions: Vec<f64> = (0..m)
+        .into_par_iter()
+        .map(|j| {
+            // Get distances for column j
+            let mut dists: Vec<(usize, f64)> = (0..n).map(|i| (i, get_dist(i, j))).collect();
+            dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-        // Determine bandwidth based on k-th neighbor
-        let k_val = match &local_k {
-            Nullable::NotNull(k_vec) => {
-                // Local: find the nearest training point and use its k
-                let nearest_train_idx = dists[0].0;
-                k_vec[nearest_train_idx] as usize
-            },
-            Nullable::Null => k as usize,
-        };
+            // Determine bandwidth based on k-th neighbor
+            let k_val = match &local_k {
+                Nullable::NotNull(k_vec) => {
+                    // Local: find the nearest training point and use its k
+                    let nearest_train_idx = dists[0].0;
+                    k_vec[nearest_train_idx] as usize
+                }
+                Nullable::Null => k as usize,
+            };
 
-        // Bandwidth is midpoint between k-th and (k+1)-th neighbor
-        let h = if k_val + 1 < n {
-            0.5 * (dists[k_val].1 + dists[k_val + 1].1)
-        } else {
-            dists[k_val].1 * 1.1
-        };
+            // Bandwidth is midpoint between k-th and (k+1)-th neighbor
+            let h = if k_val + 1 < n {
+                0.5 * (dists[k_val].1 + dists[k_val + 1].1)
+            } else {
+                dists[k_val].1 * 1.1
+            };
 
-        // Epanechnikov kernel weights
-        let mut sum_ky = 0.0;
-        let mut sum_k = 0.0;
-        for i in 0..n {
-            let u = get_dist(i, j) / h;
-            if u <= 1.0 {
-                let k_val = 1.0 - u * u;
-                sum_ky += k_val * response[i];
-                sum_k += k_val;
+            // Epanechnikov kernel weights
+            let mut sum_ky = 0.0;
+            let mut sum_k = 0.0;
+            for i in 0..n {
+                let u = get_dist(i, j) / h;
+                if u <= 1.0 {
+                    let k_val = 1.0 - u * u;
+                    sum_ky += k_val * response[i];
+                    sum_k += k_val;
+                }
             }
-        }
 
-        if sum_k > 0.0 { sum_ky / sum_k } else { 0.0 }
-    }).collect();
+            if sum_k > 0.0 {
+                sum_ky / sum_k
+            } else {
+                0.0
+            }
+        })
+        .collect();
 
     Robj::from(predictions)
 }
@@ -5197,16 +5465,58 @@ fn knn_gcv(dist_matrix: RMatrix<f64>, response: Vec<f64>, max_k: i32) -> Robj {
 
     // Try each k value
     for k in 1..=max_k {
-        let mse: f64 = (0..n).into_par_iter().map(|j| {
-            // Leave-one-out: skip self (index 0 in sorted is self with distance 0)
-            // Bandwidth from k-th and (k+1)-th neighbors (excluding self)
-            let h = 0.5 * (sorted_dists[j][k] + sorted_dists[j][k + 1]);
+        let mse: f64 = (0..n)
+            .into_par_iter()
+            .map(|j| {
+                // Leave-one-out: skip self (index 0 in sorted is self with distance 0)
+                // Bandwidth from k-th and (k+1)-th neighbors (excluding self)
+                let h = 0.5 * (sorted_dists[j][k] + sorted_dists[j][k + 1]);
+
+                let mut sum_ky = 0.0;
+                let mut sum_k = 0.0;
+
+                for i in 0..n {
+                    if i == j {
+                        continue;
+                    } // Leave-one-out
+                    let u = get_dist(i, j) / h;
+                    if u <= 1.0 {
+                        let kernel_val = 1.0 - u * u;
+                        sum_ky += kernel_val * response[i];
+                        sum_k += kernel_val;
+                    }
+                }
+
+                let pred = if sum_k > 0.0 {
+                    sum_ky / sum_k
+                } else {
+                    response[j]
+                };
+                (pred - response[j]).powi(2)
+            })
+            .sum();
+
+        mse_vec.push(mse / n as f64);
+    }
+
+    // Find optimal k
+    let k_opt = mse_vec
+        .iter()
+        .enumerate()
+        .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .map(|(i, _)| i + 1)
+        .unwrap_or(1);
+
+    // Compute final predictions with optimal k
+    let yhat: Vec<f64> = (0..n)
+        .into_par_iter()
+        .map(|j| {
+            let h = 0.5 * (sorted_dists[j][k_opt] + sorted_dists[j][k_opt + 1]);
 
             let mut sum_ky = 0.0;
             let mut sum_k = 0.0;
 
             for i in 0..n {
-                if i == j { continue; } // Leave-one-out
                 let u = get_dist(i, j) / h;
                 if u <= 1.0 {
                     let kernel_val = 1.0 - u * u;
@@ -5215,44 +5525,15 @@ fn knn_gcv(dist_matrix: RMatrix<f64>, response: Vec<f64>, max_k: i32) -> Robj {
                 }
             }
 
-            let pred = if sum_k > 0.0 { sum_ky / sum_k } else { response[j] };
-            (pred - response[j]).powi(2)
-        }).sum();
-
-        mse_vec.push(mse / n as f64);
-    }
-
-    // Find optimal k
-    let k_opt = mse_vec.iter()
-        .enumerate()
-        .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .map(|(i, _)| i + 1)
-        .unwrap_or(1);
-
-    // Compute final predictions with optimal k
-    let yhat: Vec<f64> = (0..n).into_par_iter().map(|j| {
-        let h = 0.5 * (sorted_dists[j][k_opt] + sorted_dists[j][k_opt + 1]);
-
-        let mut sum_ky = 0.0;
-        let mut sum_k = 0.0;
-
-        for i in 0..n {
-            let u = get_dist(i, j) / h;
-            if u <= 1.0 {
-                let kernel_val = 1.0 - u * u;
-                sum_ky += kernel_val * response[i];
-                sum_k += kernel_val;
+            if sum_k > 0.0 {
+                sum_ky / sum_k
+            } else {
+                response[j]
             }
-        }
+        })
+        .collect();
 
-        if sum_k > 0.0 { sum_ky / sum_k } else { response[j] }
-    }).collect();
-
-    list!(
-        k_opt = k_opt as i32,
-        mse = mse_vec,
-        yhat = yhat
-    ).into()
+    list!(k_opt = k_opt as i32, mse = mse_vec, yhat = yhat).into()
 }
 
 /// k-NN with Local Cross-Validation
@@ -5267,60 +5548,66 @@ fn knn_lcv(dist_matrix: RMatrix<f64>, response: Vec<f64>, max_k: i32) -> Robj {
     let max_k = (max_k as usize).min(n - 2);
 
     // For each observation, find optimal local k
-    let results: Vec<(i32, f64)> = (0..n).into_par_iter().map(|j| {
-        // Sort neighbors by distance
-        let mut dists: Vec<(usize, f64)> = (0..n)
-            .filter(|&i| i != j)
-            .map(|i| (i, get_dist(i, j)))
-            .collect();
-        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    let results: Vec<(i32, f64)> = (0..n)
+        .into_par_iter()
+        .map(|j| {
+            // Sort neighbors by distance
+            let mut dists: Vec<(usize, f64)> = (0..n)
+                .filter(|&i| i != j)
+                .map(|i| (i, get_dist(i, j)))
+                .collect();
+            dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-        let mut best_k = 1usize;
-        let mut best_error = f64::MAX;
-        let mut best_pred = response[j];
+            let mut best_k = 1usize;
+            let mut best_error = f64::MAX;
+            let mut best_pred = response[j];
 
-        // Try each k
-        for k in 1..=max_k.min(dists.len() - 1) {
-            let h = 0.5 * (dists[k - 1].1 + dists[k].1);
+            // Try each k
+            for k in 1..=max_k.min(dists.len() - 1) {
+                let h = 0.5 * (dists[k - 1].1 + dists[k].1);
 
-            let mut sum_ky = 0.0;
-            let mut sum_k = 0.0;
+                let mut sum_ky = 0.0;
+                let mut sum_k = 0.0;
 
-            for (idx, d) in &dists {
-                let u = d / h;
-                if u <= 1.0 {
-                    let kernel_val = 1.0 - u * u;
-                    sum_ky += kernel_val * response[*idx];
-                    sum_k += kernel_val;
+                for (idx, d) in &dists {
+                    let u = d / h;
+                    if u <= 1.0 {
+                        let kernel_val = 1.0 - u * u;
+                        sum_ky += kernel_val * response[*idx];
+                        sum_k += kernel_val;
+                    }
+                }
+
+                let pred = if sum_k > 0.0 {
+                    sum_ky / sum_k
+                } else {
+                    response[j]
+                };
+                let error = (pred - response[j]).abs();
+
+                if error < best_error {
+                    best_error = error;
+                    best_k = k;
+                    best_pred = pred;
                 }
             }
 
-            let pred = if sum_k > 0.0 { sum_ky / sum_k } else { response[j] };
-            let error = (pred - response[j]).abs();
-
-            if error < best_error {
-                best_error = error;
-                best_k = k;
-                best_pred = pred;
-            }
-        }
-
-        (best_k as i32, best_pred)
-    }).collect();
+            (best_k as i32, best_pred)
+        })
+        .collect();
 
     let k_opt: Vec<i32> = results.iter().map(|x| x.0).collect();
     let yhat: Vec<f64> = results.iter().map(|x| x.1).collect();
 
     // Compute MSE
-    let mse: f64 = yhat.iter().zip(response.iter())
+    let mse: f64 = yhat
+        .iter()
+        .zip(response.iter())
         .map(|(pred, actual)| (pred - actual).powi(2))
-        .sum::<f64>() / n as f64;
+        .sum::<f64>()
+        / n as f64;
 
-    list!(
-        k_opt = k_opt,
-        mse = mse,
-        yhat = yhat
-    ).into()
+    list!(k_opt = k_opt, mse = mse, yhat = yhat).into()
 }
 
 // =============================================================================
@@ -5347,50 +5634,52 @@ fn silhouette_score(dist_matrix: RMatrix<f64>, clusters: Vec<i32>) -> f64 {
     }
 
     // Compute silhouette for each point
-    let silhouettes: Vec<f64> = (0..n).into_par_iter().map(|i| {
-        let ci = clusters[i];
+    let silhouettes: Vec<f64> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let ci = clusters[i];
 
-        // a(i) = mean distance to points in same cluster
-        let same_cluster: Vec<usize> = (0..n)
-            .filter(|&j| j != i && clusters[j] == ci)
-            .collect();
+            // a(i) = mean distance to points in same cluster
+            let same_cluster: Vec<usize> =
+                (0..n).filter(|&j| j != i && clusters[j] == ci).collect();
 
-        if same_cluster.is_empty() {
-            return 0.0; // Single point in cluster
-        }
-
-        let a_i: f64 = same_cluster.iter()
-            .map(|&j| get_dist(i, j))
-            .sum::<f64>() / same_cluster.len() as f64;
-
-        // b(i) = min mean distance to points in other clusters
-        let mut b_i = f64::MAX;
-        for &ck in &unique_clusters {
-            if ck == ci { continue; }
-
-            let other_cluster: Vec<usize> = (0..n)
-                .filter(|&j| clusters[j] == ck)
-                .collect();
-
-            if other_cluster.is_empty() { continue; }
-
-            let mean_dist: f64 = other_cluster.iter()
-                .map(|&j| get_dist(i, j))
-                .sum::<f64>() / other_cluster.len() as f64;
-
-            if mean_dist < b_i {
-                b_i = mean_dist;
+            if same_cluster.is_empty() {
+                return 0.0; // Single point in cluster
             }
-        }
 
-        // s(i) = (b(i) - a(i)) / max(a(i), b(i))
-        let max_ab = a_i.max(b_i);
-        if max_ab == 0.0 {
-            0.0
-        } else {
-            (b_i - a_i) / max_ab
-        }
-    }).collect();
+            let a_i: f64 = same_cluster.iter().map(|&j| get_dist(i, j)).sum::<f64>()
+                / same_cluster.len() as f64;
+
+            // b(i) = min mean distance to points in other clusters
+            let mut b_i = f64::MAX;
+            for &ck in &unique_clusters {
+                if ck == ci {
+                    continue;
+                }
+
+                let other_cluster: Vec<usize> = (0..n).filter(|&j| clusters[j] == ck).collect();
+
+                if other_cluster.is_empty() {
+                    continue;
+                }
+
+                let mean_dist: f64 = other_cluster.iter().map(|&j| get_dist(i, j)).sum::<f64>()
+                    / other_cluster.len() as f64;
+
+                if mean_dist < b_i {
+                    b_i = mean_dist;
+                }
+            }
+
+            // s(i) = (b(i) - a(i)) / max(a(i), b(i))
+            let max_ab = a_i.max(b_i);
+            if max_ab == 0.0 {
+                0.0
+            } else {
+                (b_i - a_i) / max_ab
+            }
+        })
+        .collect();
 
     silhouettes.iter().sum::<f64>() / n as f64
 }
@@ -5506,7 +5795,8 @@ fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercep
             residuals = Vec::<f64>::new(),
             r_squared = 0.0,
             error = "Invalid input dimensions"
-        ).into();
+        )
+        .into();
     }
 
     let x_slice = x.as_real_slice().unwrap();
@@ -5532,7 +5822,8 @@ fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercep
                 residuals = Vec::<f64>::new(),
                 r_squared = 0.0,
                 error = format!("Fit failed: {:?}", e)
-            ).into();
+            )
+            .into();
         }
     };
 
@@ -5554,7 +5845,8 @@ fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercep
     }
 
     // Compute residuals
-    let residuals: Vec<f64> = y.iter()
+    let residuals: Vec<f64> = y
+        .iter()
         .zip(fitted_values.iter())
         .map(|(&yi, &yhat)| yi - yhat)
         .collect();
@@ -5563,7 +5855,11 @@ fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercep
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
     let ss_res: f64 = residuals.iter().map(|&r| r.powi(2)).sum();
-    let r_squared = if ss_tot > 0.0 { 1.0 - ss_res / ss_tot } else { 0.0 };
+    let r_squared = if ss_tot > 0.0 {
+        1.0 - ss_res / ss_tot
+    } else {
+        0.0
+    };
 
     list!(
         coefficients = coefficients,
@@ -5573,7 +5869,8 @@ fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercep
         r_squared = r_squared,
         lambda = lambda,
         error = ""
-    ).into()
+    )
+    .into()
 }
 
 // =============================================================================
