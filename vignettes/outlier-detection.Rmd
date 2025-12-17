@@ -298,8 +298,9 @@ plot(og)
 ```
 
 ```{r msplot}
-# Magnitude-Shape plot
-ms <- MS.plot(fd)
+# Magnitude-Shape outlier detection
+ms <- magnitudeshape(fd)
+plot(ms)
 ```
 
 ### Labeling Outliers by ID or Metadata
@@ -327,8 +328,8 @@ plot(og_labeled, label = "id", label_all = TRUE)
 ```
 
 ```{r ms-labeling}
-# MS-plot with custom labels
-MS.plot(fd_labeled, label = "subject")
+# magnitudeshape with custom labels
+magnitudeshape(fd_labeled, label = "subject")
 ```
 
 ## Method Selection Guide
@@ -339,7 +340,7 @@ MS.plot(fd_labeled, label = "subject")
 | depth.trim | Known contamination rate | Controllable |
 | LRT | Magnitude outliers | High |
 | outliergram | Shape outliers | Visual |
-| MS.plot | Both magnitude & shape | Visual |
+| magnitudeshape | Both magnitude & shape | Visual |
 
 ## Best Practices
 

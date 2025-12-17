@@ -179,12 +179,12 @@ Identify unusual curves:
 - `outliers.depth.pond` - Weighted depth-based detection
 - `outliers.lrt` - Likelihood ratio test
 - `outliers.boxplot` - Functional boxplot-based detection
-- `MS.plot` - Magnitude-Shape plot for visualizing outliers
+- `magnitudeshape` - Magnitude-Shape outlier detection
 - `outliergram` - Outliergram (MEI vs MBD plot)
 
 #### Labeling Outliers by ID or Metadata
 
-Both `MS.plot` and `plot.outliergram` support labeling points by ID or metadata columns:
+Both `magnitudeshape` and `outliergram` support labeling points by ID or metadata columns:
 
 ```r
 # Create fdata with IDs and metadata
@@ -197,9 +197,9 @@ plot(og, label = "id")           # Label outliers with patient IDs
 plot(og, label = "subject_id")   # Label with metadata column
 plot(og, label_all = TRUE)       # Label ALL points, not just outliers
 
-# MS.plot with custom labels
-MS.plot(fd, label = "id")        # Label outliers with patient IDs
-MS.plot(fd, label = NULL)        # No labels
+# magnitudeshape with custom labels
+magnitudeshape(fd, label = "id")        # Label outliers with patient IDs
+magnitudeshape(fd, label = NULL)        # No labels
 ```
 
 ### Functional Statistics
@@ -268,7 +268,7 @@ trimvar(fd, trim = 0.1, method = "mode")
   - `show.mean = TRUE` - Overlay group mean curves
   - `show.ci = TRUE` - Show confidence interval ribbons per group
 - `boxplot.fdata` - Functional boxplot with depth-based envelopes
-- `MS.plot` - Magnitude-Shape plot for outlier visualization
+- `magnitudeshape` - Magnitude-Shape outlier detection and visualization
 - `outliergram` - Outliergram for shape outlier detection (MEI vs MBD plot)
 - `plot.fdata2pc` - FPCA visualization (components, variance, scores)
 
@@ -399,7 +399,7 @@ fdars uses a clean, unified API with method parameters:
 | `cov.Gaussian()`, `cov.Matern()`, etc. | Covariance kernel functions |
 | `outliergram(fd)` | Outliergram for shape outlier detection |
 | `plot(outliergram, label)` | Plot outliergram with ID/metadata labels |
-| `MS.plot(fd, label)` | MS plot with ID/metadata labels |
+| `magnitudeshape(fd, label)` | Magnitude-Shape outlier detection with labels |
 | `plot(fdata2pc_obj)` | FPCA visualization |
 | `plot(fd, color = groups)` | Plot with coloring by groups/values |
 | `group.distance(fd, groups)` | Distance between groups (centroid, hausdorff, depth) |

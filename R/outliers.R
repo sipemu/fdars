@@ -362,10 +362,10 @@ outliers.boxplot <- function(fdataobj, prob = 0.5, factor = 1.5,
   )
 }
 
-#' Magnitude-Shape Plot for Functional Data
+#' Magnitude-Shape Outlier Detection for Functional Data
 #'
-#' Creates a Magnitude-Shape (MS) plot for functional outlier detection.
-#' The MS plot displays each curve as a point in 2D space where the x-axis
+#' Performs Magnitude-Shape (MS) outlier detection for functional data.
+#' Each curve is represented as a point in 2D space where the x-axis
 #' represents magnitude outlyingness and the y-axis represents shape outlyingness.
 #'
 #' @param fdataobj An object of class 'fdata'.
@@ -385,7 +385,7 @@ outliers.boxplot <- function(fdataobj, prob = 0.5, factor = 1.5,
 #' @param ... Additional arguments passed to depth function.
 #' @importFrom stats qchisq
 #'
-#' @return A list of class 'ms.plot' with components:
+#' @return A list of class 'magnitudeshape' with components:
 #' \describe{
 #'   \item{MO}{Magnitude outlyingness values}
 #'   \item{VO}{Shape (variability) outlyingness values}
@@ -422,21 +422,21 @@ outliers.boxplot <- function(fdataobj, prob = 0.5, factor = 1.5,
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Create MS plot
-#' ms <- MS.plot(fd)
+#' ms <- magnitudeshape(fd)
 #'
 #' # With IDs and metadata
 #' fd <- fdata(X, argvals = t, id = paste0("curve_", 1:30))
-#' ms <- MS.plot(fd, label = "id")
-MS.plot <- function(fdataobj, depth.func = depth.MBD,
-                    cutoff.quantile = 0.993,
-                    col.normal = "black", col.outliers = "red",
-                    label = "index", label_all = FALSE, ...) {
+#' ms <- magnitudeshape(fd, label = "id")
+magnitudeshape <- function(fdataobj, depth.func = depth.MBD,
+                           cutoff.quantile = 0.993,
+                           col.normal = "black", col.outliers = "red",
+                           label = "index", label_all = FALSE, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("MS.plot not yet implemented for 2D functional data")
+    stop("magnitudeshape not yet implemented for 2D functional data")
   }
 
   n <- nrow(fdataobj$data)
@@ -582,21 +582,21 @@ MS.plot <- function(fdataobj, depth.func = depth.MBD,
       fdataobj = fdataobj,
       plot = p
     ),
-    class = "ms.plot"
+    class = "magnitudeshape"
   )
 
   invisible(result)
 }
 
-#' Print Method for ms.plot Objects
+#' Print Method for magnitudeshape Objects
 #'
-#' @param x An object of class 'ms.plot'.
+#' @param x An object of class 'magnitudeshape'.
 #' @param ... Additional arguments (ignored).
 #'
 #' @export
-print.ms.plot <- function(x, ...) {
-  cat("Magnitude-Shape Plot\n")
-  cat("====================\n")
+print.magnitudeshape <- function(x, ...) {
+  cat("Magnitude-Shape Outlier Detection\n")
+  cat("==================================\n")
   cat("Number of curves:", length(x$MO), "\n")
   cat("Outliers detected:", length(x$outliers), "\n")
   if (length(x$outliers) > 0) {
@@ -604,6 +604,19 @@ print.ms.plot <- function(x, ...) {
   }
   cat("Chi-squared cutoff:", round(x$cutoff, 3), "\n")
   invisible(x)
+}
+
+#' Plot Method for magnitudeshape Objects
+#'
+#' @param x An object of class 'magnitudeshape'.
+#' @param ... Additional arguments (ignored).
+#'
+#' @return The ggplot object (invisibly).
+#'
+#' @export
+plot.magnitudeshape <- function(x, ...) {
+  print(x$plot)
+  invisible(x$plot)
 }
 
 #' Outliergram for Functional Data
@@ -659,7 +672,7 @@ print.ms.plot <- function(x, ...) {
 #' Arribas-Gil, A. and Romo, J. (2014). Shape outlier detection and visualization
 #' for functional data: the outliergram. \emph{Biostatistics}, 15(4), 603-619.
 #'
-#' @seealso \code{\link{depth}} for depth computation, \code{\link{MS.plot}} for
+#' @seealso \code{\link{depth}} for depth computation, \code{\link{magnitudeshape}} for
 #'   an alternative outlier visualization.
 #'
 #' @export

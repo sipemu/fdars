@@ -40,7 +40,7 @@ All notable changes to fdars are documented in this file.
 ### Added
 - `id` and `metadata` slots in fdata objects for storing curve identifiers and associated data
 - Outlier plot labeling: `plot(outliergram, label = "id")` or `label = "column_name"`
-- `MS.plot()` labeling support
+- `magnitudeshape()` labeling support (renamed from MS.plot)
 
 ### Changed
 - Auto-reduce alpha when `show.mean = TRUE` in `plot.fdata()`
