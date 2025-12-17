@@ -14,19 +14,80 @@ Functional Data Analysis (FDA) is a branch of statistics that deals with data wh
 
 Traditional statistical methods treat each time point as a separate variable, losing the inherent smoothness and continuity of the data. FDA treats the entire curve as a single observation, enabling more powerful and interpretable analyses.
 
-## Why fdars?
+## Features
 
-fdars provides tools to:
+fdars is a comprehensive toolkit for functional data analysis with a high-performance Rust backend providing 10-200x speedups over pure R implementations.
 
-1. **Represent functional data** - Store and manipulate collections of curves with the `fdata` class
-2. **Measure centrality** - Find representative curves using depth functions (Fraiman-Muniz, modal, random projection)
-3. **Detect outliers** - Identify unusual curves that deviate from the population
-4. **Compute distances** - Measure similarity between curves using various metrics (Lp, Hausdorff, DTW)
-5. **Perform regression** - Predict scalar responses from functional predictors
-6. **Cluster curves** - Group similar functional observations together
-7. **Smooth noisy data** - Apply kernel smoothing to reduce noise while preserving signal
+### Data Representation
+- **1D functional data** - Curves, time series, spectra
+- **2D functional data** - Surfaces, images, spatial fields
+- **Metadata support** - Attach IDs and covariates to observations
+- **Flexible I/O** - Create from matrices, arrays, or data frames
 
-The Rust backend provides 10-200x speedups over pure R implementations for computationally intensive operations like depth computation, distance matrices, and clustering.
+### Depth & Centrality
+Measure how "central" or "typical" each curve is:
+- Fraiman-Muniz (FM), Band depth (BD), Modified band depth (MBD)
+- Modal depth, Random projection (RP, RT, RPD)
+- Functional spatial depth (FSD, KFSD)
+- Depth-based median, trimmed mean, trimmed variance
+
+### Outlier Detection
+Multiple approaches to identify anomalous curves:
+- Depth-based trimming and weighting
+- Likelihood ratio test (LRT)
+- Functional boxplot
+- Magnitude-Shape plot (magnitude vs shape outliers)
+- Outliergram (MEI vs MBD)
+
+### Distance & Similarity
+Quantify differences between curves:
+- Lp distances (L1, L2, L∞)
+- Hausdorff distance
+- Dynamic time warping (DTW)
+- PCA-based and derivative-based semimetrics
+
+### Regression
+Predict scalar outcomes from functional predictors:
+- Principal component regression (`fregre.pc`)
+- Basis expansion regression (`fregre.basis`)
+- Nonparametric kernel regression (`fregre.np`)
+- Cross-validation for model selection
+
+### Clustering
+Group similar curves together:
+- K-means clustering with K-means++ initialization
+- Fuzzy C-means with soft membership
+- Automatic selection of optimal k (silhouette, CH, elbow)
+
+### Smoothing & Basis Expansion
+- Nadaraya-Watson, local linear/polynomial regression
+- B-spline and Fourier basis expansions
+- P-splines with automatic smoothing parameter selection
+- Cross-validation (GCV, AIC, BIC) for basis selection
+
+### Functional Statistics
+- Mean, variance, standard deviation, covariance
+- Geometric median (L1 median)
+- Bootstrap confidence intervals
+- Hypothesis testing for functional means
+
+### Gaussian Process Simulation
+Generate synthetic functional data:
+- Multiple covariance kernels (Gaussian, Matérn, Exponential, Periodic)
+- Kernel composition (addition, multiplication)
+- Brownian motion and Ornstein-Uhlenbeck processes
+
+### Group Comparison
+- Between-group distance matrices (centroid, Hausdorff, depth-based)
+- Permutation tests for significant group differences
+- Visualization (heatmaps, dendrograms)
+
+### Visualization
+- Curve plots with categorical/continuous coloring
+- Group means and confidence intervals
+- Functional boxplots
+- FPCA component visualization
+- Outlier diagnostic plots
 
 ## Installation
 
