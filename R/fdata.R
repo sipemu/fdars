@@ -323,6 +323,9 @@ fdata <- function(mdata, argvals = NULL, rangeval = NULL,
 #' @param t_cols Names or indices of the t-dimension value columns. If NULL
 #'   (default), uses all columns after \code{s_col}.
 #' @param names Optional list with 'main', 'xlab', 'ylab', 'zlab' for labels.
+#' @param metadata Optional data.frame with additional covariates (one row per
+#'   surface). If metadata has an "id" column or non-default row names,
+#'   they must match the surface identifiers from \code{id_col}.
 #'
 #' @return An object of class 'fdata' with 2D functional data.
 #'
@@ -349,7 +352,12 @@ fdata <- function(mdata, argvals = NULL, rangeval = NULL,
 #' )
 #' fd <- df_to_fdata2d(df)
 #' print(fd)
-df_to_fdata2d <- function(df, id_col = 1, s_col = 2, t_cols = NULL, names = NULL) {
+#'
+#' # With metadata
+#' meta <- data.frame(group = c("A", "B"), value = c(1.5, 2.3))
+#' fd <- df_to_fdata2d(df, metadata = meta)
+df_to_fdata2d <- function(df, id_col = 1, s_col = 2, t_cols = NULL, names = NULL,
+                          metadata = NULL) {
   if (!is.data.frame(df)) {
     stop("df must be a data frame")
   }
@@ -403,7 +411,33 @@ df_to_fdata2d <- function(df, id_col = 1, s_col = 2, t_cols = NULL, names = NULL
   }
 
   # Set row names to identifiers
-  rownames(data_mat) <- as.character(unique_ids)
+  id <- as.character(unique_ids)
+  rownames(data_mat) <- id
+
+  # Validate metadata if provided
+  if (!is.null(metadata)) {
+    if (!is.data.frame(metadata)) {
+      stop("metadata must be a data.frame")
+    }
+    if (nrow(metadata) != n) {
+      stop("metadata must have ", n, " rows (one per surface), got ", nrow(metadata))
+    }
+
+    # Check ID matching if metadata has IDs
+    meta_ids <- NULL
+    if ("id" %in% colnames(metadata)) {
+      meta_ids <- as.character(metadata$id)
+    } else if (!is.null(rownames(metadata)) &&
+               !identical(rownames(metadata), as.character(seq_len(nrow(metadata))))) {
+      meta_ids <- rownames(metadata)
+    }
+
+    if (!is.null(meta_ids)) {
+      if (!identical(id, meta_ids)) {
+        stop("IDs in metadata do not match surface identifiers from id_col")
+      }
+    }
+  }
 
   # Get t values from column names if numeric, otherwise use indices
   t_vals <- suppressWarnings(as.numeric(colnames(df)[t_cols]))
@@ -415,7 +449,7 @@ df_to_fdata2d <- function(df, id_col = 1, s_col = 2, t_cols = NULL, names = NULL
   argvals <- list(s = unique_s, t = t_vals)
 
   # Create fdata object
-  fdata(data_mat, argvals = argvals, names = names)
+  fdata(data_mat, argvals = argvals, names = names, id = id, metadata = metadata)
 }
 
 #' Center functional data

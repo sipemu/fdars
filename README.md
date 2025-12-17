@@ -414,6 +414,10 @@ df <- data.frame(
 
 # Convert to 2D fdata
 fd2d <- df_to_fdata2d(df, id_col = 1, s_col = 2)
+
+# With metadata (must have one row per surface)
+meta <- data.frame(group = c("A", "B"), value = c(1.5, 2.3))
+fd2d <- df_to_fdata2d(df, id_col = 1, s_col = 2, metadata = meta)
 ```
 
 ## License
