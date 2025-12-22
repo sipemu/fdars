@@ -34,7 +34,7 @@ reference:
   - fdata
   - fdata.cen
   - deriv
-  - mean
+  - mean.fdata
   - median
   - trimmed
   - trimvar
@@ -67,7 +67,17 @@ reference:
 
 - title: Depth Functions
   contents:
-  - starts_with("depth")
+  - depth
+  - depth.BD
+  - depth.FM
+  - depth.FSD
+  - depth.KFSD
+  - depth.MBD
+  - depth.MEI
+  - depth.mode
+  - depth.RP
+  - depth.RPD
+  - depth.RT
 
 - title: Distance & Metrics
   contents:
@@ -77,7 +87,11 @@ reference:
   - metric.kl
   - metric.lp
   - norm
-  - starts_with("semimetric")
+  - semimetric.basis
+  - semimetric.deriv
+  - semimetric.fourier
+  - semimetric.hshift
+  - semimetric.pca
   - group.distance
 
 - title: Clustering
@@ -90,19 +104,35 @@ reference:
 - title: Outlier Detection
   contents:
   - outliergram
-  - starts_with("outliers")
-  - magnitudeshape
+  - outliers.boxplot
+  - outliers.depth.pond
+  - outliers.depth.trim
+  - outliers.lrt
+  - outliers.thres.lrt
 
 - title: Regression
   contents:
-  - starts_with("fregre")
+  - fregre.basis
+  - fregre.basis.cv
+  - fregre.np
+  - fregre.np.cv
+  - fregre.np.multi
+  - fregre.pc
+  - fregre.pc.cv
   - optim.np
   - flm.test
-  - starts_with("pred.")
+  - pred.MAE
+  - pred.MSE
+  - pred.R2
+  - pred.RMSE
 
 - title: Smoothing
   contents:
-  - starts_with("S.")
+  - S.KNN
+  - S.LCR
+  - S.LLR
+  - S.LPR
+  - S.NW
   - CV.S
   - GCV.S
   - h.default
@@ -113,13 +143,37 @@ reference:
   - Kernel
   - Kernel.asymmetric
   - Kernel.integrate
-  - starts_with("Ker.")
-  - starts_with("AKer.")
-  - starts_with("IKer.")
+  - Ker.cos
+  - Ker.epa
+  - Ker.norm
+  - Ker.quar
+  - Ker.tri
+  - Ker.unif
+  - AKer.cos
+  - AKer.epa
+  - AKer.norm
+  - AKer.quar
+  - AKer.tri
+  - AKer.unif
+  - IKer.cos
+  - IKer.epa
+  - IKer.norm
+  - IKer.quar
+  - IKer.tri
+  - IKer.unif
 
 - title: Covariance Functions (GP)
   contents:
-  - starts_with("kernel_")
+  - kernel_add
+  - kernel_brownian
+  - kernel_exponential
+  - kernel_gaussian
+  - kernel_linear
+  - kernel_matern
+  - kernel_mult
+  - kernel_periodic
+  - kernel_polynomial
+  - kernel_whitenoise
   - make_gaussian_process
   - cov
 
