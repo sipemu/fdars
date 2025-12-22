@@ -1,0 +1,135 @@
+url: https://sipemu.github.io/fdars
+template:
+  bootstrap: 5
+
+home:
+  title: fdars - Functional Data Analysis in Rust
+
+navbar:
+  structure:
+    left: [intro, reference, articles]
+    right: [search, github]
+
+articles:
+- title: Getting Started
+  contents:
+  - introduction
+- title: Core Methods
+  contents:
+  - basis-representation
+  - depth-functions
+  - distance-metrics
+- title: Analysis
+  contents:
+  - clustering
+  - outlier-detection
+  - regression
+- title: Advanced
+  contents:
+  - covariance-functions
+
+reference:
+- title: Functional Data Objects
+  contents:
+  - fdata
+  - fdata.cen
+  - deriv
+  - mean
+  - median
+  - trimmed
+  - trimvar
+  - var
+  - sd
+  - normalize
+  - gmed
+  - inprod.fdata
+  - int.simpson
+  - localavg.fdata
+  - fdata.bootstrap
+  - fdata.bootstrap.ci
+  - df_to_fdata2d
+
+- title: Basis Representation
+  contents:
+  - fdata2basis
+  - fdata2basis.2d
+  - fdata2basis.cv
+  - basis2fdata
+  - basis2fdata.2d
+  - fdata2fd
+  - fdata2pc
+  - fdata2pls
+  - basis.aic
+  - basis.bic
+  - basis.gcv
+  - pspline
+  - pspline.2d
+
+- title: Depth Functions
+  contents:
+  - starts_with("depth")
+
+- title: Distance & Metrics
+  contents:
+  - metric
+  - metric.DTW
+  - metric.hausdorff
+  - metric.kl
+  - metric.lp
+  - norm
+  - starts_with("semimetric")
+  - group.distance
+
+- title: Clustering
+  contents:
+  - cluster.fcm
+  - cluster.init
+  - cluster.kmeans
+  - cluster.optim
+
+- title: Outlier Detection
+  contents:
+  - outliergram
+  - starts_with("outliers")
+  - magnitudeshape
+
+- title: Regression
+  contents:
+  - starts_with("fregre")
+  - optim.np
+  - flm.test
+  - starts_with("pred.")
+
+- title: Smoothing
+  contents:
+  - starts_with("S.")
+  - CV.S
+  - GCV.S
+  - h.default
+  - register.fd
+
+- title: Kernels (Smoothing)
+  contents:
+  - Kernel
+  - Kernel.asymmetric
+  - Kernel.integrate
+  - starts_with("Ker.")
+  - starts_with("AKer.")
+  - starts_with("IKer.")
+
+- title: Covariance Functions (GP)
+  contents:
+  - starts_with("kernel_")
+  - make_gaussian_process
+  - cov
+
+- title: Random Processes
+  contents:
+  - r.bridge
+  - r.brownian
+  - r.ou
+
+- title: Statistical Tests
+  contents:
+  - fmean.test.fdata
+  - group.test
