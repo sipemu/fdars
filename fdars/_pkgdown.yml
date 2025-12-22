@@ -187,3 +187,56 @@ reference:
   contents:
   - fmean.test.fdata
   - group.test
+
+- title: Plotting
+  contents:
+  - plot.fdata
+  - boxplot.fdata
+  - plot.fdata2pc
+  - plot.basis.cv
+  - plot.cluster.fcm
+  - plot.cluster.kmeans
+  - plot.cluster.optim
+  - plot.group.distance
+  - plot.outliergram
+  - plot.outliers.fdata
+  - plot.pspline
+  - plot.pspline.2d
+  - plot.register.fd
+  - MS.plot
+
+- title: Prediction
+  contents:
+  - predict.fregre.fd
+  - predict.fregre.np
+  - predict.fregre.np.multi
+
+- title: Print & Summary
+  contents:
+  - print.fdata
+  - print.fdata2pc
+  - print.fdata.bootstrap.ci
+  - print.basis.cv
+  - print.cluster.fcm
+  - print.cluster.kmeans
+  - print.cluster.optim
+  - print.fbplot
+  - print.fregre.fd
+  - print.fregre.np
+  - print.fregre.np.multi
+  - print.group.distance
+  - print.group.test
+  - print.kernel
+  - print.ms.plot
+  - print.outliergram
+  - print.outliers.fdata
+  - print.pspline
+  - print.pspline.2d
+  - print.register.fd
+  - summary.fdata
+
+- title: Other
+  contents:
+  - sub-.fdata
+  - kernels
+  - fdars-package
