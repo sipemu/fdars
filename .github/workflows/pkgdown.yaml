@@ -26,9 +26,13 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::pkgdown
+          extra-packages: any::pkgdown, any::roxygen2
           needs: website
           working-directory: fdars
+
+      - name: Generate documentation
+        run: roxygen2::roxygenise("fdars")
+        shell: Rscript {0}
 
       - name: Install package
         run: R CMD INSTALL fdars
