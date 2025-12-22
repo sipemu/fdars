@@ -109,6 +109,7 @@ reference:
   - outliers.depth.trim
   - outliers.lrt
   - outliers.thres.lrt
+  - magnitudeshape
 
 - title: Regression
   contents:
@@ -190,6 +191,7 @@ reference:
 
 - title: Plotting
   contents:
+  - autoplot.fdata
   - plot.fdata
   - boxplot.fdata
   - plot.fdata2pc
@@ -203,7 +205,7 @@ reference:
   - plot.pspline
   - plot.pspline.2d
   - plot.register.fd
-  - MS.plot
+  - plot.magnitudeshape
 
 - title: Prediction
   contents:
@@ -227,7 +229,7 @@ reference:
   - print.group.distance
   - print.group.test
   - print.kernel
-  - print.ms.plot
+  - print.magnitudeshape
   - print.outliergram
   - print.outliers.fdata
   - print.pspline
