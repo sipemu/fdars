@@ -16,7 +16,7 @@ all: $(SHLIB)
 $(SHLIB): $(STATLIB) $(OBJECTS)
 
 $(STATLIB):
-	cd $(RUST_SRC) && cargo build --release --lib --target $(RUST_TARGET)
+	cd $(RUST_SRC) && set CARGO_TARGET_DIR=target && cargo build --release --lib --target $(RUST_TARGET)
 
 clean:
 	rm -Rf $(OBJECTS) $(RUST_SRC)/target
