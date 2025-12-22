@@ -239,6 +239,6 @@ reference:
 
 - title: Other
   contents:
-  - "`sub-.fdata`"
+  - "`[.fdata`"
   - kernels
   - fdars-package
