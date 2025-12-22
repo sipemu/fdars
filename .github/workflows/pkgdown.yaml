@@ -26,9 +26,12 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::pkgdown, local::.
+          extra-packages: any::pkgdown
           needs: website
           working-directory: fdars
+
+      - name: Install package
+        run: R CMD INSTALL fdars
 
       - name: Build site
         run: pkgdown::build_site_github_pages(pkg = "fdars", new_process = FALSE, install = FALSE)
