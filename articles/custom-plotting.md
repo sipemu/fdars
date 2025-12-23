@@ -15,6 +15,7 @@ library(fdars)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+theme_set(theme_minimal())
 ```
 
 ## Understanding the fdata Structure

@@ -33,6 +33,7 @@ library(fdars)
 #> 
 #>     norm
 library(ggplot2)
+theme_set(theme_minimal())
 set.seed(42)
 ```
 
@@ -102,10 +103,9 @@ ggplot(df_compare, aes(x = t, y = value, color = type, linewidth = type)) +
                                  "Fourier (K=15)" = "red")) +
   scale_linewidth_manual(values = c("Original" = 0.5, "B-spline (K=15)" = 1,
                                      "Fourier (K=15)" = 1)) +
-  facet_wrap(~ type, ncol = 2, scales = "fixed") +
   labs(x = "t", y = "X(t)", title = "Basis Representation Comparison") +
-  theme_minimal() +
-  theme(legend.position = "none")
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  guides(linewidth = "none")
 ```
 
 ![](basis-representation_files/figure-html/basis-comparison-1.png)

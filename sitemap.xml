@@ -46,6 +46,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/S.LLR.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/S.LPR.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/S.NW.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/analyze_peak_timing.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/autoplot.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.aic.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.bic.html</loc></url>
@@ -53,6 +54,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/basis2fdata.2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis2fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/boxplot.fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/classify_seasonality.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.fcm.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.init.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.kmeans.html</loc></url>
@@ -72,6 +74,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/deriv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect_peaks.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect_seasonality_changes.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/df_to_fdata2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/dot-onLoad.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/estimate_period.html</loc></url>

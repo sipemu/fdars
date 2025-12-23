@@ -188,8 +188,14 @@
   : Time-Varying Seasonal Strength
 - [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)
   : Detect Changes in Seasonality
+- [`detect_seasonality_changes_auto()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.md)
+  : Detect Seasonality Changes with Automatic Threshold
 - [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)
   : Estimate Instantaneous Period
+- [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)
+  : Analyze Peak Timing Variability
+- [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
+  : Classify Seasonality Type
 
 ## Smoothing
 

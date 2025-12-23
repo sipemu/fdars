@@ -21,6 +21,7 @@ library(fdars)
 #> 
 #>     norm
 library(ggplot2)
+theme_set(theme_minimal())
 ```
 
 ## Available Covariance Functions

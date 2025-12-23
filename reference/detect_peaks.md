@@ -11,7 +11,7 @@ detect_peaks(
   min_distance = NULL,
   min_prominence = NULL,
   smooth_first = FALSE,
-  smooth_lambda = 10
+  smooth_lambda = NULL
 )
 ```
 
@@ -75,4 +75,7 @@ fd <- fdata(X, argvals = t)
 peaks <- detect_peaks(fd, min_distance = 1.5)
 print(peaks$mean_period)  # Should be close to 2
 #> [1] 2.01005
+
+# With automatic GCV smoothing
+peaks_smooth <- detect_peaks(fd, min_distance = 1.5, smooth_first = TRUE)
 ```

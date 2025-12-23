@@ -28,6 +28,7 @@ library(fdars)
 #> 
 #>     norm
 library(ggplot2)
+theme_set(theme_minimal())
 
 # Create example data with different curve types
 set.seed(42)

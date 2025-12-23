@@ -53,6 +53,8 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
+theme_set(theme_minimal())
 
 # Generate example data
 set.seed(42)
@@ -455,7 +457,6 @@ df_pred <- data.frame(
 )
 
 # Observed vs predicted
-library(ggplot2)
 ggplot(df_pred, aes(x = Observed, y = PC)) +
   geom_point() +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +

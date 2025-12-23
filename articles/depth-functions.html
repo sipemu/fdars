@@ -30,7 +30,30 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
-<li class="active nav-item"><a class="nav-link" href="../articles/index.html">Articles</a></li>
+<li class="active nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><h6 class="dropdown-header" data-toc-skip>Getting Started</h6></li>
+    <li><a class="dropdown-item" href="../articles/introduction.html">Introduction to fdars</a></li>
+    <li><a class="dropdown-item" href="../articles/custom-plotting.html">Custom Plotting with ggplot2</a></li>
+    <li><a class="dropdown-item" href="../articles/intro-to-smoothing.html">Introduction to Smoothing</a></li>
+    <li><a class="dropdown-item" href="../articles/working-with-derivatives.html">Working with Derivatives</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Core Methods</h6></li>
+    <li><a class="dropdown-item" href="../articles/basis-representation.html">Basis Representation</a></li>
+    <li><a class="dropdown-item" href="../articles/depth-functions.html">Depth Functions</a></li>
+    <li><a class="dropdown-item" href="../articles/distance-metrics.html">Distance Metrics</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Analysis</h6></li>
+    <li><a class="dropdown-item" href="../articles/clustering.html">Clustering</a></li>
+    <li><a class="dropdown-item" href="../articles/outlier-detection.html">Outlier Detection</a></li>
+    <li><a class="dropdown-item" href="../articles/regression.html">Regression</a></li>
+    <li><a class="dropdown-item" href="../articles/seasonal-analysis.html">Seasonal Analysis</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
+    <li><a class="dropdown-item" href="../articles/covariance-functions.html">Covariance Functions</a></li>
+  </ul>
+</li>
       </ul>
 <ul class="navbar-nav">
 <li class="nav-item"><form class="form-inline" role="search">
@@ -80,6 +103,7 @@ functional data.</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;     norm</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">theme_set</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Create example data</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span>
@@ -99,7 +123,7 @@ functional data.</p>
 <span></span>
 <span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X</span>, argvals <span class="op">=</span> <span class="va">t_grid</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span></code></pre></div>
-<p><img src="depth-functions_files/figure-html/setup-1.png" class="r-plt" alt="" width="672"></p>
+<p><img src="depth-functions_files/figure-html/setup-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level2">
 <h2 id="available-depth-functions">Available Depth Functions<a class="anchor" aria-label="anchor" href="#available-depth-functions"></a>
@@ -152,7 +176,7 @@ of the projections. More robust to local variations.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RP"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rp</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.07483871 0.11032258 0.23354839 0.27354839 0.25032258 0.23225806</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.05225806 0.09870968 0.28580645 0.32387097 0.26322581 0.25225806</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="random-tukey-depth-method-rt">Random Tukey Depth (method = “RT”)<a class="anchor" aria-label="anchor" href="#random-tukey-depth-method-rt"></a>
@@ -162,7 +186,7 @@ halfspace depth. Very robust to outliers.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RT"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rt</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.03225806 0.03225806 0.03225806 0.06451613 0.03225806 0.03225806</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.03225806 0.03225806 0.03225806 0.06451613 0.03225806 0.06451613</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="functional-spatial-depth-method-fsd">Functional Spatial Depth (method = “FSD”)<a class="anchor" aria-label="anchor" href="#functional-spatial-depth-method-fsd"></a>
@@ -192,7 +216,7 @@ changes in addition to magnitude.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rpd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RPD"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rpd</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.1053333 0.1033333 0.1686667 0.2186667 0.2126667 0.2133333</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.0920000 0.1073333 0.1686667 0.2253333 0.2033333 0.2060000</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -213,11 +237,11 @@ curves differently:</p>
 <span><span class="co"># Correlation between depth functions</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">all_depths</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        FM mode   RP   RT  FSD</span></span>
-<span><span class="co">#&gt; FM   1.00 0.98 0.92 0.22 0.98</span></span>
-<span><span class="co">#&gt; mode 0.98 1.00 0.94 0.15 0.97</span></span>
-<span><span class="co">#&gt; RP   0.92 0.94 1.00 0.12 0.94</span></span>
-<span><span class="co">#&gt; RT   0.22 0.15 0.12 1.00 0.24</span></span>
-<span><span class="co">#&gt; FSD  0.98 0.97 0.94 0.24 1.00</span></span></code></pre></div>
+<span><span class="co">#&gt; FM   1.00 0.98 0.95 0.18 0.98</span></span>
+<span><span class="co">#&gt; mode 0.98 1.00 0.95 0.19 0.97</span></span>
+<span><span class="co">#&gt; RP   0.95 0.95 1.00 0.02 0.94</span></span>
+<span><span class="co">#&gt; RT   0.18 0.19 0.02 1.00 0.18</span></span>
+<span><span class="co">#&gt; FSD  0.98 0.97 0.94 0.18 1.00</span></span></code></pre></div>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Which curves are identified as outliers (lowest depth)?</span></span>
 <span><span class="va">outlier_ranks</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">all_depths</span>, <span class="fl">2</span>, <span class="kw">function</span><span class="op">(</span><span class="va">d</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">d</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">]</span><span class="op">)</span></span>
@@ -225,7 +249,7 @@ curves differently:</p>
 <span><span class="co">#&gt;      FM mode RP RT FSD</span></span>
 <span><span class="co">#&gt; [1,]  1    1  1  1   1</span></span>
 <span><span class="co">#&gt; [2,]  2    2  2  2   2</span></span>
-<span><span class="co">#&gt; [3,] 10   10 27  3  10</span></span></code></pre></div>
+<span><span class="co">#&gt; [3,] 10   10 17  3  10</span></span></code></pre></div>
 <p>All depth functions correctly identify curves 1 and 2 as having low
 depth.</p>
 </div>
@@ -272,7 +296,7 @@ mean:</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Mean vs Trimmed Mean"</span>,</span>
 <span>       x <span class="op">=</span> <span class="st">"t"</span>, y <span class="op">=</span> <span class="st">"X(t)"</span>, color <span class="op">=</span> <span class="st">""</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p><img src="depth-functions_files/figure-html/plot-robust-1.png" class="r-plt" alt="" width="672"></p>
+<p><img src="depth-functions_files/figure-html/plot-robust-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="functional-variance-and-trimmed-variance">Functional Variance and Trimmed Variance<a class="anchor" aria-label="anchor" href="#functional-variance-and-trimmed-variance"></a>

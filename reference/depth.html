@@ -18,7 +18,28 @@ Compute Functional Data Depth"></head><body>
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
-<li class="nav-item"><a class="nav-link" href="../articles/index.html">Articles</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><h6 class="dropdown-header" data-toc-skip>Getting Started</h6></li>
+    <li><a class="dropdown-item" href="../articles/introduction.html">Introduction to fdars</a></li>
+    <li><a class="dropdown-item" href="../articles/custom-plotting.html">Custom Plotting with ggplot2</a></li>
+    <li><a class="dropdown-item" href="../articles/intro-to-smoothing.html">Introduction to Smoothing</a></li>
+    <li><a class="dropdown-item" href="../articles/working-with-derivatives.html">Working with Derivatives</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Core Methods</h6></li>
+    <li><a class="dropdown-item" href="../articles/basis-representation.html">Basis Representation</a></li>
+    <li><a class="dropdown-item" href="../articles/depth-functions.html">Depth Functions</a></li>
+    <li><a class="dropdown-item" href="../articles/distance-metrics.html">Distance Metrics</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Analysis</h6></li>
+    <li><a class="dropdown-item" href="../articles/clustering.html">Clustering</a></li>
+    <li><a class="dropdown-item" href="../articles/outlier-detection.html">Outlier Detection</a></li>
+    <li><a class="dropdown-item" href="../articles/regression.html">Regression</a></li>
+    <li><a class="dropdown-item" href="../articles/seasonal-analysis.html">Seasonal Analysis</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Advanced</h6></li>
+    <li><a class="dropdown-item" href="../articles/covariance-functions.html">Covariance Functions</a></li>
+  </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/sipemu/fdars/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
@@ -126,8 +147,8 @@ or "RPD" (random projection with derivatives). Default is "FM".</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  [1] 0.1647374 0.2644773 0.1686973 0.2073929 0.2763939 0.2009045 0.2027225</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  [8] 0.2292383 0.2803400 0.2268949</span>
 <span class="r-in"><span><span class="fu">depth</span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RP"</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1] 0.2436364 0.3272727 0.2418182 0.2472727 0.2963636 0.2472727 0.2636364</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [8] 0.2890909 0.3109091 0.2600000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1] 0.2418182 0.2927273 0.2381818 0.2781818 0.2945455 0.2509091 0.2654545</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [8] 0.3000000 0.2872727 0.2781818</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
