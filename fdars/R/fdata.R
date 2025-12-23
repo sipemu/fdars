@@ -1480,7 +1480,7 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
       if (!is.null(new_names$zlab)) {
         new_names$zlab <- paste0(deriv_name, "[", new_names$zlab, "]")
       }
-      structure(
+      res <- structure(
         list(
           data = deriv_data,
           argvals = fdataobj$argvals,
@@ -1491,6 +1491,10 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
         ),
         class = "fdata"
       )
+      # Preserve id and metadata
+      if (!is.null(fdataobj$id)) res$id <- fdataobj$id
+      if (!is.null(fdataobj$metadata)) res$metadata <- fdataobj$metadata
+      res
     }
 
     return(list(
@@ -1524,7 +1528,7 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
     new_names$main <- paste0(new_names$main, deriv_suffix)
   }
 
-  structure(
+  result <- structure(
     list(
       data = deriv_data,
       argvals = new_argvals,
@@ -1534,6 +1538,17 @@ deriv <- function(fdataobj, nderiv = 1, method = "diff",
     ),
     class = "fdata"
   )
+
+  # Preserve id and metadata from original
+
+  if (!is.null(fdataobj$id)) {
+    result$id <- fdataobj$id
+  }
+  if (!is.null(fdataobj$metadata)) {
+    result$metadata <- fdataobj$metadata
+  }
+
+  result
 }
 
 #' Subset method for fdata objects
