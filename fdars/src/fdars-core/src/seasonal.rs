@@ -1883,6 +1883,120 @@ mod tests {
     }
 
     #[test]
+    fn test_peak_detection_different_amplitudes() {
+        // Test with various amplitudes: 0.5, 1.0, 2.0, 5.0
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+
+        for amplitude in [0.5, 1.0, 2.0, 5.0] {
+            let data: Vec<f64> = argvals
+                .iter()
+                .map(|&t| amplitude * (2.0 * std::f64::consts::PI * t / period).sin())
+                .collect();
+
+            let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+
+            assert_eq!(
+                result.peaks[0].len(),
+                5,
+                "Amplitude {} should still find 5 peaks",
+                amplitude
+            );
+
+            // Peak values should be close to amplitude
+            for peak in &result.peaks[0] {
+                assert!(
+                    (peak.value - amplitude).abs() < 0.1,
+                    "Peak value {:.3} should be close to amplitude {}",
+                    peak.value,
+                    amplitude
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_peak_detection_varying_frequency() {
+        // Signal with varying frequency: chirp-like signal
+        // Peaks get closer together over time
+        let m = 400;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+
+        // Frequency increases linearly: f(t) = 0.5 + 0.1*t
+        // Phase integral: phi(t) = 2*pi * (0.5*t + 0.05*t^2)
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let phase = 2.0 * std::f64::consts::PI * (0.5 * t + 0.05 * t * t);
+                phase.sin()
+            })
+            .collect();
+
+        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+
+        // Should find multiple peaks with decreasing spacing
+        assert!(
+            result.peaks[0].len() >= 5,
+            "Should find at least 5 peaks, got {}",
+            result.peaks[0].len()
+        );
+
+        // Verify inter-peak distances decrease over time
+        let distances = &result.inter_peak_distances[0];
+        if distances.len() >= 3 {
+            // Later peaks should be closer than earlier peaks
+            let early_avg = (distances[0] + distances[1]) / 2.0;
+            let late_avg =
+                (distances[distances.len() - 2] + distances[distances.len() - 1]) / 2.0;
+            assert!(
+                late_avg < early_avg,
+                "Later peaks should be closer: early avg={:.3}, late avg={:.3}",
+                early_avg,
+                late_avg
+            );
+        }
+    }
+
+    #[test]
+    fn test_peak_detection_sum_of_sines() {
+        // Sum of two sine waves with different periods creates non-uniform peak spacing
+        // y = sin(2*pi*t/2) + 0.5*sin(2*pi*t/3)
+        let m = 300;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 12.0 / (m - 1) as f64).collect();
+
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                (2.0 * std::f64::consts::PI * t / 2.0).sin()
+                    + 0.5 * (2.0 * std::f64::consts::PI * t / 3.0).sin()
+            })
+            .collect();
+
+        let result = detect_peaks(&data, 1, m, &argvals, Some(1.0), None, false, None);
+
+        // Should find peaks (exact count depends on interference pattern)
+        assert!(
+            result.peaks[0].len() >= 4,
+            "Should find at least 4 peaks, got {}",
+            result.peaks[0].len()
+        );
+
+        // Inter-peak distances should vary
+        let distances = &result.inter_peak_distances[0];
+        if distances.len() >= 2 {
+            let min_dist = distances.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max_dist = distances.iter().cloned().fold(0.0, f64::max);
+            assert!(
+                max_dist > min_dist * 1.1,
+                "Distances should vary: min={:.3}, max={:.3}",
+                min_dist,
+                max_dist
+            );
+        }
+    }
+
+    #[test]
     fn test_seasonal_strength() {
         let m = 200;
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();

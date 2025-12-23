@@ -151,3 +151,66 @@ test_that("seasonal_strength is high for pure sine", {
   # Pure sine should have very high seasonal strength
   expect_gt(strength, 0.8)
 })
+
+test_that("detect_peaks works with different amplitudes", {
+  t <- seq(0, 10, length.out = 200)
+
+  for (amplitude in c(0.5, 1.0, 2.0, 5.0)) {
+    X <- matrix(amplitude * sin(2 * pi * t / 2), nrow = 1)
+    fd <- fdata(X, argvals = t)
+
+    result <- detect_peaks(fd)
+    peaks <- result$peaks[[1]]
+
+    expect_equal(nrow(peaks), 5,
+                 info = paste("Amplitude", amplitude, "should find 5 peaks"))
+
+    # Peak values should be close to amplitude
+    expect_equal(peaks$value, rep(amplitude, 5), tolerance = 0.1,
+                 info = paste("Peak values should equal amplitude", amplitude))
+  }
+})
+
+test_that("detect_peaks handles varying frequency (chirp)", {
+  t <- seq(0, 10, length.out = 400)
+
+  # Chirp signal: frequency increases with time
+  # Phase = 2*pi * (0.5*t + 0.05*t^2)
+  phase <- 2 * pi * (0.5 * t + 0.05 * t^2)
+  X <- matrix(sin(phase), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  result <- detect_peaks(fd)
+  peaks <- result$peaks[[1]]
+
+  # Should find multiple peaks
+  expect_gte(nrow(peaks), 5)
+
+  # Inter-peak distances should decrease over time
+  distances <- result$inter_peak_distances[[1]]
+  if (length(distances) >= 4) {
+    early_avg <- mean(distances[1:2])
+    late_avg <- mean(distances[(length(distances)-1):length(distances)])
+    expect_lt(late_avg, early_avg)
+  }
+})
+
+test_that("detect_peaks handles sum of sines with different periods", {
+  t <- seq(0, 12, length.out = 300)
+
+  # Sum of two sines: period 2 and period 3
+  X <- matrix(sin(2 * pi * t / 2) + 0.5 * sin(2 * pi * t / 3), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  result <- detect_peaks(fd, min_distance = 1.0)
+  peaks <- result$peaks[[1]]
+
+  # Should find peaks
+  expect_gte(nrow(peaks), 4)
+
+  # Inter-peak distances should vary (not all equal)
+  distances <- result$inter_peak_distances[[1]]
+  if (length(distances) >= 2) {
+    expect_gt(max(distances), min(distances) * 1.1)
+  }
+})
