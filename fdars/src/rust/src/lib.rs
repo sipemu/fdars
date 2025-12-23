@@ -3238,7 +3238,9 @@ fn fdata2basis_1d(data: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_type
     let basis = if basis_type == 1 {
         fourier_basis(&argvals, nbasis)
     } else {
-        bspline_basis(&argvals, nbasis + 2, 4) // order 4 = cubic B-splines
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        // Minimum nknots is 2, so minimum nbasis is 6 for cubic B-splines
+        bspline_basis(&argvals, (nbasis.saturating_sub(4)).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -3330,7 +3332,8 @@ fn basis2fdata_1d(coefs: RMatrix<f64>, argvals: Vec<f64>, nbasis: i32, basis_typ
     let basis = if basis_type == 1 {
         fourier_basis(&argvals, nbasis)
     } else {
-        bspline_basis(&argvals, nbasis + 2, 4)
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        bspline_basis(&argvals, (nbasis.saturating_sub(4)).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -3414,7 +3417,8 @@ fn basis_gcv_1d(
     let basis = if basis_type == 1 {
         fourier_basis(&argvals, nbasis)
     } else {
-        bspline_basis(&argvals, nbasis + 2, 4)
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        bspline_basis(&argvals, (nbasis.saturating_sub(4)).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -3432,11 +3436,34 @@ fn basis_gcv_1d(
         btb
     };
 
-    // Solve for coefficients and compute hat matrix trace
-    let btb_inv = match btb_penalized.clone().try_inverse() {
-        Some(inv) => inv,
+    // Solve for coefficients using SVD pseudoinverse (handles singular matrices)
+    let svd = SVD::new(btb_penalized.clone(), true, true);
+    let eps = 1e-10 * svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+
+    let u = match svd.u.as_ref() {
+        Some(u) => u,
         None => return f64::INFINITY,
     };
+    let v_t = match svd.v_t.as_ref() {
+        Some(v_t) => v_t,
+        None => return f64::INFINITY,
+    };
+
+    // Compute pseudoinverse: V * S^-1 * U^T
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
 
     // Hat matrix H = B * (B'B + lambda*P)^-1 * B'
     // edf = trace(H) = trace(B * btb_inv * B')
@@ -3500,7 +3527,8 @@ fn basis_aic_1d(
     let basis = if basis_type == 1 {
         fourier_basis(&argvals, nbasis)
     } else {
-        bspline_basis(&argvals, nbasis + 2, 4)
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        bspline_basis(&argvals, (nbasis.saturating_sub(4)).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -3515,10 +3543,33 @@ fn basis_aic_1d(
         btb
     };
 
-    let btb_inv = match btb_penalized.clone().try_inverse() {
-        Some(inv) => inv,
+    // Solve for coefficients using SVD pseudoinverse (handles singular matrices)
+    let svd = SVD::new(btb_penalized.clone(), true, true);
+    let eps = 1e-10 * svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+
+    let u = match svd.u.as_ref() {
+        Some(u) => u,
         None => return f64::INFINITY,
     };
+    let v_t = match svd.v_t.as_ref() {
+        Some(v_t) => v_t,
+        None => return f64::INFINITY,
+    };
+
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
 
     // EDF
     let proj = &btb_inv * b_mat.transpose();
@@ -3570,7 +3621,8 @@ fn basis_bic_1d(
     let basis = if basis_type == 1 {
         fourier_basis(&argvals, nbasis)
     } else {
-        bspline_basis(&argvals, nbasis + 2, 4)
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        bspline_basis(&argvals, (nbasis.saturating_sub(4)).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -3585,10 +3637,33 @@ fn basis_bic_1d(
         btb
     };
 
-    let btb_inv = match btb_penalized.clone().try_inverse() {
-        Some(inv) => inv,
+    // Solve for coefficients using SVD pseudoinverse (handles singular matrices)
+    let svd = SVD::new(btb_penalized.clone(), true, true);
+    let eps = 1e-10 * svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+
+    let u = match svd.u.as_ref() {
+        Some(u) => u,
         None => return f64::INFINITY,
     };
+    let v_t = match svd.v_t.as_ref() {
+        Some(v_t) => v_t,
+        None => return f64::INFINITY,
+    };
+
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
 
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
@@ -3645,7 +3720,8 @@ fn pspline_fit_1d(
     let data_slice = data.as_real_slice().unwrap();
 
     // B-spline basis for P-splines
-    let basis = bspline_basis(&argvals, nbasis + 2, 4);
+    // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+    let basis = bspline_basis(&argvals, (nbasis.saturating_sub(4)).max(2), 4);
     let actual_nbasis = basis.len() / m;
     let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
 
@@ -3657,9 +3733,13 @@ fn pspline_fit_1d(
     let btb = &b_mat.transpose() * &b_mat;
     let btb_penalized = &btb + lambda * &penalty;
 
-    let btb_inv = match btb_penalized.clone().try_inverse() {
-        Some(inv) => inv,
-        None => {
+    // Use SVD pseudoinverse for robustness with singular matrices
+    let svd = SVD::new(btb_penalized.clone(), true, true);
+    let eps = 1e-10 * svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+
+    let (u, v_t) = match (svd.u.as_ref(), svd.v_t.as_ref()) {
+        (Some(u), Some(v_t)) => (u, v_t),
+        _ => {
             return list!(
                 coefs = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
                 fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
@@ -3672,6 +3752,21 @@ fn pspline_fit_1d(
             .into();
         }
     };
+
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
 
     // EDF = trace(H) where H = B * (B'B + lambda*P)^-1 * B'
     let proj = &btb_inv * b_mat.transpose();

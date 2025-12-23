@@ -183,7 +183,8 @@ pub fn fdata_to_basis_1d(
     let basis = if basis_type == 1 {
         fourier_basis(argvals, nbasis)
     } else {
-        bspline_basis(argvals, nbasis + 2, 4)
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        bspline_basis(argvals, nbasis.saturating_sub(4).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -256,7 +257,8 @@ pub fn basis_to_fdata_1d(
     let basis = if basis_type == 1 {
         fourier_basis(argvals, nbasis)
     } else {
-        bspline_basis(argvals, nbasis + 2, 4)
+        // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+        bspline_basis(argvals, nbasis.saturating_sub(4).max(2), 4)
     };
 
     let actual_nbasis = basis.len() / m;
@@ -311,7 +313,8 @@ pub fn pspline_fit_1d(
         return None;
     }
 
-    let basis = bspline_basis(argvals, nbasis + 2, 4);
+    // For order 4 B-splines: nbasis = nknots + order, so nknots = nbasis - 4
+    let basis = bspline_basis(argvals, nbasis.saturating_sub(4).max(2), 4);
     let actual_nbasis = basis.len() / m;
     let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
 
@@ -321,7 +324,28 @@ pub fn pspline_fit_1d(
     let btb = &b_mat.transpose() * &b_mat;
     let btb_penalized = &btb + lambda * &penalty;
 
-    let btb_inv = btb_penalized.clone().try_inverse()?;
+    // Use SVD pseudoinverse for robustness with singular matrices
+    let svd = SVD::new(btb_penalized.clone(), true, true);
+    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let eps = 1e-10 * max_sv;
+
+    let u = svd.u.as_ref()?;
+    let v_t = svd.v_t.as_ref()?;
+
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
 
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
