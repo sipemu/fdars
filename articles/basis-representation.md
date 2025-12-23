@@ -32,6 +32,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 set.seed(42)
 ```
 
@@ -88,19 +89,26 @@ fd_bspline <- basis2fdata(coefs_bspline, argvals = t, type = "bspline")
 fd_fourier <- basis2fdata(coefs_fourier, argvals = t, type = "fourier")
 
 # Plot comparison for first curve
-par(mfrow = c(1, 2))
-plot(t, fd$data[1, ], type = "l", col = "gray", main = "B-spline (K=15)")
-lines(t, fd_bspline$data[1, ], col = "blue", lwd = 2)
+df_compare <- data.frame(
+  t = rep(t, 3),
+  value = c(fd$data[1, ], fd_bspline$data[1, ], fd_fourier$data[1, ]),
+  type = factor(rep(c("Original", "B-spline (K=15)", "Fourier (K=15)"), each = length(t)),
+                levels = c("Original", "B-spline (K=15)", "Fourier (K=15)"))
+)
 
-plot(t, fd$data[1, ], type = "l", col = "gray", main = "Fourier (K=15)")
-lines(t, fd_fourier$data[1, ], col = "red", lwd = 2)
+ggplot(df_compare, aes(x = t, y = value, color = type, linewidth = type)) +
+  geom_line() +
+  scale_color_manual(values = c("Original" = "gray50", "B-spline (K=15)" = "blue",
+                                 "Fourier (K=15)" = "red")) +
+  scale_linewidth_manual(values = c("Original" = 0.5, "B-spline (K=15)" = 1,
+                                     "Fourier (K=15)" = 1)) +
+  facet_wrap(~ type, ncol = 2, scales = "fixed") +
+  labs(x = "t", y = "X(t)", title = "Basis Representation Comparison") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
 
 ![](basis-representation_files/figure-html/basis-comparison-1.png)
-
-``` r
-par(mfrow = c(1, 1))
-```
 
 For our sinusoidal data, Fourier basis is more natural since the true
 signal is composed of sine waves.
@@ -130,31 +138,44 @@ gcv_scores <- sapply(nbasis_range, function(k) basis.gcv(fd, nbasis = k, type = 
 aic_scores <- sapply(nbasis_range, function(k) basis.aic(fd, nbasis = k, type = "fourier"))
 bic_scores <- sapply(nbasis_range, function(k) basis.bic(fd, nbasis = k, type = "fourier"))
 
-# Plot the criteria
-par(mfrow = c(1, 3))
-plot(nbasis_range, gcv_scores, type = "b", xlab = "Number of basis", ylab = "GCV",
-     main = "GCV Score")
-abline(v = nbasis_range[which.min(gcv_scores)], col = "red", lty = 2)
+# Find optimal values
+opt_gcv <- nbasis_range[which.min(gcv_scores)]
+opt_aic <- nbasis_range[which.min(aic_scores)]
+opt_bic <- nbasis_range[which.min(bic_scores)]
 
-plot(nbasis_range, aic_scores, type = "b", xlab = "Number of basis", ylab = "AIC",
-     main = "AIC Score")
-abline(v = nbasis_range[which.min(aic_scores)], col = "red", lty = 2)
+# Create data frame for plotting
+df_criteria <- data.frame(
+  nbasis = rep(nbasis_range, 3),
+  score = c(gcv_scores, aic_scores, bic_scores),
+  criterion = rep(c("GCV", "AIC", "BIC"), each = length(nbasis_range)),
+  optimal = c(nbasis_range == opt_gcv, nbasis_range == opt_aic, nbasis_range == opt_bic)
+)
 
-plot(nbasis_range, bic_scores, type = "b", xlab = "Number of basis", ylab = "BIC",
-     main = "BIC Score")
-abline(v = nbasis_range[which.min(bic_scores)], col = "red", lty = 2)
+df_optimal <- data.frame(
+  criterion = c("GCV", "AIC", "BIC"),
+  nbasis = c(opt_gcv, opt_aic, opt_bic)
+)
+
+ggplot(df_criteria, aes(x = nbasis, y = score)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  geom_vline(data = df_optimal, aes(xintercept = nbasis),
+             linetype = "dashed", color = "red") +
+  facet_wrap(~ criterion, scales = "free_y") +
+  labs(x = "Number of basis functions", y = "Score",
+       title = "Information Criteria for Basis Selection") +
+  theme_minimal()
 ```
 
 ![](basis-representation_files/figure-html/information-criteria-1.png)
 
 ``` r
-par(mfrow = c(1, 1))
 
-cat("Optimal nbasis - GCV:", nbasis_range[which.min(gcv_scores)], "\n")
+cat("Optimal nbasis - GCV:", opt_gcv, "\n")
 #> Optimal nbasis - GCV: 5
-cat("Optimal nbasis - AIC:", nbasis_range[which.min(aic_scores)], "\n")
+cat("Optimal nbasis - AIC:", opt_aic, "\n")
 #> Optimal nbasis - AIC: 25
-cat("Optimal nbasis - BIC:", nbasis_range[which.min(bic_scores)], "\n")
+cat("Optimal nbasis - BIC:", opt_bic, "\n")
 #> Optimal nbasis - BIC: 25
 ```
 
@@ -236,20 +257,29 @@ print(result_fixed)
 #> GCV: 1.151e-01
 
 # Compare different lambda values
-par(mfrow = c(2, 2))
-for (lam in c(0.01, 1, 100, 10000)) {
+lambdas <- c(0.01, 1, 100, 10000)
+df_lambda <- do.call(rbind, lapply(lambdas, function(lam) {
   result <- pspline(fd[1], nbasis = 25, lambda = lam)
-  plot(t, fd$data[1, ], type = "l", col = "gray",
-       main = paste("lambda =", lam), ylab = "X(t)")
-  lines(t, result$fdata$data[1, ], col = "blue", lwd = 2)
-}
+  data.frame(
+    t = rep(t, 2),
+    value = c(fd$data[1, ], result$fdata$data[1, ]),
+    type = rep(c("Original", "Smoothed"), each = length(t)),
+    lambda = paste("lambda =", lam)
+  )
+}))
+df_lambda$lambda <- factor(df_lambda$lambda, levels = paste("lambda =", lambdas))
+
+ggplot(df_lambda, aes(x = t, y = value, color = type, linewidth = type)) +
+  geom_line() +
+  scale_color_manual(values = c("Original" = "gray50", "Smoothed" = "blue")) +
+  scale_linewidth_manual(values = c("Original" = 0.5, "Smoothed" = 1)) +
+  facet_wrap(~ lambda, ncol = 2) +
+  labs(x = "t", y = "X(t)", title = "P-spline Smoothing with Different Lambda") +
+  theme_minimal() +
+  theme(legend.position = "bottom", legend.title = element_blank())
 ```
 
 ![](basis-representation_files/figure-html/pspline-intro-1.png)
-
-``` r
-par(mfrow = c(1, 1))
-```
 
 ### Automatic Lambda Selection
 
@@ -264,11 +294,25 @@ cat("Effective df:", round(result_auto$edf, 2), "\n")
 #> Effective df: 9.99
 
 # Plot result
-plot(t, fd$data[1, ], type = "l", col = "gray", main = "P-spline with auto-selected lambda")
-lines(t, result_auto$fdata$data[1, ], col = "blue", lwd = 2)
-lines(t, true_signal(t), col = "red", lty = 2, lwd = 2)
-legend("topright", c("Observed", "P-spline", "True signal"),
-       col = c("gray", "blue", "red"), lty = c(1, 1, 2), lwd = c(1, 2, 2))
+df_auto <- data.frame(
+  t = rep(t, 3),
+  value = c(fd$data[1, ], result_auto$fdata$data[1, ], true_signal(t)),
+  type = factor(c(rep("Observed", length(t)),
+                  rep("P-spline", length(t)),
+                  rep("True signal", length(t))),
+                levels = c("Observed", "P-spline", "True signal"))
+)
+
+ggplot(df_auto, aes(x = t, y = value, color = type, linetype = type, linewidth = type)) +
+  geom_line() +
+  scale_color_manual(values = c("Observed" = "gray50", "P-spline" = "blue",
+                                 "True signal" = "red")) +
+  scale_linetype_manual(values = c("Observed" = "solid", "P-spline" = "solid",
+                                    "True signal" = "dashed")) +
+  scale_linewidth_manual(values = c("Observed" = 0.5, "P-spline" = 1, "True signal" = 1)) +
+  labs(x = "t", y = "X(t)", title = "P-spline with Auto-selected Lambda") +
+  theme_minimal() +
+  theme(legend.position = "bottom", legend.title = element_blank())
 ```
 
 ![](basis-representation_files/figure-html/pspline-auto-1.png)
@@ -308,17 +352,38 @@ ps_result <- pspline(fd_single, nbasis = 25, lambda.select = TRUE)
 fd_pspline <- ps_result$fdata
 
 # Plot comparison
-plot(t, fd_single$data[1, ], type = "l", col = "gray", lwd = 1,
-     main = "Comparison of Smoothing Methods", ylab = "X(t)")
-lines(t, fd_fourier$data[1, ], col = "blue", lwd = 2)
-lines(t, fd_cv$data[1, ], col = "green", lwd = 2)
-lines(t, fd_pspline$data[1, ], col = "purple", lwd = 2)
-lines(t, true_signal(t), col = "red", lty = 2, lwd = 2)
-legend("topright",
-       c("Observed", "Fourier (K=9)", paste0("CV-optimal (K=", cv_opt$optimal.nbasis, ")"),
-         "P-spline", "True signal"),
-       col = c("gray", "blue", "green", "purple", "red"),
-       lty = c(1, 1, 1, 1, 2), lwd = c(1, 2, 2, 2, 2), cex = 0.8)
+df_comp <- data.frame(
+  t = rep(t, 5),
+  value = c(fd_single$data[1, ], fd_fourier$data[1, ], fd_cv$data[1, ],
+            fd_pspline$data[1, ], true_signal(t)),
+  method = factor(c(rep("Observed", length(t)),
+                    rep("Fourier (K=9)", length(t)),
+                    rep(paste0("CV-optimal (K=", cv_opt$optimal.nbasis, ")"), length(t)),
+                    rep("P-spline", length(t)),
+                    rep("True signal", length(t))),
+                  levels = c("Observed", "Fourier (K=9)",
+                             paste0("CV-optimal (K=", cv_opt$optimal.nbasis, ")"),
+                             "P-spline", "True signal"))
+)
+
+ggplot(df_comp, aes(x = t, y = value, color = method, linetype = method, linewidth = method)) +
+  geom_line() +
+  scale_color_manual(values = c("Observed" = "gray50", "Fourier (K=9)" = "blue",
+                                 "CV-optimal (K=9)" = "green", "P-spline" = "purple",
+                                 "True signal" = "red",
+                                 setNames("green", paste0("CV-optimal (K=", cv_opt$optimal.nbasis, ")")))) +
+  scale_linetype_manual(values = c("Observed" = "solid", "Fourier (K=9)" = "solid",
+                                    "CV-optimal (K=9)" = "solid", "P-spline" = "solid",
+                                    "True signal" = "dashed",
+                                    setNames("solid", paste0("CV-optimal (K=", cv_opt$optimal.nbasis, ")")))) +
+  scale_linewidth_manual(values = c("Observed" = 0.5, "Fourier (K=9)" = 1,
+                                     "CV-optimal (K=9)" = 1, "P-spline" = 1,
+                                     "True signal" = 1,
+                                     setNames(1, paste0("CV-optimal (K=", cv_opt$optimal.nbasis, ")")))) +
+  labs(x = "t", y = "X(t)", title = "Comparison of Smoothing Methods", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  guides(linetype = "none", linewidth = "none")
 ```
 
 ![](basis-representation_files/figure-html/comparison-1.png)

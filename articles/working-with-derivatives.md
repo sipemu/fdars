@@ -23,6 +23,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 set.seed(42)
 ```
 
@@ -74,25 +75,24 @@ fd_deriv_noisy <- deriv(fd_noisy, nderiv = 1)
 # Compare to original derivative
 fd_deriv <- deriv(fd, nderiv = 1)
 
-par(mfrow = c(1, 2))
-plot(fd_deriv[1, ], main = "Velocity (Original Data)",
-     xlab = "Age", ylab = "cm/year", ylim = c(-2, 15))
+# Plot using ggplot2
+df_deriv <- data.frame(
+  age = rep(fd_deriv$argvals, 2),
+  velocity = c(fd_deriv$data[1, ], fd_deriv_noisy$data[1, ]),
+  type = rep(c("Original Data", "Noisy Data"), each = length(fd_deriv$argvals))
+)
+
+ggplot(df_deriv, aes(x = age, y = velocity)) +
+  geom_line() +
+  facet_wrap(~ type) +
+  coord_cartesian(ylim = c(-2, 15)) +
+  labs(x = "Age (years)", y = "Velocity (cm/year)",
+       title = "Effect of Noise on Derivative Estimation") +
+  theme_minimal()
 ```
 
-![](working-with-derivatives_files/figure-html/noise-problem-1.png)
-
-``` r
-plot(fd_deriv_noisy[1, ], main = "Velocity (Noisy Data)",
-     xlab = "Age", ylab = "cm/year", ylim = c(-2, 15))
-```
-
-![](working-with-derivatives_files/figure-html/noise-problem-2.png)
-
-``` r
-par(mfrow = c(1, 1))
-```
-
-The noise in measurements becomes dramatically amplified in derivatives!
+![](working-with-derivatives_files/figure-html/noise-problem-1.png) The
+noise in measurements becomes dramatically amplified in derivatives!
 
 ## Solution: Smooth Before Differentiating
 
@@ -182,10 +182,15 @@ cat("  SD:", round(sd(phv_ages), 1), "years\n")
 cat("  Range:", round(min(phv_ages), 1), "-", round(max(phv_ages), 1), "years\n")
 #>   Range: 1 - 1.8 years
 
-# Histogram
-hist(phv_ages, breaks = 10, col = "lightblue", border = "white",
-     main = "Distribution of PHV Ages", xlab = "Age at PHV (years)")
-abline(v = mean(phv_ages), col = "red", lwd = 2)
+# Histogram using ggplot2
+df_phv <- data.frame(phv_age = phv_ages)
+
+ggplot(df_phv, aes(x = phv_age)) +
+  geom_histogram(bins = 10, fill = "lightblue", color = "white") +
+  geom_vline(xintercept = mean(phv_ages), color = "red", linewidth = 1) +
+  labs(x = "Age at PHV (years)", y = "Count",
+       title = "Distribution of PHV Ages") +
+  theme_minimal()
 ```
 
 ![](working-with-derivatives_files/figure-html/find-phv-1.png)
@@ -198,34 +203,56 @@ early_idx <- which.min(phv_ages)
 late_idx <- which.max(phv_ages)
 median_idx <- which.min(abs(phv_ages - median(phv_ages)))
 
-par(mfrow = c(1, 2))
+# Create data frame for height curves
+df_height_var <- data.frame(
+  age = rep(age, 3),
+  height = c(fd_smooth$fdata$data[early_idx, ],
+             fd_smooth$fdata$data[median_idx, ],
+             fd_smooth$fdata$data[late_idx, ]),
+  developer = factor(rep(c("Early", "Median", "Late"), each = length(age)),
+                     levels = c("Early", "Median", "Late"))
+)
 
-# Height curves
-plot(age, fd_smooth$fdata$data[early_idx, ], type = "l", col = "blue", lwd = 2,
-     ylim = range(fd_smooth$fdata$data[c(early_idx, late_idx, median_idx), ]),
-     main = "Height Curves: Early vs Late Developers",
-     xlab = "Age (years)", ylab = "Height (cm)")
-lines(age, fd_smooth$fdata$data[late_idx, ], col = "red", lwd = 2)
-lines(age, fd_smooth$fdata$data[median_idx, ], col = "gray50", lwd = 2)
-legend("bottomright", c("Early", "Median", "Late"),
-       col = c("blue", "gray50", "red"), lwd = 2)
+# Create data frame for velocity curves
+df_vel_var <- data.frame(
+  age = rep(age, 3),
+  velocity = c(fd_velocity$data[early_idx, ],
+               fd_velocity$data[median_idx, ],
+               fd_velocity$data[late_idx, ]),
+  developer = factor(rep(c("Early", "Median", "Late"), each = length(age)),
+                     levels = c("Early", "Median", "Late"))
+)
 
-# Velocity curves
-plot(age, fd_velocity$data[early_idx, ], type = "l", col = "blue", lwd = 2,
-     ylim = range(fd_velocity$data[c(early_idx, late_idx, median_idx), ]),
-     main = "Velocity: Early vs Late Developers",
-     xlab = "Age (years)", ylab = "Velocity (cm/year)")
-lines(age, fd_velocity$data[late_idx, ], col = "red", lwd = 2)
-lines(age, fd_velocity$data[median_idx, ], col = "gray50", lwd = 2)
-abline(h = 0, lty = 2, col = "gray")
+# Height plot
+p1 <- ggplot(df_height_var, aes(x = age, y = height, color = developer)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Early" = "blue", "Median" = "gray50", "Late" = "red")) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Height: Early vs Late Developers", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Velocity plot
+p2 <- ggplot(df_vel_var, aes(x = age, y = velocity, color = developer)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  scale_color_manual(values = c("Early" = "blue", "Median" = "gray50", "Late" = "red")) +
+  labs(x = "Age (years)", y = "Velocity (cm/year)",
+       title = "Velocity: Early vs Late Developers", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Display both plots (using patchwork if available, otherwise gridExtra)
+if (requireNamespace("patchwork", quietly = TRUE)) {
+  library(patchwork)
+  p1 + p2
+} else {
+  print(p1)
+  print(p2)
+}
 ```
 
-![](working-with-derivatives_files/figure-html/individual-variation-1.png)
-
-``` r
-
-par(mfrow = c(1, 1))
-```
+![](working-with-derivatives_files/figure-html/individual-variation-1.png)![](working-with-derivatives_files/figure-html/individual-variation-2.png)
 
 ## Derivative-Based Distances
 
@@ -260,37 +287,50 @@ Different distance measures can reveal different groupings:
 km_velocity <- cluster.kmeans(fd_smooth$fdata, ncl = 2,
                                metric = semimetric.deriv, nderiv = 1, seed = 123)
 
-# Visualize clusters
-par(mfrow = c(1, 2))
+# Create data frames for plotting
+df_height_clust <- data.frame(
+  age = rep(age, n),
+  height = as.vector(t(fd_smooth$fdata$data)),
+  curve = rep(1:n, each = length(age)),
+  cluster = factor(rep(km_velocity$cluster, each = length(age)))
+)
 
-# Height by cluster
-plot(age, fd_smooth$fdata$data[1, ], type = "n",
-     ylim = range(fd_smooth$fdata$data),
-     main = "Clusters (Velocity-based)",
-     xlab = "Age", ylab = "Height (cm)")
-for (i in 1:n) {
-  lines(age, fd_smooth$fdata$data[i, ],
-        col = ifelse(km_velocity$cluster[i] == 1, "blue", "red"), lwd = 0.5)
-}
+df_vel_clust <- data.frame(
+  age = rep(age, n),
+  velocity = as.vector(t(fd_velocity$data)),
+  curve = rep(1:n, each = length(age)),
+  cluster = factor(rep(km_velocity$cluster, each = length(age)))
+)
 
-# Velocity by cluster
-plot(age, fd_velocity$data[1, ], type = "n",
-     ylim = range(fd_velocity$data),
-     main = "Velocity Curves by Cluster",
-     xlab = "Age", ylab = "Velocity (cm/year)")
-for (i in 1:n) {
-  lines(age, fd_velocity$data[i, ],
-        col = ifelse(km_velocity$cluster[i] == 1, "blue", "red"), lwd = 0.5)
+# Height by cluster plot
+p1 <- ggplot(df_height_clust, aes(x = age, y = height, group = curve, color = cluster)) +
+  geom_line(alpha = 0.5, linewidth = 0.5) +
+  scale_color_manual(values = c("1" = "blue", "2" = "red")) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Clusters (Velocity-based)", color = "Cluster") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Velocity by cluster plot
+p2 <- ggplot(df_vel_clust, aes(x = age, y = velocity, group = curve, color = cluster)) +
+  geom_line(alpha = 0.5, linewidth = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
+  scale_color_manual(values = c("1" = "blue", "2" = "red")) +
+  labs(x = "Age (years)", y = "Velocity (cm/year)",
+       title = "Velocity Curves by Cluster", color = "Cluster") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Display both plots
+if (requireNamespace("patchwork", quietly = TRUE)) {
+  p1 + p2
+} else {
+  print(p1)
+  print(p2)
 }
-abline(h = 0, lty = 2, col = "gray")
 ```
 
-![](working-with-derivatives_files/figure-html/cluster-by-deriv-1.png)
-
-``` r
-
-par(mfrow = c(1, 1))
-```
+![](working-with-derivatives_files/figure-html/cluster-by-deriv-1.png)![](working-with-derivatives_files/figure-html/cluster-by-deriv-2.png)
 
 ## 2D Functional Data: Partial Derivatives
 
@@ -321,27 +361,35 @@ smoothing) often gives better derivative estimates:
 ``` r
 # Compare different smoothing levels
 lambdas <- c(0.01, 0.1, 1, 10)
-
-par(mfrow = c(2, 2))
 idx <- 1
 
-for (lam in lambdas) {
+# Create data frame for all lambda values
+df_smooth <- do.call(rbind, lapply(lambdas, function(lam) {
   fd_s <- pspline(fd_noisy, lambda = lam)
   fd_v <- deriv(fd_s$fdata, nderiv = 1)
+  data.frame(
+    age = rep(fd_v$argvals, 2),
+    velocity = c(fd_v$data[idx, ], fd_deriv$data[idx, ]),
+    type = rep(c("Smoothed", "Reference"), each = length(fd_v$argvals)),
+    lambda = paste("lambda =", lam)
+  )
+}))
+df_smooth$lambda <- factor(df_smooth$lambda, levels = paste("lambda =", lambdas))
 
-  plot(age, fd_v$data[idx, ], type = "l", col = "blue", lwd = 2,
-       main = bquote(lambda == .(lam)),
-       xlab = "Age", ylab = "Velocity")
-  lines(age, fd_deriv$data[idx, ], col = "red", lty = 2)
-  abline(h = 0, lty = 3, col = "gray")
-}
+ggplot(df_smooth, aes(x = age, y = velocity, color = type, linetype = type)) +
+  geom_line(linewidth = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "gray") +
+  scale_color_manual(values = c("Smoothed" = "blue", "Reference" = "red")) +
+  scale_linetype_manual(values = c("Smoothed" = "solid", "Reference" = "dashed")) +
+  facet_wrap(~ lambda, ncol = 2) +
+  labs(x = "Age (years)", y = "Velocity (cm/year)",
+       title = "Derivative Estimation with Different Smoothing Levels",
+       color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 ![](working-with-derivatives_files/figure-html/optimal-deriv-smooth-1.png)
-
-``` r
-par(mfrow = c(1, 1))
-```
 
 ## Practical Workflow
 

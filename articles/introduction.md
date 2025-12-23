@@ -43,6 +43,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 ```
 
 ### Creating Functional Data

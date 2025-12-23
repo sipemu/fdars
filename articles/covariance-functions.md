@@ -20,6 +20,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 ```
 
 ## Available Covariance Functions
@@ -52,15 +53,31 @@ The `length_scale` parameter controls the correlation distance - smaller
 values produce more rapidly varying functions:
 
 ``` r
-par(mfrow = c(1, 3))
-for (ls in c(0.05, 0.2, 0.5)) {
+# Generate data for different length scales
+ls_values <- c(0.05, 0.2, 0.5)
+df_ls <- do.call(rbind, lapply(ls_values, function(ls) {
   fd <- make_gaussian_process(n = 5, t = t,
                               cov = kernel_gaussian(length_scale = ls),
                               seed = 42)
-  plot(fd, main = paste("length_scale =", ls))
-}
-par(mfrow = c(1, 1))
+  data.frame(
+    t = rep(t, 5),
+    value = as.vector(t(fd$data)),
+    curve = rep(1:5, each = length(t)),
+    length_scale = paste("length_scale =", ls)
+  )
+}))
+df_ls$length_scale <- factor(df_ls$length_scale,
+                              levels = paste("length_scale =", ls_values))
+
+ggplot(df_ls, aes(x = t, y = value, group = curve, color = factor(curve))) +
+  geom_line(alpha = 0.8) +
+  facet_wrap(~ length_scale) +
+  labs(x = "t", y = "X(t)", title = "Effect of Length Scale") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
+
+![](covariance-functions_files/figure-html/length-scale-1.png)
 
 ### Exponential
 
@@ -83,15 +100,32 @@ interpolates between Exponential ($\nu = 0.5$) and Gaussian
 ($\left. \nu\rightarrow\infty \right.$):
 
 ``` r
-par(mfrow = c(2, 2))
-for (nu in c(0.5, 1.5, 2.5, Inf)) {
+# Generate data for different nu values
+nu_values <- c(0.5, 1.5, 2.5, Inf)
+nu_labels <- c("0.5", "1.5", "2.5", "Inf")
+df_matern <- do.call(rbind, lapply(seq_along(nu_values), function(i) {
   fd <- make_gaussian_process(n = 5, t = t,
-                              cov = kernel_matern(length_scale = 0.2, nu = nu),
+                              cov = kernel_matern(length_scale = 0.2, nu = nu_values[i]),
                               seed = 42)
-  plot(fd, main = paste("Matern nu =", nu))
-}
-par(mfrow = c(1, 1))
+  data.frame(
+    t = rep(t, 5),
+    value = as.vector(t(fd$data)),
+    curve = rep(1:5, each = length(t)),
+    nu = paste("Matern nu =", nu_labels[i])
+  )
+}))
+df_matern$nu <- factor(df_matern$nu,
+                        levels = paste("Matern nu =", nu_labels))
+
+ggplot(df_matern, aes(x = t, y = value, group = curve, color = factor(curve))) +
+  geom_line(alpha = 0.8) +
+  facet_wrap(~ nu, ncol = 2) +
+  labs(x = "t", y = "X(t)", title = "Matern Covariance with Different Smoothness") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
+
+![](covariance-functions_files/figure-html/cov-matern-1.png)
 
 Common choices are: - $\nu = 0.5$: Equivalent to Exponential (rough) -
 $\nu = 1.5$: Once differentiable - $\nu = 2.5$: Twice differentiable -
@@ -261,42 +295,35 @@ all.equal(fd1$data, fd2$data)  # TRUE
 ## Comparison of Smoothness
 
 ``` r
-par(mfrow = c(2, 2))
+# Generate data for comparison
+kernels <- list(
+  list(name = "Gaussian (very smooth)", cov = kernel_gaussian()),
+  list(name = "Matern 5/2", cov = kernel_matern(nu = 2.5)),
+  list(name = "Matern 3/2", cov = kernel_matern(nu = 1.5)),
+  list(name = "Exponential (rough)", cov = kernel_exponential())
+)
 
-fd_gauss <- make_gaussian_process(n = 3, t = t, cov = kernel_gaussian(), seed = 1)
-plot(fd_gauss, main = "Gaussian (very smooth)")
+df_smooth_comp <- do.call(rbind, lapply(kernels, function(k) {
+  fd <- make_gaussian_process(n = 3, t = t, cov = k$cov, seed = 1)
+  data.frame(
+    t = rep(t, 3),
+    value = as.vector(t(fd$data)),
+    curve = rep(1:3, each = length(t)),
+    kernel = k$name
+  )
+}))
+df_smooth_comp$kernel <- factor(df_smooth_comp$kernel,
+                                 levels = sapply(kernels, function(k) k$name))
+
+ggplot(df_smooth_comp, aes(x = t, y = value, group = curve, color = factor(curve))) +
+  geom_line(alpha = 0.8) +
+  facet_wrap(~ kernel, ncol = 2) +
+  labs(x = "t", y = "X(t)", title = "Comparison of Smoothness") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
 
 ![](covariance-functions_files/figure-html/smoothness-comparison-1.png)
-
-``` r
-
-fd_mat25 <- make_gaussian_process(n = 3, t = t, cov = kernel_matern(nu = 2.5), seed = 1)
-plot(fd_mat25, main = "Matern 5/2")
-```
-
-![](covariance-functions_files/figure-html/smoothness-comparison-2.png)
-
-``` r
-
-fd_mat15 <- make_gaussian_process(n = 3, t = t, cov = kernel_matern(nu = 1.5), seed = 1)
-plot(fd_mat15, main = "Matern 3/2")
-```
-
-![](covariance-functions_files/figure-html/smoothness-comparison-3.png)
-
-``` r
-
-fd_exp <- make_gaussian_process(n = 3, t = t, cov = kernel_exponential(), seed = 1)
-plot(fd_exp, main = "Exponential (rough)")
-```
-
-![](covariance-functions_files/figure-html/smoothness-comparison-4.png)
-
-``` r
-
-par(mfrow = c(1, 1))
-```
 
 ## Summary Table
 

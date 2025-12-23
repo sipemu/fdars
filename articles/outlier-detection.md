@@ -16,6 +16,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 
 # Generate normal data
 set.seed(42)

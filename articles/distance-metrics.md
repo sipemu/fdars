@@ -27,6 +27,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 
 # Create example data with different curve types
 set.seed(42)
@@ -424,9 +425,16 @@ fd_large <- fdata(X_large, argvals = t_grid)
 # Compute distance matrix
 dist_matrix <- metric.lp(fd_large)
 
-# Visualize as heatmap
-image(as.matrix(dist_matrix), main = "L2 Distance Matrix",
-      xlab = "Curve", ylab = "Curve")
+# Visualize as heatmap using ggplot2
+dist_df <- expand.grid(Curve1 = 1:n, Curve2 = 1:n)
+dist_df$Distance <- as.vector(as.matrix(dist_matrix))
+
+ggplot(dist_df, aes(x = Curve1, y = Curve2, fill = Distance)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "magma") +
+  coord_equal() +
+  labs(x = "Curve", y = "Curve", title = "L2 Distance Matrix") +
+  theme_minimal()
 ```
 
 ![](distance-metrics_files/figure-html/large-sample-1.png)

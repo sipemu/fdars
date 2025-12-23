@@ -21,6 +21,7 @@ library(fdars)
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
+library(ggplot2)
 
 # Create example data
 set.seed(42)
@@ -100,7 +101,7 @@ the projections. More robust to local variations.
 ``` r
 depths_rp <- depth(fd, method = "RP", nproj = 50)
 head(depths_rp)
-#> [1] 0.05419355 0.09032258 0.25612903 0.31161290 0.28322581 0.24451613
+#> [1] 0.06193548 0.08967742 0.23483871 0.29225806 0.26516129 0.24903226
 ```
 
 ### Random Tukey Depth (method = “RT”)
@@ -111,7 +112,7 @@ halfspace depth. Very robust to outliers.
 ``` r
 depths_rt <- depth(fd, method = "RT", nproj = 50)
 head(depths_rt)
-#> [1] 0.03225806 0.03225806 0.06451613 0.06451613 0.06451613 0.03225806
+#> [1] 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806
 ```
 
 ### Functional Spatial Depth (method = “FSD”)
@@ -144,7 +145,7 @@ changes in addition to magnitude.
 ``` r
 depths_rpd <- depth(fd, method = "RPD", nproj = 50)
 head(depths_rpd)
-#> [1] 0.06866667 0.12400000 0.22000000 0.23933333 0.17933333 0.18933333
+#> [1] 0.07733333 0.10133333 0.19000000 0.24333333 0.20400000 0.18533333
 ```
 
 ## Comparing Depth Functions
@@ -165,11 +166,11 @@ all_depths <- data.frame(
 # Correlation between depth functions
 round(cor(all_depths), 2)
 #>        FM mode   RP   RT  FSD
-#> FM   1.00 0.98 0.95 0.13 0.98
-#> mode 0.98 1.00 0.94 0.18 0.97
-#> RP   0.95 0.94 1.00 0.13 0.93
-#> RT   0.13 0.18 0.13 1.00 0.16
-#> FSD  0.98 0.97 0.93 0.16 1.00
+#> FM   1.00 0.98 0.95 0.23 0.98
+#> mode 0.98 1.00 0.94 0.15 0.97
+#> RP   0.95 0.94 1.00 0.22 0.95
+#> RT   0.23 0.15 0.22 1.00 0.19
+#> FSD  0.98 0.97 0.95 0.19 1.00
 ```
 
 ``` r
@@ -179,7 +180,7 @@ outlier_ranks
 #>      FM mode RP RT FSD
 #> [1,]  1    1  1  1   1
 #> [2,]  2    2  2  2   2
-#> [3,] 10   10 19  3  10
+#> [3,] 10   10 23  3  10
 ```
 
 All depth functions correctly identify curves 1 and 2 as having low
