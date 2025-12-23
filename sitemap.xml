@@ -13,6 +13,7 @@
 <url><loc>https://sipemu.github.io/fdars/articles/introduction.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/outlier-detection.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/regression.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/articles/seasonal-analysis.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/working-with-derivatives.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/authors.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/index.html</loc></url>
@@ -69,8 +70,11 @@
 <url><loc>https://sipemu.github.io/fdars/reference/depth.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/depth.mode.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/deriv.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/detect_peaks.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/detect_seasonality_changes.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/df_to_fdata2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/dot-onLoad.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/estimate_period.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdars-package.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata.bootstrap.ci.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata.bootstrap.html</loc></url>
@@ -97,6 +101,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/h.default.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/index.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/inprod.fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/instantaneous_period.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/int.simpson.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernel_add.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernel_brownian.html</loc></url>
@@ -175,6 +180,8 @@
 <url><loc>https://sipemu.github.io/fdars/reference/r.ou.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/register.fd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/sd.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/seasonal_strength.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/seasonal_strength_curve.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.basis.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.deriv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.fourier.html</loc></url>

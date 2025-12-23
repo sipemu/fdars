@@ -28,6 +28,8 @@
   Detection](https://sipemu.github.io/fdars/articles/outlier-detection.md):
 - [Functional
   Regression](https://sipemu.github.io/fdars/articles/regression.md):
+- [Seasonal Analysis of Functional
+  Data](https://sipemu.github.io/fdars/articles/seasonal-analysis.md):
 
 ### Advanced
 

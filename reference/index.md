@@ -176,6 +176,21 @@
 - [`pred.RMSE()`](https://sipemu.github.io/fdars/reference/pred.RMSE.md)
   : Root Mean Squared Error
 
+## Seasonal Analysis
+
+- [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)
+  : Seasonal Analysis Functions for Functional Data
+- [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)
+  : Detect Peaks in Functional Data
+- [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)
+  : Measure Seasonal Strength
+- [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)
+  : Time-Varying Seasonal Strength
+- [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)
+  : Detect Changes in Seasonality
+- [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)
+  : Estimate Instantaneous Period
+
 ## Smoothing
 
 - [`S.KNN()`](https://sipemu.github.io/fdars/reference/S.KNN.md) :
