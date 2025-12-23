@@ -66,6 +66,26 @@
 clustering, k-nearest neighbors regression, and outlier detection.
 <strong>fdars</strong> provides both true metrics (satisfying the
 triangle inequality) and semimetrics (which may not).</p>
+<p>A <strong>metric</strong>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+on a space
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>𝒳</mi><annotation encoding="application/x-tex">\mathcal{X}</annotation></semantics></math>
+satisfies:</p>
+<ol style="list-style-type: decimal">
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>≥</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">d(f, g) \geq 0</annotation></semantics></math>
+(non-negativity)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>0</mn><mo>⇔</mo><mi>f</mi><mo>=</mo><mi>g</mi></mrow><annotation encoding="application/x-tex">d(f, g) = 0 \Leftrightarrow f = g</annotation></semantics></math>
+(identity of indiscernibles)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>g</mi><mo>,</mo><mi>f</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">d(f, g) = d(g, f)</annotation></semantics></math>
+(symmetry)</li>
+<li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>h</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>≤</mo><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>d</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>g</mi><mo>,</mo><mi>h</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">d(f, h) \leq d(f, g) + d(g, h)</annotation></semantics></math>
+(triangle inequality)</li>
+</ol>
+<p>A <strong>semimetric</strong> satisfies only conditions 1-3.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://sipemu.github.io/fdars">fdars</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -100,161 +120,343 @@ triangle inequality) and semimetrics (which may not).</p>
 <div class="section level3">
 <h3 id="lp-distance-metric-lp">Lp Distance (metric.lp)<a class="anchor" aria-label="anchor" href="#lp-distance-metric-lp"></a>
 </h3>
-<p>The most common choice. Computes the integrated Lp norm of the
-difference:
-<math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mi>p</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><mo>∫</mo><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mi>p</mi></msup><mi>d</mi><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mn>1</mn><mi>/</mi><mi>p</mi></mrow></msup></mrow><annotation encoding="application/x-tex">d_p(f, g) = \left( \int |f(t) - g(t)|^p dt \right)^{1/p}</annotation></semantics></math></p>
+<p>The
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>L</mi><mi>p</mi></msup><annotation encoding="application/x-tex">L^p</annotation></semantics></math>
+distance is the most common choice for functional data. It computes the
+integrated
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>L</mi><mi>p</mi></msup><annotation encoding="application/x-tex">L^p</annotation></semantics></math>
+norm of the difference between two functions:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mi>p</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mo>∫</mo><mi>𝒯</mi></msub><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mi>p</mi></msup><mspace width="0.167em"></mspace><mi>d</mi><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mn>1</mn><mi>/</mi><mi>p</mi></mrow></msup></mrow><annotation encoding="application/x-tex">d_p(f, g) = \left( \int_{\mathcal{T}} |f(t) - g(t)|^p \, dt \right)^{1/p}</annotation></semantics></math></p>
+<p>For discrete observations, this is approximated using numerical
+integration (Simpson’s rule):</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mi>p</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>≈</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>1</mn></mrow><mi>m</mi></munderover><msub><mi>w</mi><mi>j</mi></msub><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mi>p</mi></msup><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mn>1</mn><mi>/</mi><mi>p</mi></mrow></msup></mrow><annotation encoding="application/x-tex">d_p(f, g) \approx \left( \sum_{j=1}^{m} w_j |f(t_j) - g(t_j)|^p \right)^{1/p}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>w</mi><mi>j</mi></msub><annotation encoding="application/x-tex">w_j</annotation></semantics></math>
+are quadrature weights.</p>
+<p>Special cases:</p>
+<ul>
+<li>
+<strong><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">p = 2</annotation></semantics></math>
+(L2/Euclidean)</strong>: Most common, corresponds to the standard
+functional norm. Sensitive to vertical differences.</li>
+<li>
+<strong><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">p = 1</annotation></semantics></math>
+(L1/Manhattan)</strong>: More robust to outliers than L2.</li>
+<li>
+<strong><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><mi>∞</mi></mrow><annotation encoding="application/x-tex">p = \infty</annotation></semantics></math>
+(L-infinity/Chebyshev)</strong>: Maximum absolute difference,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mi>∞</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mo>max</mo><mi>t</mi></msub><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow></mrow><annotation encoding="application/x-tex">d_\infty(f, g) = \max_t |f(t) - g(t)|</annotation></semantics></math>.</li>
+</ul>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># L2 (Euclidean) distance - default</span></span>
 <span><span class="va">dist_l2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_l2</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;          curve1    curve2    curve3 curve4</span></span>
-<span><span class="co">#&gt; curve1 0.000000 0.3498820 1.0000000      1</span></span>
-<span><span class="co">#&gt; curve2 0.349882 0.0000000 0.7215085      1</span></span>
-<span><span class="co">#&gt; curve3 1.000000 0.7215085 0.0000000      1</span></span>
-<span><span class="co">#&gt; curve4 1.000000 1.0000000 1.0000000      0</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_l2</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        curve1 curve2 curve3 curve4</span></span>
+<span><span class="co">#&gt; curve1   0.00  0.350  1.000      1</span></span>
+<span><span class="co">#&gt; curve2   0.35  0.000  0.722      1</span></span>
+<span><span class="co">#&gt; curve3   1.00  0.722  0.000      1</span></span>
+<span><span class="co">#&gt; curve4   1.00  1.000  1.000      0</span></span>
 <span></span>
 <span><span class="co"># L1 (Manhattan) distance</span></span>
-<span><span class="va">dist_l1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span>, p <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">dist_l1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span>, lp <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># L-infinity (maximum) distance</span></span>
-<span><span class="va">dist_linf</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span>, p <span class="op">=</span> <span class="cn">Inf</span><span class="op">)</span></span></code></pre></div>
-<p>The L2 distance is most common, but L1 is more robust to outliers,
-and L-infinity focuses on the maximum difference.</p>
+<span><span class="va">dist_linf</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span>, lp <span class="op">=</span> <span class="cn">Inf</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="weighted-lp-distance">Weighted Lp Distance<a class="anchor" aria-label="anchor" href="#weighted-lp-distance"></a>
 </h3>
 <p>Apply different weights to different parts of the domain:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>p</mi><mo>,</mo><mi>w</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mo>∫</mo><mi>𝒯</mi></msub><mi>w</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mi>p</mi></msup><mspace width="0.167em"></mspace><mi>d</mi><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mn>1</mn><mi>/</mi><mi>p</mi></mrow></msup></mrow><annotation encoding="application/x-tex">d_{p,w}(f, g) = \left( \int_{\mathcal{T}} w(t) |f(t) - g(t)|^p \, dt \right)^{1/p}</annotation></semantics></math></p>
+<p>This is useful when certain parts of the domain are more important
+than others.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Weight emphasizing the middle of the domain</span></span>
 <span><span class="va">w</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span><span class="va">t_grid</span>, mean <span class="op">=</span> <span class="fl">0.5</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span>
 <span><span class="va">w</span> <span class="op">&lt;-</span> <span class="va">w</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">w</span><span class="op">)</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">w</span><span class="op">)</span>  <span class="co"># Normalize</span></span>
 <span></span>
-<span><span class="va">dist_weighted</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span>, p <span class="op">=</span> <span class="fl">2</span>, w <span class="op">=</span> <span class="va">w</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">dist_weighted</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">fd</span>, lp <span class="op">=</span> <span class="fl">2</span>, w <span class="op">=</span> <span class="va">w</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="hausdorff-distance-metric-hausdorff">Hausdorff Distance (metric.hausdorff)<a class="anchor" aria-label="anchor" href="#hausdorff-distance-metric-hausdorff"></a>
 </h3>
-<p>Treats curves as sets of points and computes the Hausdorff distance.
-Useful when curves may cross or have different supports.</p>
+<p>The Hausdorff distance treats curves as sets of points
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo>,</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">(t, f(t))</annotation></semantics></math>
+in 2D space and computes the maximum of minimum distances:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mi>H</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo>max</mo><mrow><mo stretchy="true" form="prefix">{</mo><munder><mo>sup</mo><mrow><mi>t</mi><mo>∈</mo><mi>𝒯</mi></mrow></munder><munder><mo>inf</mo><mrow><mi>s</mi><mo>∈</mo><mi>𝒯</mi></mrow></munder><mo stretchy="false" form="postfix">∥</mo><msub><mi>P</mi><mi>f</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><msub><mi>P</mi><mi>g</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>s</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="false" form="postfix">∥</mo><mo>,</mo><munder><mo>sup</mo><mrow><mi>s</mi><mo>∈</mo><mi>𝒯</mi></mrow></munder><munder><mo>inf</mo><mrow><mi>t</mi><mo>∈</mo><mi>𝒯</mi></mrow></munder><mo stretchy="false" form="postfix">∥</mo><msub><mi>P</mi><mi>f</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><msub><mi>P</mi><mi>g</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>s</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="false" form="postfix">∥</mo><mo stretchy="true" form="postfix">}</mo></mrow></mrow><annotation encoding="application/x-tex">d_H(f, g) = \max\left\{ \sup_{t \in \mathcal{T}} \inf_{s \in \mathcal{T}} \|P_f(t) - P_g(s)\|, \sup_{s \in \mathcal{T}} \inf_{t \in \mathcal{T}} \|P_f(t) - P_g(s)\| \right\}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mi>f</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo>,</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">P_f(t) = (t, f(t))</annotation></semantics></math>
+is the point on the graph of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>f</mi><annotation encoding="application/x-tex">f</annotation></semantics></math>
+at time
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>t</mi><annotation encoding="application/x-tex">t</annotation></semantics></math>.</p>
+<p>The Hausdorff distance is useful when:</p>
+<ul>
+<li>Curves may cross each other</li>
+<li>The timing of features is less important than their shape</li>
+<li>Comparing curves with different supports</li>
+</ul>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dist_haus</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.hausdorff.html">metric.hausdorff</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_haus</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;           curve1    curve2    curve3    curve4</span></span>
-<span><span class="co">#&gt; curve1 0.0000000 0.4794255 0.6775775 0.3280539</span></span>
-<span><span class="co">#&gt; curve2 0.4794255 0.0000000 0.5205745 0.4160166</span></span>
-<span><span class="co">#&gt; curve3 0.6775775 0.5205745 0.0000000 0.3521023</span></span>
-<span><span class="co">#&gt; curve4 0.3280539 0.4160166 0.3521023 0.0000000</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_haus</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        curve1 curve2 curve3 curve4</span></span>
+<span><span class="co">#&gt; curve1  0.000  0.479  0.678  0.328</span></span>
+<span><span class="co">#&gt; curve2  0.479  0.000  0.521  0.416</span></span>
+<span><span class="co">#&gt; curve3  0.678  0.521  0.000  0.352</span></span>
+<span><span class="co">#&gt; curve4  0.328  0.416  0.352  0.000</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="dynamic-time-warping-metric-dtw">Dynamic Time Warping (metric.DTW)<a class="anchor" aria-label="anchor" href="#dynamic-time-warping-metric-dtw"></a>
 </h3>
-<p>DTW allows for non-linear alignment of curves, making it robust to
-phase shifts and time warping:</p>
+<p>DTW allows for non-linear alignment of curves before computing the
+distance. It finds the optimal warping path
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>π</mi><annotation encoding="application/x-tex">\pi</annotation></semantics></math>
+that minimizes:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>D</mi><mi>T</mi><mi>W</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><munder><mo>min</mo><mi>π</mi></munder><msqrt><mrow><munder><mo>∑</mo><mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>∈</mo><mi>π</mi></mrow></munder><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mn>2</mn></msup></mrow></msqrt></mrow><annotation encoding="application/x-tex">d_{DTW}(f, g) = \min_{\pi} \sqrt{\sum_{(i,j) \in \pi} |f(t_i) - g(t_j)|^2}</annotation></semantics></math></p>
+<p>subject to boundary conditions, monotonicity, and continuity
+constraints.</p>
+<p>The <strong>Sakoe-Chiba band</strong> constraint limits the warping
+to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mrow><mo stretchy="true" form="prefix">|</mo><mi>i</mi><mo>−</mo><mi>j</mi><mo stretchy="true" form="postfix">|</mo></mrow><mo>≤</mo><mi>w</mi></mrow><annotation encoding="application/x-tex">|i - j| \leq w</annotation></semantics></math>,
+preventing excessive distortion:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>d</mi><mrow><mi>D</mi><mi>T</mi><mi>W</mi></mrow><mrow><mi>S</mi><mi>C</mi></mrow></msubsup><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><munder><mo>min</mo><mrow><mi>π</mi><mo>:</mo><mrow><mo stretchy="true" form="prefix">|</mo><mi>i</mi><mo>−</mo><mi>j</mi><mo stretchy="true" form="postfix">|</mo></mrow><mo>≤</mo><mi>w</mi></mrow></munder><msqrt><mrow><munder><mo>∑</mo><mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>∈</mo><mi>π</mi></mrow></munder><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>t</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mn>2</mn></msup></mrow></msqrt></mrow><annotation encoding="application/x-tex">d_{DTW}^{SC}(f, g) = \min_{\pi: |i-j| \leq w} \sqrt{\sum_{(i,j) \in \pi} |f(t_i) - g(t_j)|^2}</annotation></semantics></math></p>
+<p>DTW is particularly effective for:</p>
+<ul>
+<li>Phase-shifted signals</li>
+<li>Time series with varying speed</li>
+<li>Comparing signals with local time distortions</li>
+</ul>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dist_dtw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.DTW.html">metric.DTW</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_dtw</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;           curve1    curve2    curve3   curve4</span></span>
-<span><span class="co">#&gt; curve1  0.000000  1.452267 18.185014 24.84362</span></span>
-<span><span class="co">#&gt; curve2  1.452267  0.000000  3.488397 25.97998</span></span>
-<span><span class="co">#&gt; curve3 18.185014  3.488397  0.000000 40.82461</span></span>
-<span><span class="co">#&gt; curve4 24.843625 25.979981 40.824607  0.00000</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_dtw</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        curve1 curve2 curve3 curve4</span></span>
+<span><span class="co">#&gt; curve1  0.000  1.452 18.185 24.844</span></span>
+<span><span class="co">#&gt; curve2  1.452  0.000  3.488 25.980</span></span>
+<span><span class="co">#&gt; curve3 18.185  3.488  0.000 40.825</span></span>
+<span><span class="co">#&gt; curve4 24.844 25.980 40.825  0.000</span></span></code></pre></div>
 <p>Notice that DTW gives a smaller distance between the original sine
-and phase-shifted sine compared to L2, because it aligns them.</p>
+and phase-shifted sine compared to L2, because it can align them:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Compare L2 vs DTW for phase-shifted curves</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"L2 distance (sine vs phase-shifted):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_l2</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">]</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; L2 distance (sine vs phase-shifted): 0.349882</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"DTW distance (sine vs phase-shifted):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_dtw</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">]</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; DTW distance (sine vs phase-shifted): 1.452267</span></span></code></pre></div>
-<p>DTW can use the Sakoe-Chiba band constraint to limit warping:</p>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"L2 distance (sine vs phase-shifted):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_l2</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">]</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; L2 distance (sine vs phase-shifted): 0.35</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"DTW distance (sine vs phase-shifted):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_dtw</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">]</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; DTW distance (sine vs phase-shifted): 1.452</span></span></code></pre></div>
+<p>DTW with band constraint:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Restrict warping to 10% of the series length</span></span>
-<span><span class="va">dist_dtw_band</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.DTW.html">metric.DTW</a></span><span class="op">(</span><span class="va">fd</span>, band <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">dist_dtw_band</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.DTW.html">metric.DTW</a></span><span class="op">(</span><span class="va">fd</span>, w <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">m</span> <span class="op">*</span> <span class="fl">0.1</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="kullback-leibler-divergence-metric-kl">Kullback-Leibler Divergence (metric.kl)<a class="anchor" aria-label="anchor" href="#kullback-leibler-divergence-metric-kl"></a>
+</h3>
+<p>The symmetric Kullback-Leibler divergence treats normalized curves as
+probability density functions:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>K</mi><mi>L</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mrow><mo stretchy="true" form="prefix">[</mo><mo>∫</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>log</mo><mfrac><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac><mspace width="0.167em"></mspace><mi>d</mi><mi>t</mi><mo>+</mo><mo>∫</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>log</mo><mfrac><mrow><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac><mspace width="0.167em"></mspace><mi>d</mi><mi>t</mi><mo stretchy="true" form="postfix">]</mo></mrow></mrow><annotation encoding="application/x-tex">d_{KL}(f, g) = \frac{1}{2}\left[ \int f(t) \log\frac{f(t)}{g(t)} \, dt + \int g(t) \log\frac{g(t)}{f(t)} \, dt \right]</annotation></semantics></math></p>
+<p>Before computing, curves are shifted to be non-negative and
+normalized to integrate to 1:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>f</mi><mo accent="true">̃</mo></mover><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><munder><mo>min</mo><mi>s</mi></munder><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>s</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>ϵ</mi></mrow><mrow><mo>∫</mo><mrow><mo stretchy="true" form="prefix">[</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>s</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><munder><mo>min</mo><mi>s</mi></munder><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>s</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><mi>ϵ</mi><mo stretchy="true" form="postfix">]</mo></mrow><mspace width="0.167em"></mspace><mi>d</mi><mi>s</mi></mrow></mfrac></mrow><annotation encoding="application/x-tex">\tilde{f}(t) = \frac{f(t) - \min_s f(s) + \epsilon}{\int [f(s) - \min_s f(s) + \epsilon] \, ds}</annotation></semantics></math></p>
+<p>This metric is useful for:</p>
+<ul>
+<li>Comparing density-like functions</li>
+<li>Distribution comparison</li>
+<li>Information-theoretic analysis</li>
+</ul>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Shift curves to be positive for KL</span></span>
+<span><span class="va">X_pos</span> <span class="op">&lt;-</span> <span class="va">X</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="va">X</span><span class="op">)</span> <span class="op">+</span> <span class="fl">0.1</span></span>
+<span><span class="va">fd_pos</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_pos</span>, argvals <span class="op">=</span> <span class="va">t_grid</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">dist_kl</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.kl.html">metric.kl</a></span><span class="op">(</span><span class="va">fd_pos</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_kl</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        curve1 curve2 curve3 curve4</span></span>
+<span><span class="co">#&gt; curve1  0.000  0.139  1.208  1.187</span></span>
+<span><span class="co">#&gt; curve2  0.139  0.000  0.630  1.426</span></span>
+<span><span class="co">#&gt; curve3  1.208  0.630  0.000  1.156</span></span>
+<span><span class="co">#&gt; curve4  1.187  1.426  1.156  0.000</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
 <h2 id="semimetrics">Semimetrics<a class="anchor" aria-label="anchor" href="#semimetrics"></a>
 </h2>
-<p>Semimetrics may not satisfy the triangle inequality but can be faster
-or more appropriate for certain applications.</p>
+<p>Semimetrics may not satisfy the triangle inequality but can be more
+appropriate for certain applications or provide computational
+advantages.</p>
 <div class="section level3">
 <h3 id="pca-based-semimetric-semimetric-pca">PCA-Based Semimetric (semimetric.pca)<a class="anchor" aria-label="anchor" href="#pca-based-semimetric-semimetric-pca"></a>
 </h3>
-<p>Distance based on principal component scores:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<p>Projects curves onto the first
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>q</mi><annotation encoding="application/x-tex">q</annotation></semantics></math>
+principal components and computes the Euclidean distance in the reduced
+space:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>P</mi><mi>C</mi><mi>A</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msqrt><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>q</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">(</mo><msubsup><mi>ξ</mi><mi>k</mi><mi>f</mi></msubsup><mo>−</mo><msubsup><mi>ξ</mi><mi>k</mi><mi>g</mi></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow></msqrt></mrow><annotation encoding="application/x-tex">d_{PCA}(f, g) = \sqrt{\sum_{k=1}^{q} (\xi_k^f - \xi_k^g)^2}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>ξ</mi><mi>k</mi><mi>f</mi></msubsup><mo>=</mo><mo stretchy="false" form="prefix">⟨</mo><mi>f</mi><mo>−</mo><mover><mi>f</mi><mo accent="true">‾</mo></mover><mo>,</mo><msub><mi>ϕ</mi><mi>k</mi></msub><mo stretchy="false" form="postfix">⟩</mo></mrow><annotation encoding="application/x-tex">\xi_k^f = \langle f - \bar{f}, \phi_k \rangle</annotation></semantics></math>
+is the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>-th
+principal component score of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>f</mi><annotation encoding="application/x-tex">f</annotation></semantics></math>,
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ϕ</mi><mi>k</mi></msub><annotation encoding="application/x-tex">\phi_k</annotation></semantics></math>
+are the eigenfunctions from functional PCA.</p>
+<p>This semimetric is useful for:</p>
+<ul>
+<li>Dimension reduction before distance computation</li>
+<li>Noise reduction (low-rank approximation)</li>
+<li>Computational efficiency with many evaluation points</li>
+</ul>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Distance using first 3 PCs</span></span>
 <span><span class="va">dist_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.pca.html">semimetric.pca</a></span><span class="op">(</span><span class="va">fd</span>, ncomp <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_pca</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;           [,1]     [,2]      [,3]      [,4]</span></span>
-<span><span class="co">#&gt; [1,]  0.000000 3.514139 10.000000  9.949874</span></span>
-<span><span class="co">#&gt; [2,]  3.514139 0.000000  7.197768  9.961418</span></span>
-<span><span class="co">#&gt; [3,] 10.000000 7.197768  0.000000 10.000000</span></span>
-<span><span class="co">#&gt; [4,]  9.949874 9.961418 10.000000  0.000000</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_pca</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        [,1]  [,2]   [,3]   [,4]</span></span>
+<span><span class="co">#&gt; [1,]  0.000 3.514 10.000  9.950</span></span>
+<span><span class="co">#&gt; [2,]  3.514 0.000  7.198  9.961</span></span>
+<span><span class="co">#&gt; [3,] 10.000 7.198  0.000 10.000</span></span>
+<span><span class="co">#&gt; [4,]  9.950 9.961 10.000  0.000</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="derivative-based-semimetric-semimetric-deriv">Derivative-Based Semimetric (semimetric.deriv)<a class="anchor" aria-label="anchor" href="#derivative-based-semimetric-semimetric-deriv"></a>
 </h3>
-<p>Distance based on derivatives, sensitive to curve shape:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># First derivative</span></span>
+<p>Computes the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>L</mi><mi>p</mi></msup><annotation encoding="application/x-tex">L^p</annotation></semantics></math>
+distance based on the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>r</mi><annotation encoding="application/x-tex">r</annotation></semantics></math>-th
+derivative of the curves:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>d</mi><mrow><mi>d</mi><mi>e</mi><mi>r</mi><mi>i</mi><mi>v</mi></mrow><mrow><mo stretchy="true" form="prefix">(</mo><mi>r</mi><mo stretchy="true" form="postfix">)</mo></mrow></msubsup><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mo>∫</mo><mi>𝒯</mi></msub><msup><mrow><mo stretchy="true" form="prefix">|</mo><msup><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>r</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><msup><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>r</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mi>p</mi></msup><mspace width="0.167em"></mspace><mi>d</mi><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mn>1</mn><mi>/</mi><mi>p</mi></mrow></msup></mrow><annotation encoding="application/x-tex">d_{deriv}^{(r)}(f, g) = \left( \int_{\mathcal{T}} |f^{(r)}(t) - g^{(r)}(t)|^p \, dt \right)^{1/p}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>r</mi><mo stretchy="true" form="postfix">)</mo></mrow></msup><annotation encoding="application/x-tex">f^{(r)}</annotation></semantics></math>
+denotes the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>r</mi><annotation encoding="application/x-tex">r</annotation></semantics></math>-th
+derivative of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>f</mi><annotation encoding="application/x-tex">f</annotation></semantics></math>.</p>
+<p>This semimetric focuses on the shape and dynamics of curves rather
+than their absolute values. It is particularly useful when:</p>
+<ul>
+<li>Comparing rate of change (first derivative)</li>
+<li>Analyzing curvature (second derivative)</li>
+<li>Functions are measured with different baselines</li>
+</ul>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># First derivative (velocity)</span></span>
 <span><span class="va">dist_deriv1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.deriv.html">semimetric.deriv</a></span><span class="op">(</span><span class="va">fd</span>, nderiv <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Second derivative</span></span>
-<span><span class="va">dist_deriv2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.deriv.html">semimetric.deriv</a></span><span class="op">(</span><span class="va">fd</span>, nderiv <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co"># Second derivative (acceleration/curvature)</span></span>
+<span><span class="va">dist_deriv2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.deriv.html">semimetric.deriv</a></span><span class="op">(</span><span class="va">fd</span>, nderiv <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"First derivative distances:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; First derivative distances:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_deriv1</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       [,1]  [,2]  [,3]  [,4]</span></span>
+<span><span class="co">#&gt; [1,] 0.000 2.197 6.279 9.912</span></span>
+<span><span class="co">#&gt; [2,] 2.197 0.000 4.530 9.912</span></span>
+<span><span class="co">#&gt; [3,] 6.279 4.530 0.000 9.912</span></span>
+<span><span class="co">#&gt; [4,] 9.912 9.912 9.912 0.000</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="basis-semimetric-semimetric-basis">Basis Semimetric (semimetric.basis)<a class="anchor" aria-label="anchor" href="#basis-semimetric-semimetric-basis"></a>
 </h3>
-<p>Distance in the space of basis coefficients:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># B-spline basis</span></span>
-<span><span class="va">dist_bspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.basis.html">semimetric.basis</a></span><span class="op">(</span><span class="va">fd</span>, nbasis <span class="op">=</span> <span class="fl">15</span>, type <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span></span>
+<p>Projects curves onto a basis (B-spline or Fourier) and computes the
+Euclidean distance between the coefficient vectors:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>b</mi><mi>a</mi><mi>s</mi><mi>i</mi><mi>s</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mo stretchy="false" form="postfix">∥</mo><msup><mi>c</mi><mi>f</mi></msup><mo>−</mo><msup><mi>c</mi><mi>g</mi></msup><msub><mo stretchy="false" form="postfix">∥</mo><mn>2</mn></msub><mo>=</mo><msqrt><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">(</mo><msubsup><mi>c</mi><mi>k</mi><mi>f</mi></msubsup><mo>−</mo><msubsup><mi>c</mi><mi>k</mi><mi>g</mi></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup></mrow></msqrt></mrow><annotation encoding="application/x-tex">d_{basis}(f, g) = \|c^f - c^g\|_2 = \sqrt{\sum_{k=1}^{K} (c_k^f - c_k^g)^2}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>c</mi><mi>f</mi></msup><mo>=</mo><mrow><mo stretchy="true" form="prefix">(</mo><msubsup><mi>c</mi><mn>1</mn><mi>f</mi></msubsup><mo>,</mo><mi>…</mi><mo>,</mo><msubsup><mi>c</mi><mi>K</mi><mi>f</mi></msubsup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">c^f = (c_1^f, \ldots, c_K^f)</annotation></semantics></math>
+are the basis coefficients from
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>≈</mo><msubsup><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>K</mi></msubsup><msubsup><mi>c</mi><mi>k</mi><mi>f</mi></msubsup><msub><mi>B</mi><mi>k</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">f(t) \approx \sum_{k=1}^{K} c_k^f B_k(t)</annotation></semantics></math>.</p>
+<p>For <strong>B-splines</strong>: Local support provides good
+approximation of local features.</p>
+<p>For <strong>Fourier basis</strong>: Global support captures periodic
+patterns efficiently.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># B-spline basis (local features)</span></span>
+<span><span class="va">dist_bspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.basis.html">semimetric.basis</a></span><span class="op">(</span><span class="va">fd</span>, nbasis <span class="op">=</span> <span class="fl">15</span>, basis <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Fourier basis</span></span>
-<span><span class="va">dist_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.basis.html">semimetric.basis</a></span><span class="op">(</span><span class="va">fd</span>, nbasis <span class="op">=</span> <span class="fl">11</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co"># Fourier basis (periodic patterns)</span></span>
+<span><span class="va">dist_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.basis.html">semimetric.basis</a></span><span class="op">(</span><span class="va">fd</span>, nbasis <span class="op">=</span> <span class="fl">11</span>, basis <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"B-spline basis distances:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; B-spline basis distances:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_bspline</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       [,1]  [,2]  [,3]  [,4]</span></span>
+<span><span class="co">#&gt; [1,] 0.000 1.509 4.015 3.913</span></span>
+<span><span class="co">#&gt; [2,] 1.509 0.000 2.771 3.999</span></span>
+<span><span class="co">#&gt; [3,] 4.015 2.771 0.000 4.289</span></span>
+<span><span class="co">#&gt; [4,] 3.913 3.999 4.289 0.000</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="fourier-semimetric-semimetric-fourier">Fourier Semimetric (semimetric.fourier)<a class="anchor" aria-label="anchor" href="#fourier-semimetric-semimetric-fourier"></a>
 </h3>
-<p>Fast FFT-based distance using Fourier coefficients:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">dist_fft</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.fourier.html">semimetric.fourier</a></span><span class="op">(</span><span class="va">fd</span>, nfreq <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span></code></pre></div>
+<p>Uses the Fast Fourier Transform (FFT) to compute Fourier coefficients
+and measures distance based on the first
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>K</mi><annotation encoding="application/x-tex">K</annotation></semantics></math>
+frequency components:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>F</mi><mi>F</mi><mi>T</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msqrt><mrow><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>0</mn></mrow><mi>K</mi></munderover><msup><mrow><mo stretchy="true" form="prefix">|</mo><msub><mover><mi>f</mi><mo accent="true">̂</mo></mover><mi>k</mi></msub><mo>−</mo><msub><mover><mi>g</mi><mo accent="true">̂</mo></mover><mi>k</mi></msub><mo stretchy="true" form="postfix">|</mo></mrow><mn>2</mn></msup></mrow></msqrt></mrow><annotation encoding="application/x-tex">d_{FFT}(f, g) = \sqrt{\sum_{k=0}^{K} |\hat{f}_k - \hat{g}_k|^2}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mover><mi>f</mi><mo accent="true">̂</mo></mover><mi>k</mi></msub><annotation encoding="application/x-tex">\hat{f}_k</annotation></semantics></math>
+is the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>-th
+Fourier coefficient computed via FFT.</p>
+<p>This is computationally efficient for large datasets and particularly
+useful for periodic or frequency-domain analysis.</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">dist_fft</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.fourier.html">semimetric.fourier</a></span><span class="op">(</span><span class="va">fd</span>, nfreq <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Fourier (FFT) distances:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Fourier (FFT) distances:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_fft</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        curve1 curve2 curve3 curve4</span></span>
+<span><span class="co">#&gt; curve1  0.000  0.005  0.012  0.694</span></span>
+<span><span class="co">#&gt; curve2  0.005  0.000  0.008  0.695</span></span>
+<span><span class="co">#&gt; curve3  0.012  0.008  0.000  0.700</span></span>
+<span><span class="co">#&gt; curve4  0.694  0.695  0.700  0.000</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="horizontal-shift-semimetric-semimetric-hshift">Horizontal Shift Semimetric (semimetric.hshift)<a class="anchor" aria-label="anchor" href="#horizontal-shift-semimetric-semimetric-hshift"></a>
 </h3>
-<p>Allows horizontal shifting to align curves before computing
+<p>Finds the optimal horizontal shift before computing the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>L</mi><mn>2</mn></msup><annotation encoding="application/x-tex">L^2</annotation></semantics></math>
 distance:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">dist_hshift</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.hshift.html">semimetric.hshift</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level3">
-<h3 id="kullback-leibler-semimetric-metric-kl">Kullback-Leibler Semimetric (metric.kl)<a class="anchor" aria-label="anchor" href="#kullback-leibler-semimetric-metric-kl"></a>
-</h3>
-<p>Symmetric KL divergence, treating curves as (normalized) density
-functions:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>d</mi><mrow><mi>h</mi><mi>s</mi><mi>h</mi><mi>i</mi><mi>f</mi><mi>t</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>f</mi><mo>,</mo><mi>g</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><munder><mo>min</mo><mrow><mrow><mo stretchy="true" form="prefix">|</mo><mi>h</mi><mo stretchy="true" form="postfix">|</mo></mrow><mo>≤</mo><msub><mi>h</mi><mrow><mi>m</mi><mi>a</mi><mi>x</mi></mrow></msub></mrow></munder><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mo>∫</mo><mi>𝒯</mi></msub><msup><mrow><mo stretchy="true" form="prefix">|</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>−</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo>+</mo><mi>h</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">|</mo></mrow><mn>2</mn></msup><mspace width="0.167em"></mspace><mi>d</mi><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mrow><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">d_{hshift}(f, g) = \min_{|h| \leq h_{max}} \left( \int_{\mathcal{T}} |f(t) - g(t+h)|^2 \, dt \right)^{1/2}</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>h</mi><annotation encoding="application/x-tex">h</annotation></semantics></math>
+is the shift in discrete time units and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>h</mi><mrow><mi>m</mi><mi>a</mi><mi>x</mi></mrow></msub><annotation encoding="application/x-tex">h_{max}</annotation></semantics></math>
+is the maximum allowed shift.</p>
+<p>This semimetric is simpler than DTW (only horizontal shifts, no
+warping) but can be very effective for:</p>
+<ul>
+<li>Phase-shifted periodic signals</li>
+<li>ECG or other physiological signals with timing variations</li>
+<li>Comparing curves where horizontal alignment is meaningful</li>
+</ul>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Shift curves to be positive for KL</span></span>
-<span><span class="va">X_pos</span> <span class="op">&lt;-</span> <span class="va">X</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="va">X</span><span class="op">)</span> <span class="op">+</span> <span class="fl">0.1</span></span>
-<span><span class="va">fd_pos</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_pos</span>, argvals <span class="op">=</span> <span class="va">t_grid</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">dist_kl</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.kl.html">metric.kl</a></span><span class="op">(</span><span class="va">fd_pos</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">dist_hshift</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/semimetric.hshift.html">semimetric.hshift</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Horizontal shift distances:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Horizontal shift distances:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">dist_hshift</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        curve1 curve2 curve3 curve4</span></span>
+<span><span class="co">#&gt; curve1  0.000  0.005  0.010  0.733</span></span>
+<span><span class="co">#&gt; curve2  0.005  0.000  0.005  0.629</span></span>
+<span><span class="co">#&gt; curve3  0.010  0.005  0.000  0.718</span></span>
+<span><span class="co">#&gt; curve4  0.733  0.629  0.718  0.000</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
 <h2 id="unified-interface">Unified Interface<a class="anchor" aria-label="anchor" href="#unified-interface"></a>
 </h2>
-<p>Use <code><a href="../reference/metric.html">metric()</a></code> for a unified interface:</p>
+<p>Use <code><a href="../reference/metric.html">metric()</a></code> for a unified interface to all distance
+functions:</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Different methods via single function</span></span>
-<span><span class="va">d1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.html">metric</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"lp"</span>, p <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="va">d1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.html">metric</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"lp"</span>, lp <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="va">d2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.html">metric</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"dtw"</span><span class="op">)</span></span>
-<span><span class="va">d3</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.html">metric</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"hausdorff"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">d3</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.html">metric</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"hausdorff"</span><span class="op">)</span></span>
+<span><span class="va">d4</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.html">metric</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"pca"</span>, ncomp <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="comparing-distance-measures">Comparing Distance Measures<a class="anchor" aria-label="anchor" href="#comparing-distance-measures"></a>
 </h2>
+<p>Different distance measures capture different aspects of curve
+similarity:</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create comparison data</span></span>
 <span><span class="va">dists</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
@@ -266,12 +468,14 @@ functions:</p>
 <span></span>
 <span><span class="co"># Correlation between distance measures</span></span>
 <span><span class="va">dist_mat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">cbind</span>, <span class="va">dists</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">dist_mat</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Correlation between distance measures:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Correlation between distance measures:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">dist_mat</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;             L2   L1  DTW Hausdorff</span></span>
-<span><span class="co">#&gt; L2        1.00 1.00 0.82      0.74</span></span>
-<span><span class="co">#&gt; L1        1.00 1.00 0.82      0.74</span></span>
-<span><span class="co">#&gt; DTW       0.82 0.82 1.00      0.32</span></span>
-<span><span class="co">#&gt; Hausdorff 0.74 0.74 0.32      1.00</span></span></code></pre></div>
+<span><span class="co">#&gt; L2        1.00 0.99 0.82      0.74</span></span>
+<span><span class="co">#&gt; L1        0.99 1.00 0.77      0.79</span></span>
+<span><span class="co">#&gt; DTW       0.82 0.77 1.00      0.32</span></span>
+<span><span class="co">#&gt; Hausdorff 0.74 0.79 0.32      1.00</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="distance-matrices-for-larger-samples">Distance Matrices for Larger Samples<a class="anchor" aria-label="anchor" href="#distance-matrices-for-larger-samples"></a>
@@ -297,54 +501,137 @@ functions:</p>
 <p><img src="distance-metrics_files/figure-html/large-sample-1.png" class="r-plt" alt="" width="672"></p>
 </div>
 <div class="section level2">
+<h2 id="metric-properties-summary">Metric Properties Summary<a class="anchor" aria-label="anchor" href="#metric-properties-summary"></a>
+</h2>
+<table class="table">
+<colgroup>
+<col width="14%">
+<col width="8%">
+<col width="23%">
+<col width="25%">
+<col width="27%">
+</colgroup>
+<thead><tr class="header">
+<th>Distance</th>
+<th>Type</th>
+<th>Triangle Ineq.</th>
+<th>Phase Invariant</th>
+<th>Computational Cost</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Lp</td>
+<td>Metric</td>
+<td>Yes</td>
+<td>No</td>
+<td>O(nm)</td>
+</tr>
+<tr class="even">
+<td>Hausdorff</td>
+<td>Metric</td>
+<td>Yes</td>
+<td>Partial</td>
+<td>O(nm²)</td>
+</tr>
+<tr class="odd">
+<td>DTW</td>
+<td>Metric*</td>
+<td>Yes*</td>
+<td>Yes</td>
+<td>O(nm²)</td>
+</tr>
+<tr class="even">
+<td>KL</td>
+<td>Semimetric</td>
+<td>No</td>
+<td>No</td>
+<td>O(nm)</td>
+</tr>
+<tr class="odd">
+<td>PCA</td>
+<td>Semimetric</td>
+<td>Yes**</td>
+<td>No</td>
+<td>O(nm + nq²)</td>
+</tr>
+<tr class="even">
+<td>Derivative</td>
+<td>Semimetric</td>
+<td>Yes**</td>
+<td>No</td>
+<td>O(nm)</td>
+</tr>
+<tr class="odd">
+<td>Basis</td>
+<td>Semimetric</td>
+<td>Yes**</td>
+<td>No</td>
+<td>O(nmK)</td>
+</tr>
+<tr class="even">
+<td>Fourier</td>
+<td>Semimetric</td>
+<td>Yes**</td>
+<td>No</td>
+<td>O(nm log m)</td>
+</tr>
+<tr class="odd">
+<td>H-shift</td>
+<td>Semimetric</td>
+<td>No</td>
+<td>Yes</td>
+<td>O(nm·h_max)</td>
+</tr>
+</tbody>
+</table>
+<p>* DTW satisfies triangle inequality when using the same warping path
+** These satisfy triangle inequality in the reduced/transformed
+space</p>
+</div>
+<div class="section level2">
 <h2 id="choosing-a-distance-measure">Choosing a Distance Measure<a class="anchor" aria-label="anchor" href="#choosing-a-distance-measure"></a>
 </h2>
 <table class="table">
 <thead><tr class="header">
-<th>Distance</th>
-<th>Properties</th>
-<th>Best For</th>
+<th>Scenario</th>
+<th>Recommended Distance</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td>L2</td>
-<td>Standard, fast</td>
 <td>General purpose</td>
+<td>L2 (<code>metric.lp</code>)</td>
 </tr>
 <tr class="even">
-<td>L1</td>
-<td>Robust to outliers</td>
 <td>Heavy-tailed noise</td>
+<td>L1 (<code>metric.lp</code>, p=1)</td>
 </tr>
 <tr class="odd">
-<td>L-infinity</td>
-<td>Focuses on maximum difference</td>
 <td>Worst-case analysis</td>
+<td>L-infinity (<code>metric.lp</code>, p=Inf)</td>
 </tr>
 <tr class="even">
-<td>DTW</td>
-<td>Handles phase shifts</td>
-<td>Time series alignment</td>
+<td>Phase-shifted signals</td>
+<td>DTW or H-shift</td>
 </tr>
 <tr class="odd">
+<td>Curves that cross</td>
 <td>Hausdorff</td>
-<td>Set-based</td>
-<td>Crossing curves</td>
 </tr>
 <tr class="even">
-<td>PCA</td>
-<td>Dimension reduction</td>
-<td>High-dimensional</td>
+<td>High-dimensional data</td>
+<td>PCA-based</td>
 </tr>
 <tr class="odd">
-<td>Derivative</td>
-<td>Shape-sensitive</td>
-<td>When derivatives matter</td>
+<td>Shape comparison</td>
+<td>Derivative-based</td>
 </tr>
 <tr class="even">
-<td>Fourier</td>
-<td>Very fast (FFT)</td>
 <td>Periodic data</td>
+<td>Fourier-based</td>
+</tr>
+<tr class="odd">
+<td>Density-like curves</td>
+<td>Kullback-Leibler</td>
 </tr>
 </tbody>
 </table>
@@ -385,10 +672,15 @@ functions:</p>
 <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h2>
 <ul>
-<li>Ferraty, F. and Vieu, P. (2006). <em>Nonparametric Functional Data
-Analysis</em>. Springer.</li>
 <li>Berndt, D.J. and Clifford, J. (1994). Using Dynamic Time Warping to
 Find Patterns in Time Series. <em>KDD Workshop</em>, 359-370.</li>
+<li>Ferraty, F. and Vieu, P. (2006). <em>Nonparametric Functional Data
+Analysis</em>. Springer.</li>
+<li>Ramsay, J.O. and Silverman, B.W. (2005). <em>Functional Data
+Analysis</em>. Springer, 2nd edition.</li>
+<li>Sakoe, H. and Chiba, S. (1978). Dynamic programming algorithm
+optimization for spoken word recognition. <em>IEEE Transactions on
+Acoustics, Speech, and Signal Processing</em>, 26(1), 43-49.</li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

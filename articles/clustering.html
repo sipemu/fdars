@@ -316,13 +316,133 @@ convergence:</p>
 <p><img src="clustering_files/figure-html/kmeanspp-1.png" class="r-plt" alt="" width="672"></p>
 </div>
 <div class="section level2">
+<h2 id="fuzzy-c-means-clustering">Fuzzy C-Means Clustering<a class="anchor" aria-label="anchor" href="#fuzzy-c-means-clustering"></a>
+</h2>
+<p>Unlike hard k-means where each curve belongs to exactly one cluster,
+fuzzy c-means (FCM) assigns membership degrees to each cluster. This is
+useful when clusters overlap or when you want to quantify uncertainty in
+assignments.</p>
+<div class="section level3">
+<h3 id="basic-fuzzy-clustering">Basic Fuzzy Clustering<a class="anchor" aria-label="anchor" href="#basic-fuzzy-clustering"></a>
+</h3>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Fuzzy clustering with 3 clusters</span></span>
+<span><span class="va">fcm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/cluster.fcm.html">cluster.fcm</a></span><span class="op">(</span><span class="va">fd</span>, ncl <span class="op">=</span> <span class="fl">3</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Fuzzy C-Means Clustering</span></span>
+<span><span class="co">#&gt; ========================</span></span>
+<span><span class="co">#&gt; Number of clusters: 3 </span></span>
+<span><span class="co">#&gt; Number of observations: 60 </span></span>
+<span><span class="co">#&gt; Fuzziness parameter m: 2 </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Cluster sizes (hard assignment):</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;  1  2  3 </span></span>
+<span><span class="co">#&gt; 20 20 20 </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Objective function: 1.3055 </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Average membership per cluster:</span></span>
+<span><span class="co">#&gt;    C1    C2    C3 </span></span>
+<span><span class="co">#&gt; 0.333 0.333 0.333</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="understanding-membership-degrees">Understanding Membership Degrees<a class="anchor" aria-label="anchor" href="#understanding-membership-degrees"></a>
+</h3>
+<p>Each curve has a membership degree for each cluster, summing to
+1:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># View membership matrix for first 6 curves</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt;      [,1]  [,2]  [,3]</span></span>
+<span><span class="co">#&gt; [1,]    0 0.001 0.999</span></span>
+<span><span class="co">#&gt; [2,]    0 0.000 0.999</span></span>
+<span><span class="co">#&gt; [3,]    0 0.000 0.999</span></span>
+<span><span class="co">#&gt; [4,]    0 0.000 1.000</span></span>
+<span><span class="co">#&gt; [5,]    0 0.000 0.999</span></span>
+<span><span class="co">#&gt; [6,]    0 0.001 0.999</span></span>
+<span></span>
+<span><span class="co"># Curves with high membership in one cluster (clear assignment)</span></span>
+<span><span class="va">max_membership</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span>, <span class="fl">1</span>, <span class="va">max</span><span class="op">)</span></span>
+<span><span class="va">clear_assignments</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/which.html" class="external-link">which</a></span><span class="op">(</span><span class="va">max_membership</span> <span class="op">&gt;</span> <span class="fl">0.8</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Curves with clear cluster assignment:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">clear_assignments</span><span class="op">)</span>, <span class="st">"/"</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Curves with clear cluster assignment: 60 / 60</span></span>
+<span></span>
+<span><span class="co"># Curves with ambiguous membership (between clusters)</span></span>
+<span><span class="va">ambiguous</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/which.html" class="external-link">which</a></span><span class="op">(</span><span class="va">max_membership</span> <span class="op">&lt;</span> <span class="fl">0.6</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Ambiguous curves:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">ambiguous</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Ambiguous curves: 0</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="visualizing-fuzzy-clusters">Visualizing Fuzzy Clusters<a class="anchor" aria-label="anchor" href="#visualizing-fuzzy-clusters"></a>
+</h3>
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Plot curves colored by hard assignment</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fcm</span>, type <span class="op">=</span> <span class="st">"curves"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="clustering_files/figure-html/fuzzy-plot-1.png" class="r-plt" alt="" width="672"></p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span></span>
+<span><span class="co"># Plot membership degrees as stacked bars</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fcm</span>, type <span class="op">=</span> <span class="st">"membership"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="clustering_files/figure-html/fuzzy-plot-2.png" class="r-plt" alt="" width="672"></p>
+</div>
+<div class="section level3">
+<h3 id="the-fuzziness-parameter">The Fuzziness Parameter<a class="anchor" aria-label="anchor" href="#the-fuzziness-parameter"></a>
+</h3>
+<p>The parameter <code>m</code> controls the degree of fuzziness: -
+<code>m</code> close to 1: Hard clustering (like k-means) -
+<code>m = 2</code>: Standard choice (default) - <code>m &gt; 2</code>:
+Softer clusters with more overlap</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Compare different fuzziness levels</span></span>
+<span><span class="va">fcm_hard</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/cluster.fcm.html">cluster.fcm</a></span><span class="op">(</span><span class="va">fd</span>, ncl <span class="op">=</span> <span class="fl">3</span>, m <span class="op">=</span> <span class="fl">1.1</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
+<span><span class="va">fcm_soft</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/cluster.fcm.html">cluster.fcm</a></span><span class="op">(</span><span class="va">fd</span>, ncl <span class="op">=</span> <span class="fl">3</span>, m <span class="op">=</span> <span class="fl">3</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Hard (m=1.1) - avg max membership:"</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">fcm_hard</span><span class="op">$</span><span class="va">membership</span>, <span class="fl">1</span>, <span class="va">max</span><span class="op">)</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Hard (m=1.1) - avg max membership: 1</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Default (m=2) - avg max membership:"</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span>, <span class="fl">1</span>, <span class="va">max</span><span class="op">)</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Default (m=2) - avg max membership: 0.999</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Soft (m=3) - avg max membership:"</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">fcm_soft</span><span class="op">$</span><span class="va">membership</span>, <span class="fl">1</span>, <span class="va">max</span><span class="op">)</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Soft (m=3) - avg max membership: 0.961</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="when-to-use-fuzzy-clustering">When to Use Fuzzy Clustering<a class="anchor" aria-label="anchor" href="#when-to-use-fuzzy-clustering"></a>
+</h3>
+<p>Fuzzy clustering is particularly useful when:</p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>Clusters overlap</strong>: Curves may genuinely belong to
+multiple groups</li>
+<li>
+<strong>Uncertainty quantification</strong>: You need confidence in
+cluster assignments</li>
+<li>
+<strong>Outlier detection</strong>: Low maximum membership may
+indicate outliers</li>
+<li>
+<strong>Transition states</strong>: Data represents continuous
+transitions between states</li>
+</ol>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Identify potential outliers (low max membership)</span></span>
+<span><span class="va">max_mem</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span>, <span class="fl">1</span>, <span class="va">max</span><span class="op">)</span></span>
+<span><span class="va">potential_outliers</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/which.html" class="external-link">which</a></span><span class="op">(</span><span class="va">max_mem</span> <span class="op">&lt;</span> <span class="fu"><a href="https://rdrr.io/r/stats/quantile.html" class="external-link">quantile</a></span><span class="op">(</span><span class="va">max_mem</span>, <span class="fl">0.1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Potential outliers (low membership):"</span>, <span class="va">potential_outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Potential outliers (low membership): 10 22 27 29 30 59</span></span></code></pre></div>
+</div>
+</div>
+<div class="section level2">
 <h2 id="comparing-clustering-solutions">Comparing Clustering Solutions<a class="anchor" aria-label="anchor" href="#comparing-clustering-solutions"></a>
 </h2>
 <div class="section level3">
 <h3 id="adjusted-rand-index">Adjusted Rand Index<a class="anchor" aria-label="anchor" href="#adjusted-rand-index"></a>
 </h3>
 <p>Compare two clusterings (requires external package):</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># If you have the mclust package</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mclust-org.github.io/mclust/" class="external-link">mclust</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://mclust-org.github.io/mclust/reference/adjustedRandIndex.html" class="external-link">adjustedRandIndex</a></span><span class="op">(</span><span class="va">km_l2</span><span class="op">$</span><span class="va">cluster</span>, <span class="va">true_clusters</span><span class="op">)</span></span></code></pre></div>
@@ -330,7 +450,7 @@ convergence:</p>
 <div class="section level3">
 <h3 id="confusion-matrix">Confusion Matrix<a class="anchor" aria-label="anchor" href="#confusion-matrix"></a>
 </h3>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create contingency table</span></span>
 <span><span class="va">conf_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span>Predicted <span class="op">=</span> <span class="va">km</span><span class="op">$</span><span class="va">cluster</span>, True <span class="op">=</span> <span class="va">true_clusters</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">conf_matrix</span><span class="op">)</span></span>
@@ -354,7 +474,7 @@ convergence:</p>
 <div class="section level2">
 <h2 id="visualizing-cluster-centers">Visualizing Cluster Centers<a class="anchor" aria-label="anchor" href="#visualizing-cluster-centers"></a>
 </h2>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Extract centers</span></span>
 <span><span class="va">centers</span> <span class="op">&lt;-</span> <span class="va">km</span><span class="op">$</span><span class="va">centers</span></span>
 <span></span>
@@ -366,7 +486,7 @@ convergence:</p>
 <h2 id="handling-overlapping-clusters">Handling Overlapping Clusters<a class="anchor" aria-label="anchor" href="#handling-overlapping-clusters"></a>
 </h2>
 <p>When clusters overlap, different metrics may perform differently:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create overlapping data</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">456</span><span class="op">)</span></span>
 <span><span class="va">X_overlap</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">60</span>, <span class="va">m</span><span class="op">)</span></span>
@@ -393,7 +513,7 @@ convergence:</p>
 <h2 id="performance">Performance<a class="anchor" aria-label="anchor" href="#performance"></a>
 </h2>
 <p>The Rust backend provides fast clustering:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Benchmark with 500 curves</span></span>
 <span><span class="va">X_large</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">500</span> <span class="op">*</span> <span class="fl">200</span><span class="op">)</span>, <span class="fl">500</span>, <span class="fl">200</span><span class="op">)</span></span>
 <span><span class="va">fd_large</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_large</span><span class="op">)</span></span>
@@ -491,6 +611,8 @@ shifts</li>
 <li>Abraham, C., Cornillon, P.A., Matzner-Løber, E., and Molinari, N.
 (2003). Unsupervised curve clustering using B-splines. <em>Scandinavian
 Journal of Statistics</em>, 30(3), 581-595.</li>
+<li>Bezdek, J.C. (1981). <em>Pattern Recognition with Fuzzy Objective
+Function Algorithms</em>. Plenum Press.</li>
 <li>Jacques, J. and Preda, C. (2014). Functional data clustering: a
 survey. <em>Advances in Data Analysis and Classification</em>, 8(3),
 231-255.</li>

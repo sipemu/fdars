@@ -7,6 +7,16 @@ clustering, k-nearest neighbors regression, and outlier detection.
 **fdars** provides both true metrics (satisfying the triangle
 inequality) and semimetrics (which may not).
 
+A **metric** $d$ on a space $\mathcal{X}$ satisfies:
+
+1.  $d(f,g) \geq 0$ (non-negativity)
+2.  $\left. d(f,g) = 0\Leftrightarrow f = g \right.$ (identity of
+    indiscernibles)
+3.  $d(f,g) = d(g,f)$ (symmetry)
+4.  $d(f,h) \leq d(f,g) + d(g,h)$ (triangle inequality)
+
+A **semimetric** satisfies only conditions 1-3.
+
 ``` r
 library(fdars)
 #> 
@@ -41,154 +51,154 @@ plot(fd)
 
 ### Lp Distance (metric.lp)
 
-The most common choice. Computes the integrated Lp norm of the
-difference:
-$$d_{p}(f,g) = \left( \int\left| f(t) - g(t) \right|^{p}dt \right)^{1/p}$$
+The $L^{p}$ distance is the most common choice for functional data. It
+computes the integrated $L^{p}$ norm of the difference between two
+functions:
+
+$$d_{p}(f,g) = \left( \int_{\mathcal{T}}\left| f(t) - g(t) \right|^{p}\, dt \right)^{1/p}$$
+
+For discrete observations, this is approximated using numerical
+integration (Simpson’s rule):
+
+$$d_{p}(f,g) \approx \left( \sum\limits_{j = 1}^{m}w_{j}\left| f\left( t_{j} \right) - g\left( t_{j} \right) \right|^{p} \right)^{1/p}$$
+
+where $w_{j}$ are quadrature weights.
+
+Special cases:
+
+- **$p = 2$ (L2/Euclidean)**: Most common, corresponds to the standard
+  functional norm. Sensitive to vertical differences.
+- **$p = 1$ (L1/Manhattan)**: More robust to outliers than L2.
+- **$p = \infty$ (L-infinity/Chebyshev)**: Maximum absolute difference,
+  $d_{\infty}(f,g) = \max_{t}\left| f(t) - g(t) \right|$.
 
 ``` r
 # L2 (Euclidean) distance - default
 dist_l2 <- metric.lp(fd)
-print(as.matrix(dist_l2))
-#>          curve1    curve2    curve3 curve4
-#> curve1 0.000000 0.3498820 1.0000000      1
-#> curve2 0.349882 0.0000000 0.7215085      1
-#> curve3 1.000000 0.7215085 0.0000000      1
-#> curve4 1.000000 1.0000000 1.0000000      0
+print(round(as.matrix(dist_l2), 3))
+#>        curve1 curve2 curve3 curve4
+#> curve1   0.00  0.350  1.000      1
+#> curve2   0.35  0.000  0.722      1
+#> curve3   1.00  0.722  0.000      1
+#> curve4   1.00  1.000  1.000      0
 
 # L1 (Manhattan) distance
-dist_l1 <- metric.lp(fd, p = 1)
+dist_l1 <- metric.lp(fd, lp = 1)
 
 # L-infinity (maximum) distance
-dist_linf <- metric.lp(fd, p = Inf)
+dist_linf <- metric.lp(fd, lp = Inf)
 ```
-
-The L2 distance is most common, but L1 is more robust to outliers, and
-L-infinity focuses on the maximum difference.
 
 ### Weighted Lp Distance
 
 Apply different weights to different parts of the domain:
+
+$$d_{p,w}(f,g) = \left( \int_{\mathcal{T}}w(t)\left| f(t) - g(t) \right|^{p}\, dt \right)^{1/p}$$
+
+This is useful when certain parts of the domain are more important than
+others.
 
 ``` r
 # Weight emphasizing the middle of the domain
 w <- dnorm(t_grid, mean = 0.5, sd = 0.2)
 w <- w / sum(w) * length(w)  # Normalize
 
-dist_weighted <- metric.lp(fd, p = 2, w = w)
+dist_weighted <- metric.lp(fd, lp = 2, w = w)
 ```
 
 ### Hausdorff Distance (metric.hausdorff)
 
-Treats curves as sets of points and computes the Hausdorff distance.
-Useful when curves may cross or have different supports.
+The Hausdorff distance treats curves as sets of points
+$\left( t,f(t) \right)$ in 2D space and computes the maximum of minimum
+distances:
+
+$$d_{H}(f,g) = \max\left\{ \sup\limits_{t \in \mathcal{T}}\inf\limits_{s \in \mathcal{T}} \parallel P_{f}(t) - P_{g}(s) \parallel ,\sup\limits_{s \in \mathcal{T}}\inf\limits_{t \in \mathcal{T}} \parallel P_{f}(t) - P_{g}(s) \parallel \right\}$$
+
+where $P_{f}(t) = \left( t,f(t) \right)$ is the point on the graph of
+$f$ at time $t$.
+
+The Hausdorff distance is useful when:
+
+- Curves may cross each other
+- The timing of features is less important than their shape
+- Comparing curves with different supports
 
 ``` r
 dist_haus <- metric.hausdorff(fd)
-print(as.matrix(dist_haus))
-#>           curve1    curve2    curve3    curve4
-#> curve1 0.0000000 0.4794255 0.6775775 0.3280539
-#> curve2 0.4794255 0.0000000 0.5205745 0.4160166
-#> curve3 0.6775775 0.5205745 0.0000000 0.3521023
-#> curve4 0.3280539 0.4160166 0.3521023 0.0000000
+print(round(as.matrix(dist_haus), 3))
+#>        curve1 curve2 curve3 curve4
+#> curve1  0.000  0.479  0.678  0.328
+#> curve2  0.479  0.000  0.521  0.416
+#> curve3  0.678  0.521  0.000  0.352
+#> curve4  0.328  0.416  0.352  0.000
 ```
 
 ### Dynamic Time Warping (metric.DTW)
 
-DTW allows for non-linear alignment of curves, making it robust to phase
-shifts and time warping:
+DTW allows for non-linear alignment of curves before computing the
+distance. It finds the optimal warping path $\pi$ that minimizes:
+
+$$d_{DTW}(f,g) = \min\limits_{\pi}\sqrt{\sum\limits_{{(i,j)} \in \pi}\left| f\left( t_{i} \right) - g\left( t_{j} \right) \right|^{2}}$$
+
+subject to boundary conditions, monotonicity, and continuity
+constraints.
+
+The **Sakoe-Chiba band** constraint limits the warping to
+$|i - j| \leq w$, preventing excessive distortion:
+
+$$d_{DTW}^{SC}(f,g) = \min\limits_{\pi:{|i - j|} \leq w}\sqrt{\sum\limits_{{(i,j)} \in \pi}\left| f\left( t_{i} \right) - g\left( t_{j} \right) \right|^{2}}$$
+
+DTW is particularly effective for:
+
+- Phase-shifted signals
+- Time series with varying speed
+- Comparing signals with local time distortions
 
 ``` r
 dist_dtw <- metric.DTW(fd)
-print(as.matrix(dist_dtw))
-#>           curve1    curve2    curve3   curve4
-#> curve1  0.000000  1.452267 18.185014 24.84362
-#> curve2  1.452267  0.000000  3.488397 25.97998
-#> curve3 18.185014  3.488397  0.000000 40.82461
-#> curve4 24.843625 25.979981 40.824607  0.00000
+print(round(as.matrix(dist_dtw), 3))
+#>        curve1 curve2 curve3 curve4
+#> curve1  0.000  1.452 18.185 24.844
+#> curve2  1.452  0.000  3.488 25.980
+#> curve3 18.185  3.488  0.000 40.825
+#> curve4 24.844 25.980 40.825  0.000
 ```
 
 Notice that DTW gives a smaller distance between the original sine and
-phase-shifted sine compared to L2, because it aligns them.
+phase-shifted sine compared to L2, because it can align them:
 
 ``` r
 # Compare L2 vs DTW for phase-shifted curves
-cat("L2 distance (sine vs phase-shifted):", as.matrix(dist_l2)[1, 2], "\n")
-#> L2 distance (sine vs phase-shifted): 0.349882
-cat("DTW distance (sine vs phase-shifted):", as.matrix(dist_dtw)[1, 2], "\n")
-#> DTW distance (sine vs phase-shifted): 1.452267
+cat("L2 distance (sine vs phase-shifted):", round(as.matrix(dist_l2)[1, 2], 3), "\n")
+#> L2 distance (sine vs phase-shifted): 0.35
+cat("DTW distance (sine vs phase-shifted):", round(as.matrix(dist_dtw)[1, 2], 3), "\n")
+#> DTW distance (sine vs phase-shifted): 1.452
 ```
 
-DTW can use the Sakoe-Chiba band constraint to limit warping:
+DTW with band constraint:
 
 ``` r
 # Restrict warping to 10% of the series length
-dist_dtw_band <- metric.DTW(fd, band = 0.1)
+dist_dtw_band <- metric.DTW(fd, w = round(m * 0.1))
 ```
 
-## Semimetrics
+### Kullback-Leibler Divergence (metric.kl)
 
-Semimetrics may not satisfy the triangle inequality but can be faster or
-more appropriate for certain applications.
+The symmetric Kullback-Leibler divergence treats normalized curves as
+probability density functions:
 
-### PCA-Based Semimetric (semimetric.pca)
+$$d_{KL}(f,g) = \frac{1}{2}\left\lbrack \int f(t)\log\frac{f(t)}{g(t)}\, dt + \int g(t)\log\frac{g(t)}{f(t)}\, dt \right\rbrack$$
 
-Distance based on principal component scores:
+Before computing, curves are shifted to be non-negative and normalized
+to integrate to 1:
 
-``` r
-# Distance using first 3 PCs
-dist_pca <- semimetric.pca(fd, ncomp = 3)
-print(as.matrix(dist_pca))
-#>           [,1]     [,2]      [,3]      [,4]
-#> [1,]  0.000000 3.514139 10.000000  9.949874
-#> [2,]  3.514139 0.000000  7.197768  9.961418
-#> [3,] 10.000000 7.197768  0.000000 10.000000
-#> [4,]  9.949874 9.961418 10.000000  0.000000
-```
+$$\widetilde{f}(t) = \frac{f(t) - \min\limits_{s}f(s) + \epsilon}{\int\left\lbrack f(s) - \min\limits_{s}f(s) + \epsilon \right\rbrack\, ds}$$
 
-### Derivative-Based Semimetric (semimetric.deriv)
+This metric is useful for:
 
-Distance based on derivatives, sensitive to curve shape:
-
-``` r
-# First derivative
-dist_deriv1 <- semimetric.deriv(fd, nderiv = 1)
-
-# Second derivative
-dist_deriv2 <- semimetric.deriv(fd, nderiv = 2)
-```
-
-### Basis Semimetric (semimetric.basis)
-
-Distance in the space of basis coefficients:
-
-``` r
-# B-spline basis
-dist_bspline <- semimetric.basis(fd, nbasis = 15, type = "bspline")
-
-# Fourier basis
-dist_fourier <- semimetric.basis(fd, nbasis = 11, type = "fourier")
-```
-
-### Fourier Semimetric (semimetric.fourier)
-
-Fast FFT-based distance using Fourier coefficients:
-
-``` r
-dist_fft <- semimetric.fourier(fd, nfreq = 5)
-```
-
-### Horizontal Shift Semimetric (semimetric.hshift)
-
-Allows horizontal shifting to align curves before computing distance:
-
-``` r
-dist_hshift <- semimetric.hshift(fd)
-```
-
-### Kullback-Leibler Semimetric (metric.kl)
-
-Symmetric KL divergence, treating curves as (normalized) density
-functions:
+- Comparing density-like functions
+- Distribution comparison
+- Information-theoretic analysis
 
 ``` r
 # Shift curves to be positive for KL
@@ -196,21 +206,185 @@ X_pos <- X - min(X) + 0.1
 fd_pos <- fdata(X_pos, argvals = t_grid)
 
 dist_kl <- metric.kl(fd_pos)
+print(round(as.matrix(dist_kl), 3))
+#>        curve1 curve2 curve3 curve4
+#> curve1  0.000  0.139  1.208  1.187
+#> curve2  0.139  0.000  0.630  1.426
+#> curve3  1.208  0.630  0.000  1.156
+#> curve4  1.187  1.426  1.156  0.000
+```
+
+## Semimetrics
+
+Semimetrics may not satisfy the triangle inequality but can be more
+appropriate for certain applications or provide computational
+advantages.
+
+### PCA-Based Semimetric (semimetric.pca)
+
+Projects curves onto the first $q$ principal components and computes the
+Euclidean distance in the reduced space:
+
+$$d_{PCA}(f,g) = \sqrt{\sum\limits_{k = 1}^{q}\left( \xi_{k}^{f} - \xi_{k}^{g} \right)^{2}}$$
+
+where $\xi_{k}^{f} = \langle f - \bar{f},\phi_{k}\rangle$ is the $k$-th
+principal component score of $f$, and $\phi_{k}$ are the eigenfunctions
+from functional PCA.
+
+This semimetric is useful for:
+
+- Dimension reduction before distance computation
+- Noise reduction (low-rank approximation)
+- Computational efficiency with many evaluation points
+
+``` r
+# Distance using first 3 PCs
+dist_pca <- semimetric.pca(fd, ncomp = 3)
+print(round(as.matrix(dist_pca), 3))
+#>        [,1]  [,2]   [,3]   [,4]
+#> [1,]  0.000 3.514 10.000  9.950
+#> [2,]  3.514 0.000  7.198  9.961
+#> [3,] 10.000 7.198  0.000 10.000
+#> [4,]  9.950 9.961 10.000  0.000
+```
+
+### Derivative-Based Semimetric (semimetric.deriv)
+
+Computes the $L^{p}$ distance based on the $r$-th derivative of the
+curves:
+
+$$d_{deriv}^{(r)}(f,g) = \left( \int_{\mathcal{T}}\left| f^{(r)}(t) - g^{(r)}(t) \right|^{p}\, dt \right)^{1/p}$$
+
+where $f^{(r)}$ denotes the $r$-th derivative of $f$.
+
+This semimetric focuses on the shape and dynamics of curves rather than
+their absolute values. It is particularly useful when:
+
+- Comparing rate of change (first derivative)
+- Analyzing curvature (second derivative)
+- Functions are measured with different baselines
+
+``` r
+# First derivative (velocity)
+dist_deriv1 <- semimetric.deriv(fd, nderiv = 1)
+
+# Second derivative (acceleration/curvature)
+dist_deriv2 <- semimetric.deriv(fd, nderiv = 2)
+
+cat("First derivative distances:\n")
+#> First derivative distances:
+print(round(as.matrix(dist_deriv1), 3))
+#>       [,1]  [,2]  [,3]  [,4]
+#> [1,] 0.000 2.197 6.279 9.912
+#> [2,] 2.197 0.000 4.530 9.912
+#> [3,] 6.279 4.530 0.000 9.912
+#> [4,] 9.912 9.912 9.912 0.000
+```
+
+### Basis Semimetric (semimetric.basis)
+
+Projects curves onto a basis (B-spline or Fourier) and computes the
+Euclidean distance between the coefficient vectors:
+
+$$d_{basis}(f,g) = \parallel c^{f} - c^{g} \parallel_{2} = \sqrt{\sum\limits_{k = 1}^{K}\left( c_{k}^{f} - c_{k}^{g} \right)^{2}}$$
+
+where $c^{f} = \left( c_{1}^{f},\ldots,c_{K}^{f} \right)$ are the basis
+coefficients from $f(t) \approx \sum_{k = 1}^{K}c_{k}^{f}B_{k}(t)$.
+
+For **B-splines**: Local support provides good approximation of local
+features.
+
+For **Fourier basis**: Global support captures periodic patterns
+efficiently.
+
+``` r
+# B-spline basis (local features)
+dist_bspline <- semimetric.basis(fd, nbasis = 15, basis = "bspline")
+
+# Fourier basis (periodic patterns)
+dist_fourier <- semimetric.basis(fd, nbasis = 11, basis = "fourier")
+
+cat("B-spline basis distances:\n")
+#> B-spline basis distances:
+print(round(as.matrix(dist_bspline), 3))
+#>       [,1]  [,2]  [,3]  [,4]
+#> [1,] 0.000 1.509 4.015 3.913
+#> [2,] 1.509 0.000 2.771 3.999
+#> [3,] 4.015 2.771 0.000 4.289
+#> [4,] 3.913 3.999 4.289 0.000
+```
+
+### Fourier Semimetric (semimetric.fourier)
+
+Uses the Fast Fourier Transform (FFT) to compute Fourier coefficients
+and measures distance based on the first $K$ frequency components:
+
+$$d_{FFT}(f,g) = \sqrt{\sum\limits_{k = 0}^{K}\left| {\widehat{f}}_{k} - {\widehat{g}}_{k} \right|^{2}}$$
+
+where ${\widehat{f}}_{k}$ is the $k$-th Fourier coefficient computed via
+FFT.
+
+This is computationally efficient for large datasets and particularly
+useful for periodic or frequency-domain analysis.
+
+``` r
+dist_fft <- semimetric.fourier(fd, nfreq = 5)
+cat("Fourier (FFT) distances:\n")
+#> Fourier (FFT) distances:
+print(round(as.matrix(dist_fft), 3))
+#>        curve1 curve2 curve3 curve4
+#> curve1  0.000  0.005  0.012  0.694
+#> curve2  0.005  0.000  0.008  0.695
+#> curve3  0.012  0.008  0.000  0.700
+#> curve4  0.694  0.695  0.700  0.000
+```
+
+### Horizontal Shift Semimetric (semimetric.hshift)
+
+Finds the optimal horizontal shift before computing the $L^{2}$
+distance:
+
+$$d_{hshift}(f,g) = \min\limits_{{|h|} \leq h_{max}}\left( \int_{\mathcal{T}}\left| f(t) - g(t + h) \right|^{2}\, dt \right)^{1/2}$$
+
+where $h$ is the shift in discrete time units and $h_{max}$ is the
+maximum allowed shift.
+
+This semimetric is simpler than DTW (only horizontal shifts, no warping)
+but can be very effective for:
+
+- Phase-shifted periodic signals
+- ECG or other physiological signals with timing variations
+- Comparing curves where horizontal alignment is meaningful
+
+``` r
+dist_hshift <- semimetric.hshift(fd)
+cat("Horizontal shift distances:\n")
+#> Horizontal shift distances:
+print(round(as.matrix(dist_hshift), 3))
+#>        curve1 curve2 curve3 curve4
+#> curve1  0.000  0.005  0.010  0.733
+#> curve2  0.005  0.000  0.005  0.629
+#> curve3  0.010  0.005  0.000  0.718
+#> curve4  0.733  0.629  0.718  0.000
 ```
 
 ## Unified Interface
 
 Use [`metric()`](https://sipemu.github.io/fdars/reference/metric.md) for
-a unified interface:
+a unified interface to all distance functions:
 
 ``` r
 # Different methods via single function
-d1 <- metric(fd, method = "lp", p = 2)
+d1 <- metric(fd, method = "lp", lp = 2)
 d2 <- metric(fd, method = "dtw")
 d3 <- metric(fd, method = "hausdorff")
+d4 <- metric(fd, method = "pca", ncomp = 2)
 ```
 
 ## Comparing Distance Measures
+
+Different distance measures capture different aspects of curve
+similarity:
 
 ``` r
 # Create comparison data
@@ -223,12 +397,14 @@ dists <- list(
 
 # Correlation between distance measures
 dist_mat <- do.call(cbind, dists)
-round(cor(dist_mat), 2)
+cat("Correlation between distance measures:\n")
+#> Correlation between distance measures:
+print(round(cor(dist_mat), 2))
 #>             L2   L1  DTW Hausdorff
-#> L2        1.00 1.00 0.82      0.74
-#> L1        1.00 1.00 0.82      0.74
-#> DTW       0.82 0.82 1.00      0.32
-#> Hausdorff 0.74 0.74 0.32      1.00
+#> L2        1.00 0.99 0.82      0.74
+#> L1        0.99 1.00 0.77      0.79
+#> DTW       0.82 0.77 1.00      0.32
+#> Hausdorff 0.74 0.79 0.32      1.00
 ```
 
 ## Distance Matrices for Larger Samples
@@ -255,18 +431,36 @@ image(as.matrix(dist_matrix), main = "L2 Distance Matrix",
 
 ![](distance-metrics_files/figure-html/large-sample-1.png)
 
+## Metric Properties Summary
+
+| Distance   | Type       | Triangle Ineq. | Phase Invariant | Computational Cost |
+|------------|------------|----------------|-----------------|--------------------|
+| Lp         | Metric     | Yes            | No              | O(nm)              |
+| Hausdorff  | Metric     | Yes            | Partial         | O(nm²)             |
+| DTW        | Metric\*   | Yes\*          | Yes             | O(nm²)             |
+| KL         | Semimetric | No             | No              | O(nm)              |
+| PCA        | Semimetric | Yes\*\*        | No              | O(nm + nq²)        |
+| Derivative | Semimetric | Yes\*\*        | No              | O(nm)              |
+| Basis      | Semimetric | Yes\*\*        | No              | O(nmK)             |
+| Fourier    | Semimetric | Yes\*\*        | No              | O(nm log m)        |
+| H-shift    | Semimetric | No             | Yes             | O(nm·h_max)        |
+
+\* DTW satisfies triangle inequality when using the same warping path
+\*\* These satisfy triangle inequality in the reduced/transformed space
+
 ## Choosing a Distance Measure
 
-| Distance   | Properties                    | Best For                |
-|------------|-------------------------------|-------------------------|
-| L2         | Standard, fast                | General purpose         |
-| L1         | Robust to outliers            | Heavy-tailed noise      |
-| L-infinity | Focuses on maximum difference | Worst-case analysis     |
-| DTW        | Handles phase shifts          | Time series alignment   |
-| Hausdorff  | Set-based                     | Crossing curves         |
-| PCA        | Dimension reduction           | High-dimensional        |
-| Derivative | Shape-sensitive               | When derivatives matter |
-| Fourier    | Very fast (FFT)               | Periodic data           |
+| Scenario              | Recommended Distance            |
+|-----------------------|---------------------------------|
+| General purpose       | L2 (`metric.lp`)                |
+| Heavy-tailed noise    | L1 (`metric.lp`, p=1)           |
+| Worst-case analysis   | L-infinity (`metric.lp`, p=Inf) |
+| Phase-shifted signals | DTW or H-shift                  |
+| Curves that cross     | Hausdorff                       |
+| High-dimensional data | PCA-based                       |
+| Shape comparison      | Derivative-based                |
+| Periodic data         | Fourier-based                   |
+| Density-like curves   | Kullback-Leibler                |
 
 ## Performance
 
@@ -304,7 +498,12 @@ fit_np <- fregre.np(fd_large, y, metric = metric.lp)
 
 ## References
 
-- Ferraty, F. and Vieu, P. (2006). *Nonparametric Functional Data
-  Analysis*. Springer.
 - Berndt, D.J. and Clifford, J. (1994). Using Dynamic Time Warping to
   Find Patterns in Time Series. *KDD Workshop*, 359-370.
+- Ferraty, F. and Vieu, P. (2006). *Nonparametric Functional Data
+  Analysis*. Springer.
+- Ramsay, J.O. and Silverman, B.W. (2005). *Functional Data Analysis*.
+  Springer, 2nd edition.
+- Sakoe, H. and Chiba, S. (1978). Dynamic programming algorithm
+  optimization for spoken word recognition. *IEEE Transactions on
+  Acoustics, Speech, and Signal Processing*, 26(1), 43-49.

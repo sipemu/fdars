@@ -151,7 +151,7 @@ of the projections. More robust to local variations.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RP"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rp</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.06387097 0.06645161 0.28516129 0.29419355 0.24838710 0.24903226</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.06451613 0.09161290 0.24322581 0.29548387 0.26645161 0.24645161</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="random-tukey-depth-method-rt">Random Tukey Depth (method = “RT”)<a class="anchor" aria-label="anchor" href="#random-tukey-depth-method-rt"></a>
@@ -161,7 +161,7 @@ halfspace depth. Very robust to outliers.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RT"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rt</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.03225806 0.03225806 0.06451613 0.03225806 0.03225806 0.06451613</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.03225806 0.03225806 0.03225806 0.06451613 0.06451613 0.03225806</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="functional-spatial-depth-method-fsd">Functional Spatial Depth (method = “FSD”)<a class="anchor" aria-label="anchor" href="#functional-spatial-depth-method-fsd"></a>
@@ -191,7 +191,7 @@ changes in addition to magnitude.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rpd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RPD"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rpd</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.08666667 0.10733333 0.19200000 0.24133333 0.20200000 0.16733333</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.07466667 0.12266667 0.16466667 0.20933333 0.20066667 0.21600000</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -212,11 +212,11 @@ curves differently:</p>
 <span><span class="co"># Correlation between depth functions</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">all_depths</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        FM mode   RP   RT  FSD</span></span>
-<span><span class="co">#&gt; FM   1.00 0.98 0.94 0.16 0.98</span></span>
-<span><span class="co">#&gt; mode 0.98 1.00 0.94 0.15 0.97</span></span>
-<span><span class="co">#&gt; RP   0.94 0.94 1.00 0.11 0.96</span></span>
-<span><span class="co">#&gt; RT   0.16 0.15 0.11 1.00 0.18</span></span>
-<span><span class="co">#&gt; FSD  0.98 0.97 0.96 0.18 1.00</span></span></code></pre></div>
+<span><span class="co">#&gt; FM   1.00 0.98 0.92 0.23 0.98</span></span>
+<span><span class="co">#&gt; mode 0.98 1.00 0.91 0.16 0.97</span></span>
+<span><span class="co">#&gt; RP   0.92 0.91 1.00 0.24 0.93</span></span>
+<span><span class="co">#&gt; RT   0.23 0.16 0.24 1.00 0.24</span></span>
+<span><span class="co">#&gt; FSD  0.98 0.97 0.93 0.24 1.00</span></span></code></pre></div>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Which curves are identified as outliers (lowest depth)?</span></span>
 <span><span class="va">outlier_ranks</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">all_depths</span>, <span class="fl">2</span>, <span class="kw">function</span><span class="op">(</span><span class="va">d</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">d</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">]</span><span class="op">)</span></span>
@@ -224,7 +224,7 @@ curves differently:</p>
 <span><span class="co">#&gt;      FM mode RP RT FSD</span></span>
 <span><span class="co">#&gt; [1,]  1    1  1  1   1</span></span>
 <span><span class="co">#&gt; [2,]  2    2  2  2   2</span></span>
-<span><span class="co">#&gt; [3,] 10   10 17  3  10</span></span></code></pre></div>
+<span><span class="co">#&gt; [3,] 10   10 13  5  10</span></span></code></pre></div>
 <p>All depth functions correctly identify curves 1 and 2 as having low
 depth.</p>
 </div>

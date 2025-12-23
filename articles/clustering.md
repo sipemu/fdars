@@ -262,6 +262,123 @@ plot(init_centers)
 
 ![](clustering_files/figure-html/kmeanspp-1.png)
 
+## Fuzzy C-Means Clustering
+
+Unlike hard k-means where each curve belongs to exactly one cluster,
+fuzzy c-means (FCM) assigns membership degrees to each cluster. This is
+useful when clusters overlap or when you want to quantify uncertainty in
+assignments.
+
+### Basic Fuzzy Clustering
+
+``` r
+# Fuzzy clustering with 3 clusters
+fcm <- cluster.fcm(fd, ncl = 3, seed = 123)
+print(fcm)
+#> Fuzzy C-Means Clustering
+#> ========================
+#> Number of clusters: 3 
+#> Number of observations: 60 
+#> Fuzziness parameter m: 2 
+#> 
+#> Cluster sizes (hard assignment):
+#> 
+#>  1  2  3 
+#> 20 20 20 
+#> 
+#> Objective function: 1.3055 
+#> 
+#> Average membership per cluster:
+#>    C1    C2    C3 
+#> 0.333 0.333 0.333
+```
+
+### Understanding Membership Degrees
+
+Each curve has a membership degree for each cluster, summing to 1:
+
+``` r
+# View membership matrix for first 6 curves
+head(round(fcm$membership, 3))
+#>      [,1]  [,2]  [,3]
+#> [1,]    0 0.001 0.999
+#> [2,]    0 0.000 0.999
+#> [3,]    0 0.000 0.999
+#> [4,]    0 0.000 1.000
+#> [5,]    0 0.000 0.999
+#> [6,]    0 0.001 0.999
+
+# Curves with high membership in one cluster (clear assignment)
+max_membership <- apply(fcm$membership, 1, max)
+clear_assignments <- which(max_membership > 0.8)
+cat("Curves with clear cluster assignment:", length(clear_assignments), "/",
+    nrow(fcm$membership), "\n")
+#> Curves with clear cluster assignment: 60 / 60
+
+# Curves with ambiguous membership (between clusters)
+ambiguous <- which(max_membership < 0.6)
+cat("Ambiguous curves:", length(ambiguous), "\n")
+#> Ambiguous curves: 0
+```
+
+### Visualizing Fuzzy Clusters
+
+``` r
+# Plot curves colored by hard assignment
+plot(fcm, type = "curves")
+```
+
+![](clustering_files/figure-html/fuzzy-plot-1.png)
+
+``` r
+
+# Plot membership degrees as stacked bars
+plot(fcm, type = "membership")
+```
+
+![](clustering_files/figure-html/fuzzy-plot-2.png)
+
+### The Fuzziness Parameter
+
+The parameter `m` controls the degree of fuzziness: - `m` close to 1:
+Hard clustering (like k-means) - `m = 2`: Standard choice (default) -
+`m > 2`: Softer clusters with more overlap
+
+``` r
+# Compare different fuzziness levels
+fcm_hard <- cluster.fcm(fd, ncl = 3, m = 1.1, seed = 123)
+fcm_soft <- cluster.fcm(fd, ncl = 3, m = 3, seed = 123)
+
+cat("Hard (m=1.1) - avg max membership:",
+    round(mean(apply(fcm_hard$membership, 1, max)), 3), "\n")
+#> Hard (m=1.1) - avg max membership: 1
+cat("Default (m=2) - avg max membership:",
+    round(mean(apply(fcm$membership, 1, max)), 3), "\n")
+#> Default (m=2) - avg max membership: 0.999
+cat("Soft (m=3) - avg max membership:",
+    round(mean(apply(fcm_soft$membership, 1, max)), 3), "\n")
+#> Soft (m=3) - avg max membership: 0.961
+```
+
+### When to Use Fuzzy Clustering
+
+Fuzzy clustering is particularly useful when:
+
+1.  **Clusters overlap**: Curves may genuinely belong to multiple groups
+2.  **Uncertainty quantification**: You need confidence in cluster
+    assignments
+3.  **Outlier detection**: Low maximum membership may indicate outliers
+4.  **Transition states**: Data represents continuous transitions
+    between states
+
+``` r
+# Identify potential outliers (low max membership)
+max_mem <- apply(fcm$membership, 1, max)
+potential_outliers <- which(max_mem < quantile(max_mem, 0.1))
+cat("Potential outliers (low membership):", potential_outliers, "\n")
+#> Potential outliers (low membership): 10 22 27 29 30 59
+```
+
 ## Comparing Clustering Solutions
 
 ### Adjusted Rand Index
@@ -383,5 +500,7 @@ system.time(cluster.kmeans(fd_large, ncl = 5, metric = metric.DTW, nstart = 10))
 - Abraham, C., Cornillon, P.A., Matzner-Løber, E., and Molinari, N.
   (2003). Unsupervised curve clustering using B-splines. *Scandinavian
   Journal of Statistics*, 30(3), 581-595.
+- Bezdek, J.C. (1981). *Pattern Recognition with Fuzzy Objective
+  Function Algorithms*. Plenum Press.
 - Jacques, J. and Preda, C. (2014). Functional data clustering: a
   survey. *Advances in Data Analysis and Classification*, 8(3), 231-255.
