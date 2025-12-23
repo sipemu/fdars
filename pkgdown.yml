@@ -5,6 +5,7 @@ articles:
   basis-representation: basis-representation.html
   clustering: clustering.html
   covariance-functions: covariance-functions.html
+  custom-plotting: custom-plotting.html
   depth-functions: depth-functions.html
   distance-metrics: distance-metrics.html
   intro-to-smoothing: intro-to-smoothing.html
@@ -12,7 +13,7 @@ articles:
   outlier-detection: outlier-detection.html
   regression: regression.html
   working-with-derivatives: working-with-derivatives.html
-last_built: 2025-12-23T11:56Z
+last_built: 2025-12-23T14:16Z
 urls:
   reference: https://sipemu.github.io/fdars/reference
   article: https://sipemu.github.io/fdars/articles

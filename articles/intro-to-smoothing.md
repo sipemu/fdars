@@ -127,7 +127,7 @@ print(fd_pspline)
 #> Penalty order: 2 
 #> Lambda: 1e+00 
 #> Effective df: 8.54 
-#> GCV: 1.466e+02
+#> GCV: 5.577e+00
 ```
 
 ### Visualizing the Result

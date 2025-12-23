@@ -4,6 +4,8 @@
 
 - [Introduction to
   fdars](https://sipemu.github.io/fdars/articles/introduction.md):
+- [Custom Plotting with
+  ggplot2](https://sipemu.github.io/fdars/articles/custom-plotting.md):
 - [Introduction to Smoothing Functional
   Data](https://sipemu.github.io/fdars/articles/intro-to-smoothing.md):
 - [Working with

@@ -232,8 +232,8 @@ print(result_fixed)
 #> Number of basis functions: 25 
 #> Penalty order: 2 
 #> Lambda: 1e+01 
-#> Effective df: 7.97 
-#> GCV: 1.1e-01
+#> Effective df: 7.95 
+#> GCV: 1.082e-01
 
 # Compare different lambda values
 par(mfrow = c(2, 2))

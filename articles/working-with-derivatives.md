@@ -176,11 +176,11 @@ phv_ages <- apply(fd_velocity$data, 1, function(v) {
 cat("Peak Height Velocity Ages:\n")
 #> Peak Height Velocity Ages:
 cat("  Mean:", round(mean(phv_ages), 1), "years\n")
-#>   Mean: 18 years
+#>   Mean: 1 years
 cat("  SD:", round(sd(phv_ages), 1), "years\n")
-#>   SD: 0 years
+#>   SD: 0.2 years
 cat("  Range:", round(min(phv_ages), 1), "-", round(max(phv_ages), 1), "years\n")
-#>   Range: 18 - 18 years
+#>   Range: 1 - 2 years
 
 # Histogram
 hist(phv_ages, breaks = 10, col = "lightblue", border = "white",
@@ -245,10 +245,10 @@ cat("Correlation between distance types:\n")
 #> Correlation between distance types:
 cat("  Height vs Velocity:", round(cor(as.vector(dist_height[1:10, 1:10]),
                                         as.vector(dist_velocity[1:10, 1:10])), 3), "\n")
-#>   Height vs Velocity: 0.866
+#>   Height vs Velocity: 0.653
 cat("  Height vs Acceleration:", round(cor(as.vector(dist_height[1:10, 1:10]),
                                             as.vector(dist_acceleration[1:10, 1:10])), 3), "\n")
-#>   Height vs Acceleration: 0.877
+#>   Height vs Acceleration: 0.472
 ```
 
 ### Clustering by Growth Pattern
@@ -389,12 +389,12 @@ features <- data.frame(
 )
 head(features)
 #>   id max_velocity age_at_max_vel min_acceleration
-#> 1  1     61.18274             18        -31.05665
-#> 2  2     63.62371             18        -32.67828
-#> 3  3     62.75060             18        -31.47456
-#> 4  4     64.77301             18        -32.83596
-#> 5  5     65.27504             18        -33.35688
-#> 6  6     63.70787             18        -32.01019
+#> 1  1     16.43583           1.00       -11.511956
+#> 2  2     17.61770           1.50       -22.072741
+#> 3  3     14.94942           1.00       -11.013218
+#> 4  4     13.54967           1.75        -7.469586
+#> 5  5     15.34293           1.00        -8.650561
+#> 6  6     15.81355           1.00       -12.677774
 
 # 5. Use for further analysis
 cat("\nStep 5: Use features for analysis\n")
@@ -402,9 +402,7 @@ cat("\nStep 5: Use features for analysis\n")
 #> Step 5: Use features for analysis
 cat("Correlation between age at PHV and max velocity:",
     round(cor(features$age_at_max_vel, features$max_velocity), 3), "\n")
-#> Warning in cor(features$age_at_max_vel, features$max_velocity): the standard
-#> deviation is zero
-#> Correlation between age at PHV and max velocity: NA
+#> Correlation between age at PHV and max velocity: -0.297
 ```
 
 ## Summary
