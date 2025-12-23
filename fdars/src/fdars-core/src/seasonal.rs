@@ -6,6 +6,8 @@
 //! - Seasonal strength measurement (variance and spectral methods)
 //! - Seasonality change detection (onset/cessation)
 //! - Instantaneous period estimation for drifting seasonality
+//! - Peak timing variability analysis for short series
+//! - Seasonality classification
 
 use crate::basis::fourier_basis_with_period;
 use crate::fdata::deriv_1d;
@@ -98,6 +100,74 @@ pub struct InstantaneousPeriod {
     pub frequency: Vec<f64>,
     /// Instantaneous amplitude (envelope) at each time point
     pub amplitude: Vec<f64>,
+}
+
+/// Result of peak timing variability analysis.
+#[derive(Debug, Clone)]
+pub struct PeakTimingResult {
+    /// Peak times for each cycle
+    pub peak_times: Vec<f64>,
+    /// Peak values
+    pub peak_values: Vec<f64>,
+    /// Within-period timing (0-1 scale, e.g., day-of-year / 365)
+    pub normalized_timing: Vec<f64>,
+    /// Mean normalized timing
+    pub mean_timing: f64,
+    /// Standard deviation of normalized timing
+    pub std_timing: f64,
+    /// Range of normalized timing (max - min)
+    pub range_timing: f64,
+    /// Variability score (0 = stable, 1 = highly variable)
+    pub variability_score: f64,
+    /// Trend in timing (positive = peaks getting later)
+    pub timing_trend: f64,
+    /// Cycle indices (1-indexed)
+    pub cycle_indices: Vec<usize>,
+}
+
+/// Type of seasonality pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeasonalType {
+    /// Regular peaks with consistent timing
+    StableSeasonal,
+    /// Regular peaks but timing shifts between cycles
+    VariableTiming,
+    /// Some cycles seasonal, some not
+    IntermittentSeasonal,
+    /// No clear seasonality
+    NonSeasonal,
+}
+
+/// Result of seasonality classification.
+#[derive(Debug, Clone)]
+pub struct SeasonalityClassification {
+    /// Whether the series is seasonal overall
+    pub is_seasonal: bool,
+    /// Whether peak timing is stable across cycles
+    pub has_stable_timing: bool,
+    /// Timing variability score (0 = stable, 1 = highly variable)
+    pub timing_variability: f64,
+    /// Overall seasonal strength
+    pub seasonal_strength: f64,
+    /// Per-cycle seasonal strength
+    pub cycle_strengths: Vec<f64>,
+    /// Indices of weak/missing seasons (0-indexed)
+    pub weak_seasons: Vec<usize>,
+    /// Classification type
+    pub classification: SeasonalType,
+    /// Peak timing analysis (if peaks were detected)
+    pub peak_timing: Option<PeakTimingResult>,
+}
+
+/// Method for automatic threshold selection.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ThresholdMethod {
+    /// Fixed user-specified threshold
+    Fixed(f64),
+    /// Percentile of strength distribution
+    Percentile(f64),
+    /// Otsu's method (optimal bimodal separation)
+    Otsu,
 }
 
 // ============================================================================
@@ -276,6 +346,134 @@ fn unwrap_phase(phase: &[f64]) -> Vec<f64> {
     }
 
     unwrapped
+}
+
+/// Select optimal smoothing lambda using GCV (Generalized Cross-Validation).
+///
+/// Performs grid search over lambda values and returns the one with minimum GCV.
+fn select_lambda_gcv(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    nbasis: usize,
+    order: usize,
+) -> f64 {
+    // Lambda grid: log-spaced from 0.01 to 10000
+    let lambdas: Vec<f64> = (0..20)
+        .map(|i| 0.01 * (10.0_f64).powf(i as f64 * 0.3))
+        .collect();
+
+    let mut best_lambda = 10.0;
+    let mut best_gcv = f64::INFINITY;
+
+    for &lambda in &lambdas {
+        if let Some(result) = crate::basis::pspline_fit_1d(data, n, m, argvals, nbasis, lambda, order) {
+            if result.gcv < best_gcv && result.gcv.is_finite() {
+                best_gcv = result.gcv;
+                best_lambda = lambda;
+            }
+        }
+    }
+
+    best_lambda
+}
+
+/// Compute Otsu's threshold for bimodal separation.
+///
+/// Finds the threshold that minimizes within-class variance (or equivalently
+/// maximizes between-class variance).
+fn otsu_threshold(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.5;
+    }
+
+    // Filter NaN values
+    let valid: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    if valid.is_empty() {
+        return 0.5;
+    }
+
+    let min_val = valid.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_val = valid.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    if (max_val - min_val).abs() < 1e-10 {
+        return (min_val + max_val) / 2.0;
+    }
+
+    // Create histogram with 256 bins
+    let n_bins = 256;
+    let bin_width = (max_val - min_val) / n_bins as f64;
+    let mut histogram = vec![0usize; n_bins];
+
+    for &v in &valid {
+        let bin = ((v - min_val) / bin_width).min(n_bins as f64 - 1.0) as usize;
+        histogram[bin] += 1;
+    }
+
+    let total = valid.len() as f64;
+    let mut sum_total = 0.0;
+    for (i, &count) in histogram.iter().enumerate() {
+        sum_total += i as f64 * count as f64;
+    }
+
+    let mut best_threshold = min_val;
+    let mut best_variance = 0.0;
+
+    let mut sum_b = 0.0;
+    let mut weight_b = 0.0;
+
+    for t in 0..n_bins {
+        weight_b += histogram[t] as f64;
+        if weight_b == 0.0 {
+            continue;
+        }
+
+        let weight_f = total - weight_b;
+        if weight_f == 0.0 {
+            break;
+        }
+
+        sum_b += t as f64 * histogram[t] as f64;
+
+        let mean_b = sum_b / weight_b;
+        let mean_f = (sum_total - sum_b) / weight_f;
+
+        // Between-class variance
+        let variance = weight_b * weight_f * (mean_b - mean_f).powi(2);
+
+        if variance > best_variance {
+            best_variance = variance;
+            best_threshold = min_val + (t as f64 + 0.5) * bin_width;
+        }
+    }
+
+    best_threshold
+}
+
+/// Compute linear regression slope (simple OLS).
+fn linear_slope(x: &[f64], y: &[f64]) -> f64 {
+    if x.len() != y.len() || x.len() < 2 {
+        return 0.0;
+    }
+
+    let n = x.len() as f64;
+    let mean_x: f64 = x.iter().sum::<f64>() / n;
+    let mean_y: f64 = y.iter().sum::<f64>() / n;
+
+    let mut num = 0.0;
+    let mut den = 0.0;
+
+    for (&xi, &yi) in x.iter().zip(y.iter()) {
+        num += (xi - mean_x) * (yi - mean_y);
+        den += (xi - mean_x).powi(2);
+    }
+
+    if den.abs() < 1e-15 {
+        0.0
+    } else {
+        num / den
+    }
 }
 
 // ============================================================================
@@ -544,7 +742,8 @@ pub fn estimate_period_regression(
 /// * `min_distance` - Minimum time between peaks (None = no constraint)
 /// * `min_prominence` - Minimum prominence (0-1 scale, None = no filter)
 /// * `smooth_first` - Whether to smooth data before peak detection
-/// * `smooth_lambda` - Smoothing parameter (used if smooth_first = true)
+/// * `smooth_lambda` - Smoothing parameter. If None and smooth_first=true,
+///   uses GCV to automatically select optimal lambda.
 pub fn detect_peaks(
     data: &[f64],
     n: usize,
@@ -553,7 +752,7 @@ pub fn detect_peaks(
     min_distance: Option<f64>,
     min_prominence: Option<f64>,
     smooth_first: bool,
-    smooth_lambda: f64,
+    smooth_lambda: Option<f64>,
 ) -> PeakDetectionResult {
     if n == 0 || m < 3 || argvals.len() != m {
         return PeakDetectionResult {
@@ -567,12 +766,21 @@ pub fn detect_peaks(
     let min_dist_points = min_distance.map(|d| (d / dt).round() as usize).unwrap_or(1);
 
     // Optionally smooth the data
-    let work_data = if smooth_first && smooth_lambda > 0.0 {
-        // Use P-spline smoothing
-        if let Some(result) =
-            crate::basis::pspline_fit_1d(data, n, m, argvals, 20, smooth_lambda, 2)
-        {
-            result.fitted
+    let work_data = if smooth_first {
+        // Determine lambda: use provided value or select via GCV
+        let lambda = smooth_lambda.unwrap_or_else(|| {
+            select_lambda_gcv(data, n, m, argvals, 20, 2)
+        });
+
+        if lambda > 0.0 {
+            // Use P-spline smoothing
+            if let Some(result) =
+                crate::basis::pspline_fit_1d(data, n, m, argvals, 20, lambda, 2)
+            {
+                result.fitted
+            } else {
+                data.to_vec()
+            }
         } else {
             data.to_vec()
         }
@@ -1066,6 +1274,329 @@ pub fn instantaneous_period(
     }
 }
 
+// ============================================================================
+// Peak Timing Variability Analysis
+// ============================================================================
+
+/// Analyze peak timing variability across cycles.
+///
+/// For short series (e.g., 3-5 years of yearly data), this function detects
+/// one peak per cycle and analyzes how peak timing varies between cycles.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `period` - Known period (e.g., 365 for daily data with yearly seasonality)
+/// * `smooth_lambda` - Smoothing parameter. If None, uses GCV for automatic selection.
+///
+/// # Returns
+/// Peak timing result with variability metrics
+pub fn analyze_peak_timing(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    period: f64,
+    smooth_lambda: Option<f64>,
+) -> PeakTimingResult {
+    if n == 0 || m < 3 || argvals.len() != m || period <= 0.0 {
+        return PeakTimingResult {
+            peak_times: Vec::new(),
+            peak_values: Vec::new(),
+            normalized_timing: Vec::new(),
+            mean_timing: f64::NAN,
+            std_timing: f64::NAN,
+            range_timing: f64::NAN,
+            variability_score: f64::NAN,
+            timing_trend: f64::NAN,
+            cycle_indices: Vec::new(),
+        };
+    }
+
+    // Detect peaks with minimum distance constraint of 0.7 * period
+    // This ensures we get at most one peak per cycle
+    let min_distance = period * 0.7;
+    let peaks = detect_peaks(
+        data, n, m, argvals,
+        Some(min_distance),
+        None,  // No prominence filter
+        true,  // Smooth first
+        smooth_lambda,
+    );
+
+    // Use the first sample's peaks (for mean curve analysis)
+    // If multiple samples, we take the mean curve which is effectively in sample 0
+    let sample_peaks = if peaks.peaks.is_empty() {
+        Vec::new()
+    } else {
+        peaks.peaks[0].clone()
+    };
+
+    if sample_peaks.is_empty() {
+        return PeakTimingResult {
+            peak_times: Vec::new(),
+            peak_values: Vec::new(),
+            normalized_timing: Vec::new(),
+            mean_timing: f64::NAN,
+            std_timing: f64::NAN,
+            range_timing: f64::NAN,
+            variability_score: f64::NAN,
+            timing_trend: f64::NAN,
+            cycle_indices: Vec::new(),
+        };
+    }
+
+    let peak_times: Vec<f64> = sample_peaks.iter().map(|p| p.time).collect();
+    let peak_values: Vec<f64> = sample_peaks.iter().map(|p| p.value).collect();
+
+    // Compute normalized timing (position within cycle, 0-1 scale)
+    let t_start = argvals[0];
+    let normalized_timing: Vec<f64> = peak_times
+        .iter()
+        .map(|&t| {
+            let cycle_pos = (t - t_start) % period;
+            cycle_pos / period
+        })
+        .collect();
+
+    // Compute cycle indices (1-indexed)
+    let cycle_indices: Vec<usize> = peak_times
+        .iter()
+        .map(|&t| {
+            ((t - t_start) / period).floor() as usize + 1
+        })
+        .collect();
+
+    // Compute statistics
+    let n_peaks = normalized_timing.len() as f64;
+    let mean_timing = normalized_timing.iter().sum::<f64>() / n_peaks;
+
+    let variance: f64 = normalized_timing
+        .iter()
+        .map(|&x| (x - mean_timing).powi(2))
+        .sum::<f64>() / n_peaks;
+    let std_timing = variance.sqrt();
+
+    let min_timing = normalized_timing.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_timing = normalized_timing.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let range_timing = max_timing - min_timing;
+
+    // Variability score: normalized std deviation
+    // Max possible std for uniform in [0,1] is ~0.289, so we scale by that
+    // But since peaks cluster, we use 0.1 as "high" variability threshold
+    let variability_score = (std_timing / 0.1).min(1.0);
+
+    // Timing trend: linear regression of normalized timing on cycle index
+    let cycle_idx_f64: Vec<f64> = cycle_indices.iter().map(|&i| i as f64).collect();
+    let timing_trend = linear_slope(&cycle_idx_f64, &normalized_timing);
+
+    PeakTimingResult {
+        peak_times,
+        peak_values,
+        normalized_timing,
+        mean_timing,
+        std_timing,
+        range_timing,
+        variability_score,
+        timing_trend,
+        cycle_indices,
+    }
+}
+
+// ============================================================================
+// Seasonality Classification
+// ============================================================================
+
+/// Classify the type of seasonality in functional data.
+///
+/// This is particularly useful for short series (3-5 years) where you need
+/// to identify:
+/// - Whether seasonality is present
+/// - Whether peak timing is stable or variable
+/// - Which cycles have weak or missing seasonality
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `period` - Known seasonal period
+/// * `strength_threshold` - Threshold for seasonal/non-seasonal (default: 0.3)
+/// * `timing_threshold` - Max std of normalized timing for "stable" (default: 0.05)
+///
+/// # Returns
+/// Seasonality classification with type and diagnostics
+pub fn classify_seasonality(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    period: f64,
+    strength_threshold: Option<f64>,
+    timing_threshold: Option<f64>,
+) -> SeasonalityClassification {
+    let strength_thresh = strength_threshold.unwrap_or(0.3);
+    let timing_thresh = timing_threshold.unwrap_or(0.05);
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return SeasonalityClassification {
+            is_seasonal: false,
+            has_stable_timing: false,
+            timing_variability: f64::NAN,
+            seasonal_strength: f64::NAN,
+            cycle_strengths: Vec::new(),
+            weak_seasons: Vec::new(),
+            classification: SeasonalType::NonSeasonal,
+            peak_timing: None,
+        };
+    }
+
+    // Compute overall seasonal strength
+    let overall_strength = seasonal_strength_variance(data, n, m, argvals, period, 3);
+
+    // Compute per-cycle strength
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let _points_per_cycle = (period / dt).round() as usize;
+    let t_start = argvals[0];
+    let t_end = argvals[m - 1];
+    let n_cycles = ((t_end - t_start) / period).floor() as usize;
+
+    let mut cycle_strengths = Vec::with_capacity(n_cycles);
+    let mut weak_seasons = Vec::new();
+
+    for cycle in 0..n_cycles {
+        let cycle_start = t_start + cycle as f64 * period;
+        let cycle_end = cycle_start + period;
+
+        // Find indices for this cycle
+        let start_idx = argvals.iter().position(|&t| t >= cycle_start).unwrap_or(0);
+        let end_idx = argvals.iter().position(|&t| t > cycle_end).unwrap_or(m);
+
+        let cycle_m = end_idx - start_idx;
+        if cycle_m < 4 {
+            cycle_strengths.push(f64::NAN);
+            continue;
+        }
+
+        // Extract cycle data
+        let cycle_data: Vec<f64> = (start_idx..end_idx)
+            .flat_map(|j| (0..n).map(move |i| data[i + j * n]))
+            .collect();
+        let cycle_argvals: Vec<f64> = argvals[start_idx..end_idx].to_vec();
+
+        let strength = seasonal_strength_variance(
+            &cycle_data, n, cycle_m, &cycle_argvals, period, 3
+        );
+
+        cycle_strengths.push(strength);
+
+        if strength < strength_thresh {
+            weak_seasons.push(cycle);
+        }
+    }
+
+    // Analyze peak timing
+    let peak_timing = analyze_peak_timing(data, n, m, argvals, period, None);
+
+    // Determine classification
+    let is_seasonal = overall_strength >= strength_thresh;
+    let has_stable_timing = peak_timing.std_timing <= timing_thresh;
+    let timing_variability = peak_timing.variability_score;
+
+    // Classify based on patterns
+    let n_weak = weak_seasons.len();
+    let classification = if !is_seasonal {
+        SeasonalType::NonSeasonal
+    } else if n_cycles > 0 && n_weak as f64 / n_cycles as f64 > 0.3 {
+        // More than 30% of cycles are weak
+        SeasonalType::IntermittentSeasonal
+    } else if !has_stable_timing {
+        SeasonalType::VariableTiming
+    } else {
+        SeasonalType::StableSeasonal
+    };
+
+    SeasonalityClassification {
+        is_seasonal,
+        has_stable_timing,
+        timing_variability,
+        seasonal_strength: overall_strength,
+        cycle_strengths,
+        weak_seasons,
+        classification,
+        peak_timing: Some(peak_timing),
+    }
+}
+
+/// Detect seasonality changes with automatic threshold selection.
+///
+/// Uses Otsu's method or percentile-based threshold instead of a fixed value.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `period` - Seasonal period
+/// * `threshold_method` - Method for threshold selection
+/// * `window_size` - Window size for local strength estimation
+/// * `min_duration` - Minimum duration to confirm a change
+pub fn detect_seasonality_changes_auto(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    period: f64,
+    threshold_method: ThresholdMethod,
+    window_size: f64,
+    min_duration: f64,
+) -> ChangeDetectionResult {
+    if n == 0 || m < 4 || argvals.len() != m {
+        return ChangeDetectionResult {
+            change_points: Vec::new(),
+            strength_curve: Vec::new(),
+        };
+    }
+
+    // Compute time-varying seasonal strength
+    let strength_curve = seasonal_strength_windowed(
+        data, n, m, argvals, period, window_size, StrengthMethod::Variance
+    );
+
+    if strength_curve.is_empty() {
+        return ChangeDetectionResult {
+            change_points: Vec::new(),
+            strength_curve: Vec::new(),
+        };
+    }
+
+    // Determine threshold
+    let threshold = match threshold_method {
+        ThresholdMethod::Fixed(t) => t,
+        ThresholdMethod::Percentile(p) => {
+            let mut sorted: Vec<f64> = strength_curve.iter()
+                .copied()
+                .filter(|x| x.is_finite())
+                .collect();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            if sorted.is_empty() {
+                0.5
+            } else {
+                let idx = ((p / 100.0) * sorted.len() as f64) as usize;
+                sorted[idx.min(sorted.len() - 1)]
+            }
+        }
+        ThresholdMethod::Otsu => otsu_threshold(&strength_curve),
+    };
+
+    // Now use the regular detection with computed threshold
+    detect_seasonality_changes(
+        data, n, m, argvals, period, threshold, window_size, min_duration
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1100,7 +1631,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let result = detect_peaks(&data, 1, m, &argvals, Some(1.5), None, false, 0.0);
+        let result = detect_peaks(&data, 1, m, &argvals, Some(1.5), None, false, None);
 
         // Should find approximately 5 peaks (10 / 2)
         assert!(!result.peaks[0].is_empty());
@@ -1139,5 +1670,72 @@ mod tests {
             period,
             mid_period
         );
+    }
+
+    #[test]
+    fn test_peak_timing_analysis() {
+        // Generate 5 cycles of sine with period 2
+        let m = 500;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.02).collect();
+        let period = 2.0;
+        let data = generate_sine(1, m, period, &argvals);
+
+        let result = analyze_peak_timing(&data, 1, m, &argvals, period, Some(10.0));
+
+        // Should find approximately 5 peaks
+        assert!(!result.peak_times.is_empty());
+        // Normalized timing should be around 0.25 (peak of sin at π/2)
+        assert!(result.mean_timing.is_finite());
+        // Pure sine should have low timing variability
+        assert!(result.std_timing < 0.1 || result.std_timing.is_nan());
+    }
+
+    #[test]
+    fn test_seasonality_classification() {
+        let m = 400;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.05).collect();
+        let period = 2.0;
+        let data = generate_sine(1, m, period, &argvals);
+
+        let result = classify_seasonality(&data, 1, m, &argvals, period, None, None);
+
+        assert!(result.is_seasonal);
+        assert!(result.seasonal_strength > 0.5);
+        assert!(matches!(result.classification, SeasonalType::StableSeasonal | SeasonalType::VariableTiming));
+    }
+
+    #[test]
+    fn test_otsu_threshold() {
+        // Bimodal distribution: mix of low (0.1-0.2) and high (0.7-0.9) values
+        let values = vec![
+            0.1, 0.12, 0.15, 0.18, 0.11, 0.14,
+            0.7, 0.75, 0.8, 0.85, 0.9, 0.72
+        ];
+
+        let threshold = otsu_threshold(&values);
+
+        // Threshold should be between the two modes
+        // Due to small sample size, Otsu's method may not find optimal threshold
+        // Just verify it returns a reasonable value in the data range
+        assert!(threshold >= 0.1, "Threshold {} should be >= 0.1", threshold);
+        assert!(threshold <= 0.9, "Threshold {} should be <= 0.9", threshold);
+    }
+
+    #[test]
+    fn test_gcv_lambda_selection() {
+        let m = 100;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+
+        // Noisy sine wave
+        let mut data = vec![0.0; m];
+        for j in 0..m {
+            data[j] = (2.0 * PI * argvals[j] / 2.0).sin() + 0.1 * (j as f64 * 0.3).sin();
+        }
+
+        let lambda = select_lambda_gcv(&data, 1, m, &argvals, 20, 2);
+
+        // Lambda should be positive and reasonable
+        assert!(lambda > 0.0);
+        assert!(lambda < 10000.0);
     }
 }

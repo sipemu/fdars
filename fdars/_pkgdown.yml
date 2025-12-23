@@ -9,6 +9,41 @@ navbar:
   structure:
     left: [intro, reference, articles]
     right: [search, github]
+  components:
+    articles:
+      text: Articles
+      menu:
+      - text: Getting Started
+      - text: Introduction to fdars
+        href: articles/introduction.html
+      - text: Custom Plotting with ggplot2
+        href: articles/custom-plotting.html
+      - text: Introduction to Smoothing
+        href: articles/intro-to-smoothing.html
+      - text: Working with Derivatives
+        href: articles/working-with-derivatives.html
+      - text: "---"
+      - text: Core Methods
+      - text: Basis Representation
+        href: articles/basis-representation.html
+      - text: Depth Functions
+        href: articles/depth-functions.html
+      - text: Distance Metrics
+        href: articles/distance-metrics.html
+      - text: "---"
+      - text: Analysis
+      - text: Clustering
+        href: articles/clustering.html
+      - text: Outlier Detection
+        href: articles/outlier-detection.html
+      - text: Regression
+        href: articles/regression.html
+      - text: Seasonal Analysis
+        href: articles/seasonal-analysis.html
+      - text: "---"
+      - text: Advanced
+      - text: Covariance Functions
+        href: articles/covariance-functions.html
 
 articles:
 - title: Getting Started
@@ -138,7 +173,10 @@ reference:
   - seasonal_strength
   - seasonal_strength_curve
   - detect_seasonality_changes
+  - detect_seasonality_changes_auto
   - instantaneous_period
+  - analyze_peak_timing
+  - classify_seasonality
 
 - title: Smoothing
   contents:

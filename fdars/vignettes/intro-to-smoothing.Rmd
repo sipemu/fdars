@@ -12,7 +12,8 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 5,
+  out.width = "100%"
 )
 ```
 
@@ -36,6 +37,7 @@ revealing the true underlying signal. This is essential for:
 ```{r setup}
 library(fdars)
 library(ggplot2)
+theme_set(theme_minimal())
 set.seed(42)
 ```
 

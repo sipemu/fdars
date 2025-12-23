@@ -12,7 +12,8 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 5,
+  out.width = "100%"
 )
 ```
 
@@ -32,6 +33,7 @@ just *what* values are observed.
 ```{r setup}
 library(fdars)
 library(ggplot2)
+theme_set(theme_minimal())
 set.seed(42)
 ```
 

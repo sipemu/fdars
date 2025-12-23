@@ -9,11 +9,11 @@ vignette: >
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 5,
+  out.width = "100%"
 )
 ```
 
@@ -29,6 +29,7 @@ multivariate data) to the infinite-dimensional setting of functional data.
 ```{r setup}
 library(fdars)
 library(ggplot2)
+theme_set(theme_minimal())
 
 # Create example data
 set.seed(42)

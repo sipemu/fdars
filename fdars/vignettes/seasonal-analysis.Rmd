@@ -12,7 +12,8 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 5,
+  out.width = "100%"
 )
 ```
 
@@ -31,6 +32,7 @@ demonstrates the seasonal analysis capabilities of fdars:
 ```{r setup}
 library(fdars)
 library(ggplot2)
+theme_set(theme_minimal())
 set.seed(42)
 ```
 
@@ -436,6 +438,81 @@ ss_multi <- seasonal_strength(fd_multi, period = 2)
 cat("Seasonal strength:", round(ss_multi, 3), "\n")
 ```
 
+## Short Series Analysis (3-5 Years)
+
+For short series like yearly data with only 3-5 complete cycles, fdars provides
+specialized functions to analyze peak timing variability and classify seasonality.
+
+### Peak Timing Variability
+
+Detect shifts in peak timing between years (e.g., March → April → May).
+
+```{r peak-timing}
+# Simulate 5 years where peak timing shifts
+t <- seq(0, 5, length.out = 500)
+period <- 1
+
+# Peaks shift gradually later each year (simulate March -> May progression)
+phase_shifts <- c(0, 0.05, 0.10, 0.08, 0.04)  # Varying phases
+X <- rep(0, length(t))
+for (i in 1:length(t)) {
+  year <- floor(t[i]) + 1
+  year <- min(year, 5)
+  X[i] <- sin(2 * pi * (t[i] + phase_shifts[year]) / period)
+}
+X <- X + rnorm(length(t), sd = 0.1)
+
+fd_variable <- fdata(matrix(X, nrow = 1), argvals = t)
+
+# Analyze peak timing
+timing <- analyze_peak_timing(fd_variable, period = period)
+print(timing)
+```
+
+### Seasonality Classification
+
+Automatically classify the type of seasonality pattern.
+
+```{r classification}
+# Classify the variable-timing signal
+class_result <- classify_seasonality(fd_variable, period = period)
+print(class_result)
+```
+
+### Automatic GCV Smoothing
+
+Peak detection now supports automatic smoothing parameter selection via GCV.
+
+```{r auto-smoothing}
+# Very noisy signal
+X_noisy <- sin(2 * pi * t / period) + rnorm(length(t), sd = 0.5)
+fd_noisy <- fdata(matrix(X_noisy, nrow = 1), argvals = t)
+
+# Auto-select smoothing parameter with GCV
+peaks_auto <- detect_peaks(fd_noisy, min_distance = 0.8,
+                           smooth_first = TRUE, smooth_lambda = NULL)
+cat("Peaks found with auto GCV smoothing:", length(peaks_auto$peaks[[1]]$time), "\n")
+cat("Mean period:", round(peaks_auto$mean_period, 3), "\n")
+```
+
+### Automatic Threshold for Change Detection
+
+Use Otsu's method to automatically determine the seasonal/non-seasonal threshold.
+
+```{r auto-threshold}
+# Signal that transitions from seasonal to noise
+t_long <- seq(0, 20, length.out = 400)
+X_transition <- ifelse(t_long < 10,
+                       sin(2 * pi * t_long / period) + rnorm(sum(t_long < 10), sd = 0.2),
+                       rnorm(sum(t_long >= 10), sd = 0.5))
+fd_transition <- fdata(matrix(X_transition, nrow = 1), argvals = t_long)
+
+# Detect with Otsu's automatic threshold
+changes_auto <- detect_seasonality_changes_auto(fd_transition, period = period,
+                                                 threshold_method = "otsu")
+print(changes_auto)
+```
+
 ## Summary
 
 The fdars package provides a comprehensive toolkit for seasonal analysis:
@@ -443,16 +520,21 @@ The fdars package provides a comprehensive toolkit for seasonal analysis:
 | Function | Purpose |
 |----------|---------|
 | `estimate_period()` | Estimate seasonal period (FFT or ACF) |
-| `detect_peaks()` | Find and characterize peaks |
+| `detect_peaks()` | Find and characterize peaks (with auto GCV smoothing) |
 | `seasonal_strength()` | Measure overall seasonality strength |
 | `seasonal_strength_curve()` | Time-varying seasonality strength |
 | `detect_seasonality_changes()` | Find onset/cessation of seasonality |
+| `detect_seasonality_changes_auto()` | Auto threshold (Otsu's method) |
 | `instantaneous_period()` | Period estimation for drifting signals |
+| `analyze_peak_timing()` | Analyze peak timing variability across cycles |
+| `classify_seasonality()` | Classify seasonality type (stable/variable/intermittent) |
 
 ### Guidelines for Method Selection
 
 - **Period known**: Use it directly for strength calculation
 - **Period unknown, stable**: Use `estimate_period()` with FFT method
-- **Period unknown, noisy**: Use `detect_peaks()` with smoothing
+- **Period unknown, noisy**: Use `detect_peaks()` with `smooth_first = TRUE`
 - **Period varies over time**: Use `instantaneous_period()`
 - **Seasonality may change**: Use `seasonal_strength_curve()` and `detect_seasonality_changes()`
+- **Short series (3-5 years)**: Use `analyze_peak_timing()` and `classify_seasonality()`
+- **Unknown threshold**: Use `detect_seasonality_changes_auto()` with Otsu's method

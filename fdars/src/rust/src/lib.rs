@@ -6153,7 +6153,7 @@ fn seasonal_detect_peaks(
     min_distance: Robj,
     min_prominence: Robj,
     smooth_first: bool,
-    smooth_lambda: f64,
+    smooth_lambda: Robj,
 ) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
@@ -6168,13 +6168,11 @@ fn seasonal_detect_peaks(
     }
 
     let data_slice = data.as_real_slice().unwrap();
-    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
 
-    let min_dist_points = if min_distance.is_null() {
-        1
+    let min_dist: Option<f64> = if min_distance.is_null() {
+        None
     } else {
-        let d: f64 = min_distance.as_real().unwrap_or(dt);
-        (d / dt).round() as usize
+        min_distance.as_real()
     };
 
     let min_prom: Option<f64> = if min_prominence.is_null() {
@@ -6183,166 +6181,43 @@ fn seasonal_detect_peaks(
         min_prominence.as_real()
     };
 
-    // Optionally smooth with P-splines
-    let work_data: Vec<f64> = if smooth_first && smooth_lambda > 0.0 {
-        let basis = bspline_basis(&argvals, 16, 4);
-        let actual_nbasis = basis.len() / m;
-        let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
-
-        let d = difference_matrix(actual_nbasis, 2);
-        let penalty = &d.transpose() * &d;
-        let btb = &b_mat.transpose() * &b_mat;
-        let btb_penalized = &btb + smooth_lambda * &penalty;
-
-        let svd = SVD::new(btb_penalized.clone(), true, true);
-        let eps = 1e-10 * svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
-
-        if let (Some(u), Some(v_t)) = (svd.u.as_ref(), svd.v_t.as_ref()) {
-            let s_inv: Vec<f64> = svd
-                .singular_values
-                .iter()
-                .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
-                .collect();
-
-            let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
-            for i in 0..actual_nbasis {
-                for j in 0..actual_nbasis {
-                    let mut sum = 0.0;
-                    for k in 0..actual_nbasis.min(s_inv.len()) {
-                        sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
-                    }
-                    btb_inv[(i, j)] = sum;
-                }
-            }
-
-            (0..n)
-                .flat_map(|i| {
-                    let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
-                    let curve_vec = DVector::from_vec(curve);
-                    let coefs = &btb_inv * (b_mat.transpose() * &curve_vec);
-                    let fitted = &b_mat * &coefs;
-                    (0..m).map(move |j| fitted[j])
-                })
-                .collect()
-        } else {
-            data_slice.to_vec()
-        }
+    // Parse smooth_lambda: NULL = auto GCV, otherwise use provided value
+    let lambda: Option<f64> = if smooth_lambda.is_null() {
+        None  // Triggers auto GCV selection in Rust core
     } else {
-        data_slice.to_vec()
+        smooth_lambda.as_real()
     };
 
-    // Compute first derivative using finite differences
-    let mut deriv1 = vec![0.0; n * m];
-    let h0 = argvals[1] - argvals[0];
-    let hn = argvals[m - 1] - argvals[m - 2];
+    // Use the Rust core detect_peaks function
+    let result = fdars_core::seasonal::detect_peaks(
+        data_slice, n, m, &argvals,
+        min_dist, min_prom, smooth_first, lambda
+    );
 
-    for i in 0..n {
-        // Forward difference at left boundary
-        deriv1[i] = (work_data[i + n] - work_data[i]) / h0;
-        // Central differences for interior
-        for j in 1..(m - 1) {
-            let h = argvals[j + 1] - argvals[j - 1];
-            deriv1[i + j * n] = (work_data[i + (j + 1) * n] - work_data[i + (j - 1) * n]) / h;
-        }
-        // Backward difference at right boundary
-        deriv1[i + (m - 1) * n] = (work_data[i + (m - 1) * n] - work_data[i + (m - 2) * n]) / hn;
-    }
+    // Convert result to R format
+    let mut all_peaks: Vec<Robj> = Vec::with_capacity(result.peaks.len());
+    let mut all_distances: Vec<Robj> = Vec::with_capacity(result.inter_peak_distances.len());
 
-    // Data range for prominence normalization
-    let mut min_val = f64::INFINITY;
-    let mut max_val = f64::NEG_INFINITY;
-    for &v in work_data.iter() {
-        min_val = min_val.min(v);
-        max_val = max_val.max(v);
-    }
-    let data_range = (max_val - min_val).max(1e-15);
-
-    // Find peaks for each sample
-    let mut all_peaks: Vec<Robj> = Vec::with_capacity(n);
-    let mut all_distances: Vec<Robj> = Vec::with_capacity(n);
-    let mut all_dists_flat: Vec<f64> = Vec::new();
-
-    for i in 0..n {
-        let curve: Vec<f64> = (0..m).map(|j| work_data[i + j * n]).collect();
-        let d1: Vec<f64> = (0..m).map(|j| deriv1[i + j * n]).collect();
-
-        // Find zero crossings (derivative goes + to -)
-        let mut peak_indices: Vec<usize> = Vec::new();
-        for j in 1..m {
-            if d1[j - 1] > 0.0 && d1[j] <= 0.0 {
-                let idx = j - 1;
-                if peak_indices.is_empty() || idx - peak_indices[peak_indices.len() - 1] >= min_dist_points
-                {
-                    peak_indices.push(idx);
-                }
-            }
-        }
-
-        // Compute prominence and filter
-        let mut peaks_times: Vec<f64> = Vec::new();
-        let mut peaks_values: Vec<f64> = Vec::new();
-        let mut peaks_proms: Vec<f64> = Vec::new();
-
-        for &idx in &peak_indices {
-            let peak_val = curve[idx];
-
-            // Compute prominence
-            let mut left_min = peak_val;
-            for k in (0..idx).rev() {
-                if curve[k] >= peak_val {
-                    break;
-                }
-                left_min = left_min.min(curve[k]);
-            }
-            let mut right_min = peak_val;
-            for k in (idx + 1)..m {
-                if curve[k] >= peak_val {
-                    break;
-                }
-                right_min = right_min.min(curve[k]);
-            }
-            let prominence = (peak_val - left_min.max(right_min)) / data_range;
-
-            if let Some(mp) = min_prom {
-                if prominence < mp {
-                    continue;
-                }
-            }
-
-            peaks_times.push(argvals[idx]);
-            peaks_values.push(peak_val);
-            peaks_proms.push(prominence);
-        }
-
-        // Inter-peak distances
-        let mut distances: Vec<f64> = Vec::new();
-        for w in peaks_times.windows(2) {
-            let d = w[1] - w[0];
-            distances.push(d);
-            all_dists_flat.push(d);
-        }
+    for (peaks, distances) in result.peaks.iter().zip(result.inter_peak_distances.iter()) {
+        let times: Vec<f64> = peaks.iter().map(|p| p.time).collect();
+        let values: Vec<f64> = peaks.iter().map(|p| p.value).collect();
+        let proms: Vec<f64> = peaks.iter().map(|p| p.prominence).collect();
 
         all_peaks.push(
             list!(
-                time = peaks_times,
-                value = peaks_values,
-                prominence = peaks_proms
+                time = times,
+                value = values,
+                prominence = proms
             )
             .into(),
         );
-        all_distances.push(Robj::from(distances));
+        all_distances.push(Robj::from(distances.clone()));
     }
-
-    let mean_period = if all_dists_flat.is_empty() {
-        f64::NAN
-    } else {
-        all_dists_flat.iter().sum::<f64>() / all_dists_flat.len() as f64
-    };
 
     list!(
         peaks = List::from_values(all_peaks),
         inter_peak_distances = List::from_values(all_distances),
-        mean_period = mean_period
+        mean_period = result.mean_period
     )
     .into()
 }
@@ -6889,6 +6764,298 @@ fn seasonal_instantaneous_period(data: RMatrix<f64>, argvals: Vec<f64>) -> Robj 
     .into()
 }
 
+/// Analyze peak timing variability across cycles
+#[extendr]
+fn seasonal_analyze_peak_timing(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    smooth_lambda: Robj,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 3 || argvals.len() != m || period <= 0.0 {
+        return list!(
+            peak_times = Vec::<f64>::new(),
+            peak_values = Vec::<f64>::new(),
+            normalized_timing = Vec::<f64>::new(),
+            mean_timing = f64::NAN,
+            std_timing = f64::NAN,
+            range_timing = f64::NAN,
+            variability_score = f64::NAN,
+            timing_trend = f64::NAN,
+            cycle_indices = Vec::<i32>::new()
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let lambda: Option<f64> = if smooth_lambda.is_null() {
+        None
+    } else {
+        smooth_lambda.as_real()
+    };
+
+    let result = fdars_core::seasonal::analyze_peak_timing(
+        data_slice, n, m, &argvals, period, lambda
+    );
+
+    let cycle_indices: Vec<i32> = result.cycle_indices.iter()
+        .map(|&i| i as i32)
+        .collect();
+
+    list!(
+        peak_times = result.peak_times,
+        peak_values = result.peak_values,
+        normalized_timing = result.normalized_timing,
+        mean_timing = result.mean_timing,
+        std_timing = result.std_timing,
+        range_timing = result.range_timing,
+        variability_score = result.variability_score,
+        timing_trend = result.timing_trend,
+        cycle_indices = cycle_indices
+    )
+    .into()
+}
+
+/// Classify seasonality type
+#[extendr]
+fn seasonal_classify_seasonality(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    strength_threshold: Robj,
+    timing_threshold: Robj,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return list!(
+            is_seasonal = false,
+            has_stable_timing = false,
+            timing_variability = f64::NAN,
+            seasonal_strength = f64::NAN,
+            cycle_strengths = Vec::<f64>::new(),
+            weak_seasons = Vec::<i32>::new(),
+            classification = "NonSeasonal",
+            peak_timing = Robj::from(())
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let str_thresh: Option<f64> = if strength_threshold.is_null() {
+        None
+    } else {
+        strength_threshold.as_real()
+    };
+
+    let tim_thresh: Option<f64> = if timing_threshold.is_null() {
+        None
+    } else {
+        timing_threshold.as_real()
+    };
+
+    let result = fdars_core::seasonal::classify_seasonality(
+        data_slice, n, m, &argvals, period, str_thresh, tim_thresh
+    );
+
+    let weak_seasons: Vec<i32> = result.weak_seasons.iter()
+        .map(|&i| i as i32)
+        .collect();
+
+    let classification_str = match result.classification {
+        fdars_core::seasonal::SeasonalType::StableSeasonal => "StableSeasonal",
+        fdars_core::seasonal::SeasonalType::VariableTiming => "VariableTiming",
+        fdars_core::seasonal::SeasonalType::IntermittentSeasonal => "IntermittentSeasonal",
+        fdars_core::seasonal::SeasonalType::NonSeasonal => "NonSeasonal",
+    };
+
+    let peak_timing_robj = if let Some(pt) = result.peak_timing {
+        let cycle_indices: Vec<i32> = pt.cycle_indices.iter()
+            .map(|&i| i as i32)
+            .collect();
+
+        list!(
+            peak_times = pt.peak_times,
+            peak_values = pt.peak_values,
+            normalized_timing = pt.normalized_timing,
+            mean_timing = pt.mean_timing,
+            std_timing = pt.std_timing,
+            range_timing = pt.range_timing,
+            variability_score = pt.variability_score,
+            timing_trend = pt.timing_trend,
+            cycle_indices = cycle_indices
+        )
+        .into()
+    } else {
+        Robj::from(())
+    };
+
+    list!(
+        is_seasonal = result.is_seasonal,
+        has_stable_timing = result.has_stable_timing,
+        timing_variability = result.timing_variability,
+        seasonal_strength = result.seasonal_strength,
+        cycle_strengths = result.cycle_strengths,
+        weak_seasons = weak_seasons,
+        classification = classification_str,
+        peak_timing = peak_timing_robj
+    )
+    .into()
+}
+
+/// Detect seasonality changes with automatic threshold
+#[extendr]
+fn seasonal_detect_changes_auto(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    threshold_method: &str,
+    threshold_value: Robj,
+    window_size: f64,
+    min_duration: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m {
+        return list!(
+            change_times = Vec::<f64>::new(),
+            change_types = Vec::<String>::new(),
+            strength_before = Vec::<f64>::new(),
+            strength_after = Vec::<f64>::new(),
+            strength_curve = Vec::<f64>::new(),
+            computed_threshold = f64::NAN
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let method = match threshold_method {
+        "fixed" => {
+            let val = threshold_value.as_real().unwrap_or(0.3);
+            fdars_core::seasonal::ThresholdMethod::Fixed(val)
+        }
+        "percentile" => {
+            let val = threshold_value.as_real().unwrap_or(20.0);
+            fdars_core::seasonal::ThresholdMethod::Percentile(val)
+        }
+        "otsu" | _ => fdars_core::seasonal::ThresholdMethod::Otsu,
+    };
+
+    let result = fdars_core::seasonal::detect_seasonality_changes_auto(
+        data_slice, n, m, &argvals, period, method, window_size, min_duration
+    );
+
+    let change_times: Vec<f64> = result.change_points.iter().map(|cp| cp.time).collect();
+    let change_types: Vec<String> = result.change_points.iter()
+        .map(|cp| match cp.change_type {
+            fdars_core::seasonal::ChangeType::Onset => "onset".to_string(),
+            fdars_core::seasonal::ChangeType::Cessation => "cessation".to_string(),
+        })
+        .collect();
+    let strength_before: Vec<f64> = result.change_points.iter().map(|cp| cp.strength_before).collect();
+    let strength_after: Vec<f64> = result.change_points.iter().map(|cp| cp.strength_after).collect();
+
+    // Compute the threshold that was used
+    let computed_threshold = match method {
+        fdars_core::seasonal::ThresholdMethod::Fixed(t) => t,
+        _ => {
+            // For auto methods, we need to compute the threshold from the strength curve
+            let valid: Vec<f64> = result.strength_curve.iter()
+                .copied()
+                .filter(|x| x.is_finite())
+                .collect();
+            if valid.is_empty() {
+                0.5
+            } else if matches!(method, fdars_core::seasonal::ThresholdMethod::Percentile(_)) {
+                let p = if let fdars_core::seasonal::ThresholdMethod::Percentile(p) = method { p } else { 20.0 };
+                let mut sorted = valid.clone();
+                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let idx = ((p / 100.0) * sorted.len() as f64) as usize;
+                sorted[idx.min(sorted.len() - 1)]
+            } else {
+                // Otsu - simplified computation
+                otsu_threshold_inline(&valid)
+            }
+        }
+    };
+
+    list!(
+        change_times = change_times,
+        change_types = change_types,
+        strength_before = strength_before,
+        strength_after = strength_after,
+        strength_curve = result.strength_curve,
+        computed_threshold = computed_threshold
+    )
+    .into()
+}
+
+/// Helper function for Otsu threshold computation
+fn otsu_threshold_inline(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.5;
+    }
+
+    let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    if (max_val - min_val).abs() < 1e-10 {
+        return (min_val + max_val) / 2.0;
+    }
+
+    let n_bins = 256;
+    let bin_width = (max_val - min_val) / n_bins as f64;
+    let mut histogram = vec![0usize; n_bins];
+
+    for &v in values {
+        let bin = ((v - min_val) / bin_width).min(n_bins as f64 - 1.0) as usize;
+        histogram[bin] += 1;
+    }
+
+    let total = values.len() as f64;
+    let mut sum_total = 0.0;
+    for (i, &count) in histogram.iter().enumerate() {
+        sum_total += i as f64 * count as f64;
+    }
+
+    let mut best_threshold = min_val;
+    let mut best_variance = 0.0;
+    let mut sum_b = 0.0;
+    let mut weight_b = 0.0;
+
+    for t in 0..n_bins {
+        weight_b += histogram[t] as f64;
+        if weight_b == 0.0 {
+            continue;
+        }
+
+        let weight_f = total - weight_b;
+        if weight_f == 0.0 {
+            break;
+        }
+
+        sum_b += t as f64 * histogram[t] as f64;
+        let mean_b = sum_b / weight_b;
+        let mean_f = (sum_total - sum_b) / weight_f;
+        let variance = weight_b * weight_f * (mean_b - mean_f).powi(2);
+
+        if variance > best_variance {
+            best_variance = variance;
+            best_threshold = min_val + (t as f64 + 0.5) * bin_width;
+        }
+    }
+
+    best_threshold
+}
+
 // =============================================================================
 // Module exports
 // =============================================================================
@@ -7001,4 +7168,7 @@ extendr_module! {
     fn seasonal_strength_windowed;
     fn seasonal_detect_changes;
     fn seasonal_instantaneous_period;
+    fn seasonal_analyze_peak_timing;
+    fn seasonal_classify_seasonality;
+    fn seasonal_detect_changes_auto;
 }

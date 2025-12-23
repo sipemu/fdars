@@ -12,7 +12,8 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 5,
+  out.width = "100%"
 )
 ```
 
@@ -28,6 +29,7 @@ Functional clustering groups curves into clusters based on their similarity.
 ```{r setup}
 library(fdars)
 library(ggplot2)
+theme_set(theme_minimal())
 
 # Generate data with 3 distinct clusters
 set.seed(42)
