@@ -75,7 +75,7 @@ Uses bootstrap resampling to estimate the distribution of depths and
 identifies curves with depth below a data-driven cutoff.
 
 ```{r depth-pond}
-out_pond <- outliers.depth.pond(fd, nb = 100, seed = 123)
+out_pond <- outliers.depth.pond(fd, nb = 1000, seed = 123)
 print(out_pond)
 ```
 
@@ -130,7 +130,7 @@ Both methods accept a `depth` parameter to specify the depth function:
 
 ```{r different-depths}
 # Using Random Projection depth
-out_rp <- outliers.depth.pond(fd, nb = 100, seed = 123)
+out_rp <- outliers.depth.pond(fd, nb = 1000, seed = 123)
 
 # Using modal depth (default is FM)
 out_mode <- outliers.depth.trim(fd, trim = 0.1, seed = 123)
@@ -146,14 +146,14 @@ It's particularly effective for detecting magnitude outliers.
 First, compute a bootstrap threshold:
 
 ```{r lrt-threshold}
-threshold <- outliers.thres.lrt(fd, nb = 100, seed = 123)
+threshold <- outliers.thres.lrt(fd, nb = 1000, seed = 123)
 cat("LRT threshold:", threshold, "\n")
 ```
 
 ### Detecting Outliers
 
 ```{r lrt-detect}
-out_lrt <- outliers.lrt(fd, nb = 100, seed = 123)
+out_lrt <- outliers.lrt(fd, nb = 1000, seed = 123)
 print(out_lrt)
 plot(out_lrt)
 ```
@@ -201,9 +201,9 @@ Different methods may detect different types of outliers:
 
 ```{r compare-methods}
 # Run all methods
-out1 <- outliers.depth.pond(fd, nb = 100, seed = 123)
+out1 <- outliers.depth.pond(fd, nb = 1000, seed = 123)
 out2 <- outliers.depth.trim(fd, trim = 0.1, seed = 123)
-out3 <- outliers.lrt(fd, nb = 100, seed = 123)
+out3 <- outliers.lrt(fd, nb = 1000, seed = 123)
 
 # Compare detected outliers
 cat("Depth-pond outliers:", out1$outliers, "\n")
@@ -237,7 +237,7 @@ plot(fd_mag) +
 ```
 
 ```{r magnitude-detect}
-out_mag <- outliers.depth.pond(fd_mag, nb = 100, seed = 123)
+out_mag <- outliers.depth.pond(fd_mag, nb = 1000, seed = 123)
 cat("Detected magnitude outlier:", out_mag$outliers, "\n")
 ```
 
@@ -262,7 +262,7 @@ plot(fd_shape) +
 ```
 
 ```{r shape-detect}
-out_shape <- outliers.depth.pond(fd_shape, nb = 100, seed = 123)
+out_shape <- outliers.depth.pond(fd_shape, nb = 1000, seed = 123)
 cat("Detected shape outlier:", out_shape$outliers, "\n")
 ```
 
@@ -287,7 +287,7 @@ plot(fd_amp) +
 ```
 
 ```{r amplitude-detect}
-out_amp <- outliers.depth.pond(fd_amp, nb = 100, seed = 123)
+out_amp <- outliers.depth.pond(fd_amp, nb = 1000, seed = 123)
 cat("Detected amplitude outlier:", out_amp$outliers, "\n")
 ```
 
