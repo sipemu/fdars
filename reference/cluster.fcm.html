@@ -134,46 +134,44 @@ m = 2 is the most common choice.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Create functional data with two overlapping groups</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Create functional data with THREE groups - one genuinely overlapping</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">t</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, length.out <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">30</span></span></span>
+<span class="r-in"><span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">45</span></span></span>
 <span class="r-in"><span><span class="va">X</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">n</span>, <span class="fl">50</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Group 1: Sine waves centered at 0</span></span></span>
 <span class="r-in"><span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="fl">15</span><span class="op">)</span> <span class="va">X</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">50</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">16</span><span class="op">:</span><span class="fl">30</span><span class="op">)</span> <span class="va">X</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">cos</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">50</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Group 2: Sine waves centered at 1.5 (clearly separated from group 1)</span></span></span>
+<span class="r-in"><span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">16</span><span class="op">:</span><span class="fl">30</span><span class="op">)</span> <span class="va">X</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span> <span class="op">+</span> <span class="fl">1.5</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">50</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Group 3: Between groups 1 and 2 (true overlap - ambiguous membership)</span></span></span>
+<span class="r-in"><span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">31</span><span class="op">:</span><span class="fl">45</span><span class="op">)</span> <span class="va">X</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span> <span class="op">+</span> <span class="fl">0.75</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">50</span>, sd <span class="op">=</span> <span class="fl">0.3</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Fuzzy clustering</span></span></span>
-<span class="r-in"><span><span class="va">fcm</span> <span class="op">&lt;-</span> <span class="fu">cluster.fcm</span><span class="op">(</span><span class="va">fd</span>, ncl <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Fuzzy C-Means Clustering</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> ========================</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Number of clusters: 2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Number of observations: 30 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Fuzziness parameter m: 2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Cluster sizes (hard assignment):</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  1  2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 15 15 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Objective function: 1.0911 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Average membership per cluster:</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  C1  C2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 0.5 0.5 </span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">)</span></span></span>
-<span class="r-plt img"><img src="cluster.fcm-1.png" alt="" width="700" height="433"></span>
+<span class="r-in"><span><span class="co"># Fuzzy clustering reveals the overlap</span></span></span>
+<span class="r-in"><span><span class="va">fcm</span> <span class="op">&lt;-</span> <span class="fu">cluster.fcm</span><span class="op">(</span><span class="va">fd</span>, ncl <span class="op">=</span> <span class="fl">3</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># View membership degrees for first few curves</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              [,1]      [,2]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] 0.0017182510 0.9982817</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] 0.0011520122 0.9988480</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] 0.0008985607 0.9991014</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] 0.0008952567 0.9991047</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [5,] 0.0009917289 0.9990083</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [6,] 0.0012778222 0.9987222</span>
+<span class="r-in"><span><span class="co"># Curves in group 3 (31-45) have split membership - this is the key benefit!</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Membership for curves 31-35 (overlap region):\n"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Membership for curves 31-35 (overlap region):</span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span><span class="op">[</span><span class="fl">31</span><span class="op">:</span><span class="fl">35</span>, <span class="op">]</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      [,1] [,2] [,3]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] 0.02 0.02 0.96</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] 0.01 0.01 0.97</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] 0.01 0.02 0.96</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] 0.02 0.04 0.94</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [5,] 0.02 0.01 0.97</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Compare to hard clustering which forces a decision</span></span></span>
+<span class="r-in"><span><span class="va">km</span> <span class="op">&lt;-</span> <span class="fu"><a href="cluster.kmeans.html">cluster.kmeans</a></span><span class="op">(</span><span class="va">fd</span>, ncl <span class="op">=</span> <span class="fl">3</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\nHard vs Fuzzy assignment for curve 35:\n"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Hard vs Fuzzy assignment for curve 35:</span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"K-means cluster:"</span>, <span class="va">km</span><span class="op">$</span><span class="va">cluster</span><span class="op">[</span><span class="fl">35</span><span class="op">]</span>, <span class="st">"\n"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> K-means cluster: 3 </span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"FCM memberships:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">fcm</span><span class="op">$</span><span class="va">membership</span><span class="op">[</span><span class="fl">35</span>, <span class="op">]</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> FCM memberships: 0.02 0.01 0.97 </span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

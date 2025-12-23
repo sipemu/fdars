@@ -327,7 +327,29 @@ that’s better suited for B-splines:</p>
 <span><span class="op">}</span></span>
 <span><span class="va">fd2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X2</span>, argvals <span class="op">=</span> <span class="va">t2</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Compare B-spline vs Fourier for this data</span></span>
+<span><span class="co"># Plot the raw complex signal data</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fd2</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Complex Signal: Polynomial Trend + Gaussian Bump + Sharp Edge"</span>,</span>
+<span>       x <span class="op">=</span> <span class="st">"t"</span>, y <span class="op">=</span> <span class="st">"Value"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="basis-representation_files/figure-html/complex-signal-1.png" class="r-plt" alt="" width="100%"></p>
+<p>This signal has three distinct features that challenge different
+basis types:</p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>Polynomial trend</strong>: Smooth, spanning the full
+domain</li>
+<li>
+<strong>Gaussian bump</strong> at
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>=</mo><mn>0.3</mn></mrow><annotation encoding="application/x-tex">t=0.3</annotation></semantics></math>:
+A localized feature</li>
+<li>
+<strong>Sharp edge</strong> at
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>=</mo><mn>0.7</mn></mrow><annotation encoding="application/x-tex">t=0.7</annotation></semantics></math>:
+A non-smooth transition</li>
+</ol>
+<p>Let’s see which basis type handles this better:</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Compare B-spline vs Fourier for this data</span></span>
 <span><span class="va">nbasis_range</span> <span class="op">&lt;-</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span></span>
 <span></span>
 <span><span class="co"># B-spline criteria</span></span>
@@ -353,7 +375,60 @@ that’s better suited for B-splines:</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>x <span class="op">=</span> <span class="st">"Number of basis functions"</span>, y <span class="op">=</span> <span class="st">"Score"</span>,</span>
 <span>       title <span class="op">=</span> <span class="st">"Basis Selection for Complex Non-Periodic Signal"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_color_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"B-spline"</span> <span class="op">=</span> <span class="st">"steelblue"</span>, <span class="st">"Fourier"</span> <span class="op">=</span> <span class="st">"coral"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="basis-representation_files/figure-html/complex-signal-1.png" class="r-plt" alt="" width="100%"></p>
+<p><img src="basis-representation_files/figure-html/complex-signal-comparison-1.png" class="r-plt" alt="" width="100%"></p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span></span>
+<span><span class="co"># Find optimal nbasis for each type</span></span>
+<span><span class="va">opt_bspline</span> <span class="op">&lt;-</span> <span class="va">nbasis_range</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">gcv_bspline</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">opt_fourier</span> <span class="op">&lt;-</span> <span class="va">nbasis_range</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">gcv_fourier</span><span class="op">)</span><span class="op">]</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimal B-spline nbasis:"</span>, <span class="va">opt_bspline</span>, <span class="st">"(GCV:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="va">gcv_bspline</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span>, <span class="st">")\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Optimal B-spline nbasis: 15 (GCV: 0.0259 )</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimal Fourier nbasis:"</span>, <span class="va">opt_fourier</span>, <span class="st">"(GCV:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="va">gcv_fourier</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span>, <span class="st">")\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Optimal Fourier nbasis: 14 (GCV: 0.048 )</span></span></code></pre></div>
+<p>Now let’s visualize how each optimal basis representation captures
+the complex signal:</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Fit both bases at their optimal values</span></span>
+<span><span class="va">coefs_bspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.html">fdata2basis</a></span><span class="op">(</span><span class="va">fd2</span>, nbasis <span class="op">=</span> <span class="va">opt_bspline</span>, type <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span></span>
+<span><span class="va">coefs_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.html">fdata2basis</a></span><span class="op">(</span><span class="va">fd2</span>, nbasis <span class="op">=</span> <span class="va">opt_fourier</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span>
+<span><span class="va">fitted_bspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/basis2fdata.html">basis2fdata</a></span><span class="op">(</span><span class="va">coefs_bspline</span>, argvals <span class="op">=</span> <span class="va">t2</span>, type <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span></span>
+<span><span class="va">fitted_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/basis2fdata.html">basis2fdata</a></span><span class="op">(</span><span class="va">coefs_fourier</span>, argvals <span class="op">=</span> <span class="va">t2</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Plot comparison for one curve</span></span>
+<span><span class="va">i</span> <span class="op">&lt;-</span> <span class="fl">1</span></span>
+<span><span class="va">df_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  t <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">t2</span>, <span class="fl">4</span><span class="op">)</span>,</span>
+<span>  value <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">fd2</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span>, <span class="fu">complex_signal</span><span class="op">(</span><span class="va">t2</span><span class="op">)</span>,</span>
+<span>            <span class="va">fitted_bspline</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span>, <span class="va">fitted_fourier</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span><span class="op">)</span>,</span>
+<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Observed (noisy)"</span>, <span class="st">"True signal"</span>,</span>
+<span>                      <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"B-spline (K="</span>, <span class="va">opt_bspline</span>, <span class="st">")"</span><span class="op">)</span>,</span>
+<span>                      <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"Fourier (K="</span>, <span class="va">opt_fourier</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span>, each <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t2</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>                levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Observed (noisy)"</span>, <span class="st">"True signal"</span>,</span>
+<span>                           <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"B-spline (K="</span>, <span class="va">opt_bspline</span>, <span class="st">")"</span><span class="op">)</span>,</span>
+<span>                           <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"Fourier (K="</span>, <span class="va">opt_fourier</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">df_fit</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">t</span>, y <span class="op">=</span> <span class="va">value</span>, color <span class="op">=</span> <span class="va">type</span>, linetype <span class="op">=</span> <span class="va">type</span>, linewidth <span class="op">=</span> <span class="va">type</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_color_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Observed (noisy)"</span> <span class="op">=</span> <span class="st">"gray70"</span>,</span>
+<span>                                 <span class="st">"True signal"</span> <span class="op">=</span> <span class="st">"black"</span>,</span>
+<span>                                 <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="st">"steelblue"</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"B-spline (K="</span>, <span class="va">opt_bspline</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>                                 <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="st">"coral"</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"Fourier (K="</span>, <span class="va">opt_fourier</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_linetype_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Observed (noisy)"</span> <span class="op">=</span> <span class="st">"solid"</span>,</span>
+<span>                                    <span class="st">"True signal"</span> <span class="op">=</span> <span class="st">"dashed"</span>,</span>
+<span>                                    <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="st">"solid"</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"B-spline (K="</span>, <span class="va">opt_bspline</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>                                    <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="st">"solid"</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"Fourier (K="</span>, <span class="va">opt_fourier</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_linewidth_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Observed (noisy)"</span> <span class="op">=</span> <span class="fl">0.4</span>,</span>
+<span>                                     <span class="st">"True signal"</span> <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>                                     <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"B-spline (K="</span>, <span class="va">opt_bspline</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>                                     <span class="fu"><a href="https://rdrr.io/r/stats/setNames.html" class="external-link">setNames</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"Fourier (K="</span>, <span class="va">opt_fourier</span>, <span class="st">")"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>x <span class="op">=</span> <span class="st">"t"</span>, y <span class="op">=</span> <span class="st">"Value"</span>, color <span class="op">=</span> <span class="cn">NULL</span>, linetype <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>       title <span class="op">=</span> <span class="st">"Basis Representation Comparison: B-spline vs Fourier"</span>,</span>
+<span>       subtitle <span class="op">=</span> <span class="st">"B-spline captures localized features; Fourier shows ringing artifacts"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>legend.position <span class="op">=</span> <span class="st">"bottom"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/guides.html" class="external-link">guides</a></span><span class="op">(</span>linewidth <span class="op">=</span> <span class="st">"none"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="basis-representation_files/figure-html/basis-winner-loser-1.png" class="r-plt" alt="" width="100%"></p>
 <p><strong>Key observations:</strong></p>
 <ul>
 <li>B-splines are better for localized features (like the Gaussian
@@ -369,7 +444,7 @@ functions</li>
 </h3>
 <p>For convenience, use <code><a href="../reference/fdata2basis.cv.html">fdata2basis.cv()</a></code> to automatically
 find the optimal number of basis functions:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Automatic selection using GCV</span></span>
 <span><span class="va">cv_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">cv_result</span><span class="op">)</span></span>
@@ -385,7 +460,7 @@ find the optimal number of basis functions:</p>
 <p><img src="basis-representation_files/figure-html/automatic-selection-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The function returns the optimal number of basis functions and the
 fitted curves:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Plot the smoothed data</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cv_result</span><span class="op">$</span><span class="va">fitted</span>, alpha <span class="op">=</span> <span class="fl">0.5</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="st">"Smoothed with"</span>, <span class="va">cv_result</span><span class="op">$</span><span class="va">optimal.nbasis</span>, <span class="st">"Fourier basis"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p><img src="basis-representation_files/figure-html/cv-result-1.png" class="r-plt" alt="" width="100%"></p>
@@ -394,7 +469,7 @@ fitted curves:</p>
 <h3 id="k-fold-cross-validation">K-fold Cross-Validation<a class="anchor" aria-label="anchor" href="#k-fold-cross-validation"></a>
 </h3>
 <p>For a more robust estimate, use k-fold cross-validation:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># K-fold cross-validation (slower but more robust)</span></span>
 <span><span class="va">cv_kfold</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>,</span>
 <span>                            criterion <span class="op">=</span> <span class="st">"CV"</span>, kfold <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
@@ -417,7 +492,7 @@ are coefficients -
 is a difference matrix (controls smoothness) -
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>
 is the penalty parameter</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Fit P-spline with fixed lambda</span></span>
 <span><span class="va">result_fixed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">result_fixed</span><span class="op">)</span></span>
@@ -457,7 +532,7 @@ is the penalty parameter</p>
 </h3>
 <p>P-splines can automatically select the optimal smoothing
 parameter:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Automatic lambda selection using GCV</span></span>
 <span><span class="va">result_auto</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda.select <span class="op">=</span> <span class="cn">TRUE</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Selected lambda:"</span>, <span class="va">result_auto</span><span class="op">$</span><span class="va">lambda</span>, <span class="st">"\n"</span><span class="op">)</span></span>
@@ -491,7 +566,7 @@ parameter:</p>
 <h3 id="smoothing-multiple-curves">Smoothing Multiple Curves<a class="anchor" aria-label="anchor" href="#smoothing-multiple-curves"></a>
 </h3>
 <p>P-splines work curve-by-curve, so you can smooth entire datasets:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Smooth all curves with automatic lambda selection</span></span>
 <span><span class="va">result_all</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda.select <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span></span>
@@ -504,7 +579,7 @@ parameter:</p>
 <h2 id="comparing-approaches">Comparing Approaches<a class="anchor" aria-label="anchor" href="#comparing-approaches"></a>
 </h2>
 <p>Let’s compare the different smoothing approaches:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Original noisy data</span></span>
 <span><span class="va">fd_single</span> <span class="op">&lt;-</span> <span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span></span>

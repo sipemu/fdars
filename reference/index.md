@@ -180,6 +180,8 @@
 
 - [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)
   : Seasonal Analysis Functions for Functional Data
+- [`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)
+  : Detect Multiple Concurrent Periods
 - [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)
   : Detect Peaks in Functional Data
 - [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)

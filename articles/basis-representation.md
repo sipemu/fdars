@@ -213,6 +213,24 @@ for (i in 1:n2) {
 }
 fd2 <- fdata(X2, argvals = t2)
 
+# Plot the raw complex signal data
+plot(fd2) +
+  labs(title = "Complex Signal: Polynomial Trend + Gaussian Bump + Sharp Edge",
+       x = "t", y = "Value")
+```
+
+![](basis-representation_files/figure-html/complex-signal-1.png)
+
+This signal has three distinct features that challenge different basis
+types:
+
+1.  **Polynomial trend**: Smooth, spanning the full domain
+2.  **Gaussian bump** at $t = 0.3$: A localized feature
+3.  **Sharp edge** at $t = 0.7$: A non-smooth transition
+
+Let’s see which basis type handles this better:
+
+``` r
 # Compare B-spline vs Fourier for this data
 nbasis_range <- 5:25
 
@@ -241,7 +259,66 @@ ggplot(df_complex, aes(x = nbasis, y = score, color = basis)) +
   scale_color_manual(values = c("B-spline" = "steelblue", "Fourier" = "coral"))
 ```
 
-![](basis-representation_files/figure-html/complex-signal-1.png)
+![](basis-representation_files/figure-html/complex-signal-comparison-1.png)
+
+``` r
+
+# Find optimal nbasis for each type
+opt_bspline <- nbasis_range[which.min(gcv_bspline)]
+opt_fourier <- nbasis_range[which.min(gcv_fourier)]
+
+cat("Optimal B-spline nbasis:", opt_bspline, "(GCV:", round(min(gcv_bspline), 4), ")\n")
+#> Optimal B-spline nbasis: 15 (GCV: 0.0259 )
+cat("Optimal Fourier nbasis:", opt_fourier, "(GCV:", round(min(gcv_fourier), 4), ")\n")
+#> Optimal Fourier nbasis: 14 (GCV: 0.048 )
+```
+
+Now let’s visualize how each optimal basis representation captures the
+complex signal:
+
+``` r
+# Fit both bases at their optimal values
+coefs_bspline <- fdata2basis(fd2, nbasis = opt_bspline, type = "bspline")
+coefs_fourier <- fdata2basis(fd2, nbasis = opt_fourier, type = "fourier")
+fitted_bspline <- basis2fdata(coefs_bspline, argvals = t2, type = "bspline")
+fitted_fourier <- basis2fdata(coefs_fourier, argvals = t2, type = "fourier")
+
+# Plot comparison for one curve
+i <- 1
+df_fit <- data.frame(
+  t = rep(t2, 4),
+  value = c(fd2$data[i, ], complex_signal(t2),
+            fitted_bspline$data[i, ], fitted_fourier$data[i, ]),
+  type = factor(rep(c("Observed (noisy)", "True signal",
+                      paste0("B-spline (K=", opt_bspline, ")"),
+                      paste0("Fourier (K=", opt_fourier, ")")), each = length(t2)),
+                levels = c("Observed (noisy)", "True signal",
+                           paste0("B-spline (K=", opt_bspline, ")"),
+                           paste0("Fourier (K=", opt_fourier, ")")))
+)
+
+ggplot(df_fit, aes(x = t, y = value, color = type, linetype = type, linewidth = type)) +
+  geom_line() +
+  scale_color_manual(values = c("Observed (noisy)" = "gray70",
+                                 "True signal" = "black",
+                                 setNames("steelblue", paste0("B-spline (K=", opt_bspline, ")")),
+                                 setNames("coral", paste0("Fourier (K=", opt_fourier, ")")))) +
+  scale_linetype_manual(values = c("Observed (noisy)" = "solid",
+                                    "True signal" = "dashed",
+                                    setNames("solid", paste0("B-spline (K=", opt_bspline, ")")),
+                                    setNames("solid", paste0("Fourier (K=", opt_fourier, ")")))) +
+  scale_linewidth_manual(values = c("Observed (noisy)" = 0.4,
+                                     "True signal" = 1,
+                                     setNames(1, paste0("B-spline (K=", opt_bspline, ")")),
+                                     setNames(1, paste0("Fourier (K=", opt_fourier, ")")))) +
+  labs(x = "t", y = "Value", color = NULL, linetype = NULL,
+       title = "Basis Representation Comparison: B-spline vs Fourier",
+       subtitle = "B-spline captures localized features; Fourier shows ringing artifacts") +
+  theme(legend.position = "bottom") +
+  guides(linewidth = "none")
+```
+
+![](basis-representation_files/figure-html/basis-winner-loser-1.png)
 
 **Key observations:**
 

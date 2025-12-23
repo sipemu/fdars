@@ -171,83 +171,51 @@ cat("(Only detects the dominant period)\n")
 #> (Only detects the dominant period)
 ```
 
-### Iterative Residual Approach
+### Using detect_multiple_periods()
 
-To find multiple periods, we can iteratively: 1. Estimate the dominant
-period 2. Subtract a fitted sinusoid at that period 3. Repeat on the
-residual
+The
+[`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)
+function uses an iterative residual approach implemented in Rust for
+efficiency:
+
+1.  Estimate the dominant period using FFT
+2.  Subtract a fitted sinusoid at that period
+3.  Repeat on the residual until confidence or strength drops too low
 
 ``` r
-# Helper function to detect multiple periods
-# Uses both FFT confidence AND seasonal strength as stopping criteria
-detect_multiple_periods <- function(fd, max_periods = 3, min_confidence = 0.4,
-                                     min_strength = 0.15) {
-  periods <- list()
-  residual <- fd
-  original_var <- var(fd$data[1, ])
-
-  for (i in 1:max_periods) {
-    est <- estimate_period(residual, method = "fft")
-    if (est$confidence < min_confidence) break
-
-    # Additional check: seasonal strength at detected period
-    ss <- seasonal_strength(residual, period = est$period)
-    if (ss < min_strength) break
-
-    # Subtract fitted sinusoid from residual
-    tt <- fd$argvals
-    omega <- 2 * pi / est$period
-    cos_comp <- cos(omega * tt)
-    sin_comp <- sin(omega * tt)
-    y <- residual$data[1, ]
-    a <- 2 * mean(y * cos_comp)  # Cosine coefficient
-    b <- 2 * mean(y * sin_comp)  # Sine coefficient
-    amplitude <- sqrt(a^2 + b^2)
-    phase <- atan2(b, a)
-
-    periods[[i]] <- list(
-      period = est$period,
-      confidence = est$confidence,
-      strength = ss,
-      amplitude = amplitude,
-      phase = phase,
-      iteration = i
-    )
-
-    fitted <- a * cos_comp + b * sin_comp
-    residual$data <- residual$data - matrix(fitted, nrow = 1)
-  }
-  return(periods)
-}
-
-# Detect multiple periods
-detected <- detect_multiple_periods(fd_dual, max_periods = 3)
-cat("Detected periods:\n")
-#> Detected periods:
-for (p in detected) {
-  cat(sprintf("  Period = %.2f (confidence = %.3f, strength = %.3f, amplitude = %.3f)\n",
-              p$period, p$confidence, p$strength, p$amplitude))
-}
-#>   Period = 2.01 (confidence = 146.769, strength = 0.734, amplitude = 1.013)
-#>   Period = 6.68 (confidence = 188.230, strength = 0.949, amplitude = 0.592)
-#>   Period = 10.03 (confidence = 60.453, strength = 0.650, amplitude = 0.081)
+# Detect multiple periods using the package function
+# Higher thresholds prevent spurious detection
+detected <- detect_multiple_periods(fd_dual, max_periods = 3,
+                                     min_confidence = 0.5,
+                                     min_strength = 0.25)
+print(detected)
+#> Multiple Period Detection
+#> -------------------------
+#> Periods detected: 3
+#> 
+#> Period 1: 2.005 (confidence=146.769, strength=0.734, amplitude=1.013)
+#> Period 2: 6.683 (confidence=188.230, strength=0.949, amplitude=0.592)
+#> Period 3: 10.025 (confidence=60.453, strength=0.650, amplitude=0.081)
 ```
 
 ### Visualizing the Decomposition
 
 ``` r
-# Reconstruct each component
+# Reconstruct each component using detected periods
 components <- data.frame(t = t)
 residual <- X_dual
-for (i in seq_along(detected)) {
-  omega <- 2 * pi / detected[[i]]$period
-  cos_comp <- cos(omega * t)
-  sin_comp <- sin(omega * t)
-  a <- 2 * mean(residual * cos_comp)
-  b <- 2 * mean(residual * sin_comp)
-  component <- a * cos_comp + b * sin_comp
-  components[[paste0("Period_", round(detected[[i]]$period, 1))]] <- component
-  residual <- residual - component
+
+if (detected$n_periods > 0) {
+  for (i in seq_len(detected$n_periods)) {
+    omega <- 2 * pi / detected$periods[i]
+    cos_comp <- cos(omega * t)
+    sin_comp <- sin(omega * t)
+    a <- 2 * mean(residual * cos_comp)
+    b <- 2 * mean(residual * sin_comp)
+    component <- a * cos_comp + b * sin_comp
+    components[[paste0("Period_", round(detected$periods[i], 1))]] <- component
+    residual <- residual - component
+  }
 }
 components$Residual <- residual
 components$Original <- X_dual
@@ -316,6 +284,38 @@ fd_demo <- fdata(matrix(X_demo, nrow = 1), argvals = t)
 
 df <- data.frame(t = t, y = X_demo)
 ```
+
+### Visualizing the Smoothing Step
+
+Before detecting peaks, let’s see what P-spline smoothing does to noisy
+data:
+
+``` r
+# Apply P-spline smoothing with GCV-selected lambda
+fd_smoothed <- pspline(fd_demo, lambda = NULL)
+
+# Compare original vs smoothed
+df_smooth <- data.frame(
+  t = rep(t, 2),
+  y = c(X_demo, fd_smoothed$fdata$data[1, ]),
+  type = rep(c("Original (noisy)", "Smoothed (P-spline)"), each = length(t))
+)
+
+ggplot(df_smooth, aes(x = t, y = y, color = type)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = c("Original (noisy)" = "gray50",
+                                 "Smoothed (P-spline)" = "steelblue")) +
+  labs(title = "Effect of P-spline Smoothing on Noisy Signal",
+       subtitle = paste("GCV-selected lambda =", round(fd_smoothed$lambda, 4)),
+       x = "Time", y = "Value", color = NULL) +
+  theme(legend.position = "bottom")
+```
+
+![](seasonal-analysis_files/figure-html/smoothing-step-1.png)
+
+Smoothing removes high-frequency noise while preserving the underlying
+seasonal pattern. Peak detection on the smoothed data will find the true
+peaks, not noise spikes.
 
 ``` r
 # Default parameters - often too many peaks

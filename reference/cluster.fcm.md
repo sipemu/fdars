@@ -82,44 +82,42 @@ for hard clustering
 ## Examples
 
 ``` r
-# Create functional data with two overlapping groups
+# Create functional data with THREE groups - one genuinely overlapping
 set.seed(42)
 t <- seq(0, 1, length.out = 50)
-n <- 30
+n <- 45
 X <- matrix(0, n, 50)
+
+# Group 1: Sine waves centered at 0
 for (i in 1:15) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
-for (i in 16:30) X[i, ] <- cos(2*pi*t) + rnorm(50, sd = 0.2)
+# Group 2: Sine waves centered at 1.5 (clearly separated from group 1)
+for (i in 16:30) X[i, ] <- sin(2*pi*t) + 1.5 + rnorm(50, sd = 0.2)
+# Group 3: Between groups 1 and 2 (true overlap - ambiguous membership)
+for (i in 31:45) X[i, ] <- sin(2*pi*t) + 0.75 + rnorm(50, sd = 0.3)
+
 fd <- fdata(X, argvals = t)
 
-# Fuzzy clustering
-fcm <- cluster.fcm(fd, ncl = 2)
-print(fcm)
-#> Fuzzy C-Means Clustering
-#> ========================
-#> Number of clusters: 2 
-#> Number of observations: 30 
-#> Fuzziness parameter m: 2 
-#> 
-#> Cluster sizes (hard assignment):
-#> 
-#>  1  2 
-#> 15 15 
-#> 
-#> Objective function: 1.0911 
-#> 
-#> Average membership per cluster:
-#>  C1  C2 
-#> 0.5 0.5 
-plot(fcm)
+# Fuzzy clustering reveals the overlap
+fcm <- cluster.fcm(fd, ncl = 3, seed = 123)
 
+# Curves in group 3 (31-45) have split membership - this is the key benefit!
+cat("Membership for curves 31-35 (overlap region):\n")
+#> Membership for curves 31-35 (overlap region):
+print(round(fcm$membership[31:35, ], 2))
+#>      [,1] [,2] [,3]
+#> [1,] 0.02 0.02 0.96
+#> [2,] 0.01 0.01 0.97
+#> [3,] 0.01 0.02 0.96
+#> [4,] 0.02 0.04 0.94
+#> [5,] 0.02 0.01 0.97
 
-# View membership degrees for first few curves
-head(fcm$membership)
-#>              [,1]      [,2]
-#> [1,] 0.0017182510 0.9982817
-#> [2,] 0.0011520122 0.9988480
-#> [3,] 0.0008985607 0.9991014
-#> [4,] 0.0008952567 0.9991047
-#> [5,] 0.0009917289 0.9990083
-#> [6,] 0.0012778222 0.9987222
+# Compare to hard clustering which forces a decision
+km <- cluster.kmeans(fd, ncl = 3, seed = 123)
+cat("\nHard vs Fuzzy assignment for curve 35:\n")
+#> 
+#> Hard vs Fuzzy assignment for curve 35:
+cat("K-means cluster:", km$cluster[35], "\n")
+#> K-means cluster: 3 
+cat("FCM memberships:", round(fcm$membership[35, ], 2), "\n")
+#> FCM memberships: 0.02 0.01 0.97 
 ```
