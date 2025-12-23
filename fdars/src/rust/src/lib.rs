@@ -6232,6 +6232,61 @@ fn seasonal_estimate_period_acf(data: RMatrix<f64>, argvals: Vec<f64>, max_lag: 
     .into()
 }
 
+/// Detect multiple concurrent periodicities using iterative residual subtraction
+#[extendr]
+fn seasonal_detect_multiple_periods(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    max_periods: i32,
+    min_confidence: f64,
+    min_strength: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || max_periods <= 0 {
+        return list!(
+            periods = Vec::<f64>::new(),
+            confidence = Vec::<f64>::new(),
+            strength = Vec::<f64>::new(),
+            amplitude = Vec::<f64>::new(),
+            phase = Vec::<f64>::new(),
+            iteration = Vec::<i32>::new()
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let detected = fdars_core::seasonal::detect_multiple_periods(
+        data_slice,
+        n,
+        m,
+        &argvals,
+        max_periods as usize,
+        min_confidence,
+        min_strength,
+    );
+
+    // Convert to R-friendly format
+    let periods: Vec<f64> = detected.iter().map(|d| d.period).collect();
+    let confidences: Vec<f64> = detected.iter().map(|d| d.confidence).collect();
+    let strengths: Vec<f64> = detected.iter().map(|d| d.strength).collect();
+    let amplitudes: Vec<f64> = detected.iter().map(|d| d.amplitude).collect();
+    let phases: Vec<f64> = detected.iter().map(|d| d.phase).collect();
+    let iterations: Vec<i32> = detected.iter().map(|d| d.iteration as i32).collect();
+
+    list!(
+        period = periods,
+        confidence = confidences,
+        strength = strengths,
+        amplitude = amplitudes,
+        phase = phases,
+        iteration = iterations
+    )
+    .into()
+}
+
 /// Detect peaks in functional data
 #[extendr]
 fn seasonal_detect_peaks(
@@ -7249,6 +7304,7 @@ extendr_module! {
     // Seasonal analysis functions
     fn seasonal_estimate_period_fft;
     fn seasonal_estimate_period_acf;
+    fn seasonal_detect_multiple_periods;
     fn seasonal_detect_peaks;
     fn seasonal_strength_variance;
     fn seasonal_strength_spectral;

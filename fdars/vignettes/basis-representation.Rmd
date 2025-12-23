@@ -192,7 +192,7 @@ n2 <- 30
 complex_signal <- function(t) {
   trend <- 2 * t^2 - t
   bump <- 0.8 * exp(-((t - 0.3)^2) / (2 * 0.05^2))
-  sharp <- ifelse(t > 0.7, 0.5 * sqrt(t - 0.7), 0)
+  sharp <- 0.5 * sqrt(pmax(0, t - 0.7))
   trend + bump + sharp
 }
 

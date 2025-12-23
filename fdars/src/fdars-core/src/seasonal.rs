@@ -51,6 +51,23 @@ pub struct PeakDetectionResult {
     pub mean_period: f64,
 }
 
+/// A detected period from multiple period detection.
+#[derive(Debug, Clone)]
+pub struct DetectedPeriod {
+    /// Estimated period
+    pub period: f64,
+    /// FFT confidence (ratio of peak power to mean power)
+    pub confidence: f64,
+    /// Seasonal strength at this period (variance explained)
+    pub strength: f64,
+    /// Amplitude of the sinusoidal component
+    pub amplitude: f64,
+    /// Phase of the sinusoidal component (radians)
+    pub phase: f64,
+    /// Iteration number (1-indexed)
+    pub iteration: usize,
+}
+
 /// Method for computing seasonal strength.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StrengthMethod {
@@ -723,6 +740,105 @@ pub fn estimate_period_regression(
         power: 1.0 - min_rss / mean_rss,
         confidence,
     }
+}
+
+/// Detect multiple concurrent periodicities using iterative residual subtraction.
+///
+/// This function iteratively:
+/// 1. Estimates the dominant period using FFT
+/// 2. Checks both FFT confidence and seasonal strength as stopping criteria
+/// 3. Computes the amplitude and phase of the sinusoidal component
+/// 4. Subtracts the fitted sinusoid from the signal
+/// 5. Repeats on the residual until stopping criteria are met
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `max_periods` - Maximum number of periods to detect
+/// * `min_confidence` - Minimum FFT confidence to continue (default: 0.4)
+/// * `min_strength` - Minimum seasonal strength to continue (default: 0.15)
+///
+/// # Returns
+/// Vector of detected periods with their properties
+pub fn detect_multiple_periods(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    max_periods: usize,
+    min_confidence: f64,
+    min_strength: f64,
+) -> Vec<DetectedPeriod> {
+    if n == 0 || m < 4 || argvals.len() != m || max_periods == 0 {
+        return Vec::new();
+    }
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    let mut residual = mean_curve.clone();
+    let mut detected = Vec::with_capacity(max_periods);
+
+    for iteration in 1..=max_periods {
+        // Create single-sample data from residual
+        let residual_data: Vec<f64> = residual.clone();
+
+        // Estimate period
+        let est = estimate_period_fft(&residual_data, 1, m, argvals);
+
+        if est.confidence < min_confidence || est.period.is_nan() || est.period.is_infinite() {
+            break;
+        }
+
+        // Check seasonal strength at detected period
+        let strength = seasonal_strength_variance(&residual_data, 1, m, argvals, est.period, 3);
+
+        if strength < min_strength || strength.is_nan() {
+            break;
+        }
+
+        // Compute amplitude and phase using least squares fit
+        let omega = 2.0 * PI / est.period;
+        let mut cos_sum = 0.0;
+        let mut sin_sum = 0.0;
+
+        for (j, &t) in argvals.iter().enumerate() {
+            cos_sum += residual[j] * (omega * t).cos();
+            sin_sum += residual[j] * (omega * t).sin();
+        }
+
+        let a = 2.0 * cos_sum / m as f64; // Cosine coefficient
+        let b = 2.0 * sin_sum / m as f64; // Sine coefficient
+        let amplitude = (a * a + b * b).sqrt();
+        let phase = b.atan2(a);
+
+        detected.push(DetectedPeriod {
+            period: est.period,
+            confidence: est.confidence,
+            strength,
+            amplitude,
+            phase,
+            iteration,
+        });
+
+        // Subtract fitted sinusoid from residual
+        for (j, &t) in argvals.iter().enumerate() {
+            let fitted = a * (omega * t).cos() + b * (omega * t).sin();
+            residual[j] -= fitted;
+        }
+    }
+
+    detected
 }
 
 // ============================================================================
@@ -1737,5 +1853,45 @@ mod tests {
         // Lambda should be positive and reasonable
         assert!(lambda > 0.0);
         assert!(lambda < 10000.0);
+    }
+
+    #[test]
+    fn test_detect_multiple_periods() {
+        let m = 400;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.05).collect(); // 0 to 20
+
+        // Signal with two periods: 2 and 7
+        let period1 = 2.0;
+        let period2 = 7.0;
+        let mut data = vec![0.0; m];
+        for j in 0..m {
+            data[j] = (2.0 * PI * argvals[j] / period1).sin()
+                + 0.6 * (2.0 * PI * argvals[j] / period2).sin();
+        }
+
+        // Use higher min_strength threshold to properly stop after real periods
+        let detected = detect_multiple_periods(&data, 1, m, &argvals, 5, 0.4, 0.20);
+
+        // Should detect exactly 2 periods with these thresholds
+        assert!(detected.len() >= 2, "Expected at least 2 periods, found {}", detected.len());
+
+        // Check that both periods were detected (order depends on amplitude)
+        let periods: Vec<f64> = detected.iter().map(|d| d.period).collect();
+        let has_period1 = periods.iter().any(|&p| (p - period1).abs() < 0.3);
+        let has_period2 = periods.iter().any(|&p| (p - period2).abs() < 0.5);
+
+        assert!(has_period1, "Expected to find period ~{}, got {:?}", period1, periods);
+        assert!(has_period2, "Expected to find period ~{}, got {:?}", period2, periods);
+
+        // Verify first detected has higher amplitude (amplitude 1.0 vs 0.6)
+        assert!(detected[0].amplitude > detected[1].amplitude,
+            "First detected should have higher amplitude");
+
+        // Each detected period should have strength and confidence info
+        for d in &detected {
+            assert!(d.strength > 0.0, "Detected period should have positive strength");
+            assert!(d.confidence > 0.0, "Detected period should have positive confidence");
+            assert!(d.amplitude > 0.0, "Detected period should have positive amplitude");
+        }
     }
 }

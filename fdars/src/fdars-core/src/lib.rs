@@ -38,6 +38,6 @@ pub use helpers::{simpsons_weights, simpsons_weights_2d};
 
 // Re-export seasonal analysis types
 pub use seasonal::{
-    ChangeDetectionResult, ChangePoint, ChangeType, InstantaneousPeriod, Peak,
+    ChangeDetectionResult, ChangePoint, ChangeType, DetectedPeriod, InstantaneousPeriod, Peak,
     PeakDetectionResult, PeriodEstimate, StrengthMethod,
 };
