@@ -4,6 +4,10 @@
 
 - [Introduction to
   fdars](https://sipemu.github.io/fdars/articles/introduction.md):
+- [Introduction to Smoothing Functional
+  Data](https://sipemu.github.io/fdars/articles/intro-to-smoothing.md):
+- [Working with
+  Derivatives](https://sipemu.github.io/fdars/articles/working-with-derivatives.md):
 
 ### Core Methods
 
