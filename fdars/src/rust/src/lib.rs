@@ -3104,7 +3104,9 @@ fn fdata2pls_1d(data: RMatrix<f64>, y: Vec<f64>, ncomp: i32, _lambda: f64) -> Ro
 /// Compute B-spline basis matrix for given knots and grid points
 fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     let n = t.len();
-    let nbasis = nknots + order - 2;
+    // Total knots: order (left) + nknots (interior) + order (right) = 2*order + nknots
+    // Number of B-spline basis functions: total_knots - order = nknots + order
+    let nbasis = nknots + order;
 
     // Create knot vector with appropriate padding
     let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -3112,7 +3114,7 @@ fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     let dt = (t_max - t_min) / (nknots - 1) as f64;
 
     let mut knots = Vec::with_capacity(nknots + 2 * order);
-    // Pad at beginning
+    // Pad at beginning (order knots)
     for i in 0..order {
         knots.push(t_min - (order - i) as f64 * dt);
     }
@@ -3120,10 +3122,13 @@ fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     for i in 0..nknots {
         knots.push(t_min + i as f64 * dt);
     }
-    // Pad at end
-    for i in 1..order {
+    // Pad at end (order knots)
+    for i in 1..=order {
         knots.push(t_max + i as f64 * dt);
     }
+
+    // Index of t_max in knot vector: it's the last interior knot
+    let t_max_knot_idx = order + nknots - 1;
 
     // Cox-de Boor recursion
     let mut basis = vec![0.0; n * nbasis];
@@ -3131,17 +3136,21 @@ fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     for (ti, &t_val) in t.iter().enumerate() {
         // Initialize order 1 (constant) splines
         let mut b0 = vec![0.0; knots.len() - 1];
+        // Find which interval t_val belongs to
+        // Use half-open intervals [knots[j], knots[j+1]) except at t_max
+        // where we use the closed interval [knots[j], knots[j+1]]
         for j in 0..(knots.len() - 1) {
-            if t_val >= knots[j] && t_val < knots[j + 1] {
+            let in_interval = if j == t_max_knot_idx - 1 {
+                // Last interior interval: use closed [t_max - dt, t_max]
+                t_val >= knots[j] && t_val <= knots[j + 1]
+            } else {
+                // Normal half-open interval [knots[j], knots[j+1])
+                t_val >= knots[j] && t_val < knots[j + 1]
+            };
+
+            if in_interval {
                 b0[j] = 1.0;
-            }
-        }
-        // Handle right endpoint
-        if t_val >= t_max - 1e-10 {
-            for j in 0..(knots.len() - 1) {
-                if (knots[j + 1] - t_max).abs() < 1e-10 {
-                    b0[j] = 1.0;
-                }
+                break;
             }
         }
 
