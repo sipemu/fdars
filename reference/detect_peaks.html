@@ -69,7 +69,7 @@ zero-crossings. Returns peak times, values, and prominence measures.</p>
 <span>  min_distance <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_prominence <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  smooth_first <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  smooth_lambda <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  smooth_nbasis <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -91,12 +91,14 @@ lower prominence are filtered out. Default: NULL (no filter).</p></dd>
 
 
 <dt id="arg-smooth-first">smooth_first<a class="anchor" aria-label="anchor" href="#arg-smooth-first"></a></dt>
-<dd><p>Logical. If TRUE, apply P-spline smoothing before
-peak detection. Default: FALSE.</p></dd>
+<dd><p>Logical. If TRUE, apply Fourier basis smoothing before
+peak detection. Recommended for noisy data. Default: FALSE.</p></dd>
 
 
-<dt id="arg-smooth-lambda">smooth_lambda<a class="anchor" aria-label="anchor" href="#arg-smooth-lambda"></a></dt>
-<dd><p>Smoothing parameter for P-splines. Default: 10.</p></dd>
+<dt id="arg-smooth-nbasis">smooth_nbasis<a class="anchor" aria-label="anchor" href="#arg-smooth-nbasis"></a></dt>
+<dd><p>Number of Fourier basis functions for smoothing.
+If NULL and smooth_first=TRUE, uses GCV to automatically select
+optimal nbasis (range 5-25). Default: NULL (auto).</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -117,6 +119,8 @@ peak detection. Default: FALSE.</p></dd>
     <p>Peak prominence measures how much a peak stands out from its surroundings.
 It is computed as the height difference between the peak and the highest
 of the two minimum values on either side, normalized by the data range.</p>
+<p>Fourier basis smoothing is ideal for seasonal signals because it naturally
+captures periodic patterns without introducing boundary artifacts.</p>
     </div>
 
     <div class="section level2">
@@ -131,7 +135,7 @@ of the two minimum values on either side, normalized by the data range.</p>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">peaks</span><span class="op">$</span><span class="va">mean_period</span><span class="op">)</span>  <span class="co"># Should be close to 2</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2.01005</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># With automatic GCV smoothing</span></span></span>
+<span class="r-in"><span><span class="co"># With automatic Fourier smoothing (GCV selects nbasis)</span></span></span>
 <span class="r-in"><span><span class="va">peaks_smooth</span> <span class="op">&lt;-</span> <span class="fu">detect_peaks</span><span class="op">(</span><span class="va">fd</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, smooth_first <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>

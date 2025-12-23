@@ -428,13 +428,13 @@ data will find the true peaks, not noise spikes.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"With min_distance:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_distance</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks found\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; With min_distance: 12 peaks found</span></span></code></pre></div>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Add smoothing for best results</span></span>
+<code class="sourceCode R"><span><span class="co"># Add Fourier smoothing for best results (GCV auto-selects nbasis)</span></span>
 <span><span class="va">peaks_smooth</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="va">period_true</span> <span class="op">*</span> <span class="fl">0.8</span>,</span>
-<span>                             smooth_first <span class="op">=</span> <span class="cn">TRUE</span>, smooth_lambda <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span>                             smooth_first <span class="op">=</span> <span class="cn">TRUE</span>, smooth_nbasis <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"With smoothing:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_smooth</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks found\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; With smoothing: 6 peaks found</span></span>
+<span><span class="co">#&gt; With smoothing: 10 peaks found</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Estimated period from peaks:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">peaks_smooth</span><span class="op">$</span><span class="va">mean_period</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Estimated period from peaks: 3.649</span></span></code></pre></div>
+<span><span class="co">#&gt; Estimated period from peaks: 1.999</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="visualizing-the-difference">Visualizing the Difference<a class="anchor" aria-label="anchor" href="#visualizing-the-difference"></a>
@@ -823,19 +823,19 @@ event shifting from March to April to May over several years).</p>
 <span><span class="co">#&gt; Peak Timing Variability Analysis</span></span>
 <span><span class="co">#&gt; ---------------------------------</span></span>
 <span><span class="co">#&gt; Number of peaks: 5</span></span>
-<span><span class="co">#&gt; Mean timing:     0.2004</span></span>
-<span><span class="co">#&gt; Std timing:      0.0442</span></span>
-<span><span class="co">#&gt; Range timing:    0.1142</span></span>
-<span><span class="co">#&gt; Variability:     0.4418 (moderate)</span></span>
-<span><span class="co">#&gt; Timing trend:    -0.0190</span></span></code></pre></div>
+<span><span class="co">#&gt; Mean timing:     0.1924</span></span>
+<span><span class="co">#&gt; Std timing:      0.0364</span></span>
+<span><span class="co">#&gt; Range timing:    0.1062</span></span>
+<span><span class="co">#&gt; Variability:     0.3640 (moderate)</span></span>
+<span><span class="co">#&gt; Timing trend:    -0.0110</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="visualizing-peak-timing">Visualizing Peak Timing<a class="anchor" aria-label="anchor" href="#visualizing-peak-timing"></a>
 </h3>
 <div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Get detected peaks</span></span>
+<code class="sourceCode R"><span><span class="co"># Get detected peaks with Fourier smoothing</span></span>
 <span><span class="va">peaks_short</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_short</span>, min_distance <span class="op">=</span> <span class="fl">0.7</span>,</span>
-<span>                            smooth_first <span class="op">=</span> <span class="cn">TRUE</span>, smooth_lambda <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span>                            smooth_first <span class="op">=</span> <span class="cn">TRUE</span>, smooth_nbasis <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
 <span><span class="va">peak_df</span> <span class="op">&lt;-</span> <span class="va">peaks_short</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span></span>
 <span></span>
 <span><span class="co"># Plot with peaks marked</span></span>
@@ -879,7 +879,7 @@ event shifting from March to April to May over several years).</p>
 <span><span class="co">#&gt; Classification:   StableSeasonal</span></span>
 <span><span class="co">#&gt; Is seasonal:      TRUE</span></span>
 <span><span class="co">#&gt; Stable timing:    TRUE</span></span>
-<span><span class="co">#&gt; Timing variability: 0.4418</span></span>
+<span><span class="co">#&gt; Timing variability: 0.3640</span></span>
 <span><span class="co">#&gt; Seasonal strength:  0.9351</span></span></code></pre></div>
 <div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Visualize classification metrics</span></span>
@@ -1137,9 +1137,8 @@ approach</li>
 <p><strong>Peak detection:</strong></p>
 <ul>
 <li>Clean data: <code><a href="../reference/detect_peaks.html">detect_peaks()</a></code> with default parameters</li>
-<li>Noisy data: Add
-<code>smooth_first = TRUE, smooth_lambda = NULL</code>
-</li>
+<li>Noisy data: Add <code>smooth_first = TRUE</code> (Fourier smoothing
+with GCV-selected nbasis)</li>
 <li>Still too many peaks: Increase <code>min_prominence</code>
 </li>
 </ul>

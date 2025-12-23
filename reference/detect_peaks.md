@@ -11,7 +11,7 @@ detect_peaks(
   min_distance = NULL,
   min_prominence = NULL,
   smooth_first = FALSE,
-  smooth_lambda = NULL
+  smooth_nbasis = NULL
 )
 ```
 
@@ -32,12 +32,14 @@ detect_peaks(
 
 - smooth_first:
 
-  Logical. If TRUE, apply P-spline smoothing before peak detection.
-  Default: FALSE.
+  Logical. If TRUE, apply Fourier basis smoothing before peak detection.
+  Recommended for noisy data. Default: FALSE.
 
-- smooth_lambda:
+- smooth_nbasis:
 
-  Smoothing parameter for P-splines. Default: 10.
+  Number of Fourier basis functions for smoothing. If NULL and
+  smooth_first=TRUE, uses GCV to automatically select optimal nbasis
+  (range 5-25). Default: NULL (auto).
 
 ## Value
 
@@ -63,6 +65,10 @@ surroundings. It is computed as the height difference between the peak
 and the highest of the two minimum values on either side, normalized by
 the data range.
 
+Fourier basis smoothing is ideal for seasonal signals because it
+naturally captures periodic patterns without introducing boundary
+artifacts.
+
 ## Examples
 
 ``` r
@@ -76,6 +82,6 @@ peaks <- detect_peaks(fd, min_distance = 1.5)
 print(peaks$mean_period)  # Should be close to 2
 #> [1] 2.01005
 
-# With automatic GCV smoothing
+# With automatic Fourier smoothing (GCV selects nbasis)
 peaks_smooth <- detect_peaks(fd, min_distance = 1.5, smooth_first = TRUE)
 ```

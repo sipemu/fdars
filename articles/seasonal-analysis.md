@@ -335,13 +335,13 @@ cat("With min_distance:", nrow(peaks_distance$peaks[[1]]), "peaks found\n")
 ```
 
 ``` r
-# Add smoothing for best results
+# Add Fourier smoothing for best results (GCV auto-selects nbasis)
 peaks_smooth <- detect_peaks(fd_demo, min_distance = period_true * 0.8,
-                             smooth_first = TRUE, smooth_lambda = NULL)
+                             smooth_first = TRUE, smooth_nbasis = NULL)
 cat("With smoothing:", nrow(peaks_smooth$peaks[[1]]), "peaks found\n")
-#> With smoothing: 6 peaks found
+#> With smoothing: 10 peaks found
 cat("Estimated period from peaks:", round(peaks_smooth$mean_period, 3), "\n")
-#> Estimated period from peaks: 3.649
+#> Estimated period from peaks: 1.999
 ```
 
 ### Visualizing the Difference
@@ -744,19 +744,19 @@ print(timing)
 #> Peak Timing Variability Analysis
 #> ---------------------------------
 #> Number of peaks: 5
-#> Mean timing:     0.2004
-#> Std timing:      0.0442
-#> Range timing:    0.1142
-#> Variability:     0.4418 (moderate)
-#> Timing trend:    -0.0190
+#> Mean timing:     0.1924
+#> Std timing:      0.0364
+#> Range timing:    0.1062
+#> Variability:     0.3640 (moderate)
+#> Timing trend:    -0.0110
 ```
 
 ### Visualizing Peak Timing
 
 ``` r
-# Get detected peaks
+# Get detected peaks with Fourier smoothing
 peaks_short <- detect_peaks(fd_short, min_distance = 0.7,
-                            smooth_first = TRUE, smooth_lambda = NULL)
+                            smooth_first = TRUE, smooth_nbasis = NULL)
 peak_df <- peaks_short$peaks[[1]]
 
 # Plot with peaks marked
@@ -805,7 +805,7 @@ print(class_result)
 #> Classification:   StableSeasonal
 #> Is seasonal:      TRUE
 #> Stable timing:    TRUE
-#> Timing variability: 0.4418
+#> Timing variability: 0.3640
 #> Seasonal strength:  0.9351
 ```
 
@@ -1003,7 +1003,8 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
 - Clean data:
   [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)
   with default parameters
-- Noisy data: Add `smooth_first = TRUE, smooth_lambda = NULL`
+- Noisy data: Add `smooth_first = TRUE` (Fourier smoothing with
+  GCV-selected nbasis)
 - Still too many peaks: Increase `min_prominence`
 
 **Seasonal strength:**

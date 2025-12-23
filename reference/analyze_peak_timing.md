@@ -2,11 +2,12 @@
 
 For short series (e.g., 3-5 years of yearly data), this function detects
 one peak per cycle and analyzes how peak timing varies between cycles.
+Uses Fourier basis smoothing for peak detection.
 
 ## Usage
 
 ``` r
-analyze_peak_timing(fdataobj, period, smooth_lambda = NULL)
+analyze_peak_timing(fdataobj, period, smooth_nbasis = NULL)
 ```
 
 ## Arguments
@@ -19,10 +20,10 @@ analyze_peak_timing(fdataobj, period, smooth_lambda = NULL)
 
   Known period (e.g., 365 for daily data with yearly seasonality).
 
-- smooth_lambda:
+- smooth_nbasis:
 
-  Smoothing parameter. If NULL, uses GCV for automatic selection.
-  Default: NULL.
+  Number of Fourier basis functions for smoothing. If NULL, uses GCV for
+  automatic selection (range 5-25). Default: NULL.
 
 ## Value
 
@@ -71,6 +72,9 @@ score \> 0.5 suggests peaks are shifting substantially between cycles.
 The timing_trend indicates if peaks are systematically moving earlier or
 later over time.
 
+Fourier basis smoothing is ideal for seasonal signals because it
+naturally captures periodic patterns.
+
 ## Examples
 
 ``` r
@@ -84,5 +88,5 @@ fd <- fdata(matrix(X, nrow = 1), argvals = t)
 
 result <- analyze_peak_timing(fd, period = 1)
 print(result$variability_score)  # Shows timing variability
-#> [1] 0.1168162
+#> [1] 0.1233248
 ```
