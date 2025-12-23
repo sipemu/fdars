@@ -14,6 +14,8 @@ articles:
 - title: Getting Started
   contents:
   - introduction
+  - intro-to-smoothing
+  - working-with-derivatives
 - title: Core Methods
   contents:
   - basis-representation
