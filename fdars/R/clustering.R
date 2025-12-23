@@ -611,22 +611,33 @@ plot.cluster.kmeans <- function(x, ...) {
 #'
 #' @export
 #' @examples
-#' # Create functional data with two overlapping groups
+#' # Create functional data with THREE groups - one genuinely overlapping
 #' set.seed(42)
 #' t <- seq(0, 1, length.out = 50)
-#' n <- 30
+#' n <- 45
 #' X <- matrix(0, n, 50)
+#'
+#' # Group 1: Sine waves centered at 0
 #' for (i in 1:15) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
-#' for (i in 16:30) X[i, ] <- cos(2*pi*t) + rnorm(50, sd = 0.2)
+#' # Group 2: Sine waves centered at 1.5 (clearly separated from group 1)
+#' for (i in 16:30) X[i, ] <- sin(2*pi*t) + 1.5 + rnorm(50, sd = 0.2)
+#' # Group 3: Between groups 1 and 2 (true overlap - ambiguous membership)
+#' for (i in 31:45) X[i, ] <- sin(2*pi*t) + 0.75 + rnorm(50, sd = 0.3)
+#'
 #' fd <- fdata(X, argvals = t)
 #'
-#' # Fuzzy clustering
-#' fcm <- cluster.fcm(fd, ncl = 2)
-#' print(fcm)
-#' plot(fcm)
+#' # Fuzzy clustering reveals the overlap
+#' fcm <- cluster.fcm(fd, ncl = 3, seed = 123)
 #'
-#' # View membership degrees for first few curves
-#' head(fcm$membership)
+#' # Curves in group 3 (31-45) have split membership - this is the key benefit!
+#' cat("Membership for curves 31-35 (overlap region):\n")
+#' print(round(fcm$membership[31:35, ], 2))
+#'
+#' # Compare to hard clustering which forces a decision
+#' km <- cluster.kmeans(fd, ncl = 3, seed = 123)
+#' cat("\nHard vs Fuzzy assignment for curve 35:\n")
+#' cat("K-means cluster:", km$cluster[35], "\n")
+#' cat("FCM memberships:", round(fcm$membership[35, ], 2), "\n")
 cluster.fcm <- function(fdataobj, ncl, m = 2, max.iter = 100, tol = 1e-6, seed = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")

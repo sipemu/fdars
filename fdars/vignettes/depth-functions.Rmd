@@ -73,6 +73,8 @@ data.frame(
 )
 ```
 
+**Intuition**: At each time point, FM depth asks: "What proportion of curves lie above and below this curve?" A curve that is consistently in the middle of the data cloud at every time point will have high FM depth.
+
 The FM depth can be scaled to [0, 1] using the `scale` parameter:
 
 ```{r depth-fm-scaled}
@@ -90,6 +92,8 @@ depths_mode <- depth(fd, method = "mode")
 head(depths_mode)
 ```
 
+**Intuition**: Modal depth estimates local density in function space. Curves in "crowded" regions (where many similar curves exist) have high depth. Think of it like finding the mode of a distribution, but for curves.
+
 ### Random Projection Depth (method = "RP")
 
 Projects curves onto random directions and computes univariate depths
@@ -99,6 +103,8 @@ of the projections. More robust to local variations.
 depths_rp <- depth(fd, method = "RP", nproj = 50)
 head(depths_rp)
 ```
+
+**Intuition**: RP depth projects all curves onto random 1D directions and computes depth there. It's robust because outliers can't hide from all projection angles - if a curve is unusual, some projection will reveal it.
 
 ### Random Tukey Depth (method = "RT")
 
@@ -110,6 +116,8 @@ depths_rt <- depth(fd, method = "RT", nproj = 50)
 head(depths_rt)
 ```
 
+**Intuition**: RT depth takes the *minimum* depth across all projections. This is very conservative - a curve is only considered central if it looks central from *every* angle. This makes RT extremely robust to outliers.
+
 ### Functional Spatial Depth (method = "FSD")
 
 Based on unit vectors pointing from each curve to all others. Measures
@@ -119,6 +127,8 @@ centrality in a geometric sense.
 depths_fsd <- depth(fd, method = "FSD")
 head(depths_fsd)
 ```
+
+**Intuition**: FSD computes unit vectors from each curve to all others. A central curve has these vectors pointing in all directions (they cancel out), resulting in high depth. An outlier has most vectors pointing in one direction (away from the data cloud).
 
 ### Kernel Functional Spatial Depth (method = "KFSD")
 
@@ -139,6 +149,8 @@ changes in addition to magnitude.
 depths_rpd <- depth(fd, method = "RPD", nproj = 50)
 head(depths_rpd)
 ```
+
+**Intuition**: RPD is like RP, but the projections are based on curve derivatives. This makes it sensitive to *shape* differences - curves with unusual wiggliness or local behavior will have low depth even if their overall level is typical.
 
 ## Comparing Depth Functions
 
@@ -166,6 +178,29 @@ outlier_ranks
 ```
 
 All depth functions correctly identify curves 1 and 2 as having low depth.
+
+### Visualizing Depth
+
+A powerful way to understand depth is to color curves by their depth values:
+
+```{r depth-visualization}
+# Visualize curves colored by their FM depth
+df_depth_viz <- data.frame(
+  t = rep(t_grid, n),
+  value = as.vector(t(X)),
+  curve = rep(1:n, each = m),
+  depth = rep(depths_fm, each = m)
+)
+
+ggplot(df_depth_viz, aes(x = t, y = value, group = curve, color = depth)) +
+  geom_line(alpha = 0.8) +
+  scale_color_viridis_c(option = "plasma", name = "FM Depth") +
+  labs(title = "Curves Colored by Depth",
+       subtitle = "Dark = low depth (outlier), Bright = high depth (central)",
+       x = "t", y = "X(t)")
+```
+
+This visualization immediately reveals which curves are outliers (dark colors) and which are central (bright colors). The magnitude outlier (shifted up) and shape outlier (cosine instead of sine) both appear with low depth values.
 
 ## Depth-Based Statistics
 

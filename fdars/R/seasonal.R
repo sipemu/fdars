@@ -77,6 +77,138 @@ print.period_estimate <- function(x, ...) {
 }
 
 # ==============================================================================
+# Multiple Period Detection
+# ==============================================================================
+
+#' Detect Multiple Concurrent Periods
+#'
+#' Detects multiple periodicities in functional data using iterative residual
+#' subtraction. At each iteration, the dominant period is detected using FFT,
+#' its sinusoidal component is subtracted, and the process repeats on the
+#' residual until stopping criteria are met.
+#'
+#' @param fdataobj An fdata object.
+#' @param max_periods Maximum number of periods to detect. Default: 3.
+#' @param min_confidence Minimum FFT confidence to continue detection.
+#'   Default: 0.5.
+#' @param min_strength Minimum seasonal strength to continue detection.
+#'   Default: 0.2.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{periods}{Numeric vector of detected periods}
+#'   \item{confidence}{FFT confidence for each period}
+#'   \item{strength}{Seasonal strength for each period}
+#'   \item{amplitude}{Amplitude of the sinusoidal component}
+#'   \item{phase}{Phase of the sinusoidal component (radians)}
+#'   \item{n_periods}{Number of periods detected}
+#' }
+#'
+#' @details
+#' The function uses two stopping criteria:
+#' \itemize{
+#'   \item FFT confidence: How prominent the dominant frequency is
+#'   \item Seasonal strength: How much variance is explained by the periodicity
+#' }
+#'
+#' Both must exceed their thresholds for detection to continue. Higher thresholds
+#' result in fewer (but more reliable) detected periods.
+#'
+#' Periods are detected in order of amplitude (FFT power), not period length.
+#' A weak yearly cycle will be detected after a strong weekly cycle.
+#'
+#' @seealso \code{\link{estimate_period}} for single period estimation
+#'
+#' @export
+#' @examples
+#' # Signal with two periods: 2 and 7
+#' t <- seq(0, 20, length.out = 400)
+#' X <- sin(2 * pi * t / 2) + 0.6 * sin(2 * pi * t / 7)
+#' fd <- fdata(matrix(X, nrow = 1), argvals = t)
+#'
+#' # Detect multiple periods
+#' result <- detect_multiple_periods(fd, max_periods = 3)
+#' print(result$periods)  # Should find approximately 2 and 7
+#' print(result$n_periods)  # Should be 2
+detect_multiple_periods <- function(fdataobj, max_periods = 3,
+                                     min_confidence = 0.5,
+                                     min_strength = 0.2) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("detect_multiple_periods not yet implemented for 2D functional data")
+  }
+
+  # Pure R implementation using iterative residual subtraction
+  periods <- numeric(0)
+  confidence <- numeric(0)
+  strength <- numeric(0)
+  amplitude <- numeric(0)
+
+  residual <- fdataobj
+  tt <- fdataobj$argvals
+
+  for (i in seq_len(max_periods)) {
+    # Estimate dominant period
+    est <- estimate_period(residual, method = "fft")
+    if (est$confidence < min_confidence) break
+
+    # Check seasonal strength
+    ss <- seasonal_strength(residual, period = est$period)
+    if (ss < min_strength) break
+
+    # Compute amplitude via Fourier coefficients
+    omega <- 2 * pi / est$period
+    cos_comp <- cos(omega * tt)
+    sin_comp <- sin(omega * tt)
+    y <- residual$data[1, ]
+    a <- 2 * mean(y * cos_comp)
+    b <- 2 * mean(y * sin_comp)
+    amp <- sqrt(a^2 + b^2)
+
+    # Store results
+    periods <- c(periods, est$period)
+    confidence <- c(confidence, est$confidence)
+    strength <- c(strength, ss)
+    amplitude <- c(amplitude, amp)
+
+    # Subtract fitted sinusoid from residual
+    fitted <- a * cos_comp + b * sin_comp
+    residual$data <- residual$data - matrix(fitted, nrow = 1)
+  }
+
+  result <- list(
+    periods = periods,
+    confidence = confidence,
+    strength = strength,
+    amplitude = amplitude,
+    n_periods = length(periods)
+  )
+
+  class(result) <- "multiple_periods"
+  result
+}
+
+#' @export
+print.multiple_periods <- function(x, ...) {
+  cat("Multiple Period Detection\n")
+  cat("-------------------------\n")
+  cat(sprintf("Periods detected: %d\n\n", x$n_periods))
+
+  if (x$n_periods > 0) {
+    for (i in seq_len(x$n_periods)) {
+      cat(sprintf("Period %d: %.3f (confidence=%.3f, strength=%.3f, amplitude=%.3f)\n",
+                  i, x$periods[i], x$confidence[i], x$strength[i], x$amplitude[i]))
+    }
+  } else {
+    cat("No significant periods detected.\n")
+  }
+  invisible(x)
+}
+
+# ==============================================================================
 # Peak Detection
 # ==============================================================================
 
