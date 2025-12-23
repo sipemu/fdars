@@ -15,7 +15,7 @@ articles:
   regression: regression.html
   seasonal-analysis: seasonal-analysis.html
   working-with-derivatives: working-with-derivatives.html
-last_built: 2025-12-23T20:33Z
+last_built: 2025-12-23T20:45Z
 urls:
   reference: https://sipemu.github.io/fdars/reference
   article: https://sipemu.github.io/fdars/articles
