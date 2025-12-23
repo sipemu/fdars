@@ -1719,6 +1719,170 @@ mod tests {
     }
 
     #[test]
+    fn test_peak_detection_known_sine() {
+        // Pure sine wave: sin(2*pi*t/2) on [0, 10]
+        // Peaks occur at t = period/4 + k*period = 0.5, 2.5, 4.5, 6.5, 8.5
+        let m = 200; // High resolution for accurate detection
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
+            .collect();
+
+        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+
+        // Should find exactly 5 peaks
+        assert_eq!(
+            result.peaks[0].len(),
+            5,
+            "Expected 5 peaks, got {}. Peak times: {:?}",
+            result.peaks[0].len(),
+            result.peaks[0].iter().map(|p| p.time).collect::<Vec<_>>()
+        );
+
+        // Check peak locations are close to expected
+        let expected_times = vec![0.5, 2.5, 4.5, 6.5, 8.5];
+        for (peak, expected) in result.peaks[0].iter().zip(expected_times.iter()) {
+            assert!(
+                (peak.time - expected).abs() < 0.15,
+                "Peak at {:.3} not close to expected {:.3}",
+                peak.time,
+                expected
+            );
+        }
+
+        // Check mean period
+        assert!(
+            (result.mean_period - period).abs() < 0.1,
+            "Mean period {:.3} not close to expected {:.3}",
+            result.mean_period,
+            period
+        );
+    }
+
+    #[test]
+    fn test_peak_detection_with_min_distance() {
+        // Same sine wave but with min_distance constraint
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
+            .collect();
+
+        // min_distance = 1.5 should still find all 5 peaks (spacing = 2.0)
+        let result = detect_peaks(&data, 1, m, &argvals, Some(1.5), None, false, None);
+        assert_eq!(
+            result.peaks[0].len(),
+            5,
+            "With min_distance=1.5, expected 5 peaks, got {}",
+            result.peaks[0].len()
+        );
+
+        // min_distance = 2.5 should find fewer peaks
+        let result2 = detect_peaks(&data, 1, m, &argvals, Some(2.5), None, false, None);
+        assert!(
+            result2.peaks[0].len() < 5,
+            "With min_distance=2.5, expected fewer than 5 peaks, got {}",
+            result2.peaks[0].len()
+        );
+    }
+
+    #[test]
+    fn test_peak_detection_period_1() {
+        // Higher frequency: sin(2*pi*t/1) on [0, 10]
+        // Peaks at t = 0.25, 1.25, 2.25, ..., 9.25 (10 peaks)
+        let m = 400; // Higher resolution for higher frequency
+        let period = 1.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
+            .collect();
+
+        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+
+        // Should find 10 peaks
+        assert_eq!(
+            result.peaks[0].len(),
+            10,
+            "Expected 10 peaks, got {}",
+            result.peaks[0].len()
+        );
+
+        // Check mean period
+        assert!(
+            (result.mean_period - period).abs() < 0.1,
+            "Mean period {:.3} not close to expected {:.3}",
+            result.mean_period,
+            period
+        );
+    }
+
+    #[test]
+    fn test_peak_detection_shifted_sine() {
+        // Shifted sine: sin(2*pi*t/2) + 1 on [0, 10]
+        // Same peak locations, just shifted up
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin() + 1.0)
+            .collect();
+
+        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+
+        // Should still find 5 peaks
+        assert_eq!(
+            result.peaks[0].len(),
+            5,
+            "Expected 5 peaks for shifted sine, got {}",
+            result.peaks[0].len()
+        );
+
+        // Peak values should be around 2.0 (max of sin + 1)
+        for peak in &result.peaks[0] {
+            assert!(
+                (peak.value - 2.0).abs() < 0.05,
+                "Peak value {:.3} not close to expected 2.0",
+                peak.value
+            );
+        }
+    }
+
+    #[test]
+    fn test_peak_detection_prominence() {
+        // Create signal with peaks of different heights
+        // Large peaks at odd positions, small peaks at even positions
+        let m = 200;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let base = (2.0 * std::f64::consts::PI * t / 2.0).sin();
+                // Add small ripples
+                let ripple = 0.1 * (2.0 * std::f64::consts::PI * t * 4.0).sin();
+                base + ripple
+            })
+            .collect();
+
+        // Without prominence filter, may find extra peaks from ripples
+        let result_no_filter = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+
+        // With prominence filter, should only find major peaks
+        let result_filtered = detect_peaks(&data, 1, m, &argvals, None, Some(0.5), false, None);
+
+        // Filtered should have fewer or equal peaks
+        assert!(
+            result_filtered.peaks[0].len() <= result_no_filter.peaks[0].len(),
+            "Prominence filter should reduce peak count"
+        );
+    }
+
+    #[test]
     fn test_seasonal_strength() {
         let m = 200;
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
@@ -1760,7 +1924,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let result = analyze_peak_timing(&data, 1, m, &argvals, period, Some(10.0));
+        let result = analyze_peak_timing(&data, 1, m, &argvals, period, Some(11));
 
         // Should find approximately 5 peaks
         assert!(!result.peak_times.is_empty());
@@ -1802,7 +1966,7 @@ mod tests {
     }
 
     #[test]
-    fn test_gcv_lambda_selection() {
+    fn test_gcv_fourier_nbasis_selection() {
         let m = 100;
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
 
@@ -1812,11 +1976,11 @@ mod tests {
             data[j] = (2.0 * PI * argvals[j] / 2.0).sin() + 0.1 * (j as f64 * 0.3).sin();
         }
 
-        let lambda = select_lambda_gcv(&data, 1, m, &argvals, 20, 2);
+        let nbasis = crate::basis::select_fourier_nbasis_gcv(&data, 1, m, &argvals, 5, 25);
 
-        // Lambda should be positive and reasonable
-        assert!(lambda > 0.0);
-        assert!(lambda < 10000.0);
+        // nbasis should be reasonable (between min and max)
+        assert!(nbasis >= 5);
+        assert!(nbasis <= 25);
     }
 
     #[test]
