@@ -217,7 +217,7 @@ df_vel_var <- data.frame(
 )
 
 # Height plot
-p1 <- ggplot(df_height_var, aes(x = age, y = height, color = developer)) +
+p1 <- ggplot(df_height_var, aes(x = age, y = height, color = developer, group = developer)) +
   geom_line(linewidth = 1) +
   scale_color_manual(values = c("Early" = "blue", "Median" = "gray50", "Late" = "red")) +
   labs(x = "Age (years)", y = "Height (cm)",
@@ -226,7 +226,7 @@ p1 <- ggplot(df_height_var, aes(x = age, y = height, color = developer)) +
   theme(legend.position = "bottom")
 
 # Velocity plot
-p2 <- ggplot(df_vel_var, aes(x = age, y = velocity, color = developer)) +
+p2 <- ggplot(df_vel_var, aes(x = age, y = velocity, color = developer, group = developer)) +
   geom_line(linewidth = 1) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray") +
   scale_color_manual(values = c("Early" = "blue", "Median" = "gray50", "Late" = "red")) +
