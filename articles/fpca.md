@@ -143,11 +143,14 @@ plot(fpca, type = "components", ncomp = 3, multiple = 2)
 
 ![](fpca_files/figure-html/plot-components-1.png)
 
-Each panel shows:
+For each principal component, the plot shows:
 
-- **Black line**: Mean function $\mu(t)$
-- **Blue line**: Mean + perturbation in PC direction
-- **Red line**: Mean - perturbation in PC direction
+- **Solid line**: Mean function $\mu(t)$
+- **Dashed line**: Mean + perturbation ($\mu + c \cdot \phi_{k}$)
+- **Dotted line**: Mean - perturbation ($\mu - c \cdot \phi_{k}$)
+
+where $c = 2 \times \sqrt{\lambda_{k}}$ scales the perturbation by the
+component’s importance.
 
 **Interpretation**:
 

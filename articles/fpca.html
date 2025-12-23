@@ -253,17 +253,22 @@ shows how each PC affects the mean curve:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fpca</span>, type <span class="op">=</span> <span class="st">"components"</span>, ncomp <span class="op">=</span> <span class="fl">3</span>, multiple <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
 <p><img src="fpca_files/figure-html/plot-components-1.png" class="r-plt" alt="" width="100%"></p>
-<p>Each panel shows:</p>
+<p>For each principal component, the plot shows:</p>
 <ul>
 <li>
-<strong>Black line</strong>: Mean function
+<strong>Solid line</strong>: Mean function
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mu(t)</annotation></semantics></math>
 </li>
 <li>
-<strong>Blue line</strong>: Mean + perturbation in PC direction</li>
+<strong>Dashed line</strong>: Mean + perturbation
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mo>+</mo><mi>c</mi><mo>⋅</mo><msub><mi>ϕ</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">\mu + c \cdot \phi_k</annotation></semantics></math>)</li>
 <li>
-<strong>Red line</strong>: Mean - perturbation in PC direction</li>
+<strong>Dotted line</strong>: Mean - perturbation
+(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mo>−</mo><mi>c</mi><mo>⋅</mo><msub><mi>ϕ</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">\mu - c \cdot \phi_k</annotation></semantics></math>)</li>
 </ul>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>=</mo><mn>2</mn><mo>×</mo><msqrt><msub><mi>λ</mi><mi>k</mi></msub></msqrt></mrow><annotation encoding="application/x-tex">c = 2 \times \sqrt{\lambda_k}</annotation></semantics></math>
+scales the perturbation by the component’s importance.</p>
 <p><strong>Interpretation</strong>:</p>
 <ul>
 <li>
