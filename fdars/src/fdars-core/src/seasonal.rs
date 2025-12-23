@@ -365,37 +365,6 @@ fn unwrap_phase(phase: &[f64]) -> Vec<f64> {
     unwrapped
 }
 
-/// Select optimal smoothing lambda using GCV (Generalized Cross-Validation).
-///
-/// Performs grid search over lambda values and returns the one with minimum GCV.
-fn select_lambda_gcv(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-    nbasis: usize,
-    order: usize,
-) -> f64 {
-    // Lambda grid: log-spaced from 0.01 to 10000
-    let lambdas: Vec<f64> = (0..20)
-        .map(|i| 0.01 * (10.0_f64).powf(i as f64 * 0.3))
-        .collect();
-
-    let mut best_lambda = 10.0;
-    let mut best_gcv = f64::INFINITY;
-
-    for &lambda in &lambdas {
-        if let Some(result) = crate::basis::pspline_fit_1d(data, n, m, argvals, nbasis, lambda, order) {
-            if result.gcv < best_gcv && result.gcv.is_finite() {
-                best_gcv = result.gcv;
-                best_lambda = lambda;
-            }
-        }
-    }
-
-    best_lambda
-}
-
 /// Compute Otsu's threshold for bimodal separation.
 ///
 /// Finds the threshold that minimizes within-class variance (or equivalently
@@ -848,7 +817,7 @@ pub fn detect_multiple_periods(
 /// Detect peaks in functional data.
 ///
 /// Uses derivative zero-crossings to find local maxima, with optional
-/// smoothing and filtering by minimum distance and prominence.
+/// Fourier basis smoothing and filtering by minimum distance and prominence.
 ///
 /// # Arguments
 /// * `data` - Column-major matrix (n x m)
@@ -857,9 +826,9 @@ pub fn detect_multiple_periods(
 /// * `argvals` - Evaluation points
 /// * `min_distance` - Minimum time between peaks (None = no constraint)
 /// * `min_prominence` - Minimum prominence (0-1 scale, None = no filter)
-/// * `smooth_first` - Whether to smooth data before peak detection
-/// * `smooth_lambda` - Smoothing parameter. If None and smooth_first=true,
-///   uses GCV to automatically select optimal lambda.
+/// * `smooth_first` - Whether to smooth data before peak detection using Fourier basis
+/// * `smooth_nbasis` - Number of Fourier basis functions. If None and smooth_first=true,
+///   uses GCV to automatically select optimal nbasis (range 5-25).
 pub fn detect_peaks(
     data: &[f64],
     n: usize,
@@ -868,7 +837,7 @@ pub fn detect_peaks(
     min_distance: Option<f64>,
     min_prominence: Option<f64>,
     smooth_first: bool,
-    smooth_lambda: Option<f64>,
+    smooth_nbasis: Option<usize>,
 ) -> PeakDetectionResult {
     if n == 0 || m < 3 || argvals.len() != m {
         return PeakDetectionResult {
@@ -881,22 +850,16 @@ pub fn detect_peaks(
     let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
     let min_dist_points = min_distance.map(|d| (d / dt).round() as usize).unwrap_or(1);
 
-    // Optionally smooth the data
+    // Optionally smooth the data using Fourier basis
     let work_data = if smooth_first {
-        // Determine lambda: use provided value or select via GCV
-        let lambda = smooth_lambda.unwrap_or_else(|| {
-            select_lambda_gcv(data, n, m, argvals, 20, 2)
+        // Determine nbasis: use provided value or select via GCV
+        let nbasis = smooth_nbasis.unwrap_or_else(|| {
+            crate::basis::select_fourier_nbasis_gcv(data, n, m, argvals, 5, 25)
         });
 
-        if lambda > 0.0 {
-            // Use P-spline smoothing
-            if let Some(result) =
-                crate::basis::pspline_fit_1d(data, n, m, argvals, 20, lambda, 2)
-            {
-                result.fitted
-            } else {
-                data.to_vec()
-            }
+        // Use Fourier basis smoothing
+        if let Some(result) = crate::basis::fourier_fit_1d(data, n, m, argvals, nbasis) {
+            result.fitted
         } else {
             data.to_vec()
         }
@@ -1405,7 +1368,8 @@ pub fn instantaneous_period(
 /// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points
 /// * `period` - Known period (e.g., 365 for daily data with yearly seasonality)
-/// * `smooth_lambda` - Smoothing parameter. If None, uses GCV for automatic selection.
+/// * `smooth_nbasis` - Number of Fourier basis functions for smoothing.
+///   If None, uses GCV for automatic selection.
 ///
 /// # Returns
 /// Peak timing result with variability metrics
@@ -1415,7 +1379,7 @@ pub fn analyze_peak_timing(
     m: usize,
     argvals: &[f64],
     period: f64,
-    smooth_lambda: Option<f64>,
+    smooth_nbasis: Option<usize>,
 ) -> PeakTimingResult {
     if n == 0 || m < 3 || argvals.len() != m || period <= 0.0 {
         return PeakTimingResult {
@@ -1438,8 +1402,8 @@ pub fn analyze_peak_timing(
         data, n, m, argvals,
         Some(min_distance),
         None,  // No prominence filter
-        true,  // Smooth first
-        smooth_lambda,
+        true,  // Smooth first with Fourier basis
+        smooth_nbasis,
     );
 
     // Use the first sample's peaks (for mean curve analysis)

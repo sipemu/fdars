@@ -6287,7 +6287,7 @@ fn seasonal_detect_multiple_periods(
     .into()
 }
 
-/// Detect peaks in functional data
+/// Detect peaks in functional data using Fourier basis smoothing
 #[extendr]
 fn seasonal_detect_peaks(
     data: RMatrix<f64>,
@@ -6295,7 +6295,7 @@ fn seasonal_detect_peaks(
     min_distance: Robj,
     min_prominence: Robj,
     smooth_first: bool,
-    smooth_lambda: Robj,
+    smooth_nbasis: Robj,
 ) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
@@ -6323,17 +6323,17 @@ fn seasonal_detect_peaks(
         min_prominence.as_real()
     };
 
-    // Parse smooth_lambda: NULL = auto GCV, otherwise use provided value
-    let lambda: Option<f64> = if smooth_lambda.is_null() {
-        None  // Triggers auto GCV selection in Rust core
+    // Parse smooth_nbasis: NULL = auto GCV selection, otherwise use provided value
+    let nbasis: Option<usize> = if smooth_nbasis.is_null() {
+        None // Triggers auto GCV selection of Fourier basis in Rust core
     } else {
-        smooth_lambda.as_real()
+        smooth_nbasis.as_real().map(|v| v as usize)
     };
 
-    // Use the Rust core detect_peaks function
+    // Use the Rust core detect_peaks function with Fourier basis smoothing
     let result = fdars_core::seasonal::detect_peaks(
         data_slice, n, m, &argvals,
-        min_dist, min_prom, smooth_first, lambda
+        min_dist, min_prom, smooth_first, nbasis
     );
 
     // Convert result to R format
@@ -6906,13 +6906,13 @@ fn seasonal_instantaneous_period(data: RMatrix<f64>, argvals: Vec<f64>) -> Robj 
     .into()
 }
 
-/// Analyze peak timing variability across cycles
+/// Analyze peak timing variability across cycles (uses Fourier smoothing)
 #[extendr]
 fn seasonal_analyze_peak_timing(
     data: RMatrix<f64>,
     argvals: Vec<f64>,
     period: f64,
-    smooth_lambda: Robj,
+    smooth_nbasis: Robj,
 ) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
@@ -6934,14 +6934,14 @@ fn seasonal_analyze_peak_timing(
 
     let data_slice = data.as_real_slice().unwrap();
 
-    let lambda: Option<f64> = if smooth_lambda.is_null() {
+    let nbasis: Option<usize> = if smooth_nbasis.is_null() {
         None
     } else {
-        smooth_lambda.as_real()
+        smooth_nbasis.as_real().map(|v| v as usize)
     };
 
     let result = fdars_core::seasonal::analyze_peak_timing(
-        data_slice, n, m, &argvals, period, lambda
+        data_slice, n, m, &argvals, period, nbasis
     );
 
     let cycle_indices: Vec<i32> = result.cycle_indices.iter()

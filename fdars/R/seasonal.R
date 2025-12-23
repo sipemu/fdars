@@ -221,9 +221,11 @@ print.multiple_periods <- function(x, ...) {
 #' @param min_distance Minimum time between peaks. Default: NULL (no constraint).
 #' @param min_prominence Minimum prominence for a peak (0-1 scale). Peaks with
 #'   lower prominence are filtered out. Default: NULL (no filter).
-#' @param smooth_first Logical. If TRUE, apply P-spline smoothing before
-#'   peak detection. Default: FALSE.
-#' @param smooth_lambda Smoothing parameter for P-splines. Default: 10.
+#' @param smooth_first Logical. If TRUE, apply Fourier basis smoothing before
+#'   peak detection. Recommended for noisy data. Default: FALSE.
+#' @param smooth_nbasis Number of Fourier basis functions for smoothing.
+#'   If NULL and smooth_first=TRUE, uses GCV to automatically select
+#'   optimal nbasis (range 5-25). Default: NULL (auto).
 #'
 #' @return A list with components:
 #' \describe{
@@ -237,6 +239,9 @@ print.multiple_periods <- function(x, ...) {
 #' It is computed as the height difference between the peak and the highest
 #' of the two minimum values on either side, normalized by the data range.
 #'
+#' Fourier basis smoothing is ideal for seasonal signals because it naturally
+#' captures periodic patterns without introducing boundary artifacts.
+#'
 #' @export
 #' @examples
 #' # Generate data with clear peaks
@@ -248,10 +253,10 @@ print.multiple_periods <- function(x, ...) {
 #' peaks <- detect_peaks(fd, min_distance = 1.5)
 #' print(peaks$mean_period)  # Should be close to 2
 #'
-#' # With automatic GCV smoothing
+#' # With automatic Fourier smoothing (GCV selects nbasis)
 #' peaks_smooth <- detect_peaks(fd, min_distance = 1.5, smooth_first = TRUE)
 detect_peaks <- function(fdataobj, min_distance = NULL, min_prominence = NULL,
-                         smooth_first = FALSE, smooth_lambda = NULL) {
+                         smooth_first = FALSE, smooth_nbasis = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -263,13 +268,13 @@ detect_peaks <- function(fdataobj, min_distance = NULL, min_prominence = NULL,
   # Handle NULL values - pass as NULL Robj
   min_dist_arg <- if (is.null(min_distance)) NULL else as.double(min_distance)
   min_prom_arg <- if (is.null(min_prominence)) NULL else as.double(min_prominence)
-  # NULL smooth_lambda triggers automatic GCV selection
-  lambda_arg <- if (is.null(smooth_lambda)) NULL else as.double(smooth_lambda)
+  # NULL smooth_nbasis triggers automatic GCV selection
+  nbasis_arg <- if (is.null(smooth_nbasis)) NULL else as.integer(smooth_nbasis)
 
   result <- .Call("wrap__seasonal_detect_peaks",
                   fdataobj$data, fdataobj$argvals,
                   min_dist_arg, min_prom_arg,
-                  as.logical(smooth_first), lambda_arg)
+                  as.logical(smooth_first), nbasis_arg)
 
   # Convert peaks list to data frames
   result$peaks <- lapply(result$peaks, function(p) {
@@ -583,11 +588,12 @@ instantaneous_period <- function(fdataobj) {
 #'
 #' For short series (e.g., 3-5 years of yearly data), this function detects
 #' one peak per cycle and analyzes how peak timing varies between cycles.
+#' Uses Fourier basis smoothing for peak detection.
 #'
 #' @param fdataobj An fdata object.
 #' @param period Known period (e.g., 365 for daily data with yearly seasonality).
-#' @param smooth_lambda Smoothing parameter. If NULL, uses GCV for automatic
-#'   selection. Default: NULL.
+#' @param smooth_nbasis Number of Fourier basis functions for smoothing.
+#'   If NULL, uses GCV for automatic selection (range 5-25). Default: NULL.
 #'
 #' @return A list with components:
 #' \describe{
@@ -608,6 +614,9 @@ instantaneous_period <- function(fdataobj) {
 #' The timing_trend indicates if peaks are systematically moving earlier
 #' or later over time.
 #'
+#' Fourier basis smoothing is ideal for seasonal signals because it naturally
+#' captures periodic patterns.
+#'
 #' @export
 #' @examples
 #' # 5 years of yearly data where peak shifts
@@ -620,7 +629,7 @@ instantaneous_period <- function(fdataobj) {
 #'
 #' result <- analyze_peak_timing(fd, period = 1)
 #' print(result$variability_score)  # Shows timing variability
-analyze_peak_timing <- function(fdataobj, period, smooth_lambda = NULL) {
+analyze_peak_timing <- function(fdataobj, period, smooth_nbasis = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -629,11 +638,11 @@ analyze_peak_timing <- function(fdataobj, period, smooth_lambda = NULL) {
     stop("analyze_peak_timing not yet implemented for 2D functional data")
   }
 
-  lambda_arg <- if (is.null(smooth_lambda)) NULL else as.double(smooth_lambda)
+  nbasis_arg <- if (is.null(smooth_nbasis)) NULL else as.integer(smooth_nbasis)
 
   result <- .Call("wrap__seasonal_analyze_peak_timing",
                   fdataobj$data, fdataobj$argvals,
-                  as.double(period), lambda_arg)
+                  as.double(period), nbasis_arg)
 
   class(result) <- "peak_timing"
   result

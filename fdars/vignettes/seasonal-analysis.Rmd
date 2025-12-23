@@ -298,9 +298,9 @@ cat("With min_distance:", nrow(peaks_distance$peaks[[1]]), "peaks found\n")
 ```
 
 ```{r peaks-with-smoothing}
-# Add smoothing for best results
+# Add Fourier smoothing for best results (GCV auto-selects nbasis)
 peaks_smooth <- detect_peaks(fd_demo, min_distance = period_true * 0.8,
-                             smooth_first = TRUE, smooth_lambda = NULL)
+                             smooth_first = TRUE, smooth_nbasis = NULL)
 cat("With smoothing:", nrow(peaks_smooth$peaks[[1]]), "peaks found\n")
 cat("Estimated period from peaks:", round(peaks_smooth$mean_period, 3), "\n")
 ```
@@ -665,9 +665,9 @@ print(timing)
 ### Visualizing Peak Timing
 
 ```{r peak-timing-plot}
-# Get detected peaks
+# Get detected peaks with Fourier smoothing
 peaks_short <- detect_peaks(fd_short, min_distance = 0.7,
-                            smooth_first = TRUE, smooth_lambda = NULL)
+                            smooth_first = TRUE, smooth_nbasis = NULL)
 peak_df <- peaks_short$peaks[[1]]
 
 # Plot with peaks marked
@@ -877,7 +877,7 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
 **Peak detection:**
 
 - Clean data: `detect_peaks()` with default parameters
-- Noisy data: Add `smooth_first = TRUE, smooth_lambda = NULL`
+- Noisy data: Add `smooth_first = TRUE` (Fourier smoothing with GCV-selected nbasis)
 - Still too many peaks: Increase `min_prominence`
 
 **Seasonal strength:**
