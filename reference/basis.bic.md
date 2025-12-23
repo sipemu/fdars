@@ -6,7 +6,13 @@ BIC penalizes complexity more strongly than AIC for larger samples.
 ## Usage
 
 ``` r
-basis.bic(fdataobj, nbasis, type = c("bspline", "fourier"), lambda = 0)
+basis.bic(
+  fdataobj,
+  nbasis,
+  type = c("bspline", "fourier"),
+  lambda = 0,
+  pooled = TRUE
+)
 ```
 
 ## Arguments
@@ -27,6 +33,11 @@ basis.bic(fdataobj, nbasis, type = c("bspline", "fourier"), lambda = 0)
 
   Smoothing/penalty parameter (default 0).
 
+- pooled:
+
+  Logical. If TRUE (default), compute a single BIC across all curves. If
+  FALSE, compute BIC for each curve and return the mean.
+
 ## Value
 
 The BIC value (scalar).
@@ -34,3 +45,8 @@ The BIC value (scalar).
 ## Details
 
 BIC is computed as: \$\$BIC = n \log(RSS/n) + \log(n) \cdot edf\$\$
+
+When `pooled = TRUE`, the criterion uses total observations and total
+effective degrees of freedom (n_curves \* edf). When `pooled = FALSE`,
+the criterion is computed for each curve separately and the mean is
+returned.

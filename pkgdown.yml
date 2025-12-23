@@ -8,13 +8,14 @@ articles:
   custom-plotting: custom-plotting.html
   depth-functions: depth-functions.html
   distance-metrics: distance-metrics.html
+  fpca: fpca.html
   intro-to-smoothing: intro-to-smoothing.html
   introduction: introduction.html
   outlier-detection: outlier-detection.html
   regression: regression.html
   seasonal-analysis: seasonal-analysis.html
   working-with-derivatives: working-with-derivatives.html
-last_built: 2025-12-23T18:53Z
+last_built: 2025-12-23T19:25Z
 urls:
   reference: https://sipemu.github.io/fdars/reference
   article: https://sipemu.github.io/fdars/articles

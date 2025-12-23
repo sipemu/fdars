@@ -174,9 +174,9 @@ ggplot(df_criteria, aes(x = nbasis, y = score)) +
 cat("Optimal nbasis - GCV:", opt_gcv, "\n")
 #> Optimal nbasis - GCV: 5
 cat("Optimal nbasis - AIC:", opt_aic, "\n")
-#> Optimal nbasis - AIC: 25
+#> Optimal nbasis - AIC: 5
 cat("Optimal nbasis - BIC:", opt_bic, "\n")
-#> Optimal nbasis - BIC: 25
+#> Optimal nbasis - BIC: 5
 ```
 
 **Interpretation:**
@@ -186,6 +186,99 @@ cat("Optimal nbasis - BIC:", opt_bic, "\n")
 - **AIC**: Tends to select slightly more complex models
 - **BIC**: More conservative, penalizes complexity more strongly for
   larger samples
+
+### Complex Signal Example: B-spline vs Fourier
+
+The previous example used a sinusoidal signal which is ideally suited
+for Fourier basis. Let’s now consider a complex non-periodic signal
+that’s better suited for B-splines:
+
+``` r
+# Generate data with non-periodic features
+set.seed(123)
+t2 <- seq(0, 1, length.out = 100)
+n2 <- 30
+
+# Complex signal: polynomial trend + localized bump
+complex_signal <- function(t) {
+  trend <- 2 * t^2 - t
+  bump <- 0.8 * exp(-((t - 0.3)^2) / (2 * 0.05^2))
+  sharp <- ifelse(t > 0.7, 0.5 * sqrt(t - 0.7), 0)
+  trend + bump + sharp
+}
+
+X2 <- matrix(0, n2, length(t2))
+for (i in 1:n2) {
+  X2[i, ] <- complex_signal(t2) + rnorm(length(t2), sd = 0.15)
+}
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+#> Warning in sqrt(t - 0.7): NaNs produced
+fd2 <- fdata(X2, argvals = t2)
+
+# Compare B-spline vs Fourier for this data
+nbasis_range <- 5:25
+
+# B-spline criteria
+gcv_bspline <- sapply(nbasis_range, function(k) basis.gcv(fd2, nbasis = k, type = "bspline"))
+aic_bspline <- sapply(nbasis_range, function(k) basis.aic(fd2, nbasis = k, type = "bspline"))
+
+# Fourier criteria
+gcv_fourier <- sapply(nbasis_range, function(k) basis.gcv(fd2, nbasis = k, type = "fourier"))
+aic_fourier <- sapply(nbasis_range, function(k) basis.aic(fd2, nbasis = k, type = "fourier"))
+
+# Create comparison plot
+df_complex <- data.frame(
+  nbasis = rep(nbasis_range, 4),
+  score = c(gcv_bspline, gcv_fourier, aic_bspline, aic_fourier),
+  criterion = rep(rep(c("GCV", "AIC"), each = length(nbasis_range)), 2),
+  basis = rep(c("B-spline", "Fourier"), each = 2 * length(nbasis_range))
+)
+
+ggplot(df_complex, aes(x = nbasis, y = score, color = basis)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ criterion, scales = "free_y") +
+  labs(x = "Number of basis functions", y = "Score",
+       title = "Basis Selection for Complex Non-Periodic Signal") +
+  scale_color_manual(values = c("B-spline" = "steelblue", "Fourier" = "coral"))
+```
+
+![](basis-representation_files/figure-html/complex-signal-1.png)
+
+**Key observations:**
+
+- B-splines are better for localized features (like the Gaussian bump)
+- Fourier basis needs more functions to approximate non-periodic signals
+- Information criteria help select both basis type AND number of
+  functions
 
 ### Automatic Selection with `fdata2basis.cv()`
 

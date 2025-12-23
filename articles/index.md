@@ -13,6 +13,8 @@
 
 ### Core Methods
 
+- [Functional Principal Component Analysis
+  (FPCA)](https://sipemu.github.io/fdars/articles/fpca.md):
 - [Finding the Best Basis
   Representation](https://sipemu.github.io/fdars/articles/basis-representation.md):
 - [Functional Depth

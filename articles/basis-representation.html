@@ -40,6 +40,7 @@
     <li><a class="dropdown-item" href="../articles/working-with-derivatives.html">Working with Derivatives</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><h6 class="dropdown-header" data-toc-skip>Core Methods</h6></li>
+    <li><a class="dropdown-item" href="../articles/fpca.html">Functional PCA (FPCA)</a></li>
     <li><a class="dropdown-item" href="../articles/basis-representation.html">Basis Representation</a></li>
     <li><a class="dropdown-item" href="../articles/depth-functions.html">Depth Functions</a></li>
     <li><a class="dropdown-item" href="../articles/distance-metrics.html">Distance Metrics</a></li>
@@ -284,9 +285,9 @@ representations:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimal nbasis - GCV:"</span>, <span class="va">opt_gcv</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Optimal nbasis - GCV: 5</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimal nbasis - AIC:"</span>, <span class="va">opt_aic</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Optimal nbasis - AIC: 25</span></span>
+<span><span class="co">#&gt; Optimal nbasis - AIC: 5</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimal nbasis - BIC:"</span>, <span class="va">opt_bic</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Optimal nbasis - BIC: 25</span></span></code></pre></div>
+<span><span class="co">#&gt; Optimal nbasis - BIC: 5</span></span></code></pre></div>
 <p><strong>Interpretation:</strong></p>
 <ul>
 <li>
@@ -301,11 +302,104 @@ strongly for larger samples</li>
 </ul>
 </div>
 <div class="section level3">
+<h3 id="complex-signal-example-b-spline-vs-fourier">Complex Signal Example: B-spline vs Fourier<a class="anchor" aria-label="anchor" href="#complex-signal-example-b-spline-vs-fourier"></a>
+</h3>
+<p>The previous example used a sinusoidal signal which is ideally suited
+for Fourier basis. Let’s now consider a complex non-periodic signal
+that’s better suited for B-splines:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Generate data with non-periodic features</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">123</span><span class="op">)</span></span>
+<span><span class="va">t2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, length.out <span class="op">=</span> <span class="fl">100</span><span class="op">)</span></span>
+<span><span class="va">n2</span> <span class="op">&lt;-</span> <span class="fl">30</span></span>
+<span></span>
+<span><span class="co"># Complex signal: polynomial trend + localized bump</span></span>
+<span><span class="va">complex_signal</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">t</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">trend</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">*</span> <span class="va">t</span><span class="op">^</span><span class="fl">2</span> <span class="op">-</span> <span class="va">t</span></span>
+<span>  <span class="va">bump</span> <span class="op">&lt;-</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="op">-</span><span class="op">(</span><span class="op">(</span><span class="va">t</span> <span class="op">-</span> <span class="fl">0.3</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span> <span class="op">/</span> <span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="fl">0.05</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">sharp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">t</span> <span class="op">&gt;</span> <span class="fl">0.7</span>, <span class="fl">0.5</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">t</span> <span class="op">-</span> <span class="fl">0.7</span><span class="op">)</span>, <span class="fl">0</span><span class="op">)</span></span>
+<span>  <span class="va">trend</span> <span class="op">+</span> <span class="va">bump</span> <span class="op">+</span> <span class="va">sharp</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">X2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">n2</span>, <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">n2</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">X2</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu">complex_signal</span><span class="op">(</span><span class="va">t2</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t2</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.15</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
+<span><span class="va">fd2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X2</span>, argvals <span class="op">=</span> <span class="va">t2</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Compare B-spline vs Fourier for this data</span></span>
+<span><span class="va">nbasis_range</span> <span class="op">&lt;-</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span></span>
+<span></span>
+<span><span class="co"># B-spline criteria</span></span>
+<span><span class="va">gcv_bspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">nbasis_range</span>, <span class="kw">function</span><span class="op">(</span><span class="va">k</span><span class="op">)</span> <span class="fu"><a href="../reference/basis.gcv.html">basis.gcv</a></span><span class="op">(</span><span class="va">fd2</span>, nbasis <span class="op">=</span> <span class="va">k</span>, type <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">aic_bspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">nbasis_range</span>, <span class="kw">function</span><span class="op">(</span><span class="va">k</span><span class="op">)</span> <span class="fu"><a href="../reference/basis.aic.html">basis.aic</a></span><span class="op">(</span><span class="va">fd2</span>, nbasis <span class="op">=</span> <span class="va">k</span>, type <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Fourier criteria</span></span>
+<span><span class="va">gcv_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">nbasis_range</span>, <span class="kw">function</span><span class="op">(</span><span class="va">k</span><span class="op">)</span> <span class="fu"><a href="../reference/basis.gcv.html">basis.gcv</a></span><span class="op">(</span><span class="va">fd2</span>, nbasis <span class="op">=</span> <span class="va">k</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">aic_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">nbasis_range</span>, <span class="kw">function</span><span class="op">(</span><span class="va">k</span><span class="op">)</span> <span class="fu"><a href="../reference/basis.aic.html">basis.aic</a></span><span class="op">(</span><span class="va">fd2</span>, nbasis <span class="op">=</span> <span class="va">k</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Create comparison plot</span></span>
+<span><span class="va">df_complex</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  nbasis <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">nbasis_range</span>, <span class="fl">4</span><span class="op">)</span>,</span>
+<span>  score <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">gcv_bspline</span>, <span class="va">gcv_fourier</span>, <span class="va">aic_bspline</span>, <span class="va">aic_fourier</span><span class="op">)</span>,</span>
+<span>  criterion <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"GCV"</span>, <span class="st">"AIC"</span><span class="op">)</span>, each <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">nbasis_range</span><span class="op">)</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>,</span>
+<span>  basis <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"B-spline"</span>, <span class="st">"Fourier"</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">nbasis_range</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">df_complex</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">nbasis</span>, y <span class="op">=</span> <span class="va">score</span>, color <span class="op">=</span> <span class="va">basis</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_point.html" class="external-link">geom_point</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/facet_wrap.html" class="external-link">facet_wrap</a></span><span class="op">(</span><span class="op">~</span> <span class="va">criterion</span>, scales <span class="op">=</span> <span class="st">"free_y"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>x <span class="op">=</span> <span class="st">"Number of basis functions"</span>, y <span class="op">=</span> <span class="st">"Score"</span>,</span>
+<span>       title <span class="op">=</span> <span class="st">"Basis Selection for Complex Non-Periodic Signal"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_color_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"B-spline"</span> <span class="op">=</span> <span class="st">"steelblue"</span>, <span class="st">"Fourier"</span> <span class="op">=</span> <span class="st">"coral"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p><img src="basis-representation_files/figure-html/complex-signal-1.png" class="r-plt" alt="" width="100%"></p>
+<p><strong>Key observations:</strong></p>
+<ul>
+<li>B-splines are better for localized features (like the Gaussian
+bump)</li>
+<li>Fourier basis needs more functions to approximate non-periodic
+signals</li>
+<li>Information criteria help select both basis type AND number of
+functions</li>
+</ul>
+</div>
+<div class="section level3">
 <h3 id="automatic-selection-with-fdata2basis-cv">Automatic Selection with <code>fdata2basis.cv()</code><a class="anchor" aria-label="anchor" href="#automatic-selection-with-fdata2basis-cv"></a>
 </h3>
 <p>For convenience, use <code><a href="../reference/fdata2basis.cv.html">fdata2basis.cv()</a></code> to automatically
 find the optimal number of basis functions:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Automatic selection using GCV</span></span>
 <span><span class="va">cv_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">cv_result</span><span class="op">)</span></span>
@@ -321,7 +415,7 @@ find the optimal number of basis functions:</p>
 <p><img src="basis-representation_files/figure-html/automatic-selection-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The function returns the optimal number of basis functions and the
 fitted curves:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Plot the smoothed data</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cv_result</span><span class="op">$</span><span class="va">fitted</span>, alpha <span class="op">=</span> <span class="fl">0.5</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="st">"Smoothed with"</span>, <span class="va">cv_result</span><span class="op">$</span><span class="va">optimal.nbasis</span>, <span class="st">"Fourier basis"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p><img src="basis-representation_files/figure-html/cv-result-1.png" class="r-plt" alt="" width="100%"></p>
@@ -330,7 +424,7 @@ fitted curves:</p>
 <h3 id="k-fold-cross-validation">K-fold Cross-Validation<a class="anchor" aria-label="anchor" href="#k-fold-cross-validation"></a>
 </h3>
 <p>For a more robust estimate, use k-fold cross-validation:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># K-fold cross-validation (slower but more robust)</span></span>
 <span><span class="va">cv_kfold</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>,</span>
 <span>                            criterion <span class="op">=</span> <span class="st">"CV"</span>, kfold <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
@@ -353,7 +447,7 @@ are coefficients -
 is a difference matrix (controls smoothness) -
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>
 is the penalty parameter</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Fit P-spline with fixed lambda</span></span>
 <span><span class="va">result_fixed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">result_fixed</span><span class="op">)</span></span>
@@ -393,7 +487,7 @@ is the penalty parameter</p>
 </h3>
 <p>P-splines can automatically select the optimal smoothing
 parameter:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Automatic lambda selection using GCV</span></span>
 <span><span class="va">result_auto</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda.select <span class="op">=</span> <span class="cn">TRUE</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Selected lambda:"</span>, <span class="va">result_auto</span><span class="op">$</span><span class="va">lambda</span>, <span class="st">"\n"</span><span class="op">)</span></span>
@@ -427,7 +521,7 @@ parameter:</p>
 <h3 id="smoothing-multiple-curves">Smoothing Multiple Curves<a class="anchor" aria-label="anchor" href="#smoothing-multiple-curves"></a>
 </h3>
 <p>P-splines work curve-by-curve, so you can smooth entire datasets:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Smooth all curves with automatic lambda selection</span></span>
 <span><span class="va">result_all</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda.select <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span></span>
@@ -440,7 +534,7 @@ parameter:</p>
 <h2 id="comparing-approaches">Comparing Approaches<a class="anchor" aria-label="anchor" href="#comparing-approaches"></a>
 </h2>
 <p>Let’s compare the different smoothing approaches:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Original noisy data</span></span>
 <span><span class="va">fd_single</span> <span class="op">&lt;-</span> <span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span></span>
