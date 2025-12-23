@@ -172,6 +172,7 @@ reference:
 - title: Seasonal Analysis
   contents:
   - estimate_period
+  - detect_multiple_periods
   - detect_peaks
   - seasonal_strength
   - seasonal_strength_curve
