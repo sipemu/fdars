@@ -400,6 +400,132 @@ cat("High prominence (0.5):", nrow(peaks_high_prom$peaks[[1]]), "peaks\n")
 #> High prominence (0.5): 1 peaks
 ```
 
+### Different Signal Amplitudes
+
+Peak detection works correctly regardless of signal amplitude. The
+algorithm normalizes internally based on local signal characteristics.
+
+``` r
+t <- seq(0, 10, length.out = 200)
+amplitudes <- c(0.5, 1.0, 2.0, 5.0)
+
+# Create plots for each amplitude
+amplitude_plots <- lapply(amplitudes, function(amp) {
+  X <- matrix(amp * sin(2 * pi * t / 2), nrow = 1)
+  fd <- fdata(X, argvals = t)
+  result <- detect_peaks(fd)
+  peaks <- result$peaks[[1]]
+
+  df <- data.frame(t = t, y = X[1,])
+  ggplot(df, aes(x = t, y = y)) +
+    geom_line(color = "steelblue") +
+    geom_point(data = peaks, aes(x = time, y = value),
+               color = "red", size = 3) +
+    labs(title = paste("Amplitude =", amp, "- Found", nrow(peaks), "peaks"),
+         x = "Time", y = "Value")
+})
+
+library(gridExtra)
+grid.arrange(grobs = amplitude_plots, ncol = 2)
+```
+
+![](seasonal-analysis_files/figure-html/amplitude-examples-1.png)
+
+All four signals correctly detect 5 peaks, with peak values matching
+their respective amplitudes.
+
+### Non-Uniform Peak Spacing
+
+Real-world signals often have varying frequencies or complex
+interference patterns. `detect_peaks` handles these cases by analyzing
+local signal structure.
+
+#### Chirp Signal (Increasing Frequency)
+
+A chirp signal has frequency that increases over time, causing peaks to
+get progressively closer together.
+
+``` r
+t <- seq(0, 10, length.out = 400)
+# Phase integral for linearly increasing frequency: phi(t) = 2*pi*(0.5*t + 0.05*t^2)
+phase <- 2 * pi * (0.5 * t + 0.05 * t^2)
+X <- matrix(sin(phase), nrow = 1)
+fd <- fdata(X, argvals = t)
+
+result <- detect_peaks(fd)
+peaks <- result$peaks[[1]]
+
+# Plot
+df <- data.frame(t = t, y = X[1,])
+ggplot(df, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  geom_point(data = peaks, aes(x = time, y = value),
+             color = "red", size = 3) +
+  labs(title = "Chirp Signal: Frequency Increases Over Time",
+       subtitle = paste("Detected", nrow(peaks), "peaks with decreasing spacing"),
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/chirp-example-1.png)
+
+``` r
+# Show inter-peak distances decreasing over time
+distances <- result$inter_peak_distances[[1]]
+if (length(distances) >= 2) {
+  df_dist <- data.frame(
+    peak_pair = seq_along(distances),
+    distance = distances
+  )
+  ggplot(df_dist, aes(x = peak_pair, y = distance)) +
+    geom_point(size = 3, color = "steelblue") +
+    geom_line(linetype = "dashed", color = "gray50") +
+    labs(title = "Inter-Peak Distances Decrease Over Time",
+         x = "Peak Pair (sequential)", y = "Distance")
+}
+```
+
+![](seasonal-analysis_files/figure-html/chirp-distances-1.png)
+
+#### Sum of Sine Waves (Interference Pattern)
+
+When two sine waves with different periods are combined, they create an
+interference pattern with non-uniform peak spacing.
+
+``` r
+t <- seq(0, 12, length.out = 300)
+# Sum of periods 2 and 3
+X <- matrix(sin(2 * pi * t / 2) + 0.5 * sin(2 * pi * t / 3), nrow = 1)
+fd <- fdata(X, argvals = t)
+
+result <- detect_peaks(fd, min_distance = 1.0)
+peaks <- result$peaks[[1]]
+
+# Plot
+df <- data.frame(t = t, y = X[1,])
+ggplot(df, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  geom_point(data = peaks, aes(x = time, y = value),
+             color = "red", size = 3) +
+  labs(title = "Sum of Two Sine Waves (periods 2 and 3)",
+       subtitle = paste("Detected", nrow(peaks), "peaks with varying spacing"),
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/sum-sines-example-1.png)
+
+``` r
+# Show variable inter-peak distances
+distances <- result$inter_peak_distances[[1]]
+cat("Inter-peak distances:", round(distances, 2), "\n")
+#> Inter-peak distances: 2.01 1.85 2.17 2.01 1.81
+cat("Range:", round(min(distances), 2), "to", round(max(distances), 2), "\n")
+#> Range: 1.81 to 2.17
+```
+
+The peak detection algorithm correctly identifies local maxima even when
+the underlying signal has complex structure with varying peak-to-peak
+distances.
+
 ## Measuring Seasonal Strength
 
 Seasonal strength quantifies how much of the signal’s variance is
@@ -502,7 +628,7 @@ print(changes)
 #> Number of changes: 1
 #> 
 #>       time      type strength_before strength_after
-#> 1 20.32541 cessation       0.3027155      0.2990393
+#> 1 19.92491 cessation       0.3009605      0.2975437
 ```
 
 ### Automatic Threshold (Otsu’s Method)
@@ -516,11 +642,11 @@ changes_auto <- detect_seasonality_changes_auto(fd_changing, period = period_tru
 print(changes_auto)
 #> Seasonality Change Detection (Auto Threshold)
 #> ----------------------------------------------
-#> Computed threshold: 0.4878
+#> Computed threshold: 0.4731
 #> Number of changes: 1
 #> 
 #>       time      type strength_before strength_after
-#> 1 19.52441 cessation       0.5462295      0.4869599
+#> 1 19.37422 cessation       0.5248709      0.4728245
 ```
 
 ### Visualizing Change Points
