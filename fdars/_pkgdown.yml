@@ -27,6 +27,7 @@ articles:
   - clustering
   - outlier-detection
   - regression
+  - seasonal-analysis
 - title: Advanced
   contents:
   - covariance-functions
@@ -129,6 +130,15 @@ reference:
   - pred.MSE
   - pred.R2
   - pred.RMSE
+
+- title: Seasonal Analysis
+  contents:
+  - estimate_period
+  - detect_peaks
+  - seasonal_strength
+  - seasonal_strength_curve
+  - detect_seasonality_changes
+  - instantaneous_period
 
 - title: Smoothing
   contents:

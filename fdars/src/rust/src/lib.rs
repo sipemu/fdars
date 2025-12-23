@@ -5978,6 +5978,918 @@ fn ridge_regression_fit(x: RMatrix<f64>, y: Vec<f64>, lambda: f64, with_intercep
 }
 
 // =============================================================================
+// Seasonal Analysis Functions
+// =============================================================================
+
+/// Estimate period using FFT periodogram
+#[extendr]
+fn seasonal_estimate_period_fft(data: RMatrix<f64>, argvals: Vec<f64>) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m {
+        return list!(
+            period = f64::NAN,
+            frequency = f64::NAN,
+            power = 0.0,
+            confidence = 0.0
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute mean curve first
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Compute periodogram
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let fs = 1.0 / dt;
+
+    let mut planner = FftPlanner::<f64>::new();
+    let fft = planner.plan_fft_forward(m);
+
+    let mut buffer: Vec<Complex<f64>> = mean_curve.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    fft.process(&mut buffer);
+
+    let n_freq = m / 2 + 1;
+    let mut max_power = 0.0;
+    let mut max_idx = 1;
+    let mut total_power = 0.0;
+
+    for k in 1..n_freq {
+        let p = buffer[k].norm_sqr() / (m as f64 * m as f64);
+        let p = if k < m / 2 { 2.0 * p } else { p };
+        total_power += p;
+        if p > max_power {
+            max_power = p;
+            max_idx = k;
+        }
+    }
+
+    let dominant_freq = max_idx as f64 * fs / m as f64;
+    let period = if dominant_freq > 1e-15 {
+        1.0 / dominant_freq
+    } else {
+        f64::INFINITY
+    };
+
+    let mean_power = total_power / (n_freq - 1) as f64;
+    let confidence = if mean_power > 1e-15 {
+        max_power / mean_power
+    } else {
+        0.0
+    };
+
+    list!(
+        period = period,
+        frequency = dominant_freq,
+        power = max_power,
+        confidence = confidence
+    )
+    .into()
+}
+
+/// Estimate period using autocorrelation
+#[extendr]
+fn seasonal_estimate_period_acf(data: RMatrix<f64>, argvals: Vec<f64>, max_lag: i32) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+    let max_lag = max_lag as usize;
+
+    if n == 0 || m < 4 || argvals.len() != m {
+        return list!(
+            period = f64::NAN,
+            frequency = f64::NAN,
+            power = 0.0,
+            confidence = 0.0
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Compute ACF
+    let mean: f64 = mean_curve.iter().sum::<f64>() / m as f64;
+    let var: f64 = mean_curve.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / m as f64;
+
+    if var < 1e-15 {
+        return list!(
+            period = f64::NAN,
+            frequency = f64::NAN,
+            power = 0.0,
+            confidence = 0.0
+        )
+        .into();
+    }
+
+    let max_lag = max_lag.min(m - 1);
+    let mut acf = Vec::with_capacity(max_lag + 1);
+    for lag in 0..=max_lag {
+        let mut sum = 0.0;
+        for i in 0..(m - lag) {
+            sum += (mean_curve[i] - mean) * (mean_curve[i + lag] - mean);
+        }
+        acf.push(sum / (m as f64 * var));
+    }
+
+    // Find first peak after lag 0
+    let min_lag = 2;
+    let mut peak_lag = 0;
+    for i in (min_lag + 1)..(acf.len() - 1) {
+        if acf[i] > acf[i - 1] && acf[i] > acf[i + 1] {
+            peak_lag = i;
+            break;
+        }
+    }
+
+    if peak_lag == 0 {
+        return list!(
+            period = f64::NAN,
+            frequency = f64::NAN,
+            power = 0.0,
+            confidence = 0.0
+        )
+        .into();
+    }
+
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let period = peak_lag as f64 * dt;
+    let frequency = if period > 1e-15 { 1.0 / period } else { 0.0 };
+
+    list!(
+        period = period,
+        frequency = frequency,
+        power = acf[peak_lag],
+        confidence = acf[peak_lag].abs()
+    )
+    .into()
+}
+
+/// Detect peaks in functional data
+#[extendr]
+fn seasonal_detect_peaks(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    min_distance: Robj,
+    min_prominence: Robj,
+    smooth_first: bool,
+    smooth_lambda: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 3 || argvals.len() != m {
+        return list!(
+            peaks = list!(),
+            inter_peak_distances = list!(),
+            mean_period = f64::NAN
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+
+    let min_dist_points = if min_distance.is_null() {
+        1
+    } else {
+        let d: f64 = min_distance.as_real().unwrap_or(dt);
+        (d / dt).round() as usize
+    };
+
+    let min_prom: Option<f64> = if min_prominence.is_null() {
+        None
+    } else {
+        min_prominence.as_real()
+    };
+
+    // Optionally smooth with P-splines
+    let work_data: Vec<f64> = if smooth_first && smooth_lambda > 0.0 {
+        let basis = bspline_basis(&argvals, 16, 4);
+        let actual_nbasis = basis.len() / m;
+        let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+        let d = difference_matrix(actual_nbasis, 2);
+        let penalty = &d.transpose() * &d;
+        let btb = &b_mat.transpose() * &b_mat;
+        let btb_penalized = &btb + smooth_lambda * &penalty;
+
+        let svd = SVD::new(btb_penalized.clone(), true, true);
+        let eps = 1e-10 * svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+
+        if let (Some(u), Some(v_t)) = (svd.u.as_ref(), svd.v_t.as_ref()) {
+            let s_inv: Vec<f64> = svd
+                .singular_values
+                .iter()
+                .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+                .collect();
+
+            let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+            for i in 0..actual_nbasis {
+                for j in 0..actual_nbasis {
+                    let mut sum = 0.0;
+                    for k in 0..actual_nbasis.min(s_inv.len()) {
+                        sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+                    }
+                    btb_inv[(i, j)] = sum;
+                }
+            }
+
+            (0..n)
+                .flat_map(|i| {
+                    let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+                    let curve_vec = DVector::from_vec(curve);
+                    let coefs = &btb_inv * (b_mat.transpose() * &curve_vec);
+                    let fitted = &b_mat * &coefs;
+                    (0..m).map(move |j| fitted[j])
+                })
+                .collect()
+        } else {
+            data_slice.to_vec()
+        }
+    } else {
+        data_slice.to_vec()
+    };
+
+    // Compute first derivative using finite differences
+    let mut deriv1 = vec![0.0; n * m];
+    let h0 = argvals[1] - argvals[0];
+    let hn = argvals[m - 1] - argvals[m - 2];
+
+    for i in 0..n {
+        // Forward difference at left boundary
+        deriv1[i] = (work_data[i + n] - work_data[i]) / h0;
+        // Central differences for interior
+        for j in 1..(m - 1) {
+            let h = argvals[j + 1] - argvals[j - 1];
+            deriv1[i + j * n] = (work_data[i + (j + 1) * n] - work_data[i + (j - 1) * n]) / h;
+        }
+        // Backward difference at right boundary
+        deriv1[i + (m - 1) * n] = (work_data[i + (m - 1) * n] - work_data[i + (m - 2) * n]) / hn;
+    }
+
+    // Data range for prominence normalization
+    let mut min_val = f64::INFINITY;
+    let mut max_val = f64::NEG_INFINITY;
+    for &v in work_data.iter() {
+        min_val = min_val.min(v);
+        max_val = max_val.max(v);
+    }
+    let data_range = (max_val - min_val).max(1e-15);
+
+    // Find peaks for each sample
+    let mut all_peaks: Vec<Robj> = Vec::with_capacity(n);
+    let mut all_distances: Vec<Robj> = Vec::with_capacity(n);
+    let mut all_dists_flat: Vec<f64> = Vec::new();
+
+    for i in 0..n {
+        let curve: Vec<f64> = (0..m).map(|j| work_data[i + j * n]).collect();
+        let d1: Vec<f64> = (0..m).map(|j| deriv1[i + j * n]).collect();
+
+        // Find zero crossings (derivative goes + to -)
+        let mut peak_indices: Vec<usize> = Vec::new();
+        for j in 1..m {
+            if d1[j - 1] > 0.0 && d1[j] <= 0.0 {
+                let idx = j - 1;
+                if peak_indices.is_empty() || idx - peak_indices[peak_indices.len() - 1] >= min_dist_points
+                {
+                    peak_indices.push(idx);
+                }
+            }
+        }
+
+        // Compute prominence and filter
+        let mut peaks_times: Vec<f64> = Vec::new();
+        let mut peaks_values: Vec<f64> = Vec::new();
+        let mut peaks_proms: Vec<f64> = Vec::new();
+
+        for &idx in &peak_indices {
+            let peak_val = curve[idx];
+
+            // Compute prominence
+            let mut left_min = peak_val;
+            for k in (0..idx).rev() {
+                if curve[k] >= peak_val {
+                    break;
+                }
+                left_min = left_min.min(curve[k]);
+            }
+            let mut right_min = peak_val;
+            for k in (idx + 1)..m {
+                if curve[k] >= peak_val {
+                    break;
+                }
+                right_min = right_min.min(curve[k]);
+            }
+            let prominence = (peak_val - left_min.max(right_min)) / data_range;
+
+            if let Some(mp) = min_prom {
+                if prominence < mp {
+                    continue;
+                }
+            }
+
+            peaks_times.push(argvals[idx]);
+            peaks_values.push(peak_val);
+            peaks_proms.push(prominence);
+        }
+
+        // Inter-peak distances
+        let mut distances: Vec<f64> = Vec::new();
+        for w in peaks_times.windows(2) {
+            let d = w[1] - w[0];
+            distances.push(d);
+            all_dists_flat.push(d);
+        }
+
+        all_peaks.push(
+            list!(
+                time = peaks_times,
+                value = peaks_values,
+                prominence = peaks_proms
+            )
+            .into(),
+        );
+        all_distances.push(Robj::from(distances));
+    }
+
+    let mean_period = if all_dists_flat.is_empty() {
+        f64::NAN
+    } else {
+        all_dists_flat.iter().sum::<f64>() / all_dists_flat.len() as f64
+    };
+
+    list!(
+        peaks = List::from_values(all_peaks),
+        inter_peak_distances = List::from_values(all_distances),
+        mean_period = mean_period
+    )
+    .into()
+}
+
+/// Measure seasonal strength using variance decomposition
+#[extendr]
+fn seasonal_strength_variance(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    n_harmonics: i32,
+) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+    let n_harmonics = n_harmonics as usize;
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return f64::NAN;
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Total variance
+    let global_mean: f64 = mean_curve.iter().sum::<f64>() / m as f64;
+    let total_var: f64 = mean_curve
+        .iter()
+        .map(|&x| (x - global_mean).powi(2))
+        .sum::<f64>()
+        / m as f64;
+
+    if total_var < 1e-15 {
+        return 0.0;
+    }
+
+    // Fit Fourier basis with explicit period
+    let nbasis = 1 + 2 * n_harmonics;
+    let t_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
+
+    let mut basis = vec![0.0; m * nbasis];
+    for (i, &ti) in argvals.iter().enumerate() {
+        let x = 2.0 * PI * (ti - t_min) / period;
+        basis[i] = 1.0;
+
+        let mut k = 1;
+        let mut freq = 1;
+        while k < nbasis {
+            if k < nbasis {
+                basis[i + k * m] = (freq as f64 * x).sin();
+                k += 1;
+            }
+            if k < nbasis {
+                basis[i + k * m] = (freq as f64 * x).cos();
+                k += 1;
+            }
+            freq += 1;
+        }
+    }
+
+    // Project to seasonal (skip DC)
+    let mut seasonal = vec![0.0; m];
+    for k in 1..nbasis {
+        let b_sum: f64 = (0..m).map(|j| basis[j + k * m].powi(2)).sum();
+        if b_sum > 1e-15 {
+            let coef: f64 = (0..m).map(|j| mean_curve[j] * basis[j + k * m]).sum::<f64>() / b_sum;
+            for j in 0..m {
+                seasonal[j] += coef * basis[j + k * m];
+            }
+        }
+    }
+
+    let seasonal_mean: f64 = seasonal.iter().sum::<f64>() / m as f64;
+    let seasonal_var: f64 = seasonal
+        .iter()
+        .map(|&x| (x - seasonal_mean).powi(2))
+        .sum::<f64>()
+        / m as f64;
+
+    (seasonal_var / total_var).min(1.0)
+}
+
+/// Measure seasonal strength using spectral method
+#[extendr]
+fn seasonal_strength_spectral(data: RMatrix<f64>, argvals: Vec<f64>, period: f64) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return f64::NAN;
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Compute periodogram
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let fs = 1.0 / dt;
+
+    let mut planner = FftPlanner::<f64>::new();
+    let fft = planner.plan_fft_forward(m);
+
+    let mut buffer: Vec<Complex<f64>> = mean_curve.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    fft.process(&mut buffer);
+
+    let n_freq = m / 2 + 1;
+    let fundamental_freq = 1.0 / period;
+    let mut seasonal_power = 0.0;
+    let mut total_power = 0.0;
+
+    for k in 1..n_freq {
+        let freq = k as f64 * fs / m as f64;
+        let p = buffer[k].norm_sqr() / (m as f64 * m as f64);
+        let p = if k < m / 2 { 2.0 * p } else { p };
+
+        total_power += p;
+
+        // Check if near harmonic of fundamental
+        let ratio = freq / fundamental_freq;
+        let nearest = ratio.round();
+        if (ratio - nearest).abs() < 0.1 && nearest >= 1.0 {
+            seasonal_power += p;
+        }
+    }
+
+    if total_power < 1e-15 {
+        return 0.0;
+    }
+
+    (seasonal_power / total_power).min(1.0)
+}
+
+/// Time-varying seasonal strength using sliding windows
+#[extendr]
+fn seasonal_strength_windowed(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    window_size: f64,
+    method: &str,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 || window_size <= 0.0 {
+        return Robj::from(Vec::<f64>::new());
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let half_window_points = ((window_size / 2.0) / dt).round() as usize;
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    let use_spectral = method == "spectral";
+
+    let strength: Vec<f64> = (0..m)
+        .map(|center| {
+            let start = center.saturating_sub(half_window_points);
+            let end = (center + half_window_points + 1).min(m);
+            let window_m = end - start;
+
+            if window_m < 4 {
+                return f64::NAN;
+            }
+
+            let window_data: Vec<f64> = mean_curve[start..end].to_vec();
+            let window_argvals: Vec<f64> = argvals[start..end].to_vec();
+
+            if use_spectral {
+                // Spectral method inline
+                let w_dt = (window_argvals[window_m - 1] - window_argvals[0]) / (window_m - 1) as f64;
+                let fs = 1.0 / w_dt;
+
+                let mut planner = FftPlanner::<f64>::new();
+                let fft = planner.plan_fft_forward(window_m);
+                let mut buffer: Vec<Complex<f64>> =
+                    window_data.iter().map(|&x| Complex::new(x, 0.0)).collect();
+                fft.process(&mut buffer);
+
+                let n_freq = window_m / 2 + 1;
+                let fundamental = 1.0 / period;
+                let mut seasonal_p = 0.0;
+                let mut total_p = 0.0;
+
+                for k in 1..n_freq {
+                    let freq = k as f64 * fs / window_m as f64;
+                    let p = buffer[k].norm_sqr() / (window_m as f64 * window_m as f64);
+                    let p = if k < window_m / 2 { 2.0 * p } else { p };
+                    total_p += p;
+                    let ratio = freq / fundamental;
+                    let nearest = ratio.round();
+                    if (ratio - nearest).abs() < 0.1 && nearest >= 1.0 {
+                        seasonal_p += p;
+                    }
+                }
+                if total_p < 1e-15 {
+                    0.0
+                } else {
+                    (seasonal_p / total_p).min(1.0)
+                }
+            } else {
+                // Variance method inline
+                let global_mean: f64 = window_data.iter().sum::<f64>() / window_m as f64;
+                let total_var: f64 = window_data
+                    .iter()
+                    .map(|&x| (x - global_mean).powi(2))
+                    .sum::<f64>()
+                    / window_m as f64;
+
+                if total_var < 1e-15 {
+                    return 0.0;
+                }
+
+                let nbasis = 7; // 1 + 2*3 harmonics
+                let t_min = window_argvals[0];
+                let mut basis = vec![0.0; window_m * nbasis];
+                for (i, &ti) in window_argvals.iter().enumerate() {
+                    let x = 2.0 * PI * (ti - t_min) / period;
+                    basis[i] = 1.0;
+                    let mut k = 1;
+                    let mut freq = 1;
+                    while k < nbasis {
+                        if k < nbasis {
+                            basis[i + k * window_m] = (freq as f64 * x).sin();
+                            k += 1;
+                        }
+                        if k < nbasis {
+                            basis[i + k * window_m] = (freq as f64 * x).cos();
+                            k += 1;
+                        }
+                        freq += 1;
+                    }
+                }
+
+                let mut seasonal = vec![0.0; window_m];
+                for k in 1..nbasis {
+                    let b_sum: f64 = (0..window_m).map(|j| basis[j + k * window_m].powi(2)).sum();
+                    if b_sum > 1e-15 {
+                        let coef: f64 = (0..window_m)
+                            .map(|j| window_data[j] * basis[j + k * window_m])
+                            .sum::<f64>()
+                            / b_sum;
+                        for j in 0..window_m {
+                            seasonal[j] += coef * basis[j + k * window_m];
+                        }
+                    }
+                }
+
+                let s_mean: f64 = seasonal.iter().sum::<f64>() / window_m as f64;
+                let s_var: f64 = seasonal
+                    .iter()
+                    .map(|&x| (x - s_mean).powi(2))
+                    .sum::<f64>()
+                    / window_m as f64;
+
+                (s_var / total_var).min(1.0)
+            }
+        })
+        .collect();
+
+    Robj::from(strength)
+}
+
+/// Detect seasonality changes (onset/cessation)
+#[extendr]
+fn seasonal_detect_changes(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    threshold: f64,
+    window_size: f64,
+    min_duration: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m {
+        return list!(
+            change_times = Vec::<f64>::new(),
+            change_types = Vec::<String>::new(),
+            strength_before = Vec::<f64>::new(),
+            strength_after = Vec::<f64>::new(),
+            strength_curve = Vec::<f64>::new()
+        )
+        .into();
+    }
+
+    // Compute windowed strength
+    let data_slice = data.as_real_slice().unwrap();
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let half_window = ((window_size / 2.0) / dt).round() as usize;
+    let min_dur_points = (min_duration / dt).round() as usize;
+
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Compute strength curve (variance method)
+    let strength_curve: Vec<f64> = (0..m)
+        .map(|center| {
+            let start = center.saturating_sub(half_window);
+            let end = (center + half_window + 1).min(m);
+            let wm = end - start;
+            if wm < 4 {
+                return f64::NAN;
+            }
+
+            let wd: Vec<f64> = mean_curve[start..end].to_vec();
+            let wa: Vec<f64> = argvals[start..end].to_vec();
+
+            let gm: f64 = wd.iter().sum::<f64>() / wm as f64;
+            let tv: f64 = wd.iter().map(|&x| (x - gm).powi(2)).sum::<f64>() / wm as f64;
+            if tv < 1e-15 {
+                return 0.0;
+            }
+
+            let nbasis = 7;
+            let t0 = wa[0];
+            let mut basis = vec![0.0; wm * nbasis];
+            for (i, &ti) in wa.iter().enumerate() {
+                let x = 2.0 * PI * (ti - t0) / period;
+                basis[i] = 1.0;
+                let mut k = 1;
+                let mut f = 1;
+                while k < nbasis {
+                    if k < nbasis {
+                        basis[i + k * wm] = (f as f64 * x).sin();
+                        k += 1;
+                    }
+                    if k < nbasis {
+                        basis[i + k * wm] = (f as f64 * x).cos();
+                        k += 1;
+                    }
+                    f += 1;
+                }
+            }
+
+            let mut seasonal = vec![0.0; wm];
+            for k in 1..nbasis {
+                let bs: f64 = (0..wm).map(|j| basis[j + k * wm].powi(2)).sum();
+                if bs > 1e-15 {
+                    let c: f64 = (0..wm).map(|j| wd[j] * basis[j + k * wm]).sum::<f64>() / bs;
+                    for j in 0..wm {
+                        seasonal[j] += c * basis[j + k * wm];
+                    }
+                }
+            }
+
+            let sm: f64 = seasonal.iter().sum::<f64>() / wm as f64;
+            let sv: f64 = seasonal.iter().map(|&x| (x - sm).powi(2)).sum::<f64>() / wm as f64;
+            (sv / tv).min(1.0)
+        })
+        .collect();
+
+    // Detect threshold crossings
+    let mut change_times: Vec<f64> = Vec::new();
+    let mut change_types: Vec<String> = Vec::new();
+    let mut strength_before: Vec<f64> = Vec::new();
+    let mut strength_after: Vec<f64> = Vec::new();
+
+    let first_valid = strength_curve.iter().position(|&x| !x.is_nan()).unwrap_or(0);
+    let mut in_seasonal = strength_curve[first_valid] > threshold;
+    let mut last_change: Option<usize> = None;
+
+    for (i, &ss) in strength_curve.iter().enumerate().skip(first_valid + 1) {
+        if ss.is_nan() {
+            continue;
+        }
+
+        let now_seasonal = ss > threshold;
+        if now_seasonal != in_seasonal {
+            if let Some(last) = last_change {
+                if i - last < min_dur_points {
+                    continue;
+                }
+            }
+
+            let sb = if i > 0 && !strength_curve[i - 1].is_nan() {
+                strength_curve[i - 1]
+            } else {
+                ss
+            };
+
+            change_times.push(argvals[i]);
+            change_types.push(if now_seasonal {
+                "onset".to_string()
+            } else {
+                "cessation".to_string()
+            });
+            strength_before.push(sb);
+            strength_after.push(ss);
+
+            in_seasonal = now_seasonal;
+            last_change = Some(i);
+        }
+    }
+
+    list!(
+        change_times = change_times,
+        change_types = change_types,
+        strength_before = strength_before,
+        strength_after = strength_after,
+        strength_curve = strength_curve
+    )
+    .into()
+}
+
+/// Estimate instantaneous period using Hilbert transform
+#[extendr]
+fn seasonal_instantaneous_period(data: RMatrix<f64>, argvals: Vec<f64>) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m {
+        return list!(
+            period = Vec::<f64>::new(),
+            frequency = Vec::<f64>::new(),
+            amplitude = Vec::<f64>::new()
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data_slice[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Detrend
+    let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
+    let detrended: Vec<f64> = mean_curve.iter().map(|&x| x - dc).collect();
+
+    // Hilbert transform
+    let mut planner = FftPlanner::<f64>::new();
+    let fft_forward = planner.plan_fft_forward(m);
+    let fft_inverse = planner.plan_fft_inverse(m);
+
+    let mut buffer: Vec<Complex<f64>> = detrended.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    fft_forward.process(&mut buffer);
+
+    let half = m / 2;
+    for k in 1..half {
+        buffer[k] *= 2.0;
+    }
+    for k in (half + 1)..m {
+        buffer[k] = Complex::new(0.0, 0.0);
+    }
+
+    fft_inverse.process(&mut buffer);
+    for c in buffer.iter_mut() {
+        *c /= m as f64;
+    }
+
+    // Extract amplitude and phase
+    let amplitude: Vec<f64> = buffer.iter().map(|c| c.norm()).collect();
+    let phase: Vec<f64> = buffer.iter().map(|c| c.im.atan2(c.re)).collect();
+
+    // Unwrap phase
+    let mut unwrapped = vec![phase[0]];
+    let mut cumulative = 0.0;
+    for i in 1..phase.len() {
+        let diff = phase[i] - phase[i - 1];
+        if diff > PI {
+            cumulative -= 2.0 * PI;
+        } else if diff < -PI {
+            cumulative += 2.0 * PI;
+        }
+        unwrapped.push(phase[i] + cumulative);
+    }
+
+    // Instantaneous frequency
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let mut inst_freq = vec![0.0; m];
+
+    if m > 1 {
+        inst_freq[0] = (unwrapped[1] - unwrapped[0]) / dt / (2.0 * PI);
+    }
+    for j in 1..(m - 1) {
+        inst_freq[j] = (unwrapped[j + 1] - unwrapped[j - 1]) / (2.0 * dt) / (2.0 * PI);
+    }
+    if m > 1 {
+        inst_freq[m - 1] = (unwrapped[m - 1] - unwrapped[m - 2]) / dt / (2.0 * PI);
+    }
+
+    // Period
+    let period: Vec<f64> = inst_freq
+        .iter()
+        .map(|&f| {
+            if f.abs() > 1e-10 {
+                (1.0 / f).abs()
+            } else {
+                f64::INFINITY
+            }
+        })
+        .collect();
+
+    list!(
+        period = period,
+        frequency = inst_freq,
+        amplitude = amplitude
+    )
+    .into()
+}
+
+// =============================================================================
 // Module exports
 // =============================================================================
 
@@ -6079,4 +6991,14 @@ extendr_module! {
 
     // Ridge regression
     fn ridge_regression_fit;
+
+    // Seasonal analysis functions
+    fn seasonal_estimate_period_fft;
+    fn seasonal_estimate_period_acf;
+    fn seasonal_detect_peaks;
+    fn seasonal_strength_variance;
+    fn seasonal_strength_spectral;
+    fn seasonal_strength_windowed;
+    fn seasonal_detect_changes;
+    fn seasonal_instantaneous_period;
 }

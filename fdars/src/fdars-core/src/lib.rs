@@ -6,11 +6,12 @@
 //! - Functional data operations (mean, derivatives, norms)
 //! - Depth measures (Fraiman-Muniz, modal, band, random projection, etc.)
 //! - Distance metrics (Lp, Hausdorff, DTW, Fourier, etc.)
-//! - Basis representations (B-splines, P-splines)
+//! - Basis representations (B-splines, P-splines, Fourier)
 //! - Clustering (k-means, fuzzy c-means)
 //! - Smoothing (Nadaraya-Watson, local linear/polynomial regression)
 //! - Outlier detection
 //! - Regression (PCA, PLS, ridge)
+//! - Seasonal analysis (period estimation, peak detection, seasonal strength)
 //!
 //! ## Data Layout
 //!
@@ -28,8 +29,15 @@ pub mod helpers;
 pub mod metric;
 pub mod outliers;
 pub mod regression;
+pub mod seasonal;
 pub mod smoothing;
 pub mod utility;
 
 // Re-export commonly used items
 pub use helpers::{simpsons_weights, simpsons_weights_2d};
+
+// Re-export seasonal analysis types
+pub use seasonal::{
+    ChangeDetectionResult, ChangePoint, ChangeType, InstantaneousPeriod, Peak,
+    PeakDetectionResult, PeriodEstimate, StrengthMethod,
+};
