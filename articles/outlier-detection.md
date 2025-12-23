@@ -68,13 +68,13 @@ Uses bootstrap resampling to estimate the distribution of depths and
 identifies curves with depth below a data-driven cutoff.
 
 ``` r
-out_pond <- outliers.depth.pond(fd, nb = 100, seed = 123)
+out_pond <- outliers.depth.pond(fd, nb = 1000, seed = 123)
 print(out_pond)
 #> Functional data outlier detection
 #>   Number of observations: 30 
-#>   Number of outliers: 17 
-#>   Outlier indices: 1 2 3 6 9 10 11 16 17 18 ...
-#>   Depth cutoff: 0.8695125
+#>   Number of outliers: 6 
+#>   Outlier indices: 1 2 3 10 29 30
+#>   Depth cutoff: 0.866032
 ```
 
 ### Visualizing Outliers
@@ -90,7 +90,7 @@ plot(out_pond)
 ``` r
 # Which curves are outliers?
 out_pond$outliers
-#>  [1]  1  2  3  6  9 10 11 16 17 18 21 22 23 26 27 29 30
+#> [1]  1  2  3 10 29 30
 
 # Depth values for all curves
 head(out_pond$depths)
@@ -98,8 +98,8 @@ head(out_pond$depths)
 
 # Cutoff used
 out_pond$cutoff
-#>       50% 
-#> 0.8695125
+#>      50% 
+#> 0.866032
 ```
 
 ### Understanding depth.pond Results
@@ -149,7 +149,7 @@ Both methods accept a `depth` parameter to specify the depth function:
 
 ``` r
 # Using Random Projection depth
-out_rp <- outliers.depth.pond(fd, nb = 100, seed = 123)
+out_rp <- outliers.depth.pond(fd, nb = 1000, seed = 123)
 
 # Using modal depth (default is FM)
 out_mode <- outliers.depth.trim(fd, trim = 0.1, seed = 123)
@@ -165,15 +165,15 @@ outliers. It’s particularly effective for detecting magnitude outliers.
 First, compute a bootstrap threshold:
 
 ``` r
-threshold <- outliers.thres.lrt(fd, nb = 100, seed = 123)
+threshold <- outliers.thres.lrt(fd, nb = 1000, seed = 123)
 cat("LRT threshold:", threshold, "\n")
-#> LRT threshold: 33.76608
+#> LRT threshold: 32.91297
 ```
 
 ### Detecting Outliers
 
 ``` r
-out_lrt <- outliers.lrt(fd, nb = 100, seed = 123)
+out_lrt <- outliers.lrt(fd, nb = 1000, seed = 123)
 print(out_lrt)
 #> Functional data outlier detection
 #>   Number of observations: 0 
@@ -197,7 +197,7 @@ head(out_lrt$distances)
 
 # Threshold used
 out_lrt$threshold
-#> [1] 33.76608
+#> [1] 32.91297
 ```
 
 ### When LRT Works Best
@@ -231,9 +231,9 @@ Different methods may detect different types of outliers:
 
 ``` r
 # Run all methods
-out1 <- outliers.depth.pond(fd, nb = 100, seed = 123)
+out1 <- outliers.depth.pond(fd, nb = 1000, seed = 123)
 out2 <- outliers.depth.trim(fd, trim = 0.1, seed = 123)
-out3 <- outliers.lrt(fd, nb = 100, seed = 123)
+out3 <- outliers.lrt(fd, nb = 1000, seed = 123)
 
 # Compare detected outliers
 cat("Depth-pond outliers:", out1$outliers, "\n")
@@ -273,9 +273,9 @@ plot(fd_mag) +
 ![](outlier-detection_files/figure-html/magnitude-outlier-1.png)
 
 ``` r
-out_mag <- outliers.depth.pond(fd_mag, nb = 100, seed = 123)
+out_mag <- outliers.depth.pond(fd_mag, nb = 1000, seed = 123)
 cat("Detected magnitude outlier:", out_mag$outliers, "\n")
-#> Detected magnitude outlier: 1 2 13 22 25
+#> Detected magnitude outlier: 1
 ```
 
 ### Shape Outliers
@@ -301,9 +301,9 @@ plot(fd_shape) +
 ![](outlier-detection_files/figure-html/shape-outlier-1.png)
 
 ``` r
-out_shape <- outliers.depth.pond(fd_shape, nb = 100, seed = 123)
+out_shape <- outliers.depth.pond(fd_shape, nb = 1000, seed = 123)
 cat("Detected shape outlier:", out_shape$outliers, "\n")
-#> Detected shape outlier: 1 2 4 6 7 8 10 12 17 19 20 21 24 27 28 29 30
+#> Detected shape outlier: 1 2 3 4 6 8 9 11 14 18 22 23 25 27 28 29
 ```
 
 ### Amplitude Outliers
@@ -329,9 +329,9 @@ plot(fd_amp) +
 ![](outlier-detection_files/figure-html/amplitude-outlier-1.png)
 
 ``` r
-out_amp <- outliers.depth.pond(fd_amp, nb = 100, seed = 123)
+out_amp <- outliers.depth.pond(fd_amp, nb = 1000, seed = 123)
 cat("Detected amplitude outlier:", out_amp$outliers, "\n")
-#> Detected amplitude outlier: 1 15 18 19 20 22 27 28
+#> Detected amplitude outlier: 1 2 3 5 7 16 17 19 20 26
 ```
 
 ## Tuning Parameters
@@ -346,9 +346,9 @@ out_nb50 <- outliers.depth.pond(fd, nb = 50, seed = 123)
 out_nb200 <- outliers.depth.pond(fd, nb = 200, seed = 123)
 
 cat("nb=50 outliers:", out_nb50$outliers, "\n")
-#> nb=50 outliers: 1 2 3 6 9 10 16 17 22 23 26 27 29 30
+#> nb=50 outliers: 1 2 3
 cat("nb=200 outliers:", out_nb200$outliers, "\n")
-#> nb=200 outliers: 1 2 3 5 6 9 10 11 12 16 17 18 19 21 22 23 26 27 29 30
+#> nb=200 outliers: 1 2 3 10
 ```
 
 ### Trim Proportion

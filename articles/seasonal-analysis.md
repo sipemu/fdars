@@ -271,7 +271,7 @@ reference:
 | `min_distance`   | Minimum time between peaks | `period * 0.8`       | Set to ~80% of expected period   |
 | `min_prominence` | How much peak stands out   | 0.1-0.5 x amplitude  | Increase if too many noise peaks |
 | `smooth_first`   | Pre-smooth noisy data      | `TRUE` for real data | Almost always use `TRUE`         |
-| `smooth_lambda`  | Smoothing strength         | `NULL` (auto GCV)    | Let GCV choose automatically     |
+| `smooth_nbasis`  | Number of Fourier basis    | `NULL` (auto CV)     | Let CV choose optimal nbasis     |
 
 ### Effect of Parameters
 
@@ -287,35 +287,36 @@ df <- data.frame(t = t, y = X_demo)
 
 ### Visualizing the Smoothing Step
 
-Before detecting peaks, let’s see what P-spline smoothing does to noisy
-data:
+Before detecting peaks, let’s see what Fourier basis smoothing does to
+noisy data:
 
 ``` r
-# Apply P-spline smoothing with GCV-selected lambda
-fd_smoothed <- pspline(fd_demo, lambda = NULL)
+# Apply Fourier basis smoothing with CV-selected optimal nbasis
+cv_result <- fdata2basis.cv(fd_demo, nbasis.range = 5:25, type = "fourier", criterion = "GCV")
+fd_smoothed <- cv_result$fitted
 
 # Compare original vs smoothed
 df_smooth <- data.frame(
   t = rep(t, 2),
-  y = c(X_demo, fd_smoothed$fdata$data[1, ]),
-  type = rep(c("Original (noisy)", "Smoothed (P-spline)"), each = length(t))
+  y = c(X_demo, fd_smoothed$data[1, ]),
+  type = rep(c("Original (noisy)", "Smoothed (Fourier)"), each = length(t))
 )
 
 ggplot(df_smooth, aes(x = t, y = y, color = type)) +
   geom_line(linewidth = 0.8) +
   scale_color_manual(values = c("Original (noisy)" = "gray50",
-                                 "Smoothed (P-spline)" = "steelblue")) +
-  labs(title = "Effect of P-spline Smoothing on Noisy Signal",
-       subtitle = paste("GCV-selected lambda =", round(fd_smoothed$lambda, 4)),
+                                 "Smoothed (Fourier)" = "steelblue")) +
+  labs(title = "Effect of Fourier Basis Smoothing on Noisy Signal",
+       subtitle = paste("CV-selected optimal nbasis =", cv_result$optimal.nbasis),
        x = "Time", y = "Value", color = NULL) +
   theme(legend.position = "bottom")
 ```
 
 ![](seasonal-analysis_files/figure-html/smoothing-step-1.png)
 
-Smoothing removes high-frequency noise while preserving the underlying
-seasonal pattern. Peak detection on the smoothed data will find the true
-peaks, not noise spikes.
+Fourier basis smoothing is ideal for seasonal signals because it
+naturally captures periodic patterns. Peak detection on the smoothed
+data will find the true peaks, not noise spikes.
 
 ``` r
 # Default parameters - often too many peaks
@@ -379,9 +380,9 @@ grid.arrange(p1, p2, p3, ncol = 1)
 
 ![](seasonal-analysis_files/figure-html/peak-comparison-plot-1.png)
 
-**Key insight:** For real data, always use `smooth_first = TRUE` with
-`smooth_lambda = NULL` to let GCV automatically select the smoothing
-parameter.
+**Key insight:** For seasonal data, use Fourier basis smoothing with
+[`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+to let CV automatically select the optimal number of basis functions.
 
 ### Prominence Filtering
 
@@ -906,7 +907,7 @@ ggplot(df_examples, aes(x = t, y = y)) +
 
 ![](seasonal-analysis_files/figure-html/classification-examples-plot-1.png)
 
-### Automatic GCV Smoothing for Short Series
+### Automatic Fourier Smoothing for Short Series
 
 Peak detection with automatic smoothing is especially important for
 noisy short series.
@@ -916,15 +917,15 @@ noisy short series.
 X_noisy_short <- sin(2 * pi * t_short / period_short) + rnorm(length(t_short), sd = 0.5)
 fd_noisy_short <- fdata(matrix(X_noisy_short, nrow = 1), argvals = t_short)
 
-# Auto-select smoothing parameter with GCV
-peaks_auto <- detect_peaks(fd_noisy_short, min_distance = 0.7,
-                           smooth_first = TRUE, smooth_lambda = NULL)
-cat("Peaks found with auto GCV smoothing:", nrow(peaks_auto$peaks[[1]]), "\n")
-#> Peaks found with auto GCV smoothing: 5
+# Auto-select smoothing via Fourier basis CV
+cv_short <- fdata2basis.cv(fd_noisy_short, nbasis.range = 3:15, type = "fourier")
+peaks_auto <- detect_peaks(cv_short$fitted, min_distance = 0.7)
+cat("Peaks found with Fourier CV smoothing:", nrow(peaks_auto$peaks[[1]]), "\n")
+#> Peaks found with Fourier CV smoothing: 5
 cat("Expected peaks:", 5, "\n")
 #> Expected peaks: 5
 cat("Estimated period:", round(peaks_auto$mean_period, 3), "\n")
-#> Estimated period: 0.999
+#> Estimated period: 0.997
 ```
 
 ## Multiple Curves
