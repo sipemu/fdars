@@ -25,6 +25,9 @@ Suggests:
     fda.usc,
     fda,
     knitr,
-    rmarkdown
+    rmarkdown,
+    dplyr,
+    tidyr,
+    ggforce
 Config/testthat/edition: 3
 VignetteBuilder: knitr

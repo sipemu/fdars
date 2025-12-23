@@ -8,20 +8,30 @@ vignette: >
 ---
 
 ```{r, include = FALSE}
+has_suggested <- requireNamespace("dplyr", quietly = TRUE) &&
+                 requireNamespace("tidyr", quietly = TRUE)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 5,
+  eval = has_suggested
 )
 ```
 
 ## Introduction
-
 The **fdars** package provides convenient `plot()` and `autoplot()` methods for
 functional data objects. However, for publication-quality figures or specialized
 visualizations, you may need more control. This vignette shows how to create
 fully customizable plots using ggplot2 directly.
+
+```{r check-deps, eval=!has_suggested, echo=FALSE, results='asis'}
+cat("
+> **Note:** This vignette requires the `dplyr` and `tidyr` packages.
+> Install them with: `install.packages(c('dplyr', 'tidyr'))`
+")
+```
 
 ```{r setup, message=FALSE}
 library(fdars)
