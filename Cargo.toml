@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "fdars-core",
+    "fdars/src/fdars-core",
     "fdars/src/rust",
 ]

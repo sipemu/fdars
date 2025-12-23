@@ -8,9 +8,14 @@ use rayon::prelude::*;
 use std::f64::consts::PI;
 
 /// Compute B-spline basis matrix for given knots and grid points.
+///
+/// Creates a B-spline basis with uniformly spaced knots extended beyond the data range.
+/// For order k and nknots interior knots, produces nknots + order - 1 basis functions.
 pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     let n = t.len();
-    let nbasis = nknots + order - 2;
+    // Number of basis functions: total_knots - order = (nknots + 2*order) - order = nknots + order
+    // We use nknots + order - 1 to exclude the rightmost basis (zero at right boundary)
+    let nbasis = nknots + order - 1;
 
     let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
     let t_max = t.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -23,7 +28,7 @@ pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     for i in 0..nknots {
         knots.push(t_min + i as f64 * dt);
     }
-    for i in 1..order {
+    for i in 1..=order {
         knots.push(t_max + i as f64 * dt);
     }
 
