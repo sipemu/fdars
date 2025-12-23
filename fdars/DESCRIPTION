@@ -28,6 +28,7 @@ Suggests:
     rmarkdown,
     dplyr,
     tidyr,
-    ggforce
+    ggforce,
+    gridExtra
 Config/testthat/edition: 3
 VignetteBuilder: knitr
