@@ -187,8 +187,8 @@ Very smooth, may miss real features</p>
 <span><span class="co">#&gt; Number of basis functions: 20 </span></span>
 <span><span class="co">#&gt; Penalty order: 2 </span></span>
 <span><span class="co">#&gt; Lambda: 1e+00 </span></span>
-<span><span class="co">#&gt; Effective df: 8.54 </span></span>
-<span><span class="co">#&gt; GCV: 5.577e+00</span></span></code></pre></div>
+<span><span class="co">#&gt; Effective df: 6.81 </span></span>
+<span><span class="co">#&gt; GCV: 5.701e+00</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="visualizing-the-result">Visualizing the Result<a class="anchor" aria-label="anchor" href="#visualizing-the-result"></a>
@@ -332,8 +332,8 @@ number:</p>
 <span><span class="co">#&gt; Basis Cross-Validation Results</span></span>
 <span><span class="co">#&gt; ==============================</span></span>
 <span><span class="co">#&gt; Criterion: GCV </span></span>
-<span><span class="co">#&gt; Optimal nbasis: 5 </span></span>
-<span><span class="co">#&gt; Score at optimal: Inf </span></span>
+<span><span class="co">#&gt; Optimal nbasis: 11 </span></span>
+<span><span class="co">#&gt; Score at optimal: 5.906161 </span></span>
 <span><span class="co">#&gt; Range tested: 5 - 20</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cv_basis</span><span class="op">)</span></span></code></pre></div>
 <p><img src="intro-to-smoothing_files/figure-html/basis-cv-1.png" class="r-plt" alt="" width="672"></p>
@@ -350,7 +350,7 @@ number:</p>
 <code class="sourceCode R"><span><span class="co"># Get optimal basis from our CV result</span></span>
 <span><span class="va">optimal_nbasis</span> <span class="op">&lt;-</span> <span class="va">cv_basis</span><span class="op">$</span><span class="va">optimal.nbasis</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Optimal number of basis functions (GCV):"</span>, <span class="va">optimal_nbasis</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Optimal number of basis functions (GCV): 5</span></span></code></pre></div>
+<span><span class="co">#&gt; Optimal number of basis functions (GCV): 11</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">

@@ -317,8 +317,8 @@ is the penalty parameter</p>
 <span><span class="co">#&gt; Number of basis functions: 25 </span></span>
 <span><span class="co">#&gt; Penalty order: 2 </span></span>
 <span><span class="co">#&gt; Lambda: 1e+01 </span></span>
-<span><span class="co">#&gt; Effective df: 7.95 </span></span>
-<span><span class="co">#&gt; GCV: 1.082e-01</span></span>
+<span><span class="co">#&gt; Effective df: 6.68 </span></span>
+<span><span class="co">#&gt; GCV: 1.151e-01</span></span>
 <span></span>
 <span><span class="co"># Compare different lambda values</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
@@ -340,9 +340,9 @@ parameter:</p>
 <code class="sourceCode R"><span><span class="co"># Automatic lambda selection using GCV</span></span>
 <span><span class="va">result_auto</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, nbasis <span class="op">=</span> <span class="fl">25</span>, lambda.select <span class="op">=</span> <span class="cn">TRUE</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Selected lambda:"</span>, <span class="va">result_auto</span><span class="op">$</span><span class="va">lambda</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Selected lambda: 2.559548</span></span>
+<span><span class="co">#&gt; Selected lambda: 1.206793</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Effective df:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">result_auto</span><span class="op">$</span><span class="va">edf</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Effective df: 10.42</span></span>
+<span><span class="co">#&gt; Effective df: 9.99</span></span>
 <span></span>
 <span><span class="co"># Plot result</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">t</span>, <span class="va">fd</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span>, <span class="op">]</span>, type <span class="op">=</span> <span class="st">"l"</span>, col <span class="op">=</span> <span class="st">"gray"</span>, main <span class="op">=</span> <span class="st">"P-spline with auto-selected lambda"</span><span class="op">)</span></span>

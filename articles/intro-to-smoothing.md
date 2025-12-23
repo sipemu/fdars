@@ -126,8 +126,8 @@ print(fd_pspline)
 #> Number of basis functions: 20 
 #> Penalty order: 2 
 #> Lambda: 1e+00 
-#> Effective df: 8.54 
-#> GCV: 5.577e+00
+#> Effective df: 6.81 
+#> GCV: 5.701e+00
 ```
 
 ### Visualizing the Result
@@ -277,8 +277,8 @@ print(cv_basis)
 #> Basis Cross-Validation Results
 #> ==============================
 #> Criterion: GCV 
-#> Optimal nbasis: 5 
-#> Score at optimal: Inf 
+#> Optimal nbasis: 11 
+#> Score at optimal: 5.906161 
 #> Range tested: 5 - 20
 plot(cv_basis)
 ```
@@ -296,7 +296,7 @@ Bayesian Information Criterion
 # Get optimal basis from our CV result
 optimal_nbasis <- cv_basis$optimal.nbasis
 cat("Optimal number of basis functions (GCV):", optimal_nbasis, "\n")
-#> Optimal number of basis functions (GCV): 5
+#> Optimal number of basis functions (GCV): 11
 ```
 
 ## Comparing All Methods

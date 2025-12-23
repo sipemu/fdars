@@ -232,8 +232,8 @@ print(result_fixed)
 #> Number of basis functions: 25 
 #> Penalty order: 2 
 #> Lambda: 1e+01 
-#> Effective df: 7.95 
-#> GCV: 1.082e-01
+#> Effective df: 6.68 
+#> GCV: 1.151e-01
 
 # Compare different lambda values
 par(mfrow = c(2, 2))
@@ -259,9 +259,9 @@ P-splines can automatically select the optimal smoothing parameter:
 # Automatic lambda selection using GCV
 result_auto <- pspline(fd[1], nbasis = 25, lambda.select = TRUE, criterion = "GCV")
 cat("Selected lambda:", result_auto$lambda, "\n")
-#> Selected lambda: 2.559548
+#> Selected lambda: 1.206793
 cat("Effective df:", round(result_auto$edf, 2), "\n")
-#> Effective df: 10.42
+#> Effective df: 9.99
 
 # Plot result
 plot(t, fd$data[1, ], type = "l", col = "gray", main = "P-spline with auto-selected lambda")

@@ -233,9 +233,9 @@ marker:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Mean:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">phv_ages</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>, <span class="st">"years\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   Mean: 1 years</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  SD:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="../reference/sd.html">sd</a></span><span class="op">(</span><span class="va">phv_ages</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>, <span class="st">"years\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   SD: 0.2 years</span></span>
+<span><span class="co">#&gt;   SD: 0.1 years</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Range:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="va">phv_ages</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>, <span class="st">"-"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">phv_ages</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>, <span class="st">"years\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   Range: 1 - 2 years</span></span>
+<span><span class="co">#&gt;   Range: 1 - 1.8 years</span></span>
 <span></span>
 <span><span class="co"># Histogram</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/hist.html" class="external-link">hist</a></span><span class="op">(</span><span class="va">phv_ages</span>, breaks <span class="op">=</span> <span class="fl">10</span>, col <span class="op">=</span> <span class="st">"lightblue"</span>, border <span class="op">=</span> <span class="st">"white"</span>,</span>
@@ -297,10 +297,10 @@ for comparing individuals than the height curves themselves.</p>
 <span><span class="co">#&gt; Correlation between distance types:</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Height vs Velocity:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">dist_height</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">10</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">]</span><span class="op">)</span>,</span>
 <span>                                        <span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">dist_velocity</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">10</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">]</span><span class="op">)</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   Height vs Velocity: 0.653</span></span>
+<span><span class="co">#&gt;   Height vs Velocity: 0.673</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Height vs Acceleration:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">dist_height</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">10</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">]</span><span class="op">)</span>,</span>
 <span>                                            <span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">dist_acceleration</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">10</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">]</span><span class="op">)</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   Height vs Acceleration: 0.472</span></span></code></pre></div>
+<span><span class="co">#&gt;   Height vs Acceleration: 0.452</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="clustering-by-growth-pattern">Clustering by Growth Pattern<a class="anchor" aria-label="anchor" href="#clustering-by-growth-pattern"></a>
@@ -433,12 +433,12 @@ smoothing) often gives better derivative estimates:</p>
 <span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">features</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   id max_velocity age_at_max_vel min_acceleration</span></span>
-<span><span class="co">#&gt; 1  1     16.43583           1.00       -11.511956</span></span>
-<span><span class="co">#&gt; 2  2     17.61770           1.50       -22.072741</span></span>
-<span><span class="co">#&gt; 3  3     14.94942           1.00       -11.013218</span></span>
-<span><span class="co">#&gt; 4  4     13.54967           1.75        -7.469586</span></span>
-<span><span class="co">#&gt; 5  5     15.34293           1.00        -8.650561</span></span>
-<span><span class="co">#&gt; 6  6     15.81355           1.00       -12.677774</span></span>
+<span><span class="co">#&gt; 1  1     15.61790            1.0        -9.683712</span></span>
+<span><span class="co">#&gt; 2  2     16.59168            1.5       -19.500398</span></span>
+<span><span class="co">#&gt; 3  3     15.98360            1.0       -10.561677</span></span>
+<span><span class="co">#&gt; 4  4     13.05737            1.5        -7.280834</span></span>
+<span><span class="co">#&gt; 5  5     14.80809            1.0        -9.408322</span></span>
+<span><span class="co">#&gt; 6  6     16.82903            1.0       -10.610381</span></span>
 <span></span>
 <span><span class="co"># 5. Use for further analysis</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\nStep 5: Use features for analysis\n"</span><span class="op">)</span></span>
@@ -446,7 +446,7 @@ smoothing) often gives better derivative estimates:</p>
 <span><span class="co">#&gt; Step 5: Use features for analysis</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Correlation between age at PHV and max velocity:"</span>,</span>
 <span>    <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">features</span><span class="op">$</span><span class="va">age_at_max_vel</span>, <span class="va">features</span><span class="op">$</span><span class="va">max_velocity</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Correlation between age at PHV and max velocity: -0.297</span></span></code></pre></div>
+<span><span class="co">#&gt; Correlation between age at PHV and max velocity: -0.301</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="summary">Summary<a class="anchor" aria-label="anchor" href="#summary"></a>
