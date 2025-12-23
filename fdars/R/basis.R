@@ -79,6 +79,8 @@ basis2fdata <- function(coefs, argvals, nbasis = NULL, type = c("bspline", "four
 #' @param nbasis Number of basis functions.
 #' @param type Basis type: "bspline" (default) or "fourier".
 #' @param lambda Smoothing/penalty parameter (default 0, no penalty).
+#' @param pooled Logical. If TRUE (default), compute a single GCV across all
+#'   curves. If FALSE, compute GCV for each curve and return the mean.
 #'
 #' @return The GCV score (scalar).
 #'
@@ -87,6 +89,11 @@ basis2fdata <- function(coefs, argvals, nbasis = NULL, type = c("bspline", "four
 #' \deqn{GCV = \frac{RSS/n}{(1 - edf/n)^2}}
 #' where RSS is the residual sum of squares and edf is the effective
 #' degrees of freedom (trace of the hat matrix).
+#'
+#' When \code{pooled = TRUE}, the criterion is computed globally across all
+#' curves. When \code{pooled = FALSE}, the criterion is computed for each
+#' curve separately and the mean is returned. Use \code{pooled = FALSE} when
+#' curves have heterogeneous noise levels.
 #'
 #' @export
 #' @examples
@@ -98,7 +105,8 @@ basis2fdata <- function(coefs, argvals, nbasis = NULL, type = c("bspline", "four
 #' gcv_5 <- basis.gcv(fd, nbasis = 5)
 #' gcv_10 <- basis.gcv(fd, nbasis = 10)
 #' gcv_20 <- basis.gcv(fd, nbasis = 20)
-basis.gcv <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda = 0) {
+basis.gcv <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
+                      lambda = 0, pooled = TRUE) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -111,7 +119,7 @@ basis.gcv <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
   basis_type <- if (type == "fourier") 1L else 0L
 
   .Call("wrap__basis_gcv_1d", fdataobj$data, fdataobj$argvals,
-        as.integer(nbasis), basis_type, as.double(lambda))
+        as.integer(nbasis), basis_type, as.double(lambda), as.logical(pooled))
 }
 
 #' AIC for Basis Representation
@@ -123,6 +131,8 @@ basis.gcv <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
 #' @param nbasis Number of basis functions.
 #' @param type Basis type: "bspline" (default) or "fourier".
 #' @param lambda Smoothing/penalty parameter (default 0).
+#' @param pooled Logical. If TRUE (default), compute a single AIC across all
+#'   curves. If FALSE, compute AIC for each curve and return the mean.
 #'
 #' @return The AIC value (scalar).
 #'
@@ -130,8 +140,13 @@ basis.gcv <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
 #' AIC is computed as:
 #' \deqn{AIC = n \log(RSS/n) + 2 \cdot edf}
 #'
+#' When \code{pooled = TRUE}, the criterion uses total observations and total
+#' effective degrees of freedom (n_curves * edf). When \code{pooled = FALSE},
+#' the criterion is computed for each curve separately and the mean is returned.
+#'
 #' @export
-basis.aic <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda = 0) {
+basis.aic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
+                      lambda = 0, pooled = TRUE) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -144,7 +159,7 @@ basis.aic <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
   basis_type <- if (type == "fourier") 1L else 0L
 
   .Call("wrap__basis_aic_1d", fdataobj$data, fdataobj$argvals,
-        as.integer(nbasis), basis_type, as.double(lambda))
+        as.integer(nbasis), basis_type, as.double(lambda), as.logical(pooled))
 }
 
 #' BIC for Basis Representation
@@ -156,6 +171,8 @@ basis.aic <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
 #' @param nbasis Number of basis functions.
 #' @param type Basis type: "bspline" (default) or "fourier".
 #' @param lambda Smoothing/penalty parameter (default 0).
+#' @param pooled Logical. If TRUE (default), compute a single BIC across all
+#'   curves. If FALSE, compute BIC for each curve and return the mean.
 #'
 #' @return The BIC value (scalar).
 #'
@@ -163,8 +180,13 @@ basis.aic <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
 #' BIC is computed as:
 #' \deqn{BIC = n \log(RSS/n) + \log(n) \cdot edf}
 #'
+#' When \code{pooled = TRUE}, the criterion uses total observations and total
+#' effective degrees of freedom (n_curves * edf). When \code{pooled = FALSE},
+#' the criterion is computed for each curve separately and the mean is returned.
+#'
 #' @export
-basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda = 0) {
+basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
+                      lambda = 0, pooled = TRUE) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -177,7 +199,7 @@ basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"), lambda =
   basis_type <- if (type == "fourier") 1L else 0L
 
   .Call("wrap__basis_bic_1d", fdataobj$data, fdataobj$argvals,
-        as.integer(nbasis), basis_type, as.double(lambda))
+        as.integer(nbasis), basis_type, as.double(lambda), as.logical(pooled))
 }
 
 # ==============================================================================

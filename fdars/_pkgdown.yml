@@ -24,6 +24,8 @@ navbar:
         href: articles/working-with-derivatives.html
       - text: "---"
       - text: Core Methods
+      - text: Functional PCA (FPCA)
+        href: articles/fpca.html
       - text: Basis Representation
         href: articles/basis-representation.html
       - text: Depth Functions
@@ -54,6 +56,7 @@ articles:
   - working-with-derivatives
 - title: Core Methods
   contents:
+  - fpca
   - basis-representation
   - depth-functions
   - distance-metrics

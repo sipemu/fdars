@@ -1,0 +1,418 @@
+---
+title: "Functional Principal Component Analysis (FPCA)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Functional Principal Component Analysis (FPCA)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  out.width = "100%"
+)
+```
+
+## Introduction
+
+Functional Principal Component Analysis (FPCA) is a cornerstone technique in functional
+data analysis. It extends classical PCA to infinite-dimensional function spaces,
+providing a powerful tool for dimension reduction, visualization, and feature extraction
+from functional data.
+
+```{r setup}
+library(fdars)
+library(ggplot2)
+theme_set(theme_minimal())
+set.seed(42)
+```
+
+## Why FPCA?
+
+When working with functional data, we face several challenges:
+
+1. **High dimensionality**: Each curve is observed at many points
+2. **Infinite-dimensional nature**: Curves live in function spaces
+3. **Correlation structure**: Points on a curve are highly correlated
+4. **Noise**: Observations contain measurement error
+
+FPCA addresses these challenges by finding the **principal modes of variation** in the
+data—orthogonal functions that capture how curves differ from each other.
+
+## Mathematical Background
+
+### The Karhunen-Loève Expansion
+
+Any square-integrable random function $X(t)$ can be represented as:
+
+$$X(t) = \mu(t) + \sum_{k=1}^{\infty} \xi_k \phi_k(t)$$
+
+where:
+
+- $\mu(t)$ is the mean function
+- $\phi_k(t)$ are the **eigenfunctions** (functional principal components)
+- $\xi_k$ are the **scores** (random coefficients)
+
+The eigenfunctions satisfy:
+
+$$\int C(s, t) \phi_k(s) \, ds = \lambda_k \phi_k(t)$$
+
+where $C(s, t) = \text{Cov}(X(s), X(t))$ is the covariance function and $\lambda_k$ are
+the eigenvalues (variances explained by each component).
+
+### Key Properties
+
+1. **Orthonormality**: $\int \phi_j(t) \phi_k(t) \, dt = \delta_{jk}$
+2. **Uncorrelated scores**: $\text{Cov}(\xi_j, \xi_k) = \lambda_j \delta_{jk}$
+3. **Optimal reconstruction**: FPCA minimizes integrated squared error for any fixed
+   number of components
+4. **Variance ordering**: $\lambda_1 \geq \lambda_2 \geq \cdots \geq 0$
+
+## Example: Growth Curves
+
+Let's demonstrate FPCA with simulated growth data showing different growth patterns.
+
+```{r growth-data}
+# Simulate growth curves with two main modes of variation
+n <- 50
+m <- 100
+t <- seq(0, 18, length.out = m)  # Age 0-18 years
+
+# Base growth pattern (logistic-like)
+base_growth <- function(t) 50 + 130 / (1 + exp(-0.5 * (t - 10)))
+
+# Generate curves with:
+# - Overall height variation (PC1: taller/shorter)
+# - Growth timing variation (PC2: earlier/later maturation)
+X <- matrix(0, n, m)
+height_effect <- rnorm(n, sd = 10)      # Individual height differences
+timing_effect <- rnorm(n, sd = 1.5)     # Individual timing differences
+
+for (i in 1:n) {
+  shifted_t <- t - timing_effect[i]
+  X[i, ] <- base_growth(shifted_t) + height_effect[i] + rnorm(m, sd = 2)
+}
+
+fd <- fdata(X, argvals = t)
+plot(fd) +
+  labs(x = "Age (years)", y = "Height (cm)", title = "Simulated Growth Curves")
+```
+
+## Performing FPCA
+
+The `fdata2pc()` function computes the functional principal components:
+
+```{r fpca}
+# Extract first 4 principal components
+fpca <- fdata2pc(fd, ncomp = 4)
+print(fpca)
+```
+
+The output shows:
+
+- **Singular values**: Related to the importance of each component
+- **Variance explained**: Percentage of total variance captured by each PC
+- **Cumulative variance**: Running total—often we aim for 90-95%
+
+## Visualizing FPCA Results
+
+### Principal Component Functions
+
+The `plot()` method with `type = "components"` shows how each PC affects the mean curve:
+
+```{r plot-components, fig.height=6}
+plot(fpca, type = "components", ncomp = 3, multiple = 2)
+```
+
+Each panel shows:
+
+- **Black line**: Mean function $\mu(t)$
+- **Blue line**: Mean + perturbation in PC direction
+- **Red line**: Mean - perturbation in PC direction
+
+**Interpretation**:
+
+- **PC1**: Overall height differences (taller vs shorter individuals)
+- **PC2**: Growth timing (earlier vs later maturation)
+- **PC3**: More subtle shape variations
+
+### Scree Plot
+
+The variance plot shows how much each component contributes:
+
+```{r plot-variance}
+plot(fpca, type = "variance")
+```
+
+The scree plot helps decide how many components to retain. Common criteria:
+
+- Retain components explaining 90-95% cumulative variance
+- Look for an "elbow" where explained variance drops sharply
+- Use cross-validation for prediction tasks
+
+### Score Plot
+
+The scores show where each observation falls in PC space:
+
+```{r plot-scores}
+plot(fpca, type = "scores")
+```
+
+Curves with similar scores have similar shapes. Outliers appear far from the center.
+
+## Benefits of FPCA
+
+### 1. Dimension Reduction
+
+FPCA reduces infinite-dimensional curves to a few scores:
+
+```{r dimension-reduction}
+# Original data: 50 curves x 100 points = 5000 values
+cat("Original dimensions:", nrow(fd$data), "x", ncol(fd$data), "\n")
+
+# After FPCA: 50 curves x 4 scores = 200 values
+cat("Reduced dimensions:", nrow(fpca$x), "x", ncol(fpca$x), "\n")
+
+# Compression ratio
+cat("Compression:", round(100 * (1 - prod(dim(fpca$x)) / prod(dim(fd$data))), 1), "%\n")
+```
+
+### 2. Denoising
+
+Reconstructing curves from a few PCs removes noise:
+
+```{r denoising}
+# Reconstruct using only first 2 PCs
+scores_2pc <- fpca$x[, 1:2]
+loadings_2pc <- fpca$rotation$data[1:2, ]
+
+# Reconstruction: X_reconstructed = mean + scores %*% loadings
+X_reconstructed <- matrix(fpca$mean, n, m, byrow = TRUE) + scores_2pc %*% loadings_2pc
+
+# Compare original noisy curve with reconstruction
+i <- 1  # First curve
+df_denoise <- data.frame(
+  t = rep(t, 2),
+  height = c(fd$data[i, ], X_reconstructed[i, ]),
+  type = rep(c("Original (noisy)", "Reconstructed (2 PCs)"), each = m)
+)
+
+ggplot(df_denoise, aes(x = t, y = height, color = type)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Original (noisy)" = "gray50",
+                                 "Reconstructed (2 PCs)" = "steelblue")) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Denoising via FPCA Reconstruction") +
+  theme(legend.position = "bottom", legend.title = element_blank())
+```
+
+### 3. Interpretable Features
+
+PC scores serve as meaningful features for further analysis:
+
+```{r features}
+# Scores as features
+scores_df <- data.frame(
+  curve_id = 1:n,
+  PC1 = fpca$x[, 1],
+  PC2 = fpca$x[, 2],
+  true_height = height_effect,
+  true_timing = timing_effect
+)
+
+# PC1 correlates with height variation
+cat("Correlation(PC1, height effect):",
+    round(cor(scores_df$PC1, scores_df$true_height), 3), "\n")
+
+# PC2 correlates with timing variation
+cat("Correlation(PC2, timing effect):",
+    round(cor(scores_df$PC2, scores_df$true_timing), 3), "\n")
+```
+
+### 4. Outlier Detection
+
+Extreme scores indicate unusual curves:
+
+```{r outliers}
+# Mahalanobis-like distance using PC scores
+pc_vars <- fpca$d^2 / (n - 1)  # Variance of each PC
+standardized_scores <- sweep(fpca$x, 2, sqrt(pc_vars[1:ncol(fpca$x)]), "/")
+distances <- rowSums(standardized_scores^2)
+
+# Flag potential outliers (chi-squared threshold)
+threshold <- qchisq(0.975, df = ncol(fpca$x))
+outlier_idx <- which(distances > threshold)
+cat("Potential outliers:", length(outlier_idx), "curves\n")
+```
+
+### 5. Efficient Storage and Computation
+
+For large datasets, storing scores instead of full curves saves memory:
+
+```{r efficiency}
+# Storage comparison
+original_size <- object.size(fd$data)
+compressed_size <- object.size(fpca$x) + object.size(fpca$rotation$data) + object.size(fpca$mean)
+
+cat("Original size:", format(original_size, units = "Kb"), "\n")
+cat("FPCA representation:", format(compressed_size, units = "Kb"), "\n")
+```
+
+## FPCA for Regression
+
+PC scores are commonly used as predictors in regression:
+
+```{r regression}
+# Create a response related to growth
+# Final height depends on both baseline and timing
+y <- 0.5 * height_effect + 2 * timing_effect + rnorm(n, sd = 1)
+
+# Principal Component Regression
+fit <- fregre.pc(fd, y, ncomp = 3)
+
+# Cross-validation to select optimal number of components
+cv_result <- fregre.pc.cv(fd, y, kfold = 5, ncomp.range = 1:6, seed = 42)
+cat("Optimal number of components:", cv_result$optimal.ncomp, "\n")
+
+# Visualize CV results
+df_cv <- data.frame(
+  ncomp = 1:6,
+  MSE = cv_result$cv.errors,
+  se = cv_result$cv.se
+)
+
+ggplot(df_cv, aes(x = ncomp, y = MSE)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue", size = 3) +
+  geom_errorbar(aes(ymin = MSE - se, ymax = MSE + se), width = 0.2, color = "steelblue") +
+  geom_vline(xintercept = cv_result$optimal.ncomp, linetype = "dashed", color = "red") +
+  labs(x = "Number of Components", y = "Cross-Validation MSE",
+       title = "Selecting Number of PC Components") +
+  scale_x_continuous(breaks = 1:6)
+```
+
+## Choosing the Number of Components
+
+Several approaches exist for selecting the number of components:
+
+### 1. Variance Threshold
+
+```{r variance-threshold}
+# Calculate cumulative variance
+var_explained <- fpca$d^2 / sum(fpca$d^2)
+cum_var <- cumsum(var_explained)
+
+# Find number of components for 95% variance
+ncomp_95 <- which(cum_var >= 0.95)[1]
+cat("Components for 95% variance:", ncomp_95, "\n")
+```
+
+### 2. Scree Plot Elbow
+
+Visual inspection of the scree plot often reveals a natural cutoff.
+
+### 3. Cross-Validation
+
+For prediction tasks, cross-validation directly optimizes predictive performance.
+
+## Advanced: Working with Scores
+
+### Clustering in PC Space
+
+```{r clustering}
+# K-means clustering on PC scores
+km <- kmeans(fpca$x[, 1:2], centers = 3, nstart = 10)
+
+# Visualize clusters
+df_scores <- data.frame(
+  PC1 = fpca$x[, 1],
+  PC2 = fpca$x[, 2],
+  cluster = factor(km$cluster)
+)
+
+ggplot(df_scores, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(size = 3) +
+  labs(title = "Clustering in PC Score Space") +
+  scale_color_brewer(palette = "Set1")
+```
+
+### Functional Boxplot via FPCA
+
+The functional boxplot uses depth measures, but PC scores provide an alternative view
+of centrality:
+
+```{r pc-depth}
+# Distance from center in PC space indicates "outlyingness"
+center <- colMeans(fpca$x)
+pc_distances <- sqrt(rowSums(sweep(fpca$x, 2, center)^2))
+
+# Color curves by distance from center
+df_curves <- data.frame(
+  t = rep(t, n),
+  height = as.vector(t(fd$data)),
+  curve_id = rep(1:n, each = m),
+  distance = rep(pc_distances, each = m)
+)
+
+ggplot(df_curves, aes(x = t, y = height, group = curve_id, color = distance)) +
+  geom_line(alpha = 0.7) +
+  scale_color_viridis_c(option = "plasma", name = "PC Distance") +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Curves Colored by Distance from PC Center")
+```
+
+## Comparison with Classical PCA
+
+FPCA on discretized curves is mathematically equivalent to classical PCA on the data
+matrix, but the functional interpretation adds value:
+
+| Aspect | Classical PCA | FPCA |
+|--------|---------------|------|
+| Input | Vectors in $\mathbb{R}^p$ | Functions in $L^2$ |
+| Output | Loading vectors | Eigenfunction curves |
+| Interpretation | Variable weights | Modes of variation |
+| Reconstruction | Linear combination | Functional approximation |
+| Smoothness | Not enforced | Can be regularized |
+
+## References
+
+FPCA is well-established in the functional data analysis literature:
+
+1. **Ramsay, J.O. and Silverman, B.W.** (2005). *Functional Data Analysis*, 2nd Edition.
+   Springer. — The foundational text introducing FPCA theory and applications.
+
+2. **Ramsay, J.O. and Silverman, B.W.** (2002). *Applied Functional Data Analysis*.
+   Springer. — Practical applications with case studies.
+
+3. **Yao, F., Müller, H.G., and Wang, J.L.** (2005). "Functional Data Analysis for
+   Sparse Longitudinal Data." *Journal of the American Statistical Association*,
+   100(470), 577-590. — FPCA for irregularly sampled data (PACE algorithm).
+
+4. **Hall, P. and Hosseini-Nasab, M.** (2006). "On Properties of Functional Principal
+   Components Analysis." *Journal of the Royal Statistical Society: Series B*, 68(1),
+   109-126. — Theoretical properties of FPCA estimators.
+
+5. **Di, C.Z., Crainiceanu, C.M., Caffo, B.S., and Punjabi, N.M.** (2009). "Multilevel
+   Functional Principal Component Analysis." *Annals of Applied Statistics*, 3(1),
+   458-488. — Extension to hierarchical/longitudinal settings.
+
+6. **Shang, H.L.** (2014). "A Survey of Functional Principal Component Analysis."
+   *AStA Advances in Statistical Analysis*, 98(2), 121-142. — Comprehensive review
+   of FPCA methods and extensions.
+
+## Summary
+
+FPCA is essential for functional data analysis because it:
+
+- **Reduces dimensionality** while preserving key variation
+- **Denoises** data through low-rank reconstruction
+- **Extracts interpretable features** (PC scores) for further analysis
+- **Enables regression** via principal component regression
+- **Facilitates visualization** in low-dimensional score spaces
+
+The **fdars** package provides efficient FPCA computation through its Rust backend,
+with intuitive plotting methods for exploring results.

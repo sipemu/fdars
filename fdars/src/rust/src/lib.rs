@@ -3395,6 +3395,8 @@ fn difference_matrix(n: usize, order: usize) -> DMatrix<f64> {
 
 /// Compute GCV score for basis fit
 /// GCV = RSS/n / (1 - edf/n)^2
+/// When pooled=true: compute single GCV across all curves
+/// When pooled=false: compute per-curve GCV and return mean
 #[extendr]
 fn basis_gcv_1d(
     data: RMatrix<f64>,
@@ -3402,6 +3404,7 @@ fn basis_gcv_1d(
     nbasis: i32,
     basis_type: i32,
     lambda: f64,
+    pooled: bool,
 ) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
@@ -3471,40 +3474,63 @@ fn basis_gcv_1d(
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
-    // Compute RSS for all curves
-    let mut total_rss = 0.0;
-    let total_points = n * m;
-
-    for i in 0..n {
-        // Extract curve
-        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
-        let curve_vec = DVector::from_vec(curve.clone());
-
-        // Coefficients: c = (B'B + lambda*P)^-1 * B' * y
-        let bt_y = b_mat.transpose() * &curve_vec;
-        let coefs = &btb_inv * bt_y;
-
-        // Fitted values
-        let fitted = &b_mat * &coefs;
-
-        // RSS
-        for j in 0..m {
-            let resid = curve[j] - fitted[j];
-            total_rss += resid * resid;
-        }
-    }
-
-    // GCV = (RSS/n_total) / (1 - edf/m)^2
+    // GCV denominator (same for all curves since hat matrix is shared)
     let gcv_denom = 1.0 - edf / m as f64;
     if gcv_denom.abs() < 1e-10 {
         return f64::INFINITY;
     }
+    let gcv_denom_sq = gcv_denom * gcv_denom;
 
-    (total_rss / total_points as f64) / (gcv_denom * gcv_denom)
+    if pooled {
+        // Pooled mode: compute single GCV across all curves
+        let mut total_rss = 0.0;
+        let total_points = n * m;
+
+        for i in 0..n {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+            let curve_vec = DVector::from_vec(curve.clone());
+            let bt_y = b_mat.transpose() * &curve_vec;
+            let coefs = &btb_inv * bt_y;
+            let fitted = &b_mat * &coefs;
+
+            for j in 0..m {
+                let resid = curve[j] - fitted[j];
+                total_rss += resid * resid;
+            }
+        }
+
+        // GCV = (RSS/n_total) / (1 - edf/m)^2
+        (total_rss / total_points as f64) / gcv_denom_sq
+    } else {
+        // Per-curve mode: compute GCV for each curve, return mean
+        let mut gcv_sum = 0.0;
+
+        for i in 0..n {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+            let curve_vec = DVector::from_vec(curve.clone());
+            let bt_y = b_mat.transpose() * &curve_vec;
+            let coefs = &btb_inv * bt_y;
+            let fitted = &b_mat * &coefs;
+
+            let mut curve_rss = 0.0;
+            for j in 0..m {
+                let resid = curve[j] - fitted[j];
+                curve_rss += resid * resid;
+            }
+
+            // GCV for this curve
+            gcv_sum += (curve_rss / m as f64) / gcv_denom_sq;
+        }
+
+        gcv_sum / n as f64
+    }
 }
 
 /// Compute AIC for basis fit
-/// AIC = n * log(RSS/n) + 2 * edf
+/// AIC = n * log(RSS/n) + 2 * total_edf
+/// Where total_edf = n_curves * edf (each curve has edf parameters)
+/// When pooled=true: compute single AIC across all curves
+/// When pooled=false: compute per-curve AIC and return mean
 #[extendr]
 fn basis_aic_1d(
     data: RMatrix<f64>,
@@ -3512,6 +3538,7 @@ fn basis_aic_1d(
     nbasis: i32,
     basis_type: i32,
     lambda: f64,
+    pooled: bool,
 ) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
@@ -3571,35 +3598,65 @@ fn basis_aic_1d(
         }
     }
 
-    // EDF
+    // EDF (effective degrees of freedom per curve)
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
-    // RSS
-    let mut total_rss = 0.0;
-    let total_points = n * m;
+    if pooled {
+        // Pooled mode: compute single AIC across all curves
+        let mut total_rss = 0.0;
+        let total_points = n * m;
 
-    for i in 0..n {
-        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
-        let curve_vec = DVector::from_vec(curve.clone());
-        let bt_y = b_mat.transpose() * &curve_vec;
-        let coefs = &btb_inv * bt_y;
-        let fitted = &b_mat * &coefs;
+        for i in 0..n {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+            let curve_vec = DVector::from_vec(curve.clone());
+            let bt_y = b_mat.transpose() * &curve_vec;
+            let coefs = &btb_inv * bt_y;
+            let fitted = &b_mat * &coefs;
 
-        for j in 0..m {
-            let resid = curve[j] - fitted[j];
-            total_rss += resid * resid;
+            for j in 0..m {
+                let resid = curve[j] - fitted[j];
+                total_rss += resid * resid;
+            }
         }
-    }
 
-    // AIC = n * log(RSS/n) + 2 * edf
-    let mse = total_rss / total_points as f64;
-    (total_points as f64) * mse.ln() + 2.0 * edf
+        // AIC = n_total * log(RSS/n_total) + 2 * total_edf
+        // total_edf = n_curves * edf (each curve has edf effective parameters)
+        let mse = total_rss / total_points as f64;
+        let total_edf = (n as f64) * edf;
+        (total_points as f64) * mse.ln() + 2.0 * total_edf
+    } else {
+        // Per-curve mode: compute AIC for each curve, return mean
+        let mut aic_sum = 0.0;
+
+        for i in 0..n {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+            let curve_vec = DVector::from_vec(curve.clone());
+            let bt_y = b_mat.transpose() * &curve_vec;
+            let coefs = &btb_inv * bt_y;
+            let fitted = &b_mat * &coefs;
+
+            let mut curve_rss = 0.0;
+            for j in 0..m {
+                let resid = curve[j] - fitted[j];
+                curve_rss += resid * resid;
+            }
+
+            // AIC for this curve: m * log(RSS/m) + 2 * edf
+            let curve_mse = curve_rss / m as f64;
+            aic_sum += (m as f64) * curve_mse.ln() + 2.0 * edf;
+        }
+
+        aic_sum / n as f64
+    }
 }
 
 /// Compute BIC for basis fit
-/// BIC = n * log(RSS/n) + log(n) * edf
+/// BIC = n * log(RSS/n) + log(n) * total_edf
+/// Where total_edf = n_curves * edf (each curve has edf parameters)
+/// When pooled=true: compute single BIC across all curves
+/// When pooled=false: compute per-curve BIC and return mean
 #[extendr]
 fn basis_bic_1d(
     data: RMatrix<f64>,
@@ -3607,6 +3664,7 @@ fn basis_bic_1d(
     nbasis: i32,
     basis_type: i32,
     lambda: f64,
+    pooled: bool,
 ) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
@@ -3665,29 +3723,58 @@ fn basis_bic_1d(
         }
     }
 
+    // EDF (effective degrees of freedom per curve)
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
-    let mut total_rss = 0.0;
-    let total_points = n * m;
+    if pooled {
+        // Pooled mode: compute single BIC across all curves
+        let mut total_rss = 0.0;
+        let total_points = n * m;
 
-    for i in 0..n {
-        let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
-        let curve_vec = DVector::from_vec(curve.clone());
-        let bt_y = b_mat.transpose() * &curve_vec;
-        let coefs = &btb_inv * bt_y;
-        let fitted = &b_mat * &coefs;
+        for i in 0..n {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+            let curve_vec = DVector::from_vec(curve.clone());
+            let bt_y = b_mat.transpose() * &curve_vec;
+            let coefs = &btb_inv * bt_y;
+            let fitted = &b_mat * &coefs;
 
-        for j in 0..m {
-            let resid = curve[j] - fitted[j];
-            total_rss += resid * resid;
+            for j in 0..m {
+                let resid = curve[j] - fitted[j];
+                total_rss += resid * resid;
+            }
         }
-    }
 
-    // BIC = n * log(RSS/n) + log(n) * edf
-    let mse = total_rss / total_points as f64;
-    (total_points as f64) * mse.ln() + (total_points as f64).ln() * edf
+        // BIC = n_total * log(RSS/n_total) + log(n_total) * total_edf
+        // total_edf = n_curves * edf (each curve has edf effective parameters)
+        let mse = total_rss / total_points as f64;
+        let total_edf = (n as f64) * edf;
+        (total_points as f64) * mse.ln() + (total_points as f64).ln() * total_edf
+    } else {
+        // Per-curve mode: compute BIC for each curve, return mean
+        let mut bic_sum = 0.0;
+
+        for i in 0..n {
+            let curve: Vec<f64> = (0..m).map(|j| data_slice[i + j * n]).collect();
+            let curve_vec = DVector::from_vec(curve.clone());
+            let bt_y = b_mat.transpose() * &curve_vec;
+            let coefs = &btb_inv * bt_y;
+            let fitted = &b_mat * &coefs;
+
+            let mut curve_rss = 0.0;
+            for j in 0..m {
+                let resid = curve[j] - fitted[j];
+                curve_rss += resid * resid;
+            }
+
+            // BIC for this curve: m * log(RSS/m) + log(m) * edf
+            let curve_mse = curve_rss / m as f64;
+            bic_sum += (m as f64) * curve_mse.ln() + (m as f64).ln() * edf;
+        }
+
+        bic_sum / n as f64
+    }
 }
 
 /// P-spline fitting: returns coefficients, fitted values, and diagnostics
