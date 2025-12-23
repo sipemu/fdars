@@ -102,7 +102,7 @@ the projections. More robust to local variations.
 ``` r
 depths_rp <- depth(fd, method = "RP", nproj = 50)
 head(depths_rp)
-#> [1] 0.06516129 0.09677419 0.26387097 0.29677419 0.26967742 0.27741935
+#> [1] 0.06516129 0.08709677 0.24838710 0.29225806 0.27483871 0.28000000
 ```
 
 ### Random Tukey Depth (method = “RT”)
@@ -146,7 +146,7 @@ changes in addition to magnitude.
 ``` r
 depths_rpd <- depth(fd, method = "RPD", nproj = 50)
 head(depths_rpd)
-#> [1] 0.1160000 0.1166667 0.1840000 0.2046667 0.2066667 0.1786667
+#> [1] 0.08133333 0.12266667 0.18400000 0.24466667 0.20266667 0.19066667
 ```
 
 ## Comparing Depth Functions
@@ -167,11 +167,11 @@ all_depths <- data.frame(
 # Correlation between depth functions
 round(cor(all_depths), 2)
 #>        FM mode   RP   RT  FSD
-#> FM   1.00 0.98 0.95 0.17 0.98
-#> mode 0.98 1.00 0.92 0.18 0.97
-#> RP   0.95 0.92 1.00 0.16 0.94
-#> RT   0.17 0.18 0.16 1.00 0.14
-#> FSD  0.98 0.97 0.94 0.14 1.00
+#> FM   1.00 0.98 0.93 0.17 0.98
+#> mode 0.98 1.00 0.93 0.13 0.97
+#> RP   0.93 0.93 1.00 0.28 0.94
+#> RT   0.17 0.13 0.28 1.00 0.20
+#> FSD  0.98 0.97 0.94 0.20 1.00
 ```
 
 ``` r
@@ -179,9 +179,9 @@ round(cor(all_depths), 2)
 outlier_ranks <- apply(all_depths, 2, function(d) order(d)[1:3])
 outlier_ranks
 #>      FM mode RP RT FSD
-#> [1,]  1    1  1  1   1
-#> [2,]  2    2  2  2   2
-#> [3,] 10   10 10  3  10
+#> [1,]  1    1  2  1   1
+#> [2,]  2    2  1  2   2
+#> [3,] 10   10 16  3  10
 ```
 
 All depth functions correctly identify curves 1 and 2 as having low
