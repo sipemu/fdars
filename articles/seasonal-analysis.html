@@ -245,29 +245,41 @@ dominant period 2. Subtract a fitted sinusoid at that period 3. Repeat
 on the residual</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Helper function to detect multiple periods</span></span>
-<span><span class="va">detect_multiple_periods</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fd</span>, <span class="va">max_periods</span> <span class="op">=</span> <span class="fl">3</span>, <span class="va">min_confidence</span> <span class="op">=</span> <span class="fl">0.3</span><span class="op">)</span> <span class="op">{</span></span>
+<span><span class="co"># Uses both FFT confidence AND seasonal strength as stopping criteria</span></span>
+<span><span class="va">detect_multiple_periods</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fd</span>, <span class="va">max_periods</span> <span class="op">=</span> <span class="fl">3</span>, <span class="va">min_confidence</span> <span class="op">=</span> <span class="fl">0.4</span>,</span>
+<span>                                     <span class="va">min_strength</span> <span class="op">=</span> <span class="fl">0.15</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span>  <span class="va">residual</span> <span class="op">&lt;-</span> <span class="va">fd</span></span>
+<span>  <span class="va">original_var</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/var.html">var</a></span><span class="op">(</span><span class="va">fd</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span>, <span class="op">]</span><span class="op">)</span></span>
 <span></span>
 <span>  <span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">max_periods</span><span class="op">)</span> <span class="op">{</span></span>
 <span>    <span class="va">est</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/estimate_period.html">estimate_period</a></span><span class="op">(</span><span class="va">residual</span>, method <span class="op">=</span> <span class="st">"fft"</span><span class="op">)</span></span>
 <span>    <span class="kw">if</span> <span class="op">(</span><span class="va">est</span><span class="op">$</span><span class="va">confidence</span> <span class="op">&lt;</span> <span class="va">min_confidence</span><span class="op">)</span> <span class="kw">break</span></span>
 <span></span>
-<span>    <span class="va">periods</span><span class="op">[[</span><span class="va">i</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>      period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span>,</span>
-<span>      confidence <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">confidence</span>,</span>
-<span>      iteration <span class="op">=</span> <span class="va">i</span></span>
-<span>    <span class="op">)</span></span>
+<span>    <span class="co"># Additional check: seasonal strength at detected period</span></span>
+<span>    <span class="va">ss</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/seasonal_strength.html">seasonal_strength</a></span><span class="op">(</span><span class="va">residual</span>, period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span><span class="op">)</span></span>
+<span>    <span class="kw">if</span> <span class="op">(</span><span class="va">ss</span> <span class="op">&lt;</span> <span class="va">min_strength</span><span class="op">)</span> <span class="kw">break</span></span>
 <span></span>
 <span>    <span class="co"># Subtract fitted sinusoid from residual</span></span>
 <span>    <span class="va">tt</span> <span class="op">&lt;-</span> <span class="va">fd</span><span class="op">$</span><span class="va">argvals</span></span>
-<span>    <span class="co"># Estimate amplitude and phase from the data</span></span>
 <span>    <span class="va">omega</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">/</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span></span>
 <span>    <span class="va">cos_comp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">cos</a></span><span class="op">(</span><span class="va">omega</span> <span class="op">*</span> <span class="va">tt</span><span class="op">)</span></span>
 <span>    <span class="va">sin_comp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="va">omega</span> <span class="op">*</span> <span class="va">tt</span><span class="op">)</span></span>
 <span>    <span class="va">y</span> <span class="op">&lt;-</span> <span class="va">residual</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span>, <span class="op">]</span></span>
 <span>    <span class="va">a</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">y</span> <span class="op">*</span> <span class="va">cos_comp</span><span class="op">)</span>  <span class="co"># Cosine coefficient</span></span>
 <span>    <span class="va">b</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">y</span> <span class="op">*</span> <span class="va">sin_comp</span><span class="op">)</span>  <span class="co"># Sine coefficient</span></span>
+<span>    <span class="va">amplitude</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">a</span><span class="op">^</span><span class="fl">2</span> <span class="op">+</span> <span class="va">b</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span></span>
+<span>    <span class="va">phase</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">atan2</a></span><span class="op">(</span><span class="va">b</span>, <span class="va">a</span><span class="op">)</span></span>
+<span></span>
+<span>    <span class="va">periods</span><span class="op">[[</span><span class="va">i</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>      period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span>,</span>
+<span>      confidence <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">confidence</span>,</span>
+<span>      strength <span class="op">=</span> <span class="va">ss</span>,</span>
+<span>      amplitude <span class="op">=</span> <span class="va">amplitude</span>,</span>
+<span>      phase <span class="op">=</span> <span class="va">phase</span>,</span>
+<span>      iteration <span class="op">=</span> <span class="va">i</span></span>
+<span>    <span class="op">)</span></span>
+<span></span>
 <span>    <span class="va">fitted</span> <span class="op">&lt;-</span> <span class="va">a</span> <span class="op">*</span> <span class="va">cos_comp</span> <span class="op">+</span> <span class="va">b</span> <span class="op">*</span> <span class="va">sin_comp</span></span>
 <span>    <span class="va">residual</span><span class="op">$</span><span class="va">data</span> <span class="op">&lt;-</span> <span class="va">residual</span><span class="op">$</span><span class="va">data</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">fitted</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span>  <span class="op">}</span></span>
@@ -279,11 +291,12 @@ on the residual</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Detected periods:\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Detected periods:</span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">p</span> <span class="kw">in</span> <span class="va">detected</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"  Period = %.2f (confidence = %.3f)\n"</span>, <span class="va">p</span><span class="op">$</span><span class="va">period</span>, <span class="va">p</span><span class="op">$</span><span class="va">confidence</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"  Period = %.2f (confidence = %.3f, strength = %.3f, amplitude = %.3f)\n"</span>,</span>
+<span>              <span class="va">p</span><span class="op">$</span><span class="va">period</span>, <span class="va">p</span><span class="op">$</span><span class="va">confidence</span>, <span class="va">p</span><span class="op">$</span><span class="va">strength</span>, <span class="va">p</span><span class="op">$</span><span class="va">amplitude</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
-<span><span class="co">#&gt;   Period = 2.01 (confidence = 146.769)</span></span>
-<span><span class="co">#&gt;   Period = 6.68 (confidence = 188.230)</span></span>
-<span><span class="co">#&gt;   Period = 10.03 (confidence = 60.453)</span></span></code></pre></div>
+<span><span class="co">#&gt;   Period = 2.01 (confidence = 146.769, strength = 0.734, amplitude = 1.013)</span></span>
+<span><span class="co">#&gt;   Period = 6.68 (confidence = 188.230, strength = 0.949, amplitude = 0.592)</span></span>
+<span><span class="co">#&gt;   Period = 10.03 (confidence = 60.453, strength = 0.650, amplitude = 0.081)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="visualizing-the-decomposition">Visualizing the Decomposition<a class="anchor" aria-label="anchor" href="#visualizing-the-decomposition"></a>
@@ -329,6 +342,14 @@ use the iterative approach above.</li>
 <li>When <strong>confidence drops below threshold</strong>: stop -
 remaining signal is likely noise.</li>
 </ul>
+<p><strong>Note on detection order:</strong> Periods are detected in
+order of <strong>amplitude</strong>, not period length. The component
+with the highest FFT power (roughly proportional to amplitude squared)
+is found first. For example, if a signal has a weak yearly cycle and a
+strong weekly cycle, the weekly cycle will be detected first regardless
+of which period is longer. Very weak periodicities (&lt; 20% of the
+dominant amplitude) may require lower thresholds but risk false
+positives.</p>
 </div>
 </div>
 <div class="section level2">
@@ -753,7 +774,7 @@ then analyze each segment separately.</p>
 </div>
 </div>
 <div class="section level2">
-<h2 id="working-with-short-series-3-5-years">Working with Short Series (3-5 Years)<a class="anchor" aria-label="anchor" href="#working-with-short-series-3-5-years"></a>
+<h2 id="working-with-short-series">Working with Short Series<a class="anchor" aria-label="anchor" href="#working-with-short-series"></a>
 </h2>
 <p>For short series with only 3-5 complete cycles, fdars provides
 specialized functions for analyzing peak timing variability and
@@ -882,11 +903,115 @@ event shifting from March to April to May over several years).</p>
 <p><img src="seasonal-analysis_files/figure-html/classification-plot-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
+<h3 id="classification-types">Classification Types<a class="anchor" aria-label="anchor" href="#classification-types"></a>
+</h3>
+<p>The <code><a href="../reference/classify_seasonality.html">classify_seasonality()</a></code> function returns one of four
+classifications based on seasonal strength and timing variability:</p>
+<table style="width:100%;" class="table">
+<colgroup>
+<col width="22%">
+<col width="27%">
+<col width="27%">
+<col width="22%">
+</colgroup>
+<thead><tr class="header">
+<th>Classification</th>
+<th>Seasonal Strength</th>
+<th>Timing Variability</th>
+<th>Interpretation</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><strong>stable</strong></td>
+<td>&gt; 0.7</td>
+<td>&lt; 0.05</td>
+<td>Consistent pattern across cycles</td>
+</tr>
+<tr class="even">
+<td><strong>variable</strong></td>
+<td>0.4 - 0.7</td>
+<td>0.05 - 0.15</td>
+<td>Clear seasonality but parameters change</td>
+</tr>
+<tr class="odd">
+<td><strong>intermittent</strong></td>
+<td>&lt; 0.4</td>
+<td>any</td>
+<td>Seasonality appears and disappears</td>
+</tr>
+<tr class="even">
+<td><strong>none</strong></td>
+<td>&lt; 0.2</td>
+<td>any</td>
+<td>No clear seasonal pattern</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Example: Stable seasonality - clean signal with consistent timing</span></span>
+<span><span class="va">X_stable</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t_short</span> <span class="op">/</span> <span class="va">period_short</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.05</span><span class="op">)</span></span>
+<span><span class="va">fd_stable</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">X_stable</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, argvals <span class="op">=</span> <span class="va">t_short</span><span class="op">)</span></span>
+<span><span class="va">class_stable</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/classify_seasonality.html">classify_seasonality</a></span><span class="op">(</span><span class="va">fd_stable</span>, period <span class="op">=</span> <span class="va">period_short</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Example: Variable seasonality - amplitude and timing drift</span></span>
+<span><span class="va">phase_var</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">0.2</span>, length.out <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">amp_var</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">+</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t_short</span> <span class="op">/</span> <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="va">X_variable</span> <span class="op">&lt;-</span> <span class="va">amp_var</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="op">(</span><span class="va">t_short</span> <span class="op">+</span> <span class="va">phase_var</span><span class="op">)</span> <span class="op">/</span> <span class="va">period_short</span><span class="op">)</span> <span class="op">+</span></span>
+<span>              <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span>
+<span><span class="va">fd_variable</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">X_variable</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, argvals <span class="op">=</span> <span class="va">t_short</span><span class="op">)</span></span>
+<span><span class="va">class_variable</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/classify_seasonality.html">classify_seasonality</a></span><span class="op">(</span><span class="va">fd_variable</span>, period <span class="op">=</span> <span class="va">period_short</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Example: Intermittent seasonality - pattern appears and disappears</span></span>
+<span><span class="va">X_intermittent</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">t_short</span> <span class="op">&lt;</span> <span class="fl">2</span> <span class="op">|</span> <span class="va">t_short</span> <span class="op">&gt;</span> <span class="fl">4</span>,</span>
+<span>                         <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t_short</span> <span class="op">/</span> <span class="va">period_short</span><span class="op">)</span>,</span>
+<span>                         <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">t_short</span> <span class="op">&gt;=</span> <span class="fl">2</span> <span class="op">&amp;</span> <span class="va">t_short</span> <span class="op">&lt;=</span> <span class="fl">4</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">X_intermittent</span> <span class="op">&lt;-</span> <span class="va">X_intermittent</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.15</span><span class="op">)</span></span>
+<span><span class="va">fd_intermittent</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">X_intermittent</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, argvals <span class="op">=</span> <span class="va">t_short</span><span class="op">)</span></span>
+<span><span class="va">class_intermittent</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/classify_seasonality.html">classify_seasonality</a></span><span class="op">(</span><span class="va">fd_intermittent</span>, period <span class="op">=</span> <span class="va">period_short</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Example: No seasonality - pure noise</span></span>
+<span><span class="va">X_none</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">fd_none</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">X_none</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, argvals <span class="op">=</span> <span class="va">t_short</span><span class="op">)</span></span>
+<span><span class="va">class_none</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/classify_seasonality.html">classify_seasonality</a></span><span class="op">(</span><span class="va">fd_none</span>, period <span class="op">=</span> <span class="va">period_short</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Summary</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Classification results:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Classification results:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Stable signal:      "</span>, <span class="va">class_stable</span><span class="op">$</span><span class="va">classification</span>,</span>
+<span>    <span class="st">"(strength:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">class_stable</span><span class="op">$</span><span class="va">seasonal_strength</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">")\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   Stable signal:       StableSeasonal (strength: 0.99 )</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Variable signal:    "</span>, <span class="va">class_variable</span><span class="op">$</span><span class="va">classification</span>,</span>
+<span>    <span class="st">"(strength:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">class_variable</span><span class="op">$</span><span class="va">seasonal_strength</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">")\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   Variable signal:     VariableTiming (strength: 0.78 )</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Intermittent signal:"</span>, <span class="va">class_intermittent</span><span class="op">$</span><span class="va">classification</span>,</span>
+<span>    <span class="st">"(strength:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">class_intermittent</span><span class="op">$</span><span class="va">seasonal_strength</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">")\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   Intermittent signal: IntermittentSeasonal (strength: 0.49 )</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  No seasonality:     "</span>, <span class="va">class_none</span><span class="op">$</span><span class="va">classification</span>,</span>
+<span>    <span class="st">"(strength:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">class_none</span><span class="op">$</span><span class="va">seasonal_strength</span>, <span class="fl">2</span><span class="op">)</span>, <span class="st">")\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   No seasonality:      NonSeasonal (strength: 0.01 )</span></span></code></pre></div>
+<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Visualize all four classification types</span></span>
+<span><span class="va">df_examples</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  t <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">t_short</span>, <span class="fl">4</span><span class="op">)</span>,</span>
+<span>  y <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">X_stable</span>, <span class="va">X_variable</span>, <span class="va">X_intermittent</span>, <span class="va">X_none</span><span class="op">)</span>,</span>
+<span>  Type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Stable"</span>, <span class="st">"Variable"</span>, <span class="st">"Intermittent"</span>, <span class="st">"None"</span><span class="op">)</span>,</span>
+<span>                    each <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>                levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Stable"</span>, <span class="st">"Variable"</span>, <span class="st">"Intermittent"</span>, <span class="st">"None"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">df_examples</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">t</span>, y <span class="op">=</span> <span class="va">y</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span>color <span class="op">=</span> <span class="st">"steelblue"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/facet_wrap.html" class="external-link">facet_wrap</a></span><span class="op">(</span><span class="op">~</span><span class="va">Type</span>, ncol <span class="op">=</span> <span class="fl">1</span>, scales <span class="op">=</span> <span class="st">"free_y"</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Seasonality Classification Examples"</span>,</span>
+<span>       x <span class="op">=</span> <span class="st">"Time"</span>, y <span class="op">=</span> <span class="st">"Value"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="seasonal-analysis_files/figure-html/classification-examples-plot-1.png" class="r-plt" alt="" width="100%"></p>
+</div>
+<div class="section level3">
 <h3 id="automatic-gcv-smoothing-for-short-series">Automatic GCV Smoothing for Short Series<a class="anchor" aria-label="anchor" href="#automatic-gcv-smoothing-for-short-series"></a>
 </h3>
 <p>Peak detection with automatic smoothing is especially important for
 noisy short series.</p>
-<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># More noisy short series</span></span>
 <span><span class="va">X_noisy_short</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t_short</span> <span class="op">/</span> <span class="va">period_short</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_short</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span></span>
 <span><span class="va">fd_noisy_short</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="va">X_noisy_short</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, argvals <span class="op">=</span> <span class="va">t_short</span><span class="op">)</span></span>
@@ -899,14 +1024,14 @@ noisy short series.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Expected peaks:"</span>, <span class="fl">5</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Expected peaks: 5</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Estimated period:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">peaks_auto</span><span class="op">$</span><span class="va">mean_period</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Estimated period: 0.997</span></span></code></pre></div>
+<span><span class="co">#&gt; Estimated period: 0.999</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
 <h2 id="multiple-curves">Multiple Curves<a class="anchor" aria-label="anchor" href="#multiple-curves"></a>
 </h2>
 <p>All functions work with multiple curves simultaneously.</p>
-<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">n_curves</span> <span class="op">&lt;-</span> <span class="fl">5</span></span>
 <span><span class="va">t</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">10</span>, length.out <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
 <span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">1.8</span>, <span class="fl">2.2</span>, length.out <span class="op">=</span> <span class="va">n_curves</span><span class="op">)</span>  <span class="co"># Slightly varying periods</span></span>
@@ -923,7 +1048,7 @@ noisy short series.</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Multiple Seasonal Curves"</span>,</span>
 <span>       x <span class="op">=</span> <span class="st">"Time"</span>, y <span class="op">=</span> <span class="st">"Value"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="seasonal-analysis_files/figure-html/multiple-curves-1.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Period estimation uses the mean curve</span></span>
 <span><span class="va">est_mean</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/estimate_period.html">estimate_period</a></span><span class="op">(</span><span class="va">fd_curves</span>, method <span class="op">=</span> <span class="st">"fft"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Estimated period (from mean):"</span>, <span class="va">est_mean</span><span class="op">$</span><span class="va">period</span>, <span class="st">"\n"</span><span class="op">)</span></span>
@@ -935,12 +1060,12 @@ noisy short series.</p>
 <span><span class="va">peaks_curves</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_curves</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\nMean period from peaks:"</span>, <span class="va">peaks_curves</span><span class="op">$</span><span class="va">mean_period</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Mean period from peaks: 1.716274</span></span>
+<span><span class="co">#&gt; Mean period from peaks: 1.730653</span></span>
 <span></span>
 <span><span class="co"># Seasonal strength (aggregated)</span></span>
 <span><span class="va">ss_curves</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/seasonal_strength.html">seasonal_strength</a></span><span class="op">(</span><span class="va">fd_curves</span>, period <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Seasonal strength:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">ss_curves</span>, <span class="fl">3</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Seasonal strength: 0.537</span></span></code></pre></div>
+<span><span class="co">#&gt; Seasonal strength: 0.557</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="summary">Summary<a class="anchor" aria-label="anchor" href="#summary"></a>
@@ -1036,6 +1161,49 @@ approach</li>
 </li>
 <li>Classify pattern type: <code><a href="../reference/classify_seasonality.html">classify_seasonality()</a></code>
 </li>
+</ul>
+</div>
+<div class="section level3">
+<h3 id="processing-large-numbers-of-series">Processing Large Numbers of Series<a class="anchor" aria-label="anchor" href="#processing-large-numbers-of-series"></a>
+</h3>
+<p>When analyzing many series (e.g., 500k time series), use a
+<strong>tiered approach</strong> to balance speed and depth of
+analysis:</p>
+<p><strong>Tier 1 - Fast screening</strong> (all series):</p>
+<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Quick FFT period estimation - very fast</span></span>
+<span><span class="va">est</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/estimate_period.html">estimate_period</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"fft"</span><span class="op">)</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="va">est</span><span class="op">$</span><span class="va">confidence</span> <span class="op">&lt;</span> <span class="fl">0.3</span><span class="op">)</span> <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="st">"no_seasonality"</span><span class="op">)</span></span></code></pre></div>
+<p>This filters out ~80% of series with no clear seasonality in typical
+mixed datasets.</p>
+<p><strong>Tier 2 - Validation</strong> (remaining ~20%):</p>
+<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Add seasonal strength check</span></span>
+<span><span class="va">ss</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/seasonal_strength.html">seasonal_strength</a></span><span class="op">(</span><span class="va">fd</span>, period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span><span class="op">)</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="va">ss</span> <span class="op">&lt;</span> <span class="fl">0.2</span><span class="op">)</span> <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="st">"weak_seasonality"</span><span class="op">)</span></span></code></pre></div>
+<p><strong>Tier 3 - Full analysis</strong> (top candidates only):</p>
+<div class="sourceCode" id="cb42"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Expensive operations - classification, multiple periods</span></span>
+<span><span class="va">class</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/classify_seasonality.html">classify_seasonality</a></span><span class="op">(</span><span class="va">fd</span>, period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span><span class="op">)</span></span>
+<span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu">detect_multiple_periods</span><span class="op">(</span><span class="va">fd</span><span class="op">)</span>  <span class="co"># if multiple periods suspected</span></span></code></pre></div>
+<p><strong>Parallelization:</strong></p>
+<p>All fdars Rust functions are thread-safe. Use
+<code><a href="https://rdrr.io/r/parallel/mclapply.html" class="external-link">parallel::mclapply()</a></code> or
+<code>future.apply::future_lapply()</code> for parallel processing:</p>
+<div class="sourceCode" id="cb43"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Example batch processing workflow</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">parallel</span><span class="op">)</span></span>
+<span><span class="va">results</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/parallel/mclapply.html" class="external-link">mclapply</a></span><span class="op">(</span><span class="va">series_list</span>, <span class="kw">function</span><span class="op">(</span><span class="va">fd</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">est</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/estimate_period.html">estimate_period</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"fft"</span><span class="op">)</span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="va">est</span><span class="op">$</span><span class="va">confidence</span> <span class="op">&lt;</span> <span class="fl">0.3</span><span class="op">)</span> <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>classification <span class="op">=</span> <span class="st">"none"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">ss</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/seasonal_strength.html">seasonal_strength</a></span><span class="op">(</span><span class="va">fd</span>, period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>period <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">period</span>, confidence <span class="op">=</span> <span class="va">est</span><span class="op">$</span><span class="va">confidence</span>, strength <span class="op">=</span> <span class="va">ss</span><span class="op">)</span></span>
+<span><span class="op">}</span>, mc.cores <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/parallel/detectCores.html" class="external-link">detectCores</a></span><span class="op">(</span><span class="op">)</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
+<p><strong>Memory management:</strong></p>
+<ul>
+<li>Process in batches of 1000-5000 series</li>
+<li>Store only summary results (period, confidence, classification)</li>
+<li>Stream data from disk rather than loading all at once</li>
 </ul>
 </div>
 </div>

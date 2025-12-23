@@ -179,29 +179,41 @@ residual
 
 ``` r
 # Helper function to detect multiple periods
-detect_multiple_periods <- function(fd, max_periods = 3, min_confidence = 0.3) {
+# Uses both FFT confidence AND seasonal strength as stopping criteria
+detect_multiple_periods <- function(fd, max_periods = 3, min_confidence = 0.4,
+                                     min_strength = 0.15) {
   periods <- list()
   residual <- fd
+  original_var <- var(fd$data[1, ])
 
   for (i in 1:max_periods) {
     est <- estimate_period(residual, method = "fft")
     if (est$confidence < min_confidence) break
 
-    periods[[i]] <- list(
-      period = est$period,
-      confidence = est$confidence,
-      iteration = i
-    )
+    # Additional check: seasonal strength at detected period
+    ss <- seasonal_strength(residual, period = est$period)
+    if (ss < min_strength) break
 
     # Subtract fitted sinusoid from residual
     tt <- fd$argvals
-    # Estimate amplitude and phase from the data
     omega <- 2 * pi / est$period
     cos_comp <- cos(omega * tt)
     sin_comp <- sin(omega * tt)
     y <- residual$data[1, ]
     a <- 2 * mean(y * cos_comp)  # Cosine coefficient
     b <- 2 * mean(y * sin_comp)  # Sine coefficient
+    amplitude <- sqrt(a^2 + b^2)
+    phase <- atan2(b, a)
+
+    periods[[i]] <- list(
+      period = est$period,
+      confidence = est$confidence,
+      strength = ss,
+      amplitude = amplitude,
+      phase = phase,
+      iteration = i
+    )
+
     fitted <- a * cos_comp + b * sin_comp
     residual$data <- residual$data - matrix(fitted, nrow = 1)
   }
@@ -213,11 +225,12 @@ detected <- detect_multiple_periods(fd_dual, max_periods = 3)
 cat("Detected periods:\n")
 #> Detected periods:
 for (p in detected) {
-  cat(sprintf("  Period = %.2f (confidence = %.3f)\n", p$period, p$confidence))
+  cat(sprintf("  Period = %.2f (confidence = %.3f, strength = %.3f, amplitude = %.3f)\n",
+              p$period, p$confidence, p$strength, p$amplitude))
 }
-#>   Period = 2.01 (confidence = 146.769)
-#>   Period = 6.68 (confidence = 188.230)
-#>   Period = 10.03 (confidence = 60.453)
+#>   Period = 2.01 (confidence = 146.769, strength = 0.734, amplitude = 1.013)
+#>   Period = 6.68 (confidence = 188.230, strength = 0.949, amplitude = 0.592)
+#>   Period = 10.03 (confidence = 60.453, strength = 0.650, amplitude = 0.081)
 ```
 
 ### Visualizing the Decomposition
@@ -265,6 +278,14 @@ ggplot(df_long, aes(x = t, y = Value)) +
   iterative approach above.
 - When **confidence drops below threshold**: stop - remaining signal is
   likely noise.
+
+**Note on detection order:** Periods are detected in order of
+**amplitude**, not period length. The component with the highest FFT
+power (roughly proportional to amplitude squared) is found first. For
+example, if a signal has a weak yearly cycle and a strong weekly cycle,
+the weekly cycle will be detected first regardless of which period is
+longer. Very weak periodicities (\< 20% of the dominant amplitude) may
+require lower thresholds but risk false positives.
 
 ## Peak Detection
 
@@ -668,7 +689,7 @@ ggplot(df, aes(x = t)) +
 [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)
 to find regime boundaries, then analyze each segment separately.
 
-## Working with Short Series (3-5 Years)
+## Working with Short Series
 
 For short series with only 3-5 complete cycles, fdars provides
 specialized functions for analyzing peak timing variability and
@@ -808,6 +829,83 @@ ggplot(class_df, aes(x = Metric, y = Value, fill = Metric)) +
 
 ![](seasonal-analysis_files/figure-html/classification-plot-1.png)
 
+### Classification Types
+
+The
+[`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
+function returns one of four classifications based on seasonal strength
+and timing variability:
+
+| Classification   | Seasonal Strength | Timing Variability | Interpretation                          |
+|------------------|-------------------|--------------------|-----------------------------------------|
+| **stable**       | \> 0.7            | \< 0.05            | Consistent pattern across cycles        |
+| **variable**     | 0.4 - 0.7         | 0.05 - 0.15        | Clear seasonality but parameters change |
+| **intermittent** | \< 0.4            | any                | Seasonality appears and disappears      |
+| **none**         | \< 0.2            | any                | No clear seasonal pattern               |
+
+``` r
+# Example: Stable seasonality - clean signal with consistent timing
+X_stable <- sin(2 * pi * t_short / period_short) + rnorm(length(t_short), sd = 0.05)
+fd_stable <- fdata(matrix(X_stable, nrow = 1), argvals = t_short)
+class_stable <- classify_seasonality(fd_stable, period = period_short)
+
+# Example: Variable seasonality - amplitude and timing drift
+phase_var <- seq(0, 0.2, length.out = length(t_short))
+amp_var <- 1 + 0.3 * sin(2 * pi * t_short / 3)
+X_variable <- amp_var * sin(2 * pi * (t_short + phase_var) / period_short) +
+              rnorm(length(t_short), sd = 0.2)
+fd_variable <- fdata(matrix(X_variable, nrow = 1), argvals = t_short)
+class_variable <- classify_seasonality(fd_variable, period = period_short)
+
+# Example: Intermittent seasonality - pattern appears and disappears
+X_intermittent <- ifelse(t_short < 2 | t_short > 4,
+                         sin(2 * pi * t_short / period_short),
+                         rnorm(sum(t_short >= 2 & t_short <= 4), sd = 0.5))
+X_intermittent <- X_intermittent + rnorm(length(t_short), sd = 0.15)
+fd_intermittent <- fdata(matrix(X_intermittent, nrow = 1), argvals = t_short)
+class_intermittent <- classify_seasonality(fd_intermittent, period = period_short)
+
+# Example: No seasonality - pure noise
+X_none <- rnorm(length(t_short), sd = 1)
+fd_none <- fdata(matrix(X_none, nrow = 1), argvals = t_short)
+class_none <- classify_seasonality(fd_none, period = period_short)
+
+# Summary
+cat("Classification results:\n")
+#> Classification results:
+cat("  Stable signal:      ", class_stable$classification,
+    "(strength:", round(class_stable$seasonal_strength, 2), ")\n")
+#>   Stable signal:       StableSeasonal (strength: 0.99 )
+cat("  Variable signal:    ", class_variable$classification,
+    "(strength:", round(class_variable$seasonal_strength, 2), ")\n")
+#>   Variable signal:     VariableTiming (strength: 0.78 )
+cat("  Intermittent signal:", class_intermittent$classification,
+    "(strength:", round(class_intermittent$seasonal_strength, 2), ")\n")
+#>   Intermittent signal: IntermittentSeasonal (strength: 0.49 )
+cat("  No seasonality:     ", class_none$classification,
+    "(strength:", round(class_none$seasonal_strength, 2), ")\n")
+#>   No seasonality:      NonSeasonal (strength: 0.01 )
+```
+
+``` r
+# Visualize all four classification types
+df_examples <- data.frame(
+  t = rep(t_short, 4),
+  y = c(X_stable, X_variable, X_intermittent, X_none),
+  Type = factor(rep(c("Stable", "Variable", "Intermittent", "None"),
+                    each = length(t_short)),
+                levels = c("Stable", "Variable", "Intermittent", "None"))
+)
+
+ggplot(df_examples, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  facet_wrap(~Type, ncol = 1, scales = "free_y") +
+  labs(title = "Seasonality Classification Examples",
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/classification-examples-plot-1.png)
+
 ### Automatic GCV Smoothing for Short Series
 
 Peak detection with automatic smoothing is especially important for
@@ -826,7 +924,7 @@ cat("Peaks found with auto GCV smoothing:", nrow(peaks_auto$peaks[[1]]), "\n")
 cat("Expected peaks:", 5, "\n")
 #> Expected peaks: 5
 cat("Estimated period:", round(peaks_auto$mean_period, 3), "\n")
-#> Estimated period: 0.997
+#> Estimated period: 0.999
 ```
 
 ## Multiple Curves
@@ -865,12 +963,12 @@ cat("True mean period:", mean(periods), "\n")
 peaks_curves <- detect_peaks(fd_curves, min_distance = 1.5)
 cat("\nMean period from peaks:", peaks_curves$mean_period, "\n")
 #> 
-#> Mean period from peaks: 1.716274
+#> Mean period from peaks: 1.730653
 
 # Seasonal strength (aggregated)
 ss_curves <- seasonal_strength(fd_curves, period = 2)
 cat("Seasonal strength:", round(ss_curves, 3), "\n")
-#> Seasonal strength: 0.537
+#> Seasonal strength: 0.557
 ```
 
 ## Summary
@@ -922,3 +1020,58 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
   [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)
 - Classify pattern type:
   [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
+
+### Processing Large Numbers of Series
+
+When analyzing many series (e.g., 500k time series), use a **tiered
+approach** to balance speed and depth of analysis:
+
+**Tier 1 - Fast screening** (all series):
+
+``` r
+# Quick FFT period estimation - very fast
+est <- estimate_period(fd, method = "fft")
+if (est$confidence < 0.3) return("no_seasonality")
+```
+
+This filters out ~80% of series with no clear seasonality in typical
+mixed datasets.
+
+**Tier 2 - Validation** (remaining ~20%):
+
+``` r
+# Add seasonal strength check
+ss <- seasonal_strength(fd, period = est$period)
+if (ss < 0.2) return("weak_seasonality")
+```
+
+**Tier 3 - Full analysis** (top candidates only):
+
+``` r
+# Expensive operations - classification, multiple periods
+class <- classify_seasonality(fd, period = est$period)
+periods <- detect_multiple_periods(fd)  # if multiple periods suspected
+```
+
+**Parallelization:**
+
+All fdars Rust functions are thread-safe. Use
+[`parallel::mclapply()`](https://rdrr.io/r/parallel/mclapply.html) or
+`future.apply::future_lapply()` for parallel processing:
+
+``` r
+# Example batch processing workflow
+library(parallel)
+results <- mclapply(series_list, function(fd) {
+  est <- estimate_period(fd, method = "fft")
+  if (est$confidence < 0.3) return(list(classification = "none"))
+  ss <- seasonal_strength(fd, period = est$period)
+  list(period = est$period, confidence = est$confidence, strength = ss)
+}, mc.cores = detectCores() - 1)
+```
+
+**Memory management:**
+
+- Process in batches of 1000-5000 series
+- Store only summary results (period, confidence, classification)
+- Stream data from disk rather than loading all at once

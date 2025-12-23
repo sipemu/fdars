@@ -203,7 +203,7 @@ n2 <- 30
 complex_signal <- function(t) {
   trend <- 2 * t^2 - t
   bump <- 0.8 * exp(-((t - 0.3)^2) / (2 * 0.05^2))
-  sharp <- ifelse(t > 0.7, 0.5 * sqrt(t - 0.7), 0)
+  sharp <- 0.5 * sqrt(pmax(0, t - 0.7))
   trend + bump + sharp
 }
 
@@ -211,36 +211,6 @@ X2 <- matrix(0, n2, length(t2))
 for (i in 1:n2) {
   X2[i, ] <- complex_signal(t2) + rnorm(length(t2), sd = 0.15)
 }
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
-#> Warning in sqrt(t - 0.7): NaNs produced
 fd2 <- fdata(X2, argvals = t2)
 
 # Compare B-spline vs Fourier for this data

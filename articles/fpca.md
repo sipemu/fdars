@@ -155,6 +155,28 @@ Each panel shows:
 - **PC2**: Growth timing (earlier vs later maturation)
 - **PC3**: More subtle shape variations
 
+### Eigenfunctions
+
+The eigenfunctions themselves show the shape of each mode of variation:
+
+``` r
+# Plot the first 3 eigenfunctions
+df_eigen <- data.frame(
+  t = rep(t, 3),
+  loading = c(fpca$rotation$data[1, ], fpca$rotation$data[2, ], fpca$rotation$data[3, ]),
+  PC = factor(rep(paste0("PC", 1:3), each = m))
+)
+
+ggplot(df_eigen, aes(x = t, y = loading, color = PC)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Age (years)", y = "Loading",
+       title = "Principal Component Eigenfunctions")
+```
+
+![](fpca_files/figure-html/plot-eigenfunctions-1.png)
+
 ### Scree Plot
 
 The variance plot shows how much each component contributes:
@@ -420,44 +442,10 @@ on the data matrix, but the functional interpretation adds value:
 
 ## References
 
-FPCA is well-established in the functional data analysis literature:
-
-1.  **Ramsay, J.O. and Silverman, B.W.** (2005). *Functional Data
-    Analysis*, 2nd Edition. Springer. — The foundational text
-    introducing FPCA theory and applications.
-
-2.  **Ramsay, J.O. and Silverman, B.W.** (2002). *Applied Functional
-    Data Analysis*. Springer. — Practical applications with case
-    studies.
-
-3.  **Yao, F., Müller, H.G., and Wang, J.L.** (2005). “Functional Data
-    Analysis for Sparse Longitudinal Data.” *Journal of the American
-    Statistical Association*, 100(470), 577-590. — FPCA for irregularly
-    sampled data (PACE algorithm).
-
-4.  **Hall, P. and Hosseini-Nasab, M.** (2006). “On Properties of
-    Functional Principal Components Analysis.” *Journal of the Royal
-    Statistical Society: Series B*, 68(1), 109-126. — Theoretical
-    properties of FPCA estimators.
-
-5.  **Di, C.Z., Crainiceanu, C.M., Caffo, B.S., and Punjabi, N.M.**
-    (2009). “Multilevel Functional Principal Component Analysis.”
-    *Annals of Applied Statistics*, 3(1), 458-488. — Extension to
-    hierarchical/longitudinal settings.
-
-6.  **Shang, H.L.** (2014). “A Survey of Functional Principal Component
-    Analysis.” *AStA Advances in Statistical Analysis*, 98(2), 121-142.
-    — Comprehensive review of FPCA methods and extensions.
-
-## Summary
-
-FPCA is essential for functional data analysis because it:
-
-- **Reduces dimensionality** while preserving key variation
-- **Denoises** data through low-rank reconstruction
-- **Extracts interpretable features** (PC scores) for further analysis
-- **Enables regression** via principal component regression
-- **Facilitates visualization** in low-dimensional score spaces
-
-The **fdars** package provides efficient FPCA computation through its
-Rust backend, with intuitive plotting methods for exploring results.
+- Ramsay, J.O. and Silverman, B.W. (2005). *Functional Data Analysis*,
+  2nd Edition. Springer.
+- Ramsay, J.O. and Silverman, B.W. (2002). *Applied Functional Data
+  Analysis*. Springer.
+- Yao, F., Müller, H.G., and Wang, J.L. (2005). Functional Data Analysis
+  for Sparse Longitudinal Data. *Journal of the American Statistical
+  Association*, 100(470), 577-590.

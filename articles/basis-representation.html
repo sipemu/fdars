@@ -317,7 +317,7 @@ that’s better suited for B-splines:</p>
 <span><span class="va">complex_signal</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">t</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">trend</span> <span class="op">&lt;-</span> <span class="fl">2</span> <span class="op">*</span> <span class="va">t</span><span class="op">^</span><span class="fl">2</span> <span class="op">-</span> <span class="va">t</span></span>
 <span>  <span class="va">bump</span> <span class="op">&lt;-</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="op">-</span><span class="op">(</span><span class="op">(</span><span class="va">t</span> <span class="op">-</span> <span class="fl">0.3</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span> <span class="op">/</span> <span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="fl">0.05</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="va">sharp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/ifelse.html" class="external-link">ifelse</a></span><span class="op">(</span><span class="va">t</span> <span class="op">&gt;</span> <span class="fl">0.7</span>, <span class="fl">0.5</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">t</span> <span class="op">-</span> <span class="fl">0.7</span><span class="op">)</span>, <span class="fl">0</span><span class="op">)</span></span>
+<span>  <span class="va">sharp</span> <span class="op">&lt;-</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">t</span> <span class="op">-</span> <span class="fl">0.7</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="va">trend</span> <span class="op">+</span> <span class="va">bump</span> <span class="op">+</span> <span class="va">sharp</span></span>
 <span><span class="op">}</span></span>
 <span></span>
@@ -325,36 +325,6 @@ that’s better suited for B-splines:</p>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">n2</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">X2</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu">complex_signal</span><span class="op">(</span><span class="va">t2</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t2</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.15</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
-<span><span class="co">#&gt; Warning in sqrt(t - 0.7): NaNs produced</span></span>
 <span><span class="va">fd2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X2</span>, argvals <span class="op">=</span> <span class="va">t2</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Compare B-spline vs Fourier for this data</span></span>
