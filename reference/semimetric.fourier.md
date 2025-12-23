@@ -1,0 +1,55 @@
+# Semi-metric based on Fourier Coefficients (FFT)
+
+Computes a semi-metric based on the L2 distance of Fourier coefficients
+computed via Fast Fourier Transform (FFT). This is more efficient than
+the Fourier basis option in semimetric.basis for large nfreq.
+
+## Usage
+
+``` r
+semimetric.fourier(fdata1, fdata2 = NULL, nfreq = 5, ...)
+```
+
+## Arguments
+
+- fdata1:
+
+  An object of class 'fdata'.
+
+- fdata2:
+
+  An object of class 'fdata'. If NULL, uses fdata1.
+
+- nfreq:
+
+  Number of Fourier frequencies to use (excluding DC). Default is 5.
+
+- ...:
+
+  Additional arguments (ignored).
+
+## Value
+
+A distance matrix based on Fourier coefficients.
+
+## Details
+
+The Fourier coefficients are computed using FFT and normalized by the
+number of points. The distance is the L2 distance between the magnitude
+of the first nfreq+1 coefficients (DC + nfreq frequencies).
+
+This function uses Rust's rustfft library for efficient FFT computation,
+making it faster than R's base fft for large datasets.
+
+## Examples
+
+``` r
+# Create curves with different frequency content
+t <- seq(0, 1, length.out = 100)
+X <- matrix(0, 10, 100)
+for (i in 1:10) X[i, ] <- sin(2*pi*i*t) + rnorm(100, sd = 0.1)
+fd <- fdata(X, argvals = t)
+
+# Compute distance based on Fourier coefficients
+D <- semimetric.fourier(fd, nfreq = 10)
+```

@@ -1,0 +1,898 @@
+# fdars
+
+**Functional Data Analysis in Rust** - A high-performance R package for
+functional data analysis with a Rust backend.
+
+## What is Functional Data Analysis?
+
+Functional Data Analysis (FDA) is a branch of statistics that deals with
+data where each observation is a function, curve, or surface rather than
+a single number or vector. Examples include:
+
+- **Temperature curves**: Daily temperature recordings over a year for
+  multiple weather stations
+- **Growth curves**: Height measurements of children tracked over time
+- **Spectroscopy data**: Absorbance spectra measured across wavelengths
+- **Financial trajectories**: Stock price movements over trading days
+- **Medical signals**: ECG, EEG, or fMRI time series
+
+Traditional statistical methods treat each time point as a separate
+variable, losing the inherent smoothness and continuity of the data. FDA
+treats the entire curve as a single observation, enabling more powerful
+and interpretable analyses.
+
+## Features
+
+fdars is a comprehensive toolkit for functional data analysis with a
+high-performance Rust backend providing 10-200x speedups over pure R
+implementations.
+
+### Data Representation
+
+- **1D functional data** - Curves, time series, spectra
+- **2D functional data** - Surfaces, images, spatial fields
+- **Metadata support** - Attach IDs and covariates to observations
+- **Flexible I/O** - Create from matrices, arrays, or data frames
+
+### Depth & Centrality
+
+Measure how “central” or “typical” each curve is: - Fraiman-Muniz (FM),
+Band depth (BD), Modified band depth (MBD) - Modal depth, Random
+projection (RP, RT, RPD) - Functional spatial depth (FSD, KFSD) -
+Depth-based median, trimmed mean, trimmed variance
+
+### Outlier Detection
+
+Multiple approaches to identify anomalous curves: - Depth-based trimming
+and weighting - Likelihood ratio test (LRT) - Functional boxplot -
+Magnitude-Shape plot (magnitude vs shape outliers) - Outliergram (MEI vs
+MBD)
+
+### Distance & Similarity
+
+Quantify differences between curves: - Lp distances (L1, L2, L∞) -
+Hausdorff distance - Dynamic time warping (DTW) - PCA-based and
+derivative-based semimetrics
+
+### Regression
+
+Predict scalar outcomes from functional predictors: - Principal
+component regression (`fregre.pc`) - Basis expansion regression
+(`fregre.basis`) - Nonparametric kernel regression (`fregre.np`) -
+Cross-validation for model selection
+
+### Clustering
+
+Group similar curves together: - K-means clustering with K-means++
+initialization - Fuzzy C-means with soft membership - Automatic
+selection of optimal k (silhouette, CH, elbow)
+
+### Smoothing & Basis Expansion
+
+- Nadaraya-Watson, local linear/polynomial regression
+- B-spline and Fourier basis expansions
+- P-splines with automatic smoothing parameter selection
+- Cross-validation (GCV, AIC, BIC) for basis selection
+
+### Functional Statistics
+
+- Mean, variance, standard deviation, covariance
+- Geometric median (L1 median)
+- Bootstrap confidence intervals
+- Hypothesis testing for functional means
+
+### Gaussian Process Simulation
+
+Generate synthetic functional data: - Multiple covariance kernels
+(Gaussian, Matérn, Exponential, Periodic) - Kernel composition
+(addition, multiplication) - Brownian motion and Ornstein-Uhlenbeck
+processes
+
+### Group Comparison
+
+- Between-group distance matrices (centroid, Hausdorff, depth-based)
+- Permutation tests for significant group differences
+- Visualization (heatmaps, dendrograms)
+
+### Visualization
+
+- Curve plots with categorical/continuous coloring
+- Group means and confidence intervals
+- Functional boxplots
+- FPCA component visualization
+- Outlier diagnostic plots
+
+## Installation
+
+### Prerequisites
+
+- R (\>= 4.0)
+- Rust toolchain (install from [rustup.rs](https://rustup.rs/))
+- A C compiler (gcc, clang)
+
+### From GitHub
+
+``` r
+# Install remotes if needed
+install.packages("remotes")
+
+# Install fdars (with documentation)
+remotes::install_github("sipemu/fdars", subdir = "fdars", build_vignettes = TRUE)
+```
+
+**Note:** On Windows, you may need
+[Rtools](https://cran.r-project.org/bin/windows/Rtools/) installed.
+
+### From Binary Release (No Rust Required)
+
+Download the pre-built binary from [GitHub
+Releases](https://github.com/sipemu/fdars/releases):
+
+``` r
+# macOS
+install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")
+
+# Windows
+install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")
+```
+
+### From Source
+
+``` bash
+# Clone the repository
+git clone https://github.com/sipemu/fdars.git
+cd fdars/fdars
+
+# Build and install
+R CMD build .
+R CMD INSTALL fdars_*.tar.gz
+```
+
+## Quick Start
+
+``` r
+library(fdars)
+
+# Create functional data from a matrix (rows = observations, cols = time points)
+t <- seq(0, 1, length.out = 100)
+X <- matrix(0, 20, 100)
+for (i in 1:20) {
+  X[i, ] <- sin(2 * pi * t) + rnorm(100, sd = 0.1)
+}
+fd <- fdata(X, argvals = t)
+
+# Compute depth - measures how "central" each curve is
+depths <- depth(fd)  # default: FM method
+depths <- depth(fd, method = "mode")  # or specify method
+
+# Find the functional median (most central curve)
+median_curve <- median(fd)  # default: FM method
+
+# Detect outliers
+outliers <- outliers.depth.trim(fd, trim = 0.1)
+
+# Functional regression: predict scalar y from functional X
+y <- rowMeans(X) + rnorm(20, sd = 0.1)
+model <- fregre.pc(fd, y, ncomp = 3)
+predictions <- predict(model, fd)
+
+# Cluster curves into groups
+clusters <- cluster.kmeans(fd, ncl = 2)
+
+# Smooth noisy curves
+S <- S.NW(t, h = 0.1)  # Nadaraya-Watson smoother
+smoothed <- S %*% X[1, ]
+```
+
+## Key Concepts
+
+### Functional Data Objects (`fdata`)
+
+The `fdata` class stores functional data as a matrix where rows are
+observations and columns are evaluation points:
+
+``` r
+fd <- fdata(data_matrix, argvals = time_points, rangeval = c(0, 1))
+```
+
+#### Identifiers and Metadata
+
+You can attach identifiers and metadata (covariates) to functional data
+objects:
+
+``` r
+# Create fdata with IDs and metadata
+meta <- data.frame(
+  group = factor(c("control", "treatment", ...)),
+  age = c(25, 32, ...),
+  response = c(0.5, 0.8, ...)
+)
+fd <- fdata(X, id = paste0("patient_", 1:n), metadata = meta)
+
+# Access fields
+fd$id              # Character vector of identifiers
+fd$metadata$group  # Access metadata columns
+
+# Subsetting preserves metadata
+fd_sub <- fd[1:10, ]  # id and metadata are also subsetted
+
+# View metadata info
+print(fd)    # Shows metadata columns
+summary(fd)  # Shows metadata types and ranges
+```
+
+**Note:** If metadata contains an `id` column or has non-default row
+names, they must match the fdata identifiers. An error is thrown on
+mismatch.
+
+### Depth Functions
+
+Depth measures how “central” or “typical” a curve is relative to a
+sample. Higher depth = more central.
+
+Use the unified
+[`depth()`](https://sipemu.github.io/fdars/reference/depth.md) function
+with a `method` parameter:
+
+``` r
+depth(fd, method = "FM")     # Fraiman-Muniz depth (default)
+depth(fd, method = "BD")     # Band depth
+depth(fd, method = "MBD")    # Modified band depth
+depth(fd, method = "mode")   # Modal depth (kernel density)
+depth(fd, method = "RP")     # Random projection depth
+depth(fd, method = "RT")     # Random Tukey depth
+depth(fd, method = "FSD")    # Functional spatial depth
+depth(fd, method = "KFSD")   # Kernel functional spatial depth
+depth(fd, method = "RPD")    # Random projection with derivatives
+```
+
+### Functional Regression
+
+Predict a scalar response from functional predictors:
+
+- `fregre.pc` - Principal component regression
+- `fregre.basis` - Basis expansion regression
+- `fregre.np` - Nonparametric kernel regression
+
+All models support [`predict()`](https://rdrr.io/r/stats/predict.html)
+for new data.
+
+### Distance Metrics
+
+Measure similarity between curves using
+[`metric()`](https://sipemu.github.io/fdars/reference/metric.md) with a
+method parameter:
+
+``` r
+metric(fd, method = "lp")        # Lp distance (default, L2 = Euclidean)
+metric(fd, method = "hausdorff") # Hausdorff distance
+metric(fd, method = "dtw")       # Dynamic time warping
+metric(fd, method = "pca")       # PCA-based semimetric
+metric(fd, method = "deriv")     # Derivative-based semimetric
+```
+
+Individual functions are also available: `metric.lp`,
+`metric.hausdorff`, `metric.DTW`, `semimetric.pca`, `semimetric.deriv`.
+
+### Outlier Detection
+
+Identify unusual curves:
+
+- `outliers.depth.trim` - Trimmed depth-based detection
+- `outliers.depth.pond` - Weighted depth-based detection
+- `outliers.lrt` - Likelihood ratio test
+- `outliers.boxplot` - Functional boxplot-based detection
+- `magnitudeshape` - Magnitude-Shape outlier detection
+- `outliergram` - Outliergram (MEI vs MBD plot)
+
+#### Labeling Outliers by ID or Metadata
+
+Both `magnitudeshape` and `outliergram` support labeling points by ID or
+metadata columns:
+
+``` r
+# Create fdata with IDs and metadata
+fd <- fdata(X, id = paste0("patient_", 1:n),
+            metadata = data.frame(subject_id = paste0("S", 1:n)))
+
+# Outliergram with custom labels
+og <- outliergram(fd)
+plot(og, label = "id")           # Label outliers with patient IDs
+plot(og, label = "subject_id")   # Label with metadata column
+plot(og, label_all = TRUE)       # Label ALL points, not just outliers
+
+# magnitudeshape with custom labels
+magnitudeshape(fd, label = "id")        # Label outliers with patient IDs
+magnitudeshape(fd, label = NULL)        # No labels
+```
+
+### Functional Statistics
+
+- `mean(fd)` - Functional mean
+- `var(fd)` - Functional variance
+- `sd(fd)` - Functional standard deviation
+- `cov(fd)` - Functional covariance
+- `gmed(fd)` - Geometric median (L1 median via Weiszfeld algorithm)
+
+### Covariance Functions and Gaussian Process Generation
+
+Generate synthetic functional data from Gaussian processes with various
+covariance kernels:
+
+``` r
+# Smooth samples with Gaussian (squared exponential) kernel
+fd_smooth <- make_gaussian_process(n = 20, t = seq(0, 1, length.out = 100),
+                                   cov = kernel_gaussian(length_scale = 0.2))
+
+# Rough samples with Matern kernel
+fd_rough <- make_gaussian_process(n = 20, t = seq(0, 1, length.out = 100),
+                                  cov = kernel_matern(nu = 1.5))
+
+# Periodic samples
+fd_periodic <- make_gaussian_process(n = 10, t = seq(0, 2, length.out = 200),
+                                     cov = kernel_periodic(period = 0.5))
+
+# Combine kernels: signal + noise
+cov_total <- kernel_add(kernel_gaussian(variance = 1), kernel_whitenoise(variance = 0.1))
+fd_noisy <- make_gaussian_process(n = 10, t = seq(0, 1, length.out = 100), cov = cov_total)
+```
+
+Available covariance functions: - `kernel_gaussian` - Squared
+exponential (RBF) kernel, infinitely smooth - `kernel_exponential` -
+Exponential kernel (Matern ν=0.5), rough - `kernel_matern` - Matern
+family with smoothness parameter ν - `kernel_brownian` - Brownian motion
+covariance (1D only) - `kernel_linear` - Linear kernel -
+`kernel_polynomial` - Polynomial kernel - `kernel_whitenoise` -
+Independent noise at each point - `kernel_periodic` - Periodic kernel
+(1D only) - `kernel_add` - Combine kernels by addition - `kernel_mult` -
+Combine kernels by multiplication
+
+### Depth-Based Medians and Trimmed Means
+
+Use the unified functions with a `method` parameter:
+
+``` r
+# Median (curve with maximum depth)
+median(fd)                          # default: FM method
+median(fd, method = "mode")         # modal depth-based median
+
+# Trimmed mean (mean of deepest curves)
+trimmed(fd, trim = 0.1)             # default: FM method
+trimmed(fd, trim = 0.1, method = "RP")  # RP depth-based trimmed mean
+
+# Trimmed variance
+trimvar(fd, trim = 0.1)             # default: FM method
+trimvar(fd, trim = 0.1, method = "mode")
+```
+
+### Visualization
+
+- `plot(fd, color = ...)` - Plot curves with coloring by numeric or
+  categorical variables
+  - `show.mean = TRUE` - Overlay group mean curves
+  - `show.ci = TRUE` - Show confidence interval ribbons per group
+- `boxplot.fdata` - Functional boxplot with depth-based envelopes
+- `magnitudeshape` - Magnitude-Shape outlier detection and visualization
+- `outliergram` - Outliergram for shape outlier detection (MEI vs MBD
+  plot)
+- `plot.fdata2pc` - FPCA visualization (components, variance, scores)
+
+### Group Comparison
+
+- `group.distance` - Compute distances between groups (centroid,
+  Hausdorff, depth-based)
+- `group.test` - Permutation test for significant group differences
+- `plot.group.distance` - Visualize group distances (heatmap,
+  dendrogram)
+
+### Clustering
+
+- `cluster.kmeans` - K-means clustering for functional data
+- `cluster.optim` - Optimal k selection using silhouette, CH, or elbow
+- `cluster.fcm` - Fuzzy C-means clustering with soft membership
+- `cluster.init` - K-means++ center initialization
+
+### Curve Registration
+
+- `register.fd` - Shift registration using cross-correlation
+
+### Feature Extraction
+
+- `localavg.fdata` - Extract local average features from curves
+
+### 2D Functional Data (Surfaces)
+
+fdars supports 2D functional data (surfaces/images). The following
+functions have full 2D support:
+
+| Category          | Functions                                                             |
+|-------------------|-----------------------------------------------------------------------|
+| **Depth**         | `depth` (methods: FM, mode, RP, RT, FSD, KFSD)                        |
+| **Distance**      | `metric.lp`, `metric.hausdorff`, `semimetric.pca`, `semimetric.deriv` |
+| **Statistics**    | `mean`, `var`, `sd`, `cov`, `gmed`, `deriv`                           |
+| **Centrality**    | `median`, `trimmed`, `trimvar` (all methods except BD, MBD, RPD)      |
+| **Regression**    | `fregre.np` (nonparametric)                                           |
+| **Visualization** | `plot` (heatmap + contours)                                           |
+
+**Note:** Band depths (BD, MBD), RPD, and DTW do not support 2D data.
+
+``` r
+# Create 2D functional data (e.g., 10 surfaces on a 20x30 grid)
+n <- 10
+m1 <- 20
+m2 <- 30
+s <- seq(0, 1, length.out = m1)
+t <- seq(0, 1, length.out = m2)
+
+# Generate surfaces: f(s,t) = sin(2*pi*s) * cos(2*pi*t) + noise
+X <- array(0, dim = c(n, m1, m2))
+for (i in 1:n) {
+  for (si in 1:m1) {
+    for (ti in 1:m2) {
+      X[i, si, ti] <- sin(2*pi*s[si]) * cos(2*pi*t[ti]) + rnorm(1, sd = 0.1)
+    }
+  }
+}
+
+fd2d <- fdata(X, argvals = list(s, t), fdata2d = TRUE)
+
+# All these work with 2D data:
+mean_surface <- mean(fd2d)           # Mean surface
+var_surface <- var(fd2d)             # Pointwise variance
+depths <- depth(fd2d)                # Depth values
+median_surface <- median(fd2d)       # Depth-based median
+gmed_surface <- gmed(fd2d)           # Geometric median
+
+# Plot 2D data (heatmap + contours)
+plot(fd2d)
+```
+
+#### Converting DataFrames to 2D fdata
+
+Use
+[`df_to_fdata2d()`](https://sipemu.github.io/fdars/reference/df_to_fdata2d.md)
+to convert long-format DataFrames to 2D functional data:
+
+``` r
+# DataFrame structure: id column, s-index column, t-value columns
+df <- data.frame(
+  id = rep(c("surf1", "surf2"), each = 5),
+  s = rep(1:5, 2),
+  t1 = rnorm(10), t2 = rnorm(10), t3 = rnorm(10)
+)
+
+# Convert to 2D fdata
+fd2d <- df_to_fdata2d(df, id_col = 1, s_col = 2)
+
+# With metadata (must have one row per surface)
+meta <- data.frame(group = c("A", "B"), value = c(1.5, 2.3))
+fd2d <- df_to_fdata2d(df, id_col = 1, s_col = 2, metadata = meta)
+```
+
+## License
+
+MIT
+
+## Author
+
+Simon Mueller
+
+## Acknowledgments
+
+- Built with [extendr](https://extendr.github.io/) for R-Rust
+  integration
+- Uses [rayon](https://github.com/rayon-rs/rayon) for parallelization
+
+# Package index
+
+## Functional Data Objects
+
+- [`fdata()`](https://sipemu.github.io/fdars/reference/fdata.md) :
+  Create a functional data object
+- [`fdata.cen()`](https://sipemu.github.io/fdars/reference/fdata.cen.md)
+  : Center functional data
+- [`deriv()`](https://sipemu.github.io/fdars/reference/deriv.md) :
+  Compute functional derivative
+- [`mean(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/mean.fdata.md)
+  : Compute functional mean
+- [`median()`](https://sipemu.github.io/fdars/reference/median.md) :
+  Compute Functional Median
+- [`trimmed()`](https://sipemu.github.io/fdars/reference/trimmed.md) :
+  Compute Functional Trimmed Mean
+- [`trimvar()`](https://sipemu.github.io/fdars/reference/trimvar.md) :
+  Compute Functional Trimmed Variance
+- [`var()`](https://sipemu.github.io/fdars/reference/var.md) :
+  Functional Variance
+- [`sd()`](https://sipemu.github.io/fdars/reference/sd.md) : Functional
+  Standard Deviation
+- [`normalize()`](https://sipemu.github.io/fdars/reference/normalize.md)
+  : Normalize functional data
+- [`gmed()`](https://sipemu.github.io/fdars/reference/gmed.md) :
+  Geometric Median of Functional Data
+- [`inprod.fdata()`](https://sipemu.github.io/fdars/reference/inprod.fdata.md)
+  : Inner Product of Functional Data
+- [`int.simpson()`](https://sipemu.github.io/fdars/reference/int.simpson.md)
+  : Utility Functions for Functional Data Analysis
+- [`localavg.fdata()`](https://sipemu.github.io/fdars/reference/localavg.fdata.md)
+  : Local Averages Feature Extraction
+- [`fdata.bootstrap()`](https://sipemu.github.io/fdars/reference/fdata.bootstrap.md)
+  : Bootstrap Functional Data
+- [`fdata.bootstrap.ci()`](https://sipemu.github.io/fdars/reference/fdata.bootstrap.ci.md)
+  : Bootstrap Confidence Intervals for Functional Statistics
+- [`df_to_fdata2d()`](https://sipemu.github.io/fdars/reference/df_to_fdata2d.md)
+  : Convert DataFrame to 2D functional data
+
+## Basis Representation
+
+- [`fdata2basis()`](https://sipemu.github.io/fdars/reference/fdata2basis.md)
+  : Convert Functional Data to Basis Coefficients
+- [`fdata2basis.2d()`](https://sipemu.github.io/fdars/reference/fdata2basis.2d.md)
+  : Convert 2D Functional Data to Tensor Product Basis Coefficients
+- [`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+  : Cross-Validation for Basis Function Number Selection
+- [`basis2fdata()`](https://sipemu.github.io/fdars/reference/basis2fdata.md)
+  : Basis Representation Functions for Functional Data
+- [`basis2fdata.2d()`](https://sipemu.github.io/fdars/reference/basis2fdata.2d.md)
+  : Reconstruct 2D Functional Data from Tensor Product Basis
+  Coefficients
+- [`fdata2fd()`](https://sipemu.github.io/fdars/reference/fdata2fd.md) :
+  Convert Functional Data to fd class
+- [`fdata2pc()`](https://sipemu.github.io/fdars/reference/fdata2pc.md) :
+  Convert Functional Data to Principal Component Scores
+- [`fdata2pls()`](https://sipemu.github.io/fdars/reference/fdata2pls.md)
+  : Convert Functional Data to PLS Scores
+- [`basis.aic()`](https://sipemu.github.io/fdars/reference/basis.aic.md)
+  : AIC for Basis Representation
+- [`basis.bic()`](https://sipemu.github.io/fdars/reference/basis.bic.md)
+  : BIC for Basis Representation
+- [`basis.gcv()`](https://sipemu.github.io/fdars/reference/basis.gcv.md)
+  : GCV Score for Basis Representation
+- [`pspline()`](https://sipemu.github.io/fdars/reference/pspline.md) :
+  P-spline Smoothing for Functional Data
+- [`pspline.2d()`](https://sipemu.github.io/fdars/reference/pspline.2d.md)
+  : P-spline Smoothing for 2D Functional Data
+
+## Depth Functions
+
+- [`depth()`](https://sipemu.github.io/fdars/reference/depth.md) : Depth
+  Functions for Functional Data
+- [`depth.BD()`](https://sipemu.github.io/fdars/reference/depth.BD.md) :
+  Band Depth
+- [`depth.FM()`](https://sipemu.github.io/fdars/reference/depth.FM.md) :
+  Fraiman-Muniz Depth
+- [`depth.FSD()`](https://sipemu.github.io/fdars/reference/depth.FSD.md)
+  : Functional Spatial Depth
+- [`depth.KFSD()`](https://sipemu.github.io/fdars/reference/depth.KFSD.md)
+  : Kernel Functional Spatial Depth
+- [`depth.MBD()`](https://sipemu.github.io/fdars/reference/depth.MBD.md)
+  : Modified Band Depth
+- [`depth.MEI()`](https://sipemu.github.io/fdars/reference/depth.MEI.md)
+  : Modified Epigraph Index
+- [`depth.mode()`](https://sipemu.github.io/fdars/reference/depth.mode.md)
+  : Modal Depth
+- [`depth.RP()`](https://sipemu.github.io/fdars/reference/depth.RP.md) :
+  Random Projection Depth
+- [`depth.RPD()`](https://sipemu.github.io/fdars/reference/depth.RPD.md)
+  : Random Projection Depth with Derivatives
+- [`depth.RT()`](https://sipemu.github.io/fdars/reference/depth.RT.md) :
+  Random Tukey Depth
+
+## Distance & Metrics
+
+- [`metric()`](https://sipemu.github.io/fdars/reference/metric.md) :
+  Distance Metrics for Functional Data
+- [`metric.DTW()`](https://sipemu.github.io/fdars/reference/metric.DTW.md)
+  : Dynamic Time Warping for Functional Data
+- [`metric.hausdorff()`](https://sipemu.github.io/fdars/reference/metric.hausdorff.md)
+  : Hausdorff Metric for Functional Data
+- [`metric.kl()`](https://sipemu.github.io/fdars/reference/metric.kl.md)
+  : Kullback-Leibler Divergence Metric for Functional Data
+- [`metric.lp()`](https://sipemu.github.io/fdars/reference/metric.lp.md)
+  : Lp Metric for Functional Data
+- [`norm()`](https://sipemu.github.io/fdars/reference/norm.md) : Compute
+  Lp norm of functional data
+- [`semimetric.basis()`](https://sipemu.github.io/fdars/reference/semimetric.basis.md)
+  : Semi-metric based on Basis Expansion
+- [`semimetric.deriv()`](https://sipemu.github.io/fdars/reference/semimetric.deriv.md)
+  : Semi-metric based on Derivatives
+- [`semimetric.fourier()`](https://sipemu.github.io/fdars/reference/semimetric.fourier.md)
+  : Semi-metric based on Fourier Coefficients (FFT)
+- [`semimetric.hshift()`](https://sipemu.github.io/fdars/reference/semimetric.hshift.md)
+  : Semi-metric based on Horizontal Shift (Time Warping)
+- [`semimetric.pca()`](https://sipemu.github.io/fdars/reference/semimetric.pca.md)
+  : Semi-metric based on Principal Components
+- [`group.distance()`](https://sipemu.github.io/fdars/reference/group.distance.md)
+  : Compute Distance/Similarity Between Groups of Functional Data
+
+## Clustering
+
+- [`cluster.fcm()`](https://sipemu.github.io/fdars/reference/cluster.fcm.md)
+  : Fuzzy C-Means Clustering for Functional Data
+- [`cluster.init()`](https://sipemu.github.io/fdars/reference/cluster.init.md)
+  : K-Means++ Center Initialization
+- [`cluster.kmeans()`](https://sipemu.github.io/fdars/reference/cluster.kmeans.md)
+  : Clustering Functions for Functional Data
+- [`cluster.optim()`](https://sipemu.github.io/fdars/reference/cluster.optim.md)
+  : Optimal Number of Clusters for Functional K-Means
+
+## Outlier Detection
+
+- [`outliergram()`](https://sipemu.github.io/fdars/reference/outliergram.md)
+  : Outliergram for Functional Data
+- [`outliers.boxplot()`](https://sipemu.github.io/fdars/reference/outliers.boxplot.md)
+  : Outlier Detection using Functional Boxplot
+- [`outliers.depth.pond()`](https://sipemu.github.io/fdars/reference/outliers.depth.pond.md)
+  : Outlier Detection for Functional Data
+- [`outliers.depth.trim()`](https://sipemu.github.io/fdars/reference/outliers.depth.trim.md)
+  : Outlier Detection using Trimmed Depth
+- [`outliers.lrt()`](https://sipemu.github.io/fdars/reference/outliers.lrt.md)
+  : LRT-based Outlier Detection for Functional Data
+- [`outliers.thres.lrt()`](https://sipemu.github.io/fdars/reference/outliers.thres.lrt.md)
+  : LRT Outlier Detection Threshold
+- [`magnitudeshape()`](https://sipemu.github.io/fdars/reference/magnitudeshape.md)
+  : Magnitude-Shape Outlier Detection for Functional Data
+
+## Regression
+
+- [`fregre.basis()`](https://sipemu.github.io/fdars/reference/fregre.basis.md)
+  : Functional Basis Regression
+- [`fregre.basis.cv()`](https://sipemu.github.io/fdars/reference/fregre.basis.cv.md)
+  : Cross-Validation for Functional Basis Regression
+- [`fregre.np()`](https://sipemu.github.io/fdars/reference/fregre.np.md)
+  : Nonparametric Functional Regression
+- [`fregre.np.cv()`](https://sipemu.github.io/fdars/reference/fregre.np.cv.md)
+  : Cross-Validation for Nonparametric Functional Regression
+- [`fregre.np.multi()`](https://sipemu.github.io/fdars/reference/fregre.np.multi.md)
+  : Nonparametric Regression with Multiple Functional Predictors
+- [`fregre.pc()`](https://sipemu.github.io/fdars/reference/fregre.pc.md)
+  : Functional Regression
+- [`fregre.pc.cv()`](https://sipemu.github.io/fdars/reference/fregre.pc.cv.md)
+  : Cross-Validation for Functional PC Regression
+- [`optim.np()`](https://sipemu.github.io/fdars/reference/optim.np.md) :
+  Optimize Bandwidth Using Cross-Validation
+- [`flm.test()`](https://sipemu.github.io/fdars/reference/flm.test.md) :
+  Statistical Tests for Functional Data
+- [`pred.MAE()`](https://sipemu.github.io/fdars/reference/pred.MAE.md) :
+  Mean Absolute Error
+- [`pred.MSE()`](https://sipemu.github.io/fdars/reference/pred.MSE.md) :
+  Mean Squared Error
+- [`pred.R2()`](https://sipemu.github.io/fdars/reference/pred.R2.md) :
+  R-Squared (Coefficient of Determination)
+- [`pred.RMSE()`](https://sipemu.github.io/fdars/reference/pred.RMSE.md)
+  : Root Mean Squared Error
+
+## Smoothing
+
+- [`S.KNN()`](https://sipemu.github.io/fdars/reference/S.KNN.md) :
+  K-Nearest Neighbors Smoother Matrix
+- [`S.LCR()`](https://sipemu.github.io/fdars/reference/S.LCR.md) : Local
+  Cubic Regression Smoother Matrix
+- [`S.LLR()`](https://sipemu.github.io/fdars/reference/S.LLR.md) : Local
+  Linear Regression Smoother Matrix
+- [`S.LPR()`](https://sipemu.github.io/fdars/reference/S.LPR.md) : Local
+  Polynomial Regression Smoother Matrix
+- [`S.NW()`](https://sipemu.github.io/fdars/reference/S.NW.md) :
+  Smoothing Functions for Functional Data
+- [`CV.S()`](https://sipemu.github.io/fdars/reference/CV.S.md) :
+  Cross-Validation for Smoother Selection
+- [`GCV.S()`](https://sipemu.github.io/fdars/reference/GCV.S.md) :
+  Generalized Cross-Validation for Smoother Selection
+- [`h.default()`](https://sipemu.github.io/fdars/reference/h.default.md)
+  : Default Bandwidth
+- [`register.fd()`](https://sipemu.github.io/fdars/reference/register.fd.md)
+  : Curve Registration (Alignment)
+
+## Kernels (Smoothing)
+
+- [`Kernel()`](https://sipemu.github.io/fdars/reference/Kernel.md) :
+  Unified Symmetric Kernel Interface
+- [`Kernel.asymmetric()`](https://sipemu.github.io/fdars/reference/Kernel.asymmetric.md)
+  : Unified Asymmetric Kernel Interface
+- [`Kernel.integrate()`](https://sipemu.github.io/fdars/reference/Kernel.integrate.md)
+  : Unified Integrated Kernel Interface
+- [`Ker.cos()`](https://sipemu.github.io/fdars/reference/Ker.cos.md) :
+  Cosine Kernel
+- [`Ker.epa()`](https://sipemu.github.io/fdars/reference/Ker.epa.md) :
+  Epanechnikov Kernel
+- [`Ker.norm()`](https://sipemu.github.io/fdars/reference/Ker.norm.md) :
+  Kernel Functions
+- [`Ker.quar()`](https://sipemu.github.io/fdars/reference/Ker.quar.md) :
+  Quartic (Biweight) Kernel
+- [`Ker.tri()`](https://sipemu.github.io/fdars/reference/Ker.tri.md) :
+  Triweight Kernel
+- [`Ker.unif()`](https://sipemu.github.io/fdars/reference/Ker.unif.md) :
+  Uniform (Rectangular) Kernel
+- [`AKer.cos()`](https://sipemu.github.io/fdars/reference/AKer.cos.md) :
+  Asymmetric Cosine Kernel
+- [`AKer.epa()`](https://sipemu.github.io/fdars/reference/AKer.epa.md) :
+  Asymmetric Epanechnikov Kernel
+- [`AKer.norm()`](https://sipemu.github.io/fdars/reference/AKer.norm.md)
+  : Asymmetric Normal Kernel
+- [`AKer.quar()`](https://sipemu.github.io/fdars/reference/AKer.quar.md)
+  : Asymmetric Quartic Kernel
+- [`AKer.tri()`](https://sipemu.github.io/fdars/reference/AKer.tri.md) :
+  Asymmetric Triweight Kernel
+- [`AKer.unif()`](https://sipemu.github.io/fdars/reference/AKer.unif.md)
+  : Asymmetric Uniform Kernel
+- [`IKer.cos()`](https://sipemu.github.io/fdars/reference/IKer.cos.md) :
+  Integrated Cosine Kernel
+- [`IKer.epa()`](https://sipemu.github.io/fdars/reference/IKer.epa.md) :
+  Integrated Epanechnikov Kernel
+- [`IKer.norm()`](https://sipemu.github.io/fdars/reference/IKer.norm.md)
+  : Integrated Normal Kernel
+- [`IKer.quar()`](https://sipemu.github.io/fdars/reference/IKer.quar.md)
+  : Integrated Quartic Kernel
+- [`IKer.tri()`](https://sipemu.github.io/fdars/reference/IKer.tri.md) :
+  Integrated Triweight Kernel
+- [`IKer.unif()`](https://sipemu.github.io/fdars/reference/IKer.unif.md)
+  : Integrated Uniform Kernel
+
+## Covariance Functions (GP)
+
+- [`kernel_add()`](https://sipemu.github.io/fdars/reference/kernel_add.md)
+  : Add Covariance Functions
+- [`kernel_brownian()`](https://sipemu.github.io/fdars/reference/kernel_brownian.md)
+  : Brownian Motion Covariance Function
+- [`kernel_exponential()`](https://sipemu.github.io/fdars/reference/kernel_exponential.md)
+  : Exponential Covariance Function
+- [`kernel_gaussian()`](https://sipemu.github.io/fdars/reference/kernel_gaussian.md)
+  : Gaussian (Squared Exponential) Covariance Function
+- [`kernel_linear()`](https://sipemu.github.io/fdars/reference/kernel_linear.md)
+  : Linear Covariance Function
+- [`kernel_matern()`](https://sipemu.github.io/fdars/reference/kernel_matern.md)
+  : Matern Covariance Function
+- [`kernel_mult()`](https://sipemu.github.io/fdars/reference/kernel_mult.md)
+  : Multiply Covariance Functions
+- [`kernel_periodic()`](https://sipemu.github.io/fdars/reference/kernel_periodic.md)
+  : Periodic Covariance Function
+- [`kernel_polynomial()`](https://sipemu.github.io/fdars/reference/kernel_polynomial.md)
+  : Polynomial Covariance Function
+- [`kernel_whitenoise()`](https://sipemu.github.io/fdars/reference/kernel_whitenoise.md)
+  : White Noise Covariance Function
+- [`make_gaussian_process()`](https://sipemu.github.io/fdars/reference/make_gaussian_process.md)
+  : Generate Gaussian Process Samples
+- [`cov()`](https://sipemu.github.io/fdars/reference/cov.md) :
+  Functional Covariance Function
+
+## Random Processes
+
+- [`r.bridge()`](https://sipemu.github.io/fdars/reference/r.bridge.md) :
+  Generate Brownian Bridge
+- [`r.brownian()`](https://sipemu.github.io/fdars/reference/r.brownian.md)
+  : Generate Brownian Motion
+- [`r.ou()`](https://sipemu.github.io/fdars/reference/r.ou.md) :
+  Generate Ornstein-Uhlenbeck Process
+
+## Statistical Tests
+
+- [`fmean.test.fdata()`](https://sipemu.github.io/fdars/reference/fmean.test.fdata.md)
+  : Test for Equality of Functional Means
+- [`group.test()`](https://sipemu.github.io/fdars/reference/group.test.md)
+  : Permutation Test for Group Differences
+
+## Plotting
+
+- [`autoplot(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/autoplot.fdata.md)
+  : Create a ggplot for fdata objects
+- [`plot(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/plot.fdata.md)
+  : Plot method for fdata objects
+- [`boxplot(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/boxplot.fdata.md)
+  : Functional Boxplot
+- [`plot(`*`<fdata2pc>`*`)`](https://sipemu.github.io/fdars/reference/plot.fdata2pc.md)
+  : Plot FPCA Results
+- [`plot(`*`<basis.cv>`*`)`](https://sipemu.github.io/fdars/reference/plot.basis.cv.md)
+  : Plot method for basis.cv objects
+- [`plot(`*`<cluster.fcm>`*`)`](https://sipemu.github.io/fdars/reference/plot.cluster.fcm.md)
+  : Plot Method for cluster.fcm Objects
+- [`plot(`*`<cluster.kmeans>`*`)`](https://sipemu.github.io/fdars/reference/plot.cluster.kmeans.md)
+  : Plot Method for cluster.kmeans Objects
+- [`plot(`*`<cluster.optim>`*`)`](https://sipemu.github.io/fdars/reference/plot.cluster.optim.md)
+  : Plot Method for cluster.optim Objects
+- [`plot(`*`<group.distance>`*`)`](https://sipemu.github.io/fdars/reference/plot.group.distance.md)
+  : Plot method for group.distance
+- [`plot(`*`<outliergram>`*`)`](https://sipemu.github.io/fdars/reference/plot.outliergram.md)
+  : Plot Method for Outliergram Objects
+- [`plot(`*`<outliers.fdata>`*`)`](https://sipemu.github.io/fdars/reference/plot.outliers.fdata.md)
+  : Plot method for outliers.fdata objects
+- [`plot(`*`<pspline>`*`)`](https://sipemu.github.io/fdars/reference/plot.pspline.md)
+  : Plot method for pspline objects
+- [`plot(`*`<pspline.2d>`*`)`](https://sipemu.github.io/fdars/reference/plot.pspline.2d.md)
+  : Plot method for pspline.2d objects
+- [`plot(`*`<register.fd>`*`)`](https://sipemu.github.io/fdars/reference/plot.register.fd.md)
+  : Plot Method for register.fd Objects
+- [`plot(`*`<magnitudeshape>`*`)`](https://sipemu.github.io/fdars/reference/plot.magnitudeshape.md)
+  : Plot Method for magnitudeshape Objects
+
+## Prediction
+
+- [`predict(`*`<fregre.fd>`*`)`](https://sipemu.github.io/fdars/reference/predict.fregre.fd.md)
+  : Predict Method for Functional Regression (fregre.fd)
+- [`predict(`*`<fregre.np>`*`)`](https://sipemu.github.io/fdars/reference/predict.fregre.np.md)
+  : Predict Method for Nonparametric Functional Regression (fregre.np)
+- [`predict(`*`<fregre.np.multi>`*`)`](https://sipemu.github.io/fdars/reference/predict.fregre.np.multi.md)
+  : Predict method for fregre.np.multi
+
+## Print & Summary
+
+- [`print(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/print.fdata.md)
+  : Print method for fdata objects
+- [`print(`*`<fdata2pc>`*`)`](https://sipemu.github.io/fdars/reference/print.fdata2pc.md)
+  : Print Method for FPCA Results
+- [`print(`*`<fdata.bootstrap.ci>`*`)`](https://sipemu.github.io/fdars/reference/print.fdata.bootstrap.ci.md)
+  : Print method for bootstrap CI
+- [`print(`*`<basis.cv>`*`)`](https://sipemu.github.io/fdars/reference/print.basis.cv.md)
+  : Print method for basis.cv objects
+- [`print(`*`<cluster.fcm>`*`)`](https://sipemu.github.io/fdars/reference/print.cluster.fcm.md)
+  : Print Method for cluster.fcm Objects
+- [`print(`*`<cluster.kmeans>`*`)`](https://sipemu.github.io/fdars/reference/print.cluster.kmeans.md)
+  : Print Method for cluster.kmeans Objects
+- [`print(`*`<cluster.optim>`*`)`](https://sipemu.github.io/fdars/reference/print.cluster.optim.md)
+  : Print Method for cluster.optim Objects
+- [`print(`*`<fbplot>`*`)`](https://sipemu.github.io/fdars/reference/print.fbplot.md)
+  : Print Method for fbplot Objects
+- [`print(`*`<fregre.fd>`*`)`](https://sipemu.github.io/fdars/reference/print.fregre.fd.md)
+  : Print method for fregre objects
+- [`print(`*`<fregre.np>`*`)`](https://sipemu.github.io/fdars/reference/print.fregre.np.md)
+  : Print method for fregre.np objects
+- [`print(`*`<fregre.np.multi>`*`)`](https://sipemu.github.io/fdars/reference/print.fregre.np.multi.md)
+  : Print method for fregre.np.multi
+- [`print(`*`<group.distance>`*`)`](https://sipemu.github.io/fdars/reference/print.group.distance.md)
+  : Print method for group.distance
+- [`print(`*`<group.test>`*`)`](https://sipemu.github.io/fdars/reference/print.group.test.md)
+  : Print method for group.test
+- [`print(`*`<kernel>`*`)`](https://sipemu.github.io/fdars/reference/print.kernel.md)
+  : Print Method for Covariance Functions
+- [`print(`*`<magnitudeshape>`*`)`](https://sipemu.github.io/fdars/reference/print.magnitudeshape.md)
+  : Print Method for magnitudeshape Objects
+- [`print(`*`<outliergram>`*`)`](https://sipemu.github.io/fdars/reference/print.outliergram.md)
+  : Print Method for Outliergram Objects
+- [`print(`*`<outliers.fdata>`*`)`](https://sipemu.github.io/fdars/reference/print.outliers.fdata.md)
+  : Print method for outliers.fdata objects
+- [`print(`*`<pspline>`*`)`](https://sipemu.github.io/fdars/reference/print.pspline.md)
+  : Print method for pspline objects
+- [`print(`*`<pspline.2d>`*`)`](https://sipemu.github.io/fdars/reference/print.pspline.2d.md)
+  : Print method for pspline.2d objects
+- [`print(`*`<register.fd>`*`)`](https://sipemu.github.io/fdars/reference/print.register.fd.md)
+  : Print Method for register.fd Objects
+- [`summary(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/summary.fdata.md)
+  : Summary method for fdata objects
+
+## Other
+
+- [`` `[`( ``*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/sub-.fdata.md)
+  : Subset method for fdata objects
+- [`kernels`](https://sipemu.github.io/fdars/reference/kernels.md) :
+  Covariance Kernel Functions for Gaussian Processes
+- [`fdars`](https://sipemu.github.io/fdars/reference/fdars-package.md)
+  [`fdars-package`](https://sipemu.github.io/fdars/reference/fdars-package.md)
+  : fdars: Functional Data Analysis in Rust
+
+# Articles
+
+### Getting Started
+
+- [Introduction to
+  fdars](https://sipemu.github.io/fdars/articles/introduction.md):
+
+### Core Methods
+
+- [Finding the Best Basis
+  Representation](https://sipemu.github.io/fdars/articles/basis-representation.md):
+- [Functional Depth
+  Functions](https://sipemu.github.io/fdars/articles/depth-functions.md):
+- [Distance Metrics and
+  Semimetrics](https://sipemu.github.io/fdars/articles/distance-metrics.md):
+
+### Analysis
+
+- [Functional
+  Clustering](https://sipemu.github.io/fdars/articles/clustering.md):
+- [Outlier
+  Detection](https://sipemu.github.io/fdars/articles/outlier-detection.md):
+- [Functional
+  Regression](https://sipemu.github.io/fdars/articles/regression.md):
+
+### Advanced
+
+- [Covariance Functions and Gaussian Process
+  Generation](https://sipemu.github.io/fdars/articles/covariance-functions.md):
