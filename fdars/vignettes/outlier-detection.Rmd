@@ -24,6 +24,7 @@ methods based on functional depth and likelihood ratio tests.
 
 ```{r setup}
 library(fdars)
+library(ggplot2)
 
 # Generate normal data
 set.seed(42)

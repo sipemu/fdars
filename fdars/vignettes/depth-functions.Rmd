@@ -28,6 +28,7 @@ multivariate data) to the infinite-dimensional setting of functional data.
 
 ```{r setup}
 library(fdars)
+library(ggplot2)
 
 # Create example data
 set.seed(42)

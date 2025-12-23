@@ -27,6 +27,7 @@ Functional clustering groups curves into clusters based on their similarity.
 
 ```{r setup}
 library(fdars)
+library(ggplot2)
 
 # Generate data with 3 distinct clusters
 set.seed(42)

@@ -50,6 +50,7 @@ remotes::install_github("sipemu/fdars")
 
 ```{r setup}
 library(fdars)
+library(ggplot2)
 ```
 
 ### Creating Functional Data

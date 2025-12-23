@@ -35,6 +35,7 @@ revealing the true underlying signal. This is essential for:
 
 ```{r setup}
 library(fdars)
+library(ggplot2)
 set.seed(42)
 ```
 
@@ -87,11 +88,29 @@ heights_noisy <- heights + matrix(rnorm(length(heights), sd = noise_sd),
                                    nrow = nrow(heights))
 fd_noisy <- fdata(heights_noisy, argvals = age)
 
-# Compare original and noisy
-par(mfrow = c(1, 2))
-plot(fd_raw[1:5, ], main = "Original (5 curves)", ylim = range(heights_noisy[1:5, ]))
-plot(fd_noisy[1:5, ], main = "With Noise (5 curves)", ylim = range(heights_noisy[1:5, ]))
-par(mfrow = c(1, 1))
+# Compare original and noisy using faceted ggplot
+df_compare <- rbind(
+  data.frame(
+    age = rep(age, 5),
+    height = as.vector(t(fd_raw$data[1:5, ])),
+    curve = rep(1:5, each = length(age)),
+    type = "Original"
+  ),
+  data.frame(
+    age = rep(age, 5),
+    height = as.vector(t(fd_noisy$data[1:5, ])),
+    curve = rep(1:5, each = length(age)),
+    type = "With Noise"
+  )
+)
+df_compare$curve <- factor(df_compare$curve)
+
+ggplot(df_compare, aes(x = age, y = height, color = curve)) +
+  geom_line() +
+  facet_wrap(~ type) +
+  labs(x = "Age (years)", y = "Height (cm)", color = "Curve") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 ## Method 1: P-spline Smoothing
@@ -119,13 +138,25 @@ print(fd_pspline)
 ```{r plot-pspline}
 # Compare noisy vs smoothed for first curve
 idx <- 1
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60",
-     main = "P-spline Smoothing", xlab = "Age (years)", ylab = "Height (cm)")
-lines(age, fd_pspline$fdata$data[idx, ], col = "blue", lwd = 2)
-lines(age, fd_raw$data[idx, ], col = "red", lwd = 1, lty = 2)
-legend("bottomright", c("Noisy data", "P-spline smooth", "Original"),
-       col = c("gray60", "blue", "red"), pch = c(16, NA, NA),
-       lty = c(NA, 1, 2), lwd = c(NA, 2, 1))
+df_pspline <- data.frame(
+  age = rep(age, 3),
+  height = c(fd_noisy$data[idx, ], fd_pspline$fdata$data[idx, ], fd_raw$data[idx, ]),
+  type = factor(rep(c("Noisy data", "P-spline smooth", "Original"), each = length(age)),
+                levels = c("Noisy data", "P-spline smooth", "Original"))
+)
+
+ggplot(df_pspline, aes(x = age, y = height, color = type, linetype = type)) +
+  geom_point(data = subset(df_pspline, type == "Noisy data"),
+             color = "gray60", size = 1) +
+  geom_line(data = subset(df_pspline, type != "Noisy data"), linewidth = 1) +
+  scale_color_manual(values = c("Noisy data" = "gray60", "P-spline smooth" = "blue",
+                                 "Original" = "red")) +
+  scale_linetype_manual(values = c("Noisy data" = "blank", "P-spline smooth" = "solid",
+                                    "Original" = "dashed")) +
+  labs(x = "Age (years)", y = "Height (cm)", title = "P-spline Smoothing",
+       color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 ### Effect of Smoothing Parameter
@@ -135,23 +166,31 @@ legend("bottomright", c("Noisy data", "P-spline smooth", "Original"),
 fd_less <- pspline(fd_noisy, lambda = 0.001)   # Less smoothing
 fd_more <- pspline(fd_noisy, lambda = 100)     # More smoothing
 
-par(mfrow = c(1, 3))
 idx <- 1
-ylim <- range(fd_noisy$data[idx, ])
+df_lambda <- rbind(
+  data.frame(age = age, height = fd_noisy$data[idx, ], type = "data",
+             lambda = "lambda = 0.001"),
+  data.frame(age = age, height = fd_less$fdata$data[idx, ], type = "smooth",
+             lambda = "lambda = 0.001"),
+  data.frame(age = age, height = fd_noisy$data[idx, ], type = "data",
+             lambda = "Optimal (GCV)"),
+  data.frame(age = age, height = fd_pspline$fdata$data[idx, ], type = "smooth",
+             lambda = "Optimal (GCV)"),
+  data.frame(age = age, height = fd_noisy$data[idx, ], type = "data",
+             lambda = "lambda = 100"),
+  data.frame(age = age, height = fd_more$fdata$data[idx, ], type = "smooth",
+             lambda = "lambda = 100")
+)
+df_lambda$lambda <- factor(df_lambda$lambda,
+                            levels = c("lambda = 0.001", "Optimal (GCV)", "lambda = 100"))
 
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60",
-     main = expression(lambda == 0.001), ylim = ylim)
-lines(age, fd_less$fdata$data[idx, ], col = "blue", lwd = 2)
-
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60",
-     main = "Optimal (GCV)", ylim = ylim)
-lines(age, fd_pspline$fdata$data[idx, ], col = "blue", lwd = 2)
-
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60",
-     main = expression(lambda == 100), ylim = ylim)
-lines(age, fd_more$fdata$data[idx, ], col = "blue", lwd = 2)
-
-par(mfrow = c(1, 1))
+ggplot(df_lambda, aes(x = age, y = height)) +
+  geom_point(data = subset(df_lambda, type == "data"), color = "gray60", size = 1) +
+  geom_line(data = subset(df_lambda, type == "smooth"), color = "blue", linewidth = 1) +
+  facet_wrap(~ lambda) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Effect of Smoothing Parameter") +
+  theme_minimal()
 ```
 
 ## Method 2: Kernel Smoothers
@@ -191,14 +230,26 @@ for (i in 1:nrow(fd_llr$data)) {
 
 ```{r compare-kernels}
 idx <- 1
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60",
-     main = "Kernel Smoother Comparison", xlab = "Age", ylab = "Height (cm)")
-lines(age, fd_kernel$data[idx, ], col = "blue", lwd = 2)
-lines(age, fd_llr$data[idx, ], col = "darkgreen", lwd = 2)
-lines(age, fd_raw$data[idx, ], col = "red", lty = 2)
-legend("bottomright", c("Data", "Nadaraya-Watson", "Local Linear", "Original"),
-       col = c("gray60", "blue", "darkgreen", "red"),
-       pch = c(16, NA, NA, NA), lty = c(NA, 1, 1, 2), lwd = c(NA, 2, 2, 1))
+df_kernels <- data.frame(
+  age = rep(age, 4),
+  height = c(fd_noisy$data[idx, ], fd_kernel$data[idx, ],
+             fd_llr$data[idx, ], fd_raw$data[idx, ]),
+  type = factor(rep(c("Data", "Nadaraya-Watson", "Local Linear", "Original"),
+                    each = length(age)),
+                levels = c("Data", "Nadaraya-Watson", "Local Linear", "Original"))
+)
+
+ggplot(df_kernels, aes(x = age, y = height, color = type, linetype = type)) +
+  geom_point(data = subset(df_kernels, type == "Data"), size = 1) +
+  geom_line(data = subset(df_kernels, type != "Data"), linewidth = 1) +
+  scale_color_manual(values = c("Data" = "gray60", "Nadaraya-Watson" = "blue",
+                                 "Local Linear" = "darkgreen", "Original" = "red")) +
+  scale_linetype_manual(values = c("Data" = "blank", "Nadaraya-Watson" = "solid",
+                                    "Local Linear" = "solid", "Original" = "dashed")) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Kernel Smoother Comparison", color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 ### Bandwidth Selection
@@ -224,13 +275,24 @@ fd_basis <- basis2fdata(coefs, argvals = age, type = "bspline")
 
 # Compare
 idx <- 1
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60",
-     main = "B-spline Basis (K=12)", xlab = "Age", ylab = "Height (cm)")
-lines(age, fd_basis$data[idx, ], col = "purple", lwd = 2)
-lines(age, fd_raw$data[idx, ], col = "red", lty = 2)
-legend("bottomright", c("Data", "B-spline", "Original"),
-       col = c("gray60", "purple", "red"),
-       pch = c(16, NA, NA), lty = c(NA, 1, 2), lwd = c(NA, 2, 1))
+df_bspline <- data.frame(
+  age = rep(age, 3),
+  height = c(fd_noisy$data[idx, ], fd_basis$data[idx, ], fd_raw$data[idx, ]),
+  type = factor(rep(c("Data", "B-spline", "Original"), each = length(age)),
+                levels = c("Data", "B-spline", "Original"))
+)
+
+ggplot(df_bspline, aes(x = age, y = height, color = type, linetype = type)) +
+  geom_point(data = subset(df_bspline, type == "Data"), size = 1) +
+  geom_line(data = subset(df_bspline, type != "Data"), linewidth = 1) +
+  scale_color_manual(values = c("Data" = "gray60", "B-spline" = "purple",
+                                 "Original" = "red")) +
+  scale_linetype_manual(values = c("Data" = "blank", "B-spline" = "solid",
+                                    "Original" = "dashed")) +
+  labs(x = "Age (years)", y = "Height (cm)", title = "B-spline Basis (K=12)",
+       color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 ### Automatic Basis Selection
@@ -272,20 +334,30 @@ smooth_kernel <- fd_llr$data[idx, ]
 coefs_opt <- fdata2basis(fd_noisy, nbasis = optimal_nbasis, type = "bspline")
 smooth_basis <- basis2fdata(coefs_opt, argvals = age, type = "bspline")$data[idx, ]
 
-# Plot comparison
-plot(age, fd_noisy$data[idx, ], pch = 16, col = "gray60", cex = 0.8,
-     main = "Smoothing Method Comparison",
-     xlab = "Age (years)", ylab = "Height (cm)")
-lines(age, smooth_pspline, col = "blue", lwd = 2)
-lines(age, smooth_kernel, col = "darkgreen", lwd = 2)
-lines(age, smooth_basis, col = "purple", lwd = 2)
-lines(age, fd_raw$data[idx, ], col = "red", lty = 2, lwd = 1.5)
+# Create data frame for plotting
+df_all <- data.frame(
+  age = rep(age, 5),
+  height = c(fd_noisy$data[idx, ], smooth_pspline, smooth_kernel,
+             smooth_basis, fd_raw$data[idx, ]),
+  method = factor(rep(c("Noisy data", "P-spline", "Local Linear",
+                        "B-spline basis", "Original"), each = length(age)),
+                  levels = c("Noisy data", "P-spline", "Local Linear",
+                             "B-spline basis", "Original"))
+)
 
-legend("bottomright",
-       c("Noisy data", "P-spline", "Local Linear", "B-spline basis", "Original"),
-       col = c("gray60", "blue", "darkgreen", "purple", "red"),
-       pch = c(16, NA, NA, NA, NA), lty = c(NA, 1, 1, 1, 2),
-       lwd = c(NA, 2, 2, 2, 1.5), cex = 0.9)
+ggplot(df_all, aes(x = age, y = height, color = method, linetype = method)) +
+  geom_point(data = subset(df_all, method == "Noisy data"), size = 1) +
+  geom_line(data = subset(df_all, method != "Noisy data"), linewidth = 1) +
+  scale_color_manual(values = c("Noisy data" = "gray60", "P-spline" = "blue",
+                                 "Local Linear" = "darkgreen", "B-spline basis" = "purple",
+                                 "Original" = "red")) +
+  scale_linetype_manual(values = c("Noisy data" = "blank", "P-spline" = "solid",
+                                    "Local Linear" = "solid", "B-spline basis" = "solid",
+                                    "Original" = "dashed")) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Smoothing Method Comparison", color = NULL, linetype = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 ## Mean and Variability
@@ -302,21 +374,21 @@ mean_curve <- mean(fd_smooth)
 # Standard deviation at each point
 sd_curve <- sd(fd_smooth)
 
-# Plot mean with confidence band
-plot(age, mean_curve$data[1, ], type = "l", lwd = 2, col = "blue",
-     main = "Mean Growth Curve with Variability Band",
-     xlab = "Age (years)", ylab = "Height (cm)",
-     ylim = c(min(mean_curve$data - 2*sd_curve$data),
-              max(mean_curve$data + 2*sd_curve$data)))
+# Create data frame for plotting
+df_mean <- data.frame(
+  age = age,
+  mean = mean_curve$data[1, ],
+  lower = mean_curve$data[1, ] - 2 * sd_curve$data[1, ],
+  upper = mean_curve$data[1, ] + 2 * sd_curve$data[1, ]
+)
 
-polygon(c(age, rev(age)),
-        c(mean_curve$data[1, ] - 2*sd_curve$data[1, ],
-          rev(mean_curve$data[1, ] + 2*sd_curve$data[1, ])),
-        col = rgb(0, 0, 1, 0.2), border = NA)
-
-lines(age, mean_curve$data[1, ], lwd = 2, col = "blue")
-legend("bottomright", c("Mean", "Mean +/- 2 SD"),
-       col = c("blue", rgb(0, 0, 1, 0.2)), lwd = c(2, 10))
+ggplot(df_mean, aes(x = age)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "blue", alpha = 0.2) +
+  geom_line(aes(y = mean), color = "blue", linewidth = 1.2) +
+  labs(x = "Age (years)", y = "Height (cm)",
+       title = "Mean Growth Curve with Variability Band",
+       subtitle = "Shaded region: Mean +/- 2 SD") +
+  theme_minimal()
 ```
 
 ## Summary: When to Use Each Method
