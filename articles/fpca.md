@@ -135,7 +135,8 @@ The output shows:
 ### Principal Component Functions
 
 The [`plot()`](https://rdrr.io/r/graphics/plot.default.html) method with
-`type = "components"` shows how each PC affects the mean curve:
+`type = "components"` shows how each PC affects the mean curve. Each
+component is displayed in its own facet for clear comparison:
 
 ``` r
 plot(fpca, type = "components", ncomp = 3, multiple = 2)
@@ -143,11 +144,11 @@ plot(fpca, type = "components", ncomp = 3, multiple = 2)
 
 ![](fpca_files/figure-html/plot-components-1.png)
 
-For each principal component, the plot shows:
+Each facet shows one principal component with:
 
-- **Solid line**: Mean function $\mu(t)$
-- **Dashed line**: Mean + perturbation ($\mu + c \cdot \phi_{k}$)
-- **Dotted line**: Mean - perturbation ($\mu - c \cdot \phi_{k}$)
+- **Black solid line**: Mean function $\mu(t)$
+- **Blue dashed line**: Mean + perturbation ($\mu + c \cdot \phi_{k}$)
+- **Coral dotted line**: Mean - perturbation ($\mu - c \cdot \phi_{k}$)
 
 where $c = 2 \times \sqrt{\lambda_{k}}$ scales the perturbation by the
 component’s importance.
@@ -199,7 +200,9 @@ criteria:
 
 ### Score Plot
 
-The scores show where each observation falls in PC space:
+The scores show where each observation falls in PC space. Each point is
+labeled with its observation ID, allowing you to identify specific
+curves of interest:
 
 ``` r
 plot(fpca, type = "scores")
@@ -209,6 +212,51 @@ plot(fpca, type = "scores")
 
 Curves with similar scores have similar shapes. Outliers appear far from
 the center.
+
+### Plotting Individual Curves by ID
+
+After identifying interesting observations in the score plot (e.g.,
+outliers or extreme cases), you can plot them separately to understand
+what makes them unusual:
+
+``` r
+# Identify extreme observations from the score plot
+# High PC1 = taller individuals, Low PC1 = shorter individuals
+# High PC2 = later maturation, Low PC2 = earlier maturation
+
+# Find observations at extremes
+extreme_tall <- which.max(fpca$x[, 1])
+extreme_short <- which.min(fpca$x[, 1])
+extreme_late <- which.max(fpca$x[, 2])
+extreme_early <- which.min(fpca$x[, 2])
+
+# Plot these specific curves
+ids_of_interest <- c(extreme_tall, extreme_short, extreme_late, extreme_early)
+labels <- c("Tallest (high PC1)", "Shortest (low PC1)",
+            "Late maturer (high PC2)", "Early maturer (low PC2)")
+
+df_selected <- data.frame(
+  t = rep(t, length(ids_of_interest)),
+  height = as.vector(t(fd$data[ids_of_interest, ])),
+  curve = factor(rep(labels, each = m), levels = labels),
+  id = rep(ids_of_interest, each = m)
+)
+
+ggplot(df_selected, aes(x = t, y = height, color = curve)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Curves at Score Plot Extremes",
+       subtitle = paste("IDs:", paste(ids_of_interest, collapse = ", ")),
+       x = "Age (years)", y = "Height (cm)", color = "") +
+  theme(legend.position = "bottom")
+```
+
+![](fpca_files/figure-html/plot-individual-curves-1.png)
+
+This workflow allows you to: 1. Identify interesting observations in the
+score plot by their IDs 2. Extract and visualize those specific curves
+3. Understand why certain observations are outliers or have extreme
+scores
 
 ## Benefits of FPCA
 
