@@ -4,29 +4,90 @@
 
 #' Outlier Detection using Weighted Depth
 #'
-#' Detects outliers based on depth with bootstrap resampling.
+#' Detects outliers based on depth with bootstrap resampling. The threshold
+#' for outlier detection can be computed using different methods.
 #'
 #' @param fdataobj An object of class 'fdata'.
 #' @param nb Number of bootstrap samples. Default is 200.
 #' @param dfunc Depth function to use. Default is depth.mode.
-#' @param quan Quantile for outlier cutoff. Default is 0.5.
+#' @param threshold_method Method for computing the outlier threshold. Options:
+#'   \describe{
+#'     \item{"quantile"}{Use quantile of weighted depths (default). Curves with
+#'       depth below this quantile are flagged as outliers.}
+#'     \item{"mad"}{Use median - k * MAD of weighted depths. More robust to
+#'       existing outliers in the data.}
+#'     \item{"iqr"}{Use Q1 - k * IQR, similar to boxplot whiskers.}
+#'   }
+#' @param quan Quantile for outlier cutoff when \code{threshold_method = "quantile"}.
+#'   Default is 0.1, meaning curves with depth in the bottom 10% are flagged.
+#'   Lower values detect fewer outliers.
+#' @param k Multiplier for MAD or IQR methods. Default is 2.5 for MAD and 1.5
+#'   for IQR. Higher values detect fewer outliers.
 #' @param ... Additional arguments passed to depth function.
 #'
 #' @return A list of class 'outliers.fdata' with components:
 #' \describe{
 #'   \item{outliers}{Indices of detected outliers}
 #'   \item{depths}{Depth values for all curves}
+#'   \item{weighted_depths}{Bootstrap-weighted depth values}
 #'   \item{cutoff}{Depth cutoff used}
+#'   \item{threshold_method}{Method used for threshold computation}
+#'   \item{fdataobj}{Original fdata object}
+#' }
+#'
+#' @details
+#' The function first computes depth values for all curves, then uses bootstrap
+#' resampling to obtain weighted depths that are more robust to sampling variability.
+#'
+#' \strong{Threshold Methods:}
+#' \itemize{
+#'   \item \strong{quantile}: Flags curves with depth below the specified quantile.
+#'     With \code{quan = 0.1}, approximately 10% of curves would be flagged under
+#'     the null hypothesis of no outliers. Suitable when you expect a specific
+#'     proportion of outliers.
+#'   \item \strong{mad}: Uses \code{median(depths) - k * MAD(depths)} as threshold.
+#'     More robust because MAD is not influenced by extreme values. With k = 2.5,
+#'     this corresponds roughly to a 1-2% false positive rate under normality.
+#'   \item \strong{iqr}: Uses \code{Q1 - k * IQR} as threshold, similar to boxplot
+#'     outlier detection. With k = 1.5, corresponds to the standard boxplot fence.
 #' }
 #'
 #' @export
 #' @examples
-#' fd <- fdata(matrix(rnorm(200), 20, 10))
-#' out <- outliers.depth.pond(fd, nb = 50)
+#' # Create data with outliers
+#' set.seed(42)
+#' t <- seq(0, 1, length.out = 50)
+#' X <- matrix(0, 30, 50)
+#' for (i in 1:28) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.2)
+#' X[29, ] <- sin(2*pi*t) + 3  # outlier
+#' X[30, ] <- -sin(2*pi*t)     # outlier
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Default: quantile method
+#' out1 <- outliers.depth.pond(fd, nb = 50, quan = 0.1)
+#'
+#' # MAD method (more robust)
+#' out2 <- outliers.depth.pond(fd, nb = 50, threshold_method = "mad", k = 2.5)
+#'
+#' # IQR method (boxplot-like)
+#' out3 <- outliers.depth.pond(fd, nb = 50, threshold_method = "iqr", k = 1.5)
 outliers.depth.pond <- function(fdataobj, nb = 200, dfunc = depth.mode,
-                                 quan = 0.5, ...) {
+                                 threshold_method = c("quantile", "mad", "iqr"),
+                                 quan = 0.1, k = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
+  }
+
+  threshold_method <- match.arg(threshold_method)
+
+  # Set default k based on method
+
+  if (is.null(k)) {
+    k <- switch(threshold_method,
+      "mad" = 2.5,
+      "iqr" = 1.5,
+      2.5  # default for quantile (not used)
+    )
   }
 
   n <- nrow(fdataobj$data)
@@ -48,10 +109,25 @@ outliers.depth.pond <- function(fdataobj, nb = 200, dfunc = depth.mode,
   # Compute weighted depth (average over bootstrap samples)
   weighted_depths <- colMeans(boot_depths)
 
-  # Determine cutoff
-  cutoff <- quantile(weighted_depths, quan)
+  # Determine cutoff based on threshold method
+  cutoff <- switch(threshold_method,
+    "quantile" = {
+      quantile(weighted_depths, quan)
+    },
+    "mad" = {
+      med <- median(weighted_depths)
+      mad_val <- mad(weighted_depths, constant = 1.4826)
+      med - k * mad_val
+    },
+    "iqr" = {
+      q1 <- quantile(weighted_depths, 0.25)
+      q3 <- quantile(weighted_depths, 0.75)
+      iqr_val <- q3 - q1
+      q1 - k * iqr_val
+    }
+  )
 
-  # Identify outliers
+  # Identify outliers (curves with depth below cutoff)
   outliers <- which(depths < cutoff)
 
   structure(
@@ -59,7 +135,8 @@ outliers.depth.pond <- function(fdataobj, nb = 200, dfunc = depth.mode,
       outliers = outliers,
       depths = depths,
       weighted_depths = weighted_depths,
-      cutoff = cutoff,
+      cutoff = unname(cutoff),
+      threshold_method = threshold_method,
       fdataobj = fdataobj
     ),
     class = "outliers.fdata"
@@ -125,14 +202,29 @@ outliers.depth.trim <- function(fdataobj, trim = 0.1, dfunc = depth.mode, ...) {
 #' @export
 print.outliers.fdata <- function(x, ...) {
   cat("Functional data outlier detection\n")
-  cat("  Number of observations:", length(x$depths), "\n")
+
+  # Handle both depths and distances (LRT uses distances)
+  n_obs <- if (!is.null(x$depths)) length(x$depths) else length(x$distances)
+  cat("  Number of observations:", n_obs, "\n")
   cat("  Number of outliers:", length(x$outliers), "\n")
+
   if (length(x$outliers) > 0) {
     cat("  Outlier indices:", head(x$outliers, 10))
     if (length(x$outliers) > 10) cat(" ...")
     cat("\n")
   }
-  cat("  Depth cutoff:", x$cutoff, "\n")
+
+  if (!is.null(x$threshold_method)) {
+    cat("  Threshold method:", x$threshold_method, "\n")
+  }
+
+  # Handle both cutoff (depth methods) and threshold (LRT)
+  if (!is.null(x$cutoff) && !is.na(x$cutoff)) {
+    cat("  Depth cutoff:", round(x$cutoff, 4), "\n")
+  } else if (!is.null(x$threshold)) {
+    cat("  LRT threshold:", round(x$threshold, 4), "\n")
+  }
+
   invisible(x)
 }
 
