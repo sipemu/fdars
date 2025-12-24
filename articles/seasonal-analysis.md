@@ -380,25 +380,55 @@ grid.arrange(p1, p2, p3, ncol = 1)
 
 ![](seasonal-analysis_files/figure-html/peak-comparison-plot-1.png)
 
+**Why peak detection in noisy signals is challenging:** Noise creates
+many local maxima that are not true peaks. Without smoothing, peak
+detection algorithms struggle to distinguish genuine seasonal peaks from
+random fluctuations. The `min_distance` parameter helps, but cannot
+fully solve the problem when noise amplitude is comparable to the
+signal.
+
 **Key insight:** For seasonal data, use Fourier basis smoothing with
-[`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
-to let CV automatically select the optimal number of basis functions.
+`smooth_first = TRUE`. The Fourier basis is ideal for periodic signals
+because it naturally captures oscillatory patterns while suppressing
+noise. GCV automatically selects the optimal number of basis functions,
+balancing smoothness and fidelity to the data.
 
 ### Prominence Filtering
 
 Prominence measures how much a peak stands out from surrounding values.
-Use it to filter minor peaks.
+Use it to filter minor peaks. For best results with noisy data, combine
+prominence filtering with smoothing.
 
 ``` r
-# Compare prominence thresholds
-peaks_low_prom <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1)
-peaks_high_prom <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5)
+# Compare prominence thresholds without smoothing (less reliable)
+peaks_low_prom_raw <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1)
+peaks_high_prom_raw <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5)
 
-cat("Low prominence (0.1):", nrow(peaks_low_prom$peaks[[1]]), "peaks\n")
-#> Low prominence (0.1): 4 peaks
-cat("High prominence (0.5):", nrow(peaks_high_prom$peaks[[1]]), "peaks\n")
-#> High prominence (0.5): 1 peaks
+cat("Without smoothing:\n")
+#> Without smoothing:
+cat("  Low prominence (0.1):", nrow(peaks_low_prom_raw$peaks[[1]]), "peaks\n")
+#>   Low prominence (0.1): 4 peaks
+cat("  High prominence (0.5):", nrow(peaks_high_prom_raw$peaks[[1]]), "peaks\n")
+#>   High prominence (0.5): 1 peaks
+
+# With smoothing - more reliable results
+peaks_low_prom <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1,
+                                smooth_first = TRUE)
+peaks_high_prom <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5,
+                                 smooth_first = TRUE)
+
+cat("\nWith smoothing:\n")
+#> 
+#> With smoothing:
+cat("  Low prominence (0.1):", nrow(peaks_low_prom$peaks[[1]]), "peaks\n")
+#>   Low prominence (0.1): 3 peaks
+cat("  High prominence (0.5):", nrow(peaks_high_prom$peaks[[1]]), "peaks\n")
+#>   High prominence (0.5): 3 peaks
 ```
+
+When smoothing is applied first, the prominence values become more
+meaningful because they reflect actual signal characteristics rather
+than noise artifacts.
 
 ### Different Signal Amplitudes
 

@@ -470,24 +470,53 @@ data will find the true peaks, not noise spikes.</p>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">gridExtra</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/pkg/gridExtra/man/arrangeGrob.html" class="external-link">grid.arrange</a></span><span class="op">(</span><span class="va">p1</span>, <span class="va">p2</span>, <span class="va">p3</span>, ncol <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
 <p><img src="seasonal-analysis_files/figure-html/peak-comparison-plot-1.png" class="r-plt" alt="" width="100%"></p>
+<p><strong>Why peak detection in noisy signals is challenging:</strong>
+Noise creates many local maxima that are not true peaks. Without
+smoothing, peak detection algorithms struggle to distinguish genuine
+seasonal peaks from random fluctuations. The <code>min_distance</code>
+parameter helps, but cannot fully solve the problem when noise amplitude
+is comparable to the signal.</p>
 <p><strong>Key insight:</strong> For seasonal data, use Fourier basis
-smoothing with <code><a href="../reference/fdata2basis.cv.html">fdata2basis.cv()</a></code> to let CV automatically
-select the optimal number of basis functions.</p>
+smoothing with <code>smooth_first = TRUE</code>. The Fourier basis is
+ideal for periodic signals because it naturally captures oscillatory
+patterns while suppressing noise. GCV automatically selects the optimal
+number of basis functions, balancing smoothness and fidelity to the
+data.</p>
 </div>
 <div class="section level3">
 <h3 id="prominence-filtering">Prominence Filtering<a class="anchor" aria-label="anchor" href="#prominence-filtering"></a>
 </h3>
 <p>Prominence measures how much a peak stands out from surrounding
-values. Use it to filter minor peaks.</p>
+values. Use it to filter minor peaks. For best results with noisy data,
+combine prominence filtering with smoothing.</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Compare prominence thresholds</span></span>
-<span><span class="va">peaks_low_prom</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, min_prominence <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span>
-<span><span class="va">peaks_high_prom</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, min_prominence <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="co"># Compare prominence thresholds without smoothing (less reliable)</span></span>
+<span><span class="va">peaks_low_prom_raw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, min_prominence <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span>
+<span><span class="va">peaks_high_prom_raw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, min_prominence <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Low prominence (0.1):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_low_prom</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Low prominence (0.1): 4 peaks</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"High prominence (0.5):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_high_prom</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; High prominence (0.5): 1 peaks</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Without smoothing:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Without smoothing:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Low prominence (0.1):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_low_prom_raw</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   Low prominence (0.1): 4 peaks</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  High prominence (0.5):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_high_prom_raw</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   High prominence (0.5): 1 peaks</span></span>
+<span></span>
+<span><span class="co"># With smoothing - more reliable results</span></span>
+<span><span class="va">peaks_low_prom</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, min_prominence <span class="op">=</span> <span class="fl">0.1</span>,</span>
+<span>                                smooth_first <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="va">peaks_high_prom</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_peaks.html">detect_peaks</a></span><span class="op">(</span><span class="va">fd_demo</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, min_prominence <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>                                 smooth_first <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\nWith smoothing:\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; With smoothing:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  Low prominence (0.1):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_low_prom</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   Low prominence (0.1): 3 peaks</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"  High prominence (0.5):"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">peaks_high_prom</span><span class="op">$</span><span class="va">peaks</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="st">"peaks\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   High prominence (0.5): 3 peaks</span></span></code></pre></div>
+<p>When smoothing is applied first, the prominence values become more
+meaningful because they reflect actual signal characteristics rather
+than noise artifacts.</p>
 </div>
 <div class="section level3">
 <h3 id="different-signal-amplitudes">Different Signal Amplitudes<a class="anchor" aria-label="anchor" href="#different-signal-amplitudes"></a>
