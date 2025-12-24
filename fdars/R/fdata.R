@@ -2001,59 +2001,76 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
   total_var <- sum(var_explained)
   prop_var <- var_explained / total_var
 
-  # Build data frame for plotting
+  # Define curve type labels upfront
+  label_mean <- "Mean"
+  label_plus <- paste0("Mean + ", multiple, "\u00D7\u221A\u03BB\u00D7PC")
+  label_minus <- paste0("Mean - ", multiple, "\u00D7\u221A\u03BB\u00D7PC")
+
+  # Build data frame for plotting - each component gets its own facet
   plot_data <- list()
 
-  # Add mean function
-  plot_data[[1]] <- data.frame(
-    t = x$argvals,
-    value = x$mean,
-    type = "Mean",
-    component = "Mean",
-    direction = "mean"
-  )
-
-  # Add PC perturbations
   for (k in seq_len(ncomp)) {
     loading <- x$rotation$data[k, ]
     scale_factor <- multiple * sqrt(var_explained[k])
+    facet_label <- paste0("PC", k, " (", round(100 * prop_var[k], 1), "%)")
+
+    # Mean function
+    plot_data[[length(plot_data) + 1]] <- data.frame(
+      t = x$argvals,
+      value = x$mean,
+      component = facet_label,
+      curve_type = label_mean
+    )
 
     # Plus direction
     plot_data[[length(plot_data) + 1]] <- data.frame(
       t = x$argvals,
       value = x$mean + scale_factor * loading,
-      type = paste0("PC", k),
-      component = paste0("PC", k, " (", round(100 * prop_var[k], 1), "%)"),
-      direction = "plus"
+      component = facet_label,
+      curve_type = label_plus
     )
 
     # Minus direction
     plot_data[[length(plot_data) + 1]] <- data.frame(
       t = x$argvals,
       value = x$mean - scale_factor * loading,
-      type = paste0("PC", k),
-      component = paste0("PC", k, " (", round(100 * prop_var[k], 1), "%)"),
-      direction = "minus"
+      component = facet_label,
+      curve_type = label_minus
     )
   }
 
   df <- do.call(rbind, plot_data)
-  df$component <- factor(df$component, levels = unique(df$component))
 
-  # Create plot
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = t, y = value, color = component,
-                                         linetype = direction)) +
+  # Set factor levels for consistent ordering
+  pc_labels <- paste0("PC", seq_len(ncomp), " (",
+                      round(100 * prop_var[seq_len(ncomp)], 1), "%)")
+  df$component <- factor(df$component, levels = pc_labels)
+
+  curve_labels <- c(label_mean, label_plus, label_minus)
+  df$curve_type <- factor(df$curve_type, levels = curve_labels)
+
+  # Create named vectors for scale mappings
+  color_values <- c("black", "steelblue", "coral")
+  names(color_values) <- curve_labels
+  linetype_values <- c("solid", "dashed", "dotted")
+  names(linetype_values) <- curve_labels
+
+  # Create faceted plot
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = t, y = value,
+                                         color = curve_type,
+                                         linetype = curve_type)) +
     ggplot2::geom_line(linewidth = 0.8) +
-    ggplot2::scale_linetype_manual(
-      values = c("mean" = "solid", "plus" = "dashed", "minus" = "dotted"),
-      guide = "none"
-    ) +
+    ggplot2::facet_wrap(~component, scales = "free_y") +
+    ggplot2::scale_color_manual(values = color_values) +
+    ggplot2::scale_linetype_manual(values = linetype_values) +
     ggplot2::labs(
       title = "FPCA: Principal Component Perturbations",
-      subtitle = paste0("Mean \u00B1 ", multiple, " \u00D7 sqrt(eigenvalue) \u00D7 PC"),
+      subtitle = paste0("Effect of adding/subtracting ", multiple,
+                        " \u00D7 sqrt(eigenvalue) \u00D7 PC to mean"),
       x = "t",
       y = "X(t)",
-      color = ""
+      color = "",
+      linetype = ""
     ) +
     ggplot2::theme(legend.position = "bottom")
 
@@ -2109,24 +2126,26 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
   prop_var <- var_explained / total_var * 100
 
   if (ncol(scores) >= 2) {
-    # 2D scatter plot: PC1 vs PC2
+    # 2D scatter plot: PC1 vs PC2 with ID labels
     df <- data.frame(
       PC1 = scores[, 1],
       PC2 = scores[, 2],
       id = seq_len(n)
     )
 
-    p <- ggplot2::ggplot(df, ggplot2::aes(x = PC1, y = PC2)) +
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = PC1, y = PC2, label = id)) +
       ggplot2::geom_point(color = "steelblue", size = 2, alpha = 0.7) +
+      ggplot2::geom_text(hjust = -0.2, vjust = 0.5, size = 2.5, color = "gray30") +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
       ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
       ggplot2::labs(
         title = "FPCA: Score Plot",
+        subtitle = "Labels show observation ID for curve identification",
         x = paste0("PC1 (", round(prop_var[1], 1), "%)"),
         y = paste0("PC2 (", round(prop_var[2], 1), "%)")
       )
   } else {
-    # Only 1 PC: plot scores as bar chart
+    # Only 1 PC: plot scores as bar chart with IDs
     df <- data.frame(
       id = factor(seq_len(n)),
       PC1 = scores[, 1]
@@ -2136,7 +2155,8 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
       ggplot2::geom_col(fill = "steelblue", alpha = 0.7) +
       ggplot2::labs(
         title = "FPCA: Score Plot",
-        x = "Observation",
+        subtitle = "X-axis shows observation ID",
+        x = "Observation ID",
         y = paste0("PC1 (", round(prop_var[1], 1), "%)")
       )
   }
