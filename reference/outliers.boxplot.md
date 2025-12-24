@@ -82,5 +82,4 @@ print(out)
 #>   Number of observations: 30 
 #>   Number of outliers: 2 
 #>   Outlier indices: 29 30
-#>   Depth cutoff: NA 
 ```

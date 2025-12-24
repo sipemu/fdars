@@ -64,7 +64,15 @@ Outlier Detection using Weighted Depth</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fdataobj</span>, nb <span class="op">=</span> <span class="fl">200</span>, dfunc <span class="op">=</span> <span class="va">depth.mode</span>, quan <span class="op">=</span> <span class="fl">0.5</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">outliers.depth.pond</span><span class="op">(</span></span>
+<span>  <span class="va">fdataobj</span>,</span>
+<span>  nb <span class="op">=</span> <span class="fl">200</span>,</span>
+<span>  dfunc <span class="op">=</span> <span class="va">depth.mode</span>,</span>
+<span>  threshold_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"quantile"</span>, <span class="st">"mad"</span>, <span class="st">"iqr"</span><span class="op">)</span>,</span>
+<span>  quan <span class="op">=</span> <span class="fl">0.1</span>,</span>
+<span>  k <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  <span class="va">...</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -83,8 +91,31 @@ Outlier Detection using Weighted Depth</p>
 <dd><p>Depth function to use. Default is depth.mode.</p></dd>
 
 
+<dt id="arg-threshold-method">threshold_method<a class="anchor" aria-label="anchor" href="#arg-threshold-method"></a></dt>
+<dd><p>Method for computing the outlier threshold. Options:</p><dl><dt>"quantile"</dt>
+<dd><p>Use quantile of weighted depths (default). Curves with
+depth below this quantile are flagged as outliers.</p></dd>
+
+<dt>"mad"</dt>
+<dd><p>Use median - k * MAD of weighted depths. More robust to
+existing outliers in the data.</p></dd>
+
+<dt>"iqr"</dt>
+<dd><p>Use Q1 - k * IQR, similar to boxplot whiskers.</p></dd>
+
+
+</dl></dd>
+
+
 <dt id="arg-quan">quan<a class="anchor" aria-label="anchor" href="#arg-quan"></a></dt>
-<dd><p>Quantile for outlier cutoff. Default is 0.5.</p></dd>
+<dd><p>Quantile for outlier cutoff when <code>threshold_method = "quantile"</code>.
+Default is 0.1, meaning curves with depth in the bottom 10% are flagged.
+Lower values detect fewer outliers.</p></dd>
+
+
+<dt id="arg-k">k<a class="anchor" aria-label="anchor" href="#arg-k"></a></dt>
+<dd><p>Multiplier for MAD or IQR methods. Default is 2.5 for MAD and 1.5
+for IQR. Higher values detect fewer outliers.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -99,20 +130,56 @@ Outlier Detection using Weighted Depth</p>
 <dt>depths</dt>
 <dd><p>Depth values for all curves</p></dd>
 
+<dt>weighted_depths</dt>
+<dd><p>Bootstrap-weighted depth values</p></dd>
+
 <dt>cutoff</dt>
 <dd><p>Depth cutoff used</p></dd>
+
+<dt>threshold_method</dt>
+<dd><p>Method used for threshold computation</p></dd>
+
+<dt>fdataobj</dt>
+<dd><p>Original fdata object</p></dd>
 
 
 </dl></div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>Detects outliers based on depth with bootstrap resampling.</p>
-    </div>
+    <p>Detects outliers based on depth with bootstrap resampling. The threshold
+for outlier detection can be computed using different methods.</p>
+<p>The function first computes depth values for all curves, then uses bootstrap
+resampling to obtain weighted depths that are more robust to sampling variability.</p>
+<p><strong>Threshold Methods:</strong></p><ul><li><p><strong>quantile</strong>: Flags curves with depth below the specified quantile.
+With <code>quan = 0.1</code>, approximately 10% of curves would be flagged under
+the null hypothesis of no outliers. Suitable when you expect a specific
+proportion of outliers.</p></li>
+<li><p><strong>mad</strong>: Uses <code>median(depths) - k * MAD(depths)</code> as threshold.
+More robust because MAD is not influenced by extreme values. With k = 2.5,
+this corresponds roughly to a 1-2% false positive rate under normality.</p></li>
+<li><p><strong>iqr</strong>: Uses <code>Q1 - k * IQR</code> as threshold, similar to boxplot
+outlier detection. With k = 1.5, corresponds to the standard boxplot fence.</p></li>
+</ul></div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">200</span><span class="op">)</span>, <span class="fl">20</span>, <span class="fl">10</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Create data with outliers</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">t</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, length.out <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">X</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">30</span>, <span class="fl">50</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="fl">28</span><span class="op">)</span> <span class="va">X</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">50</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">X</span><span class="op">[</span><span class="fl">29</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span> <span class="op">+</span> <span class="fl">3</span>  <span class="co"># outlier</span></span></span>
+<span class="r-in"><span><span class="va">X</span><span class="op">[</span><span class="fl">30</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="op">-</span><span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span>     <span class="co"># outlier</span></span></span>
+<span class="r-in"><span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Default: quantile method</span></span></span>
+<span class="r-in"><span><span class="va">out1</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, quan <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># MAD method (more robust)</span></span></span>
+<span class="r-in"><span><span class="va">out2</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, threshold_method <span class="op">=</span> <span class="st">"mad"</span>, k <span class="op">=</span> <span class="fl">2.5</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># IQR method (boxplot-like)</span></span></span>
+<span class="r-in"><span><span class="va">out3</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, threshold_method <span class="op">=</span> <span class="st">"iqr"</span>, k <span class="op">=</span> <span class="fl">1.5</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

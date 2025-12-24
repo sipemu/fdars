@@ -65,17 +65,63 @@ Depth-based outlier detection identifies curves with unusually low depth
 ### Weighted Depth Method (outliers.depth.pond)
 
 Uses bootstrap resampling to estimate the distribution of depths and
-identifies curves with depth below a data-driven cutoff.
+identifies curves with depth below a data-driven cutoff. The function
+supports three different methods for computing the threshold.
+
+#### Threshold Methods
+
+| Method       | Formula                  | When to Use                                       |
+|--------------|--------------------------|---------------------------------------------------|
+| `"quantile"` | `quantile(depths, quan)` | When you expect a specific proportion of outliers |
+| `"mad"`      | `median - k × MAD`       | More robust when outliers may already exist       |
+| `"iqr"`      | `Q1 - k × IQR`           | Boxplot-style detection                           |
 
 ``` r
-out_pond <- outliers.depth.pond(fd, nb = 1000, seed = 123)
+# Default: quantile method with quan = 0.1 (flags bottom 10%)
+out_pond <- outliers.depth.pond(fd, nb = 1000)
 print(out_pond)
 #> Functional data outlier detection
 #>   Number of observations: 30 
-#>   Number of outliers: 6 
-#>   Outlier indices: 1 2 3 10 29 30
-#>   Depth cutoff: 0.866032
+#>   Number of outliers: 3 
+#>   Outlier indices: 1 2 3
+#>   Threshold method: quantile 
+#>   Depth cutoff: 0.7786
 ```
+
+#### Comparing Threshold Methods
+
+``` r
+# Quantile method: flags curves with depth in the bottom 10%
+out_quantile <- outliers.depth.pond(fd, nb = 1000,
+                                     threshold_method = "quantile", quan = 0.1)
+cat("Quantile (10%):", out_quantile$outliers, "\n")
+#> Quantile (10%): 1 2 3
+
+# MAD method: more robust, uses median - 2.5*MAD
+out_mad <- outliers.depth.pond(fd, nb = 1000,
+                                threshold_method = "mad", k = 2.5)
+cat("MAD (k=2.5):   ", out_mad$outliers, "\n")
+#> MAD (k=2.5):    1 2 3
+
+# IQR method: boxplot-like, uses Q1 - 1.5*IQR
+out_iqr <- outliers.depth.pond(fd, nb = 1000,
+                                threshold_method = "iqr", k = 1.5)
+cat("IQR (k=1.5):   ", out_iqr$outliers, "\n")
+#> IQR (k=1.5):    1 2 3
+```
+
+**Choosing the right method:**
+
+- **Quantile**: Use when you have prior knowledge about the expected
+  contamination rate. Set `quan = 0.05` for ~5% expected outliers,
+  `quan = 0.1` for ~10%.
+
+- **MAD**: More robust to existing outliers in the data. The default
+  `k = 2.5` corresponds roughly to a 1-2% false positive rate. Increase
+  `k` for stricter detection (fewer outliers).
+
+- **IQR**: Similar to boxplot fences. The default `k = 1.5` is the
+  standard boxplot rule. Use `k = 3.0` for “far outliers” only.
 
 ### Visualizing Outliers
 
@@ -90,38 +136,38 @@ plot(out_pond)
 ``` r
 # Which curves are outliers?
 out_pond$outliers
-#> [1]  1  2  3 10 29 30
+#> [1] 1 2 3
 
 # Depth values for all curves
 head(out_pond$depths)
 #> [1] 0.03333337 0.05506193 0.05477837 0.87274161 0.86959674 0.86759472
 
 # Cutoff used
-out_pond$cutoff
-#>      50% 
-#> 0.866032
+cat("Cutoff:", out_pond$cutoff, "\n")
+#> Cutoff: 0.778588
+cat("Threshold method:", out_pond$threshold_method, "\n")
+#> Threshold method: quantile
 ```
 
 ### Understanding depth.pond Results
 
 The `outliers.depth.pond` method uses bootstrap resampling to estimate
-what depth values are “normal” for your dataset. This can lead to some
-behaviors worth understanding:
+what depth values are “normal” for your dataset.
 
-**Why some curves may be flagged unexpectedly:**
+**Key behaviors:**
 
-1.  **Edge curves flagged**: Curves near the boundary of the data cloud
+1.  **Edge curves**: Curves near the boundary of the data cloud
     naturally have lower depth, even if they’re not true outliers
-2.  **Bootstrap variability**: Small samples give unstable cutoffs -
-    results may vary with different seeds
-3.  **Conservative detection**: The method is designed to control false
-    positives, so it may miss subtle outliers
+2.  **Bootstrap variability**: Small samples give unstable cutoffs - use
+    at least `nb = 200` for stable results
+3.  **Threshold choice matters**: The `quantile` method with a fixed
+    proportion will always flag that proportion as outliers. Use `mad`
+    or `iqr` for data-driven thresholds that adapt to the actual depth
+    distribution.
 
-**Strengths**: Robust, data-driven cutoff that adapts to your data’s
-distribution
-
-**Weaknesses**: May flag borderline curves; requires sufficient sample
-size for stable results
+**Recommendation**: Start with `threshold_method = "mad"` for a robust,
+data-driven approach. Adjust `k` based on how conservative you want the
+detection to be.
 
 Compare with `outliers.depth.trim` which uses a fixed trim proportion -
 more predictable but requires you to choose the proportion.
@@ -137,7 +183,7 @@ print(out_trim)
 #>   Number of observations: 30 
 #>   Number of outliers: 3 
 #>   Outlier indices: 1 2 3
-#>   Depth cutoff: 0.7817061
+#>   Depth cutoff: 0.7817
 plot(out_trim)
 ```
 
@@ -176,9 +222,9 @@ cat("LRT threshold:", threshold, "\n")
 out_lrt <- outliers.lrt(fd, nb = 1000, seed = 123)
 print(out_lrt)
 #> Functional data outlier detection
-#>   Number of observations: 0 
+#>   Number of observations: 30 
 #>   Number of outliers: 0 
-#>   Depth cutoff:
+#>   LRT threshold: 32.913
 plot(out_lrt)
 ```
 
@@ -237,7 +283,7 @@ out3 <- outliers.lrt(fd, nb = 1000, seed = 123)
 
 # Compare detected outliers
 cat("Depth-pond outliers:", out1$outliers, "\n")
-#> Depth-pond outliers: 1 2 3 10
+#> Depth-pond outliers: 1 2 3
 cat("Depth-trim outliers:", out2$outliers, "\n")
 #> Depth-trim outliers: 1 2 3
 cat("LRT outliers:", out3$outliers, "\n")
@@ -303,7 +349,7 @@ plot(fd_shape) +
 ``` r
 out_shape <- outliers.depth.pond(fd_shape, nb = 1000, seed = 123)
 cat("Detected shape outlier:", out_shape$outliers, "\n")
-#> Detected shape outlier: 1 2 3 4 6 8 9 11 14 18 22 23 25 27 28 29
+#> Detected shape outlier: 1 8 16 17 21
 ```
 
 ### Amplitude Outliers
@@ -331,7 +377,7 @@ plot(fd_amp) +
 ``` r
 out_amp <- outliers.depth.pond(fd_amp, nb = 1000, seed = 123)
 cat("Detected amplitude outlier:", out_amp$outliers, "\n")
-#> Detected amplitude outlier: 1 2 3 5 7 16 17 19 20 26
+#> Detected amplitude outlier: 1
 ```
 
 ## Tuning Parameters
@@ -348,7 +394,7 @@ out_nb200 <- outliers.depth.pond(fd, nb = 200, seed = 123)
 cat("nb=50 outliers:", out_nb50$outliers, "\n")
 #> nb=50 outliers: 1 2 3
 cat("nb=200 outliers:", out_nb200$outliers, "\n")
-#> nb=200 outliers: 1 2 3 10
+#> nb=200 outliers: 1 2 3
 ```
 
 ### Trim Proportion

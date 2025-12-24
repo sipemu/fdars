@@ -148,63 +148,135 @@ depth (far from the center of the data).</p>
 <h3 id="weighted-depth-method-outliers-depth-pond">Weighted Depth Method (outliers.depth.pond)<a class="anchor" aria-label="anchor" href="#weighted-depth-method-outliers-depth-pond"></a>
 </h3>
 <p>Uses bootstrap resampling to estimate the distribution of depths and
-identifies curves with depth below a data-driven cutoff.</p>
+identifies curves with depth below a data-driven cutoff. The function
+supports three different methods for computing the threshold.</p>
+<div class="section level4">
+<h4 id="threshold-methods">Threshold Methods<a class="anchor" aria-label="anchor" href="#threshold-methods"></a>
+</h4>
+<table class="table">
+<colgroup>
+<col width="26%">
+<col width="30%">
+<col width="43%">
+</colgroup>
+<thead><tr class="header">
+<th>Method</th>
+<th>Formula</th>
+<th>When to Use</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code>"quantile"</code></td>
+<td><code>quantile(depths, quan)</code></td>
+<td>When you expect a specific proportion of outliers</td>
+</tr>
+<tr class="even">
+<td><code>"mad"</code></td>
+<td><code>median - k × MAD</code></td>
+<td>More robust when outliers may already exist</td>
+</tr>
+<tr class="odd">
+<td><code>"iqr"</code></td>
+<td><code>Q1 - k × IQR</code></td>
+<td>Boxplot-style detection</td>
+</tr>
+</tbody>
+</table>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">out_pond</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="co"># Default: quantile method with quan = 0.1 (flags bottom 10%)</span></span>
+<span><span class="va">out_pond</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">out_pond</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Functional data outlier detection</span></span>
 <span><span class="co">#&gt;   Number of observations: 30 </span></span>
-<span><span class="co">#&gt;   Number of outliers: 6 </span></span>
-<span><span class="co">#&gt;   Outlier indices: 1 2 3 10 29 30</span></span>
-<span><span class="co">#&gt;   Depth cutoff: 0.866032</span></span></code></pre></div>
+<span><span class="co">#&gt;   Number of outliers: 3 </span></span>
+<span><span class="co">#&gt;   Outlier indices: 1 2 3</span></span>
+<span><span class="co">#&gt;   Threshold method: quantile </span></span>
+<span><span class="co">#&gt;   Depth cutoff: 0.7786</span></span></code></pre></div>
+</div>
+<div class="section level4">
+<h4 id="comparing-threshold-methods">Comparing Threshold Methods<a class="anchor" aria-label="anchor" href="#comparing-threshold-methods"></a>
+</h4>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Quantile method: flags curves with depth in the bottom 10%</span></span>
+<span><span class="va">out_quantile</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>,</span>
+<span>                                     threshold_method <span class="op">=</span> <span class="st">"quantile"</span>, quan <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Quantile (10%):"</span>, <span class="va">out_quantile</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Quantile (10%): 1 2 3</span></span>
+<span></span>
+<span><span class="co"># MAD method: more robust, uses median - 2.5*MAD</span></span>
+<span><span class="va">out_mad</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>,</span>
+<span>                                threshold_method <span class="op">=</span> <span class="st">"mad"</span>, k <span class="op">=</span> <span class="fl">2.5</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"MAD (k=2.5):   "</span>, <span class="va">out_mad</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; MAD (k=2.5):    1 2 3</span></span>
+<span></span>
+<span><span class="co"># IQR method: boxplot-like, uses Q1 - 1.5*IQR</span></span>
+<span><span class="va">out_iqr</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>,</span>
+<span>                                threshold_method <span class="op">=</span> <span class="st">"iqr"</span>, k <span class="op">=</span> <span class="fl">1.5</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"IQR (k=1.5):   "</span>, <span class="va">out_iqr</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; IQR (k=1.5):    1 2 3</span></span></code></pre></div>
+<p><strong>Choosing the right method:</strong></p>
+<ul>
+<li><p><strong>Quantile</strong>: Use when you have prior knowledge
+about the expected contamination rate. Set <code>quan = 0.05</code> for
+~5% expected outliers, <code>quan = 0.1</code> for ~10%.</p></li>
+<li><p><strong>MAD</strong>: More robust to existing outliers in the
+data. The default <code>k = 2.5</code> corresponds roughly to a 1-2%
+false positive rate. Increase <code>k</code> for stricter detection
+(fewer outliers).</p></li>
+<li><p><strong>IQR</strong>: Similar to boxplot fences. The default
+<code>k = 1.5</code> is the standard boxplot rule. Use
+<code>k = 3.0</code> for “far outliers” only.</p></li>
+</ul>
+</div>
 </div>
 <div class="section level3">
 <h3 id="visualizing-outliers">Visualizing Outliers<a class="anchor" aria-label="anchor" href="#visualizing-outliers"></a>
 </h3>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">out_pond</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/plot-outliers-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="examining-results">Examining Results<a class="anchor" aria-label="anchor" href="#examining-results"></a>
 </h3>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Which curves are outliers?</span></span>
 <span><span class="va">out_pond</span><span class="op">$</span><span class="va">outliers</span></span>
-<span><span class="co">#&gt; [1]  1  2  3 10 29 30</span></span>
+<span><span class="co">#&gt; [1] 1 2 3</span></span>
 <span></span>
 <span><span class="co"># Depth values for all curves</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">out_pond</span><span class="op">$</span><span class="va">depths</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 0.03333337 0.05506193 0.05477837 0.87274161 0.86959674 0.86759472</span></span>
 <span></span>
 <span><span class="co"># Cutoff used</span></span>
-<span><span class="va">out_pond</span><span class="op">$</span><span class="va">cutoff</span></span>
-<span><span class="co">#&gt;      50% </span></span>
-<span><span class="co">#&gt; 0.866032</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Cutoff:"</span>, <span class="va">out_pond</span><span class="op">$</span><span class="va">cutoff</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Cutoff: 0.778588</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Threshold method:"</span>, <span class="va">out_pond</span><span class="op">$</span><span class="va">threshold_method</span>, <span class="st">"\n"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Threshold method: quantile</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="understanding-depth-pond-results">Understanding depth.pond Results<a class="anchor" aria-label="anchor" href="#understanding-depth-pond-results"></a>
 </h3>
 <p>The <code>outliers.depth.pond</code> method uses bootstrap resampling
-to estimate what depth values are “normal” for your dataset. This can
-lead to some behaviors worth understanding:</p>
-<p><strong>Why some curves may be flagged unexpectedly:</strong></p>
+to estimate what depth values are “normal” for your dataset.</p>
+<p><strong>Key behaviors:</strong></p>
 <ol style="list-style-type: decimal">
 <li>
-<strong>Edge curves flagged</strong>: Curves near the boundary of
-the data cloud naturally have lower depth, even if they’re not true
-outliers</li>
+<strong>Edge curves</strong>: Curves near the boundary of the data
+cloud naturally have lower depth, even if they’re not true outliers</li>
 <li>
 <strong>Bootstrap variability</strong>: Small samples give unstable
-cutoffs - results may vary with different seeds</li>
+cutoffs - use at least <code>nb = 200</code> for stable results</li>
 <li>
-<strong>Conservative detection</strong>: The method is designed to
-control false positives, so it may miss subtle outliers</li>
+<strong>Threshold choice matters</strong>: The <code>quantile</code>
+method with a fixed proportion will always flag that proportion as
+outliers. Use <code>mad</code> or <code>iqr</code> for data-driven
+thresholds that adapt to the actual depth distribution.</li>
 </ol>
-<p><strong>Strengths</strong>: Robust, data-driven cutoff that adapts to
-your data’s distribution</p>
-<p><strong>Weaknesses</strong>: May flag borderline curves; requires
-sufficient sample size for stable results</p>
+<p><strong>Recommendation</strong>: Start with
+<code>threshold_method = "mad"</code> for a robust, data-driven
+approach. Adjust <code>k</code> based on how conservative you want the
+detection to be.</p>
 <p>Compare with <code>outliers.depth.trim</code> which uses a fixed trim
 proportion - more predictable but requires you to choose the
 proportion.</p>
@@ -213,14 +285,14 @@ proportion.</p>
 <h3 id="trimming-based-method-outliers-depth-trim">Trimming-Based Method (outliers.depth.trim)<a class="anchor" aria-label="anchor" href="#trimming-based-method-outliers-depth-trim"></a>
 </h3>
 <p>Iteratively removes curves with lowest depth:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out_trim</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.trim.html">outliers.depth.trim</a></span><span class="op">(</span><span class="va">fd</span>, trim <span class="op">=</span> <span class="fl">0.1</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">out_trim</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Functional data outlier detection</span></span>
 <span><span class="co">#&gt;   Number of observations: 30 </span></span>
 <span><span class="co">#&gt;   Number of outliers: 3 </span></span>
 <span><span class="co">#&gt;   Outlier indices: 1 2 3</span></span>
-<span><span class="co">#&gt;   Depth cutoff: 0.7817061</span></span>
+<span><span class="co">#&gt;   Depth cutoff: 0.7817</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">out_trim</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/depth-trim-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
@@ -229,7 +301,7 @@ proportion.</p>
 </h3>
 <p>Both methods accept a <code>depth</code> parameter to specify the
 depth function:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Using Random Projection depth</span></span>
 <span><span class="va">out_rp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span></span>
@@ -247,7 +319,7 @@ outliers.</p>
 <h3 id="computing-the-threshold">Computing the Threshold<a class="anchor" aria-label="anchor" href="#computing-the-threshold"></a>
 </h3>
 <p>First, compute a bootstrap threshold:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">threshold</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.thres.lrt.html">outliers.thres.lrt</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"LRT threshold:"</span>, <span class="va">threshold</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; LRT threshold: 32.91297</span></span></code></pre></div>
@@ -255,20 +327,20 @@ outliers.</p>
 <div class="section level3">
 <h3 id="detecting-outliers">Detecting Outliers<a class="anchor" aria-label="anchor" href="#detecting-outliers"></a>
 </h3>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out_lrt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.lrt.html">outliers.lrt</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">out_lrt</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Functional data outlier detection</span></span>
-<span><span class="co">#&gt;   Number of observations: 0 </span></span>
+<span><span class="co">#&gt;   Number of observations: 30 </span></span>
 <span><span class="co">#&gt;   Number of outliers: 0 </span></span>
-<span><span class="co">#&gt;   Depth cutoff:</span></span>
+<span><span class="co">#&gt;   LRT threshold: 32.913</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">out_lrt</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/lrt-detect-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="lrt-results">LRT Results<a class="anchor" aria-label="anchor" href="#lrt-results"></a>
 </h3>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Outlier indices</span></span>
 <span><span class="va">out_lrt</span><span class="op">$</span><span class="va">outliers</span></span>
 <span><span class="co">#&gt; integer(0)</span></span>
@@ -309,7 +381,7 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <h2 id="comparing-methods">Comparing Methods<a class="anchor" aria-label="anchor" href="#comparing-methods"></a>
 </h2>
 <p>Different methods may detect different types of outliers:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Run all methods</span></span>
 <span><span class="va">out1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="va">out2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.trim.html">outliers.depth.trim</a></span><span class="op">(</span><span class="va">fd</span>, trim <span class="op">=</span> <span class="fl">0.1</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
@@ -317,7 +389,7 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <span></span>
 <span><span class="co"># Compare detected outliers</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Depth-pond outliers:"</span>, <span class="va">out1</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Depth-pond outliers: 1 2 3 10</span></span>
+<span><span class="co">#&gt; Depth-pond outliers: 1 2 3</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Depth-trim outliers:"</span>, <span class="va">out2</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Depth-trim outliers: 1 2 3</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"LRT outliers:"</span>, <span class="va">out3</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
@@ -334,7 +406,7 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <h3 id="magnitude-outliers">Magnitude Outliers<a class="anchor" aria-label="anchor" href="#magnitude-outliers"></a>
 </h3>
 <p>Curves shifted up or down from the main group:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create clean data with just a magnitude outlier</span></span>
 <span><span class="va">X_mag</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">n</span>, <span class="va">m</span><span class="op">)</span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">n</span><span class="op">)</span> <span class="op">{</span></span>
@@ -349,7 +421,7 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Magnitude Outlier: Curve 1 Shifted Up"</span>,</span>
 <span>       subtitle <span class="op">=</span> <span class="st">"Same shape as others, but at a different level"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/magnitude-outlier-1.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out_mag</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd_mag</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Detected magnitude outlier:"</span>, <span class="va">out_mag</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Detected magnitude outlier: 1</span></span></code></pre></div>
@@ -358,7 +430,7 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <h3 id="shape-outliers">Shape Outliers<a class="anchor" aria-label="anchor" href="#shape-outliers"></a>
 </h3>
 <p>Curves with different patterns but similar overall level:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create clean data with just a shape outlier</span></span>
 <span><span class="va">X_shape</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">n</span>, <span class="va">m</span><span class="op">)</span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">n</span><span class="op">)</span> <span class="op">{</span></span>
@@ -373,16 +445,16 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Shape Outlier: Curve 1 Has Inverted Pattern"</span>,</span>
 <span>       subtitle <span class="op">=</span> <span class="st">"Same amplitude and level, but opposite phase"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/shape-outlier-1.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out_shape</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd_shape</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Detected shape outlier:"</span>, <span class="va">out_shape</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Detected shape outlier: 1 2 3 4 6 8 9 11 14 18 22 23 25 27 28 29</span></span></code></pre></div>
+<span><span class="co">#&gt; Detected shape outlier: 1 8 16 17 21</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="amplitude-outliers">Amplitude Outliers<a class="anchor" aria-label="anchor" href="#amplitude-outliers"></a>
 </h3>
 <p>Curves with unusual amplitude (larger or smaller scale):</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create clean data with just an amplitude outlier</span></span>
 <span><span class="va">X_amp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">n</span>, <span class="va">m</span><span class="op">)</span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">n</span><span class="op">)</span> <span class="op">{</span></span>
@@ -397,10 +469,10 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Amplitude Outlier: Curve 1 Has 3x Larger Scale"</span>,</span>
 <span>       subtitle <span class="op">=</span> <span class="st">"Same shape and center, but much larger oscillations"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/amplitude-outlier-1.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out_amp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd_amp</span>, nb <span class="op">=</span> <span class="fl">1000</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Detected amplitude outlier:"</span>, <span class="va">out_amp</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Detected amplitude outlier: 1 2 3 5 7 16 17 19 20 26</span></span></code></pre></div>
+<span><span class="co">#&gt; Detected amplitude outlier: 1</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -410,7 +482,7 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <h3 id="number-of-bootstrap-samples">Number of Bootstrap Samples<a class="anchor" aria-label="anchor" href="#number-of-bootstrap-samples"></a>
 </h3>
 <p>More bootstrap samples give more stable results but take longer:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Compare with different nb values</span></span>
 <span><span class="va">out_nb50</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="va">out_nb200</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.pond.html">outliers.depth.pond</a></span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">200</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
@@ -418,14 +490,14 @@ instead 3. Use the outliergram or MS-plot for visual detection</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"nb=50 outliers:"</span>, <span class="va">out_nb50</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; nb=50 outliers: 1 2 3</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"nb=200 outliers:"</span>, <span class="va">out_nb200</span><span class="op">$</span><span class="va">outliers</span>, <span class="st">"\n"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; nb=200 outliers: 1 2 3 10</span></span></code></pre></div>
+<span><span class="co">#&gt; nb=200 outliers: 1 2 3</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="trim-proportion">Trim Proportion<a class="anchor" aria-label="anchor" href="#trim-proportion"></a>
 </h3>
 <p>For <code>outliers.depth.trim</code>, the trim proportion controls
 sensitivity:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># More aggressive trimming</span></span>
 <span><span class="va">out_trim05</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.trim.html">outliers.depth.trim</a></span><span class="op">(</span><span class="va">fd</span>, trim <span class="op">=</span> <span class="fl">0.05</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span><span class="va">out_trim20</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliers.depth.trim.html">outliers.depth.trim</a></span><span class="op">(</span><span class="va">fd</span>, trim <span class="op">=</span> <span class="fl">0.2</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
@@ -440,7 +512,7 @@ sensitivity:</p>
 <h2 id="handling-high-contamination">Handling High Contamination<a class="anchor" aria-label="anchor" href="#handling-high-contamination"></a>
 </h2>
 <p>When outlier contamination is high, use robust methods:</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create data with 20% outliers</span></span>
 <span><span class="va">X_contam</span> <span class="op">&lt;-</span> <span class="va">X</span></span>
 <span><span class="va">n_outliers</span> <span class="op">&lt;-</span> <span class="fl">6</span></span>
@@ -460,7 +532,7 @@ sensitivity:</p>
 <div class="section level2">
 <h2 id="visualizing-depth-distribution">Visualizing Depth Distribution<a class="anchor" aria-label="anchor" href="#visualizing-depth-distribution"></a>
 </h2>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Compute depths</span></span>
 <span><span class="va">depths</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.FM.html">depth.FM</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
 <span></span>
@@ -483,7 +555,7 @@ sensitivity:</p>
 <h2 id="performance">Performance<a class="anchor" aria-label="anchor" href="#performance"></a>
 </h2>
 <p>The LRT method uses a parallel Rust backend for speed:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Benchmark with larger dataset</span></span>
 <span><span class="va">X_large</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">200</span> <span class="op">*</span> <span class="fl">100</span><span class="op">)</span>, <span class="fl">200</span>, <span class="fl">100</span><span class="op">)</span></span>
 <span><span class="va">fd_large</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_large</span><span class="op">)</span></span>
@@ -502,7 +574,7 @@ powerful diagnostic plots.</p>
 </h3>
 <p>The outliergram plots the <strong>Modified Epigraph Index
 (MEI)</strong> against <strong>Modified Band Depth (MBD)</strong>:</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">og</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliergram.html">outliergram</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">og</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/outliergram-1.png" class="r-plt" alt="" width="100%"></p>
@@ -559,7 +631,7 @@ curves. Points below this boundary are flagged as outliers.</p>
 </h3>
 <p>The MS-plot separates magnitude outlyingness from shape
 outlyingness:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/magnitudeshape.html">magnitudeshape</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ms</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/msplot-1.png" class="r-plt" alt="" width="100%"></p>
@@ -609,7 +681,7 @@ outlyingness:</p>
 <h3 id="labeling-outliers-by-id-or-metadata">Labeling Outliers by ID or Metadata<a class="anchor" aria-label="anchor" href="#labeling-outliers-by-id-or-metadata"></a>
 </h3>
 <p>When fdata has IDs or metadata, you can label outliers in plots:</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create fdata with IDs and metadata</span></span>
 <span><span class="va">meta</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
 <span>  subject <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"S"</span>, <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%02d"</span>, <span class="fl">1</span><span class="op">:</span><span class="va">n</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -623,17 +695,17 @@ outlyingness:</p>
 <span><span class="va">og_labeled</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/outliergram.html">outliergram</a></span><span class="op">(</span><span class="va">fd_labeled</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">og_labeled</span>, label <span class="op">=</span> <span class="st">"id"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/outlier-labeling-1.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span></span>
 <span><span class="co"># Or with metadata column</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">og_labeled</span>, label <span class="op">=</span> <span class="st">"subject"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/outlier-labeling-2.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span></span>
 <span><span class="co"># Label ALL points, not just outliers</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">og_labeled</span>, label <span class="op">=</span> <span class="st">"id"</span>, label_all <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <p><img src="outlier-detection_files/figure-html/outlier-labeling-3.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># magnitudeshape with custom labels</span></span>
 <span><span class="fu"><a href="../reference/magnitudeshape.html">magnitudeshape</a></span><span class="op">(</span><span class="va">fd_labeled</span>, label <span class="op">=</span> <span class="st">"subject"</span><span class="op">)</span></span></code></pre></div>
 </div>
