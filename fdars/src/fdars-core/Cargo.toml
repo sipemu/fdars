@@ -10,6 +10,10 @@ readme = "README.md"
 keywords = ["functional-data", "statistics", "fda", "depth", "clustering"]
 categories = ["science", "mathematics"]
 
+# Empty workspace table prevents Cargo from searching for parent workspace
+# This is needed for R CMD check which copies package to a temp directory
+[workspace]
+
 [dependencies]
 rayon = "1.10"
 rand = "0.8"

@@ -5,6 +5,10 @@ edition = "2021"
 description = "Functional Data Analysis R bindings"
 license = "MIT"
 
+# Empty workspace table prevents Cargo from searching for parent workspace
+# This is needed for R CMD check which copies package to a temp directory
+[workspace]
+
 [lib]
 crate-type = ["staticlib"]
 
