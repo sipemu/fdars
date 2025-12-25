@@ -7,7 +7,14 @@ speedup over pure R implementations.
 ## Usage
 
 ``` r
-outliers.thres.lrt(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed = NULL)
+outliers.thres.lrt(
+  fdataobj,
+  nb = 200,
+  smo = 0.05,
+  trim = 0.1,
+  seed = NULL,
+  percentile = 0.99
+)
 ```
 
 ## Arguments
@@ -32,9 +39,15 @@ outliers.thres.lrt(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed = NULL)
 
   Random seed for reproducibility.
 
+- percentile:
+
+  Percentile of bootstrap distribution to use as threshold (default
+  0.99, meaning 99th percentile). Lower values make detection more
+  sensitive (detect more outliers).
+
 ## Value
 
-The 99th percentile threshold value.
+The threshold value at the specified percentile.
 
 ## Examples
 
@@ -44,4 +57,7 @@ X <- matrix(0, 30, 50)
 for (i in 1:30) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
 fd <- fdata(X, argvals = t)
 thresh <- outliers.thres.lrt(fd, nb = 100)
+
+# More sensitive detection (95th percentile)
+thresh_sensitive <- outliers.thres.lrt(fd, nb = 100, percentile = 0.95)
 ```

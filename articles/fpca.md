@@ -144,14 +144,24 @@ plot(fpca, type = "components", ncomp = 3, multiple = 2)
 
 ![](fpca_files/figure-html/plot-components-1.png)
 
-Each facet shows one principal component with:
+Each facet shows one principal component with solid lines differentiated
+by color:
 
-- **Black solid line**: Mean function $\mu(t)$
-- **Blue dashed line**: Mean + perturbation ($\mu + c \cdot \phi_{k}$)
-- **Coral dotted line**: Mean - perturbation ($\mu - c \cdot \phi_{k}$)
+- **Black**: Mean function $\mu(t)$
+- **Blue**: Mean + perturbation ($\mu + c \cdot \phi_{k}$)
+- **Coral**: Mean - perturbation ($\mu - c \cdot \phi_{k}$)
 
 where $c = 2 \times \sqrt{\lambda_{k}}$ scales the perturbation by the
 component’s importance.
+
+You can show only the positive perturbation by setting
+`show_both_directions = FALSE`:
+
+``` r
+plot(fpca, type = "components", ncomp = 2, show_both_directions = FALSE)
+```
+
+![](fpca_files/figure-html/plot-components-single-1.png)
 
 **Interpretation**:
 

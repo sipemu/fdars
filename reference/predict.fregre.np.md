@@ -45,5 +45,5 @@ fit <- fregre.np(fd, y)
 X_new <- matrix(sin(2*pi*t) * 0.5, nrow = 1)
 fd_new <- fdata(X_new, argvals = t)
 predict(fit, fd_new)
-#> [1] -0.01149421
+#> [1] -0.005759715
 ```

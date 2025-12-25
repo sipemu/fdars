@@ -13,6 +13,7 @@ plot(
   type = c("components", "variance", "scores"),
   ncomp = 3,
   multiple = 2,
+  show_both_directions = TRUE,
   ...
 )
 ```
@@ -39,6 +40,12 @@ plot(
   Factor for scaling PC perturbations. Default is 2 (shows +/-
   2\*sqrt(eigenvalue)\*PC).
 
+- show_both_directions:
+
+  Logical. If TRUE (default), show both positive and negative
+  perturbations (mean + PC and mean - PC). If FALSE, only show positive
+  perturbation. All curves are solid lines differentiated by color.
+
 - ...:
 
   Additional arguments passed to plotting functions.
@@ -51,7 +58,8 @@ A ggplot object (invisibly).
 
 The "components" plot shows the mean function (black) with perturbations
 in the direction of each principal component. The perturbation is
-computed as: mean +/- multiple \* sqrt(variance_explained) \* PC_loading
+computed as: mean +/- multiple \* sqrt(variance_explained) \*
+PC_loading. All lines are solid and differentiated by color only.
 
 The "variance" plot shows a scree plot with the proportion of variance
 explained by each component as a bar chart.

@@ -69,7 +69,7 @@ Outlier Detection using Weighted Depth</p>
 <span>  nb <span class="op">=</span> <span class="fl">200</span>,</span>
 <span>  dfunc <span class="op">=</span> <span class="va">depth.mode</span>,</span>
 <span>  threshold_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"quantile"</span>, <span class="st">"mad"</span>, <span class="st">"iqr"</span><span class="op">)</span>,</span>
-<span>  quan <span class="op">=</span> <span class="fl">0.1</span>,</span>
+<span>  quan <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  k <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -109,8 +109,8 @@ existing outliers in the data.</p></dd>
 
 <dt id="arg-quan">quan<a class="anchor" aria-label="anchor" href="#arg-quan"></a></dt>
 <dd><p>Quantile for outlier cutoff when <code>threshold_method = "quantile"</code>.
-Default is 0.1, meaning curves with depth in the bottom 10% are flagged.
-Lower values detect fewer outliers.</p></dd>
+Default is 0.05, meaning curves with depth in the bottom 5% are flagged
+(95th percentile threshold). Lower values detect fewer outliers.</p></dd>
 
 
 <dt id="arg-k">k<a class="anchor" aria-label="anchor" href="#arg-k"></a></dt>
@@ -172,8 +172,11 @@ outlier detection. With k = 1.5, corresponds to the standard boxplot fence.</p><
 <span class="r-in"><span><span class="va">X</span><span class="op">[</span><span class="fl">30</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="op">-</span><span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span><span class="op">*</span><span class="va">pi</span><span class="op">*</span><span class="va">t</span><span class="op">)</span>     <span class="co"># outlier</span></span></span>
 <span class="r-in"><span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Default: quantile method</span></span></span>
-<span class="r-in"><span><span class="va">out1</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, quan <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Default: quantile method with 95th percentile (bottom 5%)</span></span></span>
+<span class="r-in"><span><span class="va">out1</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># More permissive: bottom 10%</span></span></span>
+<span class="r-in"><span><span class="va">out1b</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, quan <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># MAD method (more robust)</span></span></span>
 <span class="r-in"><span><span class="va">out2</span> <span class="op">&lt;-</span> <span class="fu">outliers.depth.pond</span><span class="op">(</span><span class="va">fd</span>, nb <span class="op">=</span> <span class="fl">50</span>, threshold_method <span class="op">=</span> <span class="st">"mad"</span>, k <span class="op">=</span> <span class="fl">2.5</span><span class="op">)</span></span></span>

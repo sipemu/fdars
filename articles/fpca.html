@@ -254,22 +254,28 @@ its own facet for clear comparison:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fpca</span>, type <span class="op">=</span> <span class="st">"components"</span>, ncomp <span class="op">=</span> <span class="fl">3</span>, multiple <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
 <p><img src="fpca_files/figure-html/plot-components-1.png" class="r-plt" alt="" width="100%"></p>
-<p>Each facet shows one principal component with:</p>
+<p>Each facet shows one principal component with solid lines
+differentiated by color:</p>
 <ul>
 <li>
-<strong>Black solid line</strong>: Mean function
+<strong>Black</strong>: Mean function
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mu(t)</annotation></semantics></math>
 </li>
 <li>
-<strong>Blue dashed line</strong>: Mean + perturbation
+<strong>Blue</strong>: Mean + perturbation
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mo>+</mo><mi>c</mi><mo>⋅</mo><msub><mi>ϕ</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">\mu + c \cdot \phi_k</annotation></semantics></math>)</li>
 <li>
-<strong>Coral dotted line</strong>: Mean - perturbation
+<strong>Coral</strong>: Mean - perturbation
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mo>−</mo><mi>c</mi><mo>⋅</mo><msub><mi>ϕ</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">\mu - c \cdot \phi_k</annotation></semantics></math>)</li>
 </ul>
 <p>where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>=</mo><mn>2</mn><mo>×</mo><msqrt><msub><mi>λ</mi><mi>k</mi></msub></msqrt></mrow><annotation encoding="application/x-tex">c = 2 \times \sqrt{\lambda_k}</annotation></semantics></math>
 scales the perturbation by the component’s importance.</p>
+<p>You can show only the positive perturbation by setting
+<code>show_both_directions = FALSE</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fpca</span>, type <span class="op">=</span> <span class="st">"components"</span>, ncomp <span class="op">=</span> <span class="fl">2</span>, show_both_directions <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>
+<p><img src="fpca_files/figure-html/plot-components-single-1.png" class="r-plt" alt="" width="100%"></p>
 <p><strong>Interpretation</strong>:</p>
 <ul>
 <li>
@@ -287,7 +293,7 @@ maturation)</li>
 </h3>
 <p>The eigenfunctions themselves show the shape of each mode of
 variation:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Plot the first 3 eigenfunctions</span></span>
 <span><span class="va">df_eigen</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
 <span>  t <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="va">t</span>, <span class="fl">3</span><span class="op">)</span>,</span>
@@ -307,7 +313,7 @@ variation:</p>
 <h3 id="scree-plot">Scree Plot<a class="anchor" aria-label="anchor" href="#scree-plot"></a>
 </h3>
 <p>The variance plot shows how much each component contributes:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fpca</span>, type <span class="op">=</span> <span class="st">"variance"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="fpca_files/figure-html/plot-variance-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The scree plot helps decide how many components to retain. Common
@@ -324,7 +330,7 @@ criteria:</p>
 <p>The scores show where each observation falls in PC space. Each point
 is labeled with its observation ID, allowing you to identify specific
 curves of interest:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fpca</span>, type <span class="op">=</span> <span class="st">"scores"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="fpca_files/figure-html/plot-scores-1.png" class="r-plt" alt="" width="100%"></p>
 <p>Curves with similar scores have similar shapes. Outliers appear far
@@ -336,7 +342,7 @@ from the center.</p>
 <p>After identifying interesting observations in the score plot (e.g.,
 outliers or extreme cases), you can plot them separately to understand
 what makes them unusual:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Identify extreme observations from the score plot</span></span>
 <span><span class="co"># High PC1 = taller individuals, Low PC1 = shorter individuals</span></span>
 <span><span class="co"># High PC2 = later maturation, Low PC2 = earlier maturation</span></span>
@@ -380,7 +386,7 @@ extreme scores</p>
 <h3 id="dimension-reduction">1. Dimension Reduction<a class="anchor" aria-label="anchor" href="#dimension-reduction"></a>
 </h3>
 <p>FPCA reduces infinite-dimensional curves to a few scores:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Original data: 50 curves x 100 points = 5000 values</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"Original dimensions:"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">fd</span><span class="op">$</span><span class="va">data</span><span class="op">)</span>, <span class="st">"x"</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">fd</span><span class="op">$</span><span class="va">data</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Original dimensions: 50 x 100</span></span>
@@ -397,7 +403,7 @@ extreme scores</p>
 <h3 id="denoising">2. Denoising<a class="anchor" aria-label="anchor" href="#denoising"></a>
 </h3>
 <p>Reconstructing curves from a few PCs removes noise:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Reconstruct using only first 2 PCs</span></span>
 <span><span class="va">scores_2pc</span> <span class="op">&lt;-</span> <span class="va">fpca</span><span class="op">$</span><span class="va">x</span><span class="op">[</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">2</span><span class="op">]</span></span>
 <span><span class="va">loadings_2pc</span> <span class="op">&lt;-</span> <span class="va">fpca</span><span class="op">$</span><span class="va">rotation</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">2</span>, <span class="op">]</span></span>
@@ -426,7 +432,7 @@ extreme scores</p>
 <h3 id="interpretable-features">3. Interpretable Features<a class="anchor" aria-label="anchor" href="#interpretable-features"></a>
 </h3>
 <p>PC scores serve as meaningful features for further analysis:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Scores as features</span></span>
 <span><span class="va">scores_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
 <span>  curve_id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="va">n</span>,</span>
@@ -450,7 +456,7 @@ extreme scores</p>
 <h3 id="outlier-detection">4. Outlier Detection<a class="anchor" aria-label="anchor" href="#outlier-detection"></a>
 </h3>
 <p>Extreme scores indicate unusual curves:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Mahalanobis-like distance using PC scores</span></span>
 <span><span class="va">pc_vars</span> <span class="op">&lt;-</span> <span class="va">fpca</span><span class="op">$</span><span class="va">d</span><span class="op">^</span><span class="fl">2</span> <span class="op">/</span> <span class="op">(</span><span class="va">n</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span>  <span class="co"># Variance of each PC</span></span>
 <span><span class="va">standardized_scores</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sweep.html" class="external-link">sweep</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">x</span>, <span class="fl">2</span>, <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">pc_vars</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">x</span><span class="op">)</span><span class="op">]</span><span class="op">)</span>, <span class="st">"/"</span><span class="op">)</span></span>
@@ -467,7 +473,7 @@ extreme scores</p>
 </h3>
 <p>For large datasets, storing scores instead of full curves saves
 memory:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Storage comparison</span></span>
 <span><span class="va">original_size</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/utils/object.size.html" class="external-link">object.size</a></span><span class="op">(</span><span class="va">fd</span><span class="op">$</span><span class="va">data</span><span class="op">)</span></span>
 <span><span class="va">compressed_size</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/utils/object.size.html" class="external-link">object.size</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">x</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/utils/object.size.html" class="external-link">object.size</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">rotation</span><span class="op">$</span><span class="va">data</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/utils/object.size.html" class="external-link">object.size</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">mean</span><span class="op">)</span></span>
@@ -482,7 +488,7 @@ memory:</p>
 <h2 id="fpca-for-regression">FPCA for Regression<a class="anchor" aria-label="anchor" href="#fpca-for-regression"></a>
 </h2>
 <p>PC scores are commonly used as predictors in regression:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Create a response related to growth</span></span>
 <span><span class="co"># Final height depends on both baseline and timing</span></span>
 <span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">height_effect</span> <span class="op">+</span> <span class="fl">2</span> <span class="op">*</span> <span class="va">timing_effect</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
@@ -519,7 +525,7 @@ memory:</p>
 <div class="section level3">
 <h3 id="variance-threshold">1. Variance Threshold<a class="anchor" aria-label="anchor" href="#variance-threshold"></a>
 </h3>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Calculate cumulative variance</span></span>
 <span><span class="va">var_explained</span> <span class="op">&lt;-</span> <span class="va">fpca</span><span class="op">$</span><span class="va">d</span><span class="op">^</span><span class="fl">2</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">d</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span></span>
 <span><span class="va">cum_var</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cumsum.html" class="external-link">cumsum</a></span><span class="op">(</span><span class="va">var_explained</span><span class="op">)</span></span>
@@ -548,7 +554,7 @@ performance.</p>
 <div class="section level3">
 <h3 id="clustering-in-pc-space">Clustering in PC Space<a class="anchor" aria-label="anchor" href="#clustering-in-pc-space"></a>
 </h3>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># K-means clustering on PC scores</span></span>
 <span><span class="va">km</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/kmeans.html" class="external-link">kmeans</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">x</span><span class="op">[</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">2</span><span class="op">]</span>, centers <span class="op">=</span> <span class="fl">3</span>, nstart <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span></span>
@@ -570,7 +576,7 @@ performance.</p>
 </h3>
 <p>The functional boxplot uses depth measures, but PC scores provide an
 alternative view of centrality:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Distance from center in PC space indicates "outlyingness"</span></span>
 <span><span class="va">center</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colMeans</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">x</span><span class="op">)</span></span>
 <span><span class="va">pc_distances</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">rowSums</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sweep.html" class="external-link">sweep</a></span><span class="op">(</span><span class="va">fpca</span><span class="op">$</span><span class="va">x</span>, <span class="fl">2</span>, <span class="va">center</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>

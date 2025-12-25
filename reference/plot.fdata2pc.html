@@ -73,6 +73,7 @@ or score plots.</p>
 <span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"components"</span>, <span class="st">"variance"</span>, <span class="st">"scores"</span><span class="op">)</span>,</span>
 <span>  ncomp <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  multiple <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>  show_both_directions <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -99,6 +100,12 @@ scatter plot of observations.</p></dd>
 <dd><p>Factor for scaling PC perturbations. Default is 2 (shows +/- 2*sqrt(eigenvalue)*PC).</p></dd>
 
 
+<dt id="arg-show-both-directions">show_both_directions<a class="anchor" aria-label="anchor" href="#arg-show-both-directions"></a></dt>
+<dd><p>Logical. If TRUE (default), show both positive and
+negative perturbations (mean + PC and mean - PC). If FALSE, only show positive
+perturbation. All curves are solid lines differentiated by color.</p></dd>
+
+
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Additional arguments passed to plotting functions.</p></dd>
 
@@ -111,7 +118,8 @@ scatter plot of observations.</p></dd>
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The "components" plot shows the mean function (black) with perturbations
 in the direction of each principal component. The perturbation is computed as:
-mean +/- multiple * sqrt(variance_explained) * PC_loading</p>
+mean +/- multiple * sqrt(variance_explained) * PC_loading. All lines are solid
+and differentiated by color only.</p>
 <p>The "variance" plot shows a scree plot with the proportion of variance
 explained by each component as a bar chart.</p>
 <p>The "scores" plot shows a scatter plot of observations in PC space,

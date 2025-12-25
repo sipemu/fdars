@@ -76,8 +76,11 @@ supports three different methods for computing the threshold.
 | `"mad"`      | `median - k × MAD`       | More robust when outliers may already exist       |
 | `"iqr"`      | `Q1 - k × IQR`           | Boxplot-style detection                           |
 
+**Default: 95th percentile threshold** (`quan = 0.05`), which flags
+curves in the bottom 5% of depths as outliers.
+
 ``` r
-# Default: quantile method with quan = 0.1 (flags bottom 10%)
+# Default: quantile method with quan = 0.05 (95th percentile, flags bottom 5%)
 out_pond <- outliers.depth.pond(fd, nb = 1000)
 print(out_pond)
 #> Functional data outlier detection
@@ -85,16 +88,22 @@ print(out_pond)
 #>   Number of outliers: 3 
 #>   Outlier indices: 1 2 3
 #>   Threshold method: quantile 
-#>   Depth cutoff: 0.7786
+#>   Depth cutoff: 0.0591
 ```
 
 #### Comparing Threshold Methods
 
 ``` r
-# Quantile method: flags curves with depth in the bottom 10%
+# Quantile method: flags curves with depth in the bottom 5% (default)
 out_quantile <- outliers.depth.pond(fd, nb = 1000,
-                                     threshold_method = "quantile", quan = 0.1)
-cat("Quantile (10%):", out_quantile$outliers, "\n")
+                                     threshold_method = "quantile", quan = 0.05)
+cat("Quantile (5%): ", out_quantile$outliers, "\n")
+#> Quantile (5%):  1 2 3
+
+# More permissive: bottom 10%
+out_quantile10 <- outliers.depth.pond(fd, nb = 1000,
+                                       threshold_method = "quantile", quan = 0.1)
+cat("Quantile (10%):", out_quantile10$outliers, "\n")
 #> Quantile (10%): 1 2 3
 
 # MAD method: more robust, uses median - 2.5*MAD
@@ -112,9 +121,9 @@ cat("IQR (k=1.5):   ", out_iqr$outliers, "\n")
 
 **Choosing the right method:**
 
-- **Quantile**: Use when you have prior knowledge about the expected
-  contamination rate. Set `quan = 0.05` for ~5% expected outliers,
-  `quan = 0.1` for ~10%.
+- **Quantile** (default): Uses a fixed proportion cutoff. The default
+  `quan = 0.05` (95th percentile) flags the bottom 5% of curves.
+  Increase to `quan = 0.1` for more permissive detection.
 
 - **MAD**: More robust to existing outliers in the data. The default
   `k = 2.5` corresponds roughly to a 1-2% false positive rate. Increase
@@ -144,7 +153,7 @@ head(out_pond$depths)
 
 # Cutoff used
 cat("Cutoff:", out_pond$cutoff, "\n")
-#> Cutoff: 0.778588
+#> Cutoff: 0.05905061
 cat("Threshold method:", out_pond$threshold_method, "\n")
 #> Threshold method: quantile
 ```
@@ -206,29 +215,64 @@ out_mode <- outliers.depth.trim(fd, trim = 0.1, seed = 123)
 The LRT method uses a likelihood ratio test to sequentially identify
 outliers. It’s particularly effective for detecting magnitude outliers.
 
-### Computing the Threshold
+### Automatic Threshold Computation
 
-First, compute a bootstrap threshold:
-
-``` r
-threshold <- outliers.thres.lrt(fd, nb = 1000, seed = 123)
-cat("LRT threshold:", threshold, "\n")
-#> LRT threshold: 32.91297
-```
-
-### Detecting Outliers
+The LRT method automatically computes a bootstrap threshold based on a
+percentile of the maximum distance distribution under the null
+hypothesis (no outliers). By default, the 99th percentile is used,
+meaning approximately 1% of observations would be flagged as outliers
+when there are no true outliers.
 
 ``` r
+# The outliers.lrt function automatically computes the threshold
 out_lrt <- outliers.lrt(fd, nb = 1000, seed = 123)
 print(out_lrt)
 #> Functional data outlier detection
 #>   Number of observations: 30 
 #>   Number of outliers: 0 
-#>   LRT threshold: 32.913
+#>   LRT threshold: 32.913  (99th percentile)
 plot(out_lrt)
 ```
 
 ![](outlier-detection_files/figure-html/lrt-detect-1.png)
+
+### Configuring the Percentile
+
+The `percentile` parameter controls the sensitivity of the LRT method:
+
+- **Higher percentile** (e.g., 0.99): More conservative, fewer false
+  positives
+- **Lower percentile** (e.g., 0.95): More sensitive, may catch more
+  subtle outliers
+
+``` r
+# Default: 99th percentile (conservative)
+out_lrt_99 <- outliers.lrt(fd, nb = 1000, seed = 123, percentile = 0.99)
+cat("99th percentile outliers:", out_lrt_99$outliers, "\n")
+#> 99th percentile outliers:
+
+# More sensitive: 95th percentile
+out_lrt_95 <- outliers.lrt(fd, nb = 1000, seed = 123, percentile = 0.95)
+cat("95th percentile outliers:", out_lrt_95$outliers, "\n")
+#> 95th percentile outliers:
+```
+
+### Manual Threshold Computation
+
+You can also compute the threshold separately if you want to examine it
+or apply a custom threshold:
+
+``` r
+# Compute threshold separately (99th percentile by default)
+threshold_99 <- outliers.thres.lrt(fd, nb = 1000, seed = 123)
+cat("LRT threshold (99th percentile):", threshold_99, "\n")
+#> LRT threshold (99th percentile): 32.91297
+
+# Or with a different percentile
+threshold_95 <- outliers.thres.lrt(fd, nb = 1000, seed = 123, percentile = 0.95)
+cat("LRT threshold (95th percentile):", threshold_95, "\n")
+#> LRT threshold (95th percentile): 32.36814
+```
 
 ### LRT Results
 
@@ -263,8 +307,11 @@ same level)
 ([`outliers.thres.lrt()`](https://sipemu.github.io/fdars/reference/outliers.thres.lrt.md)):**
 
 The threshold represents the critical value of the LRT statistic. Use it
-to: - Apply a custom significance level - Compare test statistics across
-different datasets - Combine with domain knowledge for decision-making
+to:
+
+- Apply a custom significance level
+- Compare test statistics across different datasets
+- Combine with domain knowledge for decision-making
 
 If LRT detects no outliers when you expect some: 1. The outliers may be
 shape-based rather than magnitude-based 2. Try depth-based methods
@@ -349,7 +396,7 @@ plot(fd_shape) +
 ``` r
 out_shape <- outliers.depth.pond(fd_shape, nb = 1000, seed = 123)
 cat("Detected shape outlier:", out_shape$outliers, "\n")
-#> Detected shape outlier: 1 8 16 17 21
+#> Detected shape outlier: 1
 ```
 
 ### Amplitude Outliers
