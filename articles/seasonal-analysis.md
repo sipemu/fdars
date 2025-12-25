@@ -266,9 +266,9 @@ decomposition functions to handle this.
 When a strong trend is present, seasonal analysis functions may fail:
 
 ``` r
-# Signal with strong linear trend + seasonality
+# Signal with strong linear trend + seasonality + noise
 t <- seq(0, 20, length.out = 400)
-X_trend <- 5 + 2 * t + sin(2 * pi * t / 2.5)  # Trend dominates
+X_trend <- 5 + 2 * t + sin(2 * pi * t / 2.5) + rnorm(length(t), sd = 0.3)
 fd_trend <- fdata(matrix(X_trend, nrow = 1), argvals = t)
 
 df <- data.frame(t = t, y = X_trend)
@@ -387,8 +387,8 @@ When the seasonal amplitude grows with the trend level, use
 multiplicative decomposition:
 
 ``` r
-# Multiplicative pattern: amplitude grows with level
-X_mult <- (2 + 0.3 * t) * (1 + 0.4 * sin(2 * pi * t / 2.5))
+# Multiplicative pattern: amplitude grows with level + noise
+X_mult <- (2 + 0.3 * t) * (1 + 0.4 * sin(2 * pi * t / 2.5)) + rnorm(length(t), sd = 0.5)
 fd_mult <- fdata(matrix(X_mult, nrow = 1), argvals = t)
 
 # Plot - note how peaks get taller over time
@@ -409,7 +409,7 @@ decomp_mult <- decompose(fd_mult, period = 2.5, method = "multiplicative")
 cat("Multiplicative decomposition:\n")
 #> Multiplicative decomposition:
 cat("  Seasonal range:", round(range(decomp_mult$seasonal$data[1,]), 3), "\n")
-#>   Seasonal range: 0.631 1.453
+#>   Seasonal range: 0.631 1.469
 cat("  (Values near 1 indicate multiplicative factors)\n")
 #>   (Values near 1 indicate multiplicative factors)
 ```
@@ -452,8 +452,73 @@ cat("  Without detrend:", round(seasonal_strength(fd_trend, period = 2.5), 3), "
 #>   Without detrend: 0.005
 cat("  With detrend:   ", round(seasonal_strength(fd_trend, period = 2.5,
                                                    detrend_method = "linear"), 3), "\n")
-#>   With detrend:    0.991
+#>   With detrend:    0.834
 ```
+
+### Peak Detection with Detrending
+
+Trends also affect peak detection - the upward slope can distort
+prominence calculations and make later peaks appear more prominent than
+earlier ones.
+
+``` r
+# Detect peaks without detrending
+peaks_no_detrend <- detect_peaks(fd_trend, min_distance = 2, smooth_first = TRUE)
+
+# Detect peaks with detrending
+peaks_with_detrend <- detect_peaks(fd_trend, min_distance = 2, smooth_first = TRUE,
+                                    detrend_method = "linear")
+
+cat("Peak detection on trending data:\n")
+#> Peak detection on trending data:
+cat("  Without detrend:", nrow(peaks_no_detrend$peaks[[1]]), "peaks,",
+    "mean period:", round(peaks_no_detrend$mean_period, 3), "\n")
+#>   Without detrend: 5 peaks, mean period: 4.398
+cat("  With detrend:   ", nrow(peaks_with_detrend$peaks[[1]]), "peaks,",
+    "mean period:", round(peaks_with_detrend$mean_period, 3), "(true: 2.5)\n")
+#>   With detrend:    8 peaks, mean period: 2.506 (true: 2.5)
+```
+
+``` r
+# Visualize the difference
+peaks_raw <- peaks_no_detrend$peaks[[1]]
+peaks_det <- peaks_with_detrend$peaks[[1]]
+
+# Get detrended data for plotting
+fd_detrended <- detrend(fd_trend, method = "linear")
+
+df_peaks <- data.frame(
+  t = rep(t, 2),
+  y = c(fd_trend$data[1,], fd_detrended$data[1,]),
+  Panel = factor(rep(c("Original (with trend)", "Detrended"), each = length(t)),
+                 levels = c("Original (with trend)", "Detrended"))
+)
+
+# Combine peak data
+peaks_raw$Panel <- "Original (with trend)"
+peaks_det$Panel <- "Detrended"
+# Adjust detrended peak values to match detrended data
+peaks_det$value <- fd_detrended$data[1, sapply(peaks_det$time, function(x) which.min(abs(t - x)))]
+peaks_combined <- rbind(peaks_raw, peaks_det)
+peaks_combined$Panel <- factor(peaks_combined$Panel,
+                                levels = c("Original (with trend)", "Detrended"))
+
+ggplot(df_peaks, aes(x = t, y = y)) +
+  geom_line(color = "steelblue", alpha = 0.7) +
+  geom_point(data = peaks_combined, aes(x = time, y = value),
+             color = "red", size = 2) +
+  facet_wrap(~Panel, ncol = 1, scales = "free_y") +
+  labs(title = "Peak Detection: With vs Without Detrending",
+       subtitle = "Detrending ensures consistent peak detection across the series",
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/peaks-trending-plot-1.png)
+
+Detrending is especially important when: - Peaks near the start/end of
+the series have different prominence due to the trend - You need
+consistent peak-to-peak period estimates - The trend slope is comparable
+to or larger than the seasonal amplitude
 
 ### Choosing a Detrending Method
 
@@ -537,7 +602,7 @@ data will find the true peaks, not noise spikes.
 # Default parameters - often too many peaks
 peaks_default <- detect_peaks(fd_demo)
 cat("Default parameters:", nrow(peaks_default$peaks[[1]]), "peaks found\n")
-#> Default parameters: 91 peaks found
+#> Default parameters: 96 peaks found
 cat("(Expected:", floor(max(t) / period_true), "peaks)\n")
 #> (Expected: 10 peaks)
 ```
@@ -622,7 +687,7 @@ peaks_high_prom_raw <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence 
 cat("Without smoothing:\n")
 #> Without smoothing:
 cat("  Low prominence (0.1):", nrow(peaks_low_prom_raw$peaks[[1]]), "peaks\n")
-#>   Low prominence (0.1): 4 peaks
+#>   Low prominence (0.1): 7 peaks
 cat("  High prominence (0.5):", nrow(peaks_high_prom_raw$peaks[[1]]), "peaks\n")
 #>   High prominence (0.5): 1 peaks
 
@@ -636,9 +701,9 @@ cat("\nWith smoothing:\n")
 #> 
 #> With smoothing:
 cat("  Low prominence (0.1):", nrow(peaks_low_prom$peaks[[1]]), "peaks\n")
-#>   Low prominence (0.1): 3 peaks
+#>   Low prominence (0.1): 4 peaks
 cat("  High prominence (0.5):", nrow(peaks_high_prom$peaks[[1]]), "peaks\n")
-#>   High prominence (0.5): 3 peaks
+#>   High prominence (0.5): 4 peaks
 ```
 
 When smoothing is applied first, the prominence values become more
@@ -873,7 +938,7 @@ print(changes)
 #> Number of changes: 1
 #> 
 #>       time      type strength_before strength_after
-#> 1 19.92491 cessation       0.3009605      0.2975437
+#> 1 20.47559 cessation       0.3152373      0.2918658
 ```
 
 ### Automatic Threshold (Otsu’s Method)
@@ -887,11 +952,11 @@ changes_auto <- detect_seasonality_changes_auto(fd_changing, period = period_tru
 print(changes_auto)
 #> Seasonality Change Detection (Auto Threshold)
 #> ----------------------------------------------
-#> Computed threshold: 0.4731
+#> Computed threshold: 0.5047
 #> Number of changes: 1
 #> 
 #>       time      type strength_before strength_after
-#> 1 19.37422 cessation       0.5248709      0.4728245
+#> 1 19.52441 cessation       0.5087545      0.5030707
 ```
 
 ### Visualizing Change Points
