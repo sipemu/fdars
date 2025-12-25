@@ -19,8 +19,8 @@
 #'     \item{"iqr"}{Use Q1 - k * IQR, similar to boxplot whiskers.}
 #'   }
 #' @param quan Quantile for outlier cutoff when \code{threshold_method = "quantile"}.
-#'   Default is 0.1, meaning curves with depth in the bottom 10% are flagged.
-#'   Lower values detect fewer outliers.
+#'   Default is 0.05, meaning curves with depth in the bottom 5% are flagged
+#'   (95th percentile threshold). Lower values detect fewer outliers.
 #' @param k Multiplier for MAD or IQR methods. Default is 2.5 for MAD and 1.5
 #'   for IQR. Higher values detect fewer outliers.
 #' @param ... Additional arguments passed to depth function.
@@ -63,8 +63,11 @@
 #' X[30, ] <- -sin(2*pi*t)     # outlier
 #' fd <- fdata(X, argvals = t)
 #'
-#' # Default: quantile method
-#' out1 <- outliers.depth.pond(fd, nb = 50, quan = 0.1)
+#' # Default: quantile method with 95th percentile (bottom 5%)
+#' out1 <- outliers.depth.pond(fd, nb = 50)
+#'
+#' # More permissive: bottom 10%
+#' out1b <- outliers.depth.pond(fd, nb = 50, quan = 0.1)
 #'
 #' # MAD method (more robust)
 #' out2 <- outliers.depth.pond(fd, nb = 50, threshold_method = "mad", k = 2.5)
@@ -73,7 +76,7 @@
 #' out3 <- outliers.depth.pond(fd, nb = 50, threshold_method = "iqr", k = 1.5)
 outliers.depth.pond <- function(fdataobj, nb = 200, dfunc = depth.mode,
                                  threshold_method = c("quantile", "mad", "iqr"),
-                                 quan = 0.1, k = NULL, ...) {
+                                 quan = 0.05, k = NULL, ...) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -222,7 +225,12 @@ print.outliers.fdata <- function(x, ...) {
   if (!is.null(x$cutoff) && !is.na(x$cutoff)) {
     cat("  Depth cutoff:", round(x$cutoff, 4), "\n")
   } else if (!is.null(x$threshold)) {
-    cat("  LRT threshold:", round(x$threshold, 4), "\n")
+    percentile_str <- if (!is.null(x$percentile)) {
+      paste0(" (", x$percentile * 100, "th percentile)")
+    } else {
+      ""
+    }
+    cat("  LRT threshold:", round(x$threshold, 4), percentile_str, "\n")
   }
 
   invisible(x)
@@ -281,8 +289,11 @@ plot.outliers.fdata <- function(x, col.outliers = "red", ...) {
 #' @param smo Smoothing parameter for bootstrap noise (default 0.05).
 #' @param trim Proportion of curves to trim for robust estimation (default 0.1).
 #' @param seed Random seed for reproducibility.
+#' @param percentile Percentile of bootstrap distribution to use as threshold
+#'   (default 0.99, meaning 99th percentile). Lower values make detection
+#'   more sensitive (detect more outliers).
 #'
-#' @return The 99th percentile threshold value.
+#' @return The threshold value at the specified percentile.
 #'
 #' @export
 #' @examples
@@ -291,7 +302,11 @@ plot.outliers.fdata <- function(x, col.outliers = "red", ...) {
 #' for (i in 1:30) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
 #' fd <- fdata(X, argvals = t)
 #' thresh <- outliers.thres.lrt(fd, nb = 100)
-outliers.thres.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed = NULL) {
+#'
+#' # More sensitive detection (95th percentile)
+#' thresh_sensitive <- outliers.thres.lrt(fd, nb = 100, percentile = 0.95)
+outliers.thres.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1,
+                               seed = NULL, percentile = 0.99) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -300,13 +315,18 @@ outliers.thres.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed 
     stop("outliers.thres.lrt for 2D functional data not yet implemented")
   }
 
+  if (percentile <= 0 || percentile >= 1) {
+    stop("percentile must be between 0 and 1 (exclusive)")
+  }
+
   if (is.null(seed)) {
     seed <- sample.int(.Machine$integer.max, 1)
   }
 
   .Call("wrap__outliers_thres_lrt", fdataobj$data,
         as.numeric(fdataobj$argvals), as.integer(nb),
-        as.numeric(smo), as.numeric(trim), as.numeric(seed))
+        as.numeric(smo), as.numeric(trim), as.numeric(seed),
+        as.numeric(percentile))
 }
 
 #' LRT-based Outlier Detection for Functional Data
@@ -321,12 +341,16 @@ outliers.thres.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed 
 #' @param smo Smoothing parameter for bootstrap noise (default 0.05).
 #' @param trim Proportion of curves to trim for robust estimation (default 0.1).
 #' @param seed Random seed for reproducibility.
+#' @param percentile Percentile of bootstrap distribution to use as threshold
+#'   (default 0.99, meaning 99th percentile). Lower values make detection
+#'   more sensitive (detect more outliers).
 #'
 #' @return A list of class 'outliers.fdata' with components:
 #' \describe{
 #'   \item{outliers}{Indices of detected outliers}
 #'   \item{distances}{Normalized distances for all curves}
 #'   \item{threshold}{Bootstrap threshold used}
+#'   \item{percentile}{Percentile used for threshold}
 #'   \item{fdataobj}{Original fdata object}
 #' }
 #'
@@ -339,7 +363,11 @@ outliers.thres.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed 
 #' X[1, ] <- X[1, ] + 3
 #' fd <- fdata(X, argvals = t)
 #' out <- outliers.lrt(fd, nb = 100)
-outliers.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed = NULL) {
+#'
+#' # More sensitive detection
+#' out_sensitive <- outliers.lrt(fd, nb = 100, percentile = 0.95)
+outliers.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1,
+                         seed = NULL, percentile = 0.99) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -348,19 +376,25 @@ outliers.lrt <- function(fdataobj, nb = 200, smo = 0.05, trim = 0.1, seed = NULL
     stop("outliers.lrt for 2D functional data not yet implemented")
   }
 
+  if (percentile <= 0 || percentile >= 1) {
+    stop("percentile must be between 0 and 1 (exclusive)")
+  }
+
   if (is.null(seed)) {
     seed <- sample.int(.Machine$integer.max, 1)
   }
 
   result <- .Call("wrap__outliers_lrt", fdataobj$data,
                   as.numeric(fdataobj$argvals), as.integer(nb),
-                  as.numeric(smo), as.numeric(trim), as.numeric(seed))
+                  as.numeric(smo), as.numeric(trim), as.numeric(seed),
+                  as.numeric(percentile))
 
   structure(
     list(
       outliers = result$outliers,
       distances = result$distances,
       threshold = result$threshold,
+      percentile = percentile,
       fdataobj = fdataobj
     ),
     class = "outliers.fdata"

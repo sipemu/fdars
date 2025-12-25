@@ -23,9 +23,10 @@ fn compute_fm_depth_internal(data: &[f64], n: usize, m: usize) -> Vec<f64> {
 /// * `smo` - Smoothing parameter for bootstrap
 /// * `trim` - Trimming proportion
 /// * `seed` - Random seed
+/// * `percentile` - Percentile for threshold (e.g., 0.99 for 99th percentile)
 ///
 /// # Returns
-/// 99th percentile threshold for outlier detection
+/// Threshold at specified percentile for outlier detection
 pub fn outliers_threshold_lrt(
     data: &[f64],
     n: usize,
@@ -34,6 +35,7 @@ pub fn outliers_threshold_lrt(
     smo: f64,
     trim: f64,
     seed: u64,
+    percentile: f64,
 ) -> f64 {
     if n < 3 || m == 0 || data.len() != n * m {
         return 0.0;
@@ -121,10 +123,10 @@ pub fn outliers_threshold_lrt(
         })
         .collect();
 
-    // Return 99th percentile
+    // Return threshold at specified percentile
     let mut sorted_dists = max_dists;
     sorted_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = ((nb as f64 * 0.99) as usize).min(nb.saturating_sub(1));
+    let idx = ((nb as f64 * percentile) as usize).min(nb.saturating_sub(1));
     sorted_dists.get(idx).copied().unwrap_or(0.0)
 }
 

@@ -4287,6 +4287,7 @@ fn outliers_thres_lrt(
     smo: f64,
     trim: f64,
     seed: u64,
+    percentile: f64,
 ) -> f64 {
     let n = data.nrows();
     let m = data.ncols();
@@ -4379,11 +4380,11 @@ fn outliers_thres_lrt(
         })
         .collect();
 
-    // Return 99th percentile
+    // Return threshold at specified percentile
     let mut sorted_dists = max_dists;
     sorted_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = ((nb as f64 * 0.99) as usize).min(nb - 1);
-    sorted_dists[idx]
+    let idx = ((nb as f64 * percentile) as usize).min(nb.saturating_sub(1));
+    sorted_dists.get(idx).copied().unwrap_or(0.0)
 }
 
 /// Helper to compute FM depth internally
@@ -4426,6 +4427,7 @@ fn outliers_lrt(
     smo: f64,
     trim: f64,
     seed: u64,
+    percentile: f64,
 ) -> Robj {
     let n = data.nrows();
     let m = data.ncols();
@@ -4443,7 +4445,7 @@ fn outliers_lrt(
     let _n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
 
     // Compute threshold
-    let threshold = outliers_thres_lrt(data, argvals.clone(), nb, smo, trim, seed);
+    let threshold = outliers_thres_lrt(data, argvals.clone(), nb, smo, trim, seed, percentile);
 
     // Iterative outlier detection (up to 5 iterations)
     let mut current_mask = vec![true; n];

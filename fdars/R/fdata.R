@@ -1945,6 +1945,9 @@ fdata2pc <- function(fdataobj, ncomp = 2, lambda = 0, norm = TRUE) {
 #'   scatter plot of observations.
 #' @param ncomp Number of components to display (default 3 or fewer if not available).
 #' @param multiple Factor for scaling PC perturbations. Default is 2 (shows +/- 2*sqrt(eigenvalue)*PC).
+#' @param show_both_directions Logical. If TRUE (default), show both positive and
+#'   negative perturbations (mean + PC and mean - PC). If FALSE, only show positive
+#'   perturbation. All curves are solid lines differentiated by color.
 #' @param ... Additional arguments passed to plotting functions.
 #'
 #' @return A ggplot object (invisibly).
@@ -1952,7 +1955,8 @@ fdata2pc <- function(fdataobj, ncomp = 2, lambda = 0, norm = TRUE) {
 #' @details
 #' The "components" plot shows the mean function (black) with perturbations
 #' in the direction of each principal component. The perturbation is computed as:
-#' mean +/- multiple * sqrt(variance_explained) * PC_loading
+#' mean +/- multiple * sqrt(variance_explained) * PC_loading. All lines are solid
+#' and differentiated by color only.
 #'
 #' The "variance" plot shows a scree plot with the proportion of variance
 #' explained by each component as a bar chart.
@@ -1979,13 +1983,14 @@ fdata2pc <- function(fdataobj, ncomp = 2, lambda = 0, norm = TRUE) {
 #' # Score plot
 #' plot(pc, type = "scores")
 plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
-                          ncomp = 3, multiple = 2, ...) {
+                          ncomp = 3, multiple = 2,
+                          show_both_directions = TRUE, ...) {
   type <- match.arg(type)
 
   ncomp <- min(ncomp, length(x$d), ncol(x$x))
 
   switch(type,
-    "components" = .plot_fpca_components(x, ncomp, multiple),
+    "components" = .plot_fpca_components(x, ncomp, multiple, show_both_directions),
     "variance" = .plot_fpca_variance(x, ncomp),
     "scores" = .plot_fpca_scores(x, ncomp)
   )
@@ -1993,7 +1998,7 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
 
 # Internal: Plot FPCA components (mean +/- perturbations)
 # @noRd
-.plot_fpca_components <- function(x, ncomp, multiple) {
+.plot_fpca_components <- function(x, ncomp, multiple, show_both_directions = TRUE) {
   m <- length(x$argvals)
 
   # Compute variance explained (proportional to d^2)
@@ -2030,13 +2035,15 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
       curve_type = label_plus
     )
 
-    # Minus direction
-    plot_data[[length(plot_data) + 1]] <- data.frame(
-      t = x$argvals,
-      value = x$mean - scale_factor * loading,
-      component = facet_label,
-      curve_type = label_minus
-    )
+    # Minus direction (only if show_both_directions is TRUE)
+    if (show_both_directions) {
+      plot_data[[length(plot_data) + 1]] <- data.frame(
+        t = x$argvals,
+        value = x$mean - scale_factor * loading,
+        component = facet_label,
+        curve_type = label_minus
+      )
+    }
   }
 
   df <- do.call(rbind, plot_data)
@@ -2046,31 +2053,32 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
                       round(100 * prop_var[seq_len(ncomp)], 1), "%)")
   df$component <- factor(df$component, levels = pc_labels)
 
-  curve_labels <- c(label_mean, label_plus, label_minus)
+  # Define colors and labels based on whether both directions are shown
+  if (show_both_directions) {
+    curve_labels <- c(label_mean, label_plus, label_minus)
+    color_values <- c("black", "steelblue", "coral")
+  } else {
+    curve_labels <- c(label_mean, label_plus)
+    color_values <- c("black", "steelblue")
+  }
+  names(color_values) <- curve_labels
   df$curve_type <- factor(df$curve_type, levels = curve_labels)
 
-  # Create named vectors for scale mappings
-  color_values <- c("black", "steelblue", "coral")
-  names(color_values) <- curve_labels
-  linetype_values <- c("solid", "dashed", "dotted")
-  names(linetype_values) <- curve_labels
-
-  # Create faceted plot
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = t, y = value,
-                                         color = curve_type,
-                                         linetype = curve_type)) +
+  # Create faceted plot - all solid lines, differentiated by color only
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = t, y = value, color = curve_type)) +
     ggplot2::geom_line(linewidth = 0.8) +
     ggplot2::facet_wrap(~component, scales = "free_y") +
     ggplot2::scale_color_manual(values = color_values) +
-    ggplot2::scale_linetype_manual(values = linetype_values) +
     ggplot2::labs(
       title = "FPCA: Principal Component Perturbations",
-      subtitle = paste0("Effect of adding/subtracting ", multiple,
-                        " \u00D7 sqrt(eigenvalue) \u00D7 PC to mean"),
+      subtitle = if (show_both_directions) {
+        paste0("Mean \u00B1 ", multiple, " \u00D7 sqrt(eigenvalue) \u00D7 PC")
+      } else {
+        paste0("Mean + ", multiple, " \u00D7 sqrt(eigenvalue) \u00D7 PC")
+      },
       x = "t",
       y = "X(t)",
-      color = "",
-      linetype = ""
+      color = ""
     ) +
     ggplot2::theme(legend.position = "bottom")
 

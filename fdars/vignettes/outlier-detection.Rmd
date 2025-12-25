@@ -83,8 +83,11 @@ three different methods for computing the threshold.
 | `"mad"` | `median - k × MAD` | More robust when outliers may already exist |
 | `"iqr"` | `Q1 - k × IQR` | Boxplot-style detection |
 
+**Default: 95th percentile threshold** (`quan = 0.05`), which flags curves in the
+bottom 5% of depths as outliers.
+
 ```{r depth-pond}
-# Default: quantile method with quan = 0.1 (flags bottom 10%)
+# Default: quantile method with quan = 0.05 (95th percentile, flags bottom 5%)
 out_pond <- outliers.depth.pond(fd, nb = 1000)
 print(out_pond)
 ```
@@ -92,10 +95,15 @@ print(out_pond)
 #### Comparing Threshold Methods
 
 ```{r threshold-methods}
-# Quantile method: flags curves with depth in the bottom 10%
+# Quantile method: flags curves with depth in the bottom 5% (default)
 out_quantile <- outliers.depth.pond(fd, nb = 1000,
-                                     threshold_method = "quantile", quan = 0.1)
-cat("Quantile (10%):", out_quantile$outliers, "\n")
+                                     threshold_method = "quantile", quan = 0.05)
+cat("Quantile (5%): ", out_quantile$outliers, "\n")
+
+# More permissive: bottom 10%
+out_quantile10 <- outliers.depth.pond(fd, nb = 1000,
+                                       threshold_method = "quantile", quan = 0.1)
+cat("Quantile (10%):", out_quantile10$outliers, "\n")
 
 # MAD method: more robust, uses median - 2.5*MAD
 out_mad <- outliers.depth.pond(fd, nb = 1000,
@@ -110,8 +118,9 @@ cat("IQR (k=1.5):   ", out_iqr$outliers, "\n")
 
 **Choosing the right method:**
 
-- **Quantile**: Use when you have prior knowledge about the expected contamination
-  rate. Set `quan = 0.05` for ~5% expected outliers, `quan = 0.1` for ~10%.
+- **Quantile** (default): Uses a fixed proportion cutoff. The default `quan = 0.05`
+  (95th percentile) flags the bottom 5% of curves. Increase to `quan = 0.1` for
+  more permissive detection.
 
 - **MAD**: More robust to existing outliers in the data. The default `k = 2.5`
   corresponds roughly to a 1-2% false positive rate. Increase `k` for stricter
@@ -188,21 +197,50 @@ out_mode <- outliers.depth.trim(fd, trim = 0.1, seed = 123)
 The LRT method uses a likelihood ratio test to sequentially identify outliers.
 It's particularly effective for detecting magnitude outliers.
 
-### Computing the Threshold
+### Automatic Threshold Computation
 
-First, compute a bootstrap threshold:
-
-```{r lrt-threshold}
-threshold <- outliers.thres.lrt(fd, nb = 1000, seed = 123)
-cat("LRT threshold:", threshold, "\n")
-```
-
-### Detecting Outliers
+The LRT method automatically computes a bootstrap threshold based on a percentile
+of the maximum distance distribution under the null hypothesis (no outliers).
+By default, the 99th percentile is used, meaning approximately 1% of observations
+would be flagged as outliers when there are no true outliers.
 
 ```{r lrt-detect}
+# The outliers.lrt function automatically computes the threshold
 out_lrt <- outliers.lrt(fd, nb = 1000, seed = 123)
 print(out_lrt)
 plot(out_lrt)
+```
+
+### Configuring the Percentile
+
+The `percentile` parameter controls the sensitivity of the LRT method:
+
+- **Higher percentile** (e.g., 0.99): More conservative, fewer false positives
+- **Lower percentile** (e.g., 0.95): More sensitive, may catch more subtle outliers
+
+```{r lrt-percentile}
+# Default: 99th percentile (conservative)
+out_lrt_99 <- outliers.lrt(fd, nb = 1000, seed = 123, percentile = 0.99)
+cat("99th percentile outliers:", out_lrt_99$outliers, "\n")
+
+# More sensitive: 95th percentile
+out_lrt_95 <- outliers.lrt(fd, nb = 1000, seed = 123, percentile = 0.95)
+cat("95th percentile outliers:", out_lrt_95$outliers, "\n")
+```
+
+### Manual Threshold Computation
+
+You can also compute the threshold separately if you want to examine it or apply
+a custom threshold:
+
+```{r lrt-threshold}
+# Compute threshold separately (99th percentile by default)
+threshold_99 <- outliers.thres.lrt(fd, nb = 1000, seed = 123)
+cat("LRT threshold (99th percentile):", threshold_99, "\n")
+
+# Or with a different percentile
+threshold_95 <- outliers.thres.lrt(fd, nb = 1000, seed = 123, percentile = 0.95)
+cat("LRT threshold (95th percentile):", threshold_95, "\n")
 ```
 
 ### LRT Results
@@ -233,6 +271,7 @@ The LRT method is specifically optimized for **magnitude outliers** - curves tha
 **Using the threshold (`outliers.thres.lrt()`):**
 
 The threshold represents the critical value of the LRT statistic. Use it to:
+
 - Apply a custom significance level
 - Compare test statistics across different datasets
 - Combine with domain knowledge for decision-making
