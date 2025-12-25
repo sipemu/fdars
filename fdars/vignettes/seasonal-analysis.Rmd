@@ -236,9 +236,9 @@ fdars provides comprehensive detrending and decomposition functions to handle th
 When a strong trend is present, seasonal analysis functions may fail:
 
 ```{r trend-problem}
-# Signal with strong linear trend + seasonality
+# Signal with strong linear trend + seasonality + noise
 t <- seq(0, 20, length.out = 400)
-X_trend <- 5 + 2 * t + sin(2 * pi * t / 2.5)  # Trend dominates
+X_trend <- 5 + 2 * t + sin(2 * pi * t / 2.5) + rnorm(length(t), sd = 0.3)
 fd_trend <- fdata(matrix(X_trend, nrow = 1), argvals = t)
 
 df <- data.frame(t = t, y = X_trend)
@@ -339,8 +339,8 @@ ggplot(df_stl, aes(x = t, y = y)) +
 When the seasonal amplitude grows with the trend level, use multiplicative decomposition:
 
 ```{r decompose-multiplicative}
-# Multiplicative pattern: amplitude grows with level
-X_mult <- (2 + 0.3 * t) * (1 + 0.4 * sin(2 * pi * t / 2.5))
+# Multiplicative pattern: amplitude grows with level + noise
+X_mult <- (2 + 0.3 * t) * (1 + 0.4 * sin(2 * pi * t / 2.5)) + rnorm(length(t), sd = 0.5)
 fd_mult <- fdata(matrix(X_mult, nrow = 1), argvals = t)
 
 # Plot - note how peaks get taller over time
@@ -391,6 +391,65 @@ cat("  Without detrend:", round(seasonal_strength(fd_trend, period = 2.5), 3), "
 cat("  With detrend:   ", round(seasonal_strength(fd_trend, period = 2.5,
                                                    detrend_method = "linear"), 3), "\n")
 ```
+
+### Peak Detection with Detrending
+
+Trends also affect peak detection - the upward slope can distort prominence calculations
+and make later peaks appear more prominent than earlier ones.
+
+```{r peaks-trending-data}
+# Detect peaks without detrending
+peaks_no_detrend <- detect_peaks(fd_trend, min_distance = 2, smooth_first = TRUE)
+
+# Detect peaks with detrending
+peaks_with_detrend <- detect_peaks(fd_trend, min_distance = 2, smooth_first = TRUE,
+                                    detrend_method = "linear")
+
+cat("Peak detection on trending data:\n")
+cat("  Without detrend:", nrow(peaks_no_detrend$peaks[[1]]), "peaks,",
+    "mean period:", round(peaks_no_detrend$mean_period, 3), "\n")
+cat("  With detrend:   ", nrow(peaks_with_detrend$peaks[[1]]), "peaks,",
+    "mean period:", round(peaks_with_detrend$mean_period, 3), "(true: 2.5)\n")
+```
+
+```{r peaks-trending-plot, fig.height=6}
+# Visualize the difference
+peaks_raw <- peaks_no_detrend$peaks[[1]]
+peaks_det <- peaks_with_detrend$peaks[[1]]
+
+# Get detrended data for plotting
+fd_detrended <- detrend(fd_trend, method = "linear")
+
+df_peaks <- data.frame(
+  t = rep(t, 2),
+  y = c(fd_trend$data[1,], fd_detrended$data[1,]),
+  Panel = factor(rep(c("Original (with trend)", "Detrended"), each = length(t)),
+                 levels = c("Original (with trend)", "Detrended"))
+)
+
+# Combine peak data
+peaks_raw$Panel <- "Original (with trend)"
+peaks_det$Panel <- "Detrended"
+# Adjust detrended peak values to match detrended data
+peaks_det$value <- fd_detrended$data[1, sapply(peaks_det$time, function(x) which.min(abs(t - x)))]
+peaks_combined <- rbind(peaks_raw, peaks_det)
+peaks_combined$Panel <- factor(peaks_combined$Panel,
+                                levels = c("Original (with trend)", "Detrended"))
+
+ggplot(df_peaks, aes(x = t, y = y)) +
+  geom_line(color = "steelblue", alpha = 0.7) +
+  geom_point(data = peaks_combined, aes(x = time, y = value),
+             color = "red", size = 2) +
+  facet_wrap(~Panel, ncol = 1, scales = "free_y") +
+  labs(title = "Peak Detection: With vs Without Detrending",
+       subtitle = "Detrending ensures consistent peak detection across the series",
+       x = "Time", y = "Value")
+```
+
+Detrending is especially important when:
+- Peaks near the start/end of the series have different prominence due to the trend
+- You need consistent peak-to-peak period estimates
+- The trend slope is comparable to or larger than the seasonal amplitude
 
 ### Choosing a Detrending Method
 
