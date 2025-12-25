@@ -255,6 +255,221 @@ the weekly cycle will be detected first regardless of which period is
 longer. Very weak periodicities (\< 20% of the dominant amplitude) may
 require lower thresholds but risk false positives.
 
+## Handling Non-Stationary Data
+
+Real-world time series often have trends that can mask or distort
+seasonal patterns. fdars provides comprehensive detrending and
+decomposition functions to handle this.
+
+### The Problem: Trends Mask Seasonality
+
+When a strong trend is present, seasonal analysis functions may fail:
+
+``` r
+# Signal with strong linear trend + seasonality
+t <- seq(0, 20, length.out = 400)
+X_trend <- 5 + 2 * t + sin(2 * pi * t / 2.5)  # Trend dominates
+fd_trend <- fdata(matrix(X_trend, nrow = 1), argvals = t)
+
+df <- data.frame(t = t, y = X_trend)
+ggplot(df, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Seasonal Signal with Strong Linear Trend",
+       subtitle = "The trend dominates, masking the seasonality",
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/trend-problem-1.png)
+
+``` r
+# Without detrending - incorrect results!
+period_wrong <- estimate_period(fd_trend)$period
+strength_wrong <- seasonal_strength(fd_trend, period = 2.5)
+
+cat("WITHOUT detrending:\n")
+#> WITHOUT detrending:
+cat("  Estimated period:", round(period_wrong, 2), "(true: 2.5)\n")
+#>   Estimated period: 20.05 (true: 2.5)
+cat("  Seasonal strength:", round(strength_wrong, 3), "(should be ~1)\n")
+#>   Seasonal strength: 0.005 (should be ~1)
+```
+
+The trend causes: - Period estimation to return the series length (20)
+instead of the true period (2.5) - Seasonal strength to be nearly zero,
+when it should be close to 1
+
+### Using detrend()
+
+The [`detrend()`](https://sipemu.github.io/fdars/reference/detrend.md)
+function removes trends using various methods:
+
+``` r
+# Linear detrending
+fd_linear <- detrend(fd_trend, method = "linear")
+
+# Polynomial detrending (degree 2)
+fd_poly <- detrend(fd_trend, method = "polynomial", degree = 2)
+
+# LOESS detrending (flexible, non-parametric)
+fd_loess <- detrend(fd_trend, method = "loess", bandwidth = 0.3)
+
+# Automatic selection via AIC
+fd_auto <- detrend(fd_trend, method = "auto")
+
+# Compare results
+cat("After detrending, estimated periods:\n")
+#> After detrending, estimated periods:
+cat("  Linear:     ", round(estimate_period(fd_linear)$period, 3), "\n")
+#>   Linear:      2.506
+cat("  Polynomial: ", round(estimate_period(fd_poly)$period, 3), "\n")
+#>   Polynomial:  2.506
+cat("  LOESS:      ", round(estimate_period(fd_loess)$period, 3), "\n")
+#>   LOESS:       2.506
+cat("  Auto:       ", round(estimate_period(fd_auto)$period, 3), "(true: 2.5)\n")
+#>   Auto:        2.506 (true: 2.5)
+```
+
+### Getting Both Trend and Detrended Data
+
+Use `return_trend = TRUE` to get both components:
+
+``` r
+result <- detrend(fd_trend, method = "linear", return_trend = TRUE)
+
+# Plot original, trend, and detrended
+df_decomp <- data.frame(
+  t = rep(t, 3),
+  y = c(fd_trend$data[1,], result$trend$data[1,], result$detrended$data[1,]),
+  Component = factor(rep(c("Original", "Trend", "Detrended"), each = length(t)),
+                     levels = c("Original", "Trend", "Detrended"))
+)
+
+ggplot(df_decomp, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  facet_wrap(~Component, ncol = 1, scales = "free_y") +
+  labs(title = "Linear Detrending Result",
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/detrend-return-trend-1.png)
+
+### Seasonal-Trend Decomposition
+
+For full decomposition into trend, seasonal, and remainder components,
+use
+[`decompose()`](https://sipemu.github.io/fdars/reference/decompose.md):
+
+``` r
+# Additive decomposition: data = trend + seasonal + remainder
+decomp <- decompose(fd_trend, period = 2.5, method = "additive")
+
+# Plot all components
+df_stl <- data.frame(
+  t = rep(t, 4),
+  y = c(fd_trend$data[1,], decomp$trend$data[1,],
+        decomp$seasonal$data[1,], decomp$remainder$data[1,]),
+  Component = factor(rep(c("Original", "Trend", "Seasonal", "Remainder"), each = length(t)),
+                     levels = c("Original", "Trend", "Seasonal", "Remainder"))
+)
+
+ggplot(df_stl, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  facet_wrap(~Component, ncol = 1, scales = "free_y") +
+  labs(title = "Additive Seasonal-Trend Decomposition",
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/decompose-additive-1.png)
+
+### Multiplicative Seasonality
+
+When the seasonal amplitude grows with the trend level, use
+multiplicative decomposition:
+
+``` r
+# Multiplicative pattern: amplitude grows with level
+X_mult <- (2 + 0.3 * t) * (1 + 0.4 * sin(2 * pi * t / 2.5))
+fd_mult <- fdata(matrix(X_mult, nrow = 1), argvals = t)
+
+# Plot - note how peaks get taller over time
+df_mult <- data.frame(t = t, y = X_mult)
+ggplot(df_mult, aes(x = t, y = y)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Multiplicative Seasonality",
+       subtitle = "Seasonal amplitude grows with trend level",
+       x = "Time", y = "Value")
+```
+
+![](seasonal-analysis_files/figure-html/decompose-multiplicative-1.png)
+
+``` r
+# Multiplicative decomposition
+decomp_mult <- decompose(fd_mult, period = 2.5, method = "multiplicative")
+
+cat("Multiplicative decomposition:\n")
+#> Multiplicative decomposition:
+cat("  Seasonal range:", round(range(decomp_mult$seasonal$data[1,]), 3), "\n")
+#>   Seasonal range: 0.631 1.453
+cat("  (Values near 1 indicate multiplicative factors)\n")
+#>   (Values near 1 indicate multiplicative factors)
+```
+
+### Integrated Detrending in Other Functions
+
+All main seasonal functions support a `detrend_method` parameter:
+
+``` r
+# These are equivalent:
+# 1. Explicit detrending
+fd_det <- detrend(fd_trend, method = "linear")
+p1 <- estimate_period(fd_det)$period
+
+# 2. Integrated detrending parameter
+p2 <- estimate_period(fd_trend, detrend_method = "linear")$period
+
+cat("Explicit detrend:", round(p1, 3), "\n")
+#> Explicit detrend: 2.506
+cat("Integrated param:", round(p2, 3), "\n")
+#> Integrated param: 2.506
+```
+
+The `detrend_method` parameter is available in: -
+[`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md) -
+For accurate period estimation on trending data -
+[`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md) -
+For correct peak prominence calculation -
+[`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md) -
+For true seasonality measurement -
+[`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md) -
+Uses “auto” by default
+
+``` r
+# Dramatic improvement with detrending
+cat("\nSeasonal strength comparison:\n")
+#> 
+#> Seasonal strength comparison:
+cat("  Without detrend:", round(seasonal_strength(fd_trend, period = 2.5), 3), "\n")
+#>   Without detrend: 0.005
+cat("  With detrend:   ", round(seasonal_strength(fd_trend, period = 2.5,
+                                                   detrend_method = "linear"), 3), "\n")
+#>   With detrend:    0.991
+```
+
+### Choosing a Detrending Method
+
+| Method         | Use When                         | Parameters                 |
+|----------------|----------------------------------|----------------------------|
+| `"linear"`     | Simple linear trends             | None                       |
+| `"polynomial"` | Curved trends (quadratic, cubic) | `degree` (2, 3, etc.)      |
+| `"loess"`      | Complex, irregular trends        | `bandwidth` (0.1-0.5)      |
+| `"diff1"`      | Random walk-like data            | None (reduces length by 1) |
+| `"diff2"`      | Integrated processes             | None (reduces length by 2) |
+| `"auto"`       | Unknown trend type               | Selects via AIC            |
+
+**Recommendation:** Start with `"linear"` for most cases. Use `"auto"`
+if unsure. Use `"loess"` for complex trends that polynomial methods
+cannot capture.
+
 ## Peak Detection
 
 Peak detection identifies local maxima in seasonal signals. This is
@@ -1132,25 +1347,40 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
 
 ### Function Reference
 
-| Function                                                                                                           | Purpose                                                  |
-|--------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|
-| [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)                                 | Estimate seasonal period (FFT or ACF method)             |
-| [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)                                       | Find and characterize peaks (with auto GCV smoothing)    |
-| [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)                             | Measure overall seasonality strength                     |
-| [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)                 | Time-varying seasonality strength                        |
-| [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)           | Find onset/cessation of seasonality                      |
-| [`detect_seasonality_changes_auto()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.md) | Auto threshold using Otsu’s method                       |
-| [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)                       | Period estimation for smoothly drifting signals          |
-| [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)                         | Analyze peak timing variability across cycles            |
-| [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)                       | Classify seasonality type (stable/variable/intermittent) |
+| Function                                                                                                           | Purpose                                                   |
+|--------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)                                 | Estimate seasonal period (FFT or ACF method)              |
+| [`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)                 | Detect multiple concurrent periodicities                  |
+| [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)                                       | Find and characterize peaks (with auto GCV smoothing)     |
+| [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)                             | Measure overall seasonality strength                      |
+| [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)                 | Time-varying seasonality strength                         |
+| [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)           | Find onset/cessation of seasonality                       |
+| [`detect_seasonality_changes_auto()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.md) | Auto threshold using Otsu’s method                        |
+| [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)                       | Period estimation for smoothly drifting signals           |
+| [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)                         | Analyze peak timing variability across cycles             |
+| [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)                       | Classify seasonality type (stable/variable/intermittent)  |
+| [`detrend()`](https://sipemu.github.io/fdars/reference/detrend.md)                                                 | Remove trends (linear, polynomial, LOESS, differencing)   |
+| [`decompose()`](https://sipemu.github.io/fdars/reference/decompose.md)                                             | Seasonal-trend decomposition (additive or multiplicative) |
 
 ### Decision Guide
+
+**Non-stationary data (trends present):**
+
+- Linear trend: `detrend(method = "linear")` or use
+  `detrend_method = "linear"` parameter
+- Complex/curved trend: `detrend(method = "loess")` or `method = "auto"`
+- Growing seasonal amplitude: `decompose(method = "multiplicative")`
+- Full decomposition needed:
+  [`decompose()`](https://sipemu.github.io/fdars/reference/decompose.md)
+  returns trend + seasonal + remainder
 
 **Period estimation:**
 
 - Period unknown, signal stable: `estimate_period(method = "fft")`
-- Period unknown, multiple independent periods: Use iterative residual
-  approach
+- Period unknown, data has trend:
+  `estimate_period(detrend_method = "linear")`
+- Period unknown, multiple independent periods:
+  [`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)
 - Period varies smoothly over time:
   [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)
 
@@ -1161,12 +1391,14 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
   with default parameters
 - Noisy data: Add `smooth_first = TRUE` (Fourier smoothing with
   GCV-selected nbasis)
+- Data with trend: Add `detrend_method = "linear"`
 - Still too many peaks: Increase `min_prominence`
 
 **Seasonal strength:**
 
 - Single measurement:
   [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)
+- Data with trend: `seasonal_strength(detrend_method = "linear")`
 - Track changes over time:
   [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)
 - Detect when seasonality stops:
