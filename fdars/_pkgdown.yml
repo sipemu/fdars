@@ -181,6 +181,8 @@ reference:
   - instantaneous_period
   - analyze_peak_timing
   - classify_seasonality
+  - detrend
+  - decompose
 
 - title: Smoothing
   contents:
