@@ -12,6 +12,7 @@
 //! - Outlier detection
 //! - Regression (PCA, PLS, ridge)
 //! - Seasonal analysis (period estimation, peak detection, seasonal strength)
+//! - Detrending and decomposition for non-stationary data
 //!
 //! ## Data Layout
 //!
@@ -24,6 +25,7 @@
 pub mod basis;
 pub mod clustering;
 pub mod depth;
+pub mod detrend;
 pub mod fdata;
 pub mod helpers;
 pub mod metric;
@@ -41,3 +43,6 @@ pub use seasonal::{
     ChangeDetectionResult, ChangePoint, ChangeType, DetectedPeriod, InstantaneousPeriod, Peak,
     PeakDetectionResult, PeriodEstimate, StrengthMethod,
 };
+
+// Re-export detrending types
+pub use detrend::{DecomposeResult, TrendResult};

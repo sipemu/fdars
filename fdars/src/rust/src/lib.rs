@@ -7201,6 +7201,120 @@ fn otsu_threshold_inline(values: &[f64]) -> f64 {
 }
 
 // =============================================================================
+// Detrending functions
+// =============================================================================
+
+/// Detrend functional data using specified method
+/// Returns trend, detrended data, method used, RSS per curve, and number of parameters
+#[extendr]
+fn seasonal_detrend(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    method: &str,
+    degree: i32,
+    bandwidth: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 3 || argvals.len() != m {
+        return list!(
+            trend = RMatrix::<f64>::new(0, 0),
+            detrended = RMatrix::<f64>::new(0, 0),
+            method = "none",
+            rss = Vec::<f64>::new(),
+            n_params = 0i32
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let result = match method {
+        "linear" => fdars_core::detrend::detrend_linear(data_slice, n, m, &argvals),
+        "polynomial" => fdars_core::detrend::detrend_polynomial(data_slice, n, m, &argvals, degree as usize),
+        "diff1" => fdars_core::detrend::detrend_diff(data_slice, n, m, 1),
+        "diff2" => fdars_core::detrend::detrend_diff(data_slice, n, m, 2),
+        "loess" => fdars_core::detrend::detrend_loess(data_slice, n, m, &argvals, bandwidth, 1),
+        "auto" => fdars_core::detrend::auto_detrend(data_slice, n, m, &argvals),
+        _ => fdars_core::detrend::detrend_linear(data_slice, n, m, &argvals),
+    };
+
+    // Determine output dimensions based on method
+    let out_m = if method == "diff1" {
+        m - 1
+    } else if method == "diff2" {
+        m - 2
+    } else {
+        m
+    };
+
+    // Convert to R matrices
+    let trend_mat = RMatrix::new_matrix(n, out_m, |r, c| result.trend[r + c * n]);
+    let detrended_mat = RMatrix::new_matrix(n, out_m, |r, c| result.detrended[r + c * n]);
+
+    list!(
+        trend = trend_mat,
+        detrended = detrended_mat,
+        method = result.method,
+        rss = result.rss,
+        n_params = result.n_params as i32
+    )
+    .into()
+}
+
+/// Decompose functional data into trend, seasonal, and remainder components
+#[extendr]
+fn seasonal_decompose(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    method: &str,
+    trend_method: &str,
+    bandwidth: f64,
+    n_harmonics: i32,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 3 || argvals.len() != m || period <= 0.0 {
+        return list!(
+            trend = RMatrix::<f64>::new(0, 0),
+            seasonal = RMatrix::<f64>::new(0, 0),
+            remainder = RMatrix::<f64>::new(0, 0),
+            period = f64::NAN,
+            method = "none"
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let result = match method {
+        "multiplicative" => fdars_core::detrend::decompose_multiplicative(
+            data_slice, n, m, &argvals, period, trend_method, bandwidth, n_harmonics as usize
+        ),
+        "additive" | _ => fdars_core::detrend::decompose_additive(
+            data_slice, n, m, &argvals, period, trend_method, bandwidth, n_harmonics as usize
+        ),
+    };
+
+    // Convert to R matrices
+    let trend_mat = RMatrix::new_matrix(n, m, |r, c| result.trend[r + c * n]);
+    let seasonal_mat = RMatrix::new_matrix(n, m, |r, c| result.seasonal[r + c * n]);
+    let remainder_mat = RMatrix::new_matrix(n, m, |r, c| result.remainder[r + c * n]);
+
+    list!(
+        trend = trend_mat,
+        seasonal = seasonal_mat,
+        remainder = remainder_mat,
+        period = result.period,
+        method = result.method
+    )
+    .into()
+}
+
+// =============================================================================
 // Module exports
 // =============================================================================
 
@@ -7316,4 +7430,8 @@ extendr_module! {
     fn seasonal_analyze_peak_timing;
     fn seasonal_classify_seasonality;
     fn seasonal_detect_changes_auto;
+
+    // Detrending functions
+    fn seasonal_detrend;
+    fn seasonal_decompose;
 }

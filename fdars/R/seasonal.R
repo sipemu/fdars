@@ -14,6 +14,15 @@
 #' and periodogram analysis.
 #'
 #' @param fdataobj An fdata object.
+#' @param method Method for period estimation: "fft" (Fast Fourier Transform,
+#'   default) or "acf" (autocorrelation function).
+#' @param max_lag Maximum lag for ACF method. Default: half the series length.
+#' @param detrend_method Detrending method to apply before period estimation:
+#' \describe{
+#'   \item{"none"}{No detrending (default)}
+#'   \item{"linear"}{Remove linear trend}
+#'   \item{"auto"}{Automatic AIC-based selection of detrending method}
+#' }
 #'
 #' @return A list with components:
 #' \describe{
@@ -28,6 +37,10 @@
 #' frequency with maximum power. The confidence measure indicates how
 #' pronounced the dominant frequency is relative to the background.
 #'
+#' For data with trends, the detrend_method parameter can significantly
+#' improve period estimation accuracy. Strong trends can mask the true
+#' seasonal period.
+#'
 #' @export
 #' @examples
 #' # Generate seasonal data with period = 2
@@ -38,8 +51,14 @@
 #' # Estimate period
 #' result <- estimate_period(fd, method = "fft")
 #' print(result$period)  # Should be close to 2
+#'
+#' # With trend - detrending improves estimation
+#' X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd_trend <- fdata(X_trend, argvals = t)
+#' result <- estimate_period(fd_trend, detrend_method = "linear")
 estimate_period <- function(fdataobj, method = c("fft", "acf"),
-                            max_lag = NULL) {
+                            max_lag = NULL,
+                            detrend_method = c("none", "linear", "auto")) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -49,6 +68,12 @@ estimate_period <- function(fdataobj, method = c("fft", "acf"),
   }
 
   method <- match.arg(method)
+  detrend_method <- match.arg(detrend_method)
+
+  # Apply detrending if requested
+  if (detrend_method != "none") {
+    fdataobj <- detrend(fdataobj, method = detrend_method)
+  }
 
   if (method == "fft") {
     result <- .Call("wrap__seasonal_estimate_period_fft",
@@ -93,6 +118,12 @@ print.period_estimate <- function(x, ...) {
 #'   Default: 0.5.
 #' @param min_strength Minimum seasonal strength to continue detection.
 #'   Default: 0.2.
+#' @param detrend_method Detrending method to apply before period detection:
+#' \describe{
+#'   \item{"auto"}{Automatic AIC-based selection of detrending method (default)}
+#'   \item{"none"}{No detrending}
+#'   \item{"linear"}{Remove linear trend}
+#' }
 #'
 #' @return A list with components:
 #' \describe{
@@ -117,7 +148,11 @@ print.period_estimate <- function(x, ...) {
 #' Periods are detected in order of amplitude (FFT power), not period length.
 #' A weak yearly cycle will be detected after a strong weekly cycle.
 #'
-#' @seealso \code{\link{estimate_period}} for single period estimation
+#' Trends can interfere with period detection. The default "auto" detrending
+#' automatically selects an appropriate method to remove trends.
+#'
+#' @seealso \code{\link{estimate_period}} for single period estimation,
+#'   \code{\link{detrend}} for standalone detrending
 #'
 #' @export
 #' @examples
@@ -132,13 +167,21 @@ print.period_estimate <- function(x, ...) {
 #' print(result$n_periods)  # Should be 2
 detect_multiple_periods <- function(fdataobj, max_periods = 3,
                                      min_confidence = 0.5,
-                                     min_strength = 0.2) {
+                                     min_strength = 0.2,
+                                     detrend_method = c("auto", "none", "linear")) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
     stop("detect_multiple_periods not yet implemented for 2D functional data")
+  }
+
+  detrend_method <- match.arg(detrend_method)
+
+  # Apply detrending if requested
+  if (detrend_method != "none") {
+    fdataobj <- detrend(fdataobj, method = detrend_method)
   }
 
   # Pure R implementation using iterative residual subtraction
@@ -226,6 +269,12 @@ print.multiple_periods <- function(x, ...) {
 #' @param smooth_nbasis Number of Fourier basis functions for smoothing.
 #'   If NULL and smooth_first=TRUE, uses GCV to automatically select
 #'   optimal nbasis (range 5-25). Default: NULL (auto).
+#' @param detrend_method Detrending method to apply before peak detection:
+#' \describe{
+#'   \item{"none"}{No detrending (default)}
+#'   \item{"linear"}{Remove linear trend}
+#'   \item{"auto"}{Automatic AIC-based selection of detrending method}
+#' }
 #'
 #' @return A list with components:
 #' \describe{
@@ -242,6 +291,10 @@ print.multiple_periods <- function(x, ...) {
 #' Fourier basis smoothing is ideal for seasonal signals because it naturally
 #' captures periodic patterns without introducing boundary artifacts.
 #'
+#' For data with trends, use detrend_method to remove the trend before
+#' detecting peaks. This prevents the trend from affecting peak prominence
+#' calculations.
+#'
 #' @export
 #' @examples
 #' # Generate data with clear peaks
@@ -255,14 +308,27 @@ print.multiple_periods <- function(x, ...) {
 #'
 #' # With automatic Fourier smoothing (GCV selects nbasis)
 #' peaks_smooth <- detect_peaks(fd, min_distance = 1.5, smooth_first = TRUE)
+#'
+#' # With detrending for trending data
+#' X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd_trend <- fdata(X_trend, argvals = t)
+#' peaks_det <- detect_peaks(fd_trend, detrend_method = "linear")
 detect_peaks <- function(fdataobj, min_distance = NULL, min_prominence = NULL,
-                         smooth_first = FALSE, smooth_nbasis = NULL) {
+                         smooth_first = FALSE, smooth_nbasis = NULL,
+                         detrend_method = c("none", "linear", "auto")) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
     stop("detect_peaks not yet implemented for 2D functional data")
+  }
+
+  detrend_method <- match.arg(detrend_method)
+
+  # Apply detrending if requested
+  if (detrend_method != "none") {
+    fdataobj <- detrend(fdataobj, method = detrend_method)
   }
 
   # Handle NULL values - pass as NULL Robj
@@ -320,6 +386,12 @@ print.peak_detection <- function(x, ...) {
 #'   }
 #' @param n_harmonics Number of Fourier harmonics to use (for variance method).
 #'   Default: 3.
+#' @param detrend_method Detrending method to apply before computing strength:
+#' \describe{
+#'   \item{"none"}{No detrending (default)}
+#'   \item{"linear"}{Remove linear trend}
+#'   \item{"auto"}{Automatic AIC-based selection of detrending method}
+#' }
 #'
 #' @return A numeric value between 0 and 1 representing seasonal strength.
 #'
@@ -330,6 +402,10 @@ print.peak_detection <- function(x, ...) {
 #'
 #' The spectral method computes the proportion of total spectral power
 #' that falls at the seasonal frequency and its harmonics.
+#'
+#' Trends can artificially lower the seasonal strength measure by
+#' contributing non-seasonal variance. Use detrend_method to remove
+#' trends before computing strength.
 #'
 #' @export
 #' @examples
@@ -343,9 +419,15 @@ print.peak_detection <- function(x, ...) {
 #' X_noise <- matrix(rnorm(200), nrow = 1)
 #' fd_noise <- fdata(X_noise, argvals = t)
 #' seasonal_strength(fd_noise, period = 2)  # Should be close to 0
+#'
+#' # Trending data - detrending improves strength estimate
+#' X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd_trend <- fdata(X_trend, argvals = t)
+#' seasonal_strength(fd_trend, period = 2, detrend_method = "linear")
 seasonal_strength <- function(fdataobj, period = NULL,
                               method = c("variance", "spectral"),
-                              n_harmonics = 3) {
+                              n_harmonics = 3,
+                              detrend_method = c("none", "linear", "auto")) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -355,6 +437,12 @@ seasonal_strength <- function(fdataobj, period = NULL,
   }
 
   method <- match.arg(method)
+  detrend_method <- match.arg(detrend_method)
+
+  # Apply detrending if requested
+  if (detrend_method != "none") {
+    fdataobj <- detrend(fdataobj, method = detrend_method)
+  }
 
   if (is.null(period)) {
     period <- estimate_period(fdataobj)$period
@@ -869,5 +957,224 @@ print.seasonality_changes_auto <- function(x, ...) {
     cat(sprintf("Number of changes: %d\n\n", nrow(x$change_points)))
     print(x$change_points)
   }
+  invisible(x)
+}
+
+# ==============================================================================
+# Detrending Functions
+# ==============================================================================
+
+#' Remove Trend from Functional Data
+#'
+#' Removes trend from functional data using various methods. This is useful
+#' for preprocessing data before seasonal analysis when the data has a
+#' significant trend component.
+#'
+#' @param fdataobj An fdata object.
+#' @param method Detrending method:
+#' \describe{
+#'   \item{"linear"}{Least squares linear fit (default)}
+#'   \item{"polynomial"}{Polynomial regression of specified degree}
+#'   \item{"diff1"}{First-order differencing}
+#'   \item{"diff2"}{Second-order differencing}
+#'   \item{"loess"}{Local polynomial regression (LOESS)}
+#'   \item{"auto"}{Automatic selection via AIC}
+#' }
+#' @param degree Polynomial degree for "polynomial" method. Default: 2.
+#' @param bandwidth Bandwidth as fraction of data range for "loess" method.
+#'   Default: 0.3.
+#' @param return_trend Logical. If TRUE, return both trend and detrended data.
+#'   Default: FALSE.
+#'
+#' @return If return_trend = FALSE, an fdata object with detrended data.
+#'   If return_trend = TRUE, a list with components:
+#' \describe{
+#'   \item{detrended}{fdata object with detrended data}
+#'   \item{trend}{fdata object with estimated trend}
+#'   \item{method}{Method used for detrending}
+#'   \item{rss}{Residual sum of squares per curve}
+#' }
+#'
+#' @details
+#' For series with polynomial trends, "linear" or "polynomial" methods are
+#' appropriate. For more complex trends, "loess" provides flexibility.
+#' The "auto" method compares linear, polynomial (degree 2 and 3), and LOESS,
+#' selecting the method with lowest AIC.
+#'
+#' Differencing methods ("diff1", "diff2") reduce the series length by 1 or 2
+#' points respectively. The resulting fdata has correspondingly shorter argvals.
+#'
+#' @seealso \code{\link{decompose}} for full seasonal decomposition
+#'
+#' @export
+#' @examples
+#' # Generate data with linear trend and seasonal component
+#' t <- seq(0, 10, length.out = 200)
+#' X <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Detrend with linear method
+#' fd_detrended <- detrend(fd, method = "linear")
+#'
+#' # Now estimate period on detrended data
+#' period <- estimate_period(fd_detrended)
+#' print(period$period)  # Should be close to 2
+#'
+#' # Get both trend and detrended data
+#' result <- detrend(fd, method = "linear", return_trend = TRUE)
+#' # plot(result$trend)  # Shows the linear trend
+detrend <- function(fdataobj,
+                    method = c("linear", "polynomial", "diff1", "diff2", "loess", "auto"),
+                    degree = 2,
+                    bandwidth = 0.3,
+                    return_trend = FALSE) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("detrend not yet implemented for 2D functional data")
+  }
+
+  method <- match.arg(method)
+
+  result <- .Call("wrap__seasonal_detrend",
+                  fdataobj$data, fdataobj$argvals,
+                  as.character(method), as.integer(degree),
+                  as.double(bandwidth))
+
+  # Handle differencing methods which reduce series length
+  if (method %in% c("diff1", "diff2")) {
+    order <- if (method == "diff1") 1 else 2
+    new_m <- ncol(fdataobj$data) - order
+    new_argvals <- fdataobj$argvals[1:new_m]
+    new_rangeval <- c(new_argvals[1], new_argvals[new_m])
+  } else {
+    new_argvals <- fdataobj$argvals
+    new_rangeval <- fdataobj$rangeval
+  }
+
+  detrended_fd <- fdata(result$detrended, argvals = new_argvals,
+                        rangeval = new_rangeval)
+
+  if (return_trend) {
+    trend_fd <- fdata(result$trend, argvals = new_argvals,
+                      rangeval = new_rangeval)
+    list(
+      detrended = detrended_fd,
+      trend = trend_fd,
+      method = result$method,
+      rss = result$rss
+    )
+  } else {
+    detrended_fd
+  }
+}
+
+#' Seasonal-Trend Decomposition
+#'
+#' Decomposes functional data into trend, seasonal, and remainder components.
+#' Similar to STL (Seasonal-Trend decomposition using LOESS).
+#'
+#' @param fdataobj An fdata object.
+#' @param period Seasonal period. If NULL, estimated automatically using FFT.
+#' @param method Decomposition method:
+#' \describe{
+#'   \item{"additive"}{data = trend + seasonal + remainder (default)}
+#'   \item{"multiplicative"}{data = trend * seasonal * remainder}
+#' }
+#' @param trend_method Method for trend extraction: "loess" or "spline".
+#'   Default: "loess".
+#' @param bandwidth Bandwidth for trend extraction (fraction of range).
+#'   Default: 0.3.
+#' @param n_harmonics Number of Fourier harmonics for seasonal component.
+#'   Default: 3.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{trend}{fdata object with trend component}
+#'   \item{seasonal}{fdata object with seasonal component}
+#'   \item{remainder}{fdata object with remainder/residual}
+#'   \item{period}{Period used for decomposition}
+#'   \item{method}{Decomposition method ("additive" or "multiplicative")}
+#' }
+#'
+#' @details
+#' For additive decomposition: data = trend + seasonal + remainder.
+#' The trend is extracted using LOESS or spline smoothing, then the seasonal
+#' component is estimated by fitting Fourier harmonics to the detrended data.
+#'
+#' For multiplicative decomposition: data = trend * seasonal * remainder.
+#' This is achieved by log-transforming the data, applying additive
+#' decomposition, and back-transforming. Use this when the seasonal amplitude
+#' grows with the trend level.
+#'
+#' @seealso \code{\link{detrend}} for simple trend removal,
+#'   \code{\link{seasonal_strength}} for measuring seasonality
+#'
+#' @export
+#' @examples
+#' # Additive seasonal pattern
+#' t <- seq(0, 20, length.out = 400)
+#' X <- matrix(2 + 0.3 * t + sin(2 * pi * t / 2.5), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' result <- decompose(fd, period = 2.5, method = "additive")
+#' # plot(result$trend)      # Linear trend
+#' # plot(result$seasonal)   # Sinusoidal seasonal
+#' # plot(result$remainder)  # Residual noise
+#'
+#' # Multiplicative pattern (amplitude grows with level)
+#' X_mult <- matrix((2 + 0.3 * t) * (1 + 0.3 * sin(2 * pi * t / 2.5)), nrow = 1)
+#' fd_mult <- fdata(X_mult, argvals = t)
+#'
+#' result_mult <- decompose(fd_mult, period = 2.5, method = "multiplicative")
+decompose <- function(fdataobj,
+                      period = NULL,
+                      method = c("additive", "multiplicative"),
+                      trend_method = c("loess", "spline"),
+                      bandwidth = 0.3,
+                      n_harmonics = 3) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("decompose not yet implemented for 2D functional data")
+  }
+
+  method <- match.arg(method)
+  trend_method <- match.arg(trend_method)
+
+  # Estimate period if not provided
+  if (is.null(period)) {
+    period <- estimate_period(fdataobj)$period
+  }
+
+  result <- .Call("wrap__seasonal_decompose",
+                  fdataobj$data, fdataobj$argvals,
+                  as.double(period), as.character(method),
+                  as.character(trend_method), as.double(bandwidth),
+                  as.integer(n_harmonics))
+
+  list(
+    trend = fdata(result$trend, argvals = fdataobj$argvals,
+                  rangeval = fdataobj$rangeval),
+    seasonal = fdata(result$seasonal, argvals = fdataobj$argvals,
+                     rangeval = fdataobj$rangeval),
+    remainder = fdata(result$remainder, argvals = fdataobj$argvals,
+                      rangeval = fdataobj$rangeval),
+    period = result$period,
+    method = result$method
+  )
+}
+
+#' @export
+print.decomposition <- function(x, ...) {
+  cat("Seasonal Decomposition\n")
+  cat("----------------------\n")
+  cat(sprintf("Method:  %s\n", x$method))
+  cat(sprintf("Period:  %.4f\n", x$period))
+  cat("\nComponents: trend, seasonal, remainder\n")
   invisible(x)
 }
