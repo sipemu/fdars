@@ -68,7 +68,8 @@
 <span>  <span class="va">fdataobj</span>,</span>
 <span>  period <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"variance"</span>, <span class="st">"spectral"</span><span class="op">)</span>,</span>
-<span>  n_harmonics <span class="op">=</span> <span class="fl">3</span></span>
+<span>  n_harmonics <span class="op">=</span> <span class="fl">3</span>,</span>
+<span>  detrend_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"linear"</span>, <span class="st">"auto"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -100,6 +101,20 @@ automatically using FFT.</p></dd>
 <dd><p>Number of Fourier harmonics to use (for variance method).
 Default: 3.</p></dd>
 
+
+<dt id="arg-detrend-method">detrend_method<a class="anchor" aria-label="anchor" href="#arg-detrend-method"></a></dt>
+<dd><p>Detrending method to apply before computing strength:</p><dl><dt>"none"</dt>
+<dd><p>No detrending (default)</p></dd>
+
+<dt>"linear"</dt>
+<dd><p>Remove linear trend</p></dd>
+
+<dt>"auto"</dt>
+<dd><p>Automatic AIC-based selection of detrending method</p></dd>
+
+
+</dl></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -112,6 +127,9 @@ Default: 3.</p></dd>
 proportion of variance explained by the seasonal component.</p>
 <p>The spectral method computes the proportion of total spectral power
 that falls at the seasonal frequency and its harmonics.</p>
+<p>Trends can artificially lower the seasonal strength measure by
+contributing non-seasonal variance. Use detrend_method to remove
+trends before computing strength.</p>
     </div>
 
     <div class="section level2">
@@ -128,6 +146,12 @@ that falls at the seasonal frequency and its harmonics.</p>
 <span class="r-in"><span><span class="va">fd_noise</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_noise</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu">seasonal_strength</span><span class="op">(</span><span class="va">fd_noise</span>, period <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>  <span class="co"># Should be close to 0</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.02783907</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Trending data - detrending improves strength estimate</span></span></span>
+<span class="r-in"><span><span class="va">X_trend</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">+</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">t</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t</span> <span class="op">/</span> <span class="fl">2</span><span class="op">)</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">fd_trend</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_trend</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">seasonal_strength</span><span class="op">(</span><span class="va">fd_trend</span>, period <span class="op">=</span> <span class="fl">2</span>, detrend_method <span class="op">=</span> <span class="st">"linear"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.9763512</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

@@ -17,7 +17,7 @@ library(fdars)
 #> Attaching package: 'fdars'
 #> The following objects are masked from 'package:stats':
 #> 
-#>     cov, deriv, median, sd, var
+#>     cov, decompose, deriv, median, sd, var
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
@@ -112,7 +112,7 @@ the projections. More robust to local variations.
 ``` r
 depths_rp <- depth(fd, method = "RP", nproj = 50)
 head(depths_rp)
-#> [1] 0.07290323 0.05225806 0.30387097 0.28903226 0.26774194 0.28193548
+#> [1] 0.05741935 0.07806452 0.28193548 0.28000000 0.24838710 0.23419355
 ```
 
 **Intuition**: RP depth projects all curves onto random 1D directions
@@ -128,7 +128,7 @@ halfspace depth. Very robust to outliers.
 ``` r
 depths_rt <- depth(fd, method = "RT", nproj = 50)
 head(depths_rt)
-#> [1] 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806 0.06451613
+#> [1] 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806
 ```
 
 **Intuition**: RT depth takes the *minimum* depth across all
@@ -171,7 +171,7 @@ changes in addition to magnitude.
 ``` r
 depths_rpd <- depth(fd, method = "RPD", nproj = 50)
 head(depths_rpd)
-#> [1] 0.10866667 0.09533333 0.16200000 0.24800000 0.23266667 0.14933333
+#> [1] 0.08800000 0.09133333 0.17866667 0.23533333 0.17666667 0.20000000
 ```
 
 **Intuition**: RPD is like RP, but the projections are based on curve
@@ -197,11 +197,11 @@ all_depths <- data.frame(
 # Correlation between depth functions
 round(cor(all_depths), 2)
 #>        FM mode   RP   RT  FSD
-#> FM   1.00 0.98 0.93 0.18 0.98
-#> mode 0.98 1.00 0.93 0.16 0.97
-#> RP   0.93 0.93 1.00 0.24 0.93
-#> RT   0.18 0.16 0.24 1.00 0.23
-#> FSD  0.98 0.97 0.93 0.23 1.00
+#> FM   1.00 0.98 0.92 0.21 0.98
+#> mode 0.98 1.00 0.91 0.19 0.97
+#> RP   0.92 0.91 1.00 0.27 0.92
+#> RT   0.21 0.19 0.27 1.00 0.18
+#> FSD  0.98 0.97 0.92 0.18 1.00
 ```
 
 ``` r
@@ -211,7 +211,7 @@ outlier_ranks
 #>      FM mode RP RT FSD
 #> [1,]  1    1  1  1   1
 #> [2,]  2    2  2  2   2
-#> [3,] 10   10 26  3  10
+#> [3,] 10   10 23  5  10
 ```
 
 All depth functions correctly identify curves 1 and 2 as having low

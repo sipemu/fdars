@@ -70,7 +70,12 @@ Estimate Seasonal Period using FFT</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">estimate_period</span><span class="op">(</span><span class="va">fdataobj</span>, method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fft"</span>, <span class="st">"acf"</span><span class="op">)</span>, max_lag <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">estimate_period</span><span class="op">(</span></span>
+<span>  <span class="va">fdataobj</span>,</span>
+<span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fft"</span>, <span class="st">"acf"</span><span class="op">)</span>,</span>
+<span>  max_lag <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  detrend_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"linear"</span>, <span class="st">"auto"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -79,6 +84,29 @@ Estimate Seasonal Period using FFT</p>
 
 <dl><dt id="arg-fdataobj">fdataobj<a class="anchor" aria-label="anchor" href="#arg-fdataobj"></a></dt>
 <dd><p>An fdata object.</p></dd>
+
+
+<dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
+<dd><p>Method for period estimation: "fft" (Fast Fourier Transform,
+default) or "acf" (autocorrelation function).</p></dd>
+
+
+<dt id="arg-max-lag">max_lag<a class="anchor" aria-label="anchor" href="#arg-max-lag"></a></dt>
+<dd><p>Maximum lag for ACF method. Default: half the series length.</p></dd>
+
+
+<dt id="arg-detrend-method">detrend_method<a class="anchor" aria-label="anchor" href="#arg-detrend-method"></a></dt>
+<dd><p>Detrending method to apply before period estimation:</p><dl><dt>"none"</dt>
+<dd><p>No detrending (default)</p></dd>
+
+<dt>"linear"</dt>
+<dd><p>Remove linear trend</p></dd>
+
+<dt>"auto"</dt>
+<dd><p>Automatic AIC-based selection of detrending method</p></dd>
+
+
+</dl></dd>
 
 </dl></div>
     <div class="section level2">
@@ -104,6 +132,9 @@ and periodogram analysis.</p>
 <p>The function computes the periodogram of the mean curve and finds the
 frequency with maximum power. The confidence measure indicates how
 pronounced the dominant frequency is relative to the background.</p>
+<p>For data with trends, the detrend_method parameter can significantly
+improve period estimation accuracy. Strong trends can mask the true
+seasonal period.</p>
     </div>
 
     <div class="section level2">
@@ -117,6 +148,11 @@ pronounced the dominant frequency is relative to the background.</p>
 <span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">estimate_period</span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"fft"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">result</span><span class="op">$</span><span class="va">period</span><span class="op">)</span>  <span class="co"># Should be close to 2</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2.01005</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># With trend - detrending improves estimation</span></span></span>
+<span class="r-in"><span><span class="va">X_trend</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">+</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">t</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t</span> <span class="op">/</span> <span class="fl">2</span><span class="op">)</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">fd_trend</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_trend</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">estimate_period</span><span class="op">(</span><span class="va">fd_trend</span>, detrend_method <span class="op">=</span> <span class="st">"linear"</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

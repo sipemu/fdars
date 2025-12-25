@@ -11,7 +11,8 @@ detect_peaks(
   min_distance = NULL,
   min_prominence = NULL,
   smooth_first = FALSE,
-  smooth_nbasis = NULL
+  smooth_nbasis = NULL,
+  detrend_method = c("none", "linear", "auto")
 )
 ```
 
@@ -41,6 +42,22 @@ detect_peaks(
   smooth_first=TRUE, uses GCV to automatically select optimal nbasis
   (range 5-25). Default: NULL (auto).
 
+- detrend_method:
+
+  Detrending method to apply before peak detection:
+
+  "none"
+
+  :   No detrending (default)
+
+  "linear"
+
+  :   Remove linear trend
+
+  "auto"
+
+  :   Automatic AIC-based selection of detrending method
+
 ## Value
 
 A list with components:
@@ -69,6 +86,10 @@ Fourier basis smoothing is ideal for seasonal signals because it
 naturally captures periodic patterns without introducing boundary
 artifacts.
 
+For data with trends, use detrend_method to remove the trend before
+detecting peaks. This prevents the trend from affecting peak prominence
+calculations.
+
 ## Examples
 
 ``` r
@@ -84,4 +105,9 @@ print(peaks$mean_period)  # Should be close to 2
 
 # With automatic Fourier smoothing (GCV selects nbasis)
 peaks_smooth <- detect_peaks(fd, min_distance = 1.5, smooth_first = TRUE)
+
+# With detrending for trending data
+X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
+fd_trend <- fdata(X_trend, argvals = t)
+peaks_det <- detect_peaks(fd_trend, detrend_method = "linear")
 ```

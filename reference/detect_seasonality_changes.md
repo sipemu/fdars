@@ -67,6 +67,6 @@ fd <- fdata(X, argvals = t)
 changes <- detect_seasonality_changes(fd, period = 2)
 print(changes$change_points)  # Should show onset ~10, cessation ~20
 #>        time      type strength_before strength_after
-#> 1  9.265442     onset       0.2830442      0.3024940
-#> 2 21.736227 cessation       0.3262540      0.2598112
+#> 1  9.215359     onset       0.2842619      0.3008286
+#> 2 21.686144 cessation       0.3492229      0.2838045
 ```

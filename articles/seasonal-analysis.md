@@ -21,7 +21,7 @@ library(fdars)
 #> Attaching package: 'fdars'
 #> The following objects are masked from 'package:stats':
 #> 
-#>     cov, deriv, median, sd, var
+#>     cov, decompose, deriv, median, sd, var
 #> The following object is masked from 'package:base':
 #> 
 #>     norm
@@ -193,9 +193,9 @@ print(detected)
 #> -------------------------
 #> Periods detected: 3
 #> 
-#> Period 1: 2.005 (confidence=146.769, strength=0.734, amplitude=1.013)
-#> Period 2: 6.683 (confidence=188.230, strength=0.949, amplitude=0.592)
-#> Period 3: 10.025 (confidence=60.453, strength=0.650, amplitude=0.081)
+#> Period 1: 2.005 (confidence=148.091, strength=0.741, amplitude=0.956)
+#> Period 2: 6.683 (confidence=123.084, strength=0.628, amplitude=0.444)
+#> Period 3: 10.025 (confidence=128.631, strength=0.705, amplitude=0.282)
 ```
 
 ### Visualizing the Decomposition

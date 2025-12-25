@@ -69,7 +69,8 @@ zero-crossings. Returns peak times, values, and prominence measures.</p>
 <span>  min_distance <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_prominence <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  smooth_first <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  smooth_nbasis <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  smooth_nbasis <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  detrend_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"none"</span>, <span class="st">"linear"</span>, <span class="st">"auto"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -100,6 +101,20 @@ peak detection. Recommended for noisy data. Default: FALSE.</p></dd>
 If NULL and smooth_first=TRUE, uses GCV to automatically select
 optimal nbasis (range 5-25). Default: NULL (auto).</p></dd>
 
+
+<dt id="arg-detrend-method">detrend_method<a class="anchor" aria-label="anchor" href="#arg-detrend-method"></a></dt>
+<dd><p>Detrending method to apply before peak detection:</p><dl><dt>"none"</dt>
+<dd><p>No detrending (default)</p></dd>
+
+<dt>"linear"</dt>
+<dd><p>Remove linear trend</p></dd>
+
+<dt>"auto"</dt>
+<dd><p>Automatic AIC-based selection of detrending method</p></dd>
+
+
+</dl></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -121,6 +136,9 @@ It is computed as the height difference between the peak and the highest
 of the two minimum values on either side, normalized by the data range.</p>
 <p>Fourier basis smoothing is ideal for seasonal signals because it naturally
 captures periodic patterns without introducing boundary artifacts.</p>
+<p>For data with trends, use detrend_method to remove the trend before
+detecting peaks. This prevents the trend from affecting peak prominence
+calculations.</p>
     </div>
 
     <div class="section level2">
@@ -137,6 +155,11 @@ captures periodic patterns without introducing boundary artifacts.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># With automatic Fourier smoothing (GCV selects nbasis)</span></span></span>
 <span class="r-in"><span><span class="va">peaks_smooth</span> <span class="op">&lt;-</span> <span class="fu">detect_peaks</span><span class="op">(</span><span class="va">fd</span>, min_distance <span class="op">=</span> <span class="fl">1.5</span>, smooth_first <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># With detrending for trending data</span></span></span>
+<span class="r-in"><span><span class="va">X_trend</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">+</span> <span class="fl">0.5</span> <span class="op">*</span> <span class="va">t</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t</span> <span class="op">/</span> <span class="fl">2</span><span class="op">)</span>, nrow <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">fd_trend</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="va">X_trend</span>, argvals <span class="op">=</span> <span class="va">t</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">peaks_det</span> <span class="op">&lt;-</span> <span class="fu">detect_peaks</span><span class="op">(</span><span class="va">fd_trend</span>, detrend_method <span class="op">=</span> <span class="st">"linear"</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

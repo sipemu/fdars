@@ -61,6 +61,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.kmeans.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.optim.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cov.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/decompose.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/depth.BD.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/depth.FM.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/depth.FSD.html</loc></url>
@@ -77,6 +78,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/detect_peaks.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect_seasonality_changes.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/detrend.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/df_to_fdata2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/dot-onLoad.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/estimate_period.html</loc></url>

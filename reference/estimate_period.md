@@ -7,7 +7,12 @@ detection of seasonality changes. Estimate Seasonal Period using FFT
 ## Usage
 
 ``` r
-estimate_period(fdataobj, method = c("fft", "acf"), max_lag = NULL)
+estimate_period(
+  fdataobj,
+  method = c("fft", "acf"),
+  max_lag = NULL,
+  detrend_method = c("none", "linear", "auto")
+)
 ```
 
 ## Arguments
@@ -15,6 +20,31 @@ estimate_period(fdataobj, method = c("fft", "acf"), max_lag = NULL)
 - fdataobj:
 
   An fdata object.
+
+- method:
+
+  Method for period estimation: "fft" (Fast Fourier Transform, default)
+  or "acf" (autocorrelation function).
+
+- max_lag:
+
+  Maximum lag for ACF method. Default: half the series length.
+
+- detrend_method:
+
+  Detrending method to apply before period estimation:
+
+  "none"
+
+  :   No detrending (default)
+
+  "linear"
+
+  :   Remove linear trend
+
+  "auto"
+
+  :   Automatic AIC-based selection of detrending method
 
 ## Value
 
@@ -45,6 +75,10 @@ The function computes the periodogram of the mean curve and finds the
 frequency with maximum power. The confidence measure indicates how
 pronounced the dominant frequency is relative to the background.
 
+For data with trends, the detrend_method parameter can significantly
+improve period estimation accuracy. Strong trends can mask the true
+seasonal period.
+
 ## Examples
 
 ``` r
@@ -57,4 +91,9 @@ fd <- fdata(X, argvals = t)
 result <- estimate_period(fd, method = "fft")
 print(result$period)  # Should be close to 2
 #> [1] 2.01005
+
+# With trend - detrending improves estimation
+X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
+fd_trend <- fdata(X_trend, argvals = t)
+result <- estimate_period(fd_trend, detrend_method = "linear")
 ```

@@ -74,7 +74,8 @@ residual until stopping criteria are met.</p>
 <span>  <span class="va">fdataobj</span>,</span>
 <span>  max_periods <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  min_confidence <span class="op">=</span> <span class="fl">0.5</span>,</span>
-<span>  min_strength <span class="op">=</span> <span class="fl">0.2</span></span>
+<span>  min_strength <span class="op">=</span> <span class="fl">0.2</span>,</span>
+<span>  detrend_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"none"</span>, <span class="st">"linear"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -98,6 +99,20 @@ Default: 0.5.</p></dd>
 <dt id="arg-min-strength">min_strength<a class="anchor" aria-label="anchor" href="#arg-min-strength"></a></dt>
 <dd><p>Minimum seasonal strength to continue detection.
 Default: 0.2.</p></dd>
+
+
+<dt id="arg-detrend-method">detrend_method<a class="anchor" aria-label="anchor" href="#arg-detrend-method"></a></dt>
+<dd><p>Detrending method to apply before period detection:</p><dl><dt>"auto"</dt>
+<dd><p>Automatic AIC-based selection of detrending method (default)</p></dd>
+
+<dt>"none"</dt>
+<dd><p>No detrending</p></dd>
+
+<dt>"linear"</dt>
+<dd><p>Remove linear trend</p></dd>
+
+
+</dl></dd>
 
 </dl></div>
     <div class="section level2">
@@ -130,10 +145,13 @@ Default: 0.2.</p></dd>
 result in fewer (but more reliable) detected periods.</p>
 <p>Periods are detected in order of amplitude (FFT power), not period length.
 A weak yearly cycle will be detected after a strong weekly cycle.</p>
+<p>Trends can interfere with period detection. The default "auto" detrending
+automatically selects an appropriate method to remove trends.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="estimate_period.html">estimate_period</a></code> for single period estimation</p></div>
+    <div class="dont-index"><p><code><a href="estimate_period.html">estimate_period</a></code> for single period estimation,
+<code><a href="detrend.html">detrend</a></code> for standalone detrending</p></div>
     </div>
 
     <div class="section level2">

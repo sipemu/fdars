@@ -24,7 +24,7 @@ library(fdars)
 #> Attaching package: 'fdars'
 #> The following objects are masked from 'package:stats':
 #> 
-#>     cov, deriv, median, sd, var
+#>     cov, decompose, deriv, median, sd, var
 #> The following object is masked from 'package:base':
 #> 
 #>     norm

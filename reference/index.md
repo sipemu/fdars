@@ -198,6 +198,10 @@
   : Analyze Peak Timing Variability
 - [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
   : Classify Seasonality Type
+- [`detrend()`](https://sipemu.github.io/fdars/reference/detrend.md) :
+  Remove Trend from Functional Data
+- [`decompose()`](https://sipemu.github.io/fdars/reference/decompose.md)
+  : Seasonal-Trend Decomposition
 
 ## Smoothing
 

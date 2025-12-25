@@ -12,7 +12,8 @@ detect_multiple_periods(
   fdataobj,
   max_periods = 3,
   min_confidence = 0.5,
-  min_strength = 0.2
+  min_strength = 0.2,
+  detrend_method = c("auto", "none", "linear")
 )
 ```
 
@@ -33,6 +34,22 @@ detect_multiple_periods(
 - min_strength:
 
   Minimum seasonal strength to continue detection. Default: 0.2.
+
+- detrend_method:
+
+  Detrending method to apply before period detection:
+
+  "auto"
+
+  :   Automatic AIC-based selection of detrending method (default)
+
+  "none"
+
+  :   No detrending
+
+  "linear"
+
+  :   Remove linear trend
 
 ## Value
 
@@ -77,10 +94,15 @@ Periods are detected in order of amplitude (FFT power), not period
 length. A weak yearly cycle will be detected after a strong weekly
 cycle.
 
+Trends can interfere with period detection. The default "auto"
+detrending automatically selects an appropriate method to remove trends.
+
 ## See also
 
 [`estimate_period`](https://sipemu.github.io/fdars/reference/estimate_period.md)
-for single period estimation
+for single period estimation,
+[`detrend`](https://sipemu.github.io/fdars/reference/detrend.md) for
+standalone detrending
 
 ## Examples
 
