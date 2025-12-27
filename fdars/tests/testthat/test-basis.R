@@ -157,3 +157,205 @@ test_that("basis.gcv with penalty parameter", {
   expect_true(is.finite(gcv_small_pen))
   expect_true(is.finite(gcv_pen))
 })
+
+# ==============================================================================
+# Tests for select.basis.auto
+# ==============================================================================
+
+test_that("select.basis.auto returns correct structure", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+
+  # Create simple test data
+  X <- matrix(0, 3, 100)
+  for (i in 1:3) X[i, ] <- sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd)
+
+  # Check class
+  expect_s3_class(result, "basis.auto")
+
+  # Check all components exist
+  expect_true("basis.type" %in% names(result))
+  expect_true("nbasis" %in% names(result))
+  expect_true("score" %in% names(result))
+  expect_true("coefficients" %in% names(result))
+  expect_true("fitted" %in% names(result))
+  expect_true("edf" %in% names(result))
+  expect_true("seasonal.detected" %in% names(result))
+  expect_true("lambda" %in% names(result))
+  expect_true("criterion" %in% names(result))
+
+  # Check lengths match number of curves
+  expect_equal(length(result$basis.type), 3)
+  expect_equal(length(result$nbasis), 3)
+  expect_equal(length(result$score), 3)
+  expect_equal(length(result$edf), 3)
+
+  # Check fitted is fdata
+  expect_s3_class(result$fitted, "fdata")
+  expect_equal(nrow(result$fitted$data), 3)
+})
+
+test_that("select.basis.auto selects Fourier for sinusoidal curves", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+
+  # Pure sinusoidal signal
+  X <- matrix(0, 5, 100)
+  for (i in 1:5) X[i, ] <- sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.1)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd, criterion = "GCV")
+
+  # Most or all should be Fourier
+  n_fourier <- sum(result$basis.type == "fourier")
+  expect_gte(n_fourier, 3)  # At least 3 of 5 should be Fourier
+})
+
+test_that("select.basis.auto handles mixed data types", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+
+  # 2 seasonal curves
+  X_seasonal <- matrix(0, 2, 100)
+  for (i in 1:2) X_seasonal[i, ] <- sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.1)
+
+  # 2 polynomial curves
+  X_poly <- matrix(0, 2, 100)
+  for (i in 1:2) X_poly[i, ] <- 0.1 * t^2 - t + rnorm(100, sd = 0.5)
+
+  fd <- fdata(rbind(X_seasonal, X_poly), argvals = t)
+
+  result <- select.basis.auto(fd)
+
+  # Should have a mix of types
+  expect_equal(length(result$basis.type), 4)
+  expect_true("fourier" %in% result$basis.type || "pspline" %in% result$basis.type)
+})
+
+test_that("select.basis.auto works with different criteria", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2), nrow = 2, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  result_gcv <- select.basis.auto(fd, criterion = "GCV")
+  result_aic <- select.basis.auto(fd, criterion = "AIC")
+  result_bic <- select.basis.auto(fd, criterion = "BIC")
+
+  expect_equal(result_gcv$criterion, "GCV")
+  expect_equal(result_aic$criterion, "AIC")
+  expect_equal(result_bic$criterion, "BIC")
+
+  # All scores should be finite
+  expect_true(all(is.finite(result_gcv$score)))
+  expect_true(all(is.finite(result_aic$score)))
+  expect_true(all(is.finite(result_bic$score)))
+})
+
+test_that("select.basis.auto with fixed lambda", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(0.1 * t^2 + rnorm(100, sd = 0.5), nrow = 2, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd, lambda.pspline = 1.0)
+
+  # Lambda values for P-spline curves should be 1.0
+  pspline_idx <- result$basis.type == "pspline"
+  if (any(pspline_idx)) {
+    expect_true(all(result$lambda[pspline_idx] == 1.0))
+  }
+})
+
+test_that("select.basis.auto with custom nbasis range", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2), nrow = 2, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd, nbasis.range = c(5, 15))
+
+  # All nbasis should be in range
+  expect_true(all(result$nbasis >= 5))
+  expect_true(all(result$nbasis <= 15))
+})
+
+test_that("select.basis.auto seasonal detection", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+
+  # Strongly seasonal curve
+  X_seasonal <- sin(2 * pi * t / 2.5)
+  # Non-seasonal curve
+  X_nonseasonal <- t + rnorm(100, sd = 0.1)
+
+  fd <- fdata(rbind(X_seasonal, X_nonseasonal), argvals = t)
+
+  result <- select.basis.auto(fd, use.seasonal.hint = TRUE)
+
+  # First curve should be detected as seasonal
+  expect_true(result$seasonal.detected[1])
+})
+
+test_that("print method works for basis.auto", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2), nrow = 3, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd)
+
+  expect_output(print(result), "Automatic Basis Selection")
+  expect_output(print(result), "Curves:")
+})
+
+test_that("summary method works for basis.auto", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2), nrow = 3, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd)
+
+  # Summary should return a data frame invisibly
+  expect_output(summary_df <- summary(result), "Automatic Basis Selection Summary")
+  expect_s3_class(summary_df, "data.frame")
+  expect_equal(nrow(summary_df), 3)
+})
+
+test_that("plot method works for basis.auto", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2), nrow = 3, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  result <- select.basis.auto(fd)
+
+  # Plot should return a ggplot object
+  p <- plot(result)
+  expect_s3_class(p, "ggplot")
+
+  # Test plot with subset
+  p_fourier <- plot(result, which = "fourier")
+  if (!is.null(p_fourier)) {
+    expect_s3_class(p_fourier, "ggplot")
+  }
+})
+
+test_that("select.basis.auto preserves metadata", {
+  set.seed(42)
+  t <- seq(0, 10, length.out = 100)
+  X <- matrix(sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2), nrow = 2, ncol = 100, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+  fd$id <- c("curve1", "curve2")
+  fd$metadata <- list(source = "test")
+
+  result <- select.basis.auto(fd)
+
+  # Metadata should be preserved in fitted
+  expect_equal(result$fitted$id, fd$id)
+  expect_equal(result$fitted$metadata, fd$metadata)
+})

@@ -104,6 +104,7 @@ reference:
   - basis.aic
   - basis.bic
   - basis.gcv
+  - select.basis.auto
   - pspline
   - pspline.2d
 
@@ -252,6 +253,7 @@ reference:
   - plot.fdata
   - boxplot.fdata
   - plot.fdata2pc
+  - plot.basis.auto
   - plot.basis.cv
   - plot.cluster.fcm
   - plot.cluster.kmeans
@@ -275,6 +277,7 @@ reference:
   - print.fdata
   - print.fdata2pc
   - print.fdata.bootstrap.ci
+  - print.basis.auto
   - print.basis.cv
   - print.cluster.fcm
   - print.cluster.kmeans
@@ -292,6 +295,7 @@ reference:
   - print.pspline
   - print.pspline.2d
   - print.register.fd
+  - summary.basis.auto
   - summary.fdata
 
 - title: Other

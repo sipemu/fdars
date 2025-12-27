@@ -757,3 +757,321 @@ print.pspline.2d <- function(x, ...) {
 plot.pspline.2d <- function(x, ...) {
   plot(x$fdata, ...)
 }
+
+# ==============================================================================
+# Automatic Basis Selection
+# ==============================================================================
+
+#' Automatic Per-Curve Basis Type and Number Selection
+#'
+#' Selects the optimal basis type (Fourier or P-spline) and number of basis
+#' functions for each curve individually using model selection criteria.
+#' This is useful when working with mixed datasets containing both seasonal
+#' and non-seasonal curves.
+#'
+#' @param fdataobj An fdata object.
+#' @param criterion Model selection criterion: "GCV" (default), "AIC", or "BIC".
+#' @param nbasis.range Optional numeric vector of length 2 specifying
+#'   \code{c(min, max)} for nbasis search range. If NULL, automatic ranges
+#'   are used: Fourier 3-25, P-spline 6-40 (or limited by data length).
+#' @param lambda.pspline Smoothing parameter for P-splines. If NULL (default),
+#'   lambda is automatically selected from a grid for each curve.
+#' @param use.seasonal.hint Logical. If TRUE (default), uses FFT-based
+#'   seasonality detection to inform basis preference. Seasonal curves start
+#'   Fourier search from 5 basis functions.
+#'
+#' @return A list of class "basis.auto" with:
+#'   \describe{
+#'     \item{basis.type}{Character vector ("pspline" or "fourier") for each curve}
+#'     \item{nbasis}{Integer vector of selected nbasis per curve}
+#'     \item{score}{Numeric vector of best criterion scores}
+#'     \item{coefficients}{List of coefficient vectors for each curve}
+#'     \item{fitted}{fdata object with fitted values}
+#'     \item{edf}{Numeric vector of effective degrees of freedom}
+#'     \item{seasonal.detected}{Logical vector indicating detected seasonality}
+#'     \item{lambda}{Numeric vector of lambda values (NA for Fourier curves)}
+#'     \item{criterion}{Character string of criterion used}
+#'     \item{original}{Original fdata object}
+#'   }
+#'
+#' @details
+#' For each curve, the function searches over:
+#' \itemize{
+#'   \item Fourier basis: odd nbasis values from 3 (or 5 if seasonal) to min(m/3, 25)
+#'   \item P-spline basis: nbasis from 6 to min(m/2, 40), with lambda from
+#'     grid \{0.001, 0.01, 0.1, 1, 10, 100\} if lambda.pspline is NULL
+#' }
+#'
+#' The function uses parallel processing (via Rust/rayon) for efficiency
+#' when processing multiple curves.
+#'
+#' @seealso \code{\link{fdata2basis.cv}} for global basis selection,
+#'   \code{\link{pspline}} for P-spline fitting
+#'
+#' @export
+#' @examples
+#' # Generate mixed data: some seasonal, some polynomial
+#' set.seed(42)
+#' t <- seq(0, 10, length.out = 100)
+#'
+#' # 3 seasonal curves
+#' X_seasonal <- matrix(0, 3, 100)
+#' for (i in 1:3) {
+#'   X_seasonal[i, ] <- sin(2 * pi * t / 2.5) + rnorm(100, sd = 0.2)
+#' }
+#'
+#' # 3 polynomial curves
+#' X_poly <- matrix(0, 3, 100)
+#' for (i in 1:3) {
+#'   X_poly[i, ] <- 0.1 * t^2 - t + rnorm(100, sd = 0.5)
+#' }
+#'
+#' fd <- fdata(rbind(X_seasonal, X_poly), argvals = t)
+#'
+#' # Auto-select optimal basis for each curve
+#' result <- select.basis.auto(fd)
+#' print(result)
+#'
+#' # Should detect: first 3 as Fourier, last 3 as P-spline
+#' table(result$basis.type)
+select.basis.auto <- function(fdataobj,
+                              criterion = c("GCV", "AIC", "BIC"),
+                              nbasis.range = NULL,
+                              lambda.pspline = NULL,
+                              use.seasonal.hint = TRUE) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("select.basis.auto not yet implemented for 2D functional data")
+  }
+
+  criterion <- match.arg(criterion)
+  criterion_code <- switch(criterion,
+    GCV = 0L,
+    AIC = 1L,
+    BIC = 2L
+  )
+
+  # Process nbasis.range
+  nbasis_min <- if (!is.null(nbasis.range)) as.integer(nbasis.range[1]) else 0L
+  nbasis_max <- if (!is.null(nbasis.range) && length(nbasis.range) >= 2) {
+    as.integer(nbasis.range[2])
+  } else {
+    0L
+  }
+
+  # Process lambda
+  lambda_val <- if (is.null(lambda.pspline)) -1.0 else as.double(lambda.pspline)
+
+  # Call Rust backend
+  result <- .Call(
+    "wrap__select_basis_auto",
+    fdataobj$data,
+    fdataobj$argvals,
+    criterion_code,
+    nbasis_min,
+    nbasis_max,
+    lambda_val,
+    as.logical(use.seasonal.hint)
+  )
+
+  # Convert basis_type from integer to character
+  basis_type_char <- ifelse(result$basis_type == 1L, "fourier", "pspline")
+
+  # Create fitted fdata object
+  fitted_fdata <- fdata(
+    result$fitted,
+    argvals = fdataobj$argvals,
+    rangeval = fdataobj$rangeval,
+    names = fdataobj$names
+  )
+
+  # Preserve metadata
+  if (!is.null(fdataobj$id)) {
+    fitted_fdata$id <- fdataobj$id
+  }
+  if (!is.null(fdataobj$metadata)) {
+    fitted_fdata$metadata <- fdataobj$metadata
+  }
+
+  structure(
+    list(
+      basis.type = basis_type_char,
+      nbasis = result$nbasis,
+      score = result$score,
+      coefficients = result$coefficients,
+      fitted = fitted_fdata,
+      edf = result$edf,
+      seasonal.detected = result$seasonal_detected,
+      lambda = result$lambda,
+      criterion = result$criterion_name,
+      original = fdataobj
+    ),
+    class = "basis.auto"
+  )
+}
+
+#' Print method for basis.auto objects
+#' @param x A basis.auto object.
+#' @param ... Additional arguments (ignored).
+#' @export
+print.basis.auto <- function(x, ...) {
+  n <- length(x$basis.type)
+  n_fourier <- sum(x$basis.type == "fourier")
+  n_pspline <- sum(x$basis.type == "pspline")
+  pct_fourier <- round(100 * n_fourier / n, 1)
+  pct_pspline <- round(100 * n_pspline / n, 1)
+
+  cat("Automatic Basis Selection Results\n")
+  cat("==================================\n")
+  cat("Curves:", n, "\n")
+  cat("Criterion:", x$criterion, "\n\n")
+  cat("Basis type distribution:\n")
+  cat("  Fourier: ", n_fourier, " (", pct_fourier, "%)\n", sep = "")
+  cat("  P-spline:", n_pspline, " (", pct_pspline, "%)\n", sep = "")
+  cat("\n")
+  cat("Mean", x$criterion, "score:", format(mean(x$score), digits = 4), "\n")
+  cat("Mean EDF:", round(mean(x$edf), 2), "\n")
+
+  if (any(x$seasonal.detected)) {
+    n_seasonal <- sum(x$seasonal.detected)
+    cat("Seasonal detected:", n_seasonal, "curves\n")
+  }
+
+  invisible(x)
+}
+
+#' Summary method for basis.auto objects
+#' @param object A basis.auto object.
+#' @param ... Additional arguments (ignored).
+#' @export
+summary.basis.auto <- function(object, ...) {
+  n <- length(object$basis.type)
+
+  # Create summary data frame
+  df <- data.frame(
+    curve = seq_len(n),
+    basis = object$basis.type,
+    nbasis = object$nbasis,
+    score = object$score,
+    edf = round(object$edf, 2),
+    seasonal = object$seasonal.detected,
+    lambda = ifelse(is.na(object$lambda), NA, round(object$lambda, 4))
+  )
+
+  cat("Automatic Basis Selection Summary\n")
+  cat("==================================\n")
+  cat("Criterion:", object$criterion, "\n\n")
+
+  # Per-basis statistics
+  cat("Fourier curves:\n")
+  fourier_idx <- object$basis.type == "fourier"
+  if (any(fourier_idx)) {
+    cat("  Count:", sum(fourier_idx), "\n")
+    cat("  nbasis range:", min(object$nbasis[fourier_idx]), "-",
+        max(object$nbasis[fourier_idx]), "\n")
+    cat("  Mean score:", format(mean(object$score[fourier_idx]), digits = 4), "\n")
+  } else {
+    cat("  None\n")
+  }
+
+  cat("\nP-spline curves:\n")
+  pspline_idx <- object$basis.type == "pspline"
+  if (any(pspline_idx)) {
+    cat("  Count:", sum(pspline_idx), "\n")
+    cat("  nbasis range:", min(object$nbasis[pspline_idx]), "-",
+        max(object$nbasis[pspline_idx]), "\n")
+    cat("  Mean score:", format(mean(object$score[pspline_idx]), digits = 4), "\n")
+    lambdas <- object$lambda[pspline_idx]
+    lambdas <- lambdas[!is.na(lambdas)]
+    if (length(lambdas) > 0) {
+      cat("  Lambda range:", format(min(lambdas), digits = 3), "-",
+          format(max(lambdas), digits = 3), "\n")
+    }
+  } else {
+    cat("  None\n")
+  }
+
+  cat("\nPer-curve details:\n")
+  print(df, row.names = FALSE)
+
+  invisible(df)
+}
+
+#' Plot method for basis.auto objects
+#' @param x A basis.auto object.
+#' @param which Which curves to plot: "all" (default), "fourier", or "pspline".
+#' @param show.original Logical. If TRUE (default), overlay original data.
+#' @param max.curves Maximum number of curves to plot (default 20).
+#' @param ... Additional arguments passed to ggplot.
+#' @export
+plot.basis.auto <- function(x, which = c("all", "fourier", "pspline"),
+                            show.original = TRUE, max.curves = 20, ...) {
+  which <- match.arg(which)
+
+  n <- length(x$basis.type)
+  indices <- seq_len(n)
+
+  if (which == "fourier") {
+    indices <- which(x$basis.type == "fourier")
+  } else if (which == "pspline") {
+    indices <- which(x$basis.type == "pspline")
+  }
+
+  if (length(indices) == 0) {
+    message("No curves of type '", which, "' found")
+    return(invisible(NULL))
+  }
+
+  # Limit curves
+  if (length(indices) > max.curves) {
+    indices <- indices[1:max.curves]
+    message("Showing first ", max.curves, " curves only")
+  }
+
+  # Build data frame for plotting
+  argvals <- x$fitted$argvals
+  m <- length(argvals)
+
+  plot_data <- data.frame()
+  for (i in indices) {
+    df_fitted <- data.frame(
+      t = argvals,
+      value = x$fitted$data[i, ],
+      curve = paste0("Curve ", i, " (", x$basis.type[i], ", nb=", x$nbasis[i], ")"),
+      type = "Fitted"
+    )
+    plot_data <- rbind(plot_data, df_fitted)
+
+    if (show.original) {
+      df_orig <- data.frame(
+        t = argvals,
+        value = x$original$data[i, ],
+        curve = paste0("Curve ", i, " (", x$basis.type[i], ", nb=", x$nbasis[i], ")"),
+        type = "Original"
+      )
+      plot_data <- rbind(plot_data, df_orig)
+    }
+  }
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$t, y = .data$value,
+                                                color = .data$type,
+                                                linetype = .data$type)) +
+    ggplot2::geom_line() +
+    ggplot2::facet_wrap(~curve, scales = "free_y") +
+    ggplot2::scale_color_manual(values = c("Original" = "gray60", "Fitted" = "steelblue")) +
+    ggplot2::scale_linetype_manual(values = c("Original" = "solid", "Fitted" = "solid")) +
+    ggplot2::labs(
+      title = paste("Automatic Basis Selection (", x$criterion, ")", sep = ""),
+      x = "t",
+      y = "X(t)",
+      color = "",
+      linetype = ""
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "bottom")
+
+  p
+}

@@ -1,0 +1,31 @@
+[package]
+name = "fdapy"
+version = "0.1.0"
+edition = "2021"
+description = "Functional Data Analysis in Python"
+license = "MIT"
+repository = "https://github.com/sipemu/fdapy"
+keywords = ["functional-data", "statistics", "fda", "depth", "clustering"]
+categories = ["science", "mathematics"]
+
+# Empty workspace table prevents Cargo from searching for parent workspace
+[workspace]
+
+[lib]
+name = "_fdapy"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+numpy = "0.23"
+ndarray = "0.16"
+rayon = "1.10"
+rand = "0.8"
+rand_distr = "0.4"
+
+# Link to fdars-core
+fdars-core = { path = "../fdars/src/fdars-core" }
+
+[profile.release]
+lto = true
+codegen-units = 1

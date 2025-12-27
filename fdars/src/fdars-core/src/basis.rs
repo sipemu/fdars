@@ -601,3 +601,370 @@ pub fn select_fourier_nbasis_gcv(
 
     best_nbasis
 }
+
+/// Result of automatic basis selection for a single curve.
+#[derive(Clone)]
+pub struct SingleCurveSelection {
+    /// Selected basis type: 0 = P-spline, 1 = Fourier
+    pub basis_type: i32,
+    /// Selected number of basis functions
+    pub nbasis: usize,
+    /// Best criterion score (GCV, AIC, or BIC)
+    pub score: f64,
+    /// Coefficients for the selected basis
+    pub coefficients: Vec<f64>,
+    /// Fitted values
+    pub fitted: Vec<f64>,
+    /// Effective degrees of freedom
+    pub edf: f64,
+    /// Whether seasonal pattern was detected (if use_seasonal_hint)
+    pub seasonal_detected: bool,
+    /// Lambda value (for P-spline, NaN for Fourier)
+    pub lambda: f64,
+}
+
+/// Result of automatic basis selection for all curves.
+pub struct BasisAutoSelectionResult {
+    /// Per-curve selection results
+    pub selections: Vec<SingleCurveSelection>,
+    /// Criterion used (0=GCV, 1=AIC, 2=BIC)
+    pub criterion: i32,
+}
+
+/// Detect if a curve has seasonal/periodic pattern using FFT.
+///
+/// Returns true if the peak power in the periodogram is significantly
+/// above the mean power level.
+fn detect_seasonality_fft(curve: &[f64]) -> bool {
+    use rustfft::{FftPlanner, num_complex::Complex};
+
+    let n = curve.len();
+    if n < 8 {
+        return false;
+    }
+
+    // Remove mean
+    let mean: f64 = curve.iter().sum::<f64>() / n as f64;
+    let mut input: Vec<Complex<f64>> = curve.iter()
+        .map(|&x| Complex::new(x - mean, 0.0))
+        .collect();
+
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    fft.process(&mut input);
+
+    // Compute power spectrum (skip DC component and Nyquist)
+    let powers: Vec<f64> = input[1..n/2].iter()
+        .map(|c| c.norm_sqr())
+        .collect();
+
+    if powers.is_empty() {
+        return false;
+    }
+
+    let max_power = powers.iter().cloned().fold(0.0_f64, f64::max);
+    let mean_power = powers.iter().sum::<f64>() / powers.len() as f64;
+
+    // Seasonal if peak is significantly above mean
+    max_power > 2.0 * mean_power
+}
+
+/// Fit a single curve with Fourier basis and compute criterion score.
+fn fit_curve_fourier(
+    curve: &[f64],
+    m: usize,
+    argvals: &[f64],
+    nbasis: usize,
+    criterion: i32,
+) -> Option<(f64, Vec<f64>, Vec<f64>, f64)> {
+    // Ensure nbasis is odd
+    let nbasis = if nbasis % 2 == 0 { nbasis + 1 } else { nbasis };
+
+    let basis = fourier_basis(argvals, nbasis);
+    let actual_nbasis = basis.len() / m;
+    let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+    let btb = &b_mat.transpose() * &b_mat;
+    let svd = SVD::new(btb.clone(), true, true);
+    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let eps = 1e-10 * max_sv;
+
+    let u = svd.u.as_ref()?;
+    let v_t = svd.v_t.as_ref()?;
+
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
+
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
+
+    let curve_vec = DVector::from_column_slice(curve);
+    let bt_y = b_mat.transpose() * &curve_vec;
+    let coefs = &btb_inv * bt_y;
+
+    let fitted = &b_mat * &coefs;
+    let mut rss = 0.0;
+    for j in 0..m {
+        let resid = curve[j] - fitted[j];
+        rss += resid * resid;
+    }
+
+    let n_points = m as f64;
+    let score = match criterion {
+        0 => { // GCV
+            let gcv_denom = 1.0 - edf / n_points;
+            if gcv_denom.abs() > 1e-10 {
+                (rss / n_points) / (gcv_denom * gcv_denom)
+            } else {
+                f64::INFINITY
+            }
+        }
+        1 => { // AIC
+            let mse = rss / n_points;
+            n_points * mse.ln() + 2.0 * edf
+        }
+        _ => { // BIC
+            let mse = rss / n_points;
+            n_points * mse.ln() + n_points.ln() * edf
+        }
+    };
+
+    let coef_vec: Vec<f64> = (0..actual_nbasis).map(|k| coefs[k]).collect();
+    let fitted_vec: Vec<f64> = (0..m).map(|j| fitted[j]).collect();
+
+    Some((score, coef_vec, fitted_vec, edf))
+}
+
+/// Fit a single curve with P-spline basis and compute criterion score.
+fn fit_curve_pspline(
+    curve: &[f64],
+    m: usize,
+    argvals: &[f64],
+    nbasis: usize,
+    lambda: f64,
+    order: usize,
+    criterion: i32,
+) -> Option<(f64, Vec<f64>, Vec<f64>, f64)> {
+    let basis = bspline_basis(argvals, nbasis.saturating_sub(4).max(2), 4);
+    let actual_nbasis = basis.len() / m;
+    let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
+
+    let d = difference_matrix(actual_nbasis, order);
+    let penalty = &d.transpose() * &d;
+
+    let btb = &b_mat.transpose() * &b_mat;
+    let btb_penalized = &btb + lambda * &penalty;
+
+    let svd = SVD::new(btb_penalized.clone(), true, true);
+    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let eps = 1e-10 * max_sv;
+
+    let u = svd.u.as_ref()?;
+    let v_t = svd.v_t.as_ref()?;
+
+    let s_inv: Vec<f64> = svd.singular_values.iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+    for i in 0..actual_nbasis {
+        for j in 0..actual_nbasis {
+            let mut sum = 0.0;
+            for k in 0..actual_nbasis.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            btb_inv[(i, j)] = sum;
+        }
+    }
+
+    let proj = &btb_inv * b_mat.transpose();
+    let h_mat = &b_mat * &proj;
+    let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
+
+    let curve_vec = DVector::from_column_slice(curve);
+    let bt_y = b_mat.transpose() * &curve_vec;
+    let coefs = &btb_inv * bt_y;
+
+    let fitted = &b_mat * &coefs;
+    let mut rss = 0.0;
+    for j in 0..m {
+        let resid = curve[j] - fitted[j];
+        rss += resid * resid;
+    }
+
+    let n_points = m as f64;
+    let score = match criterion {
+        0 => { // GCV
+            let gcv_denom = 1.0 - edf / n_points;
+            if gcv_denom.abs() > 1e-10 {
+                (rss / n_points) / (gcv_denom * gcv_denom)
+            } else {
+                f64::INFINITY
+            }
+        }
+        1 => { // AIC
+            let mse = rss / n_points;
+            n_points * mse.ln() + 2.0 * edf
+        }
+        _ => { // BIC
+            let mse = rss / n_points;
+            n_points * mse.ln() + n_points.ln() * edf
+        }
+    };
+
+    let coef_vec: Vec<f64> = (0..actual_nbasis).map(|k| coefs[k]).collect();
+    let fitted_vec: Vec<f64> = (0..m).map(|j| fitted[j]).collect();
+
+    Some((score, coef_vec, fitted_vec, edf))
+}
+
+/// Select optimal basis type and parameters for each curve individually.
+///
+/// This function compares Fourier and P-spline bases for each curve,
+/// selecting the optimal basis type and number of basis functions using
+/// model selection criteria (GCV, AIC, or BIC).
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of curves
+/// * `m` - Number of evaluation points per curve
+/// * `argvals` - Evaluation points
+/// * `criterion` - Model selection criterion: 0=GCV, 1=AIC, 2=BIC
+/// * `nbasis_min` - Minimum number of basis functions (0 for auto)
+/// * `nbasis_max` - Maximum number of basis functions (0 for auto)
+/// * `lambda_pspline` - Smoothing parameter for P-spline (negative for auto-select)
+/// * `use_seasonal_hint` - Whether to use FFT to detect seasonality
+///
+/// # Returns
+/// BasisAutoSelectionResult with per-curve selections
+pub fn select_basis_auto_1d(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    criterion: i32,
+    nbasis_min: usize,
+    nbasis_max: usize,
+    lambda_pspline: f64,
+    use_seasonal_hint: bool,
+) -> BasisAutoSelectionResult {
+    // Determine nbasis ranges
+    let fourier_min = if nbasis_min > 0 { nbasis_min.max(3) } else { 3 };
+    let fourier_max = if nbasis_max > 0 { nbasis_max.min(m / 3).min(25) } else { (m / 3).min(25) };
+
+    let pspline_min = if nbasis_min > 0 { nbasis_min.max(6) } else { 6 };
+    let pspline_max = if nbasis_max > 0 { nbasis_max.min(m / 2).min(40) } else { (m / 2).min(40) };
+
+    // Lambda grid for P-spline when auto-selecting
+    let lambda_grid = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0];
+    let auto_lambda = lambda_pspline < 0.0;
+
+    let selections: Vec<SingleCurveSelection> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            // Extract single curve
+            let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
+
+            // Detect seasonality if requested
+            let seasonal_detected = if use_seasonal_hint {
+                detect_seasonality_fft(&curve)
+            } else {
+                false
+            };
+
+            let mut best_score = f64::INFINITY;
+            let mut best_basis_type = 0i32; // P-spline
+            let mut best_nbasis = pspline_min;
+            let mut best_coefs = Vec::new();
+            let mut best_fitted = Vec::new();
+            let mut best_edf = 0.0;
+            let mut best_lambda = f64::NAN;
+
+            // Try Fourier bases
+            let fourier_start = if seasonal_detected { fourier_min.max(5) } else { fourier_min };
+            let mut nb = if fourier_start % 2 == 0 { fourier_start + 1 } else { fourier_start };
+            while nb <= fourier_max {
+                if let Some((score, coefs, fitted, edf)) =
+                    fit_curve_fourier(&curve, m, argvals, nb, criterion)
+                {
+                    if score < best_score && score.is_finite() {
+                        best_score = score;
+                        best_basis_type = 1; // Fourier
+                        best_nbasis = nb;
+                        best_coefs = coefs;
+                        best_fitted = fitted;
+                        best_edf = edf;
+                        best_lambda = f64::NAN;
+                    }
+                }
+                nb += 2;
+            }
+
+            // Try P-spline bases
+            for nb in pspline_min..=pspline_max {
+                if auto_lambda {
+                    // Search over lambda grid
+                    for &lam in &lambda_grid {
+                        if let Some((score, coefs, fitted, edf)) =
+                            fit_curve_pspline(&curve, m, argvals, nb, lam, 2, criterion)
+                        {
+                            if score < best_score && score.is_finite() {
+                                best_score = score;
+                                best_basis_type = 0; // P-spline
+                                best_nbasis = nb;
+                                best_coefs = coefs;
+                                best_fitted = fitted;
+                                best_edf = edf;
+                                best_lambda = lam;
+                            }
+                        }
+                    }
+                } else {
+                    // Use fixed lambda
+                    if let Some((score, coefs, fitted, edf)) =
+                        fit_curve_pspline(&curve, m, argvals, nb, lambda_pspline, 2, criterion)
+                    {
+                        if score < best_score && score.is_finite() {
+                            best_score = score;
+                            best_basis_type = 0; // P-spline
+                            best_nbasis = nb;
+                            best_coefs = coefs;
+                            best_fitted = fitted;
+                            best_edf = edf;
+                            best_lambda = lambda_pspline;
+                        }
+                    }
+                }
+            }
+
+            SingleCurveSelection {
+                basis_type: best_basis_type,
+                nbasis: best_nbasis,
+                score: best_score,
+                coefficients: best_coefs,
+                fitted: best_fitted,
+                edf: best_edf,
+                seasonal_detected,
+                lambda: best_lambda,
+            }
+        })
+        .collect();
+
+    BasisAutoSelectionResult {
+        selections,
+        criterion,
+    }
+}

@@ -4273,6 +4273,120 @@ fn pspline_fit_2d(
     .into()
 }
 
+/// Automatic basis selection for each curve individually.
+///
+/// This function compares Fourier and P-spline bases for each curve,
+/// selecting the optimal basis type and number of basis functions using
+/// model selection criteria (GCV, AIC, or BIC).
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `argvals` - Evaluation points
+/// * `criterion` - Model selection criterion: 0=GCV (default), 1=AIC, 2=BIC
+/// * `nbasis_min` - Minimum number of basis functions (0 for auto)
+/// * `nbasis_max` - Maximum number of basis functions (0 for auto)
+/// * `lambda_pspline` - Smoothing parameter for P-spline (negative for auto-select)
+/// * `use_seasonal_hint` - Whether to use FFT to detect seasonality
+///
+/// # Returns
+/// Named list with:
+/// - basis_type: Integer vector (0=pspline, 1=fourier)
+/// - nbasis: Integer vector of selected nbasis per curve
+/// - score: Numeric vector of criterion scores
+/// - coefficients: List of coefficient vectors
+/// - fitted: Fitted values matrix (n x m)
+/// - edf: Numeric vector of effective degrees of freedom
+/// - seasonal_detected: Logical vector
+/// - lambda: Numeric vector of lambda values (NA for Fourier)
+/// - criterion: Character (criterion name used)
+#[extendr]
+fn select_basis_auto(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    criterion: i32,
+    nbasis_min: i32,
+    nbasis_max: i32,
+    lambda_pspline: f64,
+    use_seasonal_hint: bool,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m == 0 || argvals.len() != m {
+        return list!(
+            basis_type = r!(Vec::<i32>::new()),
+            nbasis = r!(Vec::<i32>::new()),
+            score = r!(Vec::<f64>::new()),
+            coefficients = r!(extendr_api::List::new(0)),
+            fitted = r!(RMatrix::new_matrix(0, 0, |_, _| 0.0)),
+            edf = r!(Vec::<f64>::new()),
+            seasonal_detected = r!(Vec::<bool>::new()),
+            lambda = r!(Vec::<f64>::new()),
+            criterion_name = "GCV"
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let result = fdars_core::basis::select_basis_auto_1d(
+        data_slice,
+        n,
+        m,
+        &argvals,
+        criterion,
+        nbasis_min as usize,
+        nbasis_max as usize,
+        lambda_pspline,
+        use_seasonal_hint,
+    );
+
+    // Extract results into R vectors
+    let basis_types: Vec<i32> = result.selections.iter().map(|s| s.basis_type).collect();
+    let nbasis_vec: Vec<i32> = result.selections.iter().map(|s| s.nbasis as i32).collect();
+    let scores: Vec<f64> = result.selections.iter().map(|s| s.score).collect();
+    let edfs: Vec<f64> = result.selections.iter().map(|s| s.edf).collect();
+    let seasonal_detected: Vec<bool> = result.selections.iter().map(|s| s.seasonal_detected).collect();
+    let lambdas: Vec<f64> = result.selections.iter().map(|s| s.lambda).collect();
+
+    // Build coefficients list
+    let coef_list: Vec<Robj> = result
+        .selections
+        .iter()
+        .map(|s| r!(s.coefficients.clone()))
+        .collect();
+
+    // Build fitted matrix
+    let mut fitted_data = vec![0.0; n * m];
+    for (i, sel) in result.selections.iter().enumerate() {
+        for (j, &val) in sel.fitted.iter().enumerate() {
+            if j < m {
+                fitted_data[i + j * n] = val;
+            }
+        }
+    }
+    let fitted_mat = RMatrix::new_matrix(n, m, |i, j| fitted_data[i + j * n]);
+
+    let criterion_name = match result.criterion {
+        0 => "GCV",
+        1 => "AIC",
+        _ => "BIC",
+    };
+
+    list!(
+        basis_type = r!(basis_types),
+        nbasis = r!(nbasis_vec),
+        score = r!(scores),
+        coefficients = extendr_api::List::from_values(coef_list),
+        fitted = r!(fitted_mat),
+        edf = r!(edfs),
+        seasonal_detected = r!(seasonal_detected),
+        lambda = r!(lambdas),
+        criterion_name = criterion_name
+    )
+    .into()
+}
+
 // =============================================================================
 // Outlier detection (LRT-based)
 // =============================================================================
@@ -7384,6 +7498,7 @@ extendr_module! {
     fn fdata2basis_2d;
     fn basis2fdata_2d;
     fn pspline_fit_2d;
+    fn select_basis_auto;
 
     fn outliers_thres_lrt;
     fn outliers_lrt;
