@@ -718,12 +718,7 @@ pub fn hausdorff_3d(points1: &[(f64, f64, f64)], points2: &[(f64, f64, f64)]) ->
 }
 
 /// Compute Hausdorff self-distance for 2D surfaces.
-pub fn hausdorff_self_2d(
-    data: &[f64],
-    n: usize,
-    argvals_s: &[f64],
-    argvals_t: &[f64],
-) -> Vec<f64> {
+pub fn hausdorff_self_2d(data: &[f64], n: usize, argvals_s: &[f64], argvals_t: &[f64]) -> Vec<f64> {
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
     let n_points = m1 * m2;

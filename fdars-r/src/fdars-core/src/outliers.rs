@@ -158,7 +158,8 @@ pub fn detect_outliers_lrt(
     let depths = compute_fm_depth_internal(data, n, m);
 
     // Get indices of top n_keep curves by depth
-    let mut depth_idx: Vec<(usize, f64)> = depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
+    let mut depth_idx: Vec<(usize, f64)> =
+        depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
     depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep).map(|(i, _)| *i).collect();
 

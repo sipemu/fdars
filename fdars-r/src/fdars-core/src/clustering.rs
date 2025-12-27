@@ -147,8 +147,12 @@ pub fn kmeans_fd(
         // Update step
         let new_centers: Vec<Vec<f64>> = (0..k)
             .map(|c| {
-                let members: Vec<usize> =
-                    cluster.iter().enumerate().filter(|(_, &cl)| cl == c).map(|(i, _)| i).collect();
+                let members: Vec<usize> = cluster
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, &cl)| cl == c)
+                    .map(|(i, _)| i)
+                    .collect();
 
                 if members.is_empty() {
                     centers[c].clone()
@@ -309,8 +313,10 @@ pub fn fuzzy_cmeans_fd(
         let mut max_change = 0.0;
 
         for (i, curve) in curves.iter().enumerate() {
-            let distances: Vec<f64> =
-                centers.iter().map(|c| l2_distance(curve, c, &weights)).collect();
+            let distances: Vec<f64> = centers
+                .iter()
+                .map(|c| l2_distance(curve, c, &weights))
+                .collect();
 
             for c in 0..k {
                 if distances[c] < 1e-10 {
@@ -365,7 +371,13 @@ pub fn fuzzy_cmeans_fd(
 }
 
 /// Compute silhouette score for clustering result.
-pub fn silhouette_score(data: &[f64], n: usize, m: usize, argvals: &[f64], cluster: &[usize]) -> Vec<f64> {
+pub fn silhouette_score(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    cluster: &[usize],
+) -> Vec<f64> {
     if n == 0 || m == 0 || cluster.len() != n || argvals.len() != m {
         return Vec::new();
     }
@@ -442,7 +454,13 @@ pub fn silhouette_score(data: &[f64], n: usize, m: usize, argvals: &[f64], clust
 }
 
 /// Compute Calinski-Harabasz index for clustering result.
-pub fn calinski_harabasz(data: &[f64], n: usize, m: usize, argvals: &[f64], cluster: &[usize]) -> f64 {
+pub fn calinski_harabasz(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    cluster: &[usize],
+) -> f64 {
     if n == 0 || m == 0 || cluster.len() != n || argvals.len() != m {
         return 0.0;
     }

@@ -200,7 +200,9 @@ pub fn detrend_polynomial(
             let y = DVector::from_row_slice(&curve);
 
             // Solve least squares using SVD
-            let beta = svd.solve(&y, 1e-10).unwrap_or_else(|_| DVector::zeros(n_coef));
+            let beta = svd
+                .solve(&y, 1e-10)
+                .unwrap_or_else(|_| DVector::zeros(n_coef));
 
             // Compute fitted values (trend) and residuals
             let fitted = &design * &beta;
@@ -582,7 +584,9 @@ pub fn decompose_additive(
             // Solve least squares using SVD
             let y = DVector::from_row_slice(&detrended_i);
             let svd = design.clone().svd(true, true);
-            let coef = svd.solve(&y, 1e-10).unwrap_or_else(|_| DVector::zeros(n_coef));
+            let coef = svd
+                .solve(&y, 1e-10)
+                .unwrap_or_else(|_| DVector::zeros(n_coef));
 
             // Compute seasonal component
             let fitted = &design * &coef;
@@ -656,11 +660,7 @@ pub fn decompose_multiplicative(
 
     // Find minimum value and add shift if needed to make all values positive
     let min_val = data.iter().cloned().fold(f64::INFINITY, f64::min);
-    let shift = if min_val <= 0.0 {
-        -min_val + 1.0
-    } else {
-        0.0
-    };
+    let shift = if min_val <= 0.0 { -min_val + 1.0 } else { 0.0 };
 
     // Log transform
     let log_data: Vec<f64> = data.iter().map(|&x| (x + shift).ln()).collect();
@@ -726,7 +726,10 @@ mod tests {
         let result = detrend_linear(&data, 1, m, &argvals);
 
         // Detrended should be approximately sin wave
-        let expected: Vec<f64> = argvals.iter().map(|&t| (2.0 * PI * t / 2.0).sin()).collect();
+        let expected: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / 2.0).sin())
+            .collect();
 
         let mut max_diff = 0.0f64;
         for j in 0..m {
@@ -750,7 +753,10 @@ mod tests {
         let result = detrend_polynomial(&data, 1, m, &argvals, 2);
 
         // Detrended should be approximately sin wave
-        let expected: Vec<f64> = argvals.iter().map(|&t| (2.0 * PI * t / 2.0).sin()).collect();
+        let expected: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / 2.0).sin())
+            .collect();
 
         // Compute correlation
         let mean_det: f64 = result.detrended.iter().sum::<f64>() / m as f64;

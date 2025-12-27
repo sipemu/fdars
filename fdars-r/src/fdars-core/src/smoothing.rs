@@ -85,13 +85,7 @@ pub fn nadaraya_watson(
 ///
 /// # Returns
 /// Smoothed values at x_new
-pub fn local_linear(
-    x: &[f64],
-    y: &[f64],
-    x_new: &[f64],
-    bandwidth: f64,
-    kernel: &str,
-) -> Vec<f64> {
+pub fn local_linear(x: &[f64], y: &[f64], x_new: &[f64], bandwidth: f64, kernel: &str) -> Vec<f64> {
     let n = x.len();
     if n == 0 || y.len() != n || x_new.is_empty() || bandwidth <= 0.0 {
         return vec![0.0; x_new.len()];

@@ -353,7 +353,9 @@ pub fn pspline_fit_1d(
     let u = svd.u.as_ref()?;
     let v_t = svd.v_t.as_ref()?;
 
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -636,7 +638,7 @@ pub struct BasisAutoSelectionResult {
 /// Returns true if the peak power in the periodogram is significantly
 /// above the mean power level.
 fn detect_seasonality_fft(curve: &[f64]) -> bool {
-    use rustfft::{FftPlanner, num_complex::Complex};
+    use rustfft::{num_complex::Complex, FftPlanner};
 
     let n = curve.len();
     if n < 8 {
@@ -645,18 +647,14 @@ fn detect_seasonality_fft(curve: &[f64]) -> bool {
 
     // Remove mean
     let mean: f64 = curve.iter().sum::<f64>() / n as f64;
-    let mut input: Vec<Complex<f64>> = curve.iter()
-        .map(|&x| Complex::new(x - mean, 0.0))
-        .collect();
+    let mut input: Vec<Complex<f64>> = curve.iter().map(|&x| Complex::new(x - mean, 0.0)).collect();
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(n);
     fft.process(&mut input);
 
     // Compute power spectrum (skip DC component and Nyquist)
-    let powers: Vec<f64> = input[1..n/2].iter()
-        .map(|c| c.norm_sqr())
-        .collect();
+    let powers: Vec<f64> = input[1..n / 2].iter().map(|c| c.norm_sqr()).collect();
 
     if powers.is_empty() {
         return false;
@@ -692,7 +690,9 @@ fn fit_curve_fourier(
     let u = svd.u.as_ref()?;
     let v_t = svd.v_t.as_ref()?;
 
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -724,7 +724,8 @@ fn fit_curve_fourier(
 
     let n_points = m as f64;
     let score = match criterion {
-        0 => { // GCV
+        0 => {
+            // GCV
             let gcv_denom = 1.0 - edf / n_points;
             if gcv_denom.abs() > 1e-10 {
                 (rss / n_points) / (gcv_denom * gcv_denom)
@@ -732,11 +733,13 @@ fn fit_curve_fourier(
                 f64::INFINITY
             }
         }
-        1 => { // AIC
+        1 => {
+            // AIC
             let mse = rss / n_points;
             n_points * mse.ln() + 2.0 * edf
         }
-        _ => { // BIC
+        _ => {
+            // BIC
             let mse = rss / n_points;
             n_points * mse.ln() + n_points.ln() * edf
         }
@@ -775,7 +778,9 @@ fn fit_curve_pspline(
     let u = svd.u.as_ref()?;
     let v_t = svd.v_t.as_ref()?;
 
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -807,7 +812,8 @@ fn fit_curve_pspline(
 
     let n_points = m as f64;
     let score = match criterion {
-        0 => { // GCV
+        0 => {
+            // GCV
             let gcv_denom = 1.0 - edf / n_points;
             if gcv_denom.abs() > 1e-10 {
                 (rss / n_points) / (gcv_denom * gcv_denom)
@@ -815,11 +821,13 @@ fn fit_curve_pspline(
                 f64::INFINITY
             }
         }
-        1 => { // AIC
+        1 => {
+            // AIC
             let mse = rss / n_points;
             n_points * mse.ln() + 2.0 * edf
         }
-        _ => { // BIC
+        _ => {
+            // BIC
             let mse = rss / n_points;
             n_points * mse.ln() + n_points.ln() * edf
         }
@@ -863,10 +871,18 @@ pub fn select_basis_auto_1d(
 ) -> BasisAutoSelectionResult {
     // Determine nbasis ranges
     let fourier_min = if nbasis_min > 0 { nbasis_min.max(3) } else { 3 };
-    let fourier_max = if nbasis_max > 0 { nbasis_max.min(m / 3).min(25) } else { (m / 3).min(25) };
+    let fourier_max = if nbasis_max > 0 {
+        nbasis_max.min(m / 3).min(25)
+    } else {
+        (m / 3).min(25)
+    };
 
     let pspline_min = if nbasis_min > 0 { nbasis_min.max(6) } else { 6 };
-    let pspline_max = if nbasis_max > 0 { nbasis_max.min(m / 2).min(40) } else { (m / 2).min(40) };
+    let pspline_max = if nbasis_max > 0 {
+        nbasis_max.min(m / 2).min(40)
+    } else {
+        (m / 2).min(40)
+    };
 
     // Lambda grid for P-spline when auto-selecting
     let lambda_grid = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0];
@@ -894,8 +910,16 @@ pub fn select_basis_auto_1d(
             let mut best_lambda = f64::NAN;
 
             // Try Fourier bases
-            let fourier_start = if seasonal_detected { fourier_min.max(5) } else { fourier_min };
-            let mut nb = if fourier_start % 2 == 0 { fourier_start + 1 } else { fourier_start };
+            let fourier_start = if seasonal_detected {
+                fourier_min.max(5)
+            } else {
+                fourier_min
+            };
+            let mut nb = if fourier_start % 2 == 0 {
+                fourier_start + 1
+            } else {
+                fourier_start
+            };
             while nb <= fourier_max {
                 if let Some((score, coefs, fitted, edf)) =
                     fit_curve_fourier(&curve, m, argvals, nb, criterion)

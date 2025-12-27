@@ -672,8 +672,13 @@ pub fn estimate_period_regression(
                 // Simple: use mean of basis function times data as rough fit
                 for k in 0..nbasis {
                     let b_val = basis[j + k * m];
-                    let coef: f64 = (0..m).map(|l| mean_curve[l] * basis[l + k * m]).sum::<f64>()
-                        / (0..m).map(|l| basis[l + k * m].powi(2)).sum::<f64>().max(1e-15);
+                    let coef: f64 = (0..m)
+                        .map(|l| mean_curve[l] * basis[l + k * m])
+                        .sum::<f64>()
+                        / (0..m)
+                            .map(|l| basis[l + k * m].powi(2))
+                            .sum::<f64>()
+                            .max(1e-15);
                     fitted += coef * b_val;
                 }
                 let resid = mean_curve[j] - fitted;
@@ -853,9 +858,8 @@ pub fn detect_peaks(
     // Optionally smooth the data using Fourier basis
     let work_data = if smooth_first {
         // Determine nbasis: use provided value or select via GCV
-        let nbasis = smooth_nbasis.unwrap_or_else(|| {
-            crate::basis::select_fourier_nbasis_gcv(data, n, m, argvals, 5, 25)
-        });
+        let nbasis = smooth_nbasis
+            .unwrap_or_else(|| crate::basis::select_fourier_nbasis_gcv(data, n, m, argvals, 5, 25));
 
         // Use Fourier basis smoothing
         if let Some(result) = crate::basis::fourier_fit_1d(data, n, m, argvals, nbasis) {
@@ -928,10 +932,7 @@ pub fn detect_peaks(
             }
 
             // Compute inter-peak distances
-            let distances: Vec<f64> = peaks
-                .windows(2)
-                .map(|w| w[1].time - w[0].time)
-                .collect();
+            let distances: Vec<f64> = peaks.windows(2).map(|w| w[1].time - w[0].time).collect();
 
             (peaks, distances)
         })
@@ -999,7 +1000,11 @@ pub fn seasonal_strength_variance(
 
     // Total variance
     let global_mean: f64 = mean_curve.iter().sum::<f64>() / m as f64;
-    let total_var: f64 = mean_curve.iter().map(|&x| (x - global_mean).powi(2)).sum::<f64>() / m as f64;
+    let total_var: f64 = mean_curve
+        .iter()
+        .map(|&x| (x - global_mean).powi(2))
+        .sum::<f64>()
+        / m as f64;
 
     if total_var < 1e-15 {
         return 0.0;
@@ -1015,7 +1020,10 @@ pub fn seasonal_strength_variance(
         // Skip DC component
         let b_sum: f64 = (0..m).map(|j| basis[j + k * m].powi(2)).sum();
         if b_sum > 1e-15 {
-            let coef: f64 = (0..m).map(|j| mean_curve[j] * basis[j + k * m]).sum::<f64>() / b_sum;
+            let coef: f64 = (0..m)
+                .map(|j| mean_curve[j] * basis[j + k * m])
+                .sum::<f64>()
+                / b_sum;
             for j in 0..m {
                 seasonal[j] += coef * basis[j + k * m];
             }
@@ -1024,8 +1032,11 @@ pub fn seasonal_strength_variance(
 
     // Seasonal variance
     let seasonal_mean: f64 = seasonal.iter().sum::<f64>() / m as f64;
-    let seasonal_var: f64 =
-        seasonal.iter().map(|&x| (x - seasonal_mean).powi(2)).sum::<f64>() / m as f64;
+    let seasonal_var: f64 = seasonal
+        .iter()
+        .map(|&x| (x - seasonal_mean).powi(2))
+        .sum::<f64>()
+        / m as f64;
 
     (seasonal_var / total_var).min(1.0)
 }
@@ -1155,9 +1166,14 @@ pub fn seasonal_strength_windowed(
             let single_data = window_data.clone();
 
             match method {
-                StrengthMethod::Variance => {
-                    seasonal_strength_variance(&single_data, 1, window_m, &window_argvals, period, 3)
-                }
+                StrengthMethod::Variance => seasonal_strength_variance(
+                    &single_data,
+                    1,
+                    window_m,
+                    &window_argvals,
+                    period,
+                    3,
+                ),
                 StrengthMethod::Spectral => {
                     seasonal_strength_spectral(&single_data, 1, window_m, &window_argvals, period)
                 }
@@ -1202,8 +1218,15 @@ pub fn detect_seasonality_changes(
     }
 
     // Compute time-varying seasonal strength
-    let strength_curve =
-        seasonal_strength_windowed(data, n, m, argvals, period, window_size, StrengthMethod::Variance);
+    let strength_curve = seasonal_strength_windowed(
+        data,
+        n,
+        m,
+        argvals,
+        period,
+        window_size,
+        StrengthMethod::Variance,
+    );
 
     if strength_curve.is_empty() {
         return ChangeDetectionResult {
@@ -1399,10 +1422,13 @@ pub fn analyze_peak_timing(
     // This ensures we get at most one peak per cycle
     let min_distance = period * 0.7;
     let peaks = detect_peaks(
-        data, n, m, argvals,
+        data,
+        n,
+        m,
+        argvals,
         Some(min_distance),
-        None,  // No prominence filter
-        true,  // Smooth first with Fourier basis
+        None, // No prominence filter
+        true, // Smooth first with Fourier basis
         smooth_nbasis,
     );
 
@@ -1444,9 +1470,7 @@ pub fn analyze_peak_timing(
     // Compute cycle indices (1-indexed)
     let cycle_indices: Vec<usize> = peak_times
         .iter()
-        .map(|&t| {
-            ((t - t_start) / period).floor() as usize + 1
-        })
+        .map(|&t| ((t - t_start) / period).floor() as usize + 1)
         .collect();
 
     // Compute statistics
@@ -1456,11 +1480,18 @@ pub fn analyze_peak_timing(
     let variance: f64 = normalized_timing
         .iter()
         .map(|&x| (x - mean_timing).powi(2))
-        .sum::<f64>() / n_peaks;
+        .sum::<f64>()
+        / n_peaks;
     let std_timing = variance.sqrt();
 
-    let min_timing = normalized_timing.iter().cloned().fold(f64::INFINITY, f64::min);
-    let max_timing = normalized_timing.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let min_timing = normalized_timing
+        .iter()
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    let max_timing = normalized_timing
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
     let range_timing = max_timing - min_timing;
 
     // Variability score: normalized std deviation
@@ -1566,9 +1597,8 @@ pub fn classify_seasonality(
             .collect();
         let cycle_argvals: Vec<f64> = argvals[start_idx..end_idx].to_vec();
 
-        let strength = seasonal_strength_variance(
-            &cycle_data, n, cycle_m, &cycle_argvals, period, 3
-        );
+        let strength =
+            seasonal_strength_variance(&cycle_data, n, cycle_m, &cycle_argvals, period, 3);
 
         cycle_strengths.push(strength);
 
@@ -1642,7 +1672,13 @@ pub fn detect_seasonality_changes_auto(
 
     // Compute time-varying seasonal strength
     let strength_curve = seasonal_strength_windowed(
-        data, n, m, argvals, period, window_size, StrengthMethod::Variance
+        data,
+        n,
+        m,
+        argvals,
+        period,
+        window_size,
+        StrengthMethod::Variance,
     );
 
     if strength_curve.is_empty() {
@@ -1656,7 +1692,8 @@ pub fn detect_seasonality_changes_auto(
     let threshold = match threshold_method {
         ThresholdMethod::Fixed(t) => t,
         ThresholdMethod::Percentile(p) => {
-            let mut sorted: Vec<f64> = strength_curve.iter()
+            let mut sorted: Vec<f64> = strength_curve
+                .iter()
                 .copied()
                 .filter(|x| x.is_finite())
                 .collect();
@@ -1673,7 +1710,14 @@ pub fn detect_seasonality_changes_auto(
 
     // Now use the regular detection with computed threshold
     detect_seasonality_changes(
-        data, n, m, argvals, period, threshold, window_size, min_duration
+        data,
+        n,
+        m,
+        argvals,
+        period,
+        threshold,
+        window_size,
+        min_duration,
     )
 }
 
@@ -1947,8 +1991,7 @@ mod tests {
         if distances.len() >= 3 {
             // Later peaks should be closer than earlier peaks
             let early_avg = (distances[0] + distances[1]) / 2.0;
-            let late_avg =
-                (distances[distances.len() - 2] + distances[distances.len() - 1]) / 2.0;
+            let late_avg = (distances[distances.len() - 2] + distances[distances.len() - 1]) / 2.0;
             assert!(
                 late_avg < early_avg,
                 "Later peaks should be closer: early avg={:.3}, late avg={:.3}",
@@ -2059,15 +2102,17 @@ mod tests {
 
         assert!(result.is_seasonal);
         assert!(result.seasonal_strength > 0.5);
-        assert!(matches!(result.classification, SeasonalType::StableSeasonal | SeasonalType::VariableTiming));
+        assert!(matches!(
+            result.classification,
+            SeasonalType::StableSeasonal | SeasonalType::VariableTiming
+        ));
     }
 
     #[test]
     fn test_otsu_threshold() {
         // Bimodal distribution: mix of low (0.1-0.2) and high (0.7-0.9) values
         let values = vec![
-            0.1, 0.12, 0.15, 0.18, 0.11, 0.14,
-            0.7, 0.75, 0.8, 0.85, 0.9, 0.72
+            0.1, 0.12, 0.15, 0.18, 0.11, 0.14, 0.7, 0.75, 0.8, 0.85, 0.9, 0.72,
         ];
 
         let threshold = otsu_threshold(&values);
@@ -2115,25 +2160,48 @@ mod tests {
         let detected = detect_multiple_periods(&data, 1, m, &argvals, 5, 0.4, 0.20);
 
         // Should detect exactly 2 periods with these thresholds
-        assert!(detected.len() >= 2, "Expected at least 2 periods, found {}", detected.len());
+        assert!(
+            detected.len() >= 2,
+            "Expected at least 2 periods, found {}",
+            detected.len()
+        );
 
         // Check that both periods were detected (order depends on amplitude)
         let periods: Vec<f64> = detected.iter().map(|d| d.period).collect();
         let has_period1 = periods.iter().any(|&p| (p - period1).abs() < 0.3);
         let has_period2 = periods.iter().any(|&p| (p - period2).abs() < 0.5);
 
-        assert!(has_period1, "Expected to find period ~{}, got {:?}", period1, periods);
-        assert!(has_period2, "Expected to find period ~{}, got {:?}", period2, periods);
+        assert!(
+            has_period1,
+            "Expected to find period ~{}, got {:?}",
+            period1, periods
+        );
+        assert!(
+            has_period2,
+            "Expected to find period ~{}, got {:?}",
+            period2, periods
+        );
 
         // Verify first detected has higher amplitude (amplitude 1.0 vs 0.6)
-        assert!(detected[0].amplitude > detected[1].amplitude,
-            "First detected should have higher amplitude");
+        assert!(
+            detected[0].amplitude > detected[1].amplitude,
+            "First detected should have higher amplitude"
+        );
 
         // Each detected period should have strength and confidence info
         for d in &detected {
-            assert!(d.strength > 0.0, "Detected period should have positive strength");
-            assert!(d.confidence > 0.0, "Detected period should have positive confidence");
-            assert!(d.amplitude > 0.0, "Detected period should have positive amplitude");
+            assert!(
+                d.strength > 0.0,
+                "Detected period should have positive strength"
+            );
+            assert!(
+                d.confidence > 0.0,
+                "Detected period should have positive confidence"
+            );
+            assert!(
+                d.amplitude > 0.0,
+                "Detected period should have positive amplitude"
+            );
         }
     }
 }
