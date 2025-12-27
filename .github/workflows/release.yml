@@ -36,11 +36,11 @@ jobs:
         with:
           extra-packages: any::rcmdcheck, any::devtools, any::roxygen2
           needs: check
-          working-directory: fdars
+          working-directory: fdars-r
 
       - name: Build Binary Package
         run: |
-          setwd("fdars")
+          setwd("fdars-r")
           # Generate documentation first
           roxygen2::roxygenize()
           # Build binary with manual
@@ -92,7 +92,7 @@ jobs:
 
             **From source (Linux/any platform with Rust):**
             ```r
-            devtools::install_github("${{ github.repository }}", subdir = "fdars")
+            devtools::install_github("${{ github.repository }}", subdir = "fdars-r")
             ```
           draft: false
           prerelease: false

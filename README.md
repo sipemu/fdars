@@ -1,45 +1,42 @@
 # Functional Data Analysis (FDA)
 
-High-performance Functional Data Analysis tools implemented in Rust with R bindings.
+[![R-CMD-check](https://github.com/sipemu/fdars/actions/workflows/r.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/r.yml)
+[![Python CI](https://github.com/sipemu/fdars/actions/workflows/python-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/python-ci.yml)
+[![Rust CI](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml)
+[![PyPI version](https://badge.fury.io/py/fdars-py.svg)](https://badge.fury.io/py/fdars-py)
+[![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core)
+[![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Repository Structure
+High-performance Functional Data Analysis tools implemented in Rust with R and Python bindings.
 
-```
-├── fdars-core/     # Pure Rust library (publishable to crates.io)
-├── fdars/          # R package with Rust backend
-└── Cargo.toml      # Workspace configuration
-```
+## Packages
 
-### fdars-core (Rust)
+| Package | Language | Registry | Folder | Status |
+|---------|----------|----------|--------|--------|
+| fdars | R | CRAN | `fdars-r/` | [![CRAN status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/package=fdars) |
+| fdars-py | Python | PyPI | `fdars-py/` | [![PyPI](https://badge.fury.io/py/fdars-py.svg)](https://badge.fury.io/py/fdars-py) |
+| fdars-core | Rust | crates.io | `fdars-r/src/fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
 
-Pure Rust implementation of FDA algorithms. Can be used independently in Rust projects.
+## Features
 
-**Features:**
-- Functional data operations (mean, centering, derivatives, norms)
-- Depth measures (Fraiman-Muniz, modal, band, random projection, etc.)
-- Distance metrics (Lp, Hausdorff, DTW, Fourier-based)
-- Basis representations (B-splines, Fourier, P-splines)
-- Clustering (k-means, fuzzy c-means)
-- Smoothing (Nadaraya-Watson, local polynomial, k-NN)
-- Regression (functional PCA, PLS, ridge)
-- Outlier detection
+- **Functional Data Operations**: Mean, centering, derivatives, Lp norms, geometric median
+- **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, functional spatial, kernel functional spatial, modified epigraph index
+- **Distance Metrics**: Lp distances, Hausdorff, DTW, Fourier-based semimetric, horizontal shift semimetric
+- **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
+- **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation
+- **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
+- **Regression**: Functional PCA, PLS, ridge regression
+- **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
+- **Seasonal Analysis**: Period estimation, peak detection, seasonal decomposition
 
-```toml
-[dependencies]
-fdars-core = "0.1"
-```
+## Installation
 
-See [fdars-core/README.md](fdars-core/README.md) for details.
-
-### fdars (R Package)
-
-R package providing FDA functions powered by the Rust backend.
-
-**Installation:**
+### R (fdars)
 
 ```r
 # From GitHub (requires Rust toolchain)
-devtools::install_github("sipemu/fdars", subdir = "fdars")
+devtools::install_github("sipemu/fdars", subdir = "fdars-r")
 
 # From binary release (no Rust required)
 # Download from GitHub Releases, then:
@@ -47,7 +44,29 @@ install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")  
 install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  # Windows
 ```
 
-See [fdars/README.md](fdars/README.md) for details.
+### Python (fdars-py)
+
+```bash
+pip install fdars-py
+```
+
+Or from source (requires Rust toolchain):
+
+```bash
+pip install git+https://github.com/sipemu/fdars.git#subdirectory=fdars-py
+```
+
+### Rust (fdars-core)
+
+```toml
+[dependencies]
+fdars-core = "0.1"
+```
+
+## Documentation
+
+- **R Package**: [https://sipemu.github.io/fdars/](https://sipemu.github.io/fdars/)
+- **Rust Crate**: [https://docs.rs/fdars-core](https://docs.rs/fdars-core)
 
 ## License
 

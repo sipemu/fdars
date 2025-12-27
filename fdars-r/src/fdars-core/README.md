@@ -1,5 +1,11 @@
 # fdars-core
 
+[![Rust CI](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core)
+[![Documentation](https://docs.rs/fdars-core/badge.svg)](https://docs.rs/fdars-core)
+[![codecov](https://codecov.io/gh/sipemu/fdars/branch/main/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 Pure Rust algorithms for Functional Data Analysis (FDA).
 
 ## Overview

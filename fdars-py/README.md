@@ -1,8 +1,14 @@
-# fdapy
+# fdars-py
+
+[![Python CI](https://github.com/sipemu/fdars/actions/workflows/python-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/python-ci.yml)
+[![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
+[![PyPI version](https://badge.fury.io/py/fdars-py.svg)](https://badge.fury.io/py/fdars-py)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 **Functional Data Analysis in Python**
 
-A Python package for functional data analysis, powered by a high-performance Rust backend. This package provides tools for analyzing curves, time series, and surfaces as functional data.
+A Python package for functional data analysis, powered by a high-performance Rust backend (`fdars-core`). This package provides tools for analyzing curves, time series, and surfaces as functional data.
 
 ## Features
 
@@ -19,10 +25,10 @@ A Python package for functional data analysis, powered by a high-performance Rus
 
 ## Installation
 
-### From PyPI (coming soon)
+### From PyPI
 
 ```bash
-pip install fdapy
+pip install fdars-py
 ```
 
 ### From source
@@ -36,8 +42,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Install maturin
 pip install maturin
 
-# Build and install
-cd fdapy
+# Build and install from source
+git clone https://github.com/sipemu/fdars.git
+cd fdars/fdars-py
 maturin develop --release
 ```
 

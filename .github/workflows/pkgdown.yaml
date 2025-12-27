@@ -28,17 +28,17 @@ jobs:
         with:
           extra-packages: any::pkgdown, any::roxygen2
           needs: website
-          working-directory: fdars
+          working-directory: fdars-r
 
       - name: Generate documentation
-        run: roxygen2::roxygenise("fdars")
+        run: roxygen2::roxygenise("fdars-r")
         shell: Rscript {0}
 
       - name: Install package
-        run: R CMD INSTALL fdars
+        run: R CMD INSTALL fdars-r
 
       - name: Build site
-        run: pkgdown::build_site_github_pages(pkg = "fdars", new_process = FALSE, install = FALSE)
+        run: pkgdown::build_site_github_pages(pkg = "fdars-r", new_process = FALSE, install = FALSE)
         shell: Rscript {0}
 
       - name: Deploy to GitHub pages
@@ -46,4 +46,4 @@ jobs:
         with:
           clean: false
           branch: gh-pages
-          folder: fdars/docs
+          folder: fdars-r/docs
