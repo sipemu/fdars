@@ -140,6 +140,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/outliers.depth.trim.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/outliers.lrt.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/outliers.thres.lrt.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/plot.basis.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/plot.basis.cv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/plot.cluster.fcm.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/plot.cluster.kmeans.html</loc></url>
@@ -160,6 +161,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/predict.fregre.fd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/predict.fregre.np.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/predict.fregre.np.multi.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/print.basis.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/print.basis.cv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/print.cluster.fcm.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/print.cluster.kmeans.html</loc></url>
@@ -189,12 +191,14 @@
 <url><loc>https://sipemu.github.io/fdars/reference/sd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/seasonal_strength.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/seasonal_strength_curve.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/select.basis.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.basis.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.deriv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.fourier.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.hshift.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.pca.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/sub-.fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/summary.basis.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/summary.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/trimmed.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/trimvar.html</loc></url>

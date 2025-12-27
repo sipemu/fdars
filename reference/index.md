@@ -62,6 +62,8 @@
   : BIC for Basis Representation
 - [`basis.gcv()`](https://sipemu.github.io/fdars/reference/basis.gcv.md)
   : GCV Score for Basis Representation
+- [`select.basis.auto()`](https://sipemu.github.io/fdars/reference/select.basis.auto.md)
+  : Automatic Per-Curve Basis Type and Number Selection
 - [`pspline()`](https://sipemu.github.io/fdars/reference/pspline.md) :
   P-spline Smoothing for Functional Data
 - [`pspline.2d()`](https://sipemu.github.io/fdars/reference/pspline.2d.md)
@@ -322,6 +324,8 @@
   : Functional Boxplot
 - [`plot(`*`<fdata2pc>`*`)`](https://sipemu.github.io/fdars/reference/plot.fdata2pc.md)
   : Plot FPCA Results
+- [`plot(`*`<basis.auto>`*`)`](https://sipemu.github.io/fdars/reference/plot.basis.auto.md)
+  : Plot method for basis.auto objects
 - [`plot(`*`<basis.cv>`*`)`](https://sipemu.github.io/fdars/reference/plot.basis.cv.md)
   : Plot method for basis.cv objects
 - [`plot(`*`<cluster.fcm>`*`)`](https://sipemu.github.io/fdars/reference/plot.cluster.fcm.md)
@@ -362,6 +366,8 @@
   : Print Method for FPCA Results
 - [`print(`*`<fdata.bootstrap.ci>`*`)`](https://sipemu.github.io/fdars/reference/print.fdata.bootstrap.ci.md)
   : Print method for bootstrap CI
+- [`print(`*`<basis.auto>`*`)`](https://sipemu.github.io/fdars/reference/print.basis.auto.md)
+  : Print method for basis.auto objects
 - [`print(`*`<basis.cv>`*`)`](https://sipemu.github.io/fdars/reference/print.basis.cv.md)
   : Print method for basis.cv objects
 - [`print(`*`<cluster.fcm>`*`)`](https://sipemu.github.io/fdars/reference/print.cluster.fcm.md)
@@ -396,6 +402,8 @@
   : Print method for pspline.2d objects
 - [`print(`*`<register.fd>`*`)`](https://sipemu.github.io/fdars/reference/print.register.fd.md)
   : Print Method for register.fd Objects
+- [`summary(`*`<basis.auto>`*`)`](https://sipemu.github.io/fdars/reference/summary.basis.auto.md)
+  : Summary method for basis.auto objects
 - [`summary(`*`<fdata>`*`)`](https://sipemu.github.io/fdars/reference/summary.fdata.md)
   : Summary method for fdata objects
 
