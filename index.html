@@ -73,6 +73,7 @@
   <main id="main" class="col-md-9"><div class="section level1">
 <div class="page-header"><h1 id="fdars">fdars<a class="anchor" aria-label="anchor" href="#fdars"></a>
 </h1></div>
+<p><a href="https://github.com/sipemu/fdars/actions/workflows/r.yml" class="external-link"><img src="https://github.com/sipemu/fdars/actions/workflows/r.yml/badge.svg" alt="R-CMD-check"></a> <a href="https://CRAN.R-project.org/package=fdars" class="external-link"><img src="https://www.r-pkg.org/badges/version/fdars" alt="CRAN status"></a> <a href="https://cran.r-project.org/package=fdars" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/fdars" alt="CRAN downloads"></a> <a href="https://opensource.org/licenses/MIT" class="external-link"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a> <a href="https://codecov.io/gh/sipemu/fdars" class="external-link"><img src="https://codecov.io/gh/sipemu/fdars/graph/badge.svg" alt="codecov"></a></p>
 <p><strong>Functional Data Analysis in Rust</strong> - A high-performance R package for functional data analysis with a Rust backend.</p>
 <div class="section level2">
 <h2 id="what-is-functional-data-analysis">What is Functional Data Analysis?<a class="anchor" aria-label="anchor" href="#what-is-functional-data-analysis"></a>
@@ -201,7 +202,7 @@
 <span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"remotes"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Install fdars (with documentation)</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"sipemu/fdars"</span>, subdir <span class="op">=</span> <span class="st">"fdars"</span>, build_vignettes <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"sipemu/fdars"</span>, subdir <span class="op">=</span> <span class="st">"fdars-r"</span>, build_vignettes <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <p><strong>Note:</strong> On Windows, you may need <a href="https://cran.r-project.org/bin/windows/Rtools/" class="external-link">Rtools</a> installed.</p>
 </div>
 <div class="section level3">
@@ -220,7 +221,7 @@
 </h3>
 <div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="co"># Clone the repository</span></span>
 <span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/sipemu/fdars.git</span>
-<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="bu">cd</span> fdars/fdars</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="bu">cd</span> fdars/fdars-r</span>
 <span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a></span>
 <span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co"># Build and install</span></span>
 <span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="ex">R</span> CMD build .</span>

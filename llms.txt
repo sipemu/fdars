@@ -1,5 +1,14 @@
 # fdars
 
+[![R-CMD-check](https://github.com/sipemu/fdars/actions/workflows/r.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/r.yml)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/package=fdars)
+[![CRAN
+downloads](https://cranlogs.r-pkg.org/badges/fdars)](https://cran.r-project.org/package=fdars)
+[![License:
+MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
+
 **Functional Data Analysis in Rust** - A high-performance R package for
 functional data analysis with a Rust backend.
 
@@ -117,7 +126,7 @@ processes
 install.packages("remotes")
 
 # Install fdars (with documentation)
-remotes::install_github("sipemu/fdars", subdir = "fdars", build_vignettes = TRUE)
+remotes::install_github("sipemu/fdars", subdir = "fdars-r", build_vignettes = TRUE)
 ```
 
 **Note:** On Windows, you may need
@@ -141,7 +150,7 @@ install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")
 ``` bash
 # Clone the repository
 git clone https://github.com/sipemu/fdars.git
-cd fdars/fdars
+cd fdars/fdars-r
 
 # Build and install
 R CMD build .
