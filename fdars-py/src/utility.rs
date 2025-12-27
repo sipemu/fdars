@@ -140,7 +140,8 @@ pub fn inner_product_matrix<'py>(
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
 
     // inner_product_matrix(data, n, m, argvals)
-    let gram_flat = fdars_core::utility::inner_product_matrix(&data_flat, n, n_points, &argvals_vec);
+    let gram_flat =
+        fdars_core::utility::inner_product_matrix(&data_flat, n, n_points, &argvals_vec);
     let result = to_row_major_2d(&gram_flat, n, n);
 
     Ok(result.into_pyarray(py))

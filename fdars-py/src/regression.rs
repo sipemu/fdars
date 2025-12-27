@@ -51,11 +51,20 @@ pub fn fdata_to_pc_1d<'py>(
     let dict = pyo3::types::PyDict::new(py);
 
     if n == 0 || n_points == 0 {
-        dict.set_item("scores", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("components", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "scores",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "components",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("mean", Vec::<f64>::new().into_pyarray(py))?;
         dict.set_item("explained_variance", Vec::<f64>::new().into_pyarray(py))?;
-        dict.set_item("explained_variance_ratio", Vec::<f64>::new().into_pyarray(py))?;
+        dict.set_item(
+            "explained_variance_ratio",
+            Vec::<f64>::new().into_pyarray(py),
+        )?;
         return Ok(dict);
     }
 
@@ -67,27 +76,50 @@ pub fn fdata_to_pc_1d<'py>(
     let result = match fdars_core::regression::fdata_to_pc_1d(&data_flat, n, n_points, ncomp) {
         Some(r) => r,
         None => {
-            dict.set_item("scores", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            dict.set_item("components", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+            dict.set_item(
+                "scores",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
+            dict.set_item(
+                "components",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
             dict.set_item("mean", Vec::<f64>::new().into_pyarray(py))?;
             dict.set_item("explained_variance", Vec::<f64>::new().into_pyarray(py))?;
-            dict.set_item("explained_variance_ratio", Vec::<f64>::new().into_pyarray(py))?;
+            dict.set_item(
+                "explained_variance_ratio",
+                Vec::<f64>::new().into_pyarray(py),
+            )?;
             return Ok(dict);
         }
     };
 
     // Compute explained variance ratio
     let total_var: f64 = result.singular_values.iter().map(|x| x * x).sum();
-    let exp_var: Vec<f64> = result.singular_values.iter().take(ncomp).map(|x| x * x).collect();
+    let exp_var: Vec<f64> = result
+        .singular_values
+        .iter()
+        .take(ncomp)
+        .map(|x| x * x)
+        .collect();
     let exp_var_ratio: Vec<f64> = exp_var.iter().map(|x| x / total_var).collect();
 
-    dict.set_item("scores", to_row_major_2d(&result.scores, n, ncomp).into_pyarray(py))?;
-    dict.set_item("components", to_row_major_2d(&result.rotation, ncomp, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "scores",
+        to_row_major_2d(&result.scores, n, ncomp).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "components",
+        to_row_major_2d(&result.rotation, ncomp, n_points).into_pyarray(py),
+    )?;
     dict.set_item("mean", result.mean.into_pyarray(py))?;
     dict.set_item("singular_values", result.singular_values.into_pyarray(py))?;
     dict.set_item("explained_variance", exp_var.into_pyarray(py))?;
     dict.set_item("explained_variance_ratio", exp_var_ratio.into_pyarray(py))?;
-    dict.set_item("centered", to_row_major_2d(&result.centered, n, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "centered",
+        to_row_major_2d(&result.centered, n, n_points).into_pyarray(py),
+    )?;
 
     Ok(dict)
 }
@@ -125,9 +157,18 @@ pub fn fdata_to_pls_1d<'py>(
     let dict = pyo3::types::PyDict::new(py);
 
     if n == 0 || n_points == 0 || y_arr.len() != n {
-        dict.set_item("x_scores", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("x_loadings", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("weights", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "x_scores",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "x_loadings",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "weights",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         return Ok(dict);
     }
 
@@ -136,19 +177,38 @@ pub fn fdata_to_pls_1d<'py>(
     let _argvals_vec: Vec<f64> = argvals_arr.to_vec();
 
     // fdata_to_pls_1d(data, n, m, y, ncomp) -> Option<PlsResult>
-    let result = match fdars_core::regression::fdata_to_pls_1d(&x_flat, n, n_points, &y_vec, n_components) {
-        Some(r) => r,
-        None => {
-            dict.set_item("x_scores", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            dict.set_item("x_loadings", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            dict.set_item("weights", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            return Ok(dict);
-        }
-    };
+    let result =
+        match fdars_core::regression::fdata_to_pls_1d(&x_flat, n, n_points, &y_vec, n_components) {
+            Some(r) => r,
+            None => {
+                dict.set_item(
+                    "x_scores",
+                    ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+                )?;
+                dict.set_item(
+                    "x_loadings",
+                    ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+                )?;
+                dict.set_item(
+                    "weights",
+                    ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+                )?;
+                return Ok(dict);
+            }
+        };
 
-    dict.set_item("x_scores", to_row_major_2d(&result.scores, n, n_components).into_pyarray(py))?;
-    dict.set_item("x_loadings", to_row_major_2d(&result.loadings, n_components, n_points).into_pyarray(py))?;
-    dict.set_item("weights", to_row_major_2d(&result.weights, n_components, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "x_scores",
+        to_row_major_2d(&result.scores, n, n_components).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "x_loadings",
+        to_row_major_2d(&result.loadings, n_components, n_points).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "weights",
+        to_row_major_2d(&result.weights, n_components, n_points).into_pyarray(py),
+    )?;
 
     Ok(dict)
 }
@@ -196,7 +256,8 @@ pub fn ridge_regression_fit<'py>(
     let x_flat = to_col_major(&x_arr);
     let y_vec: Vec<f64> = y_arr.to_vec();
 
-    let result = fdars_core::regression::ridge_regression_fit(&x_flat, &y_vec, n, p, lambda_, fit_intercept);
+    let result =
+        fdars_core::regression::ridge_regression_fit(&x_flat, &y_vec, n, p, lambda_, fit_intercept);
 
     dict.set_item("coefficients", result.coefficients.into_pyarray(py))?;
     dict.set_item("intercept", result.intercept)?;

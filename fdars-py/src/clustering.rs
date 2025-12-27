@@ -61,7 +61,10 @@ pub fn kmeans_fd<'py>(
 
     if n == 0 || n_points == 0 || n_clusters == 0 || n_clusters > n {
         dict.set_item("labels", Vec::<i32>::new().into_pyarray(py))?;
-        dict.set_item("centers", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "centers",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("inertia", f64::NAN)?;
         dict.set_item("n_iter", 0)?;
         dict.set_item("converged", false)?;
@@ -73,12 +76,22 @@ pub fn kmeans_fd<'py>(
 
     // kmeans_fd(data, n, m, argvals, k, max_iter, tol, seed)
     let result = fdars_core::clustering::kmeans_fd(
-        &data_flat, n, n_points, &argvals_vec, n_clusters, max_iter, tol, seed
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        n_clusters,
+        max_iter,
+        tol,
+        seed,
     );
 
     let labels: Vec<i32> = result.cluster.iter().map(|&x| x as i32).collect();
     dict.set_item("labels", labels.into_pyarray(py))?;
-    dict.set_item("centers", to_row_major_2d(&result.centers, n_clusters, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "centers",
+        to_row_major_2d(&result.centers, n_clusters, n_points).into_pyarray(py),
+    )?;
     dict.set_item("inertia", result.tot_withinss)?;
     dict.set_item("withinss", result.withinss.into_pyarray(py))?;
     dict.set_item("n_iter", result.iter)?;
@@ -129,8 +142,14 @@ pub fn fcmeans_fd<'py>(
 
     if n == 0 || n_points == 0 || n_clusters == 0 || n_clusters > n {
         dict.set_item("labels", Vec::<i32>::new().into_pyarray(py))?;
-        dict.set_item("membership", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("centers", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "membership",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "centers",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("inertia", f64::NAN)?;
         dict.set_item("n_iter", 0)?;
         dict.set_item("converged", false)?;
@@ -142,26 +161,42 @@ pub fn fcmeans_fd<'py>(
 
     // fuzzy_cmeans_fd(data, n, m, argvals, k, fuzziness, max_iter, tol, seed)
     let result = fdars_core::clustering::fuzzy_cmeans_fd(
-        &data_flat, n, n_points, &argvals_vec, n_clusters, m, max_iter, tol, seed
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        n_clusters,
+        m,
+        max_iter,
+        tol,
+        seed,
     );
 
     // Compute hard cluster assignments from membership matrix (argmax per row)
-    let labels: Vec<i32> = (0..n).map(|i| {
-        let mut max_val = f64::NEG_INFINITY;
-        let mut max_cluster = 0;
-        for c in 0..n_clusters {
-            let mem = result.membership[i + c * n];  // column-major
-            if mem > max_val {
-                max_val = mem;
-                max_cluster = c;
+    let labels: Vec<i32> = (0..n)
+        .map(|i| {
+            let mut max_val = f64::NEG_INFINITY;
+            let mut max_cluster = 0;
+            for c in 0..n_clusters {
+                let mem = result.membership[i + c * n]; // column-major
+                if mem > max_val {
+                    max_val = mem;
+                    max_cluster = c;
+                }
             }
-        }
-        max_cluster as i32
-    }).collect();
+            max_cluster as i32
+        })
+        .collect();
 
     dict.set_item("labels", labels.into_pyarray(py))?;
-    dict.set_item("membership", to_row_major_2d(&result.membership, n, n_clusters).into_pyarray(py))?;
-    dict.set_item("centers", to_row_major_2d(&result.centers, n_clusters, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "membership",
+        to_row_major_2d(&result.membership, n, n_clusters).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "centers",
+        to_row_major_2d(&result.centers, n_clusters, n_points).into_pyarray(py),
+    )?;
     dict.set_item("n_iter", result.iter)?;
     dict.set_item("converged", result.converged)?;
 

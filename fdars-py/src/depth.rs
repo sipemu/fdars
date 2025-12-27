@@ -46,7 +46,8 @@ pub fn depth_fm_1d<'py>(
     let obj_flat = to_col_major(&obj);
     let ori_flat = to_col_major(&ori);
 
-    let depths = fdars_core::depth::fraiman_muniz_1d(&obj_flat, &ori_flat, n_obj, n_ori, n_points, scale);
+    let depths =
+        fdars_core::depth::fraiman_muniz_1d(&obj_flat, &ori_flat, n_obj, n_ori, n_points, scale);
     Ok(depths.into_pyarray(py))
 }
 
@@ -71,7 +72,8 @@ pub fn depth_fm_2d<'py>(
     let obj_flat = to_col_major(&obj);
     let ori_flat = to_col_major(&ori);
 
-    let depths = fdars_core::depth::fraiman_muniz_2d(&obj_flat, &ori_flat, n_obj, n_ori, n_points, scale);
+    let depths =
+        fdars_core::depth::fraiman_muniz_2d(&obj_flat, &ori_flat, n_obj, n_ori, n_points, scale);
     Ok(depths.into_pyarray(py))
 }
 
@@ -173,7 +175,12 @@ pub fn depth_rp_1d<'py>(
     let ori_flat = to_col_major(&ori);
 
     let depths = fdars_core::depth::random_projection_1d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points, n_projections
+        &obj_flat,
+        &ori_flat,
+        n_obj,
+        n_ori,
+        n_points,
+        n_projections,
     );
     Ok(depths.into_pyarray(py))
 }
@@ -200,7 +207,12 @@ pub fn depth_rp_2d<'py>(
     let ori_flat = to_col_major(&ori);
 
     let depths = fdars_core::depth::random_projection_2d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points, n_projections
+        &obj_flat,
+        &ori_flat,
+        n_obj,
+        n_ori,
+        n_points,
+        n_projections,
     );
     Ok(depths.into_pyarray(py))
 }
@@ -227,7 +239,12 @@ pub fn depth_rt_1d<'py>(
     let ori_flat = to_col_major(&ori);
 
     let depths = fdars_core::depth::random_tukey_1d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points, n_projections
+        &obj_flat,
+        &ori_flat,
+        n_obj,
+        n_ori,
+        n_points,
+        n_projections,
     );
     Ok(depths.into_pyarray(py))
 }
@@ -254,7 +271,12 @@ pub fn depth_rt_2d<'py>(
     let ori_flat = to_col_major(&ori);
 
     let depths = fdars_core::depth::random_tukey_2d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points, n_projections
+        &obj_flat,
+        &ori_flat,
+        n_obj,
+        n_ori,
+        n_points,
+        n_projections,
     );
     Ok(depths.into_pyarray(py))
 }
@@ -278,9 +300,8 @@ pub fn depth_fsd_1d<'py>(
     let obj_flat = to_col_major(&obj);
     let ori_flat = to_col_major(&ori);
 
-    let depths = fdars_core::depth::functional_spatial_1d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points
-    );
+    let depths =
+        fdars_core::depth::functional_spatial_1d(&obj_flat, &ori_flat, n_obj, n_ori, n_points);
     Ok(depths.into_pyarray(py))
 }
 
@@ -303,9 +324,8 @@ pub fn depth_fsd_2d<'py>(
     let obj_flat = to_col_major(&obj);
     let ori_flat = to_col_major(&ori);
 
-    let depths = fdars_core::depth::functional_spatial_2d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points
-    );
+    let depths =
+        fdars_core::depth::functional_spatial_2d(&obj_flat, &ori_flat, n_obj, n_ori, n_points);
     Ok(depths.into_pyarray(py))
 }
 
@@ -341,7 +361,13 @@ pub fn depth_kfsd_1d<'py>(
 
     // kernel_functional_spatial_1d(data_obj, data_ori, nobj, nori, n_points, argvals, h)
     let depths = fdars_core::depth::kernel_functional_spatial_1d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points, &argvals_vec, bandwidth
+        &obj_flat,
+        &ori_flat,
+        n_obj,
+        n_ori,
+        n_points,
+        &argvals_vec,
+        bandwidth,
     );
     Ok(depths.into_pyarray(py))
 }
@@ -374,7 +400,7 @@ pub fn depth_kfsd_2d<'py>(
 
     // kernel_functional_spatial_2d(data_obj, data_ori, nobj, nori, n_points, h)
     let depths = fdars_core::depth::kernel_functional_spatial_2d(
-        &obj_flat, &ori_flat, n_obj, n_ori, n_points, bandwidth
+        &obj_flat, &ori_flat, n_obj, n_ori, n_points, bandwidth,
     );
     Ok(depths.into_pyarray(py))
 }
@@ -444,6 +470,7 @@ pub fn depth_mei_1d<'py>(
     let obj_flat = to_col_major(&obj);
     let ori_flat = to_col_major(&ori);
 
-    let depths = fdars_core::depth::modified_epigraph_index_1d(&obj_flat, &ori_flat, n_obj, n_ori, n_points);
+    let depths =
+        fdars_core::depth::modified_epigraph_index_1d(&obj_flat, &ori_flat, n_obj, n_ori, n_points);
     Ok(depths.into_pyarray(py))
 }

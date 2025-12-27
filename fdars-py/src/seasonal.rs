@@ -96,7 +96,8 @@ pub fn estimate_period_autocorr<'py>(
 
     // Use half of the data length as max lag
     let max_lag = n_points / 2;
-    let result = fdars_core::seasonal::estimate_period_acf(&data_flat, n, n_points, &argvals_vec, max_lag);
+    let result =
+        fdars_core::seasonal::estimate_period_acf(&data_flat, n, n_points, &argvals_vec, max_lag);
 
     // estimate_period_acf returns a single PeriodEstimate, wrap in vectors
     dict.set_item("periods", vec![result.period].into_pyarray(py))?;
@@ -150,7 +151,16 @@ pub fn detect_peaks<'py>(
     let min_prom = Some(min_prominence);
 
     // detect_peaks(data, n, m, argvals, min_distance, min_prominence, smooth_first, smooth_nbasis)
-    let result = fdars_core::seasonal::detect_peaks(&data_flat, n, n_points, &argvals_vec, min_dist, min_prom, false, None);
+    let result = fdars_core::seasonal::detect_peaks(
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        min_dist,
+        min_prom,
+        false,
+        None,
+    );
 
     // Convert peaks to lists of arrays
     let peak_times = pyo3::types::PyList::new(
@@ -158,21 +168,21 @@ pub fn detect_peaks<'py>(
         result.peaks.iter().map(|sample_peaks| {
             let times: Vec<f64> = sample_peaks.iter().map(|p| p.time).collect();
             times.into_pyarray(py)
-        })
+        }),
     )?;
     let peak_values = pyo3::types::PyList::new(
         py,
         result.peaks.iter().map(|sample_peaks| {
             let values: Vec<f64> = sample_peaks.iter().map(|p| p.value).collect();
             values.into_pyarray(py)
-        })
+        }),
     )?;
     let prominences = pyo3::types::PyList::new(
         py,
         result.peaks.iter().map(|sample_peaks| {
             let proms: Vec<f64> = sample_peaks.iter().map(|p| p.prominence).collect();
             proms.into_pyarray(py)
-        })
+        }),
     )?;
 
     // inter_peak_distances is Vec<Vec<f64>>, flatten for simplicity
@@ -212,12 +222,18 @@ pub fn detect_multiple_periods<'py>(
     let data_flat = to_col_major(&data_arr);
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
 
-    let min_confidence = 0.5;  // default confidence threshold
-    let min_strength = 0.1;    // default strength threshold
+    let min_confidence = 0.5; // default confidence threshold
+    let min_strength = 0.1; // default strength threshold
 
     // detect_multiple_periods(data, n, m, argvals, max_periods, min_confidence, min_strength)
     let results = fdars_core::seasonal::detect_multiple_periods(
-        &data_flat, n, n_points, &argvals_vec, max_periods, min_confidence, min_strength
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        max_periods,
+        min_confidence,
+        min_strength,
     );
 
     // Convert to list of dicts (one per detected period)
@@ -232,7 +248,7 @@ pub fn detect_multiple_periods<'py>(
             d.set_item("phase", p.phase).unwrap();
             d.set_item("iteration", p.iteration).unwrap();
             d
-        })
+        }),
     )?;
 
     dict.set_item("periods", periods_list)?;
@@ -278,11 +294,24 @@ pub fn seasonal_strength<'py>(
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
 
     // These functions return a single f64 for the mean curve, wrap in vec for per-sample use
-    let n_harmonics = 3;  // default harmonics for variance method
+    let n_harmonics = 3; // default harmonics for variance method
     let strength = if method == "spectral" {
-        fdars_core::seasonal::seasonal_strength_spectral(&data_flat, n, n_points, &argvals_vec, period)
+        fdars_core::seasonal::seasonal_strength_spectral(
+            &data_flat,
+            n,
+            n_points,
+            &argvals_vec,
+            period,
+        )
     } else {
-        fdars_core::seasonal::seasonal_strength_variance(&data_flat, n, n_points, &argvals_vec, period, n_harmonics)
+        fdars_core::seasonal::seasonal_strength_variance(
+            &data_flat,
+            n,
+            n_points,
+            &argvals_vec,
+            period,
+            n_harmonics,
+        )
     };
 
     // Return single strength value for the mean curve
@@ -315,11 +344,18 @@ pub fn detect_seasonality_changes<'py>(
     let data_flat = to_col_major(&data_arr);
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
     let win_size = window_size.unwrap_or((period.ceil() as usize).max(10)) as f64;
-    let min_duration = period;  // default min_duration is one period
+    let min_duration = period; // default min_duration is one period
 
     // detect_seasonality_changes(data, n, m, argvals, period, threshold, window_size, min_duration)
     let result = fdars_core::seasonal::detect_seasonality_changes(
-        &data_flat, n, n_points, &argvals_vec, period, threshold, win_size, min_duration
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        period,
+        threshold,
+        win_size,
+        min_duration,
     );
 
     // Convert results - returns a single ChangeDetectionResult
@@ -328,11 +364,12 @@ pub fn detect_seasonality_changes<'py>(
         result.change_points.iter().map(|cp| {
             let d = pyo3::types::PyDict::new(py);
             d.set_item("time", cp.time).unwrap();
-            d.set_item("change_type", format!("{:?}", cp.change_type)).unwrap();
+            d.set_item("change_type", format!("{:?}", cp.change_type))
+                .unwrap();
             d.set_item("strength_before", cp.strength_before).unwrap();
             d.set_item("strength_after", cp.strength_after).unwrap();
             d
-        })
+        }),
     )?;
 
     dict.set_item("change_points", change_points)?;

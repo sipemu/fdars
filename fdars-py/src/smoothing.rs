@@ -65,14 +65,22 @@ pub fn nadaraya_watson<'py>(
         None => argvals_vec.clone(),
     };
     let n_eval = eval_vec.len();
-    let kernel_type = if kernel == "epanechnikov" { "epanechnikov" } else { "gaussian" };
+    let kernel_type = if kernel == "epanechnikov" {
+        "epanechnikov"
+    } else {
+        "gaussian"
+    };
 
     // Smooth each sample individually
     let mut result = ndarray::Array2::<f64>::zeros((n, n_eval));
     for i in 0..n {
         let y_values: Vec<f64> = (0..n_points).map(|j| data_arr[[i, j]]).collect();
         let smoothed = fdars_core::smoothing::nadaraya_watson(
-            &argvals_vec, &y_values, &eval_vec, h, kernel_type
+            &argvals_vec,
+            &y_values,
+            &eval_vec,
+            h,
+            kernel_type,
         );
         for (j, &val) in smoothed.iter().enumerate() {
             result[[i, j]] = val;
@@ -125,15 +133,18 @@ pub fn local_linear<'py>(
         None => argvals_vec.clone(),
     };
     let n_eval = eval_vec.len();
-    let kernel_type = if kernel == "epanechnikov" { "epanechnikov" } else { "gaussian" };
+    let kernel_type = if kernel == "epanechnikov" {
+        "epanechnikov"
+    } else {
+        "gaussian"
+    };
 
     // Smooth each sample individually
     let mut result = ndarray::Array2::<f64>::zeros((n, n_eval));
     for i in 0..n {
         let y_values: Vec<f64> = (0..n_points).map(|j| data_arr[[i, j]]).collect();
-        let smoothed = fdars_core::smoothing::local_linear(
-            &argvals_vec, &y_values, &eval_vec, h, kernel_type
-        );
+        let smoothed =
+            fdars_core::smoothing::local_linear(&argvals_vec, &y_values, &eval_vec, h, kernel_type);
         for (j, &val) in smoothed.iter().enumerate() {
             result[[i, j]] = val;
         }
@@ -188,14 +199,23 @@ pub fn local_polynomial<'py>(
         None => argvals_vec.clone(),
     };
     let n_eval = eval_vec.len();
-    let kernel_type = if kernel == "epanechnikov" { "epanechnikov" } else { "gaussian" };
+    let kernel_type = if kernel == "epanechnikov" {
+        "epanechnikov"
+    } else {
+        "gaussian"
+    };
 
     // Smooth each sample individually
     let mut result = ndarray::Array2::<f64>::zeros((n, n_eval));
     for i in 0..n {
         let y_values: Vec<f64> = (0..n_points).map(|j| data_arr[[i, j]]).collect();
         let smoothed = fdars_core::smoothing::local_polynomial(
-            &argvals_vec, &y_values, &eval_vec, h, degree, kernel_type
+            &argvals_vec,
+            &y_values,
+            &eval_vec,
+            h,
+            degree,
+            kernel_type,
         );
         for (j, &val) in smoothed.iter().enumerate() {
             result[[i, j]] = val;

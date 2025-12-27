@@ -114,16 +114,22 @@ pub fn outliers_lrt<'py>(
 
     // Compute bootstrap threshold
     // outliers_threshold_lrt(data, n, m, nb, smo, trim, seed, percentile)
-    let smo = 0.05;  // smoothing parameter
+    let smo = 0.05; // smoothing parameter
     let threshold = fdars_core::outliers::outliers_threshold_lrt(
-        &data_flat, n, n_points, n_bootstrap, smo, trim, seed, 1.0 - alpha
+        &data_flat,
+        n,
+        n_points,
+        n_bootstrap,
+        smo,
+        trim,
+        seed,
+        1.0 - alpha,
     );
 
     // Compute LRT statistics - returns Vec<bool> directly
     // detect_outliers_lrt(data, n, m, threshold, trim)
-    let outliers = fdars_core::outliers::detect_outliers_lrt(
-        &data_flat, n, n_points, threshold, trim
-    );
+    let outliers =
+        fdars_core::outliers::detect_outliers_lrt(&data_flat, n, n_points, threshold, trim);
 
     dict.set_item("outliers", outliers.into_pyarray(py))?;
     dict.set_item("threshold", threshold)?;

@@ -250,7 +250,10 @@ pub fn fdata_deriv_2d<'py>(
     if n == 0 || ncol != m1 * m2 || argvals_s_arr.len() != m1 || argvals_t_arr.len() != m2 {
         dict.set_item("ds", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
         dict.set_item("dt", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("dsdt", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "dsdt",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         return Ok(dict);
     }
 
@@ -284,7 +287,10 @@ pub fn fdata_deriv_2d<'py>(
         None => {
             dict.set_item("ds", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
             dict.set_item("dt", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            dict.set_item("dsdt", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+            dict.set_item(
+                "dsdt",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
         }
     }
 
@@ -331,7 +337,8 @@ pub fn geometric_median_1d<'py>(
         .collect();
 
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
-    let median = fdars_core::fdata::geometric_median_1d(&data_flat, nrow, ncol, &argvals_vec, max_iter, tol);
+    let median =
+        fdars_core::fdata::geometric_median_1d(&data_flat, nrow, ncol, &argvals_vec, max_iter, tol);
 
     Ok(median.into_pyarray(py))
 }
@@ -389,7 +396,13 @@ pub fn geometric_median_2d<'py>(
     let argvals_t_vec: Vec<f64> = argvals_t_arr.to_vec();
 
     let median = fdars_core::fdata::geometric_median_2d(
-        &data_flat, n, m1 * m2, &argvals_s_vec, &argvals_t_vec, max_iter, tol
+        &data_flat,
+        n,
+        m1 * m2,
+        &argvals_s_vec,
+        &argvals_t_vec,
+        max_iter,
+        tol,
     );
 
     Ok(median.into_pyarray(py))

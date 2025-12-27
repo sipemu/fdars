@@ -114,7 +114,8 @@ pub fn fdata_to_basis_1d<'py>(
     let btype = if basis_type == "fourier" { 1 } else { 0 };
 
     // fdata_to_basis_1d(data, n, m, argvals, nbasis, basis_type) -> Option<BasisProjectionResult>
-    match fdars_core::basis::fdata_to_basis_1d(&data_flat, n, n_points, &argvals_vec, nbasis, btype) {
+    match fdars_core::basis::fdata_to_basis_1d(&data_flat, n, n_points, &argvals_vec, nbasis, btype)
+    {
         Some(result) => {
             let actual_nbasis = result.n_basis;
             let coefs = to_row_major_2d(&result.coefficients, n, actual_nbasis);
@@ -149,7 +150,8 @@ pub fn basis_to_fdata_1d<'py>(
 
     // basis_to_fdata_1d(coefs, nbasis, n, argvals, basis_type, order) -> Vec<f64>
     let order = 4; // cubic B-splines
-    let data_flat = fdars_core::basis::basis_to_fdata_1d(&coefs_flat, nb, n, &argvals_vec, btype, order);
+    let data_flat =
+        fdars_core::basis::basis_to_fdata_1d(&coefs_flat, nb, n, &argvals_vec, btype, order);
     let result = to_row_major_2d(&data_flat, n, n_points);
 
     Ok(result.into_pyarray(py))
@@ -173,8 +175,14 @@ pub fn pspline_fit_1d<'py>(
     let dict = pyo3::types::PyDict::new(py);
 
     if n == 0 || n_points == 0 || nbasis == 0 {
-        dict.set_item("coefficients", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("fitted", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "coefficients",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "fitted",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("edf", f64::NAN)?;
         dict.set_item("gcv", f64::NAN)?;
         dict.set_item("aic", f64::NAN)?;
@@ -186,19 +194,39 @@ pub fn pspline_fit_1d<'py>(
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
 
     // pspline_fit_1d(data, n, m, argvals, nbasis, lambda, nderiv) -> Option<PsplineFitResult>
-    match fdars_core::basis::pspline_fit_1d(&data_flat, n, n_points, &argvals_vec, nbasis, lambda_, nderiv) {
+    match fdars_core::basis::pspline_fit_1d(
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        nbasis,
+        lambda_,
+        nderiv,
+    ) {
         Some(result) => {
             let actual_nbasis = result.n_basis;
-            dict.set_item("coefficients", to_row_major_2d(&result.coefficients, n, actual_nbasis).into_pyarray(py))?;
-            dict.set_item("fitted", to_row_major_2d(&result.fitted, n, n_points).into_pyarray(py))?;
+            dict.set_item(
+                "coefficients",
+                to_row_major_2d(&result.coefficients, n, actual_nbasis).into_pyarray(py),
+            )?;
+            dict.set_item(
+                "fitted",
+                to_row_major_2d(&result.fitted, n, n_points).into_pyarray(py),
+            )?;
             dict.set_item("edf", result.edf)?;
             dict.set_item("gcv", result.gcv)?;
             dict.set_item("aic", result.aic)?;
             dict.set_item("bic", result.bic)?;
         }
         None => {
-            dict.set_item("coefficients", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            dict.set_item("fitted", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+            dict.set_item(
+                "coefficients",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
+            dict.set_item(
+                "fitted",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
             dict.set_item("edf", f64::NAN)?;
             dict.set_item("gcv", f64::NAN)?;
             dict.set_item("aic", f64::NAN)?;
@@ -224,8 +252,14 @@ pub fn fourier_fit_1d<'py>(
     let dict = pyo3::types::PyDict::new(py);
 
     if n == 0 || n_points == 0 || nbasis == 0 {
-        dict.set_item("coefficients", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("fitted", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "coefficients",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "fitted",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("edf", f64::NAN)?;
         dict.set_item("gcv", f64::NAN)?;
         dict.set_item("aic", f64::NAN)?;
@@ -239,16 +273,28 @@ pub fn fourier_fit_1d<'py>(
     // fourier_fit_1d(data, n, m, argvals, nbasis) -> Option<FourierFitResult>
     match fdars_core::basis::fourier_fit_1d(&data_flat, n, n_points, &argvals_vec, nbasis) {
         Some(result) => {
-            dict.set_item("coefficients", to_row_major_2d(&result.coefficients, n, nbasis).into_pyarray(py))?;
-            dict.set_item("fitted", to_row_major_2d(&result.fitted, n, n_points).into_pyarray(py))?;
+            dict.set_item(
+                "coefficients",
+                to_row_major_2d(&result.coefficients, n, nbasis).into_pyarray(py),
+            )?;
+            dict.set_item(
+                "fitted",
+                to_row_major_2d(&result.fitted, n, n_points).into_pyarray(py),
+            )?;
             dict.set_item("edf", result.edf)?;
             dict.set_item("gcv", result.gcv)?;
             dict.set_item("aic", result.aic)?;
             dict.set_item("bic", result.bic)?;
         }
         None => {
-            dict.set_item("coefficients", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-            dict.set_item("fitted", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+            dict.set_item(
+                "coefficients",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
+            dict.set_item(
+                "fitted",
+                ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+            )?;
             dict.set_item("edf", f64::NAN)?;
             dict.set_item("gcv", f64::NAN)?;
             dict.set_item("aic", f64::NAN)?;
@@ -280,8 +326,14 @@ pub fn select_basis_auto_1d<'py>(
     if n == 0 || n_points == 0 {
         dict.set_item("basis_type", "bspline")?;
         dict.set_item("nbasis", 0)?;
-        dict.set_item("coefficients", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("fitted", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "coefficients",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "fitted",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("score", f64::INFINITY)?;
         return Ok(dict);
     }
@@ -296,13 +348,25 @@ pub fn select_basis_auto_1d<'py>(
 
     // select_basis_auto_1d(data, n, m, argvals, criterion, nbasis_min, nbasis_max, lambda_pspline, use_seasonal_hint)
     let result = fdars_core::basis::select_basis_auto_1d(
-        &data_flat, n, n_points, &argvals_vec, crit, nbasis_min, nbasis_max, lambda_, true
+        &data_flat,
+        n,
+        n_points,
+        &argvals_vec,
+        crit,
+        nbasis_min,
+        nbasis_max,
+        lambda_,
+        true,
     );
 
     // Return info for first curve as representative
     if !result.selections.is_empty() {
         let sel = &result.selections[0];
-        let basis_type = if sel.basis_type == 1 { "fourier" } else { "bspline" };
+        let basis_type = if sel.basis_type == 1 {
+            "fourier"
+        } else {
+            "bspline"
+        };
         dict.set_item("basis_type", basis_type)?;
         dict.set_item("nbasis", sel.nbasis)?;
         dict.set_item("coefficients", sel.coefficients.clone().into_pyarray(py))?;
@@ -350,7 +414,15 @@ pub fn basis_gcv_1d<'py>(
             }
         }
     } else {
-        match fdars_core::basis::pspline_fit_1d(&data_flat, n, n_points, &argvals_vec, nbasis, lambda_, 2) {
+        match fdars_core::basis::pspline_fit_1d(
+            &data_flat,
+            n,
+            n_points,
+            &argvals_vec,
+            nbasis,
+            lambda_,
+            2,
+        ) {
             Some(result) => {
                 dict.set_item("gcv", result.gcv)?;
             }

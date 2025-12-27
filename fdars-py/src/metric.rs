@@ -58,7 +58,8 @@ pub fn metric_lp_self_1d<'py>(
     let user_weights: Vec<f64> = vec![1.0; n_points];
 
     // lp_self_1d(data, n, n_points, argvals, p, user_weights)
-    let dist_flat = fdars_core::metric::lp_self_1d(&data_flat, n, n_points, &argvals_vec, p, &user_weights);
+    let dist_flat =
+        fdars_core::metric::lp_self_1d(&data_flat, n, n_points, &argvals_vec, p, &user_weights);
     let result = to_row_major_2d(&dist_flat, n, n);
 
     Ok(result.into_pyarray(py))
@@ -90,7 +91,16 @@ pub fn metric_lp_cross_1d<'py>(
     let user_weights: Vec<f64> = vec![1.0; n_points1];
 
     // lp_cross_1d(data1, data2, n1, n2, n_points, argvals, p, user_weights)
-    let dist_flat = fdars_core::metric::lp_cross_1d(&d1_flat, &d2_flat, n1, n2, n_points1, &argvals_vec, p, &user_weights);
+    let dist_flat = fdars_core::metric::lp_cross_1d(
+        &d1_flat,
+        &d2_flat,
+        n1,
+        n2,
+        n_points1,
+        &argvals_vec,
+        p,
+        &user_weights,
+    );
     let result = to_row_major_2d(&dist_flat, n1, n2);
 
     Ok(result.into_pyarray(py))
@@ -122,7 +132,14 @@ pub fn metric_lp_self_2d<'py>(
     let argvals_t_vec: Vec<f64> = argvals_t_arr.to_vec();
     let user_weights: Vec<f64> = vec![1.0; m1 * m2];
 
-    let dist_flat = fdars_core::metric::lp_self_2d(&data_flat, n, &argvals_s_vec, &argvals_t_vec, p, &user_weights);
+    let dist_flat = fdars_core::metric::lp_self_2d(
+        &data_flat,
+        n,
+        &argvals_s_vec,
+        &argvals_t_vec,
+        p,
+        &user_weights,
+    );
     let result = to_row_major_2d(&dist_flat, n, n);
 
     Ok(result.into_pyarray(py))
@@ -158,7 +175,16 @@ pub fn metric_lp_cross_2d<'py>(
     let argvals_t_vec: Vec<f64> = argvals_t_arr.to_vec();
     let user_weights: Vec<f64> = vec![1.0; m1 * m2];
 
-    let dist_flat = fdars_core::metric::lp_cross_2d(&d1_flat, &d2_flat, n1, n2, &argvals_s_vec, &argvals_t_vec, p, &user_weights);
+    let dist_flat = fdars_core::metric::lp_cross_2d(
+        &d1_flat,
+        &d2_flat,
+        n1,
+        n2,
+        &argvals_s_vec,
+        &argvals_t_vec,
+        p,
+        &user_weights,
+    );
     let result = to_row_major_2d(&dist_flat, n1, n2);
 
     Ok(result.into_pyarray(py))
@@ -212,7 +238,8 @@ pub fn metric_hausdorff_cross_1d<'py>(
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
 
     // hausdorff_cross_1d(data1, data2, n1, n2, m, argvals)
-    let dist_flat = fdars_core::metric::hausdorff_cross_1d(&d1_flat, &d2_flat, n1, n2, n_points1, &argvals_vec);
+    let dist_flat =
+        fdars_core::metric::hausdorff_cross_1d(&d1_flat, &d2_flat, n1, n2, n_points1, &argvals_vec);
     let result = to_row_major_2d(&dist_flat, n1, n2);
 
     Ok(result.into_pyarray(py))
@@ -241,7 +268,8 @@ pub fn metric_hausdorff_self_2d<'py>(
     let argvals_s_vec: Vec<f64> = argvals_s_arr.to_vec();
     let argvals_t_vec: Vec<f64> = argvals_t_arr.to_vec();
 
-    let dist_flat = fdars_core::metric::hausdorff_self_2d(&data_flat, n, &argvals_s_vec, &argvals_t_vec);
+    let dist_flat =
+        fdars_core::metric::hausdorff_self_2d(&data_flat, n, &argvals_s_vec, &argvals_t_vec);
     let result = to_row_major_2d(&dist_flat, n, n);
 
     Ok(result.into_pyarray(py))
@@ -274,7 +302,14 @@ pub fn metric_hausdorff_cross_2d<'py>(
     let argvals_s_vec: Vec<f64> = argvals_s_arr.to_vec();
     let argvals_t_vec: Vec<f64> = argvals_t_arr.to_vec();
 
-    let dist_flat = fdars_core::metric::hausdorff_cross_2d(&d1_flat, &d2_flat, n1, n2, &argvals_s_vec, &argvals_t_vec);
+    let dist_flat = fdars_core::metric::hausdorff_cross_2d(
+        &d1_flat,
+        &d2_flat,
+        n1,
+        n2,
+        &argvals_s_vec,
+        &argvals_t_vec,
+    );
     let result = to_row_major_2d(&dist_flat, n1, n2);
 
     Ok(result.into_pyarray(py))
@@ -435,7 +470,8 @@ pub fn semimetric_hshift_cross_1d<'py>(
     // max_shift is in grid points (usize), not absolute time
     let ms: usize = max_shift.map(|f| f as usize).unwrap_or(m1 / 4);
 
-    let dist_flat = fdars_core::metric::hshift_cross_1d(&d1_flat, &d2_flat, n1, n2, m1, &argvals_vec, ms);
+    let dist_flat =
+        fdars_core::metric::hshift_cross_1d(&d1_flat, &d2_flat, n1, n2, m1, &argvals_vec, ms);
     let result = to_row_major_2d(&dist_flat, n1, n2);
 
     Ok(result.into_pyarray(py))

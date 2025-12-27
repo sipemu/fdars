@@ -57,8 +57,14 @@ pub fn detrend<'py>(
     let dict = pyo3::types::PyDict::new(py);
 
     if n == 0 || n_points == 0 {
-        dict.set_item("detrended", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("trend", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "detrended",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "trend",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("method", method)?;
         dict.set_item("coefficients", pyo3::types::PyList::empty(py))?;
         return Ok(dict);
@@ -69,15 +75,25 @@ pub fn detrend<'py>(
 
     let result = match method {
         "linear" => fdars_core::detrend::detrend_linear(&data_flat, n, n_points, &argvals_vec),
-        "polynomial" => fdars_core::detrend::detrend_polynomial(&data_flat, n, n_points, &argvals_vec, degree),
+        "polynomial" => {
+            fdars_core::detrend::detrend_polynomial(&data_flat, n, n_points, &argvals_vec, degree)
+        }
         "diff" => fdars_core::detrend::detrend_diff(&data_flat, n, n_points, 1),
-        "loess" => fdars_core::detrend::detrend_loess(&data_flat, n, n_points, &argvals_vec, span, 1),
+        "loess" => {
+            fdars_core::detrend::detrend_loess(&data_flat, n, n_points, &argvals_vec, span, 1)
+        }
         "auto" => fdars_core::detrend::auto_detrend(&data_flat, n, n_points, &argvals_vec),
         _ => fdars_core::detrend::detrend_linear(&data_flat, n, n_points, &argvals_vec),
     };
 
-    dict.set_item("detrended", to_row_major_2d(&result.detrended, n, n_points).into_pyarray(py))?;
-    dict.set_item("trend", to_row_major_2d(&result.trend, n, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "detrended",
+        to_row_major_2d(&result.detrended, n, n_points).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "trend",
+        to_row_major_2d(&result.trend, n, n_points).into_pyarray(py),
+    )?;
     dict.set_item("method", &result.method)?;
 
     // Convert coefficients if present
@@ -129,9 +145,18 @@ pub fn decompose<'py>(
     let dict = pyo3::types::PyDict::new(py);
 
     if n == 0 || n_points == 0 {
-        dict.set_item("trend", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("seasonal", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
-        dict.set_item("remainder", ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py))?;
+        dict.set_item(
+            "trend",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "seasonal",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
+        dict.set_item(
+            "remainder",
+            ndarray::Array2::<f64>::zeros((0, 0)).into_pyarray(py),
+        )?;
         dict.set_item("period", period)?;
         dict.set_item("method", method)?;
         return Ok(dict);
@@ -142,14 +167,41 @@ pub fn decompose<'py>(
 
     // decompose_additive(data, n, m, argvals, period, trend_method, bandwidth, n_harmonics)
     let result = if method == "multiplicative" {
-        fdars_core::detrend::decompose_multiplicative(&data_flat, n, n_points, &argvals_vec, period, "loess", 0.25, 3)
+        fdars_core::detrend::decompose_multiplicative(
+            &data_flat,
+            n,
+            n_points,
+            &argvals_vec,
+            period,
+            "loess",
+            0.25,
+            3,
+        )
     } else {
-        fdars_core::detrend::decompose_additive(&data_flat, n, n_points, &argvals_vec, period, "loess", 0.25, 3)
+        fdars_core::detrend::decompose_additive(
+            &data_flat,
+            n,
+            n_points,
+            &argvals_vec,
+            period,
+            "loess",
+            0.25,
+            3,
+        )
     };
 
-    dict.set_item("trend", to_row_major_2d(&result.trend, n, n_points).into_pyarray(py))?;
-    dict.set_item("seasonal", to_row_major_2d(&result.seasonal, n, n_points).into_pyarray(py))?;
-    dict.set_item("remainder", to_row_major_2d(&result.remainder, n, n_points).into_pyarray(py))?;
+    dict.set_item(
+        "trend",
+        to_row_major_2d(&result.trend, n, n_points).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "seasonal",
+        to_row_major_2d(&result.seasonal, n, n_points).into_pyarray(py),
+    )?;
+    dict.set_item(
+        "remainder",
+        to_row_major_2d(&result.remainder, n, n_points).into_pyarray(py),
+    )?;
     dict.set_item("period", result.period)?;
     dict.set_item("method", &result.method)?;
 
