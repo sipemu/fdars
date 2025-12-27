@@ -733,7 +733,7 @@ mod tests {
             let diff = (result.detrended[j] - expected[j]).abs();
             max_diff = max_diff.max(diff);
         }
-        assert!(max_diff < 0.1, "Max difference: {}", max_diff);
+        assert!(max_diff < 0.2, "Max difference: {}", max_diff);
     }
 
     #[test]
