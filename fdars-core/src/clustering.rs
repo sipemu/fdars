@@ -525,3 +525,402 @@ pub fn calinski_harabasz(
 
     (bgss / (k - 1) as f64) / (wgss / (n - k) as f64)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::PI;
+
+    /// Generate a uniform grid of points
+    fn uniform_grid(n: usize) -> Vec<f64> {
+        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
+    }
+
+    /// Generate two clearly separated clusters of curves
+    fn generate_two_clusters(n_per_cluster: usize, m: usize) -> (Vec<f64>, Vec<f64>) {
+        let t = uniform_grid(m);
+        let mut data = Vec::with_capacity(2 * n_per_cluster * m);
+
+        // Cluster 0: sine waves with low amplitude
+        for i in 0..n_per_cluster {
+            for &ti in &t {
+                data.push((2.0 * PI * ti).sin() + 0.1 * (i as f64 / n_per_cluster as f64));
+            }
+        }
+
+        // Cluster 1: sine waves shifted up by 5
+        for i in 0..n_per_cluster {
+            for &ti in &t {
+                data.push((2.0 * PI * ti).sin() + 5.0 + 0.1 * (i as f64 / n_per_cluster as f64));
+            }
+        }
+
+        // Column-major reordering
+        let n = 2 * n_per_cluster;
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                col_major[i + j * n] = data[i * m + j];
+            }
+        }
+
+        (col_major, t)
+    }
+
+    // ============== K-means tests ==============
+
+    #[test]
+    fn test_kmeans_fd_basic() {
+        let m = 50;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result = kmeans_fd(&data, n, m, &t, 2, 100, 1e-6, 42);
+
+        assert_eq!(result.cluster.len(), n);
+        assert!(result.converged);
+        assert!(result.iter > 0 && result.iter <= 100);
+    }
+
+    #[test]
+    fn test_kmeans_fd_finds_clusters() {
+        let m = 50;
+        let n_per = 10;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result = kmeans_fd(&data, n, m, &t, 2, 100, 1e-6, 42);
+
+        // First half should be one cluster, second half the other
+        let cluster_0 = result.cluster[0];
+        let cluster_1 = result.cluster[n_per];
+
+        assert_ne!(cluster_0, cluster_1, "Clusters should be different");
+
+        // Check that first half is in same cluster
+        for i in 0..n_per {
+            assert_eq!(result.cluster[i], cluster_0);
+        }
+
+        // Check that second half is in same cluster
+        for i in n_per..n {
+            assert_eq!(result.cluster[i], cluster_1);
+        }
+    }
+
+    #[test]
+    fn test_kmeans_fd_deterministic() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result1 = kmeans_fd(&data, n, m, &t, 2, 100, 1e-6, 42);
+        let result2 = kmeans_fd(&data, n, m, &t, 2, 100, 1e-6, 42);
+
+        // Same seed should give same results
+        assert_eq!(result1.cluster, result2.cluster);
+    }
+
+    #[test]
+    fn test_kmeans_fd_withinss() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result = kmeans_fd(&data, n, m, &t, 2, 100, 1e-6, 42);
+
+        // Within-cluster sum of squares should be non-negative
+        for &wss in &result.withinss {
+            assert!(wss >= 0.0);
+        }
+
+        // Total should equal sum
+        let sum: f64 = result.withinss.iter().sum();
+        assert!((sum - result.tot_withinss).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_kmeans_fd_centers_shape() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+        let k = 3;
+
+        let result = kmeans_fd(&data, n, m, &t, k, 100, 1e-6, 42);
+
+        // Centers should be k x m matrix (column-major)
+        assert_eq!(result.centers.len(), k * m);
+    }
+
+    #[test]
+    fn test_kmeans_fd_invalid_input() {
+        let t = uniform_grid(30);
+
+        // Empty data
+        let result = kmeans_fd(&[], 0, 30, &t, 2, 100, 1e-6, 42);
+        assert!(result.cluster.is_empty());
+        assert!(!result.converged);
+
+        // k > n
+        let data = vec![0.0; 5 * 30];
+        let result = kmeans_fd(&data, 5, 30, &t, 10, 100, 1e-6, 42);
+        assert!(result.cluster.is_empty());
+    }
+
+    #[test]
+    fn test_kmeans_fd_single_cluster() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let n = 10;
+        let data = vec![0.0; n * m];
+
+        let result = kmeans_fd(&data, n, m, &t, 1, 100, 1e-6, 42);
+
+        // All should be in cluster 0
+        for &c in &result.cluster {
+            assert_eq!(c, 0);
+        }
+    }
+
+    // ============== Fuzzy C-means tests ==============
+
+    #[test]
+    fn test_fuzzy_cmeans_fd_basic() {
+        let m = 50;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result = fuzzy_cmeans_fd(&data, n, m, &t, 2, 2.0, 100, 1e-6, 42);
+
+        assert_eq!(result.membership.len(), n * 2);
+        assert!(result.iter > 0);
+    }
+
+    #[test]
+    fn test_fuzzy_cmeans_fd_membership_sums_to_one() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+        let k = 2;
+
+        let result = fuzzy_cmeans_fd(&data, n, m, &t, k, 2.0, 100, 1e-6, 42);
+
+        // Each observation's membership should sum to 1
+        for i in 0..n {
+            let sum: f64 = (0..k).map(|c| result.membership[i + c * n]).sum();
+            assert!(
+                (sum - 1.0).abs() < 1e-6,
+                "Membership should sum to 1, got {}",
+                sum
+            );
+        }
+    }
+
+    #[test]
+    fn test_fuzzy_cmeans_fd_membership_in_range() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result = fuzzy_cmeans_fd(&data, n, m, &t, 2, 2.0, 100, 1e-6, 42);
+
+        // All memberships should be in [0, 1]
+        for &mem in &result.membership {
+            assert!(mem >= 0.0 && mem <= 1.0 + 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_fuzzy_cmeans_fd_fuzziness_effect() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let result_low = fuzzy_cmeans_fd(&data, n, m, &t, 2, 1.5, 100, 1e-6, 42);
+        let result_high = fuzzy_cmeans_fd(&data, n, m, &t, 2, 3.0, 100, 1e-6, 42);
+
+        // Higher fuzziness should give more diffuse memberships
+        // Measure by entropy-like metric
+        let entropy_low: f64 = result_low
+            .membership
+            .iter()
+            .map(|&m| if m > 1e-10 { -m * m.ln() } else { 0.0 })
+            .sum();
+
+        let entropy_high: f64 = result_high
+            .membership
+            .iter()
+            .map(|&m| if m > 1e-10 { -m * m.ln() } else { 0.0 })
+            .sum();
+
+        assert!(
+            entropy_high >= entropy_low - 0.1,
+            "Higher fuzziness should give higher entropy"
+        );
+    }
+
+    #[test]
+    fn test_fuzzy_cmeans_fd_invalid_fuzziness() {
+        let t = uniform_grid(30);
+        let data = vec![0.0; 10 * 30];
+
+        // Fuzziness <= 1 should fail
+        let result = fuzzy_cmeans_fd(&data, 10, 30, &t, 2, 1.0, 100, 1e-6, 42);
+        assert!(result.membership.is_empty());
+
+        let result = fuzzy_cmeans_fd(&data, 10, 30, &t, 2, 0.5, 100, 1e-6, 42);
+        assert!(result.membership.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_cmeans_fd_centers_shape() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let n = 10;
+        let k = 3;
+        let data = vec![0.0; n * m];
+
+        let result = fuzzy_cmeans_fd(&data, n, m, &t, k, 2.0, 100, 1e-6, 42);
+
+        assert_eq!(result.centers.len(), k * m);
+    }
+
+    // ============== Silhouette score tests ==============
+
+    #[test]
+    fn test_silhouette_score_well_separated() {
+        let m = 30;
+        let n_per = 10;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        // Perfect clustering: first half in 0, second in 1
+        let cluster: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
+
+        let scores = silhouette_score(&data, n, m, &t, &cluster);
+
+        assert_eq!(scores.len(), n);
+
+        // Well-separated clusters should have high silhouette scores
+        let mean_score: f64 = scores.iter().sum::<f64>() / n as f64;
+        assert!(
+            mean_score > 0.5,
+            "Well-separated clusters should have high silhouette: {}",
+            mean_score
+        );
+    }
+
+    #[test]
+    fn test_silhouette_score_range() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let cluster: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
+
+        let scores = silhouette_score(&data, n, m, &t, &cluster);
+
+        // Silhouette scores should be in [-1, 1]
+        for &s in &scores {
+            assert!(s >= -1.0 - 1e-10 && s <= 1.0 + 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_silhouette_score_single_cluster() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let n = 10;
+        let data = vec![0.0; n * m];
+
+        // All in one cluster
+        let cluster = vec![0usize; n];
+
+        let scores = silhouette_score(&data, n, m, &t, &cluster);
+
+        // Single cluster should give zeros
+        for &s in &scores {
+            assert!(s.abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_silhouette_score_invalid_input() {
+        let t = uniform_grid(30);
+
+        // Empty data
+        let scores = silhouette_score(&[], 0, 30, &t, &[]);
+        assert!(scores.is_empty());
+
+        // Mismatched cluster length
+        let data = vec![0.0; 10 * 30];
+        let cluster = vec![0; 5]; // Wrong length
+        let scores = silhouette_score(&data, 10, 30, &t, &cluster);
+        assert!(scores.is_empty());
+    }
+
+    // ============== Calinski-Harabasz tests ==============
+
+    #[test]
+    fn test_calinski_harabasz_well_separated() {
+        let m = 30;
+        let n_per = 10;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let cluster: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
+
+        let ch = calinski_harabasz(&data, n, m, &t, &cluster);
+
+        // Well-separated clusters should have high CH index
+        assert!(ch > 1.0, "Well-separated clusters should have high CH: {}", ch);
+    }
+
+    #[test]
+    fn test_calinski_harabasz_positive() {
+        let m = 30;
+        let n_per = 5;
+        let (data, t) = generate_two_clusters(n_per, m);
+        let n = 2 * n_per;
+
+        let cluster: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
+
+        let ch = calinski_harabasz(&data, n, m, &t, &cluster);
+
+        assert!(ch >= 0.0, "CH index should be non-negative");
+    }
+
+    #[test]
+    fn test_calinski_harabasz_single_cluster() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let n = 10;
+        let data = vec![0.0; n * m];
+
+        // All in one cluster
+        let cluster = vec![0usize; n];
+
+        let ch = calinski_harabasz(&data, n, m, &t, &cluster);
+
+        // Single cluster should give 0
+        assert!(ch.abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_calinski_harabasz_invalid_input() {
+        let t = uniform_grid(30);
+
+        // Empty data
+        let ch = calinski_harabasz(&[], 0, 30, &t, &[]);
+        assert!(ch.abs() < 1e-10);
+    }
+}
