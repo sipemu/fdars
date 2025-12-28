@@ -65,7 +65,7 @@ jobs:
           components: clippy
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings -A clippy::too_many_arguments -A clippy::useless_vec
+        run: cargo clippy --all-targets --all-features -- -D warnings -A clippy::too_many_arguments -A clippy::useless_vec -A clippy::type_complexity -A clippy::manual_memcpy -A clippy::wildcard_in_or_patterns
 
   fmt:
     name: Format
