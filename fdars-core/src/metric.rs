@@ -911,7 +911,10 @@ mod tests {
         let x = vec![1.0, 2.0, 3.0];
         let y = vec![2.0, 3.0, 4.0];
         let dist = dtw_distance(&x, &y, 1.0, 10);
-        assert!(dist > 0.0, "Different curves should have positive DTW distance");
+        assert!(
+            dist > 0.0,
+            "Different curves should have positive DTW distance"
+        );
     }
 
     #[test]
@@ -1048,7 +1051,10 @@ mod tests {
         let points1 = vec![(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)];
         let points2 = vec![(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)];
         let dist = hausdorff_3d(&points1, &points2);
-        assert!(dist.abs() < 1e-10, "Identical point sets should have zero distance");
+        assert!(
+            dist.abs() < 1e-10,
+            "Identical point sets should have zero distance"
+        );
     }
 
     #[test]
@@ -1101,7 +1107,9 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-        let data: Vec<f64> = (0..(n * n_points)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data: Vec<f64> = (0..(n * n_points))
+            .map(|i| (i as f64 * 0.1).sin())
+            .collect();
         let dist = hausdorff_self_2d(&data, n, &argvals_s, &argvals_t);
 
         for i in 0..n {

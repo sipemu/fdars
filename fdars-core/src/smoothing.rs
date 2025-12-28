@@ -328,7 +328,10 @@ mod tests {
 
         // Smoothing constant data should return constant
         for &yi in &y_smooth {
-            assert!((yi - 5.0).abs() < 0.1, "Constant data should remain constant");
+            assert!(
+                (yi - 5.0).abs() < 0.1,
+                "Constant data should remain constant"
+            );
         }
     }
 
@@ -352,7 +355,10 @@ mod tests {
     #[test]
     fn test_nw_gaussian_vs_epanechnikov() {
         let x = uniform_grid(30);
-        let y: Vec<f64> = x.iter().map(|&xi| (2.0 * std::f64::consts::PI * xi).sin()).collect();
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin())
+            .collect();
 
         let y_gauss = nadaraya_watson(&x, &y, &x, 0.1, "gaussian");
         let y_epan = nadaraya_watson(&x, &y, &x, 0.1, "epanechnikov");
@@ -362,8 +368,15 @@ mod tests {
         assert_eq!(y_epan.len(), 30);
 
         // They should be different (different kernels)
-        let diff: f64 = y_gauss.iter().zip(&y_epan).map(|(a, b)| (a - b).abs()).sum();
-        assert!(diff > 0.0, "Different kernels should give different results");
+        let diff: f64 = y_gauss
+            .iter()
+            .zip(&y_epan)
+            .map(|(a, b)| (a - b).abs())
+            .sum();
+        assert!(
+            diff > 0.0,
+            "Different kernels should give different results"
+        );
     }
 
     #[test]

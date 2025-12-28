@@ -788,10 +788,7 @@ mod tests {
 
         let central_depth = depths[n / 2];
         let edge_depth = depths[0];
-        assert!(
-            central_depth > edge_depth,
-            "Central curve should be deeper"
-        );
+        assert!(central_depth > edge_depth, "Central curve should be deeper");
     }
 
     #[test]

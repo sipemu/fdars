@@ -361,11 +361,7 @@ mod tests {
         let ip = inner_product(&curve, &curve, &argvals);
         assert!(ip > 0.0, "Self inner product should be positive");
         // Integral of sin^2(2*pi*x) over [0,1] is 0.5
-        assert!(
-            (ip - 0.5).abs() < 0.05,
-            "Expected ~0.5, got {}",
-            ip
-        );
+        assert!((ip - 0.5).abs() < 0.05, "Expected ~0.5, got {}", ip);
     }
 
     #[test]
@@ -421,10 +417,7 @@ mod tests {
 
         // Diagonal elements should be positive
         for i in 0..n {
-            assert!(
-                matrix[i + i * n] > 0.0,
-                "Diagonal should be positive"
-            );
+            assert!(matrix[i + i * n] > 0.0, "Diagonal should be positive");
         }
     }
 
@@ -485,8 +478,14 @@ mod tests {
         let predictions = knn_predict(&distance_matrix, &y, n_train, n_test, 1);
 
         assert_eq!(predictions.len(), 2);
-        assert!((predictions[0] - 1.0).abs() < 1e-10, "Test 0 nearest to train 0");
-        assert!((predictions[1] - 3.0).abs() < 1e-10, "Test 1 nearest to train 2");
+        assert!(
+            (predictions[0] - 1.0).abs() < 1e-10,
+            "Test 0 nearest to train 0"
+        );
+        assert!(
+            (predictions[1] - 3.0).abs() < 1e-10,
+            "Test 1 nearest to train 2"
+        );
     }
 
     #[test]

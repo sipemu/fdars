@@ -312,10 +312,7 @@ mod tests {
         assert_eq!(outliers.len(), n);
 
         // The last curve (outlier) should be detected
-        assert!(
-            outliers[n - 1],
-            "Obvious outlier should be detected"
-        );
+        assert!(outliers[n - 1], "Obvious outlier should be detected");
 
         // Most normal curves should not be outliers
         let n_detected: usize = outliers.iter().filter(|&&x| x).count();
@@ -332,7 +329,10 @@ mod tests {
         let outliers = detect_outliers_lrt(&data, n, m, 100.0, 0.1);
 
         let n_detected: usize = outliers.iter().filter(|&&x| x).count();
-        assert_eq!(n_detected, 0, "Very high threshold should detect no outliers");
+        assert_eq!(
+            n_detected, 0,
+            "Very high threshold should detect no outliers"
+        );
     }
 
     #[test]
@@ -359,6 +359,9 @@ mod tests {
         let data = vec![0.0; 2 * 30];
         let outliers = detect_outliers_lrt(&data, 2, 30, 3.0, 0.1);
         assert_eq!(outliers.len(), 2);
-        assert!(outliers.iter().all(|&x| !x), "Should return all false for n < 3");
+        assert!(
+            outliers.iter().all(|&x| !x),
+            "Should return all false for n < 3"
+        );
     }
 }

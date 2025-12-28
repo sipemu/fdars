@@ -1098,7 +1098,7 @@ mod tests {
 
         // Sin and cos values should be in [-1, 1]
         for &val in &basis {
-            assert!(val >= -1.0 - 1e-10 && val <= 1.0 + 1e-10);
+            assert!((-1.0 - 1e-10..=1.0 + 1e-10).contains(&val));
         }
     }
 
@@ -1135,7 +1135,10 @@ mod tests {
                 break;
             }
         }
-        assert!(any_different, "Different periods should produce different bases");
+        assert!(
+            any_different,
+            "Different periods should produce different bases"
+        );
     }
 
     // ============== Difference matrix tests ==============
@@ -1226,9 +1229,7 @@ mod tests {
         let m = t.len();
 
         // Create sine wave data
-        let data: Vec<f64> = (0..n)
-            .flat_map(|_| sine_wave(&t, 2.0))
-            .collect();
+        let data: Vec<f64> = (0..n).flat_map(|_| sine_wave(&t, 2.0)).collect();
 
         let result = fdata_to_basis_1d(&data, n, m, &t, 7, 1);
         assert!(result.is_some());
@@ -1264,14 +1265,8 @@ mod tests {
         let proj = fdata_to_basis_1d(&data, n, m, &t, 5, 1).unwrap();
 
         // Reconstruct
-        let reconstructed = basis_to_fdata_1d(
-            &proj.coefficients,
-            n,
-            proj.n_basis,
-            &t,
-            proj.n_basis,
-            1,
-        );
+        let reconstructed =
+            basis_to_fdata_1d(&proj.coefficients, n, proj.n_basis, &t, proj.n_basis, 1);
 
         // Should approximately match original for a simple sine wave
         let mut max_error = 0.0;
@@ -1281,11 +1276,7 @@ mod tests {
                 max_error = err;
             }
         }
-        assert!(
-            max_error < 0.5,
-            "Roundtrip error too large: {}",
-            max_error
-        );
+        assert!(max_error < 0.5, "Roundtrip error too large: {}", max_error);
     }
 
     #[test]
@@ -1413,7 +1404,7 @@ mod tests {
 
         let best = select_fourier_nbasis_gcv(&data, 1, t.len(), &t, 3, 15);
 
-        assert!(best >= 3 && best <= 15);
+        assert!((3..=15).contains(&best));
         assert!(best % 2 == 1, "Selected nbasis should be odd");
     }
 

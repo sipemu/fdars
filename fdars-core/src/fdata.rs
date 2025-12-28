@@ -595,7 +595,10 @@ mod tests {
         }
         let norms = norm_lp_1d(&data, 1, 21, &argvals, 2.0);
         assert_eq!(norms.len(), 1);
-        assert!((norms[0] - 2.0).abs() < 0.1, "L2 norm of constant 2 should be 2");
+        assert!(
+            (norms[0] - 2.0).abs() < 0.1,
+            "L2 norm of constant 2 should be 2"
+        );
     }
 
     #[test]
@@ -627,17 +630,11 @@ mod tests {
     fn test_deriv_1d_linear() {
         // Derivative of linear function x should be 1
         let argvals = uniform_grid(21);
-        let mut data = vec![0.0; 21];
-        for j in 0..21 {
-            data[j] = argvals[j];
-        }
+        let data = argvals.clone();
         let deriv = deriv_1d(&data, 1, 21, &argvals, 1);
         // Interior points should have derivative close to 1
         for j in 2..19 {
-            assert!(
-                (deriv[j] - 1.0).abs() < 0.1,
-                "Derivative of x should be 1"
-            );
+            assert!((deriv[j] - 1.0).abs() < 0.1, "Derivative of x should be 1");
         }
     }
 

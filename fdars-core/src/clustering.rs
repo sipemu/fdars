@@ -733,7 +733,7 @@ mod tests {
 
         // All memberships should be in [0, 1]
         for &mem in &result.membership {
-            assert!(mem >= 0.0 && mem <= 1.0 + 1e-10);
+            assert!((0.0..=1.0 + 1e-10).contains(&mem));
         }
     }
 
@@ -831,7 +831,7 @@ mod tests {
 
         // Silhouette scores should be in [-1, 1]
         for &s in &scores {
-            assert!(s >= -1.0 - 1e-10 && s <= 1.0 + 1e-10);
+            assert!((-1.0 - 1e-10..=1.0 + 1e-10).contains(&s));
         }
     }
 
@@ -882,7 +882,11 @@ mod tests {
         let ch = calinski_harabasz(&data, n, m, &t, &cluster);
 
         // Well-separated clusters should have high CH index
-        assert!(ch > 1.0, "Well-separated clusters should have high CH: {}", ch);
+        assert!(
+            ch > 1.0,
+            "Well-separated clusters should have high CH: {}",
+            ch
+        );
     }
 
     #[test]

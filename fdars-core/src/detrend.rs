@@ -321,9 +321,7 @@ pub fn detrend_diff(data: &[f64], n: usize, m: usize, order: usize) -> TrendResu
 
             // Pad detrended to full length
             let mut det_full = vec![0.0; m];
-            for j in 0..new_m {
-                det_full[j] = detrended[j];
-            }
+            det_full[..new_m].copy_from_slice(&detrended[..new_m]);
 
             (trend, det_full, initial_values, rss)
         })
@@ -554,7 +552,7 @@ pub fn decompose_additive(
             // Use P-spline fitting - use a larger bandwidth for trend
             detrend_loess(data, n, m, argvals, bandwidth.max(0.3), 2)
         }
-        "loess" | _ => detrend_loess(data, n, m, argvals, bandwidth.max(0.3), 2),
+        _ => detrend_loess(data, n, m, argvals, bandwidth.max(0.3), 2),
     };
 
     // Step 2: Extract seasonal component using Fourier basis on detrended data

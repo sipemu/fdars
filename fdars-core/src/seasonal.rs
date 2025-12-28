@@ -1786,7 +1786,7 @@ mod tests {
         );
 
         // Check peak locations are close to expected
-        let expected_times = vec![0.5, 2.5, 4.5, 6.5, 8.5];
+        let expected_times = [0.5, 2.5, 4.5, 6.5, 8.5];
         for (peak, expected) in result.peaks[0].iter().zip(expected_times.iter()) {
             assert!(
                 (peak.time - expected).abs() < 0.15,

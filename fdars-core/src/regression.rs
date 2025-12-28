@@ -463,7 +463,10 @@ mod tests {
                 assert!(
                     (reconstructed - original_centered).abs() < 0.1,
                     "Reconstruction error at ({}, {}): {} vs {}",
-                    i, j, reconstructed, original_centered
+                    i,
+                    j,
+                    reconstructed,
+                    original_centered
                 );
             }
         }
@@ -589,15 +592,27 @@ mod tests {
         let m = 10;
 
         // Create X
-        let x: Vec<f64> = (0..n * m).map(|i| ((i * 17) % 100) as f64 / 100.0).collect();
+        let x: Vec<f64> = (0..n * m)
+            .map(|i| ((i * 17) % 100) as f64 / 100.0)
+            .collect();
         let y: Vec<f64> = (0..n).map(|i| (i as f64).sin()).collect();
 
         let low_lambda = ridge_regression_fit(&x, &y, n, m, 0.001, true);
         let high_lambda = ridge_regression_fit(&x, &y, n, m, 100.0, true);
 
         // Higher lambda should give smaller coefficient norm
-        let norm_low: f64 = low_lambda.coefficients.iter().map(|c| c.powi(2)).sum::<f64>().sqrt();
-        let norm_high: f64 = high_lambda.coefficients.iter().map(|c| c.powi(2)).sum::<f64>().sqrt();
+        let norm_low: f64 = low_lambda
+            .coefficients
+            .iter()
+            .map(|c| c.powi(2))
+            .sum::<f64>()
+            .sqrt();
+        let norm_high: f64 = high_lambda
+            .coefficients
+            .iter()
+            .map(|c| c.powi(2))
+            .sum::<f64>()
+            .sqrt();
 
         assert!(
             norm_high <= norm_low + 1e-6,
