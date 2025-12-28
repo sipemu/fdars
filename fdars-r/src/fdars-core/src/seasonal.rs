@@ -43,7 +43,7 @@ pub struct Peak {
 /// Result of peak detection.
 #[derive(Debug, Clone)]
 pub struct PeakDetectionResult {
-    /// Peaks for each sample: peaks[sample_idx] contains peaks for that sample
+    /// Peaks for each sample: `peaks[sample_idx]` contains peaks for that sample
     pub peaks: Vec<Vec<Peak>>,
     /// Inter-peak distances for each sample
     pub inter_peak_distances: Vec<Vec<f64>>,
