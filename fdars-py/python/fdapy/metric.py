@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import numpy as np
 from numpy.typing import NDArray
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 
 def metric_lp(
     fdata1: FData,
-    fdata2: Optional[FData] = None,
+    fdata2: FData | None = None,
     p: float = 2.0,
 ) -> NDArray[np.float64]:
     """Compute Lp distance matrix.
@@ -49,7 +47,7 @@ def metric_lp(
 
 def metric_hausdorff(
     fdata1: FData,
-    fdata2: Optional[FData] = None,
+    fdata2: FData | None = None,
 ) -> NDArray[np.float64]:
     """Compute Hausdorff distance matrix.
 
@@ -76,12 +74,14 @@ def metric_hausdorff(
             return _fdapy.metric_hausdorff_cross_2d(
                 fdata1.data, fdata2.data, fdata1.argvals_s, fdata1.argvals_t
             )
-        return _fdapy.metric_hausdorff_cross_1d(fdata1.data, fdata2.data, fdata1.argvals)
+        return _fdapy.metric_hausdorff_cross_1d(
+            fdata1.data, fdata2.data, fdata1.argvals
+        )
 
 
 def metric_dtw(
     fdata1: FData,
-    fdata2: Optional[FData] = None,
+    fdata2: FData | None = None,
     p: float = 2.0,
     w: int = 0,
 ) -> NDArray[np.float64]:
@@ -111,7 +111,7 @@ def metric_dtw(
 
 def semimetric_fourier(
     fdata1: FData,
-    fdata2: Optional[FData] = None,
+    fdata2: FData | None = None,
     nfreq: int = 5,
 ) -> NDArray[np.float64]:
     """Compute Fourier semimetric distance matrix.
@@ -138,8 +138,8 @@ def semimetric_fourier(
 
 def semimetric_hshift(
     fdata1: FData,
-    fdata2: Optional[FData] = None,
-    max_shift: Optional[float] = None,
+    fdata2: FData | None = None,
+    max_shift: float | None = None,
 ) -> NDArray[np.float64]:
     """Compute horizontal shift semimetric distance matrix.
 

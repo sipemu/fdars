@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 StrengthMethod = Literal["variance", "spectral"]
 
@@ -16,9 +16,9 @@ StrengthMethod = Literal["variance", "spectral"]
 def estimate_period(
     fdataobj: FData,
     method: Literal["fft", "autocorr"] = "fft",
-    min_period: Optional[float] = None,
-    max_period: Optional[float] = None,
-) -> Dict:
+    min_period: float | None = None,
+    max_period: float | None = None,
+) -> dict:
     """Estimate dominant period in functional data.
 
     Parameters
@@ -53,8 +53,8 @@ def estimate_period(
 def detect_peaks(
     fdataobj: FData,
     min_prominence: float = 0.1,
-    min_distance: Optional[float] = None,
-) -> Dict:
+    min_distance: float | None = None,
+) -> dict:
     """Detect peaks in functional data.
 
     Parameters
@@ -84,9 +84,9 @@ def detect_peaks(
 def detect_multiple_periods(
     fdataobj: FData,
     max_periods: int = 3,
-    min_period: Optional[float] = None,
-    max_period: Optional[float] = None,
-) -> Dict:
+    min_period: float | None = None,
+    max_period: float | None = None,
+) -> dict:
     """Detect multiple periods in functional data.
 
     Parameters
@@ -132,17 +132,15 @@ def seasonal_strength(
     strengths : ndarray, shape (n_samples,)
         Seasonal strength for each sample.
     """
-    return _fdapy.seasonal_strength(
-        fdataobj.data, fdataobj.argvals, period, method
-    )
+    return _fdapy.seasonal_strength(fdataobj.data, fdataobj.argvals, period, method)
 
 
 def detect_seasonality_changes(
     fdataobj: FData,
     period: float,
-    window_size: Optional[int] = None,
+    window_size: int | None = None,
     threshold: float = 0.3,
-) -> Dict:
+) -> dict:
     """Detect changes in seasonality (onset/cessation).
 
     Parameters

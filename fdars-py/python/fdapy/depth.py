@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 DepthMethod = Literal["FM", "mode", "RP", "RT", "BD", "MBD", "MEI", "FSD", "KFSD"]
 
 
 def depth(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
     method: DepthMethod = "FM",
     **kwargs,
 ) -> NDArray[np.float64]:
@@ -61,14 +61,16 @@ def depth(
     }
 
     if method not in dispatch:
-        raise ValueError(f"Unknown depth method: {method}. Choose from: {list(dispatch.keys())}")
+        raise ValueError(
+            f"Unknown depth method: {method}. Choose from: {list(dispatch.keys())}"
+        )
 
     return dispatch[method](fdataobj, fdataori, **kwargs)
 
 
 def depth_fm(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
     scale: bool = True,
 ) -> NDArray[np.float64]:
     """Compute Fraiman-Muniz depth.
@@ -97,8 +99,8 @@ def depth_fm(
 
 def depth_mode(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
-    h: Optional[float] = None,
+    fdataori: FData | None = None,
+    h: float | None = None,
 ) -> NDArray[np.float64]:
     """Compute Modal depth.
 
@@ -131,7 +133,7 @@ def depth_mode(
 
 def depth_rp(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
     n_projections: int = 50,
 ) -> NDArray[np.float64]:
     """Compute Random Projection depth.
@@ -160,7 +162,7 @@ def depth_rp(
 
 def depth_rt(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
     n_projections: int = 50,
 ) -> NDArray[np.float64]:
     """Compute Random Tukey depth.
@@ -189,7 +191,7 @@ def depth_rt(
 
 def depth_fsd(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
 ) -> NDArray[np.float64]:
     """Compute Functional Spatial depth.
 
@@ -215,8 +217,8 @@ def depth_fsd(
 
 def depth_kfsd(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
-    h: Optional[float] = None,
+    fdataori: FData | None = None,
+    h: float | None = None,
 ) -> NDArray[np.float64]:
     """Compute Kernel Functional Spatial depth.
 
@@ -244,7 +246,7 @@ def depth_kfsd(
 
 def depth_bd(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
 ) -> NDArray[np.float64]:
     """Compute Band depth.
 
@@ -268,7 +270,7 @@ def depth_bd(
 
 def depth_mbd(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
 ) -> NDArray[np.float64]:
     """Compute Modified Band depth.
 
@@ -292,7 +294,7 @@ def depth_mbd(
 
 def depth_mei(
     fdataobj: FData,
-    fdataori: Optional[FData] = None,
+    fdataori: FData | None = None,
 ) -> NDArray[np.float64]:
     """Compute Modified Epigraph Index depth.
 

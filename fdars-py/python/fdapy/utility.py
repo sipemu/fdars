@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 
 def integrate(

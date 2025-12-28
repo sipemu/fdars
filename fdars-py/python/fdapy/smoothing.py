@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 KernelType = Literal["gaussian", "epanechnikov"]
 
@@ -17,7 +17,7 @@ def smooth_nw(
     fdataobj: FData,
     h: float,
     kernel: KernelType = "gaussian",
-    eval_points: Optional[ArrayLike] = None,
+    eval_points: ArrayLike | None = None,
 ) -> FData:
     """Nadaraya-Watson kernel smoother.
 
@@ -58,7 +58,7 @@ def smooth_llr(
     fdataobj: FData,
     h: float,
     kernel: KernelType = "gaussian",
-    eval_points: Optional[ArrayLike] = None,
+    eval_points: ArrayLike | None = None,
 ) -> FData:
     """Local linear regression smoother.
 
@@ -99,7 +99,7 @@ def smooth_lpr(
     h: float,
     degree: int = 2,
     kernel: KernelType = "gaussian",
-    eval_points: Optional[ArrayLike] = None,
+    eval_points: ArrayLike | None = None,
 ) -> FData:
     """Local polynomial regression smoother.
 

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, Literal, Optional
+from typing import Literal
 
-import numpy as np
-
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 DetrendMethod = Literal["linear", "polynomial", "diff", "loess", "spline", "auto"]
 DecomposeMethod = Literal["additive", "multiplicative"]
@@ -19,7 +17,7 @@ def detrend(
     degree: int = 2,
     span: float = 0.75,
     lambda_: float = 1.0,
-) -> Dict:
+) -> dict:
     """Detrend functional data.
 
     Parameters
@@ -52,9 +50,7 @@ def detrend(
         - 'rss': Residual sum of squares
         - 'n_params': Number of parameters
     """
-    result = _fdapy.detrend(
-        fdataobj.data, fdataobj.argvals, method, degree, span
-    )
+    result = _fdapy.detrend(fdataobj.data, fdataobj.argvals, method, degree, span)
 
     # Convert to FData objects
     result["detrended"] = FData(
@@ -78,7 +74,7 @@ def decompose(
     fdataobj: FData,
     period: float,
     method: DecomposeMethod = "additive",
-) -> Dict:
+) -> dict:
     """Seasonal decomposition.
 
     Decomposes functional data into trend, seasonal, and remainder components.

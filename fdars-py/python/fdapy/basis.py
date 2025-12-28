@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Dict, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 BasisType = Literal["bspline", "fourier"]
 Criterion = Literal["GCV", "AIC", "BIC"]
@@ -39,7 +39,7 @@ def bspline_basis(
 def fourier_basis(
     argvals: ArrayLike,
     nbasis: int,
-    period: Optional[float] = None,
+    period: float | None = None,
 ) -> NDArray[np.float64]:
     """Compute Fourier basis matrix.
 
@@ -84,9 +84,7 @@ def fdata_to_basis(
     coefs : ndarray, shape (n_samples, nbasis)
         Basis coefficients.
     """
-    return _fdapy.fdata_to_basis_1d(
-        fdataobj.data, fdataobj.argvals, nbasis, basis_type
-    )
+    return _fdapy.fdata_to_basis_1d(fdataobj.data, fdataobj.argvals, nbasis, basis_type)
 
 
 def basis_to_fdata(
@@ -125,7 +123,7 @@ def pspline(
     nbasis: int,
     lambda_: float = 1.0,
     nderiv: int = 2,
-) -> Dict:
+) -> dict:
     """Fit P-splines to functional data.
 
     Parameters
@@ -167,7 +165,7 @@ def pspline(
 def fourier_fit(
     fdataobj: FData,
     nbasis: int,
-) -> Dict:
+) -> dict:
     """Fit Fourier basis to functional data.
 
     Parameters
@@ -203,7 +201,7 @@ def basis_gcv(
     nbasis: int,
     basis_type: BasisType = "bspline",
     lambda_: float = 1.0,
-) -> Dict:
+) -> dict:
     """Compute GCV score for basis fitting.
 
     Parameters
@@ -229,10 +227,10 @@ def basis_gcv(
 
 def select_basis_auto(
     fdataobj: FData,
-    nbasis_range: Tuple[int, int] = (5, 30),
+    nbasis_range: tuple[int, int] = (5, 30),
     criterion: Criterion = "GCV",
     lambda_: float = 1.0,
-) -> Dict:
+) -> dict:
     """Automatically select optimal basis (Fourier vs P-spline).
 
     Parameters

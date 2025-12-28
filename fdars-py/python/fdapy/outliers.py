@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, Literal
+from typing import Literal
 
-import numpy as np
-from numpy.typing import NDArray
-
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 DepthMethod = Literal["FM", "mode", "RP", "RT", "BD", "MBD"]
 
@@ -17,7 +14,7 @@ def outliers_depth(
     fdataobj: FData,
     quantile: float = 0.01,
     depth_method: DepthMethod = "FM",
-) -> Dict:
+) -> dict:
     """Depth-based outlier detection.
 
     Identifies outliers as observations with depth below a threshold
@@ -50,7 +47,7 @@ def outliers_lrt(
     alpha: float = 0.05,
     n_bootstrap: int = 200,
     seed: int = 42,
-) -> Dict:
+) -> dict:
     """Likelihood ratio test for outlier detection.
 
     Uses a bootstrap procedure to determine the threshold for the

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -57,17 +57,17 @@ class FData:
 
     data: NDArray[np.float64]
     argvals: NDArray[np.float64] = field(default=None)
-    rangeval: Tuple[float, float] = field(default=None)
-    names: Dict[str, str] = field(
+    rangeval: tuple[float, float] = field(default=None)
+    names: dict[str, str] = field(
         default_factory=lambda: {"main": "", "xlab": "t", "ylab": "X(t)"}
     )
     fdata2d: bool = False
-    dims: Optional[Tuple[int, int]] = None
-    id: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    dims: tuple[int, int] | None = None
+    id: list[str] | None = None
+    metadata: dict[str, Any] | None = None
     # For 2D data
-    argvals_s: Optional[NDArray[np.float64]] = field(default=None, repr=False)
-    argvals_t: Optional[NDArray[np.float64]] = field(default=None, repr=False)
+    argvals_s: NDArray[np.float64] | None = field(default=None, repr=False)
+    argvals_t: NDArray[np.float64] | None = field(default=None, repr=False)
 
     def __post_init__(self):
         # Handle array conversion
@@ -152,7 +152,7 @@ class FData:
         return self.data.shape[1]
 
     @property
-    def shape(self) -> Tuple[int, int]:
+    def shape(self) -> tuple[int, int]:
         """Shape of the data matrix."""
         return self.data.shape
 
@@ -283,8 +283,10 @@ class FData:
         """
         try:
             import matplotlib.pyplot as plt
-        except ImportError:
-            raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+        except ImportError as err:
+            raise ImportError(
+                "matplotlib is required for plotting"
+            ) from err
 
         if ax is None:
             fig, ax = plt.subplots()
@@ -310,8 +312,8 @@ class FData:
         """
         try:
             import pandas as pd
-        except ImportError:
-            raise ImportError("pandas is required. Install with: pip install pandas")
+        except ImportError as err:
+            raise ImportError("pandas is required") from err
 
         df = pd.DataFrame(self.data, columns=self.argvals, index=self.id)
         return df
@@ -334,8 +336,8 @@ class FData:
 
 def fdata(
     data: ArrayLike,
-    argvals: Optional[ArrayLike] = None,
-    rangeval: Optional[Tuple[float, float]] = None,
+    argvals: ArrayLike | None = None,
+    rangeval: tuple[float, float] | None = None,
     **kwargs,
 ) -> FData:
     """Create a functional data object (convenience function).

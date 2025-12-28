@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
-import numpy as np
-from numpy.typing import NDArray
-
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 
 def kmeans(
@@ -17,7 +12,7 @@ def kmeans(
     max_iter: int = 100,
     n_init: int = 10,
     seed: int = 42,
-) -> Dict:
+) -> dict:
     """K-means clustering for functional data.
 
     Parameters
@@ -65,7 +60,7 @@ def fcm(
     max_iter: int = 100,
     tol: float = 1e-6,
     seed: int = 42,
-) -> Dict:
+) -> dict:
     """Fuzzy C-means clustering for functional data.
 
     Parameters

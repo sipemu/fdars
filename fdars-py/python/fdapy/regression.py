@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
-
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike
 
-from .fdata import FData
 from . import _fdapy
+from .fdata import FData
 
 
 def fpca(
     fdataobj: FData,
-    n_components: Optional[int] = None,
-) -> Dict:
+    n_components: int | None = None,
+) -> dict:
     """Functional Principal Component Analysis (FPCA).
 
     Parameters
@@ -36,9 +34,7 @@ def fpca(
         - 'singular_values': Singular values from SVD
         - 'centered': Centered functional data
     """
-    result = _fdapy.fdata_to_pc_1d(
-        fdataobj.data, fdataobj.argvals, n_components
-    )
+    result = _fdapy.fdata_to_pc_1d(fdataobj.data, fdataobj.argvals, n_components)
 
     # Convert centered to FData
     result["centered"] = FData(
@@ -54,7 +50,7 @@ def fpls(
     X: FData,
     y: ArrayLike,
     n_components: int = 2,
-) -> Dict:
+) -> dict:
     """Functional Partial Least Squares (FPLS).
 
     Parameters
@@ -79,9 +75,7 @@ def fpls(
     """
     y = np.asarray(y, dtype=np.float64)
 
-    result = _fdapy.fdata_to_pls_1d(
-        X.data, y, X.argvals, n_components
-    )
+    result = _fdapy.fdata_to_pls_1d(X.data, y, X.argvals, n_components)
 
     # Convert centered_x to FData
     result["centered_x"] = FData(
@@ -98,7 +92,7 @@ def ridge(
     y: ArrayLike,
     lambda_: float = 1.0,
     fit_intercept: bool = True,
-) -> Dict:
+) -> dict:
     """Ridge regression.
 
     Parameters
