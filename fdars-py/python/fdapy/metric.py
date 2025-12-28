@@ -104,9 +104,9 @@ def metric_dtw(
         DTW distance matrix.
     """
     if fdata2 is None:
-        return _fdapy.metric_dtw_self_1d(fdata1.data, fdata1.argvals, p, w)
+        return _fdapy.metric_dtw_self_1d(fdata1.data, p, w)
     else:
-        return _fdapy.metric_dtw_cross_1d(fdata1.data, fdata2.data, fdata1.argvals, p, w)
+        return _fdapy.metric_dtw_cross_1d(fdata1.data, fdata2.data, p, w)
 
 
 def semimetric_fourier(

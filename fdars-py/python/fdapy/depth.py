@@ -91,9 +91,7 @@ def depth_fm(
         fdataori = fdataobj
 
     if fdataobj.fdata2d:
-        return _fdapy.depth_fm_2d(
-            fdataobj.data, fdataori.data, fdataobj.dims[0], fdataobj.dims[1], scale
-        )
+        return _fdapy.depth_fm_2d(fdataobj.data, fdataori.data, scale)
     return _fdapy.depth_fm_1d(fdataobj.data, fdataori.data, scale)
 
 
@@ -127,9 +125,7 @@ def depth_mode(
         h = max(1.06 * np.std(fdataori.data) * n ** (-0.2), 0.1)
 
     if fdataobj.fdata2d:
-        return _fdapy.depth_mode_2d(
-            fdataobj.data, fdataori.data, fdataobj.dims[0], fdataobj.dims[1], h
-        )
+        return _fdapy.depth_mode_2d(fdataobj.data, fdataori.data, h)
     return _fdapy.depth_mode_1d(fdataobj.data, fdataori.data, h)
 
 
@@ -137,7 +133,6 @@ def depth_rp(
     fdataobj: FData,
     fdataori: Optional[FData] = None,
     n_projections: int = 50,
-    seed: int = 42,
 ) -> NDArray[np.float64]:
     """Compute Random Projection depth.
 
@@ -149,8 +144,6 @@ def depth_rp(
         Reference sample. If None, uses fdataobj.
     n_projections : int, default=50
         Number of random projections.
-    seed : int, default=42
-        Random seed for reproducibility.
 
     Returns
     -------
@@ -161,18 +154,14 @@ def depth_rp(
         fdataori = fdataobj
 
     if fdataobj.fdata2d:
-        return _fdapy.depth_rp_2d(
-            fdataobj.data, fdataori.data, fdataobj.dims[0], fdataobj.dims[1],
-            n_projections, seed
-        )
-    return _fdapy.depth_rp_1d(fdataobj.data, fdataori.data, n_projections, seed)
+        return _fdapy.depth_rp_2d(fdataobj.data, fdataori.data, n_projections)
+    return _fdapy.depth_rp_1d(fdataobj.data, fdataori.data, n_projections)
 
 
 def depth_rt(
     fdataobj: FData,
     fdataori: Optional[FData] = None,
     n_projections: int = 50,
-    seed: int = 42,
 ) -> NDArray[np.float64]:
     """Compute Random Tukey depth.
 
@@ -184,8 +173,6 @@ def depth_rt(
         Reference sample. If None, uses fdataobj.
     n_projections : int, default=50
         Number of random projections.
-    seed : int, default=42
-        Random seed for reproducibility.
 
     Returns
     -------
@@ -196,11 +183,8 @@ def depth_rt(
         fdataori = fdataobj
 
     if fdataobj.fdata2d:
-        return _fdapy.depth_rt_2d(
-            fdataobj.data, fdataori.data, fdataobj.dims[0], fdataobj.dims[1],
-            n_projections, seed
-        )
-    return _fdapy.depth_rt_1d(fdataobj.data, fdataori.data, n_projections, seed)
+        return _fdapy.depth_rt_2d(fdataobj.data, fdataori.data, n_projections)
+    return _fdapy.depth_rt_1d(fdataobj.data, fdataori.data, n_projections)
 
 
 def depth_fsd(
@@ -225,11 +209,8 @@ def depth_fsd(
         fdataori = fdataobj
 
     if fdataobj.fdata2d:
-        return _fdapy.depth_fsd_2d(
-            fdataobj.data, fdataori.data, fdataobj.argvals_s, fdataobj.argvals_t,
-            fdataobj.dims[0], fdataobj.dims[1]
-        )
-    return _fdapy.depth_fsd_1d(fdataobj.data, fdataori.data, fdataobj.argvals)
+        return _fdapy.depth_fsd_2d(fdataobj.data, fdataori.data)
+    return _fdapy.depth_fsd_1d(fdataobj.data, fdataori.data)
 
 
 def depth_kfsd(
@@ -257,10 +238,7 @@ def depth_kfsd(
         fdataori = fdataobj
 
     if fdataobj.fdata2d:
-        return _fdapy.depth_kfsd_2d(
-            fdataobj.data, fdataori.data, fdataobj.argvals_s, fdataobj.argvals_t,
-            fdataobj.dims[0], fdataobj.dims[1], h
-        )
+        return _fdapy.depth_kfsd_2d(fdataobj.data, fdataori.data, h)
     return _fdapy.depth_kfsd_1d(fdataobj.data, fdataori.data, fdataobj.argvals, h)
 
 
