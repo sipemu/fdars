@@ -1,0 +1,27 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+    patch:
+      default:
+        target: 50%
+
+flags:
+  rust:
+    paths:
+      - fdars-core/
+    carryforward: true
+  python:
+    paths:
+      - fdars-py/
+    carryforward: true
+  r:
+    paths:
+      - fdars-r/
+    carryforward: true
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true
