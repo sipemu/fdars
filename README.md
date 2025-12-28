@@ -1,22 +1,19 @@
 # Functional Data Analysis (FDA)
 
 [![R-CMD-check](https://github.com/sipemu/fdars/actions/workflows/r.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/r.yml)
-[![Python CI](https://github.com/sipemu/fdars/actions/workflows/python-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/python-ci.yml)
 [![Rust CI](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml)
-[![PyPI version](https://badge.fury.io/py/fdars-py.svg)](https://badge.fury.io/py/fdars-py)
 [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core)
 [![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-High-performance Functional Data Analysis tools implemented in Rust with R and Python bindings.
+High-performance Functional Data Analysis tools implemented in Rust with R bindings.
 
 ## Packages
 
 | Package | Language | Registry | Folder | Status |
 |---------|----------|----------|--------|--------|
 | fdars | R | CRAN | `fdars-r/` | [![CRAN status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/package=fdars) |
-| fdars-py | Python | PyPI | `fdars-py/` | [![PyPI](https://badge.fury.io/py/fdars-py.svg)](https://badge.fury.io/py/fdars-py) |
-| fdars-core | Rust | crates.io | `fdars-r/src/fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
+| fdars-core | Rust | crates.io | `fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
 
 ## Features
 
@@ -42,18 +39,6 @@ devtools::install_github("sipemu/fdars", subdir = "fdars-r")
 # Download from GitHub Releases, then:
 install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")  # macOS
 install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  # Windows
-```
-
-### Python (fdars-py)
-
-```bash
-pip install fdars-py
-```
-
-Or from source (requires Rust toolchain):
-
-```bash
-pip install git+https://github.com/sipemu/fdars.git#subdirectory=fdars-py
 ```
 
 ### Rust (fdars-core)

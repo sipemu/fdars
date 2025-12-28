@@ -12,10 +12,6 @@ flags:
     paths:
       - fdars-core/
     carryforward: true
-  python:
-    paths:
-      - fdars-py/
-    carryforward: true
   r:
     paths:
       - fdars-r/
