@@ -71,7 +71,6 @@ def outliers_lrt(
     result : dict
         Dictionary with keys:
         - 'outliers': Boolean array indicating outliers
-        - 'statistics': LRT statistics for all observations
         - 'threshold': Critical value from bootstrap
     """
     return _fdapy.outliers_lrt(

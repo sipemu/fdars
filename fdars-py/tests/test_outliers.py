@@ -92,18 +92,12 @@ class TestOutliersLRT:
         """Returns expected keys."""
         result = outliers_lrt(homogeneous_fdata, n_bootstrap=50)
         assert "outliers" in result
-        assert "statistics" in result
         assert "threshold" in result
 
     def test_outliers_shape(self, homogeneous_fdata):
         """Outliers array has correct shape."""
         result = outliers_lrt(homogeneous_fdata, n_bootstrap=50)
         assert result["outliers"].shape == (homogeneous_fdata.n_samples,)
-
-    def test_statistics_shape(self, homogeneous_fdata):
-        """Statistics array has correct shape."""
-        result = outliers_lrt(homogeneous_fdata, n_bootstrap=50)
-        assert result["statistics"].shape == (homogeneous_fdata.n_samples,)
 
     def test_reproducible(self, homogeneous_fdata):
         """Same seed gives same results."""

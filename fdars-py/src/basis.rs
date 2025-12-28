@@ -148,10 +148,9 @@ pub fn basis_to_fdata_1d<'py>(
     let argvals_vec: Vec<f64> = argvals_arr.to_vec();
     let btype = if basis_type == "fourier" { 1 } else { 0 };
 
-    // basis_to_fdata_1d(coefs, nbasis, n, argvals, basis_type, order) -> Vec<f64>
-    let order = 4; // cubic B-splines
+    // basis_to_fdata_1d(coefs, n, coefs_ncols, argvals, nbasis, basis_type) -> Vec<f64>
     let data_flat =
-        fdars_core::basis::basis_to_fdata_1d(&coefs_flat, nb, n, &argvals_vec, btype, order);
+        fdars_core::basis::basis_to_fdata_1d(&coefs_flat, n, nb, &argvals_vec, nbasis, btype);
     let result = to_row_major_2d(&data_flat, n, n_points);
 
     Ok(result.into_pyarray(py))

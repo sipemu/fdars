@@ -69,22 +69,10 @@ def fpls(
         - 'x_scores': X scores (n_samples, n_components)
         - 'x_loadings': X loadings (n_components, n_points)
         - 'weights': PLS weights
-        - 'x_mean': Mean of X
-        - 'y_mean': Mean of y
-        - 'centered_x': Centered X data
     """
     y = np.asarray(y, dtype=np.float64)
 
-    result = _fdapy.fdata_to_pls_1d(X.data, y, X.argvals, n_components)
-
-    # Convert centered_x to FData
-    result["centered_x"] = FData(
-        data=result["centered_x"],
-        argvals=X.argvals.copy(),
-        rangeval=X.rangeval,
-    )
-
-    return result
+    return _fdapy.fdata_to_pls_1d(X.data, y, X.argvals, n_components)
 
 
 def ridge(
