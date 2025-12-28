@@ -112,7 +112,7 @@ the projections. More robust to local variations.
 ``` r
 depths_rp <- depth(fd, method = "RP", nproj = 50)
 head(depths_rp)
-#> [1] 0.06709677 0.09419355 0.27870968 0.29677419 0.24903226 0.23612903
+#> [1] 0.05741935 0.07870968 0.27806452 0.27741935 0.26774194 0.26129032
 ```
 
 **Intuition**: RP depth projects all curves onto random 1D directions
@@ -128,7 +128,7 @@ halfspace depth. Very robust to outliers.
 ``` r
 depths_rt <- depth(fd, method = "RT", nproj = 50)
 head(depths_rt)
-#> [1] 0.03225806 0.03225806 0.03225806 0.06451613 0.03225806 0.06451613
+#> [1] 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806 0.03225806
 ```
 
 **Intuition**: RT depth takes the *minimum* depth across all
@@ -171,7 +171,7 @@ changes in addition to magnitude.
 ``` r
 depths_rpd <- depth(fd, method = "RPD", nproj = 50)
 head(depths_rpd)
-#> [1] 0.0800000 0.1213333 0.2013333 0.2493333 0.1820000 0.1913333
+#> [1] 0.08733333 0.11466667 0.19266667 0.19933333 0.20533333 0.14800000
 ```
 
 **Intuition**: RPD is like RP, but the projections are based on curve
@@ -197,11 +197,11 @@ all_depths <- data.frame(
 # Correlation between depth functions
 round(cor(all_depths), 2)
 #>        FM mode   RP   RT  FSD
-#> FM   1.00 0.98 0.91 0.20 0.98
+#> FM   1.00 0.98 0.96 0.18 0.98
 #> mode 0.98 1.00 0.93 0.15 0.97
-#> RP   0.91 0.93 1.00 0.15 0.92
-#> RT   0.20 0.15 0.15 1.00 0.24
-#> FSD  0.98 0.97 0.92 0.24 1.00
+#> RP   0.96 0.93 1.00 0.23 0.95
+#> RT   0.18 0.15 0.23 1.00 0.19
+#> FSD  0.98 0.97 0.95 0.19 1.00
 ```
 
 ``` r
@@ -211,7 +211,7 @@ outlier_ranks
 #>      FM mode RP RT FSD
 #> [1,]  1    1  1  1   1
 #> [2,]  2    2  2  2   2
-#> [3,] 10   10  6  3  10
+#> [3,] 10   10 26  3  10
 ```
 
 All depth functions correctly identify curves 1 and 2 as having low
