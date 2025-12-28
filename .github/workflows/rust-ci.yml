@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'fdars-r/src/fdars-core/**'
+      - 'fdars-core/**'
       - '.github/workflows/rust-ci.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'fdars-r/src/fdars-core/**'
+      - 'fdars-core/**'
       - '.github/workflows/rust-ci.yml'
   release:
     types: [published]
@@ -27,7 +27,7 @@ jobs:
         rust: [stable, beta, nightly]
     defaults:
       run:
-        working-directory: fdars-r/src/fdars-core
+        working-directory: fdars-core
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +44,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            fdars-r/src/fdars-core/target/
+            fdars-core/target/
           key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: fdars-r/src/fdars-core
+        working-directory: fdars-core
     steps:
       - uses: actions/checkout@v4
 
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: fdars-r/src/fdars-core
+        working-directory: fdars-core
     steps:
       - uses: actions/checkout@v4
 
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: fdars-r/src/fdars-core
+        working-directory: fdars-core
     steps:
       - uses: actions/checkout@v4
 
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: fdars-r/src/fdars-core
+        working-directory: fdars-core
     steps:
       - uses: actions/checkout@v4
 
@@ -124,7 +124,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: fdars-r/src/fdars-core/lcov.info
+          files: fdars-core/lcov.info
           flags: rust
           fail_ci_if_error: false
         env:
@@ -137,7 +137,7 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
     defaults:
       run:
-        working-directory: fdars-r/src/fdars-core
+        working-directory: fdars-core
     steps:
       - uses: actions/checkout@v4
 

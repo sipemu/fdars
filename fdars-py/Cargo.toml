@@ -24,7 +24,7 @@ rand = "0.8"
 rand_distr = "0.4"
 
 # Link to fdars-core
-fdars-core = { path = "../fdars-r/src/fdars-core" }
+fdars-core = { path = "../fdars-core" }
 
 [profile.release]
 lto = true

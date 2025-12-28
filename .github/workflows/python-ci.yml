@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'fdars-py/**'
-      - 'fdars-r/src/fdars-core/**'
+      - 'fdars-core/**'
       - '.github/workflows/python-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'fdars-py/**'
-      - 'fdars-r/src/fdars-core/**'
+      - 'fdars-core/**'
       - '.github/workflows/python-ci.yml'
 
 env:

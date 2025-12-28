@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'fdars-r/**'
+      - 'fdars-core/**'
       - '.github/workflows/r.yml'
   pull_request:
     branches: [main]
     paths:
       - 'fdars-r/**'
+      - 'fdars-core/**'
       - '.github/workflows/r.yml'
 
 permissions:
