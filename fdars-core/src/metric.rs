@@ -819,6 +819,13 @@ pub fn hausdorff_cross_2d(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
+
+    fn uniform_grid(n: usize) -> Vec<f64> {
+        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
+    }
+
+    // ============== Lp distance tests ==============
 
     #[test]
     fn test_lp_self_distance() {
@@ -831,10 +838,284 @@ mod tests {
     }
 
     #[test]
+    fn test_lp_self_symmetric() {
+        let n = 5;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                data[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin();
+            }
+        }
+        let dist = lp_self_1d(&data, n, m, &argvals, 2.0, &[]);
+
+        // Check symmetry
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "Distance matrix should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lp_self_diagonal_zero() {
+        let n = 4;
+        let m = 15;
+        let argvals = uniform_grid(m);
+        let data: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
+        let dist = lp_self_1d(&data, n, m, &argvals, 2.0, &[]);
+
+        for i in 0..n {
+            assert!(
+                dist[i + i * n].abs() < 1e-10,
+                "Self-distance should be zero"
+            );
+        }
+    }
+
+    #[test]
+    fn test_lp_cross_shape() {
+        let n1 = 3;
+        let n2 = 4;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data1: Vec<f64> = (0..(n1 * m)).map(|i| i as f64 * 0.1).collect();
+        let data2: Vec<f64> = (0..(n2 * m)).map(|i| i as f64 * 0.2).collect();
+        let dist = lp_cross_1d(&data1, &data2, n1, n2, m, &argvals, 2.0, &[]);
+
+        assert_eq!(dist.len(), n1 * n2);
+    }
+
+    #[test]
+    fn test_lp_invalid() {
+        assert!(lp_self_1d(&[], 0, 0, &[], 2.0, &[]).is_empty());
+        assert!(lp_cross_1d(&[], &[], 0, 0, 0, &[], 2.0, &[]).is_empty());
+    }
+
+    // ============== DTW distance tests ==============
+
+    #[test]
     fn test_dtw_distance() {
         let x = vec![1.0, 2.0, 3.0];
         let y = vec![1.0, 2.0, 3.0];
         let dist = dtw_distance(&x, &y, 2.0, 10);
         assert!((dist - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_dtw_distance_different() {
+        let x = vec![1.0, 2.0, 3.0];
+        let y = vec![2.0, 3.0, 4.0];
+        let dist = dtw_distance(&x, &y, 1.0, 10);
+        assert!(dist > 0.0, "Different curves should have positive DTW distance");
+    }
+
+    #[test]
+    fn test_dtw_self_symmetric() {
+        let n = 4;
+        let m = 15;
+        let data: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
+        let dist = dtw_self_1d(&data, n, m, 2.0, 5);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "DTW matrix should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_dtw_invalid() {
+        assert!(dtw_self_1d(&[], 0, 0, 2.0, 5).is_empty());
+    }
+
+    // ============== Hausdorff distance tests ==============
+
+    #[test]
+    fn test_hausdorff_self_symmetric() {
+        let n = 4;
+        let m = 15;
+        let argvals = uniform_grid(m);
+        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let dist = hausdorff_self_1d(&data, n, m, &argvals);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "Hausdorff matrix should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_hausdorff_self_diagonal_zero() {
+        let n = 3;
+        let m = 10;
+        let argvals = uniform_grid(m);
+        let data: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
+        let dist = hausdorff_self_1d(&data, n, m, &argvals);
+
+        for i in 0..n {
+            assert!(
+                dist[i + i * n].abs() < 1e-10,
+                "Self-distance should be zero"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hausdorff_invalid() {
+        assert!(hausdorff_self_1d(&[], 0, 0, &[]).is_empty());
+    }
+
+    // ============== Fourier semimetric tests ==============
+
+    #[test]
+    fn test_fourier_self_symmetric() {
+        let n = 4;
+        let m = 32; // Power of 2 for FFT efficiency
+        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let dist = fourier_self_1d(&data, n, m, 5);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "Fourier distance should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fourier_self_diagonal_zero() {
+        let n = 3;
+        let m = 32;
+        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.2).cos()).collect();
+        let dist = fourier_self_1d(&data, n, m, 8);
+
+        for i in 0..n {
+            assert!(
+                dist[i + i * n].abs() < 1e-10,
+                "Self-distance should be zero"
+            );
+        }
+    }
+
+    #[test]
+    fn test_fourier_invalid() {
+        assert!(fourier_self_1d(&[], 0, 0, 5).is_empty());
+    }
+
+    // ============== Horizontal shift semimetric tests ==============
+
+    #[test]
+    fn test_hshift_self_symmetric() {
+        let n = 4;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let dist = hshift_self_1d(&data, n, m, &argvals, 3);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "Hshift distance should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_hshift_invalid() {
+        assert!(hshift_self_1d(&[], 0, 0, &[], 3).is_empty());
+    }
+
+    // ============== 3D Hausdorff tests ==============
+
+    #[test]
+    fn test_hausdorff_3d_identical() {
+        let points1 = vec![(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)];
+        let points2 = vec![(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)];
+        let dist = hausdorff_3d(&points1, &points2);
+        assert!(dist.abs() < 1e-10, "Identical point sets should have zero distance");
+    }
+
+    #[test]
+    fn test_hausdorff_3d_different() {
+        let points1 = vec![(0.0, 0.0, 0.0)];
+        let points2 = vec![(1.0, 1.0, 1.0)];
+        let dist = hausdorff_3d(&points1, &points2);
+        let expected = (3.0_f64).sqrt();
+        assert!(
+            (dist - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            dist
+        );
+    }
+
+    // ============== 2D surface tests ==============
+
+    #[test]
+    fn test_lp_2d_symmetric() {
+        let n = 3;
+        let m1 = 4;
+        let m2 = 5;
+        let argvals_s = uniform_grid(m1);
+        let argvals_t = uniform_grid(m2);
+        let n_points = m1 * m2;
+        let data: Vec<f64> = (0..(n * n_points)).map(|i| i as f64 * 0.1).collect();
+        let dist = lp_self_2d(&data, n, &argvals_s, &argvals_t, 2.0, &[]);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "2D Lp distance should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lp_2d_invalid() {
+        assert!(lp_self_2d(&[], 0, &[], &[], 2.0, &[]).is_empty());
+    }
+
+    #[test]
+    fn test_hausdorff_2d_symmetric() {
+        let n = 3;
+        let m1 = 4;
+        let m2 = 5;
+        let argvals_s = uniform_grid(m1);
+        let argvals_t = uniform_grid(m2);
+        let n_points = m1 * m2;
+        let data: Vec<f64> = (0..(n * n_points)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let dist = hausdorff_self_2d(&data, n, &argvals_s, &argvals_t);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "2D Hausdorff should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_hausdorff_2d_invalid() {
+        assert!(hausdorff_self_2d(&[], 0, &[], &[]).is_empty());
     }
 }

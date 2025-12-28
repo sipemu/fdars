@@ -308,3 +308,230 @@ pub fn smoothing_matrix_nw(x: &[f64], bandwidth: f64, kernel: &str) -> Vec<f64> 
 
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn uniform_grid(n: usize) -> Vec<f64> {
+        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
+    }
+
+    // ============== Nadaraya-Watson tests ==============
+
+    #[test]
+    fn test_nw_constant_data() {
+        let x = uniform_grid(20);
+        let y: Vec<f64> = vec![5.0; 20];
+
+        let y_smooth = nadaraya_watson(&x, &y, &x, 0.1, "gaussian");
+
+        // Smoothing constant data should return constant
+        for &yi in &y_smooth {
+            assert!((yi - 5.0).abs() < 0.1, "Constant data should remain constant");
+        }
+    }
+
+    #[test]
+    fn test_nw_linear_data() {
+        let x = uniform_grid(50);
+        let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
+
+        let y_smooth = nadaraya_watson(&x, &y, &x, 0.2, "gaussian");
+
+        // Linear data should be approximately preserved (with some edge effects)
+        for i in 10..40 {
+            let expected = 2.0 * x[i] + 1.0;
+            assert!(
+                (y_smooth[i] - expected).abs() < 0.2,
+                "Linear trend should be approximately preserved"
+            );
+        }
+    }
+
+    #[test]
+    fn test_nw_gaussian_vs_epanechnikov() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| (2.0 * std::f64::consts::PI * xi).sin()).collect();
+
+        let y_gauss = nadaraya_watson(&x, &y, &x, 0.1, "gaussian");
+        let y_epan = nadaraya_watson(&x, &y, &x, 0.1, "epanechnikov");
+
+        // Both should produce valid output
+        assert_eq!(y_gauss.len(), 30);
+        assert_eq!(y_epan.len(), 30);
+
+        // They should be different (different kernels)
+        let diff: f64 = y_gauss.iter().zip(&y_epan).map(|(a, b)| (a - b).abs()).sum();
+        assert!(diff > 0.0, "Different kernels should give different results");
+    }
+
+    #[test]
+    fn test_nw_invalid_input() {
+        // Empty input
+        let result = nadaraya_watson(&[], &[], &[0.5], 0.1, "gaussian");
+        assert_eq!(result, vec![0.0]);
+
+        // Mismatched lengths
+        let result = nadaraya_watson(&[0.0, 1.0], &[1.0], &[0.5], 0.1, "gaussian");
+        assert_eq!(result, vec![0.0]);
+
+        // Zero bandwidth
+        let result = nadaraya_watson(&[0.0, 1.0], &[1.0, 2.0], &[0.5], 0.0, "gaussian");
+        assert_eq!(result, vec![0.0]);
+    }
+
+    // ============== Local linear tests ==============
+
+    #[test]
+    fn test_ll_constant_data() {
+        let x = uniform_grid(20);
+        let y: Vec<f64> = vec![3.0; 20];
+
+        let y_smooth = local_linear(&x, &y, &x, 0.15, "gaussian");
+
+        for &yi in &y_smooth {
+            assert!((yi - 3.0).abs() < 0.1, "Constant should remain constant");
+        }
+    }
+
+    #[test]
+    fn test_ll_linear_data_exact() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| 3.0 * xi + 2.0).collect();
+
+        let y_smooth = local_linear(&x, &y, &x, 0.2, "gaussian");
+
+        // Local linear should fit linear data exactly (in interior)
+        for i in 5..25 {
+            let expected = 3.0 * x[i] + 2.0;
+            assert!(
+                (y_smooth[i] - expected).abs() < 0.1,
+                "Local linear should fit linear data well"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ll_invalid_input() {
+        let result = local_linear(&[], &[], &[0.5], 0.1, "gaussian");
+        assert_eq!(result, vec![0.0]);
+
+        let result = local_linear(&[0.0, 1.0], &[1.0, 2.0], &[0.5], -0.1, "gaussian");
+        assert_eq!(result, vec![0.0]);
+    }
+
+    // ============== Local polynomial tests ==============
+
+    #[test]
+    fn test_lp_degree1_equals_local_linear() {
+        let x = uniform_grid(25);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+
+        let y_ll = local_linear(&x, &y, &x, 0.15, "gaussian");
+        let y_lp = local_polynomial(&x, &y, &x, 0.15, 1, "gaussian");
+
+        for i in 0..25 {
+            assert!(
+                (y_ll[i] - y_lp[i]).abs() < 1e-10,
+                "Degree 1 should equal local linear"
+            );
+        }
+    }
+
+    #[test]
+    fn test_lp_quadratic_data() {
+        let x = uniform_grid(40);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+
+        let y_smooth = local_polynomial(&x, &y, &x, 0.15, 2, "gaussian");
+
+        // Local quadratic should fit quadratic data well in interior
+        for i in 8..32 {
+            let expected = x[i] * x[i];
+            assert!(
+                (y_smooth[i] - expected).abs() < 0.1,
+                "Local quadratic should fit quadratic data"
+            );
+        }
+    }
+
+    #[test]
+    fn test_lp_invalid_input() {
+        // Zero degree
+        let result = local_polynomial(&[0.0, 1.0], &[1.0, 2.0], &[0.5], 0.1, 0, "gaussian");
+        assert_eq!(result, vec![0.0]);
+
+        // Empty input
+        let result = local_polynomial(&[], &[], &[0.5], 0.1, 2, "gaussian");
+        assert_eq!(result, vec![0.0]);
+    }
+
+    // ============== KNN smoother tests ==============
+
+    #[test]
+    fn test_knn_k1_nearest() {
+        let x = vec![0.0, 0.5, 1.0];
+        let y = vec![1.0, 2.0, 3.0];
+
+        let result = knn_smoother(&x, &y, &[0.1, 0.6, 0.9], 1);
+
+        // k=1 should return the nearest neighbor's y value
+        assert!((result[0] - 1.0).abs() < 1e-10, "0.1 nearest to 0.0 -> 1.0");
+        assert!((result[1] - 2.0).abs() < 1e-10, "0.6 nearest to 0.5 -> 2.0");
+        assert!((result[2] - 3.0).abs() < 1e-10, "0.9 nearest to 1.0 -> 3.0");
+    }
+
+    #[test]
+    fn test_knn_k_equals_n_is_mean() {
+        let x = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+        let y = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let expected_mean = 3.0;
+
+        let result = knn_smoother(&x, &y, &[0.5], 5);
+
+        assert!(
+            (result[0] - expected_mean).abs() < 1e-10,
+            "k=n should return mean"
+        );
+    }
+
+    #[test]
+    fn test_knn_invalid_input() {
+        let result = knn_smoother(&[], &[], &[0.5], 3);
+        assert_eq!(result, vec![0.0]);
+
+        let result = knn_smoother(&[0.0, 1.0], &[1.0, 2.0], &[0.5], 0);
+        assert_eq!(result, vec![0.0]);
+    }
+
+    // ============== Smoothing matrix tests ==============
+
+    #[test]
+    fn test_smoothing_matrix_row_stochastic() {
+        let x = uniform_grid(10);
+        let s = smoothing_matrix_nw(&x, 0.2, "gaussian");
+
+        assert_eq!(s.len(), 100);
+
+        // Each row should sum to 1 (row stochastic)
+        for i in 0..10 {
+            let row_sum: f64 = (0..10).map(|j| s[i + j * 10]).sum();
+            assert!(
+                (row_sum - 1.0).abs() < 1e-10,
+                "Row {} should sum to 1, got {}",
+                i,
+                row_sum
+            );
+        }
+    }
+
+    #[test]
+    fn test_smoothing_matrix_invalid_input() {
+        let result = smoothing_matrix_nw(&[], 0.1, "gaussian");
+        assert!(result.is_empty());
+
+        let result = smoothing_matrix_nw(&[0.0, 1.0], 0.0, "gaussian");
+        assert!(result.is_empty());
+    }
+}

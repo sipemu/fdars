@@ -518,6 +518,13 @@ pub fn geometric_median_2d(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
+
+    fn uniform_grid(n: usize) -> Vec<f64> {
+        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
+    }
+
+    // ============== Mean tests ==============
 
     #[test]
     fn test_mean_1d() {
@@ -531,10 +538,176 @@ mod tests {
     }
 
     #[test]
+    fn test_mean_1d_single_sample() {
+        let data = vec![1.0, 2.0, 3.0];
+        let mean = mean_1d(&data, 1, 3);
+        assert_eq!(mean, vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_mean_1d_invalid() {
+        assert!(mean_1d(&[], 0, 0).is_empty());
+        assert!(mean_1d(&[1.0], 1, 2).is_empty()); // wrong data length
+    }
+
+    #[test]
+    fn test_mean_2d_delegates() {
+        let data = vec![1.0, 3.0, 2.0, 4.0];
+        let mean1d = mean_1d(&data, 2, 2);
+        let mean2d = mean_2d(&data, 2, 2);
+        assert_eq!(mean1d, mean2d);
+    }
+
+    // ============== Center tests ==============
+
+    #[test]
     fn test_center_1d() {
         let data = vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0]; // column-major
         let centered = center_1d(&data, 2, 3);
         // Mean is [2, 3, 4], so centered should be [-1, 1, -1, 1, -1, 1]
         assert_eq!(centered, vec![-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_center_1d_mean_zero() {
+        let data = vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0];
+        let centered = center_1d(&data, 2, 3);
+        let centered_mean = mean_1d(&centered, 2, 3);
+        for m in centered_mean {
+            assert!(m.abs() < 1e-10, "Centered data should have zero mean");
+        }
+    }
+
+    #[test]
+    fn test_center_1d_invalid() {
+        assert!(center_1d(&[], 0, 0).is_empty());
+    }
+
+    // ============== Norm tests ==============
+
+    #[test]
+    fn test_norm_lp_1d_constant() {
+        // Constant function 2 on [0, 1] has L2 norm = 2
+        let argvals = uniform_grid(21);
+        let mut data = vec![0.0; 21];
+        for j in 0..21 {
+            data[j] = 2.0;
+        }
+        let norms = norm_lp_1d(&data, 1, 21, &argvals, 2.0);
+        assert_eq!(norms.len(), 1);
+        assert!((norms[0] - 2.0).abs() < 0.1, "L2 norm of constant 2 should be 2");
+    }
+
+    #[test]
+    fn test_norm_lp_1d_sine() {
+        // L2 norm of sin(pi*x) on [0, 1] = sqrt(0.5)
+        let argvals = uniform_grid(101);
+        let mut data = vec![0.0; 101];
+        for j in 0..101 {
+            data[j] = (PI * argvals[j]).sin();
+        }
+        let norms = norm_lp_1d(&data, 1, 101, &argvals, 2.0);
+        let expected = 0.5_f64.sqrt();
+        assert!(
+            (norms[0] - expected).abs() < 0.05,
+            "Expected {}, got {}",
+            expected,
+            norms[0]
+        );
+    }
+
+    #[test]
+    fn test_norm_lp_1d_invalid() {
+        assert!(norm_lp_1d(&[], 0, 0, &[], 2.0).is_empty());
+    }
+
+    // ============== Derivative tests ==============
+
+    #[test]
+    fn test_deriv_1d_linear() {
+        // Derivative of linear function x should be 1
+        let argvals = uniform_grid(21);
+        let mut data = vec![0.0; 21];
+        for j in 0..21 {
+            data[j] = argvals[j];
+        }
+        let deriv = deriv_1d(&data, 1, 21, &argvals, 1);
+        // Interior points should have derivative close to 1
+        for j in 2..19 {
+            assert!(
+                (deriv[j] - 1.0).abs() < 0.1,
+                "Derivative of x should be 1"
+            );
+        }
+    }
+
+    #[test]
+    fn test_deriv_1d_quadratic() {
+        // Derivative of x^2 should be 2x
+        let argvals = uniform_grid(51);
+        let mut data = vec![0.0; 51];
+        for j in 0..51 {
+            data[j] = argvals[j] * argvals[j];
+        }
+        let deriv = deriv_1d(&data, 1, 51, &argvals, 1);
+        // Check interior points
+        for j in 5..45 {
+            let expected = 2.0 * argvals[j];
+            assert!(
+                (deriv[j] - expected).abs() < 0.1,
+                "Derivative of x^2 should be 2x"
+            );
+        }
+    }
+
+    #[test]
+    fn test_deriv_1d_invalid() {
+        let result = deriv_1d(&[], 0, 0, &[], 1);
+        assert!(result.is_empty() || result.iter().all(|&x| x == 0.0));
+    }
+
+    // ============== Geometric median tests ==============
+
+    #[test]
+    fn test_geometric_median_identical_curves() {
+        // All curves identical -> median = that curve
+        let argvals = uniform_grid(21);
+        let n = 5;
+        let m = 21;
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                data[i + j * n] = (2.0 * PI * argvals[j]).sin();
+            }
+        }
+        let median = geometric_median_1d(&data, n, m, &argvals, 100, 1e-6);
+        for j in 0..m {
+            let expected = (2.0 * PI * argvals[j]).sin();
+            assert!(
+                (median[j] - expected).abs() < 0.01,
+                "Median should equal all curves"
+            );
+        }
+    }
+
+    #[test]
+    fn test_geometric_median_converges() {
+        let argvals = uniform_grid(21);
+        let n = 10;
+        let m = 21;
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                data[i + j * n] = (i as f64 / n as f64) * argvals[j];
+            }
+        }
+        let median = geometric_median_1d(&data, n, m, &argvals, 100, 1e-6);
+        assert_eq!(median.len(), m);
+        assert!(median.iter().all(|&x| x.is_finite()));
+    }
+
+    #[test]
+    fn test_geometric_median_invalid() {
+        assert!(geometric_median_1d(&[], 0, 0, &[], 100, 1e-6).is_empty());
     }
 }

@@ -714,6 +714,25 @@ pub fn modified_epigraph_index_1d(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
+
+    fn uniform_grid(n: usize) -> Vec<f64> {
+        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
+    }
+
+    fn generate_centered_data(n: usize, m: usize) -> Vec<f64> {
+        let argvals = uniform_grid(m);
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            let offset = (i as f64 - n as f64 / 2.0) / (n as f64);
+            for j in 0..m {
+                data[i + j * n] = (2.0 * PI * argvals[j]).sin() + offset;
+            }
+        }
+        data
+    }
+
+    // ============== Fraiman-Muniz tests ==============
 
     #[test]
     fn test_fraiman_muniz() {
@@ -721,5 +740,205 @@ mod tests {
         let data = vec![1.0, 1.0, 2.0, 2.0]; // 2 identical curves, 2 points each
         let depths = fraiman_muniz_1d(&data, &data, 2, 2, 2, true);
         assert_eq!(depths.len(), 2);
+    }
+
+    #[test]
+    fn test_fraiman_muniz_central_deeper() {
+        let n = 20;
+        let m = 30;
+        let data = generate_centered_data(n, m);
+        let depths = fraiman_muniz_1d(&data, &data, n, n, m, true);
+
+        // Central curve (index n/2) should have higher depth than extreme curves
+        let central_depth = depths[n / 2];
+        let edge_depth = depths[0];
+        assert!(
+            central_depth > edge_depth,
+            "Central curve should be deeper: {} > {}",
+            central_depth,
+            edge_depth
+        );
+    }
+
+    #[test]
+    fn test_fraiman_muniz_range() {
+        let n = 15;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = fraiman_muniz_1d(&data, &data, n, n, m, true);
+
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "Depth should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_fraiman_muniz_invalid() {
+        assert!(fraiman_muniz_1d(&[], &[], 0, 0, 0, true).is_empty());
+    }
+
+    // ============== Modal depth tests ==============
+
+    #[test]
+    fn test_modal_central_deeper() {
+        let n = 20;
+        let m = 30;
+        let data = generate_centered_data(n, m);
+        let depths = modal_1d(&data, &data, n, n, m, 0.5);
+
+        let central_depth = depths[n / 2];
+        let edge_depth = depths[0];
+        assert!(
+            central_depth > edge_depth,
+            "Central curve should be deeper"
+        );
+    }
+
+    #[test]
+    fn test_modal_positive() {
+        let n = 10;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = modal_1d(&data, &data, n, n, m, 0.5);
+
+        for d in &depths {
+            assert!(*d > 0.0, "Modal depth should be positive");
+        }
+    }
+
+    #[test]
+    fn test_modal_invalid() {
+        assert!(modal_1d(&[], &[], 0, 0, 0, 0.5).is_empty());
+    }
+
+    // ============== Random projection depth tests ==============
+
+    #[test]
+    fn test_rp_depth_range() {
+        let n = 15;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = random_projection_1d(&data, &data, n, n, m, 50);
+
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "RP depth should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_rp_depth_invalid() {
+        assert!(random_projection_1d(&[], &[], 0, 0, 0, 10).is_empty());
+    }
+
+    // ============== Random Tukey depth tests ==============
+
+    #[test]
+    fn test_random_tukey_range() {
+        let n = 15;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = random_tukey_1d(&data, &data, n, n, m, 50);
+
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "Tukey depth should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_random_tukey_invalid() {
+        assert!(random_tukey_1d(&[], &[], 0, 0, 0, 10).is_empty());
+    }
+
+    // ============== Functional spatial depth tests ==============
+
+    #[test]
+    fn test_functional_spatial_range() {
+        let n = 15;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = functional_spatial_1d(&data, &data, n, n, m);
+
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "Spatial depth should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_functional_spatial_invalid() {
+        assert!(functional_spatial_1d(&[], &[], 0, 0, 0).is_empty());
+    }
+
+    // ============== Band depth tests ==============
+
+    #[test]
+    fn test_band_depth_central_deeper() {
+        let n = 10;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = band_1d(&data, &data, n, n, m);
+
+        // Central curve should be in more bands
+        let central_depth = depths[n / 2];
+        let edge_depth = depths[0];
+        assert!(
+            central_depth >= edge_depth,
+            "Central curve should have higher band depth"
+        );
+    }
+
+    #[test]
+    fn test_band_depth_range() {
+        let n = 10;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = band_1d(&data, &data, n, n, m);
+
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "Band depth should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_band_depth_invalid() {
+        assert!(band_1d(&[], &[], 0, 0, 0).is_empty());
+        assert!(band_1d(&[1.0, 2.0], &[1.0, 2.0], 1, 1, 2).is_empty()); // need at least 2 ref curves
+    }
+
+    // ============== Modified band depth tests ==============
+
+    #[test]
+    fn test_modified_band_depth_range() {
+        let n = 10;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let depths = modified_band_1d(&data, &data, n, n, m);
+
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "MBD should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_modified_band_depth_invalid() {
+        assert!(modified_band_1d(&[], &[], 0, 0, 0).is_empty());
+    }
+
+    // ============== Modified epigraph index tests ==============
+
+    #[test]
+    fn test_mei_range() {
+        let n = 15;
+        let m = 20;
+        let data = generate_centered_data(n, m);
+        let mei = modified_epigraph_index_1d(&data, &data, n, n, m);
+
+        for d in &mei {
+            assert!(*d >= 0.0 && *d <= 1.0, "MEI should be in [0, 1]");
+        }
+    }
+
+    #[test]
+    fn test_mei_invalid() {
+        assert!(modified_epigraph_index_1d(&[], &[], 0, 0, 0).is_empty());
     }
 }
