@@ -30,6 +30,12 @@ jobs:
           needs: website
           working-directory: fdars-r
 
+      - name: Bundle fdars-core into R package
+        run: |
+          cp -r fdars-core fdars-r/src/fdars-core
+          sed -i.bak 's|path = "../../../fdars-core"|path = "../fdars-core"|g' fdars-r/src/rust/Cargo.toml
+        shell: bash
+
       - name: Generate documentation
         run: roxygen2::roxygenise("fdars-r")
         shell: Rscript {0}

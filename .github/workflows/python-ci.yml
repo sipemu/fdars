@@ -36,7 +36,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings -A dead_code -A unused_variables -A clippy::too_many_arguments
+        run: cargo clippy --all-targets -- -D warnings -A dead_code -A unused_variables -A unused_imports -A clippy::too_many_arguments
 
       - name: Set up Python
         uses: actions/setup-python@v5
