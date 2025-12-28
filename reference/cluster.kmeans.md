@@ -120,8 +120,8 @@ result <- cluster.kmeans(fd, ncl = 2, metric = "L2")
 table(result$cluster, true_cluster)
 #>    true_cluster
 #>      1  2
-#>   1  0 15
-#>   2 15  0
+#>   1 15  0
+#>   2  0 15
 
 # Cluster with metric function (also fast - Rust backend)
 result2 <- cluster.kmeans(fd, ncl = 2, metric = metric.lp)
