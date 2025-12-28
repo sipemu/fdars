@@ -284,9 +284,7 @@ class FData:
         try:
             import matplotlib.pyplot as plt
         except ImportError as err:
-            raise ImportError(
-                "matplotlib is required for plotting"
-            ) from err
+            raise ImportError("matplotlib is required for plotting") from err
 
         if ax is None:
             fig, ax = plt.subplots()
