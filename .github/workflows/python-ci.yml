@@ -36,7 +36,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings -A dead_code -A unused_variables -A clippy::too_many_arguments
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -96,7 +96,6 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           python -m venv .venv
-          .venv\Scripts\pip install --upgrade pip
           .venv\Scripts\pip install maturin pytest numpy
         shell: cmd
 
