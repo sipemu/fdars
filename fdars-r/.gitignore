@@ -50,3 +50,4 @@ covr/
 *.gcov
 *.gcno
 *.gcda
+Rplots.pdf
