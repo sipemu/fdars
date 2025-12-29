@@ -7,6 +7,10 @@
 # method performs better at different seasonal strength levels.
 
 library(fdars)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(gridExtra)
 
 set.seed(42)
 
@@ -183,35 +187,48 @@ for (i in seq_along(strengths_in_table)) {
               s, fourier_prop * 100, pspline_prop * 100))
 }
 
-# --- Visualization ---
+# --- Visualization with ggplot2 ---
 cat("\n=== Generating plots ===\n")
 
-# Plot 1: AIC comparison by seasonal strength
-pdf("seasonal_basis_comparison.pdf", width = 12, height = 8)
-
-par(mfrow = c(2, 2))
-
-# Plot 1a: Mean AIC by strength
-plot(summary_by_strength$strength, summary_by_strength$aic_fourier,
-     type = "b", col = "blue", pch = 19, lwd = 2,
-     xlab = "Seasonal Strength", ylab = "Mean AIC",
-     main = "Mean AIC: Fourier vs P-splines",
-     ylim = range(c(summary_by_strength$aic_fourier, summary_by_strength$aic_pspline), na.rm = TRUE))
-lines(summary_by_strength$strength, summary_by_strength$aic_pspline,
-      type = "b", col = "red", pch = 17, lwd = 2)
-legend("topright", legend = c("Fourier", "P-spline"),
-       col = c("blue", "red"), pch = c(19, 17), lwd = 2)
-
-# Plot 1b: AIC difference (Fourier - P-spline)
+# Prepare data for ggplot
 aic_diff <- summary_by_strength$aic_fourier - summary_by_strength$aic_pspline
-plot(summary_by_strength$strength, aic_diff,
-     type = "b", col = "purple", pch = 19, lwd = 2,
-     xlab = "Seasonal Strength", ylab = "AIC Difference (Fourier - P-spline)",
-     main = "AIC Difference by Seasonal Strength")
-abline(h = 0, lty = 2, col = "gray50")
-text(0.5, 0, "P-spline better above\nFourier better below", pos = 3, cex = 0.8)
 
-# Plot 1c: Proportion of Fourier wins
+# Reshape for mean AIC plot
+aic_long <- summary_by_strength %>%
+  pivot_longer(cols = c(aic_fourier, aic_pspline),
+               names_to = "Method", values_to = "AIC") %>%
+  mutate(Method = recode(Method,
+                         "aic_fourier" = "Fourier",
+                         "aic_pspline" = "P-spline"))
+
+# Plot 1: Mean AIC by strength
+p1 <- ggplot(aic_long, aes(x = strength, y = AIC, color = Method, shape = Method)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Fourier" = "#2166AC", "P-spline" = "#B2182B")) +
+  labs(title = "Mean AIC: Fourier vs P-splines",
+       x = "Seasonal Strength",
+       y = "Mean AIC") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+# Plot 2: AIC difference
+diff_data <- data.frame(strength = summary_by_strength$strength, aic_diff = aic_diff)
+p2 <- ggplot(diff_data, aes(x = strength, y = aic_diff)) +
+  geom_line(color = "#762A83", linewidth = 1) +
+  geom_point(color = "#762A83", size = 3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  annotate("text", x = 0.5, y = max(aic_diff) * 0.3,
+           label = "P-spline better above\nFourier better below",
+           size = 3, hjust = 0.5) +
+  labs(title = "AIC Difference by Seasonal Strength",
+       x = "Seasonal Strength",
+       y = "AIC Difference (Fourier - P-spline)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+# Plot 3: Fourier win rate
 fourier_win_prop <- sapply(strengths_in_table, function(s) {
   idx <- as.character(s)
   if (idx %in% rownames(winner_props) && "fourier" %in% colnames(winner_props)) {
@@ -220,31 +237,44 @@ fourier_win_prop <- sapply(strengths_in_table, function(s) {
   return(0)
 })
 
-barplot(fourier_win_prop * 100,
-        names.arg = sprintf("%.1f", strengths_in_table),
-        col = "steelblue", border = NA,
-        xlab = "Seasonal Strength", ylab = "Fourier Win Rate (%)",
-        main = "Fourier Win Rate by Seasonal Strength",
-        ylim = c(0, 100))
-abline(h = 50, lty = 2, col = "red")
+win_data <- data.frame(strength = strengths_in_table, win_rate = fourier_win_prop * 100)
+p3 <- ggplot(win_data, aes(x = factor(strength), y = win_rate)) +
+  geom_col(fill = "steelblue", width = 0.7) +
+  geom_hline(yintercept = 50, linetype = "dashed", color = "red") +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(title = "Fourier Win Rate by Seasonal Strength",
+       x = "Seasonal Strength",
+       y = "Fourier Win Rate (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
-# Plot 1d: Example curves at different seasonal strengths
-plot(NULL, xlim = c(0, 1), ylim = c(-3, 3),
-     xlab = "Time (normalized)", ylab = "Value",
-     main = "Example Curves at Different Seasonal Strengths")
+# Plot 4: Example curves
+example_indices <- c(1, 6, 11)
+example_data <- do.call(rbind, lapply(example_indices, function(idx) {
+  data.frame(
+    t = t,
+    value = all_data[[idx]]$fdata$data[1, ],
+    strength = sprintf("Strength = %.1f", seasonal_strengths[idx])
+  )
+}))
 
-colors <- rainbow(length(c(1, 6, 11)))
-for (k in seq_along(c(1, 6, 11))) {
-  idx <- c(1, 6, 11)[k]
-  lines(t, all_data[[idx]]$fdata$data[1, ], col = colors[k], lwd = 1.5)
-}
-legend("topright",
-       legend = sprintf("Strength = %.1f", seasonal_strengths[c(1, 6, 11)]),
-       col = colors, lwd = 2, cex = 0.8)
+p4 <- ggplot(example_data, aes(x = t, y = value, color = strength)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Example Curves at Different Seasonal Strengths",
+       x = "Time (normalized)",
+       y = "Value",
+       color = "") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
 
-dev.off()
+# Save combined plot
+ggsave("plots/seasonal_basis_comparison.pdf",
+       grid.arrange(p1, p2, p3, p4, ncol = 2),
+       width = 12, height = 10)
 
-cat("Plots saved to: seasonal_basis_comparison.pdf\n")
+cat("Plots saved to: plots/seasonal_basis_comparison.pdf\n")
 
 # --- Save results ---
 saveRDS(results, "seasonal_basis_results.rds")

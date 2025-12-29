@@ -514,23 +514,23 @@ p_robustness <- ggplot(f1_robustness, aes(x = reorder(Method, -F1_drop_pct),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
 # Save plots
-ggsave("seasonality_detection_trend_heatmaps.pdf",
+ggsave("plots/seasonality_detection_trend_heatmaps.pdf",
        p_heatmaps, width = 12, height = 8)
 
-ggsave("seasonality_detection_trend_comparison.pdf",
+ggsave("plots/seasonality_detection_trend_comparison.pdf",
        gridExtra::grid.arrange(p_f1_trend, p_robustness,
                                p_detection_facet, p_examples,
                                ncol = 2, nrow = 2),
        width = 14, height = 12)
 
-ggsave("seasonality_detection_trend_pr.pdf",
+ggsave("plots/seasonality_detection_trend_pr.pdf",
        gridExtra::grid.arrange(p_pr_trend, ncol = 1),
        width = 12, height = 5)
 
 cat("Plots saved to:\n")
-cat("  - seasonality_detection_trend_heatmaps.pdf\n")
-cat("  - seasonality_detection_trend_comparison.pdf\n")
-cat("  - seasonality_detection_trend_pr.pdf\n")
+cat("  - plots/seasonality_detection_trend_heatmaps.pdf\n")
+cat("  - plots/seasonality_detection_trend_comparison.pdf\n")
+cat("  - plots/seasonality_detection_trend_pr.pdf\n")
 
 # Save results
 saveRDS(results, "seasonality_detection_trend_results.rds")

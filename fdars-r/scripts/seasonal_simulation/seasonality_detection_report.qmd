@@ -1,7 +1,7 @@
 ---
 title: "Seasonality Detection Methods: A Comparative Study"
 author: "fdars Package"
-date: today
+date: "2025-12-29"
 format:
   pdf:
     toc: true
@@ -179,7 +179,7 @@ generate_seasonal_curve <- function(t, strength, noise_sd = 0.3) {
 
 ### Results
 
-![Detection rates by seasonal strength](seasonality_detection_comparison.pdf){#fig-detection-rates width=100%}
+![Detection rates by seasonal strength](plots/seasonality_detection_comparison.pdf){#fig-detection-rates width=100%}
 
 **How to interpret**:
 
@@ -207,7 +207,7 @@ generate_seasonal_curve <- function(t, strength, noise_sd = 0.3) {
 
 ### Precision-Recall Analysis
 
-![Precision-Recall curves](seasonality_detection_details.pdf){#fig-pr-curves width=100%}
+![Precision-Recall curves](plots/seasonality_detection_details.pdf){#fig-pr-curves width=100%}
 
 **How to interpret**:
 
@@ -264,7 +264,7 @@ generate_curve <- function(t, seasonal_strength, trend_strength, noise_sd = 0.3)
 
 ### Results
 
-![Detection rates heatmap by seasonal and trend strength](seasonality_detection_trend_heatmaps.pdf){#fig-trend-heatmap width=100%}
+![Detection rates heatmap by seasonal and trend strength](plots/seasonality_detection_trend_heatmaps.pdf){#fig-trend-heatmap width=100%}
 
 **How to interpret**:
 
@@ -288,7 +288,7 @@ generate_curve <- function(t, seasonal_strength, trend_strength, noise_sd = 0.3)
 
 ### False Positive Rate by Trend Strength
 
-![FPR when no seasonality is present, across trend strengths](seasonality_detection_trend_pr.pdf){#fig-trend-fpr width=100%}
+![FPR when no seasonality is present, across trend strengths](plots/seasonality_detection_trend_pr.pdf){#fig-trend-fpr width=100%}
 
 **Key finding**: FFT's FPR increases dramatically with trend strength because non-linear trends can create spurious peaks in the periodogram.
 
@@ -332,13 +332,13 @@ trend_functions <- list(
 
 ### Results
 
-![F1 scores by trend type](seasonality_detection_trend_types_f1.pdf){#fig-trend-types-f1 width=100%}
+![F1 scores by trend type](plots/seasonality_detection_trend_types_f1.pdf){#fig-trend-types-f1 width=100%}
 
 ### FPR by Trend Type
 
-![Example trend functions](seasonality_detection_trend_types_examples.pdf){#fig-trend-examples width=100%}
+![Example trend functions](plots/seasonality_detection_trend_types_examples.pdf){#fig-trend-examples width=100%}
 
-![FPR across trend types and strengths](seasonality_detection_trend_types_fpr.pdf){#fig-trend-types-fpr width=100%}
+![FPR across trend types and strengths](plots/seasonality_detection_trend_types_fpr.pdf){#fig-trend-types-fpr width=100%}
 
 **How to interpret**:
 
@@ -426,6 +426,8 @@ is_seasonal <- (var_detected + spec_detected + fft_detected) >= 2
 | ACF Confidence | 0.25 | 95th percentile of noise ~0.22 |
 | AIC Difference | 0 | Fourier better → positive difference |
 
+**Calibration methodology**: All thresholds were calibrated using pure noise data (seasonal strength = 0, no trend) by taking the 95th percentile of each method's score distribution. This ensures approximately 5% false positive rate on clean data. Note that FPR may increase when confounding trends are present (see Simulation 2 and 3 results).
+
 # Conclusion
 
 For detecting seasonality in functional time series:
@@ -438,6 +440,19 @@ For detecting seasonality in functional time series:
 
 The key insight is that simple variance-based decomposition outperforms more complex spectral methods when properly configured with the correct period parameter.
 
+# Appendix: Fourier vs P-spline Comparison
+
+The AIC comparison method is based on the observation that Fourier bases naturally capture periodic patterns better than P-splines for seasonal data.
+
+![Fourier vs P-spline AIC comparison](plots/seasonal_basis_comparison.pdf){#fig-basis-comparison width=100%}
+
+**How to interpret**:
+
+- Top left: Mean AIC for both methods across seasonal strengths
+- Top right: AIC difference (Fourier - P-spline) showing crossover point
+- Bottom left: Fourier win rate at each strength level
+- Bottom right: Example curves at different seasonal strengths
+
 # Appendix: File Listing
 
 All simulation scripts and results are in `scripts/seasonal_simulation/`:
@@ -445,6 +460,6 @@ All simulation scripts and results are in `scripts/seasonal_simulation/`:
 - `seasonality_detection_comparison.R` — Main comparison (Simulation 1)
 - `seasonality_detection_with_trend.R` — Non-linear trend study (Simulation 2)
 - `seasonality_detection_trend_types.R` — Multiple trend types (Simulation 3)
-- `seasonal_basis_comparison.R` — AIC comparison study
+- `seasonal_basis_comparison.R` — Fourier vs P-spline AIC study
 
-PDF outputs contain the visualizations referenced in this report.
+PDF outputs are in the `plots/` subfolder.

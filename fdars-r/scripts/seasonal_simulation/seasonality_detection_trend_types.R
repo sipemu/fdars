@@ -356,16 +356,16 @@ p4 <- ggplot(detection_by_combo %>% filter(trend_strength == max(trend_strength)
         plot.subtitle = element_text(hjust = 0.5))
 
 # Save plots
-ggsave("seasonality_detection_trend_types_f1.pdf", p1, width = 10, height = 6)
-ggsave("seasonality_detection_trend_types_fpr.pdf", p2, width = 14, height = 8)
-ggsave("seasonality_detection_trend_types_examples.pdf", p3, width = 12, height = 6)
-ggsave("seasonality_detection_trend_types_heatmap.pdf", p4, width = 10, height = 8)
+ggsave("plots/seasonality_detection_trend_types_f1.pdf", p1, width = 10, height = 6)
+ggsave("plots/seasonality_detection_trend_types_fpr.pdf", p2, width = 14, height = 8)
+ggsave("plots/seasonality_detection_trend_types_examples.pdf", p3, width = 12, height = 6)
+ggsave("plots/seasonality_detection_trend_types_heatmap.pdf", p4, width = 10, height = 8)
 
 cat("Plots saved to:\n")
-cat("  - seasonality_detection_trend_types_f1.pdf\n")
-cat("  - seasonality_detection_trend_types_fpr.pdf\n")
-cat("  - seasonality_detection_trend_types_examples.pdf\n")
-cat("  - seasonality_detection_trend_types_heatmap.pdf\n")
+cat("  - plots/seasonality_detection_trend_types_f1.pdf\n")
+cat("  - plots/seasonality_detection_trend_types_fpr.pdf\n")
+cat("  - plots/seasonality_detection_trend_types_examples.pdf\n")
+cat("  - plots/seasonality_detection_trend_types_heatmap.pdf\n")
 
 # Save results
 saveRDS(results, "seasonality_detection_trend_types_results.rds")

@@ -12,6 +12,7 @@
 
 library(fdars)
 library(ggplot2)
+library(ggdist)
 library(tidyr)
 library(dplyr)
 
@@ -431,29 +432,25 @@ p2 <- ggplot(metrics_plot, aes(x = Method, y = F1 * 100, fill = Method)) +
 # Plot 3: AIC score distribution
 results$ground_truth_label <- ifelse(results$ground_truth, "Seasonal", "Non-seasonal")
 
-p3 <- ggplot(results, aes(x = ground_truth_label, y = aic_score, fill = ground_truth_label)) +
-  geom_boxplot(alpha = 0.7) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
-  scale_fill_manual(values = c("Non-seasonal" = "#F4A582", "Seasonal" = "#92C5DE")) +
+p3 <- ggplot(results, aes(x = ground_truth_label, y = aic_score)) +
+  stat_halfeye(adjust = 0.5, width = 0.6, .width = c(0.5, 0.95)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
   labs(title = "AIC Score Distribution",
        x = "",
        y = "AIC Difference (P-spline - Fourier)") +
   theme_minimal() +
-  theme(legend.position = "none",
-        plot.title = element_text(hjust = 0.5, face = "bold"))
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
 # Plot 4: Spectral strength distribution
-p4 <- ggplot(results, aes(x = ground_truth_label, y = spec_score, fill = ground_truth_label)) +
-  geom_boxplot(alpha = 0.7) +
+p4 <- ggplot(results, aes(x = ground_truth_label, y = spec_score)) +
+  stat_halfeye(adjust = 0.5, width = 0.6, .width = c(0.5, 0.95)) +
   geom_hline(yintercept = detection_thresholds$strength_spectral,
              linetype = "dashed", color = "red") +
-  scale_fill_manual(values = c("Non-seasonal" = "#F4A582", "Seasonal" = "#92C5DE")) +
   labs(title = "Spectral Strength Distribution",
        x = "",
        y = "Spectral Strength") +
   theme_minimal() +
-  theme(legend.position = "none",
-        plot.title = element_text(hjust = 0.5, face = "bold"))
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
 # --- Precision-Recall Curve ---
 # Function to compute precision-recall curve for a method
@@ -555,7 +552,7 @@ p6 <- ggplot(metrics_plot %>% filter(!is.na(Precision) & !is.na(Recall)),
         plot.title = element_text(hjust = 0.5, face = "bold"))
 
 # Save main comparison plot
-ggsave("seasonality_detection_comparison.pdf",
+ggsave("plots/seasonality_detection_comparison.pdf",
        gridExtra::grid.arrange(p1, p2, p5, p6, ncol = 2),
        width = 14, height = 10)
 
@@ -582,11 +579,10 @@ threshold_lines <- data.frame(
 )
 
 p_scores <- ggplot(results_long_scores, aes(x = factor(strength), y = Score)) +
-  geom_boxplot(aes(fill = factor(strength)), alpha = 0.7, show.legend = FALSE) +
+  stat_halfeye(adjust = 0.5, width = 0.8, .width = c(0.5, 0.95)) +
   geom_hline(data = threshold_lines, aes(yintercept = threshold),
              linetype = "dashed", color = "red") +
   facet_wrap(~ Method, scales = "free_y", ncol = 3) +
-  scale_fill_viridis_d(option = "plasma") +
   labs(title = "Score Distributions by Seasonal Strength",
        x = "Seasonal Strength",
        y = "Score") +
@@ -616,13 +612,13 @@ p_cor <- ggplot(cor_long, aes(x = Method1, y = Method2, fill = Correlation)) +
         axis.text.x = element_text(angle = 45, hjust = 1))
 
 # Save detailed plots
-ggsave("seasonality_detection_details.pdf",
+ggsave("plots/seasonality_detection_details.pdf",
        gridExtra::grid.arrange(p_scores, p_cor, ncol = 1, heights = c(2, 1)),
        width = 14, height = 12)
 
 cat("Plots saved to:\n")
-cat("  - seasonality_detection_comparison.pdf\n")
-cat("  - seasonality_detection_details.pdf\n")
+cat("  - plots/seasonality_detection_comparison.pdf\n")
+cat("  - plots/seasonality_detection_details.pdf\n")
 
 # --- Save results ---
 saveRDS(results, "seasonality_detection_results.rds")

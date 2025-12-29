@@ -21,7 +21,7 @@ Compares AIC between Fourier basis and P-splines to determine which fits seasona
 
 - **Complexity**: Basic
 - **Scenario**: Varying seasonal strength (0-1), no trends
-- **Output**: `seasonal_basis_comparison.pdf`, `seasonal_basis_results.rds`
+- **Output**: `plots/seasonal_basis_comparison.pdf`, `seasonal_basis_results.rds`
 
 ### Study 2: Multi-Method Detection Comparison
 **Script**: `seasonality_detection_comparison.R`
@@ -35,7 +35,7 @@ Compares 5 detection methods across varying seasonal strengths:
 
 - **Complexity**: Moderate
 - **Scenario**: 11 seasonal strengths × 50 curves each, no trends
-- **Output**: `seasonality_detection_comparison.pdf`, `seasonality_detection_details.pdf`
+- **Output**: `plots/seasonality_detection_comparison.pdf`, `plots/seasonality_detection_details.pdf`
 
 ### Study 3: Non-linear Trend Robustness
 **Script**: `seasonality_detection_with_trend.R`
@@ -44,7 +44,7 @@ Tests how detection methods perform when non-linear trends (quadratic + cubic + 
 
 - **Complexity**: High
 - **Scenario**: 6 seasonal strengths × 6 trend strengths × 30 curves
-- **Output**: `seasonality_detection_trend_*.pdf`
+- **Output**: `plots/seasonality_detection_trend_*.pdf`
 
 ### Study 4: Multiple Trend Types
 **Script**: `seasonality_detection_trend_types.R`
@@ -58,7 +58,7 @@ Trend types tested:
 
 - **Complexity**: Highest
 - **Scenario**: 8 trend types × 5 seasonal strengths × 4 trend strengths × 20 curves
-- **Output**: `seasonality_detection_trend_types_*.pdf`
+- **Output**: `plots/seasonality_detection_trend_types_*.pdf`
 
 ## Documentation
 
@@ -66,8 +66,6 @@ Trend types tested:
 |------|-------------|
 | `seasonality_detection_report.qmd` | Quarto report with full analysis |
 | `seasonality_detection_report.pdf` | Compiled PDF report |
-| `seasonality_detection_methods.md` | Method descriptions and math |
-| `seasonality_detection_methods.pdf` | Compiled method documentation |
 
 ## Key Results
 
@@ -133,6 +131,7 @@ thresholds <- list(
 ```r
 library(fdars)      # Main package
 library(ggplot2)    # Plotting
+library(ggdist)     # Uncertainty visualization (stat_halfeye)
 library(tidyr)      # Data reshaping
 library(dplyr)      # Data manipulation
 library(gridExtra)  # Multi-panel plots
@@ -149,7 +148,11 @@ seasonal_simulation/
 ├── seasonality_detection_trend_types.R        # Study 4: Multiple trend types
 ├── seasonality_detection_report.qmd           # Full Quarto report
 ├── seasonality_detection_report.pdf           # Compiled report
-├── seasonality_detection_methods.md           # Method documentation
-├── seasonality_detection_methods.pdf          # Compiled documentation
-└── *.pdf, *.rds                               # Output plots and data
+├── plots/                                     # Output plots
+│   ├── seasonal_basis_comparison.pdf
+│   ├── seasonality_detection_comparison.pdf
+│   ├── seasonality_detection_details.pdf
+│   ├── seasonality_detection_trend_*.pdf
+│   └── seasonality_detection_trend_types_*.pdf
+└── *.rds                                      # Saved R data objects
 ```
