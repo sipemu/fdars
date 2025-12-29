@@ -2,6 +2,45 @@
 
 This folder contains simulation studies comparing methods for detecting seasonality in functional time series data.
 
+## Summary & Recommendation
+
+**Winner: Variance Strength** — achieves the highest accuracy (97.3% F1) with the lowest false positive rate (2%) and is most robust to non-linear trends.
+
+| Method | F1 Score | FPR | Robustness to Trends |
+|--------|----------|-----|----------------------|
+| **Variance Strength** | **97.3%** | **2%** | Excellent (0.4% F1 drop) |
+| Spectral Strength | 95.3% | 10% | Good (3.9% F1 drop) |
+| FFT Confidence | 94.8% | 4% | Good (2.0% F1 drop) |
+| AIC Comparison | 91.5% | 18% | Moderate (5.7% F1 drop) |
+| ACF Confidence | 85.4% | 10% | Moderate (4.5% F1 drop) |
+
+### Recommended Usage
+
+```r
+# Primary recommendation: Variance Strength
+period <- 0.2  # Period in argvals units (e.g., 1/5 for 5 cycles in [0,1])
+strength <- seasonal_strength(fd, period = period, method = "variance", detrend = "linear")
+is_seasonal <- strength > 0.2
+```
+
+### When Period is Unknown
+
+```r
+# Step 1: Estimate period using FFT (no period required)
+result <- estimate_period(fd, method = "fft", detrend = "linear")
+estimated_period <- result$period
+
+# Step 2: Measure strength with estimated period
+strength <- seasonal_strength(fd, period = estimated_period, method = "variance")
+is_seasonal <- strength > 0.2
+```
+
+### Critical Notes
+
+1. **Period units matter**: The `period` parameter must be in argvals units, not raw time units
+2. **Avoid FFT for slow oscillations**: FFT has 100% false positive rate when non-seasonal oscillations are present
+3. **Thresholds are calibrated**: All thresholds target ~5% false positive rate on pure noise
+
 ## Quick Start
 
 ```bash
@@ -12,7 +51,7 @@ Rscript seasonality_detection_with_trend.R    # Study 3: Add non-linear trends
 Rscript seasonality_detection_trend_types.R   # Study 4: 8 different trend types
 ```
 
-## Simulation Studies (Low to High Complexity)
+## Simulation Studies
 
 ### Study 1: Fourier vs P-spline AIC Comparison
 **Script**: `seasonal_basis_comparison.R`
@@ -21,7 +60,7 @@ Compares AIC between Fourier basis and P-splines to determine which fits seasona
 
 - **Complexity**: Basic
 - **Scenario**: Varying seasonal strength (0-1), no trends
-- **Output**: `plots/seasonal_basis_comparison.pdf`, `seasonal_basis_results.rds`
+- **Output**: `plots/seasonal_basis_comparison.pdf`
 
 ### Study 2: Multi-Method Detection Comparison
 **Script**: `seasonality_detection_comparison.R`
@@ -51,10 +90,7 @@ Tests how detection methods perform when non-linear trends (quadratic + cubic + 
 
 Identifies which trend types cause false positives for each method.
 
-Trend types tested:
-- none, linear, quadratic, cubic
-- exponential, logarithmic, sigmoid
-- slow_sine (problematic for FFT)
+Trend types tested: none, linear, quadratic, cubic, exponential, logarithmic, sigmoid, slow_sine
 
 - **Complexity**: Highest
 - **Scenario**: 8 trend types × 5 seasonal strengths × 4 trend strengths × 20 curves
@@ -67,19 +103,7 @@ Trend types tested:
 | `seasonality_detection_report.qmd` | Quarto report with full analysis |
 | `seasonality_detection_report.pdf` | Compiled PDF report |
 
-## Key Results
-
-| Method | F1 Score | FPR | Best For |
-|--------|----------|-----|----------|
-| Variance Strength | 97.3% | 2% | General use when period is known |
-| Spectral Strength | 95.3% | 10% | Robust to unknown trends |
-| FFT Confidence | 94.8% | 4% | Quick screening (avoid with slow oscillations) |
-| AIC Comparison | 91.5% | 18% | Interpretable model comparison |
-| ACF Confidence | 85.4% | 10% | Conservative detection |
-
 ## Period Parameter Requirements
-
-Methods differ in whether they require the seasonal period as input:
 
 | Method | Needs Period? | Notes |
 |--------|---------------|-------|
@@ -88,24 +112,6 @@ Methods differ in whether they require the seasonal period as input:
 | ACF Confidence | No | Estimates period automatically |
 | Variance Strength | **Yes** | Requires `period` in argvals units |
 | Spectral Strength | **Yes** | Requires `period` in argvals units |
-
-**Typical workflow**:
-1. Use period-free methods (FFT, ACF, AIC) to detect IF seasonality exists
-2. Use `estimate_period()` to find the period(s)
-3. Use period-based methods (Variance, Spectral) for precise strength measurement
-
-```r
-# Step 1: Quick detection (no period needed)
-fft_result <- estimate_period(fd, method = "fft", detrend = "linear")
-is_seasonal <- fft_result$confidence > 6.0
-
-# Step 2: Get period estimate
-estimated_period <- fft_result$period
-
-# Step 3: Precise measurement (period required)
-strength <- seasonal_strength(fd, period = estimated_period,
-                              method = "variance", detrend = "linear")
-```
 
 ## Detection Thresholds
 
@@ -119,12 +125,6 @@ thresholds <- list(
   strength_spectral = 0.3    # Spectral power
 )
 ```
-
-## Important Notes
-
-1. **Period parameter**: Must be in argvals units (e.g., 0.2 for 5 cycles in [0,1])
-2. **FFT vulnerability**: Slow oscillations (e.g., 1 cycle over entire series) cause 100% FPR
-3. **Recommended method**: Variance Strength with `period = 0.2` and `detrend = "linear"`
 
 ## Requirements
 
