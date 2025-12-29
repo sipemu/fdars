@@ -12,6 +12,9 @@
 # Ground truth: simulated data with known seasonal strengths (0 to 1)
 
 library(fdars)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
 
 set.seed(42)
 
@@ -365,116 +368,262 @@ cat(sprintf("  ACF Confidence:    threshold = %7.2f, F1 = %.1f%%\n", opt_acf$thr
 cat(sprintf("  Variance Strength: threshold = %7.2f, F1 = %.1f%%\n", opt_var$threshold, opt_var$f1 * 100))
 cat(sprintf("  Spectral Strength: threshold = %7.2f, F1 = %.1f%%\n", opt_spec$threshold, opt_spec$f1 * 100))
 
-# --- Visualization ---
+# --- Visualization with ggplot2 ---
 cat("\n=== Generating Plots ===\n")
 
-pdf("seasonality_detection_comparison.pdf", width = 14, height = 10)
+# Define color palette for methods
+method_colors <- c(
+  "AIC" = "#2166AC",
+  "FFT" = "#B2182B",
+  "ACF" = "#1B7837",
+  "Var Strength" = "#E66101",
+  "Spec Strength" = "#762A83",
+  "Basis Auto" = "#8C510A"
+)
+
+# Reshape detection rates for ggplot
+detection_rates_long <- detection_rates %>%
+  pivot_longer(cols = -strength, names_to = "Method", values_to = "Rate") %>%
+  mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF", "Var_Strength",
+                                             "Spec_Strength", "Basis_Auto"))) %>%
+  mutate(Method = recode(Method,
+                         "Var_Strength" = "Var Strength",
+                         "Spec_Strength" = "Spec Strength",
+                         "Basis_Auto" = "Basis Auto"))
 
 # Plot 1: Detection rates by seasonal strength
-par(mfrow = c(2, 2))
+p1 <- ggplot(detection_rates_long, aes(x = strength, y = Rate * 100,
+                                        color = Method, shape = Method)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = truth_threshold, linetype = "dashed", color = "gray50") +
+  annotate("text", x = truth_threshold + 0.05, y = 50,
+           label = "Ground truth\nthreshold", hjust = 0, size = 3) +
+  scale_color_manual(values = method_colors) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(title = "Detection Rates by Method",
+       x = "True Seasonal Strength",
+       y = "Detection Rate (%)") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
 
-# 1a: Detection rate curves
-plot(detection_rates$strength, detection_rates$AIC * 100,
-     type = "b", col = "blue", pch = 19, lwd = 2,
-     xlab = "True Seasonal Strength", ylab = "Detection Rate (%)",
-     main = "Detection Rates by Method",
-     ylim = c(0, 100))
-lines(detection_rates$strength, detection_rates$FFT * 100,
-      type = "b", col = "red", pch = 17, lwd = 2)
-lines(detection_rates$strength, detection_rates$ACF * 100,
-      type = "b", col = "green", pch = 15, lwd = 2)
-lines(detection_rates$strength, detection_rates$Var_Strength * 100,
-      type = "b", col = "orange", pch = 18, lwd = 2)
-lines(detection_rates$strength, detection_rates$Spec_Strength * 100,
-      type = "b", col = "purple", pch = 8, lwd = 2)
-lines(detection_rates$strength, detection_rates$Basis_Auto * 100,
-      type = "b", col = "brown", pch = 4, lwd = 2)
-abline(v = truth_threshold, lty = 2, col = "gray50")
-text(truth_threshold, 50, "Ground truth\nthreshold", pos = 4, cex = 0.7)
-legend("bottomright",
-       legend = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Basis Auto"),
-       col = c("blue", "red", "green", "orange", "purple", "brown"),
-       pch = c(19, 17, 15, 18, 8, 4), lwd = 2, cex = 0.7)
+# Plot 2: F1 score comparison
+metrics_plot <- metrics %>%
+  mutate(Method = recode(Method,
+                         "AIC Comparison" = "AIC",
+                         "FFT Confidence" = "FFT",
+                         "ACF Confidence" = "ACF",
+                         "Variance Strength" = "Var Strength",
+                         "Spectral Strength" = "Spec Strength",
+                         "Basis Auto" = "Basis Auto")) %>%
+  mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF",
+                                             "Var Strength", "Spec Strength", "Basis Auto")))
 
-# 1b: F1 score comparison
-barplot(metrics$F1 * 100,
-        names.arg = c("AIC", "FFT", "ACF", "Var", "Spec", "Auto"),
-        col = c("blue", "red", "green", "orange", "purple", "brown"),
-        main = "F1 Score by Method",
-        ylab = "F1 Score (%)",
-        ylim = c(0, 100))
+p2 <- ggplot(metrics_plot, aes(x = Method, y = F1 * 100, fill = Method)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%", F1 * 100)), vjust = -0.5, size = 3) +
+  scale_fill_manual(values = method_colors) +
+  scale_y_continuous(limits = c(0, 105)) +
+  labs(title = "F1 Score by Method",
+       x = "Method",
+       y = "F1 Score (%)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
-# 1c: Score distributions for seasonal vs non-seasonal
-boxplot(aic_score ~ ground_truth, data = results,
-        names = c("Non-seasonal", "Seasonal"),
-        main = "AIC Score Distribution",
-        ylab = "AIC Difference (P-spline - Fourier)",
-        col = c("lightcoral", "lightgreen"))
-abline(h = 0, lty = 2)
+# Plot 3: AIC score distribution
+results$ground_truth_label <- ifelse(results$ground_truth, "Seasonal", "Non-seasonal")
 
-# 1d: Variance strength score distribution
-boxplot(var_score ~ ground_truth, data = results,
-        names = c("Non-seasonal", "Seasonal"),
-        main = "Variance Strength Distribution",
-        ylab = "Seasonal Strength",
-        col = c("lightcoral", "lightgreen"))
-abline(h = detection_thresholds$strength_variance, lty = 2, col = "red")
+p3 <- ggplot(results, aes(x = ground_truth_label, y = aic_score, fill = ground_truth_label)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_fill_manual(values = c("Non-seasonal" = "#F4A582", "Seasonal" = "#92C5DE")) +
+  labs(title = "AIC Score Distribution",
+       x = "",
+       y = "AIC Difference (P-spline - Fourier)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
 
-dev.off()
+# Plot 4: Spectral strength distribution
+p4 <- ggplot(results, aes(x = ground_truth_label, y = spec_score, fill = ground_truth_label)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_hline(yintercept = detection_thresholds$strength_spectral,
+             linetype = "dashed", color = "red") +
+  scale_fill_manual(values = c("Non-seasonal" = "#F4A582", "Seasonal" = "#92C5DE")) +
+  labs(title = "Spectral Strength Distribution",
+       x = "",
+       y = "Spectral Strength") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
 
-# Additional detailed plot
-pdf("seasonality_detection_details.pdf", width = 14, height = 10)
+# --- Precision-Recall Curve ---
+# Function to compute precision-recall curve for a method
+compute_pr_curve <- function(scores, ground_truth, method_name, n_points = 200) {
+  valid <- !is.na(scores) & !is.na(ground_truth)
+  scores <- scores[valid]
+  ground_truth <- ground_truth[valid]
 
-par(mfrow = c(2, 3))
+  if (length(unique(scores)) < 2) return(NULL)
 
-# Score distributions for all methods
-boxplot(aic_score ~ strength, data = results,
-        main = "AIC Score by Strength",
-        xlab = "Seasonal Strength", ylab = "Score",
-        col = "steelblue", las = 2)
-abline(h = 0, lty = 2, col = "red")
+  thresholds <- seq(min(scores), max(scores), length.out = n_points)
 
-boxplot(fft_score ~ strength, data = results,
-        main = "FFT Confidence by Strength",
-        xlab = "Seasonal Strength", ylab = "Confidence",
-        col = "coral", las = 2)
-abline(h = detection_thresholds$fft_confidence, lty = 2, col = "red")
+  pr_data <- lapply(thresholds, function(thresh) {
+    detected <- scores > thresh
+    tp <- sum(detected & ground_truth)
+    fp <- sum(detected & !ground_truth)
+    fn <- sum(!detected & ground_truth)
 
-boxplot(acf_score ~ strength, data = results,
-        main = "ACF Confidence by Strength",
-        xlab = "Seasonal Strength", ylab = "Confidence",
-        col = "lightgreen", las = 2)
-abline(h = detection_thresholds$acf_confidence, lty = 2, col = "red")
+    precision <- ifelse(tp + fp > 0, tp / (tp + fp), 1)
+    recall <- ifelse(tp + fn > 0, tp / (tp + fn), 0)
 
-boxplot(var_score ~ strength, data = results,
-        main = "Variance Strength by Strength",
-        xlab = "Seasonal Strength", ylab = "Strength",
-        col = "orange", las = 2)
-abline(h = detection_thresholds$strength_variance, lty = 2, col = "red")
+    data.frame(threshold = thresh, precision = precision, recall = recall)
+  })
 
-boxplot(spec_score ~ strength, data = results,
-        main = "Spectral Strength by Strength",
-        xlab = "Seasonal Strength", ylab = "Strength",
-        col = "plum", las = 2)
-abline(h = detection_thresholds$strength_spectral, lty = 2, col = "red")
+  pr_df <- do.call(rbind, pr_data)
+  pr_df$Method <- method_name
+  return(pr_df)
+}
 
-# Correlation between scores
+# Compute PR curves for all methods
+pr_aic <- compute_pr_curve(results$aic_score, results$ground_truth, "AIC")
+pr_fft <- compute_pr_curve(results$fft_score, results$ground_truth, "FFT")
+pr_acf <- compute_pr_curve(results$acf_score, results$ground_truth, "ACF")
+pr_var <- compute_pr_curve(results$var_score, results$ground_truth, "Var Strength")
+pr_spec <- compute_pr_curve(results$spec_score, results$ground_truth, "Spec Strength")
+
+pr_all <- rbind(pr_aic, pr_fft, pr_acf, pr_var, pr_spec)
+pr_all$Method <- factor(pr_all$Method,
+                        levels = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength"))
+
+# Calculate AUC-PR for each method
+compute_auc_pr <- function(pr_df) {
+  pr_df <- pr_df[order(pr_df$recall), ]
+  pr_df <- pr_df[!duplicated(pr_df$recall), ]
+
+  if (nrow(pr_df) < 2) return(NA)
+
+  # Trapezoidal integration
+  auc <- sum(diff(pr_df$recall) * (head(pr_df$precision, -1) + tail(pr_df$precision, -1)) / 2)
+  return(auc)
+}
+
+auc_values <- pr_all %>%
+  group_by(Method) %>%
+  summarise(AUC = compute_auc_pr(data.frame(recall = recall, precision = precision)),
+            .groups = "drop")
+
+# Add operating points (default thresholds)
+operating_points <- metrics_plot %>%
+  filter(Method %in% c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength")) %>%
+  select(Method, Precision, Recall) %>%
+  filter(!is.na(Precision) & !is.na(Recall))
+
+# Plot 5: Precision-Recall curves
+p5 <- ggplot(pr_all, aes(x = recall, y = precision, color = Method)) +
+  geom_line(linewidth = 1) +
+  geom_point(data = operating_points,
+             aes(x = Recall, y = Precision, color = Method),
+             size = 4, shape = 18) +
+  geom_text(data = auc_values,
+            aes(x = 0.2, y = seq(0.4, 0.1, length.out = nrow(auc_values)),
+                label = sprintf("%s: %.3f", Method, AUC),
+                color = Method),
+            hjust = 0, size = 3, show.legend = FALSE) +
+  scale_color_manual(values = method_colors) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(title = "Precision-Recall Curves",
+       subtitle = "Diamonds indicate default threshold operating points",
+       x = "Recall (Sensitivity)",
+       y = "Precision") +
+  annotate("text", x = 0.2, y = 0.5, label = "AUC-PR:", fontface = "bold", hjust = 0, size = 3) +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 9))
+
+# Plot 6: Precision vs Recall scatter with method labels
+p6 <- ggplot(metrics_plot %>% filter(!is.na(Precision) & !is.na(Recall)),
+             aes(x = Recall, y = Precision, color = Method)) +
+  geom_point(size = 5) +
+  geom_text(aes(label = Method), vjust = -1, size = 3) +
+  scale_color_manual(values = method_colors) +
+  coord_cartesian(xlim = c(0, 1.05), ylim = c(0.7, 1.05)) +
+  labs(title = "Precision vs Recall (Default Thresholds)",
+       x = "Recall",
+       y = "Precision") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+# Save main comparison plot
+ggsave("seasonality_detection_comparison.pdf",
+       gridExtra::grid.arrange(p1, p2, p5, p6, ncol = 2),
+       width = 14, height = 10)
+
+# --- Detailed plots ---
+
+# Score distributions by strength for each method
+results_long_scores <- results %>%
+  select(strength, aic_score, fft_score, acf_score, var_score, spec_score) %>%
+  pivot_longer(cols = -strength, names_to = "Method", values_to = "Score") %>%
+  mutate(Method = recode(Method,
+                         "aic_score" = "AIC",
+                         "fft_score" = "FFT",
+                         "acf_score" = "ACF",
+                         "var_score" = "Var Strength",
+                         "spec_score" = "Spec Strength"))
+
+# Threshold lines for each method
+threshold_lines <- data.frame(
+  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength"),
+  threshold = c(0, detection_thresholds$fft_confidence,
+                detection_thresholds$acf_confidence,
+                detection_thresholds$strength_variance,
+                detection_thresholds$strength_spectral)
+)
+
+p_scores <- ggplot(results_long_scores, aes(x = factor(strength), y = Score)) +
+  geom_boxplot(aes(fill = factor(strength)), alpha = 0.7, show.legend = FALSE) +
+  geom_hline(data = threshold_lines, aes(yintercept = threshold),
+             linetype = "dashed", color = "red") +
+  facet_wrap(~ Method, scales = "free_y", ncol = 3) +
+  scale_fill_viridis_d(option = "plasma") +
+  labs(title = "Score Distributions by Seasonal Strength",
+       x = "Seasonal Strength",
+       y = "Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Correlation heatmap
 cor_matrix <- cor(results[, c("aic_score", "fft_score", "acf_score",
                                "var_score", "spec_score")],
                   use = "pairwise.complete.obs")
-image(1:5, 1:5, cor_matrix,
-      col = colorRampPalette(c("blue", "white", "red"))(100),
-      axes = FALSE, main = "Score Correlations",
-      xlab = "", ylab = "")
-axis(1, at = 1:5, labels = c("AIC", "FFT", "ACF", "Var", "Spec"), las = 2)
-axis(2, at = 1:5, labels = c("AIC", "FFT", "ACF", "Var", "Spec"), las = 2)
-for (i in 1:5) {
-  for (j in 1:5) {
-    text(i, j, sprintf("%.2f", cor_matrix[i, j]), cex = 0.8)
-  }
-}
+rownames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec")
+colnames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec")
 
-dev.off()
+cor_long <- as.data.frame(as.table(cor_matrix))
+names(cor_long) <- c("Method1", "Method2", "Correlation")
+
+p_cor <- ggplot(cor_long, aes(x = Method1, y = Method2, fill = Correlation)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", Correlation)), size = 4) +
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
+                       midpoint = 0, limits = c(-1, 1)) +
+  labs(title = "Score Correlations Between Methods",
+       x = "", y = "") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Save detailed plots
+ggsave("seasonality_detection_details.pdf",
+       gridExtra::grid.arrange(p_scores, p_cor, ncol = 1, heights = c(2, 1)),
+       width = 14, height = 12)
 
 cat("Plots saved to:\n")
 cat("  - seasonality_detection_comparison.pdf\n")
