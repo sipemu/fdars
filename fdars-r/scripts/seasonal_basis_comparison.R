@@ -209,7 +209,7 @@ plot(summary_by_strength$strength, aic_diff,
      xlab = "Seasonal Strength", ylab = "AIC Difference (Fourier - P-spline)",
      main = "AIC Difference by Seasonal Strength")
 abline(h = 0, lty = 2, col = "gray50")
-text(0.5, 0, "Fourier better above\nP-spline better below", pos = 3, cex = 0.8)
+text(0.5, 0, "P-spline better above\nFourier better below", pos = 3, cex = 0.8)
 
 # Plot 1c: Proportion of Fourier wins
 fourier_win_prop <- sapply(strengths_in_table, function(s) {
