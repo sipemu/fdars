@@ -14,7 +14,6 @@
 # 3. ACF-based period estimation confidence
 # 4. Seasonal strength (variance method)
 # 5. Seasonal strength (spectral method)
-# 6. Automatic basis selection (select.basis.auto)
 
 library(fdars)
 library(ggplot2)
@@ -37,8 +36,7 @@ detection_thresholds <- list(
   fft_confidence = 6.0,         # 95th pct of noise ~5.7
   acf_confidence = 0.25,        # 95th pct of noise ~0.22
   strength_variance = 0.1,      # use without detrend
-  strength_spectral = 0.3,      # 95th pct of noise ~0.29
-  basis_auto = 0.5
+  strength_spectral = 0.3       # 95th pct of noise ~0.29
 )
 
 # Parameter ranges
@@ -156,19 +154,6 @@ detect_strength_spectral <- function(fd_single, period = 0.2) {
   return(list(score = score, detected = detected))
 }
 
-detect_basis_auto <- function(fd_single) {
-  result <- tryCatch({
-    select.basis.auto(fd_single, criterion = "AIC", use.seasonal.hint = FALSE)
-  }, error = function(e) NULL)
-
-  if (is.null(result)) return(list(score = NA, detected = NA))
-
-  detected <- result$seasonal.detected[1]
-  score <- as.numeric(detected)
-
-  return(list(score = score, detected = detected))
-}
-
 # --- Generate data and run detection ---
 cat("=== Seasonality Detection with Non-linear Trend ===\n\n")
 cat("Generating data...\n")
@@ -190,9 +175,7 @@ results <- data.frame(
   var_score = numeric(0),
   var_detected = logical(0),
   spec_score = numeric(0),
-  spec_detected = logical(0),
-  auto_score = numeric(0),
-  auto_detected = logical(0)
+  spec_detected = logical(0)
 )
 
 total_combos <- length(seasonal_strengths) * length(trend_strengths)
@@ -217,7 +200,6 @@ for (ss in seasonal_strengths) {
       acf_result <- detect_acf(fd)
       var_result <- detect_strength_variance(fd)
       spec_result <- detect_strength_spectral(fd)
-      auto_result <- detect_basis_auto(fd)
 
       results <- rbind(results, data.frame(
         seasonal_strength = ss,
@@ -232,9 +214,7 @@ for (ss in seasonal_strengths) {
         var_score = var_result$score,
         var_detected = var_result$detected,
         spec_score = spec_result$score,
-        spec_detected = spec_result$detected,
-        auto_score = auto_result$score,
-        auto_detected = auto_result$detected
+        spec_detected = spec_result$detected
       ))
     }
   }
@@ -256,7 +236,6 @@ detection_summary <- results %>%
     ACF = mean(acf_detected, na.rm = TRUE),
     Var_Strength = mean(var_detected, na.rm = TRUE),
     Spec_Strength = mean(spec_detected, na.rm = TRUE),
-    Basis_Auto = mean(auto_detected, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -294,8 +273,7 @@ metrics_by_trend <- lapply(trend_strengths, function(ts) {
     cbind(Method = "FFT", Trend = ts, calculate_metrics(subset_data$fft_detected, subset_data$ground_truth)),
     cbind(Method = "ACF", Trend = ts, calculate_metrics(subset_data$acf_detected, subset_data$ground_truth)),
     cbind(Method = "Var Strength", Trend = ts, calculate_metrics(subset_data$var_detected, subset_data$ground_truth)),
-    cbind(Method = "Spec Strength", Trend = ts, calculate_metrics(subset_data$spec_detected, subset_data$ground_truth)),
-    cbind(Method = "Basis Auto", Trend = ts, calculate_metrics(subset_data$auto_detected, subset_data$ground_truth))
+    cbind(Method = "Spec Strength", Trend = ts, calculate_metrics(subset_data$spec_detected, subset_data$ground_truth))
   )
   return(metrics)
 })
@@ -332,7 +310,6 @@ fpr_by_trend <- zero_seasonal %>%
     FFT = mean(fft_detected, na.rm = TRUE),
     ACF = mean(acf_detected, na.rm = TRUE),
     Spec_Strength = mean(spec_detected, na.rm = TRUE),
-    Basis_Auto = mean(auto_detected, na.rm = TRUE),
     .groups = "drop"
   )
 cat("\nFPR when there is NO seasonality (by trend strength):\n")
@@ -346,18 +323,16 @@ method_colors <- c(
   "FFT" = "#B2182B",
   "ACF" = "#1B7837",
   "Var Strength" = "#E66101",
-  "Spec Strength" = "#762A83",
-  "Basis Auto" = "#8C510A"
+  "Spec Strength" = "#762A83"
 )
 
 # Plot 1: Heatmaps of detection rates for each method
 detection_long <- detection_summary %>%
-  pivot_longer(cols = c(AIC, FFT, ACF, Var_Strength, Spec_Strength, Basis_Auto),
+  pivot_longer(cols = c(AIC, FFT, ACF, Var_Strength, Spec_Strength),
                names_to = "Method", values_to = "Detection_Rate") %>%
   mutate(Method = recode(Method,
                          "Var_Strength" = "Var Strength",
-                         "Spec_Strength" = "Spec Strength",
-                         "Basis_Auto" = "Basis Auto"))
+                         "Spec_Strength" = "Spec Strength"))
 
 p_heatmaps <- ggplot(detection_long,
                      aes(x = factor(seasonal_strength),
@@ -384,7 +359,7 @@ p_heatmaps <- ggplot(detection_long,
 f1_plot_data <- metrics_all %>%
   filter(!is.na(F1)) %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF",
-                                             "Var Strength", "Spec Strength", "Basis Auto")))
+                                             "Var Strength", "Spec Strength")))
 
 p_f1_trend <- ggplot(f1_plot_data, aes(x = Trend, y = F1 * 100, color = Method)) +
   geom_line(linewidth = 1) +
@@ -521,7 +496,7 @@ f1_robustness <- metrics_all %>%
     .groups = "drop"
   ) %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF",
-                                             "Var Strength", "Spec Strength", "Basis Auto")))
+                                             "Var Strength", "Spec Strength")))
 
 p_robustness <- ggplot(f1_robustness, aes(x = reorder(Method, -F1_drop_pct),
                                            y = F1_drop_pct, fill = Method)) +

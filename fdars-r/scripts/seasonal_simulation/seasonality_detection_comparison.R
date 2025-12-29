@@ -7,7 +7,6 @@
 # 3. ACF-based period estimation confidence
 # 4. Seasonal strength (variance method)
 # 5. Seasonal strength (spectral method)
-# 6. Automatic basis selection (select.basis.auto)
 #
 # Ground truth: simulated data with known seasonal strengths (0 to 1)
 
@@ -33,8 +32,7 @@ detection_thresholds <- list(
   fft_confidence = 6.0,         # Power ratio threshold (95th pct of noise ~5.7)
   acf_confidence = 0.25,        # ACF peak threshold (95th pct of noise ~0.22)
   strength_variance = 0.2,      # Variance ratio threshold (95th pct of noise ~0.17)
-  strength_spectral = 0.3,      # Spectral power threshold (95th pct of noise ~0.29)
-  basis_auto = 0.5              # Already binary (uses internal threshold)
+  strength_spectral = 0.3       # Spectral power threshold (95th pct of noise ~0.29)
 )
 
 # Seasonal strengths to test (0 = no season, 1 = full season)
@@ -152,26 +150,6 @@ detect_strength_spectral <- function(fd_single, period = 0.2) {
   return(list(score = score, detected = detected))
 }
 
-# Method 6: Automatic basis selection
-# NOTE: use.seasonal.hint = FALSE because the internal FFT threshold (2.0) is too low
-# The Rust implementation needs to be updated to use threshold ~6.0
-detect_basis_auto <- function(fd_single) {
-  result <- tryCatch({
-    # Use Fourier basis selection as proxy - if Fourier wins, likely seasonal
-    select.basis.auto(fd_single, criterion = "AIC", use.seasonal.hint = FALSE)
-  }, error = function(e) NULL)
-
-  if (is.null(result)) {
-    return(list(score = NA, detected = NA))
-  }
-
-  # Use basis.type == "fourier" as seasonal detection (better than broken hint)
-  detected <- result$basis.type[1] == "fourier"
-  score <- as.numeric(detected)
-
-  return(list(score = score, detected = detected))
-}
-
 # --- Generate data and run detection ---
 cat("=== Seasonality Detection Method Comparison ===\n\n")
 cat("Generating seasonal time series data...\n")
@@ -192,9 +170,7 @@ results <- data.frame(
   var_score = numeric(0),
   var_detected = logical(0),
   spec_score = numeric(0),
-  spec_detected = logical(0),
-  auto_score = numeric(0),
-  auto_detected = logical(0)
+  spec_detected = logical(0)
 )
 
 # Process each strength level
@@ -215,7 +191,6 @@ for (i in seq_along(seasonal_strengths)) {
     acf_result <- detect_acf(fd)
     var_result <- detect_strength_variance(fd)
     spec_result <- detect_strength_spectral(fd)
-    auto_result <- detect_basis_auto(fd)
 
     # Store results
     results <- rbind(results, data.frame(
@@ -230,9 +205,7 @@ for (i in seq_along(seasonal_strengths)) {
       var_score = var_result$score,
       var_detected = var_result$detected,
       spec_score = spec_result$score,
-      spec_detected = spec_result$detected,
-      auto_score = auto_result$score,
-      auto_detected = auto_result$detected
+      spec_detected = spec_result$detected
     ))
   }
 }
@@ -248,31 +221,30 @@ results$ground_truth <- results$strength >= truth_threshold
 # Calculate detection rates by strength level
 detection_rates <- aggregate(
   cbind(aic_detected, fft_detected, acf_detected,
-        var_detected, spec_detected, auto_detected) ~ strength,
+        var_detected, spec_detected) ~ strength,
   data = results,
   FUN = function(x) mean(x, na.rm = TRUE)
 )
 
 names(detection_rates) <- c("strength", "AIC", "FFT", "ACF",
-                            "Var_Strength", "Spec_Strength", "Basis_Auto")
+                            "Var_Strength", "Spec_Strength")
 
 cat("\nDetection Rates by Seasonal Strength:\n")
-cat("=" , rep("=", 85), "\n", sep = "")
-cat(sprintf("%-10s %12s %12s %12s %12s %12s %12s\n",
-            "Strength", "AIC", "FFT", "ACF", "Var_Str", "Spec_Str", "Auto"))
-cat("=" , rep("=", 85), "\n", sep = "")
+cat("=" , rep("=", 70), "\n", sep = "")
+cat(sprintf("%-10s %12s %12s %12s %12s %12s\n",
+            "Strength", "AIC", "FFT", "ACF", "Var_Str", "Spec_Str"))
+cat("=" , rep("=", 70), "\n", sep = "")
 
 for (i in 1:nrow(detection_rates)) {
-  cat(sprintf("%-10.1f %11.0f%% %11.0f%% %11.0f%% %11.0f%% %11.0f%% %11.0f%%\n",
+  cat(sprintf("%-10.1f %11.0f%% %11.0f%% %11.0f%% %11.0f%% %11.0f%%\n",
               detection_rates$strength[i],
               detection_rates$AIC[i] * 100,
               detection_rates$FFT[i] * 100,
               detection_rates$ACF[i] * 100,
               detection_rates$Var_Strength[i] * 100,
-              detection_rates$Spec_Strength[i] * 100,
-              detection_rates$Basis_Auto[i] * 100))
+              detection_rates$Spec_Strength[i] * 100))
 }
-cat("=" , rep("=", 85), "\n", sep = "")
+cat("=" , rep("=", 70), "\n", sep = "")
 
 # --- Calculate classification metrics ---
 cat("\n=== Classification Performance (Ground Truth: strength >= 0.2) ===\n\n")
@@ -312,8 +284,7 @@ metrics <- rbind(
   cbind(Method = "FFT Confidence", calculate_metrics(results$fft_detected, results$ground_truth)),
   cbind(Method = "ACF Confidence", calculate_metrics(results$acf_detected, results$ground_truth)),
   cbind(Method = "Variance Strength", calculate_metrics(results$var_detected, results$ground_truth)),
-  cbind(Method = "Spectral Strength", calculate_metrics(results$spec_detected, results$ground_truth)),
-  cbind(Method = "Basis Auto", calculate_metrics(results$auto_detected, results$ground_truth))
+  cbind(Method = "Spectral Strength", calculate_metrics(results$spec_detected, results$ground_truth))
 )
 
 cat(sprintf("%-20s %10s %10s %10s %10s %10s %10s\n",
@@ -335,14 +306,13 @@ cat("-" , rep("-", 80), "\n", sep = "")
 cat("\n=== False Positive Rates (at seasonal strength = 0) ===\n")
 zero_strength <- results %>% filter(strength == 0)
 fpr_at_zero <- data.frame(
-  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Basis Auto"),
+  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength"),
   FPR = c(
     mean(zero_strength$aic_detected, na.rm = TRUE),
     mean(zero_strength$fft_detected, na.rm = TRUE),
     mean(zero_strength$acf_detected, na.rm = TRUE),
     mean(zero_strength$var_detected, na.rm = TRUE),
-    mean(zero_strength$spec_detected, na.rm = TRUE),
-    mean(zero_strength$auto_detected, na.rm = TRUE)
+    mean(zero_strength$spec_detected, na.rm = TRUE)
   )
 )
 cat("\nFalse positive rate when there is NO seasonality:\n")
@@ -405,19 +375,17 @@ method_colors <- c(
   "FFT" = "#B2182B",
   "ACF" = "#1B7837",
   "Var Strength" = "#E66101",
-  "Spec Strength" = "#762A83",
-  "Basis Auto" = "#8C510A"
+  "Spec Strength" = "#762A83"
 )
 
 # Reshape detection rates for ggplot
 detection_rates_long <- detection_rates %>%
   pivot_longer(cols = -strength, names_to = "Method", values_to = "Rate") %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF", "Var_Strength",
-                                             "Spec_Strength", "Basis_Auto"))) %>%
+                                             "Spec_Strength"))) %>%
   mutate(Method = recode(Method,
                          "Var_Strength" = "Var Strength",
-                         "Spec_Strength" = "Spec Strength",
-                         "Basis_Auto" = "Basis Auto"))
+                         "Spec_Strength" = "Spec Strength"))
 
 # Plot 1: Detection rates by seasonal strength
 p1 <- ggplot(detection_rates_long, aes(x = strength, y = Rate * 100,
@@ -443,10 +411,9 @@ metrics_plot <- metrics %>%
                          "FFT Confidence" = "FFT",
                          "ACF Confidence" = "ACF",
                          "Variance Strength" = "Var Strength",
-                         "Spectral Strength" = "Spec Strength",
-                         "Basis Auto" = "Basis Auto")) %>%
+                         "Spectral Strength" = "Spec Strength")) %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF",
-                                             "Var Strength", "Spec Strength", "Basis Auto")))
+                                             "Var Strength", "Spec Strength")))
 
 p2 <- ggplot(metrics_plot, aes(x = Method, y = F1 * 100, fill = Method)) +
   geom_col(width = 0.7) +

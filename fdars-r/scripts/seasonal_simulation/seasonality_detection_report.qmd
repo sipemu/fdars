@@ -18,7 +18,7 @@ execute:
 
 # Introduction
 
-This report describes and compares six methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
+This report describes and compares five methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
 
 The goal is to answer: **Given a time series, how can we reliably determine if it contains a seasonal pattern?**
 
@@ -111,14 +111,6 @@ where $\mathcal{S}$ includes the seasonal frequency and its harmonics.
 **Detection rule**: Seasonality detected if $\text{SS}_{\text{spectral}} > 0.3$
 
 **Interpretation**: High values indicate spectral energy is concentrated at seasonal frequencies.
-
-## Automatic Basis Selection
-
-**Concept**: Let the model selection process decide—if Fourier basis is selected over P-splines, the data is likely seasonal.
-
-**Method**: Uses `select.basis.auto()` with AIC criterion.
-
-**Note**: The internal FFT-based seasonal hint has a threshold that is too low (2.0 instead of ~6.0), causing high false positive rates. Use `use.seasonal.hint = FALSE`.
 
 # Simulation Studies
 
@@ -378,8 +370,6 @@ trend_functions <- list(
 1. **Period units matter**: The `period` parameter in `seasonal_strength()` must be in argvals units, not raw time units (e.g., 0.2 not 12)
 
 2. **FFT is vulnerable to slow oscillations**: Any periodic signal (even non-seasonal) triggers detection
-
-3. **Basis Auto has a bug**: Internal FFT threshold of 2.0 is too low (should be ~6.0)
 
 # Recommendations
 

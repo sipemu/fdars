@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document describes and compares six methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
+This document describes and compares five methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
 
 ## Detection Methods
 
@@ -109,16 +109,6 @@ where $\mathcal{S}$ includes the seasonal frequency and its harmonics.
 
 ---
 
-### 6. Automatic Basis Selection
-
-**Concept**: Let the model selection process decide—if Fourier basis is selected over P-splines, the data is likely seasonal.
-
-**Method**: Uses `select.basis.auto()` with AIC criterion. If the selected basis type is "fourier", seasonality is detected.
-
-**Note**: The internal FFT-based seasonal hint has a threshold that is too low (2.0 instead of ~6.0), causing 100% false positive rate. This needs to be fixed in the Rust implementation.
-
----
-
 ## Experiments
 
 ### Experiment 1: Varying Seasonal Strength
@@ -158,9 +148,6 @@ where $\mathcal{S}$ includes the seasonal frequency and its harmonics.
 | FFT Confidence | 94.8% | 99.3% | 90.7% | 4.0% | 97.0% |
 | AIC Comparison | 91.5% | 94.3% | 88.9% | 18.0% | 76.0% |
 | ACF Confidence | 85.4% | 98.3% | 75.6% | 10.0% | 94.0% |
-| Basis Auto* | 20.9% | 59.4% | 12.7% | 40.0% | 61.0% |
-
-*Basis Auto has a bug in the internal threshold (needs fix in Rust code)
 
 ### Detection Rates by Seasonal Strength
 
@@ -208,12 +195,6 @@ FFT detects *any* periodic signal, regardless of period. A slow sine wave (1 cyc
 ### Why AIC Comparison Has Higher FPR
 
 P-splines with smoothing can sometimes overfit to noise, making Fourier appear relatively better even without true seasonality. The comparison is also sensitive to the range of basis functions tested.
-
-### Why Basis Auto Failed
-
-The internal `detect_seasonality_fft` function uses a threshold of 2.0, but pure noise typically has FFT confidence of 2.5-7.0. This needs to be increased to ~6.0.
-
----
 
 ## Recommendations for Unknown Datasets
 
