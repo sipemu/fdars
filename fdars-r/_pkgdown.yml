@@ -46,6 +46,10 @@ navbar:
       - text: Advanced
       - text: Covariance Functions
         href: articles/covariance-functions.html
+      - text: Simulation Toolbox
+        href: articles/simulation-toolbox.html
+      - text: Irregular Sampling
+        href: articles/irregular-sampling.html
 
 articles:
 - title: Getting Started
@@ -54,6 +58,8 @@ articles:
   - custom-plotting
   - intro-to-smoothing
   - working-with-derivatives
+  - simulation-toolbox
+  - irregular-sampling
 - title: Core Methods
   contents:
   - fpca
@@ -235,6 +241,25 @@ reference:
   - kernel_whitenoise
   - make_gaussian_process
   - cov
+
+- title: Simulation
+  contents:
+  - eFun
+  - eVal
+  - simFunData
+  - simMultiFunData
+  - addError
+
+- title: Irregular Functional Data
+  contents:
+  - irregFdata
+  - is.irregular
+  - sparsify
+  - as.fdata
+  - int.simpson.irregFdata
+  - norm.irregFdata
+  - mean.irregFdata
+  - metric.lp.irregFdata
 
 - title: Random Processes
   contents:

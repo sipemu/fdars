@@ -28,10 +28,12 @@ pub mod depth;
 pub mod detrend;
 pub mod fdata;
 pub mod helpers;
+pub mod irreg_fdata;
 pub mod metric;
 pub mod outliers;
 pub mod regression;
 pub mod seasonal;
+pub mod simulation;
 pub mod smoothing;
 pub mod utility;
 
@@ -46,3 +48,9 @@ pub use seasonal::{
 
 // Re-export detrending types
 pub use detrend::{DecomposeResult, TrendResult};
+
+// Re-export simulation types
+pub use simulation::{EFunType, EValType};
+
+// Re-export irregular fdata types
+pub use irreg_fdata::IrregFdata;

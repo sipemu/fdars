@@ -7429,6 +7429,182 @@ fn seasonal_decompose(
 }
 
 // =============================================================================
+// Simulation functions
+// =============================================================================
+
+/// Compute eigenfunction basis values
+/// efun_type: 0 = Fourier, 1 = Poly, 2 = PolyHigh, 3 = Wiener
+#[extendr]
+fn eigenfunctions_1d(argvals: Vec<f64>, m: i32, efun_type: i32) -> Robj {
+    let m = m as usize;
+    let efun = match fdars_core::simulation::EFunType::from_i32(efun_type) {
+        Some(t) => t,
+        None => {
+            return Robj::from(RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0));
+        }
+    };
+
+    let phi = fdars_core::simulation::eigenfunctions(&argvals, m, efun);
+    let n = argvals.len();
+
+    // Return as n x m matrix (column-major)
+    let result = RMatrix::new_matrix(n, m, |i, j| phi[i + j * n]);
+    Robj::from(result)
+}
+
+/// Generate eigenvalue sequence
+/// eval_type: 0 = linear, 1 = exponential, 2 = wiener
+#[extendr]
+fn eigenvalues_1d(m: i32, eval_type: i32) -> Robj {
+    let m = m as usize;
+    let eval = match fdars_core::simulation::EValType::from_i32(eval_type) {
+        Some(t) => t,
+        None => {
+            return Robj::from(Vec::<f64>::new());
+        }
+    };
+
+    let lambda = fdars_core::simulation::eigenvalues(m, eval);
+    Robj::from(lambda)
+}
+
+/// Simulate functional data via Karhunen-Loève expansion
+#[extendr]
+fn sim_kl_1d(n: i32, phi: RMatrix<f64>, lambda: Vec<f64>, seed: Robj) -> Robj {
+    let n_samples = n as usize;
+    let m = phi.nrows();
+    let big_m = phi.ncols();
+    let phi_slice = phi.as_real_slice().unwrap();
+
+    let seed_val = if seed.is_null() {
+        None
+    } else {
+        seed.as_integer().map(|s| s as u64)
+    };
+
+    let data = fdars_core::simulation::sim_kl(n_samples, phi_slice, m, big_m, &lambda, seed_val);
+
+    // Return as n x m matrix (column-major)
+    let result = RMatrix::new_matrix(n_samples, m, |i, j| data[i + j * n_samples]);
+    Robj::from(result)
+}
+
+/// Add pointwise Gaussian noise to functional data
+#[extendr]
+fn add_error_pointwise_1d(data: RMatrix<f64>, sd: f64, seed: Robj) -> Robj {
+    let nrow = data.nrows();
+    let ncol = data.ncols();
+    let data_slice = data.as_real_slice().unwrap();
+
+    let seed_val = if seed.is_null() {
+        None
+    } else {
+        seed.as_integer().map(|s| s as u64)
+    };
+
+    let noisy = fdars_core::simulation::add_error_pointwise(data_slice, nrow, ncol, sd, seed_val);
+
+    let result = RMatrix::new_matrix(nrow, ncol, |i, j| noisy[i + j * nrow]);
+    Robj::from(result)
+}
+
+/// Add curve-level Gaussian noise to functional data
+#[extendr]
+fn add_error_curve_1d(data: RMatrix<f64>, sd: f64, seed: Robj) -> Robj {
+    let nrow = data.nrows();
+    let ncol = data.ncols();
+    let data_slice = data.as_real_slice().unwrap();
+
+    let seed_val = if seed.is_null() {
+        None
+    } else {
+        seed.as_integer().map(|s| s as u64)
+    };
+
+    let noisy = fdars_core::simulation::add_error_curve(data_slice, nrow, ncol, sd, seed_val);
+
+    let result = RMatrix::new_matrix(nrow, ncol, |i, j| noisy[i + j * nrow]);
+    Robj::from(result)
+}
+
+// =============================================================================
+// Irregular functional data functions
+// =============================================================================
+
+/// Compute integral for each curve in irregular functional data
+#[extendr]
+fn irreg_integrate(offsets: Vec<i32>, argvals: Vec<f64>, values: Vec<f64>) -> Robj {
+    // Convert offsets to usize (R passes integers)
+    let offsets: Vec<usize> = offsets.iter().map(|&x| x as usize).collect();
+
+    let integrals = fdars_core::irreg_fdata::integrate_irreg(&offsets, &argvals, &values);
+    Robj::from(integrals)
+}
+
+/// Compute Lp norm for each curve in irregular functional data
+#[extendr]
+fn irreg_norm_lp(offsets: Vec<i32>, argvals: Vec<f64>, values: Vec<f64>, p: f64) -> Robj {
+    let offsets: Vec<usize> = offsets.iter().map(|&x| x as usize).collect();
+
+    let norms = fdars_core::irreg_fdata::norm_lp_irreg(&offsets, &argvals, &values, p);
+    Robj::from(norms)
+}
+
+/// Estimate mean function for irregular data using kernel smoothing
+#[extendr]
+fn irreg_mean_kernel(
+    offsets: Vec<i32>,
+    argvals: Vec<f64>,
+    values: Vec<f64>,
+    target_argvals: Vec<f64>,
+    bandwidth: f64,
+    kernel_type: i32,
+) -> Robj {
+    let offsets: Vec<usize> = offsets.iter().map(|&x| x as usize).collect();
+
+    let mean = fdars_core::irreg_fdata::mean_irreg(
+        &offsets,
+        &argvals,
+        &values,
+        &target_argvals,
+        bandwidth,
+        kernel_type,
+    );
+    Robj::from(mean)
+}
+
+/// Compute pairwise Lp distances for irregular functional data
+#[extendr]
+fn irreg_metric_lp(offsets: Vec<i32>, argvals: Vec<f64>, values: Vec<f64>, p: f64) -> Robj {
+    let offsets: Vec<usize> = offsets.iter().map(|&x| x as usize).collect();
+    let n = offsets.len() - 1;
+
+    let dist = fdars_core::irreg_fdata::metric_lp_irreg(&offsets, &argvals, &values, p);
+
+    let result = RMatrix::new_matrix(n, n, |i, j| dist[i + j * n]);
+    Robj::from(result)
+}
+
+/// Convert irregular data to regular grid via interpolation
+#[extendr]
+fn irreg_to_regular(
+    offsets: Vec<i32>,
+    argvals: Vec<f64>,
+    values: Vec<f64>,
+    target_grid: Vec<f64>,
+) -> Robj {
+    let offsets: Vec<usize> = offsets.iter().map(|&x| x as usize).collect();
+    let n = offsets.len() - 1;
+    let m = target_grid.len();
+
+    let data =
+        fdars_core::irreg_fdata::to_regular_grid(&offsets, &argvals, &values, &target_grid);
+
+    let result = RMatrix::new_matrix(n, m, |i, j| data[i + j * n]);
+    Robj::from(result)
+}
+
+// =============================================================================
 // Module exports
 // =============================================================================
 
@@ -7549,4 +7725,18 @@ extendr_module! {
     // Detrending functions
     fn seasonal_detrend;
     fn seasonal_decompose;
+
+    // Simulation functions
+    fn eigenfunctions_1d;
+    fn eigenvalues_1d;
+    fn sim_kl_1d;
+    fn add_error_pointwise_1d;
+    fn add_error_curve_1d;
+
+    // Irregular functional data functions
+    fn irreg_integrate;
+    fn irreg_norm_lp;
+    fn irreg_mean_kernel;
+    fn irreg_metric_lp;
+    fn irreg_to_regular;
 }

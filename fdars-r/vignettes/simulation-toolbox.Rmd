@@ -1,0 +1,344 @@
+---
+title: "Simulating Functional Data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Simulating Functional Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  out.width = "100%"
+)
+```
+
+```{r setup}
+library(fdars)
+library(ggplot2)
+theme_set(theme_minimal())
+```
+
+## Introduction
+
+The `fdars` package provides comprehensive tools for simulating functional data. This is useful for:
+
+- **Method validation**: Testing statistical methods on data with known properties
+- **Power analysis**: Determining sample sizes and effect sizes
+- **Teaching**: Creating examples with controlled characteristics
+- **Benchmarking**: Comparing algorithm performance
+
+This vignette covers the Karhunen-Loeve simulation framework and related tools.
+
+## Karhunen-Loeve Simulation
+
+The Karhunen-Loeve (KL) expansion represents a stochastic process as:
+
+$$
+X(t) = \mu(t) + \sum_{k=1}^{\infty} \xi_k \phi_k(t)
+$$
+
+where:
+- $\mu(t)$ is the mean function
+- $\phi_k(t)$ are orthonormal eigenfunctions
+- $\xi_k \sim N(0, \lambda_k)$ are independent scores with variances $\lambda_k$
+
+For simulation, we truncate to $M$ terms and generate curves via `simFunData()`.
+
+### Basic Example
+
+```{r basic-simulation}
+# Define evaluation points
+t <- seq(0, 1, length.out = 100)
+
+# Simulate 20 curves with 5 basis functions
+fd <- simFunData(n = 20, argvals = t, M = 5, seed = 42)
+plot(fd, main = "Simulated Functional Data")
+```
+
+### Reproducibility
+
+Set a seed for reproducible results:
+
+```{r reproducibility, fig.height = 3}
+fd1 <- simFunData(n = 5, argvals = t, M = 5, seed = 123)
+fd2 <- simFunData(n = 5, argvals = t, M = 5, seed = 123)
+
+# Verify they're identical
+all.equal(fd1$data, fd2$data)
+```
+
+## Eigenfunction Bases
+
+The shape of simulated curves depends on the eigenfunction basis. Use `eFun()` to generate different types.
+
+### Fourier Basis
+
+Best for periodic or smooth oscillating data:
+
+```{r fourier-basis}
+phi_fourier <- eFun(t, M = 5, type = "Fourier")
+matplot(t, phi_fourier, type = "l", lty = 1, lwd = 2,
+        main = "Fourier Eigenfunctions", xlab = "t", ylab = expression(phi(t)))
+legend("topright", paste0("k=", 1:5), col = 1:5, lty = 1)
+```
+
+```{r fourier-sim}
+fd_fourier <- simFunData(n = 20, argvals = t, M = 5,
+                         eFun.type = "Fourier", eVal.type = "exponential", seed = 42)
+plot(fd_fourier, main = "Fourier Basis Simulation")
+```
+
+### Legendre Polynomials
+
+Orthogonal polynomials on [0, 1]:
+
+```{r poly-basis}
+phi_poly <- eFun(t, M = 5, type = "Poly")
+matplot(t, phi_poly, type = "l", lty = 1, lwd = 2,
+        main = "Legendre Polynomial Eigenfunctions", xlab = "t", ylab = expression(phi(t)))
+legend("topright", paste0("degree ", 0:4), col = 1:5, lty = 1)
+```
+
+```{r poly-sim}
+fd_poly <- simFunData(n = 20, argvals = t, M = 5,
+                      eFun.type = "Poly", eVal.type = "exponential", seed = 42)
+plot(fd_poly, main = "Polynomial Basis Simulation")
+```
+
+### Wiener Process Eigenfunctions
+
+Eigenfunctions of Brownian motion covariance $K(s,t) = \min(s,t)$:
+
+```{r wiener-basis}
+phi_wiener <- eFun(t, M = 5, type = "Wiener")
+matplot(t, phi_wiener, type = "l", lty = 1, lwd = 2,
+        main = "Wiener Process Eigenfunctions", xlab = "t", ylab = expression(phi(t)))
+legend("topright", paste0("k=", 1:5), col = 1:5, lty = 1)
+```
+
+```{r wiener-sim}
+fd_wiener <- simFunData(n = 20, argvals = t, M = 10,
+                        eFun.type = "Wiener", eVal.type = "wiener", seed = 42)
+plot(fd_wiener, main = "Wiener Process Simulation")
+```
+
+## Eigenvalue Decay
+
+The eigenvalue sequence controls how much each mode contributes to variance.
+
+### Comparing Decay Patterns
+
+```{r eigenvalue-decay}
+M <- 20
+lambda_lin <- eVal(M, "linear")      # lambda_k = 1/k
+lambda_exp <- eVal(M, "exponential") # lambda_k = exp(-k)
+lambda_wie <- eVal(M, "wiener")      # lambda_k = 1/((k-0.5)*pi)^2
+
+df_evals <- data.frame(
+  k = rep(1:M, 3),
+  lambda = c(lambda_lin, lambda_exp, lambda_wie),
+  type = rep(c("Linear", "Exponential", "Wiener"), each = M)
+)
+
+ggplot(df_evals, aes(x = k, y = lambda, color = type)) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  scale_y_log10() +
+  labs(title = "Eigenvalue Decay Patterns",
+       x = "Mode k", y = expression(lambda[k]),
+       color = "Decay Type") +
+  theme(legend.position = "right")
+```
+
+### Effect on Curve Smoothness
+
+Faster decay = smoother curves (higher modes contribute less):
+
+```{r decay-comparison, fig.height = 6}
+par(mfrow = c(2, 1))
+
+# Linear decay - rougher curves
+fd_lin <- simFunData(n = 10, argvals = t, M = 10,
+                     eFun.type = "Fourier", eVal.type = "linear", seed = 42)
+plot(fd_lin, main = "Linear Decay (Rougher)")
+
+# Exponential decay - smoother curves
+fd_exp <- simFunData(n = 10, argvals = t, M = 10,
+                     eFun.type = "Fourier", eVal.type = "exponential", seed = 42)
+plot(fd_exp, main = "Exponential Decay (Smoother)")
+
+par(mfrow = c(1, 1))
+```
+
+## Adding Mean Function
+
+Simulate data with a specified mean:
+
+```{r mean-function}
+# Define mean function
+mean_fn <- function(t) 2 * sin(2 * pi * t) + t
+
+# Simulate with mean
+fd_mean <- simFunData(n = 30, argvals = t, M = 5, mean = mean_fn, seed = 42)
+
+# Visualize
+plot(fd_mean, main = "Simulated Data with Sinusoidal Mean")
+lines(t, mean_fn(t), col = "red", lwd = 3)
+legend("topright", "True Mean", col = "red", lwd = 3)
+```
+
+## Adding Measurement Error
+
+Use `addError()` to add noise to simulated (or real) data:
+
+```{r add-noise, fig.height = 6}
+fd_clean <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
+
+par(mfrow = c(2, 2))
+
+plot(fd_clean, main = "Clean Data")
+
+# Low noise
+fd_low <- addError(fd_clean, sd = 0.1, seed = 123)
+plot(fd_low, main = "Low Noise (sd = 0.1)")
+
+# Medium noise
+fd_med <- addError(fd_clean, sd = 0.3, seed = 123)
+plot(fd_med, main = "Medium Noise (sd = 0.3)")
+
+# High noise
+fd_high <- addError(fd_clean, sd = 0.5, seed = 123)
+plot(fd_high, main = "High Noise (sd = 0.5)")
+
+par(mfrow = c(1, 1))
+```
+
+### Curve-Level Noise
+
+Add a constant noise value per curve (useful for modeling measurement bias):
+
+```{r curve-noise}
+fd_curve_noise <- addError(fd_clean, sd = 0.5, type = "curve", seed = 123)
+plot(fd_curve_noise, main = "Curve-Level Noise")
+```
+
+## Creating Sparse/Irregular Data
+
+Use `sparsify()` to simulate irregular sampling:
+
+```{r sparsify}
+fd <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
+
+# Create sparse version
+ifd <- sparsify(fd, minObs = 10, maxObs = 30, seed = 123)
+print(ifd)
+```
+
+```{r plot-sparse}
+plot(ifd, main = "Sparsified Functional Data")
+```
+
+See the "Irregular Sampling" vignette for more details on working with sparse data.
+
+## Multivariate Functional Data
+
+Simulate multiple correlated functional components:
+
+```{r multivariate}
+t1 <- seq(0, 1, length.out = 100)
+t2 <- seq(0, 0.5, length.out = 50)
+
+mfd <- simMultiFunData(
+  n = 15,
+  argvals = list(t1, t2),
+  M = c(5, 3),
+  eFun.type = c("Fourier", "Wiener"),
+  eVal.type = c("exponential", "linear"),
+  seed = 42
+)
+
+print(mfd)
+```
+
+```{r multivariate-plot, fig.height = 6}
+par(mfrow = c(2, 1))
+plot(mfd$components[[1]], main = "Component 1 (Fourier)")
+plot(mfd$components[[2]], main = "Component 2 (Wiener)")
+par(mfrow = c(1, 1))
+```
+
+## Comparison with GP Simulation
+
+The package also offers Gaussian Process simulation via `make_gaussian_process()`:
+
+| Aspect | KL (`simFunData`) | GP (`make_gaussian_process`) |
+|--------|-------------------|------------------------------|
+| Control | Eigenfunctions, eigenvalues | Covariance kernel |
+| Interpretation | Modal decomposition | Correlation structure |
+| Best for | Known FPCA structure | Known covariance kernel |
+| Computation | O(nM) per curve | O(m³) for Cholesky |
+
+```{r gp-comparison, fig.height = 6}
+par(mfrow = c(2, 1))
+
+# KL simulation
+fd_kl <- simFunData(n = 10, argvals = t, M = 10,
+                    eFun.type = "Wiener", eVal.type = "wiener", seed = 42)
+plot(fd_kl, main = "KL Simulation (Wiener)")
+
+# GP simulation with Brownian motion kernel
+set.seed(42)
+fd_gp <- make_gaussian_process(n = 10, argvals = t,
+                                kernel = kernel_brownian())
+plot(fd_gp, main = "GP Simulation (Brownian Kernel)")
+
+par(mfrow = c(1, 1))
+```
+
+## Complete Simulation Recipe
+
+Here's a complete workflow for power analysis:
+
+```{r recipe, fig.height = 4}
+set.seed(42)
+
+# 1. Simulate two groups with different means
+n_per_group <- 30
+t <- seq(0, 1, length.out = 100)
+
+mean_group1 <- function(t) sin(2 * pi * t)
+mean_group2 <- function(t) sin(2 * pi * t) + 0.5 * cos(4 * pi * t)
+
+group1 <- simFunData(n = n_per_group, argvals = t, M = 5, mean = mean_group1)
+group2 <- simFunData(n = n_per_group, argvals = t, M = 5, mean = mean_group2)
+
+# 2. Add measurement noise
+group1 <- addError(group1, sd = 0.2)
+group2 <- addError(group2, sd = 0.2)
+
+# 3. Visualize
+par(mfrow = c(1, 2))
+plot(group1, main = "Group 1", col = rgb(0, 0, 1, 0.5))
+lines(t, mean_group1(t), col = "blue", lwd = 3)
+plot(group2, main = "Group 2", col = rgb(1, 0, 0, 0.5))
+lines(t, mean_group2(t), col = "red", lwd = 3)
+par(mfrow = c(1, 1))
+```
+
+## Summary
+
+| Function | Purpose |
+|----------|---------|
+| `simFunData()` | KL simulation with specified eigenfunctions/eigenvalues |
+| `simMultiFunData()` | Multivariate functional data simulation |
+| `eFun()` | Generate eigenfunction bases (Fourier, Poly, Wiener) |
+| `eVal()` | Generate eigenvalue sequences (linear, exponential, wiener) |
+| `addError()` | Add Gaussian noise (pointwise or curve-level) |
+| `sparsify()` | Create irregular/sparse data from regular |
+| `make_gaussian_process()` | GP simulation with covariance kernels |
+| `r.brownian()`, `r.ou()`, `r.bridge()` | Specific random process generators |
