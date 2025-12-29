@@ -185,7 +185,7 @@ of the projections. More robust to local variations.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RP"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rp</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.07419355 0.07419355 0.28774194 0.27548387 0.28838710 0.27290323</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.06967742 0.08129032 0.29161290 0.29032258 0.27548387 0.25548387</span></span></code></pre></div>
 <p><strong>Intuition</strong>: RP depth projects all curves onto random
 1D directions and computes depth there. It’s robust because outliers
 can’t hide from all projection angles - if a curve is unusual, some
@@ -199,7 +199,7 @@ halfspace depth. Very robust to outliers.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RT"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rt</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.03225806 0.03225806 0.03225806 0.09677419 0.03225806 0.03225806</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.03225806 0.03225806 0.03225806 0.03225806 0.06451613 0.03225806</span></span></code></pre></div>
 <p><strong>Intuition</strong>: RT depth takes the <em>minimum</em> depth
 across all projections. This is very conservative - a curve is only
 considered central if it looks central from <em>every</em> angle. This
@@ -237,7 +237,7 @@ changes in addition to magnitude.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">depths_rpd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/depth.html">depth</a></span><span class="op">(</span><span class="va">fd</span>, method <span class="op">=</span> <span class="st">"RPD"</span>, nproj <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">depths_rpd</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.1026667 0.1013333 0.1886667 0.2206667 0.2406667 0.2213333</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.07666667 0.11666667 0.18133333 0.21800000 0.17266667 0.16066667</span></span></code></pre></div>
 <p><strong>Intuition</strong>: RPD is like RP, but the projections are
 based on curve derivatives. This makes it sensitive to <em>shape</em>
 differences - curves with unusual wiggliness or local behavior will have
@@ -262,11 +262,11 @@ curves differently:</p>
 <span><span class="co"># Correlation between depth functions</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">all_depths</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        FM mode   RP   RT  FSD</span></span>
-<span><span class="co">#&gt; FM   1.00 0.98 0.91 0.20 0.98</span></span>
-<span><span class="co">#&gt; mode 0.98 1.00 0.93 0.18 0.97</span></span>
-<span><span class="co">#&gt; RP   0.91 0.93 1.00 0.24 0.92</span></span>
-<span><span class="co">#&gt; RT   0.20 0.18 0.24 1.00 0.28</span></span>
-<span><span class="co">#&gt; FSD  0.98 0.97 0.92 0.28 1.00</span></span></code></pre></div>
+<span><span class="co">#&gt; FM   1.00 0.98 0.92 0.18 0.98</span></span>
+<span><span class="co">#&gt; mode 0.98 1.00 0.91 0.16 0.97</span></span>
+<span><span class="co">#&gt; RP   0.92 0.91 1.00 0.14 0.93</span></span>
+<span><span class="co">#&gt; RT   0.18 0.16 0.14 1.00 0.15</span></span>
+<span><span class="co">#&gt; FSD  0.98 0.97 0.93 0.15 1.00</span></span></code></pre></div>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Which curves are identified as outliers (lowest depth)?</span></span>
 <span><span class="va">outlier_ranks</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">all_depths</span>, <span class="fl">2</span>, <span class="kw">function</span><span class="op">(</span><span class="va">d</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">d</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">]</span><span class="op">)</span></span>
@@ -274,7 +274,7 @@ curves differently:</p>
 <span><span class="co">#&gt;      FM mode RP RT FSD</span></span>
 <span><span class="co">#&gt; [1,]  1    1  1  1   1</span></span>
 <span><span class="co">#&gt; [2,]  2    2  2  2   2</span></span>
-<span><span class="co">#&gt; [3,] 10   10 26  5  10</span></span></code></pre></div>
+<span><span class="co">#&gt; [3,] 10   10 27  4  10</span></span></code></pre></div>
 <p>All depth functions correctly identify curves 1 and 2 as having low
 depth.</p>
 <div class="section level3">
