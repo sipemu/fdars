@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn test_norm_lp_irreg() {
-        // L2 norm of constant function = c is c (on [0,1])
+        // L2 norm of constant function = c is c (on \[0,1\])
         let offsets = vec![0, 3];
         let argvals = vec![0.0, 0.5, 1.0];
         let values = vec![2.0, 2.0, 2.0];

@@ -17,7 +17,7 @@
 //! ## Eigenfunction Types
 //!
 //! - **Fourier**: sin/cos basis functions, suitable for periodic data
-//! - **Legendre**: Orthonormal Legendre polynomials on [0,1]
+//! - **Legendre**: Orthonormal Legendre polynomials on \[0,1\]
 //! - **Wiener**: Eigenfunctions of the Wiener process
 
 use rand::prelude::*;
@@ -30,7 +30,7 @@ use std::f64::consts::PI;
 pub enum EFunType {
     /// Fourier basis: 1, sqrt(2)*cos(2πkt), sqrt(2)*sin(2πkt)
     Fourier = 0,
-    /// Orthonormal Legendre polynomials on [0,1]
+    /// Orthonormal Legendre polynomials on \[0,1\]
     Poly = 1,
     /// Higher-order Legendre polynomials (starting at degree 2)
     PolyHigh = 2,
@@ -78,7 +78,7 @@ impl EValType {
 // Eigenfunction Computation
 // =============================================================================
 
-/// Compute Fourier eigenfunctions on [0,1].
+/// Compute Fourier eigenfunctions on \[0,1\].
 ///
 /// The Fourier basis consists of:
 /// - φ_1(t) = 1
@@ -86,7 +86,7 @@ impl EValType {
 /// - φ_{2k+1}(t) = √2 sin(2πkt) for k = 1, 2, ...
 ///
 /// # Arguments
-/// * `t` - Evaluation points in [0,1]
+/// * `t` - Evaluation points in \[0,1\]
 /// * `m` - Number of eigenfunctions
 ///
 /// # Returns
@@ -120,13 +120,13 @@ pub fn fourier_eigenfunctions(t: &[f64], m: usize) -> Vec<f64> {
     phi
 }
 
-/// Compute Legendre polynomial eigenfunctions on [0,1].
+/// Compute Legendre polynomial eigenfunctions on \[0,1\].
 ///
 /// Uses orthonormalized Legendre polynomials. The normalization factor is
-/// √(2n+1) where n is the polynomial degree, which ensures unit L² norm on [0,1].
+/// √(2n+1) where n is the polynomial degree, which ensures unit L² norm on \[0,1\].
 ///
 /// # Arguments
-/// * `t` - Evaluation points in [0,1]
+/// * `t` - Evaluation points in \[0,1\]
 /// * `m` - Number of eigenfunctions
 /// * `high` - If true, start at degree 2 (PolyHigh), otherwise start at degree 0
 ///
@@ -138,14 +138,14 @@ pub fn legendre_eigenfunctions(t: &[f64], m: usize, high: bool) -> Vec<f64> {
     let start_deg = if high { 2 } else { 0 };
 
     for (i, &ti) in t.iter().enumerate() {
-        // Transform from [0,1] to [-1,1]
+        // Transform from \[0,1\] to \[-1,1\]
         let x = 2.0 * ti - 1.0;
 
         for j in 0..m {
             let deg = start_deg + j;
             // Compute Legendre polynomial P_deg(x)
             let p = legendre_p(x, deg);
-            // Normalize: ||P_n||² on [-1,1] = 2/(2n+1), on [0,1] = 1/(2n+1)
+            // Normalize: ||P_n||² on \[-1,1\] = 2/(2n+1), on \[0,1\] = 1/(2n+1)
             let norm = ((2 * deg + 1) as f64).sqrt();
             phi[i + j * n] = p * norm;
         }
@@ -176,7 +176,7 @@ fn legendre_p(x: f64, n: usize) -> f64 {
     p_curr
 }
 
-/// Compute Wiener process eigenfunctions on [0,1].
+/// Compute Wiener process eigenfunctions on \[0,1\].
 ///
 /// The Wiener (Brownian motion) eigenfunctions are:
 /// φ_k(t) = √2 sin((k - 0.5)πt)
@@ -184,7 +184,7 @@ fn legendre_p(x: f64, n: usize) -> f64 {
 /// These are the eigenfunctions of the covariance kernel K(s,t) = min(s,t).
 ///
 /// # Arguments
-/// * `t` - Evaluation points in [0,1]
+/// * `t` - Evaluation points in \[0,1\]
 /// * `m` - Number of eigenfunctions
 ///
 /// # Returns
