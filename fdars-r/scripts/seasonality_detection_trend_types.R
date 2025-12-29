@@ -115,7 +115,7 @@ detect_acf <- function(fd_single) {
   return(list(score = score, detected = detected))
 }
 
-detect_strength_spectral <- function(fd_single, period = 12) {
+detect_strength_spectral <- function(fd_single, period = 0.2) {
   score <- tryCatch({
     seasonal_strength(fd_single, period = period, method = "spectral", detrend = "linear")
   }, error = function(e) NA)

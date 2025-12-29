@@ -134,9 +134,9 @@ detect_acf <- function(fd_single) {
 }
 
 # Note: variance method works poorly with linear detrending, use "none"
-detect_strength_variance <- function(fd_single, period = 12) {
+detect_strength_variance <- function(fd_single, period = 0.2) {
   score <- tryCatch({
-    seasonal_strength(fd_single, period = period, method = "variance", detrend = "none")
+    seasonal_strength(fd_single, period = period, method = "variance", detrend = "linear")
   }, error = function(e) NA)
 
   if (is.na(score)) return(list(score = NA, detected = NA))
@@ -145,7 +145,7 @@ detect_strength_variance <- function(fd_single, period = 12) {
   return(list(score = score, detected = detected))
 }
 
-detect_strength_spectral <- function(fd_single, period = 12) {
+detect_strength_spectral <- function(fd_single, period = 0.2) {
   score <- tryCatch({
     seasonal_strength(fd_single, period = period, method = "spectral", detrend = "linear")
   }, error = function(e) NA)

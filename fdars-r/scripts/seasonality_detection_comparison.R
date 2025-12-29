@@ -32,7 +32,7 @@ detection_thresholds <- list(
   aic_comparison = 0,           # Fourier AIC < P-spline AIC
   fft_confidence = 6.0,         # Power ratio threshold (95th pct of noise ~5.7)
   acf_confidence = 0.25,        # ACF peak threshold (95th pct of noise ~0.22)
-  strength_variance = 0.1,      # Variance ratio threshold (use without detrend)
+  strength_variance = 0.2,      # Variance ratio threshold (95th pct of noise ~0.17)
   strength_spectral = 0.3,      # Spectral power threshold (95th pct of noise ~0.29)
   basis_auto = 0.5              # Already binary (uses internal threshold)
 )
@@ -121,10 +121,10 @@ detect_acf <- function(fd_single, expected_period = 12) {
 }
 
 # Method 4: Seasonal strength (variance method)
-# Note: variance method works poorly with linear detrending, use "none"
-detect_strength_variance <- function(fd_single, period = 12) {
+# Note: period must be in argvals units (0.2 for 5 cycles in [0,1])
+detect_strength_variance <- function(fd_single, period = 0.2) {
   score <- tryCatch({
-    seasonal_strength(fd_single, period = period, method = "variance", detrend = "none")
+    seasonal_strength(fd_single, period = period, method = "variance", detrend = "linear")
   }, error = function(e) NA)
 
   if (is.na(score)) {
@@ -137,7 +137,8 @@ detect_strength_variance <- function(fd_single, period = 12) {
 }
 
 # Method 5: Seasonal strength (spectral method)
-detect_strength_spectral <- function(fd_single, period = 12) {
+# Note: period must be in argvals units (0.2 for 5 cycles in [0,1])
+detect_strength_spectral <- function(fd_single, period = 0.2) {
   score <- tryCatch({
     seasonal_strength(fd_single, period = period, method = "spectral", detrend = "linear")
   }, error = function(e) NA)
