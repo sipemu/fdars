@@ -322,7 +322,7 @@ mean_growth <- mean.irregFdata(ifd_growth,
 # Visualize with ggplot2
 mean_df <- data.frame(t = mean_growth$argvals, mean = mean_growth$data[1,])
 autoplot(ifd_growth, alpha = 0.8) +
-  geom_line(data = mean_df, aes(x = t, y = mean), color = "red", linewidth = 1.5) +
+  geom_line(data = mean_df, aes(x = t, y = mean), color = "red", linewidth = 1.5, inherit.aes = FALSE) +
   labs(title = "Growth Curves with Estimated Mean")
 ```
 

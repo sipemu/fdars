@@ -189,7 +189,7 @@ fd_mean <- simFunData(n = 30, argvals = t, M = 5, mean = mean_fn, seed = 42)
 # Visualize with ggplot2
 mean_df <- data.frame(t = t, mean = mean_fn(t))
 autoplot(fd_mean) +
-  geom_line(data = mean_df, aes(x = t, y = mean), color = "red", linewidth = 1.5) +
+  geom_line(data = mean_df, aes(x = t, y = mean), color = "red", linewidth = 1.5, inherit.aes = FALSE) +
   labs(title = "Simulated Data with Sinusoidal Mean")
 ```
 
@@ -327,11 +327,11 @@ mean_df1 <- data.frame(t = t, mean = mean_group1(t))
 mean_df2 <- data.frame(t = t, mean = mean_group2(t))
 
 p1 <- autoplot(group1, alpha = 0.5) +
-  geom_line(data = mean_df1, aes(x = t, y = mean), color = "blue", linewidth = 1.5) +
+  geom_line(data = mean_df1, aes(x = t, y = mean), color = "blue", linewidth = 1.5, inherit.aes = FALSE) +
   labs(title = "Group 1")
 
 p2 <- autoplot(group2, alpha = 0.5) +
-  geom_line(data = mean_df2, aes(x = t, y = mean), color = "red", linewidth = 1.5) +
+  geom_line(data = mean_df2, aes(x = t, y = mean), color = "red", linewidth = 1.5, inherit.aes = FALSE) +
   labs(title = "Group 2")
 
 # Side-by-side plots
