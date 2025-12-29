@@ -4,6 +4,7 @@ author: "fdars Package"
 date: "2025-12-29"
 format:
   pdf:
+    pdf-engine: pdflatex
     toc: true
     toc-depth: 3
     number-sections: true
