@@ -79,6 +79,36 @@ Trend types tested:
 | AIC Comparison | 91.5% | 18% | Interpretable model comparison |
 | ACF Confidence | 85.4% | 10% | Conservative detection |
 
+## Period Parameter Requirements
+
+Methods differ in whether they require the seasonal period as input:
+
+| Method | Needs Period? | Notes |
+|--------|---------------|-------|
+| AIC Comparison | No | Compares basis types, period-agnostic |
+| FFT Confidence | No | Estimates period automatically |
+| ACF Confidence | No | Estimates period automatically |
+| Variance Strength | **Yes** | Requires `period` in argvals units |
+| Spectral Strength | **Yes** | Requires `period` in argvals units |
+
+**Typical workflow**:
+1. Use period-free methods (FFT, ACF, AIC) to detect IF seasonality exists
+2. Use `estimate_period()` to find the period(s)
+3. Use period-based methods (Variance, Spectral) for precise strength measurement
+
+```r
+# Step 1: Quick detection (no period needed)
+fft_result <- estimate_period(fd, method = "fft", detrend = "linear")
+is_seasonal <- fft_result$confidence > 6.0
+
+# Step 2: Get period estimate
+estimated_period <- fft_result$period
+
+# Step 3: Precise measurement (period required)
+strength <- seasonal_strength(fd, period = estimated_period,
+                              method = "variance", detrend = "linear")
+```
+
 ## Detection Thresholds
 
 ```r
