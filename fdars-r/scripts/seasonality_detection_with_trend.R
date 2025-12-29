@@ -158,7 +158,7 @@ detect_strength_spectral <- function(fd_single, period = 12) {
 
 detect_basis_auto <- function(fd_single) {
   result <- tryCatch({
-    select.basis.auto(fd_single, criterion = "AIC", use.seasonal.hint = TRUE)
+    select.basis.auto(fd_single, criterion = "AIC", use.seasonal.hint = FALSE)
   }, error = function(e) NULL)
 
   if (is.null(result)) return(list(score = NA, detected = NA))

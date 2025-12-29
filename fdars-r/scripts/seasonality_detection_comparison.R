@@ -152,18 +152,20 @@ detect_strength_spectral <- function(fd_single, period = 12) {
 }
 
 # Method 6: Automatic basis selection
+# NOTE: use.seasonal.hint = FALSE because the internal FFT threshold (2.0) is too low
+# The Rust implementation needs to be updated to use threshold ~6.0
 detect_basis_auto <- function(fd_single) {
   result <- tryCatch({
-    select.basis.auto(fd_single, criterion = "AIC", use.seasonal.hint = TRUE)
+    # Use Fourier basis selection as proxy - if Fourier wins, likely seasonal
+    select.basis.auto(fd_single, criterion = "AIC", use.seasonal.hint = FALSE)
   }, error = function(e) NULL)
 
   if (is.null(result)) {
     return(list(score = NA, detected = NA))
   }
 
-  # seasonal.detected is already boolean
-  detected <- result$seasonal.detected[1]
-  # Score: 1 if detected, 0 if not
+  # Use basis.type == "fourier" as seasonal detection (better than broken hint)
+  detected <- result$basis.type[1] == "fourier"
   score <- as.numeric(detected)
 
   return(list(score = score, detected = detected))
