@@ -123,8 +123,8 @@ Control sampling density with a probability function:
 # More observations in the middle
 prob_middle <- function(t) dnorm(t, mean = 0.5, sd = 0.2)
 
-# More observations at the edges
-prob_edges <- function(t) 1 - 0.8 * dnorm(t, mean = 0.5, sd = 0.2)
+# More observations at the edges (U-shaped probability)
+prob_edges <- function(t) 0.1 + 4 * (t - 0.5)^2
 
 fd <- simFunData(n = 20, argvals = t, M = 5, seed = 42)
 
