@@ -186,10 +186,11 @@ mean_fn <- function(t) 2 * sin(2 * pi * t) + t
 # Simulate with mean
 fd_mean <- simFunData(n = 30, argvals = t, M = 5, mean = mean_fn, seed = 42)
 
-# Visualize
-plot(fd_mean, main = "Simulated Data with Sinusoidal Mean")
-lines(t, mean_fn(t), col = "red", lwd = 3)
-legend("topright", "True Mean", col = "red", lwd = 3)
+# Visualize with ggplot2
+mean_df <- data.frame(t = t, mean = mean_fn(t))
+autoplot(fd_mean) +
+  geom_line(data = mean_df, aes(x = t, y = mean), color = "red", linewidth = 1.5) +
+  labs(title = "Simulated Data with Sinusoidal Mean")
 ```
 
 ## Adding Measurement Error
@@ -304,7 +305,7 @@ par(mfrow = c(1, 1))
 
 Here's a complete workflow for power analysis:
 
-```{r recipe, fig.height = 4}
+```{r recipe, fig.height = 4, fig.width = 10}
 set.seed(42)
 
 # 1. Simulate two groups with different means
@@ -321,13 +322,20 @@ group2 <- simFunData(n = n_per_group, argvals = t, M = 5, mean = mean_group2)
 group1 <- addError(group1, sd = 0.2)
 group2 <- addError(group2, sd = 0.2)
 
-# 3. Visualize
-par(mfrow = c(1, 2))
-plot(group1, main = "Group 1", col = rgb(0, 0, 1, 0.5))
-lines(t, mean_group1(t), col = "blue", lwd = 3)
-plot(group2, main = "Group 2", col = rgb(1, 0, 0, 0.5))
-lines(t, mean_group2(t), col = "red", lwd = 3)
-par(mfrow = c(1, 1))
+# 3. Visualize with ggplot2
+mean_df1 <- data.frame(t = t, mean = mean_group1(t))
+mean_df2 <- data.frame(t = t, mean = mean_group2(t))
+
+p1 <- autoplot(group1, alpha = 0.5) +
+  geom_line(data = mean_df1, aes(x = t, y = mean), color = "blue", linewidth = 1.5) +
+  labs(title = "Group 1")
+
+p2 <- autoplot(group2, alpha = 0.5) +
+  geom_line(data = mean_df2, aes(x = t, y = mean), color = "red", linewidth = 1.5) +
+  labs(title = "Group 2")
+
+# Side-by-side plots
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
 ## Summary

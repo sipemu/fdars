@@ -314,13 +314,16 @@ ifd_growth <- irregFdata(argvals_list, X_list,
                                        xlab = "Age (years)",
                                        ylab = "Height (cm)"))
 
-plot(ifd_growth, alpha = 0.8)
-
 # Estimate mean growth curve
 mean_growth <- mean.irregFdata(ifd_growth,
                                 argvals = seq(0, 2, length.out = 50),
                                 bandwidth = 0.2)
-lines(mean_growth$argvals, mean_growth$data[1,], col = "red", lwd = 3)
+
+# Visualize with ggplot2
+mean_df <- data.frame(t = mean_growth$argvals, mean = mean_growth$data[1,])
+autoplot(ifd_growth, alpha = 0.8) +
+  geom_line(data = mean_df, aes(x = t, y = mean), color = "red", linewidth = 1.5) +
+  labs(title = "Growth Curves with Estimated Mean")
 ```
 
 ### Case 2: Sensor Data with Gaps
