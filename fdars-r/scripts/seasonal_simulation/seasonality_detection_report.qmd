@@ -19,6 +19,53 @@ execute:
   message: false
 ---
 
+# Executive Summary
+
+## Key Findings
+
+This study compared five methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
+
+| Method | F1 Score | False Positive Rate | Robustness to Trends |
+|--------|----------|---------------------|----------------------|
+| **Variance Strength** | **97.3%** | **2%** | Excellent (0.4% F1 drop) |
+| Spectral Strength | 95.3% | 10% | Good (3.9% F1 drop) |
+| FFT Confidence | 94.8% | 4% | Good (2.0% F1 drop) |
+| AIC Comparison | 91.5% | 18% | Moderate (5.7% F1 drop) |
+| ACF Confidence | 85.4% | 10% | Moderate (4.5% F1 drop) |
+
+**Winner: Variance Strength** achieves the highest accuracy with the lowest false positive rate and is most robust to non-linear trends.
+
+## Recommendations
+
+### Primary Recommendation: Use Variance Strength
+
+```r
+# Detect seasonality with Variance Strength method
+period <- 0.2  # Period in argvals units (e.g., 1/5 for 5 cycles in [0,1])
+strength <- seasonal_strength(fd, period = period, method = "variance", detrend = "linear")
+is_seasonal <- strength > 0.2
+```
+
+### When Period is Unknown: Two-Step Approach
+
+```r
+# Step 1: Estimate period using FFT (no period required)
+result <- estimate_period(fd, method = "fft", detrend = "linear")
+estimated_period <- result$period
+
+# Step 2: Measure strength with estimated period
+strength <- seasonal_strength(fd, period = estimated_period, method = "variance")
+is_seasonal <- strength > 0.2
+```
+
+### Critical Notes
+
+1. **Period units matter**: The `period` parameter must be in argvals units, not raw time units
+2. **Avoid FFT for slow oscillations**: FFT has 100% false positive rate when non-seasonal oscillations are present
+3. **Thresholds are calibrated**: All thresholds target ~5% false positive rate on pure noise
+
+\newpage
+
 # Introduction
 
 This report describes and compares five methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
