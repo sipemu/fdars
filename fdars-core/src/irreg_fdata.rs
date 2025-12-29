@@ -50,7 +50,11 @@ impl IrregFdata {
     /// Panics if the lists have different lengths or if any pair has mismatched lengths.
     pub fn from_lists(argvals_list: &[Vec<f64>], values_list: &[Vec<f64>]) -> Self {
         let n = argvals_list.len();
-        assert_eq!(n, values_list.len(), "argvals_list and values_list must have same length");
+        assert_eq!(
+            n,
+            values_list.len(),
+            "argvals_list and values_list must have same length"
+        );
 
         let mut offsets = Vec::with_capacity(n + 1);
         offsets.push(0);
@@ -142,12 +146,18 @@ impl IrregFdata {
 
     /// Get minimum number of observations per curve.
     pub fn min_obs(&self) -> usize {
-        (0..self.n_obs()).map(|i| self.n_points(i)).min().unwrap_or(0)
+        (0..self.n_obs())
+            .map(|i| self.n_points(i))
+            .min()
+            .unwrap_or(0)
     }
 
     /// Get maximum number of observations per curve.
     pub fn max_obs(&self) -> usize {
-        (0..self.n_obs()).map(|i| self.n_points(i)).max().unwrap_or(0)
+        (0..self.n_obs())
+            .map(|i| self.n_points(i))
+            .max()
+            .unwrap_or(0)
     }
 }
 
@@ -405,13 +415,7 @@ pub fn cov_irreg(
 /// Compute Lp distance between two irregular curves.
 ///
 /// Uses the union of observation points and linear interpolation.
-fn lp_distance_pair(
-    t1: &[f64],
-    x1: &[f64],
-    t2: &[f64],
-    x2: &[f64],
-    p: f64,
-) -> f64 {
+fn lp_distance_pair(t1: &[f64], x1: &[f64], t2: &[f64], x2: &[f64], p: f64) -> f64 {
     // Create union of time points
     let mut all_t: Vec<f64> = t1.iter().chain(t2.iter()).copied().collect();
     all_t.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -421,7 +425,10 @@ fn lp_distance_pair(
     let t_min = t1.first().unwrap().max(*t2.first().unwrap());
     let t_max = t1.last().unwrap().min(*t2.last().unwrap());
 
-    let common_t: Vec<f64> = all_t.into_iter().filter(|&t| t >= t_min && t <= t_max).collect();
+    let common_t: Vec<f64> = all_t
+        .into_iter()
+        .filter(|&t| t >= t_min && t <= t_max)
+        .collect();
 
     if common_t.len() < 2 {
         return f64::NAN;
@@ -478,7 +485,9 @@ pub fn metric_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f6
     let mut dist = vec![0.0; n * n];
 
     // Compute upper triangle in parallel
-    let pairs: Vec<(usize, usize)> = (0..n).flat_map(|i| (i + 1..n).map(move |j| (i, j))).collect();
+    let pairs: Vec<(usize, usize)> = (0..n)
+        .flat_map(|i| (i + 1..n).map(move |j| (i, j)))
+        .collect();
 
     let distances: Vec<f64> = pairs
         .par_iter()

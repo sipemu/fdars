@@ -20,9 +20,9 @@
 //! - **Legendre**: Orthonormal Legendre polynomials on [0,1]
 //! - **Wiener**: Eigenfunctions of the Wiener process
 
-use rayon::prelude::*;
 use rand::prelude::*;
 use rand_distr::Normal;
+use rayon::prelude::*;
 use std::f64::consts::PI;
 
 /// Eigenfunction type enum for simulation
