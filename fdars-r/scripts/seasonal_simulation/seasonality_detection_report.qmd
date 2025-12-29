@@ -11,8 +11,8 @@ format:
     colorlinks: true
     geometry:
       - margin=0.75in
-    fig-width: 10
-    fig-height: 8
+    fig-width: 7
+    fig-height: 5
 execute:
   echo: true
   warning: false
@@ -182,7 +182,7 @@ generate_seasonal_curve <- function(t, strength, noise_sd = 0.3) {
 
 ### Results
 
-![Detection rates by seasonal strength](plots/seasonality_detection_comparison.pdf){#fig-detection-rates width=100% height=8in}
+![Detection rates by seasonal strength](plots/seasonality_detection_comparison.pdf){#fig-detection-rates fig-align="center" width=7in height=5in}
 
 \newpage
 
@@ -212,7 +212,7 @@ generate_seasonal_curve <- function(t, strength, noise_sd = 0.3) {
 
 ### Precision-Recall Analysis
 
-![Precision-Recall curves](plots/seasonality_detection_details.pdf){#fig-pr-curves width=100% height=8in}
+![Precision-Recall curves](plots/seasonality_detection_details.pdf){#fig-pr-curves fig-align="center" width=7in height=6in}
 
 \newpage
 
@@ -271,7 +271,7 @@ generate_curve <- function(t, seasonal_strength, trend_strength, noise_sd = 0.3)
 
 ### Results
 
-![Detection rates heatmap by seasonal and trend strength](plots/seasonality_detection_trend_heatmaps.pdf){#fig-trend-heatmap width=100% height=7in}
+![Detection rates heatmap by seasonal and trend strength](plots/seasonality_detection_trend_heatmaps.pdf){#fig-trend-heatmap fig-align="center" width=7in height=5in}
 
 \newpage
 
@@ -297,7 +297,7 @@ generate_curve <- function(t, seasonal_strength, trend_strength, noise_sd = 0.3)
 
 ### False Positive Rate by Trend Strength
 
-![FPR when no seasonality is present, across trend strengths](plots/seasonality_detection_trend_pr.pdf){#fig-trend-fpr width=100% height=4in}
+![FPR when no seasonality is present, across trend strengths](plots/seasonality_detection_trend_pr.pdf){#fig-trend-fpr fig-align="center" width=7in height=3in}
 
 **Key finding**: FFT's FPR increases dramatically with trend strength because non-linear trends can create spurious peaks in the periodogram.
 
@@ -341,15 +341,15 @@ trend_functions <- list(
 
 ### Results
 
-![F1 scores by trend type](plots/seasonality_detection_trend_types_f1.pdf){#fig-trend-types-f1 width=100% height=5in}
+![F1 scores by trend type](plots/seasonality_detection_trend_types_f1.pdf){#fig-trend-types-f1 fig-align="center" width=7in height=4in}
 
 \newpage
 
 ### FPR by Trend Type
 
-![Example trend functions](plots/seasonality_detection_trend_types_examples.pdf){#fig-trend-examples width=100% height=5in}
+![Example trend functions](plots/seasonality_detection_trend_types_examples.pdf){#fig-trend-examples fig-align="center" width=7in height=4in}
 
-![FPR across trend types and strengths](plots/seasonality_detection_trend_types_fpr.pdf){#fig-trend-types-fpr width=100% height=6in}
+![FPR across trend types and strengths](plots/seasonality_detection_trend_types_fpr.pdf){#fig-trend-types-fpr fig-align="center" width=7in height=5in}
 
 \newpage
 
@@ -457,7 +457,7 @@ The key insight is that simple variance-based decomposition outperforms more com
 
 The AIC comparison method is based on the observation that Fourier bases naturally capture periodic patterns better than P-splines for seasonal data.
 
-![Fourier vs P-spline AIC comparison](plots/seasonal_basis_comparison.pdf){#fig-basis-comparison width=100% height=8in}
+![Fourier vs P-spline AIC comparison](plots/seasonal_basis_comparison.pdf){#fig-basis-comparison fig-align="center" width=7in height=5in}
 
 \newpage
 
