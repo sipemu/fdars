@@ -29,13 +29,13 @@ use rayon::prelude::*;
 #[derive(Clone, Debug)]
 pub struct IrregFdata {
     /// Start indices for each observation (length n+1)
-    /// offsets[i]..offsets[i+1] gives the range for observation i
+    /// `offsets[i]..offsets[i+1]` gives the range for observation i
     pub offsets: Vec<usize>,
     /// All observation points concatenated
     pub argvals: Vec<f64>,
     /// All values concatenated
     pub values: Vec<f64>,
-    /// Domain range [min, max]
+    /// Domain range `[min, max]`
     pub rangeval: [f64; 2],
 }
 
@@ -98,7 +98,7 @@ impl IrregFdata {
     /// * `offsets` - Start indices (length n+1)
     /// * `argvals` - All observation points concatenated
     /// * `values` - All values concatenated
-    /// * `rangeval` - Domain range [min, max]
+    /// * `rangeval` - Domain range `[min, max]`
     pub fn from_flat(
         offsets: Vec<usize>,
         argvals: Vec<f64>,
