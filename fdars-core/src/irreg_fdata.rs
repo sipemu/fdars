@@ -552,9 +552,7 @@ pub fn to_regular_grid(
             target_grid
                 .iter()
                 .map(|&t| {
-                    if obs_t.is_empty() {
-                        f64::NAN
-                    } else if t < obs_t[0] || t > obs_t[obs_t.len() - 1] {
+                    if obs_t.is_empty() || t < obs_t[0] || t > obs_t[obs_t.len() - 1] {
                         f64::NAN
                     } else {
                         linear_interp(obs_t, obs_x, t)

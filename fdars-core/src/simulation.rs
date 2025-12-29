@@ -237,7 +237,7 @@ pub fn eigenvalues_linear(m: usize) -> Vec<f64> {
 ///
 /// λ_k = exp(-k) for k = 1, ..., m
 pub fn eigenvalues_exponential(m: usize) -> Vec<f64> {
-    (1..=m).map(|k| (-1.0 * k as f64).exp()).collect()
+    (1..=m).map(|k| (-(k as f64)).exp()).collect()
 }
 
 /// Generate Wiener process eigenvalues.
