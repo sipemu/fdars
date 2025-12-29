@@ -31,13 +31,13 @@ n_years <- 5                 # Number of years of monthly data
 n_months <- n_years * 12     # Total number of monthly observations
 noise_sd <- 0.3              # Standard deviation of noise
 
-# Detection thresholds
+# Detection thresholds (calibrated to ~5% false positive rate on pure noise)
 detection_thresholds <- list(
   aic_comparison = 0,
-  fft_confidence = 2.0,
-  acf_confidence = 0.3,
-  strength_variance = 0.3,
-  strength_spectral = 0.3,
+  fft_confidence = 6.0,         # 95th pct of noise ~5.7
+  acf_confidence = 0.25,        # 95th pct of noise ~0.22
+  strength_variance = 0.1,      # use without detrend
+  strength_spectral = 0.3,      # 95th pct of noise ~0.29
   basis_auto = 0.5
 )
 
@@ -133,9 +133,10 @@ detect_acf <- function(fd_single) {
   return(list(score = score, detected = detected))
 }
 
+# Note: variance method works poorly with linear detrending, use "none"
 detect_strength_variance <- function(fd_single, period = 12) {
   score <- tryCatch({
-    seasonal_strength(fd_single, period = period, method = "variance", detrend = "linear")
+    seasonal_strength(fd_single, period = period, method = "variance", detrend = "none")
   }, error = function(e) NA)
 
   if (is.na(score)) return(list(score = NA, detected = NA))
@@ -279,8 +280,10 @@ calculate_metrics <- function(detected, ground_truth) {
                2 * precision * recall / (precision + recall), NA)
   specificity <- ifelse(tn + fp > 0, tn / (tn + fp), NA)
 
+  fpr <- ifelse(tn + fp > 0, fp / (tn + fp), NA)  # False Positive Rate
+
   return(data.frame(Accuracy = accuracy, Precision = precision,
-                    Recall = recall, Specificity = specificity, F1 = f1))
+                    Recall = recall, Specificity = specificity, FPR = fpr, F1 = f1))
 }
 
 metrics_by_trend <- lapply(trend_strengths, function(ts) {
@@ -299,7 +302,7 @@ metrics_by_trend <- lapply(trend_strengths, function(ts) {
 
 metrics_all <- do.call(rbind, metrics_by_trend)
 
-# Print summary
+# Print F1 summary
 cat("\nF1 Scores by Method and Trend Strength:\n")
 cat("=" , rep("=", 80), "\n", sep = "")
 
@@ -308,6 +311,32 @@ f1_wide <- metrics_all %>%
   pivot_wider(names_from = Trend, values_from = F1)
 
 print(f1_wide, digits = 3)
+
+# Print FPR summary
+cat("\nFalse Positive Rates by Method and Trend Strength:\n")
+cat("=" , rep("=", 80), "\n", sep = "")
+
+fpr_wide <- metrics_all %>%
+  select(Method, Trend, FPR) %>%
+  pivot_wider(names_from = Trend, values_from = FPR)
+
+print(fpr_wide, digits = 3)
+
+# --- False Positive Rate at Zero Seasonal Strength ---
+cat("\n=== False Positive Rates (at seasonal strength = 0) ===\n")
+zero_seasonal <- results %>% filter(seasonal_strength == 0)
+fpr_by_trend <- zero_seasonal %>%
+  group_by(trend_strength) %>%
+  summarise(
+    AIC = mean(aic_detected, na.rm = TRUE),
+    FFT = mean(fft_detected, na.rm = TRUE),
+    ACF = mean(acf_detected, na.rm = TRUE),
+    Spec_Strength = mean(spec_detected, na.rm = TRUE),
+    Basis_Auto = mean(auto_detected, na.rm = TRUE),
+    .groups = "drop"
+  )
+cat("\nFPR when there is NO seasonality (by trend strength):\n")
+print(fpr_by_trend, digits = 3)
 
 # --- Visualization with ggplot2 ---
 cat("\n=== Generating Plots ===\n")

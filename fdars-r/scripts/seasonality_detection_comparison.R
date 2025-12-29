@@ -27,12 +27,13 @@ noise_sd <- 0.3             # Standard deviation of noise
 
 # Detection threshold for binary classification
 # Methods return continuous scores; we threshold for detection rate
+# Thresholds calibrated to ~5% false positive rate on pure noise
 detection_thresholds <- list(
   aic_comparison = 0,           # Fourier AIC < P-spline AIC
-  fft_confidence = 2.0,         # Power ratio threshold
-  acf_confidence = 0.3,         # ACF peak threshold
-  strength_variance = 0.3,      # Variance ratio threshold
-  strength_spectral = 0.3,      # Spectral power threshold
+  fft_confidence = 6.0,         # Power ratio threshold (95th pct of noise ~5.7)
+  acf_confidence = 0.25,        # ACF peak threshold (95th pct of noise ~0.22)
+  strength_variance = 0.1,      # Variance ratio threshold (use without detrend)
+  strength_spectral = 0.3,      # Spectral power threshold (95th pct of noise ~0.29)
   basis_auto = 0.5              # Already binary (uses internal threshold)
 )
 
@@ -120,9 +121,10 @@ detect_acf <- function(fd_single, expected_period = 12) {
 }
 
 # Method 4: Seasonal strength (variance method)
+# Note: variance method works poorly with linear detrending, use "none"
 detect_strength_variance <- function(fd_single, period = 12) {
   score <- tryCatch({
-    seasonal_strength(fd_single, period = period, method = "variance", detrend = "linear")
+    seasonal_strength(fd_single, period = period, method = "variance", detrend = "none")
   }, error = function(e) NA)
 
   if (is.na(score)) {
@@ -290,11 +292,14 @@ calculate_metrics <- function(detected, ground_truth) {
                2 * precision * recall / (precision + recall), NA)
   specificity <- ifelse(tn + fp > 0, tn / (tn + fp), NA)
 
+  fpr <- ifelse(tn + fp > 0, fp / (tn + fp), NA)  # False Positive Rate
+
   return(data.frame(
     Accuracy = accuracy,
     Precision = precision,
     Recall = recall,
     Specificity = specificity,
+    FPR = fpr,
     F1 = f1
   ))
 }
@@ -308,19 +313,39 @@ metrics <- rbind(
   cbind(Method = "Basis Auto", calculate_metrics(results$auto_detected, results$ground_truth))
 )
 
-cat(sprintf("%-20s %10s %10s %10s %10s %10s\n",
-            "Method", "Accuracy", "Precision", "Recall", "Specific.", "F1"))
-cat("-" , rep("-", 70), "\n", sep = "")
+cat(sprintf("%-20s %10s %10s %10s %10s %10s %10s\n",
+            "Method", "Accuracy", "Precision", "Recall", "FPR", "Specif.", "F1"))
+cat("-" , rep("-", 80), "\n", sep = "")
 for (i in 1:nrow(metrics)) {
-  cat(sprintf("%-20s %9.1f%% %9.1f%% %9.1f%% %9.1f%% %9.1f%%\n",
+  cat(sprintf("%-20s %9.1f%% %9.1f%% %9.1f%% %9.1f%% %9.1f%% %9.1f%%\n",
               metrics$Method[i],
               metrics$Accuracy[i] * 100,
               metrics$Precision[i] * 100,
               metrics$Recall[i] * 100,
+              metrics$FPR[i] * 100,
               metrics$Specificity[i] * 100,
               metrics$F1[i] * 100))
 }
-cat("-" , rep("-", 70), "\n", sep = "")
+cat("-" , rep("-", 80), "\n", sep = "")
+
+# --- False Positive Rate at Zero Seasonal Strength ---
+cat("\n=== False Positive Rates (at seasonal strength = 0) ===\n")
+zero_strength <- results %>% filter(strength == 0)
+fpr_at_zero <- data.frame(
+  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Basis Auto"),
+  FPR = c(
+    mean(zero_strength$aic_detected, na.rm = TRUE),
+    mean(zero_strength$fft_detected, na.rm = TRUE),
+    mean(zero_strength$acf_detected, na.rm = TRUE),
+    mean(zero_strength$var_detected, na.rm = TRUE),
+    mean(zero_strength$spec_detected, na.rm = TRUE),
+    mean(zero_strength$auto_detected, na.rm = TRUE)
+  )
+)
+cat("\nFalse positive rate when there is NO seasonality:\n")
+for (i in 1:nrow(fpr_at_zero)) {
+  cat(sprintf("  %-15s: %5.1f%%\n", fpr_at_zero$Method[i], fpr_at_zero$FPR[i] * 100))
+}
 
 # --- Find optimal thresholds using ROC-like analysis ---
 cat("\n=== Optimal Threshold Analysis ===\n")
