@@ -105,21 +105,15 @@ print(ifd)
 ### Visualizing Sparse Data
 
 ```{r plot-sparse}
-plot(ifd, main = "Sparsified Functional Data")
-```
-
-Using ggplot2:
-
-```{r autoplot-sparse}
 autoplot(ifd) +
-  labs(title = "Irregular Functional Data (ggplot2)")
+  labs(title = "Sparsified Functional Data")
 ```
 
 ### Non-Uniform Sparsification
 
 Control sampling density with a probability function:
 
-```{r nonuniform-sparsify, fig.height = 6}
+```{r nonuniform-sparsify, fig.height = 8, fig.width = 10}
 # More observations in the middle
 prob_middle <- function(t) dnorm(t, mean = 0.5, sd = 0.2)
 
@@ -128,16 +122,14 @@ prob_edges <- function(t) 0.1 + 4 * (t - 0.5)^2
 
 fd <- simFunData(n = 20, argvals = t, M = 5, seed = 42)
 
-par(mfrow = c(3, 1))
 ifd_uniform <- sparsify(fd, minObs = 15, maxObs = 25, seed = 123)
-plot(ifd_uniform, main = "Uniform Sampling")
-
 ifd_middle <- sparsify(fd, minObs = 15, maxObs = 25, prob = prob_middle, seed = 123)
-plot(ifd_middle, main = "Dense in Middle")
-
 ifd_edges <- sparsify(fd, minObs = 15, maxObs = 25, prob = prob_edges, seed = 123)
-plot(ifd_edges, main = "Dense at Edges")
-par(mfrow = c(1, 1))
+
+p1 <- autoplot(ifd_uniform) + labs(title = "Uniform Sampling")
+p2 <- autoplot(ifd_middle) + labs(title = "Dense in Middle")
+p3 <- autoplot(ifd_edges) + labs(title = "Dense at Edges")
+gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
 ```
 
 ## Converting to Regular Grid
@@ -170,11 +162,10 @@ fd_interp <- as.fdata(ifd, argvals = target_grid, method = "linear")
 sum(is.na(fd_interp$data))
 ```
 
-```{r compare-methods, fig.height = 5}
-par(mfrow = c(2, 1))
-plot(ifd[1], main = "Original Sparse Data (1 curve)", lwd = 2)
-plot(fd_interp[1], main = "After Linear Interpolation")
-par(mfrow = c(1, 1))
+```{r compare-methods, fig.height = 4, fig.width = 10}
+p1 <- autoplot(ifd[1]) + labs(title = "Original Sparse Data (1 curve)")
+p2 <- autoplot(fd_interp[1]) + labs(title = "After Linear Interpolation")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
 ## Basis Representation for Sparse Data
@@ -189,44 +180,39 @@ For comprehensive coverage of basis functions, see `vignette("basis-representati
 
 ### B-spline Projection
 
-Project interpolated curves onto a B-spline basis:
-```{r basis-projection, fig.height = 5}
-# Create sparse data
-fd <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
-ifd_sparse <- sparsify(fd, minObs = 10, maxObs = 20, seed = 123)
+Project curves onto a B-spline basis for smoothing and dimensionality reduction:
 
-# Convert to regular grid
-fd_interp <- as.fdata(ifd_sparse, method = "linear")
+```{r basis-projection, fig.height = 4, fig.width = 10}
+# Simulate functional data
+fd_sim <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
 
-# Project onto B-spline basis
-coefs <- fdata2basis(fd_interp, nbasis = 12, type = "bspline")
-fd_basis <- basis2fdata(coefs, argvals = fd_interp$argvals)
+# Add noise to simulate measurement error
+fd_noisy <- fd_sim
+fd_noisy$data <- fd_noisy$data + matrix(rnorm(length(fd_noisy$data), sd = 0.3),
+                                         nrow = nrow(fd_noisy$data))
 
-# Compare: interpolated vs basis-smoothed
-par(mfrow = c(1, 2))
-plot(fd_interp, main = "Linear Interpolation", alpha = 0.7)
-plot(fd_basis, main = "B-spline Basis (12 basis)")
-par(mfrow = c(1, 1))
+# Project onto B-spline basis (smooths the curves)
+coefs <- fdata2basis(fd_noisy, nbasis = 12, type = "bspline")
+fd_basis <- basis2fdata(coefs, argvals = fd_noisy$argvals)
+
+# Compare using ggplot2
+p1 <- autoplot(fd_noisy, alpha = 0.7) + labs(title = "Noisy Data")
+p2 <- autoplot(fd_basis, alpha = 0.7) + labs(title = "B-spline Smoothed (12 basis)")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
 ### P-spline Smoothing
 
-For noisy sparse data, P-splines with automatic smoothing parameter selection provide robust results:
+P-splines with automatic smoothing parameter selection provide robust results for noisy data:
 
-```{r pspline-smoothing, fig.height = 5}
-# Add noise to simulate measurement error
-fd_noisy <- fd_interp
-fd_noisy$data <- fd_noisy$data + matrix(rnorm(length(fd_noisy$data), sd = 0.3),
-                                         nrow = nrow(fd_noisy$data))
-
+```{r pspline-smoothing, fig.height = 4, fig.width = 10}
 # P-spline with GCV-selected lambda
 fd_pspline <- pspline(fd_noisy, nbasis = 20, lambda = "GCV")
 
 # Compare
-par(mfrow = c(1, 2))
-plot(fd_noisy, main = "Noisy Interpolated Data", alpha = 0.7)
-plot(fd_pspline, main = "P-spline Smoothed (GCV)")
-par(mfrow = c(1, 1))
+p1 <- autoplot(fd_noisy, alpha = 0.7) + labs(title = "Noisy Data")
+p2 <- autoplot(fd_pspline, alpha = 0.7) + labs(title = "P-spline Smoothed (GCV)")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
 ### Choosing the Right Approach
@@ -278,18 +264,24 @@ ifd <- sparsify(fd, minObs = 15, maxObs = 30, seed = 123)
 
 # Estimate mean
 mean_fd <- mean(ifd, bandwidth = 0.1)
-plot(mean_fd, main = "Estimated Mean Function")
+autoplot(mean_fd) + labs(title = "Estimated Mean Function")
 ```
 
 ```{r compare-mean}
 # Compare to true sample mean (from original data)
 true_mean <- colMeans(fd$data)
 
-plot(t, true_mean, type = "l", lwd = 2, col = "blue",
-     main = "Mean Comparison", xlab = "t", ylab = "Mean")
-lines(mean_fd$argvals, mean_fd$data[1,], col = "red", lwd = 2)
-legend("topright", c("True Sample Mean", "Kernel Estimate"),
-       col = c("blue", "red"), lwd = 2)
+# Create comparison data frame
+compare_df <- rbind(
+  data.frame(t = t, value = true_mean, type = "True Sample Mean"),
+  data.frame(t = mean_fd$argvals, value = mean_fd$data[1,], type = "Kernel Estimate")
+)
+
+ggplot(compare_df, aes(x = t, y = value, color = type)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("True Sample Mean" = "blue", "Kernel Estimate" = "red")) +
+  labs(title = "Mean Comparison", x = "t", y = "Mean", color = NULL) +
+  theme_minimal()
 ```
 
 ### Distance Matrix
@@ -424,7 +416,7 @@ ifd_sensor <- irregFdata(
                ylab = "Temperature (C)")
 )
 
-plot(ifd_sensor, alpha = 0.8)
+autoplot(ifd_sensor, alpha = 0.8)
 ```
 
 ## Best Practices
