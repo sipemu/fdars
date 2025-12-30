@@ -294,8 +294,8 @@ plot(fd_kl, main = "KL Simulation (Wiener)")
 
 # GP simulation with Brownian motion kernel
 set.seed(42)
-fd_gp <- make_gaussian_process(n = 10, argvals = t,
-                                kernel = kernel_brownian())
+fd_gp <- make_gaussian_process(n = 10, t = t,
+                                cov = kernel_brownian())
 plot(fd_gp, main = "GP Simulation (Brownian Kernel)")
 
 par(mfrow = c(1, 1))
