@@ -79,29 +79,38 @@ metric <- function(fdata1, fdata2 = NULL, method = "lp", ...) {
 #' Lp Metric for Functional Data
 #'
 #' Computes the Lp distance between functional data objects using
-#' numerical integration (Simpson's rule).
+#' numerical integration (Simpson's rule). Works with both regular \code{fdata}
+#' and irregular \code{irregFdata} objects.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, computes self-distances
-#'   for fdata1 (more efficient symmetric computation).
-#' @param lp The p in Lp metric. Default is 2 (L2 distance).
+#' @param x A functional data object (\code{fdata} or \code{irregFdata}).
+#' @param y An object of class 'fdata'. If NULL, computes self-distances
+#'   for x (more efficient symmetric computation). Only supported for \code{fdata}.
+#' @param p The order of the Lp metric (default 2 for L2 distance).
 #' @param w Optional weight vector of length equal to number of evaluation
-#'   points. Default is uniform weighting.
-#' @param ... Additional arguments (ignored).
+#'   points. Default is uniform weighting. Only supported for \code{fdata}.
+#' @param ... Additional arguments passed to methods.
 #'
-#' @return A distance matrix of dimensions n1 x n2 (or n x n if fdata2 is NULL).
+#' @return A distance matrix.
 #'
 #' @export
 #' @examples
+#' # Regular fdata
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
 #' D <- metric.lp(fd)  # Self-distances
 #'
-#' fd2 <- fdata(matrix(rnorm(50), 5, 10))
-#' D2 <- metric.lp(fd, fd2)  # Cross-distances
-metric.lp <- function(fdata1, fdata2 = NULL, lp = 2, w = 1, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
-  }
+#' # Irregular fdata
+#' ifd <- sparsify(fd, minObs = 3, maxObs = 7, seed = 42)
+#' D_irreg <- metric.lp(ifd)
+metric.lp <- function(x, ...) {
+  UseMethod("metric.lp")
+}
+
+#' @rdname metric.lp
+#' @export
+metric.lp.fdata <- function(x, y = NULL, p = 2, w = 1, ...) {
+  fdata1 <- x
+  fdata2 <- y
+  lp <- p
 
   if (fdata1$fdata2d) {
     # 2D functional data (surfaces)

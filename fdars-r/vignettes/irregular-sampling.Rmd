@@ -248,7 +248,7 @@ argvals <- list(
 X <- list(rep(1, 50), rep(2, 30))
 ifd <- irregFdata(argvals, X)
 
-integrals <- int.simpson.irregFdata(ifd)
+integrals <- int.simpson(ifd)
 print(integrals)  # Should be approximately 1 and 2
 ```
 
@@ -256,7 +256,7 @@ print(integrals)  # Should be approximately 1 and 2
 
 ```{r norms}
 # L2 norm of constant function c is c
-norms <- norm.irregFdata(ifd, p = 2)
+norms <- norm(ifd, p = 2)
 print(norms)
 ```
 
@@ -297,7 +297,7 @@ Compute pairwise Lp distances:
 
 ```{r distances}
 ifd <- sparsify(fd[1:5], minObs = 20, maxObs = 40, seed = 123)
-D <- metric.lp.irregFdata(ifd, p = 2)
+D <- metric.lp(ifd, p = 2)
 round(D, 2)
 ```
 
@@ -400,7 +400,7 @@ if (any(!keep)) {
 | `is.irregular()` | Check if object is irregFdata |
 | `sparsify()` | Convert regular to irregular data |
 | `as.fdata()` | Convert irregular to regular (with interpolation) |
-| `int.simpson.irregFdata()` | Compute integrals |
-| `norm.irregFdata()` | Compute Lp norms |
-| `mean.irregFdata()` | Estimate mean via kernel smoothing |
-| `metric.lp.irregFdata()` | Compute pairwise distances |
+| `int.simpson()` | Compute integrals (works with fdata and irregFdata) |
+| `norm()` | Compute Lp norms (works with fdata and irregFdata) |
+| `mean()` | Estimate mean via kernel smoothing |
+| `metric.lp()` | Compute pairwise distances (works with fdata and irregFdata) |

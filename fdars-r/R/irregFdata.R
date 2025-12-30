@@ -420,27 +420,9 @@ sparsify <- function(fdataobj, minObs = 5, maxObs = NULL, prob = NULL, seed = NU
 # Operations on Irregular Data
 # =============================================================================
 
-#' Integrate Irregular Functional Data
-#'
-#' Compute the integral of each curve using trapezoidal rule.
-#'
-#' @param x An object of class \code{irregFdata}.
-#'
-#' @return A numeric vector of integrals, one per curve.
-#'
+#' @rdname int.simpson
 #' @export
-#' @examples
-#' t <- seq(0, 1, length.out = 100)
-#' fd <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
-#' ifd <- sparsify(fd, minObs = 20, maxObs = 50, seed = 123)
-#'
-#' integrals <- int.simpson.irregFdata(ifd)
-#' print(integrals)
-int.simpson.irregFdata <- function(x) {
-  if (!inherits(x, "irregFdata")) {
-    stop("x must be of class 'irregFdata'")
-  }
-
+int.simpson.irregFdata <- function(x, ...) {
   # Convert to flat representation
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
   flat_argvals <- unlist(x$argvals)
@@ -449,26 +431,9 @@ int.simpson.irregFdata <- function(x) {
   .Call("wrap__irreg_integrate", offsets, flat_argvals, flat_values)
 }
 
-#' Compute Lp Norm for Irregular Functional Data
-#'
-#' @param x An object of class \code{irregFdata}.
-#' @param p The order of the norm (default 2 for L2).
-#'
-#' @return A numeric vector of norms, one per curve.
-#'
+#' @rdname norm
 #' @export
-#' @examples
-#' t <- seq(0, 1, length.out = 100)
-#' fd <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
-#' ifd <- sparsify(fd, minObs = 20, maxObs = 50, seed = 123)
-#'
-#' l2_norms <- norm.irregFdata(ifd, p = 2)
-#' print(l2_norms)
-norm.irregFdata <- function(x, p = 2) {
-  if (!inherits(x, "irregFdata")) {
-    stop("x must be of class 'irregFdata'")
-  }
-
+norm.irregFdata <- function(x, p = 2, ...) {
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
   flat_argvals <- unlist(x$argvals)
   flat_values <- unlist(x$X)
@@ -530,26 +495,9 @@ mean.irregFdata <- function(x, argvals = NULL, bandwidth = NULL, kernel = c("epa
         ))
 }
 
-#' Compute Lp Distance Matrix for Irregular Data
-#'
-#' @param x An object of class \code{irregFdata}.
-#' @param p The order of the Lp distance (default 2).
-#'
-#' @return A symmetric distance matrix.
-#'
+#' @rdname metric.lp
 #' @export
-#' @examples
-#' t <- seq(0, 1, length.out = 100)
-#' fd <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
-#' ifd <- sparsify(fd, minObs = 20, maxObs = 50, seed = 123)
-#'
-#' D <- metric.lp.irregFdata(ifd)
-#' print(round(D, 2))
-metric.lp.irregFdata <- function(x, p = 2) {
-  if (!inherits(x, "irregFdata")) {
-    stop("x must be of class 'irregFdata'")
-  }
-
+metric.lp.irregFdata <- function(x, p = 2, ...) {
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
   flat_argvals <- unlist(x$argvals)
   flat_values <- unlist(x$X)

@@ -119,26 +119,26 @@ test_that("as.fdata.irregFdata with linear interpolation works", {
   expect_false(any(is.na(fd$data)))  # No NAs with linear interpolation
 })
 
-test_that("int.simpson.irregFdata computes correct integrals", {
+test_that("int.simpson computes correct integrals for irregFdata", {
   # Constant function = 1 over [0, 1] should integrate to 1
   argvals <- list(c(0, 0.5, 1), c(0, 0.5, 1))
   X <- list(c(1, 1, 1), c(2, 2, 2))
   ifd <- irregFdata(argvals, X)
 
-  integrals <- int.simpson.irregFdata(ifd)
+  integrals <- int.simpson(ifd)
 
   expect_equal(length(integrals), 2)
   expect_true(abs(integrals[1] - 1) < 0.01)
   expect_true(abs(integrals[2] - 2) < 0.01)
 })
 
-test_that("norm.irregFdata computes correct L2 norms", {
+test_that("norm computes correct L2 norms for irregFdata", {
   # Constant function = c over [0, 1] has L2 norm = c
   argvals <- list(c(0, 0.5, 1))
   X <- list(c(3, 3, 3))
   ifd <- irregFdata(argvals, X)
 
-  norms <- norm.irregFdata(ifd, p = 2)
+  norms <- norm(ifd, p = 2)
 
   expect_equal(length(norms), 1)
   expect_true(abs(norms[1] - 3) < 0.01)
@@ -158,12 +158,12 @@ test_that("mean.irregFdata estimates mean function", {
   expect_false(any(is.nan(mean_fd$data)))
 })
 
-test_that("metric.lp.irregFdata computes distance matrix", {
+test_that("metric.lp computes distance matrix for irregFdata", {
   argvals <- list(c(0, 0.5, 1), c(0, 0.5, 1), c(0, 0.5, 1))
   X <- list(c(0, 0, 0), c(1, 1, 1), c(0, 0, 0))
   ifd <- irregFdata(argvals, X)
 
-  D <- metric.lp.irregFdata(ifd, p = 2)
+  D <- metric.lp(ifd, p = 2)
 
   expect_equal(dim(D), c(3, 3))
   expect_true(all(diag(D) < 0.01))  # Diagonal should be ~0

@@ -10,9 +10,11 @@
 #' Simpson's Rule Integration
 #'
 #' Integrate functional data over its domain using Simpson's rule (composite
-#' trapezoidal rule for non-uniform grids).
+#' trapezoidal rule for non-uniform grids). Works with both regular \code{fdata}
+#' and irregular \code{irregFdata} objects.
 #'
-#' @param fdataobj An object of class 'fdata'.
+#' @param x A functional data object (\code{fdata} or \code{irregFdata}).
+#' @param ... Additional arguments passed to methods.
 #'
 #' @return A numeric vector of integrals, one per curve.
 #'
@@ -23,16 +25,22 @@
 #' for (i in 1:10) X[i, ] <- sin(2*pi*t)
 #' fd <- fdata(X, argvals = t)
 #' integrals <- int.simpson(fd)  # Should be approximately 0
-int.simpson <- function(fdataobj) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
+#'
+#' # Also works with irregular data
+#' ifd <- sparsify(fd, minObs = 20, maxObs = 50, seed = 123)
+#' integrals_irreg <- int.simpson(ifd)
+int.simpson <- function(x, ...) {
+  UseMethod("int.simpson")
+}
 
-  if (isTRUE(fdataobj$fdata2d)) {
+#' @rdname int.simpson
+#' @export
+int.simpson.fdata <- function(x, ...) {
+  if (isTRUE(x$fdata2d)) {
     stop("int.simpson for 2D functional data not yet implemented")
   }
 
-  .Call("wrap__int_simpson", fdataobj$data, as.numeric(fdataobj$argvals))
+  .Call("wrap__int_simpson", x$data, as.numeric(x$argvals))
 }
 
 #' Inner Product of Functional Data

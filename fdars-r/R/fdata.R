@@ -541,26 +541,38 @@ mean.fdata <- function(x, ...) {
   result
 }
 
-#' Compute Lp norm of functional data
+#' Compute Lp Norm of Functional Data
 #'
-#' @param fdataobj An object of class 'fdata'.
-#' @param lp The p in Lp norm (default 2 for L2 norm).
+#' Generic function to compute Lp norms for functional data objects.
+#' Works with both regular \code{fdata} and irregular \code{irregFdata} objects.
+#'
+#' @param x A functional data object (\code{fdata} or \code{irregFdata}).
+#' @param p The order of the norm (default 2 for L2 norm).
+#' @param ... Additional arguments passed to methods.
 #'
 #' @return A numeric vector of norms, one per curve.
 #' @export
 #' @examples
+#' # Regular fdata
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
 #' norms <- norm(fd)
-norm <- function(fdataobj, lp = 2) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
+#'
+#' # Irregular fdata
+#' ifd <- sparsify(fd, minObs = 3, maxObs = 7, seed = 42)
+#' norms_irreg <- norm(ifd)
+norm <- function(x, p = 2, ...) {
 
-  if (fdataobj$fdata2d) {
+  UseMethod("norm")
+}
+
+#' @rdname norm
+#' @export
+norm.fdata <- function(x, p = 2, ...) {
+  if (x$fdata2d) {
     stop("norm not yet implemented for 2D functional data")
   }
 
-  .Call("wrap__fdata_norm_lp_1d", fdataobj$data, as.numeric(fdataobj$argvals), as.numeric(lp))
+  .Call("wrap__fdata_norm_lp_1d", x$data, as.numeric(x$argvals), as.numeric(p))
 }
 
 #' Normalize functional data
@@ -568,7 +580,7 @@ norm <- function(fdataobj, lp = 2) {
 #' Scales each curve to have Lp norm equal to 1.
 #'
 #' @param fdataobj An object of class 'fdata'.
-#' @param lp The p in Lp norm (default 2 for L2 norm).
+#' @param p The order of the norm (default 2 for L2 norm).
 #'
 #' @return A normalized 'fdata' object where each curve has unit norm.
 #' @export
@@ -576,7 +588,7 @@ norm <- function(fdataobj, lp = 2) {
 #' fd <- fdata(matrix(rnorm(100), 10, 10), argvals = seq(0, 1, length.out = 10))
 #' fd_norm <- normalize(fd)
 #' norm(fd_norm)  # All values should be 1
-normalize <- function(fdataobj, lp = 2) {
+normalize <- function(fdataobj, p = 2) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
@@ -586,7 +598,7 @@ normalize <- function(fdataobj, lp = 2) {
   }
 
   # Compute norms
-  norms <- norm(fdataobj, lp = lp)
+  norms <- norm(fdataobj, p = p)
 
   # Handle zero norms (avoid division by zero)
   norms[norms == 0] <- 1

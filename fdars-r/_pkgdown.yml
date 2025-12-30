@@ -256,10 +256,7 @@ reference:
   - is.irregular
   - sparsify
   - as.fdata
-  - int.simpson.irregFdata
-  - norm.irregFdata
   - mean.irregFdata
-  - metric.lp.irregFdata
 
 - title: Random Processes
   contents:
