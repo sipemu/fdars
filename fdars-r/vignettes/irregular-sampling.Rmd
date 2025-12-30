@@ -184,6 +184,7 @@ Project curves onto a B-spline basis for smoothing and dimensionality reduction:
 
 ```{r basis-projection, fig.height = 4, fig.width = 10}
 # Simulate functional data
+set.seed(123)
 fd_sim <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
 
 # Add noise to simulate measurement error
@@ -206,11 +207,17 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 P-splines with automatic smoothing parameter selection provide robust results for noisy data:
 
 ```{r pspline-smoothing, fig.height = 4, fig.width = 10}
+# Create noisy data for P-spline demo
+set.seed(456)
+fd_for_pspline <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
+fd_for_pspline$data <- fd_for_pspline$data + matrix(rnorm(length(fd_for_pspline$data), sd = 0.3),
+                                                      nrow = nrow(fd_for_pspline$data))
+
 # P-spline with GCV-selected lambda
-fd_pspline <- pspline(fd_noisy, nbasis = 20, lambda = "GCV")
+fd_pspline <- pspline(fd_for_pspline, nbasis = 20, lambda = "GCV")
 
 # Compare
-p1 <- autoplot(fd_noisy, alpha = 0.7) + labs(title = "Noisy Data")
+p1 <- autoplot(fd_for_pspline, alpha = 0.7) + labs(title = "Noisy Data")
 p2 <- autoplot(fd_pspline, alpha = 0.7) + labs(title = "P-spline Smoothed (GCV)")
 gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
