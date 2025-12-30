@@ -7604,6 +7604,215 @@ fn irreg_to_regular(
     Robj::from(result)
 }
 
+/// Fit basis functions to irregular functional data
+/// Each curve is individually fitted via least squares at its own observation points
+/// basis_type: 0 = bspline, 1 = fourier
+#[extendr]
+fn irreg_fdata2basis(
+    offsets: Vec<i32>,
+    argvals: Vec<f64>,
+    values: Vec<f64>,
+    nbasis: i32,
+    basis_type: i32,
+) -> Robj {
+    let offsets: Vec<usize> = offsets.iter().map(|&x| x as usize).collect();
+    let n = offsets.len() - 1;
+    let nbasis = nbasis as usize;
+
+    if n == 0 || nbasis < 2 {
+        return r!(RMatrix::new_matrix(0, 0, |_, _| 0.0));
+    }
+
+    // Get overall domain range from all observations
+    let t_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
+    let t_max = argvals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    // Result matrix: n curves x nbasis coefficients
+    let mut coefs = vec![0.0; n * nbasis];
+
+    // Process each curve individually
+    for i in 0..n {
+        let start = offsets[i];
+        let end = offsets[i + 1];
+        let m_i = end - start;
+
+        if m_i < 2 {
+            // Not enough points to fit basis, leave coefficients as zeros
+            continue;
+        }
+
+        let curve_argvals = &argvals[start..end];
+        let curve_values = &values[start..end];
+
+        // Compute basis matrix for this curve's observation points
+        // Scale argvals to domain [t_min, t_max] for consistent basis
+        let basis = if basis_type == 1 {
+            fourier_basis_with_range(curve_argvals, nbasis, t_min, t_max)
+        } else {
+            bspline_basis_with_range(curve_argvals, nbasis, t_min, t_max)
+        };
+
+        let actual_nbasis = basis.len() / m_i;
+        if actual_nbasis == 0 {
+            continue;
+        }
+
+        // Create nalgebra matrices for least squares
+        let b_mat = DMatrix::from_column_slice(m_i, actual_nbasis, &basis);
+        let y_vec = DVector::from_column_slice(curve_values);
+
+        // Solve least squares: (B'B)^-1 B' y
+        let btb = &b_mat.transpose() * &b_mat;
+        let bty = &b_mat.transpose() * &y_vec;
+
+        // Use SVD for pseudo-inverse (stable for potentially ill-conditioned systems)
+        let btb_svd = SVD::new(btb.clone(), true, true);
+
+        let max_sv = btb_svd.singular_values.iter().cloned().fold(0.0, f64::max);
+        let eps = 1e-10 * max_sv.max(1e-10);
+
+        // Pseudo-inverse of singular values
+        let s_inv: Vec<f64> = btb_svd
+            .singular_values
+            .iter()
+            .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+            .collect();
+
+        // Compute pseudo-inverse: V * S_inv * U^T
+        if let (Some(ref v_t), Some(ref u)) = (&btb_svd.v_t, &btb_svd.u) {
+            let v = v_t.transpose();
+            let u_t = u.transpose();
+
+            // btb_inv = V * diag(s_inv) * U^T
+            let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
+            for ii in 0..actual_nbasis {
+                for jj in 0..actual_nbasis {
+                    let mut sum = 0.0;
+                    for k in 0..actual_nbasis {
+                        sum += v[(ii, k)] * s_inv[k] * u_t[(k, jj)];
+                    }
+                    btb_inv[(ii, jj)] = sum;
+                }
+            }
+
+            // Compute coefficients: btb_inv * bty
+            let curve_coefs = btb_inv * bty;
+
+            // Store coefficients (column-major for R)
+            for k in 0..actual_nbasis.min(nbasis) {
+                coefs[i + k * n] = curve_coefs[k];
+            }
+        }
+    }
+
+    let result = RMatrix::new_matrix(n, nbasis, |i, j| coefs[i + j * n]);
+    Robj::from(result)
+}
+
+/// B-spline basis with specified range (for irregular data with common domain)
+fn bspline_basis_with_range(t: &[f64], nbasis: usize, t_min: f64, t_max: f64) -> Vec<f64> {
+    let n = t.len();
+    let order = 4; // Cubic B-splines
+    let nknots = (nbasis.saturating_sub(order)).max(2);
+    let actual_nbasis = nknots + order;
+
+    let dt = (t_max - t_min) / (nknots - 1).max(1) as f64;
+
+    let mut knots = Vec::with_capacity(nknots + 2 * order);
+    // Pad at beginning
+    for i in 0..order {
+        knots.push(t_min - (order - i) as f64 * dt);
+    }
+    // Interior knots
+    for i in 0..nknots {
+        knots.push(t_min + i as f64 * dt);
+    }
+    // Pad at end
+    for i in 1..=order {
+        knots.push(t_max + i as f64 * dt);
+    }
+
+    let t_max_knot_idx = order + nknots - 1;
+
+    // Cox-de Boor recursion
+    let mut basis = vec![0.0; n * actual_nbasis];
+
+    for (ti, &t_val) in t.iter().enumerate() {
+        let mut b0 = vec![0.0; knots.len() - 1];
+        for j in 0..(knots.len() - 1) {
+            let in_interval = if j == t_max_knot_idx - 1 {
+                t_val >= knots[j] && t_val <= knots[j + 1]
+            } else {
+                t_val >= knots[j] && t_val < knots[j + 1]
+            };
+            if in_interval {
+                b0[j] = 1.0;
+            }
+        }
+
+        let mut b_prev = b0;
+        for k in 1..order {
+            let mut b_next = vec![0.0; knots.len() - 1 - k];
+            for j in 0..b_next.len() {
+                let left_denom = knots[j + k] - knots[j];
+                let left = if left_denom.abs() > 1e-15 {
+                    (t_val - knots[j]) / left_denom * b_prev[j]
+                } else {
+                    0.0
+                };
+
+                let right_denom = knots[j + k + 1] - knots[j + 1];
+                let right = if right_denom.abs() > 1e-15 {
+                    (knots[j + k + 1] - t_val) / right_denom * b_prev[j + 1]
+                } else {
+                    0.0
+                };
+
+                b_next[j] = left + right;
+            }
+            b_prev = b_next;
+        }
+
+        for (j, &val) in b_prev.iter().enumerate().take(actual_nbasis) {
+            basis[ti + j * n] = val;
+        }
+    }
+
+    basis
+}
+
+/// Fourier basis with specified range (for irregular data with common domain)
+fn fourier_basis_with_range(t: &[f64], nbasis: usize, t_min: f64, t_max: f64) -> Vec<f64> {
+    let n = t.len();
+    let period = t_max - t_min;
+
+    let mut basis = vec![0.0; n * nbasis];
+
+    for (i, &ti) in t.iter().enumerate() {
+        let x = 2.0 * PI * (ti - t_min) / period;
+
+        // First basis function is constant
+        basis[i] = 1.0;
+
+        // Remaining basis functions are sin/cos pairs
+        let mut k = 1;
+        let mut freq = 1;
+        while k < nbasis {
+            if k < nbasis {
+                basis[i + k * n] = (freq as f64 * x).sin();
+                k += 1;
+            }
+            if k < nbasis {
+                basis[i + k * n] = (freq as f64 * x).cos();
+                k += 1;
+            }
+            freq += 1;
+        }
+    }
+
+    basis
+}
+
 // =============================================================================
 // Module exports
 // =============================================================================
@@ -7739,4 +7948,5 @@ extendr_module! {
     fn irreg_mean_kernel;
     fn irreg_metric_lp;
     fn irreg_to_regular;
+    fn irreg_fdata2basis;
 }

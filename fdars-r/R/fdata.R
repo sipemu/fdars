@@ -2264,25 +2264,45 @@ fdata2pls <- function(fdataobj, y, ncomp = 2, lambda = 0, norm = TRUE) {
 #' Convert Functional Data to Basis Coefficients
 #'
 #' Project functional data onto a basis system and return coefficients.
-#' Supports B-spline and Fourier basis.
+#' Supports B-spline and Fourier basis. Works with both regular \code{fdata}
+#' and irregular \code{irregFdata} objects.
 #'
-#' @param fdataobj An object of class 'fdata'.
+#' @param x An object of class 'fdata' or 'irregFdata'.
 #' @param nbasis Number of basis functions (default 10).
 #' @param type Type of basis: "bspline" (default) or "fourier".
+#' @param ... Additional arguments (currently unused).
 #'
 #' @return A matrix of coefficients (n x nbasis).
 #'
+#' @details
+#' For regular \code{fdata} objects, all curves are projected onto the same
+#' basis evaluated at the common grid points.
+#'
+#' For irregular \code{irregFdata} objects, each curve is individually
+#' fitted to the basis using least squares at its own observation points.
+#' This is the preferred approach for sparse/irregularly sampled data as it
+#' avoids interpolation artifacts.
+#'
 #' @export
 #' @examples
+#' # Regular fdata
 #' t <- seq(0, 1, length.out = 50)
 #' X <- matrix(0, 20, 50)
 #' for (i in 1:20) X[i, ] <- sin(2*pi*t) + rnorm(50, sd = 0.1)
 #' fd <- fdata(X, argvals = t)
 #' coefs <- fdata2basis(fd, nbasis = 10, type = "bspline")
-fdata2basis <- function(fdataobj, nbasis = 10, type = c("bspline", "fourier")) {
-  if (!inherits(fdataobj, "fdata")) {
-    stop("fdataobj must be of class 'fdata'")
-  }
+#'
+#' # Irregular fdata (sparsified)
+#' ifd <- sparsify(fd, minObs = 10, maxObs = 20, seed = 42)
+#' coefs_irreg <- fdata2basis(ifd, nbasis = 10, type = "bspline")
+fdata2basis <- function(x, nbasis = 10, type = c("bspline", "fourier"), ...) {
+  UseMethod("fdata2basis")
+}
+
+#' @rdname fdata2basis
+#' @export
+fdata2basis.fdata <- function(x, nbasis = 10, type = c("bspline", "fourier"), ...) {
+  fdataobj <- x
 
   if (isTRUE(fdataobj$fdata2d)) {
     stop("fdata2basis for 2D functional data not yet implemented")

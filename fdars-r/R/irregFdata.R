@@ -506,6 +506,26 @@ metric.lp.irregFdata <- function(x, p = 2, ...) {
 }
 
 # =============================================================================
+# Basis Representation
+# =============================================================================
+
+#' @rdname fdata2basis
+#' @export
+fdata2basis.irregFdata <- function(x, nbasis = 10, type = c("bspline", "fourier"), ...) {
+  type <- match.arg(type)
+  basis_type <- if (type == "fourier") 1L else 0L
+
+  # Convert to flat representation with offsets
+  offsets <- c(0L, cumsum(sapply(x$argvals, length)))
+  flat_argvals <- unlist(x$argvals)
+  flat_values <- unlist(x$X)
+
+  # Call Rust function for irregular basis fitting
+  .Call("wrap__irreg_fdata2basis", offsets, flat_argvals, flat_values,
+        as.integer(nbasis), basis_type)
+}
+
+# =============================================================================
 # Plotting
 # =============================================================================
 

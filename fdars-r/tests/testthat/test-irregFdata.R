@@ -203,3 +203,73 @@ test_that("plot.irregFdata works without error", {
   # Should not error
   expect_silent(plot(ifd))
 })
+
+test_that("fdata2basis works with irregFdata using bspline", {
+  # Create irregular data from simulated curves
+  t <- seq(0, 1, length.out = 50)
+  fd <- simFunData(n = 5, argvals = t, M = 3, seed = 42)
+  ifd <- sparsify(fd, minObs = 15, maxObs = 25, seed = 123)
+
+  # Fit B-spline basis
+  coefs <- fdata2basis(ifd, nbasis = 8, type = "bspline")
+
+  expect_equal(nrow(coefs), 5)  # 5 curves
+  expect_equal(ncol(coefs), 8)  # 8 basis functions
+  expect_false(any(is.na(coefs)))
+})
+
+test_that("fdata2basis works with irregFdata using fourier", {
+  # Create irregular data
+  t <- seq(0, 1, length.out = 50)
+  fd <- simFunData(n = 5, argvals = t, M = 3, seed = 42)
+  ifd <- sparsify(fd, minObs = 15, maxObs = 25, seed = 123)
+
+  # Fit Fourier basis
+  coefs <- fdata2basis(ifd, nbasis = 7, type = "fourier")
+
+  expect_equal(nrow(coefs), 5)  # 5 curves
+  expect_equal(ncol(coefs), 7)  # 7 basis functions
+  expect_false(any(is.na(coefs)))
+})
+
+test_that("fdata2basis.irregFdata matches regular fdata2basis approximately", {
+  # Create regular data
+  set.seed(42)
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(sin(2 * pi * t), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  # Create "irregular" version with same points (should give similar result)
+  ifd <- irregFdata(argvals = list(t), X = list(X[1, ]))
+
+  # Fit basis on both
+  coefs_regular <- fdata2basis(fd, nbasis = 9, type = "fourier")
+  coefs_irreg <- fdata2basis(ifd, nbasis = 9, type = "fourier")
+
+  # They should be very similar
+  expect_equal(as.vector(coefs_regular), as.vector(coefs_irreg), tolerance = 1e-6)
+})
+
+test_that("fdata2basis.irregFdata can reconstruct curves", {
+  # Create a known sine curve
+  t <- seq(0, 1, length.out = 100)
+  true_values <- sin(2 * pi * t)
+
+  # Sample irregularly
+  set.seed(123)
+  sample_idx <- sort(sample(1:100, 30))
+  ifd <- irregFdata(
+    argvals = list(t[sample_idx]),
+    X = list(true_values[sample_idx])
+  )
+
+  # Fit Fourier basis (which should capture a sine well)
+  coefs <- fdata2basis(ifd, nbasis = 5, type = "fourier")
+
+  # Reconstruct on original grid
+  fd_recon <- basis2fdata(coefs, argvals = t, type = "fourier")
+
+  # Check reconstruction error is small
+  recon_error <- sqrt(mean((fd_recon$data[1, ] - true_values)^2))
+  expect_lt(recon_error, 0.1)  # RMSE < 0.1
+})
