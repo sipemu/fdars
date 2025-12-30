@@ -49,7 +49,7 @@ t <- seq(0, 1, length.out = 100)
 
 # Simulate 20 curves with 5 basis functions
 fd <- simFunData(n = 20, argvals = t, M = 5, seed = 42)
-plot(fd, main = "Simulated Functional Data")
+autoplot(fd) + labs(title = "Simulated Functional Data")
 ```
 
 ![](simulation-toolbox_files/figure-html/basic-simulation-1.png)
@@ -79,9 +79,13 @@ Best for periodic or smooth oscillating data:
 
 ``` r
 phi_fourier <- eFun(t, M = 5, type = "Fourier")
-matplot(t, phi_fourier, type = "l", lty = 1, lwd = 2,
-        main = "Fourier Eigenfunctions", xlab = "t", ylab = expression(phi(t)))
-legend("topright", paste0("k=", 1:5), col = 1:5, lty = 1)
+phi_df <- data.frame(t = rep(t, 5),
+                     phi = as.vector(phi_fourier),
+                     k = factor(rep(1:5, each = length(t))))
+ggplot(phi_df, aes(x = t, y = phi, color = k)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Fourier Eigenfunctions", x = "t", y = expression(phi(t)), color = "k") +
+  theme_minimal()
 ```
 
 ![](simulation-toolbox_files/figure-html/fourier-basis-1.png)
@@ -89,7 +93,7 @@ legend("topright", paste0("k=", 1:5), col = 1:5, lty = 1)
 ``` r
 fd_fourier <- simFunData(n = 20, argvals = t, M = 5,
                          eFun.type = "Fourier", eVal.type = "exponential", seed = 42)
-plot(fd_fourier, main = "Fourier Basis Simulation")
+autoplot(fd_fourier) + labs(title = "Fourier Basis Simulation")
 ```
 
 ![](simulation-toolbox_files/figure-html/fourier-sim-1.png)
@@ -100,9 +104,13 @@ Orthogonal polynomials on \[0, 1\]:
 
 ``` r
 phi_poly <- eFun(t, M = 5, type = "Poly")
-matplot(t, phi_poly, type = "l", lty = 1, lwd = 2,
-        main = "Legendre Polynomial Eigenfunctions", xlab = "t", ylab = expression(phi(t)))
-legend("topright", paste0("degree ", 0:4), col = 1:5, lty = 1)
+phi_df <- data.frame(t = rep(t, 5),
+                     phi = as.vector(phi_poly),
+                     degree = factor(rep(0:4, each = length(t))))
+ggplot(phi_df, aes(x = t, y = phi, color = degree)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Legendre Polynomial Eigenfunctions", x = "t", y = expression(phi(t))) +
+  theme_minimal()
 ```
 
 ![](simulation-toolbox_files/figure-html/poly-basis-1.png)
@@ -110,7 +118,7 @@ legend("topright", paste0("degree ", 0:4), col = 1:5, lty = 1)
 ``` r
 fd_poly <- simFunData(n = 20, argvals = t, M = 5,
                       eFun.type = "Poly", eVal.type = "exponential", seed = 42)
-plot(fd_poly, main = "Polynomial Basis Simulation")
+autoplot(fd_poly) + labs(title = "Polynomial Basis Simulation")
 ```
 
 ![](simulation-toolbox_files/figure-html/poly-sim-1.png)
@@ -121,9 +129,13 @@ Eigenfunctions of Brownian motion covariance $K(s,t) = \min(s,t)$:
 
 ``` r
 phi_wiener <- eFun(t, M = 5, type = "Wiener")
-matplot(t, phi_wiener, type = "l", lty = 1, lwd = 2,
-        main = "Wiener Process Eigenfunctions", xlab = "t", ylab = expression(phi(t)))
-legend("topright", paste0("k=", 1:5), col = 1:5, lty = 1)
+phi_df <- data.frame(t = rep(t, 5),
+                     phi = as.vector(phi_wiener),
+                     k = factor(rep(1:5, each = length(t))))
+ggplot(phi_df, aes(x = t, y = phi, color = k)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Wiener Process Eigenfunctions", x = "t", y = expression(phi(t)), color = "k") +
+  theme_minimal()
 ```
 
 ![](simulation-toolbox_files/figure-html/wiener-basis-1.png)
@@ -131,7 +143,7 @@ legend("topright", paste0("k=", 1:5), col = 1:5, lty = 1)
 ``` r
 fd_wiener <- simFunData(n = 20, argvals = t, M = 10,
                         eFun.type = "Wiener", eVal.type = "wiener", seed = 42)
-plot(fd_wiener, main = "Wiener Process Simulation")
+autoplot(fd_wiener) + labs(title = "Wiener Process Simulation")
 ```
 
 ![](simulation-toolbox_files/figure-html/wiener-sim-1.png)
@@ -172,30 +184,19 @@ ggplot(df_evals, aes(x = k, y = lambda, color = type)) +
 Faster decay = smoother curves (higher modes contribute less):
 
 ``` r
-par(mfrow = c(2, 1))
-
 # Linear decay - rougher curves
 fd_lin <- simFunData(n = 10, argvals = t, M = 10,
                      eFun.type = "Fourier", eVal.type = "linear", seed = 42)
-plot(fd_lin, main = "Linear Decay (Rougher)")
-```
-
-![](simulation-toolbox_files/figure-html/decay-comparison-1.png)
-
-``` r
-
 # Exponential decay - smoother curves
 fd_exp <- simFunData(n = 10, argvals = t, M = 10,
                      eFun.type = "Fourier", eVal.type = "exponential", seed = 42)
-plot(fd_exp, main = "Exponential Decay (Smoother)")
+
+p1 <- autoplot(fd_lin) + labs(title = "Linear Decay (Rougher)")
+p2 <- autoplot(fd_exp) + labs(title = "Exponential Decay (Smoother)")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
-![](simulation-toolbox_files/figure-html/decay-comparison-2.png)
-
-``` r
-
-par(mfrow = c(1, 1))
-```
+![](simulation-toolbox_files/figure-html/decay-comparison-1.png)
 
 ## Adding Mean Function
 
@@ -225,44 +226,19 @@ to add noise to simulated (or real) data:
 ``` r
 fd_clean <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
 
-par(mfrow = c(2, 2))
+# Add different noise levels
+fd_low <- addError(fd_clean, sd = 0.1, seed = 123)
+fd_med <- addError(fd_clean, sd = 0.3, seed = 123)
+fd_high <- addError(fd_clean, sd = 0.5, seed = 123)
 
-plot(fd_clean, main = "Clean Data")
+p1 <- autoplot(fd_clean) + labs(title = "Clean Data")
+p2 <- autoplot(fd_low) + labs(title = "Low Noise (sd = 0.1)")
+p3 <- autoplot(fd_med) + labs(title = "Medium Noise (sd = 0.3)")
+p4 <- autoplot(fd_high) + labs(title = "High Noise (sd = 0.5)")
+gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2)
 ```
 
 ![](simulation-toolbox_files/figure-html/add-noise-1.png)
-
-``` r
-
-# Low noise
-fd_low <- addError(fd_clean, sd = 0.1, seed = 123)
-plot(fd_low, main = "Low Noise (sd = 0.1)")
-```
-
-![](simulation-toolbox_files/figure-html/add-noise-2.png)
-
-``` r
-
-# Medium noise
-fd_med <- addError(fd_clean, sd = 0.3, seed = 123)
-plot(fd_med, main = "Medium Noise (sd = 0.3)")
-```
-
-![](simulation-toolbox_files/figure-html/add-noise-3.png)
-
-``` r
-
-# High noise
-fd_high <- addError(fd_clean, sd = 0.5, seed = 123)
-plot(fd_high, main = "High Noise (sd = 0.5)")
-```
-
-![](simulation-toolbox_files/figure-html/add-noise-4.png)
-
-``` r
-
-par(mfrow = c(1, 1))
-```
 
 ### Curve-Level Noise
 
@@ -271,7 +247,7 @@ bias):
 
 ``` r
 fd_curve_noise <- addError(fd_clean, sd = 0.5, type = "curve", seed = 123)
-plot(fd_curve_noise, main = "Curve-Level Noise")
+autoplot(fd_curve_noise) + labs(title = "Curve-Level Noise")
 ```
 
 ![](simulation-toolbox_files/figure-html/curve-noise-1.png)
@@ -299,10 +275,10 @@ print(ifd)
 ```
 
 ``` r
-plot(ifd, main = "Sparsified Functional Data")
+autoplot(ifd) + labs(title = "Sparsified Functional Data")
 ```
 
-![](simulation-toolbox_files/figure-html/plot-sparse-1.png)
+![](simulation-toolbox_files/figure-html/plot-sparse-sim-1.png)
 
 See the “Irregular Sampling” vignette for more details on working with
 sparse data.
@@ -339,21 +315,12 @@ print(mfd)
 ```
 
 ``` r
-par(mfrow = c(2, 1))
-plot(mfd$components[[1]], main = "Component 1 (Fourier)")
+p1 <- autoplot(mfd$components[[1]]) + labs(title = "Component 1 (Fourier)")
+p2 <- autoplot(mfd$components[[2]]) + labs(title = "Component 2 (Wiener)")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
 ![](simulation-toolbox_files/figure-html/multivariate-plot-1.png)
-
-``` r
-plot(mfd$components[[2]], main = "Component 2 (Wiener)")
-```
-
-![](simulation-toolbox_files/figure-html/multivariate-plot-2.png)
-
-``` r
-par(mfrow = c(1, 1))
-```
 
 ## Comparison with GP Simulation
 
@@ -368,31 +335,21 @@ The package also offers Gaussian Process simulation via
 | Computation    | O(nM) per curve             | O(m³) for Cholesky           |
 
 ``` r
-par(mfrow = c(2, 1))
-
 # KL simulation
 fd_kl <- simFunData(n = 10, argvals = t, M = 10,
                     eFun.type = "Wiener", eVal.type = "wiener", seed = 42)
-plot(fd_kl, main = "KL Simulation (Wiener)")
-```
-
-![](simulation-toolbox_files/figure-html/gp-comparison-1.png)
-
-``` r
 
 # GP simulation with Brownian motion kernel
 set.seed(42)
 fd_gp <- make_gaussian_process(n = 10, t = t,
                                 cov = kernel_brownian())
-plot(fd_gp, main = "GP Simulation (Brownian Kernel)")
+
+p1 <- autoplot(fd_kl) + labs(title = "KL Simulation (Wiener)")
+p2 <- autoplot(fd_gp) + labs(title = "GP Simulation (Brownian Kernel)")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
-![](simulation-toolbox_files/figure-html/gp-comparison-2.png)
-
-``` r
-
-par(mfrow = c(1, 1))
-```
+![](simulation-toolbox_files/figure-html/gp-comparison-1.png)
 
 ## Complete Simulation Recipe
 

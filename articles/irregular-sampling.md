@@ -122,19 +122,11 @@ print(ifd)
 ### Visualizing Sparse Data
 
 ``` r
-plot(ifd, main = "Sparsified Functional Data")
+autoplot(ifd) +
+  labs(title = "Sparsified Functional Data")
 ```
 
 ![](irregular-sampling_files/figure-html/plot-sparse-1.png)
-
-Using ggplot2:
-
-``` r
-autoplot(ifd) +
-  labs(title = "Irregular Functional Data (ggplot2)")
-```
-
-![](irregular-sampling_files/figure-html/autoplot-sparse-1.png)
 
 ### Non-Uniform Sparsification
 
@@ -149,22 +141,17 @@ prob_edges <- function(t) 0.1 + 4 * (t - 0.5)^2
 
 fd <- simFunData(n = 20, argvals = t, M = 5, seed = 42)
 
-par(mfrow = c(3, 1))
 ifd_uniform <- sparsify(fd, minObs = 15, maxObs = 25, seed = 123)
-plot(ifd_uniform, main = "Uniform Sampling")
-
 ifd_middle <- sparsify(fd, minObs = 15, maxObs = 25, prob = prob_middle, seed = 123)
-plot(ifd_middle, main = "Dense in Middle")
-
 ifd_edges <- sparsify(fd, minObs = 15, maxObs = 25, prob = prob_edges, seed = 123)
-plot(ifd_edges, main = "Dense at Edges")
+
+p1 <- autoplot(ifd_uniform) + labs(title = "Uniform Sampling")
+p2 <- autoplot(ifd_middle) + labs(title = "Dense in Middle")
+p3 <- autoplot(ifd_edges) + labs(title = "Dense at Edges")
+gridExtra::grid.arrange(p1, p2, p3, ncol = 1)
 ```
 
 ![](irregular-sampling_files/figure-html/nonuniform-sparsify-1.png)
-
-``` r
-par(mfrow = c(1, 1))
-```
 
 ## Converting to Regular Grid
 
@@ -204,15 +191,90 @@ sum(is.na(fd_interp$data))
 ```
 
 ``` r
-par(mfrow = c(2, 1))
-plot(ifd[1], main = "Original Sparse Data (1 curve)", lwd = 2)
-plot(fd_interp[1], main = "After Linear Interpolation")
+p1 <- autoplot(ifd[1]) + labs(title = "Original Sparse Data (1 curve)")
+p2 <- autoplot(fd_interp[1]) + labs(title = "After Linear Interpolation")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
 #> Warning: Removed 4 rows containing missing values or values outside the scale range
 #> (`geom_line()`).
-par(mfrow = c(1, 1))
 ```
 
 ![](irregular-sampling_files/figure-html/compare-methods-1.png)
+
+## Basis Representation for Sparse Data
+
+Once irregular data is converted to a regular grid, basis representation
+provides a powerful way to:
+
+- **Smooth** noisy observations
+- **Reduce dimensionality** (from many grid points to few coefficients)
+- **Regularize** the curves for downstream analysis (FPCA, regression,
+  clustering)
+
+For comprehensive coverage of basis functions, see
+[`vignette("basis-representation")`](https://sipemu.github.io/fdars/articles/basis-representation.md).
+
+### B-spline Projection
+
+Project curves onto a B-spline basis for smoothing and dimensionality
+reduction:
+
+``` r
+# Simulate functional data
+set.seed(123)
+fd_sim <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
+
+# Add noise to simulate measurement error
+fd_noisy <- fd_sim
+fd_noisy$data <- fd_noisy$data + matrix(rnorm(length(fd_noisy$data), sd = 0.3),
+                                         nrow = nrow(fd_noisy$data))
+
+# Project onto B-spline basis (smooths the curves)
+coefs <- fdata2basis(fd_noisy, nbasis = 12, type = "bspline")
+fd_basis <- basis2fdata(coefs, argvals = fd_noisy$argvals)
+
+# Compare using ggplot2
+p1 <- autoplot(fd_noisy, alpha = 0.7) + labs(title = "Noisy Data")
+p2 <- autoplot(fd_basis, alpha = 0.7) + labs(title = "B-spline Smoothed (12 basis)")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+![](irregular-sampling_files/figure-html/basis-projection-1.png)
+
+### P-spline Smoothing
+
+P-splines with automatic smoothing parameter selection provide robust
+results for noisy data:
+
+``` r
+# Create noisy data for P-spline demo
+set.seed(456)
+fd_for_pspline <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
+fd_for_pspline$data <- fd_for_pspline$data + matrix(rnorm(length(fd_for_pspline$data), sd = 0.3),
+                                                      nrow = nrow(fd_for_pspline$data))
+
+# P-spline with fixed lambda (automatic selection can be unstable for some data)
+pspline_result <- pspline(fd_for_pspline, nbasis = 20, lambda = 0.01)
+
+# Compare (pspline returns a list; extract $fdata for the smoothed curves)
+p1 <- autoplot(fd_for_pspline, alpha = 0.7) + labs(title = "Noisy Data")
+p2 <- autoplot(pspline_result$fdata, alpha = 0.7) + labs(title = "P-spline Smoothed")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+![](irregular-sampling_files/figure-html/pspline-smoothing-1.png)
+
+### Choosing the Right Approach
+
+| Approach            | Best For                        | Key Parameters             |
+|---------------------|---------------------------------|----------------------------|
+| B-spline projection | Clean data, fast computation    | `nbasis`, `type`           |
+| P-spline smoothing  | Noisy data, automatic smoothing | `nbasis`, `lambda`         |
+| Fourier basis       | Periodic/seasonal patterns      | `nbasis`, `type="fourier"` |
+
+**Tip**: Use
+[`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+to automatically select the optimal number of basis functions via
+cross-validation.
 
 ## Operations on Irregular Data
 
@@ -255,7 +317,7 @@ ifd <- sparsify(fd, minObs = 15, maxObs = 30, seed = 123)
 
 # Estimate mean
 mean_fd <- mean(ifd, bandwidth = 0.1)
-plot(mean_fd, main = "Estimated Mean Function")
+autoplot(mean_fd) + labs(title = "Estimated Mean Function")
 ```
 
 ![](irregular-sampling_files/figure-html/mean-estimation-1.png)
@@ -264,11 +326,17 @@ plot(mean_fd, main = "Estimated Mean Function")
 # Compare to true sample mean (from original data)
 true_mean <- colMeans(fd$data)
 
-plot(t, true_mean, type = "l", lwd = 2, col = "blue",
-     main = "Mean Comparison", xlab = "t", ylab = "Mean")
-lines(mean_fd$argvals, mean_fd$data[1,], col = "red", lwd = 2)
-legend("topright", c("True Sample Mean", "Kernel Estimate"),
-       col = c("blue", "red"), lwd = 2)
+# Create comparison data frame
+compare_df <- rbind(
+  data.frame(t = t, value = true_mean, type = "True Sample Mean"),
+  data.frame(t = mean_fd$argvals, value = mean_fd$data[1,], type = "Kernel Estimate")
+)
+
+ggplot(compare_df, aes(x = t, y = value, color = type)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("True Sample Mean" = "blue", "Kernel Estimate" = "red")) +
+  labs(title = "Mean Comparison", x = "t", y = "Mean", color = NULL) +
+  theme_minimal()
 ```
 
 ![](irregular-sampling_files/figure-html/compare-mean-1.png)
@@ -439,7 +507,7 @@ ifd_sensor <- irregFdata(
                ylab = "Temperature (C)")
 )
 
-plot(ifd_sensor, alpha = 0.8)
+autoplot(ifd_sensor, alpha = 0.8)
 ```
 
 ![](irregular-sampling_files/figure-html/sensor-gaps-1.png)

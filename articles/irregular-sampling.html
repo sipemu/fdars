@@ -218,19 +218,15 @@ as lists:</p>
 <h3 id="visualizing-sparse-data">Visualizing Sparse Data<a class="anchor" aria-label="anchor" href="#visualizing-sparse-data"></a>
 </h3>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ifd</span>, main <span class="op">=</span> <span class="st">"Sparsified Functional Data"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="irregular-sampling_files/figure-html/plot-sparse-1.png" class="r-plt" alt="" width="100%"></p>
-<p>Using ggplot2:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Irregular Functional Data (ggplot2)"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="irregular-sampling_files/figure-html/autoplot-sparse-1.png" class="r-plt" alt="" width="100%"></p>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Sparsified Functional Data"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="irregular-sampling_files/figure-html/plot-sparse-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="non-uniform-sparsification">Non-Uniform Sparsification<a class="anchor" aria-label="anchor" href="#non-uniform-sparsification"></a>
 </h3>
 <p>Control sampling density with a probability function:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># More observations in the middle</span></span>
 <span><span class="va">prob_middle</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">t</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span><span class="va">t</span>, mean <span class="op">=</span> <span class="fl">0.5</span>, sd <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span>
 <span></span>
@@ -239,18 +235,15 @@ as lists:</p>
 <span></span>
 <span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/simFunData.html">simFunData</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">20</span>, argvals <span class="op">=</span> <span class="va">t</span>, M <span class="op">=</span> <span class="fl">5</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">3</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">ifd_uniform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span>, minObs <span class="op">=</span> <span class="fl">15</span>, maxObs <span class="op">=</span> <span class="fl">25</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ifd_uniform</span>, main <span class="op">=</span> <span class="st">"Uniform Sampling"</span><span class="op">)</span></span>
-<span></span>
 <span><span class="va">ifd_middle</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span>, minObs <span class="op">=</span> <span class="fl">15</span>, maxObs <span class="op">=</span> <span class="fl">25</span>, prob <span class="op">=</span> <span class="va">prob_middle</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ifd_middle</span>, main <span class="op">=</span> <span class="st">"Dense in Middle"</span><span class="op">)</span></span>
-<span></span>
 <span><span class="va">ifd_edges</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span>, minObs <span class="op">=</span> <span class="fl">15</span>, maxObs <span class="op">=</span> <span class="fl">25</span>, prob <span class="op">=</span> <span class="va">prob_edges</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ifd_edges</span>, main <span class="op">=</span> <span class="st">"Dense at Edges"</span><span class="op">)</span></span></code></pre></div>
+<span></span>
+<span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd_uniform</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Uniform Sampling"</span><span class="op">)</span></span>
+<span><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd_middle</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Dense in Middle"</span><span class="op">)</span></span>
+<span><span class="va">p3</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd_edges</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Dense at Edges"</span><span class="op">)</span></span>
+<span><span class="fu">gridExtra</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/gridExtra/man/arrangeGrob.html" class="external-link">grid.arrange</a></span><span class="op">(</span><span class="va">p1</span>, <span class="va">p2</span>, <span class="va">p3</span>, ncol <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></code></pre></div>
 <p><img src="irregular-sampling_files/figure-html/nonuniform-sparsify-1.png" class="r-plt" alt="" width="100%"></p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -262,7 +255,7 @@ as lists:</p>
 <h3 id="method-na-fill">Method: NA Fill<a class="anchor" aria-label="anchor" href="#method-na-fill"></a>
 </h3>
 <p>Only exact matches are filled; other points get <code>NA</code>:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ifd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">]</span>, minObs <span class="op">=</span> <span class="fl">10</span>, maxObs <span class="op">=</span> <span class="fl">20</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">fd_na</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as.fdata.irregFdata.html">as.fdata</a></span><span class="op">(</span><span class="va">ifd</span>, method <span class="op">=</span> <span class="st">"na"</span><span class="op">)</span></span>
@@ -278,7 +271,7 @@ as lists:</p>
 <h3 id="method-linear-interpolation">Method: Linear Interpolation<a class="anchor" aria-label="anchor" href="#method-linear-interpolation"></a>
 </h3>
 <p>Interpolate between observed points:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Specify target grid</span></span>
 <span><span class="va">target_grid</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, length.out <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span><span class="va">fd_interp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as.fdata.irregFdata.html">as.fdata</a></span><span class="op">(</span><span class="va">ifd</span>, argvals <span class="op">=</span> <span class="va">target_grid</span>, method <span class="op">=</span> <span class="st">"linear"</span><span class="op">)</span></span>
@@ -286,14 +279,119 @@ as lists:</p>
 <span><span class="co"># No NAs within observed range</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">fd_interp</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 19</span></span></code></pre></div>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ifd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, main <span class="op">=</span> <span class="st">"Original Sparse Data (1 curve)"</span>, lwd <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fd_interp</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span>, main <span class="op">=</span> <span class="st">"After Linear Interpolation"</span><span class="op">)</span></span>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Original Sparse Data (1 curve)"</span><span class="op">)</span></span>
+<span><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd_interp</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"After Linear Interpolation"</span><span class="op">)</span></span>
+<span><span class="fu">gridExtra</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/gridExtra/man/arrangeGrob.html" class="external-link">grid.arrange</a></span><span class="op">(</span><span class="va">p1</span>, <span class="va">p2</span>, ncol <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Warning: Removed 4 rows containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_line()`).</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co">#&gt; (`geom_line()`).</span></span></code></pre></div>
 <p><img src="irregular-sampling_files/figure-html/compare-methods-1.png" class="r-plt" alt="" width="100%"></p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="basis-representation-for-sparse-data">Basis Representation for Sparse Data<a class="anchor" aria-label="anchor" href="#basis-representation-for-sparse-data"></a>
+</h2>
+<p>Once irregular data is converted to a regular grid, basis
+representation provides a powerful way to:</p>
+<ul>
+<li>
+<strong>Smooth</strong> noisy observations</li>
+<li>
+<strong>Reduce dimensionality</strong> (from many grid points to few
+coefficients)</li>
+<li>
+<strong>Regularize</strong> the curves for downstream analysis
+(FPCA, regression, clustering)</li>
+</ul>
+<p>For comprehensive coverage of basis functions, see
+<code><a href="../articles/basis-representation.html">vignette("basis-representation")</a></code>.</p>
+<div class="section level3">
+<h3 id="b-spline-projection">B-spline Projection<a class="anchor" aria-label="anchor" href="#b-spline-projection"></a>
+</h3>
+<p>Project curves onto a B-spline basis for smoothing and dimensionality
+reduction:</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Simulate functional data</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">123</span><span class="op">)</span></span>
+<span><span class="va">fd_sim</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/simFunData.html">simFunData</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">15</span>, argvals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, length.out <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, M <span class="op">=</span> <span class="fl">5</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Add noise to simulate measurement error</span></span>
+<span><span class="va">fd_noisy</span> <span class="op">&lt;-</span> <span class="va">fd_sim</span></span>
+<span><span class="va">fd_noisy</span><span class="op">$</span><span class="va">data</span> <span class="op">&lt;-</span> <span class="va">fd_noisy</span><span class="op">$</span><span class="va">data</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">fd_noisy</span><span class="op">$</span><span class="va">data</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.3</span><span class="op">)</span>,</span>
+<span>                                         nrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">fd_noisy</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Project onto B-spline basis (smooths the curves)</span></span>
+<span><span class="va">coefs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.html">fdata2basis</a></span><span class="op">(</span><span class="va">fd_noisy</span>, nbasis <span class="op">=</span> <span class="fl">12</span>, type <span class="op">=</span> <span class="st">"bspline"</span><span class="op">)</span></span>
+<span><span class="va">fd_basis</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/basis2fdata.html">basis2fdata</a></span><span class="op">(</span><span class="va">coefs</span>, argvals <span class="op">=</span> <span class="va">fd_noisy</span><span class="op">$</span><span class="va">argvals</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Compare using ggplot2</span></span>
+<span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd_noisy</span>, alpha <span class="op">=</span> <span class="fl">0.7</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Noisy Data"</span><span class="op">)</span></span>
+<span><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd_basis</span>, alpha <span class="op">=</span> <span class="fl">0.7</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"B-spline Smoothed (12 basis)"</span><span class="op">)</span></span>
+<span><span class="fu">gridExtra</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/gridExtra/man/arrangeGrob.html" class="external-link">grid.arrange</a></span><span class="op">(</span><span class="va">p1</span>, <span class="va">p2</span>, ncol <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
+<p><img src="irregular-sampling_files/figure-html/basis-projection-1.png" class="r-plt" alt="" width="100%"></p>
+</div>
+<div class="section level3">
+<h3 id="p-spline-smoothing">P-spline Smoothing<a class="anchor" aria-label="anchor" href="#p-spline-smoothing"></a>
+</h3>
+<p>P-splines with automatic smoothing parameter selection provide robust
+results for noisy data:</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Create noisy data for P-spline demo</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">456</span><span class="op">)</span></span>
+<span><span class="va">fd_for_pspline</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/simFunData.html">simFunData</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">15</span>, argvals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span>, length.out <span class="op">=</span> <span class="fl">100</span><span class="op">)</span>, M <span class="op">=</span> <span class="fl">5</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span>
+<span><span class="va">fd_for_pspline</span><span class="op">$</span><span class="va">data</span> <span class="op">&lt;-</span> <span class="va">fd_for_pspline</span><span class="op">$</span><span class="va">data</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">fd_for_pspline</span><span class="op">$</span><span class="va">data</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fl">0.3</span><span class="op">)</span>,</span>
+<span>                                                      nrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">fd_for_pspline</span><span class="op">$</span><span class="va">data</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># P-spline with fixed lambda (automatic selection can be unstable for some data)</span></span>
+<span><span class="va">pspline_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/pspline.html">pspline</a></span><span class="op">(</span><span class="va">fd_for_pspline</span>, nbasis <span class="op">=</span> <span class="fl">20</span>, lambda <span class="op">=</span> <span class="fl">0.01</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Compare (pspline returns a list; extract $fdata for the smoothed curves)</span></span>
+<span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd_for_pspline</span>, alpha <span class="op">=</span> <span class="fl">0.7</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Noisy Data"</span><span class="op">)</span></span>
+<span><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">pspline_result</span><span class="op">$</span><span class="va">fdata</span>, alpha <span class="op">=</span> <span class="fl">0.7</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"P-spline Smoothed"</span><span class="op">)</span></span>
+<span><span class="fu">gridExtra</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/gridExtra/man/arrangeGrob.html" class="external-link">grid.arrange</a></span><span class="op">(</span><span class="va">p1</span>, <span class="va">p2</span>, ncol <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
+<p><img src="irregular-sampling_files/figure-html/pspline-smoothing-1.png" class="r-plt" alt="" width="100%"></p>
+</div>
+<div class="section level3">
+<h3 id="choosing-the-right-approach">Choosing the Right Approach<a class="anchor" aria-label="anchor" href="#choosing-the-right-approach"></a>
+</h3>
+<table class="table">
+<colgroup>
+<col width="27%">
+<col width="27%">
+<col width="44%">
+</colgroup>
+<thead><tr class="header">
+<th>Approach</th>
+<th>Best For</th>
+<th>Key Parameters</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>B-spline projection</td>
+<td>Clean data, fast computation</td>
+<td>
+<code>nbasis</code>, <code>type</code>
+</td>
+</tr>
+<tr class="even">
+<td>P-spline smoothing</td>
+<td>Noisy data, automatic smoothing</td>
+<td>
+<code>nbasis</code>, <code>lambda</code>
+</td>
+</tr>
+<tr class="odd">
+<td>Fourier basis</td>
+<td>Periodic/seasonal patterns</td>
+<td>
+<code>nbasis</code>, <code>type="fourier"</code>
+</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tip</strong>: Use <code><a href="../reference/fdata2basis.cv.html">fdata2basis.cv()</a></code> to
+automatically select the optimal number of basis functions via
+cross-validation.</p>
 </div>
 </div>
 <div class="section level2">
@@ -337,17 +435,23 @@ as lists:</p>
 <span></span>
 <span><span class="co"># Estimate mean</span></span>
 <span><span class="va">mean_fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">ifd</span>, bandwidth <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">mean_fd</span>, main <span class="op">=</span> <span class="st">"Estimated Mean Function"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">mean_fd</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Estimated Mean Function"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="irregular-sampling_files/figure-html/mean-estimation-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Compare to true sample mean (from original data)</span></span>
 <span><span class="va">true_mean</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">colMeans</a></span><span class="op">(</span><span class="va">fd</span><span class="op">$</span><span class="va">data</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">t</span>, <span class="va">true_mean</span>, type <span class="op">=</span> <span class="st">"l"</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"blue"</span>,</span>
-<span>     main <span class="op">=</span> <span class="st">"Mean Comparison"</span>, xlab <span class="op">=</span> <span class="st">"t"</span>, ylab <span class="op">=</span> <span class="st">"Mean"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/lines.html" class="external-link">lines</a></span><span class="op">(</span><span class="va">mean_fd</span><span class="op">$</span><span class="va">argvals</span>, <span class="va">mean_fd</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span>,<span class="op">]</span>, col <span class="op">=</span> <span class="st">"red"</span>, lwd <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/legend.html" class="external-link">legend</a></span><span class="op">(</span><span class="st">"topright"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"True Sample Mean"</span>, <span class="st">"Kernel Estimate"</span><span class="op">)</span>,</span>
-<span>       col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"blue"</span>, <span class="st">"red"</span><span class="op">)</span>, lwd <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co"># Create comparison data frame</span></span>
+<span><span class="va">compare_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">rbind</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>t <span class="op">=</span> <span class="va">t</span>, value <span class="op">=</span> <span class="va">true_mean</span>, type <span class="op">=</span> <span class="st">"True Sample Mean"</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>t <span class="op">=</span> <span class="va">mean_fd</span><span class="op">$</span><span class="va">argvals</span>, value <span class="op">=</span> <span class="va">mean_fd</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span>,<span class="op">]</span>, type <span class="op">=</span> <span class="st">"Kernel Estimate"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">compare_df</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">t</span>, y <span class="op">=</span> <span class="va">value</span>, color <span class="op">=</span> <span class="va">type</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span>linewidth <span class="op">=</span> <span class="fl">1</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_manual.html" class="external-link">scale_color_manual</a></span><span class="op">(</span>values <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"True Sample Mean"</span> <span class="op">=</span> <span class="st">"blue"</span>, <span class="st">"Kernel Estimate"</span> <span class="op">=</span> <span class="st">"red"</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Mean Comparison"</span>, x <span class="op">=</span> <span class="st">"t"</span>, y <span class="op">=</span> <span class="st">"Mean"</span>, color <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p><img src="irregular-sampling_files/figure-html/compare-mean-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
@@ -515,7 +619,7 @@ as lists:</p>
 <span>               ylab <span class="op">=</span> <span class="st">"Temperature (C)"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ifd_sensor</span>, alpha <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd_sensor</span>, alpha <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span></span></code></pre></div>
 <p><img src="irregular-sampling_files/figure-html/sensor-gaps-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 </div>
