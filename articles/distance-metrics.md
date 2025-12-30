@@ -403,10 +403,10 @@ cat("Correlation between distance measures:\n")
 #> Correlation between distance measures:
 print(round(cor(dist_mat), 2))
 #>             L2   L1  DTW Hausdorff
-#> L2        1.00 0.99 0.82      0.74
-#> L1        0.99 1.00 0.77      0.79
-#> DTW       0.82 0.77 1.00      0.32
-#> Hausdorff 0.74 0.79 0.32      1.00
+#> L2        1.00 1.00 0.82      0.74
+#> L1        1.00 1.00 0.82      0.74
+#> DTW       0.82 0.82 1.00      0.32
+#> Hausdorff 0.74 0.74 0.32      1.00
 ```
 
 ## Distance Matrices for Larger Samples

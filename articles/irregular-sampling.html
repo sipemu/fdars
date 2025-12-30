@@ -411,7 +411,7 @@ cross-validation.</p>
 <span><span class="va">X</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">50</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">30</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">ifd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/irregFdata.html">irregFdata</a></span><span class="op">(</span><span class="va">argvals</span>, <span class="va">X</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">integrals</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/int.simpson.irregFdata.html">int.simpson.irregFdata</a></span><span class="op">(</span><span class="va">ifd</span><span class="op">)</span></span>
+<span><span class="va">integrals</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/int.simpson.html">int.simpson</a></span><span class="op">(</span><span class="va">ifd</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">integrals</span><span class="op">)</span>  <span class="co"># Should be approximately 1 and 2</span></span>
 <span><span class="co">#&gt; [1] 1 2</span></span></code></pre></div>
 </div>
@@ -420,7 +420,7 @@ cross-validation.</p>
 </h3>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># L2 norm of constant function c is c</span></span>
-<span><span class="va">norms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/norm.irregFdata.html">norm.irregFdata</a></span><span class="op">(</span><span class="va">ifd</span>, p <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="va">norms</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/norm.html">norm</a></span><span class="op">(</span><span class="va">ifd</span>, p <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">norms</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 1 2</span></span></code></pre></div>
 </div>
@@ -460,7 +460,7 @@ cross-validation.</p>
 <p>Compute pairwise Lp distances:</p>
 <div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ifd</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span><span class="op">]</span>, minObs <span class="op">=</span> <span class="fl">20</span>, maxObs <span class="op">=</span> <span class="fl">40</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span>
-<span><span class="va">D</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.irregFdata.html">metric.lp.irregFdata</a></span><span class="op">(</span><span class="va">ifd</span>, p <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="va">D</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/metric.lp.html">metric.lp</a></span><span class="op">(</span><span class="va">ifd</span>, p <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">D</span>, <span class="fl">2</span><span class="op">)</span></span>
 <span><span class="co">#&gt;      [,1] [,2] [,3] [,4] [,5]</span></span>
 <span><span class="co">#&gt; [1,] 0.00 0.69 1.04 1.53 1.32</span></span>
@@ -625,6 +625,10 @@ kernel smoothing</li>
 <h2 id="summary">Summary<a class="anchor" aria-label="anchor" href="#summary"></a>
 </h2>
 <table class="table">
+<colgroup>
+<col width="52%">
+<col width="47%">
+</colgroup>
 <thead><tr class="header">
 <th>Function</th>
 <th>Purpose</th>
@@ -647,20 +651,20 @@ kernel smoothing</li>
 <td>Convert irregular to regular (with interpolation)</td>
 </tr>
 <tr class="odd">
-<td><code><a href="../reference/int.simpson.irregFdata.html">int.simpson.irregFdata()</a></code></td>
-<td>Compute integrals</td>
+<td><code><a href="../reference/int.simpson.html">int.simpson()</a></code></td>
+<td>Compute integrals (works with fdata and irregFdata)</td>
 </tr>
 <tr class="even">
-<td><code><a href="../reference/norm.irregFdata.html">norm.irregFdata()</a></code></td>
-<td>Compute Lp norms</td>
+<td><code><a href="../reference/norm.html">norm()</a></code></td>
+<td>Compute Lp norms (works with fdata and irregFdata)</td>
 </tr>
 <tr class="odd">
-<td><code><a href="../reference/mean.irregFdata.html">mean.irregFdata()</a></code></td>
+<td><code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code></td>
 <td>Estimate mean via kernel smoothing</td>
 </tr>
 <tr class="even">
-<td><code><a href="../reference/metric.lp.irregFdata.html">metric.lp.irregFdata()</a></code></td>
-<td>Compute pairwise distances</td>
+<td><code><a href="../reference/metric.lp.html">metric.lp()</a></code></td>
+<td>Compute pairwise distances (works with fdata and irregFdata)</td>
 </tr>
 </tbody>
 </table>

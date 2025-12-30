@@ -107,7 +107,7 @@
 - [`metric.lp()`](https://sipemu.github.io/fdars/reference/metric.lp.md)
   : Lp Metric for Functional Data
 - [`norm()`](https://sipemu.github.io/fdars/reference/norm.md) : Compute
-  Lp norm of functional data
+  Lp Norm of Functional Data
 - [`semimetric.basis()`](https://sipemu.github.io/fdars/reference/semimetric.basis.md)
   : Semi-metric based on Basis Expansion
 - [`semimetric.deriv()`](https://sipemu.github.io/fdars/reference/semimetric.deriv.md)
@@ -321,14 +321,8 @@
   Convert Regular Functional Data to Irregular by Subsampling
 - [`as.fdata()`](https://sipemu.github.io/fdars/reference/as.fdata.irregFdata.md)
   : Convert Irregular Functional Data to Regular Grid
-- [`int.simpson.irregFdata()`](https://sipemu.github.io/fdars/reference/int.simpson.irregFdata.md)
-  : Integrate Irregular Functional Data
-- [`norm.irregFdata()`](https://sipemu.github.io/fdars/reference/norm.irregFdata.md)
-  : Compute Lp Norm for Irregular Functional Data
 - [`mean(`*`<irregFdata>`*`)`](https://sipemu.github.io/fdars/reference/mean.irregFdata.md)
   : Estimate Mean Function for Irregular Data
-- [`metric.lp.irregFdata()`](https://sipemu.github.io/fdars/reference/metric.lp.irregFdata.md)
-  : Compute Lp Distance Matrix for Irregular Data
 
 ## Random Processes
 

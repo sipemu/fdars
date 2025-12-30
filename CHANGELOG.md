@@ -12,7 +12,8 @@ All notable changes to fdars are documented in this file.
 
 ### Changed
 
-- Renamed `norm.fdata()` to
+- Renamed
+  [`norm.fdata()`](https://sipemu.github.io/fdars/reference/norm.md) to
   [`norm()`](https://sipemu.github.io/fdars/reference/norm.md) for
   cleaner API
 - Renamed covariance kernel functions from `cov.*` to `kernel_*` to

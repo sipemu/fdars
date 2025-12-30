@@ -6,14 +6,24 @@ process generation, and prediction metrics. Simpson's Rule Integration
 ## Usage
 
 ``` r
-int.simpson(fdataobj)
+# S3 method for class 'irregFdata'
+int.simpson(x, ...)
+
+int.simpson(x, ...)
+
+# S3 method for class 'fdata'
+int.simpson(x, ...)
 ```
 
 ## Arguments
 
-- fdataobj:
+- x:
 
-  An object of class 'fdata'.
+  A functional data object (`fdata` or `irregFdata`).
+
+- ...:
+
+  Additional arguments passed to methods.
 
 ## Value
 
@@ -22,7 +32,8 @@ A numeric vector of integrals, one per curve.
 ## Details
 
 Integrate functional data over its domain using Simpson's rule
-(composite trapezoidal rule for non-uniform grids).
+(composite trapezoidal rule for non-uniform grids). Works with both
+regular `fdata` and irregular `irregFdata` objects.
 
 ## Examples
 
@@ -32,4 +43,8 @@ X <- matrix(0, 10, 100)
 for (i in 1:10) X[i, ] <- sin(2*pi*t)
 fd <- fdata(X, argvals = t)
 integrals <- int.simpson(fd)  # Should be approximately 0
+
+# Also works with irregular data
+ifd <- sparsify(fd, minObs = 20, maxObs = 50, seed = 123)
+integrals_irreg <- int.simpson(ifd)
 ```

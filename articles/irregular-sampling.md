@@ -292,7 +292,7 @@ argvals <- list(
 X <- list(rep(1, 50), rep(2, 30))
 ifd <- irregFdata(argvals, X)
 
-integrals <- int.simpson.irregFdata(ifd)
+integrals <- int.simpson(ifd)
 print(integrals)  # Should be approximately 1 and 2
 #> [1] 1 2
 ```
@@ -301,7 +301,7 @@ print(integrals)  # Should be approximately 1 and 2
 
 ``` r
 # L2 norm of constant function c is c
-norms <- norm.irregFdata(ifd, p = 2)
+norms <- norm(ifd, p = 2)
 print(norms)
 #> [1] 1 2
 ```
@@ -347,7 +347,7 @@ Compute pairwise Lp distances:
 
 ``` r
 ifd <- sparsify(fd[1:5], minObs = 20, maxObs = 40, seed = 123)
-D <- metric.lp.irregFdata(ifd, p = 2)
+D <- metric.lp(ifd, p = 2)
 round(D, 2)
 #>      [,1] [,2] [,3] [,4] [,5]
 #> [1,] 0.00 0.69 1.04 1.53 1.32
@@ -479,13 +479,13 @@ if (any(!keep)) {
 
 ## Summary
 
-| Function                                                                                         | Purpose                                           |
-|--------------------------------------------------------------------------------------------------|---------------------------------------------------|
-| [`irregFdata()`](https://sipemu.github.io/fdars/reference/irregFdata.md)                         | Create irregular functional data objects          |
-| [`is.irregular()`](https://sipemu.github.io/fdars/reference/is.irregular.md)                     | Check if object is irregFdata                     |
-| [`sparsify()`](https://sipemu.github.io/fdars/reference/sparsify.md)                             | Convert regular to irregular data                 |
-| [`as.fdata()`](https://sipemu.github.io/fdars/reference/as.fdata.irregFdata.md)                  | Convert irregular to regular (with interpolation) |
-| [`int.simpson.irregFdata()`](https://sipemu.github.io/fdars/reference/int.simpson.irregFdata.md) | Compute integrals                                 |
-| [`norm.irregFdata()`](https://sipemu.github.io/fdars/reference/norm.irregFdata.md)               | Compute Lp norms                                  |
-| [`mean.irregFdata()`](https://sipemu.github.io/fdars/reference/mean.irregFdata.md)               | Estimate mean via kernel smoothing                |
-| [`metric.lp.irregFdata()`](https://sipemu.github.io/fdars/reference/metric.lp.irregFdata.md)     | Compute pairwise distances                        |
+| Function                                                                        | Purpose                                                      |
+|---------------------------------------------------------------------------------|--------------------------------------------------------------|
+| [`irregFdata()`](https://sipemu.github.io/fdars/reference/irregFdata.md)        | Create irregular functional data objects                     |
+| [`is.irregular()`](https://sipemu.github.io/fdars/reference/is.irregular.md)    | Check if object is irregFdata                                |
+| [`sparsify()`](https://sipemu.github.io/fdars/reference/sparsify.md)            | Convert regular to irregular data                            |
+| [`as.fdata()`](https://sipemu.github.io/fdars/reference/as.fdata.irregFdata.md) | Convert irregular to regular (with interpolation)            |
+| [`int.simpson()`](https://sipemu.github.io/fdars/reference/int.simpson.md)      | Compute integrals (works with fdata and irregFdata)          |
+| [`norm()`](https://sipemu.github.io/fdars/reference/norm.md)                    | Compute Lp norms (works with fdata and irregFdata)           |
+| [`mean()`](https://rdrr.io/r/base/mean.html)                                    | Estimate mean via kernel smoothing                           |
+| [`metric.lp()`](https://sipemu.github.io/fdars/reference/metric.lp.md)          | Compute pairwise distances (works with fdata and irregFdata) |

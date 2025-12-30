@@ -116,7 +116,6 @@
 <url><loc>https://sipemu.github.io/fdars/reference/inprod.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/instantaneous_period.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/int.simpson.html</loc></url>
-<url><loc>https://sipemu.github.io/fdars/reference/int.simpson.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/is.irregular.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernel_add.html</loc></url>
@@ -141,9 +140,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/metric.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.kl.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.lp.html</loc></url>
-<url><loc>https://sipemu.github.io/fdars/reference/metric.lp.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/norm.html</loc></url>
-<url><loc>https://sipemu.github.io/fdars/reference/norm.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/normalize.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/optim.np.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/outliergram.html</loc></url>

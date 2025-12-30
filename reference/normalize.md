@@ -5,7 +5,7 @@ Scales each curve to have Lp norm equal to 1.
 ## Usage
 
 ``` r
-normalize(fdataobj, lp = 2)
+normalize(fdataobj, p = 2)
 ```
 
 ## Arguments
@@ -14,9 +14,9 @@ normalize(fdataobj, lp = 2)
 
   An object of class 'fdata'.
 
-- lp:
+- p:
 
-  The p in Lp norm (default 2 for L2 norm).
+  The order of the norm (default 2 for L2 norm).
 
 ## Value
 
