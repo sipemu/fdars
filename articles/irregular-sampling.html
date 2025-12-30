@@ -539,91 +539,6 @@ cross-validation.</p>
 <span><span class="co">#&gt; 1 treatment  45</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="real-world-use-cases">Real-World Use Cases<a class="anchor" aria-label="anchor" href="#real-world-use-cases"></a>
-</h2>
-<div class="section level3">
-<h3 id="case-1-sparse-longitudinal-data">Case 1: Sparse Longitudinal Data<a class="anchor" aria-label="anchor" href="#case-1-sparse-longitudinal-data"></a>
-</h3>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Simulate patient growth curves with irregular visits</span></span>
-<span><span class="va">n_patients</span> <span class="op">&lt;-</span> <span class="fl">15</span></span>
-<span></span>
-<span><span class="va">argvals_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="va">n_patients</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="co"># Random number of visits (5-12)</span></span>
-<span>  <span class="va">n_visits</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fl">5</span><span class="op">:</span><span class="fl">12</span>, <span class="fl">1</span><span class="op">)</span></span>
-<span>  <span class="co"># Random visit times in [0, 2] years</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/sort.html" class="external-link">sort</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n_visits</span>, <span class="fl">0</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">}</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Growth model: baseline + linear growth + random effect</span></span>
-<span><span class="va">X_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="va">n_patients</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">baseline</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">50</span>, <span class="fl">5</span><span class="op">)</span></span>
-<span>  <span class="va">growth_rate</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">10</span>, <span class="fl">2</span><span class="op">)</span></span>
-<span>  <span class="va">noise</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">argvals_list</span><span class="op">[[</span><span class="va">i</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span></span>
-<span>  <span class="va">baseline</span> <span class="op">+</span> <span class="va">growth_rate</span> <span class="op">*</span> <span class="va">argvals_list</span><span class="op">[[</span><span class="va">i</span><span class="op">]</span><span class="op">]</span> <span class="op">+</span> <span class="va">noise</span></span>
-<span><span class="op">}</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">ifd_growth</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/irregFdata.html">irregFdata</a></span><span class="op">(</span><span class="va">argvals_list</span>, <span class="va">X_list</span>,</span>
-<span>                          names <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>main <span class="op">=</span> <span class="st">"Growth Curves"</span>,</span>
-<span>                                       xlab <span class="op">=</span> <span class="st">"Age (years)"</span>,</span>
-<span>                                       ylab <span class="op">=</span> <span class="st">"Height (cm)"</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Estimate mean growth curve</span></span>
-<span><span class="va">mean_growth</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">ifd_growth</span>,</span>
-<span>                                argvals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">2</span>, length.out <span class="op">=</span> <span class="fl">50</span><span class="op">)</span>,</span>
-<span>                                bandwidth <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Visualize with ggplot2</span></span>
-<span><span class="va">mean_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>t <span class="op">=</span> <span class="va">mean_growth</span><span class="op">$</span><span class="va">argvals</span>, mean <span class="op">=</span> <span class="va">mean_growth</span><span class="op">$</span><span class="va">data</span><span class="op">[</span><span class="fl">1</span>,<span class="op">]</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd_growth</span>, alpha <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span>data <span class="op">=</span> <span class="va">mean_df</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">t</span>, y <span class="op">=</span> <span class="va">mean</span><span class="op">)</span>, color <span class="op">=</span> <span class="st">"red"</span>, linewidth <span class="op">=</span> <span class="fl">1.5</span>, inherit.aes <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"Growth Curves with Estimated Mean"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="irregular-sampling_files/figure-html/longitudinal-1.png" class="r-plt" alt="" width="100%"></p>
-</div>
-<div class="section level3">
-<h3 id="case-2-sensor-data-with-gaps">Case 2: Sensor Data with Gaps<a class="anchor" aria-label="anchor" href="#case-2-sensor-data-with-gaps"></a>
-</h3>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">123</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Simulate sensor data with random gaps</span></span>
-<span><span class="va">t_full</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">24</span>, by <span class="op">=</span> <span class="fl">0.1</span><span class="op">)</span>  <span class="co"># 24 hours</span></span>
-<span></span>
-<span><span class="va">simulate_sensor</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="co"># Random gaps (sensor offline)</span></span>
-<span>  <span class="va">n_gaps</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fl">3</span><span class="op">:</span><span class="fl">8</span>, <span class="fl">1</span><span class="op">)</span></span>
-<span>  <span class="va">gap_starts</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sort.html" class="external-link">sort</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n_gaps</span>, <span class="fl">0</span>, <span class="fl">23</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="va">gap_lengths</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n_gaps</span>, <span class="fl">0.5</span>, <span class="fl">2</span><span class="op">)</span></span>
-<span></span>
-<span>  <span class="va">keep</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_full</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span><span class="va">n_gaps</span><span class="op">)</span> <span class="op">{</span></span>
-<span>    <span class="va">keep</span><span class="op">[</span><span class="va">t_full</span> <span class="op">&gt;=</span> <span class="va">gap_starts</span><span class="op">[</span><span class="va">i</span><span class="op">]</span> <span class="op">&amp;</span> <span class="va">t_full</span> <span class="op">&lt;</span> <span class="va">gap_starts</span><span class="op">[</span><span class="va">i</span><span class="op">]</span> <span class="op">+</span> <span class="va">gap_lengths</span><span class="op">[</span><span class="va">i</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="cn">FALSE</span></span>
-<span>  <span class="op">}</span></span>
-<span></span>
-<span>  <span class="va">t_obs</span> <span class="op">&lt;-</span> <span class="va">t_full</span><span class="op">[</span><span class="va">keep</span><span class="op">]</span></span>
-<span>  <span class="co"># Temperature with daily cycle</span></span>
-<span>  <span class="va">temp</span> <span class="op">&lt;-</span> <span class="fl">20</span> <span class="op">+</span> <span class="fl">5</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">*</span> <span class="va">t_obs</span> <span class="op">/</span> <span class="fl">24</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">t_obs</span><span class="op">)</span>, <span class="fl">0</span>, <span class="fl">0.5</span><span class="op">)</span></span>
-<span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>t <span class="op">=</span> <span class="va">t_obs</span>, x <span class="op">=</span> <span class="va">temp</span><span class="op">)</span></span>
-<span><span class="op">}</span></span>
-<span></span>
-<span><span class="va">sensors</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="kw">function</span><span class="op">(</span><span class="va">i</span><span class="op">)</span> <span class="fu">simulate_sensor</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">ifd_sensor</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/irregFdata.html">irregFdata</a></span><span class="op">(</span></span>
-<span>  argvals <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">sensors</span>, <span class="va">`[[`</span>, <span class="st">"t"</span><span class="op">)</span>,</span>
-<span>  X <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">sensors</span>, <span class="va">`[[`</span>, <span class="st">"x"</span><span class="op">)</span>,</span>
-<span>  names <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>main <span class="op">=</span> <span class="st">"Temperature Sensors"</span>,</span>
-<span>               xlab <span class="op">=</span> <span class="st">"Hour of Day"</span>,</span>
-<span>               ylab <span class="op">=</span> <span class="st">"Temperature (C)"</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">ifd_sensor</span>, alpha <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span></span></code></pre></div>
-<p><img src="irregular-sampling_files/figure-html/sensor-gaps-1.png" class="r-plt" alt="" width="100%"></p>
-</div>
-</div>
-<div class="section level2">
 <h2 id="best-practices">Best Practices<a class="anchor" aria-label="anchor" href="#best-practices"></a>
 </h2>
 <div class="section level3">
@@ -662,7 +577,7 @@ cross-validation.</p>
 </h3>
 <p><code>irregFdata</code> is more memory-efficient when data is
 sparse:</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Regular: always stores n x m values</span></span>
 <span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">100</span></span>
 <span><span class="va">m</span> <span class="op">&lt;-</span> <span class="fl">1000</span></span>
@@ -694,7 +609,7 @@ values</li>
 <strong>Bandwidth selection</strong>: Use cross-validation for
 kernel smoothing</li>
 </ol>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Remove curves with fewer than 5 observations</span></span>
 <span><span class="va">min_obs</span> <span class="op">&lt;-</span> <span class="fl">5</span></span>
 <span><span class="va">keep</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">ifd</span><span class="op">$</span><span class="va">X</span>, <span class="va">length</span><span class="op">)</span> <span class="op">&gt;=</span> <span class="va">min_obs</span></span>
