@@ -177,6 +177,68 @@ plot(fd_interp[1], main = "After Linear Interpolation")
 par(mfrow = c(1, 1))
 ```
 
+## Basis Representation for Sparse Data
+
+Once irregular data is converted to a regular grid, basis representation provides a powerful way to:
+
+- **Smooth** noisy observations
+- **Reduce dimensionality** (from many grid points to few coefficients)
+- **Regularize** the curves for downstream analysis (FPCA, regression, clustering)
+
+For comprehensive coverage of basis functions, see `vignette("basis-representation")`.
+
+### B-spline Projection
+
+Project interpolated curves onto a B-spline basis:
+```{r basis-projection, fig.height = 5}
+# Create sparse data
+fd <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
+ifd_sparse <- sparsify(fd, minObs = 10, maxObs = 20, seed = 123)
+
+# Convert to regular grid
+fd_interp <- as.fdata(ifd_sparse, method = "linear")
+
+# Project onto B-spline basis
+coefs <- fdata2basis(fd_interp, nbasis = 12, type = "bspline")
+fd_basis <- basis2fdata(coefs, argvals = fd_interp$argvals)
+
+# Compare: interpolated vs basis-smoothed
+par(mfrow = c(1, 2))
+plot(fd_interp, main = "Linear Interpolation", alpha = 0.7)
+plot(fd_basis, main = "B-spline Basis (12 basis)")
+par(mfrow = c(1, 1))
+```
+
+### P-spline Smoothing
+
+For noisy sparse data, P-splines with automatic smoothing parameter selection provide robust results:
+
+```{r pspline-smoothing, fig.height = 5}
+# Add noise to simulate measurement error
+fd_noisy <- fd_interp
+fd_noisy$data <- fd_noisy$data + matrix(rnorm(length(fd_noisy$data), sd = 0.3),
+                                         nrow = nrow(fd_noisy$data))
+
+# P-spline with GCV-selected lambda
+fd_pspline <- pspline(fd_noisy, nbasis = 20, lambda = "GCV")
+
+# Compare
+par(mfrow = c(1, 2))
+plot(fd_noisy, main = "Noisy Interpolated Data", alpha = 0.7)
+plot(fd_pspline, main = "P-spline Smoothed (GCV)")
+par(mfrow = c(1, 1))
+```
+
+### Choosing the Right Approach
+
+| Approach | Best For | Key Parameters |
+|----------|----------|----------------|
+| B-spline projection | Clean data, fast computation | `nbasis`, `type` |
+| P-spline smoothing | Noisy data, automatic smoothing | `nbasis`, `lambda` |
+| Fourier basis | Periodic/seasonal patterns | `nbasis`, `type="fourier"` |
+
+**Tip**: Use `fdata2basis.cv()` to automatically select the optimal number of basis functions via cross-validation.
+
 ## Operations on Irregular Data
 
 ### Integration
