@@ -10,6 +10,10 @@
   Data](https://sipemu.github.io/fdars/articles/intro-to-smoothing.md):
 - [Working with
   Derivatives](https://sipemu.github.io/fdars/articles/working-with-derivatives.md):
+- [Simulating Functional
+  Data](https://sipemu.github.io/fdars/articles/simulation-toolbox.md):
+- [Working with Irregular Functional
+  Data](https://sipemu.github.io/fdars/articles/irregular-sampling.md):
 
 ### Core Methods
 

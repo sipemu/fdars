@@ -12,9 +12,11 @@
 <url><loc>https://sipemu.github.io/fdars/articles/index.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/intro-to-smoothing.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/introduction.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/articles/irregular-sampling.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/outlier-detection.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/regression.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/seasonal-analysis.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/articles/simulation-toolbox.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/articles/working-with-derivatives.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/authors.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/index.html</loc></url>
@@ -47,7 +49,9 @@
 <url><loc>https://sipemu.github.io/fdars/reference/S.LLR.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/S.LPR.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/S.NW.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/addError.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/analyze_peak_timing.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/as.fdata.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/autoplot.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.aic.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.bic.html</loc></url>
@@ -81,6 +85,8 @@
 <url><loc>https://sipemu.github.io/fdars/reference/detrend.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/df_to_fdata2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/dot-onLoad.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/eFun.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/eVal.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/estimate_period.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdars-package.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata.bootstrap.ci.html</loc></url>
@@ -110,6 +116,9 @@
 <url><loc>https://sipemu.github.io/fdars/reference/inprod.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/instantaneous_period.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/int.simpson.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/int.simpson.irregFdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/irregFdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/is.irregular.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernel_add.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernel_brownian.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernel_exponential.html</loc></url>
@@ -125,13 +134,16 @@
 <url><loc>https://sipemu.github.io/fdars/reference/magnitudeshape.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/make_gaussian_process.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/mean.fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/mean.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/median.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.DTW.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.hausdorff.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.kl.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/metric.lp.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/metric.lp.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/norm.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/norm.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/normalize.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/optim.np.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/outliergram.html</loc></url>
@@ -197,6 +209,9 @@
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.fourier.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.hshift.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/semimetric.pca.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/simFunData.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/simMultiFunData.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/sparsify.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/sub-.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/summary.basis.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/summary.fdata.html</loc></url>

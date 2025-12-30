@@ -11,11 +11,13 @@ articles:
   fpca: fpca.html
   intro-to-smoothing: intro-to-smoothing.html
   introduction: introduction.html
+  irregular-sampling: irregular-sampling.html
   outlier-detection: outlier-detection.html
   regression: regression.html
   seasonal-analysis: seasonal-analysis.html
+  simulation-toolbox: simulation-toolbox.html
   working-with-derivatives: working-with-derivatives.html
-last_built: 2025-12-29T20:50Z
+last_built: 2025-12-30T11:03Z
 urls:
   reference: https://sipemu.github.io/fdars/reference
   article: https://sipemu.github.io/fdars/articles
