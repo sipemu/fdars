@@ -213,12 +213,12 @@ fd_for_pspline <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 
 fd_for_pspline$data <- fd_for_pspline$data + matrix(rnorm(length(fd_for_pspline$data), sd = 0.3),
                                                       nrow = nrow(fd_for_pspline$data))
 
-# P-spline with GCV-selected lambda
-fd_pspline <- pspline(fd_for_pspline, nbasis = 20, lambda = "GCV")
+# P-spline with fixed lambda (automatic selection can be unstable for some data)
+fd_pspline <- pspline(fd_for_pspline, nbasis = 20, lambda = 0.01)
 
 # Compare
 p1 <- autoplot(fd_for_pspline, alpha = 0.7) + labs(title = "Noisy Data")
-p2 <- autoplot(fd_pspline, alpha = 0.7) + labs(title = "P-spline Smoothed (GCV)")
+p2 <- autoplot(fd_pspline, alpha = 0.7) + labs(title = "P-spline Smoothed")
 gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
