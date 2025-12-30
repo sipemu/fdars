@@ -214,11 +214,11 @@ fd_for_pspline$data <- fd_for_pspline$data + matrix(rnorm(length(fd_for_pspline$
                                                       nrow = nrow(fd_for_pspline$data))
 
 # P-spline with fixed lambda (automatic selection can be unstable for some data)
-fd_pspline <- pspline(fd_for_pspline, nbasis = 20, lambda = 0.01)
+pspline_result <- pspline(fd_for_pspline, nbasis = 20, lambda = 0.01)
 
-# Compare
+# Compare (pspline returns a list; extract $fdata for the smoothed curves)
 p1 <- autoplot(fd_for_pspline, alpha = 0.7) + labs(title = "Noisy Data")
-p2 <- autoplot(fd_pspline, alpha = 0.7) + labs(title = "P-spline Smoothed")
+p2 <- autoplot(pspline_result$fdata, alpha = 0.7) + labs(title = "P-spline Smoothed")
 gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```
 
