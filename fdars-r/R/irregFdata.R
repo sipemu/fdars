@@ -443,17 +443,38 @@ norm.irregFdata <- function(x, p = 2, ...) {
 
 #' Estimate Mean Function for Irregular Data
 #'
-#' Uses kernel smoothing to estimate the mean function from irregularly
-#' sampled functional data.
+#' Estimates the mean function from irregularly sampled functional data.
 #'
 #' @param x An object of class \code{irregFdata}.
 #' @param argvals Target grid for mean estimation. If \code{NULL}, uses
 #'   a regular grid of 100 points.
-#' @param bandwidth Kernel bandwidth. If \code{NULL}, uses a default based
-#'   on the data.
-#' @param kernel Kernel type: \code{"epanechnikov"} (default) or \code{"gaussian"}.
+#' @param method Estimation method: \code{"basis"} (default, recommended) fits
+#'   basis functions to each curve then averages; \code{"kernel"} uses
+#'   Nadaraya-Watson kernel smoothing.
+#' @param nbasis Number of basis functions for \code{method = "basis"} (default 15).
+#' @param type Basis type for \code{method = "basis"}: \code{"bspline"} (default)
+#'   or \code{"fourier"}.
+#' @param bandwidth Kernel bandwidth for \code{method = "kernel"}. If \code{NULL},
+#'   uses range/10.
+#' @param kernel Kernel type for \code{method = "kernel"}: \code{"epanechnikov"}
+#'   (default) or \code{"gaussian"}.
+#' @param ... Additional arguments (ignored).
 #'
 #' @return An \code{fdata} object containing the estimated mean function.
+#'
+#' @details
+#' The \code{"basis"} method (default) works by:
+#' \enumerate{
+#'   \item Fitting basis functions to each curve via least squares
+#'   \item Reconstructing each curve on the target grid
+#'   \item Averaging the reconstructed curves
+#' }
+#' This approach preserves the functional structure and typically gives
+#' more accurate estimates than kernel smoothing.
+#'
+#' The \code{"kernel"} method uses Nadaraya-Watson estimation, pooling all
+#' observations across curves. This is faster but may be less accurate
+#' for structured functional data.
 #'
 #' @export
 #' @examples
@@ -461,31 +482,48 @@ norm.irregFdata <- function(x, p = 2, ...) {
 #' fd <- simFunData(n = 50, argvals = t, M = 5, seed = 42)
 #' ifd <- sparsify(fd, minObs = 10, maxObs = 30, seed = 123)
 #'
-#' mean_fd <- mean.irregFdata(ifd)
+#' # Recommended: basis method
+#' mean_fd <- mean(ifd)
 #' plot(mean_fd, main = "Estimated Mean Function")
-mean.irregFdata <- function(x, argvals = NULL, bandwidth = NULL, kernel = c("epanechnikov", "gaussian")) {
+#'
+#' # Alternative: kernel method
+#' mean_kernel <- mean(ifd, method = "kernel", bandwidth = 0.1)
+mean.irregFdata <- function(x, argvals = NULL, method = c("basis", "kernel"),
+                            nbasis = 15, type = c("bspline", "fourier"),
+                            bandwidth = NULL, kernel = c("epanechnikov", "gaussian"),
+                            ...) {
   if (!inherits(x, "irregFdata")) {
     stop("x must be of class 'irregFdata'")
   }
 
-  kernel <- match.arg(kernel)
-  kernel_type <- switch(kernel, epanechnikov = 0L, gaussian = 1L)
+  method <- match.arg(method)
+  type <- match.arg(type)
 
   if (is.null(argvals)) {
     argvals <- seq(x$rangeval[1], x$rangeval[2], length.out = 100)
   }
 
-  if (is.null(bandwidth)) {
-    # Default bandwidth: range / 10
-    bandwidth <- diff(x$rangeval) / 10
+  if (method == "basis") {
+    # Fit basis to each curve, reconstruct, then average
+    coefs <- fdata2basis(x, nbasis = nbasis, type = type)
+    fd_recon <- basis2fdata(coefs, argvals = argvals, type = type)
+    mean_vals <- colMeans(fd_recon$data)
+  } else {
+    # Kernel smoothing (original method)
+    kernel <- match.arg(kernel)
+    kernel_type <- switch(kernel, epanechnikov = 0L, gaussian = 1L)
+
+    if (is.null(bandwidth)) {
+      bandwidth <- diff(x$rangeval) / 10
+    }
+
+    offsets <- c(0L, cumsum(sapply(x$argvals, length)))
+    flat_argvals <- unlist(x$argvals)
+    flat_values <- unlist(x$X)
+
+    mean_vals <- .Call("wrap__irreg_mean_kernel", offsets, flat_argvals, flat_values,
+                       argvals, bandwidth, kernel_type)
   }
-
-  offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-  flat_argvals <- unlist(x$argvals)
-  flat_values <- unlist(x$X)
-
-  mean_vals <- .Call("wrap__irreg_mean_kernel", offsets, flat_argvals, flat_values,
-                     argvals, bandwidth, kernel_type)
 
   fdata(matrix(mean_vals, nrow = 1), argvals = argvals,
         rangeval = x$rangeval, names = list(
