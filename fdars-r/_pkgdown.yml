@@ -89,6 +89,8 @@ reference:
   - var
   - sd
   - normalize
+  - standardize
+  - scale_minmax
   - gmed
   - inprod.fdata
   - int.simpson
