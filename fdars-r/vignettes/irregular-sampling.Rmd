@@ -214,6 +214,66 @@ autoplot(fd_fourier[1:5], alpha = 0.8) +
   labs(title = "Fourier Basis Reconstruction (9 basis)")
 ```
 
+### Comparing Approaches: Direct vs Interpolate-Then-Fit
+
+Let's compare the two approaches. The key advantage of direct fitting is that it works even when observations don't cover the full domain:
+
+```{r compare-approaches, fig.height = 4, fig.width = 10}
+# Create sparse data with known ground truth
+t <- seq(0, 1, length.out = 100)
+fd_true <- simFunData(n = 5, argvals = t, M = 5, seed = 42)
+ifd <- sparsify(fd_true, minObs = 15, maxObs = 25, seed = 456)
+
+# Show observation coverage
+cat("Observation ranges per curve:\n")
+for (i in 1:5) {
+  r <- range(ifd$argvals[[i]])
+  cat(sprintf("  Curve %d: [%.2f, %.2f] (%d observations)\n",
+              i, r[1], r[2], length(ifd$argvals[[i]])))
+}
+
+# APPROACH 1: Direct basis fitting - works on full domain
+coefs_direct <- fdata2basis(ifd, nbasis = 12, type = "bspline")
+fd_direct <- basis2fdata(coefs_direct, argvals = t, type = "bspline")
+
+# APPROACH 2: Interpolate first - only works within observed range
+fd_interp <- as.fdata(ifd, argvals = t, method = "linear")
+cat("\nNAs in interpolated data:", sum(is.na(fd_interp$data)),
+    "(outside observation range)\n")
+```
+
+```{r compare-viz, fig.height = 4, fig.width = 10}
+# Visualize for one curve - showing the extrapolation advantage
+curve_idx <- 1
+obs_t <- ifd$argvals[[curve_idx]]
+obs_y <- ifd$X[[curve_idx]]
+
+compare_df <- rbind(
+  data.frame(t = t, y = fd_true$data[curve_idx, ], method = "Ground Truth"),
+  data.frame(t = t, y = fd_direct$data[curve_idx, ], method = "Direct Fitting")
+)
+
+ggplot() +
+  geom_line(data = compare_df, aes(x = t, y = y, color = method, linetype = method),
+            linewidth = 0.8, inherit.aes = FALSE) +
+  geom_point(data = data.frame(t = obs_t, y = obs_y),
+             aes(x = t, y = y), size = 2, alpha = 0.8, inherit.aes = FALSE) +
+  geom_vline(xintercept = range(obs_t), linetype = "dashed", alpha = 0.3) +
+  scale_color_manual(values = c("Ground Truth" = "black", "Direct Fitting" = "blue")) +
+  scale_linetype_manual(values = c("Ground Truth" = "solid", "Direct Fitting" = "dashed")) +
+  labs(title = "Direct Basis Fitting Works Across Full Domain",
+       subtitle = "Vertical lines show observation range; direct fitting extrapolates naturally",
+       x = "t", y = "Value", color = NULL, linetype = NULL) +
+  theme_minimal()
+```
+
+**Key observations:**
+
+- **Direct fitting** fits basis functions directly to the sparse observations using least squares, and can extrapolate beyond the observed range
+- **Interpolate-then-fit** requires observations at domain boundaries; gaps produce NAs
+- For data with good coverage of the domain, both approaches give similar results
+- Direct fitting is the safer choice for truly sparse or irregularly sampled data
+
 ### Alternative: Interpolate Then Fit
 
 For regular data (or after converting irregular to regular), you can use basis projection:

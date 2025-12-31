@@ -211,6 +211,8 @@ basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
 #' Selects the optimal number of basis functions using k-fold cross-validation
 #' or generalized cross-validation.
 #'
+#' @name fdata2basis.cv
+#'
 #' @param fdataobj An fdata object.
 #' @param nbasis.range Vector of nbasis values to evaluate (default: 4:20).
 #' @param type Basis type: "bspline" (default) or "fourier".
@@ -228,7 +230,7 @@ basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
 #'     \item{fitted}{fdata object fitted with optimal nbasis}
 #'   }
 #'
-#' @export
+#' @rawNamespace export(fdata2basis.cv)
 #' @examples
 #' set.seed(42)
 #' t <- seq(0, 1, length.out = 50)
@@ -545,7 +547,8 @@ plot.pspline <- function(x, ...) {
 #' The tensor product basis is defined as:
 #' \deqn{B_{2d}(s, t) = B_s(s) \otimes B_t(t)}
 #'
-#' @export
+#' @name fdata2basis.2d
+#' @rawNamespace export(fdata2basis.2d)
 #' @examples
 #' # Create 2D surface data
 #' s <- seq(0, 1, length.out = 20)
