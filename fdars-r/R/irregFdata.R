@@ -527,6 +527,43 @@ fdata2basis.irregFdata <- function(x, nbasis = 10, type = c("bspline", "fourier"
 }
 
 # =============================================================================
+# Scaling / Normalization
+# =============================================================================
+
+#' @rdname standardize
+#' @method standardize irregFdata
+#' @export
+standardize.irregFdata <- function(fdataobj) {
+  # Standardize each curve: (x - mean) / sd
+  for (i in seq_len(fdataobj$n)) {
+    x <- fdataobj$X[[i]]
+    m <- mean(x, na.rm = TRUE)
+    s <- sd(x, na.rm = TRUE)
+    if (s == 0) s <- 1  # Handle constant curves
+    fdataobj$X[[i]] <- (x - m) / s
+  }
+  fdataobj
+}
+
+#' @rdname scale_minmax
+#' @method scale_minmax irregFdata
+#' @export
+scale_minmax.irregFdata <- function(fdataobj, min = 0, max = 1) {
+  # Scale each curve to [min, max]
+  for (i in seq_len(fdataobj$n)) {
+    x <- fdataobj$X[[i]]
+    x_min <- min(x, na.rm = TRUE)
+    x_max <- max(x, na.rm = TRUE)
+    x_range <- x_max - x_min
+    if (x_range == 0) x_range <- 1  # Handle constant curves
+
+    # Scale to [0, 1] then to [min, max]
+    fdataobj$X[[i]] <- ((x - x_min) / x_range) * (max - min) + min
+  }
+  fdataobj
+}
+
+# =============================================================================
 # Plotting
 # =============================================================================
 

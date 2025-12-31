@@ -609,6 +609,89 @@ normalize <- function(fdataobj, p = 2) {
   fdataobj
 }
 
+#' Standardize functional data (z-score normalization)
+#'
+#' Transforms each curve to have mean 0 and standard deviation 1.
+#' This is useful for comparing curve shapes regardless of their level or scale.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#'
+#' @return A standardized 'fdata' object where each curve has mean 0 and sd 1.
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(100) * 10 + 50, 10, 10), argvals = seq(0, 1, length.out = 10))
+#' fd_std <- standardize(fd)
+#' # Check: each curve now has mean ~0 and sd ~1
+#' rowMeans(fd_std$data)
+#' apply(fd_std$data, 1, sd)
+standardize <- function(fdataobj) {
+  UseMethod("standardize")
+}
+
+#' @rdname standardize
+#' @method standardize fdata
+#' @export
+standardize.fdata <- function(fdataobj) {
+  if (fdataobj$fdata2d) {
+    stop("standardize not yet implemented for 2D functional data")
+  }
+
+  # Compute mean and sd for each curve
+  means <- rowMeans(fdataobj$data, na.rm = TRUE)
+  sds <- apply(fdataobj$data, 1, sd, na.rm = TRUE)
+
+  # Handle zero sd (constant curves)
+  sds[sds == 0] <- 1
+
+  # Standardize: (x - mean) / sd
+  fdataobj$data <- (fdataobj$data - means) / sds
+
+  fdataobj
+}
+
+#' Min-Max scaling for functional data
+#'
+#' Scales each curve to the range [0, 1] (or custom range).
+#' This preserves the shape while normalizing the range.
+#'
+#' @param fdataobj An object of class 'fdata'.
+#' @param min Target minimum value (default 0).
+#' @param max Target maximum value (default 1).
+#'
+#' @return A scaled 'fdata' object where each curve is in the specified range.
+#' @export
+#' @examples
+#' fd <- fdata(matrix(rnorm(100) * 10 + 50, 10, 10), argvals = seq(0, 1, length.out = 10))
+#' fd_scaled <- scale_minmax(fd)
+#' # Check: each curve now in [0, 1]
+#' apply(fd_scaled$data, 1, range)
+scale_minmax <- function(fdataobj, min = 0, max = 1) {
+  UseMethod("scale_minmax")
+}
+
+#' @rdname scale_minmax
+#' @method scale_minmax fdata
+#' @export
+scale_minmax.fdata <- function(fdataobj, min = 0, max = 1) {
+  if (fdataobj$fdata2d) {
+    stop("scale_minmax not yet implemented for 2D functional data")
+  }
+
+  # Compute min and max for each curve
+  row_mins <- apply(fdataobj$data, 1, min, na.rm = TRUE)
+  row_maxs <- apply(fdataobj$data, 1, max, na.rm = TRUE)
+  row_range <- row_maxs - row_mins
+
+  # Handle zero range (constant curves)
+  row_range[row_range == 0] <- 1
+
+  # Scale to [0, 1] first, then to [min, max]
+  fdataobj$data <- (fdataobj$data - row_mins) / row_range
+  fdataobj$data <- fdataobj$data * (max - min) + min
+
+  fdataobj
+}
+
 #' Print method for fdata objects
 #'
 #' @param x An object of class 'fdata'.

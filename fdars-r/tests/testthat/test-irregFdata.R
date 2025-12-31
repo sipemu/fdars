@@ -273,3 +273,105 @@ test_that("fdata2basis.irregFdata can reconstruct curves", {
   recon_error <- sqrt(mean((fd_recon$data[1, ] - true_values)^2))
   expect_lt(recon_error, 0.1)  # RMSE < 0.1
 })
+
+# =============================================================================
+# Tests for standardize and scale_minmax
+# =============================================================================
+
+test_that("standardize.fdata produces mean 0 and sd 1", {
+  t <- seq(0, 1, length.out = 50)
+  # Create data with different means and sds
+  X <- matrix(0, 5, 50)
+  X[1, ] <- rnorm(50, mean = 10, sd = 2)
+  X[2, ] <- rnorm(50, mean = -5, sd = 0.5)
+  X[3, ] <- rnorm(50, mean = 100, sd = 10)
+  X[4, ] <- rnorm(50, mean = 0, sd = 1)
+  X[5, ] <- rnorm(50, mean = 50, sd = 5)
+  fd <- fdata(X, argvals = t)
+
+  fd_std <- standardize(fd)
+
+  # Check each curve has mean ~0 and sd ~1
+  means <- rowMeans(fd_std$data)
+  sds <- apply(fd_std$data, 1, sd)
+
+  expect_equal(means, rep(0, 5), tolerance = 1e-10)
+  expect_equal(sds, rep(1, 5), tolerance = 1e-10)
+})
+
+test_that("standardize.fdata handles constant curves", {
+  t <- seq(0, 1, length.out = 20)
+  X <- matrix(c(rep(5, 20), rnorm(20)), 2, 20, byrow = TRUE)
+  fd <- fdata(X, argvals = t)
+
+  # Should not error on constant curve
+  fd_std <- standardize(fd)
+
+  # Constant curve becomes all zeros (mean 0, but sd was 0)
+  expect_equal(fd_std$data[1, ], rep(0, 20))
+})
+
+test_that("scale_minmax.fdata produces values in [0,1]", {
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(rnorm(150) * 10 + 50, 3, 50)
+  fd <- fdata(X, argvals = t)
+
+  fd_scaled <- scale_minmax(fd)
+
+  # Check each curve is in [0, 1]
+  for (i in 1:3) {
+    expect_gte(min(fd_scaled$data[i, ]), 0)
+    expect_lte(max(fd_scaled$data[i, ]), 1)
+    expect_equal(min(fd_scaled$data[i, ]), 0)
+    expect_equal(max(fd_scaled$data[i, ]), 1)
+  }
+})
+
+test_that("scale_minmax.fdata with custom range", {
+  t <- seq(0, 1, length.out = 20)
+  X <- matrix(rnorm(40), 2, 20)
+  fd <- fdata(X, argvals = t)
+
+  fd_scaled <- scale_minmax(fd, min = -1, max = 1)
+
+  # Check each curve is in [-1, 1]
+  for (i in 1:2) {
+    expect_equal(min(fd_scaled$data[i, ]), -1)
+    expect_equal(max(fd_scaled$data[i, ]), 1)
+  }
+})
+
+test_that("standardize.irregFdata works correctly", {
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1))
+  X <- list(c(10, 20, 30), c(100, 110, 120, 130, 140))
+  ifd <- irregFdata(argvals, X)
+
+  ifd_std <- standardize(ifd)
+
+  # Check each curve has mean ~0 and sd ~1
+  for (i in 1:2) {
+    expect_equal(mean(ifd_std$X[[i]]), 0, tolerance = 1e-10)
+    expect_equal(sd(ifd_std$X[[i]]), 1, tolerance = 1e-10)
+  }
+})
+
+test_that("scale_minmax.irregFdata works correctly", {
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1))
+  X <- list(c(10, 20, 30), c(100, 110, 120, 130, 140))
+  ifd <- irregFdata(argvals, X)
+
+  ifd_scaled <- scale_minmax(ifd)
+
+  # Check each curve is in [0, 1]
+  for (i in 1:2) {
+    expect_equal(min(ifd_scaled$X[[i]]), 0)
+    expect_equal(max(ifd_scaled$X[[i]]), 1)
+  }
+
+  # Check with custom range
+  ifd_scaled2 <- scale_minmax(ifd, min = -1, max = 1)
+  for (i in 1:2) {
+    expect_equal(min(ifd_scaled2$X[[i]]), -1)
+    expect_equal(max(ifd_scaled2$X[[i]]), 1)
+  }
+})
