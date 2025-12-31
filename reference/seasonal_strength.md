@@ -89,7 +89,7 @@ seasonal_strength(fd_seasonal, period = 2)  # Should be close to 1
 X_noise <- matrix(rnorm(200), nrow = 1)
 fd_noise <- fdata(X_noise, argvals = t)
 seasonal_strength(fd_noise, period = 2)  # Should be close to 0
-#> [1] 0.02783907
+#> [1] 0.01628628
 
 # Trending data - detrending improves strength estimate
 X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)

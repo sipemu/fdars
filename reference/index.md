@@ -22,6 +22,10 @@
   Standard Deviation
 - [`normalize()`](https://sipemu.github.io/fdars/reference/normalize.md)
   : Normalize functional data
+- [`standardize()`](https://sipemu.github.io/fdars/reference/standardize.md)
+  : Standardize functional data (z-score normalization)
+- [`scale_minmax()`](https://sipemu.github.io/fdars/reference/scale_minmax.md)
+  : Min-Max scaling for functional data
 - [`gmed()`](https://sipemu.github.io/fdars/reference/gmed.md) :
   Geometric Median of Functional Data
 - [`inprod.fdata()`](https://sipemu.github.io/fdars/reference/inprod.fdata.md)
