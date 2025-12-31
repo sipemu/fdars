@@ -2300,6 +2300,7 @@ fdata2basis <- function(x, nbasis = 10, type = c("bspline", "fourier"), ...) {
 }
 
 #' @rdname fdata2basis
+#' @method fdata2basis fdata
 #' @export
 fdata2basis.fdata <- function(x, nbasis = 10, type = c("bspline", "fourier"), ...) {
   fdataobj <- x

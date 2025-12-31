@@ -510,6 +510,7 @@ metric.lp.irregFdata <- function(x, p = 2, ...) {
 # =============================================================================
 
 #' @rdname fdata2basis
+#' @method fdata2basis irregFdata
 #' @export
 fdata2basis.irregFdata <- function(x, nbasis = 10, type = c("bspline", "fourier"), ...) {
   type <- match.arg(type)
