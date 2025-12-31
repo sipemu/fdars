@@ -429,15 +429,17 @@ print(norms)
 
 ### Mean Function Estimation
 
-Estimate the mean using kernel smoothing:
+The [`mean()`](https://rdrr.io/r/base/mean.html) function estimates the
+mean from irregular data. The default method uses basis reconstruction,
+which preserves the functional structure:
 
 ``` r
 # Simulate many curves
 fd <- simFunData(n = 50, argvals = t, M = 5, seed = 42)
 ifd <- sparsify(fd, minObs = 15, maxObs = 30, seed = 123)
 
-# Estimate mean
-mean_fd <- mean(ifd, bandwidth = 0.1)
+# Estimate mean (default: basis method)
+mean_fd <- mean(ifd)
 autoplot(mean_fd) + labs(title = "Estimated Mean Function")
 ```
 
@@ -447,20 +449,38 @@ autoplot(mean_fd) + labs(title = "Estimated Mean Function")
 # Compare to true sample mean (from original data)
 true_mean <- colMeans(fd$data)
 
+# Also try kernel method for comparison
+mean_kernel <- mean(ifd, method = "kernel", bandwidth = 0.1)
+
 # Create comparison data frame
 compare_df <- rbind(
   data.frame(t = t, value = true_mean, type = "True Sample Mean"),
-  data.frame(t = mean_fd$argvals, value = mean_fd$data[1,], type = "Kernel Estimate")
+  data.frame(t = mean_fd$argvals, value = mean_fd$data[1,], type = "Basis Method"),
+  data.frame(t = mean_kernel$argvals, value = mean_kernel$data[1,], type = "Kernel Method")
 )
 
 ggplot(compare_df, aes(x = t, y = value, color = type)) +
   geom_line(linewidth = 1) +
-  scale_color_manual(values = c("True Sample Mean" = "blue", "Kernel Estimate" = "red")) +
-  labs(title = "Mean Comparison", x = "t", y = "Mean", color = NULL) +
+  scale_color_manual(values = c("True Sample Mean" = "black",
+                                 "Basis Method" = "blue",
+                                 "Kernel Method" = "red")) +
+  labs(title = "Mean Estimation: Basis vs Kernel",
+       subtitle = "Basis method (default) is more accurate",
+       x = "t", y = "Mean", color = NULL) +
   theme_minimal()
 ```
 
 ![](irregular-sampling_files/figure-html/compare-mean-1.png)
+
+``` r
+# Compare accuracy
+rmse_basis <- sqrt(mean((mean_fd$data[1,] - true_mean)^2))
+rmse_kernel <- sqrt(mean((mean_kernel$data[1,] - true_mean)^2))
+cat("RMSE (Basis method):", round(rmse_basis, 4), "\n")
+#> RMSE (Basis method): 0.0263
+cat("RMSE (Kernel method):", round(rmse_kernel, 4), "\n")
+#> RMSE (Kernel method): 0.1033
+```
 
 ### Distance Matrix
 
