@@ -6,7 +6,8 @@ which is the Kronecker product of two 1D bases.
 ## Usage
 
 ``` r
-fdata2basis.2d(
+# S3 method for class '`2d`'
+fdata2basis(
   fdataobj,
   nbasis.s = 10,
   nbasis.t = 10,

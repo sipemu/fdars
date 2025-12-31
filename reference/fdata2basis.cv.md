@@ -6,7 +6,8 @@ cross-validation or generalized cross-validation.
 ## Usage
 
 ``` r
-fdata2basis.cv(
+# S3 method for class 'cv'
+fdata2basis(
   fdataobj,
   nbasis.range = 4:20,
   type = c("bspline", "fourier"),

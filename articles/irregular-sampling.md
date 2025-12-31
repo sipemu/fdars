@@ -202,24 +202,144 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 
 ## Basis Representation for Sparse Data
 
-Once irregular data is converted to a regular grid, basis representation
-provides a powerful way to:
+Basis representation is a powerful approach for handling
+irregular/sparse functional data:
 
 - **Smooth** noisy observations
-- **Reduce dimensionality** (from many grid points to few coefficients)
+- **Reduce dimensionality** (from many observation points to few
+  coefficients)
 - **Regularize** the curves for downstream analysis (FPCA, regression,
   clustering)
+- **Convert** irregular data to regular representation
 
 For comprehensive coverage of basis functions, see
 [`vignette("basis-representation")`](https://sipemu.github.io/fdars/articles/basis-representation.md).
 
-### B-spline Projection
+### Direct Basis Fitting (Recommended)
 
-Project curves onto a B-spline basis for smoothing and dimensionality
-reduction:
+The preferred approach for irregular data is to fit basis functions
+directly to each curve’s observation points using least squares. This
+avoids interpolation artifacts and handles varying observation densities
+naturally.
 
 ``` r
-# Simulate functional data
+# Create sparse/irregular data
+t <- seq(0, 1, length.out = 100)
+fd_sim <- simFunData(n = 10, argvals = t, M = 5, seed = 42)
+ifd <- sparsify(fd_sim, minObs = 15, maxObs = 30, seed = 123)
+
+# Fit basis directly to irregular data (no interpolation needed!)
+coefs <- fdata2basis(ifd, nbasis = 10, type = "bspline")
+
+# Reconstruct on any target grid
+fd_smooth <- basis2fdata(coefs, argvals = t, type = "bspline")
+
+# Compare sparse observations vs smooth reconstruction
+p1 <- autoplot(ifd[1:3], alpha = 0.8) +
+  labs(title = "Sparse Observations (3 curves)")
+p2 <- autoplot(fd_smooth[1:3], alpha = 0.8) +
+  labs(title = "Basis Reconstruction")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+![](irregular-sampling_files/figure-html/direct-basis-fitting-1.png)
+
+This approach works with both B-spline and Fourier bases:
+
+``` r
+# Fourier basis for periodic patterns
+coefs_fourier <- fdata2basis(ifd, nbasis = 9, type = "fourier")
+fd_fourier <- basis2fdata(coefs_fourier, argvals = t, type = "fourier")
+
+autoplot(fd_fourier[1:5], alpha = 0.8) +
+  labs(title = "Fourier Basis Reconstruction (9 basis)")
+```
+
+![](irregular-sampling_files/figure-html/direct-fourier-1.png)
+
+### Comparing Approaches: Direct vs Interpolate-Then-Fit
+
+Let’s compare the two approaches. The key advantage of direct fitting is
+that it works even when observations don’t cover the full domain:
+
+``` r
+# Create sparse data with known ground truth
+t <- seq(0, 1, length.out = 100)
+fd_true <- simFunData(n = 5, argvals = t, M = 5, seed = 42)
+ifd <- sparsify(fd_true, minObs = 15, maxObs = 25, seed = 456)
+
+# Show observation coverage
+cat("Observation ranges per curve:\n")
+#> Observation ranges per curve:
+for (i in 1:5) {
+  r <- range(ifd$argvals[[i]])
+  cat(sprintf("  Curve %d: [%.2f, %.2f] (%d observations)\n",
+              i, r[1], r[2], length(ifd$argvals[[i]])))
+}
+#>   Curve 1: [0.07, 0.90] (19 observations)
+#>   Curve 2: [0.03, 1.00] (23 observations)
+#>   Curve 3: [0.03, 0.99] (21 observations)
+#>   Curve 4: [0.04, 0.90] (25 observations)
+#>   Curve 5: [0.00, 1.00] (22 observations)
+
+# APPROACH 1: Direct basis fitting - works on full domain
+coefs_direct <- fdata2basis(ifd, nbasis = 12, type = "bspline")
+fd_direct <- basis2fdata(coefs_direct, argvals = t, type = "bspline")
+
+# APPROACH 2: Interpolate first - only works within observed range
+fd_interp <- as.fdata(ifd, argvals = t, method = "linear")
+cat("\nNAs in interpolated data:", sum(is.na(fd_interp$data)),
+    "(outside observation range)\n")
+#> 
+#> NAs in interpolated data: 38 (outside observation range)
+```
+
+``` r
+# Visualize for one curve - showing the extrapolation advantage
+curve_idx <- 1
+obs_t <- ifd$argvals[[curve_idx]]
+obs_y <- ifd$X[[curve_idx]]
+
+compare_df <- rbind(
+  data.frame(t = t, y = fd_true$data[curve_idx, ], method = "Ground Truth"),
+  data.frame(t = t, y = fd_direct$data[curve_idx, ], method = "Direct Fitting")
+)
+
+ggplot() +
+  geom_line(data = compare_df, aes(x = t, y = y, color = method, linetype = method),
+            linewidth = 0.8, inherit.aes = FALSE) +
+  geom_point(data = data.frame(t = obs_t, y = obs_y),
+             aes(x = t, y = y), size = 2, alpha = 0.8, inherit.aes = FALSE) +
+  geom_vline(xintercept = range(obs_t), linetype = "dashed", alpha = 0.3) +
+  scale_color_manual(values = c("Ground Truth" = "black", "Direct Fitting" = "blue")) +
+  scale_linetype_manual(values = c("Ground Truth" = "solid", "Direct Fitting" = "dashed")) +
+  labs(title = "Direct Basis Fitting Works Across Full Domain",
+       subtitle = "Vertical lines show observation range; direct fitting extrapolates naturally",
+       x = "t", y = "Value", color = NULL, linetype = NULL) +
+  theme_minimal()
+```
+
+![](irregular-sampling_files/figure-html/compare-viz-1.png)
+
+**Key observations:**
+
+- **Direct fitting** fits basis functions directly to the sparse
+  observations using least squares, and can extrapolate beyond the
+  observed range
+- **Interpolate-then-fit** requires observations at domain boundaries;
+  gaps produce NAs
+- For data with good coverage of the domain, both approaches give
+  similar results
+- Direct fitting is the safer choice for truly sparse or irregularly
+  sampled data
+
+### Alternative: Interpolate Then Fit
+
+For regular data (or after converting irregular to regular), you can use
+basis projection:
+
+``` r
+# Simulate regular functional data
 set.seed(123)
 fd_sim <- simFunData(n = 15, argvals = seq(0, 1, length.out = 100), M = 5, seed = 42)
 
@@ -265,11 +385,12 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 
 ### Choosing the Right Approach
 
-| Approach            | Best For                        | Key Parameters             |
-|---------------------|---------------------------------|----------------------------|
-| B-spline projection | Clean data, fast computation    | `nbasis`, `type`           |
-| P-spline smoothing  | Noisy data, automatic smoothing | `nbasis`, `lambda`         |
-| Fourier basis       | Periodic/seasonal patterns      | `nbasis`, `type="fourier"` |
+| Approach                          | Best For                   | Key Parameters             |
+|-----------------------------------|----------------------------|----------------------------|
+| Direct basis fitting (irregFdata) | Sparse/irregular data      | `nbasis`, `type`           |
+| B-spline projection               | Regular clean data         | `nbasis`, `type="bspline"` |
+| P-spline smoothing                | Noisy regular data         | `nbasis`, `lambda`         |
+| Fourier basis                     | Periodic/seasonal patterns | `nbasis`, `type="fourier"` |
 
 **Tip**: Use
 [`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
@@ -485,6 +606,8 @@ if (any(!keep)) {
 | [`is.irregular()`](https://sipemu.github.io/fdars/reference/is.irregular.md)    | Check if object is irregFdata                                |
 | [`sparsify()`](https://sipemu.github.io/fdars/reference/sparsify.md)            | Convert regular to irregular data                            |
 | [`as.fdata()`](https://sipemu.github.io/fdars/reference/as.fdata.irregFdata.md) | Convert irregular to regular (with interpolation)            |
+| [`fdata2basis()`](https://sipemu.github.io/fdars/reference/fdata2basis.md)      | Fit basis coefficients (works with fdata and irregFdata)     |
+| [`basis2fdata()`](https://sipemu.github.io/fdars/reference/basis2fdata.md)      | Reconstruct curves from coefficients                         |
 | [`int.simpson()`](https://sipemu.github.io/fdars/reference/int.simpson.md)      | Compute integrals (works with fdata and irregFdata)          |
 | [`norm()`](https://sipemu.github.io/fdars/reference/norm.md)                    | Compute Lp norms (works with fdata and irregFdata)           |
 | [`mean()`](https://rdrr.io/r/base/mean.html)                                    | Estimate mean via kernel smoothing                           |
