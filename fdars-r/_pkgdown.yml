@@ -180,16 +180,16 @@ reference:
 
 - title: Seasonal Analysis
   contents:
-  - estimate_period
-  - detect_multiple_periods
-  - detect_peaks
-  - seasonal_strength
-  - seasonal_strength_curve
-  - detect_seasonality_changes
-  - detect_seasonality_changes_auto
-  - instantaneous_period
-  - analyze_peak_timing
-  - classify_seasonality
+  - estimate.period
+  - detect.periods
+  - detect.peaks
+  - seasonal.strength
+  - seasonal.strength.curve
+  - detect.seasonality.changes
+  - detect.seasonality.changes.auto
+  - instantaneous.period
+  - analyze.peak.timing
+  - classify.seasonality
   - detrend
   - decompose
 
@@ -231,17 +231,17 @@ reference:
 
 - title: Covariance Functions (GP)
   contents:
-  - kernel_add
-  - kernel_brownian
-  - kernel_exponential
-  - kernel_gaussian
-  - kernel_linear
-  - kernel_matern
-  - kernel_mult
-  - kernel_periodic
-  - kernel_polynomial
-  - kernel_whitenoise
-  - make_gaussian_process
+  - kernel.add
+  - kernel.brownian
+  - kernel.exponential
+  - kernel.gaussian
+  - kernel.linear
+  - kernel.matern
+  - kernel.mult
+  - kernel.periodic
+  - kernel.polynomial
+  - kernel.whitenoise
+  - make.gaussian.process
   - cov
 
 - title: Simulation
