@@ -9,6 +9,19 @@ permissions:
   contents: write
 
 jobs:
+  publish-crate:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Publish fdars-core
+        run: cargo publish --package fdars-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true  # Don't fail if version already published
+
   build-release:
     name: Build ${{ matrix.config.os }}
     runs-on: ${{ matrix.config.os }}
