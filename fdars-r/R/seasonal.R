@@ -49,14 +49,14 @@
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Estimate period
-#' result <- estimate_period(fd, method = "fft")
+#' result <- estimate.period(fd, method = "fft")
 #' print(result$period)  # Should be close to 2
 #'
 #' # With trend - detrending improves estimation
 #' X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
 #' fd_trend <- fdata(X_trend, argvals = t)
-#' result <- estimate_period(fd_trend, detrend_method = "linear")
-estimate_period <- function(fdataobj, method = c("fft", "acf"),
+#' result <- estimate.period(fd_trend, detrend_method = "linear")
+estimate.period <- function(fdataobj, method = c("fft", "acf"),
                             max_lag = NULL,
                             detrend_method = c("none", "linear", "auto")) {
   if (!inherits(fdataobj, "fdata")) {
@@ -64,7 +64,7 @@ estimate_period <- function(fdataobj, method = c("fft", "acf"),
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("estimate_period not yet implemented for 2D functional data")
+    stop("estimate.period not yet implemented for 2D functional data")
   }
 
   method <- match.arg(method)
@@ -151,7 +151,7 @@ print.period_estimate <- function(x, ...) {
 #' Trends can interfere with period detection. The default "auto" detrending
 #' automatically selects an appropriate method to remove trends.
 #'
-#' @seealso \code{\link{estimate_period}} for single period estimation,
+#' @seealso \code{\link{estimate.period}} for single period estimation,
 #'   \code{\link{detrend}} for standalone detrending
 #'
 #' @export
@@ -162,10 +162,10 @@ print.period_estimate <- function(x, ...) {
 #' fd <- fdata(matrix(X, nrow = 1), argvals = t)
 #'
 #' # Detect multiple periods
-#' result <- detect_multiple_periods(fd, max_periods = 3)
+#' result <- detect.periods(fd, max_periods = 3)
 #' print(result$periods)  # Should find approximately 2 and 7
 #' print(result$n_periods)  # Should be 2
-detect_multiple_periods <- function(fdataobj, max_periods = 3,
+detect.periods <- function(fdataobj, max_periods = 3,
                                      min_confidence = 0.5,
                                      min_strength = 0.2,
                                      detrend_method = c("auto", "none", "linear")) {
@@ -174,7 +174,7 @@ detect_multiple_periods <- function(fdataobj, max_periods = 3,
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("detect_multiple_periods not yet implemented for 2D functional data")
+    stop("detect.periods not yet implemented for 2D functional data")
   }
 
   detrend_method <- match.arg(detrend_method)
@@ -195,11 +195,11 @@ detect_multiple_periods <- function(fdataobj, max_periods = 3,
 
   for (i in seq_len(max_periods)) {
     # Estimate dominant period
-    est <- estimate_period(residual, method = "fft")
+    est <- estimate.period(residual, method = "fft")
     if (est$confidence < min_confidence) break
 
     # Check seasonal strength
-    ss <- seasonal_strength(residual, period = est$period)
+    ss <- seasonal.strength(residual, period = est$period)
     if (ss < min_strength) break
 
     # Compute amplitude via Fourier coefficients
@@ -303,17 +303,17 @@ print.multiple_periods <- function(x, ...) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Detect peaks
-#' peaks <- detect_peaks(fd, min_distance = 1.5)
+#' peaks <- detect.peaks(fd, min_distance = 1.5)
 #' print(peaks$mean_period)  # Should be close to 2
 #'
 #' # With automatic Fourier smoothing (GCV selects nbasis)
-#' peaks_smooth <- detect_peaks(fd, min_distance = 1.5, smooth_first = TRUE)
+#' peaks_smooth <- detect.peaks(fd, min_distance = 1.5, smooth_first = TRUE)
 #'
 #' # With detrending for trending data
 #' X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
 #' fd_trend <- fdata(X_trend, argvals = t)
-#' peaks_det <- detect_peaks(fd_trend, detrend_method = "linear")
-detect_peaks <- function(fdataobj, min_distance = NULL, min_prominence = NULL,
+#' peaks_det <- detect.peaks(fd_trend, detrend_method = "linear")
+detect.peaks <- function(fdataobj, min_distance = NULL, min_prominence = NULL,
                          smooth_first = FALSE, smooth_nbasis = NULL,
                          detrend_method = c("none", "linear", "auto")) {
   if (!inherits(fdataobj, "fdata")) {
@@ -321,7 +321,7 @@ detect_peaks <- function(fdataobj, min_distance = NULL, min_prominence = NULL,
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("detect_peaks not yet implemented for 2D functional data")
+    stop("detect.peaks not yet implemented for 2D functional data")
   }
 
   detrend_method <- match.arg(detrend_method)
@@ -413,18 +413,18 @@ print.peak_detection <- function(x, ...) {
 #' t <- seq(0, 10, length.out = 200)
 #' X <- matrix(sin(2 * pi * t / 2), nrow = 1)
 #' fd_seasonal <- fdata(X, argvals = t)
-#' seasonal_strength(fd_seasonal, period = 2)  # Should be close to 1
+#' seasonal.strength(fd_seasonal, period = 2)  # Should be close to 1
 #'
 #' # Pure noise
 #' X_noise <- matrix(rnorm(200), nrow = 1)
 #' fd_noise <- fdata(X_noise, argvals = t)
-#' seasonal_strength(fd_noise, period = 2)  # Should be close to 0
+#' seasonal.strength(fd_noise, period = 2)  # Should be close to 0
 #'
 #' # Trending data - detrending improves strength estimate
 #' X_trend <- matrix(2 + 0.5 * t + sin(2 * pi * t / 2), nrow = 1)
 #' fd_trend <- fdata(X_trend, argvals = t)
-#' seasonal_strength(fd_trend, period = 2, detrend_method = "linear")
-seasonal_strength <- function(fdataobj, period = NULL,
+#' seasonal.strength(fd_trend, period = 2, detrend_method = "linear")
+seasonal.strength <- function(fdataobj, period = NULL,
                               method = c("variance", "spectral"),
                               n_harmonics = 3,
                               detrend_method = c("none", "linear", "auto")) {
@@ -433,7 +433,7 @@ seasonal_strength <- function(fdataobj, period = NULL,
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("seasonal_strength not yet implemented for 2D functional data")
+    stop("seasonal.strength not yet implemented for 2D functional data")
   }
 
   method <- match.arg(method)
@@ -445,7 +445,7 @@ seasonal_strength <- function(fdataobj, period = NULL,
   }
 
   if (is.null(period)) {
-    period <- estimate_period(fdataobj)$period
+    period <- estimate.period(fdataobj)$period
   }
 
   if (method == "variance") {
@@ -481,16 +481,16 @@ seasonal_strength <- function(fdataobj, period = NULL,
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Compute time-varying strength
-#' ss <- seasonal_strength_curve(fd, period = 2, window_size = 4)
+#' ss <- seasonal.strength.curve(fd, period = 2, window_size = 4)
 #' # plot(ss)  # Shows strength declining around t = 10
-seasonal_strength_curve <- function(fdataobj, period, window_size = NULL,
+seasonal.strength.curve <- function(fdataobj, period, window_size = NULL,
                                     method = c("variance", "spectral")) {
  if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("seasonal_strength_curve not yet implemented for 2D functional data")
+    stop("seasonal.strength.curve not yet implemented for 2D functional data")
   }
 
   method <- match.arg(method)
@@ -543,16 +543,16 @@ seasonal_strength_curve <- function(fdataobj, period, window_size = NULL,
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Detect changes
-#' changes <- detect_seasonality_changes(fd, period = 2)
+#' changes <- detect.seasonality.changes(fd, period = 2)
 #' print(changes$change_points)  # Should show onset ~10, cessation ~20
-detect_seasonality_changes <- function(fdataobj, period, threshold = 0.3,
+detect.seasonality.changes <- function(fdataobj, period, threshold = 0.3,
                                        window_size = NULL, min_duration = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("detect_seasonality_changes not yet implemented for 2D functional data")
+    stop("detect.seasonality.changes not yet implemented for 2D functional data")
   }
 
   if (is.null(window_size)) {
@@ -643,15 +643,15 @@ print.seasonality_changes <- function(x, ...) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Estimate instantaneous period
-#' inst <- instantaneous_period(fd)
+#' inst <- instantaneous.period(fd)
 #' # plot(inst$period)  # Shows decreasing period over time
-instantaneous_period <- function(fdataobj) {
+instantaneous.period <- function(fdataobj) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("instantaneous_period not yet implemented for 2D functional data")
+    stop("instantaneous.period not yet implemented for 2D functional data")
   }
 
   result <- .Call("wrap__seasonal_instantaneous_period",
@@ -715,15 +715,15 @@ instantaneous_period <- function(fdataobj) {
 #' X <- sin(2 * pi * t + rep(peak_phases, each = 365))
 #' fd <- fdata(matrix(X, nrow = 1), argvals = t)
 #'
-#' result <- analyze_peak_timing(fd, period = 1)
+#' result <- analyze.peak.timing(fd, period = 1)
 #' print(result$variability_score)  # Shows timing variability
-analyze_peak_timing <- function(fdataobj, period, smooth_nbasis = NULL) {
+analyze.peak.timing <- function(fdataobj, period, smooth_nbasis = NULL) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("analyze_peak_timing not yet implemented for 2D functional data")
+    stop("analyze.peak.timing not yet implemented for 2D functional data")
   }
 
   nbasis_arg <- if (is.null(smooth_nbasis)) NULL else as.integer(smooth_nbasis)
@@ -799,9 +799,9 @@ print.peak_timing <- function(x, ...) {
 #' X <- matrix(sin(2 * pi * t / 2), nrow = 1)
 #' fd <- fdata(X, argvals = t)
 #'
-#' result <- classify_seasonality(fd, period = 2)
+#' result <- classify.seasonality(fd, period = 2)
 #' print(result$classification)  # "StableSeasonal"
-classify_seasonality <- function(fdataobj, period,
+classify.seasonality <- function(fdataobj, period,
                                   strength_threshold = NULL,
                                   timing_threshold = NULL) {
   if (!inherits(fdataobj, "fdata")) {
@@ -809,7 +809,7 @@ classify_seasonality <- function(fdataobj, period,
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("classify_seasonality not yet implemented for 2D functional data")
+    stop("classify.seasonality not yet implemented for 2D functional data")
   }
 
   str_thresh <- if (is.null(strength_threshold)) NULL else as.double(strength_threshold)
@@ -883,9 +883,9 @@ print.seasonality_classification <- function(x, ...) {
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Detect changes with Otsu threshold
-#' changes <- detect_seasonality_changes_auto(fd, period = 2)
+#' changes <- detect.seasonality.changes.auto(fd, period = 2)
 #' print(changes$computed_threshold)
-detect_seasonality_changes_auto <- function(fdataobj, period,
+detect.seasonality.changes.auto <- function(fdataobj, period,
                                              threshold_method = "otsu",
                                              threshold_value = NULL,
                                              window_size = NULL,
@@ -895,7 +895,7 @@ detect_seasonality_changes_auto <- function(fdataobj, period,
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("detect_seasonality_changes_auto not yet implemented for 2D functional data")
+    stop("detect.seasonality.changes.auto not yet implemented for 2D functional data")
   }
 
   if (is.null(window_size)) {
@@ -1017,7 +1017,7 @@ print.seasonality_changes_auto <- function(x, ...) {
 #' fd_detrended <- detrend(fd, method = "linear")
 #'
 #' # Now estimate period on detrended data
-#' period <- estimate_period(fd_detrended)
+#' period <- estimate.period(fd_detrended)
 #' print(period$period)  # Should be close to 2
 #'
 #' # Get both trend and detrended data
@@ -1110,7 +1110,7 @@ detrend <- function(fdataobj,
 #' grows with the trend level.
 #'
 #' @seealso \code{\link{detrend}} for simple trend removal,
-#'   \code{\link{seasonal_strength}} for measuring seasonality
+#'   \code{\link{seasonal.strength}} for measuring seasonality
 #'
 #' @export
 #' @examples
@@ -1148,7 +1148,7 @@ decompose <- function(fdataobj,
 
   # Estimate period if not provided
   if (is.null(period)) {
-    period <- estimate_period(fdataobj)$period
+    period <- estimate.period(fdataobj)$period
   }
 
   result <- .Call("wrap__seasonal_decompose",

@@ -28,13 +28,13 @@ NULL
 #' The length scale parameter controls how quickly the correlation decays
 #' with distance. Larger values produce smoother, more slowly varying functions.
 #'
-#' @seealso \code{\link{kernel_exponential}}, \code{\link{kernel_matern}},
-#'   \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.exponential}}, \code{\link{kernel.matern}},
+#'   \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Create a Gaussian covariance function
-#' cov_func <- kernel_gaussian(variance = 1, length_scale = 0.2)
+#' cov_func <- kernel.gaussian(variance = 1, length_scale = 0.2)
 #'
 #' # Evaluate covariance matrix on a grid
 #' t <- seq(0, 1, length.out = 50)
@@ -42,9 +42,9 @@ NULL
 #' image(K, main = "Gaussian Covariance Matrix")
 #'
 #' # Generate Gaussian process samples
-#' fd <- make_gaussian_process(n = 10, t = t, cov = cov_func)
+#' fd <- make.gaussian.process(n = 10, t = t, cov = cov_func)
 #' plot(fd)
-kernel_gaussian <- function(variance = 1, length_scale = 1) {
+kernel.gaussian <- function(variance = 1, length_scale = 1) {
   if (variance <= 0) stop("variance must be positive")
   if (length_scale <= 0) stop("length_scale must be positive")
 
@@ -105,22 +105,22 @@ kernel_gaussian <- function(variance = 1, length_scale = 1) {
 #' continuous but nowhere differentiable, resulting in rough-looking curves.
 #' It is a special case of the Matern family with \eqn{\nu = 0.5}.
 #'
-#' @seealso \code{\link{kernel_gaussian}}, \code{\link{kernel_matern}},
-#'   \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.gaussian}}, \code{\link{kernel.matern}},
+#'   \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Create an exponential covariance function
-#' cov_func <- kernel_exponential(variance = 1, length_scale = 0.2)
+#' cov_func <- kernel.exponential(variance = 1, length_scale = 0.2)
 #'
 #' # Evaluate covariance matrix
 #' t <- seq(0, 1, length.out = 50)
 #' K <- cov_func(t)
 #'
 #' # Generate rough GP samples
-#' fd <- make_gaussian_process(n = 10, t = t, cov = cov_func)
+#' fd <- make.gaussian.process(n = 10, t = t, cov = cov_func)
 #' plot(fd)
-kernel_exponential <- function(variance = 1, length_scale = 1) {
+kernel.exponential <- function(variance = 1, length_scale = 1) {
   if (variance <= 0) stop("variance must be positive")
   if (length_scale <= 0) stop("length_scale must be positive")
 
@@ -189,21 +189,21 @@ kernel_exponential <- function(variance = 1, length_scale = 1) {
 #' For computational efficiency, special cases \eqn{\nu \in \{0.5, 1.5, 2.5, \infty\}}
 #' use simplified closed-form expressions.
 #'
-#' @seealso \code{\link{kernel_gaussian}}, \code{\link{kernel_exponential}},
-#'   \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.gaussian}}, \code{\link{kernel.exponential}},
+#'   \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Create Matern covariance functions with different smoothness
-#' cov_rough <- kernel_matern(nu = 0.5)    # Equivalent to exponential
-#' cov_smooth <- kernel_matern(nu = 2.5)   # Twice differentiable
+#' cov_rough <- kernel.matern(nu = 0.5)    # Equivalent to exponential
+#' cov_smooth <- kernel.matern(nu = 2.5)   # Twice differentiable
 #'
 #' t <- seq(0, 1, length.out = 50)
 #'
 #' # Compare sample paths
-#' fd_rough <- make_gaussian_process(n = 5, t = t, cov = cov_rough, seed = 42)
-#' fd_smooth <- make_gaussian_process(n = 5, t = t, cov = cov_smooth, seed = 42)
-kernel_matern <- function(variance = 1, length_scale = 1, nu = 1.5) {
+#' fd_rough <- make.gaussian.process(n = 5, t = t, cov = cov_rough, seed = 42)
+#' fd_smooth <- make.gaussian.process(n = 5, t = t, cov = cov_smooth, seed = 42)
+kernel.matern <- function(variance = 1, length_scale = 1, nu = 1.5) {
   if (variance <= 0) stop("variance must be positive")
   if (length_scale <= 0) stop("length_scale must be positive")
   if (nu <= 0) stop("nu must be positive")
@@ -282,16 +282,16 @@ kernel_matern <- function(variance = 1, length_scale = 1, nu = 1.5) {
 #'
 #' This covariance is only defined for 1D domains starting at 0.
 #'
-#' @seealso \code{\link{kernel_gaussian}}, \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.gaussian}}, \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Generate Brownian motion paths
-#' cov_func <- kernel_brownian(variance = 1)
+#' cov_func <- kernel.brownian(variance = 1)
 #' t <- seq(0, 1, length.out = 100)
-#' fd <- make_gaussian_process(n = 10, t = t, cov = cov_func)
+#' fd <- make.gaussian.process(n = 10, t = t, cov = cov_func)
 #' plot(fd)
-kernel_brownian <- function(variance = 1) {
+kernel.brownian <- function(variance = 1) {
   if (variance <= 0) stop("variance must be positive")
 
   f <- function(t, s = NULL) {
@@ -336,16 +336,16 @@ kernel_brownian <- function(variance = 1) {
 #' functions. It is useful when the underlying process is expected to
 #' have a linear trend.
 #'
-#' @seealso \code{\link{kernel_polynomial}}, \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.polynomial}}, \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Generate linear function samples
-#' cov_func <- kernel_linear(variance = 1)
+#' cov_func <- kernel.linear(variance = 1)
 #' t <- seq(0, 1, length.out = 50)
-#' fd <- make_gaussian_process(n = 10, t = t, cov = cov_func)
+#' fd <- make.gaussian.process(n = 10, t = t, cov = cov_func)
 #' plot(fd)
-kernel_linear <- function(variance = 1, offset = 0) {
+kernel.linear <- function(variance = 1, offset = 0) {
   if (variance <= 0) stop("variance must be positive")
 
   f <- function(t, s = NULL) {
@@ -399,16 +399,16 @@ kernel_linear <- function(variance = 1, offset = 0) {
 #' polynomial functions of degree at most \code{degree}. Setting
 #' \code{degree = 1} and \code{offset = 0} gives the linear kernel.
 #'
-#' @seealso \code{\link{kernel_linear}}, \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.linear}}, \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Generate quadratic function samples
-#' cov_func <- kernel_polynomial(degree = 2, offset = 1)
+#' cov_func <- kernel.polynomial(degree = 2, offset = 1)
 #' t <- seq(0, 1, length.out = 50)
-#' fd <- make_gaussian_process(n = 10, t = t, cov = cov_func)
+#' fd <- make.gaussian.process(n = 10, t = t, cov = cov_func)
 #' plot(fd)
-kernel_polynomial <- function(variance = 1, offset = 0, degree = 2) {
+kernel.polynomial <- function(variance = 1, offset = 0, degree = 2) {
   if (variance <= 0) stop("variance must be positive")
   if (degree < 1) stop("degree must be at least 1")
 
@@ -465,16 +465,16 @@ kernel_polynomial <- function(variance = 1, offset = 0, degree = 2) {
 #' point. It can be added to other covariance functions to model observation
 #' noise.
 #'
-#' @seealso \code{\link{kernel_gaussian}}, \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.gaussian}}, \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # White noise covariance produces independent samples at each point
-#' cov_func <- kernel_whitenoise(variance = 0.1)
+#' cov_func <- kernel.whitenoise(variance = 0.1)
 #' t <- seq(0, 1, length.out = 50)
 #' K <- cov_func(t)
 #' # K is diagonal
-kernel_whitenoise <- function(variance = 1) {
+kernel.whitenoise <- function(variance = 1) {
   if (variance <= 0) stop("variance must be positive")
 
   f <- function(t, s = NULL) {
@@ -521,16 +521,16 @@ kernel_whitenoise <- function(variance = 1) {
 #' with the specified period. It is useful for modeling seasonal or cyclical
 #' patterns in functional data.
 #'
-#' @seealso \code{\link{kernel_gaussian}}, \code{\link{make_gaussian_process}}
+#' @seealso \code{\link{kernel.gaussian}}, \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples
 #' # Generate periodic function samples
-#' cov_func <- kernel_periodic(period = 0.5, length_scale = 0.5)
+#' cov_func <- kernel.periodic(period = 0.5, length_scale = 0.5)
 #' t <- seq(0, 2, length.out = 100)
-#' fd <- make_gaussian_process(n = 5, t = t, cov = cov_func)
+#' fd <- make.gaussian.process(n = 5, t = t, cov = cov_func)
 #' plot(fd)
-kernel_periodic <- function(variance = 1, length_scale = 1, period = 1) {
+kernel.periodic <- function(variance = 1, length_scale = 1, period = 1) {
   if (variance <= 0) stop("variance must be positive")
   if (length_scale <= 0) stop("length_scale must be positive")
   if (period <= 0) stop("period must be positive")
@@ -605,13 +605,13 @@ print.kernel <- function(x, ...) {
 #' @export
 #' @examples
 #' # Combine Gaussian with white noise
-#' k_signal <- kernel_gaussian(variance = 1, length_scale = 0.2)
-#' k_noise <- kernel_whitenoise(variance = 0.1)
-#' k_total <- kernel_add(k_signal, k_noise)
+#' k_signal <- kernel.gaussian(variance = 1, length_scale = 0.2)
+#' k_noise <- kernel.whitenoise(variance = 0.1)
+#' k_total <- kernel.add(k_signal, k_noise)
 #'
 #' t <- seq(0, 1, length.out = 50)
-#' fd <- make_gaussian_process(n = 5, t = t, cov = k_total)
-kernel_add <- function(kernel1, kernel2) {
+#' fd <- make.gaussian.process(n = 5, t = t, cov = k_total)
+kernel.add <- function(kernel1, kernel2) {
   if (!inherits(kernel1, "kernel") || !inherits(kernel2, "kernel")) {
     stop("Both arguments must be kernel functions")
   }
@@ -638,10 +638,10 @@ kernel_add <- function(kernel1, kernel2) {
 #' @export
 #' @examples
 #' # Multiply periodic with Gaussian for locally periodic behavior
-#' k_periodic <- kernel_periodic(period = 0.3)
-#' k_gaussian <- kernel_gaussian(length_scale = 0.5)
-#' k_prod <- kernel_mult(k_periodic, k_gaussian)
-kernel_mult <- function(kernel1, kernel2) {
+#' k_periodic <- kernel.periodic(period = 0.3)
+#' k_gaussian <- kernel.gaussian(length_scale = 0.5)
+#' k_prod <- kernel.mult(k_periodic, k_gaussian)
+kernel.mult <- function(kernel1, kernel2) {
   if (!inherits(kernel1, "kernel") || !inherits(kernel2, "kernel")) {
     stop("Both arguments must be kernel functions")
   }
@@ -663,7 +663,7 @@ kernel_mult <- function(kernel1, kernel2) {
 #'
 #' @param n Number of samples to generate.
 #' @param t Evaluation points (vector for 1D, list of two vectors for 2D).
-#' @param cov Covariance function (from \code{kernel_gaussian}, \code{kernel_matern}, etc.).
+#' @param cov Covariance function (from \code{kernel.gaussian}, \code{kernel.matern}, etc.).
 #' @param mean Mean function. Can be a scalar (default 0), a vector of length
 #'   equal to the number of evaluation points, or a function.
 #' @param seed Optional random seed for reproducibility.
@@ -679,43 +679,43 @@ kernel_mult <- function(kernel1, kernel2) {
 #' For 2D functional data, pass \code{t} as a list of two vectors representing
 #' the grid in each dimension.
 #'
-#' @seealso \code{\link{kernel_gaussian}}, \code{\link{kernel_matern}},
-#'   \code{\link{kernel_exponential}}
+#' @seealso \code{\link{kernel.gaussian}}, \code{\link{kernel.matern}},
+#'   \code{\link{kernel.exponential}}
 #'
 #' @export
 #' @examples
 #' # Generate smooth GP samples with Gaussian covariance
 #' t <- seq(0, 1, length.out = 100)
-#' fd <- make_gaussian_process(n = 20, t = t,
-#'                             cov = kernel_gaussian(length_scale = 0.2),
+#' fd <- make.gaussian.process(n = 20, t = t,
+#'                             cov = kernel.gaussian(length_scale = 0.2),
 #'                             seed = 42)
 #' plot(fd)
 #'
 #' # Generate rough GP samples with exponential covariance
-#' fd_rough <- make_gaussian_process(n = 20, t = t,
-#'                                   cov = kernel_exponential(length_scale = 0.1),
+#' fd_rough <- make.gaussian.process(n = 20, t = t,
+#'                                   cov = kernel.exponential(length_scale = 0.1),
 #'                                   seed = 42)
 #' plot(fd_rough)
 #'
 #' # Generate 2D GP samples (surfaces)
 #' s <- seq(0, 1, length.out = 20)
 #' t2 <- seq(0, 1, length.out = 20)
-#' fd2d <- make_gaussian_process(n = 5, t = list(s, t2),
-#'                               cov = kernel_gaussian(length_scale = 0.3),
+#' fd2d <- make.gaussian.process(n = 5, t = list(s, t2),
+#'                               cov = kernel.gaussian(length_scale = 0.3),
 #'                               seed = 42)
 #' plot(fd2d)
 #'
 #' # Generate GP with non-zero mean
 #' mean_func <- function(t) sin(2 * pi * t)
-#' fd_mean <- make_gaussian_process(n = 10, t = t,
-#'                                  cov = kernel_gaussian(variance = 0.1),
+#' fd_mean <- make.gaussian.process(n = 10, t = t,
+#'                                  cov = kernel.gaussian(variance = 0.1),
 #'                                  mean = mean_func, seed = 42)
 #' plot(fd_mean)
-make_gaussian_process <- function(n, t, cov = kernel_gaussian(), mean = 0, seed = NULL) {
+make.gaussian.process <- function(n, t, cov = kernel.gaussian(), mean = 0, seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
 
   if (!inherits(cov, "kernel")) {
-    stop("cov must be a kernel function (e.g., kernel_gaussian(), kernel_matern())")
+    stop("cov must be a kernel function (e.g., kernel.gaussian(), kernel.matern())")
   }
 
   # Handle 2D case

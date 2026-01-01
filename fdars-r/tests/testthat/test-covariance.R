@@ -4,8 +4,8 @@
 # Covariance Function Tests
 # =============================================================================
 
-test_that("kernel_gaussian produces valid covariance matrix", {
-  cov_func <- kernel_gaussian(variance = 1, length_scale = 0.2)
+test_that("kernel.gaussian produces valid covariance matrix", {
+  cov_func <- kernel.gaussian(variance = 1, length_scale = 0.2)
   t <- seq(0, 1, length.out = 20)
   K <- cov_func(t)
 
@@ -28,9 +28,9 @@ expect_true(all(eig >= -1e-10))
   expect_true(K[1, 2] > K[1, 10])
 })
 
-test_that("kernel_gaussian respects variance parameter", {
-  cov_func1 <- kernel_gaussian(variance = 1, length_scale = 0.2)
-  cov_func2 <- kernel_gaussian(variance = 2, length_scale = 0.2)
+test_that("kernel.gaussian respects variance parameter", {
+  cov_func1 <- kernel.gaussian(variance = 1, length_scale = 0.2)
+  cov_func2 <- kernel.gaussian(variance = 2, length_scale = 0.2)
   t <- seq(0, 1, length.out = 10)
 
   K1 <- cov_func1(t)
@@ -40,8 +40,8 @@ test_that("kernel_gaussian respects variance parameter", {
   expect_equal(K2, 2 * K1, tolerance = 1e-10)
 })
 
-test_that("kernel_exponential produces valid covariance matrix", {
-  cov_func <- kernel_exponential(variance = 1, length_scale = 0.2)
+test_that("kernel.exponential produces valid covariance matrix", {
+  cov_func <- kernel.exponential(variance = 1, length_scale = 0.2)
   t <- seq(0, 1, length.out = 20)
   K <- cov_func(t)
 
@@ -56,40 +56,40 @@ test_that("kernel_exponential produces valid covariance matrix", {
   expect_true(all(eig >= -1e-10))
 })
 
-test_that("kernel_matern with nu=0.5 equals kernel_exponential", {
+test_that("kernel.matern with nu=0.5 equals kernel.exponential", {
   t <- seq(0, 1, length.out = 20)
 
-  K_matern <- kernel_matern(variance = 1, length_scale = 0.2, nu = 0.5)(t)
-  K_exp <- kernel_exponential(variance = 1, length_scale = 0.2)(t)
+  K_matern <- kernel.matern(variance = 1, length_scale = 0.2, nu = 0.5)(t)
+  K_exp <- kernel.exponential(variance = 1, length_scale = 0.2)(t)
 
   expect_equal(K_matern, K_exp, tolerance = 1e-10)
 })
 
-test_that("kernel_matern with nu=Inf equals kernel_gaussian", {
+test_that("kernel.matern with nu=Inf equals kernel.gaussian", {
   t <- seq(0, 1, length.out = 20)
 
-  K_matern <- kernel_matern(variance = 1, length_scale = 0.2, nu = Inf)(t)
-  K_gauss <- kernel_gaussian(variance = 1, length_scale = 0.2)(t)
+  K_matern <- kernel.matern(variance = 1, length_scale = 0.2, nu = Inf)(t)
+  K_gauss <- kernel.gaussian(variance = 1, length_scale = 0.2)(t)
 
   expect_equal(K_matern, K_gauss, tolerance = 1e-10)
 })
 
-test_that("kernel_matern special cases work correctly", {
+test_that("kernel.matern special cases work correctly", {
   t <- seq(0, 1, length.out = 20)
 
   # nu = 1.5 (Matern 3/2)
-  K_15 <- kernel_matern(nu = 1.5)(t)
+  K_15 <- kernel.matern(nu = 1.5)(t)
   expect_equal(dim(K_15), c(20, 20))
   expect_true(all(eigen(K_15, symmetric = TRUE)$values >= -1e-10))
 
   # nu = 2.5 (Matern 5/2)
-  K_25 <- kernel_matern(nu = 2.5)(t)
+  K_25 <- kernel.matern(nu = 2.5)(t)
   expect_equal(dim(K_25), c(20, 20))
   expect_true(all(eigen(K_25, symmetric = TRUE)$values >= -1e-10))
 })
 
-test_that("kernel_brownian produces valid covariance matrix", {
-  cov_func <- kernel_brownian(variance = 1)
+test_that("kernel.brownian produces valid covariance matrix", {
+  cov_func <- kernel.brownian(variance = 1)
   t <- seq(0, 1, length.out = 20)
   K <- cov_func(t)
 
@@ -104,8 +104,8 @@ test_that("kernel_brownian produces valid covariance matrix", {
   expect_equal(K[10, 5], t[5], tolerance = 1e-10)
 })
 
-test_that("kernel_linear produces valid covariance matrix", {
-  cov_func <- kernel_linear(variance = 1, offset = 0)
+test_that("kernel.linear produces valid covariance matrix", {
+  cov_func <- kernel.linear(variance = 1, offset = 0)
   t <- seq(0, 1, length.out = 20)
   K <- cov_func(t)
 
@@ -119,8 +119,8 @@ test_that("kernel_linear produces valid covariance matrix", {
   expect_equal(K[5, 10], t[5] * t[10], tolerance = 1e-10)
 })
 
-test_that("kernel_polynomial produces valid covariance matrix", {
-  cov_func <- kernel_polynomial(variance = 1, offset = 1, degree = 2)
+test_that("kernel.polynomial produces valid covariance matrix", {
+  cov_func <- kernel.polynomial(variance = 1, offset = 1, degree = 2)
   t <- seq(0, 1, length.out = 20)
   K <- cov_func(t)
 
@@ -134,8 +134,8 @@ test_that("kernel_polynomial produces valid covariance matrix", {
   expect_equal(K[5, 10], (t[5] * t[10] + 1)^2, tolerance = 1e-10)
 })
 
-test_that("kernel_whitenoise produces diagonal matrix", {
-  cov_func <- kernel_whitenoise(variance = 0.5)
+test_that("kernel.whitenoise produces diagonal matrix", {
+  cov_func <- kernel.whitenoise(variance = 0.5)
   t <- seq(0, 1, length.out = 20)
   K <- cov_func(t)
 
@@ -143,8 +143,8 @@ test_that("kernel_whitenoise produces diagonal matrix", {
   expect_equal(K, diag(0.5, 20), tolerance = 1e-10)
 })
 
-test_that("kernel_periodic produces valid periodic covariance", {
-  cov_func <- kernel_periodic(variance = 1, length_scale = 0.5, period = 0.5)
+test_that("kernel.periodic produces valid periodic covariance", {
+  cov_func <- kernel.periodic(variance = 1, length_scale = 0.5, period = 0.5)
   t <- seq(0, 1, length.out = 50)
   K <- cov_func(t)
 
@@ -161,10 +161,10 @@ test_that("kernel_periodic produces valid periodic covariance", {
   expect_gt(K[idx_0, idx_period], 0.5)  # High correlation at period distance
 })
 
-test_that("kernel_add combines covariance functions", {
-  cov_signal <- kernel_gaussian(variance = 1, length_scale = 0.2)
-  cov_noise <- kernel_whitenoise(variance = 0.1)
-  cov_total <- kernel_add(cov_signal, cov_noise)
+test_that("kernel.add combines covariance functions", {
+  cov_signal <- kernel.gaussian(variance = 1, length_scale = 0.2)
+  cov_noise <- kernel.whitenoise(variance = 0.1)
+  cov_total <- kernel.add(cov_signal, cov_noise)
 
   t <- seq(0, 1, length.out = 20)
   K_signal <- cov_signal(t)
@@ -174,10 +174,10 @@ test_that("kernel_add combines covariance functions", {
   expect_equal(K_total, K_signal + K_noise, tolerance = 1e-10)
 })
 
-test_that("kernel_mult combines covariance functions", {
-  cov1 <- kernel_gaussian(variance = 1, length_scale = 0.5)
-  cov2 <- kernel_periodic(period = 0.3)
-  cov_prod <- kernel_mult(cov1, cov2)
+test_that("kernel.mult combines covariance functions", {
+  cov1 <- kernel.gaussian(variance = 1, length_scale = 0.5)
+  cov2 <- kernel.periodic(period = 0.3)
+  cov_prod <- kernel.mult(cov1, cov2)
 
   t <- seq(0, 1, length.out = 20)
   K1 <- cov1(t)
@@ -188,13 +188,13 @@ test_that("kernel_mult combines covariance functions", {
 })
 
 # =============================================================================
-# make_gaussian_process Tests
+# make.gaussian.process Tests
 # =============================================================================
 
-test_that("make_gaussian_process generates valid 1D fdata", {
+test_that("make.gaussian.process generates valid 1D fdata", {
   t <- seq(0, 1, length.out = 50)
-  fd <- make_gaussian_process(n = 10, t = t,
-                              cov = kernel_gaussian(length_scale = 0.2),
+  fd <- make.gaussian.process(n = 10, t = t,
+                              cov = kernel.gaussian(length_scale = 0.2),
                               seed = 42)
 
   expect_s3_class(fd, "fdata")
@@ -203,43 +203,43 @@ test_that("make_gaussian_process generates valid 1D fdata", {
   expect_equal(fd$argvals, t)
 })
 
-test_that("make_gaussian_process is reproducible with seed", {
+test_that("make.gaussian.process is reproducible with seed", {
   t <- seq(0, 1, length.out = 50)
 
-  fd1 <- make_gaussian_process(n = 5, t = t,
-                               cov = kernel_gaussian(length_scale = 0.2),
+  fd1 <- make.gaussian.process(n = 5, t = t,
+                               cov = kernel.gaussian(length_scale = 0.2),
                                seed = 123)
-  fd2 <- make_gaussian_process(n = 5, t = t,
-                               cov = kernel_gaussian(length_scale = 0.2),
+  fd2 <- make.gaussian.process(n = 5, t = t,
+                               cov = kernel.gaussian(length_scale = 0.2),
                                seed = 123)
 
   expect_equal(fd1$data, fd2$data)
 })
 
-test_that("make_gaussian_process produces different results without seed", {
+test_that("make.gaussian.process produces different results without seed", {
   t <- seq(0, 1, length.out = 50)
 
-  fd1 <- make_gaussian_process(n = 5, t = t, cov = kernel_gaussian())
-  fd2 <- make_gaussian_process(n = 5, t = t, cov = kernel_gaussian())
+  fd1 <- make.gaussian.process(n = 5, t = t, cov = kernel.gaussian())
+  fd2 <- make.gaussian.process(n = 5, t = t, cov = kernel.gaussian())
 
   # Very unlikely to be exactly equal
   expect_false(all(fd1$data == fd2$data))
 })
 
-test_that("make_gaussian_process respects mean parameter", {
+test_that("make.gaussian.process respects mean parameter", {
   t <- seq(0, 1, length.out = 100)
 
   # Scalar mean
-  fd_scalar <- make_gaussian_process(n = 100, t = t,
-                                     cov = kernel_gaussian(variance = 0.01),
+  fd_scalar <- make.gaussian.process(n = 100, t = t,
+                                     cov = kernel.gaussian(variance = 0.01),
                                      mean = 5, seed = 42)
   sample_mean <- mean(fd_scalar$data)
   expect_equal(sample_mean, 5, tolerance = 0.1)
 
   # Function mean
   mean_func <- function(t) sin(2 * pi * t)
-  fd_func <- make_gaussian_process(n = 100, t = t,
-                                   cov = kernel_gaussian(variance = 0.01),
+  fd_func <- make.gaussian.process(n = 100, t = t,
+                                   cov = kernel.gaussian(variance = 0.01),
                                    mean = mean_func, seed = 42)
 
   # Sample mean should approximate sin function
@@ -248,12 +248,12 @@ test_that("make_gaussian_process respects mean parameter", {
   expect_equal(empirical_mean, expected_mean, tolerance = 0.15)
 })
 
-test_that("make_gaussian_process generates 2D fdata", {
+test_that("make.gaussian.process generates 2D fdata", {
   s <- seq(0, 1, length.out = 15)
   t <- seq(0, 1, length.out = 20)
 
-  fd <- make_gaussian_process(n = 5, t = list(s, t),
-                              cov = kernel_gaussian(length_scale = 0.3),
+  fd <- make.gaussian.process(n = 5, t = list(s, t),
+                              cov = kernel.gaussian(length_scale = 0.3),
                               seed = 42)
 
   expect_s3_class(fd, "fdata")
@@ -263,33 +263,33 @@ test_that("make_gaussian_process generates 2D fdata", {
   expect_equal(fd$dims, c(15, 20))
 })
 
-test_that("make_gaussian_process works with different covariance functions", {
+test_that("make.gaussian.process works with different covariance functions", {
   t <- seq(0, 1, length.out = 50)
 
   # Gaussian - smooth samples
-  fd_gauss <- make_gaussian_process(n = 5, t = t, cov = kernel_gaussian(), seed = 42)
+  fd_gauss <- make.gaussian.process(n = 5, t = t, cov = kernel.gaussian(), seed = 42)
   expect_s3_class(fd_gauss, "fdata")
 
   # Exponential - rough samples
-  fd_exp <- make_gaussian_process(n = 5, t = t, cov = kernel_exponential(), seed = 42)
+  fd_exp <- make.gaussian.process(n = 5, t = t, cov = kernel.exponential(), seed = 42)
   expect_s3_class(fd_exp, "fdata")
 
   # Matern
-  fd_matern <- make_gaussian_process(n = 5, t = t, cov = kernel_matern(nu = 1.5), seed = 42)
+  fd_matern <- make.gaussian.process(n = 5, t = t, cov = kernel.matern(nu = 1.5), seed = 42)
   expect_s3_class(fd_matern, "fdata")
 
   # Brownian
-  fd_brown <- make_gaussian_process(n = 5, t = t, cov = kernel_brownian(), seed = 42)
+  fd_brown <- make.gaussian.process(n = 5, t = t, cov = kernel.brownian(), seed = 42)
   expect_s3_class(fd_brown, "fdata")
 })
 
-test_that("make_gaussian_process with combined covariance", {
+test_that("make.gaussian.process with combined covariance", {
   t <- seq(0, 1, length.out = 50)
 
-  cov_combined <- kernel_add(kernel_gaussian(variance = 1, length_scale = 0.2),
-                          kernel_whitenoise(variance = 0.05))
+  cov_combined <- kernel.add(kernel.gaussian(variance = 1, length_scale = 0.2),
+                          kernel.whitenoise(variance = 0.05))
 
-  fd <- make_gaussian_process(n = 5, t = t, cov = cov_combined, seed = 42)
+  fd <- make.gaussian.process(n = 5, t = t, cov = cov_combined, seed = 42)
   expect_s3_class(fd, "fdata")
 })
 
@@ -298,7 +298,7 @@ test_that("make_gaussian_process with combined covariance", {
 # =============================================================================
 
 test_that("print.kernel works", {
-  cov_func <- kernel_gaussian(variance = 2, length_scale = 0.5)
+  cov_func <- kernel.gaussian(variance = 2, length_scale = 0.5)
 
   expect_output(print(cov_func), "Covariance Kernel: gaussian")
   expect_output(print(cov_func), "variance = 2")
@@ -310,29 +310,29 @@ test_that("print.kernel works", {
 # =============================================================================
 
 test_that("covariance functions reject invalid parameters", {
-  expect_error(kernel_gaussian(variance = -1))
-  expect_error(kernel_gaussian(variance = 0))
-  expect_error(kernel_gaussian(length_scale = -1))
+  expect_error(kernel.gaussian(variance = -1))
+  expect_error(kernel.gaussian(variance = 0))
+  expect_error(kernel.gaussian(length_scale = -1))
 
-  expect_error(kernel_exponential(variance = -1))
-  expect_error(kernel_matern(nu = -1))
-  expect_error(kernel_brownian(variance = 0))
-  expect_error(kernel_whitenoise(variance = -1))
-  expect_error(kernel_periodic(period = -1))
-  expect_error(kernel_polynomial(degree = 0))
+  expect_error(kernel.exponential(variance = -1))
+  expect_error(kernel.matern(nu = -1))
+  expect_error(kernel.brownian(variance = 0))
+  expect_error(kernel.whitenoise(variance = -1))
+  expect_error(kernel.periodic(period = -1))
+  expect_error(kernel.polynomial(degree = 0))
 })
 
-test_that("kernel_brownian rejects 2D input", {
-  cov_func <- kernel_brownian()
+test_that("kernel.brownian rejects 2D input", {
+  cov_func <- kernel.brownian()
   expect_error(cov_func(list(seq(0, 1, 10), seq(0, 1, 10))))
 })
 
-test_that("kernel_periodic rejects 2D input", {
-  cov_func <- kernel_periodic()
+test_that("kernel.periodic rejects 2D input", {
+  cov_func <- kernel.periodic()
   expect_error(cov_func(list(seq(0, 1, 10), seq(0, 1, 10))))
 })
 
-test_that("make_gaussian_process rejects non-covariance function", {
+test_that("make.gaussian.process rejects non-covariance function", {
   t <- seq(0, 1, length.out = 50)
-  expect_error(make_gaussian_process(n = 5, t = t, cov = "invalid"))
+  expect_error(make.gaussian.process(n = 5, t = t, cov = "invalid"))
 })

@@ -8,8 +8,8 @@
 #' data objects. This function dispatches to the appropriate specialized
 #' distance function based on the method parameter.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, computes self-distances.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, computes self-distances.
 #' @param method Distance method to use. One of:
 #'   \itemize{
 #'     \item "lp" - Lp metric (default)
@@ -55,24 +55,24 @@
 #' # Cross-distances
 #' fd2 <- fdata(matrix(rnorm(100), 10, 10))
 #' D_cross <- metric(fd, fd2, method = "lp")
-metric <- function(fdata1, fdata2 = NULL, method = "lp", ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+metric <- function(fdataobj, fdataref = NULL, method = "lp", ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
   method <- match.arg(method, c("lp", "hausdorff", "dtw", "pca", "deriv",
                                  "basis", "fourier", "hshift", "kl"))
 
   switch(method,
-    "lp" = metric.lp(fdata1, fdata2, ...),
-    "hausdorff" = metric.hausdorff(fdata1, fdata2, ...),
-    "dtw" = metric.DTW(fdata1, fdata2, ...),
-    "pca" = semimetric.pca(fdata1, fdata2, ...),
-    "deriv" = semimetric.deriv(fdata1, fdata2, ...),
-    "basis" = semimetric.basis(fdata1, fdata2, ...),
-    "fourier" = semimetric.fourier(fdata1, fdata2, ...),
-    "hshift" = semimetric.hshift(fdata1, fdata2, ...),
-    "kl" = metric.kl(fdata1, fdata2, ...)
+    "lp" = metric.lp(fdataobj, fdataref, ...),
+    "hausdorff" = metric.hausdorff(fdataobj, fdataref, ...),
+    "dtw" = metric.DTW(fdataobj, fdataref, ...),
+    "pca" = semimetric.pca(fdataobj, fdataref, ...),
+    "deriv" = semimetric.deriv(fdataobj, fdataref, ...),
+    "basis" = semimetric.basis(fdataobj, fdataref, ...),
+    "fourier" = semimetric.fourier(fdataobj, fdataref, ...),
+    "hshift" = semimetric.hshift(fdataobj, fdataref, ...),
+    "kl" = metric.kl(fdataobj, fdataref, ...)
   )
 }
 
@@ -209,8 +209,8 @@ metric.lp.fdata <- function(x, y = NULL, p = 2, w = 1, ...) {
 #' The Hausdorff distance treats each curve as a set of points (t, f(t))
 #' in 2D space and computes the maximum of the minimum distances.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, uses fdataobj.
 #' @param ... Additional arguments (ignored).
 #'
 #' @return A distance matrix.
@@ -219,57 +219,57 @@ metric.lp.fdata <- function(x, y = NULL, p = 2, w = 1, ...) {
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
 #' D <- metric.hausdorff(fd)
-metric.hausdorff <- function(fdata1, fdata2 = NULL, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+metric.hausdorff <- function(fdataobj, fdataref = NULL, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  if (fdata1$fdata2d) {
+  if (fdataobj$fdata2d) {
     # 2D functional data (surfaces)
-    dims <- fdata1$dims
+    dims <- fdataobj$dims
     m1 <- dims[1]
     m2 <- dims[2]
 
-    argvals_s <- as.numeric(fdata1$argvals[[1]])
-    argvals_t <- as.numeric(fdata1$argvals[[2]])
+    argvals_s <- as.numeric(fdataobj$argvals[[1]])
+    argvals_t <- as.numeric(fdataobj$argvals[[2]])
 
     # Data is already flattened [n, m1*m2]
-    if (is.null(fdata2)) {
+    if (is.null(fdataref)) {
       # Self-distances (symmetric)
-      D <- .Call("wrap__metric_hausdorff_2d", fdata1$data, argvals_s, argvals_t)
+      D <- .Call("wrap__metric_hausdorff_2d", fdataobj$data, argvals_s, argvals_t)
     } else {
-      if (!inherits(fdata2, "fdata")) {
-        stop("fdata2 must be of class 'fdata'")
+      if (!inherits(fdataref, "fdata")) {
+        stop("fdataref must be of class 'fdata'")
       }
-      if (!fdata2$fdata2d) {
+      if (!fdataref$fdata2d) {
         stop("Cannot compute distances between 1D and 2D functional data")
       }
-      if (!identical(fdata1$dims, fdata2$dims)) {
-        stop("fdata1 and fdata2 must have the same grid dimensions")
+      if (!identical(fdataobj$dims, fdataref$dims)) {
+        stop("fdataobj and fdataref must have the same grid dimensions")
       }
 
-      D <- .Call("wrap__metric_hausdorff_cross_2d", fdata1$data, fdata2$data, argvals_s, argvals_t)
+      D <- .Call("wrap__metric_hausdorff_cross_2d", fdataobj$data, fdataref$data, argvals_s, argvals_t)
     }
   } else {
     # 1D functional data (curves)
-    if (is.null(fdata2)) {
+    if (is.null(fdataref)) {
       # Self-distances (symmetric) - use optimized Rust implementation
-      D <- .Call("wrap__metric_hausdorff_1d", fdata1$data, as.numeric(fdata1$argvals))
+      D <- .Call("wrap__metric_hausdorff_1d", fdataobj$data, as.numeric(fdataobj$argvals))
     } else {
-      if (!inherits(fdata2, "fdata")) {
-        stop("fdata2 must be of class 'fdata'")
+      if (!inherits(fdataref, "fdata")) {
+        stop("fdataref must be of class 'fdata'")
       }
 
-      if (fdata2$fdata2d) {
+      if (fdataref$fdata2d) {
         stop("Cannot compute distances between 1D and 2D functional data")
       }
 
-      if (ncol(fdata1$data) != ncol(fdata2$data)) {
-        stop("fdata1 and fdata2 must have the same number of evaluation points")
+      if (ncol(fdataobj$data) != ncol(fdataref$data)) {
+        stop("fdataobj and fdataref must have the same number of evaluation points")
       }
 
       # Cross-distances - use Rust implementation
-      D <- .Call("wrap__metric_hausdorff_cross_1d", fdata1$data, fdata2$data, as.numeric(fdata1$argvals))
+      D <- .Call("wrap__metric_hausdorff_cross_1d", fdataobj$data, fdataref$data, as.numeric(fdataobj$argvals))
     }
   }
 
@@ -277,16 +277,16 @@ metric.hausdorff <- function(fdata1, fdata2 = NULL, ...) {
   D <- as.matrix(D)
 
   # Add row and column names if available
-  if (!is.null(rownames(fdata1$data))) {
-    rownames(D) <- rownames(fdata1$data)
+  if (!is.null(rownames(fdataobj$data))) {
+    rownames(D) <- rownames(fdataobj$data)
   }
 
-  if (is.null(fdata2)) {
-    if (!is.null(rownames(fdata1$data))) {
-      colnames(D) <- rownames(fdata1$data)
+  if (is.null(fdataref)) {
+    if (!is.null(rownames(fdataobj$data))) {
+      colnames(D) <- rownames(fdataobj$data)
     }
-  } else if (!is.null(rownames(fdata2$data))) {
-    colnames(D) <- rownames(fdata2$data)
+  } else if (!is.null(rownames(fdataref$data))) {
+    colnames(D) <- rownames(fdataref$data)
   }
 
   D
@@ -297,10 +297,10 @@ metric.hausdorff <- function(fdata1, fdata2 = NULL, ...) {
 #' Computes the Dynamic Time Warping distance between functional data.
 #' DTW allows for non-linear alignment of curves.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, computes self-distances.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, computes self-distances.
 #' @param p The p in Lp distance (default 2 for L2/Euclidean).
-#' @param w Sakoe-Chiba window constraint. Default is min(ncol(fdata1), ncol(fdata2)).
+#' @param w Sakoe-Chiba window constraint. Default is min(ncol(fdataobj), ncol(fdataref)).
 #'   Use -1 for no window constraint.
 #' @param ... Additional arguments (ignored).
 #'
@@ -310,50 +310,50 @@ metric.hausdorff <- function(fdata1, fdata2 = NULL, ...) {
 #' @examples
 #' fd <- fdata(matrix(rnorm(100), 10, 10))
 #' D <- metric.DTW(fd)
-metric.DTW <- function(fdata1, fdata2 = NULL, p = 2, w = NULL, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+metric.DTW <- function(fdataobj, fdataref = NULL, p = 2, w = NULL, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  if (fdata1$fdata2d) {
+  if (fdataobj$fdata2d) {
     stop("metric.DTW not yet implemented for 2D functional data")
   }
 
-  m <- ncol(fdata1$data)
+  m <- ncol(fdataobj$data)
 
-  if (is.null(fdata2)) {
+  if (is.null(fdataref)) {
     # Self-distances - use optimized Rust implementation
     if (is.null(w)) w <- m
-    D <- .Call("wrap__metric_dtw_self_1d", fdata1$data, as.numeric(p), as.integer(w))
+    D <- .Call("wrap__metric_dtw_self_1d", fdataobj$data, as.numeric(p), as.integer(w))
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    if (!inherits(fdataref, "fdata")) {
+      stop("fdataref must be of class 'fdata'")
     }
 
-    if (fdata2$fdata2d) {
+    if (fdataref$fdata2d) {
       stop("metric.DTW not yet implemented for 2D functional data")
     }
 
     # Cross-distances - use Rust implementation
-    m2 <- ncol(fdata2$data)
+    m2 <- ncol(fdataref$data)
     if (is.null(w)) w <- min(m, m2)
-    D <- .Call("wrap__metric_dtw_cross_1d", fdata1$data, fdata2$data, as.numeric(p), as.integer(w))
+    D <- .Call("wrap__metric_dtw_cross_1d", fdataobj$data, fdataref$data, as.numeric(p), as.integer(w))
   }
 
   # Convert to proper matrix with dimnames
   D <- as.matrix(D)
 
   # Add row and column names if available
-  if (!is.null(rownames(fdata1$data))) {
-    rownames(D) <- rownames(fdata1$data)
+  if (!is.null(rownames(fdataobj$data))) {
+    rownames(D) <- rownames(fdataobj$data)
   }
 
-  if (is.null(fdata2)) {
-    if (!is.null(rownames(fdata1$data))) {
-      colnames(D) <- rownames(fdata1$data)
+  if (is.null(fdataref)) {
+    if (!is.null(rownames(fdataobj$data))) {
+      colnames(D) <- rownames(fdataobj$data)
     }
-  } else if (!is.null(rownames(fdata2$data))) {
-    colnames(D) <- rownames(fdata2$data)
+  } else if (!is.null(rownames(fdataref$data))) {
+    colnames(D) <- rownames(fdataref$data)
   }
 
   D
@@ -363,8 +363,8 @@ metric.DTW <- function(fdata1, fdata2 = NULL, p = 2, w = NULL, ...) {
 #'
 #' Computes a semi-metric based on the first ncomp principal component scores.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, uses fdataobj.
 #' @param ncomp Number of principal components to use.
 #' @param ... Additional arguments (ignored).
 #'
@@ -374,39 +374,39 @@ metric.DTW <- function(fdata1, fdata2 = NULL, p = 2, w = NULL, ...) {
 #' @examples
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
 #' D <- semimetric.pca(fd, ncomp = 3)
-semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+semimetric.pca <- function(fdataobj, fdataref = NULL, ncomp = 2, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
   # Data is already flattened [n, m1*m2] for 2D fdata
-  is_2d <- isTRUE(fdata1$fdata2d)
-  data1 <- fdata1$data
-  n1 <- nrow(fdata1$data)
+  is_2d <- isTRUE(fdataobj$fdata2d)
+  data1 <- fdataobj$data
+  n1 <- nrow(fdataobj$data)
 
   # Compute PCA on combined data
-  if (is.null(fdata2)) {
+  if (is.null(fdataref)) {
     combined <- data1
     n2 <- n1
     same_data <- TRUE
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    if (!inherits(fdataref, "fdata")) {
+      stop("fdataref must be of class 'fdata'")
     }
-    if (isTRUE(fdata1$fdata2d) != isTRUE(fdata2$fdata2d)) {
+    if (isTRUE(fdataobj$fdata2d) != isTRUE(fdataref$fdata2d)) {
       stop("Cannot compute distances between 1D and 2D functional data")
     }
     if (is_2d) {
-      if (!identical(fdata1$dims, fdata2$dims)) {
-        stop("fdata1 and fdata2 must have the same grid dimensions")
+      if (!identical(fdataobj$dims, fdataref$dims)) {
+        stop("fdataobj and fdataref must have the same grid dimensions")
       }
     } else {
-      if (ncol(fdata1$data) != ncol(fdata2$data)) {
-        stop("fdata1 and fdata2 must have the same number of evaluation points")
+      if (ncol(fdataobj$data) != ncol(fdataref$data)) {
+        stop("fdataobj and fdataref must have the same number of evaluation points")
       }
     }
-    data2 <- fdata2$data
-    n2 <- nrow(fdata2$data)
+    data2 <- fdataref$data
+    n2 <- nrow(fdataref$data)
     combined <- rbind(data1, data2)
     same_data <- FALSE
   }
@@ -444,8 +444,8 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
 #' Computes a semi-metric based on the Lp distance of the nderiv-th derivative
 #' of functional data.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, uses fdataobj.
 #' @param nderiv Derivative order (1, 2, ...). Default is 1.
 #' @param lp The p in Lp metric. Default is 2 (L2 distance).
 #' @param ... Additional arguments passed to deriv.
@@ -462,57 +462,57 @@ semimetric.pca <- function(fdata1, fdata2 = NULL, ncomp = 2, ...) {
 #'
 #' # Compute distance based on first derivative
 #' D <- semimetric.deriv(fd, nderiv = 1)
-semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+semimetric.deriv <- function(fdataobj, fdataref = NULL, nderiv = 1, lp = 2, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  is_2d <- isTRUE(fdata1$fdata2d)
+  is_2d <- isTRUE(fdataobj$fdata2d)
 
   if (is_2d) {
     # 2D case: deriv returns a list of derivatives (ds, dt, dsdt)
     # Use the sum of all derivative Lp distances
-    fdata1_derivs <- deriv(fdata1, nderiv = nderiv, ...)
+    fdataobj_derivs <- deriv(fdataobj, nderiv = nderiv, ...)
 
-    if (is.null(fdata2)) {
+    if (is.null(fdataref)) {
       # Self-distances - combine derivative distances
-      D_ds <- metric.lp(fdata1_derivs$ds, lp = lp)
-      D_dt <- metric.lp(fdata1_derivs$dt, lp = lp)
+      D_ds <- metric.lp(fdataobj_derivs$ds, lp = lp)
+      D_dt <- metric.lp(fdataobj_derivs$dt, lp = lp)
       D <- sqrt(D_ds^2 + D_dt^2)
     } else {
-      if (!inherits(fdata2, "fdata")) {
-        stop("fdata2 must be of class 'fdata'")
+      if (!inherits(fdataref, "fdata")) {
+        stop("fdataref must be of class 'fdata'")
       }
-      if (!isTRUE(fdata2$fdata2d)) {
+      if (!isTRUE(fdataref$fdata2d)) {
         stop("Cannot compute distances between 1D and 2D functional data")
       }
 
-      fdata2_derivs <- deriv(fdata2, nderiv = nderiv, ...)
-      D_ds <- metric.lp(fdata1_derivs$ds, fdata2_derivs$ds, lp = lp)
-      D_dt <- metric.lp(fdata1_derivs$dt, fdata2_derivs$dt, lp = lp)
+      fdataref_derivs <- deriv(fdataref, nderiv = nderiv, ...)
+      D_ds <- metric.lp(fdataobj_derivs$ds, fdataref_derivs$ds, lp = lp)
+      D_dt <- metric.lp(fdataobj_derivs$dt, fdataref_derivs$dt, lp = lp)
       D <- sqrt(D_ds^2 + D_dt^2)
     }
   } else {
     # 1D case
-    # Compute derivative of fdata1
-    fdata1_deriv <- deriv(fdata1, nderiv = nderiv, ...)
+    # Compute derivative of fdataobj
+    fdataobj_deriv <- deriv(fdataobj, nderiv = nderiv, ...)
 
-    if (is.null(fdata2)) {
+    if (is.null(fdataref)) {
       # Self-distances
-      D <- metric.lp(fdata1_deriv, lp = lp)
+      D <- metric.lp(fdataobj_deriv, lp = lp)
     } else {
-      if (!inherits(fdata2, "fdata")) {
-        stop("fdata2 must be of class 'fdata'")
+      if (!inherits(fdataref, "fdata")) {
+        stop("fdataref must be of class 'fdata'")
       }
 
-      if (isTRUE(fdata2$fdata2d)) {
+      if (isTRUE(fdataref$fdata2d)) {
         stop("Cannot compute distances between 1D and 2D functional data")
       }
 
-      # Compute derivative of fdata2
-      fdata2_deriv <- deriv(fdata2, nderiv = nderiv, ...)
+      # Compute derivative of fdataref
+      fdataref_deriv <- deriv(fdataref, nderiv = nderiv, ...)
 
-      D <- metric.lp(fdata1_deriv, fdata2_deriv, lp = lp)
+      D <- metric.lp(fdataobj_deriv, fdataref_deriv, lp = lp)
     }
   }
 
@@ -524,8 +524,8 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
 #' Computes a semi-metric based on the L2 distance of basis expansion
 #' coefficients. Supports B-spline and Fourier basis.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, uses fdataobj.
 #' @param nbasis Number of basis functions. Default is 5.
 #' @param basis Type of basis: "bspline" (default) or "fourier".
 #' @param nderiv Derivative order to compute distance on (default 0).
@@ -543,19 +543,19 @@ semimetric.deriv <- function(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...) {
 #'
 #' # Compute distance based on B-spline coefficients
 #' D <- semimetric.basis(fd, nbasis = 7)
-semimetric.basis <- function(fdata1, fdata2 = NULL, nbasis = 5, basis = "bspline",
+semimetric.basis <- function(fdataobj, fdataref = NULL, nbasis = 5, basis = "bspline",
                              nderiv = 0, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  if (isTRUE(fdata1$fdata2d)) {
+  if (isTRUE(fdataobj$fdata2d)) {
     stop("semimetric.basis not yet implemented for 2D functional data")
   }
 
   basis <- match.arg(basis, c("bspline", "fourier"))
-  argvals <- fdata1$argvals
-  rangeval <- fdata1$rangeval
+  argvals <- fdataobj$argvals
+  rangeval <- fdataobj$rangeval
   m <- length(argvals)
 
   # Create basis matrix
@@ -586,23 +586,23 @@ semimetric.basis <- function(fdata1, fdata2 = NULL, nbasis = 5, basis = "bspline
     }
   }
 
-  # Compute basis coefficients for fdata1 via least squares
+  # Compute basis coefficients for fdataobj via least squares
   # data[n x m], B[m x nbasis], coef[n x nbasis]
   # coef = data %*% B %*% (B'B)^-1
   BtB_inv <- solve(crossprod(B))
-  coef1 <- fdata1$data %*% B %*% BtB_inv
+  coef1 <- fdataobj$data %*% B %*% BtB_inv
 
-  if (is.null(fdata2)) {
+  if (is.null(fdataref)) {
     coef2 <- coef1
     same_data <- TRUE
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    if (!inherits(fdataref, "fdata")) {
+      stop("fdataref must be of class 'fdata'")
     }
-    if (isTRUE(fdata2$fdata2d)) {
+    if (isTRUE(fdataref$fdata2d)) {
       stop("semimetric.basis not yet implemented for 2D functional data")
     }
-    coef2 <- fdata2$data %*% B %*% BtB_inv
+    coef2 <- fdataref$data %*% B %*% BtB_inv
     same_data <- FALSE
   }
 
@@ -626,8 +626,8 @@ semimetric.basis <- function(fdata1, fdata2 = NULL, nbasis = 5, basis = "bspline
 #' computed via Fast Fourier Transform (FFT). This is more efficient than
 #' the Fourier basis option in semimetric.basis for large nfreq.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, uses fdataobj.
 #' @param nfreq Number of Fourier frequencies to use (excluding DC). Default is 5.
 #' @param ... Additional arguments (ignored).
 #'
@@ -651,47 +651,47 @@ semimetric.basis <- function(fdata1, fdata2 = NULL, nbasis = 5, basis = "bspline
 #'
 #' # Compute distance based on Fourier coefficients
 #' D <- semimetric.fourier(fd, nfreq = 10)
-semimetric.fourier <- function(fdata1, fdata2 = NULL, nfreq = 5, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+semimetric.fourier <- function(fdataobj, fdataref = NULL, nfreq = 5, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  if (isTRUE(fdata1$fdata2d)) {
+  if (isTRUE(fdataobj$fdata2d)) {
     stop("semimetric.fourier not yet implemented for 2D functional data")
   }
 
-  m <- ncol(fdata1$data)
+  m <- ncol(fdataobj$data)
   nfreq <- min(nfreq, m %/% 2 - 1)  # Can't have more than m/2 meaningful frequencies
 
-  if (is.null(fdata2)) {
+  if (is.null(fdataref)) {
     # Self-distances (symmetric)
-    D <- .Call("wrap__semimetric_fourier_self_1d", fdata1$data, as.integer(nfreq))
+    D <- .Call("wrap__semimetric_fourier_self_1d", fdataobj$data, as.integer(nfreq))
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    if (!inherits(fdataref, "fdata")) {
+      stop("fdataref must be of class 'fdata'")
     }
 
-    if (isTRUE(fdata2$fdata2d)) {
+    if (isTRUE(fdataref$fdata2d)) {
       stop("semimetric.fourier not yet implemented for 2D functional data")
     }
 
-    D <- .Call("wrap__semimetric_fourier_cross_1d", fdata1$data, fdata2$data, as.integer(nfreq))
+    D <- .Call("wrap__semimetric_fourier_cross_1d", fdataobj$data, fdataref$data, as.integer(nfreq))
   }
 
   # Convert to proper matrix with dimnames
   D <- as.matrix(D)
 
   # Add row and column names if available
-  if (!is.null(rownames(fdata1$data))) {
-    rownames(D) <- rownames(fdata1$data)
+  if (!is.null(rownames(fdataobj$data))) {
+    rownames(D) <- rownames(fdataobj$data)
   }
 
-  if (is.null(fdata2)) {
-    if (!is.null(rownames(fdata1$data))) {
-      colnames(D) <- rownames(fdata1$data)
+  if (is.null(fdataref)) {
+    if (!is.null(rownames(fdataobj$data))) {
+      colnames(D) <- rownames(fdataobj$data)
     }
-  } else if (!is.null(rownames(fdata2$data))) {
-    colnames(D) <- rownames(fdata2$data)
+  } else if (!is.null(rownames(fdataref$data))) {
+    colnames(D) <- rownames(fdataref$data)
   }
 
   D
@@ -703,8 +703,8 @@ semimetric.fourier <- function(fdata1, fdata2 = NULL, nfreq = 5, ...) {
 #' horizontal shifting of curves. This is useful for comparing curves that
 #' may have phase differences.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, uses fdata1.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, uses fdataobj.
 #' @param max_shift Maximum shift in number of grid points. Default is m/4
 #'   where m is the number of evaluation points. Use -1 for automatic.
 #' @param ... Additional arguments (ignored).
@@ -730,50 +730,50 @@ semimetric.fourier <- function(fdata1, fdata2 = NULL, nfreq = 5, ...) {
 #'
 #' # Compute distance accounting for phase shifts
 #' D <- semimetric.hshift(fd, max_shift = 10)
-semimetric.hshift <- function(fdata1, fdata2 = NULL, max_shift = -1, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+semimetric.hshift <- function(fdataobj, fdataref = NULL, max_shift = -1, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  if (isTRUE(fdata1$fdata2d)) {
+  if (isTRUE(fdataobj$fdata2d)) {
     stop("semimetric.hshift not yet implemented for 2D functional data")
   }
 
-  if (is.null(fdata2)) {
+  if (is.null(fdataref)) {
     # Self-distances (symmetric)
-    D <- .Call("wrap__semimetric_hshift_self_1d", fdata1$data,
-               as.numeric(fdata1$argvals), as.integer(max_shift))
+    D <- .Call("wrap__semimetric_hshift_self_1d", fdataobj$data,
+               as.numeric(fdataobj$argvals), as.integer(max_shift))
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    if (!inherits(fdataref, "fdata")) {
+      stop("fdataref must be of class 'fdata'")
     }
 
-    if (isTRUE(fdata2$fdata2d)) {
+    if (isTRUE(fdataref$fdata2d)) {
       stop("semimetric.hshift not yet implemented for 2D functional data")
     }
 
-    if (ncol(fdata1$data) != ncol(fdata2$data)) {
-      stop("fdata1 and fdata2 must have the same number of evaluation points")
+    if (ncol(fdataobj$data) != ncol(fdataref$data)) {
+      stop("fdataobj and fdataref must have the same number of evaluation points")
     }
 
-    D <- .Call("wrap__semimetric_hshift_cross_1d", fdata1$data, fdata2$data,
-               as.numeric(fdata1$argvals), as.integer(max_shift))
+    D <- .Call("wrap__semimetric_hshift_cross_1d", fdataobj$data, fdataref$data,
+               as.numeric(fdataobj$argvals), as.integer(max_shift))
   }
 
   # Convert to proper matrix with dimnames
   D <- as.matrix(D)
 
   # Add row and column names if available
-  if (!is.null(rownames(fdata1$data))) {
-    rownames(D) <- rownames(fdata1$data)
+  if (!is.null(rownames(fdataobj$data))) {
+    rownames(D) <- rownames(fdataobj$data)
   }
 
-  if (is.null(fdata2)) {
-    if (!is.null(rownames(fdata1$data))) {
-      colnames(D) <- rownames(fdata1$data)
+  if (is.null(fdataref)) {
+    if (!is.null(rownames(fdataobj$data))) {
+      colnames(D) <- rownames(fdataobj$data)
     }
-  } else if (!is.null(rownames(fdata2$data))) {
-    colnames(D) <- rownames(fdata2$data)
+  } else if (!is.null(rownames(fdataref$data))) {
+    colnames(D) <- rownames(fdataref$data)
   }
 
   D
@@ -785,8 +785,8 @@ semimetric.hshift <- function(fdata1, fdata2 = NULL, max_shift = -1, ...) {
 #' treated as probability distributions. Curves are first normalized to be
 #' valid probability density functions.
 #'
-#' @param fdata1 An object of class 'fdata'.
-#' @param fdata2 An object of class 'fdata'. If NULL, computes self-distances.
+#' @param fdataobj An object of class 'fdata'.
+#' @param fdataref An object of class 'fdata'. If NULL, computes self-distances.
 #' @param eps Small value for numerical stability (default 1e-10).
 #' @param normalize Logical. If TRUE (default), curves are shifted to be
 #'   non-negative and normalized to integrate to 1.
@@ -821,50 +821,50 @@ semimetric.hshift <- function(fdata1, fdata2 = NULL, max_shift = -1, ...) {
 #'
 #' # Compute KL divergence
 #' D <- metric.kl(fd)
-metric.kl <- function(fdata1, fdata2 = NULL, eps = 1e-10, normalize = TRUE, ...) {
-  if (!inherits(fdata1, "fdata")) {
-    stop("fdata1 must be of class 'fdata'")
+metric.kl <- function(fdataobj, fdataref = NULL, eps = 1e-10, normalize = TRUE, ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
   }
 
-  if (isTRUE(fdata1$fdata2d)) {
+  if (isTRUE(fdataobj$fdata2d)) {
     stop("metric.kl not yet implemented for 2D functional data")
   }
 
-  if (is.null(fdata2)) {
+  if (is.null(fdataref)) {
     # Self-distances (symmetric)
-    D <- .Call("wrap__metric_kl_self_1d", fdata1$data,
-               as.numeric(fdata1$argvals), as.numeric(eps), as.logical(normalize))
+    D <- .Call("wrap__metric_kl_self_1d", fdataobj$data,
+               as.numeric(fdataobj$argvals), as.numeric(eps), as.logical(normalize))
   } else {
-    if (!inherits(fdata2, "fdata")) {
-      stop("fdata2 must be of class 'fdata'")
+    if (!inherits(fdataref, "fdata")) {
+      stop("fdataref must be of class 'fdata'")
     }
 
-    if (isTRUE(fdata2$fdata2d)) {
+    if (isTRUE(fdataref$fdata2d)) {
       stop("metric.kl not yet implemented for 2D functional data")
     }
 
-    if (ncol(fdata1$data) != ncol(fdata2$data)) {
-      stop("fdata1 and fdata2 must have the same number of evaluation points")
+    if (ncol(fdataobj$data) != ncol(fdataref$data)) {
+      stop("fdataobj and fdataref must have the same number of evaluation points")
     }
 
-    D <- .Call("wrap__metric_kl_cross_1d", fdata1$data, fdata2$data,
-               as.numeric(fdata1$argvals), as.numeric(eps), as.logical(normalize))
+    D <- .Call("wrap__metric_kl_cross_1d", fdataobj$data, fdataref$data,
+               as.numeric(fdataobj$argvals), as.numeric(eps), as.logical(normalize))
   }
 
   # Convert to proper matrix with dimnames
   D <- as.matrix(D)
 
   # Add row and column names if available
-  if (!is.null(rownames(fdata1$data))) {
-    rownames(D) <- rownames(fdata1$data)
+  if (!is.null(rownames(fdataobj$data))) {
+    rownames(D) <- rownames(fdataobj$data)
   }
 
-  if (is.null(fdata2)) {
-    if (!is.null(rownames(fdata1$data))) {
-      colnames(D) <- rownames(fdata1$data)
+  if (is.null(fdataref)) {
+    if (!is.null(rownames(fdataobj$data))) {
+      colnames(D) <- rownames(fdataobj$data)
     }
-  } else if (!is.null(rownames(fdata2$data))) {
-    colnames(D) <- rownames(fdata2$data)
+  } else if (!is.null(rownames(fdataref$data))) {
+    colnames(D) <- rownames(fdataref$data)
   }
 
   D
