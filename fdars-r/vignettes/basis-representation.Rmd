@@ -228,29 +228,43 @@ aic_bspline <- sapply(nbasis_range, function(k) basis.aic(fd2, nbasis = k, type 
 gcv_fourier <- sapply(nbasis_range, function(k) basis.gcv(fd2, nbasis = k, type = "fourier"))
 aic_fourier <- sapply(nbasis_range, function(k) basis.aic(fd2, nbasis = k, type = "fourier"))
 
-# Create comparison plot
-df_complex <- data.frame(
-  nbasis = rep(nbasis_range, 4),
-  score = c(gcv_bspline, gcv_fourier, aic_bspline, aic_fourier),
-  criterion = rep(rep(c("GCV", "AIC"), each = length(nbasis_range)), 2),
-  basis = rep(c("B-spline", "Fourier"), each = 2 * length(nbasis_range))
-)
-
-ggplot(df_complex, aes(x = nbasis, y = score, color = basis)) +
-  geom_line() +
-  geom_point() +
-  facet_wrap(~ criterion, scales = "free_y") +
-  labs(x = "Number of basis functions", y = "Score",
-       title = "Basis Selection for Complex Non-Periodic Signal") +
-  scale_color_manual(values = c("B-spline" = "steelblue", "Fourier" = "coral"))
-
 # Find optimal nbasis for each type
 opt_bspline <- nbasis_range[which.min(gcv_bspline)]
 opt_fourier <- nbasis_range[which.min(gcv_fourier)]
 
 cat("Optimal B-spline nbasis:", opt_bspline, "(GCV:", round(min(gcv_bspline), 4), ")\n")
 cat("Optimal Fourier nbasis:", opt_fourier, "(GCV:", round(min(gcv_fourier), 4), ")\n")
+cat("\nB-spline wins with", round((1 - min(gcv_bspline)/min(gcv_fourier)) * 100, 1),
+    "% lower GCV score\n")
+
+# Create comparison plot - use SAME scale to show B-spline advantage
+df_gcv <- data.frame(
+  nbasis = rep(nbasis_range, 2),
+  GCV = c(gcv_bspline, gcv_fourier),
+  basis = rep(c("B-spline", "Fourier"), each = length(nbasis_range))
+)
+
+ggplot(df_gcv, aes(x = nbasis, y = GCV, color = basis)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = min(gcv_bspline), linetype = "dashed",
+             color = "steelblue", alpha = 0.5) +
+  geom_hline(yintercept = min(gcv_fourier), linetype = "dashed",
+             color = "coral", alpha = 0.5) +
+  annotate("text", x = 24, y = min(gcv_bspline), label = "B-spline optimum",
+           vjust = -0.5, hjust = 1, size = 3, color = "steelblue") +
+  annotate("text", x = 24, y = min(gcv_fourier), label = "Fourier optimum",
+           vjust = 1.5, hjust = 1, size = 3, color = "coral") +
+  labs(x = "Number of basis functions", y = "GCV Score (lower is better)",
+       title = "GCV Comparison: B-spline vs Fourier for Non-Periodic Signal",
+       subtitle = "B-spline clearly outperforms Fourier for this complex signal") +
+  scale_color_manual(values = c("B-spline" = "steelblue", "Fourier" = "coral")) +
+  theme(legend.position = "bottom")
 ```
+
+**Important:** Note that both curves are plotted on the **same scale**. The B-spline
+basis achieves a substantially lower GCV score, confirming it's the better choice
+for this non-periodic signal with localized features.
 
 Now let's visualize how each optimal basis representation captures the complex signal:
 
