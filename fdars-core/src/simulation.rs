@@ -375,8 +375,8 @@ pub fn sim_fundata(
 ///
 /// # Arguments
 /// * `data` - Data matrix (n × m) in column-major format
-/// * `nrow` - Number of rows (observations)
-/// * `ncol` - Number of columns (evaluation points)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 /// * `sd` - Standard deviation of noise
 /// * `seed` - Optional random seed
 ///
@@ -384,8 +384,8 @@ pub fn sim_fundata(
 /// Noisy data matrix (n × m) in column-major format
 pub fn add_error_pointwise(
     data: &[f64],
-    _nrow: usize,
-    _ncol: usize,
+    _n: usize,
+    _m: usize,
     sd: f64,
     seed: Option<u64>,
 ) -> Vec<f64> {
@@ -408,8 +408,8 @@ pub fn add_error_pointwise(
 ///
 /// # Arguments
 /// * `data` - Data matrix (n × m) in column-major format
-/// * `nrow` - Number of rows (observations)
-/// * `ncol` - Number of columns (evaluation points)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 /// * `sd` - Standard deviation of noise
 /// * `seed` - Optional random seed
 ///
@@ -417,8 +417,8 @@ pub fn add_error_pointwise(
 /// Noisy data matrix (n × m) in column-major format
 pub fn add_error_curve(
     data: &[f64],
-    nrow: usize,
-    ncol: usize,
+    n: usize,
+    m: usize,
     sd: f64,
     seed: Option<u64>,
 ) -> Vec<f64> {
@@ -430,13 +430,13 @@ pub fn add_error_curve(
     let normal = Normal::new(0.0, sd).unwrap();
 
     // Generate one noise value per curve
-    let curve_noise: Vec<f64> = (0..nrow).map(|_| rng.sample::<f64, _>(normal)).collect();
+    let curve_noise: Vec<f64> = (0..n).map(|_| rng.sample::<f64, _>(normal)).collect();
 
     // Add to data
     let mut result = data.to_vec();
-    for j in 0..ncol {
-        for i in 0..nrow {
-            result[i + j * nrow] += curve_noise[i];
+    for j in 0..m {
+        for i in 0..n {
+            result[i + j * n] += curve_noise[i];
         }
     }
     result
