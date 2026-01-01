@@ -247,6 +247,10 @@ generate_seasonal_curve <- function(t, strength, noise_sd = 0.3) {
 }
 ```
 
+### Example Time Series
+
+![Example curves at different seasonal strength levels](plots/example_sim1_seasonal_strength.pdf){width="7in"}
+
 ### Results
 
 ![Detection rates by seasonal strength](plots/seasonality_detection_comparison.pdf){width="7in"}
@@ -336,6 +340,10 @@ generate_curve <- function(t, seasonal_strength, trend_strength, noise_sd = 0.3)
 }
 ```
 
+### Example Time Series
+
+![Example curves with fixed seasonality (s=0.5) and varying trend strength](plots/example_sim2_nonlinear_trend.pdf){width="7in"}
+
 ### Results
 
 ![Detection rates heatmap by seasonal and trend strength](plots/seasonality_detection_trend_heatmaps.pdf){width="7in"}
@@ -405,6 +413,10 @@ trend_functions <- list(
   slow_sine = function(t, strength) strength * sin(2 * pi * t)
 )
 ```
+
+### Example Time Series
+
+![Example curves combining each trend type with seasonality (s=0.5, trend=1.0)](plots/example_sim3_trend_types.pdf){width="7in"}
 
 ### Results
 
