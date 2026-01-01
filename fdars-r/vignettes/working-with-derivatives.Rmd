@@ -53,15 +53,22 @@ if (requireNamespace("fda", quietly = TRUE)) {
   n <- nrow(heights)
 } else {
   message("Install 'fda' package for real data: install.packages('fda')")
-  # Simulate growth-like data
+  # Simulate realistic growth-like data with variable PHV timing
+  # Using logistic model where inflection point = PHV age
   age <- seq(1, 18, length.out = 31)
   n <- 20
   heights <- matrix(0, n, length(age))
   for (i in 1:n) {
-    A <- rnorm(1, 170, 5)
-    b <- rnorm(1, 2.5, 0.2)
-    c <- rnorm(1, 0.15, 0.02)
-    heights[i, ] <- A * exp(-b * exp(-c * age)) + rnorm(length(age), sd = 0.5)
+    final_height <- rnorm(1, 165, 5)     # Adult height (cm)
+    init_height <- rnorm(1, 75, 2)       # Height at age 1 (cm)
+    phv_age <- rnorm(1, 11.5, 1)         # Age at PHV (early ~10, late ~13)
+    growth_rate <- rnorm(1, 0.45, 0.05)  # Growth curve steepness
+
+    # Logistic growth: h(t) = init + (final - init) / (1 + exp(-k*(t - phv)))
+    # PHV occurs at inflection point (t = phv_age)
+    heights[i, ] <- init_height + (final_height - init_height) /
+      (1 + exp(-growth_rate * (age - phv_age)))
+    heights[i, ] <- heights[i, ] + rnorm(length(age), sd = 0.5)
   }
 }
 

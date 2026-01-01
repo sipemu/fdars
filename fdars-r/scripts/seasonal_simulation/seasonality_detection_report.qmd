@@ -23,7 +23,7 @@ execute:
 
 ## Key Findings
 
-This study compared five methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
+This study compared five methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components. **Note**: Results are based on idealized conditions (white noise, single seasonality); see @sec-robustness for real-world challenges.
 
 | Method | F1 Score | False Positive Rate | Robustness to Trends |
 |--------|----------|---------------------|----------------------|
@@ -71,6 +71,13 @@ is_seasonal <- strength > 0.2
 This report describes and compares five methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
 
 The goal is to answer: **Given a time series, how can we reliably determine if it contains a seasonal pattern?**
+
+**Report Structure**:
+
+- @sec-sim1 — Basic detection across varying seasonal strengths
+- @sec-sim2 — Robustness to non-linear trends
+- @sec-sim3 — Performance across different trend types
+- @sec-robustness — Additional real-world challenges (red noise, multiple seasonalities, amplitude modulation, outliers)
 
 # Detection Methods
 
@@ -415,6 +422,132 @@ trend_functions <- list(
 | sigmoid | 5% | 5% | Minor |
 | linear | 0% | 10% | Handled well |
 
+# Additional Robustness Challenges {#sec-robustness}
+
+The current simulations cover varying seasonal strength, non-linear trends, and multiple trend types. However, real-world data often breaks the assumptions made in these idealized setups. This section outlines additional robustness tests that would further validate method performance.
+
+## A. Colored Noise (Red Noise)
+
+### The Gap
+
+The simulations currently use **white noise**: $\epsilon \sim N(0, 0.3^2)$ — independent, identically distributed.
+
+### Reality
+
+Most physical and economic time series exhibit **red noise** (autocorrelated noise). Temperature records, stock prices, and sensor readings typically have positive autocorrelation where consecutive observations are more similar than distant ones.
+
+**AR(1) noise model**:
+$$\epsilon_t = \phi \epsilon_{t-1} + \eta_t, \quad \eta_t \sim N(0, \sigma^2)$$
+
+where $\phi \in (0, 1)$ controls the autocorrelation strength.
+
+### Why It Matters
+
+Spectral methods (FFT, Spectral Strength) and ACF are notoriously prone to **false positives** in red noise environments:
+
+- A slow random walk can appear as a "trend" or low-frequency cycle
+- AR(1) processes have elevated low-frequency power, mimicking seasonality
+- The periodogram of red noise is not flat — it decays as $\sim 1/f^2$
+
+**Recommended test**: Generate AR(1) noise with $\phi \in \{0.3, 0.5, 0.7, 0.9\}$ and measure FPR for each detection method.
+
+## B. Multiple Seasonalities
+
+### The Gap
+
+The simulations assume a **single fixed period** (5 cycles over the observation window).
+
+### Reality
+
+Data often contains **multiple nested seasonalities**:
+
+- Energy consumption: daily cycle + weekly cycle + annual cycle
+- Retail sales: weekly patterns + monthly patterns + holiday effects
+- Traffic data: hourly patterns + daily patterns
+
+**Multi-seasonal model**:
+$$y(t) = s_1 \sin(2\pi f_1 t) + s_2 \sin(2\pi f_2 t) + \epsilon$$
+
+where $f_1$ and $f_2$ are different frequencies (e.g., $f_1 = 5$ cycles, $f_2 = 20$ cycles).
+
+### Why It Matters
+
+- Can **FFT** and **Spectral Strength** distinguish between a dominant seasonal frequency and secondary harmonics?
+- Does **Variance Strength** get diluted when multiple periods are present but only one is specified?
+- What happens when the specified period misses the dominant frequency?
+
+**Recommended test**: Generate signals with primary period $p_1$ and secondary period $p_2$ with varying amplitude ratios, then test detection with period set to $p_1$.
+
+## C. Amplitude Modulation (Time-Varying Seasonality)
+
+### The Gap
+
+The signal model assumes **constant seasonal strength** $s$ across the entire curve:
+$$y(t) = s \cdot \sin(2\pi f t) + \epsilon$$
+
+### Reality
+
+Seasonality often **grows or shrinks over time** (multiplicative seasonality):
+
+- Heating demand: seasonal amplitude is higher in extreme years
+- Economic growth: seasonal patterns amplify as the economy scales
+- Agricultural yields: seasonal variation depends on climate conditions that vary year-to-year
+
+**Amplitude-modulated model**:
+$$y(t) = s(t) \cdot \sin(2\pi f t) + \epsilon$$
+
+where $s(t)$ is a time-varying envelope, e.g., $s(t) = s_0 \cdot (1 + \alpha t)$ (linear growth) or $s(t) = s_0 \cdot (1 + \beta \sin(2\pi t / T))$ (periodic modulation).
+
+### Why It Matters
+
+- **Variance Strength** averages variance globally — it may under-report seasonality if the signal is strong in only half the time domain
+- Methods might fail when seasonality "emerges" partway through the series
+- Detection thresholds calibrated on constant-amplitude signals may be inappropriate
+
+**Recommended test**: Generate signals where seasonal amplitude varies from 0→1 across the series, and test whether methods detect "partial seasonality."
+
+## D. Outliers and Anomalies
+
+### The Gap
+
+The current noise model is **Gaussian** with constant variance.
+
+### Reality
+
+Real sensors and measurements have:
+
+- **Spikes**: Sudden large values (e.g., sensor glitches, recording errors)
+- **Dropouts**: Missing or zero values
+- **Level shifts**: Sudden changes in baseline (e.g., sensor recalibration)
+- **Heavy tails**: Non-Gaussian error distributions
+
+**Contaminated noise model**:
+$$\epsilon_t = \begin{cases}
+N(0, \sigma^2) & \text{with probability } 1 - p \\
+N(0, k^2 \sigma^2) & \text{with probability } p
+\end{cases}$$
+
+where $p$ is the outlier probability and $k > 1$ is the outlier magnitude multiplier.
+
+### Why It Matters
+
+- A **single large outlier** can distort the FFT spectrum, creating spurious peaks
+- Outliers inflate $\text{Var}(R_t)$ in the Variance Strength denominator, potentially causing **false negatives**
+- ACF is sensitive to outliers, which can destroy or create spurious autocorrelation
+
+**Recommended test**: Add $p = 5\%$ outliers with magnitude $k = 5$ and measure degradation in F1 scores.
+
+## Summary of Robustness Gaps
+
+| Challenge | Current Assumption | Real-World Behavior | Methods at Risk |
+|-----------|-------------------|---------------------|-----------------|
+| **Red Noise** | White noise (i.i.d.) | Autocorrelated (AR) | FFT, ACF, Spectral |
+| **Multiple Seasonalities** | Single period | Nested periods | All (period misspecification) |
+| **Amplitude Modulation** | Constant strength | Time-varying strength | Variance (averaging) |
+| **Outliers** | Gaussian | Heavy-tailed, spikes | FFT, Variance, ACF |
+
+These tests would provide a more complete picture of method robustness for production use cases.
+
 # Key Findings
 
 ## Method Ranking
@@ -499,6 +632,17 @@ For detecting seasonality in functional time series:
 5. **ACF Confidence** is conservative (low FPR) but misses weak seasonality
 
 The key insight is that simple variance-based decomposition outperforms more complex spectral methods when properly configured with the correct period parameter.
+
+## Limitations and Future Work
+
+The current simulations use idealized conditions (white noise, single seasonality, constant amplitude). Real-world data presents additional challenges:
+
+- **Red noise** (autocorrelated errors) can inflate false positives for spectral methods
+- **Multiple seasonalities** require careful period specification
+- **Amplitude modulation** may dilute variance-based measures
+- **Outliers** can distort all methods
+
+See @sec-robustness for detailed discussion of these robustness challenges and recommended tests.
 
 # Appendix: Fourier vs P-spline Comparison
 
