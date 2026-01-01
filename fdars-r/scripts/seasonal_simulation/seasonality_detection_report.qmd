@@ -1,7 +1,7 @@
 ---
 title: "Seasonality Detection Methods: A Comparative Study"
 author: "fdars Package"
-date: "2025-12-29"
+date: "2026-01-01"
 format:
   pdf:
     pdf-engine: pdflatex
@@ -34,6 +34,19 @@ This study compared five methods for detecting seasonality in functional time se
 | ACF Confidence | 85.4% | 10% | Moderate (4.5% F1 drop) |
 
 **Winner: Variance Strength** achieves the highest accuracy with the lowest false positive rate and is most robust to non-linear trends.
+
+## Robustness to Real-World Challenges
+
+We tested all methods against challenging real-world scenarios:
+
+| Challenge | Most Affected | Key Result |
+|-----------|---------------|------------|
+| **Red Noise (AR(1))** | FFT | FPR reaches 100% at $\phi$=0.9 |
+| **Multiple Seasonalities** | Variance | TPR drops to 4% when secondary dominates |
+| **Amplitude Modulation** | Variance, ACF | TPR drops to 18% for "emergence" pattern |
+| **Outliers (10%, 10×)** | ACF | TPR drops to 2%; Variance to 40% |
+
+**Robustness ranking**: FFT > Spectral > Variance > ACF (FFT most robust overall, but vulnerable to red noise)
 
 ## Recommendations
 
