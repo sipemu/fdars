@@ -546,7 +546,57 @@ where $p$ is the outlier probability and $k > 1$ is the outlier magnitude multip
 | **Amplitude Modulation** | Constant strength | Time-varying strength | Variance (averaging) |
 | **Outliers** | Gaussian | Heavy-tailed, spikes | FFT, Variance, ACF |
 
-These tests would provide a more complete picture of method robustness for production use cases.
+## Experimental Results
+
+We ran simulations for each robustness scenario. Key findings:
+
+### A. Red Noise Results
+
+![False positive rate vs AR(1) coefficient](plots/robustness_red_noise_fpr.pdf){width="7in"}
+
+| AR(1) $\phi$ | Variance FPR | Spectral FPR | FFT FPR | ACF FPR |
+|---------|--------------|--------------|---------|---------|
+| 0.0     | 0%           | 10%          | 14%     | 0%      |
+| 0.3     | 2%           | 2%           | 32%     | 0%      |
+| 0.5     | 4%           | 6%           | 76%     | 2%      |
+| 0.7     | 12%          | 6%           | 98%     | 16%     |
+| 0.9     | 6%           | 2%           | 100%    | 28%     |
+
+**Key finding**: FFT is catastrophically affected by red noise, with FPR reaching 100% at high autocorrelation. Variance and Spectral methods remain relatively robust.
+
+### B. Multiple Seasonalities Results
+
+When secondary seasonality dominates (amplitude 0.7 vs primary 0.3):
+- Variance Strength TPR drops to 4%
+- Spectral and FFT maintain 100% TPR (detect any periodicity)
+- Period specification is critical for Variance method
+
+### C. Amplitude Modulation Results
+
+![TPR by amplitude modulation type and base amplitude](plots/robustness_amplitude_modulation.pdf){width="7in"}
+
+At base amplitude 0.3:
+
+| Modulation | Variance | Spectral | FFT | ACF |
+|------------|----------|----------|-----|-----|
+| constant   | 100%     | 100%     | 100%| 26% |
+| linear_growth | 48%   | 58%      | 90% | 4%  |
+| linear_decay  | 48%   | 58%      | 88% | 0%  |
+| emergence  | **18%**  | 24%      | 76% | 4%  |
+
+**Key finding**: "Emergence" pattern (signal only in second half) is most challenging. FFT remains most robust to modulation.
+
+### D. Outlier Results
+
+![Impact of outliers on TPR](plots/robustness_outliers.pdf){width="7in"}
+
+At 10% outliers with magnitude 10× for seasonal strength 0.5:
+- Variance TPR: 40%
+- Spectral TPR: 52%
+- FFT TPR: 66%
+- ACF TPR: 2%
+
+**Key finding**: All methods significantly degraded by severe outliers. Pre-filtering recommended.
 
 # Key Findings
 
@@ -667,5 +717,7 @@ All simulation scripts and results are in `scripts/seasonal_simulation/`:
 - `seasonality_detection_with_trend.R` — Non-linear trend study (Simulation 2)
 - `seasonality_detection_trend_types.R` — Multiple trend types (Simulation 3)
 - `seasonal_basis_comparison.R` — Fourier vs P-spline AIC study
+- `seasonality_robustness_tests.R` — Robustness tests (red noise, multi-seasonal, etc.)
+- `generate_training_data.R` — Generate training data for ML classifiers
 
 PDF outputs are in the `plots/` subfolder.
