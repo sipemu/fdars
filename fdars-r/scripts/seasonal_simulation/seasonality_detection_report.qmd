@@ -552,6 +552,10 @@ We ran simulations for each robustness scenario. Key findings:
 
 ### A. Red Noise Results
 
+![Example time series with different noise types](plots/example_red_noise.pdf){width="7in"}
+
+\newpage
+
 ![False positive rate vs AR(1) coefficient](plots/robustness_red_noise_fpr.pdf){width="7in"}
 
 | AR(1) $\phi$ | Variance FPR | Spectral FPR | FFT FPR | ACF FPR |
@@ -566,12 +570,17 @@ We ran simulations for each robustness scenario. Key findings:
 
 ### B. Multiple Seasonalities Results
 
+![Example time series with multiple seasonal components](plots/example_multi_seasonal.pdf){width="7in"}
+
 When secondary seasonality dominates (amplitude 0.7 vs primary 0.3):
+
 - Variance Strength TPR drops to 4%
 - Spectral and FFT maintain 100% TPR (detect any periodicity)
 - Period specification is critical for Variance method
 
 ### C. Amplitude Modulation Results
+
+![Example time series with different amplitude modulation types](plots/example_amplitude_modulation.pdf){width="7in"}
 
 ![TPR by amplitude modulation type and base amplitude](plots/robustness_amplitude_modulation.pdf){width="7in"}
 
@@ -587,6 +596,8 @@ At base amplitude 0.3:
 **Key finding**: "Emergence" pattern (signal only in second half) is most challenging. FFT remains most robust to modulation.
 
 ### D. Outlier Results
+
+![Example time series with different outlier severities](plots/example_outliers.pdf){width="7in"}
 
 ![Impact of outliers on TPR](plots/robustness_outliers.pdf){width="7in"}
 
