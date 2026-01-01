@@ -1,30 +1,172 @@
 //! Functional data operations: mean, center, derivatives, norms, and geometric median.
 
-use crate::helpers::{simpsons_weights, simpsons_weights_2d};
+use crate::helpers::{simpsons_weights, simpsons_weights_2d, NUMERICAL_EPS};
 use rayon::prelude::*;
+
+/// Compute finite difference for a 1D function at a given index.
+///
+/// Uses forward difference at left boundary, backward difference at right boundary,
+/// and central difference for interior points.
+fn finite_diff_1d(
+    values: impl Fn(usize) -> f64,
+    idx: usize,
+    n_points: usize,
+    step_sizes: &[f64],
+) -> f64 {
+    if idx == 0 {
+        (values(1) - values(0)) / step_sizes[0]
+    } else if idx == n_points - 1 {
+        (values(n_points - 1) - values(n_points - 2)) / step_sizes[n_points - 1]
+    } else {
+        (values(idx + 1) - values(idx - 1)) / step_sizes[idx]
+    }
+}
+
+/// Compute 2D partial derivatives at a single grid point.
+///
+/// Returns (∂f/∂s, ∂f/∂t, ∂²f/∂s∂t) using finite differences.
+fn compute_2d_derivatives(
+    get_val: impl Fn(usize, usize) -> f64,
+    si: usize,
+    ti: usize,
+    m1: usize,
+    m2: usize,
+    hs: &[f64],
+    ht: &[f64],
+) -> (f64, f64, f64) {
+    // ∂f/∂s
+    let ds = finite_diff_1d(|s| get_val(s, ti), si, m1, hs);
+
+    // ∂f/∂t
+    let dt = finite_diff_1d(|t| get_val(si, t), ti, m2, ht);
+
+    // ∂²f/∂s∂t (mixed partial)
+    let denom = hs[si] * ht[ti];
+
+    // Get the appropriate indices for s and t differences
+    let (s_lo, s_hi) = if si == 0 {
+        (0, 1)
+    } else if si == m1 - 1 {
+        (m1 - 2, m1 - 1)
+    } else {
+        (si - 1, si + 1)
+    };
+
+    let (t_lo, t_hi) = if ti == 0 {
+        (0, 1)
+    } else if ti == m2 - 1 {
+        (m2 - 2, m2 - 1)
+    } else {
+        (ti - 1, ti + 1)
+    };
+
+    let dsdt =
+        (get_val(s_hi, t_hi) - get_val(s_lo, t_hi) - get_val(s_hi, t_lo) + get_val(s_lo, t_lo))
+            / denom;
+
+    (ds, dt, dsdt)
+}
+
+/// Perform Weiszfeld iteration to compute geometric median.
+///
+/// This is the core algorithm shared by 1D and 2D geometric median computations.
+fn weiszfeld_iteration(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    weights: &[f64],
+    max_iter: usize,
+    tol: f64,
+) -> Vec<f64> {
+    // Initialize with the mean
+    let mut median: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    for _ in 0..max_iter {
+        // Compute distances from current median to all curves
+        let distances: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut dist_sq = 0.0;
+                for j in 0..m {
+                    let diff = data[i + j * n] - median[j];
+                    dist_sq += diff * diff * weights[j];
+                }
+                dist_sq.sqrt()
+            })
+            .collect();
+
+        // Compute weights (1/distance), handling zero distances
+        let inv_distances: Vec<f64> = distances
+            .iter()
+            .map(|d| {
+                if *d > NUMERICAL_EPS {
+                    1.0 / d
+                } else {
+                    1.0 / NUMERICAL_EPS
+                }
+            })
+            .collect();
+
+        let sum_inv_dist: f64 = inv_distances.iter().sum();
+
+        // Update median using Weiszfeld iteration
+        let new_median: Vec<f64> = (0..m)
+            .map(|j| {
+                let mut weighted_sum = 0.0;
+                for i in 0..n {
+                    weighted_sum += data[i + j * n] * inv_distances[i];
+                }
+                weighted_sum / sum_inv_dist
+            })
+            .collect();
+
+        // Check convergence
+        let diff: f64 = median
+            .iter()
+            .zip(new_median.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f64>()
+            / m as f64;
+
+        median = new_median;
+
+        if diff < tol {
+            break;
+        }
+    }
+
+    median
+}
 
 /// Compute the mean function across all samples (1D).
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n_samples x n_points)
-/// * `nrow` - Number of samples
-/// * `ncol` - Number of evaluation points
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 ///
 /// # Returns
 /// Mean function values at each evaluation point
-pub fn mean_1d(data: &[f64], nrow: usize, ncol: usize) -> Vec<f64> {
-    if nrow == 0 || ncol == 0 || data.len() != nrow * ncol {
+pub fn mean_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
+    if n == 0 || m == 0 || data.len() != n * m {
         return Vec::new();
     }
 
-    (0..ncol)
+    (0..m)
         .into_par_iter()
         .map(|j| {
             let mut sum = 0.0;
-            for i in 0..nrow {
-                sum += data[i + j * nrow];
+            for i in 0..n {
+                sum += data[i + j * n];
             }
-            sum / nrow as f64
+            sum / n as f64
         })
         .collect()
 }
@@ -32,42 +174,42 @@ pub fn mean_1d(data: &[f64], nrow: usize, ncol: usize) -> Vec<f64> {
 /// Compute the mean function for 2D surfaces.
 ///
 /// Data is stored as n x (m1*m2) matrix where each row is a flattened surface.
-pub fn mean_2d(data: &[f64], nrow: usize, ncol: usize) -> Vec<f64> {
+pub fn mean_2d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
     // Same computation as 1D - just compute pointwise mean
-    mean_1d(data, nrow, ncol)
+    mean_1d(data, n, m)
 }
 
 /// Center functional data by subtracting the mean function.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n_samples x n_points)
-/// * `nrow` - Number of samples
-/// * `ncol` - Number of evaluation points
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 ///
 /// # Returns
 /// Centered data matrix (column-major)
-pub fn center_1d(data: &[f64], nrow: usize, ncol: usize) -> Vec<f64> {
-    if nrow == 0 || ncol == 0 || data.len() != nrow * ncol {
+pub fn center_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
+    if n == 0 || m == 0 || data.len() != n * m {
         return Vec::new();
     }
 
     // First compute the mean for each column (parallelized)
-    let means: Vec<f64> = (0..ncol)
+    let means: Vec<f64> = (0..m)
         .into_par_iter()
         .map(|j| {
             let mut sum = 0.0;
-            for i in 0..nrow {
-                sum += data[i + j * nrow];
+            for i in 0..n {
+                sum += data[i + j * n];
             }
-            sum / nrow as f64
+            sum / n as f64
         })
         .collect();
 
     // Create centered data (parallelized by column)
-    let mut centered = vec![0.0; nrow * ncol];
-    for j in 0..ncol {
-        for i in 0..nrow {
-            centered[i + j * nrow] = data[i + j * nrow] - means[j];
+    let mut centered = vec![0.0; n * m];
+    for j in 0..m {
+        for i in 0..n {
+            centered[i + j * n] = data[i + j * n] - means[j];
         }
     }
 
@@ -77,27 +219,27 @@ pub fn center_1d(data: &[f64], nrow: usize, ncol: usize) -> Vec<f64> {
 /// Compute Lp norm for each sample.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n_samples x n_points)
-/// * `nrow` - Number of samples
-/// * `ncol` - Number of evaluation points
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points for integration
 /// * `p` - Order of the norm (e.g., 2.0 for L2)
 ///
 /// # Returns
 /// Vector of Lp norms for each sample
-pub fn norm_lp_1d(data: &[f64], nrow: usize, ncol: usize, argvals: &[f64], p: f64) -> Vec<f64> {
-    if nrow == 0 || ncol == 0 || argvals.len() != ncol || data.len() != nrow * ncol {
+pub fn norm_lp_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], p: f64) -> Vec<f64> {
+    if n == 0 || m == 0 || argvals.len() != m || data.len() != n * m {
         return Vec::new();
     }
 
     let weights = simpsons_weights(argvals);
 
-    (0..nrow)
+    (0..n)
         .into_par_iter()
         .map(|i| {
             let mut integral = 0.0;
-            for j in 0..ncol {
-                let val = data[i + j * nrow].abs().powf(p);
+            for j in 0..m {
+                let val = data[i + j * n].abs().powf(p);
                 integral += val * weights[j];
             }
             integral.powf(1.0 / p)
@@ -108,63 +250,56 @@ pub fn norm_lp_1d(data: &[f64], nrow: usize, ncol: usize, argvals: &[f64], p: f6
 /// Compute numerical derivative of functional data (parallelized over rows).
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n_samples x n_points)
-/// * `nrow` - Number of samples
-/// * `ncol` - Number of evaluation points
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points
 /// * `nderiv` - Order of derivative
 ///
 /// # Returns
 /// Derivative data matrix (column-major)
-pub fn deriv_1d(
-    data: &[f64],
-    nrow: usize,
-    ncol: usize,
-    argvals: &[f64],
-    nderiv: usize,
-) -> Vec<f64> {
-    if nrow == 0 || ncol == 0 || argvals.len() != ncol || nderiv < 1 || data.len() != nrow * ncol {
-        return vec![0.0; nrow * ncol];
+pub fn deriv_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], nderiv: usize) -> Vec<f64> {
+    if n == 0 || m == 0 || argvals.len() != m || nderiv < 1 || data.len() != n * m {
+        return vec![0.0; n * m];
     }
 
     let mut current = data.to_vec();
 
     // Pre-compute step sizes for central differences
     let h0 = argvals[1] - argvals[0];
-    let hn = argvals[ncol - 1] - argvals[ncol - 2];
-    let h_central: Vec<f64> = (1..(ncol - 1))
+    let hn = argvals[m - 1] - argvals[m - 2];
+    let h_central: Vec<f64> = (1..(m - 1))
         .map(|j| argvals[j + 1] - argvals[j - 1])
         .collect();
 
     for _ in 0..nderiv {
         // Compute derivative for each row in parallel
-        let deriv: Vec<f64> = (0..nrow)
+        let deriv: Vec<f64> = (0..n)
             .into_par_iter()
             .flat_map(|i| {
-                let mut row_deriv = vec![0.0; ncol];
+                let mut row_deriv = vec![0.0; m];
 
                 // Forward difference at left boundary
-                row_deriv[0] = (current[i + nrow] - current[i]) / h0;
+                row_deriv[0] = (current[i + n] - current[i]) / h0;
 
                 // Central differences for interior points
-                for j in 1..(ncol - 1) {
-                    row_deriv[j] = (current[i + (j + 1) * nrow] - current[i + (j - 1) * nrow])
-                        / h_central[j - 1];
+                for j in 1..(m - 1) {
+                    row_deriv[j] =
+                        (current[i + (j + 1) * n] - current[i + (j - 1) * n]) / h_central[j - 1];
                 }
 
                 // Backward difference at right boundary
-                row_deriv[ncol - 1] =
-                    (current[i + (ncol - 1) * nrow] - current[i + (ncol - 2) * nrow]) / hn;
+                row_deriv[m - 1] = (current[i + (m - 1) * n] - current[i + (m - 2) * n]) / hn;
 
                 row_deriv
             })
             .collect();
 
         // Reorder from row-major to column-major order
-        current = vec![0.0; nrow * ncol];
-        for i in 0..nrow {
-            for j in 0..ncol {
-                current[i + j * nrow] = deriv[i * ncol + j];
+        current = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                current[i + j * n] = deriv[i * m + j];
             }
         }
     }
@@ -209,9 +344,6 @@ pub fn deriv_2d(
         return None;
     }
 
-    // Helper to access data: surface i, position (si, ti)
-    let get_val = |i: usize, si: usize, ti: usize| -> f64 { data[i + (si + ti * m1) * n] };
-
     // Pre-compute step sizes for s direction
     let hs: Vec<f64> = (0..m1)
         .map(|j| {
@@ -246,80 +378,17 @@ pub fn deriv_2d(
             let mut dt = vec![0.0; m1 * m2];
             let mut dsdt = vec![0.0; m1 * m2];
 
+            // Closure to access data for surface i
+            let get_val = |si: usize, ti: usize| -> f64 { data[i + (si + ti * m1) * n] };
+
             for ti in 0..m2 {
                 for si in 0..m1 {
                     let idx = si + ti * m1;
-
-                    // ∂f/∂s using finite differences
-                    if si == 0 {
-                        ds[idx] = (get_val(i, 1, ti) - get_val(i, 0, ti)) / hs[si];
-                    } else if si == m1 - 1 {
-                        ds[idx] = (get_val(i, m1 - 1, ti) - get_val(i, m1 - 2, ti)) / hs[si];
-                    } else {
-                        ds[idx] = (get_val(i, si + 1, ti) - get_val(i, si - 1, ti)) / hs[si];
-                    }
-
-                    // ∂f/∂t using finite differences
-                    if ti == 0 {
-                        dt[idx] = (get_val(i, si, 1) - get_val(i, si, 0)) / ht[ti];
-                    } else if ti == m2 - 1 {
-                        dt[idx] = (get_val(i, si, m2 - 1) - get_val(i, si, m2 - 2)) / ht[ti];
-                    } else {
-                        dt[idx] = (get_val(i, si, ti + 1) - get_val(i, si, ti - 1)) / ht[ti];
-                    }
-
-                    // ∂²f/∂s∂t (mixed partial)
-                    let denom = hs[si] * ht[ti];
-
-                    if si == 0 && ti == 0 {
-                        dsdt[idx] = (get_val(i, 1, 1) - get_val(i, 0, 1) - get_val(i, 1, 0)
-                            + get_val(i, 0, 0))
-                            / denom;
-                    } else if si == m1 - 1 && ti == 0 {
-                        dsdt[idx] =
-                            (get_val(i, m1 - 1, 1) - get_val(i, m1 - 2, 1) - get_val(i, m1 - 1, 0)
-                                + get_val(i, m1 - 2, 0))
-                                / denom;
-                    } else if si == 0 && ti == m2 - 1 {
-                        dsdt[idx] =
-                            (get_val(i, 1, m2 - 1) - get_val(i, 0, m2 - 1) - get_val(i, 1, m2 - 2)
-                                + get_val(i, 0, m2 - 2))
-                                / denom;
-                    } else if si == m1 - 1 && ti == m2 - 1 {
-                        dsdt[idx] = (get_val(i, m1 - 1, m2 - 1)
-                            - get_val(i, m1 - 2, m2 - 1)
-                            - get_val(i, m1 - 1, m2 - 2)
-                            + get_val(i, m1 - 2, m2 - 2))
-                            / denom;
-                    } else if si == 0 {
-                        dsdt[idx] =
-                            (get_val(i, 1, ti + 1) - get_val(i, 0, ti + 1) - get_val(i, 1, ti - 1)
-                                + get_val(i, 0, ti - 1))
-                                / denom;
-                    } else if si == m1 - 1 {
-                        dsdt[idx] = (get_val(i, m1 - 1, ti + 1)
-                            - get_val(i, m1 - 2, ti + 1)
-                            - get_val(i, m1 - 1, ti - 1)
-                            + get_val(i, m1 - 2, ti - 1))
-                            / denom;
-                    } else if ti == 0 {
-                        dsdt[idx] =
-                            (get_val(i, si + 1, 1) - get_val(i, si - 1, 1) - get_val(i, si + 1, 0)
-                                + get_val(i, si - 1, 0))
-                                / denom;
-                    } else if ti == m2 - 1 {
-                        dsdt[idx] = (get_val(i, si + 1, m2 - 1)
-                            - get_val(i, si - 1, m2 - 1)
-                            - get_val(i, si + 1, m2 - 2)
-                            + get_val(i, si - 1, m2 - 2))
-                            / denom;
-                    } else {
-                        dsdt[idx] = (get_val(i, si + 1, ti + 1)
-                            - get_val(i, si - 1, ti + 1)
-                            - get_val(i, si + 1, ti - 1)
-                            + get_val(i, si - 1, ti - 1))
-                            / denom;
-                    }
+                    let (ds_val, dt_val, dsdt_val) =
+                        compute_2d_derivatives(&get_val, si, ti, m1, m2, &hs, &ht);
+                    ds[idx] = ds_val;
+                    dt[idx] = dt_val;
+                    dsdt[idx] = dsdt_val;
                 }
             }
 
@@ -352,167 +421,56 @@ pub fn deriv_2d(
 /// The geometric median minimizes sum of L2 distances to all curves.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n_samples x n_points)
-/// * `nrow` - Number of samples
-/// * `ncol` - Number of evaluation points
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points for integration
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
 pub fn geometric_median_1d(
     data: &[f64],
-    nrow: usize,
-    ncol: usize,
+    n: usize,
+    m: usize,
     argvals: &[f64],
     max_iter: usize,
     tol: f64,
 ) -> Vec<f64> {
-    if nrow == 0 || ncol == 0 || argvals.len() != ncol || data.len() != nrow * ncol {
+    if n == 0 || m == 0 || argvals.len() != m || data.len() != n * m {
         return Vec::new();
     }
 
     let weights = simpsons_weights(argvals);
-
-    // Initialize with the mean
-    let mut median: Vec<f64> = (0..ncol)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..nrow {
-                sum += data[i + j * nrow];
-            }
-            sum / nrow as f64
-        })
-        .collect();
-
-    for _ in 0..max_iter {
-        // Compute distances from current median to all curves
-        let distances: Vec<f64> = (0..nrow)
-            .map(|i| {
-                let mut dist_sq = 0.0;
-                for j in 0..ncol {
-                    let diff = data[i + j * nrow] - median[j];
-                    dist_sq += diff * diff * weights[j];
-                }
-                dist_sq.sqrt()
-            })
-            .collect();
-
-        // Compute weights (1/distance), handling zero distances
-        let eps = 1e-10;
-        let inv_distances: Vec<f64> = distances
-            .iter()
-            .map(|d| if *d > eps { 1.0 / d } else { 1.0 / eps })
-            .collect();
-
-        let sum_inv_dist: f64 = inv_distances.iter().sum();
-
-        // Update median using Weiszfeld iteration
-        let new_median: Vec<f64> = (0..ncol)
-            .map(|j| {
-                let mut weighted_sum = 0.0;
-                for i in 0..nrow {
-                    weighted_sum += data[i + j * nrow] * inv_distances[i];
-                }
-                weighted_sum / sum_inv_dist
-            })
-            .collect();
-
-        // Check convergence
-        let diff: f64 = median
-            .iter()
-            .zip(new_median.iter())
-            .map(|(a, b)| (a - b).abs())
-            .sum::<f64>()
-            / ncol as f64;
-
-        median = new_median;
-
-        if diff < tol {
-            break;
-        }
-    }
-
-    median
+    weiszfeld_iteration(data, n, m, &weights, max_iter, tol)
 }
 
 /// Compute the geometric median for 2D functional data.
 ///
 /// Data is stored as n x (m1*m2) matrix where each row is a flattened surface.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m) where m = m1*m2
+/// * `n` - Number of samples
+/// * `m` - Number of grid points (m1 * m2)
+/// * `argvals_s` - Grid points in s direction (length m1)
+/// * `argvals_t` - Grid points in t direction (length m2)
+/// * `max_iter` - Maximum iterations
+/// * `tol` - Convergence tolerance
 pub fn geometric_median_2d(
     data: &[f64],
-    nrow: usize,
-    ncol: usize,
+    n: usize,
+    m: usize,
     argvals_s: &[f64],
     argvals_t: &[f64],
     max_iter: usize,
     tol: f64,
 ) -> Vec<f64> {
     let expected_cols = argvals_s.len() * argvals_t.len();
-    if nrow == 0 || ncol == 0 || ncol != expected_cols || data.len() != nrow * ncol {
+    if n == 0 || m == 0 || m != expected_cols || data.len() != n * m {
         return Vec::new();
     }
 
     let weights = simpsons_weights_2d(argvals_s, argvals_t);
-
-    // Initialize with the mean
-    let mut median: Vec<f64> = (0..ncol)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..nrow {
-                sum += data[i + j * nrow];
-            }
-            sum / nrow as f64
-        })
-        .collect();
-
-    for _ in 0..max_iter {
-        // Compute distances from current median to all surfaces
-        let distances: Vec<f64> = (0..nrow)
-            .map(|i| {
-                let mut dist_sq = 0.0;
-                for j in 0..ncol {
-                    let diff = data[i + j * nrow] - median[j];
-                    dist_sq += diff * diff * weights[j];
-                }
-                dist_sq.sqrt()
-            })
-            .collect();
-
-        // Compute weights (1/distance), handling zero distances
-        let eps = 1e-10;
-        let inv_distances: Vec<f64> = distances
-            .iter()
-            .map(|d| if *d > eps { 1.0 / d } else { 1.0 / eps })
-            .collect();
-
-        let sum_inv_dist: f64 = inv_distances.iter().sum();
-
-        // Update median using Weiszfeld iteration
-        let new_median: Vec<f64> = (0..ncol)
-            .map(|j| {
-                let mut weighted_sum = 0.0;
-                for i in 0..nrow {
-                    weighted_sum += data[i + j * nrow] * inv_distances[i];
-                }
-                weighted_sum / sum_inv_dist
-            })
-            .collect();
-
-        // Check convergence
-        let diff: f64 = median
-            .iter()
-            .zip(new_median.iter())
-            .map(|(a, b)| (a - b).abs())
-            .sum::<f64>()
-            / ncol as f64;
-
-        median = new_median;
-
-        if diff < tol {
-            break;
-        }
-    }
-
-    median
+    weiszfeld_iteration(data, n, m, &weights, max_iter, tol)
 }
 
 #[cfg(test)]

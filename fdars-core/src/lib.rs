@@ -38,7 +38,10 @@ pub mod smoothing;
 pub mod utility;
 
 // Re-export commonly used items
-pub use helpers::{simpsons_weights, simpsons_weights_2d};
+pub use helpers::{
+    extract_curves, l2_distance, simpsons_weights, simpsons_weights_2d, DEFAULT_CONVERGENCE_TOL,
+    NUMERICAL_EPS,
+};
 
 // Re-export seasonal analysis types
 pub use seasonal::{

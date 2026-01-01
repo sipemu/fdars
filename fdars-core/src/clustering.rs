@@ -3,7 +3,7 @@
 //! This module provides k-means and fuzzy c-means clustering algorithms
 //! for functional data.
 
-use crate::helpers::simpsons_weights;
+use crate::helpers::{extract_curves, l2_distance, simpsons_weights, NUMERICAL_EPS};
 use rand::prelude::*;
 use rayon::prelude::*;
 
@@ -23,14 +23,98 @@ pub struct KmeansResult {
     pub converged: bool,
 }
 
-/// Compute L2 distance between two curves.
-fn l2_distance(curve1: &[f64], curve2: &[f64], weights: &[f64]) -> f64 {
-    let mut dist_sq = 0.0;
-    for i in 0..curve1.len() {
-        let diff = curve1[i] - curve2[i];
-        dist_sq += diff * diff * weights[i];
+/// K-means++ initialization: select initial centers with probability proportional to D^2.
+///
+/// # Arguments
+/// * `curves` - Vector of curve vectors
+/// * `k` - Number of clusters
+/// * `weights` - Integration weights for L2 distance
+/// * `rng` - Random number generator
+///
+/// # Returns
+/// Vector of k initial cluster centers
+fn kmeans_plusplus_init(
+    curves: &[Vec<f64>],
+    k: usize,
+    weights: &[f64],
+    rng: &mut StdRng,
+) -> Vec<Vec<f64>> {
+    let n = curves.len();
+    let mut centers: Vec<Vec<f64>> = Vec::with_capacity(k);
+
+    // First center: random
+    let first_idx = rng.gen_range(0..n);
+    centers.push(curves[first_idx].clone());
+
+    // Remaining centers: probability proportional to D^2
+    for _ in 1..k {
+        let distances: Vec<f64> = curves
+            .iter()
+            .map(|curve| {
+                centers
+                    .iter()
+                    .map(|c| l2_distance(curve, c, weights))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .collect();
+
+        let dist_sq: Vec<f64> = distances.iter().map(|d| d * d).collect();
+        let total: f64 = dist_sq.iter().sum();
+
+        if total < NUMERICAL_EPS {
+            let idx = rng.gen_range(0..n);
+            centers.push(curves[idx].clone());
+        } else {
+            let r = rng.gen::<f64>() * total;
+            let mut cumsum = 0.0;
+            let mut chosen = 0;
+            for (i, &d) in dist_sq.iter().enumerate() {
+                cumsum += d;
+                if cumsum >= r {
+                    chosen = i;
+                    break;
+                }
+            }
+            centers.push(curves[chosen].clone());
+        }
     }
-    dist_sq.sqrt()
+
+    centers
+}
+
+/// Compute fuzzy membership values for a single observation.
+///
+/// # Arguments
+/// * `distances` - Distances from the observation to each cluster center
+/// * `exponent` - Exponent for fuzzy membership (2 / (fuzziness - 1))
+///
+/// # Returns
+/// Vector of membership values (one per cluster)
+fn compute_fuzzy_membership(distances: &[f64], exponent: f64) -> Vec<f64> {
+    let k = distances.len();
+    let mut membership = vec![0.0; k];
+
+    // Check if observation is very close to any center
+    for (c, &dist) in distances.iter().enumerate() {
+        if dist < NUMERICAL_EPS {
+            // Assign full membership to this cluster
+            membership[c] = 1.0;
+            return membership;
+        }
+    }
+
+    // Normal fuzzy membership computation
+    for c in 0..k {
+        let mut sum = 0.0;
+        for c2 in 0..k {
+            if distances[c2] > NUMERICAL_EPS {
+                sum += (distances[c] / distances[c2]).powf(exponent);
+            }
+        }
+        membership[c] = if sum > NUMERICAL_EPS { 1.0 / sum } else { 1.0 };
+    }
+
+    membership
 }
 
 /// K-means clustering for functional data.
@@ -68,50 +152,11 @@ pub fn kmeans_fd(
     let weights = simpsons_weights(argvals);
     let mut rng = StdRng::seed_from_u64(seed);
 
-    // Extract curves
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
+    // Extract curves using helper
+    let curves = extract_curves(data, n, m);
 
-    // k-means++ initialization
-    let mut centers: Vec<Vec<f64>> = Vec::with_capacity(k);
-
-    // First center: random
-    let first_idx = rng.gen_range(0..n);
-    centers.push(curves[first_idx].clone());
-
-    // Remaining centers: probability proportional to D^2
-    for _ in 1..k {
-        let distances: Vec<f64> = curves
-            .iter()
-            .map(|curve| {
-                centers
-                    .iter()
-                    .map(|c| l2_distance(curve, c, &weights))
-                    .fold(f64::INFINITY, f64::min)
-            })
-            .collect();
-
-        let dist_sq: Vec<f64> = distances.iter().map(|d| d * d).collect();
-        let total: f64 = dist_sq.iter().sum();
-
-        if total < 1e-10 {
-            let idx = rng.gen_range(0..n);
-            centers.push(curves[idx].clone());
-        } else {
-            let r = rng.gen::<f64>() * total;
-            let mut cumsum = 0.0;
-            let mut chosen = 0;
-            for (i, &d) in dist_sq.iter().enumerate() {
-                cumsum += d;
-                if cumsum >= r {
-                    chosen = i;
-                    break;
-                }
-            }
-            centers.push(curves[chosen].clone());
-        }
-    }
+    // K-means++ initialization using helper
+    let mut centers = kmeans_plusplus_init(&curves, k, &weights, &mut rng);
 
     let mut cluster = vec![0usize; n];
     let mut converged = false;
@@ -261,10 +306,8 @@ pub fn fuzzy_cmeans_fd(
     let weights = simpsons_weights(argvals);
     let mut rng = StdRng::seed_from_u64(seed);
 
-    // Extract curves
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
+    // Extract curves using helper
+    let curves = extract_curves(data, n, m);
 
     // Initialize membership matrix randomly
     let mut membership = vec![0.0; n * k];
@@ -301,14 +344,14 @@ pub fn fuzzy_cmeans_fd(
                 denominator += weight;
             }
 
-            if denominator > 1e-10 {
+            if denominator > NUMERICAL_EPS {
                 for j in 0..m {
                     centers[c][j] = numerator[j] / denominator;
                 }
             }
         }
 
-        // Update membership
+        // Update membership using helper
         let mut new_membership = vec![0.0; n * k];
         let mut max_change = 0.0;
 
@@ -318,28 +361,12 @@ pub fn fuzzy_cmeans_fd(
                 .map(|c| l2_distance(curve, c, &weights))
                 .collect();
 
-            for c in 0..k {
-                if distances[c] < 1e-10 {
-                    new_membership[i + c * n] = 1.0;
-                    for c2 in 0..k {
-                        if c2 != c {
-                            new_membership[i + c2 * n] = 0.0;
-                        }
-                    }
-                    break;
-                }
-
-                let mut sum = 0.0;
-                for c2 in 0..k {
-                    if distances[c2] > 1e-10 {
-                        sum += (distances[c] / distances[c2]).powf(exponent);
-                    }
-                }
-                new_membership[i + c * n] = if sum > 1e-10 { 1.0 / sum } else { 1.0 };
-            }
+            // Use the helper function for membership computation
+            let memberships = compute_fuzzy_membership(&distances, exponent);
 
             for c in 0..k {
-                let change = (new_membership[i + c * n] - membership[i + c * n]).abs();
+                new_membership[i + c * n] = memberships[c];
+                let change = (memberships[c] - membership[i + c * n]).abs();
                 if change > max_change {
                     max_change = change;
                 }
@@ -383,9 +410,7 @@ pub fn silhouette_score(
     }
 
     let weights = simpsons_weights(argvals);
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
+    let curves = extract_curves(data, n, m);
 
     let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
 
@@ -443,7 +468,7 @@ pub fn silhouette_score(
                 0.0
             } else {
                 let max_ab = a_i.max(b_i);
-                if max_ab > 1e-10 {
+                if max_ab > NUMERICAL_EPS {
                     (b_i - a_i) / max_ab
                 } else {
                     0.0
@@ -466,9 +491,7 @@ pub fn calinski_harabasz(
     }
 
     let weights = simpsons_weights(argvals);
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
+    let curves = extract_curves(data, n, m);
 
     let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
     if k < 2 {
@@ -519,7 +542,7 @@ pub fn calinski_harabasz(
         wgss += dist * dist;
     }
 
-    if wgss < 1e-10 {
+    if wgss < NUMERICAL_EPS {
         return f64::INFINITY;
     }
 
