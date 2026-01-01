@@ -572,11 +572,19 @@ We ran simulations for each robustness scenario. Key findings:
 
 ![Example time series with multiple seasonal components](plots/example_multi_seasonal.pdf){width="7in"}
 
-When secondary seasonality dominates (amplitude 0.7 vs primary 0.3):
+![TPR by primary and secondary seasonal strength](plots/robustness_multi_seasonal.pdf){width="7in"}
 
-- Variance Strength TPR drops to 4%
-- Spectral and FFT maintain 100% TPR (detect any periodicity)
-- Period specification is critical for Variance method
+When secondary seasonality dominates (strength 0.7 vs primary 0.3):
+
+| Primary | Secondary | Variance | Spectral | FFT | ACF |
+|---------|-----------|----------|----------|-----|-----|
+| 0.3     | 0.3       | 100%     | 100%     | 100%| 8%  |
+| 0.3     | 0.5       | 34%      | 100%     | 100%| 100%|
+| 0.3     | 0.7       | **4%**   | 100%     | 100%| 100%|
+| 0.5     | 0.5       | 100%     | 100%     | 100%| 98% |
+| 1.0     | 0.7       | 100%     | 100%     | 100%| 100%|
+
+**Key finding**: Variance Strength fails when secondary seasonality dominates because period is misspecified; FFT/Spectral detect any periodicity regardless of which component dominates.
 
 ### C. Amplitude Modulation Results
 
@@ -601,13 +609,17 @@ At base amplitude 0.3:
 
 ![Impact of outliers on TPR](plots/robustness_outliers.pdf){width="7in"}
 
-At 10% outliers with magnitude 10× for seasonal strength 0.5:
-- Variance TPR: 40%
-- Spectral TPR: 52%
-- FFT TPR: 66%
-- ACF TPR: 2%
+TPR for seasonal data (s=0.5) with increasing outlier severity:
 
-**Key finding**: All methods significantly degraded by severe outliers. Pre-filtering recommended.
+| Outliers | Magnitude | Variance | Spectral | FFT | ACF |
+|----------|-----------|----------|----------|-----|-----|
+| 2%       | 5×        | 100%     | 100%     | 100%| 70% |
+| 5%       | 5×        | 100%     | 98%      | 100%| 48% |
+| 5%       | 10×       | 66%      | 78%      | 88% | 14% |
+| 10%      | 5×        | 92%      | 94%      | 98% | 20% |
+| 10%      | 10×       | **40%**  | 52%      | 66% | **2%**|
+
+**Key finding**: ACF is most sensitive to outliers; Variance Strength degrades significantly at high outlier severity (10%, 10×). Pre-filtering outliers recommended for real data.
 
 # Key Findings
 

@@ -395,7 +395,32 @@ p_red_noise <- ggplot(fpr_long, aes(x = phi, y = FPR, color = Method)) +
 
 ggsave("plots/robustness_red_noise_fpr.pdf", p_red_noise, width = 7, height = 5)
 
-# Plot B: Amplitude Modulation TPR
+# Plot B: Multi-Seasonal TPR
+multi_long <- multi_df %>%
+  pivot_longer(cols = c(Variance_TPR, Spectral_TPR, FFT_TPR, ACF_TPR),
+               names_to = "Method", values_to = "TPR") %>%
+  mutate(Method = gsub("_TPR", "", Method),
+         secondary_label = paste0("Secondary: ", secondary_strength))
+
+p_multi_seasonal <- ggplot(multi_long, aes(x = factor(primary_strength), y = TPR,
+                                            color = Method, group = Method)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  facet_wrap(~ secondary_label) +
+  geom_hline(yintercept = 0.9, linetype = "dashed", color = "gray50") +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  labs(
+    title = "True Positive Rate by Primary/Secondary Seasonal Strength",
+    subtitle = "Detection at period=5 cycles; secondary at 15-25 cycles",
+    x = "Primary Seasonal Strength",
+    y = "True Positive Rate"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+ggsave("plots/robustness_multi_seasonal.pdf", p_multi_seasonal, width = 9, height = 5)
+
+# Plot C: Amplitude Modulation TPR
 amp_long <- amp_df %>%
   pivot_longer(cols = c(Variance, Spectral, FFT, ACF),
                names_to = "Method", values_to = "TPR")
