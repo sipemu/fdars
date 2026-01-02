@@ -45,8 +45,8 @@ pub use helpers::{
 
 // Re-export seasonal analysis types
 pub use seasonal::{
-    ChangeDetectionResult, ChangePoint, ChangeType, DetectedPeriod, InstantaneousPeriod, Peak,
-    PeakDetectionResult, PeriodEstimate, StrengthMethod,
+    hilbert_transform, ChangeDetectionResult, ChangePoint, ChangeType, DetectedPeriod,
+    InstantaneousPeriod, Peak, PeakDetectionResult, PeriodEstimate, StrengthMethod,
 };
 
 // Re-export detrending types

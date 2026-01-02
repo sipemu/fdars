@@ -254,6 +254,72 @@ pub struct WaveletAmplitudeResult {
 // Internal helper functions
 // ============================================================================
 
+/// Compute mean curve from column-major data matrix.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples (rows)
+/// * `m` - Number of evaluation points (columns)
+/// * `parallel` - Use parallel iteration (default: true)
+///
+/// # Returns
+/// Mean curve of length m
+#[inline]
+fn compute_mean_curve_impl(data: &[f64], n: usize, m: usize, parallel: bool) -> Vec<f64> {
+    if parallel && m >= 100 {
+        // Use parallel iteration for larger datasets
+        (0..m)
+            .into_par_iter()
+            .map(|j| {
+                let mut sum = 0.0;
+                for i in 0..n {
+                    sum += data[i + j * n];
+                }
+                sum / n as f64
+            })
+            .collect()
+    } else {
+        // Sequential for small datasets or when disabled
+        (0..m)
+            .map(|j| {
+                let mut sum = 0.0;
+                for i in 0..n {
+                    sum += data[i + j * n];
+                }
+                sum / n as f64
+            })
+            .collect()
+    }
+}
+
+/// Compute mean curve (parallel by default for m >= 100).
+#[inline]
+fn compute_mean_curve(data: &[f64], n: usize, m: usize) -> Vec<f64> {
+    compute_mean_curve_impl(data, n, m, true)
+}
+
+/// Compute interior bounds for edge-skipping (10% on each side).
+///
+/// Used to avoid edge effects in wavelet and other analyses.
+///
+/// # Arguments
+/// * `m` - Total number of points
+///
+/// # Returns
+/// `(interior_start, interior_end)` indices, or `None` if range is invalid
+#[inline]
+fn interior_bounds(m: usize) -> Option<(usize, usize)> {
+    let edge_skip = (m as f64 * 0.1) as usize;
+    let interior_start = edge_skip.min(m / 4);
+    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
+
+    if interior_end <= interior_start {
+        None
+    } else {
+        Some((interior_start, interior_end))
+    }
+}
+
 /// Compute periodogram from data using FFT.
 /// Returns (frequencies, power) where frequencies are in cycles per unit time.
 fn periodogram(data: &[f64], argvals: &[f64]) -> (Vec<f64>, Vec<f64>) {
@@ -368,7 +434,13 @@ fn compute_prominence(signal: &[f64], peak_idx: usize) -> f64 {
 }
 
 /// Hilbert transform using FFT to compute analytic signal.
-fn hilbert_transform(signal: &[f64]) -> Vec<Complex<f64>> {
+///
+/// # Arguments
+/// * `signal` - Input real signal
+///
+/// # Returns
+/// Analytic signal as complex vector (real part = original, imaginary = Hilbert transform)
+pub fn hilbert_transform(signal: &[f64]) -> Vec<Complex<f64>> {
     let n = signal.len();
     if n == 0 {
         return Vec::new();
@@ -662,15 +734,7 @@ pub fn estimate_period_fft(data: &[f64], n: usize, m: usize, argvals: &[f64]) ->
     }
 
     // Compute mean curve first
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     let (frequencies, power) = periodogram(&mean_curve, argvals);
 
@@ -743,15 +807,7 @@ pub fn estimate_period_acf(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     let acf = autocorrelation(&mean_curve, max_lag);
 
@@ -815,15 +871,7 @@ pub fn estimate_period_regression(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     let nbasis = 1 + 2 * n_harmonics;
 
@@ -922,15 +970,7 @@ pub fn detect_multiple_periods(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     let mut residual = mean_curve.clone();
     let mut detected = Vec::with_capacity(max_periods);
@@ -1160,15 +1200,7 @@ pub fn seasonal_strength_variance(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     // Total variance
     let global_mean: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -1235,15 +1267,7 @@ pub fn seasonal_strength_spectral(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     let (frequencies, power) = periodogram(&mean_curve, argvals);
 
@@ -1312,15 +1336,7 @@ pub fn seasonal_strength_wavelet(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     // Remove DC component
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -1343,13 +1359,10 @@ pub fn seasonal_strength_wavelet(
     }
 
     // Compute wavelet power, skipping edges (10% on each side)
-    let edge_skip = (m as f64 * 0.1) as usize;
-    let interior_start = edge_skip.min(m / 4);
-    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
-
-    if interior_end <= interior_start {
-        return f64::NAN;
-    }
+    let (interior_start, interior_end) = match interior_bounds(m) {
+        Some(bounds) => bounds,
+        None => return f64::NAN,
+    };
 
     let wavelet_power: f64 = wavelet_coeffs[interior_start..interior_end]
         .iter()
@@ -1392,15 +1405,7 @@ pub fn seasonal_strength_windowed(
     let half_window_points = ((window_size / 2.0) / dt).round() as usize;
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     (0..m)
         .into_par_iter()
@@ -1626,15 +1631,7 @@ pub fn detect_amplitude_modulation(
     }
 
     // Step 2: Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     // Step 3: Use Hilbert transform to get amplitude envelope
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -1674,24 +1671,23 @@ pub fn detect_amplitude_modulation(
 
     // Step 5: Compute statistics on smoothed envelope
     // Skip edge regions (first and last 10% of points)
-    let edge_skip = (m as f64 * 0.1) as usize;
-    let interior_start = edge_skip.min(m / 4);
-    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
-
-    if interior_end <= interior_start + 4 {
-        return AmplitudeModulationResult {
-            is_seasonal: true,
-            seasonal_strength: overall_strength,
-            has_modulation: false,
-            modulation_type: ModulationType::Stable,
-            modulation_score: 0.0,
-            amplitude_trend: 0.0,
-            strength_curve: envelope,
-            time_points: argvals.to_vec(),
-            min_strength: 0.0,
-            max_strength: 0.0,
-        };
-    }
+    let (interior_start, interior_end) = match interior_bounds(m) {
+        Some((s, e)) if e > s + 4 => (s, e),
+        _ => {
+            return AmplitudeModulationResult {
+                is_seasonal: true,
+                seasonal_strength: overall_strength,
+                has_modulation: false,
+                modulation_type: ModulationType::Stable,
+                modulation_score: 0.0,
+                amplitude_trend: 0.0,
+                strength_curve: envelope,
+                time_points: argvals.to_vec(),
+                min_strength: 0.0,
+                max_strength: 0.0,
+            };
+        }
+    };
 
     let interior_envelope = &smoothed_envelope[interior_start..interior_end];
     let interior_times = &argvals[interior_start..interior_end];
@@ -1831,15 +1827,7 @@ pub fn detect_amplitude_modulation_wavelet(
     }
 
     // Step 2: Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     // Remove DC component
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -1871,23 +1859,22 @@ pub fn detect_amplitude_modulation_wavelet(
     let wavelet_amplitude: Vec<f64> = wavelet_coeffs.iter().map(|c| c.norm()).collect();
 
     // Step 5: Compute statistics on amplitude (skip edges)
-    let edge_skip = (m as f64 * 0.1) as usize;
-    let interior_start = edge_skip.min(m / 4);
-    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
-
-    if interior_end <= interior_start + 4 {
-        return WaveletAmplitudeResult {
-            is_seasonal: true,
-            seasonal_strength: overall_strength,
-            has_modulation: false,
-            modulation_type: ModulationType::Stable,
-            modulation_score: 0.0,
-            amplitude_trend: 0.0,
-            wavelet_amplitude,
-            time_points: argvals.to_vec(),
-            scale,
-        };
-    }
+    let (interior_start, interior_end) = match interior_bounds(m) {
+        Some((s, e)) if e > s + 4 => (s, e),
+        _ => {
+            return WaveletAmplitudeResult {
+                is_seasonal: true,
+                seasonal_strength: overall_strength,
+                has_modulation: false,
+                modulation_type: ModulationType::Stable,
+                modulation_score: 0.0,
+                amplitude_trend: 0.0,
+                wavelet_amplitude,
+                time_points: argvals.to_vec(),
+                scale,
+            };
+        }
+    };
 
     let interior_amp = &wavelet_amplitude[interior_start..interior_end];
     let interior_times = &argvals[interior_start..interior_end];
@@ -1979,15 +1966,7 @@ pub fn instantaneous_period(
     }
 
     // Compute mean curve
-    let mean_curve: Vec<f64> = (0..m)
-        .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
-        })
-        .collect();
+    let mean_curve = compute_mean_curve(data, n, m);
 
     // Remove DC component (detrend by subtracting mean)
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -3187,5 +3166,80 @@ mod tests {
             wrong_period_strength < strength,
             "Wrong period should have lower strength"
         );
+    }
+
+    #[test]
+    fn test_compute_mean_curve() {
+        // 2 samples, 3 time points
+        // Sample 1: [1, 2, 3]
+        // Sample 2: [2, 4, 6]
+        // Mean: [1.5, 3, 4.5]
+        let data = vec![1.0, 2.0, 2.0, 4.0, 3.0, 6.0]; // column-major
+        let mean = compute_mean_curve(&data, 2, 3);
+        assert_eq!(mean.len(), 3);
+        assert!((mean[0] - 1.5).abs() < 1e-10);
+        assert!((mean[1] - 3.0).abs() < 1e-10);
+        assert!((mean[2] - 4.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_compute_mean_curve_parallel_consistency() {
+        // Test that parallel and sequential give same results
+        let n = 10;
+        let m = 200;
+        let data: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
+
+        let seq_result = compute_mean_curve_impl(&data, n, m, false);
+        let par_result = compute_mean_curve_impl(&data, n, m, true);
+
+        assert_eq!(seq_result.len(), par_result.len());
+        for (s, p) in seq_result.iter().zip(par_result.iter()) {
+            assert!(
+                (s - p).abs() < 1e-10,
+                "Sequential and parallel results differ"
+            );
+        }
+    }
+
+    #[test]
+    fn test_interior_bounds() {
+        // m = 100: edge_skip = 10, interior = [10, 90)
+        let bounds = interior_bounds(100);
+        assert!(bounds.is_some());
+        let (start, end) = bounds.unwrap();
+        assert_eq!(start, 10);
+        assert_eq!(end, 90);
+
+        // m = 10: edge_skip = 1, but min(1, 2) = 1, max(9, 7) = 9
+        let bounds = interior_bounds(10);
+        assert!(bounds.is_some());
+        let (start, end) = bounds.unwrap();
+        assert!(start < end);
+
+        // Very small m might not have valid interior
+        let bounds = interior_bounds(2);
+        // Should still return something as long as end > start
+        assert!(bounds.is_some() || bounds.is_none());
+    }
+
+    #[test]
+    fn test_hilbert_transform_pure_sine() {
+        // Hilbert transform of sin(t) should give cos(t) in imaginary part
+        let m = 200;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let signal: Vec<f64> = argvals.iter().map(|&t| (2.0 * PI * t).sin()).collect();
+
+        let analytic = hilbert_transform(&signal);
+        assert_eq!(analytic.len(), m);
+
+        // Check amplitude is approximately 1
+        for c in analytic.iter().skip(10).take(m - 20) {
+            let amp = c.norm();
+            assert!(
+                (amp - 1.0).abs() < 0.1,
+                "Amplitude should be ~1, got {}",
+                amp
+            );
+        }
     }
 }

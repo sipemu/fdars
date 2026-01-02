@@ -11,6 +11,9 @@ use rayon::prelude::*;
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::f64::consts::PI;
 
+// Import shared utilities from fdars-core
+use fdars_core::hilbert_transform;
+
 // =============================================================================
 // Helper functions
 // =============================================================================
@@ -6973,30 +6976,12 @@ fn seasonal_instantaneous_period(data: RMatrix<f64>, argvals: Vec<f64>) -> Robj 
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
     let detrended: Vec<f64> = mean_curve.iter().map(|&x| x - dc).collect();
 
-    // Hilbert transform
-    let mut planner = FftPlanner::<f64>::new();
-    let fft_forward = planner.plan_fft_forward(m);
-    let fft_inverse = planner.plan_fft_inverse(m);
-
-    let mut buffer: Vec<Complex<f64>> = detrended.iter().map(|&x| Complex::new(x, 0.0)).collect();
-    fft_forward.process(&mut buffer);
-
-    let half = m / 2;
-    for k in 1..half {
-        buffer[k] *= 2.0;
-    }
-    for k in (half + 1)..m {
-        buffer[k] = Complex::new(0.0, 0.0);
-    }
-
-    fft_inverse.process(&mut buffer);
-    for c in buffer.iter_mut() {
-        *c /= m as f64;
-    }
+    // Hilbert transform using shared implementation
+    let analytic = hilbert_transform(&detrended);
 
     // Extract amplitude and phase
-    let amplitude: Vec<f64> = buffer.iter().map(|c| c.norm()).collect();
-    let phase: Vec<f64> = buffer.iter().map(|c| c.im.atan2(c.re)).collect();
+    let amplitude: Vec<f64> = analytic.iter().map(|c| c.norm()).collect();
+    let phase: Vec<f64> = analytic.iter().map(|c| c.im.atan2(c.re)).collect();
 
     // Unwrap phase
     let mut unwrapped = vec![phase[0]];

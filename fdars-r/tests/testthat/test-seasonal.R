@@ -214,3 +214,59 @@ test_that("detect.peaks handles sum of sines with different periods", {
     expect_gt(max(distances), min(distances) * 1.1)
   }
 })
+
+# Tests for wavelet-based seasonal strength
+test_that("seasonal.strength with wavelet method detects pure sine", {
+  t <- seq(0, 20, length.out = 400)
+  X <- matrix(sin(2 * pi * t / 2), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  strength <- seasonal.strength(fd, period = 2, method = "wavelet")
+
+  # Pure sine should have high wavelet seasonal strength
+  expect_gt(strength, 0.5)
+})
+
+test_that("seasonal.strength wavelet method is low for noise", {
+  set.seed(42)
+  t <- seq(0, 20, length.out = 400)
+  X <- matrix(rnorm(400), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  strength <- seasonal.strength(fd, period = 2, method = "wavelet")
+
+  # Noise should have low seasonal strength
+  expect_lt(strength, 0.4)
+})
+
+test_that("seasonal.strength wavelet is lower at wrong period", {
+  t <- seq(0, 20, length.out = 400)
+  X <- matrix(sin(2 * pi * t / 2), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  strength_correct <- seasonal.strength(fd, period = 2, method = "wavelet")
+  strength_wrong <- seasonal.strength(fd, period = 4, method = "wavelet")
+
+  # Strength at correct period should be higher than at wrong period
+  expect_gt(strength_correct, strength_wrong)
+})
+
+test_that("seasonal.strength all methods work consistently", {
+  t <- seq(0, 20, length.out = 400)
+  X <- matrix(sin(2 * pi * t / 2), nrow = 1)
+  fd <- fdata(X, argvals = t)
+
+  strength_var <- seasonal.strength(fd, period = 2, method = "variance")
+  strength_spec <- seasonal.strength(fd, period = 2, method = "spectral")
+  strength_wav <- seasonal.strength(fd, period = 2, method = "wavelet")
+
+  # All methods should detect seasonality for pure sine
+  expect_gt(strength_var, 0.7)
+  expect_gt(strength_spec, 0.7)
+  expect_gt(strength_wav, 0.5)
+
+  # All should be finite
+  expect_true(is.finite(strength_var))
+  expect_true(is.finite(strength_spec))
+  expect_true(is.finite(strength_wav))
+})
