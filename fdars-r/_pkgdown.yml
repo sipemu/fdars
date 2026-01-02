@@ -187,6 +187,7 @@ reference:
   - seasonal.strength.curve
   - detect.seasonality.changes
   - detect.seasonality.changes.auto
+  - detect_amplitude_modulation
   - instantaneous.period
   - analyze.peak.timing
   - classify.seasonality
