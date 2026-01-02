@@ -60,9 +60,9 @@ fn compute_2d_derivatives(
         (ti - 1, ti + 1)
     };
 
-    let dsdt =
-        (get_val(s_hi, t_hi) - get_val(s_lo, t_hi) - get_val(s_hi, t_lo) + get_val(s_lo, t_lo))
-            / denom;
+    let dsdt = (get_val(s_hi, t_hi) - get_val(s_lo, t_hi) - get_val(s_hi, t_lo)
+        + get_val(s_lo, t_lo))
+        / denom;
 
     (ds, dt, dsdt)
 }

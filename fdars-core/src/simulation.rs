@@ -415,13 +415,7 @@ pub fn add_error_pointwise(
 ///
 /// # Returns
 /// Noisy data matrix (n × m) in column-major format
-pub fn add_error_curve(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    sd: f64,
-    seed: Option<u64>,
-) -> Vec<f64> {
+pub fn add_error_curve(data: &[f64], n: usize, m: usize, sd: f64, seed: Option<u64>) -> Vec<f64> {
     let mut rng = match seed {
         Some(s) => StdRng::seed_from_u64(s),
         None => StdRng::from_entropy(),

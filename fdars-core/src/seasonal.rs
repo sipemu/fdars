@@ -512,8 +512,7 @@ fn cwt_morlet_fft(signal: &[f64], argvals: &[f64], scale: f64, omega0: f64) -> V
     let fft_inverse = planner.plan_fft_inverse(n);
 
     // FFT of signal
-    let mut signal_fft: Vec<Complex<f64>> =
-        signal.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    let mut signal_fft: Vec<Complex<f64>> = signal.iter().map(|&x| Complex::new(x, 0.0)).collect();
     fft_forward.process(&mut signal_fft);
 
     // FFT of wavelet
@@ -2886,12 +2885,7 @@ mod tests {
             .collect();
 
         let result = detect_amplitude_modulation(
-            &data,
-            1,
-            m,
-            &argvals,
-            period,
-            0.15, // modulation threshold
+            &data, 1, m, &argvals, period, 0.15, // modulation threshold
             0.3,  // seasonality threshold
         );
 
@@ -2929,15 +2923,7 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation(
-            &data,
-            1,
-            m,
-            &argvals,
-            period,
-            0.15,
-            0.2,
-        );
+        let result = detect_amplitude_modulation(&data, 1, m, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Emerging test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -2978,15 +2964,7 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation(
-            &data,
-            1,
-            m,
-            &argvals,
-            period,
-            0.15,
-            0.2,
-        );
+        let result = detect_amplitude_modulation(&data, 1, m, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Fading test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -3026,15 +3004,7 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation(
-            &data,
-            1,
-            m,
-            &argvals,
-            period,
-            0.15,
-            0.2,
-        );
+        let result = detect_amplitude_modulation(&data, 1, m, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Oscillating test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -3064,13 +3034,8 @@ mod tests {
             .collect();
 
         let result = detect_amplitude_modulation(
-            &data,
-            1,
-            m,
-            &argvals,
-            0.2, // arbitrary period
-            0.15,
-            0.3,
+            &data, 1, m, &argvals, 0.2, // arbitrary period
+            0.15, 0.3,
         );
 
         assert!(
@@ -3170,7 +3135,10 @@ mod tests {
         );
 
         assert!(result.is_seasonal, "Should detect seasonality");
-        assert!(result.has_modulation, "Fading amplitude should have modulation");
+        assert!(
+            result.has_modulation,
+            "Fading amplitude should have modulation"
+        );
         assert!(
             result.amplitude_trend < 0.0,
             "Trend should be negative for fading"
@@ -3191,7 +3159,10 @@ mod tests {
 
         let strength = seasonal_strength_wavelet(&seasonal_data, 1, m, &argvals, period);
         eprintln!("Wavelet strength (pure sine): {:.4}", strength);
-        assert!(strength > 0.5, "Pure sine should have high wavelet strength");
+        assert!(
+            strength > 0.5,
+            "Pure sine should have high wavelet strength"
+        );
 
         // Pure noise - should have low strength
         let noise_data: Vec<f64> = (0..m)
