@@ -6,16 +6,16 @@ allows for non-linear alignment of curves.
 ## Usage
 
 ``` r
-metric.DTW(fdata1, fdata2 = NULL, p = 2, w = NULL, ...)
+metric.DTW(fdataobj, fdataref = NULL, p = 2, w = NULL, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
   An object of class 'fdata'. If NULL, computes self-distances.
 
@@ -25,8 +25,8 @@ metric.DTW(fdata1, fdata2 = NULL, p = 2, w = NULL, ...)
 
 - w:
 
-  Sakoe-Chiba window constraint. Default is min(ncol(fdata1),
-  ncol(fdata2)). Use -1 for no window constraint.
+  Sakoe-Chiba window constraint. Default is min(ncol(fdataobj),
+  ncol(fdataref)). Use -1 for no window constraint.
 
 - ...:
 

@@ -7,16 +7,16 @@ to be valid probability density functions.
 ## Usage
 
 ``` r
-metric.kl(fdata1, fdata2 = NULL, eps = 1e-10, normalize = TRUE, ...)
+metric.kl(fdataobj, fdataref = NULL, eps = 1e-10, normalize = TRUE, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
   An object of class 'fdata'. If NULL, computes self-distances.
 

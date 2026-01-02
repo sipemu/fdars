@@ -7,18 +7,18 @@ may have phase differences.
 ## Usage
 
 ``` r
-semimetric.hshift(fdata1, fdata2 = NULL, max_shift = -1, ...)
+semimetric.hshift(fdataobj, fdataref = NULL, max_shift = -1, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
-  An object of class 'fdata'. If NULL, uses fdata1.
+  An object of class 'fdata'. If NULL, uses fdataobj.
 
 - max_shift:
 

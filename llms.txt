@@ -678,25 +678,27 @@ Simon Mueller
 
 ## Seasonal Analysis
 
-- [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)
+- [`estimate.period()`](https://sipemu.github.io/fdars/reference/estimate.period.md)
   : Seasonal Analysis Functions for Functional Data
-- [`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)
+- [`detect.periods()`](https://sipemu.github.io/fdars/reference/detect.periods.md)
   : Detect Multiple Concurrent Periods
-- [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)
+- [`detect.peaks()`](https://sipemu.github.io/fdars/reference/detect.peaks.md)
   : Detect Peaks in Functional Data
-- [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)
+- [`seasonal.strength()`](https://sipemu.github.io/fdars/reference/seasonal.strength.md)
   : Measure Seasonal Strength
-- [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)
+- [`seasonal.strength.curve()`](https://sipemu.github.io/fdars/reference/seasonal.strength.curve.md)
   : Time-Varying Seasonal Strength
-- [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)
+- [`detect.seasonality.changes()`](https://sipemu.github.io/fdars/reference/detect.seasonality.changes.md)
   : Detect Changes in Seasonality
-- [`detect_seasonality_changes_auto()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.md)
+- [`detect.seasonality.changes.auto()`](https://sipemu.github.io/fdars/reference/detect.seasonality.changes.auto.md)
   : Detect Seasonality Changes with Automatic Threshold
-- [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)
+- [`detect_amplitude_modulation()`](https://sipemu.github.io/fdars/reference/detect_amplitude_modulation.md)
+  : Detect Amplitude Modulation in Seasonal Time Series
+- [`instantaneous.period()`](https://sipemu.github.io/fdars/reference/instantaneous.period.md)
   : Estimate Instantaneous Period
-- [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)
+- [`analyze.peak.timing()`](https://sipemu.github.io/fdars/reference/analyze.peak.timing.md)
   : Analyze Peak Timing Variability
-- [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
+- [`classify.seasonality()`](https://sipemu.github.io/fdars/reference/classify.seasonality.md)
   : Classify Seasonality Type
 - [`detrend()`](https://sipemu.github.io/fdars/reference/detrend.md) :
   Remove Trend from Functional Data
@@ -771,27 +773,27 @@ Simon Mueller
 
 ## Covariance Functions (GP)
 
-- [`kernel_add()`](https://sipemu.github.io/fdars/reference/kernel_add.md)
+- [`kernel.add()`](https://sipemu.github.io/fdars/reference/kernel.add.md)
   : Add Covariance Functions
-- [`kernel_brownian()`](https://sipemu.github.io/fdars/reference/kernel_brownian.md)
+- [`kernel.brownian()`](https://sipemu.github.io/fdars/reference/kernel.brownian.md)
   : Brownian Motion Covariance Function
-- [`kernel_exponential()`](https://sipemu.github.io/fdars/reference/kernel_exponential.md)
+- [`kernel.exponential()`](https://sipemu.github.io/fdars/reference/kernel.exponential.md)
   : Exponential Covariance Function
-- [`kernel_gaussian()`](https://sipemu.github.io/fdars/reference/kernel_gaussian.md)
+- [`kernel.gaussian()`](https://sipemu.github.io/fdars/reference/kernel.gaussian.md)
   : Gaussian (Squared Exponential) Covariance Function
-- [`kernel_linear()`](https://sipemu.github.io/fdars/reference/kernel_linear.md)
+- [`kernel.linear()`](https://sipemu.github.io/fdars/reference/kernel.linear.md)
   : Linear Covariance Function
-- [`kernel_matern()`](https://sipemu.github.io/fdars/reference/kernel_matern.md)
+- [`kernel.matern()`](https://sipemu.github.io/fdars/reference/kernel.matern.md)
   : Matern Covariance Function
-- [`kernel_mult()`](https://sipemu.github.io/fdars/reference/kernel_mult.md)
+- [`kernel.mult()`](https://sipemu.github.io/fdars/reference/kernel.mult.md)
   : Multiply Covariance Functions
-- [`kernel_periodic()`](https://sipemu.github.io/fdars/reference/kernel_periodic.md)
+- [`kernel.periodic()`](https://sipemu.github.io/fdars/reference/kernel.periodic.md)
   : Periodic Covariance Function
-- [`kernel_polynomial()`](https://sipemu.github.io/fdars/reference/kernel_polynomial.md)
+- [`kernel.polynomial()`](https://sipemu.github.io/fdars/reference/kernel.polynomial.md)
   : Polynomial Covariance Function
-- [`kernel_whitenoise()`](https://sipemu.github.io/fdars/reference/kernel_whitenoise.md)
+- [`kernel.whitenoise()`](https://sipemu.github.io/fdars/reference/kernel.whitenoise.md)
   : White Noise Covariance Function
-- [`make_gaussian_process()`](https://sipemu.github.io/fdars/reference/make_gaussian_process.md)
+- [`make.gaussian.process()`](https://sipemu.github.io/fdars/reference/make.gaussian.process.md)
   : Generate Gaussian Process Samples
 - [`cov()`](https://sipemu.github.io/fdars/reference/cov.md) :
   Functional Covariance Function

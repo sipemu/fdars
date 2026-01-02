@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">fdars</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -389,12 +389,12 @@ with sparse data.</p>
 <h2 id="comparison-with-gp-simulation">Comparison with GP Simulation<a class="anchor" aria-label="anchor" href="#comparison-with-gp-simulation"></a>
 </h2>
 <p>The package also offers Gaussian Process simulation via
-<code><a href="../reference/make_gaussian_process.html">make_gaussian_process()</a></code>:</p>
+<code><a href="../reference/make.gaussian.process.html">make.gaussian.process()</a></code>:</p>
 <table class="table">
 <thead><tr class="header">
 <th>Aspect</th>
 <th>KL (<code>simFunData</code>)</th>
-<th>GP (<code>make_gaussian_process</code>)</th>
+<th>GP (<code>make.gaussian.process</code>)</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
@@ -426,8 +426,8 @@ with sparse data.</p>
 <span></span>
 <span><span class="co"># GP simulation with Brownian motion kernel</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span>
-<span><span class="va">fd_gp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/make_gaussian_process.html">make_gaussian_process</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10</span>, t <span class="op">=</span> <span class="va">t</span>,</span>
-<span>                                cov <span class="op">=</span> <span class="fu"><a href="../reference/kernel_brownian.html">kernel_brownian</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">fd_gp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/make.gaussian.process.html">make.gaussian.process</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10</span>, t <span class="op">=</span> <span class="va">t</span>,</span>
+<span>                                cov <span class="op">=</span> <span class="fu"><a href="../reference/kernel.brownian.html">kernel.brownian</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd_kl</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"KL Simulation (Wiener)"</span><span class="op">)</span></span>
 <span><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd_gp</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>title <span class="op">=</span> <span class="st">"GP Simulation (Brownian Kernel)"</span><span class="op">)</span></span>
@@ -509,7 +509,7 @@ with sparse data.</p>
 <td>Create irregular/sparse data from regular</td>
 </tr>
 <tr class="odd">
-<td><code><a href="../reference/make_gaussian_process.html">make_gaussian_process()</a></code></td>
+<td><code><a href="../reference/make.gaussian.process.html">make.gaussian.process()</a></code></td>
 <td>GP simulation with covariance kernels</td>
 </tr>
 <tr class="even">

@@ -36,7 +36,7 @@ $$k(s,t) = \sigma^{2}\exp\left( - \frac{(s - t)^{2}}{2\ell^{2}} \right)$$
 t <- seq(0, 1, length.out = 100)
 
 # Create Gaussian covariance function
-cov_gauss <- kernel_gaussian(variance = 1, length_scale = 0.2)
+cov_gauss <- kernel.gaussian(variance = 1, length_scale = 0.2)
 print(cov_gauss)
 #> Covariance Kernel: gaussian 
 #> Parameters:
@@ -44,7 +44,7 @@ print(cov_gauss)
 #>    length_scale = 0.2
 
 # Generate smooth GP samples
-fd_gauss <- make_gaussian_process(n = 10, t = t, cov = cov_gauss, seed = 42)
+fd_gauss <- make.gaussian.process(n = 10, t = t, cov = cov_gauss, seed = 42)
 plot(fd_gauss, main = "Gaussian Covariance (smooth)")
 ```
 
@@ -57,8 +57,8 @@ values produce more rapidly varying functions:
 # Generate data for different length scales
 ls_values <- c(0.05, 0.2, 0.5)
 df_ls <- do.call(rbind, lapply(ls_values, function(ls) {
-  fd <- make_gaussian_process(n = 5, t = t,
-                              cov = kernel_gaussian(length_scale = ls),
+  fd <- make.gaussian.process(n = 5, t = t,
+                              cov = kernel.gaussian(length_scale = ls),
                               seed = 42)
   data.frame(
     t = rep(t, 5),
@@ -87,8 +87,8 @@ differentiable):
 $$k(s,t) = \sigma^{2}\exp\left( - \frac{|s - t|}{\ell} \right)$$
 
 ``` r
-cov_exp <- kernel_exponential(variance = 1, length_scale = 0.2)
-fd_exp <- make_gaussian_process(n = 10, t = t, cov = cov_exp, seed = 42)
+cov_exp <- kernel.exponential(variance = 1, length_scale = 0.2)
+fd_exp <- make.gaussian.process(n = 10, t = t, cov = cov_exp, seed = 42)
 plot(fd_exp, main = "Exponential Covariance (rough)")
 ```
 
@@ -105,8 +105,8 @@ interpolates between Exponential ($\nu = 0.5$) and Gaussian
 nu_values <- c(0.5, 1.5, 2.5, Inf)
 nu_labels <- c("0.5", "1.5", "2.5", "Inf")
 df_matern <- do.call(rbind, lapply(seq_along(nu_values), function(i) {
-  fd <- make_gaussian_process(n = 5, t = t,
-                              cov = kernel_matern(length_scale = 0.2, nu = nu_values[i]),
+  fd <- make.gaussian.process(n = 5, t = t,
+                              cov = kernel.matern(length_scale = 0.2, nu = nu_values[i]),
                               seed = 42)
   data.frame(
     t = rep(t, 5),
@@ -137,8 +137,8 @@ $\nu = \infty$: Equivalent to Gaussian (infinitely smooth)
 Standard Brownian motion covariance: $$k(s,t) = \sigma^{2}\min(s,t)$$
 
 ``` r
-cov_brown <- kernel_brownian(variance = 1)
-fd_brown <- make_gaussian_process(n = 10, t = t, cov = cov_brown, seed = 42)
+cov_brown <- kernel.brownian(variance = 1)
+fd_brown <- make.gaussian.process(n = 10, t = t, cov = cov_brown, seed = 42)
 plot(fd_brown, main = "Brownian Motion")
 ```
 
@@ -153,8 +153,8 @@ $$k(s,t) = \sigma^{2}\exp\left( - \frac{2\sin^{2}\left( \pi|s - t|/p \right)}{\e
 
 ``` r
 t_long <- seq(0, 3, length.out = 200)
-cov_per <- kernel_periodic(variance = 1, length_scale = 0.5, period = 1)
-fd_per <- make_gaussian_process(n = 5, t = t_long, cov = cov_per, seed = 42)
+cov_per <- kernel.periodic(variance = 1, length_scale = 0.5, period = 1)
+fd_per <- make.gaussian.process(n = 5, t = t_long, cov = cov_per, seed = 42)
 plot(fd_per, main = "Periodic Covariance (period = 1)")
 ```
 
@@ -166,8 +166,8 @@ Linear covariance produces functions that are linear combinations of a
 constant and a linear function: $$k(s,t) = \sigma^{2}(s \cdot t + c)$$
 
 ``` r
-cov_lin <- kernel_linear(variance = 1, offset = 0)
-fd_lin <- make_gaussian_process(n = 10, t = t, cov = cov_lin, seed = 42)
+cov_lin <- kernel.linear(variance = 1, offset = 0)
+fd_lin <- make.gaussian.process(n = 10, t = t, cov = cov_lin, seed = 42)
 plot(fd_lin, main = "Linear Covariance")
 ```
 
@@ -179,8 +179,8 @@ Generalization of linear to polynomial basis functions:
 $$k(s,t) = \sigma^{2}(s \cdot t + c)^{d}$$
 
 ``` r
-cov_poly <- kernel_polynomial(variance = 1, offset = 1, degree = 3)
-fd_poly <- make_gaussian_process(n = 10, t = t, cov = cov_poly, seed = 42)
+cov_poly <- kernel.polynomial(variance = 1, offset = 1, degree = 3)
+fd_poly <- make.gaussian.process(n = 10, t = t, cov = cov_poly, seed = 42)
 plot(fd_poly, main = "Polynomial Covariance (degree 3)")
 ```
 
@@ -192,8 +192,8 @@ Diagonal covariance representing independent noise:
 $$k(s,t) = \sigma^{2}\mathbf{1}_{s = t}$$
 
 ``` r
-cov_white <- kernel_whitenoise(variance = 0.5)
-fd_white <- make_gaussian_process(n = 5, t = t, cov = cov_white, seed = 42)
+cov_white <- kernel.whitenoise(variance = 0.5)
+fd_white <- make.gaussian.process(n = 5, t = t, cov = cov_white, seed = 42)
 plot(fd_white, main = "White Noise")
 ```
 
@@ -201,33 +201,33 @@ plot(fd_white, main = "White Noise")
 
 ## Combining Covariance Functions
 
-### Addition (kernel_add)
+### Addition (kernel.add)
 
 Sum of covariance functions models independent components:
 
 ``` r
 # Signal + noise model
-cov_signal <- kernel_gaussian(variance = 1, length_scale = 0.2)
-cov_noise <- kernel_whitenoise(variance = 0.1)
-cov_total <- kernel_add(cov_signal, cov_noise)
+cov_signal <- kernel.gaussian(variance = 1, length_scale = 0.2)
+cov_noise <- kernel.whitenoise(variance = 0.1)
+cov_total <- kernel.add(cov_signal, cov_noise)
 
-fd_noisy <- make_gaussian_process(n = 5, t = t, cov = cov_total, seed = 42)
+fd_noisy <- make.gaussian.process(n = 5, t = t, cov = cov_total, seed = 42)
 plot(fd_noisy, main = "Smooth signal + noise")
 ```
 
 ![](covariance-functions_files/figure-html/cov-add-1.png)
 
-### Multiplication (kernel_mult)
+### Multiplication (kernel.mult)
 
 Product of covariance functions:
 
 ``` r
 # Locally periodic: smooth envelope modulating periodic behavior
-cov_envelope <- kernel_gaussian(variance = 1, length_scale = 0.5)
-cov_periodic <- kernel_periodic(period = 0.2)
-cov_local_per <- kernel_mult(cov_envelope, cov_periodic)
+cov_envelope <- kernel.gaussian(variance = 1, length_scale = 0.5)
+cov_periodic <- kernel.periodic(period = 0.2)
+cov_local_per <- kernel.mult(cov_envelope, cov_periodic)
 
-fd_local_per <- make_gaussian_process(n = 5, t = t, cov = cov_local_per, seed = 42)
+fd_local_per <- make.gaussian.process(n = 5, t = t, cov = cov_local_per, seed = 42)
 plot(fd_local_per, main = "Locally periodic")
 ```
 
@@ -239,8 +239,8 @@ Gaussian processes can have non-zero mean functions:
 
 ``` r
 # Scalar mean
-fd_mean5 <- make_gaussian_process(n = 10, t = t,
-                                   cov = kernel_gaussian(variance = 0.1),
+fd_mean5 <- make.gaussian.process(n = 10, t = t,
+                                   cov = kernel.gaussian(variance = 0.1),
                                    mean = 5, seed = 42)
 plot(fd_mean5, main = "Constant mean = 5")
 ```
@@ -251,8 +251,8 @@ plot(fd_mean5, main = "Constant mean = 5")
 
 # Function mean
 mean_func <- function(t) sin(2 * pi * t)
-fd_sinmean <- make_gaussian_process(n = 10, t = t,
-                                     cov = kernel_gaussian(variance = 0.1),
+fd_sinmean <- make.gaussian.process(n = 10, t = t,
+                                     cov = kernel.gaussian(variance = 0.1),
                                      mean = mean_func, seed = 42)
 plot(fd_sinmean, main = "Sinusoidal mean function")
 ```
@@ -268,8 +268,8 @@ s <- seq(0, 1, length.out = 30)
 t2d <- seq(0, 1, length.out = 30)
 
 # Generate 2D GP samples
-fd2d <- make_gaussian_process(n = 4, t = list(s, t2d),
-                               cov = kernel_gaussian(length_scale = 0.3),
+fd2d <- make.gaussian.process(n = 4, t = list(s, t2d),
+                               cov = kernel.gaussian(length_scale = 0.3),
                                seed = 42)
 plot(fd2d)
 ```
@@ -277,9 +277,9 @@ plot(fd2d)
 ![](covariance-functions_files/figure-html/2d-gp-1.png)
 
 Note:
-[`kernel_brownian()`](https://sipemu.github.io/fdars/reference/kernel_brownian.md)
+[`kernel.brownian()`](https://sipemu.github.io/fdars/reference/kernel.brownian.md)
 and
-[`kernel_periodic()`](https://sipemu.github.io/fdars/reference/kernel_periodic.md)
+[`kernel.periodic()`](https://sipemu.github.io/fdars/reference/kernel.periodic.md)
 only support 1D domains.
 
 ## Reproducibility
@@ -287,8 +287,8 @@ only support 1D domains.
 Use the `seed` parameter for reproducible samples:
 
 ``` r
-fd1 <- make_gaussian_process(n = 3, t = t, cov = kernel_gaussian(), seed = 123)
-fd2 <- make_gaussian_process(n = 3, t = t, cov = kernel_gaussian(), seed = 123)
+fd1 <- make.gaussian.process(n = 3, t = t, cov = kernel.gaussian(), seed = 123)
+fd2 <- make.gaussian.process(n = 3, t = t, cov = kernel.gaussian(), seed = 123)
 all.equal(fd1$data, fd2$data)  # TRUE
 #> [1] TRUE
 ```
@@ -298,14 +298,14 @@ all.equal(fd1$data, fd2$data)  # TRUE
 ``` r
 # Generate data for comparison
 kernels <- list(
-  list(name = "Gaussian (very smooth)", cov = kernel_gaussian()),
-  list(name = "Matern 5/2", cov = kernel_matern(nu = 2.5)),
-  list(name = "Matern 3/2", cov = kernel_matern(nu = 1.5)),
-  list(name = "Exponential (rough)", cov = kernel_exponential())
+  list(name = "Gaussian (very smooth)", cov = kernel.gaussian()),
+  list(name = "Matern 5/2", cov = kernel.matern(nu = 2.5)),
+  list(name = "Matern 3/2", cov = kernel.matern(nu = 1.5)),
+  list(name = "Exponential (rough)", cov = kernel.exponential())
 )
 
 df_smooth_comp <- do.call(rbind, lapply(kernels, function(k) {
-  fd <- make_gaussian_process(n = 3, t = t, cov = k$cov, seed = 1)
+  fd <- make.gaussian.process(n = 3, t = t, cov = k$cov, seed = 1)
   data.frame(
     t = rep(t, 3),
     value = as.vector(t(fd$data)),

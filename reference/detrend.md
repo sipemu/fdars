@@ -112,7 +112,7 @@ fd <- fdata(X, argvals = t)
 fd_detrended <- detrend(fd, method = "linear")
 
 # Now estimate period on detrended data
-period <- estimate_period(fd_detrended)
+period <- estimate.period(fd_detrended)
 print(period$period)  # Should be close to 2
 #> [1] 2.01005
 

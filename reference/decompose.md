@@ -90,7 +90,7 @@ amplitude grows with the trend level.
 
 [`detrend`](https://sipemu.github.io/fdars/reference/detrend.md) for
 simple trend removal,
-[`seasonal_strength`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)
+[`seasonal.strength`](https://sipemu.github.io/fdars/reference/seasonal.strength.md)
 for measuring seasonality
 
 ## Examples

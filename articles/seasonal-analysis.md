@@ -60,7 +60,7 @@ ggplot(df, aes(x = t, y = y)) +
 
 ``` r
 # FFT method
-est_fft <- estimate_period(fd_pure, method = "fft")
+est_fft <- estimate.period(fd_pure, method = "fft")
 cat("FFT estimate:", est_fft$period, "(true:", period_true, ")\n")
 #> FFT estimate: 2.005013 (true: 2 )
 cat("Confidence:", round(est_fft$confidence, 3), "\n")
@@ -90,8 +90,8 @@ ggplot(df, aes(x = t, y = y)) +
 
 ``` r
 # Compare methods
-est_fft_noisy <- estimate_period(fd_noisy, method = "fft")
-est_acf <- estimate_period(fd_noisy, method = "acf")
+est_fft_noisy <- estimate.period(fd_noisy, method = "fft")
+est_acf <- estimate.period(fd_noisy, method = "acf")
 
 cat("True period:", period_true, "\n")
 #> True period: 2
@@ -127,7 +127,7 @@ ggplot(df, aes(x = t, y = y)) +
 ![](seasonal-analysis_files/figure-html/multi-harmonic-1.png)
 
 ``` r
-est_multi <- estimate_period(fd_multi, method = "fft")
+est_multi <- estimate.period(fd_multi, method = "fft")
 cat("Estimated period:", est_multi$period, "(true:", period_true, ")\n")
 #> Estimated period: 2.005013 (true: 2 )
 ```
@@ -140,11 +140,11 @@ frequency, so they reinforce the estimate.
 
 Sometimes a signal contains **multiple independent periodicities**
 (e.g., daily and yearly cycles). The
-[`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)
+[`estimate.period()`](https://sipemu.github.io/fdars/reference/estimate.period.md)
 function returns only the dominant period. Here’s how to detect multiple
 periods.
 
-### Why estimate_period() Returns Only One Period
+### Why estimate.period() Returns Only One Period
 
 ``` r
 # Signal with two independent periods
@@ -164,17 +164,17 @@ ggplot(df, aes(x = t, y = y)) +
 ![](seasonal-analysis_files/figure-html/dual-period-signal-1.png)
 
 ``` r
-est_single <- estimate_period(fd_dual, method = "fft")
+est_single <- estimate.period(fd_dual, method = "fft")
 cat("Single estimate:", est_single$period, "\n")
 #> Single estimate: 2.005013
 cat("(Only detects the dominant period)\n")
 #> (Only detects the dominant period)
 ```
 
-### Using detect_multiple_periods()
+### Using detect.periods()
 
 The
-[`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)
+[`detect.periods()`](https://sipemu.github.io/fdars/reference/detect.periods.md)
 function uses an iterative residual approach implemented in Rust for
 efficiency:
 
@@ -185,7 +185,7 @@ efficiency:
 ``` r
 # Detect multiple periods using the package function
 # Higher thresholds prevent spurious detection
-detected <- detect_multiple_periods(fd_dual, max_periods = 3,
+detected <- detect.periods(fd_dual, max_periods = 3,
                                      min_confidence = 0.5,
                                      min_strength = 0.25)
 print(detected)
@@ -240,7 +240,7 @@ ggplot(df_long, aes(x = t, y = Value)) +
 **Practical guidance:**
 
 - For **harmonics of the same fundamental**:
-  [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)
+  [`estimate.period()`](https://sipemu.github.io/fdars/reference/estimate.period.md)
   correctly finds the fundamental period. No iterative approach needed.
 - For **truly different periods** (e.g., daily + yearly): use the
   iterative approach above.
@@ -283,8 +283,8 @@ ggplot(df, aes(x = t, y = y)) +
 
 ``` r
 # Without detrending - incorrect results!
-period_wrong <- estimate_period(fd_trend)$period
-strength_wrong <- seasonal_strength(fd_trend, period = 2.5)
+period_wrong <- estimate.period(fd_trend)$period
+strength_wrong <- seasonal.strength(fd_trend, period = 2.5)
 
 cat("WITHOUT detrending:\n")
 #> WITHOUT detrending:
@@ -319,13 +319,13 @@ fd_auto <- detrend(fd_trend, method = "auto")
 # Compare results
 cat("After detrending, estimated periods:\n")
 #> After detrending, estimated periods:
-cat("  Linear:     ", round(estimate_period(fd_linear)$period, 3), "\n")
+cat("  Linear:     ", round(estimate.period(fd_linear)$period, 3), "\n")
 #>   Linear:      2.506
-cat("  Polynomial: ", round(estimate_period(fd_poly)$period, 3), "\n")
+cat("  Polynomial: ", round(estimate.period(fd_poly)$period, 3), "\n")
 #>   Polynomial:  2.506
-cat("  LOESS:      ", round(estimate_period(fd_loess)$period, 3), "\n")
+cat("  LOESS:      ", round(estimate.period(fd_loess)$period, 3), "\n")
 #>   LOESS:       2.506
-cat("  Auto:       ", round(estimate_period(fd_auto)$period, 3), "(true: 2.5)\n")
+cat("  Auto:       ", round(estimate.period(fd_auto)$period, 3), "(true: 2.5)\n")
 #>   Auto:        2.506 (true: 2.5)
 ```
 
@@ -422,10 +422,10 @@ All main seasonal functions support a `detrend_method` parameter:
 # These are equivalent:
 # 1. Explicit detrending
 fd_det <- detrend(fd_trend, method = "linear")
-p1 <- estimate_period(fd_det)$period
+p1 <- estimate.period(fd_det)$period
 
 # 2. Integrated detrending parameter
-p2 <- estimate_period(fd_trend, detrend_method = "linear")$period
+p2 <- estimate.period(fd_trend, detrend_method = "linear")$period
 
 cat("Explicit detrend:", round(p1, 3), "\n")
 #> Explicit detrend: 2.506
@@ -434,13 +434,13 @@ cat("Integrated param:", round(p2, 3), "\n")
 ```
 
 The `detrend_method` parameter is available in: -
-[`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md) -
+[`estimate.period()`](https://sipemu.github.io/fdars/reference/estimate.period.md) -
 For accurate period estimation on trending data -
-[`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md) -
+[`detect.peaks()`](https://sipemu.github.io/fdars/reference/detect.peaks.md) -
 For correct peak prominence calculation -
-[`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md) -
+[`seasonal.strength()`](https://sipemu.github.io/fdars/reference/seasonal.strength.md) -
 For true seasonality measurement -
-[`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md) -
+[`detect.periods()`](https://sipemu.github.io/fdars/reference/detect.periods.md) -
 Uses “auto” by default
 
 ``` r
@@ -448,9 +448,9 @@ Uses “auto” by default
 cat("\nSeasonal strength comparison:\n")
 #> 
 #> Seasonal strength comparison:
-cat("  Without detrend:", round(seasonal_strength(fd_trend, period = 2.5), 3), "\n")
+cat("  Without detrend:", round(seasonal.strength(fd_trend, period = 2.5), 3), "\n")
 #>   Without detrend: 0.005
-cat("  With detrend:   ", round(seasonal_strength(fd_trend, period = 2.5,
+cat("  With detrend:   ", round(seasonal.strength(fd_trend, period = 2.5,
                                                    detrend_method = "linear"), 3), "\n")
 #>   With detrend:    0.834
 ```
@@ -463,10 +463,10 @@ earlier ones.
 
 ``` r
 # Detect peaks without detrending
-peaks_no_detrend <- detect_peaks(fd_trend, min_distance = 2, smooth_first = TRUE)
+peaks_no_detrend <- detect.peaks(fd_trend, min_distance = 2, smooth_first = TRUE)
 
 # Detect peaks with detrending
-peaks_with_detrend <- detect_peaks(fd_trend, min_distance = 2, smooth_first = TRUE,
+peaks_with_detrend <- detect.peaks(fd_trend, min_distance = 2, smooth_first = TRUE,
                                     detrend_method = "linear")
 
 cat("Peak detection on trending data:\n")
@@ -600,7 +600,7 @@ data will find the true peaks, not noise spikes.
 
 ``` r
 # Default parameters - often too many peaks
-peaks_default <- detect_peaks(fd_demo)
+peaks_default <- detect.peaks(fd_demo)
 cat("Default parameters:", nrow(peaks_default$peaks[[1]]), "peaks found\n")
 #> Default parameters: 96 peaks found
 cat("(Expected:", floor(max(t) / period_true), "peaks)\n")
@@ -609,14 +609,14 @@ cat("(Expected:", floor(max(t) / period_true), "peaks)\n")
 
 ``` r
 # Add minimum distance constraint
-peaks_distance <- detect_peaks(fd_demo, min_distance = period_true * 0.8)
+peaks_distance <- detect.peaks(fd_demo, min_distance = period_true * 0.8)
 cat("With min_distance:", nrow(peaks_distance$peaks[[1]]), "peaks found\n")
 #> With min_distance: 12 peaks found
 ```
 
 ``` r
 # Add Fourier smoothing for best results (GCV auto-selects nbasis)
-peaks_smooth <- detect_peaks(fd_demo, min_distance = period_true * 0.8,
+peaks_smooth <- detect.peaks(fd_demo, min_distance = period_true * 0.8,
                              smooth_first = TRUE, smooth_nbasis = NULL)
 cat("With smoothing:", nrow(peaks_smooth$peaks[[1]]), "peaks found\n")
 #> With smoothing: 10 peaks found
@@ -681,8 +681,8 @@ prominence filtering with smoothing.
 
 ``` r
 # Compare prominence thresholds without smoothing (less reliable)
-peaks_low_prom_raw <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1)
-peaks_high_prom_raw <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5)
+peaks_low_prom_raw <- detect.peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1)
+peaks_high_prom_raw <- detect.peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5)
 
 cat("Without smoothing:\n")
 #> Without smoothing:
@@ -692,9 +692,9 @@ cat("  High prominence (0.5):", nrow(peaks_high_prom_raw$peaks[[1]]), "peaks\n")
 #>   High prominence (0.5): 1 peaks
 
 # With smoothing - more reliable results
-peaks_low_prom <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1,
+peaks_low_prom <- detect.peaks(fd_demo, min_distance = 1.5, min_prominence = 0.1,
                                 smooth_first = TRUE)
-peaks_high_prom <- detect_peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5,
+peaks_high_prom <- detect.peaks(fd_demo, min_distance = 1.5, min_prominence = 0.5,
                                  smooth_first = TRUE)
 
 cat("\nWith smoothing:\n")
@@ -723,7 +723,7 @@ amplitudes <- c(0.5, 1.0, 2.0, 5.0)
 amplitude_plots <- lapply(amplitudes, function(amp) {
   X <- matrix(amp * sin(2 * pi * t / 2), nrow = 1)
   fd <- fdata(X, argvals = t)
-  result <- detect_peaks(fd)
+  result <- detect.peaks(fd)
   peaks <- result$peaks[[1]]
 
   df <- data.frame(t = t, y = X[1,])
@@ -747,7 +747,7 @@ their respective amplitudes.
 ### Non-Uniform Peak Spacing
 
 Real-world signals often have varying frequencies or complex
-interference patterns. `detect_peaks` handles these cases by analyzing
+interference patterns. `detect.peaks` handles these cases by analyzing
 local signal structure.
 
 #### Chirp Signal (Increasing Frequency)
@@ -762,7 +762,7 @@ phase <- 2 * pi * (0.5 * t + 0.05 * t^2)
 X <- matrix(sin(phase), nrow = 1)
 fd <- fdata(X, argvals = t)
 
-result <- detect_peaks(fd)
+result <- detect.peaks(fd)
 peaks <- result$peaks[[1]]
 
 # Plot
@@ -807,7 +807,7 @@ t <- seq(0, 12, length.out = 300)
 X <- matrix(sin(2 * pi * t / 2) + 0.5 * sin(2 * pi * t / 3), nrow = 1)
 fd <- fdata(X, argvals = t)
 
-result <- detect_peaks(fd, min_distance = 1.0)
+result <- detect.peaks(fd, min_distance = 1.0)
 peaks <- result$peaks[[1]]
 
 # Plot
@@ -845,8 +845,8 @@ seasonality) to 1 (pure seasonal signal).
 ### Variance vs Spectral Methods
 
 ``` r
-ss_variance <- seasonal_strength(fd_noisy, period = period_true, method = "variance")
-ss_spectral <- seasonal_strength(fd_noisy, period = period_true, method = "spectral")
+ss_variance <- seasonal.strength(fd_noisy, period = period_true, method = "variance")
+ss_spectral <- seasonal.strength(fd_noisy, period = period_true, method = "spectral")
 
 cat("Variance method:", round(ss_variance, 3), "\n")
 #> Variance method: 0.863
@@ -866,10 +866,10 @@ fd_mixed <- fdata(matrix(X_mixed, nrow = 1), argvals = t)
 
 # Calculate strengths
 strengths <- c(
-  "Pure seasonal" = seasonal_strength(fd_pure, period = period_true),
-  "Noisy seasonal (0.3 SD)" = seasonal_strength(fd_noisy, period = period_true),
-  "Mixed (50/50)" = seasonal_strength(fd_mixed, period = period_true),
-  "Pure noise" = seasonal_strength(fd_noise, period = period_true)
+  "Pure seasonal" = seasonal.strength(fd_pure, period = period_true),
+  "Noisy seasonal (0.3 SD)" = seasonal.strength(fd_noisy, period = period_true),
+  "Mixed (50/50)" = seasonal.strength(fd_mixed, period = period_true),
+  "Pure noise" = seasonal.strength(fd_noise, period = period_true)
 )
 
 df_strength <- data.frame(
@@ -902,7 +902,7 @@ X_changing <- ifelse(t_long < 20,
 fd_changing <- fdata(matrix(X_changing, nrow = 1), argvals = t_long)
 
 # Compute time-varying strength
-ss_curve <- seasonal_strength_curve(fd_changing, period = period_true,
+ss_curve <- seasonal.strength.curve(fd_changing, period = period_true,
                                      window_size = 4 * period_true)
 
 # Plot both signal and strength
@@ -928,7 +928,7 @@ Automatically detect when seasonality starts or stops.
 ### Manual Threshold
 
 ``` r
-changes <- detect_seasonality_changes(fd_changing, period = period_true,
+changes <- detect.seasonality.changes(fd_changing, period = period_true,
                                        threshold = 0.3,
                                        window_size = 4 * period_true,
                                        min_duration = 2 * period_true)
@@ -947,7 +947,7 @@ When you don’t know the appropriate threshold, use Otsu’s method to
 determine it automatically from the data.
 
 ``` r
-changes_auto <- detect_seasonality_changes_auto(fd_changing, period = period_true,
+changes_auto <- detect.seasonality.changes.auto(fd_changing, period = period_true,
                                                  threshold_method = "otsu")
 print(changes_auto)
 #> Seasonality Change Detection (Auto Threshold)
@@ -988,7 +988,7 @@ print(p)
 ## Signals with Varying Period
 
 Some signals have periods that drift or change over time. The
-[`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)
+[`instantaneous.period()`](https://sipemu.github.io/fdars/reference/instantaneous.period.md)
 function uses the Hilbert transform to estimate the period at each time
 point.
 
@@ -1026,7 +1026,7 @@ ggplot(df, aes(x = t, y = y)) +
 ![](seasonal-analysis_files/figure-html/chirp-signal-1.png)
 
 ``` r
-inst <- instantaneous_period(fd_chirp)
+inst <- instantaneous.period(fd_chirp)
 
 # True period (1/frequency)
 true_period <- 1 / freq
@@ -1063,7 +1063,7 @@ envelope_true <- 1 + 0.5 * sin(2 * pi * t / 10)  # Slow modulation
 X_am <- envelope_true * sin(2 * pi * t / period_true)
 fd_am <- fdata(matrix(X_am, nrow = 1), argvals = t)
 
-inst_am <- instantaneous_period(fd_am)
+inst_am <- instantaneous.period(fd_am)
 
 df <- data.frame(
   t = t,
@@ -1101,7 +1101,7 @@ freq_regime <- rep(c(1, 2, 0.5, 1.5), each = 100)  # Abrupt changes
 X_rand <- sin(2 * pi * cumsum(freq_regime) * diff(c(0, t_rand)))
 fd_rand <- fdata(matrix(X_rand, nrow = 1), argvals = t_rand)
 
-inst_rand <- instantaneous_period(fd_rand)
+inst_rand <- instantaneous.period(fd_rand)
 est_period <- inst_rand$period$data[1,]
 est_period[est_period > 5 | est_period < 0.1] <- NA
 
@@ -1123,7 +1123,7 @@ ggplot(df, aes(x = t)) +
 ![](seasonal-analysis_files/figure-html/random-freq-1.png)
 
 **Alternative for abrupt changes:** Use
-[`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)
+[`detect.seasonality.changes()`](https://sipemu.github.io/fdars/reference/detect.seasonality.changes.md)
 to find regime boundaries, then analyze each segment separately.
 
 ## Working with Short Series
@@ -1175,7 +1175,7 @@ ggplot(df_short, aes(x = t, y = y)) +
 
 ``` r
 # Analyze peak timing
-timing <- analyze_peak_timing(fd_short, period = period_short)
+timing <- analyze.peak.timing(fd_short, period = period_short)
 print(timing)
 #> Peak Timing Variability Analysis
 #> ---------------------------------
@@ -1191,7 +1191,7 @@ print(timing)
 
 ``` r
 # Get detected peaks with Fourier smoothing
-peaks_short <- detect_peaks(fd_short, min_distance = 0.7,
+peaks_short <- detect.peaks(fd_short, min_distance = 0.7,
                             smooth_first = TRUE, smooth_nbasis = NULL)
 peak_df <- peaks_short$peaks[[1]]
 
@@ -1234,7 +1234,7 @@ if (nrow(peak_df) >= 3) {
 Automatically classify the type of seasonality pattern.
 
 ``` r
-class_result <- classify_seasonality(fd_short, period = period_short)
+class_result <- classify.seasonality(fd_short, period = period_short)
 print(class_result)
 #> Seasonality Classification
 #> --------------------------
@@ -1269,7 +1269,7 @@ ggplot(class_df, aes(x = Metric, y = Value, fill = Metric)) +
 ### Classification Types
 
 The
-[`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
+[`classify.seasonality()`](https://sipemu.github.io/fdars/reference/classify.seasonality.md)
 function returns one of four classifications based on seasonal strength
 and timing variability:
 
@@ -1284,7 +1284,7 @@ and timing variability:
 # Example: Stable seasonality - clean signal with consistent timing
 X_stable <- sin(2 * pi * t_short / period_short) + rnorm(length(t_short), sd = 0.05)
 fd_stable <- fdata(matrix(X_stable, nrow = 1), argvals = t_short)
-class_stable <- classify_seasonality(fd_stable, period = period_short)
+class_stable <- classify.seasonality(fd_stable, period = period_short)
 
 # Example: Variable seasonality - amplitude and timing drift
 phase_var <- seq(0, 0.2, length.out = length(t_short))
@@ -1292,7 +1292,7 @@ amp_var <- 1 + 0.3 * sin(2 * pi * t_short / 3)
 X_variable <- amp_var * sin(2 * pi * (t_short + phase_var) / period_short) +
               rnorm(length(t_short), sd = 0.2)
 fd_variable <- fdata(matrix(X_variable, nrow = 1), argvals = t_short)
-class_variable <- classify_seasonality(fd_variable, period = period_short)
+class_variable <- classify.seasonality(fd_variable, period = period_short)
 
 # Example: Intermittent seasonality - pattern appears and disappears
 X_intermittent <- ifelse(t_short < 2 | t_short > 4,
@@ -1300,12 +1300,12 @@ X_intermittent <- ifelse(t_short < 2 | t_short > 4,
                          rnorm(sum(t_short >= 2 & t_short <= 4), sd = 0.5))
 X_intermittent <- X_intermittent + rnorm(length(t_short), sd = 0.15)
 fd_intermittent <- fdata(matrix(X_intermittent, nrow = 1), argvals = t_short)
-class_intermittent <- classify_seasonality(fd_intermittent, period = period_short)
+class_intermittent <- classify.seasonality(fd_intermittent, period = period_short)
 
 # Example: No seasonality - pure noise
 X_none <- rnorm(length(t_short), sd = 1)
 fd_none <- fdata(matrix(X_none, nrow = 1), argvals = t_short)
-class_none <- classify_seasonality(fd_none, period = period_short)
+class_none <- classify.seasonality(fd_none, period = period_short)
 
 # Summary
 cat("Classification results:\n")
@@ -1355,7 +1355,7 @@ fd_noisy_short <- fdata(matrix(X_noisy_short, nrow = 1), argvals = t_short)
 
 # Auto-select smoothing via Fourier basis CV
 cv_short <- fdata2basis.cv(fd_noisy_short, nbasis.range = 3:15, type = "fourier")
-peaks_auto <- detect_peaks(cv_short$fitted, min_distance = 0.7)
+peaks_auto <- detect.peaks(cv_short$fitted, min_distance = 0.7)
 cat("Peaks found with Fourier CV smoothing:", nrow(peaks_auto$peaks[[1]]), "\n")
 #> Peaks found with Fourier CV smoothing: 5
 cat("Expected peaks:", 5, "\n")
@@ -1390,20 +1390,20 @@ plot(fd_curves) +
 
 ``` r
 # Period estimation uses the mean curve
-est_mean <- estimate_period(fd_curves, method = "fft")
+est_mean <- estimate.period(fd_curves, method = "fft")
 cat("Estimated period (from mean):", est_mean$period, "\n")
 #> Estimated period (from mean): 2.01005
 cat("True mean period:", mean(periods), "\n")
 #> True mean period: 2
 
 # Peak detection for each curve
-peaks_curves <- detect_peaks(fd_curves, min_distance = 1.5)
+peaks_curves <- detect.peaks(fd_curves, min_distance = 1.5)
 cat("\nMean period from peaks:", peaks_curves$mean_period, "\n")
 #> 
 #> Mean period from peaks: 1.730653
 
 # Seasonal strength (aggregated)
-ss_curves <- seasonal_strength(fd_curves, period = 2)
+ss_curves <- seasonal.strength(fd_curves, period = 2)
 cat("Seasonal strength:", round(ss_curves, 3), "\n")
 #> Seasonal strength: 0.557
 ```
@@ -1414,16 +1414,16 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
 
 | Function                                                                                                           | Purpose                                                   |
 |--------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
-| [`estimate_period()`](https://sipemu.github.io/fdars/reference/estimate_period.md)                                 | Estimate seasonal period (FFT or ACF method)              |
-| [`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)                 | Detect multiple concurrent periodicities                  |
-| [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)                                       | Find and characterize peaks (with auto GCV smoothing)     |
-| [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)                             | Measure overall seasonality strength                      |
-| [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)                 | Time-varying seasonality strength                         |
-| [`detect_seasonality_changes()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes.md)           | Find onset/cessation of seasonality                       |
-| [`detect_seasonality_changes_auto()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.md) | Auto threshold using Otsu’s method                        |
-| [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)                       | Period estimation for smoothly drifting signals           |
-| [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)                         | Analyze peak timing variability across cycles             |
-| [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)                       | Classify seasonality type (stable/variable/intermittent)  |
+| [`estimate.period()`](https://sipemu.github.io/fdars/reference/estimate.period.md)                                 | Estimate seasonal period (FFT or ACF method)              |
+| [`detect.periods()`](https://sipemu.github.io/fdars/reference/detect.periods.md)                                   | Detect multiple concurrent periodicities                  |
+| [`detect.peaks()`](https://sipemu.github.io/fdars/reference/detect.peaks.md)                                       | Find and characterize peaks (with auto GCV smoothing)     |
+| [`seasonal.strength()`](https://sipemu.github.io/fdars/reference/seasonal.strength.md)                             | Measure overall seasonality strength                      |
+| [`seasonal.strength.curve()`](https://sipemu.github.io/fdars/reference/seasonal.strength.curve.md)                 | Time-varying seasonality strength                         |
+| [`detect.seasonality.changes()`](https://sipemu.github.io/fdars/reference/detect.seasonality.changes.md)           | Find onset/cessation of seasonality                       |
+| [`detect.seasonality.changes.auto()`](https://sipemu.github.io/fdars/reference/detect.seasonality.changes.auto.md) | Auto threshold using Otsu’s method                        |
+| [`instantaneous.period()`](https://sipemu.github.io/fdars/reference/instantaneous.period.md)                       | Period estimation for smoothly drifting signals           |
+| [`analyze.peak.timing()`](https://sipemu.github.io/fdars/reference/analyze.peak.timing.md)                         | Analyze peak timing variability across cycles             |
+| [`classify.seasonality()`](https://sipemu.github.io/fdars/reference/classify.seasonality.md)                       | Classify seasonality type (stable/variable/intermittent)  |
 | [`detrend()`](https://sipemu.github.io/fdars/reference/detrend.md)                                                 | Remove trends (linear, polynomial, LOESS, differencing)   |
 | [`decompose()`](https://sipemu.github.io/fdars/reference/decompose.md)                                             | Seasonal-trend decomposition (additive or multiplicative) |
 
@@ -1441,18 +1441,18 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
 
 **Period estimation:**
 
-- Period unknown, signal stable: `estimate_period(method = "fft")`
+- Period unknown, signal stable: `estimate.period(method = "fft")`
 - Period unknown, data has trend:
-  `estimate_period(detrend_method = "linear")`
+  `estimate.period(detrend_method = "linear")`
 - Period unknown, multiple independent periods:
-  [`detect_multiple_periods()`](https://sipemu.github.io/fdars/reference/detect_multiple_periods.md)
+  [`detect.periods()`](https://sipemu.github.io/fdars/reference/detect.periods.md)
 - Period varies smoothly over time:
-  [`instantaneous_period()`](https://sipemu.github.io/fdars/reference/instantaneous_period.md)
+  [`instantaneous.period()`](https://sipemu.github.io/fdars/reference/instantaneous.period.md)
 
 **Peak detection:**
 
 - Clean data:
-  [`detect_peaks()`](https://sipemu.github.io/fdars/reference/detect_peaks.md)
+  [`detect.peaks()`](https://sipemu.github.io/fdars/reference/detect.peaks.md)
   with default parameters
 - Noisy data: Add `smooth_first = TRUE` (Fourier smoothing with
   GCV-selected nbasis)
@@ -1462,19 +1462,19 @@ cat("Seasonal strength:", round(ss_curves, 3), "\n")
 **Seasonal strength:**
 
 - Single measurement:
-  [`seasonal_strength()`](https://sipemu.github.io/fdars/reference/seasonal_strength.md)
-- Data with trend: `seasonal_strength(detrend_method = "linear")`
+  [`seasonal.strength()`](https://sipemu.github.io/fdars/reference/seasonal.strength.md)
+- Data with trend: `seasonal.strength(detrend_method = "linear")`
 - Track changes over time:
-  [`seasonal_strength_curve()`](https://sipemu.github.io/fdars/reference/seasonal_strength_curve.md)
+  [`seasonal.strength.curve()`](https://sipemu.github.io/fdars/reference/seasonal.strength.curve.md)
 - Detect when seasonality stops:
-  [`detect_seasonality_changes_auto()`](https://sipemu.github.io/fdars/reference/detect_seasonality_changes_auto.md)
+  [`detect.seasonality.changes.auto()`](https://sipemu.github.io/fdars/reference/detect.seasonality.changes.auto.md)
 
 **Short series (3-5 cycles):**
 
 - Characterize timing shifts:
-  [`analyze_peak_timing()`](https://sipemu.github.io/fdars/reference/analyze_peak_timing.md)
+  [`analyze.peak.timing()`](https://sipemu.github.io/fdars/reference/analyze.peak.timing.md)
 - Classify pattern type:
-  [`classify_seasonality()`](https://sipemu.github.io/fdars/reference/classify_seasonality.md)
+  [`classify.seasonality()`](https://sipemu.github.io/fdars/reference/classify.seasonality.md)
 
 ### Processing Large Numbers of Series
 
@@ -1485,7 +1485,7 @@ approach** to balance speed and depth of analysis:
 
 ``` r
 # Quick FFT period estimation - very fast
-est <- estimate_period(fd, method = "fft")
+est <- estimate.period(fd, method = "fft")
 if (est$confidence < 0.3) return("no_seasonality")
 ```
 
@@ -1496,7 +1496,7 @@ mixed datasets.
 
 ``` r
 # Add seasonal strength check
-ss <- seasonal_strength(fd, period = est$period)
+ss <- seasonal.strength(fd, period = est$period)
 if (ss < 0.2) return("weak_seasonality")
 ```
 
@@ -1504,8 +1504,8 @@ if (ss < 0.2) return("weak_seasonality")
 
 ``` r
 # Expensive operations - classification, multiple periods
-class <- classify_seasonality(fd, period = est$period)
-periods <- detect_multiple_periods(fd)  # if multiple periods suspected
+class <- classify.seasonality(fd, period = est$period)
+periods <- detect.periods(fd)  # if multiple periods suspected
 ```
 
 **Parallelization:**
@@ -1518,9 +1518,9 @@ All fdars Rust functions are thread-safe. Use
 # Example batch processing workflow
 library(parallel)
 results <- mclapply(series_list, function(fd) {
-  est <- estimate_period(fd, method = "fft")
+  est <- estimate.period(fd, method = "fft")
   if (est$confidence < 0.3) return(list(classification = "none"))
-  ss <- seasonal_strength(fd, period = est$period)
+  ss <- seasonal.strength(fd, period = est$period)
   list(period = est$period, confidence = est$confidence, strength = ss)
 }, mc.cores = detectCores() - 1)
 ```

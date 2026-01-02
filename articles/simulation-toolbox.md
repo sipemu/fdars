@@ -325,9 +325,9 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 ## Comparison with GP Simulation
 
 The package also offers Gaussian Process simulation via
-[`make_gaussian_process()`](https://sipemu.github.io/fdars/reference/make_gaussian_process.md):
+[`make.gaussian.process()`](https://sipemu.github.io/fdars/reference/make.gaussian.process.md):
 
-| Aspect         | KL (`simFunData`)           | GP (`make_gaussian_process`) |
+| Aspect         | KL (`simFunData`)           | GP (`make.gaussian.process`) |
 |----------------|-----------------------------|------------------------------|
 | Control        | Eigenfunctions, eigenvalues | Covariance kernel            |
 | Interpretation | Modal decomposition         | Correlation structure        |
@@ -341,8 +341,8 @@ fd_kl <- simFunData(n = 10, argvals = t, M = 10,
 
 # GP simulation with Brownian motion kernel
 set.seed(42)
-fd_gp <- make_gaussian_process(n = 10, t = t,
-                                cov = kernel_brownian())
+fd_gp <- make.gaussian.process(n = 10, t = t,
+                                cov = kernel.brownian())
 
 p1 <- autoplot(fd_kl) + labs(title = "KL Simulation (Wiener)")
 p2 <- autoplot(fd_gp) + labs(title = "GP Simulation (Brownian Kernel)")
@@ -400,5 +400,5 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 | [`eVal()`](https://sipemu.github.io/fdars/reference/eVal.md)                                                                                                                                                 | Generate eigenvalue sequences (linear, exponential, wiener) |
 | [`addError()`](https://sipemu.github.io/fdars/reference/addError.md)                                                                                                                                         | Add Gaussian noise (pointwise or curve-level)               |
 | [`sparsify()`](https://sipemu.github.io/fdars/reference/sparsify.md)                                                                                                                                         | Create irregular/sparse data from regular                   |
-| [`make_gaussian_process()`](https://sipemu.github.io/fdars/reference/make_gaussian_process.md)                                                                                                               | GP simulation with covariance kernels                       |
+| [`make.gaussian.process()`](https://sipemu.github.io/fdars/reference/make.gaussian.process.md)                                                                                                               | GP simulation with covariance kernels                       |
 | [`r.brownian()`](https://sipemu.github.io/fdars/reference/r.brownian.md), [`r.ou()`](https://sipemu.github.io/fdars/reference/r.ou.md), [`r.bridge()`](https://sipemu.github.io/fdars/reference/r.bridge.md) | Specific random process generators                          |

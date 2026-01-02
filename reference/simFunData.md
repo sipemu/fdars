@@ -74,7 +74,7 @@ The theoretical covariance function is:
 [`eFun`](https://sipemu.github.io/fdars/reference/eFun.md),
 [`eVal`](https://sipemu.github.io/fdars/reference/eVal.md),
 [`addError`](https://sipemu.github.io/fdars/reference/addError.md),
-[`make_gaussian_process`](https://sipemu.github.io/fdars/reference/make_gaussian_process.md)
+`make_gaussian_process`
 
 ## Examples
 

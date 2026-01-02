@@ -7,8 +7,8 @@ coefficients. Supports B-spline and Fourier basis.
 
 ``` r
 semimetric.basis(
-  fdata1,
-  fdata2 = NULL,
+  fdataobj,
+  fdataref = NULL,
   nbasis = 5,
   basis = "bspline",
   nderiv = 0,
@@ -18,13 +18,13 @@ semimetric.basis(
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
-  An object of class 'fdata'. If NULL, uses fdata1.
+  An object of class 'fdata'. If NULL, uses fdataobj.
 
 - nbasis:
 

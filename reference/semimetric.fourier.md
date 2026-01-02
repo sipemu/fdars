@@ -7,18 +7,18 @@ the Fourier basis option in semimetric.basis for large nfreq.
 ## Usage
 
 ``` r
-semimetric.fourier(fdata1, fdata2 = NULL, nfreq = 5, ...)
+semimetric.fourier(fdataobj, fdataref = NULL, nfreq = 5, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
-  An object of class 'fdata'. If NULL, uses fdata1.
+  An object of class 'fdata'. If NULL, uses fdataobj.
 
 - nfreq:
 

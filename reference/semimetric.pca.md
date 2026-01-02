@@ -6,18 +6,18 @@ scores.
 ## Usage
 
 ``` r
-semimetric.pca(fdata1, fdata2 = NULL, ncomp = 2, ...)
+semimetric.pca(fdataobj, fdataref = NULL, ncomp = 2, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
-  An object of class 'fdata'. If NULL, uses fdata1.
+  An object of class 'fdata'. If NULL, uses fdataobj.
 
 - ncomp:
 

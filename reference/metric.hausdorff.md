@@ -7,18 +7,18 @@ space and computes the maximum of the minimum distances.
 ## Usage
 
 ``` r
-metric.hausdorff(fdata1, fdata2 = NULL, ...)
+metric.hausdorff(fdataobj, fdataref = NULL, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
-  An object of class 'fdata'. If NULL, uses fdata1.
+  An object of class 'fdata'. If NULL, uses fdataobj.
 
 - ...:
 

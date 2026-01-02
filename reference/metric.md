@@ -6,16 +6,16 @@ data. Compute Distance Metric for Functional Data
 ## Usage
 
 ``` r
-metric(fdata1, fdata2 = NULL, method = "lp", ...)
+metric(fdataobj, fdataref = NULL, method = "lp", ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
   An object of class 'fdata'. If NULL, computes self-distances.
 

@@ -6,18 +6,18 @@ derivative of functional data.
 ## Usage
 
 ``` r
-semimetric.deriv(fdata1, fdata2 = NULL, nderiv = 1, lp = 2, ...)
+semimetric.deriv(fdataobj, fdataref = NULL, nderiv = 1, lp = 2, ...)
 ```
 
 ## Arguments
 
-- fdata1:
+- fdataobj:
 
   An object of class 'fdata'.
 
-- fdata2:
+- fdataref:
 
-  An object of class 'fdata'. If NULL, uses fdata1.
+  An object of class 'fdata'. If NULL, uses fdataobj.
 
 - nderiv:
 

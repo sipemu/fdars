@@ -143,8 +143,7 @@ All notable changes to fdars are documented in this file.
 
 - Covariance kernel functions: `cov.Exponential()`, `cov.Matern()`,
   `cov.Gaussian()`, etc.
-- [`make_gaussian_process()`](https://sipemu.github.io/fdars/reference/make_gaussian_process.md)
-  for simulating Gaussian process realizations
+- `make_gaussian_process()` for simulating Gaussian process realizations
 - 2D functional data support for most functions
 - Unified API:
   [`depth()`](https://sipemu.github.io/fdars/reference/depth.md),
