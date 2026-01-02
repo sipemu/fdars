@@ -385,7 +385,7 @@ pub fn deriv_2d(
                 for si in 0..m1 {
                     let idx = si + ti * m1;
                     let (ds_val, dt_val, dsdt_val) =
-                        compute_2d_derivatives(&get_val, si, ti, m1, m2, &hs, &ht);
+                        compute_2d_derivatives(get_val, si, ti, m1, m2, &hs, &ht);
                     ds[idx] = ds_val;
                     dt[idx] = dt_val;
                     dsdt[idx] = dsdt_val;

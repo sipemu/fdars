@@ -1360,9 +1360,7 @@ pub fn seasonal_strength_wavelet(
 
     // Return ratio of wavelet power to total variance
     // Normalize so that a pure sine at the target period gives ~1.0
-    let strength = (wavelet_power / total_variance).sqrt().min(1.0);
-
-    strength
+    (wavelet_power / total_variance).sqrt().min(1.0)
 }
 
 /// Compute time-varying seasonal strength using sliding windows.
