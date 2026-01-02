@@ -7,6 +7,7 @@
 # 3. ACF-based period estimation confidence
 # 4. Seasonal strength (variance method)
 # 5. Seasonal strength (spectral method)
+# 6. Seasonal strength (wavelet method)
 #
 # Ground truth: simulated data with known seasonal strengths (0 to 1)
 
@@ -33,7 +34,8 @@ detection_thresholds <- list(
   fft_confidence = 6.0,         # Power ratio threshold (95th pct of noise ~5.7)
   acf_confidence = 0.25,        # ACF peak threshold (95th pct of noise ~0.22)
   strength_variance = 0.2,      # Variance ratio threshold (95th pct of noise ~0.17)
-  strength_spectral = 0.3       # Spectral power threshold (95th pct of noise ~0.29)
+  strength_spectral = 0.3,      # Spectral power threshold (95th pct of noise ~0.29)
+  strength_wavelet = 0.26       # Wavelet power threshold (calibrated to ~5% FPR)
 )
 
 # Seasonal strengths to test (0 = no season, 1 = full season)
@@ -89,7 +91,7 @@ detect_aic_comparison <- function(fd_single, fourier_nbasis_range = seq(5, 21, b
 # Method 2: FFT-based period estimation
 detect_fft <- function(fd_single, expected_period = 12) {
   result <- tryCatch({
-    estimate_period(fd_single, method = "fft", detrend = "linear")
+    estimate.period(fd_single, method = "fft", detrend_method = "linear")
   }, error = function(e) NULL)
 
   if (is.null(result)) {
@@ -106,7 +108,7 @@ detect_fft <- function(fd_single, expected_period = 12) {
 # Method 3: ACF-based period estimation
 detect_acf <- function(fd_single, expected_period = 12) {
   result <- tryCatch({
-    estimate_period(fd_single, method = "acf", detrend = "linear")
+    estimate.period(fd_single, method = "acf", detrend_method = "linear")
   }, error = function(e) NULL)
 
   if (is.null(result)) {
@@ -123,7 +125,7 @@ detect_acf <- function(fd_single, expected_period = 12) {
 # Note: period must be in argvals units (0.2 for 5 cycles in [0,1])
 detect_strength_variance <- function(fd_single, period = 0.2) {
   score <- tryCatch({
-    seasonal_strength(fd_single, period = period, method = "variance", detrend = "linear")
+    seasonal.strength(fd_single, period = period, method = "variance", detrend_method = "linear")
   }, error = function(e) NA)
 
   if (is.na(score)) {
@@ -139,7 +141,7 @@ detect_strength_variance <- function(fd_single, period = 0.2) {
 # Note: period must be in argvals units (0.2 for 5 cycles in [0,1])
 detect_strength_spectral <- function(fd_single, period = 0.2) {
   score <- tryCatch({
-    seasonal_strength(fd_single, period = period, method = "spectral", detrend = "linear")
+    seasonal.strength(fd_single, period = period, method = "spectral", detrend_method = "linear")
   }, error = function(e) NA)
 
   if (is.na(score)) {
@@ -147,6 +149,22 @@ detect_strength_spectral <- function(fd_single, period = 0.2) {
   }
 
   detected <- score > detection_thresholds$strength_spectral
+
+  return(list(score = score, detected = detected))
+}
+
+# Method 6: Seasonal strength (wavelet method)
+# Note: period must be in argvals units (0.2 for 5 cycles in [0,1])
+detect_strength_wavelet <- function(fd_single, period = 0.2) {
+  score <- tryCatch({
+    seasonal.strength(fd_single, period = period, method = "wavelet", detrend_method = "linear")
+  }, error = function(e) NA)
+
+  if (is.na(score)) {
+    return(list(score = NA, detected = NA))
+  }
+
+  detected <- score > detection_thresholds$strength_wavelet
 
   return(list(score = score, detected = detected))
 }
@@ -171,7 +189,9 @@ results <- data.frame(
   var_score = numeric(0),
   var_detected = logical(0),
   spec_score = numeric(0),
-  spec_detected = logical(0)
+  spec_detected = logical(0),
+  wav_score = numeric(0),
+  wav_detected = logical(0)
 )
 
 # Process each strength level
@@ -192,6 +212,7 @@ for (i in seq_along(seasonal_strengths)) {
     acf_result <- detect_acf(fd)
     var_result <- detect_strength_variance(fd)
     spec_result <- detect_strength_spectral(fd)
+    wav_result <- detect_strength_wavelet(fd)
 
     # Store results
     results <- rbind(results, data.frame(
@@ -206,7 +227,9 @@ for (i in seq_along(seasonal_strengths)) {
       var_score = var_result$score,
       var_detected = var_result$detected,
       spec_score = spec_result$score,
-      spec_detected = spec_result$detected
+      spec_detected = spec_result$detected,
+      wav_score = wav_result$score,
+      wav_detected = wav_result$detected
     ))
   }
 }
@@ -222,30 +245,31 @@ results$ground_truth <- results$strength >= truth_threshold
 # Calculate detection rates by strength level
 detection_rates <- aggregate(
   cbind(aic_detected, fft_detected, acf_detected,
-        var_detected, spec_detected) ~ strength,
+        var_detected, spec_detected, wav_detected) ~ strength,
   data = results,
   FUN = function(x) mean(x, na.rm = TRUE)
 )
 
 names(detection_rates) <- c("strength", "AIC", "FFT", "ACF",
-                            "Var_Strength", "Spec_Strength")
+                            "Var_Strength", "Spec_Strength", "Wav_Strength")
 
 cat("\nDetection Rates by Seasonal Strength:\n")
-cat("=" , rep("=", 70), "\n", sep = "")
-cat(sprintf("%-10s %12s %12s %12s %12s %12s\n",
-            "Strength", "AIC", "FFT", "ACF", "Var_Str", "Spec_Str"))
-cat("=" , rep("=", 70), "\n", sep = "")
+cat("=" , rep("=", 82), "\n", sep = "")
+cat(sprintf("%-10s %12s %12s %12s %12s %12s %12s\n",
+            "Strength", "AIC", "FFT", "ACF", "Var_Str", "Spec_Str", "Wav_Str"))
+cat("=" , rep("=", 82), "\n", sep = "")
 
 for (i in 1:nrow(detection_rates)) {
-  cat(sprintf("%-10.1f %11.0f%% %11.0f%% %11.0f%% %11.0f%% %11.0f%%\n",
+  cat(sprintf("%-10.1f %11.0f%% %11.0f%% %11.0f%% %11.0f%% %11.0f%% %11.0f%%\n",
               detection_rates$strength[i],
               detection_rates$AIC[i] * 100,
               detection_rates$FFT[i] * 100,
               detection_rates$ACF[i] * 100,
               detection_rates$Var_Strength[i] * 100,
-              detection_rates$Spec_Strength[i] * 100))
+              detection_rates$Spec_Strength[i] * 100,
+              detection_rates$Wav_Strength[i] * 100))
 }
-cat("=" , rep("=", 70), "\n", sep = "")
+cat("=" , rep("=", 82), "\n", sep = "")
 
 # --- Calculate classification metrics ---
 cat("\n=== Classification Performance (Ground Truth: strength >= 0.2) ===\n\n")
@@ -285,7 +309,8 @@ metrics <- rbind(
   cbind(Method = "FFT Confidence", calculate_metrics(results$fft_detected, results$ground_truth)),
   cbind(Method = "ACF Confidence", calculate_metrics(results$acf_detected, results$ground_truth)),
   cbind(Method = "Variance Strength", calculate_metrics(results$var_detected, results$ground_truth)),
-  cbind(Method = "Spectral Strength", calculate_metrics(results$spec_detected, results$ground_truth))
+  cbind(Method = "Spectral Strength", calculate_metrics(results$spec_detected, results$ground_truth)),
+  cbind(Method = "Wavelet Strength", calculate_metrics(results$wav_detected, results$ground_truth))
 )
 
 cat(sprintf("%-20s %10s %10s %10s %10s %10s %10s\n",
@@ -307,13 +332,14 @@ cat("-" , rep("-", 80), "\n", sep = "")
 cat("\n=== False Positive Rates (at seasonal strength = 0) ===\n")
 zero_strength <- results %>% filter(strength == 0)
 fpr_at_zero <- data.frame(
-  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength"),
+  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength"),
   FPR = c(
     mean(zero_strength$aic_detected, na.rm = TRUE),
     mean(zero_strength$fft_detected, na.rm = TRUE),
     mean(zero_strength$acf_detected, na.rm = TRUE),
     mean(zero_strength$var_detected, na.rm = TRUE),
-    mean(zero_strength$spec_detected, na.rm = TRUE)
+    mean(zero_strength$spec_detected, na.rm = TRUE),
+    mean(zero_strength$wav_detected, na.rm = TRUE)
   )
 )
 cat("\nFalse positive rate when there is NO seasonality:\n")
@@ -360,12 +386,14 @@ opt_fft <- find_optimal_threshold(results$fft_score, results$ground_truth)
 opt_acf <- find_optimal_threshold(results$acf_score, results$ground_truth)
 opt_var <- find_optimal_threshold(results$var_score, results$ground_truth)
 opt_spec <- find_optimal_threshold(results$spec_score, results$ground_truth)
+opt_wav <- find_optimal_threshold(results$wav_score, results$ground_truth)
 
 cat(sprintf("  AIC Comparison:    threshold = %7.2f, F1 = %.1f%%\n", opt_aic$threshold, opt_aic$f1 * 100))
 cat(sprintf("  FFT Confidence:    threshold = %7.2f, F1 = %.1f%%\n", opt_fft$threshold, opt_fft$f1 * 100))
 cat(sprintf("  ACF Confidence:    threshold = %7.2f, F1 = %.1f%%\n", opt_acf$threshold, opt_acf$f1 * 100))
 cat(sprintf("  Variance Strength: threshold = %7.2f, F1 = %.1f%%\n", opt_var$threshold, opt_var$f1 * 100))
 cat(sprintf("  Spectral Strength: threshold = %7.2f, F1 = %.1f%%\n", opt_spec$threshold, opt_spec$f1 * 100))
+cat(sprintf("  Wavelet Strength:  threshold = %7.2f, F1 = %.1f%%\n", opt_wav$threshold, opt_wav$f1 * 100))
 
 # --- Visualization with ggplot2 ---
 cat("\n=== Generating Plots ===\n")
@@ -376,17 +404,19 @@ method_colors <- c(
   "FFT" = "#B2182B",
   "ACF" = "#1B7837",
   "Var Strength" = "#E66101",
-  "Spec Strength" = "#762A83"
+  "Spec Strength" = "#762A83",
+  "Wav Strength" = "#D95F02"
 )
 
 # Reshape detection rates for ggplot
 detection_rates_long <- detection_rates %>%
   pivot_longer(cols = -strength, names_to = "Method", values_to = "Rate") %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF", "Var_Strength",
-                                             "Spec_Strength"))) %>%
+                                             "Spec_Strength", "Wav_Strength"))) %>%
   mutate(Method = recode(Method,
                          "Var_Strength" = "Var Strength",
-                         "Spec_Strength" = "Spec Strength"))
+                         "Spec_Strength" = "Spec Strength",
+                         "Wav_Strength" = "Wav Strength"))
 
 # Plot 1: Detection rates by seasonal strength
 p1 <- ggplot(detection_rates_long, aes(x = strength, y = Rate * 100,
@@ -412,9 +442,10 @@ metrics_plot <- metrics %>%
                          "FFT Confidence" = "FFT",
                          "ACF Confidence" = "ACF",
                          "Variance Strength" = "Var Strength",
-                         "Spectral Strength" = "Spec Strength")) %>%
+                         "Spectral Strength" = "Spec Strength",
+                         "Wavelet Strength" = "Wav Strength")) %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF",
-                                             "Var Strength", "Spec Strength")))
+                                             "Var Strength", "Spec Strength", "Wav Strength")))
 
 p2 <- ggplot(metrics_plot, aes(x = Method, y = F1 * 100, fill = Method)) +
   geom_col(width = 0.7) +
@@ -452,6 +483,17 @@ p4 <- ggplot(results, aes(x = ground_truth_label, y = spec_score)) +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
 
+# Plot 4b: Wavelet strength distribution
+p4b <- ggplot(results, aes(x = ground_truth_label, y = wav_score)) +
+  stat_halfeye(adjust = 0.5, width = 0.6, .width = c(0.5, 0.95)) +
+  geom_hline(yintercept = detection_thresholds$strength_wavelet,
+             linetype = "dashed", color = "red") +
+  labs(title = "Wavelet Strength Distribution",
+       x = "",
+       y = "Wavelet Strength") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
 # --- Precision-Recall Curve ---
 # Function to compute precision-recall curve for a method
 compute_pr_curve <- function(scores, ground_truth, method_name, n_points = 200) {
@@ -486,10 +528,11 @@ pr_fft <- compute_pr_curve(results$fft_score, results$ground_truth, "FFT")
 pr_acf <- compute_pr_curve(results$acf_score, results$ground_truth, "ACF")
 pr_var <- compute_pr_curve(results$var_score, results$ground_truth, "Var Strength")
 pr_spec <- compute_pr_curve(results$spec_score, results$ground_truth, "Spec Strength")
+pr_wav <- compute_pr_curve(results$wav_score, results$ground_truth, "Wav Strength")
 
-pr_all <- rbind(pr_aic, pr_fft, pr_acf, pr_var, pr_spec)
+pr_all <- rbind(pr_aic, pr_fft, pr_acf, pr_var, pr_spec, pr_wav)
 pr_all$Method <- factor(pr_all$Method,
-                        levels = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength"))
+                        levels = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength"))
 
 # Calculate AUC-PR for each method
 compute_auc_pr <- function(pr_df) {
@@ -560,22 +603,24 @@ ggsave("plots/seasonality_detection_comparison.pdf",
 
 # Score distributions by strength for each method
 results_long_scores <- results %>%
-  select(strength, aic_score, fft_score, acf_score, var_score, spec_score) %>%
+  select(strength, aic_score, fft_score, acf_score, var_score, spec_score, wav_score) %>%
   pivot_longer(cols = -strength, names_to = "Method", values_to = "Score") %>%
   mutate(Method = recode(Method,
                          "aic_score" = "AIC",
                          "fft_score" = "FFT",
                          "acf_score" = "ACF",
                          "var_score" = "Var Strength",
-                         "spec_score" = "Spec Strength"))
+                         "spec_score" = "Spec Strength",
+                         "wav_score" = "Wav Strength"))
 
 # Threshold lines for each method
 threshold_lines <- data.frame(
-  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength"),
+  Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength"),
   threshold = c(0, detection_thresholds$fft_confidence,
                 detection_thresholds$acf_confidence,
                 detection_thresholds$strength_variance,
-                detection_thresholds$strength_spectral)
+                detection_thresholds$strength_spectral,
+                detection_thresholds$strength_wavelet)
 )
 
 p_scores <- ggplot(results_long_scores, aes(x = factor(strength), y = Score)) +
@@ -592,10 +637,10 @@ p_scores <- ggplot(results_long_scores, aes(x = factor(strength), y = Score)) +
 
 # Correlation heatmap
 cor_matrix <- cor(results[, c("aic_score", "fft_score", "acf_score",
-                               "var_score", "spec_score")],
+                               "var_score", "spec_score", "wav_score")],
                   use = "pairwise.complete.obs")
-rownames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec")
-colnames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec")
+rownames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec", "Wav")
+colnames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec", "Wav")
 
 cor_long <- as.data.frame(as.table(cor_matrix))
 names(cor_long) <- c("Method1", "Method2", "Correlation")

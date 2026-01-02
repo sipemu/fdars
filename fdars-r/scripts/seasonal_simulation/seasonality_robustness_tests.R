@@ -32,6 +32,7 @@ period <- 0.2  # 5 cycles in [0,1]
 thresholds <- list(
   variance = 0.2,
   spectral = 0.3,
+  wavelet = 0.26,
   fft = 6.0,
   acf = 0.25
 )
@@ -71,20 +72,22 @@ gen_seasonal <- function(t, strength, n_cycles = 5) {
 # Detect seasonality using all methods
 detect_all <- function(fd, period) {
   list(
-    variance = tryCatch(seasonal_strength(fd, period = period, method = "variance") > thresholds$variance,
+    variance = tryCatch(seasonal.strength(fd, period = period, method = "variance") > thresholds$variance,
                         error = function(e) NA),
-    spectral = tryCatch(seasonal_strength(fd, period = period, method = "spectral") > thresholds$spectral,
+    spectral = tryCatch(seasonal.strength(fd, period = period, method = "spectral") > thresholds$spectral,
                         error = function(e) NA),
-    fft = tryCatch(estimate_period(fd, method = "fft")$confidence > thresholds$fft,
+    wavelet = tryCatch(seasonal.strength(fd, period = period, method = "wavelet") > thresholds$wavelet,
+                       error = function(e) NA),
+    fft = tryCatch(estimate.period(fd, method = "fft")$confidence > thresholds$fft,
                    error = function(e) NA),
-    acf = tryCatch(estimate_period(fd, method = "acf")$confidence > thresholds$acf,
+    acf = tryCatch(estimate.period(fd, method = "acf")$confidence > thresholds$acf,
                    error = function(e) NA)
   )
 }
 
 # Calculate metrics from results
 calc_metrics <- function(results, ground_truth) {
-  methods <- c("variance", "spectral", "fft", "acf")
+  methods <- c("variance", "spectral", "wavelet", "fft", "acf")
   metrics <- lapply(methods, function(m) {
     pred <- sapply(results, function(r) r[[m]])
     pred <- pred[!is.na(pred)]
@@ -162,6 +165,7 @@ red_noise_df <- do.call(rbind, lapply(names(red_noise_results), function(name) {
     is_seasonal = r$is_seasonal,
     variance_rate = if (r$is_seasonal) r$metrics$variance["TPR"] else r$metrics$variance["FPR"],
     spectral_rate = if (r$is_seasonal) r$metrics$spectral["TPR"] else r$metrics$spectral["FPR"],
+    wavelet_rate = if (r$is_seasonal) r$metrics$wavelet["TPR"] else r$metrics$wavelet["FPR"],
     fft_rate = if (r$is_seasonal) r$metrics$fft["TPR"] else r$metrics$fft["FPR"],
     acf_rate = if (r$is_seasonal) r$metrics$acf["TPR"] else r$metrics$acf["FPR"]
   )
@@ -174,6 +178,7 @@ fpr_by_phi <- red_noise_df %>%
   summarise(
     Variance = mean(variance_rate, na.rm = TRUE),
     Spectral = mean(spectral_rate, na.rm = TRUE),
+    Wavelet = mean(wavelet_rate, na.rm = TRUE),
     FFT = mean(fft_rate, na.rm = TRUE),
     ACF = mean(acf_rate, na.rm = TRUE)
   )
@@ -233,6 +238,7 @@ multi_df <- do.call(rbind, lapply(names(multi_seasonal_results), function(name) 
     secondary_strength = r$secondary_strength,
     Variance_TPR = r$metrics$variance["TPR"],
     Spectral_TPR = r$metrics$spectral["TPR"],
+    Wavelet_TPR = r$metrics$wavelet["TPR"],
     FFT_TPR = r$metrics$fft["TPR"],
     ACF_TPR = r$metrics$acf["TPR"]
   )
@@ -293,6 +299,7 @@ amp_df <- do.call(rbind, lapply(names(amp_mod_results), function(name) {
     Amplitude = r$base_amplitude,
     Variance = r$metrics$variance["TPR"],
     Spectral = r$metrics$spectral["TPR"],
+    Wavelet = r$metrics$wavelet["TPR"],
     FFT = r$metrics$fft["TPR"],
     ACF = r$metrics$acf["TPR"]
   )
@@ -355,6 +362,7 @@ outlier_df <- do.call(rbind, lapply(names(outlier_results), function(name) {
     is_seasonal = r$is_seasonal,
     Variance = r$metrics$variance[rate_type],
     Spectral = r$metrics$spectral[rate_type],
+    Wavelet = r$metrics$wavelet[rate_type],
     FFT = r$metrics$fft[rate_type],
     ACF = r$metrics$acf[rate_type]
   )
@@ -376,7 +384,7 @@ cat("\nGenerating plots...\n")
 
 # Plot A: Red Noise FPR
 fpr_long <- fpr_by_phi %>%
-  pivot_longer(cols = c(Variance, Spectral, FFT, ACF),
+  pivot_longer(cols = c(Variance, Spectral, Wavelet, FFT, ACF),
                names_to = "Method", values_to = "FPR")
 
 p_red_noise <- ggplot(fpr_long, aes(x = phi, y = FPR, color = Method)) +
@@ -397,7 +405,7 @@ ggsave("plots/robustness_red_noise_fpr.pdf", p_red_noise, width = 7, height = 5)
 
 # Plot B: Multi-Seasonal TPR
 multi_long <- multi_df %>%
-  pivot_longer(cols = c(Variance_TPR, Spectral_TPR, FFT_TPR, ACF_TPR),
+  pivot_longer(cols = c(Variance_TPR, Spectral_TPR, Wavelet_TPR, FFT_TPR, ACF_TPR),
                names_to = "Method", values_to = "TPR") %>%
   mutate(Method = gsub("_TPR", "", Method),
          secondary_label = paste0("Secondary: ", secondary_strength))
@@ -422,7 +430,7 @@ ggsave("plots/robustness_multi_seasonal.pdf", p_multi_seasonal, width = 9, heigh
 
 # Plot C: Amplitude Modulation TPR
 amp_long <- amp_df %>%
-  pivot_longer(cols = c(Variance, Spectral, FFT, ACF),
+  pivot_longer(cols = c(Variance, Spectral, Wavelet, FFT, ACF),
                names_to = "Method", values_to = "TPR")
 
 p_amp_mod <- ggplot(amp_long, aes(x = Modulation, y = TPR, color = Method)) +
@@ -449,7 +457,7 @@ outlier_seasonal <- outlier_df %>%
   mutate(config = paste0("p=", outlier_prob, ", m=", outlier_mag))
 
 outlier_long <- outlier_seasonal %>%
-  pivot_longer(cols = c(Variance, Spectral, FFT, ACF),
+  pivot_longer(cols = c(Variance, Spectral, Wavelet, FFT, ACF),
                names_to = "Method", values_to = "TPR")
 
 p_outliers <- ggplot(outlier_long, aes(x = config, y = TPR, fill = Method)) +

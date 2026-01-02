@@ -383,6 +383,7 @@ print.peak_detection <- function(x, ...) {
 #'   \describe{
 #'     \item{"variance"}{Variance decomposition: Var(seasonal) / Var(total)}
 #'     \item{"spectral"}{Spectral: power at seasonal frequencies / total power}
+#'     \item{"wavelet"}{Wavelet: Morlet wavelet power at seasonal period / total variance}
 #'   }
 #' @param n_harmonics Number of Fourier harmonics to use (for variance method).
 #'   Default: 3.
@@ -402,6 +403,10 @@ print.peak_detection <- function(x, ...) {
 #'
 #' The spectral method computes the proportion of total spectral power
 #' that falls at the seasonal frequency and its harmonics.
+#'
+#' The wavelet method uses a Morlet wavelet to measure power at the target
+#' period. It provides time-localized frequency information and is robust
+#' to non-stationary signals.
 #'
 #' Trends can artificially lower the seasonal strength measure by
 #' contributing non-seasonal variance. Use detrend_method to remove
@@ -425,7 +430,7 @@ print.peak_detection <- function(x, ...) {
 #' fd_trend <- fdata(X_trend, argvals = t)
 #' seasonal.strength(fd_trend, period = 2, detrend_method = "linear")
 seasonal.strength <- function(fdataobj, period = NULL,
-                              method = c("variance", "spectral"),
+                              method = c("variance", "spectral", "wavelet"),
                               n_harmonics = 3,
                               detrend_method = c("none", "linear", "auto")) {
   if (!inherits(fdataobj, "fdata")) {
@@ -452,8 +457,12 @@ seasonal.strength <- function(fdataobj, period = NULL,
     result <- .Call("wrap__seasonal_strength_variance",
                     fdataobj$data, fdataobj$argvals,
                     as.double(period), as.integer(n_harmonics))
-  } else {
+  } else if (method == "spectral") {
     result <- .Call("wrap__seasonal_strength_spectral",
+                    fdataobj$data, fdataobj$argvals, as.double(period))
+  } else {
+    # wavelet method
+    result <- .Call("wrap__seasonal_strength_wavelet",
                     fdataobj$data, fdataobj$argvals, as.double(period))
   }
 
@@ -1176,5 +1185,155 @@ print.decomposition <- function(x, ...) {
   cat(sprintf("Method:  %s\n", x$method))
   cat(sprintf("Period:  %.4f\n", x$period))
   cat("\nComponents: trend, seasonal, remainder\n")
+  invisible(x)
+}
+
+# ==============================================================================
+# Amplitude Modulation Detection
+# ==============================================================================
+
+#' Detect Amplitude Modulation in Seasonal Time Series
+#'
+#' Detects whether the amplitude of a seasonal pattern changes over time
+#' (amplitude modulation). Uses either Hilbert transform or wavelet analysis
+#' to extract the time-varying amplitude envelope.
+#'
+#' @param fdataobj An fdata object.
+#' @param period Seasonal period in argvals units.
+#' @param method Method for amplitude extraction: "hilbert" (default) or "wavelet".
+#' @param modulation_threshold Coefficient of variation threshold for detecting
+#'   modulation. Default: 0.15 (i.e., CV > 15% indicates modulation).
+#' @param seasonality_threshold Strength threshold for seasonality detection.
+#'   Default: 0.3.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{is_seasonal}{Logical, whether seasonality is detected}
+#'   \item{seasonal_strength}{Overall seasonal strength (spectral method)}
+#'   \item{has_modulation}{Logical, whether amplitude modulation is detected}
+#'   \item{modulation_type}{Character: "stable", "emerging", "fading",
+#'     "oscillating", or "non_seasonal"}
+#'   \item{modulation_score}{Coefficient of variation of amplitude (0 = stable)}
+#'   \item{amplitude_trend}{Trend in amplitude (-1 to 1): negative = fading,
+#'     positive = emerging}
+#'   \item{amplitude_curve}{Time-varying amplitude (fdata object)}
+#'   \item{time_points}{Time points for the amplitude curve}
+#' }
+#'
+#' @details
+#' The function first checks if seasonality is present using the spectral
+#' method (which is robust to amplitude modulation). If seasonality is
+#' detected, it extracts the amplitude envelope and analyzes its variation.
+#'
+#' \strong{Hilbert method}: Uses Hilbert transform to compute the analytic
+#' signal and extract instantaneous amplitude. Fast but assumes narrowband
+#' signals.
+#'
+#' \strong{Wavelet method}: Uses Morlet wavelet transform at the target
+#' period. More robust to noise and non-stationarity.
+#'
+#' \strong{Modulation types}:
+#' \itemize{
+#'   \item \code{stable}: Constant amplitude (modulation_score < threshold)
+#'   \item \code{emerging}: Amplitude increases over time (amplitude_trend > 0.3)
+#'   \item \code{fading}: Amplitude decreases over time (amplitude_trend < -0.3)
+#'   \item \code{oscillating}: Amplitude varies but no clear trend
+#'   \item \code{non_seasonal}: No seasonality detected
+#' }
+#'
+#' @export
+#' @examples
+#' # Generate data with emerging seasonality
+#' t <- seq(0, 1, length.out = 200)
+#' amplitude <- 0.2 + 0.8 * t  # Amplitude grows over time
+#' X <- matrix(amplitude * sin(2 * pi * t / 0.2), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' result <- detect_amplitude_modulation(fd, period = 0.2)
+#' print(result$modulation_type)  # "emerging"
+#' print(result$amplitude_trend)  # Positive value
+#'
+#' # Compare Hilbert vs Wavelet methods
+#' result_hilbert <- detect_amplitude_modulation(fd, period = 0.2, method = "hilbert")
+#' result_wavelet <- detect_amplitude_modulation(fd, period = 0.2, method = "wavelet")
+detect_amplitude_modulation <- function(fdataobj, period,
+                                         method = c("hilbert", "wavelet"),
+                                         modulation_threshold = 0.15,
+                                         seasonality_threshold = 0.3) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("detect_amplitude_modulation not yet implemented for 2D functional data")
+  }
+
+  method <- match.arg(method)
+
+  if (method == "hilbert") {
+    result <- .Call("wrap__seasonal_detect_amplitude_modulation",
+                    fdataobj$data, fdataobj$argvals, period,
+                    modulation_threshold, seasonality_threshold)
+
+    # Create fdata for amplitude curve
+    if (length(result$strength_curve) > 0) {
+      amplitude_curve <- fdata(matrix(result$strength_curve, nrow = 1),
+                                argvals = result$time_points,
+                                rangeval = fdataobj$rangeval)
+    } else {
+      amplitude_curve <- NULL
+    }
+
+    result$amplitude_curve <- amplitude_curve
+    result$strength_curve <- NULL  # Remove raw vector
+
+  } else {
+    # Wavelet method
+    result <- .Call("wrap__seasonal_detect_amplitude_modulation_wavelet",
+                    fdataobj$data, fdataobj$argvals, period,
+                    modulation_threshold, seasonality_threshold)
+
+    # Create fdata for wavelet amplitude
+    if (length(result$wavelet_amplitude) > 0) {
+      amplitude_curve <- fdata(matrix(result$wavelet_amplitude, nrow = 1),
+                                argvals = result$time_points,
+                                rangeval = fdataobj$rangeval)
+    } else {
+      amplitude_curve <- NULL
+    }
+
+    result$amplitude_curve <- amplitude_curve
+    result$wavelet_amplitude <- NULL  # Remove raw vector
+  }
+
+  class(result) <- "amplitude_modulation"
+  result
+}
+
+#' @export
+print.amplitude_modulation <- function(x, ...) {
+  cat("Amplitude Modulation Detection\n")
+  cat("------------------------------\n")
+  cat(sprintf("Seasonal:        %s\n", if (x$is_seasonal) "Yes" else "No"))
+  cat(sprintf("Strength:        %.4f\n", x$seasonal_strength))
+  cat(sprintf("Has modulation:  %s\n", if (x$has_modulation) "Yes" else "No"))
+  cat(sprintf("Modulation type: %s\n", x$modulation_type))
+  cat(sprintf("Modulation score (CV): %.4f\n", x$modulation_score))
+  cat(sprintf("Amplitude trend: %.4f\n", x$amplitude_trend))
+  invisible(x)
+}
+
+#' @export
+plot.amplitude_modulation <- function(x, ...) {
+  if (is.null(x$amplitude_curve)) {
+    message("No amplitude curve available to plot")
+    return(invisible(x))
+  }
+
+  plot(x$amplitude_curve,
+       main = sprintf("Amplitude Envelope (%s)", x$modulation_type),
+       ylab = "Amplitude",
+       ...)
+
   invisible(x)
 }

@@ -6627,6 +6627,29 @@ fn seasonal_strength_spectral(data: RMatrix<f64>, argvals: Vec<f64>, period: f64
     (seasonal_power / total_power).min(1.0)
 }
 
+/// Measure seasonal strength using wavelet (Morlet) method
+///
+/// Uses Continuous Wavelet Transform with Morlet wavelet to measure
+/// power at the specified seasonal period.
+///
+/// @param data Matrix of functional data (n x m)
+/// @param argvals Vector of evaluation points (length m)
+/// @param period Seasonal period in argvals units
+/// @return Seasonal strength as ratio of wavelet power to total variance (0 to 1)
+#[extendr]
+fn seasonal_strength_wavelet(data: RMatrix<f64>, argvals: Vec<f64>, period: f64) -> f64 {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return f64::NAN;
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    fdars_core::seasonal::seasonal_strength_wavelet(data_slice, n, m, &argvals, period)
+}
+
 /// Time-varying seasonal strength using sliding windows
 #[extendr]
 fn seasonal_strength_windowed(
@@ -7314,6 +7337,144 @@ fn otsu_threshold_inline(values: &[f64]) -> f64 {
     best_threshold
 }
 
+/// Detect amplitude modulation in seasonal time series using Hilbert transform
+///
+/// @param data Matrix of functional data (n x m)
+/// @param argvals Vector of evaluation points (length m)
+/// @param period Seasonal period in argvals units
+/// @param modulation_threshold CV threshold for detecting modulation (default: 0.15)
+/// @param seasonality_threshold Strength threshold for seasonality (default: 0.3)
+/// @return List with detection results
+#[extendr]
+fn seasonal_detect_amplitude_modulation(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    modulation_threshold: f64,
+    seasonality_threshold: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return list!(
+            is_seasonal = false,
+            seasonal_strength = f64::NAN,
+            has_modulation = false,
+            modulation_type = "unknown",
+            modulation_score = f64::NAN,
+            amplitude_trend = f64::NAN,
+            strength_curve = Vec::<f64>::new(),
+            time_points = Vec::<f64>::new(),
+            min_strength = f64::NAN,
+            max_strength = f64::NAN
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let result = fdars_core::seasonal::detect_amplitude_modulation(
+        data_slice,
+        n,
+        m,
+        &argvals,
+        period,
+        modulation_threshold,
+        seasonality_threshold,
+    );
+
+    let modulation_type = match result.modulation_type {
+        fdars_core::seasonal::ModulationType::Stable => "stable",
+        fdars_core::seasonal::ModulationType::Emerging => "emerging",
+        fdars_core::seasonal::ModulationType::Fading => "fading",
+        fdars_core::seasonal::ModulationType::Oscillating => "oscillating",
+        fdars_core::seasonal::ModulationType::NonSeasonal => "non_seasonal",
+    };
+
+    list!(
+        is_seasonal = result.is_seasonal,
+        seasonal_strength = result.seasonal_strength,
+        has_modulation = result.has_modulation,
+        modulation_type = modulation_type,
+        modulation_score = result.modulation_score,
+        amplitude_trend = result.amplitude_trend,
+        strength_curve = result.strength_curve,
+        time_points = result.time_points,
+        min_strength = result.min_strength,
+        max_strength = result.max_strength
+    )
+    .into()
+}
+
+/// Detect amplitude modulation using wavelet transform (Morlet wavelet)
+///
+/// @param data Matrix of functional data (n x m)
+/// @param argvals Vector of evaluation points (length m)
+/// @param period Seasonal period in argvals units
+/// @param modulation_threshold CV threshold for detecting modulation (default: 0.15)
+/// @param seasonality_threshold Strength threshold for seasonality (default: 0.3)
+/// @return List with detection results including wavelet amplitude
+#[extendr]
+fn seasonal_detect_amplitude_modulation_wavelet(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    period: f64,
+    modulation_threshold: f64,
+    seasonality_threshold: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return list!(
+            is_seasonal = false,
+            seasonal_strength = f64::NAN,
+            has_modulation = false,
+            modulation_type = "unknown",
+            modulation_score = f64::NAN,
+            amplitude_trend = f64::NAN,
+            wavelet_amplitude = Vec::<f64>::new(),
+            time_points = Vec::<f64>::new(),
+            scale = f64::NAN
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let result = fdars_core::seasonal::detect_amplitude_modulation_wavelet(
+        data_slice,
+        n,
+        m,
+        &argvals,
+        period,
+        modulation_threshold,
+        seasonality_threshold,
+    );
+
+    let modulation_type = match result.modulation_type {
+        fdars_core::seasonal::ModulationType::Stable => "stable",
+        fdars_core::seasonal::ModulationType::Emerging => "emerging",
+        fdars_core::seasonal::ModulationType::Fading => "fading",
+        fdars_core::seasonal::ModulationType::Oscillating => "oscillating",
+        fdars_core::seasonal::ModulationType::NonSeasonal => "non_seasonal",
+    };
+
+    list!(
+        is_seasonal = result.is_seasonal,
+        seasonal_strength = result.seasonal_strength,
+        has_modulation = result.has_modulation,
+        modulation_type = modulation_type,
+        modulation_score = result.modulation_score,
+        amplitude_trend = result.amplitude_trend,
+        wavelet_amplitude = result.wavelet_amplitude,
+        time_points = result.time_points,
+        scale = result.scale
+    )
+    .into()
+}
+
 // =============================================================================
 // Detrending functions
 // =============================================================================
@@ -7924,12 +8085,15 @@ extendr_module! {
     fn seasonal_detect_peaks;
     fn seasonal_strength_variance;
     fn seasonal_strength_spectral;
+    fn seasonal_strength_wavelet;
     fn seasonal_strength_windowed;
     fn seasonal_detect_changes;
     fn seasonal_instantaneous_period;
     fn seasonal_analyze_peak_timing;
     fn seasonal_classify_seasonality;
     fn seasonal_detect_changes_auto;
+    fn seasonal_detect_amplitude_modulation;
+    fn seasonal_detect_amplitude_modulation_wavelet;
 
     // Detrending functions
     fn seasonal_detrend;

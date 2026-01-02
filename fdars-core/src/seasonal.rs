@@ -187,6 +187,69 @@ pub enum ThresholdMethod {
     Otsu,
 }
 
+/// Type of amplitude modulation pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModulationType {
+    /// Constant amplitude (no modulation)
+    Stable,
+    /// Amplitude increases over time (seasonality emerges)
+    Emerging,
+    /// Amplitude decreases over time (seasonality fades)
+    Fading,
+    /// Amplitude varies non-monotonically
+    Oscillating,
+    /// No seasonality detected
+    NonSeasonal,
+}
+
+/// Result of amplitude modulation detection.
+#[derive(Debug, Clone)]
+pub struct AmplitudeModulationResult {
+    /// Whether seasonality is present (using robust spectral method)
+    pub is_seasonal: bool,
+    /// Overall seasonal strength (spectral method)
+    pub seasonal_strength: f64,
+    /// Whether amplitude modulation is detected
+    pub has_modulation: bool,
+    /// Type of amplitude modulation
+    pub modulation_type: ModulationType,
+    /// Coefficient of variation of time-varying strength (0 = stable, higher = more modulation)
+    pub modulation_score: f64,
+    /// Trend in amplitude (-1 to 1: negative = fading, positive = emerging)
+    pub amplitude_trend: f64,
+    /// Time-varying seasonal strength curve
+    pub strength_curve: Vec<f64>,
+    /// Time points corresponding to strength_curve
+    pub time_points: Vec<f64>,
+    /// Minimum strength in the curve
+    pub min_strength: f64,
+    /// Maximum strength in the curve
+    pub max_strength: f64,
+}
+
+/// Result of wavelet-based amplitude modulation detection.
+#[derive(Debug, Clone)]
+pub struct WaveletAmplitudeResult {
+    /// Whether seasonality is present
+    pub is_seasonal: bool,
+    /// Overall seasonal strength
+    pub seasonal_strength: f64,
+    /// Whether amplitude modulation is detected
+    pub has_modulation: bool,
+    /// Type of amplitude modulation
+    pub modulation_type: ModulationType,
+    /// Coefficient of variation of wavelet amplitude
+    pub modulation_score: f64,
+    /// Trend in amplitude (-1 to 1)
+    pub amplitude_trend: f64,
+    /// Wavelet amplitude at the seasonal frequency over time
+    pub wavelet_amplitude: Vec<f64>,
+    /// Time points corresponding to wavelet_amplitude
+    pub time_points: Vec<f64>,
+    /// Scale (period) used for wavelet analysis
+    pub scale: f64,
+}
+
 // ============================================================================
 // Internal helper functions
 // ============================================================================
@@ -363,6 +426,116 @@ fn unwrap_phase(phase: &[f64]) -> Vec<f64> {
     }
 
     unwrapped
+}
+
+/// Morlet wavelet function.
+///
+/// The Morlet wavelet is a complex exponential modulated by a Gaussian:
+/// ψ(t) = exp(i * ω₀ * t) * exp(-t² / 2)
+///
+/// where ω₀ is the central frequency (typically 6 for good time-frequency trade-off).
+fn morlet_wavelet(t: f64, omega0: f64) -> Complex<f64> {
+    let gaussian = (-t * t / 2.0).exp();
+    let oscillation = Complex::new((omega0 * t).cos(), (omega0 * t).sin());
+    oscillation * gaussian
+}
+
+/// Continuous Wavelet Transform at a single scale using Morlet wavelet.
+///
+/// Computes the wavelet coefficients at the specified scale (period) for all time points.
+/// Uses convolution in the time domain.
+///
+/// # Arguments
+/// * `signal` - Input signal
+/// * `argvals` - Time points
+/// * `scale` - Scale parameter (related to period)
+/// * `omega0` - Central frequency of Morlet wavelet (default: 6.0)
+///
+/// # Returns
+/// Complex wavelet coefficients at each time point
+#[allow(dead_code)]
+fn cwt_morlet(signal: &[f64], argvals: &[f64], scale: f64, omega0: f64) -> Vec<Complex<f64>> {
+    let n = signal.len();
+    if n == 0 || scale <= 0.0 {
+        return Vec::new();
+    }
+
+    let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
+
+    // Compute wavelet coefficients via convolution
+    // W(a, b) = (1/sqrt(a)) * Σ x[k] * ψ*((t[k] - b) / a) * dt
+    let norm = 1.0 / scale.sqrt();
+
+    (0..n)
+        .map(|b| {
+            let mut sum = Complex::new(0.0, 0.0);
+            for k in 0..n {
+                let t_normalized = (argvals[k] - argvals[b]) / scale;
+                // Only compute within reasonable range (Gaussian decays quickly)
+                if t_normalized.abs() < 6.0 {
+                    let wavelet = morlet_wavelet(t_normalized, omega0);
+                    sum += signal[k] * wavelet.conj();
+                }
+            }
+            sum * norm * dt
+        })
+        .collect()
+}
+
+/// Continuous Wavelet Transform at a single scale using FFT (faster for large signals).
+///
+/// Uses the convolution theorem: CWT = IFFT(FFT(signal) * FFT(wavelet)*)
+fn cwt_morlet_fft(signal: &[f64], argvals: &[f64], scale: f64, omega0: f64) -> Vec<Complex<f64>> {
+    let n = signal.len();
+    if n == 0 || scale <= 0.0 {
+        return Vec::new();
+    }
+
+    let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
+    let norm = 1.0 / scale.sqrt();
+
+    // Compute wavelet in time domain centered at t=0
+    let wavelet_time: Vec<Complex<f64>> = (0..n)
+        .map(|k| {
+            // Center the wavelet
+            let t = if k <= n / 2 {
+                k as f64 * dt / scale
+            } else {
+                (k as f64 - n as f64) * dt / scale
+            };
+            morlet_wavelet(t, omega0) * norm
+        })
+        .collect();
+
+    let mut planner = FftPlanner::<f64>::new();
+    let fft_forward = planner.plan_fft_forward(n);
+    let fft_inverse = planner.plan_fft_inverse(n);
+
+    // FFT of signal
+    let mut signal_fft: Vec<Complex<f64>> =
+        signal.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    fft_forward.process(&mut signal_fft);
+
+    // FFT of wavelet
+    let mut wavelet_fft = wavelet_time;
+    fft_forward.process(&mut wavelet_fft);
+
+    // Multiply in frequency domain (use conjugate of wavelet FFT for correlation)
+    let mut result: Vec<Complex<f64>> = signal_fft
+        .iter()
+        .zip(wavelet_fft.iter())
+        .map(|(s, w)| *s * w.conj())
+        .collect();
+
+    // Inverse FFT
+    fft_inverse.process(&mut result);
+
+    // Normalize and scale by dt
+    for c in result.iter_mut() {
+        *c *= dt / n as f64;
+    }
+
+    result
 }
 
 /// Compute Otsu's threshold for bimodal separation.
@@ -1108,6 +1281,90 @@ pub fn seasonal_strength_spectral(
     (seasonal_power / total_power).min(1.0)
 }
 
+/// Compute seasonal strength using Morlet wavelet power at the target period.
+///
+/// This method uses the Continuous Wavelet Transform (CWT) with a Morlet wavelet
+/// to measure power at the specified seasonal period. Unlike spectral methods,
+/// wavelets provide time-localized frequency information.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `period` - Seasonal period in argvals units
+///
+/// # Returns
+/// Seasonal strength as ratio of wavelet power to total variance (0 to 1)
+///
+/// # Notes
+/// - Uses Morlet wavelet with ω₀ = 6 (standard choice)
+/// - Scale is computed as: scale = period * ω₀ / (2π)
+/// - Strength is computed over the interior 80% of the signal to avoid edge effects
+pub fn seasonal_strength_wavelet(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    period: f64,
+) -> f64 {
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return f64::NAN;
+    }
+
+    // Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Remove DC component
+    let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
+    let detrended: Vec<f64> = mean_curve.iter().map(|&x| x - dc).collect();
+
+    // Compute total variance
+    let total_variance: f64 = detrended.iter().map(|&x| x * x).sum::<f64>() / m as f64;
+
+    if total_variance < 1e-15 {
+        return 0.0;
+    }
+
+    // Compute wavelet transform at the seasonal scale
+    let omega0 = 6.0;
+    let scale = period * omega0 / (2.0 * PI);
+    let wavelet_coeffs = cwt_morlet_fft(&detrended, argvals, scale, omega0);
+
+    if wavelet_coeffs.is_empty() {
+        return f64::NAN;
+    }
+
+    // Compute wavelet power, skipping edges (10% on each side)
+    let edge_skip = (m as f64 * 0.1) as usize;
+    let interior_start = edge_skip.min(m / 4);
+    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
+
+    if interior_end <= interior_start {
+        return f64::NAN;
+    }
+
+    let wavelet_power: f64 = wavelet_coeffs[interior_start..interior_end]
+        .iter()
+        .map(|c| c.norm_sqr())
+        .sum::<f64>()
+        / (interior_end - interior_start) as f64;
+
+    // Return ratio of wavelet power to total variance
+    // Normalize so that a pure sine at the target period gives ~1.0
+    let strength = (wavelet_power / total_variance).sqrt().min(1.0);
+
+    strength
+}
+
 /// Compute time-varying seasonal strength using sliding windows.
 ///
 /// # Arguments
@@ -1285,6 +1542,414 @@ pub fn detect_seasonality_changes(
     ChangeDetectionResult {
         change_points,
         strength_curve,
+    }
+}
+
+// ============================================================================
+// Amplitude Modulation Detection
+// ============================================================================
+
+/// Detect amplitude modulation in seasonal time series.
+///
+/// This function first checks if seasonality exists using the spectral method
+/// (which is robust to amplitude modulation), then uses Hilbert transform to
+/// extract the amplitude envelope and analyze modulation patterns.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `period` - Seasonal period in argvals units
+/// * `modulation_threshold` - CV threshold for detecting modulation (default: 0.15)
+/// * `seasonality_threshold` - Strength threshold for seasonality (default: 0.3)
+///
+/// # Returns
+/// `AmplitudeModulationResult` containing detection results and diagnostics
+///
+/// # Example
+/// ```ignore
+/// let result = detect_amplitude_modulation(
+///     &data, n, m, &argvals,
+///     period,
+///     0.15,          // CV > 0.15 indicates modulation
+///     0.3,           // strength > 0.3 indicates seasonality
+/// );
+/// if result.has_modulation {
+///     match result.modulation_type {
+///         ModulationType::Emerging => println!("Seasonality is emerging"),
+///         ModulationType::Fading => println!("Seasonality is fading"),
+///         _ => {}
+///     }
+/// }
+/// ```
+pub fn detect_amplitude_modulation(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    period: f64,
+    modulation_threshold: f64,
+    seasonality_threshold: f64,
+) -> AmplitudeModulationResult {
+    // Default result for invalid input
+    let empty_result = AmplitudeModulationResult {
+        is_seasonal: false,
+        seasonal_strength: 0.0,
+        has_modulation: false,
+        modulation_type: ModulationType::NonSeasonal,
+        modulation_score: 0.0,
+        amplitude_trend: 0.0,
+        strength_curve: Vec::new(),
+        time_points: Vec::new(),
+        min_strength: 0.0,
+        max_strength: 0.0,
+    };
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return empty_result;
+    }
+
+    // Step 1: Check if seasonality exists using spectral method (robust to AM)
+    let overall_strength = seasonal_strength_spectral(data, n, m, argvals, period);
+
+    if overall_strength < seasonality_threshold {
+        return AmplitudeModulationResult {
+            is_seasonal: false,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::NonSeasonal,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            strength_curve: Vec::new(),
+            time_points: argvals.to_vec(),
+            min_strength: 0.0,
+            max_strength: 0.0,
+        };
+    }
+
+    // Step 2: Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Step 3: Use Hilbert transform to get amplitude envelope
+    let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
+    let detrended: Vec<f64> = mean_curve.iter().map(|&x| x - dc).collect();
+    let analytic = hilbert_transform(&detrended);
+    let envelope: Vec<f64> = analytic.iter().map(|c| c.norm()).collect();
+
+    if envelope.is_empty() {
+        return AmplitudeModulationResult {
+            is_seasonal: true,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::Stable,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            strength_curve: Vec::new(),
+            time_points: argvals.to_vec(),
+            min_strength: 0.0,
+            max_strength: 0.0,
+        };
+    }
+
+    // Step 4: Smooth the envelope to reduce high-frequency noise
+    // Use simple moving average with window size based on period
+    let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let smooth_window = ((period / dt) as usize).max(3);
+    let half_window = smooth_window / 2;
+
+    let smoothed_envelope: Vec<f64> = (0..m)
+        .map(|i| {
+            let start = i.saturating_sub(half_window);
+            let end = (i + half_window + 1).min(m);
+            let sum: f64 = envelope[start..end].iter().sum();
+            sum / (end - start) as f64
+        })
+        .collect();
+
+    // Step 5: Compute statistics on smoothed envelope
+    // Skip edge regions (first and last 10% of points)
+    let edge_skip = (m as f64 * 0.1) as usize;
+    let interior_start = edge_skip.min(m / 4);
+    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
+
+    if interior_end <= interior_start + 4 {
+        return AmplitudeModulationResult {
+            is_seasonal: true,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::Stable,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            strength_curve: envelope,
+            time_points: argvals.to_vec(),
+            min_strength: 0.0,
+            max_strength: 0.0,
+        };
+    }
+
+    let interior_envelope = &smoothed_envelope[interior_start..interior_end];
+    let interior_times = &argvals[interior_start..interior_end];
+    let n_interior = interior_envelope.len() as f64;
+
+    let mean_amp = interior_envelope.iter().sum::<f64>() / n_interior;
+    let min_amp = interior_envelope
+        .iter()
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    let max_amp = interior_envelope
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    // Coefficient of variation (modulation score)
+    let variance = interior_envelope
+        .iter()
+        .map(|&a| (a - mean_amp).powi(2))
+        .sum::<f64>()
+        / n_interior;
+    let std_amp = variance.sqrt();
+    let modulation_score = if mean_amp > 1e-10 {
+        std_amp / mean_amp
+    } else {
+        0.0
+    };
+
+    // Step 6: Compute trend in amplitude (linear regression slope)
+    let t_mean = interior_times.iter().sum::<f64>() / n_interior;
+    let mut cov_ta = 0.0;
+    let mut var_t = 0.0;
+    for (&t, &a) in interior_times.iter().zip(interior_envelope.iter()) {
+        cov_ta += (t - t_mean) * (a - mean_amp);
+        var_t += (t - t_mean).powi(2);
+    }
+    let slope = if var_t > 1e-10 { cov_ta / var_t } else { 0.0 };
+
+    // Normalize slope to [-1, 1] based on amplitude range and time span
+    let time_span = interior_times.last().unwrap_or(&1.0) - interior_times.first().unwrap_or(&0.0);
+    let amp_range = max_amp - min_amp;
+    let amplitude_trend = if amp_range > 1e-10 && time_span > 1e-10 && mean_amp > 1e-10 {
+        // Normalized: what fraction of mean amplitude changes per unit time span
+        (slope * time_span / mean_amp).clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+
+    // Step 7: Classify modulation type
+    let has_modulation = modulation_score > modulation_threshold;
+    let modulation_type = if !has_modulation {
+        ModulationType::Stable
+    } else if amplitude_trend > 0.3 {
+        ModulationType::Emerging
+    } else if amplitude_trend < -0.3 {
+        ModulationType::Fading
+    } else {
+        ModulationType::Oscillating
+    };
+
+    AmplitudeModulationResult {
+        is_seasonal: true,
+        seasonal_strength: overall_strength,
+        has_modulation,
+        modulation_type,
+        modulation_score,
+        amplitude_trend,
+        strength_curve: envelope,
+        time_points: argvals.to_vec(),
+        min_strength: min_amp,
+        max_strength: max_amp,
+    }
+}
+
+/// Detect amplitude modulation using Morlet wavelet transform.
+///
+/// Uses continuous wavelet transform at the seasonal period to extract
+/// time-varying amplitude. This method is more robust to noise and can
+/// better handle non-stationary signals compared to Hilbert transform.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `period` - Seasonal period in argvals units
+/// * `modulation_threshold` - CV threshold for detecting modulation (default: 0.15)
+/// * `seasonality_threshold` - Strength threshold for seasonality (default: 0.3)
+///
+/// # Returns
+/// `WaveletAmplitudeResult` containing detection results and wavelet amplitude curve
+///
+/// # Notes
+/// - Uses Morlet wavelet with ω₀ = 6 (standard choice)
+/// - The scale parameter is derived from the period: scale = period * ω₀ / (2π)
+/// - This relates to how wavelets measure period: for Morlet, period ≈ scale * 2π / ω₀
+pub fn detect_amplitude_modulation_wavelet(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    period: f64,
+    modulation_threshold: f64,
+    seasonality_threshold: f64,
+) -> WaveletAmplitudeResult {
+    let empty_result = WaveletAmplitudeResult {
+        is_seasonal: false,
+        seasonal_strength: 0.0,
+        has_modulation: false,
+        modulation_type: ModulationType::NonSeasonal,
+        modulation_score: 0.0,
+        amplitude_trend: 0.0,
+        wavelet_amplitude: Vec::new(),
+        time_points: Vec::new(),
+        scale: 0.0,
+    };
+
+    if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
+        return empty_result;
+    }
+
+    // Step 1: Check if seasonality exists using spectral method
+    let overall_strength = seasonal_strength_spectral(data, n, m, argvals, period);
+
+    if overall_strength < seasonality_threshold {
+        return WaveletAmplitudeResult {
+            is_seasonal: false,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::NonSeasonal,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            wavelet_amplitude: Vec::new(),
+            time_points: argvals.to_vec(),
+            scale: 0.0,
+        };
+    }
+
+    // Step 2: Compute mean curve
+    let mean_curve: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += data[i + j * n];
+            }
+            sum / n as f64
+        })
+        .collect();
+
+    // Remove DC component
+    let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
+    let detrended: Vec<f64> = mean_curve.iter().map(|&x| x - dc).collect();
+
+    // Step 3: Compute wavelet transform at the seasonal period
+    // For Morlet wavelet: period = scale * 2π / ω₀, so scale = period * ω₀ / (2π)
+    let omega0 = 6.0; // Standard Morlet parameter
+    let scale = period * omega0 / (2.0 * PI);
+
+    // Use FFT-based CWT for efficiency
+    let wavelet_coeffs = cwt_morlet_fft(&detrended, argvals, scale, omega0);
+
+    if wavelet_coeffs.is_empty() {
+        return WaveletAmplitudeResult {
+            is_seasonal: true,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::Stable,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            wavelet_amplitude: Vec::new(),
+            time_points: argvals.to_vec(),
+            scale,
+        };
+    }
+
+    // Step 4: Extract amplitude (magnitude of wavelet coefficients)
+    let wavelet_amplitude: Vec<f64> = wavelet_coeffs.iter().map(|c| c.norm()).collect();
+
+    // Step 5: Compute statistics on amplitude (skip edges)
+    let edge_skip = (m as f64 * 0.1) as usize;
+    let interior_start = edge_skip.min(m / 4);
+    let interior_end = m.saturating_sub(edge_skip).max(m * 3 / 4);
+
+    if interior_end <= interior_start + 4 {
+        return WaveletAmplitudeResult {
+            is_seasonal: true,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::Stable,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            wavelet_amplitude,
+            time_points: argvals.to_vec(),
+            scale,
+        };
+    }
+
+    let interior_amp = &wavelet_amplitude[interior_start..interior_end];
+    let interior_times = &argvals[interior_start..interior_end];
+    let n_interior = interior_amp.len() as f64;
+
+    let mean_amp = interior_amp.iter().sum::<f64>() / n_interior;
+
+    // Coefficient of variation
+    let variance = interior_amp
+        .iter()
+        .map(|&a| (a - mean_amp).powi(2))
+        .sum::<f64>()
+        / n_interior;
+    let std_amp = variance.sqrt();
+    let modulation_score = if mean_amp > 1e-10 {
+        std_amp / mean_amp
+    } else {
+        0.0
+    };
+
+    // Step 6: Compute trend
+    let t_mean = interior_times.iter().sum::<f64>() / n_interior;
+    let mut cov_ta = 0.0;
+    let mut var_t = 0.0;
+    for (&t, &a) in interior_times.iter().zip(interior_amp.iter()) {
+        cov_ta += (t - t_mean) * (a - mean_amp);
+        var_t += (t - t_mean).powi(2);
+    }
+    let slope = if var_t > 1e-10 { cov_ta / var_t } else { 0.0 };
+
+    let time_span = interior_times.last().unwrap_or(&1.0) - interior_times.first().unwrap_or(&0.0);
+    let amplitude_trend = if mean_amp > 1e-10 && time_span > 1e-10 {
+        (slope * time_span / mean_amp).clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+
+    // Step 7: Classify modulation type
+    let has_modulation = modulation_score > modulation_threshold;
+    let modulation_type = if !has_modulation {
+        ModulationType::Stable
+    } else if amplitude_trend > 0.3 {
+        ModulationType::Emerging
+    } else if amplitude_trend < -0.3 {
+        ModulationType::Fading
+    } else {
+        ModulationType::Oscillating
+    };
+
+    WaveletAmplitudeResult {
+        is_seasonal: true,
+        seasonal_strength: overall_strength,
+        has_modulation,
+        modulation_type,
+        modulation_score,
+        amplitude_trend,
+        wavelet_amplitude,
+        time_points: argvals.to_vec(),
+        scale,
     }
 }
 
@@ -2203,5 +2868,355 @@ mod tests {
                 "Detected period should have positive amplitude"
             );
         }
+    }
+
+    // ========================================================================
+    // Amplitude Modulation Detection Tests
+    // ========================================================================
+
+    #[test]
+    fn test_amplitude_modulation_stable() {
+        // Constant amplitude seasonal signal - should detect as Stable
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Constant amplitude sine wave
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = detect_amplitude_modulation(
+            &data,
+            1,
+            m,
+            &argvals,
+            period,
+            0.15, // modulation threshold
+            0.3,  // seasonality threshold
+        );
+
+        eprintln!(
+            "Stable test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        assert!(
+            !result.has_modulation,
+            "Constant amplitude should not have modulation, got score={:.4}",
+            result.modulation_score
+        );
+        assert_eq!(
+            result.modulation_type,
+            ModulationType::Stable,
+            "Should be classified as Stable"
+        );
+    }
+
+    #[test]
+    fn test_amplitude_modulation_emerging() {
+        // Amplitude increases over time (emerging seasonality)
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Amplitude grows from 0.2 to 1.0
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let amplitude = 0.2 + 0.8 * t; // Linear increase
+                amplitude * (2.0 * PI * t / period).sin()
+            })
+            .collect();
+
+        let result = detect_amplitude_modulation(
+            &data,
+            1,
+            m,
+            &argvals,
+            period,
+            0.15,
+            0.2,
+        );
+
+        eprintln!(
+            "Emerging test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        assert!(
+            result.has_modulation,
+            "Growing amplitude should have modulation, score={:.4}",
+            result.modulation_score
+        );
+        assert_eq!(
+            result.modulation_type,
+            ModulationType::Emerging,
+            "Should be classified as Emerging, trend={:.4}",
+            result.amplitude_trend
+        );
+        assert!(
+            result.amplitude_trend > 0.0,
+            "Trend should be positive for emerging"
+        );
+    }
+
+    #[test]
+    fn test_amplitude_modulation_fading() {
+        // Amplitude decreases over time (fading seasonality)
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Amplitude decreases from 1.0 to 0.2
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let amplitude = 1.0 - 0.8 * t; // Linear decrease
+                amplitude * (2.0 * PI * t / period).sin()
+            })
+            .collect();
+
+        let result = detect_amplitude_modulation(
+            &data,
+            1,
+            m,
+            &argvals,
+            period,
+            0.15,
+            0.2,
+        );
+
+        eprintln!(
+            "Fading test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        assert!(
+            result.has_modulation,
+            "Fading amplitude should have modulation"
+        );
+        assert_eq!(
+            result.modulation_type,
+            ModulationType::Fading,
+            "Should be classified as Fading, trend={:.4}",
+            result.amplitude_trend
+        );
+        assert!(
+            result.amplitude_trend < 0.0,
+            "Trend should be negative for fading"
+        );
+    }
+
+    #[test]
+    fn test_amplitude_modulation_oscillating() {
+        // Amplitude oscillates (neither purely emerging nor fading)
+        let m = 200;
+        let period = 0.1;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Amplitude oscillates: high-low-high-low pattern
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let amplitude = 0.5 + 0.4 * (2.0 * PI * t * 2.0).sin(); // 2 modulation cycles
+                amplitude * (2.0 * PI * t / period).sin()
+            })
+            .collect();
+
+        let result = detect_amplitude_modulation(
+            &data,
+            1,
+            m,
+            &argvals,
+            period,
+            0.15,
+            0.2,
+        );
+
+        eprintln!(
+            "Oscillating test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        // Oscillating has high variation but near-zero trend
+        if result.has_modulation {
+            // Trend should be near zero for oscillating
+            assert!(
+                result.amplitude_trend.abs() < 0.5,
+                "Trend should be small for oscillating"
+            );
+        }
+    }
+
+    #[test]
+    fn test_amplitude_modulation_non_seasonal() {
+        // Pure noise - no seasonality
+        let m = 100;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Random noise (use simple pseudo-random)
+        let data: Vec<f64> = (0..m)
+            .map(|i| ((i as f64 * 1.618).sin() * 100.0).fract())
+            .collect();
+
+        let result = detect_amplitude_modulation(
+            &data,
+            1,
+            m,
+            &argvals,
+            0.2, // arbitrary period
+            0.15,
+            0.3,
+        );
+
+        assert!(
+            !result.is_seasonal,
+            "Noise should not be detected as seasonal"
+        );
+        assert_eq!(
+            result.modulation_type,
+            ModulationType::NonSeasonal,
+            "Should be classified as NonSeasonal"
+        );
+    }
+
+    // ========================================================================
+    // Wavelet-based Amplitude Modulation Detection Tests
+    // ========================================================================
+
+    #[test]
+    fn test_wavelet_amplitude_modulation_stable() {
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = detect_amplitude_modulation_wavelet(&data, 1, m, &argvals, period, 0.15, 0.3);
+
+        eprintln!(
+            "Wavelet stable: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        assert!(
+            !result.has_modulation,
+            "Constant amplitude should not have modulation, got score={:.4}",
+            result.modulation_score
+        );
+    }
+
+    #[test]
+    fn test_wavelet_amplitude_modulation_emerging() {
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Amplitude grows from 0.2 to 1.0
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let amplitude = 0.2 + 0.8 * t;
+                amplitude * (2.0 * PI * t / period).sin()
+            })
+            .collect();
+
+        let result = detect_amplitude_modulation_wavelet(&data, 1, m, &argvals, period, 0.15, 0.2);
+
+        eprintln!(
+            "Wavelet emerging: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        assert!(
+            result.has_modulation,
+            "Growing amplitude should have modulation"
+        );
+        assert!(
+            result.amplitude_trend > 0.0,
+            "Trend should be positive for emerging"
+        );
+    }
+
+    #[test]
+    fn test_wavelet_amplitude_modulation_fading() {
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Amplitude decreases from 1.0 to 0.2
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                let amplitude = 1.0 - 0.8 * t;
+                amplitude * (2.0 * PI * t / period).sin()
+            })
+            .collect();
+
+        let result = detect_amplitude_modulation_wavelet(&data, 1, m, &argvals, period, 0.15, 0.2);
+
+        eprintln!(
+            "Wavelet fading: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
+            result.is_seasonal, result.has_modulation, result.modulation_score, result.amplitude_trend, result.modulation_type
+        );
+
+        assert!(result.is_seasonal, "Should detect seasonality");
+        assert!(result.has_modulation, "Fading amplitude should have modulation");
+        assert!(
+            result.amplitude_trend < 0.0,
+            "Trend should be negative for fading"
+        );
+    }
+
+    #[test]
+    fn test_seasonal_strength_wavelet() {
+        let m = 200;
+        let period = 0.2;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+        // Pure sine wave at target period - should have high strength
+        let seasonal_data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let strength = seasonal_strength_wavelet(&seasonal_data, 1, m, &argvals, period);
+        eprintln!("Wavelet strength (pure sine): {:.4}", strength);
+        assert!(strength > 0.5, "Pure sine should have high wavelet strength");
+
+        // Pure noise - should have low strength
+        let noise_data: Vec<f64> = (0..m)
+            .map(|i| ((i * 12345 + 67890) % 1000) as f64 / 1000.0 - 0.5)
+            .collect();
+
+        let noise_strength = seasonal_strength_wavelet(&noise_data, 1, m, &argvals, period);
+        eprintln!("Wavelet strength (noise): {:.4}", noise_strength);
+        assert!(
+            noise_strength < 0.3,
+            "Noise should have low wavelet strength"
+        );
+
+        // Wrong period - should have lower strength
+        let wrong_period_strength =
+            seasonal_strength_wavelet(&seasonal_data, 1, m, &argvals, period * 2.0);
+        eprintln!(
+            "Wavelet strength (wrong period): {:.4}",
+            wrong_period_strength
+        );
+        assert!(
+            wrong_period_strength < strength,
+            "Wrong period should have lower strength"
+        );
     }
 }

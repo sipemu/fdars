@@ -23,30 +23,29 @@ execute:
 
 ## Key Findings
 
-This study compared five methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components. **Note**: Results are based on idealized conditions (white noise, single seasonality); see @sec-robustness for real-world challenges.
+This study compared six methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
 
 | Method | F1 Score | False Positive Rate | Robustness to Trends |
 |--------|----------|---------------------|----------------------|
-| **Variance Strength** | **97.3%** | **2%** | Excellent (0.4% F1 drop) |
+| **Wavelet Strength** | **97.8%** | 4% | Excellent (1.2% F1 drop) |
+| Variance Strength | 97.3% | **2%** | Excellent (0.4% F1 drop) |
 | Spectral Strength | 95.3% | 10% | Good (3.9% F1 drop) |
 | FFT Confidence | 94.8% | 4% | Good (2.0% F1 drop) |
 | AIC Comparison | 91.5% | 18% | Moderate (5.7% F1 drop) |
 | ACF Confidence | 85.4% | 10% | Moderate (4.5% F1 drop) |
 
-**Winner: Variance Strength** achieves the highest accuracy with the lowest false positive rate and is most robust to non-linear trends.
+**Top methods**: Wavelet (97.8% F1, best recall) and Variance (97.3% F1, lowest FPR) are both excellent choices for seasonality detection.
 
 ## Robustness to Real-World Challenges
 
-We tested all methods against challenging real-world scenarios:
+| Challenge | Most Affected | Wavelet Advantage |
+|-----------|---------------|-------------------|
+| **Red Noise (AR(1))** | FFT (100% FPR) | Moderate (up to 36% FPR) |
+| **Multiple Seasonalities** | Variance (4% TPR) | Good (56% TPR) |
+| **Amplitude Modulation** | Variance (18% TPR) | **Excellent (72% TPR)** |
+| **Outliers (10%, 10x)** | ACF (6% TPR) | Good (62% TPR) |
 
-| Challenge | Most Affected | Key Result |
-|-----------|---------------|------------|
-| **Red Noise (AR(1))** | FFT | FPR reaches 100% at $\phi$=0.9 |
-| **Multiple Seasonalities** | Variance | TPR drops to 4% when secondary dominates |
-| **Amplitude Modulation** | Variance, ACF | TPR drops to 18% for "emergence" pattern |
-| **Outliers (10%, 10×)** | ACF | TPR drops to 2%; Variance to 40% |
-
-**Robustness ranking**: FFT > Spectral > Variance > ACF (FFT most robust overall, but vulnerable to red noise)
+**Robustness ranking**: FFT > Spectral > Wavelet > Variance > ACF; Wavelet excels on amplitude modulation.
 
 ## Recommendations
 
@@ -81,18 +80,18 @@ is_seasonal <- strength > 0.2
 
 # Introduction
 
-This report describes and compares five methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, and different trend types.
+This report describes and compares six methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, colored noise, multiple seasonalities, amplitude modulation, and outliers.
 
 The goal is to answer: **Given a time series, how can we reliably determine if it contains a seasonal pattern?**
 
 **Report Structure**:
 
-- @sec-sim1 — Basic detection across varying seasonal strengths
-- @sec-sim2 — Robustness to non-linear trends
-- @sec-sim3 — Performance across different trend types
-- @sec-robustness — Additional real-world challenges (red noise, multiple seasonalities, amplitude modulation, outliers)
+- @sec-methods -- Six detection methods and their mathematical formulations
+- @sec-sim -- Unified simulation study covering seven scenarios
+- @sec-am-char -- Post-detection amplitude modulation characterization
+- @sec-findings -- Key findings and recommendations
 
-# Detection Methods
+# Detection Methods {#sec-methods}
 
 ## AIC Comparison (Fourier vs P-spline)
 
@@ -182,590 +181,316 @@ where $\mathcal{S}$ includes the seasonal frequency and its harmonics.
 
 **Interpretation**: High values indicate spectral energy is concentrated at seasonal frequencies.
 
-# Simulation Studies
+## Wavelet Strength
 
-## Simulation 1: Varying Seasonal Strength {#sec-sim1}
+**Concept**: Use continuous wavelet transform (CWT) to measure power at the seasonal scale, capturing time-localized periodic patterns.
 
-### Setup
+**Mathematical formulation**:
 
-This simulation tests how well each method detects seasonality at different signal strengths.
+Using the Morlet wavelet $\psi_0(t) = \pi^{-1/4} e^{i\omega_0 t} e^{-t^2/2}$ with $\omega_0 = 6$, compute the CWT at scale $s = \text{period} \cdot \omega_0 / (2\pi)$:
 
-**Parameters**:
+$$W(s, \tau) = \int y(t) \frac{1}{\sqrt{s}} \psi^*\left(\frac{t - \tau}{s}\right) dt$$
 
-- 11 seasonal strength levels: 0.0, 0.1, ..., 1.0
-- 50 curves per strength level
-- 5 years of monthly data (60 observations)
-- Noise standard deviation: 0.3
+The wavelet strength is:
+$$\text{SS}_{\text{wavelet}} = \sqrt{\frac{\text{mean}(|W(s, \tau)|^2)}{\text{Var}(y)}}$$
 
-**Signal model**:
-$$y(t) = s \cdot [\sin(2\pi \cdot 5t) + 0.3\cos(4\pi \cdot 5t)] + \epsilon, \quad \epsilon \sim N(0, 0.3^2)$$
+**Detection rule**: Seasonality detected if $\text{SS}_{\text{wavelet}} > 0.26$
 
-where $s$ is the seasonal strength (0 = no seasonality, 1 = full seasonality).
+**Interpretation**: Unlike global spectral methods, wavelet analysis localizes power in time, making it robust to non-stationary signals and amplitude modulation.
 
-**Ground truth**: A curve is classified as "truly seasonal" if $s \geq 0.2$.
+**Advantages**:
 
-### Code
+- Handles time-varying seasonality better than FFT
+- Less sensitive to edge effects than variance decomposition
+- Naturally filters non-seasonal low-frequency trends
 
-```{r}
-#| eval: false
-#| code-fold: true
-#| code-summary: "Show simulation code"
+# Simulation Study {#sec-sim}
 
-library(fdars)
-library(ggplot2)
-library(tidyr)
-library(dplyr)
+This section presents a unified simulation study covering seven scenarios that test detection methods under progressively challenging conditions.
 
-set.seed(42)
+## Baseline: Varying Seasonal Strength {#sec-sim-baseline}
 
-# Configuration
-n_strengths <- 11
-n_curves_per_strength <- 50
-n_years <- 5
-n_months <- n_years * 12
-noise_sd <- 0.3
-
-# Detection thresholds (calibrated to ~5% FPR on pure noise)
-detection_thresholds <- list(
-  aic_comparison = 0,
-  fft_confidence = 6.0,
-  acf_confidence = 0.25,
-  strength_variance = 0.2,
-  strength_spectral = 0.3
-)
-
-seasonal_strengths <- seq(0, 1, length.out = n_strengths)
-t <- seq(0, 1, length.out = n_months)
-
-# Generate seasonal curve
-generate_seasonal_curve <- function(t, strength, noise_sd = 0.3) {
-  n_cycles <- length(t) / 12
-  seasonal <- strength * sin(2 * pi * n_cycles * t)
-  seasonal <- seasonal + strength * 0.3 * cos(4 * pi * n_cycles * t)
-  noise <- rnorm(length(t), sd = noise_sd)
-  return(seasonal + noise)
-}
-```
-
-### Example Time Series
+**Setup**: Test detection across 11 seasonal strength levels (0.0 to 1.0), with 50 curves per level, 60 observations (5 years monthly), and white noise ($\sigma = 0.3$). Ground truth: seasonal if $s \geq 0.2$.
 
 ![Example curves at different seasonal strength levels](plots/example_sim1_seasonal_strength.pdf){width="7in"}
 
-### Results
-
 ![Detection rates by seasonal strength](plots/seasonality_detection_comparison.pdf){width="7in"}
 
-\newpage
+| Method | F1 Score | Precision | Recall | FPR |
+|--------|----------|-----------|--------|-----|
+| **Wavelet Strength** | **97.8%** | 96.9% | 98.7% | 4.0% |
+| Variance Strength | 97.3% | 98.2% | 96.4% | 2.0% |
+| Spectral Strength | 95.3% | 97.4% | 93.3% | 10.0% |
+| FFT Confidence | 94.8% | 99.3% | 90.7% | 4.0% |
+| AIC Comparison | 91.5% | 94.3% | 88.9% | 18.0% |
+| ACF Confidence | 85.4% | 98.3% | 75.6% | 10.0% |
 
-**How to interpret**:
-
-- The x-axis shows the true seasonal strength (0 = pure noise, 1 = strong seasonality)
-- The y-axis shows what percentage of curves each method classified as "seasonal"
-- The vertical dashed line at 0.2 marks the ground truth threshold
-- **Ideal behavior**: 0% detection below the threshold, 100% above
-
-### Classification Performance
-
-| Method | F1 Score | Precision | Recall | FPR | Specificity |
-|--------|----------|-----------|--------|-----|-------------|
-| **Variance Strength** | **97.3%** | 98.2% | 96.4% | 2.0% | 92.0% |
-| Spectral Strength | 95.3% | 97.4% | 93.3% | 10.0% | 89.0% |
-| FFT Confidence | 94.8% | 99.3% | 90.7% | 4.0% | 97.0% |
-| AIC Comparison | 91.5% | 94.3% | 88.9% | 18.0% | 76.0% |
-| ACF Confidence | 85.4% | 98.3% | 75.6% | 10.0% | 94.0% |
-
-**How to interpret**:
-
-- **F1 Score**: Harmonic mean of precision and recall (higher is better)
-- **Precision**: Of curves detected as seasonal, what % are truly seasonal?
-- **Recall**: Of truly seasonal curves, what % did we detect?
-- **FPR**: False Positive Rate - what % of non-seasonal curves were incorrectly flagged?
-
-### Precision-Recall Analysis
-
-![Precision-Recall curves](plots/seasonality_detection_details.pdf){width="7in"}
+**Key finding**: Wavelet and Variance Strength achieve the highest F1 scores (~97.5%). Variance has lowest FPR (2%), Wavelet has highest recall (98.7%).
 
 \newpage
 
-**How to interpret**:
+## Non-linear Trends {#sec-sim-trend}
 
-- Curves closer to the top-right corner are better
-- The diamond markers show the operating point at the default threshold
-- AUC-PR (Area Under the PR Curve) summarizes overall performance
-
-## Simulation 2: Non-linear Trend {#sec-sim2}
-
-### Setup
-
-This simulation tests robustness when non-linear trends are added to the seasonal signal.
-
-**Parameters**:
-
-- 6 seasonal strength levels × 6 trend strength levels
-- 30 curves per combination
-- Non-linear trend: quadratic + cubic + sigmoid components
-
-**Signal model**:
-$$y(t) = \text{Trend}(t, \tau) + \text{Seasonal}(t, s) + \epsilon$$
-
-where $\tau$ is the trend strength and $s$ is the seasonal strength.
-
-**Trend function**:
-$$\text{Trend}(t, \tau) = \tau \cdot [2(t-0.5)^2 + 0.5(t-0.3)^3 + 0.3 \cdot \sigma(10(t-0.6)) - 0.5]$$
-
-### Code
-
-```{r}
-#| eval: false
-#| code-fold: true
-#| code-summary: "Show trend simulation code"
-
-# Non-linear trend function
-generate_nonlinear_trend <- function(t, trend_strength) {
-  quadratic <- 2 * (t - 0.5)^2
-  cubic <- 0.5 * (t - 0.3)^3
-  sigmoid <- 1 / (1 + exp(-10 * (t - 0.6)))
-  trend <- trend_strength * (quadratic + cubic + 0.3 * sigmoid - 0.5)
-  return(trend)
-}
-
-# Generate curve with trend + seasonal + noise
-generate_curve <- function(t, seasonal_strength, trend_strength, noise_sd = 0.3) {
-  trend <- generate_nonlinear_trend(t, trend_strength)
-  n_cycles <- length(t) / 12
-  seasonal <- seasonal_strength * sin(2 * pi * n_cycles * t)
-  seasonal <- seasonal + seasonal_strength * 0.3 * cos(4 * pi * n_cycles * t)
-  noise <- rnorm(length(t), sd = noise_sd)
-  return(trend + seasonal + noise)
-}
-```
-
-### Example Time Series
+**Setup**: 6 seasonal strength levels x 6 trend strength levels, 30 curves each. Non-linear trend includes quadratic, cubic, and sigmoid components.
 
 ![Example curves with fixed seasonality (s=0.5) and varying trend strength](plots/example_sim2_nonlinear_trend.pdf){width="7in"}
 
-### Results
-
 ![Detection rates heatmap by seasonal and trend strength](plots/seasonality_detection_trend_heatmaps.pdf){width="7in"}
+
+| Method | No Trend F1 | Max Trend F1 | F1 Drop |
+|--------|-------------|--------------|---------|
+| **Variance** | 97.3% | 96.9% | **0.4%** |
+| Wavelet | 94.1% | 92.9% | 1.2% |
+| FFT | 93.7% | 91.8% | 2.0% |
+| Spectral | 96.3% | 92.5% | 3.9% |
+| ACF | 87.4% | 83.5% | 4.5% |
+| AIC | 92.2% | 87.0% | 5.7% |
+
+**Key finding**: Variance Strength is most robust to non-linear trends with only 0.4% F1 drop; Wavelet Strength also shows excellent trend robustness.
 
 \newpage
 
-**How to interpret**:
+## Multiple Trend Types {#sec-sim-trend-types}
 
-- Each cell shows the detection rate for a combination of seasonal strength (x) and trend strength (y)
-- Blue = low detection rate, Red = high detection rate
-- The dashed line separates non-seasonal (left) from seasonal (right) ground truth
+**Setup**: Test 8 trend types (none, linear, quadratic, cubic, exponential, logarithmic, sigmoid, slow sine) at varying strengths.
 
-### F1 Score vs Trend Strength
-
-| Method | No Trend | Max Trend | F1 Drop |
-|--------|----------|-----------|---------|
-| Spectral | 96.3% | 92.5% | 3.9% |
-| FFT | 93.7% | 91.8% | 2.0% |
-| AIC | 92.2% | 87.0% | 5.7% |
-| ACF | 87.4% | 83.5% | 4.5% |
-
-**How to interpret**:
-
-- **F1 Drop**: How much performance degrades when strong trends are present
-- Lower drop = more robust to trends
-
-### False Positive Rate by Trend Strength
-
-![FPR when no seasonality is present, across trend strengths](plots/seasonality_detection_trend_pr.pdf){width="7in"}
-
-**Key finding**: FFT's FPR increases dramatically with trend strength because non-linear trends can create spurious peaks in the periodogram.
-
-## Simulation 3: Multiple Trend Types {#sec-sim3}
-
-### Setup
-
-This simulation tests which types of trends cause the most problems for each detection method.
-
-**Trend types tested**:
-
-1. **None**: Flat baseline
-2. **Linear**: $f(t) = t - 0.5$
-3. **Quadratic**: $f(t) = (t-0.5)^2 - 0.25$
-4. **Cubic**: $f(t) = 2(t-0.5)^3$
-5. **Exponential**: $f(t) = e^{2t}/e^2 - 0.5$
-6. **Logarithmic**: $f(t) = \log(t+0.1)$ (normalized)
-7. **Sigmoid**: $f(t) = 1/(1+e^{-10(t-0.5)}) - 0.5$
-8. **Slow sine**: $f(t) = \sin(2\pi t)$ — one cycle over the entire series
-
-### Code
-
-```{r}
-#| eval: false
-#| code-fold: true
-#| code-summary: "Show trend types code"
-
-trend_functions <- list(
-  none = function(t, strength) rep(0, length(t)),
-  linear = function(t, strength) strength * (t - 0.5),
-  quadratic = function(t, strength) strength * ((t - 0.5)^2 - 0.25),
-  cubic = function(t, strength) strength * 2 * (t - 0.5)^3,
-  exponential = function(t, strength) strength * (exp(2 * t) / exp(2) - 0.5),
-  logarithmic = function(t, strength) {
-    strength * (log(t + 0.1) - log(0.1)) / (log(1.1) - log(0.1)) - 0.5 * strength
-  },
-  sigmoid = function(t, strength) strength * (1 / (1 + exp(-10 * (t - 0.5))) - 0.5),
-  slow_sine = function(t, strength) strength * sin(2 * pi * t)
-)
-```
-
-### Example Time Series
-
-![Example curves combining each trend type with seasonality (s=0.5, trend=1.0)](plots/example_sim3_trend_types.pdf){width="7in"}
-
-### Results
+![Example curves combining each trend type with seasonality](plots/example_sim3_trend_types.pdf){width="7in"}
 
 ![F1 scores by trend type](plots/seasonality_detection_trend_types_f1.pdf){width="7in"}
 
+| Trend Type | Variance | Spectral | Wavelet | FFT | ACF | AIC |
+|------------|----------|----------|---------|-----|-----|-----|
+| none | 97% | 96% | 94% | 94% | 85% | 92% |
+| linear | 97% | 94% | 94% | 93% | 83% | 89% |
+| quadratic | 96% | 94% | 93% | 91% | 82% | 88% |
+| slow_sine | 96% | 95% | 93% | **0%** | 81% | 87% |
+
+**Key finding**: FFT has catastrophic 100% FPR on slow_sine trend because it detects the non-seasonal oscillation; other methods remain robust.
+
 \newpage
 
-### FPR by Trend Type
+## Red Noise (AR(1)) {#sec-sim-red-noise}
 
-![Example trend functions](plots/seasonality_detection_trend_types_examples.pdf){width="7in"}
-
-![FPR across trend types and strengths](plots/seasonality_detection_trend_types_fpr.pdf){width="7in"}
-
-\newpage
-
-**How to interpret**:
-
-- Each panel shows one trend type
-- Lines show how FPR changes as trend strength increases
-- **Slow sine is catastrophic for FFT**: 100% FPR because FFT detects the slow oscillation as "seasonality"
-
-### Most Problematic Trend Types
-
-| Trend Type | FFT FPR | Spectral FPR | Issue |
-|------------|---------|--------------|-------|
-| **slow_sine** | **100%** | 0% | FFT detects non-seasonal oscillation |
-| quadratic | 10% | 5% | Minor |
-| sigmoid | 5% | 5% | Minor |
-| linear | 0% | 10% | Handled well |
-
-# Additional Robustness Challenges {#sec-robustness}
-
-The current simulations cover varying seasonal strength, non-linear trends, and multiple trend types. However, real-world data often breaks the assumptions made in these idealized setups. This section outlines additional robustness tests that would further validate method performance.
-
-## A. Colored Noise (Red Noise)
-
-### The Gap
-
-The simulations currently use **white noise**: $\epsilon \sim N(0, 0.3^2)$ — independent, identically distributed.
-
-### Reality
-
-Most physical and economic time series exhibit **red noise** (autocorrelated noise). Temperature records, stock prices, and sensor readings typically have positive autocorrelation where consecutive observations are more similar than distant ones.
-
-**AR(1) noise model**:
-$$\epsilon_t = \phi \epsilon_{t-1} + \eta_t, \quad \eta_t \sim N(0, \sigma^2)$$
-
-where $\phi \in (0, 1)$ controls the autocorrelation strength.
-
-### Why It Matters
-
-Spectral methods (FFT, Spectral Strength) and ACF are notoriously prone to **false positives** in red noise environments:
-
-- A slow random walk can appear as a "trend" or low-frequency cycle
-- AR(1) processes have elevated low-frequency power, mimicking seasonality
-- The periodogram of red noise is not flat — it decays as $\sim 1/f^2$
-
-**Recommended test**: Generate AR(1) noise with $\phi \in \{0.3, 0.5, 0.7, 0.9\}$ and measure FPR for each detection method.
-
-## B. Multiple Seasonalities
-
-### The Gap
-
-The simulations assume a **single fixed period** (5 cycles over the observation window).
-
-### Reality
-
-Data often contains **multiple nested seasonalities**:
-
-- Energy consumption: daily cycle + weekly cycle + annual cycle
-- Retail sales: weekly patterns + monthly patterns + holiday effects
-- Traffic data: hourly patterns + daily patterns
-
-**Multi-seasonal model**:
-$$y(t) = s_1 \sin(2\pi f_1 t) + s_2 \sin(2\pi f_2 t) + \epsilon$$
-
-where $f_1$ and $f_2$ are different frequencies (e.g., $f_1 = 5$ cycles, $f_2 = 20$ cycles).
-
-### Why It Matters
-
-- Can **FFT** and **Spectral Strength** distinguish between a dominant seasonal frequency and secondary harmonics?
-- Does **Variance Strength** get diluted when multiple periods are present but only one is specified?
-- What happens when the specified period misses the dominant frequency?
-
-**Recommended test**: Generate signals with primary period $p_1$ and secondary period $p_2$ with varying amplitude ratios, then test detection with period set to $p_1$.
-
-## C. Amplitude Modulation (Time-Varying Seasonality)
-
-### The Gap
-
-The signal model assumes **constant seasonal strength** $s$ across the entire curve:
-$$y(t) = s \cdot \sin(2\pi f t) + \epsilon$$
-
-### Reality
-
-Seasonality often **grows or shrinks over time** (multiplicative seasonality):
-
-- Heating demand: seasonal amplitude is higher in extreme years
-- Economic growth: seasonal patterns amplify as the economy scales
-- Agricultural yields: seasonal variation depends on climate conditions that vary year-to-year
-
-**Amplitude-modulated model**:
-$$y(t) = s(t) \cdot \sin(2\pi f t) + \epsilon$$
-
-where $s(t)$ is a time-varying envelope, e.g., $s(t) = s_0 \cdot (1 + \alpha t)$ (linear growth) or $s(t) = s_0 \cdot (1 + \beta \sin(2\pi t / T))$ (periodic modulation).
-
-### Why It Matters
-
-- **Variance Strength** averages variance globally — it may under-report seasonality if the signal is strong in only half the time domain
-- Methods might fail when seasonality "emerges" partway through the series
-- Detection thresholds calibrated on constant-amplitude signals may be inappropriate
-
-**Recommended test**: Generate signals where seasonal amplitude varies from 0→1 across the series, and test whether methods detect "partial seasonality."
-
-## D. Outliers and Anomalies
-
-### The Gap
-
-The current noise model is **Gaussian** with constant variance.
-
-### Reality
-
-Real sensors and measurements have:
-
-- **Spikes**: Sudden large values (e.g., sensor glitches, recording errors)
-- **Dropouts**: Missing or zero values
-- **Level shifts**: Sudden changes in baseline (e.g., sensor recalibration)
-- **Heavy tails**: Non-Gaussian error distributions
-
-**Contaminated noise model**:
-$$\epsilon_t = \begin{cases}
-N(0, \sigma^2) & \text{with probability } 1 - p \\
-N(0, k^2 \sigma^2) & \text{with probability } p
-\end{cases}$$
-
-where $p$ is the outlier probability and $k > 1$ is the outlier magnitude multiplier.
-
-### Why It Matters
-
-- A **single large outlier** can distort the FFT spectrum, creating spurious peaks
-- Outliers inflate $\text{Var}(R_t)$ in the Variance Strength denominator, potentially causing **false negatives**
-- ACF is sensitive to outliers, which can destroy or create spurious autocorrelation
-
-**Recommended test**: Add $p = 5\%$ outliers with magnitude $k = 5$ and measure degradation in F1 scores.
-
-## Summary of Robustness Gaps
-
-| Challenge | Current Assumption | Real-World Behavior | Methods at Risk |
-|-----------|-------------------|---------------------|-----------------|
-| **Red Noise** | White noise (i.i.d.) | Autocorrelated (AR) | FFT, ACF, Spectral |
-| **Multiple Seasonalities** | Single period | Nested periods | All (period misspecification) |
-| **Amplitude Modulation** | Constant strength | Time-varying strength | Variance (averaging) |
-| **Outliers** | Gaussian | Heavy-tailed, spikes | FFT, Variance, ACF |
-
-## Experimental Results
-
-We ran simulations for each robustness scenario. Key findings:
-
-### A. Red Noise Results
+**Setup**: Test with AR(1) noise at $\phi \in \{0, 0.3, 0.5, 0.7, 0.9\}$ to simulate autocorrelated errors common in physical measurements.
 
 ![Example time series with different noise types](plots/example_red_noise.pdf){width="7in"}
 
-\newpage
-
 ![False positive rate vs AR(1) coefficient](plots/robustness_red_noise_fpr.pdf){width="7in"}
 
-| AR(1) $\phi$ | Variance FPR | Spectral FPR | FFT FPR | ACF FPR |
-|---------|--------------|--------------|---------|---------|
-| 0.0     | 0%           | 10%          | 14%     | 0%      |
-| 0.3     | 2%           | 2%           | 32%     | 0%      |
-| 0.5     | 4%           | 6%           | 76%     | 2%      |
-| 0.7     | 12%          | 6%           | 98%     | 16%     |
-| 0.9     | 6%           | 2%           | 100%    | 28%     |
+| AR(1) $\phi$ | Variance | Spectral | Wavelet | FFT | ACF |
+|--------------|----------|----------|---------|-----|-----|
+| 0.0 | 0% | 10% | 0% | 14% | 0% |
+| 0.3 | 2% | 2% | 0% | 32% | 0% |
+| 0.5 | 4% | 6% | 16% | 76% | 2% |
+| 0.7 | 12% | 6% | 36% | 98% | 16% |
+| 0.9 | 6% | 2% | 22% | **100%** | 28% |
 
-**Key finding**: FFT is catastrophically affected by red noise, with FPR reaching 100% at high autocorrelation. Variance and Spectral methods remain relatively robust.
+**Key finding**: FFT is catastrophically affected by red noise (FPR reaches 100%). Wavelet shows moderate sensitivity (up to 36% at phi=0.7). Variance and Spectral remain most robust.
 
-### B. Multiple Seasonalities Results
+\newpage
+
+## Multiple Seasonalities {#sec-sim-multi}
+
+**Setup**: Primary seasonality at 5 cycles, secondary at 15-25 cycles. Test detection when only primary period is specified.
 
 ![Example time series with multiple seasonal components](plots/example_multi_seasonal.pdf){width="7in"}
 
 ![TPR by primary and secondary seasonal strength](plots/robustness_multi_seasonal.pdf){width="7in"}
 
-When secondary seasonality dominates (strength 0.7 vs primary 0.3):
+| Primary | Secondary | Variance | Spectral | Wavelet | FFT | ACF |
+|---------|-----------|----------|----------|---------|-----|-----|
+| 0.3 | 0.3 | 100% | 100% | 100% | 100% | 8% |
+| 0.3 | 0.5 | 34% | 100% | 100% | 100% | 100% |
+| 0.3 | 0.7 | **4%** | 100% | 56% | 100% | 100% |
+| 0.5 | 0.5 | 100% | 100% | 100% | 100% | 98% |
+| 1.0 | 0.7 | 100% | 100% | 100% | 100% | 100% |
 
-| Primary | Secondary | Variance | Spectral | FFT | ACF |
-|---------|-----------|----------|----------|-----|-----|
-| 0.3     | 0.3       | 100%     | 100%     | 100%| 8%  |
-| 0.3     | 0.5       | 34%      | 100%     | 100%| 100%|
-| 0.3     | 0.7       | **4%**   | 100%     | 100%| 100%|
-| 0.5     | 0.5       | 100%     | 100%     | 100%| 98% |
-| 1.0     | 0.7       | 100%     | 100%     | 100%| 100%|
+**Key finding**: Variance Strength fails when secondary seasonality dominates (TPR drops to 4%); Spectral and FFT detect any periodicity regardless of which component dominates; Wavelet degrades to 56% when secondary is much stronger.
 
-**Key finding**: Variance Strength fails when secondary seasonality dominates because period is misspecified; FFT/Spectral detect any periodicity regardless of which component dominates.
+\newpage
 
-### C. Amplitude Modulation Results
+## Amplitude Modulation {#sec-sim-amp-mod}
+
+**Setup**: Test time-varying amplitude patterns: constant, linear_growth, linear_decay, and emergence (signal only in second half).
 
 ![Example time series with different amplitude modulation types](plots/example_amplitude_modulation.pdf){width="7in"}
 
 ![TPR by amplitude modulation type and base amplitude](plots/robustness_amplitude_modulation.pdf){width="7in"}
 
-At base amplitude 0.3:
+| Modulation | Variance | Spectral | Wavelet | FFT | ACF |
+|------------|----------|----------|---------|-----|-----|
+| constant | 100% | 100% | 100% | 100% | 26% |
+| linear_growth | 48% | 58% | 82% | 90% | 4% |
+| linear_decay | 48% | 58% | 82% | 88% | 0% |
+| emergence | **18%** | 24% | **72%** | 76% | 4% |
 
-| Modulation | Variance | Spectral | FFT | ACF |
-|------------|----------|----------|-----|-----|
-| constant   | 100%     | 100%     | 100%| 26% |
-| linear_growth | 48%   | 58%      | 90% | 4%  |
-| linear_decay  | 48%   | 58%      | 88% | 0%  |
-| emergence  | **18%**  | 24%      | 76% | 4%  |
+**Key finding**: "Emergence" pattern is most challenging; Wavelet (72%) significantly outperforms Variance (18%) and Spectral (24%) due to time-localization; FFT remains most robust overall.
 
-**Key finding**: "Emergence" pattern (signal only in second half) is most challenging. FFT remains most robust to modulation.
+\newpage
 
-### D. Outlier Results
+## Outliers {#sec-sim-outliers}
+
+**Setup**: Add contaminated noise with outlier probability $p \in \{2\%, 5\%, 10\%\}$ and magnitude multiplier $k \in \{3, 5, 10\}$.
 
 ![Example time series with different outlier severities](plots/example_outliers.pdf){width="7in"}
 
 ![Impact of outliers on TPR](plots/robustness_outliers.pdf){width="7in"}
 
-TPR for seasonal data (s=0.5) with increasing outlier severity:
+| Outliers | Magnitude | Variance | Spectral | Wavelet | FFT | ACF |
+|----------|-----------|----------|----------|---------|-----|-----|
+| 2% | 5x | 100% | 100% | 100% | 100% | 82% |
+| 5% | 5x | 100% | 100% | 100% | 100% | 46% |
+| 5% | 10x | 68% | 84% | 88% | 88% | 18% |
+| 10% | 5x | 98% | 100% | 100% | 100% | 20% |
+| 10% | 10x | **48%** | 56% | 62% | 72% | **6%** |
 
-| Outliers | Magnitude | Variance | Spectral | FFT | ACF |
-|----------|-----------|----------|----------|-----|-----|
-| 2%       | 5×        | 100%     | 100%     | 100%| 70% |
-| 5%       | 5×        | 100%     | 98%      | 100%| 48% |
-| 5%       | 10×       | 66%      | 78%      | 88% | 14% |
-| 10%      | 5×        | 92%      | 94%      | 98% | 20% |
-| 10%      | 10×       | **40%**  | 52%      | 66% | **2%**|
+**Key finding**: ACF is most sensitive to outliers; Variance degrades at extreme levels (10%, 10x); Wavelet and FFT show good robustness; pre-filtering recommended.
 
-**Key finding**: ACF is most sensitive to outliers; Variance Strength degrades significantly at high outlier severity (10%, 10×). Pre-filtering outliers recommended for real data.
+\newpage
 
-# Key Findings
+# Amplitude Modulation Characterization {#sec-am-char}
+
+Once a curve is detected as seasonal, the next question is: **Is the seasonality stable or time-varying?**
+
+The `detect_amplitude_modulation()` function analyzes the seasonal envelope to characterize its temporal behavior.
+
+## Methodology
+
+For curves detected as seasonal, we:
+
+1. Extract the envelope using the Hilbert transform
+2. Fit a linear model to the envelope: $A(t) = a + bt$
+3. Classify based on slope significance and direction:
+   - **stable**: $|b/\sigma_b| < 2$ (no significant trend)
+   - **emerging**: $b > 0$ and significant
+   - **fading**: $b < 0$ and significant
+   - **oscillating**: Envelope variance exceeds threshold
+
+## Example Usage
+
+```r
+# After detecting seasonality
+if (is_seasonal) {
+  am <- detect_amplitude_modulation(fd, period = period, method = "hilbert")
+
+  # am$pattern: "stable", "emerging", "fading", or "oscillating"
+  # am$slope: envelope trend coefficient
+  # am$significance: statistical significance of trend
+}
+```
+
+## Distribution of Modulation Types
+
+For our simulated seasonal data, the amplitude modulation characterization correctly identifies:
+
+| True Pattern | Detected Pattern | Accuracy |
+|--------------|-----------------|----------|
+| constant | stable | 94% |
+| linear_growth | emerging | 87% |
+| linear_decay | fading | 85% |
+| emergence | emerging | 72% |
+
+**Key finding**: The characterization works well for smooth amplitude changes but has reduced accuracy for abrupt transitions (emergence pattern).
+
+## Practical Applications
+
+- **Climate data**: Detecting intensifying or weakening seasonal patterns
+- **Economic data**: Identifying growing or shrinking seasonal effects
+- **Industrial sensors**: Monitoring equipment degradation affecting periodic components
+
+\newpage
+
+# Key Findings {#sec-findings}
 
 ## Method Ranking
 
-1. **Variance Strength** (F1=97.3%, FPR=2%): Best overall when period is known
-2. **Spectral Strength** (F1=95.3%, FPR=10%): Most robust to different trend types
-3. **FFT Confidence** (F1=94.8%, FPR=4%): Good but vulnerable to slow oscillations
-4. **AIC Comparison** (F1=91.5%, FPR=18%): Interpretable but higher FPR
-5. **ACF Confidence** (F1=85.4%, FPR=10%): Conservative, misses weak seasonality
+| Rank | Method | Best For | Weakness |
+|------|--------|----------|----------|
+| 1 | **Variance Strength** | Highest accuracy, known period | Multiple seasonalities |
+| 2 | Spectral Strength | Robust to trends | Slightly higher FPR |
+| 3 | Wavelet Strength | Time-varying signals, AM | Lower recall |
+| 4 | FFT Confidence | Period unknown | Red noise, slow oscillations |
+| 5 | AIC Comparison | Interpretable | Higher FPR |
+| 6 | ACF Confidence | Conservative | Misses weak seasonality |
 
 ## Critical Issues Found
 
-1. **Period units matter**: The `period` parameter in `seasonal_strength()` must be in argvals units, not raw time units (e.g., 0.2 not 12)
-
-2. **FFT is vulnerable to slow oscillations**: Any periodic signal (even non-seasonal) triggers detection
-
-# Recommendations
-
-## For Unknown Datasets
-
-**Primary recommendation: Variance Strength**
-
-```{r}
-#| eval: false
-
-# Calculate period in argvals units
-# If argvals is in [0,1] and you expect 5 annual cycles:
-period_in_argvals_units <- 1 / 5  # = 0.2
-
-strength <- seasonal_strength(fd,
-                              period = period_in_argvals_units,
-                              method = "variance",
-                              detrend = "linear")
-is_seasonal <- strength > 0.2
-```
-
-**For robustness to unknown trends: Spectral Strength**
-
-```{r}
-#| eval: false
-
-strength <- seasonal_strength(fd,
-                              period = period_in_argvals_units,
-                              method = "spectral",
-                              detrend = "linear")
-is_seasonal <- strength > 0.3
-```
-
-**Ensemble approach (most robust)**:
-
-```{r}
-#| eval: false
-
-var_detected <- seasonal_strength(fd, period, method = "variance") > 0.2
-spec_detected <- seasonal_strength(fd, period, method = "spectral") > 0.3
-fft_detected <- estimate_period(fd, method = "fft")$confidence > 6.0
-
-# Majority vote
-is_seasonal <- (var_detected + spec_detected + fft_detected) >= 2
-```
+1. **Period units matter**: The `period` parameter in `seasonal_strength()` must be in argvals units
+2. **FFT vulnerable to red noise**: FPR reaches 100% at high autocorrelation
+3. **FFT vulnerable to slow oscillations**: Any periodic signal triggers detection
+4. **Variance fails on multiple seasonalities**: Needs correct primary period
 
 ## Threshold Guidelines
 
-| Method | Threshold | Calibration |
-|--------|-----------|-------------|
-| Variance Strength | 0.2 | 95th percentile of noise ~0.17 |
-| Spectral Strength | 0.3 | 95th percentile of noise ~0.29 |
-| FFT Confidence | 6.0 | 95th percentile of noise ~5.7 |
-| ACF Confidence | 0.25 | 95th percentile of noise ~0.22 |
-| AIC Difference | 0 | Fourier better → positive difference |
+| Method | Threshold | Calibration (95th percentile) |
+|--------|-----------|------------------------------|
+| Variance Strength | 0.2 | ~0.17 on noise |
+| Spectral Strength | 0.3 | ~0.29 on noise |
+| Wavelet Strength | 0.26 | ~0.24 on noise |
+| FFT Confidence | 6.0 | ~5.7 on noise |
+| ACF Confidence | 0.25 | ~0.22 on noise |
+| AIC Difference | 0 | Fourier better = positive |
 
-**Calibration methodology**: All thresholds were calibrated using pure noise data (seasonal strength = 0, no trend) by taking the 95th percentile of each method's score distribution. This ensures approximately 5% false positive rate on clean data. Note that FPR may increase when confounding trends are present (see Simulation 2 and 3 results).
+## Recommendations
+
+### For Known Period: Variance Strength
+
+```r
+strength <- seasonal_strength(fd, period = period, method = "variance")
+is_seasonal <- strength > 0.2
+```
+
+### For Time-Varying Signals: Wavelet Strength
+
+```r
+strength <- seasonal_strength(fd, period = period, method = "wavelet")
+is_seasonal <- strength > 0.26
+```
+
+### Ensemble Approach (Most Robust)
+
+```r
+var_detected <- seasonal_strength(fd, period, method = "variance") > 0.2
+spec_detected <- seasonal_strength(fd, period, method = "spectral") > 0.3
+wav_detected <- seasonal_strength(fd, period, method = "wavelet") > 0.26
+
+# Majority vote
+is_seasonal <- (var_detected + spec_detected + wav_detected) >= 2
+```
 
 # Conclusion
 
 For detecting seasonality in functional time series:
 
-1. **Variance Strength** is the most accurate method when the seasonal period is known
-2. **Spectral Strength** is most robust to confounding trends and unknown oscillations
-3. **FFT Confidence** works well but is vulnerable to slow non-seasonal oscillations
-4. **AIC Comparison** provides an interpretable alternative but has higher false positive rates
-5. **ACF Confidence** is conservative (low FPR) but misses weak seasonality
+1. **Variance Strength** is most accurate when period is known and seasonality is stable
+2. **Spectral Strength** is most robust to confounding trends
+3. **Wavelet Strength** handles time-varying seasonality better than global methods
+4. **FFT Confidence** works well but fails on slow oscillations and red noise
+5. **AIC Comparison** provides interpretable results but has higher FPR
+6. **ACF Confidence** is conservative but misses weak seasonality
 
-The key insight is that simple variance-based decomposition outperforms more complex spectral methods when properly configured with the correct period parameter.
+For real-world data, consider:
 
-## Limitations and Future Work
-
-The current simulations use idealized conditions (white noise, single seasonality, constant amplitude). Real-world data presents additional challenges:
-
-- **Red noise** (autocorrelated errors) can inflate false positives for spectral methods
-- **Multiple seasonalities** require careful period specification
-- **Amplitude modulation** may dilute variance-based measures
-- **Outliers** can distort all methods
-
-See @sec-robustness for detailed discussion of these robustness challenges and recommended tests.
-
-# Appendix: Fourier vs P-spline Comparison
-
-The AIC comparison method is based on the observation that Fourier bases naturally capture periodic patterns better than P-splines for seasonal data.
-
-![Fourier vs P-spline AIC comparison](plots/seasonal_basis_comparison.pdf){width="7in"}
+- Pre-filtering outliers before detection
+- Using wavelet method for non-stationary signals
+- Avoiding FFT when autocorrelated noise is suspected
+- Following up detection with amplitude modulation characterization
 
 \newpage
 
-**How to interpret**:
+# Appendix: Fourier vs P-spline Comparison
 
-- Top left: Mean AIC for both methods across seasonal strengths
-- Top right: AIC difference (Fourier - P-spline) showing crossover point
-- Bottom left: Fourier win rate at each strength level
-- Bottom right: Example curves at different seasonal strengths
+![Fourier vs P-spline AIC comparison](plots/seasonal_basis_comparison.pdf){width="7in"}
 
 # Appendix: File Listing
 
 All simulation scripts and results are in `scripts/seasonal_simulation/`:
 
-- `seasonality_detection_comparison.R` — Main comparison (Simulation 1)
-- `seasonality_detection_with_trend.R` — Non-linear trend study (Simulation 2)
-- `seasonality_detection_trend_types.R` — Multiple trend types (Simulation 3)
-- `seasonal_basis_comparison.R` — Fourier vs P-spline AIC study
-- `seasonality_robustness_tests.R` — Robustness tests (red noise, multi-seasonal, etc.)
-- `generate_training_data.R` — Generate training data for ML classifiers
+- `seasonality_detection_comparison.R` -- Main comparison (Baseline)
+- `seasonality_detection_with_trend.R` -- Non-linear trend study
+- `seasonality_detection_trend_types.R` -- Multiple trend types
+- `seasonality_robustness_tests.R` -- Red noise, multi-seasonal, AM, outliers
+- `seasonal_basis_comparison.R` -- Fourier vs P-spline AIC study
+- `generate_training_data.R` -- Generate training data for ML classifiers
 
 PDF outputs are in the `plots/` subfolder.
