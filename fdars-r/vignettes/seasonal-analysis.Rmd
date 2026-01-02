@@ -1090,7 +1090,7 @@ stability_score <- 1 - min(1, class_result$timing_variability / 0.2)
 
 class_df <- data.frame(
   Metric = c("Seasonal Strength", "Timing Stability"),
-  Value = c(class_result$seasonal.strength, stability_score)
+  Value = c(class_result$seasonal_strength, stability_score)
 )
 
 ggplot(class_df, aes(x = Metric, y = Value, fill = Metric)) +
@@ -1144,13 +1144,13 @@ class_none <- classify.seasonality(fd_none, period = period_short)
 # Summary
 cat("Classification results:\n")
 cat("  Stable signal:      ", class_stable$classification,
-    "(strength:", round(class_stable$seasonal.strength, 2), ")\n")
+    "(strength:", round(class_stable$seasonal_strength, 2), ")\n")
 cat("  Variable signal:    ", class_variable$classification,
-    "(strength:", round(class_variable$seasonal.strength, 2), ")\n")
+    "(strength:", round(class_variable$seasonal_strength, 2), ")\n")
 cat("  Intermittent signal:", class_intermittent$classification,
-    "(strength:", round(class_intermittent$seasonal.strength, 2), ")\n")
+    "(strength:", round(class_intermittent$seasonal_strength, 2), ")\n")
 cat("  No seasonality:     ", class_none$classification,
-    "(strength:", round(class_none$seasonal.strength, 2), ")\n")
+    "(strength:", round(class_none$seasonal_strength, 2), ")\n")
 ```
 
 ```{r classification-examples-plot, fig.height=8}
