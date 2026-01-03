@@ -43,5 +43,4 @@ norms <- norm(fd)
 # Irregular fdata
 ifd <- sparsify(fd, minObs = 3, maxObs = 7, seed = 42)
 norms_irreg <- norm(ifd)
-#> Error in norm.irregFdata(ifd): Expected Doubles got Integers
 ```

@@ -55,7 +55,7 @@ Works with both regular fdata and irregular irregFdata objects."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Compute Lp Norm of Functional Data</h1>
-      <small class="dont-index">Source: <a href="https://github.com/sipemu/fdars/blob/v0.2.0/R/fdata.R" class="external-link"><code>R/fdata.R</code></a>, <a href="https://github.com/sipemu/fdars/blob/v0.2.0/R/irregFdata.R" class="external-link"><code>R/irregFdata.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/sipemu/fdars/blob/main/R/fdata.R" class="external-link"><code>R/fdata.R</code></a>, <a href="https://github.com/sipemu/fdars/blob/main/R/irregFdata.R" class="external-link"><code>R/irregFdata.R</code></a></small>
       <div class="d-none name"><code>norm.Rd</code></div>
     </div>
 
@@ -105,7 +105,6 @@ Works with both regular <code>fdata</code> and irregular <code>irregFdata</code>
 <span class="r-in"><span><span class="co"># Irregular fdata</span></span></span>
 <span class="r-in"><span><span class="va">ifd</span> <span class="op">&lt;-</span> <span class="fu"><a href="sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span>, minObs <span class="op">=</span> <span class="fl">3</span>, maxObs <span class="op">=</span> <span class="fl">7</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">norms_irreg</span> <span class="op">&lt;-</span> <span class="fu">norm</span><span class="op">(</span><span class="va">ifd</span><span class="op">)</span></span></span>
-<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in norm.irregFdata(ifd):</span> Expected Doubles got Integers</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

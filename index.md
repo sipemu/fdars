@@ -7,7 +7,7 @@ status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/
 downloads](https://cranlogs.r-pkg.org/badges/fdars)](https://cran.r-project.org/package=fdars)
 [![License:
 MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
+[![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://app.codecov.io/gh/sipemu/fdars)
 
 **Functional Data Analysis in Rust** - A high-performance R package for
 functional data analysis with a Rust backend.
@@ -488,6 +488,5 @@ Simon Mueller
 
 ## Acknowledgments
 
-- Built with [extendr](https://extendr.github.io/) for R-Rust
-  integration
+- Built with [extendr](https://extendr.rs/) for R-Rust integration
 - Uses [rayon](https://github.com/rayon-rs/rayon) for parallelization

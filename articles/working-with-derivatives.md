@@ -260,7 +260,7 @@ if (requireNamespace("patchwork", quietly = TRUE)) {
 }
 ```
 
-![](working-with-derivatives_files/figure-html/individual-variation-1.png)![](working-with-derivatives_files/figure-html/individual-variation-2.png)
+![](working-with-derivatives_files/figure-html/individual-variation-1.png)
 
 ## Derivative-Based Distances
 
@@ -338,7 +338,7 @@ if (requireNamespace("patchwork", quietly = TRUE)) {
 }
 ```
 
-![](working-with-derivatives_files/figure-html/cluster-by-deriv-1.png)![](working-with-derivatives_files/figure-html/cluster-by-deriv-2.png)
+![](working-with-derivatives_files/figure-html/cluster-by-deriv-1.png)
 
 ## 2D Functional Data: Partial Derivatives
 

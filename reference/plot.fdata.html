@@ -57,7 +57,7 @@ as heatmaps with contour lines."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Plot method for fdata objects</h1>
-      <small class="dont-index">Source: <a href="https://github.com/sipemu/fdars/blob/v0.2.0/R/fdata.R" class="external-link"><code>R/fdata.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/sipemu/fdars/blob/main/R/fdata.R" class="external-link"><code>R/fdata.R</code></a></small>
       <div class="d-none name"><code>plot.fdata.Rd</code></div>
     </div>
 
@@ -138,14 +138,14 @@ without displaying (e.g., for customization), use <code><a href="autoplot.fdata.
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Display plot immediately</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Display plot immediately</span></span></span>
 <span class="r-in"><span><span class="va">fd</span> <span class="op">&lt;-</span> <span class="fu"><a href="fdata.html">fdata</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">200</span><span class="op">)</span>, <span class="fl">20</span>, <span class="fl">10</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="plot.fdata-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># To get ggplot object without displaying, use autoplot:</span></span></span>
-<span class="r-in"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">autoplot</span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span></span>
-<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in autoplot(fd):</span> could not find function "autoplot"</span>
+<span class="r-in"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/autoplot.html" class="external-link">autoplot</a></span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

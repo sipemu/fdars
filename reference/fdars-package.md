@@ -9,7 +9,7 @@ functional data (curves) and 2D functional data (surfaces).
 
 Useful links:
 
-- <https://sipemu.github.io/fdars>
+- <https://sipemu.github.io/fdars/>
 
 - <https://github.com/sipemu/fdars>
 

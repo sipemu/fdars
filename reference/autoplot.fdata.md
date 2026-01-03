@@ -72,29 +72,30 @@ A ggplot object.
 
 ## Details
 
-Use `autoplot()` to get the ggplot object without displaying it. Use
+Use
+[`autoplot()`](https://ggplot2.tidyverse.org/reference/autoplot.html) to
+get the ggplot object without displaying it. Use
 [`plot()`](https://rdrr.io/r/graphics/plot.default.html) to display the
 plot (returns invisibly).
 
 ## Examples
 
 ``` r
+library(ggplot2)
 # Get ggplot object without displaying
 fd <- fdata(matrix(rnorm(200), 20, 10))
 p <- autoplot(fd)
-#> Error in autoplot(fd): could not find function "autoplot"
 
 # Customize the plot
-p + ggplot2::theme_minimal()
-#> Error: object 'p' not found
+p + theme_minimal()
+
 
 # Color by numeric variable
 y <- rnorm(20)
 autoplot(fd, color = y)
-#> Error in autoplot(fd, color = y): could not find function "autoplot"
+
 
 # Color by category with mean and CI
 groups <- factor(rep(c("A", "B"), each = 10))
 autoplot(fd, color = groups, show.mean = TRUE, show.ci = TRUE)
-#> Error in autoplot(fd, color = groups, show.mean = TRUE, show.ci = TRUE): could not find function "autoplot"
 ```

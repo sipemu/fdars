@@ -57,7 +57,7 @@ and irregular irregFdata objects."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Lp Metric for Functional Data</h1>
-      <small class="dont-index">Source: <a href="https://github.com/sipemu/fdars/blob/v0.2.0/R/irregFdata.R" class="external-link"><code>R/irregFdata.R</code></a>, <a href="https://github.com/sipemu/fdars/blob/v0.2.0/R/metric.R" class="external-link"><code>R/metric.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/sipemu/fdars/blob/main/R/irregFdata.R" class="external-link"><code>R/irregFdata.R</code></a>, <a href="https://github.com/sipemu/fdars/blob/main/R/metric.R" class="external-link"><code>R/metric.R</code></a></small>
       <div class="d-none name"><code>metric.lp.Rd</code></div>
     </div>
 
@@ -118,7 +118,6 @@ points. Default is uniform weighting. Only supported for <code>fdata</code>.</p>
 <span class="r-in"><span><span class="co"># Irregular fdata</span></span></span>
 <span class="r-in"><span><span class="va">ifd</span> <span class="op">&lt;-</span> <span class="fu"><a href="sparsify.html">sparsify</a></span><span class="op">(</span><span class="va">fd</span>, minObs <span class="op">=</span> <span class="fl">3</span>, maxObs <span class="op">=</span> <span class="fl">7</span>, seed <span class="op">=</span> <span class="fl">42</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">D_irreg</span> <span class="op">&lt;-</span> <span class="fu">metric.lp</span><span class="op">(</span><span class="va">ifd</span><span class="op">)</span></span></span>
-<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in metric.lp.irregFdata(ifd):</span> Expected Doubles got Integers</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

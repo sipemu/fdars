@@ -2,6 +2,12 @@
 
 ## fdars 0.2.0
 
+### Test Coverage & Quality
+
+- Improved Rust core test coverage to 84%+
+- Improved R package test coverage to 80%+
+- Added pre-commit hooks for cargo fmt and clippy
+
 ### New Features
 
 #### Optimal Cluster Selection

@@ -79,6 +79,7 @@ without displaying (e.g., for customization), use
 ## Examples
 
 ``` r
+library(ggplot2)
 # Display plot immediately
 fd <- fdata(matrix(rnorm(200), 20, 10))
 plot(fd)
@@ -86,5 +87,4 @@ plot(fd)
 
 # To get ggplot object without displaying, use autoplot:
 p <- autoplot(fd)
-#> Error in autoplot(fd): could not find function "autoplot"
 ```

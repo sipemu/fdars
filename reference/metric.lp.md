@@ -54,5 +54,4 @@ D <- metric.lp(fd)  # Self-distances
 # Irregular fdata
 ifd <- sparsify(fd, minObs = 3, maxObs = 7, seed = 42)
 D_irreg <- metric.lp(ifd)
-#> Error in metric.lp.irregFdata(ifd): Expected Doubles got Integers
 ```
