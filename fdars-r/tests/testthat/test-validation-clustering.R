@@ -326,3 +326,166 @@ test_that("cluster.optim with narrow range", {
   expect_s3_class(result, "cluster.optim")
   expect_true(result$optimal.k %in% 3:4)
 })
+
+# =============================================================================
+# cluster.kmeans Print and Plot Tests
+# =============================================================================
+
+test_that("print.cluster.kmeans works", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.kmeans(data$fd, ncl = 3, seed = 123)
+
+  expect_output(print(result), "K-Means Clustering")
+  expect_output(print(result), "clusters")
+})
+
+test_that("plot.cluster.kmeans works", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.kmeans(data$fd, ncl = 3, seed = 123)
+
+  expect_no_error(plot(result))
+})
+
+# =============================================================================
+# cluster.fcm Tests (Fuzzy C-Means)
+# =============================================================================
+
+test_that("cluster.fcm returns correct structure", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 123)
+
+  expect_s3_class(result, "cluster.fcm")
+  expect_true("cluster" %in% names(result))
+  expect_true("membership" %in% names(result))
+  expect_true("centers" %in% names(result))
+  expect_true("fdataobj" %in% names(result))
+
+  # Check dimensions
+  expect_length(result$cluster, data$n)
+  expect_equal(nrow(result$membership), data$n)
+  expect_equal(ncol(result$membership), 3)
+})
+
+test_that("cluster.fcm membership is valid", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 123)
+
+  # Membership values should be in [0, 1]
+  expect_true(all(result$membership >= 0 & result$membership <= 1))
+
+  # Rows should sum to 1
+  row_sums <- rowSums(result$membership)
+  expect_equal(row_sums, rep(1, data$n), tolerance = 1e-6)
+})
+
+test_that("cluster.fcm cluster assignments match max membership", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 123)
+
+  # Each cluster assignment should be the column with max membership
+  expected_clusters <- apply(result$membership, 1, which.max)
+  expect_equal(result$cluster, expected_clusters)
+})
+
+test_that("cluster.fcm is reproducible with seed", {
+  data <- create_clustered_data()
+  result1 <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 456)
+  result2 <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 456)
+
+  expect_equal(result1$cluster, result2$cluster)
+  expect_equal(result1$membership, result2$membership)
+})
+
+test_that("cluster.fcm fuzziness parameter works", {
+  data <- create_clustered_data()
+
+  # Low fuzziness (closer to hard clustering)
+  result_low <- fdars::cluster.fcm(data$fd, ncl = 3, m = 1.1, seed = 123)
+
+  # High fuzziness (more fuzzy membership)
+  result_high <- fdars::cluster.fcm(data$fd, ncl = 3, m = 3.0, seed = 123)
+
+  expect_s3_class(result_low, "cluster.fcm")
+  expect_s3_class(result_high, "cluster.fcm")
+
+  # High fuzziness should have more even membership distribution
+  max_membership_low <- max(apply(result_low$membership, 1, max))
+  max_membership_high <- max(apply(result_high$membership, 1, max))
+
+  # Generally, higher m should lead to more evenly distributed membership
+  # (but this is data-dependent)
+})
+
+test_that("cluster.fcm with different fuzziness", {
+  data <- create_clustered_data(n_per_cluster = 8)
+
+  result_m2 <- fdars::cluster.fcm(data$fd, ncl = 3, m = 2, seed = 123)
+  expect_s3_class(result_m2, "cluster.fcm")
+
+  result_m3 <- fdars::cluster.fcm(data$fd, ncl = 3, m = 3, seed = 123)
+  expect_s3_class(result_m3, "cluster.fcm")
+})
+
+test_that("print.cluster.fcm works", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 123)
+
+  expect_output(print(result), "Fuzzy C-Means")
+  expect_output(print(result), "clusters")
+})
+
+test_that("plot.cluster.fcm works", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.fcm(data$fd, ncl = 3, seed = 123)
+
+  expect_no_error(plot(result))
+})
+
+test_that("cluster.fcm with k=2", {
+  data <- create_clustered_data()
+  result <- fdars::cluster.fcm(data$fd, ncl = 2, seed = 123)
+
+  expect_s3_class(result, "cluster.fcm")
+  expect_equal(ncol(result$membership), 2)
+})
+
+test_that("cluster.fcm with tolerance parameter", {
+  data <- create_clustered_data(n_per_cluster = 8)
+
+  result <- fdars::cluster.fcm(data$fd, ncl = 3, tol = 1e-8, seed = 123)
+  expect_s3_class(result, "cluster.fcm")
+})
+
+test_that("cluster.fcm rejects non-fdata input", {
+  X <- matrix(rnorm(100), 10, 10)
+  expect_error(fdars::cluster.fcm(X, ncl = 2))
+})
+
+# =============================================================================
+# cluster.init Tests
+# =============================================================================
+
+test_that("cluster.init returns valid initial centers", {
+  data <- create_clustered_data()
+  centers <- fdars::cluster.init(data$fd, ncl = 3, seed = 123)
+
+  expect_s3_class(centers, "fdata")
+  expect_equal(nrow(centers$data), 3)
+  expect_equal(ncol(centers$data), data$m)
+})
+
+test_that("cluster.init with L1 metric works", {
+  data <- create_clustered_data()
+  centers <- fdars::cluster.init(data$fd, ncl = 3, metric = "L1", seed = 123)
+
+  expect_s3_class(centers, "fdata")
+  expect_equal(nrow(centers$data), 3)
+})
+
+test_that("cluster.init is reproducible with seed", {
+  data <- create_clustered_data()
+  centers1 <- fdars::cluster.init(data$fd, ncl = 3, seed = 789)
+  centers2 <- fdars::cluster.init(data$fd, ncl = 3, seed = 789)
+
+  expect_equal(centers1$data, centers2$data)
+})

@@ -359,3 +359,129 @@ test_that("select.basis.auto preserves metadata", {
   expect_equal(result$fitted$id, fd$id)
   expect_equal(result$fitted$metadata, fd$metadata)
 })
+
+# ==============================================================================
+# Additional tests for basis.R coverage
+# ==============================================================================
+
+test_that("basis2fdata with vector input", {
+  t <- seq(0, 1, length.out = 100)
+  # Single curve as vector
+  coefs <- rnorm(10)
+  fd <- fdars::basis2fdata(coefs, argvals = t, type = "bspline")
+
+  expect_s3_class(fd, "fdata")
+  expect_equal(nrow(fd$data), 1)
+})
+
+test_that("basis.gcv with bspline", {
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(sin(2 * pi * t) + rnorm(50, sd = 0.1), nrow = 2, ncol = 50, byrow = TRUE)
+  fd <- fdars::fdata(X, argvals = t)
+
+  gcv <- fdars::basis.gcv(fd, nbasis = 10, type = "bspline")
+  expect_true(is.finite(gcv))
+})
+
+test_that("basis.aic with bspline", {
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(sin(2 * pi * t) + rnorm(50, sd = 0.1), nrow = 2, ncol = 50, byrow = TRUE)
+  fd <- fdars::fdata(X, argvals = t)
+
+  aic <- fdars::basis.aic(fd, nbasis = 10, type = "bspline")
+  expect_true(is.finite(aic))
+})
+
+test_that("basis.bic with bspline", {
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(sin(2 * pi * t) + rnorm(50, sd = 0.1), nrow = 2, ncol = 50, byrow = TRUE)
+  fd <- fdars::fdata(X, argvals = t)
+
+  bic <- fdars::basis.bic(fd, nbasis = 10, type = "bspline")
+  expect_true(is.finite(bic))
+})
+
+test_that("fdata2basis.cv with CV criterion", {
+  set.seed(42)
+  t <- seq(0, 1, length.out = 30)
+  X <- matrix(0, 10, 30)
+  for (i in 1:10) X[i, ] <- sin(2 * pi * t) + rnorm(30, sd = 0.1)
+  fd <- fdars::fdata(X, argvals = t)
+
+  cv_result <- fdars::fdata2basis.cv(fd, nbasis.range = 5:10, criterion = "CV", kfold = 5)
+  expect_s3_class(cv_result, "basis.cv")
+})
+
+test_that("plot method works for pspline", {
+  t <- seq(0, 1, length.out = 50)
+  fd <- fdars::fdata(matrix(sin(2 * pi * t), nrow = 1), argvals = t)
+  result <- fdars::pspline(fd, nbasis = 10, lambda = 1)
+
+  expect_no_error(plot(result))
+})
+
+test_that("pspline with order 3", {
+  set.seed(42)
+  t <- seq(0, 1, length.out = 100)
+  noisy <- sin(2 * pi * t) + rnorm(100, sd = 0.3)
+  fd <- fdars::fdata(matrix(noisy, nrow = 1), argvals = t)
+
+  result <- fdars::pspline(fd, nbasis = 20, lambda = 10, order = 3)
+  expect_s3_class(result, "pspline")
+})
+
+test_that("fdata2basis with bspline type", {
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(sin(2 * pi * t), nrow = 1)
+  fd <- fdars::fdata(X, argvals = t)
+
+  coefs <- fdars::fdata2basis(fd, nbasis = 10, type = "bspline")
+  expect_true(is.matrix(coefs))
+  expect_equal(ncol(coefs), 10)
+})
+
+test_that("basis2fdata with custom rangeval", {
+  t <- seq(0, 2, length.out = 100)
+  coefs <- matrix(rnorm(10), nrow = 1)
+
+  fd <- fdars::basis2fdata(coefs, argvals = t, type = "fourier", rangeval = c(0, 2))
+  expect_s3_class(fd, "fdata")
+  expect_equal(fd$rangeval, c(0, 2))
+})
+
+test_that("basis.gcv with pooled = FALSE", {
+  set.seed(42)
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(0, 5, 50)
+  for (i in 1:5) X[i, ] <- sin(2 * pi * t) + rnorm(50, sd = 0.1)
+  fd <- fdars::fdata(X, argvals = t)
+
+  gcv <- fdars::basis.gcv(fd, nbasis = 10, type = "fourier", pooled = FALSE)
+  expect_true(is.finite(gcv))
+})
+
+test_that("basis.aic with pooled = FALSE", {
+  set.seed(42)
+  t <- seq(0, 1, length.out = 50)
+  X <- matrix(0, 5, 50)
+  for (i in 1:5) X[i, ] <- sin(2 * pi * t) + rnorm(50, sd = 0.1)
+  fd <- fdars::fdata(X, argvals = t)
+
+  aic <- fdars::basis.aic(fd, nbasis = 10, pooled = FALSE)
+  expect_true(is.finite(aic))
+})
+
+test_that("pspline.2d for 2D functional data", {
+  set.seed(42)
+  # Create 2D functional data with double argvals
+  X <- array(rnorm(500), dim = c(5, 10, 10))
+  argvals_s <- as.double(seq(0, 1, length.out = 10))
+  argvals_t <- as.double(seq(0, 1, length.out = 10))
+  fd <- fdars::fdata(X, argvals = list(argvals_s, argvals_t), fdata2d = TRUE)
+
+  # Check if function exists and handles 2D data
+  if ("pspline.2d" %in% getNamespaceExports("fdars")) {
+    result <- fdars::pspline.2d(fd)
+    expect_s3_class(result, "pspline.2d")
+  }
+})

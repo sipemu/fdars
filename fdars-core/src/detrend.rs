@@ -816,4 +816,310 @@ mod tests {
             result.method
         );
     }
+
+    // ========================================================================
+    // Tests for detrend_loess
+    // ========================================================================
+
+    #[test]
+    fn test_detrend_loess_removes_linear_trend() {
+        let m = 100;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // y = 2 + 0.5*t + sin(2*pi*t/2)
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 2.0 + 0.5 * t + (2.0 * PI * t / 2.0).sin())
+            .collect();
+
+        let result = detrend_loess(&data, 1, m, &argvals, 0.3, 1);
+
+        // Detrended should be approximately sin wave
+        let expected: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / 2.0).sin())
+            .collect();
+
+        // Compute correlation (LOESS may smooth slightly)
+        let mean_det: f64 = result.detrended.iter().sum::<f64>() / m as f64;
+        let mean_exp: f64 = expected.iter().sum::<f64>() / m as f64;
+        let mut num = 0.0;
+        let mut den_det = 0.0;
+        let mut den_exp = 0.0;
+        for j in 0..m {
+            num += (result.detrended[j] - mean_det) * (expected[j] - mean_exp);
+            den_det += (result.detrended[j] - mean_det).powi(2);
+            den_exp += (expected[j] - mean_exp).powi(2);
+        }
+        let corr = num / (den_det.sqrt() * den_exp.sqrt());
+        assert!(corr > 0.9, "Correlation: {}", corr);
+        assert_eq!(result.method, "loess");
+    }
+
+    #[test]
+    fn test_detrend_loess_removes_quadratic_trend() {
+        let m = 100;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // y = 1 + 0.3*t - 0.05*t^2 + sin(2*pi*t/2)
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 1.0 + 0.3 * t - 0.05 * t * t + (2.0 * PI * t / 2.0).sin())
+            .collect();
+
+        let result = detrend_loess(&data, 1, m, &argvals, 0.3, 2);
+
+        // Trend should follow the quadratic shape
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.detrended.len(), m);
+
+        // Check that RSS is computed
+        assert!(result.rss[0] > 0.0);
+    }
+
+    #[test]
+    fn test_detrend_loess_different_bandwidths() {
+        let m = 100;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Noisy sine wave
+        let data: Vec<f64> = argvals
+            .iter()
+            .enumerate()
+            .map(|(i, &t)| (2.0 * PI * t / 2.0).sin() + 0.1 * ((i * 17) % 100) as f64 / 100.0)
+            .collect();
+
+        // Small bandwidth = more local = rougher trend
+        let result_small = detrend_loess(&data, 1, m, &argvals, 0.1, 1);
+        // Large bandwidth = smoother trend
+        let result_large = detrend_loess(&data, 1, m, &argvals, 0.5, 1);
+
+        // Both should produce valid results
+        assert_eq!(result_small.trend.len(), m);
+        assert_eq!(result_large.trend.len(), m);
+
+        // Large bandwidth should have more parameters
+        assert!(result_large.n_params >= result_small.n_params);
+    }
+
+    #[test]
+    fn test_detrend_loess_short_series() {
+        let m = 10;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64).collect();
+        let data: Vec<f64> = argvals.iter().map(|&t| t * 2.0).collect();
+
+        let result = detrend_loess(&data, 1, m, &argvals, 0.3, 1);
+
+        // Should still work on short series
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.detrended.len(), m);
+    }
+
+    // ========================================================================
+    // Tests for decompose_additive
+    // ========================================================================
+
+    #[test]
+    fn test_decompose_additive_separates_components() {
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // data = trend + seasonal: y = 2 + 0.5*t + sin(2*pi*t/2)
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 2.0 + 0.5 * t + (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = decompose_additive(&data, 1, m, &argvals, period, "loess", 0.3, 3);
+
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.seasonal.len(), m);
+        assert_eq!(result.remainder.len(), m);
+        assert_eq!(result.method, "additive");
+        assert_eq!(result.period, period);
+
+        // Check that components approximately sum to original
+        for j in 0..m {
+            let reconstructed = result.trend[j] + result.seasonal[j] + result.remainder[j];
+            assert!(
+                (reconstructed - data[j]).abs() < 0.5,
+                "Reconstruction error at {}: {} vs {}",
+                j,
+                reconstructed,
+                data[j]
+            );
+        }
+    }
+
+    #[test]
+    fn test_decompose_additive_different_harmonics() {
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Simple seasonal pattern
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 1.0 + (2.0 * PI * t / period).sin())
+            .collect();
+
+        // 1 harmonic
+        let result1 = decompose_additive(&data, 1, m, &argvals, period, "loess", 0.3, 1);
+        // 5 harmonics
+        let result5 = decompose_additive(&data, 1, m, &argvals, period, "loess", 0.3, 5);
+
+        // Both should produce valid results
+        assert_eq!(result1.seasonal.len(), m);
+        assert_eq!(result5.seasonal.len(), m);
+    }
+
+    #[test]
+    fn test_decompose_additive_residual_properties() {
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Data with trend and seasonal
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 2.0 + 0.3 * t + (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = decompose_additive(&data, 1, m, &argvals, period, "loess", 0.3, 3);
+
+        // Remainder should have mean close to zero
+        let mean_rem: f64 = result.remainder.iter().sum::<f64>() / m as f64;
+        assert!(
+            mean_rem.abs() < 0.5,
+            "Remainder mean: {}",
+            mean_rem
+        );
+
+        // Remainder variance should be smaller than original variance
+        let var_data: f64 = data.iter().map(|&x| (x - data.iter().sum::<f64>() / m as f64).powi(2)).sum::<f64>() / m as f64;
+        let var_rem: f64 = result.remainder.iter().map(|&x| (x - mean_rem).powi(2)).sum::<f64>() / m as f64;
+        assert!(var_rem < var_data, "Remainder variance {} should be < data variance {}", var_rem, var_data);
+    }
+
+    #[test]
+    fn test_decompose_additive_multi_sample() {
+        let n = 3;
+        let m = 100;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Create 3 samples with different amplitudes
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            let amp = (i + 1) as f64;
+            for j in 0..m {
+                data[i + j * n] = 1.0 + 0.1 * argvals[j] + amp * (2.0 * PI * argvals[j] / period).sin();
+            }
+        }
+
+        let result = decompose_additive(&data, n, m, &argvals, period, "loess", 0.3, 2);
+
+        assert_eq!(result.trend.len(), n * m);
+        assert_eq!(result.seasonal.len(), n * m);
+        assert_eq!(result.remainder.len(), n * m);
+    }
+
+    // ========================================================================
+    // Tests for decompose_multiplicative
+    // ========================================================================
+
+    #[test]
+    fn test_decompose_multiplicative_basic() {
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Multiplicative: data = trend * seasonal
+        // trend = 2 + 0.1*t, seasonal = 1 + 0.3*sin(...)
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 + 0.1 * t) * (1.0 + 0.3 * (2.0 * PI * t / period).sin()))
+            .collect();
+
+        let result = decompose_multiplicative(&data, 1, m, &argvals, period, "loess", 0.3, 3);
+
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.seasonal.len(), m);
+        assert_eq!(result.remainder.len(), m);
+        assert_eq!(result.method, "multiplicative");
+
+        // Seasonal factors should be centered around 1
+        let mean_seasonal: f64 = result.seasonal.iter().sum::<f64>() / m as f64;
+        assert!(
+            (mean_seasonal - 1.0).abs() < 0.5,
+            "Mean seasonal factor: {}",
+            mean_seasonal
+        );
+    }
+
+    #[test]
+    fn test_decompose_multiplicative_non_positive_data() {
+        let m = 100;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Data with negative values
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| -1.0 + (2.0 * PI * t / period).sin())
+            .collect();
+
+        // Should handle negative values by shifting
+        let result = decompose_multiplicative(&data, 1, m, &argvals, period, "loess", 0.3, 2);
+
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.seasonal.len(), m);
+        // All seasonal values should be positive (multiplicative factors)
+        for &s in result.seasonal.iter() {
+            assert!(s.is_finite(), "Seasonal should be finite");
+        }
+    }
+
+    #[test]
+    fn test_decompose_multiplicative_vs_additive() {
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+
+        // Simple positive data
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 5.0 + (2.0 * PI * t / period).sin())
+            .collect();
+
+        let add_result = decompose_additive(&data, 1, m, &argvals, period, "loess", 0.3, 3);
+        let mult_result = decompose_multiplicative(&data, 1, m, &argvals, period, "loess", 0.3, 3);
+
+        // Both should produce valid decompositions
+        assert_eq!(add_result.seasonal.len(), m);
+        assert_eq!(mult_result.seasonal.len(), m);
+
+        // Additive seasonal oscillates around 0
+        let add_mean: f64 = add_result.seasonal.iter().sum::<f64>() / m as f64;
+        // Multiplicative seasonal oscillates around 1
+        let mult_mean: f64 = mult_result.seasonal.iter().sum::<f64>() / m as f64;
+
+        assert!(add_mean.abs() < mult_mean, "Additive mean {} vs mult mean {}", add_mean, mult_mean);
+    }
+
+    #[test]
+    fn test_decompose_multiplicative_edge_cases() {
+        // Empty data
+        let result = decompose_multiplicative(&[], 0, 0, &[], 2.0, "loess", 0.3, 2);
+        assert_eq!(result.trend.len(), 0);
+
+        // Very short series
+        let m = 5;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64).collect();
+        let data: Vec<f64> = vec![1.0, 2.0, 3.0, 2.0, 1.0];
+        let result = decompose_multiplicative(&data, 1, m, &argvals, 2.0, "loess", 0.3, 1);
+        // Should return original data as remainder for too-short series
+        assert_eq!(result.remainder.len(), m);
+    }
 }

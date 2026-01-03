@@ -531,4 +531,223 @@ mod tests {
             }
         }
     }
+
+    // ========================================================================
+    // Wiener eigenfunction tests
+    // ========================================================================
+
+    #[test]
+    fn test_wiener_eigenfunctions_dimensions() {
+        let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+        let phi = wiener_eigenfunctions(&t, 7);
+        assert_eq!(phi.len(), 100 * 7);
+    }
+
+    #[test]
+    fn test_wiener_eigenfunctions_orthonormality() {
+        // Wiener eigenfunctions: sqrt(2)*sin((k-0.5)*pi*t)
+        // Should be orthonormal on [0,1]
+        let n = 1000;
+        let t: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+        let m = 5;
+        let phi = wiener_eigenfunctions(&t, m);
+        let dt = 1.0 / (n - 1) as f64;
+
+        for j1 in 0..m {
+            for j2 in 0..m {
+                let mut integral = 0.0;
+                for i in 0..n {
+                    integral += phi[i + j1 * n] * phi[i + j2 * n] * dt;
+                }
+                let expected = if j1 == j2 { 1.0 } else { 0.0 };
+                assert!(
+                    (integral - expected).abs() < 0.05,
+                    "Wiener orthonormality failed for ({}, {}): {} vs {}",
+                    j1,
+                    j2,
+                    integral,
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_wiener_eigenfunctions_analytical_form() {
+        // φ_k(t) = sqrt(2) * sin((k - 0.5) * pi * t)
+        let t = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+        let phi = wiener_eigenfunctions(&t, 2);
+        let sqrt2 = 2.0_f64.sqrt();
+
+        // First eigenfunction: k=1, freq = 0.5*pi
+        for (i, &ti) in t.iter().enumerate() {
+            let expected = sqrt2 * (0.5 * PI * ti).sin();
+            assert!(
+                (phi[i] - expected).abs() < 1e-10,
+                "k=1 at t={}: got {} expected {}",
+                ti,
+                phi[i],
+                expected
+            );
+        }
+
+        // Second eigenfunction: k=2, freq = 1.5*pi
+        for (i, &ti) in t.iter().enumerate() {
+            let expected = sqrt2 * (1.5 * PI * ti).sin();
+            assert!(
+                (phi[i + t.len()] - expected).abs() < 1e-10,
+                "k=2 at t={}: got {} expected {}",
+                ti,
+                phi[i + t.len()],
+                expected
+            );
+        }
+    }
+
+    // ========================================================================
+    // Wiener eigenvalue tests
+    // ========================================================================
+
+    #[test]
+    fn test_eigenvalues_wiener_decay_rate() {
+        // λ_k = 1/((k - 0.5)*pi)^2
+        let lambda = eigenvalues_wiener(5);
+        assert_eq!(lambda.len(), 5);
+
+        for k in 1..=5 {
+            let denom = (k as f64 - 0.5) * PI;
+            let expected = 1.0 / (denom * denom);
+            assert!(
+                (lambda[k - 1] - expected).abs() < 1e-12,
+                "Wiener eigenvalue k={}: got {} expected {}",
+                k,
+                lambda[k - 1],
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_eigenvalues_wiener_decreasing() {
+        // Wiener eigenvalues should decrease monotonically
+        let lambda = eigenvalues_wiener(10);
+
+        for i in 1..lambda.len() {
+            assert!(
+                lambda[i] < lambda[i - 1],
+                "Eigenvalues not decreasing at {}: {} >= {}",
+                i,
+                lambda[i],
+                lambda[i - 1]
+            );
+        }
+    }
+
+    // ========================================================================
+    // add_error_curve tests
+    // ========================================================================
+
+    #[test]
+    fn test_add_error_curve_properties() {
+        // Curve-level noise: each observation in same curve gets same noise
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 curves x 3 points
+        let n = 2;
+        let m = 3;
+        let noisy = add_error_curve(&data, n, m, 0.5, Some(42));
+
+        assert_eq!(noisy.len(), 6);
+
+        // Compute the difference for curve 0 at each point
+        let diff0_j0 = noisy[0] - data[0]; // curve 0, point 0
+        let diff0_j1 = noisy[0 + n] - data[0 + n]; // curve 0, point 1
+        let diff0_j2 = noisy[0 + 2 * n] - data[0 + 2 * n]; // curve 0, point 2
+
+        // All differences for same curve should be equal (same noise added)
+        assert!(
+            (diff0_j0 - diff0_j1).abs() < 1e-10,
+            "Curve 0 noise differs: {} vs {}",
+            diff0_j0,
+            diff0_j1
+        );
+        assert!(
+            (diff0_j0 - diff0_j2).abs() < 1e-10,
+            "Curve 0 noise differs: {} vs {}",
+            diff0_j0,
+            diff0_j2
+        );
+
+        // Curve 1 should have different noise
+        let diff1_j0 = noisy[1] - data[1];
+        // Different curves should (with high probability) have different noise
+        // We can't guarantee this, but with seed=42 they should differ
+        assert!(
+            (diff0_j0 - diff1_j0).abs() > 1e-10,
+            "Different curves got same noise"
+        );
+    }
+
+    #[test]
+    fn test_add_error_curve_reproducibility() {
+        let data = vec![1.0, 2.0, 3.0, 4.0];
+        let noisy1 = add_error_curve(&data, 2, 2, 1.0, Some(123));
+        let noisy2 = add_error_curve(&data, 2, 2, 1.0, Some(123));
+
+        for i in 0..4 {
+            assert!(
+                (noisy1[i] - noisy2[i]).abs() < 1e-10,
+                "Reproducibility failed at {}: {} vs {}",
+                i,
+                noisy1[i],
+                noisy2[i]
+            );
+        }
+    }
+
+    // ========================================================================
+    // Enum dispatcher tests
+    // ========================================================================
+
+    #[test]
+    fn test_efun_type_from_i32() {
+        assert_eq!(EFunType::from_i32(0), Some(EFunType::Fourier));
+        assert_eq!(EFunType::from_i32(1), Some(EFunType::Poly));
+        assert_eq!(EFunType::from_i32(2), Some(EFunType::PolyHigh));
+        assert_eq!(EFunType::from_i32(3), Some(EFunType::Wiener));
+        assert_eq!(EFunType::from_i32(-1), None);
+        assert_eq!(EFunType::from_i32(4), None);
+        assert_eq!(EFunType::from_i32(100), None);
+    }
+
+    #[test]
+    fn test_eval_type_from_i32() {
+        assert_eq!(EValType::from_i32(0), Some(EValType::Linear));
+        assert_eq!(EValType::from_i32(1), Some(EValType::Exponential));
+        assert_eq!(EValType::from_i32(2), Some(EValType::Wiener));
+        assert_eq!(EValType::from_i32(-1), None);
+        assert_eq!(EValType::from_i32(3), None);
+        assert_eq!(EValType::from_i32(99), None);
+    }
+
+    #[test]
+    fn test_eigenfunctions_dispatcher() {
+        let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
+        let m = 4;
+
+        // Test that dispatcher returns correct results for each type
+        let phi_fourier = eigenfunctions(&t, m, EFunType::Fourier);
+        let phi_fourier_direct = fourier_eigenfunctions(&t, m);
+        assert_eq!(phi_fourier, phi_fourier_direct);
+
+        let phi_poly = eigenfunctions(&t, m, EFunType::Poly);
+        let phi_poly_direct = legendre_eigenfunctions(&t, m, false);
+        assert_eq!(phi_poly, phi_poly_direct);
+
+        let phi_poly_high = eigenfunctions(&t, m, EFunType::PolyHigh);
+        let phi_poly_high_direct = legendre_eigenfunctions(&t, m, true);
+        assert_eq!(phi_poly_high, phi_poly_high_direct);
+
+        let phi_wiener = eigenfunctions(&t, m, EFunType::Wiener);
+        let phi_wiener_direct = wiener_eigenfunctions(&t, m);
+        assert_eq!(phi_wiener, phi_wiener_direct);
+    }
 }

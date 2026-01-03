@@ -665,4 +665,203 @@ mod tests {
     fn test_geometric_median_invalid() {
         assert!(geometric_median_1d(&[], 0, 0, &[], 100, 1e-6).is_empty());
     }
+
+    // ============== 2D derivative tests ==============
+
+    #[test]
+    fn test_deriv_2d_linear_surface() {
+        // f(s, t) = 2*s + 3*t
+        // ∂f/∂s = 2, ∂f/∂t = 3, ∂²f/∂s∂t = 0
+        let m1 = 11;
+        let m2 = 11;
+        let argvals_s: Vec<f64> = (0..m1).map(|i| i as f64 / (m1 - 1) as f64).collect();
+        let argvals_t: Vec<f64> = (0..m2).map(|i| i as f64 / (m2 - 1) as f64).collect();
+
+        let n = 1; // single surface
+        let ncol = m1 * m2;
+        let mut data = vec![0.0; n * ncol];
+
+        for si in 0..m1 {
+            for ti in 0..m2 {
+                let s = argvals_s[si];
+                let t = argvals_t[ti];
+                let idx = si + ti * m1;
+                data[idx] = 2.0 * s + 3.0 * t;
+            }
+        }
+
+        let result = deriv_2d(&data, n, &argvals_s, &argvals_t, m1, m2).unwrap();
+
+        // Check interior points for ∂f/∂s ≈ 2
+        for si in 2..(m1 - 2) {
+            for ti in 2..(m2 - 2) {
+                let idx = si + ti * m1;
+                assert!(
+                    (result.ds[idx] - 2.0).abs() < 0.2,
+                    "∂f/∂s at ({}, {}) = {}, expected 2",
+                    si,
+                    ti,
+                    result.ds[idx]
+                );
+            }
+        }
+
+        // Check interior points for ∂f/∂t ≈ 3
+        for si in 2..(m1 - 2) {
+            for ti in 2..(m2 - 2) {
+                let idx = si + ti * m1;
+                assert!(
+                    (result.dt[idx] - 3.0).abs() < 0.2,
+                    "∂f/∂t at ({}, {}) = {}, expected 3",
+                    si,
+                    ti,
+                    result.dt[idx]
+                );
+            }
+        }
+
+        // Check interior points for mixed partial ≈ 0
+        for si in 2..(m1 - 2) {
+            for ti in 2..(m2 - 2) {
+                let idx = si + ti * m1;
+                assert!(
+                    result.dsdt[idx].abs() < 0.5,
+                    "∂²f/∂s∂t at ({}, {}) = {}, expected 0",
+                    si,
+                    ti,
+                    result.dsdt[idx]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_deriv_2d_quadratic_surface() {
+        // f(s, t) = s*t
+        // ∂f/∂s = t, ∂f/∂t = s, ∂²f/∂s∂t = 1
+        let m1 = 21;
+        let m2 = 21;
+        let argvals_s: Vec<f64> = (0..m1).map(|i| i as f64 / (m1 - 1) as f64).collect();
+        let argvals_t: Vec<f64> = (0..m2).map(|i| i as f64 / (m2 - 1) as f64).collect();
+
+        let n = 1;
+        let ncol = m1 * m2;
+        let mut data = vec![0.0; n * ncol];
+
+        for si in 0..m1 {
+            for ti in 0..m2 {
+                let s = argvals_s[si];
+                let t = argvals_t[ti];
+                let idx = si + ti * m1;
+                data[idx] = s * t;
+            }
+        }
+
+        let result = deriv_2d(&data, n, &argvals_s, &argvals_t, m1, m2).unwrap();
+
+        // Check interior points for ∂f/∂s ≈ t
+        for si in 3..(m1 - 3) {
+            for ti in 3..(m2 - 3) {
+                let idx = si + ti * m1;
+                let expected = argvals_t[ti];
+                assert!(
+                    (result.ds[idx] - expected).abs() < 0.1,
+                    "∂f/∂s at ({}, {}) = {}, expected {}",
+                    si,
+                    ti,
+                    result.ds[idx],
+                    expected
+                );
+            }
+        }
+
+        // Check interior points for ∂f/∂t ≈ s
+        for si in 3..(m1 - 3) {
+            for ti in 3..(m2 - 3) {
+                let idx = si + ti * m1;
+                let expected = argvals_s[si];
+                assert!(
+                    (result.dt[idx] - expected).abs() < 0.1,
+                    "∂f/∂t at ({}, {}) = {}, expected {}",
+                    si,
+                    ti,
+                    result.dt[idx],
+                    expected
+                );
+            }
+        }
+
+        // Check interior points for mixed partial ≈ 1
+        for si in 3..(m1 - 3) {
+            for ti in 3..(m2 - 3) {
+                let idx = si + ti * m1;
+                assert!(
+                    (result.dsdt[idx] - 1.0).abs() < 0.3,
+                    "∂²f/∂s∂t at ({}, {}) = {}, expected 1",
+                    si,
+                    ti,
+                    result.dsdt[idx]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_deriv_2d_invalid_input() {
+        // Empty data
+        let result = deriv_2d(&[], 0, &[], &[], 0, 0);
+        assert!(result.is_none());
+
+        // Mismatched dimensions
+        let data = vec![1.0; 4];
+        let argvals = vec![0.0, 1.0];
+        let result = deriv_2d(&data, 1, &argvals, &vec![0.0, 0.5, 1.0], 2, 2);
+        assert!(result.is_none());
+    }
+
+    // ============== 2D geometric median tests ==============
+
+    #[test]
+    fn test_geometric_median_2d_basic() {
+        // Three identical surfaces -> median = that surface
+        let m1 = 5;
+        let m2 = 5;
+        let m = m1 * m2;
+        let n = 3;
+        let argvals_s: Vec<f64> = (0..m1).map(|i| i as f64 / (m1 - 1) as f64).collect();
+        let argvals_t: Vec<f64> = (0..m2).map(|i| i as f64 / (m2 - 1) as f64).collect();
+
+        let mut data = vec![0.0; n * m];
+
+        // Create identical surfaces: f(s, t) = s + t
+        for i in 0..n {
+            for si in 0..m1 {
+                for ti in 0..m2 {
+                    let idx = si + ti * m1;
+                    let s = argvals_s[si];
+                    let t = argvals_t[ti];
+                    data[i + idx * n] = s + t;
+                }
+            }
+        }
+
+        let median = geometric_median_2d(&data, n, m, &argvals_s, &argvals_t, 100, 1e-6);
+        assert_eq!(median.len(), m);
+
+        // Check that median equals the surface
+        for si in 0..m1 {
+            for ti in 0..m2 {
+                let idx = si + ti * m1;
+                let expected = argvals_s[si] + argvals_t[ti];
+                assert!(
+                    (median[idx] - expected).abs() < 0.01,
+                    "Median at ({}, {}) = {}, expected {}",
+                    si,
+                    ti,
+                    median[idx],
+                    expected
+                );
+            }
+        }
+    }
 }

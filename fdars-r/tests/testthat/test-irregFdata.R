@@ -375,3 +375,126 @@ test_that("scale_minmax.irregFdata works correctly", {
     expect_equal(max(ifd_scaled2$X[[i]]), 1)
   }
 })
+
+# ==============================================================================
+# Additional tests to improve coverage
+# ==============================================================================
+
+test_that("print.irregFdata works", {
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1))
+  X <- list(c(1, 2, 3), c(4, 5, 6, 7, 8))
+  ifd <- irregFdata(argvals, X)
+
+  expect_output(print(ifd), "Irregular Functional Data")
+})
+
+test_that("summary.irregFdata works", {
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1))
+  X <- list(c(1, 2, 3), c(4, 5, 6, 7, 8))
+  ifd <- irregFdata(argvals, X)
+
+  s <- summary(ifd)
+  expect_output(print(s), "Irregular Functional Data")
+})
+
+test_that("[.irregFdata subsetting works", {
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1), c(0, 1))
+  X <- list(c(1, 2, 3), c(4, 5, 6, 7, 8), c(10, 20))
+  ifd <- irregFdata(argvals, X)
+
+  ifd_sub <- ifd[1:2]
+  expect_s3_class(ifd_sub, "irregFdata")
+  expect_equal(length(ifd_sub$X), 2)
+})
+
+test_that("as.fdata.irregFdata converts to regular fdata", {
+  set.seed(42)
+  argvals <- list(
+    c(0, 0.25, 0.5, 0.75, 1),
+    c(0, 0.2, 0.4, 0.6, 0.8, 1),
+    c(0, 0.33, 0.67, 1)
+  )
+  X <- list(
+    sin(2*pi*argvals[[1]]),
+    sin(2*pi*argvals[[2]]),
+    sin(2*pi*argvals[[3]])
+  )
+  ifd <- irregFdata(argvals, X)
+
+  # Default uses union of all observation points
+  fd <- as.fdata(ifd)
+  expect_s3_class(fd, "fdata")
+  expect_equal(nrow(fd$data), 3)
+
+  # Can specify custom argvals
+  fd2 <- as.fdata(ifd, argvals = seq(0, 1, length.out = 20))
+  expect_equal(ncol(fd2$data), 20)
+})
+
+test_that("as.fdata.fdata returns same object", {
+  t_grid <- seq(0, 1, length.out = 10)
+  X <- matrix(rnorm(30), 3, 10)
+  fd <- fdata(X, argvals = t_grid)
+
+  fd2 <- as.fdata(fd)
+  expect_identical(fd, fd2)
+})
+
+test_that("sparsify creates irregular data from fdata", {
+  t_grid <- seq(0, 1, length.out = 50)
+  X <- matrix(rnorm(100), 2, 50)
+  fd <- fdata(X, argvals = t_grid)
+
+  ifd <- sparsify(fd, minObs = 15, maxObs = 25, seed = 42)
+  expect_s3_class(ifd, "irregFdata")
+  # Each curve should have between 15-25 points
+  for (i in 1:2) {
+    expect_gte(length(ifd$X[[i]]), 15)
+    expect_lte(length(ifd$X[[i]]), 25)
+  }
+})
+
+test_that("sparsify respects minObs constraint", {
+  t_grid <- seq(0, 1, length.out = 50)
+  X <- matrix(rnorm(100), 2, 50)
+  fd <- fdata(X, argvals = t_grid)
+
+  ifd <- sparsify(fd, minObs = 10, seed = 42)
+  expect_s3_class(ifd, "irregFdata")
+  # Each curve should have at least minObs points
+  for (i in 1:2) {
+    expect_gte(length(ifd$X[[i]]), 10)
+  }
+})
+
+test_that("mean.irregFdata computes mean", {
+  argvals <- list(
+    c(0, 0.5, 1),
+    c(0, 0.25, 0.5, 0.75, 1),
+    c(0, 0.33, 0.67, 1)
+  )
+  X <- list(c(1, 2, 3), c(1, 2, 3, 4, 5), c(1, 2, 3, 4))
+  ifd <- irregFdata(argvals, X)
+
+  m <- mean(ifd, n.eval = 10)
+  expect_s3_class(m, "fdata")
+  expect_equal(nrow(m$data), 1)
+})
+
+test_that("plot.irregFdata works", {
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1))
+  X <- list(c(1, 2, 3), c(4, 5, 6, 7, 8))
+  ifd <- irregFdata(argvals, X)
+
+  expect_no_error(plot(ifd))
+})
+
+test_that("autoplot.irregFdata works", {
+  skip_if_not_installed("ggplot2")
+  argvals <- list(c(0, 0.5, 1), c(0, 0.25, 0.5, 0.75, 1))
+  X <- list(c(1, 2, 3), c(4, 5, 6, 7, 8))
+  ifd <- irregFdata(argvals, X)
+
+  p <- ggplot2::autoplot(ifd)
+  expect_s3_class(p, "ggplot")
+})
