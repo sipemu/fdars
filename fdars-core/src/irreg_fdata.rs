@@ -676,8 +676,8 @@ mod tests {
     #[test]
     fn test_accessors_n_obs_n_points_total() {
         let argvals_list = vec![
-            vec![0.0, 0.5, 1.0],      // 3 points
-            vec![0.0, 1.0],            // 2 points
+            vec![0.0, 0.5, 1.0],             // 3 points
+            vec![0.0, 1.0],                  // 2 points
             vec![0.0, 0.25, 0.5, 0.75, 1.0], // 5 points
         ];
         let values_list = vec![
@@ -703,8 +703,8 @@ mod tests {
     #[test]
     fn test_obs_counts() {
         let argvals_list = vec![
-            vec![0.0, 0.5, 1.0],      // 3 points
-            vec![0.0, 1.0],            // 2 points
+            vec![0.0, 0.5, 1.0],             // 3 points
+            vec![0.0, 1.0],                  // 2 points
             vec![0.0, 0.25, 0.5, 0.75, 1.0], // 5 points
         ];
         let values_list = vec![
@@ -722,8 +722,8 @@ mod tests {
     #[test]
     fn test_min_max_obs() {
         let argvals_list = vec![
-            vec![0.0, 0.5, 1.0],      // 3 points
-            vec![0.0, 1.0],            // 2 points
+            vec![0.0, 0.5, 1.0],             // 3 points
+            vec![0.0, 1.0],                  // 2 points
             vec![0.0, 0.25, 0.5, 0.75, 1.0], // 5 points
         ];
         let values_list = vec![
@@ -766,7 +766,9 @@ mod tests {
             assert!(
                 cov[i + i * 3].abs() < 0.5,
                 "Diagonal cov[{},{}] = {} should be near 0",
-                i, i, cov[i + i * 3]
+                i,
+                i,
+                cov[i + i * 3]
             );
         }
     }
@@ -776,14 +778,10 @@ mod tests {
         // Covariance matrix should be symmetric
         let offsets = vec![0, 5, 10, 15];
         let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
+            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
         ];
         let values = vec![
-            1.0, 2.0, 3.0, 2.0, 1.0,
-            0.0, 1.0, 4.0, 1.0, 0.0,
-            2.0, 3.0, 2.0, 3.0, 2.0,
+            1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 4.0, 1.0, 0.0, 2.0, 3.0, 2.0, 3.0, 2.0,
         ];
 
         let grid = vec![0.25, 0.5, 0.75];
@@ -795,7 +793,12 @@ mod tests {
                 assert!(
                     (cov[i + j * 3] - cov[j + i * 3]).abs() < 1e-10,
                     "Cov[{},{}] = {} != Cov[{},{}] = {}",
-                    i, j, cov[i + j * 3], j, i, cov[j + i * 3]
+                    i,
+                    j,
+                    cov[i + j * 3],
+                    j,
+                    i,
+                    cov[j + i * 3]
                 );
             }
         }
@@ -806,14 +809,10 @@ mod tests {
         // Diagonal (variances) should be non-negative
         let offsets = vec![0, 5, 10, 15];
         let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
+            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
         ];
         let values = vec![
-            1.0, 2.0, 3.0, 2.0, 1.0,
-            0.0, 1.0, 4.0, 1.0, 0.0,
-            2.0, 3.0, 2.0, 3.0, 2.0,
+            1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 4.0, 1.0, 0.0, 2.0, 3.0, 2.0, 3.0, 2.0,
         ];
 
         let grid = vec![0.25, 0.5, 0.75];
@@ -823,7 +822,8 @@ mod tests {
             assert!(
                 cov[i + i * 3] >= -1e-10,
                 "Variance at {} should be non-negative: {}",
-                i, cov[i + i * 3]
+                i,
+                cov[i + i * 3]
             );
         }
     }
@@ -861,7 +861,9 @@ mod tests {
             assert!(
                 dist[i + i * n].abs() < 1e-10,
                 "Self-distance d[{},{}] = {} should be 0",
-                i, i, dist[i + i * n]
+                i,
+                i,
+                dist[i + i * n]
             );
         }
     }
@@ -871,14 +873,10 @@ mod tests {
         // Distance matrix should be symmetric
         let offsets = vec![0, 5, 10, 15];
         let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
+            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
         ];
         let values = vec![
-            1.0, 2.0, 3.0, 2.0, 1.0,
-            0.0, 1.0, 2.0, 1.0, 0.0,
-            2.0, 3.0, 4.0, 3.0, 2.0,
+            1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0, 2.0, 3.0, 4.0, 3.0, 2.0,
         ];
 
         let dist = metric_lp_irreg(&offsets, &argvals, &values, 2.0);
@@ -889,7 +887,12 @@ mod tests {
                 assert!(
                     (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
                     "Dist[{},{}] = {} != Dist[{},{}] = {}",
-                    i, j, dist[i + j * n], j, i, dist[j + i * n]
+                    i,
+                    j,
+                    dist[i + j * n],
+                    j,
+                    i,
+                    dist[j + i * n]
                 );
             }
         }
@@ -900,28 +903,28 @@ mod tests {
         // Triangle inequality: d(a,c) <= d(a,b) + d(b,c)
         let offsets = vec![0, 5, 10, 15];
         let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
+            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
         ];
         let values = vec![
-            0.0, 0.0, 0.0, 0.0, 0.0,  // curve a
-            1.0, 1.0, 1.0, 1.0, 1.0,  // curve b
-            2.0, 2.0, 2.0, 2.0, 2.0,  // curve c
+            0.0, 0.0, 0.0, 0.0, 0.0, // curve a
+            1.0, 1.0, 1.0, 1.0, 1.0, // curve b
+            2.0, 2.0, 2.0, 2.0, 2.0, // curve c
         ];
 
         let dist = metric_lp_irreg(&offsets, &argvals, &values, 2.0);
         let n = 3;
 
         // d(a,c) <= d(a,b) + d(b,c)
-        let d_ac = dist[0 + 2 * n];
-        let d_ab = dist[0 + 1 * n];
+        let d_ac = dist[2 * n];
+        let d_ab = dist[n];
         let d_bc = dist[1 + 2 * n];
 
         assert!(
             d_ac <= d_ab + d_bc + 1e-10,
             "Triangle inequality violated: {} > {} + {}",
-            d_ac, d_ab, d_bc
+            d_ac,
+            d_ab,
+            d_bc
         );
     }
 
@@ -950,13 +953,10 @@ mod tests {
     #[test]
     fn test_to_regular_grid_multiple_curves() {
         let offsets = vec![0, 5, 10];
-        let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0,
-            0.0, 0.25, 0.5, 0.75, 1.0,
-        ];
+        let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0];
         let values = vec![
-            0.0, 1.0, 2.0, 3.0, 4.0,  // Linear: y = 4t
-            4.0, 3.0, 2.0, 1.0, 0.0,  // Linear: y = 4 - 4t
+            0.0, 1.0, 2.0, 3.0, 4.0, // Linear: y = 4t
+            4.0, 3.0, 2.0, 1.0, 0.0, // Linear: y = 4 - 4t
         ];
 
         let grid = vec![0.0, 0.5, 1.0];
@@ -966,18 +966,18 @@ mod tests {
         assert_eq!(result.len(), 6);
 
         // Curve 0 at t=0.5 should be 2.0
-        assert!((result[0 + 1 * 2] - 2.0).abs() < 1e-10);
+        assert!((result[2] - 2.0).abs() < 1e-10);
         // Curve 1 at t=0.5 should be 2.0
-        assert!((result[1 + 1 * 2] - 2.0).abs() < 1e-10);
+        assert!((result[1 + 2] - 2.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_to_regular_grid_boundary_nan() {
         let offsets = vec![0, 3];
-        let argvals = vec![0.2, 0.5, 0.8];  // Curve only defined on [0.2, 0.8]
+        let argvals = vec![0.2, 0.5, 0.8]; // Curve only defined on [0.2, 0.8]
         let values = vec![1.0, 2.0, 3.0];
 
-        let grid = vec![0.0, 0.5, 1.0];  // Grid extends beyond curve range
+        let grid = vec![0.0, 0.5, 1.0]; // Grid extends beyond curve range
         let result = to_regular_grid(&offsets, &argvals, &values, &grid);
 
         // At t=0.0 (before curve starts), should be NaN

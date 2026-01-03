@@ -659,8 +659,8 @@ mod tests {
 
         // Compute the difference for curve 0 at each point
         let diff0_j0 = noisy[0] - data[0]; // curve 0, point 0
-        let diff0_j1 = noisy[0 + n] - data[0 + n]; // curve 0, point 1
-        let diff0_j2 = noisy[0 + 2 * n] - data[0 + 2 * n]; // curve 0, point 2
+        let diff0_j1 = noisy[n] - data[n]; // curve 0, point 1
+        let diff0_j2 = noisy[2 * n] - data[2 * n]; // curve 0, point 2
 
         // All differences for same curve should be equal (same noise added)
         assert!(

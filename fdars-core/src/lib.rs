@@ -21,6 +21,8 @@
 //! - 2D surfaces (n observations, m1 x m2 grid): stored as n x (m1*m2) matrices
 
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
 
 pub mod basis;
 pub mod clustering;

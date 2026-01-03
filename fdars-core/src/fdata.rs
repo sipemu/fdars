@@ -815,7 +815,7 @@ mod tests {
         // Mismatched dimensions
         let data = vec![1.0; 4];
         let argvals = vec![0.0, 1.0];
-        let result = deriv_2d(&data, 1, &argvals, &vec![0.0, 0.5, 1.0], 2, 2);
+        let result = deriv_2d(&data, 1, &argvals, &[0.0, 0.5, 1.0], 2, 2);
         assert!(result.is_none());
     }
 

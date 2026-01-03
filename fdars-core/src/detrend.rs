@@ -990,16 +990,26 @@ mod tests {
 
         // Remainder should have mean close to zero
         let mean_rem: f64 = result.remainder.iter().sum::<f64>() / m as f64;
-        assert!(
-            mean_rem.abs() < 0.5,
-            "Remainder mean: {}",
-            mean_rem
-        );
+        assert!(mean_rem.abs() < 0.5, "Remainder mean: {}", mean_rem);
 
         // Remainder variance should be smaller than original variance
-        let var_data: f64 = data.iter().map(|&x| (x - data.iter().sum::<f64>() / m as f64).powi(2)).sum::<f64>() / m as f64;
-        let var_rem: f64 = result.remainder.iter().map(|&x| (x - mean_rem).powi(2)).sum::<f64>() / m as f64;
-        assert!(var_rem < var_data, "Remainder variance {} should be < data variance {}", var_rem, var_data);
+        let var_data: f64 = data
+            .iter()
+            .map(|&x| (x - data.iter().sum::<f64>() / m as f64).powi(2))
+            .sum::<f64>()
+            / m as f64;
+        let var_rem: f64 = result
+            .remainder
+            .iter()
+            .map(|&x| (x - mean_rem).powi(2))
+            .sum::<f64>()
+            / m as f64;
+        assert!(
+            var_rem < var_data,
+            "Remainder variance {} should be < data variance {}",
+            var_rem,
+            var_data
+        );
     }
 
     #[test]
@@ -1014,7 +1024,8 @@ mod tests {
         for i in 0..n {
             let amp = (i + 1) as f64;
             for j in 0..m {
-                data[i + j * n] = 1.0 + 0.1 * argvals[j] + amp * (2.0 * PI * argvals[j] / period).sin();
+                data[i + j * n] =
+                    1.0 + 0.1 * argvals[j] + amp * (2.0 * PI * argvals[j] / period).sin();
             }
         }
 
@@ -1105,7 +1116,12 @@ mod tests {
         // Multiplicative seasonal oscillates around 1
         let mult_mean: f64 = mult_result.seasonal.iter().sum::<f64>() / m as f64;
 
-        assert!(add_mean.abs() < mult_mean, "Additive mean {} vs mult mean {}", add_mean, mult_mean);
+        assert!(
+            add_mean.abs() < mult_mean,
+            "Additive mean {} vs mult mean {}",
+            add_mean,
+            mult_mean
+        );
     }
 
     #[test]
