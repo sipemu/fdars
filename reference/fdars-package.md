@@ -17,4 +17,4 @@ Useful links:
 
 ## Author
 
-**Maintainer**: Simon Müller <sm@data-zoo.de>
+**Maintainer**: Simon Müller <simon.mueller@muon-stat.com>
