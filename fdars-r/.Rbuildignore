@@ -3,8 +3,16 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^README\.Rmd$
+^cran-comments\.md$
 ^src/.*\.o$
 ^src/.*\.so$
 ^src/.*\.a$
 ^src/libfdars\.a$
-^src/rust/target$
+^src/rust/target
+^docs$
+^_pkgdown\.yml$
+^pkgdown$
+^\.Rcheck$
+^\.\./\.Rcheck$
+^.*\.Rcheck$
+^scripts$

@@ -11,7 +11,7 @@ Description: Functional data analysis tools with a high-performance Rust backend
     distance metrics, regression, and statistical testing. Supports both
     1D functional data (curves) and 2D functional data (surfaces).
 License: MIT + file LICENSE
-URL: https://sipemu.github.io/fdars, https://github.com/sipemu/fdars
+URL: https://sipemu.github.io/fdars/, https://github.com/sipemu/fdars
 BugReports: https://github.com/sipemu/fdars/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -29,6 +29,7 @@ Suggests:
     dplyr,
     tidyr,
     ggforce,
-    gridExtra
+    gridExtra,
+    patchwork
 Config/testthat/edition: 3
 VignetteBuilder: knitr

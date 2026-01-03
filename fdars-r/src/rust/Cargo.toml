@@ -14,7 +14,10 @@ crate-type = ["staticlib"]
 
 [dependencies]
 extendr-api = "0.7"
-fdars-core = { path = "../../../fdars-core" }
+# For development, use path dependency:
+# fdars-core = { path = "../../../fdars-core" }
+# For CRAN/release, use crates.io:
+fdars-core = "0.2"
 rayon = "1.10"
 rand = "0.8"
 rand_distr = "0.4"

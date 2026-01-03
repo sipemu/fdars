@@ -266,10 +266,10 @@ as.fdata.irregFdata <- function(x, argvals = NULL, method = c("na", "linear", "n
     # Use Rust implementation for linear interpolation
     # Convert to flat representation
     offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-    flat_argvals <- unlist(x$argvals)
-    flat_values <- unlist(x$X)
+    flat_argvals <- as.double(unlist(x$argvals))
+    flat_values <- as.double(unlist(x$X))
 
-    data_mat <- .Call("wrap__irreg_to_regular", offsets, flat_argvals, flat_values, argvals)
+    data_mat <- .Call("wrap__irreg_to_regular", offsets, flat_argvals, flat_values, as.double(argvals))
 
     if (method == "nearest") {
       # Approximate uses constant for nearest
@@ -425,8 +425,8 @@ sparsify <- function(fdataobj, minObs = 5, maxObs = NULL, prob = NULL, seed = NU
 int.simpson.irregFdata <- function(x, ...) {
   # Convert to flat representation
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-  flat_argvals <- unlist(x$argvals)
-  flat_values <- unlist(x$X)
+  flat_argvals <- as.double(unlist(x$argvals))
+  flat_values <- as.double(unlist(x$X))
 
   .Call("wrap__irreg_integrate", offsets, flat_argvals, flat_values)
 }
@@ -435,8 +435,8 @@ int.simpson.irregFdata <- function(x, ...) {
 #' @export
 norm.irregFdata <- function(x, p = 2, ...) {
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-  flat_argvals <- unlist(x$argvals)
-  flat_values <- unlist(x$X)
+  flat_argvals <- as.double(unlist(x$argvals))
+  flat_values <- as.double(unlist(x$X))
 
   .Call("wrap__irreg_norm_lp", offsets, flat_argvals, flat_values, as.numeric(p))
 }
@@ -518,11 +518,11 @@ mean.irregFdata <- function(x, argvals = NULL, method = c("basis", "kernel"),
     }
 
     offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-    flat_argvals <- unlist(x$argvals)
-    flat_values <- unlist(x$X)
+    flat_argvals <- as.double(unlist(x$argvals))
+    flat_values <- as.double(unlist(x$X))
 
     mean_vals <- .Call("wrap__irreg_mean_kernel", offsets, flat_argvals, flat_values,
-                       argvals, bandwidth, kernel_type)
+                       as.double(argvals), as.double(bandwidth), kernel_type)
   }
 
   fdata(matrix(mean_vals, nrow = 1), argvals = argvals,
@@ -537,8 +537,8 @@ mean.irregFdata <- function(x, argvals = NULL, method = c("basis", "kernel"),
 #' @export
 metric.lp.irregFdata <- function(x, p = 2, ...) {
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-  flat_argvals <- unlist(x$argvals)
-  flat_values <- unlist(x$X)
+  flat_argvals <- as.double(unlist(x$argvals))
+  flat_values <- as.double(unlist(x$X))
 
   .Call("wrap__irreg_metric_lp", offsets, flat_argvals, flat_values, as.numeric(p))
 }
@@ -556,8 +556,8 @@ fdata2basis.irregFdata <- function(x, nbasis = 10, type = c("bspline", "fourier"
 
   # Convert to flat representation with offsets
   offsets <- c(0L, cumsum(sapply(x$argvals, length)))
-  flat_argvals <- unlist(x$argvals)
-  flat_values <- unlist(x$X)
+  flat_argvals <- as.double(unlist(x$argvals))
+  flat_values <- as.double(unlist(x$X))
 
   # Call Rust function for irregular basis fitting
   .Call("wrap__irreg_fdata2basis", offsets, flat_argvals, flat_values,

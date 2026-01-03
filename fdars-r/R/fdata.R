@@ -802,12 +802,13 @@ summary.fdata <- function(object, ...) {
 #' @export
 #' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal geom_tile geom_contour scale_fill_viridis_c scale_color_viridis_c facet_wrap geom_ribbon scale_color_manual scale_fill_manual geom_text coord_equal autoplot
 #' @examples
+#' library(ggplot2)
 #' # Get ggplot object without displaying
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
 #' p <- autoplot(fd)
 #'
 #' # Customize the plot
-#' p + ggplot2::theme_minimal()
+#' p + theme_minimal()
 #'
 #' # Color by numeric variable
 #' y <- rnorm(20)
@@ -976,6 +977,7 @@ autoplot.fdata <- function(object, color = NULL, alpha = NULL, show.mean = FALSE
 #'
 #' @export
 #' @examples
+#' library(ggplot2)
 #' # Display plot immediately
 #' fd <- fdata(matrix(rnorm(200), 20, 10))
 #' plot(fd)
@@ -2103,8 +2105,8 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
 
   # Define curve type labels upfront
   label_mean <- "Mean"
-  label_plus <- paste0("Mean + ", multiple, "\u00D7\u221A\u03BB\u00D7PC")
-  label_minus <- paste0("Mean - ", multiple, "\u00D7\u221A\u03BB\u00D7PC")
+  label_plus <- paste0("Mean + ", multiple, "*sqrt(lambda)*PC")
+  label_minus <- paste0("Mean - ", multiple, "*sqrt(lambda)*PC")
 
   # Build data frame for plotting - each component gets its own facet
   plot_data <- list()
@@ -2167,9 +2169,9 @@ plot.fdata2pc <- function(x, type = c("components", "variance", "scores"),
     ggplot2::labs(
       title = "FPCA: Principal Component Perturbations",
       subtitle = if (show_both_directions) {
-        paste0("Mean \u00B1 ", multiple, " \u00D7 sqrt(eigenvalue) \u00D7 PC")
+        paste0("Mean +/- ", multiple, " * sqrt(eigenvalue) * PC")
       } else {
-        paste0("Mean + ", multiple, " \u00D7 sqrt(eigenvalue) \u00D7 PC")
+        paste0("Mean + ", multiple, " * sqrt(eigenvalue) * PC")
       },
       x = "t",
       y = "X(t)",
