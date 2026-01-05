@@ -7650,6 +7650,270 @@ fn seasonal_sazed(data: RMatrix<f64>, argvals: Vec<f64>, tolerance: f64) -> Robj
 }
 
 // =============================================================================
+// Lomb-Scargle Periodogram
+// =============================================================================
+
+/// Lomb-Scargle periodogram for irregularly sampled data
+/// Computes the power spectrum and significance for period detection
+#[extendr]
+fn seasonal_lomb_scargle(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    oversampling: f64,
+    nyquist_factor: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 3 || argvals.len() != m {
+        return list!(
+            frequencies = Vec::<f64>::new(),
+            periods = Vec::<f64>::new(),
+            power = Vec::<f64>::new(),
+            peak_period = f64::NAN,
+            peak_frequency = f64::NAN,
+            peak_power = f64::NAN,
+            false_alarm_probability = 1.0,
+            significance = 0.0
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let oversample = if oversampling > 0.0 {
+        Some(oversampling)
+    } else {
+        None
+    };
+    let nyquist = if nyquist_factor > 0.0 {
+        Some(nyquist_factor)
+    } else {
+        None
+    };
+
+    let result =
+        fdars_core::seasonal::lomb_scargle_fdata(data_slice, n, m, &argvals, oversample, nyquist);
+
+    list!(
+        frequencies = result.frequencies,
+        periods = result.periods,
+        power = result.power,
+        peak_period = result.peak_period,
+        peak_frequency = result.peak_frequency,
+        peak_power = result.peak_power,
+        false_alarm_probability = result.false_alarm_probability,
+        significance = result.significance
+    )
+    .into()
+}
+
+// =============================================================================
+// Matrix Profile (STOMP Algorithm)
+// =============================================================================
+
+/// Matrix Profile for motif discovery and period detection
+/// Uses STOMP algorithm for efficient computation
+#[extendr]
+fn seasonal_matrix_profile(
+    data: RMatrix<f64>,
+    subsequence_length: i32,
+    exclusion_zone: f64,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 8 {
+        return list!(
+            profile = Vec::<f64>::new(),
+            profile_index = Vec::<i32>::new(),
+            subsequence_length = 0i32,
+            detected_periods = Vec::<f64>::new(),
+            arc_counts = Vec::<i32>::new(),
+            primary_period = f64::NAN,
+            confidence = 0.0
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let subseq_len = if subsequence_length > 0 {
+        Some(subsequence_length as usize)
+    } else {
+        None
+    };
+
+    let exc_zone = if exclusion_zone > 0.0 {
+        Some(exclusion_zone)
+    } else {
+        None
+    };
+
+    let result = fdars_core::seasonal::matrix_profile_fdata(data_slice, n, m, subseq_len, exc_zone);
+
+    // Convert profile_index to i32 (R uses 1-based indexing)
+    let profile_index_r: Vec<i32> = result
+        .profile_index
+        .iter()
+        .map(|&i| (i + 1) as i32) // Convert to 1-based
+        .collect();
+
+    // Convert arc_counts to i32
+    let arc_counts_r: Vec<i32> = result.arc_counts.iter().map(|&c| c as i32).collect();
+
+    list!(
+        profile = result.profile,
+        profile_index = profile_index_r,
+        subsequence_length = result.subsequence_length as i32,
+        detected_periods = result.detected_periods,
+        arc_counts = arc_counts_r,
+        primary_period = result.primary_period,
+        confidence = result.confidence
+    )
+    .into()
+}
+
+// =============================================================================
+// Singular Spectrum Analysis (SSA)
+// =============================================================================
+
+/// Singular Spectrum Analysis for time series decomposition
+/// Extracts trend, seasonal, and noise components via SVD
+#[extendr]
+fn seasonal_ssa(data: RMatrix<f64>, window_length: i32, n_components: i32) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 {
+        return list!(
+            trend = Vec::<f64>::new(),
+            seasonal = Vec::<f64>::new(),
+            noise = Vec::<f64>::new(),
+            singular_values = Vec::<f64>::new(),
+            contributions = Vec::<f64>::new(),
+            window_length = 0i32,
+            n_components = 0i32,
+            detected_period = f64::NAN,
+            confidence = 0.0
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let win_len = if window_length > 0 {
+        Some(window_length as usize)
+    } else {
+        None
+    };
+    let n_comp = if n_components > 0 {
+        Some(n_components as usize)
+    } else {
+        None
+    };
+
+    let result = fdars_core::seasonal::ssa_fdata(data_slice, n, m, win_len, n_comp);
+
+    // Convert trend, seasonal, noise to R matrices
+    let trend_mat = RMatrix::new_matrix(n, m, |_r, c| result.trend.get(c).copied().unwrap_or(0.0));
+    let seasonal_mat =
+        RMatrix::new_matrix(n, m, |_r, c| result.seasonal.get(c).copied().unwrap_or(0.0));
+    let noise_mat = RMatrix::new_matrix(n, m, |_r, c| result.noise.get(c).copied().unwrap_or(0.0));
+
+    list!(
+        trend = trend_mat,
+        seasonal = seasonal_mat,
+        noise = noise_mat,
+        singular_values = result.singular_values,
+        contributions = result.contributions,
+        window_length = result.window_length as i32,
+        n_components = result.n_components as i32,
+        detected_period = result.detected_period,
+        confidence = result.confidence
+    )
+    .into()
+}
+
+// =============================================================================
+// STL Decomposition
+// =============================================================================
+
+/// STL (Seasonal and Trend decomposition using LOESS)
+/// Implements Cleveland et al. 1990 algorithm
+#[extendr]
+fn seasonal_stl(
+    data: RMatrix<f64>,
+    period: i32,
+    s_window: i32,
+    t_window: i32,
+    robust: bool,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 4 || period < 2 {
+        return list!(
+            trend = RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0),
+            seasonal = RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0),
+            remainder = RMatrix::<f64>::new_matrix(0, 0, |_, _| 0.0),
+            weights = RMatrix::<f64>::new_matrix(0, 0, |_, _| 1.0),
+            period = 0i32,
+            s_window = 0i32,
+            t_window = 0i32,
+            inner_iterations = 0i32,
+            outer_iterations = 0i32
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+
+    let s_win = if s_window > 0 {
+        Some(s_window as usize)
+    } else {
+        None
+    };
+    let t_win = if t_window > 0 {
+        Some(t_window as usize)
+    } else {
+        None
+    };
+
+    let result = fdars_core::detrend::stl_decompose(
+        data_slice,
+        n,
+        m,
+        period as usize,
+        s_win,
+        t_win,
+        None,
+        robust,
+        None,
+        None,
+    );
+
+    // Convert to R matrices
+    let trend_mat = RMatrix::new_matrix(n, m, |r, c| result.trend[r + c * n]);
+    let seasonal_mat = RMatrix::new_matrix(n, m, |r, c| result.seasonal[r + c * n]);
+    let remainder_mat = RMatrix::new_matrix(n, m, |r, c| result.remainder[r + c * n]);
+    let weights_mat = RMatrix::new_matrix(n, m, |r, c| result.weights[r + c * n]);
+
+    list!(
+        trend = trend_mat,
+        seasonal = seasonal_mat,
+        remainder = remainder_mat,
+        weights = weights_mat,
+        period = result.period as i32,
+        s_window = result.s_window as i32,
+        t_window = result.t_window as i32,
+        inner_iterations = result.inner_iterations as i32,
+        outer_iterations = result.outer_iterations as i32
+    )
+    .into()
+}
+
+// =============================================================================
 // Detrending functions
 // =============================================================================
 
@@ -8286,6 +8550,10 @@ extendr_module! {
     fn seasonal_cfd_autoperiod;
     fn seasonal_autoperiod;
     fn seasonal_sazed;
+    fn seasonal_lomb_scargle;
+    fn seasonal_matrix_profile;
+    fn seasonal_ssa;
+    fn seasonal_stl;
 
     // Detrending functions
     fn seasonal_detrend;

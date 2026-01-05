@@ -286,6 +286,132 @@ $$\text{SS}_{\text{wavelet}} = \sqrt{\frac{\text{mean}(|W(s, \tau)|^2)}{\text{Va
 - Handles noisy period estimates via clustering
 - Validates on original signal to avoid artifacts
 
+## Advanced Methods {#sec-advanced}
+
+The following methods provide additional capabilities for specialized use cases. These methods are implemented in the fdars package but were not included in the main simulation comparison.
+
+### Lomb-Scargle Periodogram
+
+**Concept**: Spectral analysis method specifically designed for unevenly-spaced time series. Unlike FFT, which assumes regular sampling, Lomb-Scargle can handle irregular sampling patterns common in astronomical, ecological, and clinical data.
+
+**Algorithm** (Scargle 1982, Horne & Baliunas 1986):
+
+1. For each test frequency $\omega$, compute the phase shift $\tau$ to orthogonalize sine and cosine terms
+2. Calculate normalized power: $P(\omega) = \frac{1}{2\sigma^2}\left[\frac{(\sum_j y_j \cos\omega(t_j-\tau))^2}{\sum_j \cos^2\omega(t_j-\tau)} + \frac{(\sum_j y_j \sin\omega(t_j-\tau))^2}{\sum_j \sin^2\omega(t_j-\tau)}\right]$
+3. Estimate false alarm probability using exponential distribution
+
+**Usage**:
+
+```r
+# For irregularly sampled data
+result <- lomb.scargle(fd, oversampling = 4, nyquist_factor = 1)
+print(result)  # Shows peak period and significance
+plot(result)   # Periodogram with peak marked
+
+# Access results
+peak_period <- result$peak_period
+is_significant <- result$significance > 0.99
+```
+
+**When to use**: Irregular sampling, gaps in data, astronomical/ecological time series.
+
+### Matrix Profile (STOMP Algorithm)
+
+**Concept**: A data structure that enables efficient discovery of repeating patterns (motifs) without assuming any specific waveform shape. Unlike spectral methods that favor sinusoids, Matrix Profile can detect non-sinusoidal periodic patterns such as sawtooth waves, square waves, or complex shapes.
+
+**Algorithm** (Yeh et al. 2016, Zhu et al. 2016):
+
+1. Compute z-normalized Euclidean distance between every pair of subsequences
+2. Store minimum distance for each position (the "profile")
+3. Track index of nearest neighbor (the "profile index")
+4. Use arc analysis: count how often nearest neighbors are a fixed distance apart
+
+**Usage**:
+
+```r
+# Detect non-sinusoidal patterns
+result <- matrix.profile(fd, subsequence_length = 30)
+print(result)
+plot(result, type = "both")  # Profile and arc counts
+
+# Period detection from arc analysis
+detected_period <- result$primary_period
+confidence <- result$confidence
+```
+
+**When to use**: Non-sinusoidal repeating patterns, motif discovery, anomaly detection, pattern search.
+
+### STL Decomposition (Cleveland et al. 1990)
+
+**Concept**: Seasonal and Trend decomposition using LOESS. An iterative procedure that robustly separates a time series into trend, seasonal, and remainder components using local polynomial regression.
+
+**Algorithm**:
+
+- **Inner loop**: Extracts seasonal component via cycle-subseries smoothing, then extracts trend via LOESS
+- **Outer loop**: Computes robustness weights using bisquare function to downweight outliers
+
+**Usage**:
+
+```r
+# STL decomposition (requires known period in observations)
+period_obs <- 12  # e.g., 12 months for annual seasonality
+result <- stl.fd(fd, period = period_obs, robust = TRUE)
+print(result)  # Shows variance decomposition
+plot(result)   # Four-panel decomposition plot
+
+# Access components
+trend <- result$trend
+seasonal <- result$seasonal
+remainder <- result$remainder
+
+# Check seasonal strength from STL
+var_seasonal <- var(seasonal$data[1,])
+var_remainder <- var(remainder$data[1,])
+stl_strength <- 1 - var_remainder / (var_seasonal + var_remainder)
+```
+
+**When to use**: Long series with known period, data with outliers, slowly changing seasonal patterns.
+
+### Singular Spectrum Analysis (SSA)
+
+**Concept**: A model-free, non-parametric method that decomposes time series via singular value decomposition of the trajectory matrix. Particularly suited for short, noisy series where spectral methods struggle.
+
+**Algorithm** (Golyandina & Zhigljavsky 2013):
+
+1. **Embedding**: Create trajectory matrix from lagged windows
+2. **SVD**: Decompose trajectory matrix
+3. **Grouping**: Identify trend, oscillatory, and noise components
+4. **Reconstruction**: Diagonal averaging (Hankelization) to recover time series
+
+**Usage**:
+
+```r
+# SSA decomposition
+result <- ssa.fd(fd, window.length = 50, n.components = 10)
+print(result)  # Shows component contributions
+plot(result)   # Decomposition plot
+plot(result, type = "spectrum")  # Scree plot
+
+# Access components
+trend <- result$trend
+seasonal <- result$seasonal
+noise <- result$noise
+
+# Detected period (auto-detected from oscillatory components)
+detected_period <- result$detected.period
+```
+
+**When to use**: Short time series, noisy data with weak periodic signals, non-stationary data, separating multiple periodicities.
+
+### Comparison of Advanced Methods
+
+| Method | Best For | Limitations |
+|--------|----------|-------------|
+| Lomb-Scargle | Irregular sampling | Assumes sinusoidal patterns |
+| Matrix Profile | Non-sinusoidal patterns | O(n²) complexity |
+| STL | Known period, outliers | Requires period specification |
+| SSA | Short/noisy series | Window length selection critical |
+
 # Simulation Study {#sec-sim}
 
 This section presents a unified simulation study covering seven scenarios that test detection methods under progressively challenging conditions.
@@ -482,6 +608,336 @@ For our simulated seasonal data, the amplitude modulation characterization corre
 - **Climate data**: Detecting intensifying or weakening seasonal patterns
 - **Economic data**: Identifying growing or shrinking seasonal effects
 - **Industrial sensors**: Monitoring equipment degradation affecting periodic components
+
+\newpage
+
+# User Workflow Guide {#sec-workflow}
+
+This section provides a practical, step-by-step workflow for detecting and characterizing seasonality in your data. The recommendations are based on the simulation findings presented in @sec-sim.
+
+## Decision Flowchart
+
+The following workflow guides you from raw data to a final seasonality determination:
+
+**Decision Tree:**
+
+1. **Outliers?** (>5% or >5x magnitude)
+   - Yes → Apply median filter, then continue
+   - No → Continue
+
+2. **Trend present?**
+   - Yes → Detrend first, then continue
+   - No → Continue
+
+3. **Period known?**
+   - Yes → **Scenario A: Use Variance Strength** (97.3% F1, 2% FPR)
+   - No → Continue to step 4
+
+4. **Time-varying amplitude suspected?**
+   - Yes → **Scenario C: Use Wavelet Strength** (97.8% F1, best for amplitude modulation)
+   - No → **Scenario B: Use SAZED** (96.5% F1, parameter-free)
+
+## Step 1: Data Pre-processing {#sec-workflow-step1}
+
+Before applying detection methods, address data quality issues that can affect accuracy.
+
+### 1.1 Outlier Check
+
+**When to apply**: If >5% of observations are outliers, OR outliers exceed 5x typical magnitude.
+
+**Rationale**: Our simulation (@sec-sim-outliers) shows that at 10% outliers with 10x magnitude:
+
+- ACF drops to 6% TPR
+- Variance Strength drops to 48% TPR
+- Wavelet maintains 62% TPR (most robust)
+
+**Solution**: Apply median filtering before detection.
+
+```r
+# Check for outliers using functional depth
+out <- outliers.depth.pond(fd, nb = 200, threshold_method = "mad", k = 2.5)
+outlier_pct <- length(out$outliers) / nrow(fd$data) * 100
+
+if (outlier_pct > 5) {
+  message(sprintf("Warning: %.1f%% outliers detected. Consider filtering.", outlier_pct))
+}
+```
+
+### 1.2 Trend Check
+
+**When to apply**: If visual inspection or statistical test indicates trend.
+
+**Rationale**: From @sec-sim-trend:
+
+- FFT has 100% FPR on slow sine trends (catastrophic failure)
+- Variance Strength maintains 97% F1 even with strong trends
+- CFDAutoperiod uses differencing for automatic detrending
+
+**Solution**: Detrend data or use trend-robust methods.
+
+```r
+# Option 1: Explicit detrending
+fd_detrended <- detrend(fd, method = "linear")
+
+# Option 2: Use CFDAutoperiod (automatic detrending)
+result <- cfd.autoperiod(fd)
+
+# Option 3: Use Variance Strength (inherently trend-robust)
+strength <- seasonal.strength(fd, period = period, method = "variance",
+                              detrend_method = "linear")
+```
+
+### Pre-processing Decision Matrix
+
+| Condition | Check | Threshold | Action |
+|-----------|-------|-----------|--------|
+| Outliers | `outliers.depth.pond()` | >5% flagged | Median filter |
+| Extreme values | Visual inspection | >5x magnitude | Median filter |
+| Linear trend | `detrend(..., return_trend=TRUE)` | Significant slope | Linear detrend |
+| Non-linear trend | AIC comparison | -- | Use CFDAutoperiod |
+| Red noise | ACF decay pattern | AR(1) $\phi$ > 0.5 | Avoid FFT methods |
+
+## Step 2: Diagnosis - Choose Your Scenario {#sec-workflow-step2}
+
+Select the appropriate scenario based on what you know about your data.
+
+### Scenario A: Period is Known {#sec-scenario-a}
+
+**Use when**: You know the expected seasonal period (e.g., 12 months for annual data, 24 hours for circadian).
+
+**Recommended method**: Variance Strength
+
+**Performance** (from @sec-sim-baseline):
+
+- F1 Score: 97.3%
+- False Positive Rate: 2% (lowest of all methods)
+- Trend Robustness: Excellent (only 0.4% F1 drop)
+
+```r
+# Detect seasonality with Variance Strength
+period <- 0.2  # Period in argvals units (e.g., 1/5 for 5 cycles in [0,1])
+strength <- seasonal.strength(fd, period = period, method = "variance",
+                              detrend_method = "linear")
+is_seasonal <- strength > 0.2
+
+# Interpretation
+if (is_seasonal) {
+  cat(sprintf("Seasonal detected (strength = %.3f, threshold = 0.2)\n", strength))
+} else {
+  cat(sprintf("Non-seasonal (strength = %.3f < 0.2)\n", strength))
+}
+```
+
+**Why Variance Strength?**
+
+- Lowest false positive rate (2%) among all methods
+- Excellent trend robustness (0.4% F1 drop under strong trends)
+- Well-calibrated threshold (0.2 corresponds to 95th percentile on noise)
+
+**Caution**: Variance Strength can fail with multiple seasonalities (4% TPR when secondary dominates, @sec-sim-multi). If you suspect multiple periodicities, use Spectral Strength instead.
+
+### Scenario B: Period is Unknown {#sec-scenario-b}
+
+**Use when**: You don't know the seasonal period and need both detection and estimation.
+
+**Recommended method**: SAZED (parameter-free ensemble)
+
+**Performance** (from @sec-sim-baseline):
+
+- F1 Score: 96.5%
+- False Positive Rate: 4%
+- No parameters to tune
+
+```r
+# Parameter-free detection with SAZED
+result <- sazed(fd)
+
+# Check consensus (>= 3 of 5 components must agree)
+is_seasonal <- result$agreeing_components >= 3
+estimated_period <- result$period
+
+if (is_seasonal) {
+  cat(sprintf("Seasonal detected: period = %.4f (confidence = %.2f, %d/5 agree)\n",
+              estimated_period, result$confidence, result$agreeing_components))
+
+  # View component-level diagnostics
+  print(result$components)
+} else {
+  cat(sprintf("Non-seasonal (only %d/5 components agree)\n", result$agreeing_components))
+}
+```
+
+**Why SAZED?**
+
+- No period or threshold parameters needed
+- Combines 5 independent methods (spectral, ACF peak, ACF average, zero-crossing, spectral diff)
+- Consensus voting filters spurious detections
+- Works across diverse signal types
+
+**Alternative: Autoperiod** for candidate-level details:
+
+```r
+# Hybrid FFT + ACF with gradient refinement
+result <- autoperiod(fd, n_candidates = 5, gradient_steps = 10)
+is_seasonal <- result$acf_validation > 0.3
+estimated_period <- result$period
+
+# Examine all candidates
+print(result$candidates)
+```
+
+### Scenario C: Time-Varying Signal {#sec-scenario-c}
+
+**Use when**: You suspect the seasonal amplitude changes over time (emerging, fading, or oscillating).
+
+**Recommended method**: Wavelet Strength
+
+**Performance** (from @sec-sim-amp-mod):
+
+- F1 Score: 97.8% overall
+- TPR on emergence pattern: 72% (vs 18% for Variance)
+- TPR on linear growth/decay: 82% (vs 48% for Variance)
+
+```r
+# Detect time-varying seasonality with Wavelet
+strength <- seasonal.strength(fd, period = period, method = "wavelet")
+is_seasonal <- strength > 0.26
+
+if (is_seasonal) {
+  cat(sprintf("Seasonal detected (wavelet strength = %.3f > 0.26)\n", strength))
+} else {
+  cat(sprintf("Non-seasonal (wavelet strength = %.3f <= 0.26)\n", strength))
+}
+```
+
+**Why Wavelet Strength?**
+
+- Time-localized analysis captures non-stationary patterns
+- 72% TPR on emergence patterns (vs 18% for Variance)
+- Uses Morlet wavelet at target period for optimal frequency resolution
+- Naturally filters non-seasonal low-frequency trends
+
+**Visual confirmation** with time-varying strength:
+
+```r
+# Compute windowed strength over time
+ss_curve <- seasonal.strength.curve(fd, period = period, window_size = 2 * period)
+plot(ss_curve, main = "Time-Varying Seasonal Strength")
+```
+
+## Step 3: Post-Detection Characterization {#sec-workflow-step3}
+
+Once seasonality is confirmed, characterize how the amplitude varies over time.
+
+### Running Amplitude Modulation Detection
+
+```r
+# After confirming seasonality
+if (is_seasonal) {
+  am <- detect_amplitude_modulation(fd, period = period, method = "hilbert")
+
+  cat(sprintf("Modulation type: %s\n", am$modulation_type))
+  cat(sprintf("Amplitude trend: %.3f\n", am$amplitude_trend))
+  cat(sprintf("Modulation score (CV): %.3f\n", am$modulation_score))
+
+  # Visualize amplitude envelope
+  plot(am)
+}
+```
+
+### Interpretation Guide
+
+| Output | Value | Meaning |
+|--------|-------|---------|
+| `modulation_type` | `"stable"` | Constant amplitude over time |
+| | `"emerging"` | Amplitude increasing (amplitude_trend > 0.3) |
+| | `"fading"` | Amplitude decreasing (amplitude_trend < -0.3) |
+| | `"oscillating"` | Amplitude varies without clear trend |
+| `modulation_score` | < 0.15 | Low variability (stable) |
+| | > 0.15 | Significant amplitude modulation |
+| `amplitude_trend` | > 0 | Amplitude growing over time |
+| | < 0 | Amplitude declining over time |
+
+### Characterization Accuracy
+
+From @sec-am-char:
+
+| True Pattern | Detection Accuracy |
+|--------------|-------------------|
+| constant (stable) | 94% |
+| linear_growth (emerging) | 87% |
+| linear_decay (fading) | 85% |
+| emergence (abrupt) | 72% |
+
+**Note**: Abrupt transitions (emergence pattern) have reduced accuracy (72%) compared to smooth changes. Consider visual inspection of the amplitude envelope for borderline cases.
+
+## Quick Reference {#sec-workflow-quick}
+
+### Method Selection Matrix
+
+| Scenario | Primary Method | Threshold | F1 Score | FPR | Reference |
+|----------|---------------|-----------|----------|-----|-----------|
+| Period known, stable | Variance Strength | 0.2 | 97.3% | 2% | @sec-sim-baseline |
+| Period unknown | SAZED | $\geq$ 3 consensus | 96.5% | 4% | @sec-sim-baseline |
+| Time-varying amplitude | Wavelet Strength | 0.26 | 97.8% | 4% | @sec-sim-amp-mod |
+| Strong trends | CFDAutoperiod | 0.25 ACF | 94.2% | 4% | @sec-sim-trend |
+| Red noise suspected | Variance Strength | 0.2 | -- | 6% | @sec-sim-red-noise |
+
+**Advanced Methods** (see @sec-advanced for details):
+
+| Scenario | Method | Function | When to Use |
+|----------|--------|----------|-------------|
+| Irregular sampling | Lomb-Scargle | `lomb.scargle()` | Gaps, uneven sampling |
+| Non-sinusoidal patterns | Matrix Profile | `matrix.profile()` | Sawtooth, square waves |
+| Decomposition (known period) | STL | `stl.fd()` | Outliers, long series |
+| Short/noisy series | SSA | `ssa.fd()` | Weak signals, short data |
+
+### Complete Workflow Code Template
+
+```r
+#' Complete Seasonality Analysis Workflow
+#' @param fd An fdata object
+#' @param period Optional known period (NULL for unknown)
+analyze_seasonality <- function(fd, period = NULL) {
+
+  # Step 1: Pre-processing checks (optional)
+  # Check for outliers if needed
+
+  # Step 2: Detection
+  if (is.null(period)) {
+    # Scenario B: Unknown period - use SAZED
+    result <- sazed(fd)
+    is_seasonal <- result$agreeing_components >= 3
+    period <- result$period
+    method_used <- "SAZED"
+    confidence <- result$confidence
+  } else {
+    # Scenario A: Known period - use Variance Strength
+    strength <- seasonal.strength(fd, period = period, method = "variance")
+    is_seasonal <- strength > 0.2
+    method_used <- "Variance"
+    confidence <- strength
+  }
+
+  # Step 3: Characterization (if seasonal)
+  am_result <- NULL
+  if (is_seasonal && !is.null(period)) {
+    am_result <- detect_amplitude_modulation(fd, period = period)
+  }
+
+  list(
+    is_seasonal = is_seasonal,
+    period = period,
+    method = method_used,
+    confidence = confidence,
+    amplitude_modulation = am_result
+  )
+}
+
+# Usage
+result <- analyze_seasonality(fd)  # Unknown period
+result <- analyze_seasonality(fd, period = 0.2)  # Known period
+```
 
 \newpage
 

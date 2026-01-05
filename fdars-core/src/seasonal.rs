@@ -3314,6 +3314,1088 @@ fn cluster_periods(candidates: &[(f64, f64)], tolerance: f64, min_size: usize) -
     clusters
 }
 
+// ============================================================================
+// Lomb-Scargle Periodogram
+// ============================================================================
+
+/// Result of Lomb-Scargle periodogram analysis.
+#[derive(Debug, Clone)]
+pub struct LombScargleResult {
+    /// Test frequencies
+    pub frequencies: Vec<f64>,
+    /// Corresponding periods (1/frequency)
+    pub periods: Vec<f64>,
+    /// Normalized Lomb-Scargle power at each frequency
+    pub power: Vec<f64>,
+    /// Peak period (highest power)
+    pub peak_period: f64,
+    /// Peak frequency
+    pub peak_frequency: f64,
+    /// Peak power
+    pub peak_power: f64,
+    /// False alarm probability at peak (significance level)
+    pub false_alarm_probability: f64,
+    /// Significance level (1 - FAP)
+    pub significance: f64,
+}
+
+/// Compute Lomb-Scargle periodogram for irregularly sampled data.
+///
+/// The Lomb-Scargle periodogram is designed for unevenly-spaced time series
+/// and reduces to the standard periodogram for evenly-spaced data.
+///
+/// # Algorithm
+/// Following Scargle (1982) and Horne & Baliunas (1986):
+/// 1. For each test frequency ω, compute the phase shift τ
+/// 2. Compute the normalized power P(ω)
+/// 3. Estimate false alarm probability using the exponential distribution
+///
+/// # Arguments
+/// * `times` - Observation times (not necessarily evenly spaced)
+/// * `values` - Observed values at each time
+/// * `frequencies` - Optional frequencies to evaluate (cycles per unit time).
+///   If None, automatically generates a frequency grid.
+/// * `oversampling` - Oversampling factor for auto-generated frequency grid.
+///   Default: 4.0. Higher values give finer frequency resolution.
+/// * `nyquist_factor` - Maximum frequency as multiple of pseudo-Nyquist.
+///   Default: 1.0.
+///
+/// # Returns
+/// `LombScargleResult` with power spectrum and significance estimates.
+///
+/// # Example
+/// ```rust
+/// use fdars_core::seasonal::lomb_scargle;
+/// use std::f64::consts::PI;
+///
+/// // Irregularly sampled sine wave
+/// let times: Vec<f64> = vec![0.0, 0.3, 0.7, 1.2, 1.5, 2.1, 2.8, 3.0, 3.5, 4.0];
+/// let period = 1.5;
+/// let values: Vec<f64> = times.iter()
+///     .map(|&t| (2.0 * PI * t / period).sin())
+///     .collect();
+///
+/// let result = lomb_scargle(&times, &values, None, None, None);
+/// assert!((result.peak_period - period).abs() < 0.2);
+/// ```
+pub fn lomb_scargle(
+    times: &[f64],
+    values: &[f64],
+    frequencies: Option<&[f64]>,
+    oversampling: Option<f64>,
+    nyquist_factor: Option<f64>,
+) -> LombScargleResult {
+    let n = times.len();
+    assert_eq!(n, values.len(), "times and values must have same length");
+    assert!(n >= 3, "Need at least 3 data points");
+
+    // Compute mean and variance
+    let mean_y: f64 = values.iter().sum::<f64>() / n as f64;
+    let var_y: f64 = values.iter().map(|&y| (y - mean_y).powi(2)).sum::<f64>() / (n - 1) as f64;
+
+    // Generate frequency grid if not provided
+    let freq_vec: Vec<f64>;
+    let freqs = if let Some(f) = frequencies {
+        f
+    } else {
+        freq_vec = generate_ls_frequencies(
+            times,
+            oversampling.unwrap_or(4.0),
+            nyquist_factor.unwrap_or(1.0),
+        );
+        &freq_vec
+    };
+
+    // Compute Lomb-Scargle power at each frequency
+    let mut power = Vec::with_capacity(freqs.len());
+
+    for &freq in freqs.iter() {
+        let omega = 2.0 * PI * freq;
+        let p = lomb_scargle_single_freq(times, values, mean_y, var_y, omega);
+        power.push(p);
+    }
+
+    // Find peak
+    let (peak_idx, &peak_power) = power
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .unwrap_or((0, &0.0));
+
+    let peak_frequency = freqs.get(peak_idx).copied().unwrap_or(0.0);
+    let peak_period = if peak_frequency > 0.0 {
+        1.0 / peak_frequency
+    } else {
+        f64::INFINITY
+    };
+
+    // Compute false alarm probability
+    let n_indep = estimate_independent_frequencies(times, freqs.len());
+    let fap = lomb_scargle_fap(peak_power, n_indep, n);
+
+    // Compute periods from frequencies
+    let periods: Vec<f64> = freqs
+        .iter()
+        .map(|&f| if f > 0.0 { 1.0 / f } else { f64::INFINITY })
+        .collect();
+
+    LombScargleResult {
+        frequencies: freqs.to_vec(),
+        periods,
+        power,
+        peak_period,
+        peak_frequency,
+        peak_power,
+        false_alarm_probability: fap,
+        significance: 1.0 - fap,
+    }
+}
+
+/// Compute Lomb-Scargle power at a single frequency.
+///
+/// Uses the Scargle (1982) normalization.
+fn lomb_scargle_single_freq(
+    times: &[f64],
+    values: &[f64],
+    mean_y: f64,
+    var_y: f64,
+    omega: f64,
+) -> f64 {
+    if var_y <= 0.0 || omega <= 0.0 {
+        return 0.0;
+    }
+
+    let n = times.len();
+
+    // Compute tau (phase shift) to make sine and cosine terms orthogonal
+    let mut sum_sin2 = 0.0;
+    let mut sum_cos2 = 0.0;
+    for &t in times.iter() {
+        let arg = 2.0 * omega * t;
+        sum_sin2 += arg.sin();
+        sum_cos2 += arg.cos();
+    }
+    let tau = (sum_sin2).atan2(sum_cos2) / (2.0 * omega);
+
+    // Compute sums for power calculation
+    let mut ss = 0.0; // Sum of sin terms
+    let mut sc = 0.0; // Sum of cos terms
+    let mut css = 0.0; // Sum of cos^2
+    let mut sss = 0.0; // Sum of sin^2
+
+    for i in 0..n {
+        let y_centered = values[i] - mean_y;
+        let arg = omega * (times[i] - tau);
+        let c = arg.cos();
+        let s = arg.sin();
+
+        sc += y_centered * c;
+        ss += y_centered * s;
+        css += c * c;
+        sss += s * s;
+    }
+
+    // Avoid division by zero
+    let css = css.max(1e-15);
+    let sss = sss.max(1e-15);
+
+    // Lomb-Scargle power (Scargle 1982 normalization)
+    0.5 * (sc * sc / css + ss * ss / sss) / var_y
+}
+
+/// Generate frequency grid for Lomb-Scargle.
+///
+/// The grid spans from 1/T_total to f_nyquist with oversampling.
+fn generate_ls_frequencies(times: &[f64], oversampling: f64, nyquist_factor: f64) -> Vec<f64> {
+    let n = times.len();
+    if n < 2 {
+        return vec![0.0];
+    }
+
+    // Time span
+    let t_min = times.iter().cloned().fold(f64::INFINITY, f64::min);
+    let t_max = times.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let t_span = (t_max - t_min).max(1e-10);
+
+    // Minimum frequency: one cycle over the observation span
+    let f_min = 1.0 / t_span;
+
+    // Pseudo-Nyquist frequency for irregular data
+    // Use average sampling rate as approximation
+    let f_nyquist = 0.5 * (n - 1) as f64 / t_span;
+
+    // Maximum frequency
+    let f_max = f_nyquist * nyquist_factor;
+
+    // Frequency resolution with oversampling
+    let df = f_min / oversampling;
+
+    // Generate frequency grid
+    let n_freq = ((f_max - f_min) / df).ceil() as usize + 1;
+    let n_freq = n_freq.min(10000); // Cap to prevent memory issues
+
+    (0..n_freq).map(|i| f_min + i as f64 * df).collect()
+}
+
+/// Estimate number of independent frequencies (for FAP calculation).
+///
+/// For irregularly sampled data, this is approximately the number of
+/// data points (Horne & Baliunas 1986).
+fn estimate_independent_frequencies(times: &[f64], n_freq: usize) -> usize {
+    // A conservative estimate is min(n_data, n_frequencies)
+    let n = times.len();
+    n.min(n_freq)
+}
+
+/// Compute false alarm probability for Lomb-Scargle peak.
+///
+/// Uses the exponential distribution approximation:
+/// FAP ≈ 1 - (1 - exp(-z))^M
+/// where z is the power and M is the number of independent frequencies.
+fn lomb_scargle_fap(power: f64, n_indep: usize, _n_data: usize) -> f64 {
+    if power <= 0.0 || n_indep == 0 {
+        return 1.0;
+    }
+
+    // Probability that a single frequency has power < z
+    let prob_single = 1.0 - (-power).exp();
+
+    // Probability that all M frequencies have power < z
+    // FAP = 1 - (1 - exp(-z))^M
+    // For numerical stability, use log:
+    // 1 - FAP = prob_single^M
+    // FAP = 1 - exp(M * ln(prob_single))
+
+    if prob_single >= 1.0 {
+        return 0.0; // Very significant
+    }
+    if prob_single <= 0.0 {
+        return 1.0; // Not significant
+    }
+
+    let log_prob = prob_single.ln();
+    let log_cdf = n_indep as f64 * log_prob;
+
+    if log_cdf < -700.0 {
+        0.0 // Numerical underflow, very significant
+    } else {
+        1.0 - log_cdf.exp()
+    }
+}
+
+/// Compute Lomb-Scargle periodogram for functional data (multiple curves).
+///
+/// Computes the periodogram for each curve and returns the result for the
+/// mean curve or ensemble statistics.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m) of functional data
+/// * `n` - Number of samples (rows)
+/// * `m` - Number of evaluation points (columns)
+/// * `argvals` - Time points of length m
+/// * `oversampling` - Oversampling factor. Default: 4.0
+/// * `nyquist_factor` - Maximum frequency multiplier. Default: 1.0
+///
+/// # Returns
+/// `LombScargleResult` computed from the mean curve.
+pub fn lomb_scargle_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    oversampling: Option<f64>,
+    nyquist_factor: Option<f64>,
+) -> LombScargleResult {
+    // Compute mean curve
+    let mean_curve = compute_mean_curve(data, n, m);
+
+    // Run Lomb-Scargle on mean curve
+    lomb_scargle(argvals, &mean_curve, None, oversampling, nyquist_factor)
+}
+
+// ============================================================================
+// Matrix Profile (STOMP Algorithm)
+// ============================================================================
+
+/// Result of Matrix Profile computation.
+#[derive(Debug, Clone)]
+pub struct MatrixProfileResult {
+    /// The matrix profile (minimum z-normalized distance for each position)
+    pub profile: Vec<f64>,
+    /// Index of the nearest neighbor for each position
+    pub profile_index: Vec<usize>,
+    /// Subsequence length used
+    pub subsequence_length: usize,
+    /// Detected periods from arc analysis
+    pub detected_periods: Vec<f64>,
+    /// Arc counts at each index distance (for period detection)
+    pub arc_counts: Vec<usize>,
+    /// Most prominent detected period
+    pub primary_period: f64,
+    /// Confidence score for primary period (based on arc prominence)
+    pub confidence: f64,
+}
+
+/// Compute Matrix Profile using STOMP algorithm (Scalable Time series Ordered-search Matrix Profile).
+///
+/// The Matrix Profile is a data structure that stores the z-normalized Euclidean distance
+/// between each subsequence of a time series and its nearest neighbor. It enables efficient
+/// motif discovery and anomaly detection.
+///
+/// # Algorithm (STOMP - Zhu et al. 2016)
+/// 1. Pre-compute sliding mean and standard deviation using cumulative sums
+/// 2. Use FFT to compute first row of distance matrix
+/// 3. Update subsequent rows incrementally using the dot product update rule
+/// 4. Track minimum distance and index at each position
+///
+/// # Arguments
+/// * `values` - Time series values
+/// * `subsequence_length` - Length of subsequences to compare (window size)
+/// * `exclusion_zone` - Fraction of subsequence length to exclude around each position
+///   to prevent trivial self-matches. Default: 0.5
+///
+/// # Returns
+/// `MatrixProfileResult` with profile, indices, and detected periods.
+///
+/// # Example
+/// ```rust
+/// use fdars_core::seasonal::matrix_profile;
+/// use std::f64::consts::PI;
+///
+/// // Periodic signal
+/// let period = 20.0;
+/// let values: Vec<f64> = (0..100)
+///     .map(|i| (2.0 * PI * i as f64 / period).sin())
+///     .collect();
+///
+/// let result = matrix_profile(&values, Some(15), None);
+/// assert!((result.primary_period - period).abs() < 5.0);
+/// ```
+pub fn matrix_profile(
+    values: &[f64],
+    subsequence_length: Option<usize>,
+    exclusion_zone: Option<f64>,
+) -> MatrixProfileResult {
+    let n = values.len();
+
+    // Default subsequence length: ~ 1/4 of series length, capped at reasonable range
+    let m = subsequence_length.unwrap_or_else(|| {
+        let default_m = n / 4;
+        default_m.max(4).min(n / 2)
+    });
+
+    assert!(m >= 3, "Subsequence length must be at least 3");
+    assert!(
+        m <= n / 2,
+        "Subsequence length must be at most half the series length"
+    );
+
+    let exclusion_zone = exclusion_zone.unwrap_or(0.5);
+    let exclusion_radius = (m as f64 * exclusion_zone).ceil() as usize;
+
+    // Number of subsequences
+    let profile_len = n - m + 1;
+
+    // Compute sliding statistics
+    let (means, stds) = compute_sliding_stats(values, m);
+
+    // Compute the matrix profile using STOMP
+    let (profile, profile_index) = stomp_core(values, m, &means, &stds, exclusion_radius);
+
+    // Perform arc analysis to detect periods
+    let (arc_counts, detected_periods, primary_period, confidence) =
+        analyze_arcs(&profile_index, profile_len, m);
+
+    MatrixProfileResult {
+        profile,
+        profile_index,
+        subsequence_length: m,
+        detected_periods,
+        arc_counts,
+        primary_period,
+        confidence,
+    }
+}
+
+/// Compute sliding mean and standard deviation using cumulative sums.
+///
+/// This is O(n) and avoids numerical issues with naive implementations.
+fn compute_sliding_stats(values: &[f64], m: usize) -> (Vec<f64>, Vec<f64>) {
+    let n = values.len();
+    let profile_len = n - m + 1;
+
+    // Compute cumulative sums
+    let mut cumsum = vec![0.0; n + 1];
+    let mut cumsum_sq = vec![0.0; n + 1];
+
+    for i in 0..n {
+        cumsum[i + 1] = cumsum[i] + values[i];
+        cumsum_sq[i + 1] = cumsum_sq[i] + values[i] * values[i];
+    }
+
+    // Compute means and stds
+    let mut means = Vec::with_capacity(profile_len);
+    let mut stds = Vec::with_capacity(profile_len);
+
+    let m_f64 = m as f64;
+
+    for i in 0..profile_len {
+        let sum = cumsum[i + m] - cumsum[i];
+        let sum_sq = cumsum_sq[i + m] - cumsum_sq[i];
+
+        let mean = sum / m_f64;
+        let variance = (sum_sq / m_f64) - mean * mean;
+        let std = variance.max(0.0).sqrt();
+
+        means.push(mean);
+        stds.push(std.max(1e-10)); // Prevent division by zero
+    }
+
+    (means, stds)
+}
+
+/// Core STOMP algorithm implementation.
+///
+/// Uses FFT for the first row and incremental updates for subsequent rows.
+fn stomp_core(
+    values: &[f64],
+    m: usize,
+    means: &[f64],
+    stds: &[f64],
+    exclusion_radius: usize,
+) -> (Vec<f64>, Vec<usize>) {
+    let n = values.len();
+    let profile_len = n - m + 1;
+
+    // Initialize profile with infinity and index with 0
+    let mut profile = vec![f64::INFINITY; profile_len];
+    let mut profile_index = vec![0usize; profile_len];
+
+    // Compute first row using direct computation (could use FFT for large n)
+    // QT[0,j] = sum(T[0:m] * T[j:j+m]) for each j
+    let mut qt = vec![0.0; profile_len];
+
+    // First query subsequence
+    for j in 0..profile_len {
+        let mut dot = 0.0;
+        for k in 0..m {
+            dot += values[k] * values[j + k];
+        }
+        qt[j] = dot;
+    }
+
+    // Process first row
+    update_profile_row(
+        0,
+        &qt,
+        means,
+        stds,
+        m,
+        exclusion_radius,
+        &mut profile,
+        &mut profile_index,
+    );
+
+    // Process subsequent rows using incremental updates
+    for i in 1..profile_len {
+        // Update QT using the sliding dot product update
+        // QT[i,j] = QT[i-1,j-1] - T[i-1]*T[j-1] + T[i+m-1]*T[j+m-1]
+        let mut qt_new = vec![0.0; profile_len];
+
+        // First element needs direct computation
+        let mut dot = 0.0;
+        for k in 0..m {
+            dot += values[i + k] * values[k];
+        }
+        qt_new[0] = dot;
+
+        // Update rest using incremental formula
+        for j in 1..profile_len {
+            qt_new[j] =
+                qt[j - 1] - values[i - 1] * values[j - 1] + values[i + m - 1] * values[j + m - 1];
+        }
+
+        qt = qt_new;
+
+        // Update profile with this row
+        update_profile_row(
+            i,
+            &qt,
+            means,
+            stds,
+            m,
+            exclusion_radius,
+            &mut profile,
+            &mut profile_index,
+        );
+    }
+
+    (profile, profile_index)
+}
+
+/// Update profile with distances from row i.
+fn update_profile_row(
+    i: usize,
+    qt: &[f64],
+    means: &[f64],
+    stds: &[f64],
+    m: usize,
+    exclusion_radius: usize,
+    profile: &mut [f64],
+    profile_index: &mut [usize],
+) {
+    let profile_len = profile.len();
+    let m_f64 = m as f64;
+
+    for j in 0..profile_len {
+        // Skip exclusion zone
+        if i.abs_diff(j) <= exclusion_radius {
+            continue;
+        }
+
+        // Compute z-normalized distance
+        // d = sqrt(2*m * (1 - (QT - m*mu_i*mu_j) / (m * sigma_i * sigma_j)))
+        let numerator = qt[j] - m_f64 * means[i] * means[j];
+        let denominator = m_f64 * stds[i] * stds[j];
+
+        let pearson = if denominator > 0.0 {
+            (numerator / denominator).clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+
+        let dist_sq = 2.0 * m_f64 * (1.0 - pearson);
+        let dist = dist_sq.max(0.0).sqrt();
+
+        // Update profile for position i
+        if dist < profile[i] {
+            profile[i] = dist;
+            profile_index[i] = j;
+        }
+
+        // Update profile for position j (symmetric)
+        if dist < profile[j] {
+            profile[j] = dist;
+            profile_index[j] = i;
+        }
+    }
+}
+
+/// Analyze profile index to detect periods using arc counting.
+///
+/// Arcs connect each position to its nearest neighbor. The distance between
+/// connected positions reveals repeating patterns (periods).
+fn analyze_arcs(
+    profile_index: &[usize],
+    profile_len: usize,
+    m: usize,
+) -> (Vec<usize>, Vec<f64>, f64, f64) {
+    // Count arcs at each index distance
+    let max_distance = profile_len;
+    let mut arc_counts = vec![0usize; max_distance];
+
+    for (i, &j) in profile_index.iter().enumerate() {
+        let distance = i.abs_diff(j);
+        if distance < max_distance {
+            arc_counts[distance] += 1;
+        }
+    }
+
+    // Find peaks in arc counts (candidate periods)
+    let min_period = m / 2; // Minimum meaningful period
+    let mut peaks: Vec<(usize, usize)> = Vec::new();
+
+    // Simple peak detection with minimum spacing
+    for i in min_period..arc_counts.len().saturating_sub(1) {
+        if arc_counts[i] > arc_counts[i.saturating_sub(1)]
+            && arc_counts[i] > arc_counts[(i + 1).min(arc_counts.len() - 1)]
+            && arc_counts[i] >= 3
+        // Minimum count threshold
+        {
+            peaks.push((i, arc_counts[i]));
+        }
+    }
+
+    // Sort by count descending
+    peaks.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // Extract top periods
+    let detected_periods: Vec<f64> = peaks.iter().take(5).map(|(p, _)| *p as f64).collect();
+
+    // Primary period and confidence
+    let (primary_period, confidence) = if let Some(&(period, count)) = peaks.first() {
+        // Confidence based on relative peak prominence
+        let total_arcs: usize = arc_counts[min_period..].iter().sum();
+        let conf = if total_arcs > 0 {
+            count as f64 / total_arcs as f64
+        } else {
+            0.0
+        };
+        (period as f64, conf.min(1.0))
+    } else {
+        (0.0, 0.0)
+    };
+
+    (arc_counts, detected_periods, primary_period, confidence)
+}
+
+/// Compute Matrix Profile for functional data (multiple curves).
+///
+/// Computes the matrix profile for each curve and returns aggregated results.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m) of functional data
+/// * `n` - Number of samples (rows)
+/// * `m` - Number of evaluation points (columns)
+/// * `subsequence_length` - Length of subsequences. If None, automatically determined.
+/// * `exclusion_zone` - Exclusion zone fraction. Default: 0.5
+///
+/// # Returns
+/// `MatrixProfileResult` computed from the mean curve.
+pub fn matrix_profile_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    subsequence_length: Option<usize>,
+    exclusion_zone: Option<f64>,
+) -> MatrixProfileResult {
+    // Compute mean curve
+    let mean_curve = compute_mean_curve(data, n, m);
+
+    // Run matrix profile on mean curve
+    matrix_profile(&mean_curve, subsequence_length, exclusion_zone)
+}
+
+/// Detect seasonality using Matrix Profile analysis.
+///
+/// Returns true if significant periodicity is detected based on matrix profile analysis.
+///
+/// # Arguments
+/// * `values` - Time series values
+/// * `subsequence_length` - Length of subsequences to compare
+/// * `confidence_threshold` - Minimum confidence for positive detection. Default: 0.1
+///
+/// # Returns
+/// Tuple of (is_seasonal, detected_period, confidence)
+pub fn matrix_profile_seasonality(
+    values: &[f64],
+    subsequence_length: Option<usize>,
+    confidence_threshold: Option<f64>,
+) -> (bool, f64, f64) {
+    let result = matrix_profile(values, subsequence_length, None);
+
+    let threshold = confidence_threshold.unwrap_or(0.1);
+    let is_seasonal = result.confidence >= threshold && result.primary_period > 0.0;
+
+    (is_seasonal, result.primary_period, result.confidence)
+}
+
+// ============================================================================
+// Singular Spectrum Analysis (SSA)
+// ============================================================================
+
+/// Result of Singular Spectrum Analysis.
+#[derive(Debug, Clone)]
+pub struct SsaResult {
+    /// Reconstructed trend component
+    pub trend: Vec<f64>,
+    /// Reconstructed seasonal/periodic component
+    pub seasonal: Vec<f64>,
+    /// Noise/residual component
+    pub noise: Vec<f64>,
+    /// Singular values from SVD (sorted descending)
+    pub singular_values: Vec<f64>,
+    /// Contribution of each component (proportion of variance)
+    pub contributions: Vec<f64>,
+    /// Window length used for embedding
+    pub window_length: usize,
+    /// Number of components extracted
+    pub n_components: usize,
+    /// Detected period (if any significant periodicity found)
+    pub detected_period: f64,
+    /// Confidence score for detected period
+    pub confidence: f64,
+}
+
+/// Singular Spectrum Analysis (SSA) for time series decomposition.
+///
+/// SSA is a model-free, non-parametric method for decomposing a time series
+/// into trend, oscillatory (seasonal), and noise components using singular
+/// value decomposition of the trajectory matrix.
+///
+/// # Algorithm
+/// 1. **Embedding**: Convert series into trajectory matrix using sliding windows
+/// 2. **Decomposition**: SVD of trajectory matrix
+/// 3. **Grouping**: Identify trend vs. periodic vs. noise components
+/// 4. **Reconstruction**: Diagonal averaging to recover time series
+///
+/// # Arguments
+/// * `values` - Time series values
+/// * `window_length` - Embedding window length (L). If None, uses L = min(n/2, 50).
+///   Larger values capture longer-term patterns but need longer series.
+/// * `n_components` - Number of components to extract. If None, uses 10.
+/// * `trend_components` - Indices of components for trend (0-based). If None, auto-detect.
+/// * `seasonal_components` - Indices of components for seasonal. If None, auto-detect.
+///
+/// # Returns
+/// `SsaResult` with decomposed components and diagnostics.
+///
+/// # Example
+/// ```rust
+/// use fdars_core::seasonal::ssa;
+/// use std::f64::consts::PI;
+///
+/// // Signal with trend + seasonal + noise
+/// let n = 100;
+/// let values: Vec<f64> = (0..n)
+///     .map(|i| {
+///         let t = i as f64;
+///         0.01 * t + (2.0 * PI * t / 12.0).sin() + 0.1 * (i as f64 * 0.1).sin()
+///     })
+///     .collect();
+///
+/// let result = ssa(&values, None, None, None, None);
+/// assert!(result.detected_period > 0.0);
+/// ```
+pub fn ssa(
+    values: &[f64],
+    window_length: Option<usize>,
+    n_components: Option<usize>,
+    trend_components: Option<&[usize]>,
+    seasonal_components: Option<&[usize]>,
+) -> SsaResult {
+    let n = values.len();
+
+    // Default window length: min(n/2, 50)
+    let l = window_length.unwrap_or_else(|| (n / 2).clamp(2, 50));
+
+    if n < 4 || l < 2 || l > n / 2 {
+        return SsaResult {
+            trend: values.to_vec(),
+            seasonal: vec![0.0; n],
+            noise: vec![0.0; n],
+            singular_values: vec![],
+            contributions: vec![],
+            window_length: l,
+            n_components: 0,
+            detected_period: 0.0,
+            confidence: 0.0,
+        };
+    }
+
+    // Number of columns in trajectory matrix
+    let k = n - l + 1;
+
+    // Step 1: Embedding - create trajectory matrix (L x K)
+    let trajectory = embed_trajectory(values, l, k);
+
+    // Step 2: SVD decomposition
+    let (u, sigma, vt) = svd_decompose(&trajectory, l, k);
+
+    // Determine number of components to use
+    let max_components = sigma.len();
+    let n_comp = n_components.unwrap_or(10).min(max_components);
+
+    // Compute contributions (proportion of total variance)
+    let total_var: f64 = sigma.iter().map(|&s| s * s).sum();
+    let contributions: Vec<f64> = sigma
+        .iter()
+        .take(n_comp)
+        .map(|&s| s * s / total_var.max(1e-15))
+        .collect();
+
+    // Step 3: Grouping - identify trend and seasonal components
+    let (trend_idx, seasonal_idx, detected_period, confidence) =
+        if trend_components.is_some() || seasonal_components.is_some() {
+            // Use provided groupings
+            let t_idx: Vec<usize> = trend_components.map(|v| v.to_vec()).unwrap_or_default();
+            let s_idx: Vec<usize> = seasonal_components.map(|v| v.to_vec()).unwrap_or_default();
+            (t_idx, s_idx, 0.0, 0.0)
+        } else {
+            // Auto-detect groupings
+            auto_group_ssa_components(&u, &sigma, l, k, n_comp)
+        };
+
+    // Step 4: Reconstruction via diagonal averaging
+    let trend = reconstruct_grouped(&u, &sigma, &vt, l, k, n, &trend_idx);
+    let seasonal = reconstruct_grouped(&u, &sigma, &vt, l, k, n, &seasonal_idx);
+
+    // Noise is the remainder
+    let noise: Vec<f64> = values
+        .iter()
+        .zip(trend.iter())
+        .zip(seasonal.iter())
+        .map(|((&y, &t), &s)| y - t - s)
+        .collect();
+
+    SsaResult {
+        trend,
+        seasonal,
+        noise,
+        singular_values: sigma.into_iter().take(n_comp).collect(),
+        contributions,
+        window_length: l,
+        n_components: n_comp,
+        detected_period,
+        confidence,
+    }
+}
+
+/// Create trajectory matrix by embedding the time series.
+fn embed_trajectory(values: &[f64], l: usize, k: usize) -> Vec<f64> {
+    // Trajectory matrix is L x K, stored column-major
+    let mut trajectory = vec![0.0; l * k];
+
+    for j in 0..k {
+        for i in 0..l {
+            trajectory[i + j * l] = values[i + j];
+        }
+    }
+
+    trajectory
+}
+
+/// SVD decomposition of trajectory matrix using nalgebra.
+fn svd_decompose(trajectory: &[f64], l: usize, k: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    use nalgebra::{DMatrix, SVD};
+
+    // Create nalgebra matrix (column-major)
+    let mat = DMatrix::from_column_slice(l, k, trajectory);
+
+    // Compute SVD
+    let svd = SVD::new(mat, true, true);
+
+    // Extract components
+    let u_mat = svd.u.unwrap();
+    let vt_mat = svd.v_t.unwrap();
+    let sigma = svd.singular_values;
+
+    // Convert to flat vectors
+    let u: Vec<f64> = u_mat.iter().cloned().collect();
+    let sigma_vec: Vec<f64> = sigma.iter().cloned().collect();
+    let vt: Vec<f64> = vt_mat.iter().cloned().collect();
+
+    (u, sigma_vec, vt)
+}
+
+/// Auto-detect trend and seasonal component groupings.
+fn auto_group_ssa_components(
+    u: &[f64],
+    sigma: &[f64],
+    l: usize,
+    _k: usize,
+    n_comp: usize,
+) -> (Vec<usize>, Vec<usize>, f64, f64) {
+    let mut trend_idx = Vec::new();
+    let mut seasonal_idx = Vec::new();
+    let mut detected_period = 0.0;
+    let mut confidence = 0.0;
+
+    // Analyze each component
+    for i in 0..n_comp.min(sigma.len()) {
+        // Extract i-th column of U (left singular vector)
+        let u_col: Vec<f64> = (0..l).map(|j| u[j + i * l]).collect();
+
+        // Check if component is trend-like (monotonic or slowly varying)
+        let is_trend = is_trend_component(&u_col);
+
+        // Check if component is periodic
+        let (is_periodic, period) = is_periodic_component(&u_col);
+
+        if is_trend && trend_idx.len() < 2 {
+            trend_idx.push(i);
+        } else if is_periodic {
+            seasonal_idx.push(i);
+            if detected_period == 0.0 && period > 0.0 {
+                detected_period = period;
+                confidence = sigma[i] / sigma[0].max(1e-15);
+            }
+        }
+    }
+
+    // If no trend detected, use first component
+    if trend_idx.is_empty() && n_comp > 0 {
+        trend_idx.push(0);
+    }
+
+    // If no seasonal detected, use components 2-3 (often harmonic pairs)
+    if seasonal_idx.is_empty() && n_comp >= 3 {
+        seasonal_idx.push(1);
+        if n_comp > 2 {
+            seasonal_idx.push(2);
+        }
+    }
+
+    (trend_idx, seasonal_idx, detected_period, confidence)
+}
+
+/// Check if a singular vector represents a trend component.
+fn is_trend_component(u_col: &[f64]) -> bool {
+    let n = u_col.len();
+    if n < 3 {
+        return false;
+    }
+
+    // Count sign changes in the vector
+    let mut sign_changes = 0;
+    for i in 1..n {
+        if u_col[i] * u_col[i - 1] < 0.0 {
+            sign_changes += 1;
+        }
+    }
+
+    // Trend components have very few sign changes
+    sign_changes <= n / 10
+}
+
+/// Check if a singular vector represents a periodic component.
+fn is_periodic_component(u_col: &[f64]) -> (bool, f64) {
+    let n = u_col.len();
+    if n < 4 {
+        return (false, 0.0);
+    }
+
+    // Use autocorrelation to detect periodicity
+    let mean: f64 = u_col.iter().sum::<f64>() / n as f64;
+    let centered: Vec<f64> = u_col.iter().map(|&x| x - mean).collect();
+
+    let var: f64 = centered.iter().map(|&x| x * x).sum();
+    if var < 1e-15 {
+        return (false, 0.0);
+    }
+
+    // Find first significant peak in autocorrelation
+    let mut best_period = 0.0;
+    let mut best_acf = 0.0;
+
+    for lag in 2..n / 2 {
+        let mut acf = 0.0;
+        for i in 0..(n - lag) {
+            acf += centered[i] * centered[i + lag];
+        }
+        acf /= var;
+
+        if acf > best_acf && acf > 0.3 {
+            best_acf = acf;
+            best_period = lag as f64;
+        }
+    }
+
+    let is_periodic = best_acf > 0.3 && best_period > 0.0;
+    (is_periodic, best_period)
+}
+
+/// Reconstruct time series from grouped components via diagonal averaging.
+fn reconstruct_grouped(
+    u: &[f64],
+    sigma: &[f64],
+    vt: &[f64],
+    l: usize,
+    k: usize,
+    n: usize,
+    group_idx: &[usize],
+) -> Vec<f64> {
+    if group_idx.is_empty() {
+        return vec![0.0; n];
+    }
+
+    // Sum of rank-1 matrices for this group
+    let mut grouped_matrix = vec![0.0; l * k];
+
+    for &idx in group_idx {
+        if idx >= sigma.len() {
+            continue;
+        }
+
+        let s = sigma[idx];
+
+        // Add s * u_i * v_i^T
+        for j in 0..k {
+            for i in 0..l {
+                let u_val = u[i + idx * l];
+                let v_val = vt[idx + j * sigma.len().min(l)]; // v_t is stored as K x min(L,K)
+                grouped_matrix[i + j * l] += s * u_val * v_val;
+            }
+        }
+    }
+
+    // Diagonal averaging (Hankelization)
+    diagonal_average(&grouped_matrix, l, k, n)
+}
+
+/// Diagonal averaging to convert trajectory matrix back to time series.
+fn diagonal_average(matrix: &[f64], l: usize, k: usize, n: usize) -> Vec<f64> {
+    let mut result = vec![0.0; n];
+    let mut counts = vec![0.0; n];
+
+    // Average along anti-diagonals
+    for j in 0..k {
+        for i in 0..l {
+            let idx = i + j; // Position in original series
+            if idx < n {
+                result[idx] += matrix[i + j * l];
+                counts[idx] += 1.0;
+            }
+        }
+    }
+
+    // Normalize by counts
+    for i in 0..n {
+        if counts[i] > 0.0 {
+            result[i] /= counts[i];
+        }
+    }
+
+    result
+}
+
+/// Compute SSA for functional data (multiple curves).
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m) of functional data
+/// * `n` - Number of samples (rows)
+/// * `m` - Number of evaluation points (columns)
+/// * `window_length` - SSA window length. If None, auto-determined.
+/// * `n_components` - Number of SSA components. Default: 10.
+///
+/// # Returns
+/// `SsaResult` computed from the mean curve.
+pub fn ssa_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    window_length: Option<usize>,
+    n_components: Option<usize>,
+) -> SsaResult {
+    // Compute mean curve
+    let mean_curve = compute_mean_curve(data, n, m);
+
+    // Run SSA on mean curve
+    ssa(&mean_curve, window_length, n_components, None, None)
+}
+
+/// Detect seasonality using SSA.
+///
+/// # Arguments
+/// * `values` - Time series values
+/// * `window_length` - SSA window length
+/// * `confidence_threshold` - Minimum confidence for positive detection
+///
+/// # Returns
+/// Tuple of (is_seasonal, detected_period, confidence)
+pub fn ssa_seasonality(
+    values: &[f64],
+    window_length: Option<usize>,
+    confidence_threshold: Option<f64>,
+) -> (bool, f64, f64) {
+    let result = ssa(values, window_length, None, None, None);
+
+    let threshold = confidence_threshold.unwrap_or(0.1);
+    let is_seasonal = result.confidence >= threshold && result.detected_period > 0.0;
+
+    (is_seasonal, result.detected_period, result.confidence)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

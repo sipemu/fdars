@@ -702,6 +702,420 @@ pub fn decompose_multiplicative(
     }
 }
 
+// ============================================================================
+// STL Decomposition (Cleveland et al., 1990)
+// ============================================================================
+
+/// Result of STL decomposition including robustness weights.
+#[derive(Debug, Clone)]
+pub struct StlResult {
+    /// Trend component (n x m column-major)
+    pub trend: Vec<f64>,
+    /// Seasonal component (n x m column-major)
+    pub seasonal: Vec<f64>,
+    /// Remainder/residual component (n x m column-major)
+    pub remainder: Vec<f64>,
+    /// Robustness weights per point (n x m column-major)
+    pub weights: Vec<f64>,
+    /// Period used for decomposition
+    pub period: usize,
+    /// Seasonal smoothing window
+    pub s_window: usize,
+    /// Trend smoothing window
+    pub t_window: usize,
+    /// Number of inner loop iterations performed
+    pub inner_iterations: usize,
+    /// Number of outer loop iterations performed
+    pub outer_iterations: usize,
+}
+
+/// STL Decomposition: Seasonal and Trend decomposition using LOESS
+///
+/// Implements the Cleveland et al. (1990) algorithm for robust iterative
+/// decomposition of time series into trend, seasonal, and remainder components.
+///
+/// # Algorithm Overview
+/// - **Inner Loop**: Extracts seasonal and trend components using LOESS smoothing
+/// - **Outer Loop**: Computes robustness weights to downweight outliers
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m): n samples, m evaluation points
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `period` - Seasonal period (number of observations per cycle)
+/// * `s_window` - Seasonal smoothing window (must be odd, ≥7 recommended)
+/// * `t_window` - Trend smoothing window. If None, uses default formula
+/// * `l_window` - Low-pass filter window. If None, uses period
+/// * `robust` - Whether to perform robustness iterations
+/// * `inner_iterations` - Number of inner loop iterations. Default: 2
+/// * `outer_iterations` - Number of outer loop iterations. Default: 1 (or 15 if robust)
+///
+/// # Returns
+/// `StlResult` with trend, seasonal, remainder, and robustness weights
+///
+/// # References
+/// Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990).
+/// STL: A Seasonal-Trend Decomposition Procedure Based on Loess.
+/// Journal of Official Statistics, 6(1), 3-73.
+pub fn stl_decompose(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    period: usize,
+    s_window: Option<usize>,
+    t_window: Option<usize>,
+    l_window: Option<usize>,
+    robust: bool,
+    inner_iterations: Option<usize>,
+    outer_iterations: Option<usize>,
+) -> StlResult {
+    // Validate inputs
+    if n == 0 || m < 2 * period || data.len() != n * m || period < 2 {
+        return StlResult {
+            trend: vec![0.0; n * m],
+            seasonal: vec![0.0; n * m],
+            remainder: data.to_vec(),
+            weights: vec![1.0; n * m],
+            period,
+            s_window: 0,
+            t_window: 0,
+            inner_iterations: 0,
+            outer_iterations: 0,
+        };
+    }
+
+    // Set default parameters following Cleveland et al. recommendations
+    let s_win = s_window.unwrap_or(7).max(3) | 1; // Ensure odd
+
+    // Default t_window: smallest odd integer >= (1.5 * period) / (1 - 1.5/s_window)
+    let t_win = t_window.unwrap_or_else(|| {
+        let ratio = 1.5 * period as f64 / (1.0 - 1.5 / s_win as f64);
+        let val = ratio.ceil() as usize;
+        val.max(3) | 1 // Ensure odd
+    });
+
+    // Low-pass filter window: smallest odd integer >= period
+    let l_win = l_window.unwrap_or(period) | 1;
+
+    let n_inner = inner_iterations.unwrap_or(2);
+    let n_outer = outer_iterations.unwrap_or(if robust { 15 } else { 1 });
+
+    // Process each sample in parallel
+    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
+            stl_single_series(
+                &curve, period, s_win, t_win, l_win, robust, n_inner, n_outer,
+            )
+        })
+        .collect();
+
+    // Reassemble into column-major format
+    let mut trend = vec![0.0; n * m];
+    let mut seasonal = vec![0.0; n * m];
+    let mut remainder = vec![0.0; n * m];
+    let mut weights = vec![1.0; n * m];
+
+    for (i, (t, s, r, w)) in results.into_iter().enumerate() {
+        for j in 0..m {
+            trend[i + j * n] = t[j];
+            seasonal[i + j * n] = s[j];
+            remainder[i + j * n] = r[j];
+            weights[i + j * n] = w[j];
+        }
+    }
+
+    StlResult {
+        trend,
+        seasonal,
+        remainder,
+        weights,
+        period,
+        s_window: s_win,
+        t_window: t_win,
+        inner_iterations: n_inner,
+        outer_iterations: n_outer,
+    }
+}
+
+/// STL decomposition for a single time series.
+fn stl_single_series(
+    data: &[f64],
+    period: usize,
+    s_window: usize,
+    t_window: usize,
+    l_window: usize,
+    robust: bool,
+    n_inner: usize,
+    n_outer: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let m = data.len();
+
+    // Initialize components
+    let mut trend = vec![0.0; m];
+    let mut seasonal = vec![0.0; m];
+    let mut weights = vec![1.0; m];
+
+    // Outer loop for robustness
+    for _outer in 0..n_outer {
+        // Inner loop
+        for _inner in 0..n_inner {
+            // Step 1: Detrending
+            let detrended: Vec<f64> = data
+                .iter()
+                .zip(trend.iter())
+                .map(|(&y, &t)| y - t)
+                .collect();
+
+            // Step 2: Cycle-subseries smoothing
+            let cycle_smoothed = smooth_cycle_subseries(&detrended, period, s_window, &weights);
+
+            // Step 3: Low-pass filtering of smoothed cycle-subseries
+            let low_pass = stl_lowpass_filter(&cycle_smoothed, period, l_window);
+
+            // Step 4: Detrending the smoothed cycle-subseries
+            seasonal = cycle_smoothed
+                .iter()
+                .zip(low_pass.iter())
+                .map(|(&c, &l)| c - l)
+                .collect();
+
+            // Step 5: Deseasonalizing
+            let deseasonalized: Vec<f64> = data
+                .iter()
+                .zip(seasonal.iter())
+                .map(|(&y, &s)| y - s)
+                .collect();
+
+            // Step 6: Trend smoothing (weighted LOESS)
+            trend = weighted_loess(&deseasonalized, t_window, &weights);
+        }
+
+        // After inner loop: compute residuals and robustness weights
+        if robust && _outer < n_outer - 1 {
+            let remainder: Vec<f64> = data
+                .iter()
+                .zip(trend.iter())
+                .zip(seasonal.iter())
+                .map(|((&y, &t), &s)| y - t - s)
+                .collect();
+
+            weights = compute_robustness_weights(&remainder);
+        }
+    }
+
+    // Final remainder
+    let remainder: Vec<f64> = data
+        .iter()
+        .zip(trend.iter())
+        .zip(seasonal.iter())
+        .map(|((&y, &t), &s)| y - t - s)
+        .collect();
+
+    (trend, seasonal, remainder, weights)
+}
+
+/// Smooth cycle-subseries: for each seasonal position, smooth across cycles.
+fn smooth_cycle_subseries(
+    data: &[f64],
+    period: usize,
+    s_window: usize,
+    weights: &[f64],
+) -> Vec<f64> {
+    let m = data.len();
+    let n_cycles = (m + period - 1) / period;
+    let mut result = vec![0.0; m];
+
+    // For each position in the cycle (0, 1, ..., period-1)
+    for pos in 0..period {
+        // Extract subseries at this position
+        let mut subseries_idx: Vec<usize> = Vec::new();
+        let mut subseries_vals: Vec<f64> = Vec::new();
+        let mut subseries_weights: Vec<f64> = Vec::new();
+
+        for cycle in 0..n_cycles {
+            let idx = cycle * period + pos;
+            if idx < m {
+                subseries_idx.push(idx);
+                subseries_vals.push(data[idx]);
+                subseries_weights.push(weights[idx]);
+            }
+        }
+
+        if subseries_vals.is_empty() {
+            continue;
+        }
+
+        // Smooth this subseries using weighted LOESS
+        let smoothed = weighted_loess(&subseries_vals, s_window, &subseries_weights);
+
+        // Put smoothed values back
+        for (i, &idx) in subseries_idx.iter().enumerate() {
+            result[idx] = smoothed[i];
+        }
+    }
+
+    result
+}
+
+/// Low-pass filter for STL (combination of moving averages).
+/// Applies: MA(period) -> MA(period) -> MA(3)
+fn stl_lowpass_filter(data: &[f64], period: usize, _l_window: usize) -> Vec<f64> {
+    // First MA with period
+    let ma1 = moving_average(data, period);
+    // Second MA with period
+    let ma2 = moving_average(&ma1, period);
+    // Third MA with 3
+    moving_average(&ma2, 3)
+}
+
+/// Simple moving average with window size.
+fn moving_average(data: &[f64], window: usize) -> Vec<f64> {
+    let m = data.len();
+    if m == 0 || window == 0 {
+        return data.to_vec();
+    }
+
+    let half = window / 2;
+    let mut result = vec![0.0; m];
+
+    for i in 0..m {
+        let start = i.saturating_sub(half);
+        let end = (i + half + 1).min(m);
+        let sum: f64 = data[start..end].iter().sum();
+        let count = (end - start) as f64;
+        result[i] = sum / count;
+    }
+
+    result
+}
+
+/// Weighted LOESS smoothing.
+fn weighted_loess(data: &[f64], window: usize, weights: &[f64]) -> Vec<f64> {
+    let m = data.len();
+    if m == 0 {
+        return vec![];
+    }
+
+    let half = window / 2;
+    let mut result = vec![0.0; m];
+
+    for i in 0..m {
+        let start = i.saturating_sub(half);
+        let end = (i + half + 1).min(m);
+
+        // Compute weighted local linear regression
+        let mut sum_w = 0.0;
+        let mut sum_wx = 0.0;
+        let mut sum_wy = 0.0;
+        let mut sum_wxx = 0.0;
+        let mut sum_wxy = 0.0;
+
+        for j in start..end {
+            // Tricube weight based on distance
+            let dist = (j as f64 - i as f64).abs() / (half.max(1) as f64);
+            let tricube = if dist < 1.0 {
+                (1.0 - dist.powi(3)).powi(3)
+            } else {
+                0.0
+            };
+
+            let w = tricube * weights[j];
+            let x = j as f64;
+            let y = data[j];
+
+            sum_w += w;
+            sum_wx += w * x;
+            sum_wy += w * y;
+            sum_wxx += w * x * x;
+            sum_wxy += w * x * y;
+        }
+
+        // Solve weighted least squares
+        if sum_w > 1e-10 {
+            let denom = sum_w * sum_wxx - sum_wx * sum_wx;
+            if denom.abs() > 1e-10 {
+                let intercept = (sum_wxx * sum_wy - sum_wx * sum_wxy) / denom;
+                let slope = (sum_w * sum_wxy - sum_wx * sum_wy) / denom;
+                result[i] = intercept + slope * i as f64;
+            } else {
+                result[i] = sum_wy / sum_w;
+            }
+        } else {
+            result[i] = data[i];
+        }
+    }
+
+    result
+}
+
+/// Compute robustness weights using bisquare function.
+fn compute_robustness_weights(residuals: &[f64]) -> Vec<f64> {
+    let m = residuals.len();
+    if m == 0 {
+        return vec![];
+    }
+
+    // Compute median absolute deviation (MAD)
+    let mut abs_residuals: Vec<f64> = residuals.iter().map(|&r| r.abs()).collect();
+    abs_residuals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let median_idx = m / 2;
+    let mad = if m % 2 == 0 {
+        (abs_residuals[median_idx - 1] + abs_residuals[median_idx]) / 2.0
+    } else {
+        abs_residuals[median_idx]
+    };
+
+    // Scale factor: 6 * MAD (Cleveland et al. use 6 MAD)
+    let h = 6.0 * mad.max(1e-10);
+
+    // Bisquare weight function
+    residuals
+        .iter()
+        .map(|&r| {
+            let u = r.abs() / h;
+            if u < 1.0 {
+                (1.0 - u * u).powi(2)
+            } else {
+                0.0
+            }
+        })
+        .collect()
+}
+
+/// Wrapper function for functional data STL decomposition.
+///
+/// Computes STL decomposition for each curve in the functional data object
+/// and returns aggregated results.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m) of functional data
+/// * `n` - Number of samples (rows)
+/// * `m` - Number of evaluation points (columns)
+/// * `argvals` - Time points of length m (used to infer period if needed)
+/// * `period` - Seasonal period (in number of observations)
+/// * `s_window` - Seasonal smoothing window
+/// * `t_window` - Trend smoothing window (0 for auto)
+/// * `robust` - Whether to use robustness iterations
+///
+/// # Returns
+/// `StlResult` with decomposed components.
+pub fn stl_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    _argvals: &[f64],
+    period: usize,
+    s_window: Option<usize>,
+    t_window: Option<usize>,
+    robust: bool,
+) -> StlResult {
+    stl_decompose(
+        data, n, m, period, s_window, t_window, None, robust, None, None,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -553,6 +553,652 @@ print.sazed_result <- function(x, ...) {
 }
 
 # ==============================================================================
+# Lomb-Scargle Periodogram
+# ==============================================================================
+
+#' Lomb-Scargle Periodogram
+#'
+#' Computes the Lomb-Scargle periodogram for period detection in
+#' unevenly-sampled data. The Lomb-Scargle method is designed for
+#' irregularly spaced observations and reduces to the standard
+#' periodogram for evenly-spaced data.
+#'
+#' @param fdataobj An fdata object. Can have regular or irregular sampling.
+#' @param oversampling Oversampling factor for the frequency grid.
+#'   Higher values give finer frequency resolution. Default: 4.
+#' @param nyquist_factor Maximum frequency as a multiple of the pseudo-Nyquist
+#'   frequency. Default: 1.
+#'
+#' @return A list of class "lomb_scargle_result" with components:
+#' \describe{
+#'   \item{frequencies}{Vector of evaluated frequencies}
+#'   \item{periods}{Corresponding periods (1/frequency)}
+#'   \item{power}{Normalized Lomb-Scargle power at each frequency}
+#'   \item{peak_period}{Period with highest power}
+#'   \item{peak_frequency}{Frequency with highest power}
+#'   \item{peak_power}{Maximum power value}
+#'   \item{false_alarm_probability}{False alarm probability at peak}
+#'   \item{significance}{Significance level (1 - FAP)}
+#' }
+#'
+#' @details
+#' The Lomb-Scargle periodogram is particularly useful when:
+#' - Data has gaps or missing observations
+#' - Sampling is not uniform (e.g., astronomical observations)
+#' - Working with irregular functional data
+#'
+#' The algorithm follows Scargle (1982) with significance estimation
+#' from Horne & Baliunas (1986). For each test frequency, it computes:
+#'
+#' \deqn{P(\omega) = \frac{1}{2\sigma^2} \left[
+#'   \frac{(\sum_j (y_j - \bar{y}) \cos\omega(t_j - \tau))^2}{\sum_j \cos^2\omega(t_j - \tau)} +
+#'   \frac{(\sum_j (y_j - \bar{y}) \sin\omega(t_j - \tau))^2}{\sum_j \sin^2\omega(t_j - \tau)}
+#' \right]}
+#'
+#' where \eqn{\tau} is a phase shift chosen to make the sine and cosine
+#' terms orthogonal.
+#'
+#' @references
+#' Scargle, J.D. (1982). Studies in astronomical time series analysis. II.
+#' Statistical aspects of spectral analysis of unevenly spaced data.
+#' The Astrophysical Journal, 263, 835-853.
+#'
+#' Horne, J.H., & Baliunas, S.L. (1986). A prescription for period analysis
+#' of unevenly sampled time series. The Astrophysical Journal, 302, 757-763.
+#'
+#' @examples
+#' # Regular sampling
+#' t <- seq(0, 10, length.out = 200)
+#' X <- matrix(sin(2 * pi * t / 2), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#' result <- lomb.scargle(fd)
+#' print(result)
+#'
+#' # Irregular sampling (simulated)
+#' set.seed(42)
+#' t_irreg <- sort(runif(100, 0, 10))
+#' X_irreg <- matrix(sin(2 * pi * t_irreg / 2), nrow = 1)
+#' fd_irreg <- fdata(X_irreg, argvals = t_irreg)
+#' result_irreg <- lomb.scargle(fd_irreg)
+#'
+#' @seealso \code{\link{estimate.period}}, \code{\link{sazed}}
+#'
+#' @export
+lomb.scargle <- function(fdataobj, oversampling = 4, nyquist_factor = 1) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be an fdata object")
+  }
+  if (ncol(fdataobj$data) < 3) {
+    stop("fdata must have at least 3 time points")
+  }
+
+  result <- .Call("wrap__seasonal_lomb_scargle",
+                  fdataobj$data, fdataobj$argvals,
+                  as.double(oversampling), as.double(nyquist_factor))
+
+  class(result) <- "lomb_scargle_result"
+  result
+}
+
+#' @export
+print.lomb_scargle_result <- function(x, ...) {
+  cat("Lomb-Scargle Periodogram\n")
+  cat("------------------------\n")
+  cat(sprintf("Peak period:    %.4f\n", x$peak_period))
+  cat(sprintf("Peak frequency: %.4f\n", x$peak_frequency))
+  cat(sprintf("Peak power:     %.4f\n", x$peak_power))
+  cat(sprintf("FAP:            %.4e\n", x$false_alarm_probability))
+  cat(sprintf("Significance:   %.4f\n", x$significance))
+  cat(sprintf("\nFrequency grid: %d points (%.4f to %.4f)\n",
+              length(x$frequencies),
+              min(x$frequencies, na.rm = TRUE),
+              max(x$frequencies, na.rm = TRUE)))
+  invisible(x)
+}
+
+#' @export
+plot.lomb_scargle_result <- function(x, ...) {
+  plot(x$frequencies, x$power, type = "l",
+       xlab = "Frequency", ylab = "Power",
+       main = "Lomb-Scargle Periodogram", ...)
+  abline(v = x$peak_frequency, col = "red", lty = 2)
+  legend("topright",
+         legend = sprintf("Peak: period=%.4f", x$peak_period),
+         col = "red", lty = 2, bty = "n")
+}
+
+# ==============================================================================
+# Matrix Profile (STOMP Algorithm)
+# ==============================================================================
+
+#' Matrix Profile for Motif Discovery and Period Detection
+#'
+#' Computes the Matrix Profile using the STOMP (Scalable Time series Ordered-search
+#' Matrix Profile) algorithm. The Matrix Profile stores the z-normalized Euclidean
+#' distance between each subsequence and its nearest neighbor, enabling efficient
+#' motif discovery and period detection for non-sinusoidal patterns.
+#'
+#' @param fdataobj An fdata object.
+#' @param subsequence_length Length of subsequences to compare. If NULL,
+#'   automatically determined as approximately 1/4 of series length.
+#' @param exclusion_zone Fraction of subsequence length to exclude around each
+#'   position to prevent trivial self-matches. Default: 0.5.
+#'
+#' @return A list of class "matrix_profile_result" with components:
+#' \describe{
+#'   \item{profile}{Numeric vector of minimum z-normalized distances at each position}
+#'   \item{profile_index}{Integer vector of nearest neighbor indices (1-based)}
+#'   \item{subsequence_length}{Subsequence length used}
+#'   \item{detected_periods}{Candidate periods detected from arc analysis (top 5)}
+#'   \item{arc_counts}{Arc counts at each index distance (for diagnostics)}
+#'   \item{primary_period}{Most prominent detected period}
+#'   \item{confidence}{Confidence score (0-1) based on arc prominence}
+#' }
+#'
+#' @details
+#' The Matrix Profile algorithm (Yeh et al., 2016; Zhu et al., 2016) is particularly
+#' suited for:
+#' \itemize{
+#'   \item Non-sinusoidal repeating patterns (unlike FFT/spectral methods)
+#'   \item Motif discovery (finding repeated subsequences)
+#'   \item Anomaly detection (subsequences with no good match)
+#' }
+#'
+#' The STOMP variant uses O(n^2) time complexity but is highly cache-efficient.
+#' For very long series (>10000 points), consider downsampling.
+#'
+#' Period detection is based on "arc analysis": counting how often the nearest
+#' neighbor is a fixed distance away. Peaks in arc counts indicate periodicity.
+#'
+#' @references
+#' Yeh, C. C. M., et al. (2016). Matrix profile I: All pairs similarity joins
+#' for time series: A unifying view that includes motifs, discords and shapelets.
+#' ICDM 2016.
+#'
+#' Zhu, Y., et al. (2016). Matrix profile II: Exploiting a novel algorithm and
+#' GPUs to break the one hundred million barrier for time series motifs and joins.
+#' ICDM 2016.
+#'
+#' @export
+#' @examples
+#' # Periodic sawtooth wave (non-sinusoidal)
+#' t <- seq(0, 10, length.out = 200)
+#' period <- 2
+#' X <- matrix((t %% period) / period, nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Compute Matrix Profile
+#' result <- matrix.profile(fd, subsequence_length = 30)
+#' print(result)
+#' plot(result)
+#'
+#' # Sine wave for comparison
+#' X_sine <- matrix(sin(2 * pi * t / period), nrow = 1)
+#' fd_sine <- fdata(X_sine, argvals = t)
+#' result_sine <- matrix.profile(fd_sine, subsequence_length = 30)
+#'
+#' @seealso \code{\link{estimate.period}}, \code{\link{sazed}}, \code{\link{lomb.scargle}}
+#'
+matrix.profile <- function(fdataobj, subsequence_length = NULL, exclusion_zone = 0.5) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be an fdata object")
+  }
+  if (ncol(fdataobj$data) < 8) {
+    stop("fdata must have at least 8 time points")
+  }
+
+  subseq_len <- if (is.null(subsequence_length)) -1L else as.integer(subsequence_length)
+
+  result <- .Call("wrap__seasonal_matrix_profile",
+                  fdataobj$data, subseq_len, as.double(exclusion_zone))
+
+  class(result) <- "matrix_profile_result"
+  result
+}
+
+#' @export
+print.matrix_profile_result <- function(x, ...) {
+  cat("Matrix Profile (STOMP)\n")
+  cat("----------------------\n")
+  cat(sprintf("Subsequence length: %d\n", x$subsequence_length))
+  cat(sprintf("Profile length:     %d\n", length(x$profile)))
+  cat(sprintf("Primary period:     %.2f\n", x$primary_period))
+  cat(sprintf("Confidence:         %.4f\n", x$confidence))
+  if (length(x$detected_periods) > 0) {
+    cat(sprintf("\nTop detected periods: %s\n",
+                paste(round(x$detected_periods, 2), collapse = ", ")))
+  }
+  cat(sprintf("\nProfile statistics:\n"))
+  cat(sprintf("  Min:  %.4f\n", min(x$profile, na.rm = TRUE)))
+  cat(sprintf("  Mean: %.4f\n", mean(x$profile, na.rm = TRUE)))
+  cat(sprintf("  Max:  %.4f\n", max(x$profile, na.rm = TRUE)))
+  invisible(x)
+}
+
+#' @export
+plot.matrix_profile_result <- function(x, type = c("profile", "arcs", "both"), ...) {
+  type <- match.arg(type)
+
+  if (type == "both") {
+    old_par <- par(mfrow = c(2, 1), mar = c(4, 4, 2, 1))
+    on.exit(par(old_par))
+  }
+
+  if (type %in% c("profile", "both")) {
+    plot(seq_along(x$profile), x$profile, type = "l",
+         xlab = "Position", ylab = "Distance",
+         main = "Matrix Profile", col = "steelblue", ...)
+  }
+
+  if (type %in% c("arcs", "both")) {
+    n <- length(x$arc_counts)
+    # Skip very small distances (exclusion zone artifacts)
+    start_idx <- max(1, x$subsequence_length %/% 2)
+    if (start_idx < n) {
+      plot(start_idx:n, x$arc_counts[start_idx:n], type = "h",
+           xlab = "Index Distance", ylab = "Arc Count",
+           main = "Arc Counts (for Period Detection)", col = "darkgreen", ...)
+      if (!is.na(x$primary_period) && x$primary_period > 0) {
+        abline(v = x$primary_period, col = "red", lty = 2, lwd = 2)
+        legend("topright",
+               legend = sprintf("Primary period: %.2f", x$primary_period),
+               col = "red", lty = 2, lwd = 2, bty = "n")
+      }
+    }
+  }
+}
+
+# ==============================================================================
+# STL Decomposition (Cleveland et al., 1990)
+# ==============================================================================
+
+#' STL Decomposition: Seasonal and Trend decomposition using LOESS
+#'
+#' Performs STL (Seasonal and Trend decomposition using LOESS) on functional data
+#' following Cleveland et al. (1990). This is a robust iterative procedure that
+#' separates a time series into trend, seasonal, and remainder components.
+#'
+#' @param fdataobj An fdata object.
+#' @param period Integer. The seasonal period (number of observations per cycle).
+#' @param s.window Seasonal smoothing window. Must be odd. If NULL, defaults to 7.
+#'   Larger values produce smoother seasonal components.
+#' @param t.window Trend smoothing window. Must be odd. If NULL, automatically
+#'   calculated based on period and s.window.
+#' @param robust Logical. If TRUE, performs robustness iterations to downweight
+#'   outliers using bisquare weighting. Default: TRUE.
+#'
+#' @return A list of class "stl_result" with components:
+#' \describe{
+#'   \item{trend}{fdata object containing trend components}
+#'   \item{seasonal}{fdata object containing seasonal components}
+#'   \item{remainder}{fdata object containing remainder (residual) components}
+#'   \item{weights}{Matrix of robustness weights (1 = full weight, 0 = outlier)}
+#'   \item{period}{The period used}
+#'   \item{s.window}{Seasonal smoothing window used}
+#'   \item{t.window}{Trend smoothing window used}
+#'   \item{inner.iterations}{Number of inner loop iterations}
+#'   \item{outer.iterations}{Number of outer (robustness) iterations}
+#'   \item{call}{The function call}
+#' }
+#'
+#' @details
+#' The STL algorithm proceeds as follows:
+#'
+#' **Inner Loop** (repeated n.inner times):
+#' 1. Detrending: Subtract current trend estimate
+#' 2. Cycle-subseries smoothing: Smooth values at each seasonal position across cycles
+#' 3. Low-pass filtering: Remove high-frequency noise
+#' 4. Detrending the smoothed cycle-subseries
+#' 5. Deseasonalizing: Subtract seasonal from original data
+#' 6. Trend smoothing: Apply LOESS to deseasonalized data
+#'
+#' **Outer Loop** (for robustness):
+#' 1. Compute residuals from current decomposition
+#' 2. Calculate robustness weights using bisquare function
+#' 3. Re-run inner loop with weighted smoothing
+#'
+#' STL is particularly effective for:
+#' \itemize{
+#'   \item Long time series with many cycles
+#'   \item Data with outliers (when robust=TRUE)
+#'   \item Slowly changing seasonal patterns
+#' }
+#'
+#' @references
+#' Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990).
+#' STL: A Seasonal-Trend Decomposition Procedure Based on Loess.
+#' Journal of Official Statistics, 6(1), 3-73.
+#'
+#' @export
+#' @examples
+#' # Create seasonal data with trend
+#' t <- seq(0, 20, length.out = 400)
+#' period <- 2  # corresponds to 40 observations
+#' period_obs <- 40
+#' X <- matrix(0.05 * t + sin(2 * pi * t / period) + rnorm(length(t), sd = 0.2), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Perform STL decomposition
+#' result <- stl.fd(fd, period = period_obs)
+#' print(result)
+#'
+#' # Plot the decomposition
+#' plot(result)
+#'
+#' # Non-robust version (faster but sensitive to outliers)
+#' result_fast <- stl.fd(fd, period = period_obs, robust = FALSE)
+#'
+#' @seealso \code{\link{decompose}}, \code{\link{detrend}}, \code{\link{seasonal.strength}}
+#'
+stl.fd <- function(fdataobj, period, s.window = NULL, t.window = NULL, robust = TRUE) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be an fdata object")
+  }
+
+  m <- ncol(fdataobj$data)
+  if (m < 2 * period) {
+    stop("Series must have at least 2 complete cycles (", 2 * period, " observations)")
+  }
+  if (period < 2) {
+    stop("Period must be at least 2")
+  }
+
+  s_win <- if (is.null(s.window)) -1L else as.integer(s.window)
+  t_win <- if (is.null(t.window)) -1L else as.integer(t.window)
+
+  result <- .Call("wrap__seasonal_stl",
+                  fdataobj$data, as.integer(period),
+                  s_win, t_win, as.logical(robust))
+
+  # Construct fdata objects for components
+  out <- list(
+    trend = fdata(result$trend, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval),
+    seasonal = fdata(result$seasonal, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval),
+    remainder = fdata(result$remainder, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval),
+    weights = result$weights,
+    period = result$period,
+    s.window = result$s_window,
+    t.window = result$t_window,
+    inner.iterations = result$inner_iterations,
+    outer.iterations = result$outer_iterations,
+    call = match.call()
+  )
+
+  class(out) <- "stl_result"
+  out
+}
+
+#' @export
+print.stl_result <- function(x, ...) {
+  cat("STL Decomposition\n")
+  cat("-----------------\n")
+  cat(sprintf("Period:           %d observations\n", x$period))
+  cat(sprintf("Seasonal window:  %d\n", x$s.window))
+  cat(sprintf("Trend window:     %d\n", x$t.window))
+  cat(sprintf("Inner iterations: %d\n", x$inner.iterations))
+  cat(sprintf("Outer iterations: %d (robust=%s)\n",
+              x$outer.iterations, x$outer.iterations > 1))
+  cat(sprintf("\nNumber of curves: %d\n", nrow(x$trend$data)))
+  cat(sprintf("Series length:    %d\n", ncol(x$trend$data)))
+
+  # Variance decomposition
+  var_trend <- mean(apply(x$trend$data, 1, var))
+  var_seasonal <- mean(apply(x$seasonal$data, 1, var))
+  var_remainder <- mean(apply(x$remainder$data, 1, var))
+  var_total <- var_trend + var_seasonal + var_remainder
+
+  cat(sprintf("\nVariance decomposition:\n"))
+  cat(sprintf("  Trend:     %.1f%%\n", 100 * var_trend / var_total))
+  cat(sprintf("  Seasonal:  %.1f%%\n", 100 * var_seasonal / var_total))
+  cat(sprintf("  Remainder: %.1f%%\n", 100 * var_remainder / var_total))
+
+  invisible(x)
+}
+
+#' @export
+plot.stl_result <- function(x, curves = 1, ...) {
+  n_curves <- min(length(curves), nrow(x$trend$data))
+  curves <- curves[1:n_curves]
+
+  old_par <- par(mfrow = c(4, 1), mar = c(2, 4, 2, 1), oma = c(2, 0, 2, 0))
+  on.exit(par(old_par))
+
+  argvals <- x$trend$argvals
+
+  for (i in seq_along(curves)) {
+    curve_idx <- curves[i]
+
+    # Original (reconstructed)
+    original <- x$trend$data[curve_idx, ] + x$seasonal$data[curve_idx, ] + x$remainder$data[curve_idx, ]
+    plot(argvals, original, type = "l", ylab = "Data",
+         main = if (i == 1) paste("STL Decomposition - Curve", curve_idx) else "", ...)
+
+    # Trend
+    plot(argvals, x$trend$data[curve_idx, ], type = "l", ylab = "Trend", col = "blue", ...)
+
+    # Seasonal
+    plot(argvals, x$seasonal$data[curve_idx, ], type = "l", ylab = "Seasonal", col = "darkgreen", ...)
+
+    # Remainder
+    plot(argvals, x$remainder$data[curve_idx, ], type = "l", ylab = "Remainder", col = "gray50", ...)
+    abline(h = 0, lty = 2)
+  }
+
+  mtext("Time", side = 1, outer = TRUE)
+}
+
+# ==============================================================================
+# Singular Spectrum Analysis (SSA)
+# ==============================================================================
+
+#' Singular Spectrum Analysis (SSA) for Time Series Decomposition
+#'
+#' Performs Singular Spectrum Analysis on functional data to decompose each curve
+#' into trend, seasonal (oscillatory), and noise components. SSA is a model-free,
+#' non-parametric technique based on singular value decomposition of the
+#' trajectory matrix.
+#'
+#' @param fdataobj An fdata object.
+#' @param window.length Embedding window length (L). If NULL, automatically
+#'   determined as min(n/2, 50). Larger values capture longer-term patterns.
+#' @param n.components Number of SVD components to extract. Default: 10.
+#'   More components allow finer decomposition but increase noise.
+#'
+#' @return A list of class "ssa_result" with components:
+#' \describe{
+#'   \item{trend}{fdata object containing reconstructed trend component}
+#'   \item{seasonal}{fdata object containing reconstructed seasonal component}
+#'   \item{noise}{fdata object containing noise/residual component}
+#'   \item{singular.values}{Singular values from SVD (sorted descending)}
+#'   \item{contributions}{Proportion of variance explained by each component}
+#'   \item{window.length}{Window length used}
+#'   \item{n.components}{Number of components extracted}
+#'   \item{detected.period}{Auto-detected period (if any)}
+#'   \item{confidence}{Confidence score for detected period}
+#'   \item{call}{The function call}
+#' }
+#'
+#' @details
+#' The SSA algorithm consists of four stages:
+#'
+#' **1. Embedding**: The time series is converted into a trajectory matrix
+#' by arranging lagged versions of the series as columns.
+#'
+#' **2. SVD Decomposition**: Singular value decomposition of the trajectory
+#' matrix produces orthogonal components.
+#'
+#' **3. Grouping**: Components are grouped into trend (slowly varying),
+#' seasonal (oscillatory), and noise. Auto-detection uses sign change analysis
+#' and autocorrelation.
+#'
+#' **4. Reconstruction**: Diagonal averaging (Hankelization) converts grouped
+#' trajectory matrices back to time series.
+#'
+#' SSA is particularly suited for:
+#' \itemize{
+#'   \item Short time series where spectral methods fail
+#'   \item Noisy data with weak periodic signals
+#'   \item Non-stationary data with changing trend
+#'   \item Separating multiple periodicities
+#' }
+#'
+#' @references
+#' Golyandina, N., & Zhigljavsky, A. (2013). Singular Spectrum Analysis for
+#' Time Series. Springer.
+#'
+#' Elsner, J. B., & Tsonis, A. A. (1996). Singular Spectrum Analysis: A New
+#' Tool in Time Series Analysis. Plenum Press.
+#'
+#' @export
+#' @examples
+#' # Signal with trend + seasonal + noise
+#' t <- seq(0, 10, length.out = 200)
+#' X <- matrix(0.05 * t + sin(2 * pi * t / 1.5) + rnorm(length(t), sd = 0.3), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Perform SSA
+#' result <- ssa.fd(fd)
+#' print(result)
+#'
+#' # Plot components
+#' plot(result)
+#'
+#' # Examine singular value spectrum (scree plot)
+#' plot(result, type = "spectrum")
+#'
+#' @seealso \code{\link{stl.fd}}, \code{\link{decompose}}, \code{\link{estimate.period}}
+#'
+ssa.fd <- function(fdataobj, window.length = NULL, n.components = 10) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be an fdata object")
+  }
+
+  m <- ncol(fdataobj$data)
+  if (m < 4) {
+    stop("Series must have at least 4 observations")
+  }
+
+  win_len <- if (is.null(window.length)) -1L else as.integer(window.length)
+  n_comp <- as.integer(n.components)
+
+  result <- .Call("wrap__seasonal_ssa",
+                  fdataobj$data, win_len, n_comp)
+
+  # Construct fdata objects for components
+  out <- list(
+    trend = fdata(result$trend, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval),
+    seasonal = fdata(result$seasonal, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval),
+    noise = fdata(result$noise, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval),
+    singular.values = result$singular_values,
+    contributions = result$contributions,
+    window.length = result$window_length,
+    n.components = result$n_components,
+    detected.period = result$detected_period,
+    confidence = result$confidence,
+    call = match.call()
+  )
+
+  class(out) <- "ssa_result"
+  out
+}
+
+#' @export
+print.ssa_result <- function(x, ...) {
+  cat("Singular Spectrum Analysis (SSA)\n")
+  cat("--------------------------------\n")
+  cat(sprintf("Window length:    %d\n", x$window.length))
+  cat(sprintf("N components:     %d\n", x$n.components))
+  cat(sprintf("Detected period:  %.2f\n", x$detected.period))
+  cat(sprintf("Confidence:       %.4f\n", x$confidence))
+  cat(sprintf("\nNumber of curves: %d\n", nrow(x$trend$data)))
+  cat(sprintf("Series length:    %d\n", ncol(x$trend$data)))
+
+  # Top singular value contributions
+  if (length(x$contributions) > 0) {
+    cat(sprintf("\nTop component contributions:\n"))
+    n_show <- min(5, length(x$contributions))
+    for (i in seq_len(n_show)) {
+      cat(sprintf("  Component %d: %.1f%%\n", i, 100 * x$contributions[i]))
+    }
+    cum_contrib <- sum(x$contributions[1:n_show])
+    cat(sprintf("  Cumulative:   %.1f%%\n", 100 * cum_contrib))
+  }
+
+  # Variance decomposition
+  var_trend <- mean(apply(x$trend$data, 1, var))
+  var_seasonal <- mean(apply(x$seasonal$data, 1, var))
+  var_noise <- mean(apply(x$noise$data, 1, var))
+  var_total <- var_trend + var_seasonal + var_noise
+
+  cat(sprintf("\nVariance decomposition:\n"))
+  cat(sprintf("  Trend:    %.1f%%\n", 100 * var_trend / var_total))
+  cat(sprintf("  Seasonal: %.1f%%\n", 100 * var_seasonal / var_total))
+  cat(sprintf("  Noise:    %.1f%%\n", 100 * var_noise / var_total))
+
+  invisible(x)
+}
+
+#' @export
+plot.ssa_result <- function(x, type = c("decomposition", "spectrum"), curves = 1, ...) {
+  type <- match.arg(type)
+
+  if (type == "spectrum") {
+    # Scree plot of singular values
+    sv <- x$singular.values
+    if (length(sv) == 0) {
+      warning("No singular values available")
+      return(invisible(x))
+    }
+
+    old_par <- par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+    on.exit(par(old_par))
+
+    # Singular value spectrum
+    plot(seq_along(sv), sv, type = "b", pch = 19,
+         xlab = "Component", ylab = "Singular Value",
+         main = "Singular Value Spectrum", col = "steelblue", ...)
+
+    # Cumulative contribution
+    cum_contrib <- cumsum(x$contributions)
+    plot(seq_along(cum_contrib), 100 * cum_contrib, type = "b", pch = 19,
+         xlab = "Component", ylab = "Cumulative Variance (%)",
+         main = "Explained Variance", col = "darkgreen", ylim = c(0, 100), ...)
+    abline(h = 90, lty = 2, col = "gray50")
+
+  } else {
+    # Decomposition plot
+    n_curves <- min(length(curves), nrow(x$trend$data))
+    curves <- curves[1:n_curves]
+
+    old_par <- par(mfrow = c(4, 1), mar = c(2, 4, 2, 1), oma = c(2, 0, 2, 0))
+    on.exit(par(old_par))
+
+    argvals <- x$trend$argvals
+
+    for (i in seq_along(curves)) {
+      curve_idx <- curves[i]
+
+      # Original (reconstructed)
+      original <- x$trend$data[curve_idx, ] + x$seasonal$data[curve_idx, ] + x$noise$data[curve_idx, ]
+      plot(argvals, original, type = "l", ylab = "Data",
+           main = if (i == 1) paste("SSA Decomposition - Curve", curve_idx) else "", ...)
+
+      # Trend
+      plot(argvals, x$trend$data[curve_idx, ], type = "l", ylab = "Trend", col = "blue", ...)
+
+      # Seasonal
+      plot(argvals, x$seasonal$data[curve_idx, ], type = "l", ylab = "Seasonal", col = "darkgreen", ...)
+
+      # Noise
+      plot(argvals, x$noise$data[curve_idx, ], type = "l", ylab = "Noise", col = "gray50", ...)
+      abline(h = 0, lty = 2)
+    }
+
+    mtext("Time", side = 1, outer = TRUE)
+  }
+}
+
+# ==============================================================================
 # Multiple Period Detection
 # ==============================================================================
 
