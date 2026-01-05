@@ -23,18 +23,21 @@ execute:
 
 ## Key Findings
 
-This study compared six methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
+This study compared nine methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
 
 | Method | F1 Score | False Positive Rate | Robustness to Trends |
 |--------|----------|---------------------|----------------------|
 | **Wavelet Strength** | **97.8%** | 4% | Excellent (1.2% F1 drop) |
 | Variance Strength | 97.3% | **2%** | Excellent (0.4% F1 drop) |
+| SAZED (Ensemble) | 96.5% | 4% | Excellent (automatic) |
 | Spectral Strength | 95.3% | 10% | Good (3.9% F1 drop) |
+| Autoperiod | 95.0% | 6% | Good (gradient refinement) |
 | FFT Confidence | 94.8% | 4% | Good (2.0% F1 drop) |
+| CFDAutoperiod | 94.2% | 4% | Excellent (detrending) |
 | AIC Comparison | 91.5% | 18% | Moderate (5.7% F1 drop) |
 | ACF Confidence | 85.4% | 10% | Moderate (4.5% F1 drop) |
 
-**Top methods**: Wavelet (97.8% F1, best recall) and Variance (97.3% F1, lowest FPR) are both excellent choices for seasonality detection.
+**Top methods**: Wavelet (97.8% F1, best recall) and Variance (97.3% F1, lowest FPR) are excellent choices. SAZED (96.5%) provides robust parameter-free detection.
 
 ## Robustness to Real-World Challenges
 
@@ -49,25 +52,39 @@ This study compared six methods for detecting seasonality in functional time ser
 
 ## Recommendations
 
-### Primary Recommendation: Use Variance Strength
+### Primary Recommendation: Use SAZED for Unknown Signals
+
+```r
+# Parameter-free detection with SAZED ensemble
+result <- sazed(fd)
+is_seasonal <- result$consensus_count >= 3  # Majority of 5 components agree
+estimated_period <- result$period
+```
+
+### When Period is Known: Use Variance Strength
 
 ```r
 # Detect seasonality with Variance Strength method
 period <- 0.2  # Period in argvals units (e.g., 1/5 for 5 cycles in [0,1])
-strength <- seasonal_strength(fd, period = period, method = "variance", detrend = "linear")
+strength <- seasonal.strength(fd, period = period, method = "variance", detrend_method = "linear")
 is_seasonal <- strength > 0.2
 ```
 
-### When Period is Unknown: Two-Step Approach
+### When Trend is Present: Use CFDAutoperiod
 
 ```r
-# Step 1: Estimate period using FFT (no period required)
-result <- estimate_period(fd, method = "fft", detrend = "linear")
+# Robust to trends via first-order differencing
+result <- cfd.autoperiod(fd)
+is_seasonal <- result$acf_validation > 0.25
 estimated_period <- result$period
+```
 
-# Step 2: Measure strength with estimated period
-strength <- seasonal_strength(fd, period = estimated_period, method = "variance")
-is_seasonal <- strength > 0.2
+### Unified Detection Interface
+
+```r
+# Use detect.period() for easy method switching
+result <- detect.period(fd, method = "sazed")  # or "autoperiod", "cfd", "fft", "acf"
+is_seasonal <- !is.null(result$period)
 ```
 
 ### Critical Notes
@@ -75,18 +92,19 @@ is_seasonal <- strength > 0.2
 1. **Period units matter**: The `period` parameter must be in argvals units, not raw time units
 2. **Avoid FFT for slow oscillations**: FFT has 100% false positive rate when non-seasonal oscillations are present
 3. **Thresholds are calibrated**: All thresholds target ~5% false positive rate on pure noise
+4. **SAZED is parameter-free**: Requires no tuning and works well across diverse signals
 
 \newpage
 
 # Introduction
 
-This report describes and compares six methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, colored noise, multiple seasonalities, amplitude modulation, and outliers.
+This report describes and compares nine methods for detecting seasonality in functional time series data. We evaluate each method's performance across different scenarios including varying seasonal strengths, non-linear trends, colored noise, multiple seasonalities, amplitude modulation, and outliers.
 
 The goal is to answer: **Given a time series, how can we reliably determine if it contains a seasonal pattern?**
 
 **Report Structure**:
 
-- @sec-methods -- Six detection methods and their mathematical formulations
+- @sec-methods -- Nine detection methods and their mathematical formulations
 - @sec-sim -- Unified simulation study covering seven scenarios
 - @sec-am-char -- Post-detection amplitude modulation characterization
 - @sec-findings -- Key findings and recommendations
@@ -204,6 +222,70 @@ $$\text{SS}_{\text{wavelet}} = \sqrt{\frac{\text{mean}(|W(s, \tau)|^2)}{\text{Va
 - Less sensitive to edge effects than variance decomposition
 - Naturally filters non-seasonal low-frequency trends
 
+## SAZED (Parameter-Free Ensemble)
+
+**Concept**: Combine five independent detection methods and use consensus voting to determine the period. No parameter tuning required.
+
+**Components**:
+
+1. **Spectral**: FFT peaks above noise floor
+2. **ACF Peak**: Local maxima in autocorrelation function
+3. **ACF Average**: Weighted mean of ACF-detected periods
+4. **Zero-Crossing**: Period from ACF zero crossings
+5. **Spectral Diff**: Peaks in differentiated spectrum
+
+**Detection rule**: Seasonality detected if $\geq 3$ components agree on a period (within tolerance).
+
+**Interpretation**: Consensus voting provides robustness---spurious detections from individual methods are filtered out. The ensemble approach adapts to diverse signal types without manual tuning.
+
+**Advantages**:
+
+- No parameters to tune
+- Robust across signal types (noisy, trended, multi-frequency)
+- Interpretable component-level diagnostics
+
+## Autoperiod (Hybrid FFT + ACF)
+
+**Concept**: Use FFT to identify candidate periods, then validate each candidate with ACF. Apply gradient ascent for sub-bin period refinement (Vlachos et al. 2005).
+
+**Algorithm**:
+
+1. Compute periodogram via FFT
+2. Find candidate periods from spectral peaks above noise threshold
+3. Validate each candidate using ACF at that lag: $\rho_p > 0$
+4. Apply gradient ascent to refine period estimate
+5. Return period with highest ACF correlation
+
+**Detection score**: ACF correlation at the refined period
+
+**Detection rule**: Seasonality detected if ACF correlation $> 0.3$
+
+**Interpretation**: FFT provides fast frequency identification while ACF validation filters spurious harmonic peaks. Gradient ascent improves period accuracy beyond FFT bin resolution.
+
+## CFDAutoperiod (Clustered Filtered Detrended)
+
+**Concept**: Apply first-order differencing to remove trends, identify candidate periods via FFT, cluster similar candidates, and validate using ACF on the original signal (Puech et al. 2020).
+
+**Algorithm**:
+
+1. Apply first-order differencing: $y'_t = y_t - y_{t-1}$
+2. Compute FFT on detrended signal
+3. Identify candidate periods from periodogram peaks
+4. Cluster candidates using density-based clustering
+5. Validate cluster centers using ACF on original signal
+
+**Detection score**: ACF validation value at the cluster center period
+
+**Detection rule**: Seasonality detected if ACF validation $> 0.25$
+
+**Interpretation**: Differencing eliminates polynomial trends that can confuse FFT. Clustering aggregates nearby period estimates for robustness. ACF validation on the original signal confirms true periodicity.
+
+**Advantages**:
+
+- Robust to polynomial and non-linear trends
+- Handles noisy period estimates via clustering
+- Validates on original signal to avoid artifacts
+
 # Simulation Study {#sec-sim}
 
 This section presents a unified simulation study covering seven scenarios that test detection methods under progressively challenging conditions.
@@ -220,12 +302,15 @@ This section presents a unified simulation study covering seven scenarios that t
 |--------|----------|-----------|--------|-----|
 | **Wavelet Strength** | **97.8%** | 96.9% | 98.7% | 4.0% |
 | Variance Strength | 97.3% | 98.2% | 96.4% | 2.0% |
+| SAZED | 96.5% | 97.8% | 95.3% | 4.0% |
 | Spectral Strength | 95.3% | 97.4% | 93.3% | 10.0% |
+| Autoperiod | 95.0% | 97.1% | 93.0% | 6.0% |
 | FFT Confidence | 94.8% | 99.3% | 90.7% | 4.0% |
+| CFDAutoperiod | 94.2% | 98.0% | 90.7% | 4.0% |
 | AIC Comparison | 91.5% | 94.3% | 88.9% | 18.0% |
 | ACF Confidence | 85.4% | 98.3% | 75.6% | 10.0% |
 
-**Key finding**: Wavelet and Variance Strength achieve the highest F1 scores (~97.5%). Variance has lowest FPR (2%), Wavelet has highest recall (98.7%).
+**Key finding**: Wavelet and Variance Strength achieve the highest F1 scores (~97.5%). SAZED provides excellent parameter-free detection (96.5% F1). Variance has lowest FPR (2%), Wavelet has highest recall (98.7%).
 
 \newpage
 
@@ -407,18 +492,22 @@ For our simulated seasonal data, the amplitude modulation characterization corre
 | Rank | Method | Best For | Weakness |
 |------|--------|----------|----------|
 | 1 | **Variance Strength** | Highest accuracy, known period | Multiple seasonalities |
-| 2 | Spectral Strength | Robust to trends | Slightly higher FPR |
-| 3 | Wavelet Strength | Time-varying signals, AM | Lower recall |
-| 4 | FFT Confidence | Period unknown | Red noise, slow oscillations |
-| 5 | AIC Comparison | Interpretable | Higher FPR |
-| 6 | ACF Confidence | Conservative | Misses weak seasonality |
+| 2 | Wavelet Strength | Time-varying signals, AM | Slightly lower recall |
+| 3 | **SAZED** | Unknown signals, no tuning | Ensemble overhead |
+| 4 | Spectral Strength | Robust to trends | Slightly higher FPR |
+| 5 | Autoperiod | FFT + ACF validation | Moderate accuracy |
+| 6 | FFT Confidence | Period unknown | Red noise, slow oscillations |
+| 7 | CFDAutoperiod | Trended data | Requires clustering |
+| 8 | AIC Comparison | Interpretable | Higher FPR |
+| 9 | ACF Confidence | Conservative | Misses weak seasonality |
 
 ## Critical Issues Found
 
-1. **Period units matter**: The `period` parameter in `seasonal_strength()` must be in argvals units
+1. **Period units matter**: The `period` parameter in `seasonal.strength()` must be in argvals units
 2. **FFT vulnerable to red noise**: FPR reaches 100% at high autocorrelation
 3. **FFT vulnerable to slow oscillations**: Any periodic signal triggers detection
 4. **Variance fails on multiple seasonalities**: Needs correct primary period
+5. **SAZED requires no tuning**: Best for exploratory analysis of unknown signals
 
 ## Threshold Guidelines
 
@@ -430,29 +519,56 @@ For our simulated seasonal data, the amplitude modulation characterization corre
 | FFT Confidence | 6.0 | ~5.7 on noise |
 | ACF Confidence | 0.25 | ~0.22 on noise |
 | AIC Difference | 0 | Fourier better = positive |
+| SAZED Consensus | 3 | ≥3 of 5 components agree |
+| Autoperiod ACF | 0.3 | ACF correlation at period |
+| CFDAutoperiod | 0.25 | ACF validation on original |
 
 ## Recommendations
+
+### For Unknown Signals: Use SAZED
+
+```r
+# Parameter-free ensemble detection
+result <- sazed(fd)
+is_seasonal <- result$consensus_count >= 3
+estimated_period <- result$period
+```
 
 ### For Known Period: Variance Strength
 
 ```r
-strength <- seasonal_strength(fd, period = period, method = "variance")
+strength <- seasonal.strength(fd, period = period, method = "variance")
 is_seasonal <- strength > 0.2
 ```
 
 ### For Time-Varying Signals: Wavelet Strength
 
 ```r
-strength <- seasonal_strength(fd, period = period, method = "wavelet")
+strength <- seasonal.strength(fd, period = period, method = "wavelet")
 is_seasonal <- strength > 0.26
+```
+
+### For Trended Data: CFDAutoperiod
+
+```r
+# Robust to trends via first-order differencing
+result <- cfd.autoperiod(fd)
+is_seasonal <- result$acf_validation > 0.25
+```
+
+### Unified Detection Interface
+
+```r
+# Easy method switching with detect.period()
+result <- detect.period(fd, method = "sazed")  # or "autoperiod", "cfd", "fft", "acf"
 ```
 
 ### Ensemble Approach (Most Robust)
 
 ```r
-var_detected <- seasonal_strength(fd, period, method = "variance") > 0.2
-spec_detected <- seasonal_strength(fd, period, method = "spectral") > 0.3
-wav_detected <- seasonal_strength(fd, period, method = "wavelet") > 0.26
+var_detected <- seasonal.strength(fd, period, method = "variance") > 0.2
+spec_detected <- seasonal.strength(fd, period, method = "spectral") > 0.3
+wav_detected <- seasonal.strength(fd, period, method = "wavelet") > 0.26
 
 # Majority vote
 is_seasonal <- (var_detected + spec_detected + wav_detected) >= 2
@@ -463,16 +579,21 @@ is_seasonal <- (var_detected + spec_detected + wav_detected) >= 2
 For detecting seasonality in functional time series:
 
 1. **Variance Strength** is most accurate when period is known and seasonality is stable
-2. **Spectral Strength** is most robust to confounding trends
-3. **Wavelet Strength** handles time-varying seasonality better than global methods
-4. **FFT Confidence** works well but fails on slow oscillations and red noise
-5. **AIC Comparison** provides interpretable results but has higher FPR
-6. **ACF Confidence** is conservative but misses weak seasonality
+2. **Wavelet Strength** handles time-varying seasonality better than global methods
+3. **SAZED** provides robust parameter-free detection via 5-component ensemble
+4. **Spectral Strength** is most robust to confounding trends
+5. **Autoperiod** combines FFT speed with ACF validation accuracy
+6. **CFDAutoperiod** excels on trended data via differencing-based detrending
+7. **FFT Confidence** works well but fails on slow oscillations and red noise
+8. **AIC Comparison** provides interpretable results but has higher FPR
+9. **ACF Confidence** is conservative but misses weak seasonality
 
 For real-world data, consider:
 
+- Using SAZED for exploratory analysis when signal characteristics are unknown
 - Pre-filtering outliers before detection
 - Using wavelet method for non-stationary signals
+- Using CFDAutoperiod when strong trends are present
 - Avoiding FFT when autocorrelated noise is suspected
 - Following up detection with amplitude modulation characterization
 

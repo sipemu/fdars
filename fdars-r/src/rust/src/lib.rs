@@ -7460,6 +7460,160 @@ fn seasonal_detect_amplitude_modulation_wavelet(
     .into()
 }
 
+/// CFDAutoperiod: Clustered Filtered Detrended Autoperiod
+/// Uses differencing for detrending and clustering for robust period detection
+#[extendr]
+fn seasonal_cfd_autoperiod(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    cluster_tolerance: f64,
+    min_cluster_size: i32,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 8 || argvals.len() != m {
+        return list!(
+            period = f64::NAN,
+            confidence = 0.0,
+            acf_validation = 0.0,
+            n_periods = 0i32,
+            periods = Vec::<f64>::new(),
+            confidences = Vec::<f64>::new()
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let tol = if cluster_tolerance > 0.0 {
+        Some(cluster_tolerance)
+    } else {
+        None
+    };
+    let min_size = if min_cluster_size > 0 {
+        Some(min_cluster_size as usize)
+    } else {
+        None
+    };
+
+    let result = fdars_core::cfd_autoperiod_fdata(data_slice, n, m, &argvals, tol, min_size);
+
+    list!(
+        period = result.period,
+        confidence = result.confidence,
+        acf_validation = result.acf_validation,
+        n_periods = result.periods.len() as i32,
+        periods = result.periods,
+        confidences = result.confidences
+    )
+    .into()
+}
+
+/// Autoperiod: Hybrid FFT + ACF period detection with gradient ascent refinement
+/// Returns period, confidence, FFT power, ACF validation score, and candidates
+#[extendr]
+fn seasonal_autoperiod(
+    data: RMatrix<f64>,
+    argvals: Vec<f64>,
+    n_candidates: i32,
+    gradient_steps: i32,
+) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 8 || argvals.len() != m {
+        return list!(
+            period = f64::NAN,
+            confidence = 0.0,
+            fft_power = 0.0,
+            acf_validation = 0.0,
+            n_candidates = 0i32,
+            candidates = list!()
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let n_cand = if n_candidates > 0 {
+        Some(n_candidates as usize)
+    } else {
+        None
+    };
+    let steps = if gradient_steps > 0 {
+        Some(gradient_steps as usize)
+    } else {
+        None
+    };
+
+    let result = fdars_core::autoperiod_fdata(data_slice, n, m, &argvals, n_cand, steps);
+
+    // Convert candidates to R list
+    let candidate_periods: Vec<f64> = result.candidates.iter().map(|c| c.period).collect();
+    let candidate_fft_powers: Vec<f64> = result.candidates.iter().map(|c| c.fft_power).collect();
+    let candidate_acf_scores: Vec<f64> = result.candidates.iter().map(|c| c.acf_score).collect();
+    let candidate_combined_scores: Vec<f64> =
+        result.candidates.iter().map(|c| c.combined_score).collect();
+
+    list!(
+        period = result.period,
+        confidence = result.confidence,
+        fft_power = result.fft_power,
+        acf_validation = result.acf_validation,
+        n_candidates = result.candidates.len() as i32,
+        candidates = list!(
+            period = candidate_periods,
+            fft_power = candidate_fft_powers,
+            acf_score = candidate_acf_scores,
+            combined_score = candidate_combined_scores
+        )
+    )
+    .into()
+}
+
+/// SAZED: Spectral-ACF Zero-crossing Ensemble Detection
+/// A parameter-free ensemble method for robust period detection
+/// Returns period, confidence, component periods, and agreeing component count
+#[extendr]
+fn seasonal_sazed(data: RMatrix<f64>, argvals: Vec<f64>, tolerance: f64) -> Robj {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m < 8 || argvals.len() != m {
+        return list!(
+            period = f64::NAN,
+            confidence = 0.0,
+            agreeing_components = 0i32,
+            components = list!(
+                spectral = f64::NAN,
+                acf_peak = f64::NAN,
+                acf_average = f64::NAN,
+                zero_crossing = f64::NAN,
+                spectral_diff = f64::NAN
+            )
+        )
+        .into();
+    }
+
+    let data_slice = data.as_real_slice().unwrap();
+    let tol = if tolerance > 0.0 { Some(tolerance) } else { None };
+
+    let result = fdars_core::sazed_fdata(data_slice, n, m, &argvals, tol);
+
+    list!(
+        period = result.period,
+        confidence = result.confidence,
+        agreeing_components = result.agreeing_components as i32,
+        components = list!(
+            spectral = result.component_periods.spectral,
+            acf_peak = result.component_periods.acf_peak,
+            acf_average = result.component_periods.acf_average,
+            zero_crossing = result.component_periods.zero_crossing,
+            spectral_diff = result.component_periods.spectral_diff
+        )
+    )
+    .into()
+}
+
 // =============================================================================
 // Detrending functions
 // =============================================================================
@@ -8079,6 +8233,9 @@ extendr_module! {
     fn seasonal_detect_changes_auto;
     fn seasonal_detect_amplitude_modulation;
     fn seasonal_detect_amplitude_modulation_wavelet;
+    fn seasonal_cfd_autoperiod;
+    fn seasonal_autoperiod;
+    fn seasonal_sazed;
 
     // Detrending functions
     fn seasonal_detrend;

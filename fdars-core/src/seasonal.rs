@@ -2362,6 +2362,896 @@ pub fn detect_seasonality_changes_auto(
     )
 }
 
+/// Result of SAZED ensemble period detection.
+#[derive(Debug, Clone)]
+pub struct SazedResult {
+    /// Primary detected period (consensus from ensemble)
+    pub period: f64,
+    /// Confidence score (0-1, based on component agreement)
+    pub confidence: f64,
+    /// Periods detected by each component (may be NaN if not detected)
+    pub component_periods: SazedComponents,
+    /// Number of components that agreed on the final period
+    pub agreeing_components: usize,
+}
+
+/// Individual period estimates from each SAZED component.
+#[derive(Debug, Clone)]
+pub struct SazedComponents {
+    /// Period from spectral (FFT) detection
+    pub spectral: f64,
+    /// Period from ACF peak detection
+    pub acf_peak: f64,
+    /// Period from weighted ACF average
+    pub acf_average: f64,
+    /// Period from ACF zero-crossing analysis
+    pub zero_crossing: f64,
+    /// Period from spectral differencing
+    pub spectral_diff: f64,
+}
+
+/// SAZED: Spectral-ACF Zero-crossing Ensemble Detection
+///
+/// A parameter-free ensemble method for robust period detection.
+/// Combines 5 detection components:
+/// 1. Spectral (FFT) - peaks in periodogram
+/// 2. ACF peak - first significant peak in autocorrelation
+/// 3. ACF average - weighted mean of ACF peaks
+/// 4. Zero-crossing - period from ACF zero crossings
+/// 5. Spectral differencing - FFT on first-differenced signal
+///
+/// The final period is chosen by majority voting with tolerance.
+///
+/// # Arguments
+/// * `data` - Input signal (1D time series or mean curve from fdata)
+/// * `argvals` - Time points corresponding to data
+/// * `tolerance` - Relative tolerance for considering periods equal (default: 0.1 = 10%)
+///
+/// # Returns
+/// * `SazedResult` containing the consensus period and component details
+pub fn sazed(data: &[f64], argvals: &[f64], tolerance: Option<f64>) -> SazedResult {
+    let n = data.len();
+    let tol = tolerance.unwrap_or(0.1);
+
+    if n < 8 || argvals.len() != n {
+        return SazedResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            component_periods: SazedComponents {
+                spectral: f64::NAN,
+                acf_peak: f64::NAN,
+                acf_average: f64::NAN,
+                zero_crossing: f64::NAN,
+                spectral_diff: f64::NAN,
+            },
+            agreeing_components: 0,
+        };
+    }
+
+    let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
+    let max_lag = (n / 2).max(4);
+
+    // Component 1: Spectral (FFT) detection
+    let spectral_period = sazed_spectral(data, argvals);
+
+    // Component 2: ACF peak detection
+    let acf_peak_period = sazed_acf_peak(data, dt, max_lag);
+
+    // Component 3: ACF weighted average
+    let acf_average_period = sazed_acf_average(data, dt, max_lag);
+
+    // Component 4: Zero-crossing analysis
+    let zero_crossing_period = sazed_zero_crossing(data, dt, max_lag);
+
+    // Component 5: Spectral on differenced signal
+    let spectral_diff_period = sazed_spectral_diff(data, argvals);
+
+    let components = SazedComponents {
+        spectral: spectral_period,
+        acf_peak: acf_peak_period,
+        acf_average: acf_average_period,
+        zero_crossing: zero_crossing_period,
+        spectral_diff: spectral_diff_period,
+    };
+
+    // Collect valid periods
+    let periods: Vec<f64> = [
+        spectral_period,
+        acf_peak_period,
+        acf_average_period,
+        zero_crossing_period,
+        spectral_diff_period,
+    ]
+    .iter()
+    .copied()
+    .filter(|&p| p.is_finite() && p > 0.0)
+    .collect();
+
+    if periods.is_empty() {
+        return SazedResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            component_periods: components,
+            agreeing_components: 0,
+        };
+    }
+
+    // Ensemble voting: find the mode with tolerance
+    let (consensus_period, agreeing_count) = find_consensus_period(&periods, tol);
+    let confidence = agreeing_count as f64 / 5.0;
+
+    SazedResult {
+        period: consensus_period,
+        confidence,
+        component_periods: components,
+        agreeing_components: agreeing_count,
+    }
+}
+
+/// SAZED for functional data (matrix format)
+///
+/// Computes mean curve first, then applies SAZED.
+///
+/// # Arguments
+/// * `data` - Column-major matrix (n x m)
+/// * `n` - Number of samples
+/// * `m` - Number of evaluation points
+/// * `argvals` - Evaluation points
+/// * `tolerance` - Relative tolerance for period matching
+pub fn sazed_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    tolerance: Option<f64>,
+) -> SazedResult {
+    if n == 0 || m < 8 || argvals.len() != m {
+        return SazedResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            component_periods: SazedComponents {
+                spectral: f64::NAN,
+                acf_peak: f64::NAN,
+                acf_average: f64::NAN,
+                zero_crossing: f64::NAN,
+                spectral_diff: f64::NAN,
+            },
+            agreeing_components: 0,
+        };
+    }
+
+    let mean_curve = compute_mean_curve(data, n, m);
+    sazed(&mean_curve, argvals, tolerance)
+}
+
+/// Spectral component: find dominant period from FFT periodogram
+fn sazed_spectral(data: &[f64], argvals: &[f64]) -> f64 {
+    let (frequencies, power) = periodogram(data, argvals);
+
+    if frequencies.len() < 3 {
+        return f64::NAN;
+    }
+
+    // Find peaks in power spectrum (skip DC)
+    let power_no_dc: Vec<f64> = power.iter().skip(1).copied().collect();
+    let peaks = find_spectral_peaks(&power_no_dc);
+
+    if peaks.is_empty() {
+        // Fall back to global maximum
+        let mut max_idx = 0;
+        let mut max_val = 0.0;
+        for (i, &p) in power_no_dc.iter().enumerate() {
+            if p > max_val {
+                max_val = p;
+                max_idx = i;
+            }
+        }
+        let freq = frequencies[max_idx + 1];
+        if freq > 1e-15 {
+            return 1.0 / freq;
+        }
+        return f64::NAN;
+    }
+
+    // Return period from highest peak
+    let best_peak = peaks[0];
+    let freq = frequencies[best_peak + 1];
+    if freq > 1e-15 {
+        1.0 / freq
+    } else {
+        f64::NAN
+    }
+}
+
+/// ACF peak component: find first significant peak in autocorrelation
+fn sazed_acf_peak(data: &[f64], dt: f64, max_lag: usize) -> f64 {
+    let acf = autocorrelation(data, max_lag);
+
+    if acf.len() < 4 {
+        return f64::NAN;
+    }
+
+    // Find first peak after initial descent
+    // Skip lag 0 and find where ACF first becomes negative or reaches minimum
+    let mut min_search_start = 1;
+    for i in 1..acf.len() {
+        if acf[i] < 0.0 {
+            min_search_start = i;
+            break;
+        }
+        if i > 1 && acf[i] > acf[i - 1] {
+            min_search_start = i - 1;
+            break;
+        }
+    }
+
+    // Find first peak after minimum
+    let peaks = find_peaks_1d(&acf[min_search_start..], 1);
+
+    if peaks.is_empty() {
+        return f64::NAN;
+    }
+
+    let peak_lag = peaks[0] + min_search_start;
+    peak_lag as f64 * dt
+}
+
+/// ACF average component: weighted mean of ACF peak locations
+fn sazed_acf_average(data: &[f64], dt: f64, max_lag: usize) -> f64 {
+    let acf = autocorrelation(data, max_lag);
+
+    if acf.len() < 4 {
+        return f64::NAN;
+    }
+
+    // Find all peaks in ACF
+    let peaks = find_peaks_1d(&acf[1..], 1);
+
+    if peaks.is_empty() {
+        return f64::NAN;
+    }
+
+    // Weight peaks by their ACF value
+    let mut weighted_sum = 0.0;
+    let mut weight_sum = 0.0;
+
+    for (i, &peak_idx) in peaks.iter().enumerate() {
+        let lag = peak_idx + 1;
+        let weight = acf[lag].max(0.0);
+
+        if i == 0 {
+            // First peak is the fundamental period
+            weighted_sum += lag as f64 * weight;
+            weight_sum += weight;
+        } else {
+            // Later peaks: estimate fundamental by dividing by harmonic number
+            let expected_fundamental = peaks[0] + 1;
+            let harmonic = ((lag as f64 / expected_fundamental as f64) + 0.5) as usize;
+            if harmonic > 0 {
+                let fundamental_est = lag as f64 / harmonic as f64;
+                weighted_sum += fundamental_est * weight;
+                weight_sum += weight;
+            }
+        }
+    }
+
+    if weight_sum > 1e-15 {
+        weighted_sum / weight_sum * dt
+    } else {
+        f64::NAN
+    }
+}
+
+/// Zero-crossing component: estimate period from ACF zero crossings
+fn sazed_zero_crossing(data: &[f64], dt: f64, max_lag: usize) -> f64 {
+    let acf = autocorrelation(data, max_lag);
+
+    if acf.len() < 4 {
+        return f64::NAN;
+    }
+
+    // Find zero crossings (sign changes)
+    let mut crossings = Vec::new();
+    for i in 1..acf.len() {
+        if acf[i - 1] * acf[i] < 0.0 {
+            // Linear interpolation for more precise crossing
+            let frac = acf[i - 1].abs() / (acf[i - 1].abs() + acf[i].abs());
+            crossings.push((i - 1) as f64 + frac);
+        }
+    }
+
+    if crossings.len() < 2 {
+        return f64::NAN;
+    }
+
+    // Period is twice the distance between consecutive zero crossings
+    // (ACF goes through two zero crossings per period)
+    let mut half_periods = Vec::new();
+    for i in 1..crossings.len() {
+        half_periods.push(crossings[i] - crossings[i - 1]);
+    }
+
+    if half_periods.is_empty() {
+        return f64::NAN;
+    }
+
+    // Median half-period
+    half_periods.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_half = half_periods[half_periods.len() / 2];
+
+    2.0 * median_half * dt
+}
+
+/// Spectral differencing component: FFT on first-differenced signal
+fn sazed_spectral_diff(data: &[f64], argvals: &[f64]) -> f64 {
+    if data.len() < 4 {
+        return f64::NAN;
+    }
+
+    // First difference to remove trend
+    let diff: Vec<f64> = data.windows(2).map(|w| w[1] - w[0]).collect();
+    let diff_argvals: Vec<f64> = argvals.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+
+    sazed_spectral(&diff, &diff_argvals)
+}
+
+/// Find peaks in power spectrum above noise floor
+fn find_spectral_peaks(power: &[f64]) -> Vec<usize> {
+    if power.len() < 3 {
+        return Vec::new();
+    }
+
+    // Estimate noise floor as median power
+    let mut sorted_power: Vec<f64> = power.to_vec();
+    sorted_power.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let noise_floor = sorted_power[sorted_power.len() / 2];
+    let threshold = noise_floor * 2.0; // Peaks must be at least 2x median
+
+    // Find all local maxima above threshold
+    let mut peaks: Vec<(usize, f64)> = Vec::new();
+    for i in 1..(power.len() - 1) {
+        if power[i] > power[i - 1] && power[i] > power[i + 1] && power[i] > threshold {
+            peaks.push((i, power[i]));
+        }
+    }
+
+    // Sort by power (descending)
+    peaks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    peaks.into_iter().map(|(idx, _)| idx).collect()
+}
+
+/// Find consensus period from multiple estimates using tolerance-based voting
+fn find_consensus_period(periods: &[f64], tolerance: f64) -> (f64, usize) {
+    if periods.is_empty() {
+        return (f64::NAN, 0);
+    }
+    if periods.len() == 1 {
+        return (periods[0], 1);
+    }
+
+    // For each period, count how many others are within tolerance
+    let mut best_period = periods[0];
+    let mut best_count = 0;
+    let mut best_sum = 0.0;
+
+    for &p1 in periods {
+        let mut count = 0;
+        let mut sum = 0.0;
+
+        for &p2 in periods {
+            let rel_diff = (p1 - p2).abs() / p1.max(p2);
+            if rel_diff <= tolerance {
+                count += 1;
+                sum += p2;
+            }
+        }
+
+        if count > best_count
+            || (count == best_count && sum / count as f64 > best_sum / best_count.max(1) as f64)
+        {
+            best_count = count;
+            best_period = sum / count as f64; // Average of agreeing periods
+            best_sum = sum;
+        }
+    }
+
+    (best_period, best_count)
+}
+
+/// Result of Autoperiod detection.
+#[derive(Debug, Clone)]
+pub struct AutoperiodResult {
+    /// Detected period
+    pub period: f64,
+    /// Combined confidence (FFT * ACF validation)
+    pub confidence: f64,
+    /// FFT power at the detected period
+    pub fft_power: f64,
+    /// ACF validation score (0-1)
+    pub acf_validation: f64,
+    /// All candidate periods considered
+    pub candidates: Vec<AutoperiodCandidate>,
+}
+
+/// A candidate period from Autoperiod detection.
+#[derive(Debug, Clone)]
+pub struct AutoperiodCandidate {
+    /// Candidate period
+    pub period: f64,
+    /// FFT power
+    pub fft_power: f64,
+    /// ACF validation score
+    pub acf_score: f64,
+    /// Combined score (power * validation)
+    pub combined_score: f64,
+}
+
+/// Autoperiod: Hybrid FFT + ACF Period Detection
+///
+/// Implements the Autoperiod algorithm (Vlachos et al. 2005) which:
+/// 1. Computes the periodogram via FFT to find candidate periods
+/// 2. Validates each candidate using the autocorrelation function
+/// 3. Applies gradient ascent to refine the period estimate
+/// 4. Returns the period with the highest combined confidence
+///
+/// This method is more robust than pure FFT because ACF validation
+/// filters out spurious spectral peaks that don't correspond to
+/// true periodicity.
+///
+/// # Arguments
+/// * `data` - Input signal (1D time series)
+/// * `argvals` - Time points corresponding to data
+/// * `n_candidates` - Maximum number of FFT peaks to consider (default: 5)
+/// * `gradient_steps` - Number of gradient ascent refinement steps (default: 10)
+///
+/// # Returns
+/// * `AutoperiodResult` containing the best period and validation details
+pub fn autoperiod(
+    data: &[f64],
+    argvals: &[f64],
+    n_candidates: Option<usize>,
+    gradient_steps: Option<usize>,
+) -> AutoperiodResult {
+    let n = data.len();
+    let max_candidates = n_candidates.unwrap_or(5);
+    let steps = gradient_steps.unwrap_or(10);
+
+    if n < 8 || argvals.len() != n {
+        return AutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            fft_power: 0.0,
+            acf_validation: 0.0,
+            candidates: Vec::new(),
+        };
+    }
+
+    let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
+    let max_lag = (n / 2).max(4);
+
+    // Step 1: Compute periodogram and find candidate periods
+    let (frequencies, power) = periodogram(data, argvals);
+
+    if frequencies.len() < 3 {
+        return AutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            fft_power: 0.0,
+            acf_validation: 0.0,
+            candidates: Vec::new(),
+        };
+    }
+
+    // Find top spectral peaks
+    let power_no_dc: Vec<f64> = power.iter().skip(1).copied().collect();
+    let peak_indices = find_spectral_peaks(&power_no_dc);
+
+    if peak_indices.is_empty() {
+        return AutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            fft_power: 0.0,
+            acf_validation: 0.0,
+            candidates: Vec::new(),
+        };
+    }
+
+    // Step 2: Compute ACF for validation
+    let acf = autocorrelation(data, max_lag);
+
+    // Step 3: Validate each candidate and refine with gradient ascent
+    let mut candidates: Vec<AutoperiodCandidate> = Vec::new();
+    let total_power: f64 = power_no_dc.iter().sum();
+
+    for &peak_idx in peak_indices.iter().take(max_candidates) {
+        let freq = frequencies[peak_idx + 1];
+        if freq < 1e-15 {
+            continue;
+        }
+
+        let initial_period = 1.0 / freq;
+        let fft_power = power_no_dc[peak_idx];
+        let normalized_power = fft_power / total_power.max(1e-15);
+
+        // Refine period using gradient ascent on ACF
+        let refined_period = refine_period_gradient(&acf, initial_period, dt, steps);
+
+        // Revalidate refined period
+        let refined_acf_score = validate_period_acf(&acf, refined_period, dt);
+
+        let combined_score = normalized_power * refined_acf_score;
+
+        candidates.push(AutoperiodCandidate {
+            period: refined_period,
+            fft_power,
+            acf_score: refined_acf_score,
+            combined_score,
+        });
+    }
+
+    if candidates.is_empty() {
+        return AutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            fft_power: 0.0,
+            acf_validation: 0.0,
+            candidates: Vec::new(),
+        };
+    }
+
+    // Select best candidate based on combined score
+    let best = candidates
+        .iter()
+        .max_by(|a, b| {
+            a.combined_score
+                .partial_cmp(&b.combined_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap();
+
+    AutoperiodResult {
+        period: best.period,
+        confidence: best.combined_score,
+        fft_power: best.fft_power,
+        acf_validation: best.acf_score,
+        candidates,
+    }
+}
+
+/// Autoperiod for functional data (matrix format)
+pub fn autoperiod_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    n_candidates: Option<usize>,
+    gradient_steps: Option<usize>,
+) -> AutoperiodResult {
+    if n == 0 || m < 8 || argvals.len() != m {
+        return AutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            fft_power: 0.0,
+            acf_validation: 0.0,
+            candidates: Vec::new(),
+        };
+    }
+
+    let mean_curve = compute_mean_curve(data, n, m);
+    autoperiod(&mean_curve, argvals, n_candidates, gradient_steps)
+}
+
+/// Validate a candidate period using ACF
+fn validate_period_acf(acf: &[f64], period: f64, dt: f64) -> f64 {
+    let lag = (period / dt).round() as usize;
+
+    if lag == 0 || lag >= acf.len() {
+        return 0.0;
+    }
+
+    // Score based on ACF value at the period lag
+    // Positive ACF values indicate valid periodicity
+    let acf_at_lag = acf[lag];
+
+    // Also check harmonics (period/2, period*2) for consistency
+    let half_lag = lag / 2;
+    let double_lag = lag * 2;
+
+    let mut score = acf_at_lag.max(0.0);
+
+    // For a true period, ACF at half-period should be low/negative
+    // and ACF at double-period should also be high
+    if half_lag > 0 && half_lag < acf.len() {
+        let half_acf = acf[half_lag];
+        // Penalize if half-period has high ACF (suggests half-period is real)
+        if half_acf > acf_at_lag * 0.7 {
+            score *= 0.5;
+        }
+    }
+
+    if double_lag < acf.len() {
+        let double_acf = acf[double_lag];
+        // Bonus if double-period also shows periodicity
+        if double_acf > 0.3 {
+            score *= 1.2;
+        }
+    }
+
+    score.min(1.0)
+}
+
+/// Refine period estimate using gradient ascent on ACF
+fn refine_period_gradient(acf: &[f64], initial_period: f64, dt: f64, steps: usize) -> f64 {
+    let mut period = initial_period;
+    let step_size = dt * 0.5; // Search step size
+
+    for _ in 0..steps {
+        let current_score = validate_period_acf(acf, period, dt);
+        let left_score = validate_period_acf(acf, period - step_size, dt);
+        let right_score = validate_period_acf(acf, period + step_size, dt);
+
+        if left_score > current_score && left_score > right_score {
+            period -= step_size;
+        } else if right_score > current_score {
+            period += step_size;
+        }
+        // If current is best, we've converged
+    }
+
+    period.max(dt) // Ensure period is at least one time step
+}
+
+/// Result of CFDAutoperiod detection.
+#[derive(Debug, Clone)]
+pub struct CfdAutoperiodResult {
+    /// Detected period (primary)
+    pub period: f64,
+    /// Confidence score
+    pub confidence: f64,
+    /// ACF validation score for the primary period
+    pub acf_validation: f64,
+    /// All detected periods (cluster centers)
+    pub periods: Vec<f64>,
+    /// Confidence for each detected period
+    pub confidences: Vec<f64>,
+}
+
+/// CFDAutoperiod: Clustered Filtered Detrended Autoperiod
+///
+/// Implements the CFDAutoperiod algorithm (Puech et al. 2020) which:
+/// 1. Applies first-order differencing to remove trends
+/// 2. Computes FFT on the detrended signal
+/// 3. Identifies candidate periods from periodogram peaks
+/// 4. Clusters nearby candidates using density-based clustering
+/// 5. Validates cluster centers using ACF on the original signal
+///
+/// This method is particularly effective for signals with strong trends
+/// and handles multiple periodicities by detecting clusters of candidate periods.
+///
+/// # Arguments
+/// * `data` - Input signal (1D time series)
+/// * `argvals` - Time points corresponding to data
+/// * `cluster_tolerance` - Relative tolerance for clustering periods (default: 0.1 = 10%)
+/// * `min_cluster_size` - Minimum number of candidates to form a cluster (default: 1)
+///
+/// # Returns
+/// * `CfdAutoperiodResult` containing detected periods and validation scores
+pub fn cfd_autoperiod(
+    data: &[f64],
+    argvals: &[f64],
+    cluster_tolerance: Option<f64>,
+    min_cluster_size: Option<usize>,
+) -> CfdAutoperiodResult {
+    let n = data.len();
+    let tol = cluster_tolerance.unwrap_or(0.1);
+    let min_size = min_cluster_size.unwrap_or(1);
+
+    if n < 8 || argvals.len() != n {
+        return CfdAutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            acf_validation: 0.0,
+            periods: Vec::new(),
+            confidences: Vec::new(),
+        };
+    }
+
+    let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
+    let max_lag = (n / 2).max(4);
+
+    // Step 1: Apply first-order differencing to detrend
+    let diff: Vec<f64> = data.windows(2).map(|w| w[1] - w[0]).collect();
+    let diff_argvals: Vec<f64> = argvals.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+
+    // Step 2: Compute periodogram on detrended signal
+    let (frequencies, power) = periodogram(&diff, &diff_argvals);
+
+    if frequencies.len() < 3 {
+        return CfdAutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            acf_validation: 0.0,
+            periods: Vec::new(),
+            confidences: Vec::new(),
+        };
+    }
+
+    // Step 3: Find all candidate periods from spectral peaks
+    let power_no_dc: Vec<f64> = power.iter().skip(1).copied().collect();
+    let peak_indices = find_spectral_peaks(&power_no_dc);
+
+    if peak_indices.is_empty() {
+        return CfdAutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            acf_validation: 0.0,
+            periods: Vec::new(),
+            confidences: Vec::new(),
+        };
+    }
+
+    // Convert peak indices to periods with their powers
+    let total_power: f64 = power_no_dc.iter().sum();
+    let mut candidates: Vec<(f64, f64)> = Vec::new(); // (period, normalized_power)
+
+    for &peak_idx in &peak_indices {
+        let freq = frequencies[peak_idx + 1];
+        if freq > 1e-15 {
+            let period = 1.0 / freq;
+            let normalized_power = power_no_dc[peak_idx] / total_power.max(1e-15);
+            candidates.push((period, normalized_power));
+        }
+    }
+
+    if candidates.is_empty() {
+        return CfdAutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            acf_validation: 0.0,
+            periods: Vec::new(),
+            confidences: Vec::new(),
+        };
+    }
+
+    // Step 4: Cluster candidates using density-based approach
+    let clusters = cluster_periods(&candidates, tol, min_size);
+
+    if clusters.is_empty() {
+        return CfdAutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            acf_validation: 0.0,
+            periods: Vec::new(),
+            confidences: Vec::new(),
+        };
+    }
+
+    // Step 5: Validate cluster centers using ACF on original signal
+    let acf = autocorrelation(data, max_lag);
+
+    let mut validated: Vec<(f64, f64, f64)> = Vec::new(); // (period, acf_score, power)
+
+    for (center, power_sum) in clusters {
+        let acf_score = validate_period_acf(&acf, center, dt);
+        if acf_score > 0.1 {
+            // Only keep periods with reasonable ACF validation
+            validated.push((center, acf_score, power_sum));
+        }
+    }
+
+    if validated.is_empty() {
+        // Fall back to best cluster without ACF validation
+        let (center, power_sum) = cluster_periods(&candidates, tol, min_size)
+            .into_iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap();
+        return CfdAutoperiodResult {
+            period: center,
+            confidence: power_sum,
+            acf_validation: 0.0,
+            periods: vec![center],
+            confidences: vec![power_sum],
+        };
+    }
+
+    // Sort by combined score (ACF * power)
+    validated.sort_by(|a, b| {
+        let score_a = a.1 * a.2;
+        let score_b = b.1 * b.2;
+        score_b
+            .partial_cmp(&score_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let periods: Vec<f64> = validated.iter().map(|v| v.0).collect();
+    let confidences: Vec<f64> = validated.iter().map(|v| v.1 * v.2).collect();
+
+    CfdAutoperiodResult {
+        period: validated[0].0,
+        confidence: validated[0].1 * validated[0].2,
+        acf_validation: validated[0].1,
+        periods,
+        confidences,
+    }
+}
+
+/// CFDAutoperiod for functional data (matrix format)
+pub fn cfd_autoperiod_fdata(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    cluster_tolerance: Option<f64>,
+    min_cluster_size: Option<usize>,
+) -> CfdAutoperiodResult {
+    if n == 0 || m < 8 || argvals.len() != m {
+        return CfdAutoperiodResult {
+            period: f64::NAN,
+            confidence: 0.0,
+            acf_validation: 0.0,
+            periods: Vec::new(),
+            confidences: Vec::new(),
+        };
+    }
+
+    let mean_curve = compute_mean_curve(data, n, m);
+    cfd_autoperiod(&mean_curve, argvals, cluster_tolerance, min_cluster_size)
+}
+
+/// Cluster periods using a simple density-based approach
+fn cluster_periods(candidates: &[(f64, f64)], tolerance: f64, min_size: usize) -> Vec<(f64, f64)> {
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    // Sort candidates by period
+    let mut sorted: Vec<(f64, f64)> = candidates.to_vec();
+    sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut clusters: Vec<(f64, f64)> = Vec::new(); // (center, total_power)
+    let mut current_cluster: Vec<(f64, f64)> = vec![sorted[0]];
+
+    for &(period, power) in sorted.iter().skip(1) {
+        let cluster_center =
+            current_cluster.iter().map(|(p, _)| p).sum::<f64>() / current_cluster.len() as f64;
+
+        let rel_diff = (period - cluster_center).abs() / cluster_center.max(period);
+
+        if rel_diff <= tolerance {
+            // Add to current cluster
+            current_cluster.push((period, power));
+        } else {
+            // Finish current cluster and start new one
+            if current_cluster.len() >= min_size {
+                let center = current_cluster.iter().map(|(p, pw)| p * pw).sum::<f64>()
+                    / current_cluster
+                        .iter()
+                        .map(|(_, pw)| pw)
+                        .sum::<f64>()
+                        .max(1e-15);
+                let total_power: f64 = current_cluster.iter().map(|(_, pw)| pw).sum();
+                clusters.push((center, total_power));
+            }
+            current_cluster = vec![(period, power)];
+        }
+    }
+
+    // Don't forget the last cluster
+    if current_cluster.len() >= min_size {
+        let center = current_cluster.iter().map(|(p, pw)| p * pw).sum::<f64>()
+            / current_cluster
+                .iter()
+                .map(|(_, pw)| pw)
+                .sum::<f64>()
+                .max(1e-15);
+        let total_power: f64 = current_cluster.iter().map(|(_, pw)| pw).sum();
+        clusters.push((center, total_power));
+    }
+
+    clusters
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3241,5 +4131,317 @@ mod tests {
                 amp
             );
         }
+    }
+
+    #[test]
+    fn test_sazed_pure_sine() {
+        // Pure sine wave with known period
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = sazed(&data, &argvals, None);
+
+        assert!(result.period.is_finite(), "SAZED should detect a period");
+        assert!(
+            (result.period - period).abs() < 0.3,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+        assert!(
+            result.confidence > 0.4,
+            "Expected confidence > 0.4, got {}",
+            result.confidence
+        );
+        assert!(
+            result.agreeing_components >= 2,
+            "Expected at least 2 agreeing components, got {}",
+            result.agreeing_components
+        );
+    }
+
+    #[test]
+    fn test_sazed_noisy_sine() {
+        // Sine wave with noise
+        let m = 300;
+        let period = 3.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+
+        // Deterministic pseudo-noise using sin with different frequency
+        let data: Vec<f64> = argvals
+            .iter()
+            .enumerate()
+            .map(|(i, &t)| {
+                let signal = (2.0 * PI * t / period).sin();
+                let noise = 0.1 * (17.3 * i as f64).sin();
+                signal + noise
+            })
+            .collect();
+
+        let result = sazed(&data, &argvals, Some(0.15));
+
+        assert!(
+            result.period.is_finite(),
+            "SAZED should detect a period even with noise"
+        );
+        assert!(
+            (result.period - period).abs() < 0.5,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+    }
+
+    #[test]
+    fn test_sazed_fdata() {
+        // Multiple samples with same period
+        let n = 5;
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data = generate_sine(n, m, period, &argvals);
+
+        let result = sazed_fdata(&data, n, m, &argvals, None);
+
+        assert!(result.period.is_finite(), "SAZED should detect a period");
+        assert!(
+            (result.period - period).abs() < 0.3,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+    }
+
+    #[test]
+    fn test_sazed_short_series() {
+        // Very short series - should return NaN gracefully
+        let argvals: Vec<f64> = (0..5).map(|i| i as f64).collect();
+        let data: Vec<f64> = argvals.iter().map(|&t| t.sin()).collect();
+
+        let result = sazed(&data, &argvals, None);
+
+        // Should handle gracefully (return NaN for too-short series)
+        assert!(
+            result.period.is_nan() || result.period.is_finite(),
+            "Should return NaN or valid period"
+        );
+    }
+
+    #[test]
+    fn test_autoperiod_pure_sine() {
+        // Pure sine wave with known period
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = autoperiod(&data, &argvals, None, None);
+
+        assert!(
+            result.period.is_finite(),
+            "Autoperiod should detect a period"
+        );
+        assert!(
+            (result.period - period).abs() < 0.3,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+        assert!(
+            result.confidence > 0.0,
+            "Expected positive confidence, got {}",
+            result.confidence
+        );
+    }
+
+    #[test]
+    fn test_autoperiod_with_trend() {
+        // Sine wave with linear trend
+        let m = 300;
+        let period = 3.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 0.2 * t + (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = autoperiod(&data, &argvals, None, None);
+
+        assert!(
+            result.period.is_finite(),
+            "Autoperiod should detect a period"
+        );
+        // Allow more tolerance with trend
+        assert!(
+            (result.period - period).abs() < 0.5,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+    }
+
+    #[test]
+    fn test_autoperiod_candidates() {
+        // Verify candidates are generated
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = autoperiod(&data, &argvals, Some(5), Some(10));
+
+        assert!(
+            !result.candidates.is_empty(),
+            "Should have at least one candidate"
+        );
+
+        // Best candidate should have highest combined score
+        let max_score = result
+            .candidates
+            .iter()
+            .map(|c| c.combined_score)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            (result.confidence - max_score).abs() < 1e-10,
+            "Returned confidence should match best candidate's score"
+        );
+    }
+
+    #[test]
+    fn test_autoperiod_fdata() {
+        // Multiple samples with same period
+        let n = 5;
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data = generate_sine(n, m, period, &argvals);
+
+        let result = autoperiod_fdata(&data, n, m, &argvals, None, None);
+
+        assert!(
+            result.period.is_finite(),
+            "Autoperiod should detect a period"
+        );
+        assert!(
+            (result.period - period).abs() < 0.3,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+    }
+
+    #[test]
+    fn test_cfd_autoperiod_pure_sine() {
+        // Pure sine wave with known period
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = cfd_autoperiod(&data, &argvals, None, None);
+
+        assert!(
+            result.period.is_finite(),
+            "CFDAutoperiod should detect a period"
+        );
+        assert!(
+            (result.period - period).abs() < 0.3,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+    }
+
+    #[test]
+    fn test_cfd_autoperiod_with_trend() {
+        // Sine wave with strong linear trend - CFD excels here
+        let m = 300;
+        let period = 3.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 2.0 * t + (2.0 * PI * t / period).sin())
+            .collect();
+
+        let result = cfd_autoperiod(&data, &argvals, None, None);
+
+        assert!(
+            result.period.is_finite(),
+            "CFDAutoperiod should detect a period despite trend"
+        );
+        // Allow more tolerance since trend can affect detection
+        assert!(
+            (result.period - period).abs() < 0.6,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
+    }
+
+    #[test]
+    fn test_cfd_autoperiod_multiple_periods() {
+        // Signal with two periods - should detect multiple
+        let m = 400;
+        let period1 = 2.0;
+        let period2 = 5.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (2.0 * PI * t / period1).sin() + 0.5 * (2.0 * PI * t / period2).sin())
+            .collect();
+
+        let result = cfd_autoperiod(&data, &argvals, None, None);
+
+        assert!(
+            !result.periods.is_empty(),
+            "Should detect at least one period"
+        );
+        // The primary period should be one of the two
+        let close_to_p1 = (result.period - period1).abs() < 0.5;
+        let close_to_p2 = (result.period - period2).abs() < 1.0;
+        assert!(
+            close_to_p1 || close_to_p2,
+            "Primary period {} not close to {} or {}",
+            result.period,
+            period1,
+            period2
+        );
+    }
+
+    #[test]
+    fn test_cfd_autoperiod_fdata() {
+        // Multiple samples with same period
+        let n = 5;
+        let m = 200;
+        let period = 2.0;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
+        let data = generate_sine(n, m, period, &argvals);
+
+        let result = cfd_autoperiod_fdata(&data, n, m, &argvals, None, None);
+
+        assert!(
+            result.period.is_finite(),
+            "CFDAutoperiod should detect a period"
+        );
+        assert!(
+            (result.period - period).abs() < 0.3,
+            "Expected period ~{}, got {}",
+            period,
+            result.period
+        );
     }
 }

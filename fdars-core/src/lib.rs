@@ -47,8 +47,10 @@ pub use helpers::{
 
 // Re-export seasonal analysis types
 pub use seasonal::{
-    hilbert_transform, ChangeDetectionResult, ChangePoint, ChangeType, DetectedPeriod,
-    InstantaneousPeriod, Peak, PeakDetectionResult, PeriodEstimate, StrengthMethod,
+    autoperiod, autoperiod_fdata, cfd_autoperiod, cfd_autoperiod_fdata, hilbert_transform, sazed,
+    sazed_fdata, AutoperiodCandidate, AutoperiodResult, CfdAutoperiodResult, ChangeDetectionResult,
+    ChangePoint, ChangeType, DetectedPeriod, InstantaneousPeriod, Peak, PeakDetectionResult,
+    PeriodEstimate, SazedComponents, SazedResult, StrengthMethod,
 };
 
 // Re-export detrending types

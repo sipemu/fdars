@@ -26,3 +26,10 @@ num-complex = "0.4"
 nalgebra = "0.33"
 anofox-regression = "0.4"
 faer = "0.23"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "seasonal_benchmarks"
+harness = false

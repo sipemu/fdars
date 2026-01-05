@@ -8,6 +8,126 @@
 # Period Estimation
 # ==============================================================================
 
+#' Detect Period with Multiple Methods
+#'
+#' Unified interface for period detection that dispatches to specialized
+#' algorithms based on the chosen method. Provides a single entry point
+#' for all period detection functionality.
+#'
+#' @param fdataobj An fdata object.
+#' @param method Detection method to use:
+#' \describe{
+#'   \item{"sazed"}{SAZED ensemble (default) - parameter-free, most robust}
+#'   \item{"autoperiod"}{Autoperiod - hybrid FFT + ACF with gradient ascent}
+#'   \item{"cfd"}{CFDAutoperiod - differencing + clustering + ACF validation}
+#'   \item{"fft"}{Simple FFT periodogram peak}
+#'   \item{"acf"}{Simple ACF peak detection}
+#' }
+#' @param ... Additional arguments passed to the underlying method:
+#' \describe{
+#'   \item{tolerance}{For SAZED: relative tolerance for voting (default 0.1)}
+#'   \item{n_candidates}{For Autoperiod: max FFT peaks to consider (default 5)}
+#'   \item{gradient_steps}{For Autoperiod: refinement steps (default 10)}
+#'   \item{cluster_tolerance}{For CFD: clustering tolerance (default 0.1)}
+#'   \item{min_cluster_size}{For CFD: minimum cluster size (default 1)}
+#'   \item{max_lag}{For ACF: maximum lag to search}
+#'   \item{detrend_method}{For FFT/ACF: "none", "linear", or "auto"}
+#' }
+#'
+#' @return A period detection result. The exact class depends on the method:
+#' \describe{
+#'   \item{sazed_result}{For SAZED method}
+#'   \item{autoperiod_result}{For Autoperiod method}
+#'   \item{cfd_autoperiod_result}{For CFD method}
+#'   \item{period_estimate}{For FFT and ACF methods}
+#' }
+#'
+#' @details
+#' \strong{Method selection guidance:}
+#' \itemize{
+#'   \item \strong{sazed}: Best general-purpose choice. Combines 5 methods
+#'     and uses voting - robust across signal types with no tuning needed.
+#'   \item \strong{autoperiod}: Good when you need candidate details and
+#'     gradient-refined estimates. Slightly more precise than SAZED.
+#'   \item \strong{cfd}: Best for signals with strong polynomial trends.
+#'     Also detects multiple concurrent periods.
+#'   \item \strong{fft}: Fastest, but sensitive to noise and trends.
+#'   \item \strong{acf}: Simple but effective for clean periodic signals.
+#' }
+#'
+#' @seealso
+#' \code{\link{sazed}}, \code{\link{autoperiod}}, \code{\link{cfd.autoperiod}},
+#' \code{\link{estimate.period}}, \code{\link{detect.multiple.periods}}
+#'
+#' @export
+#' @examples
+#' # Generate seasonal data
+#' t <- seq(0, 20, length.out = 400)
+#' X <- matrix(sin(2 * pi * t / 2) + 0.1 * rnorm(400), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Default (SAZED) - most robust
+#' result <- detect.period(fd)
+#' print(result$period)
+#'
+#' # Autoperiod with custom settings
+#' result <- detect.period(fd, method = "autoperiod", n_candidates = 10)
+#'
+#' # CFDAutoperiod for trended data
+#' X_trend <- matrix(0.3 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd_trend <- fdata(X_trend, argvals = t)
+#' result <- detect.period(fd_trend, method = "cfd")
+#'
+#' # Simple FFT for speed
+#' result <- detect.period(fd, method = "fft")
+detect.period <- function(fdataobj,
+                          method = c("sazed", "autoperiod", "cfd", "fft", "acf"),
+                          ...) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  method <- match.arg(method)
+  dots <- list(...)
+
+  result <- switch(method,
+    sazed = {
+      tolerance <- dots$tolerance %||% 0.1
+      detrend_method <- dots$detrend_method %||% "none"
+      sazed(fdataobj, tolerance = tolerance, detrend_method = detrend_method)
+    },
+    autoperiod = {
+      n_candidates <- dots$n_candidates %||% 5
+      gradient_steps <- dots$gradient_steps %||% 10
+      detrend_method <- dots$detrend_method %||% "none"
+      autoperiod(fdataobj, n_candidates = n_candidates,
+                 gradient_steps = gradient_steps,
+                 detrend_method = detrend_method)
+    },
+    cfd = {
+      cluster_tolerance <- dots$cluster_tolerance %||% 0.1
+      min_cluster_size <- dots$min_cluster_size %||% 1
+      cfd.autoperiod(fdataobj, cluster_tolerance = cluster_tolerance,
+                     min_cluster_size = min_cluster_size)
+    },
+    fft = {
+      detrend_method <- dots$detrend_method %||% "none"
+      estimate.period(fdataobj, method = "fft", detrend_method = detrend_method)
+    },
+    acf = {
+      max_lag <- dots$max_lag
+      detrend_method <- dots$detrend_method %||% "none"
+      estimate.period(fdataobj, method = "acf", max_lag = max_lag,
+                      detrend_method = detrend_method)
+    }
+  )
+
+  result
+}
+
+# Helper for NULL-coalescing (R doesn't have %||% by default in older versions)
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 #' Estimate Seasonal Period using FFT
 #'
 #' Estimates the dominant period in functional data using Fast Fourier Transform
@@ -98,6 +218,337 @@ print.period_estimate <- function(x, ...) {
   cat(sprintf("Frequency:  %.4f\n", x$frequency))
   cat(sprintf("Power:      %.4f\n", x$power))
   cat(sprintf("Confidence: %.4f\n", x$confidence))
+  invisible(x)
+}
+
+#' CFDAutoperiod: Clustered Filtered Detrended Autoperiod
+#'
+#' Implements the CFDAutoperiod algorithm (Puech et al. 2020) which applies
+#' first-order differencing for detrending, then uses density-based clustering
+#' of spectral peaks and ACF validation on the original signal.
+#'
+#' @param fdataobj An fdata object.
+#' @param cluster_tolerance Relative tolerance for clustering nearby period
+#'   candidates. Default: 0.1 (10% relative difference). Candidates within
+#'   this tolerance are grouped into clusters.
+#' @param min_cluster_size Minimum number of candidates required to form a
+#'   valid cluster. Default: 1.
+#'
+#' @return A list of class "cfd_autoperiod_result" with components:
+#' \describe{
+#'   \item{period}{Primary detected period (best validated cluster center)}
+#'   \item{confidence}{Combined confidence (ACF validation * spectral power)}
+#'   \item{acf_validation}{ACF validation score for the primary period}
+#'   \item{n_periods}{Number of validated period clusters}
+#'   \item{periods}{All detected period cluster centers}
+#'   \item{confidences}{Confidence scores for each detected period}
+#' }
+#'
+#' @details
+#' The CFDAutoperiod algorithm works in five stages:
+#' \enumerate{
+#'   \item \strong{Differencing}: First-order differencing removes polynomial trends
+#'   \item \strong{FFT}: Computes periodogram on the detrended signal
+#'   \item \strong{Peak Detection}: Finds all peaks above the noise floor
+#'   \item \strong{Clustering}: Groups nearby period candidates into clusters
+#'   \item \strong{ACF Validation}: Validates cluster centers using the ACF
+#'     of the original (non-differenced) signal
+#' }
+#'
+#' This method is particularly effective for:
+#' \itemize{
+#'   \item Signals with strong polynomial trends
+#'   \item Multiple concurrent periodicities
+#'   \item Signals where spectral leakage creates nearby spurious peaks
+#' }
+#'
+#' @references
+#' Puech, T., Boussard, M., D'Amato, A., & Millerand, G. (2020). A fully
+#' automated periodicity detection in time series. In Advanced Analytics
+#' and Learning on Temporal Data (pp. 43-54). Springer.
+#'
+#' @seealso \code{\link{autoperiod}} for the original Autoperiod algorithm,
+#'   \code{\link{sazed}} for an ensemble method
+#'
+#' @export
+#' @examples
+#' # Generate data with trend
+#' t <- seq(0, 20, length.out = 400)
+#' X <- matrix(0.2 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # CFDAutoperiod handles trends via differencing
+#' result <- cfd.autoperiod(fd)
+#' print(result)
+#'
+#' # Multiple periods detected
+#' X2 <- matrix(sin(2 * pi * t / 2) + 0.5 * sin(2 * pi * t / 5), nrow = 1)
+#' fd2 <- fdata(X2, argvals = t)
+#' result2 <- cfd.autoperiod(fd2)
+#' print(result2$periods)  # All detected periods
+cfd.autoperiod <- function(fdataobj, cluster_tolerance = 0.1,
+                           min_cluster_size = 1) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("cfd.autoperiod not yet implemented for 2D functional data")
+  }
+
+  result <- .Call("wrap__seasonal_cfd_autoperiod",
+                  fdataobj$data, fdataobj$argvals,
+                  as.double(cluster_tolerance), as.integer(min_cluster_size))
+
+  class(result) <- "cfd_autoperiod_result"
+  result
+}
+
+#' @export
+print.cfd_autoperiod_result <- function(x, ...) {
+  cat("CFDAutoperiod Detection\n")
+  cat("-----------------------\n")
+  cat(sprintf("Primary Period: %.4f\n", x$period))
+  cat(sprintf("Confidence:     %.4f\n", x$confidence))
+  cat(sprintf("ACF Validation: %.4f\n", x$acf_validation))
+  cat(sprintf("Periods Found:  %d\n", x$n_periods))
+  if (x$n_periods > 1) {
+    cat("\nAll detected periods:\n")
+    for (i in seq_along(x$periods)) {
+      cat(sprintf("  Period %d: %.4f (conf: %.4f)\n",
+                  i, x$periods[i], x$confidences[i]))
+    }
+  }
+  invisible(x)
+}
+
+#' Autoperiod: Hybrid FFT + ACF Period Detection
+#'
+#' Implements the Autoperiod algorithm (Vlachos et al. 2005) which combines
+#' FFT-based candidate detection with ACF validation and gradient ascent
+#' refinement for robust period estimation.
+#'
+#' @param fdataobj An fdata object.
+#' @param n_candidates Maximum number of FFT peaks to consider as candidates.
+#'   Default: 5. More candidates increases robustness but also computation time.
+#' @param gradient_steps Number of gradient ascent steps for period refinement.
+#'   Default: 10. More steps improves precision.
+#' @param detrend_method Detrending method to apply before period estimation:
+#' \describe{
+#'   \item{"none"}{No detrending (default)}
+#'   \item{"linear"}{Remove linear trend}
+#'   \item{"auto"}{Automatic AIC-based selection of detrending method}
+#' }
+#'
+#' @return A list of class "autoperiod_result" with components:
+#' \describe{
+#'   \item{period}{Best detected period}
+#'   \item{confidence}{Combined confidence (normalized FFT power * ACF validation)}
+#'   \item{fft_power}{FFT power at the detected period}
+#'   \item{acf_validation}{ACF validation score (0-1)}
+#'   \item{n_candidates}{Number of candidates evaluated}
+#'   \item{candidates}{Data frame of all candidate periods with their scores}
+#' }
+#'
+#' @details
+#' The Autoperiod algorithm works in three stages:
+#' \enumerate{
+#'   \item \strong{Candidate Detection}: Finds peaks in the FFT periodogram
+#'   \item \strong{ACF Validation}: Validates each candidate using the
+#'     autocorrelation function. Checks that the ACF shows a peak at the
+#'     candidate period, and applies harmonic analysis to distinguish
+#'     fundamental periods from harmonics.
+#'   \item \strong{Gradient Refinement}: Refines each candidate using gradient
+#'     ascent on the ACF to find the exact period that maximizes the ACF peak.
+#' }
+#'
+#' The final period is chosen based on the product of normalized FFT power
+#' and ACF validation score.
+#'
+#' @references
+#' Vlachos, M., Yu, P., & Castelli, V. (2005). On periodicity detection and
+#' structural periodic similarity. In Proceedings of the 2005 SIAM
+#' International Conference on Data Mining.
+#'
+#' @seealso \code{\link{sazed}} for an ensemble method,
+#'   \code{\link{estimate.period}} for simpler single-method estimation
+#'
+#' @export
+#' @examples
+#' # Generate seasonal data with period = 2
+#' t <- seq(0, 20, length.out = 400)
+#' X <- matrix(sin(2 * pi * t / 2) + 0.1 * rnorm(400), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Detect period using Autoperiod
+#' result <- autoperiod(fd)
+#' print(result)
+#'
+#' # View all candidates
+#' print(result$candidates)
+autoperiod <- function(fdataobj, n_candidates = 5, gradient_steps = 10,
+                       detrend_method = c("none", "linear", "auto")) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("autoperiod not yet implemented for 2D functional data")
+  }
+
+  detrend_method <- match.arg(detrend_method)
+
+  # Apply detrending if requested
+  if (detrend_method != "none") {
+    fdataobj <- detrend(fdataobj, method = detrend_method)
+  }
+
+  result <- .Call("wrap__seasonal_autoperiod",
+                  fdataobj$data, fdataobj$argvals,
+                  as.integer(n_candidates), as.integer(gradient_steps))
+
+  # Convert candidates list to data frame for easier inspection
+  if (result$n_candidates > 0) {
+    result$candidates <- data.frame(
+      period = result$candidates$period,
+      fft_power = result$candidates$fft_power,
+      acf_score = result$candidates$acf_score,
+      combined_score = result$candidates$combined_score
+    )
+  } else {
+    result$candidates <- data.frame(
+      period = numeric(0),
+      fft_power = numeric(0),
+      acf_score = numeric(0),
+      combined_score = numeric(0)
+    )
+  }
+
+  class(result) <- "autoperiod_result"
+  result
+}
+
+#' @export
+print.autoperiod_result <- function(x, ...) {
+  cat("Autoperiod Detection\n")
+  cat("--------------------\n")
+  cat(sprintf("Period:         %.4f\n", x$period))
+  cat(sprintf("Confidence:     %.4f\n", x$confidence))
+  cat(sprintf("FFT Power:      %.4f\n", x$fft_power))
+  cat(sprintf("ACF Validation: %.4f\n", x$acf_validation))
+  cat(sprintf("Candidates:     %d\n", x$n_candidates))
+  invisible(x)
+}
+
+#' SAZED: Spectral-ACF Zero-crossing Ensemble Detection
+#'
+#' A parameter-free ensemble method for robust period detection that combines
+#' five different detection approaches and uses majority voting to determine
+#' the consensus period.
+#'
+#' @param fdataobj An fdata object.
+#' @param tolerance Relative tolerance for considering periods equal when voting.
+#'   Default: 0.1 (10% relative difference). Use smaller values for stricter
+#'   matching, larger values for more lenient matching.
+#' @param detrend_method Detrending method to apply before period estimation:
+#' \describe{
+#'   \item{"none"}{No detrending (default)}
+#'   \item{"linear"}{Remove linear trend}
+#'   \item{"auto"}{Automatic AIC-based selection of detrending method}
+#' }
+#'
+#' @return A list of class "sazed_result" with components:
+#' \describe{
+#'   \item{period}{Consensus period (average of agreeing components)}
+#'   \item{confidence}{Confidence score (0-1, proportion of agreeing components)}
+#'   \item{agreeing_components}{Number of components that agreed on the period}
+#'   \item{components}{List of individual component estimates:}
+#'   \describe{
+#'     \item{spectral}{Period from FFT periodogram peak}
+#'     \item{acf_peak}{Period from first ACF peak}
+#'     \item{acf_average}{Weighted average of ACF peaks}
+#'     \item{zero_crossing}{Period from ACF zero crossings}
+#'     \item{spectral_diff}{Period from FFT on differenced signal}
+#'   }
+#' }
+#'
+#' @details
+#' SAZED combines five detection methods:
+#' \enumerate{
+#'   \item \strong{Spectral}: Finds peaks in the FFT periodogram above the noise floor
+#'   \item \strong{ACF Peak}: Identifies the first significant peak in the autocorrelation function
+#'   \item \strong{ACF Average}: Computes a weighted mean of ACF peak locations
+#'   \item \strong{Zero-crossing}: Estimates period from ACF zero-crossing intervals
+#'   \item \strong{Spectral Diff}: Applies FFT to first-differenced signal (trend removal)
+#' }
+#'
+#' The final period is chosen by majority voting: periods within the tolerance
+#' are grouped together, and the group with the most members determines the
+#' consensus. The returned period is the average of the agreeing estimates.
+#'
+#' This method is particularly robust because:
+#' \itemize{
+#'   \item It requires no tuning parameters (tolerance has sensible defaults)
+#'   \item Multiple methods must agree for high confidence
+#'   \item Differencing component handles trends automatically
+#'   \item Works well across different signal types
+#' }
+#'
+#' @seealso \code{\link{estimate.period}} for single-method estimation,
+#'   \code{\link{detect.multiple.periods}} for detecting multiple concurrent periods
+#'
+#' @export
+#' @examples
+#' # Generate seasonal data with period = 2
+#' t <- seq(0, 20, length.out = 400)
+#' X <- matrix(sin(2 * pi * t / 2) + 0.1 * rnorm(400), nrow = 1)
+#' fd <- fdata(X, argvals = t)
+#'
+#' # Detect period using SAZED
+#' result <- sazed(fd)
+#' print(result)  # Shows consensus period and component details
+#'
+#' # With trend - SAZED's spectral_diff component handles this
+#' X_trend <- matrix(0.3 * t + sin(2 * pi * t / 2), nrow = 1)
+#' fd_trend <- fdata(X_trend, argvals = t)
+#' result <- sazed(fd_trend)
+sazed <- function(fdataobj, tolerance = 0.1,
+                  detrend_method = c("none", "linear", "auto")) {
+  if (!inherits(fdataobj, "fdata")) {
+    stop("fdataobj must be of class 'fdata'")
+  }
+
+  if (isTRUE(fdataobj$fdata2d)) {
+    stop("sazed not yet implemented for 2D functional data")
+  }
+
+  detrend_method <- match.arg(detrend_method)
+
+  # Apply detrending if requested
+  if (detrend_method != "none") {
+    fdataobj <- detrend(fdataobj, method = detrend_method)
+  }
+
+  result <- .Call("wrap__seasonal_sazed",
+                  fdataobj$data, fdataobj$argvals, as.double(tolerance))
+
+  class(result) <- "sazed_result"
+  result
+}
+
+#' @export
+print.sazed_result <- function(x, ...) {
+  cat("SAZED Period Detection\n")
+  cat("----------------------\n")
+  cat(sprintf("Period:     %.4f\n", x$period))
+  cat(sprintf("Confidence: %.2f (%d/5 components agree)\n",
+              x$confidence, x$agreeing_components))
+  cat("\nComponent estimates:\n")
+  cat(sprintf("  Spectral:      %.4f\n", x$components$spectral))
+  cat(sprintf("  ACF Peak:      %.4f\n", x$components$acf_peak))
+  cat(sprintf("  ACF Average:   %.4f\n", x$components$acf_average))
+  cat(sprintf("  Zero-crossing: %.4f\n", x$components$zero_crossing))
+  cat(sprintf("  Spectral Diff: %.4f\n", x$components$spectral_diff))
   invisible(x)
 }
 
