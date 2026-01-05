@@ -94,8 +94,8 @@ This is useful for comparing curve shapes regardless of their level or scale.</p
 <span class="r-in"><span><span class="va">fd_std</span> <span class="op">&lt;-</span> <span class="fu">standardize</span><span class="op">(</span><span class="va">fd</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="co"># Check: each curve now has mean ~0 and sd ~1</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/colSums.html" class="external-link">rowMeans</a></span><span class="op">(</span><span class="va">fd_std</span><span class="op">$</span><span class="va">data</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1] -2.220446e-16  9.103829e-16  6.661338e-17  6.938894e-17 -6.217249e-16</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6] -2.331468e-16 -6.106227e-16 -5.551115e-17  1.221245e-15  8.326673e-17</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1] -3.996803e-16  4.773959e-16  2.442491e-16  3.441691e-16  2.997602e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6]  7.299716e-16  3.330669e-17  3.941292e-16  1.776357e-16  2.664535e-16</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">fd_std</span><span class="op">$</span><span class="va">data</span>, <span class="fl">1</span>, <span class="va">sd</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  [1] 1 1 1 1 1 1 1 1 1 1</span>
 </code></pre></div>

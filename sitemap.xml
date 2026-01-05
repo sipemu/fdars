@@ -134,8 +134,10 @@
 <url><loc>https://sipemu.github.io/fdars/reference/kernel.whitenoise.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/kernels.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/localavg.fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/lomb.scargle.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/magnitudeshape.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/make.gaussian.process.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/matrix.profile.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/mean.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/mean.irregFdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/median.html</loc></url>
@@ -215,7 +217,9 @@
 <url><loc>https://sipemu.github.io/fdars/reference/simFunData.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/simMultiFunData.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/sparsify.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/ssa.fd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/standardize.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/stl.fd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/sub-.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/summary.basis.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/summary.fdata.html</loc></url>

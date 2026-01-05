@@ -691,6 +691,14 @@ Simon Mueller
   : CFDAutoperiod: Clustered Filtered Detrended Autoperiod
 - [`sazed()`](https://sipemu.github.io/fdars/reference/sazed.md) :
   SAZED: Spectral-ACF Zero-crossing Ensemble Detection
+- [`lomb.scargle()`](https://sipemu.github.io/fdars/reference/lomb.scargle.md)
+  : Lomb-Scargle Periodogram
+- [`matrix.profile()`](https://sipemu.github.io/fdars/reference/matrix.profile.md)
+  : Matrix Profile for Motif Discovery and Period Detection
+- [`stl.fd()`](https://sipemu.github.io/fdars/reference/stl.fd.md) : STL
+  Decomposition: Seasonal and Trend decomposition using LOESS
+- [`ssa.fd()`](https://sipemu.github.io/fdars/reference/ssa.fd.md) :
+  Singular Spectrum Analysis (SSA) for Time Series Decomposition
 - [`seasonal.strength()`](https://sipemu.github.io/fdars/reference/seasonal.strength.md)
   : Measure Seasonal Strength
 - [`seasonal.strength.curve()`](https://sipemu.github.io/fdars/reference/seasonal.strength.curve.md)
