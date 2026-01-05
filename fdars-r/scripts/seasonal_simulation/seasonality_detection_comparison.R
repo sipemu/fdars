@@ -39,7 +39,7 @@ detection_thresholds <- list(
   strength_variance = 0.2,      # Variance ratio threshold (95th pct of noise ~0.17)
   strength_spectral = 0.3,      # Spectral power threshold (95th pct of noise ~0.29)
   strength_wavelet = 0.26,      # Wavelet power threshold (calibrated to ~5% FPR)
-  sazed_consensus = 4,          # Minimum component agreement (out of 5)
+  sazed_consensus = 2,          # Minimum confident components (strict internal thresholds)
   autoperiod_conf = 0.3,        # Autoperiod ACF correlation threshold
   cfd_conf = 0.25               # CFDAutoperiod ACF validation threshold
 )

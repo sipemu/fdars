@@ -2400,18 +2400,20 @@ pub struct SazedComponents {
 /// 4. Zero-crossing - period from ACF zero crossings
 /// 5. Spectral differencing - FFT on first-differenced signal
 ///
+/// Each component provides both a period estimate and a confidence score.
+/// Only components with sufficient confidence participate in voting.
 /// The final period is chosen by majority voting with tolerance.
 ///
 /// # Arguments
 /// * `data` - Input signal (1D time series or mean curve from fdata)
 /// * `argvals` - Time points corresponding to data
-/// * `tolerance` - Relative tolerance for considering periods equal (default: 0.1 = 10%)
+/// * `tolerance` - Relative tolerance for considering periods equal (default: 0.05 = 5%)
 ///
 /// # Returns
 /// * `SazedResult` containing the consensus period and component details
 pub fn sazed(data: &[f64], argvals: &[f64], tolerance: Option<f64>) -> SazedResult {
     let n = data.len();
-    let tol = tolerance.unwrap_or(0.1);
+    let tol = tolerance.unwrap_or(0.05); // Tighter default tolerance
 
     if n < 8 || argvals.len() != n {
         return SazedResult {
@@ -2430,21 +2432,29 @@ pub fn sazed(data: &[f64], argvals: &[f64], tolerance: Option<f64>) -> SazedResu
 
     let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
     let max_lag = (n / 2).max(4);
+    let signal_range = argvals[n - 1] - argvals[0];
 
-    // Component 1: Spectral (FFT) detection
-    let spectral_period = sazed_spectral(data, argvals);
+    // Minimum detectable period (at least 3 cycles)
+    let min_period = signal_range / (n as f64 / 3.0);
+    // Maximum detectable period (at most 2 complete cycles)
+    let max_period = signal_range / 2.0;
 
-    // Component 2: ACF peak detection
-    let acf_peak_period = sazed_acf_peak(data, dt, max_lag);
+    // Component 1: Spectral (FFT) detection with confidence
+    let (spectral_period, spectral_conf) = sazed_spectral_with_confidence(data, argvals);
 
-    // Component 3: ACF weighted average
+    // Component 2: ACF peak detection with confidence
+    let (acf_peak_period, acf_peak_conf) = sazed_acf_peak_with_confidence(data, dt, max_lag);
+
+    // Component 3: ACF weighted average (uses ACF peak confidence)
     let acf_average_period = sazed_acf_average(data, dt, max_lag);
 
-    // Component 4: Zero-crossing analysis
-    let zero_crossing_period = sazed_zero_crossing(data, dt, max_lag);
+    // Component 4: Zero-crossing analysis with confidence
+    let (zero_crossing_period, zero_crossing_conf) =
+        sazed_zero_crossing_with_confidence(data, dt, max_lag);
 
-    // Component 5: Spectral on differenced signal
-    let spectral_diff_period = sazed_spectral_diff(data, argvals);
+    // Component 5: Spectral on differenced signal with confidence
+    let (spectral_diff_period, spectral_diff_conf) =
+        sazed_spectral_diff_with_confidence(data, argvals);
 
     let components = SazedComponents {
         spectral: spectral_period,
@@ -2454,30 +2464,72 @@ pub fn sazed(data: &[f64], argvals: &[f64], tolerance: Option<f64>) -> SazedResu
         spectral_diff: spectral_diff_period,
     };
 
-    // Collect valid periods
-    let periods: Vec<f64> = [
-        spectral_period,
-        acf_peak_period,
-        acf_average_period,
-        zero_crossing_period,
-        spectral_diff_period,
-    ]
-    .iter()
-    .copied()
-    .filter(|&p| p.is_finite() && p > 0.0)
-    .collect();
+    // Confidence thresholds for each component (tuned to minimize FPR on noise)
+    // For Gaussian noise: spectral peaks rarely exceed 6x median, ACF ~1/sqrt(n)
+    let spectral_thresh = 8.0; // Power ratio must be > 8x median (noise rarely exceeds 6x)
+    let acf_thresh = 0.3; // ACF correlation must be > 0.3 (noise ~0.1 for n=100)
+    let zero_crossing_thresh = 0.9; // Zero-crossing consistency > 90%
+    let spectral_diff_thresh = 6.0; // Diff spectral power ratio > 6x
 
-    if periods.is_empty() {
+    // Minimum number of confident components required to report a period
+    let min_confident_components = 2;
+
+    // Collect valid periods (only from components with sufficient confidence)
+    let mut confident_periods: Vec<f64> = Vec::new();
+
+    if spectral_period.is_finite()
+        && spectral_period > min_period
+        && spectral_period < max_period
+        && spectral_conf > spectral_thresh
+    {
+        confident_periods.push(spectral_period);
+    }
+
+    if acf_peak_period.is_finite()
+        && acf_peak_period > min_period
+        && acf_peak_period < max_period
+        && acf_peak_conf > acf_thresh
+    {
+        confident_periods.push(acf_peak_period);
+    }
+
+    // ACF average only counted if ACF peak is confident
+    if acf_average_period.is_finite()
+        && acf_average_period > min_period
+        && acf_average_period < max_period
+        && acf_peak_conf > acf_thresh
+    {
+        confident_periods.push(acf_average_period);
+    }
+
+    if zero_crossing_period.is_finite()
+        && zero_crossing_period > min_period
+        && zero_crossing_period < max_period
+        && zero_crossing_conf > zero_crossing_thresh
+    {
+        confident_periods.push(zero_crossing_period);
+    }
+
+    if spectral_diff_period.is_finite()
+        && spectral_diff_period > min_period
+        && spectral_diff_period < max_period
+        && spectral_diff_conf > spectral_diff_thresh
+    {
+        confident_periods.push(spectral_diff_period);
+    }
+
+    // Require minimum number of confident components before reporting a period
+    if confident_periods.len() < min_confident_components {
         return SazedResult {
             period: f64::NAN,
             confidence: 0.0,
             component_periods: components,
-            agreeing_components: 0,
+            agreeing_components: confident_periods.len(),
         };
     }
 
     // Ensemble voting: find the mode with tolerance
-    let (consensus_period, agreeing_count) = find_consensus_period(&periods, tol);
+    let (consensus_period, agreeing_count) = find_consensus_period(&confident_periods, tol);
     let confidence = agreeing_count as f64 / 5.0;
 
     SazedResult {
@@ -2524,51 +2576,52 @@ pub fn sazed_fdata(
     sazed(&mean_curve, argvals, tolerance)
 }
 
-/// Spectral component: find dominant period from FFT periodogram
-fn sazed_spectral(data: &[f64], argvals: &[f64]) -> f64 {
+/// Spectral component with confidence: returns (period, power_ratio)
+fn sazed_spectral_with_confidence(data: &[f64], argvals: &[f64]) -> (f64, f64) {
     let (frequencies, power) = periodogram(data, argvals);
 
     if frequencies.len() < 3 {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
 
     // Find peaks in power spectrum (skip DC)
     let power_no_dc: Vec<f64> = power.iter().skip(1).copied().collect();
-    let peaks = find_spectral_peaks(&power_no_dc);
 
-    if peaks.is_empty() {
-        // Fall back to global maximum
-        let mut max_idx = 0;
-        let mut max_val = 0.0;
-        for (i, &p) in power_no_dc.iter().enumerate() {
-            if p > max_val {
-                max_val = p;
-                max_idx = i;
-            }
-        }
-        let freq = frequencies[max_idx + 1];
-        if freq > 1e-15 {
-            return 1.0 / freq;
-        }
-        return f64::NAN;
+    if power_no_dc.is_empty() {
+        return (f64::NAN, 0.0);
     }
 
-    // Return period from highest peak
-    let best_peak = peaks[0];
-    let freq = frequencies[best_peak + 1];
+    // Calculate noise floor as median
+    let mut sorted_power = power_no_dc.clone();
+    sorted_power.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let noise_floor = sorted_power[sorted_power.len() / 2].max(1e-15);
+
+    // Find global maximum
+    let mut max_idx = 0;
+    let mut max_val = 0.0;
+    for (i, &p) in power_no_dc.iter().enumerate() {
+        if p > max_val {
+            max_val = p;
+            max_idx = i;
+        }
+    }
+
+    let power_ratio = max_val / noise_floor;
+    let freq = frequencies[max_idx + 1];
+
     if freq > 1e-15 {
-        1.0 / freq
+        (1.0 / freq, power_ratio)
     } else {
-        f64::NAN
+        (f64::NAN, 0.0)
     }
 }
 
-/// ACF peak component: find first significant peak in autocorrelation
-fn sazed_acf_peak(data: &[f64], dt: f64, max_lag: usize) -> f64 {
+/// ACF peak component with confidence: returns (period, acf_value_at_peak)
+fn sazed_acf_peak_with_confidence(data: &[f64], dt: f64, max_lag: usize) -> (f64, f64) {
     let acf = autocorrelation(data, max_lag);
 
     if acf.len() < 4 {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
 
     // Find first peak after initial descent
@@ -2589,11 +2642,13 @@ fn sazed_acf_peak(data: &[f64], dt: f64, max_lag: usize) -> f64 {
     let peaks = find_peaks_1d(&acf[min_search_start..], 1);
 
     if peaks.is_empty() {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
 
     let peak_lag = peaks[0] + min_search_start;
-    peak_lag as f64 * dt
+    let acf_value = acf[peak_lag].max(0.0); // Confidence is the ACF value at the peak
+
+    (peak_lag as f64 * dt, acf_value)
 }
 
 /// ACF average component: weighted mean of ACF peak locations
@@ -2642,12 +2697,13 @@ fn sazed_acf_average(data: &[f64], dt: f64, max_lag: usize) -> f64 {
     }
 }
 
-/// Zero-crossing component: estimate period from ACF zero crossings
-fn sazed_zero_crossing(data: &[f64], dt: f64, max_lag: usize) -> f64 {
+/// Zero-crossing component with confidence: returns (period, consistency)
+/// Consistency is how regular the zero crossings are (std/mean of half-periods)
+fn sazed_zero_crossing_with_confidence(data: &[f64], dt: f64, max_lag: usize) -> (f64, f64) {
     let acf = autocorrelation(data, max_lag);
 
     if acf.len() < 4 {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
 
     // Find zero crossings (sign changes)
@@ -2661,7 +2717,7 @@ fn sazed_zero_crossing(data: &[f64], dt: f64, max_lag: usize) -> f64 {
     }
 
     if crossings.len() < 2 {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
 
     // Period is twice the distance between consecutive zero crossings
@@ -2672,27 +2728,35 @@ fn sazed_zero_crossing(data: &[f64], dt: f64, max_lag: usize) -> f64 {
     }
 
     if half_periods.is_empty() {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
+
+    // Calculate consistency: 1 - (std/mean) of half-periods
+    // High consistency means regular zero crossings
+    let mean: f64 = half_periods.iter().sum::<f64>() / half_periods.len() as f64;
+    let variance: f64 =
+        half_periods.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / half_periods.len() as f64;
+    let std = variance.sqrt();
+    let consistency = (1.0 - std / mean.max(1e-15)).clamp(0.0, 1.0);
 
     // Median half-period
     half_periods.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let median_half = half_periods[half_periods.len() / 2];
 
-    2.0 * median_half * dt
+    (2.0 * median_half * dt, consistency)
 }
 
-/// Spectral differencing component: FFT on first-differenced signal
-fn sazed_spectral_diff(data: &[f64], argvals: &[f64]) -> f64 {
+/// Spectral differencing with confidence: returns (period, power_ratio)
+fn sazed_spectral_diff_with_confidence(data: &[f64], argvals: &[f64]) -> (f64, f64) {
     if data.len() < 4 {
-        return f64::NAN;
+        return (f64::NAN, 0.0);
     }
 
     // First difference to remove trend
     let diff: Vec<f64> = data.windows(2).map(|w| w[1] - w[0]).collect();
     let diff_argvals: Vec<f64> = argvals.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
 
-    sazed_spectral(&diff, &diff_argvals)
+    sazed_spectral_with_confidence(&diff, &diff_argvals)
 }
 
 /// Find peaks in power spectrum above noise floor

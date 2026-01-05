@@ -3456,7 +3456,9 @@ fn basis_gcv_1d(
     };
 
     // Compute pseudoinverse: V * S^-1 * U^T
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -3586,7 +3588,9 @@ fn basis_aic_1d(
         None => return f64::INFINITY,
     };
 
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -3711,7 +3715,9 @@ fn basis_bic_1d(
         None => return f64::INFINITY,
     };
 
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -3843,7 +3849,9 @@ fn pspline_fit_1d(
         }
     };
 
-    let s_inv: Vec<f64> = svd.singular_values.iter()
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
         .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
         .collect();
 
@@ -4349,7 +4357,11 @@ fn select_basis_auto(
     let nbasis_vec: Vec<i32> = result.selections.iter().map(|s| s.nbasis as i32).collect();
     let scores: Vec<f64> = result.selections.iter().map(|s| s.score).collect();
     let edfs: Vec<f64> = result.selections.iter().map(|s| s.edf).collect();
-    let seasonal_detected: Vec<bool> = result.selections.iter().map(|s| s.seasonal_detected).collect();
+    let seasonal_detected: Vec<bool> = result
+        .selections
+        .iter()
+        .map(|s| s.seasonal_detected)
+        .collect();
     let lambdas: Vec<f64> = result.selections.iter().map(|s| s.lambda).collect();
 
     // Build coefficients list
@@ -6451,8 +6463,14 @@ fn seasonal_detect_peaks(
 
     // Use the Rust core detect_peaks function with Fourier basis smoothing
     let result = fdars_core::seasonal::detect_peaks(
-        data_slice, n, m, &argvals,
-        min_dist, min_prom, smooth_first, nbasis
+        data_slice,
+        n,
+        m,
+        &argvals,
+        min_dist,
+        min_prom,
+        smooth_first,
+        nbasis,
     );
 
     // Convert result to R format
@@ -6464,14 +6482,7 @@ fn seasonal_detect_peaks(
         let values: Vec<f64> = peaks.iter().map(|p| p.value).collect();
         let proms: Vec<f64> = peaks.iter().map(|p| p.prominence).collect();
 
-        all_peaks.push(
-            list!(
-                time = times,
-                value = values,
-                prominence = proms
-            )
-            .into(),
-        );
+        all_peaks.push(list!(time = times, value = values, prominence = proms).into());
         all_distances.push(Robj::from(distances.clone()));
     }
 
@@ -6553,7 +6564,10 @@ fn seasonal_strength_variance(
     for k in 1..nbasis {
         let b_sum: f64 = (0..m).map(|j| basis[j + k * m].powi(2)).sum();
         if b_sum > 1e-15 {
-            let coef: f64 = (0..m).map(|j| mean_curve[j] * basis[j + k * m]).sum::<f64>() / b_sum;
+            let coef: f64 = (0..m)
+                .map(|j| mean_curve[j] * basis[j + k * m])
+                .sum::<f64>()
+                / b_sum;
             for j in 0..m {
                 seasonal[j] += coef * basis[j + k * m];
             }
@@ -6701,7 +6715,8 @@ fn seasonal_strength_windowed(
 
             if use_spectral {
                 // Spectral method inline
-                let w_dt = (window_argvals[window_m - 1] - window_argvals[0]) / (window_m - 1) as f64;
+                let w_dt =
+                    (window_argvals[window_m - 1] - window_argvals[0]) / (window_m - 1) as f64;
                 let fs = 1.0 / w_dt;
 
                 let mut planner = FftPlanner::<f64>::new();
@@ -6780,11 +6795,8 @@ fn seasonal_strength_windowed(
                 }
 
                 let s_mean: f64 = seasonal.iter().sum::<f64>() / window_m as f64;
-                let s_var: f64 = seasonal
-                    .iter()
-                    .map(|&x| (x - s_mean).powi(2))
-                    .sum::<f64>()
-                    / window_m as f64;
+                let s_var: f64 =
+                    seasonal.iter().map(|&x| (x - s_mean).powi(2)).sum::<f64>() / window_m as f64;
 
                 (s_var / total_var).min(1.0)
             }
@@ -6897,7 +6909,10 @@ fn seasonal_detect_changes(
     let mut strength_before: Vec<f64> = Vec::new();
     let mut strength_after: Vec<f64> = Vec::new();
 
-    let first_valid = strength_curve.iter().position(|&x| !x.is_nan()).unwrap_or(0);
+    let first_valid = strength_curve
+        .iter()
+        .position(|&x| !x.is_nan())
+        .unwrap_or(0);
     let mut in_seasonal = strength_curve[first_valid] > threshold;
     let mut last_change: Option<usize> = None;
 
@@ -7064,13 +7079,10 @@ fn seasonal_analyze_peak_timing(
         smooth_nbasis.as_real().map(|v| v as usize)
     };
 
-    let result = fdars_core::seasonal::analyze_peak_timing(
-        data_slice, n, m, &argvals, period, nbasis
-    );
+    let result =
+        fdars_core::seasonal::analyze_peak_timing(data_slice, n, m, &argvals, period, nbasis);
 
-    let cycle_indices: Vec<i32> = result.cycle_indices.iter()
-        .map(|&i| i as i32)
-        .collect();
+    let cycle_indices: Vec<i32> = result.cycle_indices.iter().map(|&i| i as i32).collect();
 
     list!(
         peak_times = result.peak_times,
@@ -7127,12 +7139,10 @@ fn seasonal_classify_seasonality(
     };
 
     let result = fdars_core::seasonal::classify_seasonality(
-        data_slice, n, m, &argvals, period, str_thresh, tim_thresh
+        data_slice, n, m, &argvals, period, str_thresh, tim_thresh,
     );
 
-    let weak_seasons: Vec<i32> = result.weak_seasons.iter()
-        .map(|&i| i as i32)
-        .collect();
+    let weak_seasons: Vec<i32> = result.weak_seasons.iter().map(|&i| i as i32).collect();
 
     let classification_str = match result.classification {
         fdars_core::seasonal::SeasonalType::StableSeasonal => "StableSeasonal",
@@ -7142,9 +7152,7 @@ fn seasonal_classify_seasonality(
     };
 
     let peak_timing_robj = if let Some(pt) = result.peak_timing {
-        let cycle_indices: Vec<i32> = pt.cycle_indices.iter()
-            .map(|&i| i as i32)
-            .collect();
+        let cycle_indices: Vec<i32> = pt.cycle_indices.iter().map(|&i| i as i32).collect();
 
         list!(
             peak_times = pt.peak_times,
@@ -7216,32 +7224,55 @@ fn seasonal_detect_changes_auto(
     };
 
     let result = fdars_core::seasonal::detect_seasonality_changes_auto(
-        data_slice, n, m, &argvals, period, method, window_size, min_duration
+        data_slice,
+        n,
+        m,
+        &argvals,
+        period,
+        method,
+        window_size,
+        min_duration,
     );
 
     let change_times: Vec<f64> = result.change_points.iter().map(|cp| cp.time).collect();
-    let change_types: Vec<String> = result.change_points.iter()
+    let change_types: Vec<String> = result
+        .change_points
+        .iter()
         .map(|cp| match cp.change_type {
             fdars_core::seasonal::ChangeType::Onset => "onset".to_string(),
             fdars_core::seasonal::ChangeType::Cessation => "cessation".to_string(),
         })
         .collect();
-    let strength_before: Vec<f64> = result.change_points.iter().map(|cp| cp.strength_before).collect();
-    let strength_after: Vec<f64> = result.change_points.iter().map(|cp| cp.strength_after).collect();
+    let strength_before: Vec<f64> = result
+        .change_points
+        .iter()
+        .map(|cp| cp.strength_before)
+        .collect();
+    let strength_after: Vec<f64> = result
+        .change_points
+        .iter()
+        .map(|cp| cp.strength_after)
+        .collect();
 
     // Compute the threshold that was used
     let computed_threshold = match method {
         fdars_core::seasonal::ThresholdMethod::Fixed(t) => t,
         _ => {
             // For auto methods, we need to compute the threshold from the strength curve
-            let valid: Vec<f64> = result.strength_curve.iter()
+            let valid: Vec<f64> = result
+                .strength_curve
+                .iter()
                 .copied()
                 .filter(|x| x.is_finite())
                 .collect();
             if valid.is_empty() {
                 0.5
             } else if matches!(method, fdars_core::seasonal::ThresholdMethod::Percentile(_)) {
-                let p = if let fdars_core::seasonal::ThresholdMethod::Percentile(p) = method { p } else { 20.0 };
+                let p = if let fdars_core::seasonal::ThresholdMethod::Percentile(p) = method {
+                    p
+                } else {
+                    20.0
+                };
                 let mut sorted = valid.clone();
                 sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let idx = ((p / 100.0) * sorted.len() as f64) as usize;
@@ -7595,7 +7626,11 @@ fn seasonal_sazed(data: RMatrix<f64>, argvals: Vec<f64>, tolerance: f64) -> Robj
     }
 
     let data_slice = data.as_real_slice().unwrap();
-    let tol = if tolerance > 0.0 { Some(tolerance) } else { None };
+    let tol = if tolerance > 0.0 {
+        Some(tolerance)
+    } else {
+        None
+    };
 
     let result = fdars_core::sazed_fdata(data_slice, n, m, &argvals, tol);
 
@@ -7646,7 +7681,9 @@ fn seasonal_detrend(
 
     let result = match method {
         "linear" => fdars_core::detrend::detrend_linear(data_slice, n, m, &argvals),
-        "polynomial" => fdars_core::detrend::detrend_polynomial(data_slice, n, m, &argvals, degree as usize),
+        "polynomial" => {
+            fdars_core::detrend::detrend_polynomial(data_slice, n, m, &argvals, degree as usize)
+        }
         "diff1" => fdars_core::detrend::detrend_diff(data_slice, n, m, 1),
         "diff2" => fdars_core::detrend::detrend_diff(data_slice, n, m, 2),
         "loess" => fdars_core::detrend::detrend_loess(data_slice, n, m, &argvals, bandwidth, 1),
@@ -7706,10 +7743,24 @@ fn seasonal_decompose(
 
     let result = match method {
         "multiplicative" => fdars_core::detrend::decompose_multiplicative(
-            data_slice, n, m, &argvals, period, trend_method, bandwidth, n_harmonics as usize
+            data_slice,
+            n,
+            m,
+            &argvals,
+            period,
+            trend_method,
+            bandwidth,
+            n_harmonics as usize,
         ),
         "additive" | _ => fdars_core::detrend::decompose_additive(
-            data_slice, n, m, &argvals, period, trend_method, bandwidth, n_harmonics as usize
+            data_slice,
+            n,
+            m,
+            &argvals,
+            period,
+            trend_method,
+            bandwidth,
+            n_harmonics as usize,
         ),
     };
 
@@ -7897,8 +7948,7 @@ fn irreg_to_regular(
     let n = offsets.len() - 1;
     let m = target_grid.len();
 
-    let data =
-        fdars_core::irreg_fdata::to_regular_grid(&offsets, &argvals, &values, &target_grid);
+    let data = fdars_core::irreg_fdata::to_regular_grid(&offsets, &argvals, &values, &target_grid);
 
     let result = RMatrix::new_matrix(n, m, |i, j| data[i + j * n]);
     Robj::from(result)
