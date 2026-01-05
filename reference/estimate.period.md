@@ -1,8 +1,7 @@
-# Seasonal Analysis Functions for Functional Data
+# Estimate Seasonal Period using FFT
 
-Functions for analyzing seasonal patterns in functional data including
-period estimation, peak detection, seasonal strength measurement, and
-detection of seasonality changes. Estimate Seasonal Period using FFT
+Estimates the dominant period in functional data using Fast Fourier
+Transform and periodogram analysis.
 
 ## Usage
 
@@ -67,9 +66,6 @@ A list with components:
   Confidence measure (ratio of peak power to mean power)
 
 ## Details
-
-Estimates the dominant period in functional data using Fast Fourier
-Transform and periodogram analysis.
 
 The function computes the periodogram of the mean curve and finds the
 frequency with maximum power. The confidence measure indicates how

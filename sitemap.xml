@@ -52,6 +52,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/addError.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/analyze.peak.timing.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/as.fdata.irregFdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/autoperiod.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/autoplot.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.aic.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.bic.html</loc></url>
@@ -59,6 +60,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/basis2fdata.2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis2fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/boxplot.fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/cfd.autoperiod.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/classify.seasonality.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.fcm.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cluster.init.html</loc></url>
@@ -79,6 +81,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/depth.mode.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/deriv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect.peaks.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/detect.period.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect.periods.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect.seasonality.changes.auto.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/detect.seasonality.changes.html</loc></url>
@@ -198,6 +201,7 @@
 <url><loc>https://sipemu.github.io/fdars/reference/r.brownian.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/r.ou.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/register.fd.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/sazed.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/scale_minmax.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/sd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/seasonal.strength.curve.html</loc></url>

@@ -89,5 +89,5 @@ fd <- fdata(X, argvals = t)
 # Detect changes with Otsu threshold
 changes <- detect.seasonality.changes.auto(fd, period = 2)
 print(changes$computed_threshold)
-#> [1] 0.5550902
+#> [1] 0.516327
 ```

@@ -678,11 +678,19 @@ Simon Mueller
 ## Seasonal Analysis
 
 - [`estimate.period()`](https://sipemu.github.io/fdars/reference/estimate.period.md)
+  : Estimate Seasonal Period using FFT
+- [`detect.period()`](https://sipemu.github.io/fdars/reference/detect.period.md)
   : Seasonal Analysis Functions for Functional Data
 - [`detect.periods()`](https://sipemu.github.io/fdars/reference/detect.periods.md)
   : Detect Multiple Concurrent Periods
 - [`detect.peaks()`](https://sipemu.github.io/fdars/reference/detect.peaks.md)
   : Detect Peaks in Functional Data
+- [`autoperiod()`](https://sipemu.github.io/fdars/reference/autoperiod.md)
+  : Autoperiod: Hybrid FFT + ACF Period Detection
+- [`cfd.autoperiod()`](https://sipemu.github.io/fdars/reference/cfd.autoperiod.md)
+  : CFDAutoperiod: Clustered Filtered Detrended Autoperiod
+- [`sazed()`](https://sipemu.github.io/fdars/reference/sazed.md) :
+  SAZED: Spectral-ACF Zero-crossing Ensemble Detection
 - [`seasonal.strength()`](https://sipemu.github.io/fdars/reference/seasonal.strength.md)
   : Measure Seasonal Strength
 - [`seasonal.strength.curve()`](https://sipemu.github.io/fdars/reference/seasonal.strength.curve.md)
