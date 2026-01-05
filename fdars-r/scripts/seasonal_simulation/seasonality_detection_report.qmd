@@ -67,11 +67,14 @@ method_colors <- c(
 
 detect_aic <- function(fd_single) {
   result <- tryCatch({
-    fourier_result <- fdata2basis(fd_single, type = "fourier", nbasis = 11)
-    pspline_result <- pspline(fd_single, nknots = 10, lambda = "gcv")
-    aic_fourier <- basis.aic(fourier_result)
-    aic_pspline <- basis.aic(pspline_result)
-    list(score = aic_pspline - aic_fourier, detected = (aic_pspline - aic_fourier) > detection_thresholds$aic)
+    # Compare AIC: Fourier (periodic, nbasis=11) vs simple B-spline (smooth, nbasis=5)
+    # Lower AIC = better fit. If Fourier has lower AIC, data is periodic.
+    # Using low nbasis for B-spline gives good separation between seasonal/non-seasonal
+    aic_fourier <- basis.aic(fd_single, nbasis = 11, type = "fourier")
+    aic_bspline <- basis.aic(fd_single, nbasis = 5, type = "bspline")
+    # Positive score means Fourier is better (lower AIC) -> seasonal
+    score <- aic_bspline - aic_fourier
+    list(score = score, detected = score > detection_thresholds$aic)
   }, error = function(e) list(score = NA, detected = NA))
   result
 }
@@ -337,11 +340,11 @@ knitr::kable(exec_summary, align = "lcccc")
 
 This section describes all 13 detection methods. Each method is benchmarked in the simulation study (@sec-sim).
 
-## AIC Comparison (Fourier vs P-spline)
+## AIC Comparison (Fourier vs B-spline)
 
-**Concept**: Compare model fit between Fourier basis (assumes periodicity) and P-splines (flexible, non-periodic).
+**Concept**: Compare model fit between Fourier basis (periodic, 11 basis functions) and simple B-spline (smooth, 5 basis functions).
 
-**Detection rule**: Seasonality detected if $\text{AIC}_{\text{P-spline}} - \text{AIC}_{\text{Fourier}} > 0$
+**Detection rule**: Seasonality detected if $\text{AIC}_{\text{B-spline}} - \text{AIC}_{\text{Fourier}} > 0$
 
 ## FFT Confidence
 
