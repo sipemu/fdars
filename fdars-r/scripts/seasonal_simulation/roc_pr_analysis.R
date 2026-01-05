@@ -43,7 +43,11 @@ detection_thresholds <- list(
   wav_score = 0.26,
   sazed_score = 2,
   autoperiod_score = 0.3,
-  cfd_score = 0.25
+  cfd_score = 0.25,
+  lomb_score = 0.90,
+  mp_score = 0.20,
+  stl_score = 0.50,
+  ssa_score = 0.65
 )
 
 # --- Method configuration ---
@@ -56,11 +60,15 @@ method_config <- list(
   list(col = "fft_score", name = "FFT", color = "#FFFF33"),
   list(col = "cfd_score", name = "CFD", color = "#A65628"),
   list(col = "aic_score", name = "AIC", color = "#F781BF"),
-  list(col = "acf_score", name = "ACF", color = "#999999")
+  list(col = "acf_score", name = "ACF", color = "#999999"),
+  list(col = "lomb_score", name = "Lomb-Scargle", color = "#66C2A5"),
+  list(col = "mp_score", name = "MatrixProfile", color = "#FC8D62"),
+  list(col = "stl_score", name = "STL", color = "#8DA0CB"),
+  list(col = "ssa_score", name = "SSA", color = "#E78AC3")
 )
 
 # Top 5 methods for focused analysis
-top_methods <- c("Wavelet", "Variance", "SAZED", "Spectral", "Autoperiod")
+top_methods <- c("Wavelet", "Variance", "Spectral", "FFT", "Lomb-Scargle")
 
 # Color palette
 method_colors <- setNames(

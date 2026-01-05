@@ -23,21 +23,25 @@ execute:
 
 ## Key Findings
 
-This study compared nine methods for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
+This study compared **13 methods** for detecting seasonality in functional time series data across 550+ simulated curves with varying seasonal strengths and trend components.
 
-| Method | F1 Score | False Positive Rate | Robustness to Trends |
-|--------|----------|---------------------|----------------------|
-| **Wavelet Strength** | **97.8%** | 4% | Excellent (1.2% F1 drop) |
-| Variance Strength | 97.3% | **2%** | Excellent (0.4% F1 drop) |
-| SAZED (Ensemble) | 96.5% | 4% | Excellent (automatic) |
-| Spectral Strength | 95.3% | 10% | Good (3.9% F1 drop) |
-| Autoperiod | 95.0% | 6% | Good (gradient refinement) |
-| FFT Confidence | 94.8% | 4% | Good (2.0% F1 drop) |
-| CFDAutoperiod | 94.2% | 4% | Excellent (detrending) |
-| AIC Comparison | 91.5% | 18% | Moderate (5.7% F1 drop) |
-| ACF Confidence | 85.4% | 10% | Moderate (4.5% F1 drop) |
+| Method | F1 Score | FPR | Precision | Recall |
+|--------|----------|-----|-----------|--------|
+| **Wavelet Strength** | **97.8%** | 14% | 96.9% | **98.7%** |
+| Variance Strength | 97.3% | **8%** | 98.2% | 96.4% |
+| Spectral Strength | 95.3% | 11% | 97.4% | 93.3% |
+| FFT Confidence | 94.8% | 3% | **99.3%** | 90.7% |
+| Lomb-Scargle | 94.5% | 14% | 96.7% | 92.4% |
+| Autoperiod | 93.4% | 10% | 97.6% | 89.6% |
+| STL | 91.5% | 15% | 96.3% | 87.1% |
+| AIC Comparison | 91.5% | 24% | 94.3% | 88.9% |
+| SSA | 90.3% | 95% | 82.5% | 99.8% |
+| Matrix Profile | 90.0% | 87% | 83.5% | 97.6% |
+| CFDAutoperiod | 89.5% | 24% | 94.1% | 85.3% |
+| SAZED (Ensemble) | 87.5% | 3% | 99.2% | 78.2% |
+| ACF Confidence | 85.4% | 6% | 98.3% | 75.6% |
 
-**Top methods**: Wavelet (97.8% F1, best recall) and Variance (97.3% F1, lowest FPR) are excellent choices. SAZED (96.5%) provides robust parameter-free detection.
+**Top methods**: Wavelet (97.8% F1, best recall) and Variance (97.3% F1, best balance of precision/recall) are excellent choices. FFT (94.8% F1) offers the highest precision (99.3%) for applications requiring low false positives.
 
 ## Robustness to Real-World Challenges
 
@@ -941,21 +945,59 @@ result <- analyze_seasonality(fd, period = 0.2)  # Known period
 
 \newpage
 
+# Statistical Significance Testing {#sec-significance}
+
+## McNemar's Test for Pairwise Comparisons
+
+McNemar's test compares paired binary classifications to determine if performance differences are statistically significant. We compared all 78 pairs of 13 methods with Bonferroni correction for multiple comparisons.
+
+**Key Finding**: The difference between Wavelet (97.8% F1) and Variance (97.3% F1) is **NOT statistically significant** (p = 0.571, Bonferroni-adjusted p = 1.0). The 0.5% F1 difference is likely due to random variation.
+
+| Comparison | Margin | Bonferroni p | Significant |
+|------------|--------|--------------|-------------|
+| Wavelet vs Variance | 4 cases | 1.000 | No |
+| Wavelet vs ACF | 96 cases | <0.001 | **Yes** |
+| Variance vs ACF | 92 cases | <0.001 | **Yes** |
+| Wavelet vs SAZED | 81 cases | <0.001 | **Yes** |
+| Variance vs SAZED | 77 cases | <0.001 | **Yes** |
+
+The top-tier methods (Wavelet, Variance, Spectral) are statistically indistinguishable from each other but significantly outperform lower-tier methods.
+
+## ROC and PR Curve Analysis
+
+Area Under the Curve (AUC) provides threshold-independent performance measures:
+
+| Method | AUC-ROC | AUC-PR |
+|--------|---------|--------|
+| Variance | **0.977** | **0.998** |
+| Wavelet | 0.972 | 0.994 |
+| Spectral | 0.961 | 0.993 |
+| FFT | 0.958 | 0.992 |
+| Lomb-Scargle | 0.954 | 0.990 |
+
+**Key Finding**: Variance achieves the highest AUC-ROC (0.977) and AUC-PR (0.998), confirming its excellent overall discriminative ability.
+
+\newpage
+
 # Key Findings {#sec-findings}
 
-## Method Ranking
+## Method Ranking (Updated with 13 Methods)
 
-| Rank | Method | Best For | Weakness |
-|------|--------|----------|----------|
-| 1 | **Variance Strength** | Highest accuracy, known period | Multiple seasonalities |
-| 2 | Wavelet Strength | Time-varying signals, AM | Slightly lower recall |
-| 3 | **SAZED** | Unknown signals, no tuning | Ensemble overhead |
-| 4 | Spectral Strength | Robust to trends | Slightly higher FPR |
-| 5 | Autoperiod | FFT + ACF validation | Moderate accuracy |
-| 6 | FFT Confidence | Period unknown | Red noise, slow oscillations |
-| 7 | CFDAutoperiod | Trended data | Requires clustering |
-| 8 | AIC Comparison | Interpretable | Higher FPR |
-| 9 | ACF Confidence | Conservative | Misses weak seasonality |
+| Rank | Method | F1 | Best For | Weakness |
+|------|--------|-----|----------|----------|
+| 1 | **Wavelet Strength** | 97.8% | Time-varying signals | 14% FPR |
+| 2 | **Variance Strength** | 97.3% | Known period, stable seasonality | Multiple seasonalities |
+| 3 | Spectral Strength | 95.3% | Robust to trends | 11% FPR |
+| 4 | FFT Confidence | 94.8% | Unknown period, high precision | Red noise sensitivity |
+| 5 | Lomb-Scargle | 94.5% | Irregular sampling | Requires oversampling |
+| 6 | Autoperiod | 93.4% | FFT + ACF validation | Moderate recall |
+| 7 | STL | 91.5% | Seasonal decomposition | Requires known period |
+| 8 | AIC Comparison | 91.5% | Interpretable model selection | 24% FPR |
+| 9 | SSA | 90.3% | Subspace decomposition | 95% FPR |
+| 10 | Matrix Profile | 90.0% | Non-sinusoidal patterns | 87% FPR |
+| 11 | CFDAutoperiod | 89.5% | Trended data | Lower recall |
+| 12 | SAZED (Ensemble) | 87.5% | No tuning required | Conservative (78% recall) |
+| 13 | ACF Confidence | 85.4% | Conservative detection | Misses weak seasonality |
 
 ## Critical Issues Found
 
@@ -975,9 +1017,13 @@ result <- analyze_seasonality(fd, period = 0.2)  # Known period
 | FFT Confidence | 6.0 | ~5.7 on noise |
 | ACF Confidence | 0.25 | ~0.22 on noise |
 | AIC Difference | 0 | Fourier better = positive |
-| SAZED Consensus | 3 | >=3 of 5 components agree |
+| SAZED Consensus | 2 | >=2 of 5 components agree |
 | Autoperiod ACF | 0.3 | ACF correlation at period |
 | CFDAutoperiod | 0.25 | ACF validation on original |
+| Lomb-Scargle | 0.90 | FAP-based significance |
+| Matrix Profile | 0.20 | Arc count confidence |
+| STL Strength | 0.50 | Seasonal variance ratio |
+| SSA Confidence | 0.65 | Seasonal variance ratio |
 
 ## Recommendations
 
@@ -1032,25 +1078,38 @@ is_seasonal <- (var_detected + spec_detected + wav_detected) >= 2
 
 # Conclusion
 
-For detecting seasonality in functional time series:
+This comprehensive study compared **13 seasonality detection methods** on 550+ simulated curves. Key findings:
 
-1. **Variance Strength** is most accurate when period is known and seasonality is stable
-2. **Wavelet Strength** handles time-varying seasonality better than global methods
-3. **SAZED** provides robust parameter-free detection via 5-component ensemble
-4. **Spectral Strength** is most robust to confounding trends
-5. **Autoperiod** combines FFT speed with ACF validation accuracy
-6. **CFDAutoperiod** excels on trended data via differencing-based detrending
-7. **FFT Confidence** works well but fails on slow oscillations and red noise
-8. **AIC Comparison** provides interpretable results but has higher FPR
-9. **ACF Confidence** is conservative but misses weak seasonality
+## Top Performers (F1 > 95%)
+
+1. **Wavelet Strength** (97.8% F1) - Best for time-varying seasonality and amplitude modulation
+2. **Variance Strength** (97.3% F1) - Best overall accuracy when period is known
+3. **Spectral Strength** (95.3% F1) - Most robust to confounding trends
+
+## Statistical Significance
+
+The difference between Wavelet and Variance is **not statistically significant** (McNemar's test, p = 0.57). Both are excellent choices for detection tasks.
+
+## New Methods
+
+- **Lomb-Scargle** (94.5% F1) - Excellent for irregularly sampled data
+- **STL** (91.5% F1) - Provides interpretable seasonal decomposition
+- **Matrix Profile** (90.0% F1) - Best for non-sinusoidal pattern detection
+- **SSA** (90.3% F1) - Useful for subspace-based signal separation
+
+## Practical Recommendations
+
+- **Unknown signals**: Use Variance or Wavelet Strength with automatic period detection
+- **Irregular sampling**: Use Lomb-Scargle periodogram
+- **Trended data**: Use CFDAutoperiod or Spectral Strength
+- **Non-sinusoidal patterns**: Use Matrix Profile
+- **Decomposition needed**: Use STL or SSA
+- **High precision required**: Use FFT Confidence (99.3% precision)
 
 For real-world data, consider:
 
-- Using SAZED for exploratory analysis when signal characteristics are unknown
 - Pre-filtering outliers before detection
 - Using wavelet method for non-stationary signals
-- Using CFDAutoperiod when strong trends are present
-- Avoiding FFT when autocorrelated noise is suspected
 - Following up detection with amplitude modulation characterization
 
 \newpage

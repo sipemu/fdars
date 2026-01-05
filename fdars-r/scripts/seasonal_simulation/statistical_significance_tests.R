@@ -47,7 +47,11 @@ method_cols <- list(
   "Wavelet" = "wav_detected",
   "SAZED" = "sazed_detected",
   "Autoperiod" = "autoperiod_detected",
-  "CFD" = "cfd_detected"
+  "CFD" = "cfd_detected",
+  "Lomb-Scargle" = "lomb_detected",
+  "MatrixProfile" = "mp_detected",
+  "STL" = "stl_detected",
+  "SSA" = "ssa_detected"
 )
 
 # --- Helper Functions ---
@@ -294,8 +298,9 @@ heatmap_df$Significant <- heatmap_df$P_Value < 0.05
 heatmap_df$Log_P <- -log10(heatmap_df$P_Value + 1e-10)
 
 # Order methods by F1 score (best to worst)
-method_order <- c("Wavelet", "Variance", "SAZED", "Spectral", "Autoperiod",
-                  "FFT", "CFD", "AIC", "ACF")
+method_order <- c("Wavelet", "Variance", "Spectral", "FFT", "Lomb-Scargle",
+                  "Autoperiod", "STL", "AIC", "MatrixProfile", "SSA",
+                  "CFD", "SAZED", "ACF")
 heatmap_df$Method_A <- factor(heatmap_df$Method_A, levels = method_order)
 heatmap_df$Method_B <- factor(heatmap_df$Method_B, levels = method_order)
 

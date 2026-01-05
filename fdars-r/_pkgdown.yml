@@ -187,6 +187,10 @@ reference:
   - autoperiod
   - cfd.autoperiod
   - sazed
+  - lomb.scargle
+  - matrix.profile
+  - stl.fd
+  - ssa.fd
   - seasonal.strength
   - seasonal.strength.curve
   - detect.seasonality.changes

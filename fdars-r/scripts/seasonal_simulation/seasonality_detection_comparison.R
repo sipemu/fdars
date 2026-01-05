@@ -41,7 +41,11 @@ detection_thresholds <- list(
   strength_wavelet = 0.26,      # Wavelet power threshold (calibrated to ~5% FPR)
   sazed_consensus = 2,          # Minimum confident components (strict internal thresholds)
   autoperiod_conf = 0.3,        # Autoperiod ACF correlation threshold
-  cfd_conf = 0.25               # CFDAutoperiod ACF validation threshold
+  cfd_conf = 0.25,              # CFDAutoperiod ACF validation threshold
+  lomb_scargle = 0.90,          # Lomb-Scargle significance threshold (calibrated)
+  matrix_profile = 0.20,        # Matrix Profile confidence threshold (calibrated)
+  stl_strength = 0.50,          # STL seasonal strength threshold (calibrated)
+  ssa_confidence = 0.65         # SSA confidence threshold (calibrated)
 )
 
 # Seasonal strengths to test (0 = no season, 1 = full season)
@@ -227,6 +231,89 @@ detect_cfd <- function(fd_single) {
   return(list(score = score, detected = detected, period = result$period))
 }
 
+# Method 10: Lomb-Scargle Periodogram
+detect_lomb_scargle <- function(fd_single) {
+  result <- tryCatch({
+    lomb.scargle(fd_single, oversampling = 4, nyquist_factor = 1)
+  }, error = function(e) NULL)
+
+  if (is.null(result) || is.null(result$peak_period)) {
+    return(list(score = NA, detected = NA))
+  }
+
+  # Score is the significance (FAP inverted)
+  score <- result$significance
+  detected <- score > detection_thresholds$lomb_scargle
+
+  return(list(score = score, detected = detected, period = result$peak_period))
+}
+
+# Method 11: Matrix Profile (STOMP)
+detect_matrix_profile <- function(fd_single) {
+  result <- tryCatch({
+    matrix.profile(fd_single, subsequence_length = 12)  # Monthly data: 12-point window
+  }, error = function(e) NULL)
+
+  if (is.null(result) || is.null(result$primary_period)) {
+    return(list(score = NA, detected = NA))
+  }
+
+  # Score is the confidence value
+  score <- result$confidence
+  detected <- !is.na(result$primary_period) && score > detection_thresholds$matrix_profile
+
+  return(list(score = score, detected = detected, period = result$primary_period))
+}
+
+# Method 12: STL Decomposition Strength
+detect_stl <- function(fd_single, period = 12) {
+  result <- tryCatch({
+    stl.fd(fd_single, period = period, s.window = 7, robust = TRUE)
+  }, error = function(e) NULL)
+
+  if (is.null(result) || is.null(result$seasonal)) {
+    return(list(score = NA, detected = NA))
+  }
+
+  # Calculate seasonal strength as variance ratio from fdata objects
+  seasonal_vec <- as.vector(result$seasonal$data)
+  remainder_vec <- as.vector(result$remainder$data)
+
+  seasonal_var <- var(seasonal_vec, na.rm = TRUE)
+  remainder_var <- var(remainder_vec, na.rm = TRUE)
+  total_var <- seasonal_var + remainder_var
+
+  score <- if (total_var > 0) seasonal_var / total_var else 0
+  detected <- score > detection_thresholds$stl_strength
+
+  return(list(score = score, detected = detected))
+}
+
+# Method 13: SSA (Singular Spectrum Analysis)
+detect_ssa <- function(fd_single) {
+  result <- tryCatch({
+    ssa.fd(fd_single, window.length = 24, n.components = 10)  # 2-year window for monthly
+  }, error = function(e) NULL)
+
+  if (is.null(result) || is.null(result$seasonal)) {
+    return(list(score = NA, detected = NA))
+  }
+
+  # Calculate seasonal strength from SSA components using fdata objects
+  seasonal_vec <- as.vector(result$seasonal$data)
+  noise_vec <- as.vector(result$noise$data)
+
+  seasonal_var <- var(seasonal_vec, na.rm = TRUE)
+  noise_var <- var(noise_vec, na.rm = TRUE)
+  total_var <- seasonal_var + noise_var
+
+  score <- if (total_var > 0) seasonal_var / total_var else 0
+  # Use confidence from SSA result
+  detected <- !is.na(result$detected.period) && result$confidence > detection_thresholds$ssa_confidence
+
+  return(list(score = score, detected = detected, period = result$detected.period))
+}
+
 # --- Generate data and run detection ---
 cat("=== Seasonality Detection Method Comparison ===\n\n")
 cat("Generating seasonal time series data...\n")
@@ -255,7 +342,15 @@ results <- data.frame(
   autoperiod_score = numeric(0),
   autoperiod_detected = logical(0),
   cfd_score = numeric(0),
-  cfd_detected = logical(0)
+  cfd_detected = logical(0),
+  lomb_score = numeric(0),
+  lomb_detected = logical(0),
+  mp_score = numeric(0),
+  mp_detected = logical(0),
+  stl_score = numeric(0),
+  stl_detected = logical(0),
+  ssa_score = numeric(0),
+  ssa_detected = logical(0)
 )
 
 # Process each strength level
@@ -280,6 +375,10 @@ for (i in seq_along(seasonal_strengths)) {
     sazed_result <- detect_sazed(fd)
     autoperiod_result <- detect_autoperiod(fd)
     cfd_result <- detect_cfd(fd)
+    lomb_result <- detect_lomb_scargle(fd)
+    mp_result <- detect_matrix_profile(fd)
+    stl_result <- detect_stl(fd)
+    ssa_result <- detect_ssa(fd)
 
     # Store results
     results <- rbind(results, data.frame(
@@ -302,7 +401,15 @@ for (i in seq_along(seasonal_strengths)) {
       autoperiod_score = autoperiod_result$score,
       autoperiod_detected = autoperiod_result$detected,
       cfd_score = cfd_result$score,
-      cfd_detected = cfd_result$detected
+      cfd_detected = cfd_result$detected,
+      lomb_score = lomb_result$score,
+      lomb_detected = lomb_result$detected,
+      mp_score = mp_result$score,
+      mp_detected = mp_result$detected,
+      stl_score = stl_result$score,
+      stl_detected = stl_result$detected,
+      ssa_score = ssa_result$score,
+      ssa_detected = ssa_result$detected
     ))
   }
 }
@@ -319,23 +426,25 @@ results$ground_truth <- results$strength >= truth_threshold
 detection_rates <- aggregate(
   cbind(aic_detected, fft_detected, acf_detected,
         var_detected, spec_detected, wav_detected,
-        sazed_detected, autoperiod_detected, cfd_detected) ~ strength,
+        sazed_detected, autoperiod_detected, cfd_detected,
+        lomb_detected, mp_detected, stl_detected, ssa_detected) ~ strength,
   data = results,
   FUN = function(x) mean(x, na.rm = TRUE)
 )
 
 names(detection_rates) <- c("strength", "AIC", "FFT", "ACF",
                             "Var_Strength", "Spec_Strength", "Wav_Strength",
-                            "SAZED", "Autoperiod", "CFD")
+                            "SAZED", "Autoperiod", "CFD",
+                            "Lomb_Scargle", "Matrix_Profile", "STL", "SSA")
 
 cat("\nDetection Rates by Seasonal Strength:\n")
-cat("=" , rep("=", 118), "\n", sep = "")
-cat(sprintf("%-10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-            "Strength", "AIC", "FFT", "ACF", "Var_Str", "Spec_Str", "Wav_Str", "SAZED", "Autoperiod", "CFD"))
-cat("=" , rep("=", 118), "\n", sep = "")
+cat("=" , rep("=", 160), "\n", sep = "")
+cat(sprintf("%-8s %8s %8s %8s %8s %8s %8s %8s %8s %8s %8s %8s %8s %8s\n",
+            "Strength", "AIC", "FFT", "ACF", "Var", "Spec", "Wav", "SAZED", "Autoper", "CFD", "Lomb", "MatProf", "STL", "SSA"))
+cat("=" , rep("=", 160), "\n", sep = "")
 
 for (i in 1:nrow(detection_rates)) {
-  cat(sprintf("%-10.1f %9.0f%% %9.0f%% %9.0f%% %9.0f%% %9.0f%% %9.0f%% %9.0f%% %9.0f%% %9.0f%%\n",
+  cat(sprintf("%-8.1f %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%% %7.0f%%\n",
               detection_rates$strength[i],
               detection_rates$AIC[i] * 100,
               detection_rates$FFT[i] * 100,
@@ -345,9 +454,13 @@ for (i in 1:nrow(detection_rates)) {
               detection_rates$Wav_Strength[i] * 100,
               detection_rates$SAZED[i] * 100,
               detection_rates$Autoperiod[i] * 100,
-              detection_rates$CFD[i] * 100))
+              detection_rates$CFD[i] * 100,
+              detection_rates$Lomb_Scargle[i] * 100,
+              detection_rates$Matrix_Profile[i] * 100,
+              detection_rates$STL[i] * 100,
+              detection_rates$SSA[i] * 100))
 }
-cat("=" , rep("=", 118), "\n", sep = "")
+cat("=" , rep("=", 160), "\n", sep = "")
 
 # --- Calculate classification metrics ---
 cat("\n=== Classification Performance (Ground Truth: strength >= 0.2) ===\n\n")
@@ -391,7 +504,11 @@ metrics <- rbind(
   cbind(Method = "Wavelet Strength", calculate_metrics(results$wav_detected, results$ground_truth)),
   cbind(Method = "SAZED", calculate_metrics(results$sazed_detected, results$ground_truth)),
   cbind(Method = "Autoperiod", calculate_metrics(results$autoperiod_detected, results$ground_truth)),
-  cbind(Method = "CFDAutoperiod", calculate_metrics(results$cfd_detected, results$ground_truth))
+  cbind(Method = "CFDAutoperiod", calculate_metrics(results$cfd_detected, results$ground_truth)),
+  cbind(Method = "Lomb-Scargle", calculate_metrics(results$lomb_detected, results$ground_truth)),
+  cbind(Method = "Matrix Profile", calculate_metrics(results$mp_detected, results$ground_truth)),
+  cbind(Method = "STL", calculate_metrics(results$stl_detected, results$ground_truth)),
+  cbind(Method = "SSA", calculate_metrics(results$ssa_detected, results$ground_truth))
 )
 
 cat(sprintf("%-20s %10s %10s %10s %10s %10s %10s\n",
@@ -414,7 +531,7 @@ cat("\n=== False Positive Rates (at seasonal strength = 0) ===\n")
 zero_strength <- results %>% filter(strength == 0)
 fpr_at_zero <- data.frame(
   Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength",
-             "SAZED", "Autoperiod", "CFD"),
+             "SAZED", "Autoperiod", "CFD", "Lomb-Scargle", "Matrix Profile", "STL", "SSA"),
   FPR = c(
     mean(zero_strength$aic_detected, na.rm = TRUE),
     mean(zero_strength$fft_detected, na.rm = TRUE),
@@ -424,7 +541,11 @@ fpr_at_zero <- data.frame(
     mean(zero_strength$wav_detected, na.rm = TRUE),
     mean(zero_strength$sazed_detected, na.rm = TRUE),
     mean(zero_strength$autoperiod_detected, na.rm = TRUE),
-    mean(zero_strength$cfd_detected, na.rm = TRUE)
+    mean(zero_strength$cfd_detected, na.rm = TRUE),
+    mean(zero_strength$lomb_detected, na.rm = TRUE),
+    mean(zero_strength$mp_detected, na.rm = TRUE),
+    mean(zero_strength$stl_detected, na.rm = TRUE),
+    mean(zero_strength$ssa_detected, na.rm = TRUE)
   )
 )
 cat("\nFalse positive rate when there is NO seasonality:\n")
@@ -475,6 +596,10 @@ opt_wav <- find_optimal_threshold(results$wav_score, results$ground_truth)
 opt_sazed <- find_optimal_threshold(results$sazed_score, results$ground_truth)
 opt_autoperiod <- find_optimal_threshold(results$autoperiod_score, results$ground_truth)
 opt_cfd <- find_optimal_threshold(results$cfd_score, results$ground_truth)
+opt_lomb <- find_optimal_threshold(results$lomb_score, results$ground_truth)
+opt_mp <- find_optimal_threshold(results$mp_score, results$ground_truth)
+opt_stl <- find_optimal_threshold(results$stl_score, results$ground_truth)
+opt_ssa <- find_optimal_threshold(results$ssa_score, results$ground_truth)
 
 cat(sprintf("  AIC Comparison:    threshold = %7.2f, F1 = %.1f%%\n", opt_aic$threshold, opt_aic$f1 * 100))
 cat(sprintf("  FFT Confidence:    threshold = %7.2f, F1 = %.1f%%\n", opt_fft$threshold, opt_fft$f1 * 100))
@@ -485,11 +610,15 @@ cat(sprintf("  Wavelet Strength:  threshold = %7.2f, F1 = %.1f%%\n", opt_wav$thr
 cat(sprintf("  SAZED:             threshold = %7.2f, F1 = %.1f%%\n", opt_sazed$threshold, opt_sazed$f1 * 100))
 cat(sprintf("  Autoperiod:        threshold = %7.2f, F1 = %.1f%%\n", opt_autoperiod$threshold, opt_autoperiod$f1 * 100))
 cat(sprintf("  CFDAutoperiod:     threshold = %7.2f, F1 = %.1f%%\n", opt_cfd$threshold, opt_cfd$f1 * 100))
+cat(sprintf("  Lomb-Scargle:      threshold = %7.2f, F1 = %.1f%%\n", opt_lomb$threshold, opt_lomb$f1 * 100))
+cat(sprintf("  Matrix Profile:    threshold = %7.2f, F1 = %.1f%%\n", opt_mp$threshold, opt_mp$f1 * 100))
+cat(sprintf("  STL:               threshold = %7.2f, F1 = %.1f%%\n", opt_stl$threshold, opt_stl$f1 * 100))
+cat(sprintf("  SSA:               threshold = %7.2f, F1 = %.1f%%\n", opt_ssa$threshold, opt_ssa$f1 * 100))
 
 # --- Visualization with ggplot2 ---
 cat("\n=== Generating Plots ===\n")
 
-# Define color palette for methods
+# Define color palette for methods (13 methods)
 method_colors <- c(
   "AIC" = "#2166AC",
   "FFT" = "#B2182B",
@@ -499,7 +628,11 @@ method_colors <- c(
   "Wav Strength" = "#D95F02",
   "SAZED" = "#984EA3",
   "Autoperiod" = "#FF7F00",
-  "CFD" = "#A65628"
+  "CFD" = "#A65628",
+  "Lomb-Scargle" = "#66C2A5",
+  "Matrix Profile" = "#FC8D62",
+  "STL" = "#8DA0CB",
+  "SSA" = "#E78AC3"
 )
 
 # Reshape detection rates for ggplot
@@ -507,11 +640,14 @@ detection_rates_long <- detection_rates %>%
   pivot_longer(cols = -strength, names_to = "Method", values_to = "Rate") %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF", "Var_Strength",
                                              "Spec_Strength", "Wav_Strength",
-                                             "SAZED", "Autoperiod", "CFD"))) %>%
+                                             "SAZED", "Autoperiod", "CFD",
+                                             "Lomb_Scargle", "Matrix_Profile", "STL", "SSA"))) %>%
   mutate(Method = recode(Method,
                          "Var_Strength" = "Var Strength",
                          "Spec_Strength" = "Spec Strength",
-                         "Wav_Strength" = "Wav Strength"))
+                         "Wav_Strength" = "Wav Strength",
+                         "Lomb_Scargle" = "Lomb-Scargle",
+                         "Matrix_Profile" = "Matrix Profile"))
 
 # Plot 1: Detection rates by seasonal strength
 p1 <- ggplot(detection_rates_long, aes(x = strength, y = Rate * 100,
@@ -538,10 +674,12 @@ metrics_plot <- metrics %>%
                          "ACF Confidence" = "ACF",
                          "Variance Strength" = "Var Strength",
                          "Spectral Strength" = "Spec Strength",
-                         "Wavelet Strength" = "Wav Strength")) %>%
+                         "Wavelet Strength" = "Wav Strength",
+                         "CFDAutoperiod" = "CFD")) %>%
   mutate(Method = factor(Method, levels = c("AIC", "FFT", "ACF",
                                              "Var Strength", "Spec Strength", "Wav Strength",
-                                             "SAZED", "Autoperiod", "CFDAutoperiod")))
+                                             "SAZED", "Autoperiod", "CFD",
+                                             "Lomb-Scargle", "Matrix Profile", "STL", "SSA")))
 
 p2 <- ggplot(metrics_plot, aes(x = Method, y = F1 * 100, fill = Method)) +
   geom_col(width = 0.7) +
@@ -628,11 +766,16 @@ pr_wav <- compute_pr_curve(results$wav_score, results$ground_truth, "Wav Strengt
 pr_sazed <- compute_pr_curve(results$sazed_score, results$ground_truth, "SAZED")
 pr_autoperiod <- compute_pr_curve(results$autoperiod_score, results$ground_truth, "Autoperiod")
 pr_cfd <- compute_pr_curve(results$cfd_score, results$ground_truth, "CFD")
+pr_lomb <- compute_pr_curve(results$lomb_score, results$ground_truth, "Lomb-Scargle")
+pr_mp <- compute_pr_curve(results$mp_score, results$ground_truth, "Matrix Profile")
+pr_stl <- compute_pr_curve(results$stl_score, results$ground_truth, "STL")
+pr_ssa <- compute_pr_curve(results$ssa_score, results$ground_truth, "SSA")
 
-pr_all <- rbind(pr_aic, pr_fft, pr_acf, pr_var, pr_spec, pr_wav, pr_sazed, pr_autoperiod, pr_cfd)
+pr_all <- rbind(pr_aic, pr_fft, pr_acf, pr_var, pr_spec, pr_wav, pr_sazed, pr_autoperiod, pr_cfd,
+                pr_lomb, pr_mp, pr_stl, pr_ssa)
 pr_all$Method <- factor(pr_all$Method,
                         levels = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength",
-                                   "SAZED", "Autoperiod", "CFD"))
+                                   "SAZED", "Autoperiod", "CFD", "Lomb-Scargle", "Matrix Profile", "STL", "SSA"))
 
 # Calculate AUC-PR for each method
 compute_auc_pr <- function(pr_df) {
@@ -653,9 +796,8 @@ auc_values <- pr_all %>%
 
 # Add operating points (default thresholds)
 operating_points <- metrics_plot %>%
-  filter(Method %in% c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength",
-                       "SAZED", "Autoperiod", "CFDAutoperiod")) %>%
-  mutate(Method = recode(Method, "CFDAutoperiod" = "CFD")) %>%
+  filter(Method %in% c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength",
+                       "SAZED", "Autoperiod", "CFD", "Lomb-Scargle", "Matrix Profile", "STL", "SSA")) %>%
   select(Method, Precision, Recall) %>%
   filter(!is.na(Precision) & !is.na(Recall))
 
@@ -706,7 +848,7 @@ ggsave("plots/seasonality_detection_comparison.pdf",
 # Score distributions by strength for each method
 results_long_scores <- results %>%
   select(strength, aic_score, fft_score, acf_score, var_score, spec_score, wav_score,
-         sazed_score, autoperiod_score, cfd_score) %>%
+         sazed_score, autoperiod_score, cfd_score, lomb_score, mp_score, stl_score, ssa_score) %>%
   pivot_longer(cols = -strength, names_to = "Method", values_to = "Score") %>%
   mutate(Method = recode(Method,
                          "aic_score" = "AIC",
@@ -717,12 +859,16 @@ results_long_scores <- results %>%
                          "wav_score" = "Wav Strength",
                          "sazed_score" = "SAZED",
                          "autoperiod_score" = "Autoperiod",
-                         "cfd_score" = "CFD"))
+                         "cfd_score" = "CFD",
+                         "lomb_score" = "Lomb-Scargle",
+                         "mp_score" = "Matrix Profile",
+                         "stl_score" = "STL",
+                         "ssa_score" = "SSA"))
 
 # Threshold lines for each method
 threshold_lines <- data.frame(
   Method = c("AIC", "FFT", "ACF", "Var Strength", "Spec Strength", "Wav Strength",
-             "SAZED", "Autoperiod", "CFD"),
+             "SAZED", "Autoperiod", "CFD", "Lomb-Scargle", "Matrix Profile", "STL", "SSA"),
   threshold = c(0, detection_thresholds$fft_confidence,
                 detection_thresholds$acf_confidence,
                 detection_thresholds$strength_variance,
@@ -730,7 +876,11 @@ threshold_lines <- data.frame(
                 detection_thresholds$strength_wavelet,
                 detection_thresholds$sazed_consensus,
                 detection_thresholds$autoperiod_conf,
-                detection_thresholds$cfd_conf)
+                detection_thresholds$cfd_conf,
+                detection_thresholds$lomb_scargle,
+                detection_thresholds$matrix_profile,
+                detection_thresholds$stl_strength,
+                detection_thresholds$ssa_confidence)
 )
 
 p_scores <- ggplot(results_long_scores, aes(x = factor(strength), y = Score)) +
@@ -748,10 +898,13 @@ p_scores <- ggplot(results_long_scores, aes(x = factor(strength), y = Score)) +
 # Correlation heatmap
 cor_matrix <- cor(results[, c("aic_score", "fft_score", "acf_score",
                                "var_score", "spec_score", "wav_score",
-                               "sazed_score", "autoperiod_score", "cfd_score")],
+                               "sazed_score", "autoperiod_score", "cfd_score",
+                               "lomb_score", "mp_score", "stl_score", "ssa_score")],
                   use = "pairwise.complete.obs")
-rownames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec", "Wav", "SAZED", "Autoperiod", "CFD")
-colnames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec", "Wav", "SAZED", "Autoperiod", "CFD")
+rownames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec", "Wav", "SAZED", "Autoperiod", "CFD",
+                          "Lomb", "MatProf", "STL", "SSA")
+colnames(cor_matrix) <- c("AIC", "FFT", "ACF", "Var", "Spec", "Wav", "SAZED", "Autoperiod", "CFD",
+                          "Lomb", "MatProf", "STL", "SSA")
 
 cor_long <- as.data.frame(as.table(cor_matrix))
 names(cor_long) <- c("Method1", "Method2", "Correlation")
