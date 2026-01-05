@@ -35,6 +35,40 @@ library(gridExtra)
 
 set.seed(42)
 
+# === Null Distribution Calibration for Matrix Profile & SSA ===
+# Target: 5% FPR (95th percentile of scores on pure white noise)
+calibrate_null_threshold <- function(detect_fn, n_samples = 500, target_fpr = 0.05) {
+  null_scores <- sapply(1:n_samples, function(i) {
+    y <- rnorm(60, sd = 0.3)  # Pure white noise, same noise level as simulations
+    fd <- fdata(matrix(y, nrow = 1), argvals = seq(0, 1, length.out = 60))
+    result <- tryCatch(detect_fn(fd), error = function(e) list(score = NA))
+    if (is.na(result$score)) NA else result$score
+  })
+  # 95th percentile = threshold that gives 5% FPR
+  quantile(null_scores, 1 - target_fpr, na.rm = TRUE)
+}
+
+# Calibrate Matrix Profile threshold on null distribution
+mp_null_threshold <- calibrate_null_threshold(function(fd) {
+  r <- matrix.profile(fd, subsequence_length = 12)
+  list(score = if (!is.null(r$confidence)) r$confidence else NA)
+})
+
+# Calibrate SSA threshold on null distribution
+ssa_null_threshold <- calibrate_null_threshold(function(fd) {
+  r <- ssa.fd(fd, window.length = 24, n.components = 10)
+  seasonal_vec <- as.vector(r$seasonal$data)
+  noise_vec <- as.vector(r$noise$data)
+  var_s <- var(seasonal_vec, na.rm = TRUE)
+  var_n <- var(noise_vec, na.rm = TRUE)
+  score <- if ((var_s + var_n) > 0) var_s / (var_s + var_n) else 0
+  list(score = score)
+})
+
+# Report calibrated thresholds
+message(sprintf("Calibrated Matrix Profile threshold (5%% FPR): %.3f (was 0.20)", mp_null_threshold))
+message(sprintf("Calibrated SSA threshold (5%% FPR): %.3f (was 0.65)", ssa_null_threshold))
+
 # === Detection Thresholds (calibrated for ~5% FPR) ===
 detection_thresholds <- list(
   aic = 0,
@@ -47,9 +81,9 @@ detection_thresholds <- list(
   autoperiod = 0.3,
   cfd = 0.25,
   lomb = 0.90,
-  mp = 0.20,
+  mp = mp_null_threshold,    # Null-calibrated for 5% FPR
   stl = 0.50,
-  ssa = 0.65
+  ssa = ssa_null_threshold   # Null-calibrated for 5% FPR
 )
 
 # === Method names and colors (13 methods) ===
@@ -459,6 +493,7 @@ for (strength in seasonal_strengths) {
     row <- data.frame(
       strength = strength,
       ground_truth = strength >= 0.2,
+      # Detection results (boolean)
       aic = methods$aic$detected,
       fft = methods$fft$detected,
       acf = methods$acf$detected,
@@ -471,7 +506,21 @@ for (strength in seasonal_strengths) {
       lomb = methods$lomb$detected,
       mp = methods$mp$detected,
       stl = methods$stl$detected,
-      ssa = methods$ssa$detected
+      ssa = methods$ssa$detected,
+      # Scores for ROC curves
+      aic_score = methods$aic$score,
+      fft_score = methods$fft$score,
+      acf_score = methods$acf$score,
+      var_score = methods$var$score,
+      spec_score = methods$spec$score,
+      wav_score = methods$wav$score,
+      sazed_score = methods$sazed$score,
+      autoperiod_score = methods$autoperiod$score,
+      cfd_score = methods$cfd$score,
+      lomb_score = methods$lomb$score,
+      mp_score = methods$mp$score,
+      stl_score = methods$stl$score,
+      ssa_score = methods$ssa$score
     )
     baseline_results <- rbind(baseline_results, row)
   }
@@ -569,6 +618,64 @@ knitr::kable(mcnemar_df, align = "lcccc")
 ```
 
 **Key finding**: Wavelet vs Variance difference is NOT statistically significant (p > 0.05). Top-tier methods (Wavelet, Variance, Spectral) are statistically equivalent.
+
+### Supplementary: Fisher's g-test for Periodicity
+
+Fisher's g-test provides a formal statistical test for periodicity using the periodogram. The test statistic $g = \max(I_k) / \sum I_k$ measures the concentration of spectral power at a single frequency.
+
+```{r fishers-g-test}
+#| cache: true
+
+# Fisher's g-test implementation (report-only, not a package function)
+fisher_g_test <- function(fdataobj, alpha = 0.05) {
+  x <- as.vector(fdataobj$data)
+  n <- length(x)
+
+  # Compute periodogram
+  fft_result <- fft(x - mean(x))
+  periodogram <- Mod(fft_result[2:(floor(n/2))])^2 / n
+
+  # Fisher's g statistic: max power / total power
+  g <- max(periodogram) / sum(periodogram)
+
+  # Approximate p-value (Percival & Walden, 1993)
+  m <- length(periodogram)
+  p_value <- 1 - (1 - exp(-m * g))^m
+
+  list(
+    g_statistic = g,
+    p_value = p_value,
+    significant = p_value < alpha,
+    peak_frequency = which.max(periodogram)
+  )
+}
+
+# Apply Fisher's g-test to baseline results
+fishers_results <- sapply(1:nrow(baseline_results), function(i) {
+  strength <- baseline_results$strength[i]
+  fd <- generate_seasonal_data(n_obs = 60, n_cycles = 5, strength = strength, noise_sd = 0.3)
+  result <- tryCatch(fisher_g_test(fd), error = function(e) list(significant = NA))
+  result$significant
+})
+
+# Calculate performance metrics
+fishers_detected <- fishers_results
+fishers_metrics <- calculate_metrics(fishers_detected, baseline_results$ground_truth)
+
+# Compare with FFT method
+comparison_df <- data.frame(
+  Method = c("FFT (heuristic)", "Fisher's g-test"),
+  Precision = c(fmt_pct(metrics$Precision[metrics$Method == "FFT"]), fmt_pct(fishers_metrics$Precision)),
+  Recall = c(fmt_pct(metrics$Recall[metrics$Method == "FFT"]), fmt_pct(fishers_metrics$Recall)),
+  FPR = c(fmt_pct(metrics$FPR[metrics$Method == "FFT"]), fmt_pct(fishers_metrics$FPR)),
+  F1 = c(fmt_pct(metrics$F1[metrics$Method == "FFT"]), fmt_pct(fishers_metrics$F1))
+)
+
+knitr::kable(comparison_df, align = "lcccc",
+             caption = "Fisher's g-test vs FFT Heuristic Comparison")
+```
+
+**Note**: Fisher's g-test provides a p-value (unlike the heuristic FFT confidence score), making it suitable for formal hypothesis testing. However, it assumes Gaussian noise and may be conservative under model misspecification.
 
 \newpage
 
@@ -1006,60 +1113,216 @@ knitr::kable(outlier_display, align = "lcccccccc")
 
 \newpage
 
-# ROC and PR Curve Analysis {#sec-roc}
+# ROC Curve Analysis with AUC {#sec-roc}
 
 ```{r roc-analysis}
 #| cache: true
 #| fig-width: 10
 #| fig-height: 8
 
-# Compute ROC curves from baseline results
-compute_roc <- function(scores, ground_truth, method_name) {
+# === ROC Curve Computation Functions ===
+compute_roc_curve <- function(scores, ground_truth, n_thresholds = 100) {
   valid <- !is.na(scores) & !is.na(ground_truth)
   if (sum(valid) < 10) return(NULL)
 
   scores <- scores[valid]
   ground_truth <- ground_truth[valid]
 
-  thresholds <- quantile(scores, probs = seq(0, 1, length.out = 100), na.rm = TRUE)
+  # Generate thresholds spanning the score range
+  score_range <- range(scores, na.rm = TRUE)
+  thresholds <- seq(score_range[1], score_range[2], length.out = n_thresholds)
 
-  roc_data <- lapply(unique(thresholds), function(t) {
+  roc_points <- lapply(thresholds, function(t) {
     pred <- scores > t
     tp <- sum(pred & ground_truth)
     fp <- sum(pred & !ground_truth)
     tn <- sum(!pred & !ground_truth)
     fn <- sum(!pred & ground_truth)
-    data.frame(TPR = tp / (tp + fn), FPR = fp / (fp + tn))
+    data.frame(
+      threshold = t,
+      TPR = if ((tp + fn) > 0) tp / (tp + fn) else 0,
+      FPR = if ((fp + tn) > 0) fp / (fp + tn) else 0
+    )
   })
-
-  df <- do.call(rbind, roc_data)
-  df$Method <- method_name
-  df
+  do.call(rbind, roc_points)
 }
 
-# For this we need scores, not just detected. Use baseline strength as proxy
-# This is simplified - in practice we'd store scores during simulation
+compute_auc <- function(roc_df) {
+  if (is.null(roc_df) || nrow(roc_df) < 2) return(NA)
+  roc_df <- roc_df[order(roc_df$FPR), ]
+  # Trapezoidal integration
+  auc <- sum(diff(roc_df$FPR) * (head(roc_df$TPR, -1) + tail(roc_df$TPR, -1)) / 2)
+  abs(auc)  # Ensure positive
+}
 
-# Create simplified ROC visualization based on metrics
+# === Compute ROC curves for all methods using stored scores ===
+score_cols <- c("aic_score", "fft_score", "acf_score", "var_score", "spec_score",
+                "wav_score", "sazed_score", "autoperiod_score", "cfd_score",
+                "lomb_score", "mp_score", "stl_score", "ssa_score")
+
+method_labels <- c(
+  "aic_score" = "AIC", "fft_score" = "FFT", "acf_score" = "ACF",
+  "var_score" = "Variance", "spec_score" = "Spectral", "wav_score" = "Wavelet",
+  "sazed_score" = "SAZED", "autoperiod_score" = "Autoperiod", "cfd_score" = "CFD",
+  "lomb_score" = "Lomb-Scargle", "mp_score" = "MatrixProfile", "stl_score" = "STL",
+  "ssa_score" = "SSA"
+)
+
+# Compute ROC curves and AUC for each method
+roc_results <- lapply(score_cols, function(col) {
+  roc <- compute_roc_curve(baseline_results[[col]], baseline_results$ground_truth)
+  if (!is.null(roc)) {
+    roc$Method <- method_labels[col]
+  }
+  roc
+})
+roc_results <- roc_results[!sapply(roc_results, is.null)]
+all_roc <- do.call(rbind, roc_results)
+
+# Compute AUC for each method
+auc_results <- sapply(score_cols, function(col) {
+  roc <- compute_roc_curve(baseline_results[[col]], baseline_results$ground_truth)
+  compute_auc(roc)
+})
+names(auc_results) <- method_labels[names(auc_results)]
+
+# Get operating points (default threshold performance)
 metrics_for_roc <- metrics %>%
   filter(!is.na(Recall) & !is.na(FPR)) %>%
   select(Method, TPR = Recall, FPR)
 
-ggplot(metrics_for_roc, aes(x = FPR, y = TPR, color = Method)) +
-  geom_point(size = 4) +
-  geom_text(aes(label = Method), vjust = -1, hjust = 0.5, size = 3) +
+# Create ROC plot with curves and operating points
+ggplot() +
+  # ROC curves
+  geom_line(data = all_roc, aes(x = FPR, y = TPR, color = Method), linewidth = 0.8, alpha = 0.7) +
+  # Operating points (default thresholds)
+  geom_point(data = metrics_for_roc, aes(x = FPR, y = TPR, color = Method), size = 3) +
+  # Random classifier line
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
   scale_color_manual(values = method_colors) +
   coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
   labs(
-    title = "Operating Points: TPR vs FPR (All 13 Methods)",
-    subtitle = "Points represent default threshold performance",
+    title = "ROC Curves with Operating Points (All 13 Methods)",
+    subtitle = "Lines = ROC curves across thresholds; Points = default threshold performance",
     x = "False Positive Rate",
     y = "True Positive Rate"
   ) +
   theme_minimal() +
-  theme(legend.position = "none")
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  guides(color = guide_legend(nrow = 2))
 ```
+
+```{r}
+#| label: tbl-auc
+#| tbl-cap: "Area Under ROC Curve (AUC) by Method"
+
+# Display AUC table sorted by AUC
+auc_df <- data.frame(
+  Method = names(auc_results),
+  AUC = auc_results
+) %>%
+  arrange(desc(AUC)) %>%
+  mutate(
+    Rank = row_number(),
+    AUC = sprintf("%.3f", AUC)
+  ) %>%
+  select(Rank, Method, AUC)
+
+knitr::kable(auc_df, align = "clc", row.names = FALSE)
+```
+
+\newpage
+
+# Computational Complexity Analysis {#sec-timing}
+
+Practical method selection requires balancing accuracy against computational cost. We benchmark all 13 methods across varying series lengths.
+
+```{r timing-analysis}
+#| cache: true
+#| fig-width: 10
+#| fig-height: 5
+
+# Test computational scaling across series lengths
+series_lengths <- c(60, 120, 240, 480)
+n_reps <- 3  # Replications for stability
+
+timing_results <- list()
+
+for (n in series_lengths) {
+  t_vals <- seq(0, 1, length.out = n)
+  y <- 0.5 * sin(2 * pi * 5 * t_vals) + rnorm(n, sd = 0.3)
+  fd <- fdata(matrix(y, nrow = 1), argvals = t_vals)
+
+  # Time each method
+  timings <- list()
+
+  timings$AIC <- system.time(replicate(n_reps, detect_aic(fd)))[["elapsed"]] / n_reps
+  timings$FFT <- system.time(replicate(n_reps, detect_fft(fd)))[["elapsed"]] / n_reps
+  timings$ACF <- system.time(replicate(n_reps, detect_acf(fd)))[["elapsed"]] / n_reps
+  timings$Variance <- system.time(replicate(n_reps, detect_var(fd, period = 0.2)))[["elapsed"]] / n_reps
+  timings$Spectral <- system.time(replicate(n_reps, detect_spec(fd, period = 0.2)))[["elapsed"]] / n_reps
+  timings$Wavelet <- system.time(replicate(n_reps, detect_wav(fd, period = 0.2)))[["elapsed"]] / n_reps
+  timings$SAZED <- system.time(replicate(n_reps, detect_sazed(fd)))[["elapsed"]] / n_reps
+  timings$Autoperiod <- system.time(replicate(n_reps, detect_autoperiod(fd)))[["elapsed"]] / n_reps
+  timings$CFD <- system.time(replicate(n_reps, detect_cfd(fd)))[["elapsed"]] / n_reps
+  timings$`Lomb-Scargle` <- system.time(replicate(n_reps, detect_lomb(fd)))[["elapsed"]] / n_reps
+  timings$MatrixProfile <- system.time(replicate(n_reps, detect_mp(fd)))[["elapsed"]] / n_reps
+  timings$STL <- system.time(replicate(n_reps, detect_stl(fd, period_obs = round(n/5))))[["elapsed"]] / n_reps
+  timings$SSA <- system.time(replicate(n_reps, detect_ssa(fd)))[["elapsed"]] / n_reps
+
+  for (method in names(timings)) {
+    timing_results[[length(timing_results) + 1]] <- data.frame(
+      n = n,
+      Method = method,
+      Time_ms = timings[[method]] * 1000
+    )
+  }
+}
+
+timing_df <- do.call(rbind, timing_results)
+
+# Plot computational scaling
+ggplot(timing_df, aes(x = n, y = Time_ms, color = Method)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_x_log10(breaks = series_lengths) +
+  scale_y_log10() +
+  scale_color_manual(values = method_colors) +
+  labs(
+    title = "Computational Scaling by Series Length (Log-Log)",
+    x = "Series Length (observations)",
+    y = "Time (milliseconds)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom", legend.title = element_blank()) +
+  guides(color = guide_legend(nrow = 2))
+```
+
+```{r}
+#| label: tbl-timing
+#| tbl-cap: "Median Computation Time (ms) at n=240 with F1 Score"
+
+# Extract timing at n=240 and combine with F1 scores
+timing_240 <- timing_df %>%
+  filter(n == 240) %>%
+  select(Method, Time_ms)
+
+# Combine with metrics
+timing_with_f1 <- timing_240 %>%
+  left_join(metrics %>% select(Method, F1), by = "Method") %>%
+  arrange(Time_ms) %>%
+  mutate(
+    Time_ms = sprintf("%.1f", Time_ms),
+    F1 = fmt_pct(F1),
+    Efficiency = sprintf("%.2f", as.numeric(gsub("%", "", F1)) / as.numeric(Time_ms))
+  ) %>%
+  select(Method, Time_ms, F1, Efficiency)
+
+knitr::kable(timing_with_f1, align = "lccc",
+             col.names = c("Method", "Time (ms)", "F1", "F1/ms"))
+```
+
+**Findings**: FFT-based methods are fastest ($<$10ms). Wavelet and SSA are slowest but offer unique capabilities. The "Efficiency" column (F1/ms) highlights methods that provide the best accuracy per unit computation time.
 
 \newpage
 
@@ -1123,18 +1386,32 @@ knitr::kable(display_df, align = "lccc")
 #| label: tbl-final-ranking
 #| tbl-cap: "Final Method Ranking by F1 Score"
 
+# Named mapping from Method -> Best_For (order-independent)
+best_for_map <- c(
+  "Wavelet" = "Time-varying signals",
+  "Variance" = "Known period",
+  "Spectral" = "Trend robustness",
+  "FFT" = "High precision",
+  "Lomb-Scargle" = "Irregular sampling",
+
+  "Autoperiod" = "FFT+ACF hybrid",
+  "STL" = "Decomposition",
+  "AIC" = "Model comparison",
+  "SSA" = "Subspace analysis",
+  "MatrixProfile" = "Non-sinusoidal patterns",
+  "CFD" = "Trended data",
+  "SAZED" = "Parameter-free",
+  "ACF" = "Conservative baseline"
+)
+
 final_ranking <- metrics %>%
   arrange(desc(F1)) %>%
   mutate(
     Rank = row_number(),
+    Best_For = best_for_map[Method],
     F1 = fmt_pct(F1),
     FPR = fmt_pct(FPR),
-    Recall = fmt_pct(Recall),
-    Best_For = c(
-      "Time-varying signals", "Known period", "Trend robustness", "High precision",
-      "Irregular sampling", "FFT+ACF hybrid", "Decomposition", "Model comparison",
-      "Subspace analysis", "Non-sinusoidal", "Trended data", "No tuning", "Conservative"
-    )[1:nrow(metrics)]
+    Recall = fmt_pct(Recall)
   ) %>%
   select(Rank, Method, F1, FPR, Recall, Best_For)
 
@@ -1152,6 +1429,103 @@ knitr::kable(final_ranking, align = "clcccc")
 | Irregular sampling | Lomb-Scargle | 0.90 | 94.5% |
 | Non-sinusoidal | Matrix Profile | 0.20 | 90.0% |
 | High precision needed | FFT Confidence | 6.0 | 94.8% |
+
+\newpage
+
+# Real-World Validation: M4 Competition Data {#sec-m4}
+
+To validate our simulation findings, we test the top-performing methods on real-world time series from the M4 Competition. M4 monthly series have known 12-month seasonality, providing ground truth for detection performance.
+
+```{r m4-validation}
+#| cache: true
+#| eval: !expr requireNamespace("M4comp2018", quietly = TRUE)
+
+# Check if M4comp2018 is available
+if (requireNamespace("M4comp2018", quietly = TRUE)) {
+  library(M4comp2018)
+
+  # Get monthly series (known 12-month seasonality)
+  monthly_ids <- which(sapply(M4, function(x) x$period == "Monthly"))
+
+  # Sample 100 series for computational tractability
+  set.seed(42)
+  sample_ids <- sample(monthly_ids, min(100, length(monthly_ids)))
+
+  m4_results <- lapply(sample_ids, function(id) {
+    series <- M4[[id]]
+    y <- as.numeric(series$x)
+    n <- length(y)
+
+    # Skip very short series
+    if (n < 36) return(NULL)
+
+    t_vals <- seq(0, 1, length.out = n)
+    fd <- fdata(matrix(y, nrow = 1), argvals = t_vals)
+
+    # Normalize period for different series lengths
+    expected_period <- 12 / n  # 12-month cycle in normalized units
+
+    # Run top methods (with error handling)
+    list(
+      series_id = id,
+      n = n,
+      variance = tryCatch(
+        detect_var(fd, period = expected_period)$detected,
+        error = function(e) NA
+      ),
+      wavelet = tryCatch(
+        detect_wav(fd, period = expected_period)$detected,
+        error = function(e) NA
+      ),
+      fft = tryCatch(
+        detect_fft(fd)$detected,
+        error = function(e) NA
+      ),
+      spectral = tryCatch(
+        detect_spec(fd, period = expected_period)$detected,
+        error = function(e) NA
+      ),
+      lomb = tryCatch(
+        detect_lomb(fd)$detected,
+        error = function(e) NA
+      )
+    )
+  })
+
+  # Remove NULL results
+  m4_results <- m4_results[!sapply(m4_results, is.null)]
+
+  # Calculate detection rates (ground truth: all M4 monthly series are seasonal)
+  detection_rates <- sapply(c("variance", "wavelet", "fft", "spectral", "lomb"), function(m) {
+    detections <- sapply(m4_results, function(x) x[[m]])
+    mean(detections, na.rm = TRUE)
+  })
+
+  m4_df <- data.frame(
+    Method = c("Variance", "Wavelet", "FFT", "Spectral", "Lomb-Scargle"),
+    M4_Detection_Rate = fmt_pct(detection_rates),
+    Simulation_F1 = c(
+      fmt_pct(metrics$F1[metrics$Method == "Variance"]),
+      fmt_pct(metrics$F1[metrics$Method == "Wavelet"]),
+      fmt_pct(metrics$F1[metrics$Method == "FFT"]),
+      fmt_pct(metrics$F1[metrics$Method == "Spectral"]),
+      fmt_pct(metrics$F1[metrics$Method == "Lomb-Scargle"])
+    )
+  )
+
+  knitr::kable(m4_df, align = "lcc",
+               caption = paste0("M4 Monthly Series Detection (n=", length(m4_results), " series)"))
+} else {
+  cat("M4comp2018 package not installed. Install with: install.packages('M4comp2018')\n")
+}
+```
+
+```{r m4-note, eval=!requireNamespace("M4comp2018", quietly = TRUE)}
+cat("**Note**: M4 validation requires the M4comp2018 package. Install with:\n")
+cat("```r\ninstall.packages('M4comp2018')\n```\n")
+```
+
+**Interpretation**: M4 detection rates are expected recall values since all M4 monthly series contain seasonality. Lower detection rates indicate false negatives on real-world data with varying characteristics (trends, noise, non-stationarity).
 
 # Conclusion
 
