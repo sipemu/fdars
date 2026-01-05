@@ -78,7 +78,7 @@ detect_aic <- function(fd_single) {
 
 detect_fft <- function(fd_single) {
   result <- tryCatch({
-    period_result <- estimate.period(fd_single, method = "fft", return_confidence = TRUE)
+    period_result <- estimate.period(fd_single, method = "fft")
     score <- if (!is.null(period_result$confidence)) period_result$confidence else NA
     list(score = score, detected = !is.na(score) && score > detection_thresholds$fft)
   }, error = function(e) list(score = NA, detected = NA))
@@ -87,7 +87,7 @@ detect_fft <- function(fd_single) {
 
 detect_acf <- function(fd_single) {
   result <- tryCatch({
-    period_result <- estimate.period(fd_single, method = "acf", return_confidence = TRUE)
+    period_result <- estimate.period(fd_single, method = "acf")
     score <- if (!is.null(period_result$confidence)) period_result$confidence else NA
     list(score = score, detected = !is.na(score) && score > detection_thresholds$acf)
   }, error = function(e) list(score = NA, detected = NA))
@@ -228,6 +228,15 @@ calculate_metrics <- function(detected, ground_truth) {
   fpr <- ifelse(tn + fp > 0, fp / (tn + fp), NA)
 
   data.frame(Accuracy = accuracy, Precision = precision, Recall = recall, FPR = fpr, F1 = f1)
+}
+
+# === Format percentage with NA handling ===
+fmt_pct <- function(x) {
+  ifelse(is.na(x), "-", sprintf("%.1f%%", x * 100))
+}
+
+fmt_pct0 <- function(x) {
+  ifelse(is.na(x), "-", sprintf("%.0f%%", x * 100))
 }
 
 # === McNemar's Test ===
@@ -519,7 +528,7 @@ metrics$Method <- recode(metrics$Method,
 
 metrics_display <- metrics %>%
   arrange(desc(F1)) %>%
-  mutate(across(c(Accuracy, Precision, Recall, FPR, F1), ~sprintf("%.1f%%", .x * 100))) %>%
+  mutate(across(c(Accuracy, Precision, Recall, FPR, F1), fmt_pct)) %>%
   select(Method, F1, Precision, Recall, FPR, Accuracy)
 
 knitr::kable(metrics_display, align = "lccccc")
@@ -651,7 +660,7 @@ trend_summary <- trend_tpr %>%
     "mp" = "MatrixProfile", "stl" = "STL", "ssa" = "SSA"
   )) %>%
   pivot_wider(names_from = trend_type, values_from = TPR) %>%
-  mutate(across(where(is.numeric), ~sprintf("%.0f%%", .x * 100)))
+  mutate(across(where(is.numeric), fmt_pct0))
 
 knitr::kable(trend_summary, align = "lcccc")
 ```
@@ -736,7 +745,7 @@ ggplot(rednoise_long, aes(x = ar_coef, y = FPR * 100, color = Method)) +
 #| tbl-cap: "False Positive Rate by AR(1) Coefficient"
 
 rednoise_display <- rednoise_fpr %>%
-  mutate(across(all_of(detection_cols), ~sprintf("%.0f%%", .x * 100))) %>%
+  mutate(across(all_of(detection_cols), fmt_pct0)) %>%
   rename(
     `phi` = ar_coef,
     AIC = aic, FFT = fft, ACF = acf, Variance = var, Spectral = spec,
@@ -848,7 +857,7 @@ ggplot(ampmod_long, aes(x = mod_type, y = TPR * 100, fill = Method)) +
 #| tbl-cap: "TPR by Amplitude Modulation Type"
 
 ampmod_display <- ampmod_tpr %>%
-  mutate(across(all_of(detection_cols), ~sprintf("%.0f%%", .x * 100))) %>%
+  mutate(across(all_of(detection_cols), fmt_pct0)) %>%
   rename(
     Modulation = mod_type,
     AIC = aic, FFT = fft, ACF = acf, Variance = var, Spectral = spec,
@@ -981,7 +990,7 @@ ggplot(outlier_long, aes(x = config, y = TPR * 100, fill = Method)) +
 
 outlier_display <- outlier_tpr %>%
   select(config, var, spec, wav, fft, acf, lomb, stl, ssa) %>%
-  mutate(across(-config, ~sprintf("%.0f%%", .x * 100))) %>%
+  mutate(across(-config, fmt_pct0)) %>%
   rename(
     Config = config, Variance = var, Spectral = spec, Wavelet = wav,
     FFT = fft, ACF = acf, `Lomb-Scargle` = lomb, STL = stl, SSA = ssa
@@ -1115,9 +1124,9 @@ final_ranking <- metrics %>%
   arrange(desc(F1)) %>%
   mutate(
     Rank = row_number(),
-    F1 = sprintf("%.1f%%", F1 * 100),
-    FPR = sprintf("%.1f%%", FPR * 100),
-    Recall = sprintf("%.1f%%", Recall * 100),
+    F1 = fmt_pct(F1),
+    FPR = fmt_pct(FPR),
+    Recall = fmt_pct(Recall),
     Best_For = c(
       "Time-varying signals", "Known period", "Trend robustness", "High precision",
       "Irregular sampling", "FFT+ACF hybrid", "Decomposition", "Model comparison",
