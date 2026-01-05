@@ -18,7 +18,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fdars-core = "0.1"
+fdars-core = "0.2"
 ```
 
 Or install from the repository:
@@ -38,6 +38,20 @@ fdars-core = { git = "https://github.com/sipemu/fdars" }
 - **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
 - **Regression**: Functional PCA, PLS, ridge regression
 - **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
+- **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; seasonal strength metrics; amplitude modulation detection
+
+## Feature Flags
+
+- `parallel` (default): Enable rayon-based parallel processing
+- `linalg` (default): Enable linear algebra features (faer, ridge regression)
+- `js`: Enable WASM support with JS random number generation
+
+For WASM builds, disable default features:
+
+```toml
+[dependencies]
+fdars-core = { version = "0.2", default-features = false }
+```
 
 ## Data Layout
 
@@ -65,7 +79,7 @@ let depths = depth::fraiman_muniz_1d(&data, &data, n, n, m, true);
 
 ## Performance
 
-All computationally intensive operations are parallelized using `rayon` for multi-core performance.
+With the `parallel` feature (enabled by default), computationally intensive operations use `rayon` for multi-core performance. The library also supports WASM targets with sequential execution.
 
 ## License
 

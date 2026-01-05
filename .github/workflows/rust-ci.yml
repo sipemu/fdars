@@ -47,8 +47,11 @@ jobs:
             fdars-core/target/
           key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run tests
+      - name: Run tests (all features)
         run: cargo test --all-features
+
+      - name: Run tests (sequential mode)
+        run: cargo test --no-default-features --features linalg
 
   clippy:
     name: Clippy
@@ -101,6 +104,26 @@ jobs:
         env:
           RUSTDOCFLAGS: -Dwarnings
 
+  wasm:
+    name: WASM Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fdars-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build for WASM (no default features)
+        run: cargo build --target wasm32-unknown-unknown --no-default-features
+
+      - name: Build for WASM (with js feature)
+        run: cargo build --target wasm32-unknown-unknown --no-default-features --features js
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
@@ -133,7 +156,7 @@ jobs:
   publish:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    needs: [test, clippy, fmt, docs]
+    needs: [test, clippy, fmt, docs, wasm]
     if: github.event_name == 'release' && github.event.action == 'published'
     defaults:
       run:
