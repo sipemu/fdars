@@ -519,7 +519,7 @@ For our simulated seasonal data, the amplitude modulation characterization corre
 | FFT Confidence | 6.0 | ~5.7 on noise |
 | ACF Confidence | 0.25 | ~0.22 on noise |
 | AIC Difference | 0 | Fourier better = positive |
-| SAZED Consensus | 3 | ≥3 of 5 components agree |
+| SAZED Consensus | 3 | >=3 of 5 components agree |
 | Autoperiod ACF | 0.3 | ACF correlation at period |
 | CFDAutoperiod | 0.25 | ACF validation on original |
 
