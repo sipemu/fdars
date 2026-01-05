@@ -18,7 +18,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fdars-core = "0.2"
+fdars-core = "0.3"
 ```
 
 Or install from the repository:
