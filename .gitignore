@@ -55,3 +55,7 @@ covr/
 *.gcov
 *.gcno
 *.gcda
+
+# Quarto/RMarkdown cache and output files
+*_cache/
+*_files/
