@@ -181,8 +181,12 @@ reference:
 - title: Seasonal Analysis
   contents:
   - estimate.period
+  - detect.period
   - detect.periods
   - detect.peaks
+  - autoperiod
+  - cfd.autoperiod
+  - sazed
   - seasonal.strength
   - seasonal.strength.curve
   - detect.seasonality.changes
