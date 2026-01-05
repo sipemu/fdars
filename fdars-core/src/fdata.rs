@@ -1,7 +1,9 @@
 //! Functional data operations: mean, center, derivatives, norms, and geometric median.
 
 use crate::helpers::{simpsons_weights, simpsons_weights_2d, NUMERICAL_EPS};
-use rayon::prelude::*;
+use crate::iter_maybe_parallel;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Compute finite difference for a 1D function at a given index.
 ///
@@ -159,8 +161,7 @@ pub fn mean_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
         return Vec::new();
     }
 
-    (0..m)
-        .into_par_iter()
+    iter_maybe_parallel!(0..m)
         .map(|j| {
             let mut sum = 0.0;
             for i in 0..n {
@@ -194,8 +195,7 @@ pub fn center_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
     }
 
     // First compute the mean for each column (parallelized)
-    let means: Vec<f64> = (0..m)
-        .into_par_iter()
+    let means: Vec<f64> = iter_maybe_parallel!(0..m)
         .map(|j| {
             let mut sum = 0.0;
             for i in 0..n {
@@ -234,8 +234,7 @@ pub fn norm_lp_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], p: f64) -> 
 
     let weights = simpsons_weights(argvals);
 
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .map(|i| {
             let mut integral = 0.0;
             for j in 0..m {
@@ -274,8 +273,7 @@ pub fn deriv_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], nderiv: usize
 
     for _ in 0..nderiv {
         // Compute derivative for each row in parallel
-        let deriv: Vec<f64> = (0..n)
-            .into_par_iter()
+        let deriv: Vec<f64> = iter_maybe_parallel!(0..n)
             .flat_map(|i| {
                 let mut row_deriv = vec![0.0; m];
 
@@ -371,8 +369,7 @@ pub fn deriv_2d(
         .collect();
 
     // Compute all derivatives in parallel over surfaces
-    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let mut ds = vec![0.0; m1 * m2];
             let mut dt = vec![0.0; m1 * m2];

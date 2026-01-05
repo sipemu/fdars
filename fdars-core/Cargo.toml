@@ -17,15 +17,28 @@ rust-version = "1.70"
 # This is needed for R CMD check which copies package to a temp directory
 [workspace]
 
+[features]
+default = ["parallel", "linalg"]
+parallel = ["rayon"]
+# Linear algebra features (not WASM-compatible)
+linalg = ["faer", "anofox-regression"]
+# Enable JS features for WASM builds
+js = ["getrandom/js"]
+
 [dependencies]
-rayon = "1.10"
+rayon = { version = "1.10", optional = true }
 rand = "0.8"
 rand_distr = "0.4"
 rustfft = "6.2"
 num-complex = "0.4"
 nalgebra = "0.33"
-anofox-regression = "0.4"
-faer = "0.23"
+anofox-regression = { version = "0.4", optional = true }
+faer = { version = "0.23", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+# WASM target configuration
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

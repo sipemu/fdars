@@ -3,8 +3,10 @@
 //! This module provides B-spline and Fourier basis expansions for representing
 //! functional data in a finite-dimensional basis.
 
+use crate::iter_maybe_parallel;
 use nalgebra::{DMatrix, DVector, SVD};
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 use std::f64::consts::PI;
 
 /// Compute B-spline basis matrix for given knots and grid points.
@@ -239,8 +241,7 @@ pub fn fdata_to_basis_1d(
 
     let proj = btb_inv * b_mat.transpose();
 
-    let coefs: Vec<f64> = (0..n)
-        .into_par_iter()
+    let coefs: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
             (0..actual_nbasis)
@@ -284,8 +285,7 @@ pub fn basis_to_fdata_1d(
 
     let actual_nbasis = basis.len() / m;
 
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             (0..m)
                 .map(|j| {
@@ -888,8 +888,7 @@ pub fn select_basis_auto_1d(
     let lambda_grid = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0];
     let auto_lambda = lambda_pspline < 0.0;
 
-    let selections: Vec<SingleCurveSelection> = (0..n)
-        .into_par_iter()
+    let selections: Vec<SingleCurveSelection> = iter_maybe_parallel!(0..n)
         .map(|i| {
             // Extract single curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();

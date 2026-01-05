@@ -4,9 +4,11 @@
 //! of functional observations within a reference sample.
 
 use crate::helpers::simpsons_weights;
+use crate::iter_maybe_parallel;
 use rand::prelude::*;
 use rand_distr::StandardNormal;
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Compute Fraiman-Muniz depth for 1D functional data.
 ///
@@ -34,8 +36,7 @@ pub fn fraiman_muniz_1d(
 
     let scale_factor = if scale { 2.0 } else { 1.0 };
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut depth_sum = 0.0;
 
@@ -96,8 +97,7 @@ pub fn modal_1d(
         return Vec::new();
     }
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut depth = 0.0;
 
@@ -163,8 +163,7 @@ pub fn random_projection_1d(
         })
         .collect();
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut total_depth = 0.0;
 
@@ -235,8 +234,7 @@ pub fn random_tukey_1d(
         })
         .collect();
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut min_depth = f64::INFINITY;
 
@@ -292,8 +290,7 @@ pub fn functional_spatial_1d(
         return Vec::new();
     }
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut sum_unit = vec![0.0; n_points];
 
@@ -374,8 +371,7 @@ pub fn kernel_functional_spatial_1d(
     let kern = |dist_sq: f64| -> f64 { (-dist_sq / h_sq).exp() };
 
     // Pre-compute M1[j,k] = K(X_j, X_k) for all pairs in reference data
-    let m1_upper: Vec<(usize, usize, f64)> = (0..nori)
-        .into_par_iter()
+    let m1_upper: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..nori)
         .flat_map(|j| {
             ((j + 1)..nori)
                 .map(|k| {
@@ -402,8 +398,7 @@ pub fn kernel_functional_spatial_1d(
 
     let nori_f64 = nori as f64;
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let k02_i = 1.0;
 
@@ -492,8 +487,7 @@ pub fn kernel_functional_spatial_2d(
     let kern = |dist_sq: f64| -> f64 { (-dist_sq / h_sq).exp() };
 
     // Pre-compute M1 matrix
-    let m1_upper: Vec<(usize, usize, f64)> = (0..nori)
-        .into_par_iter()
+    let m1_upper: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..nori)
         .flat_map(|j| {
             ((j + 1)..nori)
                 .map(|k| {
@@ -516,8 +510,7 @@ pub fn kernel_functional_spatial_2d(
 
     let nori_f64 = nori as f64;
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let k02_i = 1.0;
 
@@ -589,8 +582,7 @@ pub fn band_1d(
 
     let n_pairs = (nori * (nori - 1)) / 2;
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut count_in_band = 0usize;
 
@@ -639,8 +631,7 @@ pub fn modified_band_1d(
 
     let n_pairs = (nori * (nori - 1)) / 2;
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut total_proportion = 0.0;
 
@@ -684,8 +675,7 @@ pub fn modified_epigraph_index_1d(
         return Vec::new();
     }
 
-    (0..nobj)
-        .into_par_iter()
+    iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut total = 0.0;
 

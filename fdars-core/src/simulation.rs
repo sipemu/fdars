@@ -20,9 +20,9 @@
 //! - **Legendre**: Orthonormal Legendre polynomials on \[0,1\]
 //! - **Wiener**: Eigenfunctions of the Wiener process
 
+use crate::maybe_par_chunks_mut_enumerate;
 use rand::prelude::*;
 use rand_distr::Normal;
-use rayon::prelude::*;
 use std::f64::consts::PI;
 
 /// Eigenfunction type enum for simulation
@@ -321,7 +321,7 @@ pub fn sim_kl(
     let mut data = vec![0.0; n * m];
 
     // Parallelize over columns (evaluation points)
-    data.par_chunks_mut(n).enumerate().for_each(|(j, col)| {
+    maybe_par_chunks_mut_enumerate!(data, n, |(j, col)| {
         for i in 0..n {
             let mut sum = 0.0;
             for k in 0..big_m {

@@ -9,9 +9,11 @@
 //! - Spline detrending (P-splines)
 //! - Automatic method selection via AIC
 
+use crate::iter_maybe_parallel;
 use crate::smoothing::local_polynomial;
 use nalgebra::{DMatrix, DVector};
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Result of detrending operation.
 #[derive(Debug, Clone)]
@@ -73,8 +75,7 @@ pub fn detrend_linear(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> Tren
     let ss_t: f64 = argvals.iter().map(|&t| (t - mean_t).powi(2)).sum();
 
     // Process each sample in parallel
-    let results: Vec<(Vec<f64>, Vec<f64>, f64, f64, f64)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<f64>, Vec<f64>, f64, f64, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             // Extract curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
@@ -192,8 +193,7 @@ pub fn detrend_polynomial(
     let svd = design.clone().svd(true, true);
 
     // Process each sample in parallel
-    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             // Extract curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
@@ -278,8 +278,7 @@ pub fn detrend_diff(data: &[f64], n: usize, m: usize, order: usize) -> TrendResu
     let new_m = m - order;
 
     // Process each sample in parallel
-    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             // Extract curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
@@ -391,8 +390,7 @@ pub fn detrend_loess(
     let abs_bandwidth = (t_max - t_min) * bandwidth;
 
     // Process each sample in parallel
-    let results: Vec<(Vec<f64>, Vec<f64>, f64)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             // Extract curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
@@ -560,8 +558,7 @@ pub fn decompose_additive(
     let omega = 2.0 * std::f64::consts::PI / period;
 
     // Process each sample
-    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let trend_i: Vec<f64> = (0..m).map(|j| trend_result.trend[i + j * n]).collect();
             let detrended_i: Vec<f64> = (0..m).map(|j| trend_result.detrended[i + j * n]).collect();

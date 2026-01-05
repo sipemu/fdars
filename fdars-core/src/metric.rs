@@ -9,7 +9,9 @@
 //! - Kullback-Leibler divergence
 
 use crate::helpers::{simpsons_weights, simpsons_weights_2d};
-use rayon::prelude::*;
+use crate::iter_maybe_parallel;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 use rustfft::num_complex::Complex;
 use rustfft::FftPlanner;
 
@@ -52,8 +54,7 @@ pub fn lp_cross_1d(
         base_weights
     };
 
-    let distances: Vec<f64> = (0..n2)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n2)
         .flat_map(|j| {
             (0..n1)
                 .map(|i| {
@@ -97,8 +98,7 @@ pub fn lp_self_1d(
         base_weights
     };
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -149,8 +149,7 @@ pub fn lp_cross_2d(
         base_weights
     };
 
-    let distances: Vec<f64> = (0..n1)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| {
@@ -193,8 +192,7 @@ pub fn lp_self_2d(
         base_weights
     };
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -238,8 +236,7 @@ pub fn hausdorff_self_1d(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> V
         result
     };
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -312,8 +309,7 @@ pub fn hausdorff_cross_1d(
         result
     };
 
-    let distances: Vec<f64> = (0..n1)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| {
@@ -413,8 +409,7 @@ pub fn dtw_self_1d(data: &[f64], n: usize, m: usize, p: f64, w: usize) -> Vec<f6
         .map(|i| (0..m).map(|j| data[i + j * n]).collect())
         .collect();
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -456,8 +451,7 @@ pub fn dtw_cross_1d(
         .map(|i| (0..m2).map(|j| data2[i + j * n2]).collect())
         .collect();
 
-    let distances: Vec<f64> = (0..n1)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| dtw_distance(&curves1[i], &curves2[j], p, w))
@@ -497,13 +491,11 @@ pub fn fourier_self_1d(data: &[f64], n: usize, m: usize, nfreq: usize) -> Vec<f6
         .map(|i| (0..m).map(|j| data[i + j * n]).collect())
         .collect();
 
-    let coeffs: Vec<Vec<f64>> = curves
-        .into_par_iter()
+    let coeffs: Vec<Vec<f64>> = iter_maybe_parallel!(curves)
         .map(|curve| fft_coefficients(&curve, nfreq))
         .collect();
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -547,17 +539,14 @@ pub fn fourier_cross_1d(
         .map(|i| (0..m).map(|j| data2[i + j * n2]).collect())
         .collect();
 
-    let coeffs1: Vec<Vec<f64>> = curves1
-        .into_par_iter()
+    let coeffs1: Vec<Vec<f64>> = iter_maybe_parallel!(curves1)
         .map(|curve| fft_coefficients(&curve, nfreq))
         .collect();
-    let coeffs2: Vec<Vec<f64>> = curves2
-        .into_par_iter()
+    let coeffs2: Vec<Vec<f64>> = iter_maybe_parallel!(curves2)
         .map(|curve| fft_coefficients(&curve, nfreq))
         .collect();
 
-    let distances: Vec<f64> = (0..n1)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| {
@@ -626,8 +615,7 @@ pub fn hshift_self_1d(
         .map(|i| (0..m).map(|j| data[i + j * n]).collect())
         .collect();
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -670,8 +658,7 @@ pub fn hshift_cross_1d(
         .map(|i| (0..m).map(|j| data2[i + j * n2]).collect())
         .collect();
 
-    let distances: Vec<f64> = (0..n1)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| hshift_distance(&curves1[i], &curves2[j], &weights, max_shift))
@@ -740,8 +727,7 @@ pub fn hausdorff_self_2d(data: &[f64], n: usize, argvals_s: &[f64], argvals_t: &
         })
         .collect();
 
-    let upper_triangle: Vec<(usize, usize, f64)> = (0..n)
-        .into_par_iter()
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
@@ -804,8 +790,7 @@ pub fn hausdorff_cross_2d(
         })
         .collect();
 
-    let distances: Vec<f64> = (0..n1)
-        .into_par_iter()
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| hausdorff_3d(&surfaces1[i], &surfaces2[j]))

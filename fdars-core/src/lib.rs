@@ -24,6 +24,8 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
+pub mod parallel;
+
 pub mod basis;
 pub mod clustering;
 pub mod depth;

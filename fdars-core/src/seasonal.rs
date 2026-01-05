@@ -11,8 +11,10 @@
 
 use crate::basis::fourier_basis_with_period;
 use crate::fdata::deriv_1d;
+use crate::{iter_maybe_parallel, slice_maybe_parallel};
 use num_complex::Complex;
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 use rustfft::FftPlanner;
 use std::f64::consts::PI;
 
@@ -268,8 +270,7 @@ pub struct WaveletAmplitudeResult {
 fn compute_mean_curve_impl(data: &[f64], n: usize, m: usize, parallel: bool) -> Vec<f64> {
     if parallel && m >= 100 {
         // Use parallel iteration for larger datasets
-        (0..m)
-            .into_par_iter()
+        iter_maybe_parallel!(0..m)
             .map(|j| {
                 let mut sum = 0.0;
                 for i in 0..n {
@@ -880,8 +881,7 @@ pub fn estimate_period_regression(
         .map(|i| period_min + (period_max - period_min) * i as f64 / (n_candidates - 1) as f64)
         .collect();
 
-    let results: Vec<(f64, f64)> = candidates
-        .par_iter()
+    let results: Vec<(f64, f64)> = slice_maybe_parallel!(candidates)
         .map(|&period| {
             let basis = fourier_basis_with_period(argvals, nbasis, period);
 
@@ -1098,8 +1098,7 @@ pub fn detect_peaks(
     };
 
     // Find peaks for each sample
-    let results: Vec<(Vec<Peak>, Vec<f64>)> = (0..n)
-        .into_par_iter()
+    let results: Vec<(Vec<Peak>, Vec<f64>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             // Extract curve and derivative
             let curve: Vec<f64> = (0..m).map(|j| work_data[i + j * n]).collect();
@@ -1407,8 +1406,7 @@ pub fn seasonal_strength_windowed(
     // Compute mean curve
     let mean_curve = compute_mean_curve(data, n, m);
 
-    (0..m)
-        .into_par_iter()
+    iter_maybe_parallel!(0..m)
         .map(|center| {
             let start = center.saturating_sub(half_window_points);
             let end = (center + half_window_points + 1).min(m);

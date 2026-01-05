@@ -20,7 +20,9 @@
 //!
 //! The offsets would be: [0, 5, 8, 15]
 
-use rayon::prelude::*;
+use crate::{iter_maybe_parallel, slice_maybe_parallel};
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Compressed storage for irregular functional data.
 ///
@@ -180,8 +182,7 @@ impl IrregFdata {
 pub fn integrate_irreg(offsets: &[usize], argvals: &[f64], values: &[f64]) -> Vec<f64> {
     let n = offsets.len() - 1;
 
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .map(|i| {
             let start = offsets[i];
             let end = offsets[i + 1];
@@ -228,8 +229,7 @@ pub fn integrate_irreg_struct(ifd: &IrregFdata) -> Vec<f64> {
 pub fn norm_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f64) -> Vec<f64> {
     let n = offsets.len() - 1;
 
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .map(|i| {
             let start = offsets[i];
             let end = offsets[i + 1];
@@ -301,8 +301,7 @@ pub fn mean_irreg(
         _ => kernel_gaussian,
     };
 
-    target_argvals
-        .par_iter()
+    slice_maybe_parallel!(target_argvals)
         .map(|&t| {
             let mut sum_weights = 0.0;
             let mut sum_values = 0.0;
@@ -489,8 +488,7 @@ pub fn metric_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f6
         .flat_map(|i| (i + 1..n).map(move |j| (i, j)))
         .collect();
 
-    let distances: Vec<f64> = pairs
-        .par_iter()
+    let distances: Vec<f64> = slice_maybe_parallel!(pairs)
         .map(|&(i, j)| {
             let start_i = offsets[i];
             let end_i = offsets[i + 1];
@@ -541,8 +539,7 @@ pub fn to_regular_grid(
     let n = offsets.len() - 1;
     let m = target_grid.len();
 
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             let start = offsets[i];
             let end = offsets[i + 1];

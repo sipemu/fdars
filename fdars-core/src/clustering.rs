@@ -4,8 +4,10 @@
 //! for functional data.
 
 use crate::helpers::{extract_curves, l2_distance, simpsons_weights, NUMERICAL_EPS};
+use crate::{iter_maybe_parallel, slice_maybe_parallel};
 use rand::prelude::*;
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Result of k-means clustering.
 pub struct KmeansResult {
@@ -166,8 +168,7 @@ pub fn kmeans_fd(
         iter = iteration + 1;
 
         // Assignment step
-        let new_cluster: Vec<usize> = curves
-            .par_iter()
+        let new_cluster: Vec<usize> = slice_maybe_parallel!(curves)
             .map(|curve| {
                 let mut best_cluster = 0;
                 let mut best_dist = f64::INFINITY;
@@ -414,8 +415,7 @@ pub fn silhouette_score(
 
     let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
 
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .map(|i| {
             let my_cluster = cluster[i];
 

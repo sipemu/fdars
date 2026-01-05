@@ -2,10 +2,14 @@
 //!
 //! This module provides functional PCA, PLS, and ridge regression.
 
+use crate::iter_maybe_parallel;
+#[cfg(feature = "linalg")]
 use anofox_regression::solvers::RidgeRegressor;
+#[cfg(feature = "linalg")]
 use anofox_regression::{FittedRegressor, Regressor};
 use nalgebra::{DMatrix, SVD};
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Result of functional PCA.
 pub struct FpcaResult {
@@ -36,8 +40,7 @@ pub fn fdata_to_pc_1d(data: &[f64], n: usize, m: usize, ncomp: usize) -> Option<
     let ncomp = ncomp.min(n).min(m);
 
     // Compute column means
-    let means: Vec<f64> = (0..m)
-        .into_par_iter()
+    let means: Vec<f64> = iter_maybe_parallel!(0..m)
         .map(|j| {
             let mut sum = 0.0;
             for i in 0..n {
@@ -217,6 +220,7 @@ pub fn fdata_to_pls_1d(
 }
 
 /// Result of ridge regression fit.
+#[cfg(feature = "linalg")]
 pub struct RidgeResult {
     /// Coefficients
     pub coefficients: Vec<f64>,
@@ -243,6 +247,7 @@ pub struct RidgeResult {
 /// * `m` - Number of predictors
 /// * `lambda` - Regularization parameter
 /// * `with_intercept` - Whether to include intercept
+#[cfg(feature = "linalg")]
 pub fn ridge_regression_fit(
     x: &[f64],
     y: &[f64],

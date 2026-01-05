@@ -4,9 +4,11 @@
 //! based on depth measures and likelihood ratio tests.
 
 use crate::depth::fraiman_muniz_1d;
+use crate::iter_maybe_parallel;
 use rand::prelude::*;
 use rand_distr::StandardNormal;
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Compute FM depth for internal use.
 fn compute_fm_depth_internal(data: &[f64], n: usize, m: usize) -> Vec<f64> {
@@ -60,8 +62,7 @@ pub fn outliers_threshold_lrt(
         .collect();
 
     // Run bootstrap iterations in parallel
-    let max_dists: Vec<f64> = (0..nb)
-        .into_par_iter()
+    let max_dists: Vec<f64> = iter_maybe_parallel!(0..nb)
         .map(|b| {
             let mut rng = StdRng::seed_from_u64(seed + b as u64);
 
@@ -183,8 +184,7 @@ pub fn detect_outliers_lrt(
     }
 
     // Compute normalized distance for each observation
-    (0..n)
-        .into_par_iter()
+    iter_maybe_parallel!(0..n)
         .map(|i| {
             let mut dist = 0.0;
             for j in 0..m {

@@ -3,7 +3,9 @@
 //! This module provides kernel-based smoothing methods including
 //! Nadaraya-Watson, local linear, and local polynomial regression.
 
-use rayon::prelude::*;
+use crate::slice_maybe_parallel;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Gaussian kernel function.
 fn gaussian_kernel(u: f64) -> f64 {
@@ -52,8 +54,7 @@ pub fn nadaraya_watson(
 
     let kernel_fn = get_kernel(kernel);
 
-    x_new
-        .par_iter()
+    slice_maybe_parallel!(x_new)
         .map(|&x0| {
             let mut num = 0.0;
             let mut denom = 0.0;
@@ -93,8 +94,7 @@ pub fn local_linear(x: &[f64], y: &[f64], x_new: &[f64], bandwidth: f64, kernel:
 
     let kernel_fn = get_kernel(kernel);
 
-    x_new
-        .par_iter()
+    slice_maybe_parallel!(x_new)
         .map(|&x0| {
             // Compute weighted moments
             let mut s0 = 0.0;
@@ -160,8 +160,7 @@ pub fn local_polynomial(
     let kernel_fn = get_kernel(kernel);
     let p = degree + 1; // Number of coefficients
 
-    x_new
-        .par_iter()
+    slice_maybe_parallel!(x_new)
         .map(|&x0| {
             // Build weighted design matrix and response
             let mut xtx = vec![0.0; p * p];
@@ -260,8 +259,7 @@ pub fn knn_smoother(x: &[f64], y: &[f64], x_new: &[f64], k: usize) -> Vec<f64> {
 
     let k = k.min(n);
 
-    x_new
-        .par_iter()
+    slice_maybe_parallel!(x_new)
         .map(|&x0| {
             // Compute distances
             let mut distances: Vec<(usize, f64)> = x
