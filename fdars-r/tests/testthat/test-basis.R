@@ -38,14 +38,14 @@ test_that("basis.aic and basis.bic return finite values", {
   expect_true(is.finite(bic))
 })
 
-test_that("fdata2basis.cv selects optimal nbasis", {
+test_that("fdata2basis_cv selects optimal nbasis", {
   set.seed(42)
   t <- seq(0, 1, length.out = 50)
   X <- matrix(0, 10, 50)
   for (i in 1:10) X[i, ] <- sin(4 * pi * t) + rnorm(50, sd = 0.1)
   fd <- fdata(X, argvals = t)
 
-  cv_result <- fdata2basis.cv(fd, nbasis.range = 5:15, type = "fourier")
+  cv_result <- fdata2basis_cv(fd, nbasis.range = 5:15, type = "fourier")
 
   expect_s3_class(cv_result, "basis.cv")
   expect_true(cv_result$optimal.nbasis >= 5)
@@ -54,15 +54,15 @@ test_that("fdata2basis.cv selects optimal nbasis", {
   expect_s3_class(cv_result$fitted, "fdata")
 })
 
-test_that("fdata2basis.cv works with different criteria", {
+test_that("fdata2basis_cv works with different criteria", {
   set.seed(42)
   t <- seq(0, 1, length.out = 30)
   X <- matrix(sin(2 * pi * t) + rnorm(30, sd = 0.1), nrow = 5, ncol = 30, byrow = TRUE)
   fd <- fdata(X, argvals = t)
 
-  cv_gcv <- fdata2basis.cv(fd, nbasis.range = 4:10, criterion = "GCV")
-  cv_aic <- fdata2basis.cv(fd, nbasis.range = 4:10, criterion = "AIC")
-  cv_bic <- fdata2basis.cv(fd, nbasis.range = 4:10, criterion = "BIC")
+  cv_gcv <- fdata2basis_cv(fd, nbasis.range = 4:10, criterion = "GCV")
+  cv_aic <- fdata2basis_cv(fd, nbasis.range = 4:10, criterion = "AIC")
+  cv_bic <- fdata2basis_cv(fd, nbasis.range = 4:10, criterion = "BIC")
 
   expect_s3_class(cv_gcv, "basis.cv")
   expect_s3_class(cv_aic, "basis.cv")
@@ -109,7 +109,7 @@ test_that("print and plot methods work for basis.cv", {
   X <- matrix(sin(2 * pi * t), nrow = 1)
   fd <- fdata(X, argvals = t)
 
-  cv_result <- fdata2basis.cv(fd, nbasis.range = 4:8)
+  cv_result <- fdata2basis_cv(fd, nbasis.range = 4:8)
 
   # Test print
   expect_output(print(cv_result), "Basis Cross-Validation")
@@ -401,14 +401,14 @@ test_that("basis.bic with bspline", {
   expect_true(is.finite(bic))
 })
 
-test_that("fdata2basis.cv with CV criterion", {
+test_that("fdata2basis_cv with CV criterion", {
   set.seed(42)
   t <- seq(0, 1, length.out = 30)
   X <- matrix(0, 10, 30)
   for (i in 1:10) X[i, ] <- sin(2 * pi * t) + rnorm(30, sd = 0.1)
   fd <- fdars::fdata(X, argvals = t)
 
-  cv_result <- fdars::fdata2basis.cv(fd, nbasis.range = 5:10, criterion = "CV", kfold = 5)
+  cv_result <- fdars::fdata2basis_cv(fd, nbasis.range = 5:10, criterion = "CV", kfold = 5)
   expect_s3_class(cv_result, "basis.cv")
 })
 

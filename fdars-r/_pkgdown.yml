@@ -102,10 +102,10 @@ reference:
 - title: Basis Representation
   contents:
   - fdata2basis
-  - fdata2basis.2d
-  - fdata2basis.cv
+  - fdata2basis_2d
+  - fdata2basis_cv
   - basis2fdata
-  - basis2fdata.2d
+  - basis2fdata_2d
   - fdata2fd
   - fdata2pc
   - fdata2pls

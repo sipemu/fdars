@@ -327,7 +327,7 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 | P-spline smoothing | Noisy regular data | `nbasis`, `lambda` |
 | Fourier basis | Periodic/seasonal patterns | `nbasis`, `type="fourier"` |
 
-**Tip**: Use `fdata2basis.cv()` to automatically select the optimal number of basis functions via cross-validation.
+**Tip**: Use `fdata2basis_cv()` to automatically select the optimal number of basis functions via cross-validation.
 
 ## Operations on Irregular Data
 

@@ -211,7 +211,7 @@ basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
 #' Selects the optimal number of basis functions using k-fold cross-validation
 #' or generalized cross-validation.
 #'
-#' @name fdata2basis.cv
+#' @name fdata2basis_cv
 #'
 #' @param fdataobj An fdata object.
 #' @param nbasis.range Vector of nbasis values to evaluate (default: 4:20).
@@ -230,7 +230,7 @@ basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
 #'     \item{fitted}{fdata object fitted with optimal nbasis}
 #'   }
 #'
-#' @rawNamespace export(fdata2basis.cv)
+#' @rawNamespace export(fdata2basis_cv)
 #' @examples
 #' set.seed(42)
 #' t <- seq(0, 1, length.out = 50)
@@ -239,9 +239,9 @@ basis.bic <- function(fdataobj, nbasis, type = c("bspline", "fourier"),
 #' fd <- fdata(X, argvals = t)
 #'
 #' # Find optimal nbasis
-#' cv_result <- fdata2basis.cv(fd, nbasis.range = 5:15, type = "fourier")
+#' cv_result <- fdata2basis_cv(fd, nbasis.range = 5:15, type = "fourier")
 #' print(cv_result$optimal.nbasis)
-fdata2basis.cv <- function(fdataobj, nbasis.range = 4:20,
+fdata2basis_cv <- function(fdataobj, nbasis.range = 4:20,
                            type = c("bspline", "fourier"),
                            criterion = c("GCV", "CV", "AIC", "BIC"),
                            kfold = 10, lambda = 0) {
@@ -250,7 +250,7 @@ fdata2basis.cv <- function(fdataobj, nbasis.range = 4:20,
   }
 
   if (isTRUE(fdataobj$fdata2d)) {
-    stop("fdata2basis.cv not yet implemented for 2D functional data")
+    stop("fdata2basis_cv not yet implemented for 2D functional data")
   }
 
   type <- match.arg(type)
@@ -547,8 +547,8 @@ plot.pspline <- function(x, ...) {
 #' The tensor product basis is defined as:
 #' \deqn{B_{2d}(s, t) = B_s(s) \otimes B_t(t)}
 #'
-#' @name fdata2basis.2d
-#' @rawNamespace export(fdata2basis.2d)
+#' @name fdata2basis_2d
+#' @rawNamespace export(fdata2basis_2d)
 #' @examples
 #' # Create 2D surface data
 #' s <- seq(0, 1, length.out = 20)
@@ -557,8 +557,8 @@ plot.pspline <- function(x, ...) {
 #' fd2d <- fdata(array(surface, dim = c(1, 20, 20)))
 #'
 #' # Project to tensor product basis
-#' coefs <- fdata2basis.2d(fd2d, nbasis.s = 7, nbasis.t = 7, type = "fourier")
-fdata2basis.2d <- function(fdataobj, nbasis.s = 10, nbasis.t = 10,
+#' coefs <- fdata2basis_2d(fd2d, nbasis.s = 7, nbasis.t = 7, type = "fourier")
+fdata2basis_2d <- function(fdataobj, nbasis.s = 10, nbasis.t = 10,
                            type = c("bspline", "fourier")) {
   if (!inherits(fdataobj, "fdata")) {
     stop("fdataobj must be of class 'fdata'")
@@ -595,7 +595,7 @@ fdata2basis.2d <- function(fdataobj, nbasis.s = 10, nbasis.t = 10,
 #' @return A 2D fdata object.
 #'
 #' @export
-basis2fdata.2d <- function(coefs, argvals, nbasis.s, nbasis.t,
+basis2fdata_2d <- function(coefs, argvals, nbasis.s, nbasis.t,
                            type = c("bspline", "fourier")) {
   if (!is.list(argvals) || length(argvals) != 2) {
     stop("argvals must be a list with two components for 2D data")
@@ -808,7 +808,7 @@ plot.pspline.2d <- function(x, ...) {
 #' The function uses parallel processing (via Rust/rayon) for efficiency
 #' when processing multiple curves.
 #'
-#' @seealso \code{\link{fdata2basis.cv}} for global basis selection,
+#' @seealso \code{\link{fdata2basis_cv}} for global basis selection,
 #'   \code{\link{pspline}} for P-spline fitting
 #'
 #' @export

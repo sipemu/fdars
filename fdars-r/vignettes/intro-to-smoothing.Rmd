@@ -303,7 +303,7 @@ How many basis functions? Cross-validation finds the optimal number:
 
 ```{r basis-cv}
 # Cross-validation for optimal number of basis functions
-cv_basis <- fdata2basis.cv(fd_noisy, type = "bspline",
+cv_basis <- fdata2basis_cv(fd_noisy, type = "bspline",
                            nbasis.range = 5:20)
 print(cv_basis)
 plot(cv_basis)
@@ -311,7 +311,7 @@ plot(cv_basis)
 
 ### Information Criteria
 
-The `fdata2basis.cv` function supports different criteria:
+The `fdata2basis_cv` function supports different criteria:
 - **GCV** (default): Generalized Cross-Validation
 - **CV**: Leave-one-out Cross-Validation
 - **AIC**: Akaike Information Criterion

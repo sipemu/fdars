@@ -61,10 +61,10 @@ for (nb in c(6, 8, 10, 12, 15)) {
 }
 cat(if(dims_match) "PASS: All dimensions match\n\n" else "FAIL: Some dimensions mismatch\n\n")
 
-# Test 4: fdata2basis.cv works with B-splines
-cat("Test 4: fdata2basis.cv with B-splines\n")
+# Test 4: fdata2basis_cv works with B-splines
+cat("Test 4: fdata2basis_cv with B-splines\n")
 cat("-------------------------------------\n")
-cv_result <- fdata2basis.cv(fd5, nbasis.range = 6:15, type = "bspline", criterion = "GCV")
+cv_result <- fdata2basis_cv(fd5, nbasis.range = 6:15, type = "bspline", criterion = "GCV")
 all_finite_cv <- all(is.finite(cv_result$scores))
 cat("Optimal nbasis:", cv_result$optimal.nbasis, "\n")
 cat("GCV scores:", round(cv_result$scores, 4), "\n")

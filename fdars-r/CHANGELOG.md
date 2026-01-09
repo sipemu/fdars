@@ -2,6 +2,14 @@
 
 All notable changes to fdars are documented in this file.
 
+## [0.5.2] - 2025-01-09
+
+### Changed
+- **Breaking**: Renamed functions to avoid S3 method dispatch conflicts:
+  - `fdata2basis.cv()` → `fdata2basis_cv()`
+  - `fdata2basis.2d()` → `fdata2basis_2d()`
+  - `basis2fdata.2d()` → `basis2fdata_2d()`
+
 ## [0.5.1] - 2024-12-16
 
 ### Added
@@ -22,9 +30,9 @@ All notable changes to fdars are documented in this file.
 - **Basis representation module** with Rust backend:
   - `basis2fdata()` - reconstruct functional data from basis coefficients
   - `basis.gcv()`, `basis.aic()`, `basis.bic()` - goodness-of-fit metrics
-  - `fdata2basis.cv()` - cross-validation for optimal nbasis selection
+  - `fdata2basis_cv()` - cross-validation for optimal nbasis selection
   - `pspline()` - P-spline smoothing with automatic lambda selection
-  - `fdata2basis.2d()`, `basis2fdata.2d()` - 2D tensor product basis support
+  - `fdata2basis_2d()`, `basis2fdata_2d()` - 2D tensor product basis support
   - `pspline.2d()` - 2D P-spline with anisotropic penalties
 
 ### Changed
