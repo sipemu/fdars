@@ -254,7 +254,7 @@ fit_basis <- fregre.basis(fd, y, nbasis = 15, type = "bspline")
 print(fit_basis)
 #> Functional regression model
 #>   Number of observations: 100 
-#>   R-squared: -4.470287
+#>   R-squared: 0.5805754
 ```
 
 ### Regularization
@@ -278,8 +278,8 @@ cat("Optimal lambda:", cv_basis$lambda.opt, "\n")
 cat("CV error by lambda:\n")
 #> CV error by lambda:
 print(round(cv_basis$cv.error, 4))
-#>       0   0.001    0.01     0.1       1      10 
-#> 30.0456  0.5926  0.5605  0.4299  0.3209  0.2977
+#>      0  0.001   0.01    0.1      1     10 
+#> 0.5967 0.5926 0.5605 0.4299 0.3209 0.2977
 ```
 
 ### Fourier Basis
@@ -441,7 +441,7 @@ results <- data.frame(
 print(results)
 #>             Method      RMSE          R2
 #> 1    PC Regression 0.4570245  0.21884391
-#> 2 Basis Regression 1.6993189 -9.79962564
+#> 2 Basis Regression 0.8989962 -2.02255778
 #> 3             k-NN 0.4935318  0.08906132
 ```
 

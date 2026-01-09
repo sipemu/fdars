@@ -1,7 +1,7 @@
 # Min-Max scaling for functional data
 
-Scales each curve to the range 0, 1 (or custom range). This preserves
-the shape while normalizing the range.
+Scales each curve to the range \\\[0, 1\]\\ (or custom range). This
+preserves the shape while normalizing the range.
 
 ## Usage
 

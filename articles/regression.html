@@ -386,7 +386,7 @@ support</li>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit_basis</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Functional regression model</span></span>
 <span><span class="co">#&gt;   Number of observations: 100 </span></span>
-<span><span class="co">#&gt;   R-squared: -4.470287</span></span></code></pre></div>
+<span><span class="co">#&gt;   R-squared: 0.5805754</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="regularization">Regularization<a class="anchor" aria-label="anchor" href="#regularization"></a>
@@ -409,8 +409,8 @@ support</li>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"CV error by lambda:\n"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; CV error by lambda:</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">cv_basis</span><span class="op">$</span><span class="va">cv.error</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;       0   0.001    0.01     0.1       1      10 </span></span>
-<span><span class="co">#&gt; 30.0456  0.5926  0.5605  0.4299  0.3209  0.2977</span></span></code></pre></div>
+<span><span class="co">#&gt;      0  0.001   0.01    0.1      1     10 </span></span>
+<span><span class="co">#&gt; 0.5967 0.5926 0.5605 0.4299 0.3209 0.2977</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="fourier-basis">Fourier Basis<a class="anchor" aria-label="anchor" href="#fourier-basis"></a>
@@ -623,7 +623,7 @@ that may vary per prediction point</li>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">results</span><span class="op">)</span></span>
 <span><span class="co">#&gt;             Method      RMSE          R2</span></span>
 <span><span class="co">#&gt; 1    PC Regression 0.4570245  0.21884391</span></span>
-<span><span class="co">#&gt; 2 Basis Regression 1.6993189 -9.79962564</span></span>
+<span><span class="co">#&gt; 2 Basis Regression 0.8989962 -2.02255778</span></span>
 <span><span class="co">#&gt; 3             k-NN 0.4935318  0.08906132</span></span></code></pre></div>
 </div>
 <div class="section level2">

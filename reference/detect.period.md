@@ -123,7 +123,7 @@ all period detection functionality.
 [`autoperiod`](https://sipemu.github.io/fdars/reference/autoperiod.md),
 [`cfd.autoperiod`](https://sipemu.github.io/fdars/reference/cfd.autoperiod.md),
 [`estimate.period`](https://sipemu.github.io/fdars/reference/estimate.period.md),
-`detect.multiple.periods`
+[`detect.periods`](https://sipemu.github.io/fdars/reference/detect.periods.md)
 
 ## Examples
 

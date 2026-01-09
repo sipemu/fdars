@@ -93,8 +93,9 @@ This method is particularly robust because:
 ## See also
 
 [`estimate.period`](https://sipemu.github.io/fdars/reference/estimate.period.md)
-for single-method estimation, `detect.multiple.periods` for detecting
-multiple concurrent periods
+for single-method estimation,
+[`detect.periods`](https://sipemu.github.io/fdars/reference/detect.periods.md)
+for detecting multiple concurrent periods
 
 ## Examples
 
