@@ -2,6 +2,18 @@
 
 All notable changes to fdars are documented in this file.
 
+## \[0.5.2\] - 2025-01-09
+
+### Changed
+
+- **Breaking**: Renamed functions to avoid S3 method dispatch conflicts:
+  - `fdata2basis.cv()` →
+    [`fdata2basis_cv()`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md)
+  - `fdata2basis.2d()` →
+    [`fdata2basis_2d()`](https://sipemu.github.io/fdars/reference/fdata2basis_2d.md)
+  - `basis2fdata.2d()` →
+    [`basis2fdata_2d()`](https://sipemu.github.io/fdars/reference/basis2fdata_2d.md)
+
 ## \[0.5.1\] - 2024-12-16
 
 ### Added
@@ -38,12 +50,12 @@ All notable changes to fdars are documented in this file.
     [`basis.aic()`](https://sipemu.github.io/fdars/reference/basis.aic.md),
     [`basis.bic()`](https://sipemu.github.io/fdars/reference/basis.bic.md) -
     goodness-of-fit metrics
-  - [`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md) -
+  - [`fdata2basis_cv()`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md) -
     cross-validation for optimal nbasis selection
   - [`pspline()`](https://sipemu.github.io/fdars/reference/pspline.md) -
     P-spline smoothing with automatic lambda selection
-  - [`fdata2basis.2d()`](https://sipemu.github.io/fdars/reference/fdata2basis.2d.md),
-    [`basis2fdata.2d()`](https://sipemu.github.io/fdars/reference/basis2fdata.2d.md) -
+  - [`fdata2basis_2d()`](https://sipemu.github.io/fdars/reference/fdata2basis_2d.md),
+    [`basis2fdata_2d()`](https://sipemu.github.io/fdars/reference/basis2fdata_2d.md) -
     2D tensor product basis support
   - [`pspline.2d()`](https://sipemu.github.io/fdars/reference/pspline.2d.md) -
     2D P-spline with anisotropic penalties

@@ -572,7 +572,7 @@ noisy data:
 
 ``` r
 # Apply Fourier basis smoothing with CV-selected optimal nbasis
-cv_result <- fdata2basis.cv(fd_demo, nbasis.range = 5:25, type = "fourier", criterion = "GCV")
+cv_result <- fdata2basis_cv(fd_demo, nbasis.range = 5:25, type = "fourier", criterion = "GCV")
 fd_smoothed <- cv_result$fitted
 
 # Compare original vs smoothed
@@ -1354,7 +1354,7 @@ X_noisy_short <- sin(2 * pi * t_short / period_short) + rnorm(length(t_short), s
 fd_noisy_short <- fdata(matrix(X_noisy_short, nrow = 1), argvals = t_short)
 
 # Auto-select smoothing via Fourier basis CV
-cv_short <- fdata2basis.cv(fd_noisy_short, nbasis.range = 3:15, type = "fourier")
+cv_short <- fdata2basis_cv(fd_noisy_short, nbasis.range = 3:15, type = "fourier")
 peaks_auto <- detect.peaks(cv_short$fitted, min_distance = 0.7)
 cat("Peaks found with Fourier CV smoothing:", nrow(peaks_auto$peaks[[1]]), "\n")
 #> Peaks found with Fourier CV smoothing: 5

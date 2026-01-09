@@ -457,13 +457,13 @@ functions</li>
 </ul>
 </div>
 <div class="section level3">
-<h3 id="automatic-selection-with-fdata2basis-cv">Automatic Selection with <code>fdata2basis.cv()</code><a class="anchor" aria-label="anchor" href="#automatic-selection-with-fdata2basis-cv"></a>
+<h3 id="automatic-selection-with-fdata2basis_cv">Automatic Selection with <code>fdata2basis_cv()</code><a class="anchor" aria-label="anchor" href="#automatic-selection-with-fdata2basis_cv"></a>
 </h3>
-<p>For convenience, use <code><a href="../reference/fdata2basis.cv.html">fdata2basis.cv()</a></code> to automatically
+<p>For convenience, use <code><a href="../reference/fdata2basis_cv.html">fdata2basis_cv()</a></code> to automatically
 find the optimal number of basis functions:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Automatic selection using GCV</span></span>
-<span><span class="va">cv_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
+<span><span class="va">cv_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis_cv.html">fdata2basis_cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>, criterion <span class="op">=</span> <span class="st">"GCV"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">cv_result</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Basis Cross-Validation Results</span></span>
 <span><span class="co">#&gt; ==============================</span></span>
@@ -488,7 +488,7 @@ fitted curves:</p>
 <p>For a more robust estimate, use k-fold cross-validation:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># K-fold cross-validation (slower but more robust)</span></span>
-<span><span class="va">cv_kfold</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>,</span>
+<span><span class="va">cv_kfold</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis_cv.html">fdata2basis_cv</a></span><span class="op">(</span><span class="va">fd</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">25</span>, type <span class="op">=</span> <span class="st">"fourier"</span>,</span>
 <span>                            criterion <span class="op">=</span> <span class="st">"CV"</span>, kfold <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">cv_kfold</span><span class="op">$</span><span class="va">optimal.nbasis</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -605,7 +605,7 @@ parameter:</p>
 <span><span class="va">fd_fourier</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/basis2fdata.html">basis2fdata</a></span><span class="op">(</span><span class="va">coefs</span>, argvals <span class="op">=</span> <span class="va">t</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># 2. Optimal basis via CV</span></span>
-<span><span class="va">cv_opt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis.cv.html">fdata2basis.cv</a></span><span class="op">(</span><span class="va">fd_single</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">20</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span>
+<span><span class="va">cv_opt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fdata2basis_cv.html">fdata2basis_cv</a></span><span class="op">(</span><span class="va">fd_single</span>, nbasis.range <span class="op">=</span> <span class="fl">5</span><span class="op">:</span><span class="fl">20</span>, type <span class="op">=</span> <span class="st">"fourier"</span><span class="op">)</span></span>
 <span><span class="va">fd_cv</span> <span class="op">&lt;-</span> <span class="va">cv_opt</span><span class="op">$</span><span class="va">fitted</span></span>
 <span></span>
 <span><span class="co"># 3. P-spline with automatic lambda</span></span>
@@ -694,7 +694,7 @@ parameter:</p>
 <strong>Select complexity</strong> using information criteria:
 <ul>
 <li>
-<code><a href="../reference/fdata2basis.cv.html">fdata2basis.cv()</a></code> for automatic nbasis selection</li>
+<code><a href="../reference/fdata2basis_cv.html">fdata2basis_cv()</a></code> for automatic nbasis selection</li>
 <li>
 <code><a href="../reference/basis.gcv.html">basis.gcv()</a></code>, <code><a href="../reference/basis.aic.html">basis.aic()</a></code>,
 <code><a href="../reference/basis.bic.html">basis.bic()</a></code> for manual comparison</li>

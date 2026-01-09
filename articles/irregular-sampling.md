@@ -393,7 +393,7 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 | Fourier basis                     | Periodic/seasonal patterns | `nbasis`, `type="fourier"` |
 
 **Tip**: Use
-[`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+[`fdata2basis_cv()`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md)
 to automatically select the optimal number of basis functions via
 cross-validation.
 

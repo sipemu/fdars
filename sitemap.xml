@@ -57,8 +57,8 @@
 <url><loc>https://sipemu.github.io/fdars/reference/basis.aic.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.bic.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis.gcv.html</loc></url>
-<url><loc>https://sipemu.github.io/fdars/reference/basis2fdata.2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/basis2fdata.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/basis2fdata_2d.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/boxplot.fdata.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/cfd.autoperiod.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/classify.seasonality.html</loc></url>
@@ -97,9 +97,9 @@
 <url><loc>https://sipemu.github.io/fdars/reference/fdata.bootstrap.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata.cen.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata.html</loc></url>
-<url><loc>https://sipemu.github.io/fdars/reference/fdata2basis.2d.html</loc></url>
-<url><loc>https://sipemu.github.io/fdars/reference/fdata2basis.cv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata2basis.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/fdata2basis_2d.html</loc></url>
+<url><loc>https://sipemu.github.io/fdars/reference/fdata2basis_cv.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata2fd.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata2pc.html</loc></url>
 <url><loc>https://sipemu.github.io/fdars/reference/fdata2pls.html</loc></url>

@@ -45,13 +45,13 @@
 
 - [`fdata2basis()`](https://sipemu.github.io/fdars/reference/fdata2basis.md)
   : Convert Functional Data to Basis Coefficients
-- [`fdata2basis(`*`<2d>`*`)`](https://sipemu.github.io/fdars/reference/fdata2basis.2d.md)
+- [`fdata2basis_2d()`](https://sipemu.github.io/fdars/reference/fdata2basis_2d.md)
   : Convert 2D Functional Data to Tensor Product Basis Coefficients
-- [`fdata2basis(`*`<cv>`*`)`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+- [`fdata2basis_cv()`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md)
   : Cross-Validation for Basis Function Number Selection
 - [`basis2fdata()`](https://sipemu.github.io/fdars/reference/basis2fdata.md)
   : Basis Representation Functions for Functional Data
-- [`basis2fdata.2d()`](https://sipemu.github.io/fdars/reference/basis2fdata.2d.md)
+- [`basis2fdata_2d()`](https://sipemu.github.io/fdars/reference/basis2fdata_2d.md)
   : Reconstruct 2D Functional Data from Tensor Product Basis
   Coefficients
 - [`fdata2fd()`](https://sipemu.github.io/fdars/reference/fdata2fd.md) :

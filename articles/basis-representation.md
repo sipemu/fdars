@@ -341,15 +341,15 @@ ggplot(df_fit, aes(x = t, y = value, color = type, linetype = type, linewidth = 
 - Information criteria help select both basis type AND number of
   functions
 
-### Automatic Selection with `fdata2basis.cv()`
+### Automatic Selection with `fdata2basis_cv()`
 
 For convenience, use
-[`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+[`fdata2basis_cv()`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md)
 to automatically find the optimal number of basis functions:
 
 ``` r
 # Automatic selection using GCV
-cv_result <- fdata2basis.cv(fd, nbasis.range = 5:25, type = "fourier", criterion = "GCV")
+cv_result <- fdata2basis_cv(fd, nbasis.range = 5:25, type = "fourier", criterion = "GCV")
 print(cv_result)
 #> Basis Cross-Validation Results
 #> ==============================
@@ -380,7 +380,7 @@ For a more robust estimate, use k-fold cross-validation:
 
 ``` r
 # K-fold cross-validation (slower but more robust)
-cv_kfold <- fdata2basis.cv(fd, nbasis.range = 5:25, type = "fourier",
+cv_kfold <- fdata2basis_cv(fd, nbasis.range = 5:25, type = "fourier",
                             criterion = "CV", kfold = 10)
 print(cv_kfold$optimal.nbasis)
 ```
@@ -498,7 +498,7 @@ coefs <- fdata2basis(fd_single, nbasis = 9, type = "fourier")
 fd_fourier <- basis2fdata(coefs, argvals = t, type = "fourier")
 
 # 2. Optimal basis via CV
-cv_opt <- fdata2basis.cv(fd_single, nbasis.range = 5:20, type = "fourier")
+cv_opt <- fdata2basis_cv(fd_single, nbasis.range = 5:20, type = "fourier")
 fd_cv <- cv_opt$fitted
 
 # 3. P-spline with automatic lambda
@@ -558,7 +558,7 @@ ggplot(df_comp, aes(x = t, y = value, color = method, linetype = method, linewid
     - Fourier for periodic patterns
     - B-splines for non-periodic data
 2.  **Select complexity** using information criteria:
-    - [`fdata2basis.cv()`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+    - [`fdata2basis_cv()`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md)
       for automatic nbasis selection
     - [`basis.gcv()`](https://sipemu.github.io/fdars/reference/basis.gcv.md),
       [`basis.aic()`](https://sipemu.github.io/fdars/reference/basis.aic.md),

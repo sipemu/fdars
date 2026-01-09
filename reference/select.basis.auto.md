@@ -103,7 +103,7 @@ when processing multiple curves.
 
 ## See also
 
-[`fdata2basis.cv`](https://sipemu.github.io/fdars/reference/fdata2basis.cv.md)
+[`fdata2basis_cv`](https://sipemu.github.io/fdars/reference/fdata2basis_cv.md)
 for global basis selection,
 [`pspline`](https://sipemu.github.io/fdars/reference/pspline.md) for
 P-spline fitting
