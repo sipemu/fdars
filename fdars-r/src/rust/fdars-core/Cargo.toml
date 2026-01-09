@@ -14,9 +14,7 @@ categories = ["science", "mathematics"]
 # CRAN Windows uses Rust 1.81.0, so we need compatible dependencies
 rust-version = "1.81"
 
-# Empty workspace table prevents Cargo from searching for parent workspace
-# This is needed for R CMD check which copies package to a temp directory
-[workspace]
+# Note: [workspace] removed - this is vendored inside the R package workspace
 
 [features]
 default = ["parallel", "linalg"]

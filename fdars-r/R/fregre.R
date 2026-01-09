@@ -150,55 +150,11 @@ fregre.basis <- function(fdataobj, y, basis.x = NULL, basis.b = NULL,
   X_mean <- colMeans(fdataobj$data)
   y_mean <- mean(y)
 
-  # Use Rust backend when n > m (more observations than features)
-  # Fall back to R implementation for underdetermined systems (n <= m)
-  if (n > m) {
-    # Call Rust ridge regression backend (with intercept)
-    result <- .Call("wrap__ridge_regression_fit",
-                    fdataobj$data,
-                    as.numeric(y),
-                    as.numeric(lambda),
-                    TRUE)  # with_intercept = TRUE
+  # Note: Rust ridge regression backend is temporarily disabled due to CRAN
 
-    if (nchar(result$error) > 0) {
-      # Fall back to R implementation on error
-      return(.fregre_basis_r(fdataobj, y, lambda, X_mean, y_mean))
-    }
-
-    # Extract results
-    beta <- as.matrix(result$coefficients)
-    intercept <- result$intercept
-    fitted <- result$fitted_values
-    residuals <- result$residuals
-    r_squared <- result$r_squared
-  } else {
-    # Underdetermined system (n <= m): use R implementation
-    # This handles the common case in FDA where we have more time points than curves
-    return(.fregre_basis_r(fdataobj, y, lambda, X_mean, y_mean))
-  }
-
-  # Residual variance
-  df <- n - m - 1
-  if (df <= 0) df <- 1
-  sr2 <- sum(residuals^2) / df
-
-  structure(
-    list(
-      coefficients = beta,
-      intercept = intercept,
-      fitted.values = fitted,
-      residuals = residuals,
-      lambda = lambda,
-      r.squared = r_squared,
-      mean.X = X_mean,
-      mean.y = y_mean,
-      sr2 = sr2,
-      fdataobj = fdataobj,
-      y = y,
-      call = match.call()
-    ),
-    class = "fregre.fd"
-  )
+  # compatibility constraints (requires faer 0.23+ which needs Rust 1.84+)
+  # Always use the pure R implementation for now
+  .fregre_basis_r(fdataobj, y, lambda, X_mean, y_mean)
 }
 
 # Internal R implementation for underdetermined systems

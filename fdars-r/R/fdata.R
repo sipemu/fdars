@@ -651,7 +651,7 @@ standardize.fdata <- function(fdataobj) {
 
 #' Min-Max scaling for functional data
 #'
-#' Scales each curve to the range [0, 1] (or custom range).
+#' Scales each curve to the range \eqn{[0, 1]} (or custom range).
 #' This preserves the shape while normalizing the range.
 #'
 #' @param fdataobj An object of class 'fdata'.

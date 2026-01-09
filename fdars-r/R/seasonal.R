@@ -57,7 +57,7 @@
 #'
 #' @seealso
 #' \code{\link{sazed}}, \code{\link{autoperiod}}, \code{\link{cfd.autoperiod}},
-#' \code{\link{estimate.period}}, \code{\link{detect.multiple.periods}}
+#' \code{\link{estimate.period}}, \code{\link{detect.periods}}
 #'
 #' @export
 #' @examples
@@ -495,7 +495,7 @@ print.autoperiod_result <- function(x, ...) {
 #' }
 #'
 #' @seealso \code{\link{estimate.period}} for single-method estimation,
-#'   \code{\link{detect.multiple.periods}} for detecting multiple concurrent periods
+#'   \code{\link{detect.periods}} for detecting multiple concurrent periods
 #'
 #' @export
 #' @examples

@@ -169,7 +169,7 @@ eVal <- function(M, type = c("linear", "exponential", "wiener")) {
 #' \code{Cov(X(s), X(t)) = sum_{k=1}^M lambda_k * phi_k(s) * phi_k(t)}
 #'
 #' @seealso \code{\link{eFun}}, \code{\link{eVal}}, \code{\link{addError}},
-#'   \code{\link{make_gaussian_process}}
+#'   \code{\link{make.gaussian.process}}
 #'
 #' @export
 #' @examples

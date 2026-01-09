@@ -16,3 +16,6 @@
 ^\.\./\.Rcheck$
 ^.*\.Rcheck$
 ^scripts$
+^CHANGELOG\.md$
+^Rplots\.pdf$
+^validation$
