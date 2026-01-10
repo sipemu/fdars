@@ -1,7 +1,7 @@
 use crate::*;
 
+use extendr_ffi::{R_NaString, R_NilValue, Rf_isFactor, INTEGER, STRING_ELT, TYPEOF};
 use wrapper::symbol::levels_symbol;
-
 /// Iterator over name-value pairs in lists.
 pub type NamedListIter = std::iter::Zip<StrIter, ListIter>;
 
@@ -142,6 +142,14 @@ impl TryFrom<&Robj> for StrIter {
         value
             .as_str_iter()
             .ok_or_else(|| Error::ExpectedString(value.clone()))
+    }
+}
+
+impl TryFrom<Robj> for StrIter {
+    type Error = Error;
+
+    fn try_from(value: Robj) -> Result<Self> {
+        (&value).try_into()
     }
 }
 

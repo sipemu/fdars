@@ -13,17 +13,19 @@
 edition = "2021"
 rust-version = "1.65"
 name = "extendr-api"
-version = "0.7.1"
+version = "0.8.1"
 authors = [
     "andy-thomason <andy@andythomason.com>",
     "Thomas Down",
     "Mossa Merhi Reimert <mossa@sund.ku.dk>",
+    "Josiah Parry <josiah.parry@gmail.com>",
     "Claus O. Wilke <wilke@austin.utexas.edu>",
     "Hiroaki Yutani",
     "Ilia A. Kosenkov <ilia.kosenkov@outlook.com>",
     "Michael Milton <michael.r.milton@gmail.com>",
 ]
 build = "build.rs"
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -35,6 +37,37 @@ repository = "https://github.com/extendr/extendr"
 
 [package.metadata.docs.rs]
 features = ["full-functionality"]
+
+[features]
+full-functionality = [
+    "graphics",
+    "either",
+    "ndarray",
+    "faer",
+    "num-complex",
+    "serde",
+]
+graphics = ["libc"]
+non-api = ["extendr-ffi/non-api"]
+result_condition = []
+result_list = []
+tests = [
+    "tests-minimal",
+    "ndarray",
+    "faer",
+    "serde",
+    "num-complex",
+    "either",
+]
+tests-all = [
+    "tests",
+    "graphics",
+]
+tests-graphics = [
+    "tests-minimal",
+    "graphics",
+]
+tests-minimal = []
 
 [lib]
 name = "extendr_api"
@@ -145,69 +178,38 @@ path = "tests/vector_tests.rs"
 version = "1.8.1"
 optional = true
 
+[dependencies.extendr-ffi]
+version = "0.8.0"
+
 [dependencies.extendr-macros]
-version = "0.7.1"
+version = "0.8.0"
 
 [dependencies.faer]
-version = "0.19"
+version = "0.20.2"
 optional = true
-
-[dependencies.libR-sys]
-version = "0.7.1"
 
 [dependencies.libc]
 version = "0.2"
 optional = true
 
 [dependencies.ndarray]
-version = "0.15.3"
+version = "0.16.1"
 optional = true
 
 [dependencies.num-complex]
-version = "0.4"
+version = "0.4.6"
 optional = true
 
 [dependencies.once_cell]
-version = "1"
+version = "1.21.3"
 
 [dependencies.paste]
-version = "1.0.5"
+version = "1.0.15"
 
 [dependencies.serde]
-version = "1.0"
+version = "1.0.219"
 features = ["derive"]
 optional = true
 
 [dev-dependencies.rstest]
 version = "0.22.0"
-
-[features]
-full-functionality = [
-    "graphics",
-    "either",
-    "ndarray",
-    "faer",
-    "num-complex",
-    "serde",
-]
-graphics = ["libc"]
-non-api = []
-result_condition = []
-result_list = []
-tests = [
-    "tests-minimal",
-    "ndarray",
-    "faer",
-    "serde",
-    "num-complex",
-    "either",
-]
-tests-all = [
-    "tests",
-    "graphics",
-]
-tests-graphics = [
-    "tests-minimal",
-    "graphics",
-]
-tests-minimal = []

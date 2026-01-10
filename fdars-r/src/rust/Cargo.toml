@@ -15,7 +15,7 @@ rust-version = "1.81"
 crate-type = ["staticlib"]
 
 [dependencies]
-extendr-api = "0.7"
+extendr-api = "0.8"
 # Vendored fdars-core with linalg feature disabled (faer requires Rust 1.84+ but CRAN has 1.81)
 fdars-core = { path = "fdars-core", default-features = false, features = ["parallel"] }
 rayon = "1.10"
