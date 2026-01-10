@@ -2,34 +2,18 @@
 
 ## R CMD check results
 
-0 errors | 2 warnings | 3 notes
+0 errors | 1 warning | 6 notes
 
-### WARNINGs
+### WARNING
 
-1. **Compiled code contains exit/abort and non-API calls**
+1. **checkbashisms script not available**
 
    ```
-   Found '_exit', 'abort', 'exit' in rust/target/release/libfdars.a
-   Found non-API calls to R: 'BODY', 'CLOENV', 'DATAPTR', 'ENCLOS', 'FORMALS'
+   A complete check needs the 'checkbashisms' script.
    ```
 
-   **exit/abort/_exit**: These symbols come from the Rust standard library's
-   panic handling infrastructure. They are unreachable in normal operation:
-   - All Rust code uses proper error handling via `Result` types
-   - Panics are caught at the R-Rust boundary by extendr
-   - No user-facing code path leads to these functions
-
-   **Non-API R calls**: These come from libR-sys (part of the extendr v0.7
-   framework) which generates FFI bindings to R's C API. The fdars code itself
-   does NOT directly call these functions - it uses safe extendr abstractions.
-   The extendr team is actively working on C API compliance
-   (see https://github.com/extendr/extendr).
-
-2. **Rust compilation** (on some platforms)
-
-   Dependencies are now vendored using `cargo vendor`. The package builds
-   offline with `--offline` flag. No network access is required during
-   installation.
+   This is a system tool availability issue, not a package issue.
+   The configure script uses portable POSIX shell syntax.
 
 ### NOTEs
 
@@ -38,20 +22,41 @@
    - Package size (~46MB) is larger due to vendored Rust crate sources.
 
 2. **Hidden files in vendor directory**
-   - Files like `.cargo-checksum.json` are required by Cargo for vendored
-     builds. These are standard for Rust packages following CRAN's
-     vendoring recommendations.
+   - Only `.cargo-checksum.json` files remain (required by Cargo for vendored
+     builds). All other hidden files have been removed.
+   - These are standard for Rust packages following CRAN's vendoring
+     recommendations.
 
-3. **Installation time**
-   - Rust compilation is CPU-intensive. Installation time varies by platform.
-   - Build parallelism is limited to 2 jobs (`-j 2`) per CRAN policy.
+3. **Non-portable file paths**
+   - A few files in `windows-sys` vendor crate have paths >100 bytes.
+   - These are Windows API bindings required for Windows builds.
 
-4. **Example timing ratios**
-   - High CPU/elapsed ratios in examples (e.g., `outliers.depth.pond`)
-     are due to Rayon-based parallelization, which is expected behavior.
+4. **Compiled code contains exit/abort**
+
+   ```
+   Found '_exit', 'abort', 'exit' in rust/target/release/libfdars.a
+   ```
+
+   These symbols come from the Rust standard library's panic handling
+   infrastructure. They are unreachable in normal operation:
+   - All Rust code uses proper error handling via `Result` types
+   - Panics are caught at the R-Rust boundary by extendr
+   - No user-facing code path leads to these functions
 
 5. **Non-portable compilation flags**
    - These flags come from the system R configuration, not from the package.
+
+6. **HTML tidy not available**
+   - System tool availability issue, not a package issue.
+
+## Changes Since Last Submission
+
+- Updated extendr-api from 0.7 to 0.8.1
+  - **Fixes non-API R calls** (BODY, CLOENV, DATAPTR, ENCLOS, FORMALS)
+  - Uses new extendr-ffi crate instead of libR-sys
+- Removed all non-essential hidden files from vendor directory
+- Removed GNU Makefile from r-efi vendor crate
+- Removed test directories with long file paths (regex-automata, zerocopy)
 
 ## Package Description
 
