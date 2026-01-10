@@ -19,9 +19,11 @@ rust-version = "1.81"
 [workspace]
 
 [features]
-default = ["parallel", "linalg"]
+# Note: linalg is not in default because it requires Rust 1.84+ (faer 0.23+ dependency)
+# The R package (fdars-r) uses default-features = false
+default = ["parallel"]
 parallel = ["rayon"]
-# Linear algebra features (not WASM-compatible)
+# Linear algebra features (requires Rust 1.84+, not WASM-compatible)
 linalg = ["faer", "anofox-regression"]
 # Enable JS features for WASM builds
 js = ["getrandom/js"]
@@ -34,9 +36,8 @@ rustfft = "6.2"
 num-complex = "0.4"
 nalgebra = "0.33"
 anofox-regression = { version = "0.4", optional = true }
-# Pin to 0.20.x for Rust 1.81.0 compatibility (CRAN Windows)
-# faer 0.21+ requires Rust 1.84.0
-faer = { version = "=0.20.2", optional = true }
+# faer 0.23+ requires Rust 1.84.0 (linalg feature is not enabled by default)
+faer = { version = "0.23", optional = true }
 getrandom = { version = "0.2", optional = true }
 
 # WASM target configuration
