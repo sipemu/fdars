@@ -1,0 +1,25 @@
+[package]
+name = "anofox-regression"
+version = "0.4.0"
+edition = "2021"
+description = "A robust statistics library for regression analysis"
+license = "MIT"
+authors = ["Simon M"]
+repository = "https://github.com/sipemu/anofox-regression"
+readme = "README.md"
+keywords = ["statistics", "regression", "linear-regression", "inference"]
+categories = ["science", "algorithms"]
+documentation = "https://docs.rs/anofox-regression"
+
+[dependencies]
+faer = { version = "0.23", default-features = false, features = ["std", "linalg"] }
+statrs = "0.18"
+thiserror = "2.0"
+argmin = { version = "0.11", default-features = false }
+argmin-math = { version = "0.5", default-features = false, features = ["vec"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[dev-dependencies]
+approx = "0.5"

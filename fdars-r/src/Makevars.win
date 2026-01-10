@@ -14,7 +14,9 @@ $(SHLIB): $(STATLIB) $(OBJECTS)
 
 $(STATLIB):
 	rustc --version
-	cd $(RUST_SRC) && set CARGO_TARGET_DIR=target && cargo build --release --lib --target $(RUST_TARGET)
+	mkdir -p $(RUST_SRC)/.cargo
+	cp $(RUST_SRC)/cargo_vendor_config.toml $(RUST_SRC)/.cargo/config.toml
+	cd $(RUST_SRC) && set CARGO_TARGET_DIR=target && cargo build --release --lib --target $(RUST_TARGET) --offline -j 2
 
 clean:
-	rm -Rf $(OBJECTS) $(RUST_SRC)/target
+	rm -Rf $(OBJECTS) $(RUST_SRC)/target $(RUST_SRC)/.cargo

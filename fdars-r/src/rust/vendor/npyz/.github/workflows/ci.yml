@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [ stable, nightly ]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        name: Toolchain setup
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        name: Build without features
+        with:
+          command: build
+          args: --workspace --all-targets
+      - uses: actions-rs/cargo@v1
+        name: Test
+        with:
+          command: test
+          # NOTE: Not --all-targets because we don't want to do benches
+          # (when using the 'bencher' crate, 'cargo test --benches' will run the complete benchmark
+          #  using the 'dev' profile! :scream-cat:)
+          args: --workspace --all-features --lib --bins --examples --tests
+      # --all-targets doesn't do doctests
+      - uses: actions-rs/cargo@v1
+        name: Doctest
+        with:
+          command: test
+          args: --workspace --all-features --doc
+      - uses: actions-rs/cargo@v1
+        name: Bench
+        with:
+          command: bench
+          args: --workspace --all-features
+      - name: WASM
+        run: >
+          # Get wasm pack
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          ./run_wasm_tests.sh
