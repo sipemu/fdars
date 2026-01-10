@@ -2,51 +2,42 @@
 
 ## R CMD check results
 
-0 errors | 1 warning | 6 notes
+0 errors | 1 warning | 5 notes
 
 ### WARNING
 
 1. **checkbashisms script not available**
-
-   ```
-   A complete check needs the 'checkbashisms' script.
-   ```
-
-   This is a system tool availability issue, not a package issue.
-   The configure script uses portable POSIX shell syntax.
+   - System tool availability issue, not a package issue.
+   - The configure script uses portable POSIX shell syntax.
 
 ### NOTEs
 
 1. **New submission**
    - This is a new submission to CRAN.
-   - Package size (~46MB) is larger due to vendored Rust crate sources.
+   - Package size (~40MB) is due to vendored Rust crate sources.
 
 2. **Hidden files in vendor directory**
-   - Only `.cargo-checksum.json` files remain (required by Cargo for vendored
-     builds). All other hidden files have been removed.
-   - These are standard for Rust packages following CRAN's vendoring
-     recommendations.
+   - Only `.cargo-checksum.json` files remain. These are **required** by Cargo
+     for vendored builds - without them, the offline build fails with checksum
+     verification errors.
+   - This follows CRAN's Rust vendoring recommendations at
+     https://cran.r-project.org/web/packages/using_rust.html
+   - Other accepted CRAN packages with Rust (gifski, string2path) have the
+     same `.cargo-checksum.json` files.
 
-3. **Non-portable file paths**
-   - A few files in `windows-sys` vendor crate have paths >100 bytes.
-   - These are Windows API bindings required for Windows builds.
-
-4. **Compiled code contains exit/abort**
-
-   ```
-   Found '_exit', 'abort', 'exit' in rust/target/release/libfdars.a
-   ```
-
-   These symbols come from the Rust standard library's panic handling
-   infrastructure. They are unreachable in normal operation:
-   - All Rust code uses proper error handling via `Result` types
-   - Panics are caught at the R-Rust boundary by extendr
-   - No user-facing code path leads to these functions
-
-5. **Non-portable compilation flags**
+3. **Non-portable compilation flags**
    - These flags come from the system R configuration, not from the package.
 
-6. **HTML tidy not available**
+4. **Compiled code contains exit/abort**
+   - These symbols come from the Rust standard library's panic handling
+     infrastructure and are present in all Rust-based packages on CRAN.
+   - They are unreachable in normal operation:
+     - All Rust code uses proper error handling via `Result` types
+     - Panics are caught at the R-Rust boundary by extendr
+     - The extendr framework converts Rust panics to R errors safely
+   - This is standard for Rust packages and does not affect package safety.
+
+5. **HTML tidy not available**
    - System tool availability issue, not a package issue.
 
 ## Changes Since Last Submission
@@ -54,9 +45,11 @@
 - Updated extendr-api from 0.7 to 0.8.1
   - **Fixes non-API R calls** (BODY, CLOENV, DATAPTR, ENCLOS, FORMALS)
   - Uses new extendr-ffi crate instead of libR-sys
-- Removed all non-essential hidden files from vendor directory
-- Removed GNU Makefile from r-efi vendor crate
-- Removed test directories with long file paths (regex-automata, zerocopy)
+- **Removed all test/bench directories from vendored crates**
+  - Fixes non-portable file path issues (paths >100 bytes)
+  - Reduces package size from 46MB to 40MB
+- Removed all non-essential hidden files (.github, .vim, etc.)
+- Updated vendored dependencies to use versioned directory names
 
 ## Package Description
 
