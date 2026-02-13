@@ -1,6 +1,6 @@
 [package]
 name = "fdars-core"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["Simon Muller"]
 description = "Functional Data Analysis algorithms in Rust"
@@ -14,9 +14,6 @@ categories = ["science", "mathematics"]
 # CRAN Windows uses Rust 1.81.0, so we need compatible dependencies
 rust-version = "1.81"
 
-# Empty workspace table prevents Cargo from searching for parent workspace
-# This is needed for R CMD check which copies package to a temp directory
-[workspace]
 
 [features]
 # Note: linalg is not in default because it requires Rust 1.84+ (faer 0.23+ dependency)
