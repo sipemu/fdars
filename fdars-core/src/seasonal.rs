@@ -321,6 +321,11 @@ fn interior_bounds(m: usize) -> Option<(usize, usize)> {
     }
 }
 
+/// Validate interior bounds with minimum span requirement.
+fn valid_interior_bounds(m: usize, min_span: usize) -> Option<(usize, usize)> {
+    interior_bounds(m).filter(|&(s, e)| e > s + min_span)
+}
+
 /// Compute periodogram from data using FFT.
 /// Returns (frequencies, power) where frequencies are in cycles per unit time.
 fn periodogram(data: &[f64], argvals: &[f64]) -> (Vec<f64>, Vec<f64>) {
@@ -384,6 +389,15 @@ fn autocorrelation(data: &[f64], max_lag: usize) -> Vec<f64> {
     acf
 }
 
+/// Try to add a peak, respecting minimum distance. Replaces previous peak if closer but higher.
+fn try_add_peak(peaks: &mut Vec<usize>, candidate: usize, signal: &[f64], min_distance: usize) {
+    if peaks.is_empty() || candidate - *peaks.last().unwrap() >= min_distance {
+        peaks.push(candidate);
+    } else if signal[candidate] > signal[*peaks.last().unwrap()] {
+        *peaks.last_mut().unwrap() = candidate;
+    }
+}
+
 /// Find peaks in a 1D signal, returning indices.
 fn find_peaks_1d(signal: &[f64], min_distance: usize) -> Vec<usize> {
     let n = signal.len();
@@ -395,14 +409,7 @@ fn find_peaks_1d(signal: &[f64], min_distance: usize) -> Vec<usize> {
 
     for i in 1..(n - 1) {
         if signal[i] > signal[i - 1] && signal[i] > signal[i + 1] {
-            // Check minimum distance from previous peak
-            if peaks.is_empty() || i - peaks[peaks.len() - 1] >= min_distance {
-                peaks.push(i);
-            } else if signal[i] > signal[peaks[peaks.len() - 1]] {
-                // Replace previous peak if this one is higher
-                peaks.pop();
-                peaks.push(i);
-            }
+            try_add_peak(&mut peaks, i, signal, min_distance);
         }
     }
 
@@ -800,32 +807,33 @@ fn count_agreeing_periods(periods: &[f64], reference: f64, tolerance: f64) -> (u
     (count, sum)
 }
 
+/// Find the end of the initial ACF descent (first negative or first uptick).
+fn find_acf_descent_end(acf: &[f64]) -> usize {
+    for i in 1..acf.len() {
+        if acf[i] < 0.0 {
+            return i;
+        }
+        if i > 1 && acf[i] > acf[i - 1] {
+            return i - 1;
+        }
+    }
+    1
+}
+
 /// Find the first ACF peak after initial descent. Returns Some((lag, acf_value)).
 fn find_first_acf_peak(acf: &[f64]) -> Option<(usize, f64)> {
     if acf.len() < 4 {
         return None;
     }
 
-    let mut min_search_start = 1;
-    for i in 1..acf.len() {
-        if acf[i] < 0.0 {
-            min_search_start = i;
-            break;
-        }
-        if i > 1 && acf[i] > acf[i - 1] {
-            min_search_start = i - 1;
-            break;
-        }
-    }
-
+    let min_search_start = find_acf_descent_end(acf);
     let peaks = find_peaks_1d(&acf[min_search_start..], 1);
     if peaks.is_empty() {
         return None;
     }
 
     let peak_lag = peaks[0] + min_search_start;
-    let acf_value = acf[peak_lag].max(0.0);
-    Some((peak_lag, acf_value))
+    Some((peak_lag, acf[peak_lag].max(0.0)))
 }
 
 /// Compute per-cycle seasonal strengths and identify weak seasons.
@@ -1955,22 +1963,19 @@ pub fn detect_amplitude_modulation(
         .collect();
 
     // Step 5: Analyze envelope statistics
-    let (interior_start, interior_end) = match interior_bounds(m) {
-        Some((s, e)) if e > s + 4 => (s, e),
-        _ => {
-            return AmplitudeModulationResult {
-                is_seasonal: true,
-                seasonal_strength: overall_strength,
-                has_modulation: false,
-                modulation_type: ModulationType::Stable,
-                modulation_score: 0.0,
-                amplitude_trend: 0.0,
-                strength_curve: envelope,
-                time_points: argvals.to_vec(),
-                min_strength: 0.0,
-                max_strength: 0.0,
-            };
-        }
+    let Some((interior_start, interior_end)) = valid_interior_bounds(m, 4) else {
+        return AmplitudeModulationResult {
+            is_seasonal: true,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::Stable,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            strength_curve: envelope,
+            time_points: argvals.to_vec(),
+            min_strength: 0.0,
+            max_strength: 0.0,
+        };
     };
 
     let stats = analyze_amplitude_envelope(
@@ -2090,21 +2095,18 @@ pub fn detect_amplitude_modulation_wavelet(
     let wavelet_amplitude: Vec<f64> = wavelet_coeffs.iter().map(|c| c.norm()).collect();
 
     // Step 5: Analyze amplitude envelope statistics (skip edges)
-    let (interior_start, interior_end) = match interior_bounds(m) {
-        Some((s, e)) if e > s + 4 => (s, e),
-        _ => {
-            return WaveletAmplitudeResult {
-                is_seasonal: true,
-                seasonal_strength: overall_strength,
-                has_modulation: false,
-                modulation_type: ModulationType::Stable,
-                modulation_score: 0.0,
-                amplitude_trend: 0.0,
-                wavelet_amplitude,
-                time_points: argvals.to_vec(),
-                scale,
-            };
-        }
+    let Some((interior_start, interior_end)) = valid_interior_bounds(m, 4) else {
+        return WaveletAmplitudeResult {
+            is_seasonal: true,
+            seasonal_strength: overall_strength,
+            has_modulation: false,
+            modulation_type: ModulationType::Stable,
+            modulation_score: 0.0,
+            amplitude_trend: 0.0,
+            wavelet_amplitude,
+            time_points: argvals.to_vec(),
+            scale,
+        };
     };
 
     let stats = analyze_amplitude_envelope(
@@ -2967,6 +2969,42 @@ pub struct AutoperiodCandidate {
     pub combined_score: f64,
 }
 
+fn empty_autoperiod_result() -> AutoperiodResult {
+    AutoperiodResult {
+        period: f64::NAN,
+        confidence: 0.0,
+        fft_power: 0.0,
+        acf_validation: 0.0,
+        candidates: Vec::new(),
+    }
+}
+
+/// Build an autoperiod candidate from a spectral peak, refining with gradient ascent on ACF.
+fn build_autoperiod_candidate(
+    peak_idx: usize,
+    frequencies: &[f64],
+    power_no_dc: &[f64],
+    acf: &[f64],
+    dt: f64,
+    steps: usize,
+    total_power: f64,
+) -> Option<AutoperiodCandidate> {
+    let freq = frequencies[peak_idx + 1];
+    if freq < 1e-15 {
+        return None;
+    }
+    let fft_power = power_no_dc[peak_idx];
+    let normalized_power = fft_power / total_power.max(1e-15);
+    let refined_period = refine_period_gradient(acf, 1.0 / freq, dt, steps);
+    let refined_acf_score = validate_period_acf(acf, refined_period, dt);
+    Some(AutoperiodCandidate {
+        period: refined_period,
+        fft_power,
+        acf_score: refined_acf_score,
+        combined_score: normalized_power * refined_acf_score,
+    })
+}
+
 /// Autoperiod: Hybrid FFT + ACF Period Detection
 ///
 /// Implements the Autoperiod algorithm (Vlachos et al. 2005) which:
@@ -2998,13 +3036,7 @@ pub fn autoperiod(
     let steps = gradient_steps.unwrap_or(10);
 
     if n < 8 || argvals.len() != n {
-        return AutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            fft_power: 0.0,
-            acf_validation: 0.0,
-            candidates: Vec::new(),
-        };
+        return empty_autoperiod_result();
     }
 
     let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
@@ -3014,13 +3046,7 @@ pub fn autoperiod(
     let (frequencies, power) = periodogram(data, argvals);
 
     if frequencies.len() < 3 {
-        return AutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            fft_power: 0.0,
-            acf_validation: 0.0,
-            candidates: Vec::new(),
-        };
+        return empty_autoperiod_result();
     }
 
     // Find top spectral peaks
@@ -3028,56 +3054,32 @@ pub fn autoperiod(
     let peak_indices = find_spectral_peaks(&power_no_dc);
 
     if peak_indices.is_empty() {
-        return AutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            fft_power: 0.0,
-            acf_validation: 0.0,
-            candidates: Vec::new(),
-        };
+        return empty_autoperiod_result();
     }
 
     // Step 2: Compute ACF for validation
     let acf = autocorrelation(data, max_lag);
 
     // Step 3: Validate each candidate and refine with gradient ascent
-    let mut candidates: Vec<AutoperiodCandidate> = Vec::new();
     let total_power: f64 = power_no_dc.iter().sum();
-
-    for &peak_idx in peak_indices.iter().take(max_candidates) {
-        let freq = frequencies[peak_idx + 1];
-        if freq < 1e-15 {
-            continue;
-        }
-
-        let initial_period = 1.0 / freq;
-        let fft_power = power_no_dc[peak_idx];
-        let normalized_power = fft_power / total_power.max(1e-15);
-
-        // Refine period using gradient ascent on ACF
-        let refined_period = refine_period_gradient(&acf, initial_period, dt, steps);
-
-        // Revalidate refined period
-        let refined_acf_score = validate_period_acf(&acf, refined_period, dt);
-
-        let combined_score = normalized_power * refined_acf_score;
-
-        candidates.push(AutoperiodCandidate {
-            period: refined_period,
-            fft_power,
-            acf_score: refined_acf_score,
-            combined_score,
-        });
-    }
+    let candidates: Vec<AutoperiodCandidate> = peak_indices
+        .iter()
+        .take(max_candidates)
+        .filter_map(|&peak_idx| {
+            build_autoperiod_candidate(
+                peak_idx,
+                &frequencies,
+                &power_no_dc,
+                &acf,
+                dt,
+                steps,
+                total_power,
+            )
+        })
+        .collect();
 
     if candidates.is_empty() {
-        return AutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            fft_power: 0.0,
-            acf_validation: 0.0,
-            candidates: Vec::new(),
-        };
+        return empty_autoperiod_result();
     }
 
     // Select best candidate based on combined score
@@ -3234,6 +3236,39 @@ fn validate_cfd_candidates(clusters: &[(f64, f64)], acf: &[f64], dt: f64) -> Vec
         .collect()
 }
 
+/// Validate cluster candidates with ACF, falling back to best cluster if none pass.
+fn validate_or_fallback_cfd(
+    validated: Vec<(f64, f64, f64)>,
+    candidates: &[(f64, f64)],
+    tol: f64,
+    min_size: usize,
+) -> Vec<(f64, f64, f64)> {
+    if !validated.is_empty() {
+        return validated;
+    }
+    // Fallback: pick highest-power cluster without ACF validation
+    cluster_periods(candidates, tol, min_size)
+        .into_iter()
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(center, power_sum)| vec![(center, 0.0, power_sum)])
+        .unwrap_or_default()
+}
+
+/// Rank validated results by combined score (acf * power).
+/// Returns (periods, confidences, top_acf_validation).
+fn rank_cfd_results(validated: &[(f64, f64, f64)]) -> (Vec<f64>, Vec<f64>, f64) {
+    let mut sorted: Vec<_> = validated.to_vec();
+    sorted.sort_by(|a, b| {
+        (b.1 * b.2)
+            .partial_cmp(&(a.1 * a.2))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let top_acf = sorted[0].1;
+    let periods = sorted.iter().map(|v| v.0).collect();
+    let confidences = sorted.iter().map(|v| v.1 * v.2).collect();
+    (periods, confidences, top_acf)
+}
+
 fn empty_cfd_result() -> CfdAutoperiodResult {
     CfdAutoperiodResult {
         period: f64::NAN,
@@ -3241,6 +3276,27 @@ fn empty_cfd_result() -> CfdAutoperiodResult {
         acf_validation: 0.0,
         periods: Vec::new(),
         confidences: Vec::new(),
+    }
+}
+
+/// Extract spectral candidates from differenced data: difference, periodogram, peak-find, generate.
+fn extract_cfd_spectral_candidates(data: &[f64], argvals: &[f64]) -> Option<Vec<(f64, f64)>> {
+    let diff: Vec<f64> = data.windows(2).map(|w| w[1] - w[0]).collect();
+    let diff_argvals: Vec<f64> = argvals.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+    let (frequencies, power) = periodogram(&diff, &diff_argvals);
+    if frequencies.len() < 3 {
+        return None;
+    }
+    let power_no_dc: Vec<f64> = power.iter().skip(1).copied().collect();
+    let peak_indices = find_spectral_peaks(&power_no_dc);
+    if peak_indices.is_empty() {
+        return None;
+    }
+    let candidates = generate_cfd_candidates(&frequencies, &power_no_dc, &peak_indices);
+    if candidates.is_empty() {
+        None
+    } else {
+        Some(candidates)
     }
 }
 
@@ -3281,71 +3337,24 @@ pub fn cfd_autoperiod(
     let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
     let max_lag = (n / 2).max(4);
 
-    // Step 1: Apply first-order differencing to detrend
-    let diff: Vec<f64> = data.windows(2).map(|w| w[1] - w[0]).collect();
-    let diff_argvals: Vec<f64> = argvals.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
-
-    // Step 2: Compute periodogram on detrended signal
-    let (frequencies, power) = periodogram(&diff, &diff_argvals);
-
-    if frequencies.len() < 3 {
+    let Some(candidates) = extract_cfd_spectral_candidates(data, argvals) else {
         return empty_cfd_result();
-    }
+    };
 
-    // Step 3: Find all candidate periods from spectral peaks
-    let power_no_dc: Vec<f64> = power.iter().skip(1).copied().collect();
-    let peak_indices = find_spectral_peaks(&power_no_dc);
-
-    if peak_indices.is_empty() {
-        return empty_cfd_result();
-    }
-
-    let candidates = generate_cfd_candidates(&frequencies, &power_no_dc, &peak_indices);
-    if candidates.is_empty() {
-        return empty_cfd_result();
-    }
-
-    // Step 4: Cluster candidates using density-based approach
     let clusters = cluster_periods(&candidates, tol, min_size);
     if clusters.is_empty() {
         return empty_cfd_result();
     }
 
-    // Step 5: Validate cluster centers using ACF on original signal
     let acf = autocorrelation(data, max_lag);
-    let mut validated = validate_cfd_candidates(&clusters, &acf, dt);
-
-    if validated.is_empty() {
-        // Fall back to best cluster without ACF validation
-        let (center, power_sum) = cluster_periods(&candidates, tol, min_size)
-            .into_iter()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .unwrap();
-        return CfdAutoperiodResult {
-            period: center,
-            confidence: power_sum,
-            acf_validation: 0.0,
-            periods: vec![center],
-            confidences: vec![power_sum],
-        };
-    }
-
-    // Sort by combined score (ACF * power)
-    validated.sort_by(|a, b| {
-        let score_a = a.1 * a.2;
-        let score_b = b.1 * b.2;
-        score_b
-            .partial_cmp(&score_a)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    let periods: Vec<f64> = validated.iter().map(|v| v.0).collect();
-    let confidences: Vec<f64> = validated.iter().map(|v| v.1 * v.2).collect();
+    let validated = validate_cfd_candidates(&clusters, &acf, dt);
+    let validated = validate_or_fallback_cfd(validated, &candidates, tol, min_size);
+    let (periods, confidences, top_acf) = rank_cfd_results(&validated);
 
     CfdAutoperiodResult {
-        period: validated[0].0,
-        confidence: validated[0].1 * validated[0].2,
-        acf_validation: validated[0].1,
+        period: periods[0],
+        confidence: confidences[0],
+        acf_validation: top_acf,
         periods,
         confidences,
     }
@@ -4291,6 +4300,43 @@ fn svd_decompose(trajectory: &[f64], l: usize, k: usize) -> (Vec<f64>, Vec<f64>,
     (u, sigma_vec, vt)
 }
 
+enum SsaComponentKind {
+    Trend,
+    Seasonal(f64),
+    Noise,
+}
+
+/// Classify an SSA component as trend, seasonal, or noise.
+fn classify_ssa_component(u_col: &[f64], trend_count: usize) -> SsaComponentKind {
+    if is_trend_component(u_col) && trend_count < 2 {
+        SsaComponentKind::Trend
+    } else {
+        let (is_periodic, period) = is_periodic_component(u_col);
+        if is_periodic {
+            SsaComponentKind::Seasonal(period)
+        } else {
+            SsaComponentKind::Noise
+        }
+    }
+}
+
+/// Apply default groupings when auto-detection finds nothing.
+fn apply_ssa_grouping_defaults(
+    trend_idx: &mut Vec<usize>,
+    seasonal_idx: &mut Vec<usize>,
+    n_comp: usize,
+) {
+    if trend_idx.is_empty() && n_comp > 0 {
+        trend_idx.push(0);
+    }
+    if seasonal_idx.is_empty() && n_comp >= 3 {
+        seasonal_idx.push(1);
+        if n_comp > 2 {
+            seasonal_idx.push(2);
+        }
+    }
+}
+
 /// Auto-detect trend and seasonal component groupings.
 fn auto_group_ssa_components(
     u: &[f64],
@@ -4304,41 +4350,22 @@ fn auto_group_ssa_components(
     let mut detected_period = 0.0;
     let mut confidence = 0.0;
 
-    // Analyze each component
     for i in 0..n_comp.min(sigma.len()) {
-        // Extract i-th column of U (left singular vector)
         let u_col: Vec<f64> = (0..l).map(|j| u[j + i * l]).collect();
-
-        // Check if component is trend-like (monotonic or slowly varying)
-        let is_trend = is_trend_component(&u_col);
-
-        // Check if component is periodic
-        let (is_periodic, period) = is_periodic_component(&u_col);
-
-        if is_trend && trend_idx.len() < 2 {
-            trend_idx.push(i);
-        } else if is_periodic {
-            seasonal_idx.push(i);
-            if detected_period == 0.0 && period > 0.0 {
-                detected_period = period;
-                confidence = sigma[i] / sigma[0].max(1e-15);
+        match classify_ssa_component(&u_col, trend_idx.len()) {
+            SsaComponentKind::Trend => trend_idx.push(i),
+            SsaComponentKind::Seasonal(period) => {
+                seasonal_idx.push(i);
+                if detected_period == 0.0 && period > 0.0 {
+                    detected_period = period;
+                    confidence = sigma[i] / sigma[0].max(1e-15);
+                }
             }
+            SsaComponentKind::Noise => {}
         }
     }
 
-    // If no trend detected, use first component
-    if trend_idx.is_empty() && n_comp > 0 {
-        trend_idx.push(0);
-    }
-
-    // If no seasonal detected, use components 2-3 (often harmonic pairs)
-    if seasonal_idx.is_empty() && n_comp >= 3 {
-        seasonal_idx.push(1);
-        if n_comp > 2 {
-            seasonal_idx.push(2);
-        }
-    }
-
+    apply_ssa_grouping_defaults(&mut trend_idx, &mut seasonal_idx, n_comp);
     (trend_idx, seasonal_idx, detected_period, confidence)
 }
 

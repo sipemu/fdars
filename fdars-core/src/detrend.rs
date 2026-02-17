@@ -210,6 +210,30 @@ fn diff_single_curve(curve: &[f64], m: usize, order: usize) -> (Vec<f64>, Vec<f6
     (trend, det_full, initial_values, rss)
 }
 
+/// Reassemble per-curve polynomial results into column-major output arrays.
+fn reassemble_polynomial_results(
+    results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)>,
+    n: usize,
+    m: usize,
+    n_coef: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let mut trend = vec![0.0; n * m];
+    let mut detrended = vec![0.0; n * m];
+    let mut coefficients = vec![0.0; n * n_coef];
+    let mut rss = vec![0.0; n];
+    for (i, (t, d, coefs, r)) in results.into_iter().enumerate() {
+        for j in 0..m {
+            trend[i + j * n] = t[j];
+            detrended[i + j * n] = d[j];
+        }
+        for k in 0..n_coef {
+            coefficients[i * n_coef + k] = coefs[k];
+        }
+        rss[i] = r;
+    }
+    (trend, detrended, coefficients, rss)
+}
+
 /// Remove polynomial trend from functional data using QR decomposition.
 ///
 /// # Arguments
@@ -273,22 +297,8 @@ pub fn detrend_polynomial(
         })
         .collect();
 
-    // Reassemble into column-major format
-    let mut trend = vec![0.0; n * m];
-    let mut detrended = vec![0.0; n * m];
-    let mut coefficients = vec![0.0; n * n_coef];
-    let mut rss = vec![0.0; n];
-
-    for (i, (t, d, coefs, r)) in results.into_iter().enumerate() {
-        for j in 0..m {
-            trend[i + j * n] = t[j];
-            detrended[i + j * n] = d[j];
-        }
-        for k in 0..n_coef {
-            coefficients[i * n_coef + k] = coefs[k];
-        }
-        rss[i] = r;
-    }
+    let (trend, detrended, coefficients, rss) =
+        reassemble_polynomial_results(results, n, m, n_coef);
 
     TrendResult {
         trend,
@@ -515,6 +525,35 @@ pub fn auto_detrend(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> TrendR
     best_result
 }
 
+/// Fit Fourier harmonics to detrended data, returning (seasonal, remainder).
+fn fit_fourier_seasonal(
+    detrended_i: &[f64],
+    argvals: &[f64],
+    omega: f64,
+    n_harm: usize,
+    m: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let n_coef = 2 * n_harm;
+    let mut design = DMatrix::zeros(m, n_coef);
+    for j in 0..m {
+        let t = argvals[j];
+        for k in 0..n_harm {
+            let freq = (k + 1) as f64 * omega;
+            design[(j, 2 * k)] = (freq * t).cos();
+            design[(j, 2 * k + 1)] = (freq * t).sin();
+        }
+    }
+    let y = DVector::from_row_slice(detrended_i);
+    let svd = design.clone().svd(true, true);
+    let coef = svd
+        .solve(&y, 1e-10)
+        .unwrap_or_else(|_| DVector::zeros(n_coef));
+    let fitted = &design * &coef;
+    let seasonal: Vec<f64> = fitted.iter().cloned().collect();
+    let remainder: Vec<f64> = (0..m).map(|j| detrended_i[j] - seasonal[j]).collect();
+    (seasonal, remainder)
+}
+
 /// Additive seasonal decomposition: data = trend + seasonal + remainder
 ///
 /// Uses LOESS or spline for trend extraction, then averages within-period
@@ -552,14 +591,9 @@ pub fn decompose_additive(
         };
     }
 
-    // Step 1: Extract trend using LOESS or spline
-    let trend_result = match trend_method {
-        "spline" => {
-            // Use P-spline fitting - use a larger bandwidth for trend
-            detrend_loess(data, n, m, argvals, bandwidth.max(0.3), 2)
-        }
-        _ => detrend_loess(data, n, m, argvals, bandwidth.max(0.3), 2),
-    };
+    // Step 1: Extract trend using LOESS (trend_method parameter preserved for API compatibility)
+    let _ = trend_method;
+    let trend_result = detrend_loess(data, n, m, argvals, bandwidth.max(0.3), 2);
 
     // Step 2: Extract seasonal component using Fourier basis on detrended data
     let n_harm = n_harmonics.max(1).min(m / 4);
@@ -570,34 +604,8 @@ pub fn decompose_additive(
         .map(|i| {
             let trend_i: Vec<f64> = (0..m).map(|j| trend_result.trend[i + j * n]).collect();
             let detrended_i: Vec<f64> = (0..m).map(|j| trend_result.detrended[i + j * n]).collect();
-
-            // Fit Fourier model to detrended data: sum of sin and cos terms
-            // y = sum_k (a_k * cos(k*omega*t) + b_k * sin(k*omega*t))
-            let n_coef = 2 * n_harm;
-            let mut design = DMatrix::zeros(m, n_coef);
-            for j in 0..m {
-                let t = argvals[j];
-                for k in 0..n_harm {
-                    let freq = (k + 1) as f64 * omega;
-                    design[(j, 2 * k)] = (freq * t).cos();
-                    design[(j, 2 * k + 1)] = (freq * t).sin();
-                }
-            }
-
-            // Solve least squares using SVD
-            let y = DVector::from_row_slice(&detrended_i);
-            let svd = design.clone().svd(true, true);
-            let coef = svd
-                .solve(&y, 1e-10)
-                .unwrap_or_else(|_| DVector::zeros(n_coef));
-
-            // Compute seasonal component
-            let fitted = &design * &coef;
-            let seasonal: Vec<f64> = fitted.iter().cloned().collect();
-
-            // Compute remainder
-            let remainder: Vec<f64> = (0..m).map(|j| detrended_i[j] - seasonal[j]).collect();
-
+            let (seasonal, remainder) =
+                fit_fourier_seasonal(&detrended_i, argvals, omega, n_harm, m);
             (trend_i, seasonal, remainder)
         })
         .collect();

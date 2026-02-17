@@ -159,6 +159,38 @@ fn pls_deflate_x(x_cen: &mut [f64], t: &[f64], p: &[f64], n: usize, m: usize) {
     }
 }
 
+/// Execute one NIPALS step: compute weights/scores/loadings and deflate X and y.
+fn pls_nipals_step(
+    k: usize,
+    x_cen: &mut [f64],
+    y_cen: &mut [f64],
+    n: usize,
+    m: usize,
+    weights: &mut [f64],
+    scores: &mut [f64],
+    loadings: &mut [f64],
+) {
+    let w = pls_compute_weights(x_cen, y_cen, n, m);
+    let t = pls_compute_scores(x_cen, &w, n, m);
+    let t_norm_sq: f64 = t.iter().map(|&ti| ti * ti).sum();
+    let p = pls_compute_loadings(x_cen, &t, n, m, t_norm_sq);
+
+    for j in 0..m {
+        weights[j + k * m] = w[j];
+        loadings[j + k * m] = p[j];
+    }
+    for i in 0..n {
+        scores[i + k * n] = t[i];
+    }
+
+    pls_deflate_x(x_cen, &t, &p, n, m);
+    let t_y: f64 = t.iter().zip(y_cen.iter()).map(|(&ti, &yi)| ti * yi).sum();
+    let q = t_y / t_norm_sq.max(1e-10);
+    for i in 0..n {
+        y_cen[i] -= t[i] * q;
+    }
+}
+
 /// Perform PLS via NIPALS algorithm.
 pub fn fdata_to_pls_1d(
     data: &[f64],
@@ -202,27 +234,16 @@ pub fn fdata_to_pls_1d(
 
     // NIPALS algorithm
     for k in 0..ncomp {
-        let w = pls_compute_weights(&x_cen, &y_cen, n, m);
-        let t = pls_compute_scores(&x_cen, &w, n, m);
-        let t_norm_sq: f64 = t.iter().map(|&ti| ti * ti).sum();
-        let p = pls_compute_loadings(&x_cen, &t, n, m, t_norm_sq);
-
-        // Store results
-        for j in 0..m {
-            weights[j + k * m] = w[j];
-            loadings[j + k * m] = p[j];
-        }
-        for i in 0..n {
-            scores[i + k * n] = t[i];
-        }
-
-        // Deflate X and y
-        pls_deflate_x(&mut x_cen, &t, &p, n, m);
-        let t_y: f64 = t.iter().zip(y_cen.iter()).map(|(&ti, &yi)| ti * yi).sum();
-        let q = t_y / t_norm_sq.max(1e-10);
-        for i in 0..n {
-            y_cen[i] -= t[i] * q;
-        }
+        pls_nipals_step(
+            k,
+            &mut x_cen,
+            &mut y_cen,
+            n,
+            m,
+            &mut weights,
+            &mut scores,
+            &mut loadings,
+        );
     }
 
     Some(PlsResult {

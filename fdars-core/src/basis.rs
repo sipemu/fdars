@@ -103,6 +103,27 @@ fn evaluate_order_zero(t_val: f64, knots: &[f64], t_max_knot_idx: usize) -> Vec<
     b0
 }
 
+/// Compute one order of B-spline recurrence from the previous order.
+fn bspline_recurrence_step(b: &[f64], knots: &[f64], t_val: f64, k: usize) -> Vec<f64> {
+    (0..(knots.len() - k))
+        .map(|j| {
+            let d1 = knots[j + k - 1] - knots[j];
+            let d2 = knots[j + k] - knots[j + 1];
+            let left = if d1.abs() > 1e-10 {
+                (t_val - knots[j]) / d1 * b[j]
+            } else {
+                0.0
+            };
+            let right = if d2.abs() > 1e-10 {
+                (knots[j + k] - t_val) / d2 * b[j + 1]
+            } else {
+                0.0
+            };
+            left + right
+        })
+        .collect()
+}
+
 /// Compute B-spline basis matrix for given knots and grid points.
 ///
 /// Creates a B-spline basis with uniformly spaced knots extended beyond the data range.
@@ -123,24 +144,7 @@ pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
         let mut b = evaluate_order_zero(t_val, &knots, t_max_knot_idx);
 
         for k in 2..=order {
-            let mut b_new = vec![0.0; knots.len() - k];
-            for j in 0..(knots.len() - k) {
-                let d1 = knots[j + k - 1] - knots[j];
-                let d2 = knots[j + k] - knots[j + 1];
-
-                let left = if d1.abs() > 1e-10 {
-                    (t_val - knots[j]) / d1 * b[j]
-                } else {
-                    0.0
-                };
-                let right = if d2.abs() > 1e-10 {
-                    (knots[j + k] - t_val) / d2 * b[j + 1]
-                } else {
-                    0.0
-                };
-                b_new[j] = left + right;
-            }
-            b = b_new;
+            b = bspline_recurrence_step(&b, &knots, t_val, k);
         }
 
         for j in 0..nbasis {
@@ -455,6 +459,20 @@ pub struct FourierFitResult {
     pub n_basis: usize,
 }
 
+/// Compute GCV, AIC, and BIC model selection criteria.
+fn compute_fit_criteria(total_rss: f64, total_points: f64, edf: f64, m: usize) -> (f64, f64, f64) {
+    let gcv_denom = 1.0 - edf / m as f64;
+    let gcv = if gcv_denom.abs() > 1e-10 {
+        (total_rss / total_points) / (gcv_denom * gcv_denom)
+    } else {
+        f64::INFINITY
+    };
+    let mse = total_rss / total_points;
+    let aic = total_points * mse.ln() + 2.0 * edf;
+    let bic = total_points * mse.ln() + total_points.ln() * edf;
+    (gcv, aic, bic)
+}
+
 /// Fit Fourier basis to functional data using least squares.
 ///
 /// Projects data onto Fourier basis and reconstructs fitted values.
@@ -517,18 +535,7 @@ pub fn fourier_fit_1d(
     }
 
     let total_points = (n * m) as f64;
-
-    // GCV: RSS / n * (1 - edf/m)^2
-    let gcv_denom = 1.0 - edf / m as f64;
-    let gcv = if gcv_denom.abs() > 1e-10 {
-        (total_rss / total_points) / (gcv_denom * gcv_denom)
-    } else {
-        f64::INFINITY
-    };
-
-    let mse = total_rss / total_points;
-    let aic = total_points * mse.ln() + 2.0 * edf;
-    let bic = total_points * mse.ln() + total_points.ln() * edf;
+    let (gcv, aic, bic) = compute_fit_criteria(total_rss, total_points, edf, m);
 
     Some(FourierFitResult {
         coefficients: all_coefs,
@@ -775,6 +782,32 @@ fn search_fourier_basis(
     best
 }
 
+/// Try a single P-spline fit and update best if it improves the score.
+fn try_pspline_fit_update(
+    curve: &[f64],
+    m: usize,
+    argvals: &[f64],
+    nb: usize,
+    lam: f64,
+    criterion: i32,
+    best: &mut Option<BasisSearchResult>,
+) {
+    if let Some((score, coefs, fitted, edf)) =
+        fit_curve_pspline(curve, m, argvals, nb, lam, 2, criterion)
+    {
+        if score.is_finite() && best.as_ref().map_or(true, |b| score < b.score) {
+            *best = Some(BasisSearchResult {
+                score,
+                nbasis: nb,
+                coefs,
+                fitted,
+                edf,
+                lambda: lam,
+            });
+        }
+    }
+}
+
 /// Search over P-spline basis sizes (and optionally lambda) for the best fit.
 fn search_pspline_basis(
     curve: &[f64],
@@ -795,20 +828,7 @@ fn search_pspline_basis(
             Box::new(std::iter::once(lambda))
         };
         for lam in lambdas {
-            if let Some((score, coefs, fitted, edf)) =
-                fit_curve_pspline(curve, m, argvals, nb, lam, 2, criterion)
-            {
-                if score.is_finite() && best.as_ref().map_or(true, |b| score < b.score) {
-                    best = Some(BasisSearchResult {
-                        score,
-                        nbasis: nb,
-                        coefs,
-                        fitted,
-                        edf,
-                        lambda: lam,
-                    });
-                }
-            }
+            try_pspline_fit_update(curve, m, argvals, nb, lam, criterion, &mut best);
         }
     }
     best

@@ -333,6 +333,28 @@ pub fn functional_spatial_2d(
     functional_spatial_1d(data_obj, data_ori, nobj, nori, n_points)
 }
 
+/// Compute kernel distance contribution for a single (j,k) pair.
+fn kernel_pair_contribution(j: usize, k: usize, m1: &[Vec<f64>], m2: &[f64]) -> Option<f64> {
+    let denom_j_sq = 2.0 - 2.0 * m2[j];
+    if denom_j_sq < 1e-20 {
+        return None;
+    }
+    let denom_k_sq = 2.0 - 2.0 * m2[k];
+    if denom_k_sq < 1e-20 {
+        return None;
+    }
+    let denom = denom_j_sq.sqrt() * denom_k_sq.sqrt();
+    if denom <= 1e-20 {
+        return None;
+    }
+    let m_ijk = (1.0 + m1[j][k] - m2[j] - m2[k]) / denom;
+    if m_ijk.is_finite() {
+        Some(m_ijk)
+    } else {
+        None
+    }
+}
+
 /// Accumulate the kernel spatial depth statistic for a single observation.
 /// Returns (total_sum, valid_count) from the double sum over reference pairs.
 fn kfsd_accumulate(m2: &[f64], m1: &[Vec<f64>], nori: usize) -> (f64, usize) {
@@ -340,28 +362,10 @@ fn kfsd_accumulate(m2: &[f64], m1: &[Vec<f64>], nori: usize) -> (f64, usize) {
     let mut valid_count = 0;
 
     for j in 0..nori {
-        let denom_j_sq = 2.0 - 2.0 * m2[j];
-        if denom_j_sq < 1e-20 {
-            continue;
-        }
-        let denom_j = denom_j_sq.sqrt();
-
         for k in 0..nori {
-            let denom_k_sq = 2.0 - 2.0 * m2[k];
-            if denom_k_sq < 1e-20 {
-                continue;
-            }
-            let denom_k = denom_k_sq.sqrt();
-
-            let numerator = 1.0 + m1[j][k] - m2[j] - m2[k];
-            let denom = denom_j * denom_k;
-
-            if denom > 1e-20 {
-                let m_ijk = numerator / denom;
-                if m_ijk.is_finite() {
-                    total_sum += m_ijk;
-                    valid_count += 1;
-                }
+            if let Some(val) = kernel_pair_contribution(j, k, m1, m2) {
+                total_sum += val;
+                valid_count += 1;
             }
         }
     }

@@ -346,6 +346,59 @@ fn compute_centers_and_global_mean(
     (centers, global_mean, counts)
 }
 
+/// Run one k-means iteration: assign clusters, update centers, compute movement.
+fn kmeans_step(
+    curves: &[Vec<f64>],
+    centers: &[Vec<f64>],
+    weights: &[f64],
+    k: usize,
+    m: usize,
+) -> (Vec<usize>, Vec<Vec<f64>>, f64) {
+    let new_cluster = assign_clusters(curves, centers, weights);
+    let new_centers = update_kmeans_centers(curves, &new_cluster, centers, k, m);
+    let max_movement = centers
+        .iter()
+        .zip(new_centers.iter())
+        .map(|(old, new)| l2_distance(old, new, weights))
+        .fold(0.0, f64::max);
+    (new_cluster, new_centers, max_movement)
+}
+
+/// Run the k-means iteration loop until convergence or max iterations.
+fn kmeans_iterate(
+    curves: &[Vec<f64>],
+    mut centers: Vec<Vec<f64>>,
+    weights: &[f64],
+    k: usize,
+    m: usize,
+    max_iter: usize,
+    tol: f64,
+) -> (Vec<usize>, Vec<Vec<f64>>, usize, bool) {
+    let n = curves.len();
+    let mut cluster = vec![0usize; n];
+    let mut converged = false;
+    let mut iter = 0;
+
+    for iteration in 0..max_iter {
+        iter = iteration + 1;
+        let (new_cluster, new_centers, max_movement) = kmeans_step(curves, &centers, weights, k, m);
+
+        if new_cluster == cluster {
+            converged = true;
+            break;
+        }
+        cluster = new_cluster;
+        centers = new_centers;
+
+        if max_movement < tol {
+            converged = true;
+            break;
+        }
+    }
+
+    (cluster, centers, iter, converged)
+}
+
 /// K-means clustering for functional data.
 ///
 /// # Arguments
@@ -385,38 +438,10 @@ pub fn kmeans_fd(
     let curves = extract_curves(data, n, m);
 
     // K-means++ initialization using helper
-    let mut centers = kmeans_plusplus_init(&curves, k, &weights, &mut rng);
+    let centers = kmeans_plusplus_init(&curves, k, &weights, &mut rng);
 
-    let mut cluster = vec![0usize; n];
-    let mut converged = false;
-    let mut iter = 0;
-
-    for iteration in 0..max_iter {
-        iter = iteration + 1;
-
-        let new_cluster = assign_clusters(&curves, &centers, &weights);
-
-        if new_cluster == cluster {
-            converged = true;
-            break;
-        }
-        cluster = new_cluster;
-
-        let new_centers = update_kmeans_centers(&curves, &cluster, &centers, k, m);
-
-        let max_movement: f64 = centers
-            .iter()
-            .zip(new_centers.iter())
-            .map(|(old, new)| l2_distance(old, new, &weights))
-            .fold(0.0, f64::max);
-
-        centers = new_centers;
-
-        if max_movement < tol {
-            converged = true;
-            break;
-        }
-    }
+    let (cluster, centers, iter, converged) =
+        kmeans_iterate(&curves, centers, &weights, k, m, max_iter, tol);
 
     let withinss = compute_within_ss(&curves, &centers, &cluster, k, &weights);
     let tot_withinss: f64 = withinss.iter().sum();

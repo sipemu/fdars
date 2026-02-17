@@ -576,36 +576,40 @@ pub fn fourier_cross_1d(
     distances
 }
 
+/// Compute weighted L2 distance at a given horizontal shift.
+/// Returns None if fewer than half the points are valid.
+fn shifted_l2_distance(x: &[f64], y: &[f64], weights: &[f64], shift: i32) -> Option<f64> {
+    let n = x.len();
+    let mut sum = 0.0;
+    let mut valid_points = 0;
+    for i in 0..n {
+        let j = i as i32 + shift;
+        if j >= 0 && (j as usize) < n {
+            let diff = x[i] - y[j as usize];
+            sum += weights[i] * diff * diff;
+            valid_points += 1;
+        }
+    }
+    if valid_points >= n / 2 {
+        Some(sum.sqrt())
+    } else {
+        None
+    }
+}
+
 /// Compute minimum L2 distance after horizontal shift between two curves.
 fn hshift_distance(x: &[f64], y: &[f64], weights: &[f64], max_shift: usize) -> f64 {
-    let n = x.len();
-    if n == 0 || y.len() != n || weights.len() != n {
+    if x.is_empty() || y.len() != x.len() || weights.len() != x.len() {
         return f64::INFINITY;
     }
-
     let mut min_dist = f64::INFINITY;
-
     for shift in -(max_shift as i32)..=(max_shift as i32) {
-        let mut sum = 0.0;
-        let mut valid_points = 0;
-
-        for i in 0..n {
-            let j = i as i32 + shift;
-            if j >= 0 && (j as usize) < n {
-                let diff = x[i] - y[j as usize];
-                sum += weights[i] * diff * diff;
-                valid_points += 1;
-            }
-        }
-
-        if valid_points >= n / 2 {
-            let dist = sum.sqrt();
+        if let Some(dist) = shifted_l2_distance(x, y, weights, shift) {
             if dist < min_dist {
                 min_dist = dist;
             }
         }
     }
-
     min_dist
 }
 
