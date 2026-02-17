@@ -678,18 +678,18 @@ pub fn hausdorff_3d(points1: &[(f64, f64, f64)], points2: &[(f64, f64, f64)]) ->
     h12.max(h21)
 }
 
-/// Compute Hausdorff self-distance for 2D surfaces.
-pub fn hausdorff_self_2d(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) -> FdMatrix {
+/// Extract 2D surface points from a matrix for Hausdorff distance computation.
+fn extract_surfaces(
+    data: &FdMatrix,
+    argvals_s: &[f64],
+    argvals_t: &[f64],
+) -> Vec<Vec<(f64, f64, f64)>> {
     let n = data.nrows();
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
-    let n_points = m1 * m2;
-    if n == 0 || n_points == 0 || data.ncols() != n_points {
-        return FdMatrix::zeros(0, 0);
-    }
-    let surfaces: Vec<Vec<(f64, f64, f64)>> = (0..n)
+    (0..n)
         .map(|curve| {
-            let mut points = Vec::with_capacity(n_points);
+            let mut points = Vec::with_capacity(m1 * m2);
             for i in 0..m1 {
                 for j in 0..m2 {
                     let k = i * m2 + j;
@@ -698,7 +698,17 @@ pub fn hausdorff_self_2d(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) 
             }
             points
         })
-        .collect();
+        .collect()
+}
+
+/// Compute Hausdorff self-distance for 2D surfaces.
+pub fn hausdorff_self_2d(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) -> FdMatrix {
+    let n = data.nrows();
+    let n_points = argvals_s.len() * argvals_t.len();
+    if n == 0 || n_points == 0 || data.ncols() != n_points {
+        return FdMatrix::zeros(0, 0);
+    }
+    let surfaces = extract_surfaces(data, argvals_s, argvals_t);
     let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
@@ -726,37 +736,13 @@ pub fn hausdorff_cross_2d(
 ) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
-    let m1 = argvals_s.len();
-    let m2 = argvals_t.len();
-    let n_points = m1 * m2;
+    let n_points = argvals_s.len() * argvals_t.len();
     if n1 == 0 || n2 == 0 || n_points == 0 || data1.ncols() != n_points || data2.ncols() != n_points
     {
         return FdMatrix::zeros(0, 0);
     }
-    let surfaces1: Vec<Vec<(f64, f64, f64)>> = (0..n1)
-        .map(|curve| {
-            let mut points = Vec::with_capacity(n_points);
-            for i in 0..m1 {
-                for j in 0..m2 {
-                    let k = i * m2 + j;
-                    points.push((argvals_s[i], argvals_t[j], data1[(curve, k)]));
-                }
-            }
-            points
-        })
-        .collect();
-    let surfaces2: Vec<Vec<(f64, f64, f64)>> = (0..n2)
-        .map(|curve| {
-            let mut points = Vec::with_capacity(n_points);
-            for i in 0..m1 {
-                for j in 0..m2 {
-                    let k = i * m2 + j;
-                    points.push((argvals_s[i], argvals_t[j], data2[(curve, k)]));
-                }
-            }
-            points
-        })
-        .collect();
+    let surfaces1 = extract_surfaces(data1, argvals_s, argvals_t);
+    let surfaces2 = extract_surfaces(data2, argvals_s, argvals_t);
     let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
