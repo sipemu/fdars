@@ -9,20 +9,70 @@ use nalgebra::{DMatrix, DVector, SVD};
 use rayon::iter::ParallelIterator;
 use std::f64::consts::PI;
 
-/// Compute B-spline basis matrix for given knots and grid points.
+/// Compute pseudoinverse of a symmetric matrix via SVD.
 ///
-/// Creates a B-spline basis with uniformly spaced knots extended beyond the data range.
-/// For order k and nknots interior knots, produces nknots + order basis functions.
-pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
-    let n = t.len();
-    // Total knots: order (left) + nknots (interior) + order (right) = 2*order + nknots
-    // Number of B-spline basis functions: total_knots - order = nknots + order
-    let nbasis = nknots + order;
+/// Uses singular value decomposition with threshold-based truncation
+/// for numerical stability with near-singular matrices.
+fn svd_pseudoinverse(mat: &DMatrix<f64>) -> Option<DMatrix<f64>> {
+    let n = mat.nrows();
+    let svd = SVD::new(mat.clone(), true, true);
+    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let eps = 1e-10 * max_sv;
 
-    let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
-    let t_max = t.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let u = svd.u.as_ref()?;
+    let v_t = svd.v_t.as_ref()?;
+
+    let s_inv: Vec<f64> = svd
+        .singular_values
+        .iter()
+        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
+        .collect();
+
+    let mut result = DMatrix::zeros(n, n);
+    for i in 0..n {
+        for j in 0..n {
+            let mut sum = 0.0;
+            for k in 0..n.min(s_inv.len()) {
+                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
+            }
+            result[(i, j)] = sum;
+        }
+    }
+
+    Some(result)
+}
+
+/// Compute model selection criterion (GCV, AIC, or BIC).
+///
+/// # Arguments
+/// * `rss` - Residual sum of squares
+/// * `n_points` - Number of data points
+/// * `edf` - Effective degrees of freedom
+/// * `criterion` - 0=GCV, 1=AIC, 2=BIC
+fn compute_model_criterion(rss: f64, n_points: f64, edf: f64, criterion: i32) -> f64 {
+    match criterion {
+        0 => {
+            let gcv_denom = 1.0 - edf / n_points;
+            if gcv_denom.abs() > 1e-10 {
+                (rss / n_points) / (gcv_denom * gcv_denom)
+            } else {
+                f64::INFINITY
+            }
+        }
+        1 => {
+            let mse = rss / n_points;
+            n_points * mse.ln() + 2.0 * edf
+        }
+        _ => {
+            let mse = rss / n_points;
+            n_points * mse.ln() + n_points.ln() * edf
+        }
+    }
+}
+
+/// Construct B-spline knot vector with extended boundary knots.
+fn construct_bspline_knots(t_min: f64, t_max: f64, nknots: usize, order: usize) -> Vec<f64> {
     let dt = (t_max - t_min) / (nknots - 1) as f64;
-
     let mut knots = Vec::with_capacity(nknots + 2 * order);
     for i in 0..order {
         knots.push(t_min - (order - i) as f64 * dt);
@@ -33,34 +83,45 @@ pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     for i in 1..=order {
         knots.push(t_max + i as f64 * dt);
     }
+    knots
+}
 
-    // Index of t_max in knot vector: it's the last interior knot
+/// Evaluate order-zero B-spline basis at a single point.
+fn evaluate_order_zero(t_val: f64, knots: &[f64], t_max_knot_idx: usize) -> Vec<f64> {
+    let mut b0 = vec![0.0; knots.len() - 1];
+    for j in 0..(knots.len() - 1) {
+        let in_interval = if j == t_max_knot_idx - 1 {
+            t_val >= knots[j] && t_val <= knots[j + 1]
+        } else {
+            t_val >= knots[j] && t_val < knots[j + 1]
+        };
+        if in_interval {
+            b0[j] = 1.0;
+            break;
+        }
+    }
+    b0
+}
+
+/// Compute B-spline basis matrix for given knots and grid points.
+///
+/// Creates a B-spline basis with uniformly spaced knots extended beyond the data range.
+/// For order k and nknots interior knots, produces nknots + order basis functions.
+pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
+    let n = t.len();
+    let nbasis = nknots + order;
+
+    let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
+    let t_max = t.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    let knots = construct_bspline_knots(t_min, t_max, nknots, order);
     let t_max_knot_idx = order + nknots - 1;
 
     let mut basis = vec![0.0; n * nbasis];
 
     for (ti, &t_val) in t.iter().enumerate() {
-        let mut b0 = vec![0.0; knots.len() - 1];
+        let mut b = evaluate_order_zero(t_val, &knots, t_max_knot_idx);
 
-        // Find which interval t_val belongs to
-        // Use half-open intervals [knots[j], knots[j+1]) except at t_max
-        // where we use the closed interval [knots[j], knots[j+1]]
-        for j in 0..(knots.len() - 1) {
-            let in_interval = if j == t_max_knot_idx - 1 {
-                // Last interior interval: use closed [t_max - dt, t_max]
-                t_val >= knots[j] && t_val <= knots[j + 1]
-            } else {
-                // Normal half-open interval [knots[j], knots[j+1])
-                t_val >= knots[j] && t_val < knots[j + 1]
-            };
-
-            if in_interval {
-                b0[j] = 1.0;
-                break;
-            }
-        }
-
-        let mut b = b0;
         for k in 2..=order {
             let mut b_new = vec![0.0; knots.len() - k];
             for j in 0..(knots.len() - k) {
@@ -214,31 +275,7 @@ pub fn fdata_to_basis_1d(
     let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
 
     let btb = &b_mat.transpose() * &b_mat;
-    let btb_svd = SVD::new(btb, true, true);
-
-    let max_sv = btb_svd.singular_values.iter().cloned().fold(0.0, f64::max);
-    let eps = 1e-10 * max_sv;
-
-    let s_inv: Vec<f64> = btb_svd
-        .singular_values
-        .iter()
-        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
-        .collect();
-
-    let v = btb_svd.v_t.as_ref()?.transpose();
-    let u_t = btb_svd.u.as_ref()?.transpose();
-
-    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
-    for i in 0..actual_nbasis {
-        for j in 0..actual_nbasis {
-            let mut sum = 0.0;
-            for k in 0..actual_nbasis.min(s_inv.len()) {
-                sum += v[(i, k)] * s_inv[k] * u_t[(k, j)];
-            }
-            btb_inv[(i, j)] = sum;
-        }
-    }
-
+    let btb_inv = svd_pseudoinverse(&btb)?;
     let proj = btb_inv * b_mat.transpose();
 
     let coefs: Vec<f64> = iter_maybe_parallel!(0..n)
@@ -345,31 +382,7 @@ pub fn pspline_fit_1d(
     let btb = &b_mat.transpose() * &b_mat;
     let btb_penalized = &btb + lambda * &penalty;
 
-    // Use SVD pseudoinverse for robustness with singular matrices
-    let svd = SVD::new(btb_penalized.clone(), true, true);
-    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
-    let eps = 1e-10 * max_sv;
-
-    let u = svd.u.as_ref()?;
-    let v_t = svd.v_t.as_ref()?;
-
-    let s_inv: Vec<f64> = svd
-        .singular_values
-        .iter()
-        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
-        .collect();
-
-    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
-    for i in 0..actual_nbasis {
-        for j in 0..actual_nbasis {
-            let mut sum = 0.0;
-            for k in 0..actual_nbasis.min(s_inv.len()) {
-                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
-            }
-            btb_inv[(i, j)] = sum;
-        }
-    }
-
+    let btb_inv = svd_pseudoinverse(&btb_penalized)?;
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
@@ -475,35 +488,8 @@ pub fn fourier_fit_1d(
     let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
 
     let btb = &b_mat.transpose() * &b_mat;
-
-    // Use SVD pseudoinverse for robustness
-    let svd = SVD::new(btb.clone(), true, true);
-    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
-    let eps = 1e-10 * max_sv;
-
-    let u = svd.u.as_ref()?;
-    let v_t = svd.v_t.as_ref()?;
-
-    let s_inv: Vec<f64> = svd
-        .singular_values
-        .iter()
-        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
-        .collect();
-
-    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
-    for i in 0..actual_nbasis {
-        for j in 0..actual_nbasis {
-            let mut sum = 0.0;
-            for k in 0..actual_nbasis.min(s_inv.len()) {
-                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
-            }
-            btb_inv[(i, j)] = sum;
-        }
-    }
-
+    let btb_inv = svd_pseudoinverse(&btb)?;
     let proj = &btb_inv * b_mat.transpose();
-
-    // For unpenalized fit, hat matrix H = B * (B'B)^{-1} * B'
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
@@ -675,7 +661,6 @@ fn fit_curve_fourier(
     nbasis: usize,
     criterion: i32,
 ) -> Option<(f64, Vec<f64>, Vec<f64>, f64)> {
-    // Ensure nbasis is odd
     let nbasis = if nbasis % 2 == 0 { nbasis + 1 } else { nbasis };
 
     let basis = fourier_basis(argvals, nbasis);
@@ -683,67 +668,17 @@ fn fit_curve_fourier(
     let b_mat = DMatrix::from_column_slice(m, actual_nbasis, &basis);
 
     let btb = &b_mat.transpose() * &b_mat;
-    let svd = SVD::new(btb.clone(), true, true);
-    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
-    let eps = 1e-10 * max_sv;
-
-    let u = svd.u.as_ref()?;
-    let v_t = svd.v_t.as_ref()?;
-
-    let s_inv: Vec<f64> = svd
-        .singular_values
-        .iter()
-        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
-        .collect();
-
-    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
-    for i in 0..actual_nbasis {
-        for j in 0..actual_nbasis {
-            let mut sum = 0.0;
-            for k in 0..actual_nbasis.min(s_inv.len()) {
-                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
-            }
-            btb_inv[(i, j)] = sum;
-        }
-    }
-
+    let btb_inv = svd_pseudoinverse(&btb)?;
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
     let curve_vec = DVector::from_column_slice(curve);
-    let bt_y = b_mat.transpose() * &curve_vec;
-    let coefs = &btb_inv * bt_y;
-
+    let coefs = &btb_inv * (b_mat.transpose() * &curve_vec);
     let fitted = &b_mat * &coefs;
-    let mut rss = 0.0;
-    for j in 0..m {
-        let resid = curve[j] - fitted[j];
-        rss += resid * resid;
-    }
 
-    let n_points = m as f64;
-    let score = match criterion {
-        0 => {
-            // GCV
-            let gcv_denom = 1.0 - edf / n_points;
-            if gcv_denom.abs() > 1e-10 {
-                (rss / n_points) / (gcv_denom * gcv_denom)
-            } else {
-                f64::INFINITY
-            }
-        }
-        1 => {
-            // AIC
-            let mse = rss / n_points;
-            n_points * mse.ln() + 2.0 * edf
-        }
-        _ => {
-            // BIC
-            let mse = rss / n_points;
-            n_points * mse.ln() + n_points.ln() * edf
-        }
-    };
+    let rss: f64 = (0..m).map(|j| (curve[j] - fitted[j]).powi(2)).sum();
+    let score = compute_model_criterion(rss, m as f64, edf, criterion);
 
     let coef_vec: Vec<f64> = (0..actual_nbasis).map(|k| coefs[k]).collect();
     let fitted_vec: Vec<f64> = (0..m).map(|j| fitted[j]).collect();
@@ -767,76 +702,116 @@ fn fit_curve_pspline(
 
     let d = difference_matrix(actual_nbasis, order);
     let penalty = &d.transpose() * &d;
-
     let btb = &b_mat.transpose() * &b_mat;
     let btb_penalized = &btb + lambda * &penalty;
 
-    let svd = SVD::new(btb_penalized.clone(), true, true);
-    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
-    let eps = 1e-10 * max_sv;
-
-    let u = svd.u.as_ref()?;
-    let v_t = svd.v_t.as_ref()?;
-
-    let s_inv: Vec<f64> = svd
-        .singular_values
-        .iter()
-        .map(|&s| if s > eps { 1.0 / s } else { 0.0 })
-        .collect();
-
-    let mut btb_inv = DMatrix::zeros(actual_nbasis, actual_nbasis);
-    for i in 0..actual_nbasis {
-        for j in 0..actual_nbasis {
-            let mut sum = 0.0;
-            for k in 0..actual_nbasis.min(s_inv.len()) {
-                sum += v_t[(k, i)] * s_inv[k] * u[(j, k)];
-            }
-            btb_inv[(i, j)] = sum;
-        }
-    }
-
+    let btb_inv = svd_pseudoinverse(&btb_penalized)?;
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
     let curve_vec = DVector::from_column_slice(curve);
-    let bt_y = b_mat.transpose() * &curve_vec;
-    let coefs = &btb_inv * bt_y;
-
+    let coefs = &btb_inv * (b_mat.transpose() * &curve_vec);
     let fitted = &b_mat * &coefs;
-    let mut rss = 0.0;
-    for j in 0..m {
-        let resid = curve[j] - fitted[j];
-        rss += resid * resid;
-    }
 
-    let n_points = m as f64;
-    let score = match criterion {
-        0 => {
-            // GCV
-            let gcv_denom = 1.0 - edf / n_points;
-            if gcv_denom.abs() > 1e-10 {
-                (rss / n_points) / (gcv_denom * gcv_denom)
-            } else {
-                f64::INFINITY
-            }
-        }
-        1 => {
-            // AIC
-            let mse = rss / n_points;
-            n_points * mse.ln() + 2.0 * edf
-        }
-        _ => {
-            // BIC
-            let mse = rss / n_points;
-            n_points * mse.ln() + n_points.ln() * edf
-        }
-    };
+    let rss: f64 = (0..m).map(|j| (curve[j] - fitted[j]).powi(2)).sum();
+    let score = compute_model_criterion(rss, m as f64, edf, criterion);
 
     let coef_vec: Vec<f64> = (0..actual_nbasis).map(|k| coefs[k]).collect();
     let fitted_vec: Vec<f64> = (0..m).map(|j| fitted[j]).collect();
 
     Some((score, coef_vec, fitted_vec, edf))
+}
+
+/// Result of a basis search for a single curve.
+struct BasisSearchResult {
+    score: f64,
+    nbasis: usize,
+    coefs: Vec<f64>,
+    fitted: Vec<f64>,
+    edf: f64,
+    lambda: f64,
+}
+
+/// Search over Fourier basis sizes for the best fit.
+fn search_fourier_basis(
+    curve: &[f64],
+    m: usize,
+    argvals: &[f64],
+    fourier_min: usize,
+    fourier_max: usize,
+    seasonal: bool,
+    criterion: i32,
+) -> Option<BasisSearchResult> {
+    let fourier_start = if seasonal {
+        fourier_min.max(5)
+    } else {
+        fourier_min
+    };
+    let mut nb = if fourier_start % 2 == 0 {
+        fourier_start + 1
+    } else {
+        fourier_start
+    };
+
+    let mut best: Option<BasisSearchResult> = None;
+    while nb <= fourier_max {
+        if let Some((score, coefs, fitted, edf)) =
+            fit_curve_fourier(curve, m, argvals, nb, criterion)
+        {
+            if score.is_finite() && best.as_ref().map_or(true, |b| score < b.score) {
+                best = Some(BasisSearchResult {
+                    score,
+                    nbasis: nb,
+                    coefs,
+                    fitted,
+                    edf,
+                    lambda: f64::NAN,
+                });
+            }
+        }
+        nb += 2;
+    }
+    best
+}
+
+/// Search over P-spline basis sizes (and optionally lambda) for the best fit.
+fn search_pspline_basis(
+    curve: &[f64],
+    m: usize,
+    argvals: &[f64],
+    pspline_min: usize,
+    pspline_max: usize,
+    lambda_grid: &[f64],
+    auto_lambda: bool,
+    lambda: f64,
+    criterion: i32,
+) -> Option<BasisSearchResult> {
+    let mut best: Option<BasisSearchResult> = None;
+    for nb in pspline_min..=pspline_max {
+        let lambdas: Box<dyn Iterator<Item = f64>> = if auto_lambda {
+            Box::new(lambda_grid.iter().copied())
+        } else {
+            Box::new(std::iter::once(lambda))
+        };
+        for lam in lambdas {
+            if let Some((score, coefs, fitted, edf)) =
+                fit_curve_pspline(curve, m, argvals, nb, lam, 2, criterion)
+            {
+                if score.is_finite() && best.as_ref().map_or(true, |b| score < b.score) {
+                    best = Some(BasisSearchResult {
+                        score,
+                        nbasis: nb,
+                        coefs,
+                        fitted,
+                        edf,
+                        lambda: lam,
+                    });
+                }
+            }
+        }
+    }
+    best
 }
 
 /// Select optimal basis type and parameters for each curve individually.
@@ -869,14 +844,12 @@ pub fn select_basis_auto_1d(
     lambda_pspline: f64,
     use_seasonal_hint: bool,
 ) -> BasisAutoSelectionResult {
-    // Determine nbasis ranges
     let fourier_min = if nbasis_min > 0 { nbasis_min.max(3) } else { 3 };
     let fourier_max = if nbasis_max > 0 {
         nbasis_max.min(m / 3).min(25)
     } else {
         (m / 3).min(25)
     };
-
     let pspline_min = if nbasis_min > 0 { nbasis_min.max(6) } else { 6 };
     let pspline_max = if nbasis_max > 0 {
         nbasis_max.min(m / 2).min(40)
@@ -884,104 +857,73 @@ pub fn select_basis_auto_1d(
         (m / 2).min(40)
     };
 
-    // Lambda grid for P-spline when auto-selecting
     let lambda_grid = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0];
     let auto_lambda = lambda_pspline < 0.0;
 
     let selections: Vec<SingleCurveSelection> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            // Extract single curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
-
-            // Detect seasonality if requested
             let seasonal_detected = if use_seasonal_hint {
                 detect_seasonality_fft(&curve)
             } else {
                 false
             };
 
-            let mut best_score = f64::INFINITY;
-            let mut best_basis_type = 0i32; // P-spline
-            let mut best_nbasis = pspline_min;
-            let mut best_coefs = Vec::new();
-            let mut best_fitted = Vec::new();
-            let mut best_edf = 0.0;
-            let mut best_lambda = f64::NAN;
+            let fourier_best = search_fourier_basis(
+                &curve,
+                m,
+                argvals,
+                fourier_min,
+                fourier_max,
+                seasonal_detected,
+                criterion,
+            );
+            let pspline_best = search_pspline_basis(
+                &curve,
+                m,
+                argvals,
+                pspline_min,
+                pspline_max,
+                &lambda_grid,
+                auto_lambda,
+                lambda_pspline,
+                criterion,
+            );
 
-            // Try Fourier bases
-            let fourier_start = if seasonal_detected {
-                fourier_min.max(5)
-            } else {
-                fourier_min
-            };
-            let mut nb = if fourier_start % 2 == 0 {
-                fourier_start + 1
-            } else {
-                fourier_start
-            };
-            while nb <= fourier_max {
-                if let Some((score, coefs, fitted, edf)) =
-                    fit_curve_fourier(&curve, m, argvals, nb, criterion)
-                {
-                    if score < best_score && score.is_finite() {
-                        best_score = score;
-                        best_basis_type = 1; // Fourier
-                        best_nbasis = nb;
-                        best_coefs = coefs;
-                        best_fitted = fitted;
-                        best_edf = edf;
-                        best_lambda = f64::NAN;
+            // Pick the best overall result
+            let (basis_type, result) = match (fourier_best, pspline_best) {
+                (Some(f), Some(p)) => {
+                    if f.score <= p.score {
+                        (1i32, f)
+                    } else {
+                        (0i32, p)
                     }
                 }
-                nb += 2;
-            }
-
-            // Try P-spline bases
-            for nb in pspline_min..=pspline_max {
-                if auto_lambda {
-                    // Search over lambda grid
-                    for &lam in &lambda_grid {
-                        if let Some((score, coefs, fitted, edf)) =
-                            fit_curve_pspline(&curve, m, argvals, nb, lam, 2, criterion)
-                        {
-                            if score < best_score && score.is_finite() {
-                                best_score = score;
-                                best_basis_type = 0; // P-spline
-                                best_nbasis = nb;
-                                best_coefs = coefs;
-                                best_fitted = fitted;
-                                best_edf = edf;
-                                best_lambda = lam;
-                            }
-                        }
-                    }
-                } else {
-                    // Use fixed lambda
-                    if let Some((score, coefs, fitted, edf)) =
-                        fit_curve_pspline(&curve, m, argvals, nb, lambda_pspline, 2, criterion)
-                    {
-                        if score < best_score && score.is_finite() {
-                            best_score = score;
-                            best_basis_type = 0; // P-spline
-                            best_nbasis = nb;
-                            best_coefs = coefs;
-                            best_fitted = fitted;
-                            best_edf = edf;
-                            best_lambda = lambda_pspline;
-                        }
-                    }
+                (Some(f), None) => (1, f),
+                (None, Some(p)) => (0, p),
+                (None, None) => {
+                    return SingleCurveSelection {
+                        basis_type: 0,
+                        nbasis: pspline_min,
+                        score: f64::INFINITY,
+                        coefficients: Vec::new(),
+                        fitted: Vec::new(),
+                        edf: 0.0,
+                        seasonal_detected,
+                        lambda: f64::NAN,
+                    };
                 }
-            }
+            };
 
             SingleCurveSelection {
-                basis_type: best_basis_type,
-                nbasis: best_nbasis,
-                score: best_score,
-                coefficients: best_coefs,
-                fitted: best_fitted,
-                edf: best_edf,
+                basis_type,
+                nbasis: result.nbasis,
+                score: result.score,
+                coefficients: result.coefs,
+                fitted: result.fitted,
+                edf: result.edf,
                 seasonal_detected,
-                lambda: best_lambda,
+                lambda: result.lambda,
             }
         })
         .collect();

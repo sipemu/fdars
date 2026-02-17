@@ -103,6 +103,62 @@ pub struct PlsResult {
     pub loadings: Vec<f64>,
 }
 
+/// Compute PLS weight vector: w = X'y / ||X'y||
+fn pls_compute_weights(x_cen: &[f64], y_cen: &[f64], n: usize, m: usize) -> Vec<f64> {
+    let mut w: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += x_cen[i + j * n] * y_cen[i];
+            }
+            sum
+        })
+        .collect();
+
+    let w_norm: f64 = w.iter().map(|&wi| wi * wi).sum::<f64>().sqrt();
+    if w_norm > 1e-10 {
+        for wi in &mut w {
+            *wi /= w_norm;
+        }
+    }
+    w
+}
+
+/// Compute PLS scores: t = Xw
+fn pls_compute_scores(x_cen: &[f64], w: &[f64], n: usize, m: usize) -> Vec<f64> {
+    (0..n)
+        .map(|i| {
+            let mut sum = 0.0;
+            for j in 0..m {
+                sum += x_cen[i + j * n] * w[j];
+            }
+            sum
+        })
+        .collect()
+}
+
+/// Compute PLS loadings: p = X't / (t't)
+fn pls_compute_loadings(x_cen: &[f64], t: &[f64], n: usize, m: usize, t_norm_sq: f64) -> Vec<f64> {
+    (0..m)
+        .map(|j| {
+            let mut sum = 0.0;
+            for i in 0..n {
+                sum += x_cen[i + j * n] * t[i];
+            }
+            sum / t_norm_sq.max(1e-10)
+        })
+        .collect()
+}
+
+/// Deflate X by removing the rank-1 component t * p'
+fn pls_deflate_x(x_cen: &mut [f64], t: &[f64], p: &[f64], n: usize, m: usize) {
+    for j in 0..m {
+        for i in 0..n {
+            x_cen[i + j * n] -= t[i] * p[j];
+        }
+    }
+}
+
 /// Perform PLS via NIPALS algorithm.
 pub fn fdata_to_pls_1d(
     data: &[f64],
@@ -146,47 +202,10 @@ pub fn fdata_to_pls_1d(
 
     // NIPALS algorithm
     for k in 0..ncomp {
-        // w = X'y / ||X'y||
-        let mut w: Vec<f64> = (0..m)
-            .map(|j| {
-                let mut sum = 0.0;
-                for i in 0..n {
-                    sum += x_cen[i + j * n] * y_cen[i];
-                }
-                sum
-            })
-            .collect();
-
-        let w_norm: f64 = w.iter().map(|&wi| wi * wi).sum::<f64>().sqrt();
-        if w_norm > 1e-10 {
-            for wi in &mut w {
-                *wi /= w_norm;
-            }
-        }
-
-        // t = Xw
-        let t: Vec<f64> = (0..n)
-            .map(|i| {
-                let mut sum = 0.0;
-                for j in 0..m {
-                    sum += x_cen[i + j * n] * w[j];
-                }
-                sum
-            })
-            .collect();
-
+        let w = pls_compute_weights(&x_cen, &y_cen, n, m);
+        let t = pls_compute_scores(&x_cen, &w, n, m);
         let t_norm_sq: f64 = t.iter().map(|&ti| ti * ti).sum();
-
-        // p = X't / (t't)
-        let p: Vec<f64> = (0..m)
-            .map(|j| {
-                let mut sum = 0.0;
-                for i in 0..n {
-                    sum += x_cen[i + j * n] * t[i];
-                }
-                sum / t_norm_sq.max(1e-10)
-            })
-            .collect();
+        let p = pls_compute_loadings(&x_cen, &t, n, m, t_norm_sq);
 
         // Store results
         for j in 0..m {
@@ -197,14 +216,8 @@ pub fn fdata_to_pls_1d(
             scores[i + k * n] = t[i];
         }
 
-        // Deflate X
-        for j in 0..m {
-            for i in 0..n {
-                x_cen[i + j * n] -= t[i] * p[j];
-            }
-        }
-
-        // Deflate y
+        // Deflate X and y
+        pls_deflate_x(&mut x_cen, &t, &p, n, m);
         let t_y: f64 = t.iter().zip(y_cen.iter()).map(|(&ti, &yi)| ti * yi).sum();
         let q = t_y / t_norm_sq.max(1e-10);
         for i in 0..n {

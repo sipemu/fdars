@@ -129,6 +129,59 @@ pub fn detrend_linear(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> Tren
     }
 }
 
+/// Build a Vandermonde matrix (m x n_coef) from normalized argument values.
+fn build_vandermonde_matrix(t_norm: &[f64], m: usize, n_coef: usize) -> DMatrix<f64> {
+    let mut design = DMatrix::zeros(m, n_coef);
+    for j in 0..m {
+        let t = t_norm[j];
+        let mut power = 1.0;
+        for k in 0..n_coef {
+            design[(j, k)] = power;
+            power *= t;
+        }
+    }
+    design
+}
+
+/// Compute differences and reconstruct trend for a single curve.
+fn diff_single_curve(curve: &[f64], m: usize, order: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, f64) {
+    // First difference
+    let diff1: Vec<f64> = (0..m - 1).map(|j| curve[j + 1] - curve[j]).collect();
+
+    // Second difference if order == 2
+    let detrended = if order == 2 {
+        (0..diff1.len() - 1)
+            .map(|j| diff1[j + 1] - diff1[j])
+            .collect()
+    } else {
+        diff1.clone()
+    };
+
+    let initial_values = if order == 2 {
+        vec![curve[0], curve[1]]
+    } else {
+        vec![curve[0]]
+    };
+
+    let rss: f64 = detrended.iter().map(|&x| x.powi(2)).sum();
+
+    let new_m = m - order;
+    let mut trend = vec![0.0; m];
+    trend[0] = curve[0];
+    if order == 1 {
+        for j in 1..m {
+            trend[j] = curve[j] - if j <= new_m { detrended[j - 1] } else { 0.0 };
+        }
+    } else {
+        trend = curve.to_vec();
+    }
+
+    let mut det_full = vec![0.0; m];
+    det_full[..new_m].copy_from_slice(&detrended[..new_m]);
+
+    (trend, det_full, initial_values, rss)
+}
+
 /// Remove polynomial trend from functional data using QR decomposition.
 ///
 /// # Arguments
@@ -179,15 +232,7 @@ pub fn detrend_polynomial(
     let t_norm: Vec<f64> = argvals.iter().map(|&t| (t - t_min) / t_range).collect();
 
     // Build Vandermonde matrix (m x n_coef)
-    let mut design = DMatrix::zeros(m, n_coef);
-    for j in 0..m {
-        let t = t_norm[j];
-        let mut power = 1.0;
-        for k in 0..n_coef {
-            design[(j, k)] = power;
-            power *= t;
-        }
-    }
+    let design = build_vandermonde_matrix(&t_norm, m, n_coef);
 
     // SVD for stable least squares
     let svd = design.clone().svd(true, true);
@@ -275,54 +320,11 @@ pub fn detrend_diff(data: &[f64], n: usize, m: usize, order: usize) -> TrendResu
         };
     }
 
-    let new_m = m - order;
-
     // Process each sample in parallel
     let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            // Extract curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
-
-            // First difference
-            let diff1: Vec<f64> = (0..m - 1).map(|j| curve[j + 1] - curve[j]).collect();
-
-            // Second difference if order == 2
-            let detrended = if order == 2 {
-                (0..diff1.len() - 1)
-                    .map(|j| diff1[j + 1] - diff1[j])
-                    .collect()
-            } else {
-                diff1.clone()
-            };
-
-            // Store initial values needed for reconstruction
-            let initial_values = if order == 2 {
-                vec![curve[0], curve[1]]
-            } else {
-                vec![curve[0]]
-            };
-
-            // Compute RSS (sum of squared differences as "residuals" - interpretation varies)
-            let rss: f64 = detrended.iter().map(|&x| x.powi(2)).sum();
-
-            // For "trend", we reconstruct as cumsum of differences
-            // This is a rough approximation; true trend would need integration
-            let mut trend = vec![0.0; m];
-            trend[0] = curve[0];
-            if order == 1 {
-                for j in 1..m {
-                    trend[j] = curve[j] - if j <= new_m { detrended[j - 1] } else { 0.0 };
-                }
-            } else {
-                // For order 2, trend is less meaningful
-                trend = curve.clone();
-            }
-
-            // Pad detrended to full length
-            let mut det_full = vec![0.0; m];
-            det_full[..new_m].copy_from_slice(&detrended[..new_m]);
-
-            (trend, det_full, initial_values, rss)
+            diff_single_curve(&curve, m, order)
         })
         .collect();
 

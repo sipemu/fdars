@@ -333,44 +333,56 @@ pub fn functional_spatial_2d(
     functional_spatial_1d(data_obj, data_ori, nobj, nori, n_points)
 }
 
-/// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
-///
-/// Implements the RKHS-based formulation.
-pub fn kernel_functional_spatial_1d(
+/// Accumulate the kernel spatial depth statistic for a single observation.
+/// Returns (total_sum, valid_count) from the double sum over reference pairs.
+fn kfsd_accumulate(m2: &[f64], m1: &[Vec<f64>], nori: usize) -> (f64, usize) {
+    let mut total_sum = 0.0;
+    let mut valid_count = 0;
+
+    for j in 0..nori {
+        let denom_j_sq = 2.0 - 2.0 * m2[j];
+        if denom_j_sq < 1e-20 {
+            continue;
+        }
+        let denom_j = denom_j_sq.sqrt();
+
+        for k in 0..nori {
+            let denom_k_sq = 2.0 - 2.0 * m2[k];
+            if denom_k_sq < 1e-20 {
+                continue;
+            }
+            let denom_k = denom_k_sq.sqrt();
+
+            let numerator = 1.0 + m1[j][k] - m2[j] - m2[k];
+            let denom = denom_j * denom_k;
+
+            if denom > 1e-20 {
+                let m_ijk = numerator / denom;
+                if m_ijk.is_finite() {
+                    total_sum += m_ijk;
+                    valid_count += 1;
+                }
+            }
+        }
+    }
+
+    (total_sum, valid_count)
+}
+
+/// Shared implementation for kernel functional spatial depth.
+/// Uses weighted L2 norm: sum_t weights[t] * (f(t) - g(t))^2.
+fn kfsd_weighted(
     data_obj: &[f64],
     data_ori: &[f64],
     nobj: usize,
     nori: usize,
     n_points: usize,
-    argvals: &[f64],
     h: f64,
+    weights: &[f64],
 ) -> Vec<f64> {
-    if nobj == 0 || nori == 0 || n_points == 0 {
-        return Vec::new();
-    }
-
-    let weights = simpsons_weights(argvals);
     let h_sq = h * h;
 
-    // Helper function to compute integrated L2 norm squared
-    let norm_sq_integrated = |data1: &[f64],
-                              row1: usize,
-                              nrow1: usize,
-                              data2: &[f64],
-                              row2: usize,
-                              nrow2: usize|
-     -> f64 {
-        let mut sum = 0.0;
-        for t in 0..n_points {
-            let diff = data1[row1 + t * nrow1] - data2[row2 + t * nrow2];
-            sum += weights[t] * diff * diff;
-        }
-        sum
-    };
-
-    let kern = |dist_sq: f64| -> f64 { (-dist_sq / h_sq).exp() };
-
-    // Pre-compute M1[j,k] = K(X_j, X_k) for all pairs in reference data
+    // Pre-compute M1[j,k] = K(X_j, X_k) for reference data
     let m1_upper: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..nori)
         .flat_map(|j| {
             ((j + 1)..nori)
@@ -380,8 +392,7 @@ pub fn kernel_functional_spatial_1d(
                         let diff = data_ori[j + t * nori] - data_ori[k + t * nori];
                         sum += weights[t] * diff * diff;
                     }
-                    let kval = (-sum / h_sq).exp();
-                    (j, k, kval)
+                    (j, k, (-sum / h_sq).exp())
                 })
                 .collect::<Vec<_>>()
         })
@@ -400,48 +411,18 @@ pub fn kernel_functional_spatial_1d(
 
     iter_maybe_parallel!(0..nobj)
         .map(|i| {
-            let k02_i = 1.0;
-
             let m2: Vec<f64> = (0..nori)
                 .map(|j| {
-                    let d_sq = norm_sq_integrated(data_obj, i, nobj, data_ori, j, nori);
-                    kern(d_sq)
+                    let mut sum = 0.0;
+                    for t in 0..n_points {
+                        let diff = data_obj[i + t * nobj] - data_ori[j + t * nori];
+                        sum += weights[t] * diff * diff;
+                    }
+                    (-sum / h_sq).exp()
                 })
                 .collect();
 
-            let mut total_sum = 0.0;
-            let mut valid_count = 0;
-
-            for j in 0..nori {
-                let k01_j = 1.0;
-                let denom_j_sq = k02_i + k01_j - 2.0 * m2[j];
-
-                if denom_j_sq < 1e-20 {
-                    continue;
-                }
-                let denom_j = denom_j_sq.sqrt();
-
-                for k in 0..nori {
-                    let k01_k = 1.0;
-                    let denom_k_sq = k02_i + k01_k - 2.0 * m2[k];
-
-                    if denom_k_sq < 1e-20 {
-                        continue;
-                    }
-                    let denom_k = denom_k_sq.sqrt();
-
-                    let numerator = k02_i + m1[j][k] - m2[j] - m2[k];
-                    let denom = denom_j * denom_k;
-
-                    if denom > 1e-20 {
-                        let m_ijk = numerator / denom;
-                        if m_ijk.is_finite() {
-                            total_sum += m_ijk;
-                            valid_count += 1;
-                        }
-                    }
-                }
-            }
+            let (total_sum, valid_count) = kfsd_accumulate(&m2, &m1, nori);
 
             if valid_count > 0 && total_sum >= 0.0 {
                 1.0 - total_sum.sqrt() / nori_f64
@@ -452,6 +433,71 @@ pub fn kernel_functional_spatial_1d(
             }
         })
         .collect()
+}
+
+/// Check if curve i is entirely inside the band formed by reference curves j and k.
+fn curve_inside_band(
+    data_obj: &[f64],
+    data_ori: &[f64],
+    nobj: usize,
+    nori: usize,
+    n_points: usize,
+    i: usize,
+    j: usize,
+    k: usize,
+) -> bool {
+    for t in 0..n_points {
+        let x_t = data_obj[i + t * nobj];
+        let y_j_t = data_ori[j + t * nori];
+        let y_k_t = data_ori[k + t * nori];
+        if x_t < y_j_t.min(y_k_t) || x_t > y_j_t.max(y_k_t) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Proportion of time points where curve i is inside the band formed by curves j and k.
+fn proportion_inside_band(
+    data_obj: &[f64],
+    data_ori: &[f64],
+    nobj: usize,
+    nori: usize,
+    n_points: usize,
+    i: usize,
+    j: usize,
+    k: usize,
+) -> f64 {
+    let mut count = 0usize;
+    for t in 0..n_points {
+        let x_t = data_obj[i + t * nobj];
+        let y_j_t = data_ori[j + t * nori];
+        let y_k_t = data_ori[k + t * nori];
+        if x_t >= y_j_t.min(y_k_t) && x_t <= y_j_t.max(y_k_t) {
+            count += 1;
+        }
+    }
+    count as f64 / n_points as f64
+}
+
+/// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
+///
+/// Implements the RKHS-based formulation.
+pub fn kernel_functional_spatial_1d(
+    data_obj: &[f64],
+    data_ori: &[f64],
+    nobj: usize,
+    nori: usize,
+    n_points: usize,
+    argvals: &[f64],
+    h: f64,
+) -> Vec<f64> {
+    if nobj == 0 || nori == 0 || n_points == 0 {
+        return Vec::new();
+    }
+
+    let weights = simpsons_weights(argvals);
+    kfsd_weighted(data_obj, data_ori, nobj, nori, n_points, h, &weights)
 }
 
 /// Compute Kernel Functional Spatial Depth (KFSD) for 2D functional data.
@@ -467,103 +513,8 @@ pub fn kernel_functional_spatial_2d(
         return Vec::new();
     }
 
-    let h_sq = h * h;
-
-    let norm_sq = |data1: &[f64],
-                   row1: usize,
-                   nrow1: usize,
-                   data2: &[f64],
-                   row2: usize,
-                   nrow2: usize|
-     -> f64 {
-        let mut sum = 0.0;
-        for t in 0..n_points {
-            let diff = data1[row1 + t * nrow1] - data2[row2 + t * nrow2];
-            sum += diff * diff;
-        }
-        sum
-    };
-
-    let kern = |dist_sq: f64| -> f64 { (-dist_sq / h_sq).exp() };
-
-    // Pre-compute M1 matrix
-    let m1_upper: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..nori)
-        .flat_map(|j| {
-            ((j + 1)..nori)
-                .map(|k| {
-                    let d_sq = norm_sq(data_ori, j, nori, data_ori, k, nori);
-                    let kval = kern(d_sq);
-                    (j, k, kval)
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    let mut m1_mat = vec![vec![0.0; nori]; nori];
-    for j in 0..nori {
-        m1_mat[j][j] = 1.0;
-    }
-    for (j, k, kval) in m1_upper {
-        m1_mat[j][k] = kval;
-        m1_mat[k][j] = kval;
-    }
-
-    let nori_f64 = nori as f64;
-
-    iter_maybe_parallel!(0..nobj)
-        .map(|i| {
-            let k02_i = 1.0;
-
-            let m2: Vec<f64> = (0..nori)
-                .map(|j| {
-                    let d_sq = norm_sq(data_obj, i, nobj, data_ori, j, nori);
-                    kern(d_sq)
-                })
-                .collect();
-
-            let mut total_sum = 0.0;
-            let mut valid_count = 0;
-
-            for j in 0..nori {
-                let k01_j = 1.0;
-                let denom_j_sq = k02_i + k01_j - 2.0 * m2[j];
-
-                if denom_j_sq < 1e-20 {
-                    continue;
-                }
-                let denom_j = denom_j_sq.sqrt();
-
-                for k in 0..nori {
-                    let k01_k = 1.0;
-                    let denom_k_sq = k02_i + k01_k - 2.0 * m2[k];
-
-                    if denom_k_sq < 1e-20 {
-                        continue;
-                    }
-                    let denom_k = denom_k_sq.sqrt();
-
-                    let numerator = k02_i + m1_mat[j][k] - m2[j] - m2[k];
-                    let denom = denom_j * denom_k;
-
-                    if denom > 1e-20 {
-                        let m_ijk = numerator / denom;
-                        if m_ijk.is_finite() {
-                            total_sum += m_ijk;
-                            valid_count += 1;
-                        }
-                    }
-                }
-            }
-
-            if valid_count > 0 && total_sum >= 0.0 {
-                1.0 - total_sum.sqrt() / nori_f64
-            } else if total_sum < 0.0 {
-                1.0
-            } else {
-                0.0
-            }
-        })
-        .collect()
+    let weights = vec![1.0; n_points];
+    kfsd_weighted(data_obj, data_ori, nobj, nori, n_points, h, &weights)
 }
 
 /// Compute Band Depth (BD) for 1D functional data.
@@ -588,23 +539,7 @@ pub fn band_1d(
 
             for j in 0..nori {
                 for k in (j + 1)..nori {
-                    let mut inside_band = true;
-
-                    for t in 0..n_points {
-                        let x_t = data_obj[i + t * nobj];
-                        let y_j_t = data_ori[j + t * nori];
-                        let y_k_t = data_ori[k + t * nori];
-
-                        let band_min = y_j_t.min(y_k_t);
-                        let band_max = y_j_t.max(y_k_t);
-
-                        if x_t < band_min || x_t > band_max {
-                            inside_band = false;
-                            break;
-                        }
-                    }
-
-                    if inside_band {
+                    if curve_inside_band(data_obj, data_ori, nobj, nori, n_points, i, j, k) {
                         count_in_band += 1;
                     }
                 }
@@ -637,22 +572,8 @@ pub fn modified_band_1d(
 
             for j in 0..nori {
                 for k in (j + 1)..nori {
-                    let mut count_inside = 0usize;
-
-                    for t in 0..n_points {
-                        let x_t = data_obj[i + t * nobj];
-                        let y_j_t = data_ori[j + t * nori];
-                        let y_k_t = data_ori[k + t * nori];
-
-                        let band_min = y_j_t.min(y_k_t);
-                        let band_max = y_j_t.max(y_k_t);
-
-                        if x_t >= band_min && x_t <= band_max {
-                            count_inside += 1;
-                        }
-                    }
-
-                    total_proportion += count_inside as f64 / n_points as f64;
+                    total_proportion +=
+                        proportion_inside_band(data_obj, data_ori, nobj, nori, n_points, i, j, k);
                 }
             }
 

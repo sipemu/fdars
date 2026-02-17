@@ -15,6 +15,59 @@ fn compute_fm_depth_internal(data: &[f64], n: usize, m: usize) -> Vec<f64> {
     fraiman_muniz_1d(data, data, n, n, m, true)
 }
 
+/// Compute trimmed mean and variance from data using depth-based trimming.
+///
+/// Returns (trimmed_mean, trimmed_var) each of length m.
+fn compute_trimmed_stats(
+    data: &[f64],
+    depths: &[f64],
+    n: usize,
+    m: usize,
+    n_keep: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let mut depth_idx: Vec<(usize, f64)> =
+        depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
+    depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep).map(|(i, _)| *i).collect();
+
+    let mut trimmed_mean = vec![0.0; m];
+    for j in 0..m {
+        for &i in &keep_idx {
+            trimmed_mean[j] += data[i + j * n];
+        }
+        trimmed_mean[j] /= n_keep as f64;
+    }
+
+    let mut trimmed_var = vec![0.0; m];
+    for j in 0..m {
+        for &i in &keep_idx {
+            let diff = data[i + j * n] - trimmed_mean[j];
+            trimmed_var[j] += diff * diff;
+        }
+        trimmed_var[j] /= n_keep as f64;
+        trimmed_var[j] = trimmed_var[j].max(1e-10);
+    }
+
+    (trimmed_mean, trimmed_var)
+}
+
+/// Compute normalized Mahalanobis-like distance for a single observation.
+fn normalized_distance(
+    data: &[f64],
+    i: usize,
+    n: usize,
+    m: usize,
+    trimmed_mean: &[f64],
+    trimmed_var: &[f64],
+) -> f64 {
+    let mut dist = 0.0;
+    for j in 0..m {
+        let diff = data[i + j * n] - trimmed_mean[j];
+        dist += diff * diff / trimmed_var[j];
+    }
+    (dist / m as f64).sqrt()
+}
+
 /// Compute bootstrap threshold for LRT outlier detection.
 ///
 /// # Arguments
@@ -66,10 +119,8 @@ pub fn outliers_threshold_lrt(
         .map(|b| {
             let mut rng = StdRng::seed_from_u64(seed + b as u64);
 
-            // Resample with replacement
+            // Resample with replacement and add smoothing noise
             let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
-
-            // Build resampled data with smoothing noise
             let mut boot_data = vec![0.0; n * m];
             for (new_i, &old_i) in indices.iter().enumerate() {
                 for j in 0..m {
@@ -78,49 +129,15 @@ pub fn outliers_threshold_lrt(
                 }
             }
 
-            // Compute FM depth for bootstrap sample
+            // Compute trimmed stats from bootstrap sample
             let depths = compute_fm_depth_internal(&boot_data, n, m);
+            let (trimmed_mean, trimmed_var) =
+                compute_trimmed_stats(&boot_data, &depths, n, m, n_keep);
 
-            // Get indices of top n_keep curves by depth
-            let mut depth_idx: Vec<(usize, f64)> =
-                depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
-            depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep).map(|(i, _)| *i).collect();
-
-            // Compute trimmed mean and variance
-            let mut trimmed_mean = vec![0.0; m];
-            for j in 0..m {
-                for &i in &keep_idx {
-                    trimmed_mean[j] += boot_data[i + j * n];
-                }
-                trimmed_mean[j] /= n_keep as f64;
-            }
-
-            let mut trimmed_var = vec![0.0; m];
-            for j in 0..m {
-                for &i in &keep_idx {
-                    let diff = boot_data[i + j * n] - trimmed_mean[j];
-                    trimmed_var[j] += diff * diff;
-                }
-                trimmed_var[j] /= n_keep as f64;
-                trimmed_var[j] = trimmed_var[j].max(1e-10);
-            }
-
-            // Compute max normalized distance to trimmed mean
-            let mut max_dist = 0.0;
-            for i in 0..n {
-                let mut dist = 0.0;
-                for j in 0..m {
-                    let diff = boot_data[i + j * n] - trimmed_mean[j];
-                    dist += diff * diff / trimmed_var[j];
-                }
-                dist = (dist / m as f64).sqrt();
-                if dist > max_dist {
-                    max_dist = dist;
-                }
-            }
-
-            max_dist
+            // Find max normalized distance across all observations
+            (0..n)
+                .map(|i| normalized_distance(&boot_data, i, n, m, &trimmed_mean, &trimmed_var))
+                .fold(0.0_f64, f64::max)
         })
         .collect();
 
@@ -155,45 +172,11 @@ pub fn detect_outliers_lrt(
 
     let n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
 
-    // Compute FM depth
     let depths = compute_fm_depth_internal(data, n, m);
+    let (trimmed_mean, trimmed_var) = compute_trimmed_stats(data, &depths, n, m, n_keep);
 
-    // Get indices of top n_keep curves by depth
-    let mut depth_idx: Vec<(usize, f64)> =
-        depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
-    depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep).map(|(i, _)| *i).collect();
-
-    // Compute trimmed mean and variance
-    let mut trimmed_mean = vec![0.0; m];
-    for j in 0..m {
-        for &i in &keep_idx {
-            trimmed_mean[j] += data[i + j * n];
-        }
-        trimmed_mean[j] /= n_keep as f64;
-    }
-
-    let mut trimmed_var = vec![0.0; m];
-    for j in 0..m {
-        for &i in &keep_idx {
-            let diff = data[i + j * n] - trimmed_mean[j];
-            trimmed_var[j] += diff * diff;
-        }
-        trimmed_var[j] /= n_keep as f64;
-        trimmed_var[j] = trimmed_var[j].max(1e-10);
-    }
-
-    // Compute normalized distance for each observation
     iter_maybe_parallel!(0..n)
-        .map(|i| {
-            let mut dist = 0.0;
-            for j in 0..m {
-                let diff = data[i + j * n] - trimmed_mean[j];
-                dist += diff * diff / trimmed_var[j];
-            }
-            dist = (dist / m as f64).sqrt();
-            dist > threshold
-        })
+        .map(|i| normalized_distance(data, i, n, m, &trimmed_mean, &trimmed_var) > threshold)
         .collect()
 }
 
