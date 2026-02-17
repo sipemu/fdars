@@ -349,4 +349,196 @@ mod tests {
 
         assert_eq!(predictions.len(), n_test);
     }
+
+    // ============== compute_adot tests ==============
+
+    #[test]
+    fn test_compute_adot_basic() {
+        let n = 4;
+        // Upper-triangular packed inner product: (n*(n+1))/2 = 10 elements
+        // Layout: (1,1), (2,1), (2,2), (3,1), (3,2), (3,3), (4,1), (4,2), (4,3), (4,4)
+        let mut inprod = vec![0.0; (n * (n + 1)) / 2];
+        // Set diagonal to 1.0 (identity-like)
+        // idx for (i,i): i*(i-1)/2 + i - 1 = i*(i+1)/2 - 1
+        for i in 1..=n {
+            let idx = i * (i - 1) / 2 + i - 1;
+            inprod[idx] = 1.0;
+        }
+
+        let adot = compute_adot(n, &inprod);
+
+        let expected_len = (n * n - n + 2) / 2;
+        assert_eq!(
+            adot.len(),
+            expected_len,
+            "Adot length should be (n^2-n+2)/2"
+        );
+        assert!(
+            (adot[0] - PI * (n + 1) as f64).abs() < 1e-10,
+            "First element should be π*(n+1), got {}",
+            adot[0]
+        );
+        for (i, &val) in adot.iter().enumerate() {
+            assert!(val.is_finite(), "Adot[{}] should be finite, got {}", i, val);
+        }
+    }
+
+    #[test]
+    fn test_compute_adot_n1() {
+        let n = 1;
+        let inprod = vec![1.0]; // (1*(1+1))/2 = 1
+        let adot = compute_adot(n, &inprod);
+
+        assert_eq!(adot.len(), 1, "n=1 should give length 1");
+        assert!(
+            (adot[0] - PI * 2.0).abs() < 1e-10,
+            "n=1: first element should be π*2, got {}",
+            adot[0]
+        );
+    }
+
+    #[test]
+    fn test_compute_adot_invalid() {
+        // n=0
+        assert!(compute_adot(0, &[]).is_empty());
+
+        // Wrong inprod length
+        assert!(compute_adot(4, &[1.0, 2.0]).is_empty());
+    }
+
+    // ============== pcvm_statistic tests ==============
+
+    #[test]
+    fn test_pcvm_statistic_basic() {
+        let n = 4;
+        let mut inprod = vec![0.0; (n * (n + 1)) / 2];
+        for i in 1..=n {
+            let idx = i * (i - 1) / 2 + i - 1;
+            inprod[idx] = 1.0;
+        }
+        let adot = compute_adot(n, &inprod);
+        let residuals = vec![0.5, -0.3, 0.2, -0.1];
+
+        let stat = pcvm_statistic(&adot, &residuals);
+
+        assert!(stat.is_finite(), "PCvM statistic should be finite");
+        assert!(stat >= 0.0, "PCvM statistic should be non-negative");
+    }
+
+    #[test]
+    fn test_pcvm_statistic_zero_residuals() {
+        let n = 4;
+        let mut inprod = vec![0.0; (n * (n + 1)) / 2];
+        for i in 1..=n {
+            let idx = i * (i - 1) / 2 + i - 1;
+            inprod[idx] = 1.0;
+        }
+        let adot = compute_adot(n, &inprod);
+        let residuals = vec![0.0, 0.0, 0.0, 0.0];
+
+        let stat = pcvm_statistic(&adot, &residuals);
+        assert!(
+            stat.abs() < 1e-10,
+            "PCvM with zero residuals should be ~0, got {}",
+            stat
+        );
+    }
+
+    #[test]
+    fn test_pcvm_statistic_empty() {
+        assert!(pcvm_statistic(&[], &[]).abs() < 1e-10);
+        assert!(pcvm_statistic(&[1.0], &[]).abs() < 1e-10);
+    }
+
+    // ============== rp_stat tests ==============
+
+    #[test]
+    fn test_rp_stat_basic() {
+        let n_proj = 3;
+        let residuals = vec![0.5, -0.3, 0.2, -0.1, 0.4];
+
+        // proj_x_ord is n_proj columns of n rows, 1-indexed ranks
+        let proj_x_ord: Vec<i32> = vec![
+            1, 3, 5, 2, 4, // projection 1
+            2, 4, 1, 5, 3, // projection 2
+            5, 1, 3, 4, 2, // projection 3
+        ];
+
+        let result = rp_stat(&proj_x_ord, &residuals, n_proj);
+
+        assert_eq!(result.cvm.len(), n_proj);
+        assert_eq!(result.ks.len(), n_proj);
+        for &cvm_val in &result.cvm {
+            assert!(cvm_val >= 0.0, "CvM stat should be non-negative");
+            assert!(cvm_val.is_finite(), "CvM stat should be finite");
+        }
+        for &ks_val in &result.ks {
+            assert!(ks_val >= 0.0, "KS stat should be non-negative");
+            assert!(ks_val.is_finite(), "KS stat should be finite");
+        }
+    }
+
+    #[test]
+    fn test_rp_stat_invalid() {
+        let result = rp_stat(&[], &[], 0);
+        assert!(result.cvm.is_empty());
+        assert!(result.ks.is_empty());
+
+        let result = rp_stat(&[], &[1.0], 0);
+        assert!(result.cvm.is_empty());
+    }
+
+    // ============== knn_loocv tests ==============
+
+    #[test]
+    fn test_knn_loocv_basic() {
+        let size = 5;
+        let k = 2;
+        // Simple distance matrix
+        let mut dist = vec![0.0; size * size];
+        for i in 0..size {
+            for j in 0..size {
+                dist[i + j * size] = ((i as f64) - (j as f64)).abs();
+            }
+        }
+        let y: Vec<f64> = (0..size).map(|i| i as f64 * 2.0).collect();
+
+        let mse = knn_loocv(&dist, &y, size, k);
+
+        assert!(mse.is_finite(), "k-NN LOOCV MSE should be finite");
+        assert!(mse >= 0.0, "k-NN LOOCV MSE should be non-negative");
+    }
+
+    #[test]
+    fn test_knn_loocv_perfect() {
+        // When nearest neighbors have the same y value, MSE should be ~0
+        let n = 4;
+        let k = 1;
+        // Distance matrix where each pair of adjacent points is close
+        let mut dist = vec![100.0; n * n];
+        for i in 0..n {
+            dist[i + i * n] = 0.0;
+        }
+        // Make pairs (0,1) and (2,3) very close
+        dist[n] = 0.1;
+        dist[1] = 0.1;
+        dist[2 + 3 * n] = 0.1;
+        dist[3 + 2 * n] = 0.1;
+
+        // Same y for paired points
+        let y = vec![1.0, 1.0, 5.0, 5.0];
+        let mse = knn_loocv(&dist, &y, n, k);
+
+        assert!(
+            mse < 1e-10,
+            "k-NN LOOCV MSE should be ~0 for perfectly paired data, got {}",
+            mse
+        );
+    }
+
+    #[test]
+    fn test_knn_loocv_invalid() {
+        assert!(knn_loocv(&[], &[], 0, 1).is_infinite());
+        assert!(knn_loocv(&[0.0], &[1.0], 1, 0).is_infinite());
+    }
 }

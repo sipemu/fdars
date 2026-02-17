@@ -1111,4 +1111,233 @@ mod tests {
     fn test_hausdorff_2d_invalid() {
         assert!(hausdorff_self_2d(&[], 0, &[], &[]).is_empty());
     }
+
+    // ============== Cross-distance tests ==============
+
+    #[test]
+    fn test_hausdorff_cross_1d() {
+        let n1 = 3;
+        let n2 = 4;
+        let m = 15;
+        let argvals = uniform_grid(m);
+        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
+
+        let dist = hausdorff_cross_1d(&data1, &data2, n1, n2, m, &argvals);
+
+        assert_eq!(dist.len(), n1 * n2);
+        for &d in &dist {
+            assert!(d >= 0.0, "Hausdorff cross distance should be non-negative");
+            assert!(d.is_finite(), "Hausdorff cross distance should be finite");
+        }
+
+        // Self-consistency: cross(A,A) diagonal should match self(A) diagonal
+        let self_dist = hausdorff_self_1d(&data1, n1, m, &argvals);
+        let cross_self = hausdorff_cross_1d(&data1, &data1, n1, n1, m, &argvals);
+        for i in 0..n1 {
+            assert!(
+                (cross_self[i + i * n1] - self_dist[i + i * n1]).abs() < 1e-10,
+                "Cross-self diagonal should match self diagonal at {}",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_dtw_cross_1d() {
+        let n1 = 3;
+        let n2 = 4;
+        let m = 15;
+        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
+
+        let dist = dtw_cross_1d(&data1, &data2, n1, n2, m, m, 2.0, 5);
+
+        assert_eq!(dist.len(), n1 * n2);
+        for &d in &dist {
+            assert!(d >= 0.0, "DTW cross distance should be non-negative");
+            assert!(d.is_finite(), "DTW cross distance should be finite");
+        }
+
+        // Identical curves should have distance ~0
+        let data_same: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let cross_self = dtw_cross_1d(&data_same, &data_same, n1, n1, m, m, 2.0, 5);
+        for i in 0..n1 {
+            assert!(
+                cross_self[i + i * n1] < 1e-8,
+                "DTW self-distance should be ~0, got {}",
+                cross_self[i + i * n1]
+            );
+        }
+    }
+
+    #[test]
+    fn test_fourier_cross_1d() {
+        let n1 = 3;
+        let n2 = 4;
+        let m = 32;
+        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
+
+        let dist = fourier_cross_1d(&data1, &data2, n1, n2, m, 5);
+
+        assert_eq!(dist.len(), n1 * n2);
+        for &d in &dist {
+            assert!(d >= 0.0, "Fourier cross distance should be non-negative");
+            assert!(d.is_finite(), "Fourier cross distance should be finite");
+        }
+    }
+
+    #[test]
+    fn test_hshift_cross_1d() {
+        let n1 = 3;
+        let n2 = 4;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
+
+        let dist = hshift_cross_1d(&data1, &data2, n1, n2, m, &argvals, 3);
+
+        assert_eq!(dist.len(), n1 * n2);
+        for &d in &dist {
+            assert!(d >= 0.0, "Hshift cross distance should be non-negative");
+            assert!(d.is_finite(), "Hshift cross distance should be finite");
+        }
+    }
+
+    // ============== 2D surface distance tests ==============
+
+    #[test]
+    fn test_hausdorff_self_2d_properties() {
+        let n = 3;
+        let m1 = 4;
+        let m2 = 5;
+        let argvals_s = uniform_grid(m1);
+        let argvals_t = uniform_grid(m2);
+        let n_points = m1 * m2;
+        let data: Vec<f64> = (0..(n * n_points))
+            .map(|i| (i as f64 * 0.1).sin())
+            .collect();
+
+        let dist = hausdorff_self_2d(&data, n, &argvals_s, &argvals_t);
+
+        // Diagonal should be zero
+        for i in 0..n {
+            assert!(
+                dist[i + i * n].abs() < 1e-10,
+                "Hausdorff 2D self-distance should be zero on diagonal"
+            );
+        }
+
+        // Should be symmetric
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "Hausdorff 2D should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_hausdorff_cross_2d() {
+        let n1 = 2;
+        let n2 = 3;
+        let m1 = 4;
+        let m2 = 5;
+        let argvals_s = uniform_grid(m1);
+        let argvals_t = uniform_grid(m2);
+        let n_points = m1 * m2;
+
+        let data1: Vec<f64> = (0..(n1 * n_points))
+            .map(|i| (i as f64 * 0.1).sin())
+            .collect();
+        let data2: Vec<f64> = (0..(n2 * n_points))
+            .map(|i| (i as f64 * 0.2).cos())
+            .collect();
+
+        let dist = hausdorff_cross_2d(&data1, &data2, n1, n2, &argvals_s, &argvals_t);
+
+        assert_eq!(dist.len(), n1 * n2);
+        for &d in &dist {
+            assert!(d >= 0.0, "Hausdorff cross 2D should be non-negative");
+            assert!(d.is_finite(), "Hausdorff cross 2D should be finite");
+        }
+    }
+
+    #[test]
+    fn test_lp_cross_2d() {
+        let n1 = 2;
+        let n2 = 3;
+        let m1 = 4;
+        let m2 = 5;
+        let argvals_s = uniform_grid(m1);
+        let argvals_t = uniform_grid(m2);
+        let n_points = m1 * m2;
+
+        let data1: Vec<f64> = (0..(n1 * n_points))
+            .map(|i| (i as f64 * 0.1).sin())
+            .collect();
+        let data2: Vec<f64> = (0..(n2 * n_points))
+            .map(|i| (i as f64 * 0.2).cos())
+            .collect();
+
+        // Without user weights
+        let dist = lp_cross_2d(&data1, &data2, n1, n2, &argvals_s, &argvals_t, 2.0, &[]);
+        assert_eq!(dist.len(), n1 * n2);
+        for &d in &dist {
+            assert!(d >= 0.0, "Lp cross 2D should be non-negative");
+            assert!(d.is_finite(), "Lp cross 2D should be finite");
+        }
+
+        // With user weights
+        let user_weights: Vec<f64> = vec![1.0; n_points];
+        let dist_w = lp_cross_2d(
+            &data1,
+            &data2,
+            n1,
+            n2,
+            &argvals_s,
+            &argvals_t,
+            2.0,
+            &user_weights,
+        );
+        assert_eq!(dist_w.len(), n1 * n2);
+    }
+
+    #[test]
+    fn test_lp_self_2d_with_user_weights() {
+        let n = 3;
+        let m1 = 4;
+        let m2 = 5;
+        let argvals_s = uniform_grid(m1);
+        let argvals_t = uniform_grid(m2);
+        let n_points = m1 * m2;
+        let data: Vec<f64> = (0..(n * n_points)).map(|i| i as f64 * 0.1).collect();
+
+        let user_weights: Vec<f64> = vec![2.0; n_points];
+        let dist = lp_self_2d(&data, n, &argvals_s, &argvals_t, 2.0, &user_weights);
+
+        assert_eq!(dist.len(), n * n);
+
+        // Diagonal should still be zero
+        for i in 0..n {
+            assert!(
+                dist[i + i * n].abs() < 1e-10,
+                "Weighted Lp 2D self-distance should be zero on diagonal"
+            );
+        }
+
+        // Should be symmetric
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    "Weighted Lp 2D should be symmetric"
+                );
+            }
+        }
+    }
 }

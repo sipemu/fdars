@@ -1549,4 +1549,247 @@ mod tests {
         // Should return original data as remainder for too-short series
         assert_eq!(result.remainder.len(), m);
     }
+
+    // ========================================================================
+    // STL Decomposition Tests
+    // ========================================================================
+
+    #[test]
+    fn test_stl_decompose_basic() {
+        let period = 12;
+        let n_cycles = 10;
+        let m = period * n_cycles;
+        let data: Vec<f64> = (0..m)
+            .map(|i| {
+                let t = i as f64;
+                // trend + seasonal + small noise
+                0.01 * t + (2.0 * PI * t / period as f64).sin()
+            })
+            .collect();
+
+        let result = stl_decompose(&data, 1, m, period, None, None, None, false, None, None);
+
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.seasonal.len(), m);
+        assert_eq!(result.remainder.len(), m);
+        assert_eq!(result.period, period);
+
+        // trend + seasonal + remainder ≈ original
+        for j in 0..m {
+            let reconstructed = result.trend[j] + result.seasonal[j] + result.remainder[j];
+            assert!(
+                (reconstructed - data[j]).abs() < 1e-8,
+                "Reconstruction error at {}: {} vs {}",
+                j,
+                reconstructed,
+                data[j]
+            );
+        }
+    }
+
+    #[test]
+    fn test_stl_decompose_robust() {
+        let period = 12;
+        let n_cycles = 10;
+        let m = period * n_cycles;
+        let mut data: Vec<f64> = (0..m)
+            .map(|i| {
+                let t = i as f64;
+                0.01 * t + (2.0 * PI * t / period as f64).sin()
+            })
+            .collect();
+
+        // Add outlier spikes
+        data[30] += 10.0;
+        data[60] += 10.0;
+
+        let result = stl_decompose(&data, 1, m, period, None, None, None, true, None, Some(5));
+
+        // Weights should be < 1.0 near outliers
+        assert!(
+            result.weights[30] < 1.0,
+            "Weight at outlier should be < 1.0: {}",
+            result.weights[30]
+        );
+        assert!(
+            result.weights[60] < 1.0,
+            "Weight at outlier should be < 1.0: {}",
+            result.weights[60]
+        );
+
+        // Non-outlier points should have higher weights
+        let non_outlier_weight = result.weights[15];
+        assert!(
+            non_outlier_weight > result.weights[30],
+            "Non-outlier weight {} should be > outlier weight {}",
+            non_outlier_weight,
+            result.weights[30]
+        );
+    }
+
+    #[test]
+    fn test_stl_decompose_default_params() {
+        let period = 10;
+        let m = period * 8;
+        let data: Vec<f64> = (0..m)
+            .map(|i| (2.0 * PI * i as f64 / period as f64).sin())
+            .collect();
+
+        // All None options
+        let result = stl_decompose(&data, 1, m, period, None, None, None, false, None, None);
+
+        assert_eq!(result.trend.len(), m);
+        assert_eq!(result.seasonal.len(), m);
+        assert!(result.s_window >= 3);
+        assert!(result.t_window >= 3);
+        assert_eq!(result.inner_iterations, 2);
+        assert_eq!(result.outer_iterations, 1);
+    }
+
+    #[test]
+    fn test_stl_decompose_invalid() {
+        // period < 2
+        let result = stl_decompose(&[1.0, 2.0], 1, 2, 1, None, None, None, false, None, None);
+        assert_eq!(result.s_window, 0);
+
+        // m < 2*period
+        let result = stl_decompose(
+            &[1.0, 2.0, 3.0],
+            1,
+            3,
+            5,
+            None,
+            None,
+            None,
+            false,
+            None,
+            None,
+        );
+        assert_eq!(result.s_window, 0);
+
+        // empty data
+        let result = stl_decompose(&[], 0, 0, 10, None, None, None, false, None, None);
+        assert_eq!(result.trend.len(), 0);
+    }
+
+    #[test]
+    fn test_stl_fdata() {
+        let n = 3;
+        let period = 10;
+        let m = period * 5;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64).collect();
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            let amp = (i + 1) as f64;
+            for j in 0..m {
+                data[i + j * n] = amp * (2.0 * PI * argvals[j] / period as f64).sin();
+            }
+        }
+
+        let result = stl_fdata(&data, n, m, &argvals, period, None, None, false);
+
+        assert_eq!(result.trend.len(), n * m);
+        assert_eq!(result.seasonal.len(), n * m);
+        assert_eq!(result.remainder.len(), n * m);
+
+        // Verify reconstruction for each sample
+        for i in 0..n {
+            for j in 0..m {
+                let idx = i + j * n;
+                let reconstructed =
+                    result.trend[idx] + result.seasonal[idx] + result.remainder[idx];
+                assert!(
+                    (reconstructed - data[idx]).abs() < 1e-8,
+                    "Reconstruction error for sample {} at {}: {} vs {}",
+                    i,
+                    j,
+                    reconstructed,
+                    data[idx]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_stl_decompose_multi_sample() {
+        let n = 5;
+        let period = 10;
+        let m = period * 6;
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            let offset = i as f64 * 0.5;
+            for j in 0..m {
+                data[i + j * n] =
+                    offset + 0.01 * j as f64 + (2.0 * PI * j as f64 / period as f64).sin();
+            }
+        }
+
+        let result = stl_decompose(&data, n, m, period, None, None, None, false, None, None);
+
+        assert_eq!(result.trend.len(), n * m);
+        assert_eq!(result.seasonal.len(), n * m);
+        assert_eq!(result.remainder.len(), n * m);
+        assert_eq!(result.weights.len(), n * m);
+    }
+
+    // ========================================================================
+    // Additional edge case tests
+    // ========================================================================
+
+    #[test]
+    fn test_detrend_diff_order2() {
+        let m = 50;
+        // Quadratic data: y = t^2
+        let data: Vec<f64> = (0..m).map(|i| (i as f64).powi(2)).collect();
+
+        let result = detrend_diff(&data, 1, m, 2);
+
+        // Second differences of t^2 should be constant = 2
+        for j in 0..m - 2 {
+            assert!(
+                (result.detrended[j] - 2.0).abs() < 1e-10,
+                "Second diff at {}: expected 2.0, got {}",
+                j,
+                result.detrended[j]
+            );
+        }
+    }
+
+    #[test]
+    fn test_detrend_polynomial_degree3() {
+        let m = 100;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 5.0).collect();
+
+        // Cubic data: y = 1 + 2*t - 0.5*t^2 + 0.1*t^3
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 1.0 + 2.0 * t - 0.5 * t * t + 0.1 * t * t * t)
+            .collect();
+
+        let result = detrend_polynomial(&data, 1, m, &argvals, 3);
+
+        assert_eq!(result.method, "polynomial(3)");
+        assert!(result.coefficients.is_some());
+
+        // Detrended should be close to zero since data is a pure cubic
+        let max_detrend: f64 = result.detrended.iter().map(|x| x.abs()).fold(0.0, f64::max);
+        assert!(
+            max_detrend < 0.1,
+            "Pure cubic should be nearly zero after degree-3 detrend: {}",
+            max_detrend
+        );
+    }
+
+    #[test]
+    fn test_detrend_loess_invalid() {
+        // bandwidth <= 0
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let argvals = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        let result = detrend_loess(&data, 1, 5, &argvals, -0.1, 1);
+        assert_eq!(result.detrended, data);
+
+        // m = 2 (< 3)
+        let result = detrend_loess(&[1.0, 2.0], 1, 2, &[0.0, 1.0], 0.3, 1);
+        assert_eq!(result.detrended, vec![1.0, 2.0]);
+    }
 }

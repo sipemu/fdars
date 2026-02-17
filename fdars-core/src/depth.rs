@@ -928,4 +928,129 @@ mod tests {
     fn test_mei_invalid() {
         assert!(modified_epigraph_index_1d(&[], &[], 0, 0, 0).is_empty());
     }
+
+    // ============== KFSD 1D tests ==============
+
+    #[test]
+    fn test_kfsd_1d_range() {
+        let n = 10;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_centered_data(n, m);
+        let depths = kernel_functional_spatial_1d(&data, &data, n, n, m, &argvals, 0.5);
+
+        assert_eq!(depths.len(), n);
+        for d in &depths {
+            assert!(
+                *d >= -0.01 && *d <= 1.01,
+                "KFSD depth should be near [0, 1], got {}",
+                d
+            );
+            assert!(d.is_finite(), "KFSD depth should be finite");
+        }
+
+        // Central curve should have higher depth
+        let central_depth = depths[n / 2];
+        let edge_depth = depths[0];
+        assert!(
+            central_depth > edge_depth,
+            "Central KFSD depth {} should be > edge depth {}",
+            central_depth,
+            edge_depth
+        );
+    }
+
+    #[test]
+    fn test_kfsd_1d_identical() {
+        // All identical curves should exercise the denom_j_sq < 1e-20 path
+        let n = 5;
+        let m = 10;
+        let argvals = uniform_grid(m);
+        let data: Vec<f64> = (0..n * m)
+            .map(|i| (2.0 * PI * (i % m) as f64 / (m - 1) as f64).sin())
+            .collect();
+
+        // When all curves are identical, kernel distances are all 1.0
+        // and denom_j_sq = K(x,x) + K(y,y) - 2*K(x,y) = 1 + 1 - 2*1 = 0
+        let depths = kernel_functional_spatial_1d(&data, &data, n, n, m, &argvals, 0.5);
+
+        assert_eq!(depths.len(), n);
+        for d in &depths {
+            assert!(
+                d.is_finite(),
+                "KFSD depth should be finite for identical curves"
+            );
+        }
+    }
+
+    #[test]
+    fn test_kfsd_1d_invalid() {
+        let argvals = uniform_grid(10);
+        assert!(kernel_functional_spatial_1d(&[], &[], 0, 0, 0, &argvals, 0.5).is_empty());
+        assert!(kernel_functional_spatial_1d(&[], &[], 0, 5, 10, &argvals, 0.5).is_empty());
+    }
+
+    // ============== KFSD 2D tests ==============
+
+    #[test]
+    fn test_kfsd_2d_range() {
+        let n = 8;
+        let m = 15;
+        let data = generate_centered_data(n, m);
+        let depths = kernel_functional_spatial_2d(&data, &data, n, n, m, 0.5);
+
+        assert_eq!(depths.len(), n);
+        for d in &depths {
+            assert!(
+                *d >= -0.01 && *d <= 1.01,
+                "KFSD 2D depth should be near [0, 1], got {}",
+                d
+            );
+            assert!(d.is_finite(), "KFSD 2D depth should be finite");
+        }
+    }
+
+    // ============== 2D delegation tests ==============
+
+    #[test]
+    fn test_fraiman_muniz_2d_delegates() {
+        let n = 10;
+        let m = 15;
+        let data = generate_centered_data(n, m);
+        let depths_1d = fraiman_muniz_1d(&data, &data, n, n, m, true);
+        let depths_2d = fraiman_muniz_2d(&data, &data, n, n, m, true);
+        assert_eq!(depths_1d, depths_2d);
+    }
+
+    #[test]
+    fn test_modal_2d_delegates() {
+        let n = 10;
+        let m = 15;
+        let data = generate_centered_data(n, m);
+        let depths_1d = modal_1d(&data, &data, n, n, m, 0.5);
+        let depths_2d = modal_2d(&data, &data, n, n, m, 0.5);
+        assert_eq!(depths_1d, depths_2d);
+    }
+
+    #[test]
+    fn test_functional_spatial_2d_delegates() {
+        let n = 10;
+        let m = 15;
+        let data = generate_centered_data(n, m);
+        let depths_1d = functional_spatial_1d(&data, &data, n, n, m);
+        let depths_2d = functional_spatial_2d(&data, &data, n, n, m);
+        assert_eq!(depths_1d, depths_2d);
+    }
+
+    #[test]
+    fn test_random_projection_2d_returns_valid() {
+        let n = 10;
+        let m = 15;
+        let data = generate_centered_data(n, m);
+        let depths = random_projection_2d(&data, &data, n, n, m, 20);
+        assert_eq!(depths.len(), n);
+        for d in &depths {
+            assert!(*d >= 0.0 && *d <= 1.0, "RP 2D depth should be in [0, 1]");
+        }
+    }
 }
