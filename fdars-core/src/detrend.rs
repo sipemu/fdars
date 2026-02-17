@@ -923,7 +923,7 @@ fn smooth_cycle_subseries(
     weights: &[f64],
 ) -> Vec<f64> {
     let m = data.len();
-    let n_cycles = (m + period - 1) / period;
+    let n_cycles = m.div_ceil(period);
     let mut result = vec![0.0; m];
 
     // For each position in the cycle (0, 1, ..., period-1)

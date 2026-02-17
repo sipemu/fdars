@@ -39,6 +39,7 @@ pub mod regression;
 pub mod seasonal;
 pub mod simulation;
 pub mod smoothing;
+pub mod streaming_depth;
 pub mod utility;
 
 // Re-export commonly used items
@@ -63,3 +64,9 @@ pub use simulation::{EFunType, EValType};
 
 // Re-export irregular fdata types
 pub use irreg_fdata::IrregFdata;
+
+// Re-export streaming depth types
+pub use streaming_depth::{
+    FullReferenceState, RollingReference, SortedReferenceState, StreamingBd, StreamingDepth,
+    StreamingFraimanMuniz, StreamingMbd,
+};
