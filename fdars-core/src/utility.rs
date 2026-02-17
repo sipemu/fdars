@@ -2,6 +2,7 @@
 
 use crate::helpers::simpsons_weights;
 use crate::iter_maybe_parallel;
+use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 use std::f64::consts::PI;
@@ -47,16 +48,17 @@ pub fn inner_product(curve1: &[f64], curve2: &[f64], argvals: &[f64]) -> f64 {
 /// Compute inner product matrix for functional data.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of observations
-/// * `m` - Number of evaluation points
+/// * `data` - Matrix of observations (n rows) x evaluation points (m cols)
 /// * `argvals` - Evaluation points
 ///
 /// # Returns
-/// Symmetric inner product matrix (n x n), column-major
-pub fn inner_product_matrix(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> Vec<f64> {
-    if n == 0 || m == 0 || argvals.len() != m || data.len() != n * m {
-        return Vec::new();
+/// Symmetric inner product matrix (n x n)
+pub fn inner_product_matrix(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
+
+    if n == 0 || m == 0 || argvals.len() != m {
+        return FdMatrix::zeros(0, 0);
     }
 
     let weights = simpsons_weights(argvals);
@@ -68,7 +70,7 @@ pub fn inner_product_matrix(data: &[f64], n: usize, m: usize, argvals: &[f64]) -
                 .map(|j| {
                     let mut ip = 0.0;
                     for k in 0..m {
-                        ip += data[i + k * n] * data[j + k * n] * weights[k];
+                        ip += data[(i, k)] * data[(j, k)] * weights[k];
                     }
                     (i, j, ip)
                 })
@@ -77,10 +79,10 @@ pub fn inner_product_matrix(data: &[f64], n: usize, m: usize, argvals: &[f64]) -
         .collect();
 
     // Build symmetric matrix
-    let mut result = vec![0.0; n * n];
+    let mut result = FdMatrix::zeros(n, n);
     for (i, j, ip) in upper_triangle {
-        result[i + j * n] = ip;
-        result[j + i * n] = ip;
+        result[(i, j)] = ip;
+        result[(j, i)] = ip;
     }
 
     result
@@ -235,13 +237,15 @@ pub fn rp_stat(proj_x_ord: &[i32], residuals: &[f64], n_proj: usize) -> RpStatRe
 }
 
 /// k-NN prediction for functional regression.
-pub fn knn_predict(
-    distance_matrix: &[f64],
-    y: &[f64],
-    n_train: usize,
-    n_test: usize,
-    k: usize,
-) -> Vec<f64> {
+///
+/// # Arguments
+/// * `distance_matrix` - Distance matrix (n_test rows x n_train cols)
+/// * `y` - Training response values (length n_train)
+/// * `k` - Number of nearest neighbors
+pub fn knn_predict(distance_matrix: &FdMatrix, y: &[f64], k: usize) -> Vec<f64> {
+    let n_test = distance_matrix.nrows();
+    let n_train = distance_matrix.ncols();
+
     if n_train == 0 || n_test == 0 || k == 0 || y.len() != n_train {
         return vec![0.0; n_test];
     }
@@ -251,9 +255,8 @@ pub fn knn_predict(
     iter_maybe_parallel!(0..n_test)
         .map(|i| {
             // Get distances from test point i to all training points
-            let mut distances: Vec<(usize, f64)> = (0..n_train)
-                .map(|j| (j, distance_matrix[i + j * n_test]))
-                .collect();
+            let mut distances: Vec<(usize, f64)> =
+                (0..n_train).map(|j| (j, distance_matrix[(i, j)])).collect();
 
             // Sort by distance
             distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -266,8 +269,15 @@ pub fn knn_predict(
 }
 
 /// Compute leave-one-out cross-validation error for k-NN.
-pub fn knn_loocv(distance_matrix: &[f64], y: &[f64], n: usize, k: usize) -> f64 {
-    if n == 0 || k == 0 || y.len() != n || distance_matrix.len() != n * n {
+///
+/// # Arguments
+/// * `distance_matrix` - Square distance matrix (n x n)
+/// * `y` - Response values (length n)
+/// * `k` - Number of nearest neighbors
+pub fn knn_loocv(distance_matrix: &FdMatrix, y: &[f64], k: usize) -> f64 {
+    let n = distance_matrix.nrows();
+
+    if n == 0 || k == 0 || y.len() != n || distance_matrix.ncols() != n {
         return f64::INFINITY;
     }
 
@@ -278,7 +288,7 @@ pub fn knn_loocv(distance_matrix: &[f64], y: &[f64], n: usize, k: usize) -> f64 
             // Get distances from point i to all other points
             let mut distances: Vec<(usize, f64)> = (0..n)
                 .filter(|&j| j != i)
-                .map(|j| (j, distance_matrix[i + j * n]))
+                .map(|j| (j, distance_matrix[(i, j)]))
                 .collect();
 
             // Sort by distance
@@ -326,12 +336,13 @@ mod tests {
         let m = 10;
         let argvals = uniform_grid(m);
         let data: Vec<f64> = (0..n * m).map(|i| (i as f64).sin()).collect();
+        let mat = FdMatrix::from_column_major(data, n, m).unwrap();
 
-        let matrix = inner_product_matrix(&data, n, m, &argvals);
+        let matrix = inner_product_matrix(&mat, &argvals);
 
         for i in 0..n {
             for j in 0..n {
-                let diff = (matrix[i + j * n] - matrix[j + i * n]).abs();
+                let diff = (matrix[(i, j)] - matrix[(j, i)]).abs();
                 assert!(diff < 1e-10, "Matrix should be symmetric");
             }
         }
@@ -343,15 +354,16 @@ mod tests {
         let n_test = 3;
         let k = 3;
 
-        let mut distance_matrix = vec![0.0; n_test * n_train];
+        let mut distance_data = vec![0.0; n_test * n_train];
         for i in 0..n_test {
             for j in 0..n_train {
-                distance_matrix[i + j * n_test] = ((i as f64) - (j as f64)).abs();
+                distance_data[i + j * n_test] = ((i as f64) - (j as f64)).abs();
             }
         }
+        let distance_matrix = FdMatrix::from_column_major(distance_data, n_test, n_train).unwrap();
 
         let y: Vec<f64> = (0..n_train).map(|i| i as f64).collect();
-        let predictions = knn_predict(&distance_matrix, &y, n_train, n_test, k);
+        let predictions = knn_predict(&distance_matrix, &y, k);
 
         assert_eq!(predictions.len(), n_test);
     }
@@ -501,15 +513,16 @@ mod tests {
         let size = 5;
         let k = 2;
         // Simple distance matrix
-        let mut dist = vec![0.0; size * size];
+        let mut dist_data = vec![0.0; size * size];
         for i in 0..size {
             for j in 0..size {
-                dist[i + j * size] = ((i as f64) - (j as f64)).abs();
+                dist_data[i + j * size] = ((i as f64) - (j as f64)).abs();
             }
         }
+        let dist = FdMatrix::from_column_major(dist_data, size, size).unwrap();
         let y: Vec<f64> = (0..size).map(|i| i as f64 * 2.0).collect();
 
-        let mse = knn_loocv(&dist, &y, size, k);
+        let mse = knn_loocv(&dist, &y, k);
 
         assert!(mse.is_finite(), "k-NN LOOCV MSE should be finite");
         assert!(mse >= 0.0, "k-NN LOOCV MSE should be non-negative");
@@ -521,19 +534,19 @@ mod tests {
         let n = 4;
         let k = 1;
         // Distance matrix where each pair of adjacent points is close
-        let mut dist = vec![100.0; n * n];
+        let mut dist = FdMatrix::from_column_major(vec![100.0; n * n], n, n).unwrap();
         for i in 0..n {
-            dist[i + i * n] = 0.0;
+            dist[(i, i)] = 0.0;
         }
         // Make pairs (0,1) and (2,3) very close
-        dist[n] = 0.1;
-        dist[1] = 0.1;
-        dist[2 + 3 * n] = 0.1;
-        dist[3 + 2 * n] = 0.1;
+        dist[(0, 1)] = 0.1;
+        dist[(1, 0)] = 0.1;
+        dist[(2, 3)] = 0.1;
+        dist[(3, 2)] = 0.1;
 
         // Same y for paired points
         let y = vec![1.0, 1.0, 5.0, 5.0];
-        let mse = knn_loocv(&dist, &y, n, k);
+        let mse = knn_loocv(&dist, &y, k);
 
         assert!(
             mse < 1e-10,
@@ -544,7 +557,9 @@ mod tests {
 
     #[test]
     fn test_knn_loocv_invalid() {
-        assert!(knn_loocv(&[], &[], 0, 1).is_infinite());
-        assert!(knn_loocv(&[0.0], &[1.0], 1, 0).is_infinite());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(knn_loocv(&empty, &[], 1).is_infinite());
+        let single = FdMatrix::from_column_major(vec![0.0], 1, 1).unwrap();
+        assert!(knn_loocv(&single, &[1.0], 0).is_infinite());
     }
 }

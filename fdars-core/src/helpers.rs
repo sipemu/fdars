@@ -12,16 +12,12 @@ pub const DEFAULT_CONVERGENCE_TOL: f64 = 1e-6;
 /// where each curve contains all evaluation points for one observation.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of observations (rows)
-/// * `m` - Number of evaluation points (columns)
+/// * `data` - Functional data matrix (n x m)
 ///
 /// # Returns
 /// Vector of n curves, each containing m values
-pub fn extract_curves(data: &[f64], n: usize, m: usize) -> Vec<Vec<f64>> {
-    (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect()
+pub fn extract_curves(data: &crate::matrix::FdMatrix) -> Vec<Vec<f64>> {
+    data.rows()
 }
 
 /// Compute L2 distance between two curves using integration weights.
@@ -132,7 +128,8 @@ mod tests {
         // Column-major data: 2 observations, 3 points
         // obs 0: [1, 2, 3], obs 1: [4, 5, 6]
         let data = vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0];
-        let curves = extract_curves(&data, 2, 3);
+        let mat = crate::matrix::FdMatrix::from_column_major(data, 2, 3).unwrap();
+        let curves = extract_curves(&mat);
         assert_eq!(curves.len(), 2);
         assert_eq!(curves[0], vec![1.0, 2.0, 3.0]);
         assert_eq!(curves[1], vec![4.0, 5.0, 6.0]);

@@ -2,6 +2,7 @@
 
 use crate::helpers::{simpsons_weights, simpsons_weights_2d, NUMERICAL_EPS};
 use crate::iter_maybe_parallel;
+use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -72,22 +73,14 @@ fn compute_2d_derivatives(
 /// Perform Weiszfeld iteration to compute geometric median.
 ///
 /// This is the core algorithm shared by 1D and 2D geometric median computations.
-fn weiszfeld_iteration(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    weights: &[f64],
-    max_iter: usize,
-    tol: f64,
-) -> Vec<f64> {
+fn weiszfeld_iteration(data: &FdMatrix, weights: &[f64], max_iter: usize, tol: f64) -> Vec<f64> {
+    let (n, m) = data.shape();
+
     // Initialize with the mean
     let mut median: Vec<f64> = (0..m)
         .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
+            let col = data.column(j);
+            col.iter().sum::<f64>() / n as f64
         })
         .collect();
 
@@ -97,7 +90,7 @@ fn weiszfeld_iteration(
             .map(|i| {
                 let mut dist_sq = 0.0;
                 for j in 0..m {
-                    let diff = data[i + j * n] - median[j];
+                    let diff = data[(i, j)] - median[j];
                     dist_sq += diff * diff * weights[j];
                 }
                 dist_sq.sqrt()
@@ -123,7 +116,7 @@ fn weiszfeld_iteration(
             .map(|j| {
                 let mut weighted_sum = 0.0;
                 for i in 0..n {
-                    weighted_sum += data[i + j * n] * inv_distances[i];
+                    weighted_sum += data[(i, j)] * inv_distances[i];
                 }
                 weighted_sum / sum_inv_dist
             })
@@ -150,24 +143,20 @@ fn weiszfeld_iteration(
 /// Compute the mean function across all samples (1D).
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Functional data matrix (n x m)
 ///
 /// # Returns
 /// Mean function values at each evaluation point
-pub fn mean_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
-    if n == 0 || m == 0 || data.len() != n * m {
+pub fn mean_1d(data: &FdMatrix) -> Vec<f64> {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 {
         return Vec::new();
     }
 
     iter_maybe_parallel!(0..m)
         .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
+            let col = data.column(j);
+            col.iter().sum::<f64>() / n as f64
         })
         .collect()
 }
@@ -175,41 +164,39 @@ pub fn mean_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
 /// Compute the mean function for 2D surfaces.
 ///
 /// Data is stored as n x (m1*m2) matrix where each row is a flattened surface.
-pub fn mean_2d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
+pub fn mean_2d(data: &FdMatrix) -> Vec<f64> {
     // Same computation as 1D - just compute pointwise mean
-    mean_1d(data, n, m)
+    mean_1d(data)
 }
 
 /// Center functional data by subtracting the mean function.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Functional data matrix (n x m)
 ///
 /// # Returns
-/// Centered data matrix (column-major)
-pub fn center_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
-    if n == 0 || m == 0 || data.len() != n * m {
-        return Vec::new();
+/// Centered data matrix
+pub fn center_1d(data: &FdMatrix) -> FdMatrix {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 {
+        return FdMatrix::zeros(0, 0);
     }
 
     // First compute the mean for each column (parallelized)
     let means: Vec<f64> = iter_maybe_parallel!(0..m)
         .map(|j| {
-            let mut sum = 0.0;
-            for i in 0..n {
-                sum += data[i + j * n];
-            }
-            sum / n as f64
+            let col = data.column(j);
+            col.iter().sum::<f64>() / n as f64
         })
         .collect();
 
-    // Create centered data (parallelized by column)
-    let mut centered = vec![0.0; n * m];
+    // Create centered data
+    let mut centered = FdMatrix::zeros(n, m);
     for j in 0..m {
+        let col = centered.column_mut(j);
+        let src = data.column(j);
         for i in 0..n {
-            centered[i + j * n] = data[i + j * n] - means[j];
+            col[i] = src[i] - means[j];
         }
     }
 
@@ -219,16 +206,15 @@ pub fn center_1d(data: &[f64], n: usize, m: usize) -> Vec<f64> {
 /// Compute Lp norm for each sample.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Functional data matrix (n x m)
 /// * `argvals` - Evaluation points for integration
 /// * `p` - Order of the norm (e.g., 2.0 for L2)
 ///
 /// # Returns
 /// Vector of Lp norms for each sample
-pub fn norm_lp_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], p: f64) -> Vec<f64> {
-    if n == 0 || m == 0 || argvals.len() != m || data.len() != n * m {
+pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 || argvals.len() != m {
         return Vec::new();
     }
 
@@ -238,7 +224,7 @@ pub fn norm_lp_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], p: f64) -> 
         .map(|i| {
             let mut integral = 0.0;
             for j in 0..m {
-                let val = data[i + j * n].abs().powf(p);
+                let val = data[(i, j)].abs().powf(p);
                 integral += val * weights[j];
             }
             integral.powf(1.0 / p)
@@ -249,20 +235,19 @@ pub fn norm_lp_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], p: f64) -> 
 /// Compute numerical derivative of functional data (parallelized over rows).
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Functional data matrix (n x m)
 /// * `argvals` - Evaluation points
 /// * `nderiv` - Order of derivative
 ///
 /// # Returns
-/// Derivative data matrix (column-major)
-pub fn deriv_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], nderiv: usize) -> Vec<f64> {
-    if n == 0 || m == 0 || argvals.len() != m || nderiv < 1 || data.len() != n * m {
-        return vec![0.0; n * m];
+/// Derivative data matrix
+pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 || argvals.len() != m || nderiv < 1 {
+        return FdMatrix::zeros(n, m);
     }
 
-    let mut current = data.to_vec();
+    let mut current = data.clone();
 
     // Pre-compute step sizes for central differences
     let h0 = argvals[1] - argvals[0];
@@ -278,28 +263,28 @@ pub fn deriv_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], nderiv: usize
                 let mut row_deriv = vec![0.0; m];
 
                 // Forward difference at left boundary
-                row_deriv[0] = (current[i + n] - current[i]) / h0;
+                row_deriv[0] = (current[(i, 1)] - current[(i, 0)]) / h0;
 
                 // Central differences for interior points
                 for j in 1..(m - 1) {
-                    row_deriv[j] =
-                        (current[i + (j + 1) * n] - current[i + (j - 1) * n]) / h_central[j - 1];
+                    row_deriv[j] = (current[(i, j + 1)] - current[(i, j - 1)]) / h_central[j - 1];
                 }
 
                 // Backward difference at right boundary
-                row_deriv[m - 1] = (current[i + (m - 1) * n] - current[i + (m - 2) * n]) / hn;
+                row_deriv[m - 1] = (current[(i, m - 1)] - current[(i, m - 2)]) / hn;
 
                 row_deriv
             })
             .collect();
 
         // Reorder from row-major to column-major order
-        current = vec![0.0; n * m];
+        let mut next = FdMatrix::zeros(n, m);
         for i in 0..n {
             for j in 0..m {
-                current[i + j * n] = deriv[i * m + j];
+                next[(i, j)] = deriv[i * m + j];
             }
         }
+        current = next;
     }
 
     current
@@ -308,11 +293,11 @@ pub fn deriv_1d(data: &[f64], n: usize, m: usize, argvals: &[f64], nderiv: usize
 /// Result of 2D partial derivatives.
 pub struct Deriv2DResult {
     /// Partial derivative with respect to s (∂f/∂s)
-    pub ds: Vec<f64>,
+    pub ds: FdMatrix,
     /// Partial derivative with respect to t (∂f/∂t)
-    pub dt: Vec<f64>,
+    pub dt: FdMatrix,
     /// Mixed partial derivative (∂²f/∂s∂t)
-    pub dsdt: Vec<f64>,
+    pub dsdt: FdMatrix,
 }
 
 /// Compute finite-difference step sizes for a grid.
@@ -333,12 +318,12 @@ fn compute_step_sizes(argvals: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// Collect per-curve row vectors into a column-major matrix.
-fn reassemble_colmajor(rows: &[Vec<f64>], n: usize, ncol: usize) -> Vec<f64> {
-    let mut mat = vec![0.0; n * ncol];
+/// Collect per-curve row vectors into a column-major FdMatrix.
+fn reassemble_colmajor(rows: &[Vec<f64>], n: usize, ncol: usize) -> FdMatrix {
+    let mut mat = FdMatrix::zeros(n, ncol);
     for i in 0..n {
         for j in 0..ncol {
-            mat[i + j * n] = rows[i][j];
+            mat[(i, j)] = rows[i][j];
         }
     }
     mat
@@ -352,20 +337,19 @@ fn reassemble_colmajor(rows: &[Vec<f64>], n: usize, ncol: usize) -> Vec<f64> {
 /// - dsdt: mixed partial derivative (∂²f/∂s∂t)
 ///
 /// # Arguments
-/// * `data` - Column-major matrix, n surfaces, each stored as m1*m2 values
-/// * `n` - Number of surfaces
+/// * `data` - Functional data matrix, n surfaces, each stored as m1*m2 values
 /// * `argvals_s` - Grid points in s direction (length m1)
 /// * `argvals_t` - Grid points in t direction (length m2)
 /// * `m1` - Grid size in s direction
 /// * `m2` - Grid size in t direction
 pub fn deriv_2d(
-    data: &[f64],
-    n: usize,
+    data: &FdMatrix,
     argvals_s: &[f64],
     argvals_t: &[f64],
     m1: usize,
     m2: usize,
 ) -> Option<Deriv2DResult> {
+    let n = data.nrows();
     let ncol = m1 * m2;
     if n == 0 || ncol == 0 || argvals_s.len() != m1 || argvals_t.len() != m2 {
         return None;
@@ -381,7 +365,7 @@ pub fn deriv_2d(
             let mut dt = vec![0.0; ncol];
             let mut dsdt = vec![0.0; ncol];
 
-            let get_val = |si: usize, ti: usize| -> f64 { data[i + (si + ti * m1) * n] };
+            let get_val = |si: usize, ti: usize| -> f64 { data[(i, si + ti * m1)] };
 
             for ti in 0..m2 {
                 for si in 0..m1 {
@@ -414,26 +398,23 @@ pub fn deriv_2d(
 /// The geometric median minimizes sum of L2 distances to all curves.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Functional data matrix (n x m)
 /// * `argvals` - Evaluation points for integration
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
 pub fn geometric_median_1d(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     max_iter: usize,
     tol: f64,
 ) -> Vec<f64> {
-    if n == 0 || m == 0 || argvals.len() != m || data.len() != n * m {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 || argvals.len() != m {
         return Vec::new();
     }
 
     let weights = simpsons_weights(argvals);
-    weiszfeld_iteration(data, n, m, &weights, max_iter, tol)
+    weiszfeld_iteration(data, &weights, max_iter, tol)
 }
 
 /// Compute the geometric median for 2D functional data.
@@ -441,29 +422,26 @@ pub fn geometric_median_1d(
 /// Data is stored as n x (m1*m2) matrix where each row is a flattened surface.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m) where m = m1*m2
-/// * `n` - Number of samples
-/// * `m` - Number of grid points (m1 * m2)
+/// * `data` - Functional data matrix (n x m) where m = m1*m2
 /// * `argvals_s` - Grid points in s direction (length m1)
 /// * `argvals_t` - Grid points in t direction (length m2)
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
 pub fn geometric_median_2d(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals_s: &[f64],
     argvals_t: &[f64],
     max_iter: usize,
     tol: f64,
 ) -> Vec<f64> {
+    let (n, m) = data.shape();
     let expected_cols = argvals_s.len() * argvals_t.len();
-    if n == 0 || m == 0 || m != expected_cols || data.len() != n * m {
+    if n == 0 || m == 0 || m != expected_cols {
         return Vec::new();
     }
 
     let weights = simpsons_weights_2d(argvals_s, argvals_t);
-    weiszfeld_iteration(data, n, m, &weights, max_iter, tol)
+    weiszfeld_iteration(data, &weights, max_iter, tol)
 }
 
 #[cfg(test)]
@@ -484,28 +462,30 @@ mod tests {
         // Sample 2: [3, 4, 5]
         // Mean should be [2, 3, 4]
         let data = vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0]; // column-major
-        let mean = mean_1d(&data, 2, 3);
+        let mat = FdMatrix::from_column_major(data, 2, 3).unwrap();
+        let mean = mean_1d(&mat);
         assert_eq!(mean, vec![2.0, 3.0, 4.0]);
     }
 
     #[test]
     fn test_mean_1d_single_sample() {
         let data = vec![1.0, 2.0, 3.0];
-        let mean = mean_1d(&data, 1, 3);
+        let mat = FdMatrix::from_column_major(data, 1, 3).unwrap();
+        let mean = mean_1d(&mat);
         assert_eq!(mean, vec![1.0, 2.0, 3.0]);
     }
 
     #[test]
     fn test_mean_1d_invalid() {
-        assert!(mean_1d(&[], 0, 0).is_empty());
-        assert!(mean_1d(&[1.0], 1, 2).is_empty()); // wrong data length
+        assert!(mean_1d(&FdMatrix::zeros(0, 0)).is_empty());
     }
 
     #[test]
     fn test_mean_2d_delegates() {
         let data = vec![1.0, 3.0, 2.0, 4.0];
-        let mean1d = mean_1d(&data, 2, 2);
-        let mean2d = mean_2d(&data, 2, 2);
+        let mat = FdMatrix::from_column_major(data, 2, 2).unwrap();
+        let mean1d = mean_1d(&mat);
+        let mean2d = mean_2d(&mat);
         assert_eq!(mean1d, mean2d);
     }
 
@@ -514,16 +494,18 @@ mod tests {
     #[test]
     fn test_center_1d() {
         let data = vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0]; // column-major
-        let centered = center_1d(&data, 2, 3);
+        let mat = FdMatrix::from_column_major(data, 2, 3).unwrap();
+        let centered = center_1d(&mat);
         // Mean is [2, 3, 4], so centered should be [-1, 1, -1, 1, -1, 1]
-        assert_eq!(centered, vec![-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]);
+        assert_eq!(centered.as_slice(), &[-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]);
     }
 
     #[test]
     fn test_center_1d_mean_zero() {
         let data = vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0];
-        let centered = center_1d(&data, 2, 3);
-        let centered_mean = mean_1d(&centered, 2, 3);
+        let mat = FdMatrix::from_column_major(data, 2, 3).unwrap();
+        let centered = center_1d(&mat);
+        let centered_mean = mean_1d(&centered);
         for m in centered_mean {
             assert!(m.abs() < 1e-10, "Centered data should have zero mean");
         }
@@ -531,7 +513,8 @@ mod tests {
 
     #[test]
     fn test_center_1d_invalid() {
-        assert!(center_1d(&[], 0, 0).is_empty());
+        let centered = center_1d(&FdMatrix::zeros(0, 0));
+        assert!(centered.is_empty());
     }
 
     // ============== Norm tests ==============
@@ -540,11 +523,9 @@ mod tests {
     fn test_norm_lp_1d_constant() {
         // Constant function 2 on [0, 1] has L2 norm = 2
         let argvals = uniform_grid(21);
-        let mut data = vec![0.0; 21];
-        for j in 0..21 {
-            data[j] = 2.0;
-        }
-        let norms = norm_lp_1d(&data, 1, 21, &argvals, 2.0);
+        let data: Vec<f64> = vec![2.0; 21];
+        let mat = FdMatrix::from_column_major(data, 1, 21).unwrap();
+        let norms = norm_lp_1d(&mat, &argvals, 2.0);
         assert_eq!(norms.len(), 1);
         assert!(
             (norms[0] - 2.0).abs() < 0.1,
@@ -556,11 +537,9 @@ mod tests {
     fn test_norm_lp_1d_sine() {
         // L2 norm of sin(pi*x) on [0, 1] = sqrt(0.5)
         let argvals = uniform_grid(101);
-        let mut data = vec![0.0; 101];
-        for j in 0..101 {
-            data[j] = (PI * argvals[j]).sin();
-        }
-        let norms = norm_lp_1d(&data, 1, 101, &argvals, 2.0);
+        let data: Vec<f64> = argvals.iter().map(|&x| (PI * x).sin()).collect();
+        let mat = FdMatrix::from_column_major(data, 1, 101).unwrap();
+        let norms = norm_lp_1d(&mat, &argvals, 2.0);
         let expected = 0.5_f64.sqrt();
         assert!(
             (norms[0] - expected).abs() < 0.05,
@@ -572,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_norm_lp_1d_invalid() {
-        assert!(norm_lp_1d(&[], 0, 0, &[], 2.0).is_empty());
+        assert!(norm_lp_1d(&FdMatrix::zeros(0, 0), &[], 2.0).is_empty());
     }
 
     // ============== Derivative tests ==============
@@ -582,10 +561,14 @@ mod tests {
         // Derivative of linear function x should be 1
         let argvals = uniform_grid(21);
         let data = argvals.clone();
-        let deriv = deriv_1d(&data, 1, 21, &argvals, 1);
+        let mat = FdMatrix::from_column_major(data, 1, 21).unwrap();
+        let deriv = deriv_1d(&mat, &argvals, 1);
         // Interior points should have derivative close to 1
         for j in 2..19 {
-            assert!((deriv[j] - 1.0).abs() < 0.1, "Derivative of x should be 1");
+            assert!(
+                (deriv[(0, j)] - 1.0).abs() < 0.1,
+                "Derivative of x should be 1"
+            );
         }
     }
 
@@ -593,16 +576,14 @@ mod tests {
     fn test_deriv_1d_quadratic() {
         // Derivative of x^2 should be 2x
         let argvals = uniform_grid(51);
-        let mut data = vec![0.0; 51];
-        for j in 0..51 {
-            data[j] = argvals[j] * argvals[j];
-        }
-        let deriv = deriv_1d(&data, 1, 51, &argvals, 1);
+        let data: Vec<f64> = argvals.iter().map(|&x| x * x).collect();
+        let mat = FdMatrix::from_column_major(data, 1, 51).unwrap();
+        let deriv = deriv_1d(&mat, &argvals, 1);
         // Check interior points
         for j in 5..45 {
             let expected = 2.0 * argvals[j];
             assert!(
-                (deriv[j] - expected).abs() < 0.1,
+                (deriv[(0, j)] - expected).abs() < 0.1,
                 "Derivative of x^2 should be 2x"
             );
         }
@@ -610,8 +591,8 @@ mod tests {
 
     #[test]
     fn test_deriv_1d_invalid() {
-        let result = deriv_1d(&[], 0, 0, &[], 1);
-        assert!(result.is_empty() || result.iter().all(|&x| x == 0.0));
+        let result = deriv_1d(&FdMatrix::zeros(0, 0), &[], 1);
+        assert!(result.is_empty() || result.as_slice().iter().all(|&x| x == 0.0));
     }
 
     // ============== Geometric median tests ==============
@@ -628,7 +609,8 @@ mod tests {
                 data[i + j * n] = (2.0 * PI * argvals[j]).sin();
             }
         }
-        let median = geometric_median_1d(&data, n, m, &argvals, 100, 1e-6);
+        let mat = FdMatrix::from_column_major(data, n, m).unwrap();
+        let median = geometric_median_1d(&mat, &argvals, 100, 1e-6);
         for j in 0..m {
             let expected = (2.0 * PI * argvals[j]).sin();
             assert!(
@@ -649,14 +631,15 @@ mod tests {
                 data[i + j * n] = (i as f64 / n as f64) * argvals[j];
             }
         }
-        let median = geometric_median_1d(&data, n, m, &argvals, 100, 1e-6);
+        let mat = FdMatrix::from_column_major(data, n, m).unwrap();
+        let median = geometric_median_1d(&mat, &argvals, 100, 1e-6);
         assert_eq!(median.len(), m);
         assert!(median.iter().all(|&x| x.is_finite()));
     }
 
     #[test]
     fn test_geometric_median_invalid() {
-        assert!(geometric_median_1d(&[], 0, 0, &[], 100, 1e-6).is_empty());
+        assert!(geometric_median_1d(&FdMatrix::zeros(0, 0), &[], 100, 1e-6).is_empty());
     }
 
     // ============== 2D derivative tests ==============
@@ -683,18 +666,19 @@ mod tests {
             }
         }
 
-        let result = deriv_2d(&data, n, &argvals_s, &argvals_t, m1, m2).unwrap();
+        let mat = FdMatrix::from_column_major(data, n, ncol).unwrap();
+        let result = deriv_2d(&mat, &argvals_s, &argvals_t, m1, m2).unwrap();
 
         // Check interior points for ∂f/∂s ≈ 2
         for si in 2..(m1 - 2) {
             for ti in 2..(m2 - 2) {
                 let idx = si + ti * m1;
                 assert!(
-                    (result.ds[idx] - 2.0).abs() < 0.2,
+                    (result.ds[(0, idx)] - 2.0).abs() < 0.2,
                     "∂f/∂s at ({}, {}) = {}, expected 2",
                     si,
                     ti,
-                    result.ds[idx]
+                    result.ds[(0, idx)]
                 );
             }
         }
@@ -704,11 +688,11 @@ mod tests {
             for ti in 2..(m2 - 2) {
                 let idx = si + ti * m1;
                 assert!(
-                    (result.dt[idx] - 3.0).abs() < 0.2,
+                    (result.dt[(0, idx)] - 3.0).abs() < 0.2,
                     "∂f/∂t at ({}, {}) = {}, expected 3",
                     si,
                     ti,
-                    result.dt[idx]
+                    result.dt[(0, idx)]
                 );
             }
         }
@@ -718,11 +702,11 @@ mod tests {
             for ti in 2..(m2 - 2) {
                 let idx = si + ti * m1;
                 assert!(
-                    result.dsdt[idx].abs() < 0.5,
+                    result.dsdt[(0, idx)].abs() < 0.5,
                     "∂²f/∂s∂t at ({}, {}) = {}, expected 0",
                     si,
                     ti,
-                    result.dsdt[idx]
+                    result.dsdt[(0, idx)]
                 );
             }
         }
@@ -750,7 +734,8 @@ mod tests {
             }
         }
 
-        let result = deriv_2d(&data, n, &argvals_s, &argvals_t, m1, m2).unwrap();
+        let mat = FdMatrix::from_column_major(data, n, ncol).unwrap();
+        let result = deriv_2d(&mat, &argvals_s, &argvals_t, m1, m2).unwrap();
 
         // Check interior points for ∂f/∂s ≈ t
         for si in 3..(m1 - 3) {
@@ -758,11 +743,11 @@ mod tests {
                 let idx = si + ti * m1;
                 let expected = argvals_t[ti];
                 assert!(
-                    (result.ds[idx] - expected).abs() < 0.1,
+                    (result.ds[(0, idx)] - expected).abs() < 0.1,
                     "∂f/∂s at ({}, {}) = {}, expected {}",
                     si,
                     ti,
-                    result.ds[idx],
+                    result.ds[(0, idx)],
                     expected
                 );
             }
@@ -774,11 +759,11 @@ mod tests {
                 let idx = si + ti * m1;
                 let expected = argvals_s[si];
                 assert!(
-                    (result.dt[idx] - expected).abs() < 0.1,
+                    (result.dt[(0, idx)] - expected).abs() < 0.1,
                     "∂f/∂t at ({}, {}) = {}, expected {}",
                     si,
                     ti,
-                    result.dt[idx],
+                    result.dt[(0, idx)],
                     expected
                 );
             }
@@ -789,11 +774,11 @@ mod tests {
             for ti in 3..(m2 - 3) {
                 let idx = si + ti * m1;
                 assert!(
-                    (result.dsdt[idx] - 1.0).abs() < 0.3,
+                    (result.dsdt[(0, idx)] - 1.0).abs() < 0.3,
                     "∂²f/∂s∂t at ({}, {}) = {}, expected 1",
                     si,
                     ti,
-                    result.dsdt[idx]
+                    result.dsdt[(0, idx)]
                 );
             }
         }
@@ -802,13 +787,13 @@ mod tests {
     #[test]
     fn test_deriv_2d_invalid_input() {
         // Empty data
-        let result = deriv_2d(&[], 0, &[], &[], 0, 0);
+        let result = deriv_2d(&FdMatrix::zeros(0, 0), &[], &[], 0, 0);
         assert!(result.is_none());
 
         // Mismatched dimensions
-        let data = vec![1.0; 4];
+        let mat = FdMatrix::from_column_major(vec![1.0; 4], 1, 4).unwrap();
         let argvals = vec![0.0, 1.0];
-        let result = deriv_2d(&data, 1, &argvals, &[0.0, 0.5, 1.0], 2, 2);
+        let result = deriv_2d(&mat, &argvals, &[0.0, 0.5, 1.0], 2, 2);
         assert!(result.is_none());
     }
 
@@ -838,7 +823,8 @@ mod tests {
             }
         }
 
-        let median = geometric_median_2d(&data, n, m, &argvals_s, &argvals_t, 100, 1e-6);
+        let mat = FdMatrix::from_column_major(data, n, m).unwrap();
+        let median = geometric_median_2d(&mat, &argvals_s, &argvals_t, 100, 1e-6);
         assert_eq!(median.len(), m);
 
         // Check that median equals the surface

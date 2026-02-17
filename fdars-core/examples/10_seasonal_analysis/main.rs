@@ -4,6 +4,7 @@
 //! measures, and seasonality change detection on synthetic signals
 //! with known periods.
 
+use fdars_core::matrix::FdMatrix;
 use fdars_core::seasonal::{
     autoperiod, detect_peaks, detect_seasonality_changes, estimate_period_acf, estimate_period_fft,
     sazed, seasonal_strength_spectral, seasonal_strength_variance, PeriodEstimate,
@@ -50,10 +51,15 @@ fn main() {
     // For functions expecting functional data format (n=1 curve, m points)
     let n = 1;
 
+    // Wrap signals as FdMatrix for migrated functions
+    let mat_pure = FdMatrix::from_slice(&signal_pure, n, m).unwrap();
+    let mat_harmonic = FdMatrix::from_slice(&signal_harmonic, n, m).unwrap();
+    let mat_changing = FdMatrix::from_slice(&signal_changing, n, m).unwrap();
+
     // --- Section 1: FFT period estimation ---
     println!("--- FFT Period Estimation ---");
-    let fft_pure = estimate_period_fft(&signal_pure, n, m, &t);
-    let fft_harmonic = estimate_period_fft(&signal_harmonic, n, m, &t);
+    let fft_pure = estimate_period_fft(&mat_pure, &t);
+    let fft_harmonic = estimate_period_fft(&mat_harmonic, &t);
     print_period_estimate("Pure signal (true period=2.0)", &fft_pure);
     print_period_estimate("Two harmonics  (true period=2.0)", &fft_harmonic);
 
@@ -102,7 +108,7 @@ fn main() {
 
     // --- Section 5: Peak detection ---
     println!("\n--- Peak Detection ---");
-    let peaks = detect_peaks(&signal_pure, n, m, &t, Some(1.0), None, false, None);
+    let peaks = detect_peaks(&mat_pure, &t, Some(1.0), None, false, None);
     println!("  Pure signal peaks: {} found", peaks.peaks[0].len());
     for (i, peak) in peaks.peaks[0].iter().enumerate().take(5) {
         println!(
@@ -118,17 +124,17 @@ fn main() {
     // --- Section 6: Seasonal strength ---
     println!("\n--- Seasonal Strength ---");
     let period = 2.0;
-    let str_var_pure = seasonal_strength_variance(&signal_pure, n, m, &t, period, 3);
-    let str_spec_pure = seasonal_strength_spectral(&signal_pure, n, m, &t, period);
-    let str_var_changing = seasonal_strength_variance(&signal_changing, n, m, &t, period, 3);
-    let str_spec_changing = seasonal_strength_spectral(&signal_changing, n, m, &t, period);
+    let str_var_pure = seasonal_strength_variance(&mat_pure, &t, period, 3);
+    let str_spec_pure = seasonal_strength_spectral(&mat_pure, &t, period);
+    let str_var_changing = seasonal_strength_variance(&mat_changing, &t, period, 3);
+    let str_spec_changing = seasonal_strength_spectral(&mat_changing, &t, period);
 
     println!("  Pure signal:     variance={str_var_pure:.4}, spectral={str_spec_pure:.4}");
     println!("  Changing signal: variance={str_var_changing:.4}, spectral={str_spec_changing:.4}");
 
     // --- Section 7: Seasonality change detection ---
     println!("\n--- Seasonality Change Detection ---");
-    let changes = detect_seasonality_changes(&signal_changing, n, m, &t, period, 0.3, 4.0, 2.0);
+    let changes = detect_seasonality_changes(&mat_changing, &t, period, 0.3, 4.0, 2.0);
     println!("  Change points found: {}", changes.change_points.len());
     for cp in &changes.change_points {
         println!(

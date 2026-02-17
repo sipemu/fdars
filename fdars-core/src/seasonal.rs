@@ -11,6 +11,7 @@
 
 use crate::basis::fourier_basis_with_period;
 use crate::fdata::deriv_1d;
+use crate::matrix::FdMatrix;
 use crate::{iter_maybe_parallel, slice_maybe_parallel};
 use num_complex::Complex;
 #[cfg(feature = "parallel")]
@@ -256,25 +257,24 @@ pub struct WaveletAmplitudeResult {
 // Internal helper functions
 // ============================================================================
 
-/// Compute mean curve from column-major data matrix.
+/// Compute mean curve from functional data matrix.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples (rows)
-/// * `m` - Number of evaluation points (columns)
+/// * `data` - Functional data matrix (n x m)
 /// * `parallel` - Use parallel iteration (default: true)
 ///
 /// # Returns
 /// Mean curve of length m
 #[inline]
-fn compute_mean_curve_impl(data: &[f64], n: usize, m: usize, parallel: bool) -> Vec<f64> {
+fn compute_mean_curve_impl(data: &FdMatrix, parallel: bool) -> Vec<f64> {
+    let (n, m) = data.shape();
     if parallel && m >= 100 {
         // Use parallel iteration for larger datasets
         iter_maybe_parallel!(0..m)
             .map(|j| {
                 let mut sum = 0.0;
                 for i in 0..n {
-                    sum += data[i + j * n];
+                    sum += data[(i, j)];
                 }
                 sum / n as f64
             })
@@ -285,7 +285,7 @@ fn compute_mean_curve_impl(data: &[f64], n: usize, m: usize, parallel: bool) -> 
             .map(|j| {
                 let mut sum = 0.0;
                 for i in 0..n {
-                    sum += data[i + j * n];
+                    sum += data[(i, j)];
                 }
                 sum / n as f64
             })
@@ -295,8 +295,8 @@ fn compute_mean_curve_impl(data: &[f64], n: usize, m: usize, parallel: bool) -> 
 
 /// Compute mean curve (parallel by default for m >= 100).
 #[inline]
-fn compute_mean_curve(data: &[f64], n: usize, m: usize) -> Vec<f64> {
-    compute_mean_curve_impl(data, n, m, true)
+fn compute_mean_curve(data: &FdMatrix) -> Vec<f64> {
+    compute_mean_curve_impl(data, true)
 }
 
 /// Compute interior bounds for edge-skipping (10% on each side).
@@ -838,13 +838,12 @@ fn find_first_acf_peak(acf: &[f64]) -> Option<(usize, f64)> {
 
 /// Compute per-cycle seasonal strengths and identify weak seasons.
 fn compute_cycle_strengths(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     strength_thresh: f64,
 ) -> (Vec<f64>, Vec<usize>) {
+    let (n, m) = data.shape();
     let t_start = argvals[0];
     let t_end = argvals[m - 1];
     let n_cycles = ((t_end - t_start) / period).floor() as usize;
@@ -866,12 +865,12 @@ fn compute_cycle_strengths(
         }
 
         let cycle_data: Vec<f64> = (start_idx..end_idx)
-            .flat_map(|j| (0..n).map(move |i| data[i + j * n]))
+            .flat_map(|j| (0..n).map(move |i| data[(i, j)]))
             .collect();
+        let cycle_mat = FdMatrix::from_column_major(cycle_data, n, cycle_m).unwrap();
         let cycle_argvals: Vec<f64> = argvals[start_idx..end_idx].to_vec();
 
-        let strength =
-            seasonal_strength_variance(&cycle_data, n, cycle_m, &cycle_argvals, period, 3);
+        let strength = seasonal_strength_variance(&cycle_mat, &cycle_argvals, period, 3);
 
         cycle_strengths.push(strength);
         if strength < strength_thresh {
@@ -1060,7 +1059,8 @@ fn detect_threshold_crossings(
 ///
 /// # Returns
 /// Period estimate with confidence measure
-pub fn estimate_period_fft(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> PeriodEstimate {
+pub fn estimate_period_fft(data: &FdMatrix, argvals: &[f64]) -> PeriodEstimate {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m {
         return PeriodEstimate {
             period: f64::NAN,
@@ -1071,7 +1071,7 @@ pub fn estimate_period_fft(data: &[f64], n: usize, m: usize, argvals: &[f64]) ->
     }
 
     // Compute mean curve first
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     let (frequencies, power) = periodogram(&mean_curve, argvals);
 
@@ -1144,7 +1144,8 @@ pub fn estimate_period_acf(
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mat = FdMatrix::from_slice(data, n, m).unwrap();
+    let mean_curve = compute_mean_curve(&mat);
 
     let acf = autocorrelation(&mean_curve, max_lag);
 
@@ -1208,7 +1209,8 @@ pub fn estimate_period_regression(
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mat = FdMatrix::from_slice(data, n, m).unwrap();
+    let mean_curve = compute_mean_curve(&mat);
 
     let nbasis = 1 + 2 * n_harmonics;
 
@@ -1306,7 +1308,8 @@ pub fn detect_multiple_periods(
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mat = FdMatrix::from_slice(data, n, m).unwrap();
+    let mean_curve = compute_mean_curve(&mat);
 
     let mut residual = mean_curve.clone();
     let mut detected = Vec::with_capacity(max_periods);
@@ -1339,14 +1342,14 @@ fn evaluate_next_period(
     min_strength: f64,
     iteration: usize,
 ) -> Option<DetectedPeriod> {
-    let residual_data: Vec<f64> = residual.to_vec();
-    let est = estimate_period_fft(&residual_data, 1, m, argvals);
+    let residual_mat = FdMatrix::from_slice(residual, 1, m).unwrap();
+    let est = estimate_period_fft(&residual_mat, argvals);
 
     if est.confidence < min_confidence || est.period.is_nan() || est.period.is_infinite() {
         return None;
     }
 
-    let strength = seasonal_strength_variance(&residual_data, 1, m, argvals, est.period, 3);
+    let strength = seasonal_strength_variance(&residual_mat, argvals, est.period, 3);
     if strength < min_strength || strength.is_nan() {
         return None;
     }
@@ -1369,22 +1372,20 @@ fn evaluate_next_period(
 
 /// Optionally smooth data using Fourier basis before peak detection.
 fn smooth_for_peaks(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     smooth_first: bool,
     smooth_nbasis: Option<usize>,
 ) -> Vec<f64> {
     if !smooth_first {
-        return data.to_vec();
+        return data.as_slice().to_vec();
     }
     let nbasis = smooth_nbasis
-        .unwrap_or_else(|| crate::basis::select_fourier_nbasis_gcv(data, n, m, argvals, 5, 25));
-    if let Some(result) = crate::basis::fourier_fit_1d(data, n, m, argvals, nbasis) {
-        result.fitted
+        .unwrap_or_else(|| crate::basis::select_fourier_nbasis_gcv(data, argvals, 5, 25));
+    if let Some(result) = crate::basis::fourier_fit_1d(data, argvals, nbasis) {
+        result.fitted.into_vec()
     } else {
-        data.to_vec()
+        data.as_slice().to_vec()
     }
 }
 
@@ -1452,15 +1453,14 @@ fn detect_peaks_single_curve(
 /// * `smooth_nbasis` - Number of Fourier basis functions. If None and smooth_first=true,
 ///   uses GCV to automatically select optimal nbasis (range 5-25).
 pub fn detect_peaks(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     min_distance: Option<f64>,
     min_prominence: Option<f64>,
     smooth_first: bool,
     smooth_nbasis: Option<usize>,
 ) -> PeakDetectionResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 3 || argvals.len() != m {
         return PeakDetectionResult {
             peaks: Vec::new(),
@@ -1472,10 +1472,11 @@ pub fn detect_peaks(
     let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
     let min_dist_points = min_distance.map(|d| (d / dt).round() as usize).unwrap_or(1);
 
-    let work_data = smooth_for_peaks(data, n, m, argvals, smooth_first, smooth_nbasis);
+    let work_data = smooth_for_peaks(data, argvals, smooth_first, smooth_nbasis);
 
     // Compute first derivative
-    let deriv1 = deriv_1d(&work_data, n, m, argvals, 1);
+    let work_mat = FdMatrix::from_column_major(work_data.clone(), n, m).unwrap();
+    let deriv1 = deriv_1d(&work_mat, argvals, 1).into_vec();
 
     // Compute data range for prominence normalization
     let data_range: f64 = {
@@ -1542,19 +1543,18 @@ pub fn detect_peaks(
 /// # Returns
 /// Seasonal strength in [0, 1]
 pub fn seasonal_strength_variance(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     n_harmonics: usize,
 ) -> f64 {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
         return f64::NAN;
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Total variance
     let global_mean: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -1609,19 +1609,14 @@ pub fn seasonal_strength_variance(
 /// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points
 /// * `period` - Seasonal period
-pub fn seasonal_strength_spectral(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-    period: f64,
-) -> f64 {
+pub fn seasonal_strength_spectral(data: &FdMatrix, argvals: &[f64], period: f64) -> f64 {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
         return f64::NAN;
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     let (frequencies, power) = periodogram(&mean_curve, argvals);
 
@@ -1660,19 +1655,14 @@ pub fn seasonal_strength_spectral(
 /// - Uses Morlet wavelet with ω₀ = 6 (standard choice)
 /// - Scale is computed as: scale = period * ω₀ / (2π)
 /// - Strength is computed over the interior 80% of the signal to avoid edge effects
-pub fn seasonal_strength_wavelet(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-    period: f64,
-) -> f64 {
+pub fn seasonal_strength_wavelet(data: &FdMatrix, argvals: &[f64], period: f64) -> f64 {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
         return f64::NAN;
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Remove DC component
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -1725,14 +1715,13 @@ pub fn seasonal_strength_wavelet(
 /// # Returns
 /// Seasonal strength at each time point
 pub fn seasonal_strength_windowed(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     window_size: f64,
     method: StrengthMethod,
 ) -> Vec<f64> {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 || window_size <= 0.0 {
         return Vec::new();
     }
@@ -1741,7 +1730,7 @@ pub fn seasonal_strength_windowed(
     let half_window_points = ((window_size / 2.0) / dt).round() as usize;
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     iter_maybe_parallel!(0..m)
         .map(|center| {
@@ -1756,20 +1745,15 @@ pub fn seasonal_strength_windowed(
             let window_data: Vec<f64> = mean_curve[start..end].to_vec();
             let window_argvals: Vec<f64> = argvals[start..end].to_vec();
 
-            // Create single-sample data for the strength functions
-            let single_data = window_data.clone();
+            // Create single-sample FdMatrix for the strength functions
+            let single_mat = FdMatrix::from_column_major(window_data, 1, window_m).unwrap();
 
             match method {
-                StrengthMethod::Variance => seasonal_strength_variance(
-                    &single_data,
-                    1,
-                    window_m,
-                    &window_argvals,
-                    period,
-                    3,
-                ),
+                StrengthMethod::Variance => {
+                    seasonal_strength_variance(&single_mat, &window_argvals, period, 3)
+                }
                 StrengthMethod::Spectral => {
-                    seasonal_strength_spectral(&single_data, 1, window_m, &window_argvals, period)
+                    seasonal_strength_spectral(&single_mat, &window_argvals, period)
                 }
             }
         })
@@ -1795,15 +1779,14 @@ pub fn seasonal_strength_windowed(
 /// * `window_size` - Window size for local strength estimation
 /// * `min_duration` - Minimum duration to confirm a change
 pub fn detect_seasonality_changes(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     threshold: f64,
     window_size: f64,
     min_duration: f64,
 ) -> ChangeDetectionResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m {
         return ChangeDetectionResult {
             change_points: Vec::new(),
@@ -1812,15 +1795,8 @@ pub fn detect_seasonality_changes(
     }
 
     // Compute time-varying seasonal strength
-    let strength_curve = seasonal_strength_windowed(
-        data,
-        n,
-        m,
-        argvals,
-        period,
-        window_size,
-        StrengthMethod::Variance,
-    );
+    let strength_curve =
+        seasonal_strength_windowed(data, argvals, period, window_size, StrengthMethod::Variance);
 
     if strength_curve.is_empty() {
         return ChangeDetectionResult {
@@ -1880,14 +1856,13 @@ pub fn detect_seasonality_changes(
 /// }
 /// ```
 pub fn detect_amplitude_modulation(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     modulation_threshold: f64,
     seasonality_threshold: f64,
 ) -> AmplitudeModulationResult {
+    let (n, m) = data.shape();
     // Default result for invalid input
     let empty_result = AmplitudeModulationResult {
         is_seasonal: false,
@@ -1907,7 +1882,7 @@ pub fn detect_amplitude_modulation(
     }
 
     // Step 1: Check if seasonality exists using spectral method (robust to AM)
-    let overall_strength = seasonal_strength_spectral(data, n, m, argvals, period);
+    let overall_strength = seasonal_strength_spectral(data, argvals, period);
 
     if overall_strength < seasonality_threshold {
         return AmplitudeModulationResult {
@@ -1925,7 +1900,7 @@ pub fn detect_amplitude_modulation(
     }
 
     // Step 2: Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Step 3: Use Hilbert transform to get amplitude envelope
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -2021,14 +1996,13 @@ pub fn detect_amplitude_modulation(
 /// - The scale parameter is derived from the period: scale = period * ω₀ / (2π)
 /// - This relates to how wavelets measure period: for Morlet, period ≈ scale * 2π / ω₀
 pub fn detect_amplitude_modulation_wavelet(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     modulation_threshold: f64,
     seasonality_threshold: f64,
 ) -> WaveletAmplitudeResult {
+    let (n, m) = data.shape();
     let empty_result = WaveletAmplitudeResult {
         is_seasonal: false,
         seasonal_strength: 0.0,
@@ -2046,7 +2020,7 @@ pub fn detect_amplitude_modulation_wavelet(
     }
 
     // Step 1: Check if seasonality exists using spectral method
-    let overall_strength = seasonal_strength_spectral(data, n, m, argvals, period);
+    let overall_strength = seasonal_strength_spectral(data, argvals, period);
 
     if overall_strength < seasonality_threshold {
         return WaveletAmplitudeResult {
@@ -2063,7 +2037,7 @@ pub fn detect_amplitude_modulation_wavelet(
     }
 
     // Step 2: Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Remove DC component
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -2142,12 +2116,8 @@ pub fn detect_amplitude_modulation_wavelet(
 /// * `n` - Number of samples
 /// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points
-pub fn instantaneous_period(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-) -> InstantaneousPeriod {
+pub fn instantaneous_period(data: &FdMatrix, argvals: &[f64]) -> InstantaneousPeriod {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m {
         return InstantaneousPeriod {
             period: Vec::new(),
@@ -2157,7 +2127,7 @@ pub fn instantaneous_period(
     }
 
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Remove DC component (detrend by subtracting mean)
     let dc: f64 = mean_curve.iter().sum::<f64>() / m as f64;
@@ -2229,13 +2199,12 @@ pub fn instantaneous_period(
 /// # Returns
 /// Peak timing result with variability metrics
 pub fn analyze_peak_timing(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     smooth_nbasis: Option<usize>,
 ) -> PeakTimingResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 3 || argvals.len() != m || period <= 0.0 {
         return PeakTimingResult {
             peak_times: Vec::new(),
@@ -2255,8 +2224,6 @@ pub fn analyze_peak_timing(
     let min_distance = period * 0.7;
     let peaks = detect_peaks(
         data,
-        n,
-        m,
         argvals,
         Some(min_distance),
         None, // No prominence filter
@@ -2372,9 +2339,7 @@ pub fn analyze_peak_timing(
 /// # Returns
 /// Seasonality classification with type and diagnostics
 pub fn classify_seasonality(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     strength_threshold: Option<f64>,
@@ -2383,6 +2348,7 @@ pub fn classify_seasonality(
     let strength_thresh = strength_threshold.unwrap_or(0.3);
     let timing_thresh = timing_threshold.unwrap_or(0.05);
 
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m || period <= 0.0 {
         return SeasonalityClassification {
             is_seasonal: false,
@@ -2397,14 +2363,14 @@ pub fn classify_seasonality(
     }
 
     // Compute overall seasonal strength
-    let overall_strength = seasonal_strength_variance(data, n, m, argvals, period, 3);
+    let overall_strength = seasonal_strength_variance(data, argvals, period, 3);
 
     let (cycle_strengths, weak_seasons) =
-        compute_cycle_strengths(data, n, m, argvals, period, strength_thresh);
+        compute_cycle_strengths(data, argvals, period, strength_thresh);
     let n_cycles = cycle_strengths.len();
 
     // Analyze peak timing
-    let peak_timing = analyze_peak_timing(data, n, m, argvals, period, None);
+    let peak_timing = analyze_peak_timing(data, argvals, period, None);
 
     // Determine classification
     let is_seasonal = overall_strength >= strength_thresh;
@@ -2450,15 +2416,14 @@ pub fn classify_seasonality(
 /// * `window_size` - Window size for local strength estimation
 /// * `min_duration` - Minimum duration to confirm a change
 pub fn detect_seasonality_changes_auto(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     period: f64,
     threshold_method: ThresholdMethod,
     window_size: f64,
     min_duration: f64,
 ) -> ChangeDetectionResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m {
         return ChangeDetectionResult {
             change_points: Vec::new(),
@@ -2467,15 +2432,8 @@ pub fn detect_seasonality_changes_auto(
     }
 
     // Compute time-varying seasonal strength
-    let strength_curve = seasonal_strength_windowed(
-        data,
-        n,
-        m,
-        argvals,
-        period,
-        window_size,
-        StrengthMethod::Variance,
-    );
+    let strength_curve =
+        seasonal_strength_windowed(data, argvals, period, window_size, StrengthMethod::Variance);
 
     if strength_curve.is_empty() {
         return ChangeDetectionResult {
@@ -2505,16 +2463,7 @@ pub fn detect_seasonality_changes_auto(
     };
 
     // Now use the regular detection with computed threshold
-    detect_seasonality_changes(
-        data,
-        n,
-        m,
-        argvals,
-        period,
-        threshold,
-        window_size,
-        min_duration,
-    )
+    detect_seasonality_changes(data, argvals, period, threshold, window_size, min_duration)
 }
 
 /// Result of SAZED ensemble period detection.
@@ -2703,13 +2652,8 @@ pub fn sazed(data: &[f64], argvals: &[f64], tolerance: Option<f64>) -> SazedResu
 /// * `m` - Number of evaluation points
 /// * `argvals` - Evaluation points
 /// * `tolerance` - Relative tolerance for period matching
-pub fn sazed_fdata(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-    tolerance: Option<f64>,
-) -> SazedResult {
+pub fn sazed_fdata(data: &FdMatrix, argvals: &[f64], tolerance: Option<f64>) -> SazedResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 8 || argvals.len() != m {
         return SazedResult {
             period: f64::NAN,
@@ -2725,7 +2669,7 @@ pub fn sazed_fdata(
         };
     }
 
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
     sazed(&mean_curve, argvals, tolerance)
 }
 
@@ -3103,13 +3047,12 @@ pub fn autoperiod(
 
 /// Autoperiod for functional data (matrix format)
 pub fn autoperiod_fdata(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     n_candidates: Option<usize>,
     gradient_steps: Option<usize>,
 ) -> AutoperiodResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 8 || argvals.len() != m {
         return AutoperiodResult {
             period: f64::NAN,
@@ -3120,7 +3063,7 @@ pub fn autoperiod_fdata(
         };
     }
 
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
     autoperiod(&mean_curve, argvals, n_candidates, gradient_steps)
 }
 
@@ -3362,13 +3305,12 @@ pub fn cfd_autoperiod(
 
 /// CFDAutoperiod for functional data (matrix format)
 pub fn cfd_autoperiod_fdata(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     cluster_tolerance: Option<f64>,
     min_cluster_size: Option<usize>,
 ) -> CfdAutoperiodResult {
+    let (n, m) = data.shape();
     if n == 0 || m < 8 || argvals.len() != m {
         return CfdAutoperiodResult {
             period: f64::NAN,
@@ -3379,7 +3321,7 @@ pub fn cfd_autoperiod_fdata(
         };
     }
 
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
     cfd_autoperiod(&mean_curve, argvals, cluster_tolerance, min_cluster_size)
 }
 
@@ -3721,15 +3663,13 @@ fn lomb_scargle_fap(power: f64, n_indep: usize, _n_data: usize) -> f64 {
 /// # Returns
 /// `LombScargleResult` computed from the mean curve.
 pub fn lomb_scargle_fdata(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     oversampling: Option<f64>,
     nyquist_factor: Option<f64>,
 ) -> LombScargleResult {
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Run Lomb-Scargle on mean curve
     lomb_scargle(argvals, &mean_curve, None, oversampling, nyquist_factor)
@@ -4075,14 +4015,12 @@ fn analyze_arcs(
 /// # Returns
 /// `MatrixProfileResult` computed from the mean curve.
 pub fn matrix_profile_fdata(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     subsequence_length: Option<usize>,
     exclusion_zone: Option<f64>,
 ) -> MatrixProfileResult {
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Run matrix profile on mean curve
     matrix_profile(&mean_curve, subsequence_length, exclusion_zone)
@@ -4501,14 +4439,12 @@ fn diagonal_average(matrix: &[f64], l: usize, k: usize, n: usize) -> Vec<f64> {
 /// # Returns
 /// `SsaResult` computed from the mean curve.
 pub fn ssa_fdata(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     window_length: Option<usize>,
     n_components: Option<usize>,
 ) -> SsaResult {
     // Compute mean curve
-    let mean_curve = compute_mean_curve(data, n, m);
+    let mean_curve = compute_mean_curve(data);
 
     // Run SSA on mean curve
     ssa(&mean_curve, window_length, n_components, None, None)
@@ -4541,14 +4477,14 @@ mod tests {
     use super::*;
     use std::f64::consts::PI;
 
-    fn generate_sine(n: usize, m: usize, period: f64, argvals: &[f64]) -> Vec<f64> {
+    fn generate_sine(n: usize, m: usize, period: f64, argvals: &[f64]) -> FdMatrix {
         let mut data = vec![0.0; n * m];
         for i in 0..n {
             for j in 0..m {
                 data[i + j * n] = (2.0 * PI * argvals[j] / period).sin();
             }
         }
-        data
+        FdMatrix::from_column_major(data, n, m).unwrap()
     }
 
     #[test]
@@ -4558,7 +4494,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let estimate = estimate_period_fft(&data, 1, m, &argvals);
+        let estimate = estimate_period_fft(&data, &argvals);
         assert!((estimate.period - period).abs() < 0.2);
         assert!(estimate.confidence > 1.0);
     }
@@ -4570,7 +4506,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let result = detect_peaks(&data, 1, m, &argvals, Some(1.5), None, false, None);
+        let result = detect_peaks(&data, &argvals, Some(1.5), None, false, None);
 
         // Should find approximately 5 peaks (10 / 2)
         assert!(!result.peaks[0].is_empty());
@@ -4588,8 +4524,9 @@ mod tests {
             .iter()
             .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+        let result = detect_peaks(&data, &argvals, None, None, false, None);
 
         // Should find exactly 5 peaks
         assert_eq!(
@@ -4630,9 +4567,10 @@ mod tests {
             .iter()
             .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
         // min_distance = 1.5 should still find all 5 peaks (spacing = 2.0)
-        let result = detect_peaks(&data, 1, m, &argvals, Some(1.5), None, false, None);
+        let result = detect_peaks(&data, &argvals, Some(1.5), None, false, None);
         assert_eq!(
             result.peaks[0].len(),
             5,
@@ -4641,7 +4579,7 @@ mod tests {
         );
 
         // min_distance = 2.5 should find fewer peaks
-        let result2 = detect_peaks(&data, 1, m, &argvals, Some(2.5), None, false, None);
+        let result2 = detect_peaks(&data, &argvals, Some(2.5), None, false, None);
         assert!(
             result2.peaks[0].len() < 5,
             "With min_distance=2.5, expected fewer than 5 peaks, got {}",
@@ -4660,8 +4598,9 @@ mod tests {
             .iter()
             .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+        let result = detect_peaks(&data, &argvals, None, None, false, None);
 
         // Should find 10 peaks
         assert_eq!(
@@ -4691,8 +4630,9 @@ mod tests {
             .iter()
             .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin() + 1.0)
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+        let result = detect_peaks(&data, &argvals, None, None, false, None);
 
         // Should still find 5 peaks
         assert_eq!(
@@ -4727,12 +4667,13 @@ mod tests {
                 base + ripple
             })
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
         // Without prominence filter, may find extra peaks from ripples
-        let result_no_filter = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+        let result_no_filter = detect_peaks(&data, &argvals, None, None, false, None);
 
         // With prominence filter, should only find major peaks
-        let result_filtered = detect_peaks(&data, 1, m, &argvals, None, Some(0.5), false, None);
+        let result_filtered = detect_peaks(&data, &argvals, None, Some(0.5), false, None);
 
         // Filtered should have fewer or equal peaks
         assert!(
@@ -4753,8 +4694,9 @@ mod tests {
                 .iter()
                 .map(|&t| amplitude * (2.0 * std::f64::consts::PI * t / period).sin())
                 .collect();
+            let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-            let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+            let result = detect_peaks(&data, &argvals, None, None, false, None);
 
             assert_eq!(
                 result.peaks[0].len(),
@@ -4791,8 +4733,9 @@ mod tests {
                 phase.sin()
             })
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_peaks(&data, 1, m, &argvals, None, None, false, None);
+        let result = detect_peaks(&data, &argvals, None, None, false, None);
 
         // Should find multiple peaks with decreasing spacing
         assert!(
@@ -4830,8 +4773,9 @@ mod tests {
                     + 0.5 * (2.0 * std::f64::consts::PI * t / 3.0).sin()
             })
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_peaks(&data, 1, m, &argvals, Some(1.0), None, false, None);
+        let result = detect_peaks(&data, &argvals, Some(1.0), None, false, None);
 
         // Should find peaks (exact count depends on interference pattern)
         assert!(
@@ -4861,11 +4805,11 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let strength = seasonal_strength_variance(&data, 1, m, &argvals, period, 3);
+        let strength = seasonal_strength_variance(&data, &argvals, period, 3);
         // Pure sine should have high seasonal strength
         assert!(strength > 0.8);
 
-        let strength_spectral = seasonal_strength_spectral(&data, 1, m, &argvals, period);
+        let strength_spectral = seasonal_strength_spectral(&data, &argvals, period);
         assert!(strength_spectral > 0.5);
     }
 
@@ -4876,7 +4820,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let result = instantaneous_period(&data, 1, m, &argvals);
+        let result = instantaneous_period(&data, &argvals);
 
         // Check that instantaneous period is close to true period (away from boundaries)
         let mid_period = result.period[m / 2];
@@ -4896,7 +4840,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let result = analyze_peak_timing(&data, 1, m, &argvals, period, Some(11));
+        let result = analyze_peak_timing(&data, &argvals, period, Some(11));
 
         // Should find approximately 5 peaks
         assert!(!result.peak_times.is_empty());
@@ -4913,7 +4857,7 @@ mod tests {
         let period = 2.0;
         let data = generate_sine(1, m, period, &argvals);
 
-        let result = classify_seasonality(&data, 1, m, &argvals, period, None, None);
+        let result = classify_seasonality(&data, &argvals, period, None, None);
 
         assert!(result.is_seasonal);
         assert!(result.seasonal_strength > 0.5);
@@ -4950,7 +4894,8 @@ mod tests {
             data[j] = (2.0 * PI * argvals[j] / 2.0).sin() + 0.1 * (j as f64 * 0.3).sin();
         }
 
-        let nbasis = crate::basis::select_fourier_nbasis_gcv(&data, 1, m, &argvals, 5, 25);
+        let data_mat = crate::matrix::FdMatrix::from_column_major(data, 1, m).unwrap();
+        let nbasis = crate::basis::select_fourier_nbasis_gcv(&data_mat, &argvals, 5, 25);
 
         // nbasis should be reasonable (between min and max)
         assert!(nbasis >= 5);
@@ -5036,9 +4981,10 @@ mod tests {
             .iter()
             .map(|&t| (2.0 * PI * t / period).sin())
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
         let result = detect_amplitude_modulation(
-            &data, 1, m, &argvals, period, 0.15, // modulation threshold
+            &data, &argvals, period, 0.15, // modulation threshold
             0.3,  // seasonality threshold
         );
 
@@ -5076,7 +5022,9 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation(&data, 1, m, &argvals, period, 0.15, 0.2);
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
+        let result = detect_amplitude_modulation(&data, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Emerging test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -5117,7 +5065,9 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation(&data, 1, m, &argvals, period, 0.15, 0.2);
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
+        let result = detect_amplitude_modulation(&data, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Fading test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -5157,7 +5107,9 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation(&data, 1, m, &argvals, period, 0.15, 0.2);
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
+        let result = detect_amplitude_modulation(&data, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Oscillating test: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -5186,8 +5138,10 @@ mod tests {
             .map(|i| ((i as f64 * 1.618).sin() * 100.0).fract())
             .collect();
 
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
         let result = detect_amplitude_modulation(
-            &data, 1, m, &argvals, 0.2, // arbitrary period
+            &data, &argvals, 0.2, // arbitrary period
             0.15, 0.3,
         );
 
@@ -5217,7 +5171,9 @@ mod tests {
             .map(|&t| (2.0 * PI * t / period).sin())
             .collect();
 
-        let result = detect_amplitude_modulation_wavelet(&data, 1, m, &argvals, period, 0.15, 0.3);
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
+        let result = detect_amplitude_modulation_wavelet(&data, &argvals, period, 0.15, 0.3);
 
         eprintln!(
             "Wavelet stable: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -5247,7 +5203,9 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation_wavelet(&data, 1, m, &argvals, period, 0.15, 0.2);
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
+        let result = detect_amplitude_modulation_wavelet(&data, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Wavelet emerging: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -5280,7 +5238,9 @@ mod tests {
             })
             .collect();
 
-        let result = detect_amplitude_modulation_wavelet(&data, 1, m, &argvals, period, 0.15, 0.2);
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
+
+        let result = detect_amplitude_modulation_wavelet(&data, &argvals, period, 0.15, 0.2);
 
         eprintln!(
             "Wavelet fading: is_seasonal={}, has_modulation={}, modulation_score={:.4}, amplitude_trend={:.4}, type={:?}",
@@ -5310,7 +5270,9 @@ mod tests {
             .map(|&t| (2.0 * PI * t / period).sin())
             .collect();
 
-        let strength = seasonal_strength_wavelet(&seasonal_data, 1, m, &argvals, period);
+        let seasonal_data = FdMatrix::from_column_major(seasonal_data, 1, m).unwrap();
+
+        let strength = seasonal_strength_wavelet(&seasonal_data, &argvals, period);
         eprintln!("Wavelet strength (pure sine): {:.4}", strength);
         assert!(
             strength > 0.5,
@@ -5322,7 +5284,9 @@ mod tests {
             .map(|i| ((i * 12345 + 67890) % 1000) as f64 / 1000.0 - 0.5)
             .collect();
 
-        let noise_strength = seasonal_strength_wavelet(&noise_data, 1, m, &argvals, period);
+        let noise_data = FdMatrix::from_column_major(noise_data, 1, m).unwrap();
+
+        let noise_strength = seasonal_strength_wavelet(&noise_data, &argvals, period);
         eprintln!("Wavelet strength (noise): {:.4}", noise_strength);
         assert!(
             noise_strength < 0.3,
@@ -5331,7 +5295,7 @@ mod tests {
 
         // Wrong period - should have lower strength
         let wrong_period_strength =
-            seasonal_strength_wavelet(&seasonal_data, 1, m, &argvals, period * 2.0);
+            seasonal_strength_wavelet(&seasonal_data, &argvals, period * 2.0);
         eprintln!(
             "Wavelet strength (wrong period): {:.4}",
             wrong_period_strength
@@ -5348,8 +5312,8 @@ mod tests {
         // Sample 1: [1, 2, 3]
         // Sample 2: [2, 4, 6]
         // Mean: [1.5, 3, 4.5]
-        let data = vec![1.0, 2.0, 2.0, 4.0, 3.0, 6.0]; // column-major
-        let mean = compute_mean_curve(&data, 2, 3);
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 2.0, 4.0, 3.0, 6.0], 2, 3).unwrap();
+        let mean = compute_mean_curve(&data);
         assert_eq!(mean.len(), 3);
         assert!((mean[0] - 1.5).abs() < 1e-10);
         assert!((mean[1] - 3.0).abs() < 1e-10);
@@ -5363,8 +5327,10 @@ mod tests {
         let m = 200;
         let data: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
 
-        let seq_result = compute_mean_curve_impl(&data, n, m, false);
-        let par_result = compute_mean_curve_impl(&data, n, m, true);
+        let data = FdMatrix::from_column_major(data, n, m).unwrap();
+
+        let seq_result = compute_mean_curve_impl(&data, false);
+        let par_result = compute_mean_curve_impl(&data, true);
 
         assert_eq!(seq_result.len(), par_result.len());
         for (s, p) in seq_result.iter().zip(par_result.iter()) {
@@ -5490,7 +5456,7 @@ mod tests {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
         let data = generate_sine(n, m, period, &argvals);
 
-        let result = sazed_fdata(&data, n, m, &argvals, None);
+        let result = sazed_fdata(&data, &argvals, None);
 
         assert!(result.period.is_finite(), "SAZED should detect a period");
         assert!(
@@ -5611,7 +5577,7 @@ mod tests {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
         let data = generate_sine(n, m, period, &argvals);
 
-        let result = autoperiod_fdata(&data, n, m, &argvals, None, None);
+        let result = autoperiod_fdata(&data, &argvals, None, None);
 
         assert!(
             result.period.is_finite(),
@@ -5715,7 +5681,7 @@ mod tests {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
         let data = generate_sine(n, m, period, &argvals);
 
-        let result = cfd_autoperiod_fdata(&data, n, m, &argvals, None, None);
+        let result = cfd_autoperiod_fdata(&data, &argvals, None, None);
 
         assert!(
             result.period.is_finite(),
@@ -5835,7 +5801,9 @@ mod tests {
             }
         }
 
-        let result = ssa_fdata(&data, n, m, None, None);
+        let data = FdMatrix::from_column_major(data, n, m).unwrap();
+
+        let result = ssa_fdata(&data, None, None);
 
         assert_eq!(result.trend.len(), m);
         assert_eq!(result.seasonal.len(), m);
@@ -5931,7 +5899,9 @@ mod tests {
             }
         }
 
-        let result = matrix_profile_fdata(&data, n, m, Some(15), None);
+        let data = FdMatrix::from_column_major(data, n, m).unwrap();
+
+        let result = matrix_profile_fdata(&data, Some(15), None);
 
         assert!(!result.profile.is_empty());
         assert!(result.profile_index.len() == result.profile.len());
@@ -6050,7 +6020,7 @@ mod tests {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
         let data = generate_sine(n, m, period, &argvals);
 
-        let result = lomb_scargle_fdata(&data, n, m, &argvals, None, None);
+        let result = lomb_scargle_fdata(&data, &argvals, None, None);
 
         assert!(
             (result.peak_period - period).abs() < 0.5,
@@ -6084,8 +6054,9 @@ mod tests {
                 }
             })
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_seasonality_changes(&data, 1, m, &argvals, period, 0.3, 4.0, 2.0);
+        let result = detect_seasonality_changes(&data, &argvals, period, 0.3, 4.0, 2.0);
 
         assert!(
             !result.strength_curve.is_empty(),
@@ -6116,8 +6087,9 @@ mod tests {
             .iter()
             .map(|&t| (2.0 * PI * t / period).sin())
             .collect();
+        let data = FdMatrix::from_column_major(data, 1, m).unwrap();
 
-        let result = detect_seasonality_changes(&data, 1, m, &argvals, period, 0.3, 4.0, 2.0);
+        let result = detect_seasonality_changes(&data, &argvals, period, 0.3, 4.0, 2.0);
 
         assert!(!result.strength_curve.is_empty());
         // With consistently seasonal data, there should be no Cessation points
@@ -6144,7 +6116,7 @@ mod tests {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
         let data = generate_sine(1, m, period, &argvals);
 
-        let estimate = estimate_period_acf(&data, 1, m, &argvals, m / 2);
+        let estimate = estimate_period_acf(data.as_slice(), 1, m, &argvals, m / 2);
 
         assert!(
             estimate.period.is_finite(),
@@ -6169,7 +6141,8 @@ mod tests {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 0.1).collect();
         let data = generate_sine(1, m, period, &argvals);
 
-        let estimate = estimate_period_regression(&data, 1, m, &argvals, 1.5, 3.0, 100, 3);
+        let estimate =
+            estimate_period_regression(data.as_slice(), 1, m, &argvals, 1.5, 3.0, 100, 3);
 
         assert!(
             estimate.period.is_finite(),
@@ -6200,8 +6173,6 @@ mod tests {
 
         let strengths = seasonal_strength_windowed(
             &data,
-            1,
-            m,
             &argvals,
             period,
             4.0, // window_size

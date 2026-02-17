@@ -67,7 +67,7 @@ fn main() {
         data.len()
     );
 
-    let curves = extract_curves(&data, n, m);
+    let curves = extract_curves(&data);
     for (i, curve) in curves.iter().enumerate().take(3) {
         print_curve_summary(&format!("Curve {i}"), curve);
     }
@@ -86,7 +86,7 @@ fn main() {
     ];
     for (efun, eval, label) in models {
         let d = sim_fundata(n, &t, big_m, efun, eval, Some(42));
-        let curves = extract_curves(&d, n, m);
+        let curves = extract_curves(&d);
         let range: f64 = curves
             .iter()
             .map(|c| {
@@ -109,19 +109,22 @@ fn main() {
         EValType::Exponential,
         Some(42),
     );
-    let noisy_point = add_error_pointwise(&clean, n, m, 0.1, Some(42));
-    let noisy_curve = add_error_curve(&clean, n, m, 0.2, Some(42));
+    let noisy_point = add_error_pointwise(&clean, 0.1, Some(42));
+    let noisy_curve = add_error_curve(&clean, 0.2, Some(42));
 
     // Compute noise magnitude
-    let pointwise_noise: f64 = clean
+    let clean_slice = clean.as_slice();
+    let noisy_point_slice = noisy_point.as_slice();
+    let noisy_curve_slice = noisy_curve.as_slice();
+    let pointwise_noise: f64 = clean_slice
         .iter()
-        .zip(noisy_point.iter())
+        .zip(noisy_point_slice.iter())
         .map(|(c, n)| (c - n).powi(2))
         .sum::<f64>()
         / (n * m) as f64;
-    let curve_noise: f64 = clean
+    let curve_noise: f64 = clean_slice
         .iter()
-        .zip(noisy_curve.iter())
+        .zip(noisy_curve_slice.iter())
         .map(|(c, n)| (c - n).powi(2))
         .sum::<f64>()
         / (n * m) as f64;
@@ -131,11 +134,11 @@ fn main() {
 
     // --- Section 6: Column-major layout demonstration ---
     println!("\n--- Column-Major Data Layout ---");
-    println!("  data[i + j * n] accesses curve i at grid point j");
-    println!("  Curve 0, point 0: {:.4}", data[0]);
-    println!("  Curve 0, point 1: {:.4}", data[n]);
-    println!("  Curve 1, point 0: {:.4}", data[1]);
-    println!("  Curve 1, point 1: {:.4}", data[1 + n]);
+    println!("  data[(i, j)] accesses curve i at grid point j");
+    println!("  Curve 0, point 0: {:.4}", data[(0, 0)]);
+    println!("  Curve 0, point 1: {:.4}", data[(0, 1)]);
+    println!("  Curve 1, point 0: {:.4}", data[(1, 0)]);
+    println!("  Curve 1, point 1: {:.4}", data[(1, 1)]);
 
     println!("\n=== Done ===");
 }

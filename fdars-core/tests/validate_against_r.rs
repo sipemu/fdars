@@ -24,6 +24,7 @@
 
 #![allow(dead_code)]
 
+use fdars_core::matrix::FdMatrix;
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
@@ -541,10 +542,11 @@ fn test_inner_product_matrix() {
         }
     }
 
-    let actual = fdars_core::utility::inner_product_matrix(&sub_data, n_sub, m, &dat.argvals);
+    let sub_mat = fdars_core::matrix::FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
+    let actual = fdars_core::utility::inner_product_matrix(&sub_mat, &dat.argvals);
     // Trapezoidal vs Simpson's → tolerance ~1%
     assert_vec_close(
-        &actual,
+        actual.as_slice(),
         &exp.inner_product_matrix.data,
         1e-2,
         "inner_product_matrix",
@@ -557,7 +559,8 @@ fn test_inner_product_matrix() {
 fn test_fdata_mean() {
     let exp: FdataExpected = load_json("expected", "fdata_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual = fdars_core::fdata::mean_1d(&dat.data, dat.n, dat.m);
+    let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::fdata::mean_1d(&mat);
     assert_vec_close(&actual, &exp.mean, 1e-10, "fdata_mean");
 }
 
@@ -565,15 +568,17 @@ fn test_fdata_mean() {
 fn test_fdata_center() {
     let exp: FdataExpected = load_json("expected", "fdata_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual = fdars_core::fdata::center_1d(&dat.data, dat.n, dat.m);
-    assert_vec_close(&actual, &exp.centered, 1e-10, "fdata_center");
+    let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::fdata::center_1d(&mat);
+    assert_vec_close(actual.as_slice(), &exp.centered, 1e-10, "fdata_center");
 }
 
 #[test]
 fn test_fdata_l2_norm() {
     let exp: FdataExpected = load_json("expected", "fdata_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual = fdars_core::fdata::norm_lp_1d(&dat.data, dat.n, dat.m, &dat.argvals, 2.0);
+    let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::fdata::norm_lp_1d(&mat, &dat.argvals, 2.0);
     // Integration rule difference → moderate tolerance
     assert_vec_close(&actual, &exp.norm_l2, 1e-2, "l2_norms");
 }
@@ -585,8 +590,8 @@ fn test_depth_fraiman_muniz() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     // R's depth.FM returns values in [0,1]; Rust with scale=true matches this.
-    let actual =
-        fdars_core::depth::fraiman_muniz_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m, true);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
     // Integration rule difference → wider tolerance
     assert_vec_close(&actual, &exp.fraiman_muniz, 0.02, "fraiman_muniz");
 }
@@ -595,7 +600,8 @@ fn test_depth_fraiman_muniz() {
 fn test_depth_band() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual = fdars_core::depth::band_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::band_1d(&mat, &mat);
     assert_vec_close(&actual, &exp.band, 1e-6, "band_depth");
 }
 
@@ -603,7 +609,8 @@ fn test_depth_band() {
 fn test_depth_modified_band() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual = fdars_core::depth::modified_band_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::modified_band_1d(&mat, &mat);
     assert_vec_close(&actual, &exp.modified_band, 1e-6, "modified_band_depth");
 }
 
@@ -611,8 +618,8 @@ fn test_depth_modified_band() {
 fn test_depth_modified_epigraph() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual =
-        fdars_core::depth::modified_epigraph_index_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::modified_epigraph_index_1d(&mat, &mat);
     // Small additive offset between implementations
     assert_vec_close(&actual, &exp.modified_epigraph, 0.02, "modified_epigraph");
 }
@@ -624,7 +631,8 @@ fn test_depth_modal() {
     // R's depth.mode returns unnormalized kernel density sums with a different kernel;
     // compare rankings rather than absolute values.
     let h = 0.178186; // R's auto-selected bandwidth for this data
-    let actual = fdars_core::depth::modal_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m, h);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::modal_1d(&mat, &mat, h);
     assert_ranking_correlated(&actual, &exp.modal, "modal_depth_ranking");
 }
 
@@ -632,8 +640,8 @@ fn test_depth_modal() {
 fn test_depth_functional_spatial() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
-    let actual =
-        fdars_core::depth::functional_spatial_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::functional_spatial_1d(&mat, &mat);
     // Integration weight difference (trapezoidal vs Simpson's)
     assert_vec_close(&actual, &exp.functional_spatial, 0.01, "functional_spatial");
 }
@@ -644,9 +652,8 @@ fn test_depth_kernel_functional_spatial() {
     let dat: StandardData = load_json("data", "standard_50x101");
     let h = 0.1850532;
     let argvals: Vec<f64> = (0..dat.m).map(|i| i as f64 / (dat.m - 1) as f64).collect();
-    let actual = fdars_core::depth::kernel_functional_spatial_1d(
-        &dat.data, &dat.data, dat.n, dat.n, dat.m, &argvals, h,
-    );
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::depth::kernel_functional_spatial_1d(&mat, &mat, &argvals, h);
     assert_vec_close(
         &actual,
         &exp.kernel_functional_spatial,
@@ -739,7 +746,8 @@ fn test_pspline_fit() {
     let m = sine.x.len();
     let data = sine.y_noisy.clone();
 
-    let result = fdars_core::basis::pspline_fit_1d(&data, n, m, &sine.x, 15, 0.01, 2).unwrap();
+    let data_mat = fdars_core::matrix::FdMatrix::from_column_major(data.clone(), n, m).unwrap();
+    let result = fdars_core::basis::pspline_fit_1d(&data_mat, &sine.x, 15, 0.01, 2).unwrap();
 
     // Knot placement differs between R and Rust → compare overall fit quality.
     // Both should produce smooth fits to the noisy sine data with similar RMSE.
@@ -751,8 +759,8 @@ fn test_pspline_fit() {
         .map(|(f, y)| (f - y).powi(2))
         .sum::<f64>()
         / m as f64;
-    let rust_rmse: f64 = result
-        .fitted
+    let fitted_slice = result.fitted.as_slice();
+    let rust_rmse: f64 = fitted_slice
         .iter()
         .zip(data.iter())
         .map(|(f, y)| (f - y).powi(2))
@@ -767,13 +775,18 @@ fn test_pspline_fit() {
     );
     // Correlation between fitted values should be high
     let mean_r: f64 = exp.pspline_fit.fitted_values.iter().sum::<f64>() / m as f64;
-    let mean_rust: f64 = result.fitted.iter().sum::<f64>() / m as f64;
+    let mean_rust: f64 = fitted_slice.iter().sum::<f64>() / m as f64;
     let mut cov = 0.0;
     let mut var_r = 0.0;
     let mut var_rust = 0.0;
-    for i in 0..m {
-        let dr = exp.pspline_fit.fitted_values[i] - mean_r;
-        let drust = result.fitted[i] - mean_rust;
+    for (&rv, &fv) in exp
+        .pspline_fit
+        .fitted_values
+        .iter()
+        .zip(fitted_slice.iter())
+    {
+        let dr = rv - mean_r;
+        let drust = fv - mean_rust;
         cov += dr * drust;
         var_r += dr * dr;
         var_rust += drust * drust;
@@ -795,11 +808,12 @@ fn test_fourier_fit() {
     let m = dat.m;
     let curve1: Vec<f64> = (0..m).map(|j| dat.data[j * dat.n]).collect();
 
-    let result = fdars_core::basis::fourier_fit_1d(&curve1, n, m, &dat.argvals, 7).unwrap();
+    let curve1_mat = fdars_core::matrix::FdMatrix::from_column_major(curve1, n, m).unwrap();
+    let result = fdars_core::basis::fourier_fit_1d(&curve1_mat, &dat.argvals, 7).unwrap();
 
     // Fourier basis normalization differs → compare fitted values instead of coefficients
     assert_vec_close(
-        &result.fitted,
+        result.fitted.as_slice(),
         &exp.fourier_fit.fitted_values,
         0.1,
         "fourier_fit_fitted",
@@ -823,8 +837,9 @@ fn test_lp_l2_distance_matrix() {
         }
     }
 
-    let actual = fdars_core::metric::lp_self_1d(&sub_data, n_sub, m, &dat.argvals, 2.0, &[]);
-    assert_vec_close(&actual, &exp.lp_l2.data, 1e-2, "lp_l2_distance");
+    let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
+    let actual = fdars_core::metric::lp_self_1d(&sub_mat, &dat.argvals, 2.0, &[]);
+    assert_vec_close(actual.as_slice(), &exp.lp_l2.data, 1e-2, "lp_l2_distance");
 }
 
 #[test]
@@ -873,10 +888,15 @@ fn test_fourier_semimetric() {
         }
     }
 
-    let actual = fdars_core::metric::fourier_self_1d(&sub_data, n_sub, m, 5);
+    let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
+    let actual = fdars_core::metric::fourier_self_1d(&sub_mat, 5);
     // FFT normalization and Fourier coefficient extraction may differ
     // Compare rankings of the distance matrix
-    assert_ranking_correlated(&actual, &exp.semimetric_fourier.data, "fourier_semimetric");
+    assert_ranking_correlated(
+        actual.as_slice(),
+        &exp.semimetric_fourier.data,
+        "fourier_semimetric",
+    );
 }
 
 #[test]
@@ -894,10 +914,15 @@ fn test_hshift_semimetric() {
         }
     }
 
+    let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
     let max_shift = m / 10;
-    let actual = fdars_core::metric::hshift_self_1d(&sub_data, n_sub, m, &dat.argvals, max_shift);
+    let actual = fdars_core::metric::hshift_self_1d(&sub_mat, &dat.argvals, max_shift);
     // Integration weights + shift algorithm details differ
-    assert_ranking_correlated(&actual, &exp.semimetric_hshift.data, "hshift_semimetric");
+    assert_ranking_correlated(
+        actual.as_slice(),
+        &exp.semimetric_hshift.data,
+        "hshift_semimetric",
+    );
 }
 
 // ─── Clustering ─────────────────────────────────────────────────────────────
@@ -908,13 +933,8 @@ fn test_silhouette_score() {
     let dat: ClusterData = load_json("data", "clusters_60x51");
 
     let labels_0based: Vec<usize> = dat.true_labels.iter().map(|&l| l - 1).collect();
-    let actual = fdars_core::clustering::silhouette_score(
-        &dat.data,
-        dat.n,
-        dat.m,
-        &dat.argvals,
-        &labels_0based,
-    );
+    let data = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::clustering::silhouette_score(&data, &dat.argvals, &labels_0based);
     let avg: f64 = actual.iter().sum::<f64>() / actual.len() as f64;
     assert_relative_close(avg, exp.silhouette.average, 0.05, "avg_silhouette");
 }
@@ -925,13 +945,8 @@ fn test_calinski_harabasz() {
     let dat: ClusterData = load_json("data", "clusters_60x51");
 
     let labels_0based: Vec<usize> = dat.true_labels.iter().map(|&l| l - 1).collect();
-    let actual = fdars_core::clustering::calinski_harabasz(
-        &dat.data,
-        dat.n,
-        dat.m,
-        &dat.argvals,
-        &labels_0based,
-    );
+    let data = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let actual = fdars_core::clustering::calinski_harabasz(&data, &dat.argvals, &labels_0based);
     assert_relative_close(actual, exp.calinski_harabasz, 0.05, "calinski_harabasz");
 }
 
@@ -942,7 +957,8 @@ fn test_fpca_svd() {
     let exp: RegressionExpected = load_json("expected", "regression_expected");
     let dat: RegressionData = load_json("data", "regression_30x51");
 
-    let result = fdars_core::regression::fdata_to_pc_1d(&dat.data, dat.n, dat.m, 3).unwrap();
+    let data_mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let result = fdars_core::regression::fdata_to_pc_1d(&data_mat, 3).unwrap();
 
     // Singular values should match closely
     assert_vec_close(
@@ -958,11 +974,11 @@ fn test_fpca_svd() {
     // Rust scores = U*Σ, R returns just U. Divide Rust scores by singular values for comparison.
     let n = dat.n;
     let ncomp = 3;
-    let mut unscaled_scores = result.scores.clone();
+    let mut unscaled_scores = vec![0.0; n * ncomp];
     for k in 0..ncomp {
         let sv = result.singular_values[k];
         for i in 0..n {
-            unscaled_scores[i + k * n] /= sv;
+            unscaled_scores[i + k * n] = result.scores[(i, k)] / sv;
         }
     }
     assert_vec_close_abs(
@@ -979,9 +995,10 @@ fn test_ridge_regression() {
     let exp: RegressionExpected = load_json("expected", "regression_expected");
     let dat: RegressionData = load_json("data", "regression_30x51");
 
+    let data_mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
     // anofox-regression may panic with overflow for certain data; catch panics
     let result = std::panic::catch_unwind(|| {
-        fdars_core::regression::ridge_regression_fit(&dat.data, &dat.y, dat.n, dat.m, 1.0, true)
+        fdars_core::regression::ridge_regression_fit(&data_mat, &dat.y, 1.0, true)
     });
 
     match result {
@@ -1016,11 +1033,16 @@ fn test_pls() {
     let exp: RegressionExpected = load_json("expected", "regression_expected");
     let dat: RegressionData = load_json("data", "regression_30x51");
 
-    let result =
-        fdars_core::regression::fdata_to_pls_1d(&dat.data, dat.n, dat.m, &dat.y, 2).unwrap();
+    let data_mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let result = fdars_core::regression::fdata_to_pls_1d(&data_mat, &dat.y, 2).unwrap();
 
-    // PLS scores — check absolute values (sign ambiguity)
-    assert_vec_close_abs(&result.scores, &exp.pls.scores, 0.5, "pls_scores_abs");
+    // PLS scores -- check absolute values (sign ambiguity)
+    assert_vec_close_abs(
+        result.scores.as_slice(),
+        &exp.pls.scores,
+        0.5,
+        "pls_scores_abs",
+    );
 }
 
 // ─── Outlier Detection ──────────────────────────────────────────────────────
@@ -1030,8 +1052,8 @@ fn test_outlier_depth_ranking() {
     let exp: OutliersExpected = load_json("expected", "outliers_expected");
     let dat: OutlierData = load_json("data", "outliers_50x101");
 
-    let depths =
-        fdars_core::depth::fraiman_muniz_1d(&dat.data, &dat.data, dat.n, dat.n, dat.m, false);
+    let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
+    let depths = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, false);
 
     let mut indexed: Vec<(usize, f64)> = depths.iter().cloned().enumerate().collect();
     indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
@@ -1098,7 +1120,7 @@ fn test_fourier_eigenfunctions() {
     // Divide Rust's non-constant columns by √2 before comparison.
     let m = t.len();
     let nbasis = 5;
-    let mut unnormalized = actual.clone();
+    let mut unnormalized = actual.into_vec();
     for j in 1..nbasis {
         for i in 0..m {
             unnormalized[i + j * m] /= std::f64::consts::SQRT_2;
@@ -1118,7 +1140,7 @@ fn test_wiener_eigenfunctions() {
     let t: Vec<f64> = (0..=100).map(|i| i as f64 / 100.0).collect();
     let actual = fdars_core::simulation::wiener_eigenfunctions(&t, 5);
     assert_vec_close_abs(
-        &actual,
+        actual.as_slice(),
         &exp.wiener_eigenfunctions.data,
         1e-10,
         "wiener_efun",
@@ -1163,7 +1185,8 @@ fn test_period_estimation_fft() {
     let n = 1;
     let m = sdat.n;
 
-    let result = fdars_core::seasonal::estimate_period_fft(&sdat.pure_sine, n, m, &sdat.t);
+    let mat = FdMatrix::from_slice(&sdat.pure_sine, n, m).unwrap();
+    let result = fdars_core::seasonal::estimate_period_fft(&mat, &sdat.t);
     assert_relative_close(
         result.period,
         exp.period_estimation.detected_period_fft,
@@ -1197,24 +1220,30 @@ fn test_detrend_linear() {
     let m = dat.m;
     let curve1: Vec<f64> = (0..m).map(|j| dat.data[j * dat.n]).collect();
 
-    let result = fdars_core::detrend::detrend_linear(&curve1, n, m, &dat.argvals);
+    let curve1_mat = FdMatrix::from_column_major(curve1, n, m).unwrap();
+    let result = fdars_core::detrend::detrend_linear(&curve1_mat, &dat.argvals);
 
     assert_vec_close(
-        &result.trend,
+        result.trend.as_slice(),
         &exp.linear_detrend.trend,
         1e-6,
         "linear_trend",
     );
     assert_vec_close(
-        &result.detrended,
+        result.detrended.as_slice(),
         &exp.linear_detrend.detrended,
         1e-6,
         "linear_detrended",
     );
 
     if let Some(ref coefs) = result.coefficients {
-        assert_scalar_close(coefs[0], exp.linear_detrend.intercept, 1e-6, "intercept");
-        assert_scalar_close(coefs[1], exp.linear_detrend.slope, 1e-6, "slope");
+        assert_scalar_close(
+            coefs[(0, 0)],
+            exp.linear_detrend.intercept,
+            1e-6,
+            "intercept",
+        );
+        assert_scalar_close(coefs[(0, 1)], exp.linear_detrend.slope, 1e-6, "slope");
     }
 }
 
@@ -1227,11 +1256,17 @@ fn test_detrend_polynomial() {
     let m = dat.m;
     let curve1: Vec<f64> = (0..m).map(|j| dat.data[j * dat.n]).collect();
 
-    let result = fdars_core::detrend::detrend_polynomial(&curve1, n, m, &dat.argvals, 2);
+    let curve1_mat = FdMatrix::from_column_major(curve1, n, m).unwrap();
+    let result = fdars_core::detrend::detrend_polynomial(&curve1_mat, &dat.argvals, 2);
 
-    assert_vec_close(&result.trend, &exp.poly_detrend.trend, 1e-4, "poly_trend");
     assert_vec_close(
-        &result.detrended,
+        result.trend.as_slice(),
+        &exp.poly_detrend.trend,
+        1e-4,
+        "poly_trend",
+    );
+    assert_vec_close(
+        result.detrended.as_slice(),
         &exp.poly_detrend.detrended,
         1e-4,
         "poly_detrended",
@@ -1247,14 +1282,16 @@ fn test_detrend_differencing() {
     let m = dat.m;
     let curve1: Vec<f64> = (0..m).map(|j| dat.data[j * dat.n]).collect();
 
-    let result = fdars_core::detrend::detrend_diff(&curve1, n, m, 1);
+    let curve1_mat = FdMatrix::from_column_major(curve1, n, m).unwrap();
+    let result = fdars_core::detrend::detrend_diff(&curve1_mat, 1);
 
+    let detrended_slice = result.detrended.as_slice();
     let len = exp
         .differencing
         .differenced
         .len()
-        .min(result.detrended.len());
-    let actual_diff = &result.detrended[..len];
+        .min(detrended_slice.len());
+    let actual_diff = &detrended_slice[..len];
     let expected_diff = &exp.differencing.differenced[..len];
     assert_vec_close(actual_diff, expected_diff, 1e-6, "diff_order1");
 }
@@ -1267,10 +1304,9 @@ fn test_stl_decomposition() {
     let n = 1;
     let m = sdat.n;
 
+    let data_mat = FdMatrix::from_slice(&sdat.noisy_sine, n, m).unwrap();
     let result = fdars_core::detrend::stl_decompose(
-        &sdat.noisy_sine,
-        n,
-        m,
+        &data_mat,
         exp.stl_decomposition.frequency,
         None,
         None,
@@ -1280,9 +1316,9 @@ fn test_stl_decomposition() {
         None,
     );
 
-    // STL is iterative — verify reconstruction identity: trend + seasonal + remainder ≈ original
+    // STL is iterative -- verify reconstruction identity: trend + seasonal + remainder ~ original
     for j in 0..m {
-        let recon = result.trend[j] + result.seasonal[j] + result.remainder[j];
+        let recon = result.trend[(0, j)] + result.seasonal[(0, j)] + result.remainder[(0, j)];
         assert_scalar_close(
             recon,
             sdat.noisy_sine[j],
@@ -1295,10 +1331,10 @@ fn test_stl_decomposition() {
     let freq = exp.stl_decomposition.frequency;
     if m > 2 * freq {
         let seasonal_corr: f64 = (freq..m)
-            .map(|j| result.seasonal[j] * result.seasonal[j - freq])
+            .map(|j| result.seasonal[(0, j)] * result.seasonal[(0, j - freq)])
             .sum::<f64>()
             / (freq..m)
-                .map(|j| result.seasonal[j] * result.seasonal[j])
+                .map(|j| result.seasonal[(0, j)] * result.seasonal[(0, j)])
                 .sum::<f64>()
                 .max(1e-10);
         assert!(

@@ -30,7 +30,7 @@ fn main() {
     let t = uniform_grid(m);
 
     // Generate data: most curves from one process, a few shifted outliers
-    let mut data = sim_fundata(
+    let mut data_mat = sim_fundata(
         n,
         &t,
         big_m,
@@ -41,9 +41,9 @@ fn main() {
 
     // Inject 3 outliers by shifting them
     for j in 0..m {
-        data[27 + j * n] += 3.0; // magnitude outlier
-        data[28 + j * n] += (t[j] * 10.0).sin() * 2.0; // shape outlier
-        data[29 + j * n] -= 2.5; // magnitude outlier (opposite direction)
+        data_mat[(27, j)] += 3.0; // magnitude outlier
+        data_mat[(28, j)] += (t[j] * 10.0).sin() * 2.0; // shape outlier
+        data_mat[(29, j)] -= 2.5; // magnitude outlier (opposite direction)
     }
 
     println!("--- Dataset ---");
@@ -53,9 +53,11 @@ fn main() {
     );
     println!("  {m} grid points on [0, 1]");
 
+    let mat = data_mat;
+
     // --- Section 1: Fraiman-Muniz depth ---
     println!("\n--- Fraiman-Muniz Depth ---");
-    let fm = fraiman_muniz_1d(&data, &data, n, n, m, true);
+    let fm = fraiman_muniz_1d(&mat, &mat, true);
     let fm_rank = rank_indices(&fm);
     println!(
         "  Deepest 3:  {:?} (depths: {:.4}, {:.4}, {:.4})",
@@ -74,49 +76,49 @@ fn main() {
 
     // --- Section 2: Band depth ---
     println!("\n--- Band Depth ---");
-    let bd = band_1d(&data, &data, n, n, m);
+    let bd = band_1d(&mat, &mat);
     let bd_rank = rank_indices(&bd);
     println!("  Deepest 3:  {:?}", &bd_rank[..3]);
     println!("  Shallowest 3: {:?}", &bd_rank[n - 3..]);
 
     // --- Section 3: Modified Band Depth ---
     println!("\n--- Modified Band Depth ---");
-    let mbd = modified_band_1d(&data, &data, n, n, m);
+    let mbd = modified_band_1d(&mat, &mat);
     let mbd_rank = rank_indices(&mbd);
     println!("  Deepest 3:  {:?}", &mbd_rank[..3]);
     println!("  Shallowest 3: {:?}", &mbd_rank[n - 3..]);
 
     // --- Section 4: Modal depth ---
     println!("\n--- Modal Depth (h=0.5) ---");
-    let modal = modal_1d(&data, &data, n, n, m, 0.5);
+    let modal = modal_1d(&mat, &mat, 0.5);
     let modal_rank = rank_indices(&modal);
     println!("  Deepest 3:  {:?}", &modal_rank[..3]);
     println!("  Shallowest 3: {:?}", &modal_rank[n - 3..]);
 
     // --- Section 5: Random projection depth ---
     println!("\n--- Random Projection Depth (50 projections) ---");
-    let rp = random_projection_1d(&data, &data, n, n, m, 50);
+    let rp = random_projection_1d(&mat, &mat, 50);
     let rp_rank = rank_indices(&rp);
     println!("  Deepest 3:  {:?}", &rp_rank[..3]);
     println!("  Shallowest 3: {:?}", &rp_rank[n - 3..]);
 
     // --- Section 6: Random Tukey depth ---
     println!("\n--- Random Tukey Depth (50 projections) ---");
-    let rt = random_tukey_1d(&data, &data, n, n, m, 50);
+    let rt = random_tukey_1d(&mat, &mat, 50);
     let rt_rank = rank_indices(&rt);
     println!("  Deepest 3:  {:?}", &rt_rank[..3]);
     println!("  Shallowest 3: {:?}", &rt_rank[n - 3..]);
 
     // --- Section 7: Functional spatial depth ---
     println!("\n--- Functional Spatial Depth ---");
-    let fsd = functional_spatial_1d(&data, &data, n, n, m);
+    let fsd = functional_spatial_1d(&mat, &mat);
     let fsd_rank = rank_indices(&fsd);
     println!("  Deepest 3:  {:?}", &fsd_rank[..3]);
     println!("  Shallowest 3: {:?}", &fsd_rank[n - 3..]);
 
     // --- Section 8: Modified Epigraph Index ---
     println!("\n--- Modified Epigraph Index ---");
-    let mei = modified_epigraph_index_1d(&data, &data, n, n, m);
+    let mei = modified_epigraph_index_1d(&mat, &mat);
     let mei_rank = rank_indices(&mei);
     println!("  Deepest 3:  {:?}", &mei_rank[..3]);
     println!("  Shallowest 3: {:?}", &mei_rank[n - 3..]);

@@ -7,6 +7,7 @@
 //! - Basic FFT and ACF methods
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use fdars_core::matrix::FdMatrix;
 use fdars_core::seasonal::{
     autoperiod, cfd_autoperiod, estimate_period_acf, estimate_period_fft, sazed,
 };
@@ -158,9 +159,10 @@ fn bench_fft(c: &mut Criterion) {
 
     for size in [100, 200, 500, 1000, 2000].iter() {
         let (data, argvals) = generate_sine(*size, 2.0);
+        let mat = FdMatrix::from_column_major(data, 1, *size).unwrap();
 
         group.bench_with_input(BenchmarkId::new("pure_sine", size), size, |b, _| {
-            b.iter(|| estimate_period_fft(black_box(&data), 1, *size, black_box(&argvals)))
+            b.iter(|| estimate_period_fft(black_box(&mat), black_box(&argvals)))
         });
     }
 
@@ -188,10 +190,11 @@ fn bench_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("Method_Comparison");
 
     let (data, argvals) = generate_sine(500, 2.0);
+    let mat = FdMatrix::from_column_major(data.clone(), 1, 500).unwrap();
     let max_lag = 250;
 
     group.bench_function("FFT", |b| {
-        b.iter(|| estimate_period_fft(black_box(&data), 1, 500, black_box(&argvals)))
+        b.iter(|| estimate_period_fft(black_box(&mat), black_box(&argvals)))
     });
 
     group.bench_function("ACF", |b| {
@@ -218,10 +221,11 @@ fn bench_trended_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("Trended_Comparison");
 
     let (data, argvals) = generate_sine_with_trend(500, 2.0, 0.3);
+    let mat = FdMatrix::from_column_major(data.clone(), 1, 500).unwrap();
     let max_lag = 250;
 
     group.bench_function("FFT", |b| {
-        b.iter(|| estimate_period_fft(black_box(&data), 1, 500, black_box(&argvals)))
+        b.iter(|| estimate_period_fft(black_box(&mat), black_box(&argvals)))
     });
 
     group.bench_function("ACF", |b| {

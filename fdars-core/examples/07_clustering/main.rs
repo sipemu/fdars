@@ -6,6 +6,7 @@
 //! scores and the Calinski-Harabasz index.
 
 use fdars_core::clustering::{calinski_harabasz, fuzzy_cmeans_fd, kmeans_fd, silhouette_score};
+use fdars_core::matrix::FdMatrix;
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 
 fn uniform_grid(m: usize) -> Vec<f64> {
@@ -52,11 +53,13 @@ fn main() {
     let mut combined = vec![0.0; n * m];
     for j in 0..m {
         for i in 0..n_per_group {
-            combined[i + j * n] = group1[i + j * n_per_group];
-            combined[(i + n_per_group) + j * n] = group2[i + j * n_per_group] + 3.0;
-            combined[(i + 2 * n_per_group) + j * n] = group3[i + j * n_per_group] - 3.0;
+            combined[i + j * n] = group1[(i, j)];
+            combined[(i + n_per_group) + j * n] = group2[(i, j)] + 3.0;
+            combined[(i + 2 * n_per_group) + j * n] = group3[(i, j)] - 3.0;
         }
     }
+
+    let combined = FdMatrix::from_column_major(combined, n, m).unwrap();
 
     let true_labels: Vec<usize> = (0..n).map(|i| i / n_per_group).collect();
     println!("  Group 1 (Fourier/Exp): curves 0-{}", n_per_group - 1);
@@ -74,7 +77,7 @@ fn main() {
 
     // --- Section 1: K-means clustering ---
     println!("\n--- K-Means Clustering (k=3) ---");
-    let km = kmeans_fd(&combined, n, m, &t, 3, 100, 1e-6, 42);
+    let km = kmeans_fd(&combined, &t, 3, 100, 1e-6, 42);
     println!("  Converged: {} (iter: {})", km.converged, km.iter);
     println!("  Total within-SS: {:.4}", km.tot_withinss);
     println!(
@@ -92,7 +95,7 @@ fn main() {
 
     // --- Section 2: Silhouette scores ---
     println!("\n--- Silhouette Analysis ---");
-    let sil = silhouette_score(&combined, n, m, &t, &km.cluster);
+    let sil = silhouette_score(&combined, &t, &km.cluster);
     let mean_sil: f64 = sil.iter().sum::<f64>() / sil.len() as f64;
     println!("  Mean silhouette score: {mean_sil:.4}");
     for k in 0..3 {
@@ -111,17 +114,17 @@ fn main() {
 
     // --- Section 3: Calinski-Harabasz index ---
     println!("\n--- Calinski-Harabasz Index ---");
-    let ch = calinski_harabasz(&combined, n, m, &t, &km.cluster);
+    let ch = calinski_harabasz(&combined, &t, &km.cluster);
     println!("  CH index (k=3): {ch:.4}");
     println!("  (Higher values indicate better-defined clusters)");
 
     // --- Section 4: Choosing k ---
     println!("\n--- Choosing k (Silhouette + CH for k=2..5) ---");
     for k in 2..=5 {
-        let km_k = kmeans_fd(&combined, n, m, &t, k, 100, 1e-6, 42);
-        let sil_k = silhouette_score(&combined, n, m, &t, &km_k.cluster);
+        let km_k = kmeans_fd(&combined, &t, k, 100, 1e-6, 42);
+        let sil_k = silhouette_score(&combined, &t, &km_k.cluster);
         let mean_sil_k: f64 = sil_k.iter().sum::<f64>() / sil_k.len() as f64;
-        let ch_k = calinski_harabasz(&combined, n, m, &t, &km_k.cluster);
+        let ch_k = calinski_harabasz(&combined, &t, &km_k.cluster);
         println!(
             "  k={k}: silhouette={mean_sil_k:.4}, CH={ch_k:.2}, within-SS={:.2}",
             km_k.tot_withinss
@@ -130,7 +133,7 @@ fn main() {
 
     // --- Section 5: Fuzzy C-means ---
     println!("\n--- Fuzzy C-Means (k=3, fuzziness=2.0) ---");
-    let fcm = fuzzy_cmeans_fd(&combined, n, m, &t, 3, 2.0, 100, 1e-6, 42);
+    let fcm = fuzzy_cmeans_fd(&combined, &t, 3, 2.0, 100, 1e-6, 42);
     println!("  Converged: {} (iter: {})", fcm.converged, fcm.iter);
 
     // Show membership matrix for first few curves
@@ -140,9 +143,9 @@ fn main() {
         println!(
             "  {:>5} {:>8.4} {:>8.4} {:>8.4}",
             i,
-            fcm.membership[i],
-            fcm.membership[i + n],
-            fcm.membership[i + 2 * n]
+            fcm.membership[(i, 0)],
+            fcm.membership[(i, 1)],
+            fcm.membership[(i, 2)]
         );
     }
 

@@ -5,7 +5,6 @@
 //! Simpson's rule integration.
 
 use fdars_core::fdata::{center_1d, deriv_1d, geometric_median_1d, mean_1d, norm_lp_1d};
-use fdars_core::helpers::extract_curves;
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::utility::{inner_product, inner_product_matrix, integrate_simpson};
 
@@ -22,7 +21,7 @@ fn main() {
     let t = uniform_grid(m);
 
     // Generate sample data
-    let data = sim_fundata(
+    let mat = sim_fundata(
         n,
         &t,
         big_m,
@@ -33,7 +32,7 @@ fn main() {
 
     // --- Section 1: Mean function ---
     println!("--- Mean Function ---");
-    let mean = mean_1d(&data, n, m);
+    let mean = mean_1d(&mat);
     println!("  Mean function length: {}", mean.len());
     println!(
         "  Mean at t=0.0: {:.4}, t=0.5: {:.4}, t=1.0: {:.4}",
@@ -44,8 +43,8 @@ fn main() {
 
     // --- Section 2: Centering ---
     println!("\n--- Centering ---");
-    let centered = center_1d(&data, n, m);
-    let centered_mean = mean_1d(&centered, n, m);
+    let centered = center_1d(&mat);
+    let centered_mean = mean_1d(&centered);
     let max_residual = centered_mean
         .iter()
         .map(|x| x.abs())
@@ -54,14 +53,14 @@ fn main() {
 
     // --- Section 3: Derivatives ---
     println!("\n--- Numerical Derivatives ---");
-    let first_deriv = deriv_1d(&data, n, m, &t, 1);
-    let second_deriv = deriv_1d(&data, n, m, &t, 2);
+    let first_deriv = deriv_1d(&mat, &t, 1);
+    let second_deriv = deriv_1d(&mat, &t, 2);
     // First derivative of first curve
-    let d1_curve0: Vec<f64> = (0..first_deriv.len() / n)
-        .map(|j| first_deriv[j * n])
+    let d1_curve0: Vec<f64> = (0..first_deriv.ncols())
+        .map(|j| first_deriv[(0, j)])
         .collect();
-    let d2_curve0: Vec<f64> = (0..second_deriv.len() / n)
-        .map(|j| second_deriv[j * n])
+    let d2_curve0: Vec<f64> = (0..second_deriv.ncols())
+        .map(|j| second_deriv[(0, j)])
         .collect();
     println!(
         "  1st derivative: {} points, range [{:.4}, {:.4}]",
@@ -78,9 +77,9 @@ fn main() {
 
     // --- Section 4: Lp norms ---
     println!("\n--- Lp Norms ---");
-    let l1_norms = norm_lp_1d(&data, n, m, &t, 1.0);
-    let l2_norms = norm_lp_1d(&data, n, m, &t, 2.0);
-    let linf_norms = norm_lp_1d(&data, n, m, &t, f64::INFINITY);
+    let l1_norms = norm_lp_1d(&mat, &t, 1.0);
+    let l2_norms = norm_lp_1d(&mat, &t, 2.0);
+    let linf_norms = norm_lp_1d(&mat, &t, f64::INFINITY);
     println!(
         "  L1 norms (first 5): {:?}",
         &l1_norms[..5]
@@ -107,7 +106,7 @@ fn main() {
     // The geometric median minimizes the sum of L2 distances to all curves,
     // making it more robust to outliers than the pointwise mean.
     println!("\n--- Geometric Median ---");
-    let gmed = geometric_median_1d(&data, n, m, &t, 100, 1e-6);
+    let gmed = geometric_median_1d(&mat, &t, 100, 1e-6);
     let mean_diff: f64 = mean
         .iter()
         .zip(gmed.iter())
@@ -140,20 +139,20 @@ fn main() {
 
     // --- Section 7: Inner products ---
     println!("\n--- Inner Products ---");
-    let curves = extract_curves(&data, n, m);
+    let curves = mat.rows();
     let ip_01 = inner_product(&curves[0], &curves[1], &t);
     let ip_00 = inner_product(&curves[0], &curves[0], &t);
     println!("  <curve_0, curve_0> = {ip_00:.6} (self inner product)");
     println!("  <curve_0, curve_1> = {ip_01:.6}");
 
     // Inner product (Gram) matrix
-    let gram = inner_product_matrix(&data, n, m, &t);
+    let gram = inner_product_matrix(&mat, &t);
     println!("  Gram matrix: {} elements ({n} x {n})", gram.len());
     println!(
         "  Gram[0,0]={:.4}, Gram[0,1]={:.4}, Gram[1,1]={:.4}",
-        gram[0],
-        gram[1],
-        gram[1 + n]
+        gram[(0, 0)],
+        gram[(0, 1)],
+        gram[(1, 1)]
     );
 
     println!("\n=== Done ===");

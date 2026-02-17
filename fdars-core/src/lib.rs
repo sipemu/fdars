@@ -16,14 +16,18 @@
 //!
 //! ## Data Layout
 //!
-//! Functional data is represented as column-major matrices stored in flat vectors:
-//! - For n observations with m evaluation points: `data[i + j * n]` gives observation i at point j
+//! Functional data is represented using the [`FdMatrix`] type, a column-major matrix
+//! wrapping a flat `Vec<f64>` with safe `(i, j)` indexing and dimension tracking:
+//! - For n observations with m evaluation points: `data[(i, j)]` gives observation i at point j
 //! - 2D surfaces (n observations, m1 x m2 grid): stored as n x (m1*m2) matrices
+//! - Zero-copy column access via `data.column(j)`, row gather via `data.row(i)`
+//! - nalgebra interop via `to_dmatrix()` / `from_dmatrix()` for SVD operations
 
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
+pub mod matrix;
 pub mod parallel;
 
 pub mod basis;
@@ -41,6 +45,9 @@ pub mod simulation;
 pub mod smoothing;
 pub mod streaming_depth;
 pub mod utility;
+
+// Re-export matrix type
+pub use matrix::FdMatrix;
 
 // Re-export commonly used items
 pub use helpers::{

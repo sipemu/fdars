@@ -4,6 +4,7 @@
 //! functional data in a finite-dimensional basis.
 
 use crate::iter_maybe_parallel;
+use crate::matrix::FdMatrix;
 use nalgebra::{DMatrix, DVector, SVD};
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
@@ -242,7 +243,7 @@ pub fn difference_matrix(n: usize, order: usize) -> DMatrix<f64> {
 /// Result of basis projection.
 pub struct BasisProjectionResult {
     /// Coefficient matrix (n_samples x n_basis)
-    pub coefficients: Vec<f64>,
+    pub coefficients: FdMatrix,
     /// Number of basis functions used
     pub n_basis: usize,
 }
@@ -250,20 +251,18 @@ pub struct BasisProjectionResult {
 /// Project functional data to basis coefficients.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Column-major FdMatrix (n x m)
 /// * `argvals` - Evaluation points
 /// * `nbasis` - Number of basis functions
 /// * `basis_type` - 0 = B-spline, 1 = Fourier
 pub fn fdata_to_basis_1d(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     nbasis: usize,
     basis_type: i32,
 ) -> Option<BasisProjectionResult> {
+    let n = data.nrows();
+    let m = data.ncols();
     if n == 0 || m == 0 || argvals.len() != m || nbasis < 2 {
         return None;
     }
@@ -284,7 +283,7 @@ pub fn fdata_to_basis_1d(
 
     let coefs: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
-            let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
+            let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
             (0..actual_nbasis)
                 .map(|k| {
                     let mut sum = 0.0;
@@ -298,23 +297,23 @@ pub fn fdata_to_basis_1d(
         .collect();
 
     Some(BasisProjectionResult {
-        coefficients: coefs,
+        coefficients: FdMatrix::from_column_major(coefs, n, actual_nbasis).unwrap(),
         n_basis: actual_nbasis,
     })
 }
 
 /// Reconstruct functional data from basis coefficients.
 pub fn basis_to_fdata_1d(
-    coefs: &[f64],
-    n: usize,
-    coefs_ncols: usize,
+    coefs: &FdMatrix,
     argvals: &[f64],
     nbasis: usize,
     basis_type: i32,
-) -> Vec<f64> {
+) -> FdMatrix {
+    let n = coefs.nrows();
+    let coefs_ncols = coefs.ncols();
     let m = argvals.len();
     if n == 0 || m == 0 || nbasis < 2 {
-        return Vec::new();
+        return FdMatrix::zeros(0, 0);
     }
 
     let basis = if basis_type == 1 {
@@ -326,27 +325,29 @@ pub fn basis_to_fdata_1d(
 
     let actual_nbasis = basis.len() / m;
 
-    iter_maybe_parallel!(0..n)
+    let flat: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             (0..m)
                 .map(|j| {
                     let mut sum = 0.0;
                     for k in 0..actual_nbasis.min(coefs_ncols) {
-                        sum += coefs[i + k * n] * basis[j + k * m];
+                        sum += coefs[(i, k)] * basis[j + k * m];
                     }
                     sum
                 })
                 .collect::<Vec<_>>()
         })
-        .collect()
+        .collect();
+
+    FdMatrix::from_column_major(flat, n, m).unwrap()
 }
 
 /// Result of P-spline fitting.
 pub struct PsplineFitResult {
-    /// Coefficient matrix
-    pub coefficients: Vec<f64>,
-    /// Fitted values
-    pub fitted: Vec<f64>,
+    /// Coefficient matrix (n x nbasis)
+    pub coefficients: FdMatrix,
+    /// Fitted values (n x m)
+    pub fitted: FdMatrix,
     /// Effective degrees of freedom
     pub edf: f64,
     /// Residual sum of squares
@@ -363,14 +364,14 @@ pub struct PsplineFitResult {
 
 /// Fit P-splines to functional data.
 pub fn pspline_fit_1d(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     nbasis: usize,
     lambda: f64,
     order: usize,
 ) -> Option<PsplineFitResult> {
+    let n = data.nrows();
+    let m = data.ncols();
     if n == 0 || m == 0 || nbasis < 2 || argvals.len() != m {
         return None;
     }
@@ -391,24 +392,24 @@ pub fn pspline_fit_1d(
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
-    let mut all_coefs = vec![0.0; n * actual_nbasis];
-    let mut all_fitted = vec![0.0; n * m];
+    let mut all_coefs = FdMatrix::zeros(n, actual_nbasis);
+    let mut all_fitted = FdMatrix::zeros(n, m);
     let mut total_rss = 0.0;
 
     for i in 0..n {
-        let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
+        let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
         let curve_vec = DVector::from_vec(curve.clone());
 
         let bt_y = b_mat.transpose() * &curve_vec;
         let coefs = &btb_inv * bt_y;
 
         for k in 0..actual_nbasis {
-            all_coefs[i + k * n] = coefs[k];
+            all_coefs[(i, k)] = coefs[k];
         }
 
         let fitted = &b_mat * &coefs;
         for j in 0..m {
-            all_fitted[i + j * n] = fitted[j];
+            all_fitted[(i, j)] = fitted[j];
             let resid = curve[j] - fitted[j];
             total_rss += resid * resid;
         }
@@ -441,10 +442,10 @@ pub fn pspline_fit_1d(
 
 /// Result of Fourier basis fitting.
 pub struct FourierFitResult {
-    /// Coefficient matrix
-    pub coefficients: Vec<f64>,
-    /// Fitted values
-    pub fitted: Vec<f64>,
+    /// Coefficient matrix (n x nbasis)
+    pub coefficients: FdMatrix,
+    /// Fitted values (n x m)
+    pub fitted: FdMatrix,
     /// Effective degrees of freedom (equals nbasis for unpenalized fit)
     pub edf: f64,
     /// Residual sum of squares
@@ -479,21 +480,15 @@ fn compute_fit_criteria(total_rss: f64, total_points: f64, edf: f64, m: usize) -
 /// Unlike P-splines, this uses unpenalized least squares projection.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Column-major FdMatrix (n x m)
 /// * `argvals` - Evaluation points
 /// * `nbasis` - Number of Fourier basis functions (should be odd: 1 constant + pairs of sin/cos)
 ///
 /// # Returns
 /// FourierFitResult with coefficients, fitted values, and model selection criteria
-pub fn fourier_fit_1d(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-    nbasis: usize,
-) -> Option<FourierFitResult> {
+pub fn fourier_fit_1d(data: &FdMatrix, argvals: &[f64], nbasis: usize) -> Option<FourierFitResult> {
+    let n = data.nrows();
+    let m = data.ncols();
     if n == 0 || m == 0 || nbasis < 3 || argvals.len() != m {
         return None;
     }
@@ -511,24 +506,24 @@ pub fn fourier_fit_1d(
     let h_mat = &b_mat * &proj;
     let edf: f64 = (0..m).map(|i| h_mat[(i, i)]).sum();
 
-    let mut all_coefs = vec![0.0; n * actual_nbasis];
-    let mut all_fitted = vec![0.0; n * m];
+    let mut all_coefs = FdMatrix::zeros(n, actual_nbasis);
+    let mut all_fitted = FdMatrix::zeros(n, m);
     let mut total_rss = 0.0;
 
     for i in 0..n {
-        let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
+        let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
         let curve_vec = DVector::from_vec(curve.clone());
 
         let bt_y = b_mat.transpose() * &curve_vec;
         let coefs = &btb_inv * bt_y;
 
         for k in 0..actual_nbasis {
-            all_coefs[i + k * n] = coefs[k];
+            all_coefs[(i, k)] = coefs[k];
         }
 
         let fitted = &b_mat * &coefs;
         for j in 0..m {
-            all_fitted[i + j * n] = fitted[j];
+            all_fitted[(i, j)] = fitted[j];
             let resid = curve[j] - fitted[j];
             total_rss += resid * resid;
         }
@@ -554,9 +549,7 @@ pub fn fourier_fit_1d(
 /// Performs grid search over nbasis values and returns the one with minimum GCV.
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Column-major FdMatrix (n x m)
 /// * `argvals` - Evaluation points
 /// * `min_nbasis` - Minimum number of basis functions to try
 /// * `max_nbasis` - Maximum number of basis functions to try
@@ -564,13 +557,12 @@ pub fn fourier_fit_1d(
 /// # Returns
 /// Optimal number of basis functions
 pub fn select_fourier_nbasis_gcv(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     min_nbasis: usize,
     max_nbasis: usize,
 ) -> usize {
+    let m = data.ncols();
     let min_nb = min_nbasis.max(3);
     // Ensure max doesn't exceed m (can't have more parameters than data points)
     let max_nb = max_nbasis.min(m / 2);
@@ -585,7 +577,7 @@ pub fn select_fourier_nbasis_gcv(
     // Test odd values only (1 constant + pairs of sin/cos)
     let mut nbasis = if min_nb % 2 == 0 { min_nb + 1 } else { min_nb };
     while nbasis <= max_nb {
-        if let Some(result) = fourier_fit_1d(data, n, m, argvals, nbasis) {
+        if let Some(result) = fourier_fit_1d(data, argvals, nbasis) {
             if result.gcv < best_gcv && result.gcv.is_finite() {
                 best_gcv = result.gcv;
                 best_nbasis = nbasis;
@@ -841,9 +833,7 @@ fn search_pspline_basis(
 /// model selection criteria (GCV, AIC, or BIC).
 ///
 /// # Arguments
-/// * `data` - Column-major matrix (n x m)
-/// * `n` - Number of curves
-/// * `m` - Number of evaluation points per curve
+/// * `data` - Column-major FdMatrix (n x m)
 /// * `argvals` - Evaluation points
 /// * `criterion` - Model selection criterion: 0=GCV, 1=AIC, 2=BIC
 /// * `nbasis_min` - Minimum number of basis functions (0 for auto)
@@ -854,9 +844,7 @@ fn search_pspline_basis(
 /// # Returns
 /// BasisAutoSelectionResult with per-curve selections
 pub fn select_basis_auto_1d(
-    data: &[f64],
-    n: usize,
-    m: usize,
+    data: &FdMatrix,
     argvals: &[f64],
     criterion: i32,
     nbasis_min: usize,
@@ -864,6 +852,8 @@ pub fn select_basis_auto_1d(
     lambda_pspline: f64,
     use_seasonal_hint: bool,
 ) -> BasisAutoSelectionResult {
+    let n = data.nrows();
+    let m = data.ncols();
     let fourier_min = if nbasis_min > 0 { nbasis_min.max(3) } else { 3 };
     let fourier_max = if nbasis_max > 0 {
         nbasis_max.min(m / 3).min(25)
@@ -882,7 +872,7 @@ pub fn select_basis_auto_1d(
 
     let selections: Vec<SingleCurveSelection> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
+            let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
             let seasonal_detected = if use_seasonal_hint {
                 detect_seasonality_fft(&curve)
             } else {
@@ -1164,23 +1154,38 @@ mod tests {
 
     // ============== Basis projection tests ==============
 
+    /// Create an FdMatrix from per-curve data (each curve is one row).
+    /// The input flat data is in "row of rows" order: all values for curve 0, then curve 1, etc.
+    /// We need to convert to column-major layout.
+    fn make_matrix(flat_row_major: &[f64], n: usize, m: usize) -> FdMatrix {
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                col_major[i + j * n] = flat_row_major[i * m + j];
+            }
+        }
+        FdMatrix::from_column_major(col_major, n, m).unwrap()
+    }
+
     #[test]
     fn test_fdata_to_basis_1d_bspline() {
         let t = uniform_grid(50);
         let n = 5;
         let m = t.len();
 
-        // Create simple data
-        let data: Vec<f64> = (0..n)
+        // Create simple data (n curves, each shifted linear)
+        let flat: Vec<f64> = (0..n)
             .flat_map(|i| t.iter().map(move |&ti| ti + i as f64 * 0.1))
             .collect();
+        let data = make_matrix(&flat, n, m);
 
-        let result = fdata_to_basis_1d(&data, n, m, &t, 10, 0);
+        let result = fdata_to_basis_1d(&data, &t, 10, 0);
         assert!(result.is_some());
 
         let res = result.unwrap();
         assert!(res.n_basis > 0);
-        assert_eq!(res.coefficients.len(), n * res.n_basis);
+        assert_eq!(res.coefficients.nrows(), n);
+        assert_eq!(res.coefficients.ncols(), res.n_basis);
     }
 
     #[test]
@@ -1190,9 +1195,10 @@ mod tests {
         let m = t.len();
 
         // Create sine wave data
-        let data: Vec<f64> = (0..n).flat_map(|_| sine_wave(&t, 2.0)).collect();
+        let flat: Vec<f64> = (0..n).flat_map(|_| sine_wave(&t, 2.0)).collect();
+        let data = make_matrix(&flat, n, m);
 
-        let result = fdata_to_basis_1d(&data, n, m, &t, 7, 1);
+        let result = fdata_to_basis_1d(&data, &t, 7, 1);
         assert!(result.is_some());
 
         let res = result.unwrap();
@@ -1204,12 +1210,13 @@ mod tests {
         let t = uniform_grid(50);
 
         // Empty data
-        let result = fdata_to_basis_1d(&[], 0, 50, &t, 10, 0);
+        let empty = FdMatrix::zeros(0, 50);
+        let result = fdata_to_basis_1d(&empty, &t, 10, 0);
         assert!(result.is_none());
 
         // nbasis too small
-        let data = vec![0.0; 50];
-        let result = fdata_to_basis_1d(&data, 1, 50, &t, 1, 0);
+        let data = FdMatrix::zeros(1, 50);
+        let result = fdata_to_basis_1d(&data, &t, 1, 0);
         assert!(result.is_none());
     }
 
@@ -1220,19 +1227,19 @@ mod tests {
         let m = t.len();
 
         // Create smooth sine wave data (Fourier basis should represent exactly)
-        let data = sine_wave(&t, 1.0);
+        let raw = sine_wave(&t, 1.0);
+        let data = FdMatrix::from_column_major(raw.clone(), n, m).unwrap();
 
         // Project to Fourier basis with enough terms
-        let proj = fdata_to_basis_1d(&data, n, m, &t, 5, 1).unwrap();
+        let proj = fdata_to_basis_1d(&data, &t, 5, 1).unwrap();
 
         // Reconstruct
-        let reconstructed =
-            basis_to_fdata_1d(&proj.coefficients, n, proj.n_basis, &t, proj.n_basis, 1);
+        let reconstructed = basis_to_fdata_1d(&proj.coefficients, &t, proj.n_basis, 1);
 
         // Should approximately match original for a simple sine wave
         let mut max_error = 0.0;
-        for i in 0..m {
-            let err = (data[i] - reconstructed[i]).abs();
+        for j in 0..m {
+            let err = (raw[j] - reconstructed[(0, j)]).abs();
             if err > max_error {
                 max_error = err;
             }
@@ -1242,7 +1249,8 @@ mod tests {
 
     #[test]
     fn test_basis_to_fdata_empty_input() {
-        let result = basis_to_fdata_1d(&[], 0, 0, &[], 5, 0);
+        let empty = FdMatrix::zeros(0, 0);
+        let result = basis_to_fdata_1d(&empty, &[], 5, 0);
         assert!(result.is_empty());
     }
 
@@ -1255,20 +1263,22 @@ mod tests {
         let m = t.len();
 
         // Create noisy data
-        let data: Vec<f64> = (0..n)
+        let flat: Vec<f64> = (0..n)
             .flat_map(|i| {
                 t.iter()
                     .enumerate()
                     .map(move |(j, &ti)| (2.0 * PI * ti).sin() + 0.1 * (i * j) as f64 % 1.0)
             })
             .collect();
+        let data = make_matrix(&flat, n, m);
 
-        let result = pspline_fit_1d(&data, n, m, &t, 15, 1.0, 2);
+        let result = pspline_fit_1d(&data, &t, 15, 1.0, 2);
         assert!(result.is_some());
 
         let res = result.unwrap();
         assert!(res.n_basis > 0);
-        assert_eq!(res.fitted.len(), n * m);
+        assert_eq!(res.fitted.nrows(), n);
+        assert_eq!(res.fitted.ncols(), m);
         assert!(res.rss >= 0.0);
         assert!(res.edf > 0.0);
         assert!(res.gcv.is_finite());
@@ -1281,14 +1291,15 @@ mod tests {
         let m = t.len();
 
         // Create noisy sine wave
-        let data: Vec<f64> = t
+        let raw: Vec<f64> = t
             .iter()
             .enumerate()
             .map(|(i, &ti)| (2.0 * PI * ti).sin() + 0.3 * ((i * 17) % 100) as f64 / 100.0)
             .collect();
+        let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-        let low_lambda = pspline_fit_1d(&data, n, m, &t, 15, 0.01, 2).unwrap();
-        let high_lambda = pspline_fit_1d(&data, n, m, &t, 15, 100.0, 2).unwrap();
+        let low_lambda = pspline_fit_1d(&data, &t, 15, 0.01, 2).unwrap();
+        let high_lambda = pspline_fit_1d(&data, &t, 15, 100.0, 2).unwrap();
 
         // Higher lambda should give lower edf (more smoothing)
         assert!(high_lambda.edf < low_lambda.edf);
@@ -1297,7 +1308,8 @@ mod tests {
     #[test]
     fn test_pspline_fit_1d_invalid_input() {
         let t = uniform_grid(50);
-        let result = pspline_fit_1d(&[], 0, 50, &t, 15, 1.0, 2);
+        let empty = FdMatrix::zeros(0, 50);
+        let result = pspline_fit_1d(&empty, &t, 15, 1.0, 2);
         assert!(result.is_none());
     }
 
@@ -1310,9 +1322,10 @@ mod tests {
         let m = t.len();
 
         // Create pure sine wave
-        let data = sine_wave(&t, 2.0);
+        let raw = sine_wave(&t, 2.0);
+        let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-        let result = fourier_fit_1d(&data, n, m, &t, 11);
+        let result = fourier_fit_1d(&data, &t, 11);
         assert!(result.is_some());
 
         let res = result.unwrap();
@@ -1322,10 +1335,11 @@ mod tests {
     #[test]
     fn test_fourier_fit_1d_makes_nbasis_odd() {
         let t = uniform_grid(50);
-        let data = sine_wave(&t, 1.0);
+        let raw = sine_wave(&t, 1.0);
+        let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
         // Pass even nbasis
-        let result = fourier_fit_1d(&data, 1, t.len(), &t, 6);
+        let result = fourier_fit_1d(&data, &t, 6);
         assert!(result.is_some());
 
         // Should have been adjusted to odd
@@ -1336,9 +1350,10 @@ mod tests {
     #[test]
     fn test_fourier_fit_1d_criteria() {
         let t = uniform_grid(50);
-        let data = sine_wave(&t, 2.0);
+        let raw = sine_wave(&t, 2.0);
+        let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
-        let result = fourier_fit_1d(&data, 1, t.len(), &t, 9).unwrap();
+        let result = fourier_fit_1d(&data, &t, 9).unwrap();
 
         // All criteria should be finite
         assert!(result.gcv.is_finite());
@@ -1349,10 +1364,11 @@ mod tests {
     #[test]
     fn test_fourier_fit_1d_invalid_nbasis() {
         let t = uniform_grid(50);
-        let data = sine_wave(&t, 1.0);
+        let raw = sine_wave(&t, 1.0);
+        let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
         // nbasis < 3 should return None
-        let result = fourier_fit_1d(&data, 1, t.len(), &t, 2);
+        let result = fourier_fit_1d(&data, &t, 2);
         assert!(result.is_none());
     }
 
@@ -1361,9 +1377,10 @@ mod tests {
     #[test]
     fn test_select_fourier_nbasis_gcv_range() {
         let t = uniform_grid(100);
-        let data = sine_wave(&t, 3.0);
+        let raw = sine_wave(&t, 3.0);
+        let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
-        let best = select_fourier_nbasis_gcv(&data, 1, t.len(), &t, 3, 15);
+        let best = select_fourier_nbasis_gcv(&data, &t, 3, 15);
 
         assert!((3..=15).contains(&best));
         assert!(best % 2 == 1, "Selected nbasis should be odd");
@@ -1372,9 +1389,10 @@ mod tests {
     #[test]
     fn test_select_fourier_nbasis_gcv_respects_min() {
         let t = uniform_grid(50);
-        let data = sine_wave(&t, 1.0);
+        let raw = sine_wave(&t, 1.0);
+        let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
-        let best = select_fourier_nbasis_gcv(&data, 1, t.len(), &t, 7, 15);
+        let best = select_fourier_nbasis_gcv(&data, &t, 7, 15);
         assert!(best >= 7);
     }
 
@@ -1386,9 +1404,10 @@ mod tests {
         let n = 3;
         let m = t.len();
 
-        let data: Vec<f64> = (0..n).flat_map(|i| sine_wave(&t, 1.0 + i as f64)).collect();
+        let flat: Vec<f64> = (0..n).flat_map(|i| sine_wave(&t, 1.0 + i as f64)).collect();
+        let data = make_matrix(&flat, n, m);
 
-        let result = select_basis_auto_1d(&data, n, m, &t, 0, 5, 15, 1.0, false);
+        let result = select_basis_auto_1d(&data, &t, 0, 5, 15, 1.0, false);
 
         assert_eq!(result.selections.len(), n);
         for sel in &result.selections {
@@ -1405,9 +1424,10 @@ mod tests {
         let m = t.len();
 
         // Strong seasonal pattern
-        let data = sine_wave(&t, 5.0);
+        let raw = sine_wave(&t, 5.0);
+        let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-        let result = select_basis_auto_1d(&data, n, m, &t, 0, 0, 0, -1.0, true);
+        let result = select_basis_auto_1d(&data, &t, 0, 0, 0, -1.0, true);
 
         assert_eq!(result.selections.len(), 1);
         assert!(result.selections[0].seasonal_detected);
@@ -1420,9 +1440,10 @@ mod tests {
         let m = t.len();
 
         // Constant data (definitely not seasonal)
-        let data: Vec<f64> = vec![1.0; m];
+        let raw: Vec<f64> = vec![1.0; m];
+        let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-        let result = select_basis_auto_1d(&data, n, m, &t, 0, 0, 0, -1.0, true);
+        let result = select_basis_auto_1d(&data, &t, 0, 0, 0, -1.0, true);
 
         // Constant data shouldn't be detected as seasonal
         assert!(!result.selections[0].seasonal_detected);
@@ -1431,12 +1452,13 @@ mod tests {
     #[test]
     fn test_select_basis_auto_1d_criterion_options() {
         let t = uniform_grid(50);
-        let data = sine_wave(&t, 2.0);
+        let raw = sine_wave(&t, 2.0);
+        let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
         // Test all three criteria
-        let gcv_result = select_basis_auto_1d(&data, 1, t.len(), &t, 0, 0, 0, 1.0, false);
-        let aic_result = select_basis_auto_1d(&data, 1, t.len(), &t, 1, 0, 0, 1.0, false);
-        let bic_result = select_basis_auto_1d(&data, 1, t.len(), &t, 2, 0, 0, 1.0, false);
+        let gcv_result = select_basis_auto_1d(&data, &t, 0, 0, 0, 1.0, false);
+        let aic_result = select_basis_auto_1d(&data, &t, 1, 0, 0, 1.0, false);
+        let bic_result = select_basis_auto_1d(&data, &t, 2, 0, 0, 1.0, false);
 
         assert_eq!(gcv_result.criterion, 0);
         assert_eq!(aic_result.criterion, 1);

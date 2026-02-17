@@ -10,6 +10,7 @@
 
 use crate::helpers::{simpsons_weights, simpsons_weights_2d};
 use crate::iter_maybe_parallel;
+use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 use rustfft::num_complex::Complex;
@@ -18,29 +19,28 @@ use rustfft::FftPlanner;
 /// Compute Lp distance matrix between two sets of functional data.
 ///
 /// # Arguments
-/// * `data1` - First dataset (column-major, n1 x n_points)
-/// * `data2` - Second dataset (column-major, n2 x n_points)
-/// * `n1` - Number of observations in first set
-/// * `n2` - Number of observations in second set
-/// * `n_points` - Number of evaluation points
+/// * `data1` - First dataset matrix (n1 rows x n_points columns)
+/// * `data2` - Second dataset matrix (n2 rows x n_points columns)
 /// * `argvals` - Evaluation points for integration
 /// * `p` - Order of the norm
-/// * `weights` - Optional user weights (empty vector for none)
+/// * `user_weights` - Optional user weights (empty slice for none)
 ///
 /// # Returns
-/// Flattened distance matrix (column-major, n1 x n2)
+/// Distance matrix (n1 rows x n2 columns)
 pub fn lp_cross_1d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
-    n_points: usize,
+    data1: &FdMatrix,
+    data2: &FdMatrix,
     argvals: &[f64],
     p: f64,
     user_weights: &[f64],
-) -> Vec<f64> {
-    if n1 == 0 || n2 == 0 || n_points == 0 || argvals.len() != n_points {
-        return Vec::new();
+) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let n_points = data1.ncols();
+
+    if n1 == 0 || n2 == 0 || n_points == 0 || argvals.len() != n_points || data2.ncols() != n_points
+    {
+        return FdMatrix::zeros(0, 0);
     }
 
     let base_weights = simpsons_weights(argvals);
@@ -54,57 +54,13 @@ pub fn lp_cross_1d(
         base_weights
     };
 
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n2)
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n2)
         .flat_map(|j| {
             (0..n1)
                 .map(|i| {
                     let mut integral = 0.0;
                     for k in 0..n_points {
-                        let diff = (data1[i + k * n1] - data2[j + k * n2]).abs();
-                        integral += diff.powf(p) * weights[k];
-                    }
-                    integral.powf(1.0 / p)
-                })
-                .collect::<Vec<f64>>()
-        })
-        .collect();
-
-    distances
-}
-
-/// Compute Lp distance matrix for self-distances (symmetric).
-///
-/// Returns flattened symmetric distance matrix (column-major, n x n).
-pub fn lp_self_1d(
-    data: &[f64],
-    n: usize,
-    n_points: usize,
-    argvals: &[f64],
-    p: f64,
-    user_weights: &[f64],
-) -> Vec<f64> {
-    if n == 0 || n_points == 0 || argvals.len() != n_points {
-        return Vec::new();
-    }
-
-    let base_weights = simpsons_weights(argvals);
-    let weights: Vec<f64> = if user_weights.len() == n_points {
-        base_weights
-            .iter()
-            .zip(user_weights.iter())
-            .map(|(b, u)| b * u)
-            .collect()
-    } else {
-        base_weights
-    };
-
-    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
-        .flat_map(|i| {
-            ((i + 1)..n)
-                .map(|j| {
-                    let mut integral = 0.0;
-                    for k in 0..n_points {
-                        let diff = (data[i + k * n] - data[j + k * n]).abs();
+                        let diff = (data1[(i, k)] - data2[(j, k)]).abs();
                         integral += diff.powf(p) * weights[k];
                     }
                     (i, j, integral.powf(1.0 / p))
@@ -113,80 +69,30 @@ pub fn lp_self_1d(
         })
         .collect();
 
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
     }
-
-    distances
+    dist
 }
 
-/// Compute Lp distance for 2D functional data (surfaces).
-pub fn lp_cross_2d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
-    argvals_s: &[f64],
-    argvals_t: &[f64],
-    p: f64,
-    user_weights: &[f64],
-) -> Vec<f64> {
-    let n_points = argvals_s.len() * argvals_t.len();
-    if n1 == 0 || n2 == 0 || n_points == 0 {
-        return Vec::new();
+/// Compute Lp distance matrix for self-distances (symmetric).
+///
+/// Returns symmetric distance matrix (n rows x n columns).
+pub fn lp_self_1d(data: &FdMatrix, argvals: &[f64], p: f64, user_weights: &[f64]) -> FdMatrix {
+    let n = data.nrows();
+    let n_points = data.ncols();
+
+    if n == 0 || n_points == 0 || argvals.len() != n_points {
+        return FdMatrix::zeros(0, 0);
     }
 
-    let base_weights = simpsons_weights_2d(argvals_s, argvals_t);
+    let base_weights = simpsons_weights(argvals);
     let weights: Vec<f64> = if user_weights.len() == n_points {
         base_weights
             .iter()
             .zip(user_weights.iter())
-            .map(|(bw, uw)| bw * uw)
-            .collect()
-    } else {
-        base_weights
-    };
-
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
-        .flat_map(|i| {
-            (0..n2)
-                .map(|j| {
-                    let mut sum = 0.0;
-                    for k in 0..n_points {
-                        let diff = (data1[i + k * n1] - data2[j + k * n2]).abs();
-                        sum += weights[k] * diff.powf(p);
-                    }
-                    sum.powf(1.0 / p)
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    distances
-}
-
-/// Compute Lp self-distance matrix for 2D functional data (symmetric).
-pub fn lp_self_2d(
-    data: &[f64],
-    n: usize,
-    argvals_s: &[f64],
-    argvals_t: &[f64],
-    p: f64,
-    user_weights: &[f64],
-) -> Vec<f64> {
-    let n_points = argvals_s.len() * argvals_t.len();
-    if n == 0 || n_points == 0 {
-        return Vec::new();
-    }
-
-    let base_weights = simpsons_weights_2d(argvals_s, argvals_t);
-    let weights: Vec<f64> = if user_weights.len() == n_points {
-        base_weights
-            .iter()
-            .zip(user_weights.iter())
-            .map(|(bw, uw)| bw * uw)
+            .map(|(b, u)| b * u)
             .collect()
     } else {
         base_weights
@@ -196,9 +102,61 @@ pub fn lp_self_2d(
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
+                    let mut integral = 0.0;
+                    for k in 0..n_points {
+                        let diff = (data[(i, k)] - data[(j, k)]).abs();
+                        integral += diff.powf(p) * weights[k];
+                    }
+                    (i, j, integral.powf(1.0 / p))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
+    }
+
+    dist
+}
+
+/// Compute Lp distance for 2D functional data (surfaces).
+pub fn lp_cross_2d(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals_s: &[f64],
+    argvals_t: &[f64],
+    p: f64,
+    user_weights: &[f64],
+) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let n_points = argvals_s.len() * argvals_t.len();
+    if n1 == 0 || n2 == 0 || n_points == 0 || data1.ncols() != n_points || data2.ncols() != n_points
+    {
+        return FdMatrix::zeros(0, 0);
+    }
+
+    let base_weights = simpsons_weights_2d(argvals_s, argvals_t);
+    let weights: Vec<f64> = if user_weights.len() == n_points {
+        base_weights
+            .iter()
+            .zip(user_weights.iter())
+            .map(|(bw, uw)| bw * uw)
+            .collect()
+    } else {
+        base_weights
+    };
+
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
+        .flat_map(|i| {
+            (0..n2)
+                .map(|j| {
                     let mut sum = 0.0;
                     for k in 0..n_points {
-                        let diff = (data[i + k * n] - data[j + k * n]).abs();
+                        let diff = (data1[(i, k)] - data2[(j, k)]).abs();
                         sum += weights[k] * diff.powf(p);
                     }
                     (i, j, sum.powf(1.0 / p))
@@ -207,21 +165,71 @@ pub fn lp_self_2d(
         })
         .collect();
 
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
+    }
+    dist
+}
+
+/// Compute Lp self-distance matrix for 2D functional data (symmetric).
+pub fn lp_self_2d(
+    data: &FdMatrix,
+    argvals_s: &[f64],
+    argvals_t: &[f64],
+    p: f64,
+    user_weights: &[f64],
+) -> FdMatrix {
+    let n = data.nrows();
+    let n_points = argvals_s.len() * argvals_t.len();
+    if n == 0 || n_points == 0 || data.ncols() != n_points {
+        return FdMatrix::zeros(0, 0);
     }
 
-    distances
+    let base_weights = simpsons_weights_2d(argvals_s, argvals_t);
+    let weights: Vec<f64> = if user_weights.len() == n_points {
+        base_weights
+            .iter()
+            .zip(user_weights.iter())
+            .map(|(bw, uw)| bw * uw)
+            .collect()
+    } else {
+        base_weights
+    };
+
+    let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
+        .flat_map(|i| {
+            ((i + 1)..n)
+                .map(|j| {
+                    let mut sum = 0.0;
+                    for k in 0..n_points {
+                        let diff = (data[(i, k)] - data[(j, k)]).abs();
+                        sum += weights[k] * diff.powf(p);
+                    }
+                    (i, j, sum.powf(1.0 / p))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
+    }
+
+    dist
 }
 
 /// Compute Hausdorff distance matrix for self-distances (symmetric).
 ///
 /// The Hausdorff distance treats curves as sets of points (t, f(t)) in 2D space.
-pub fn hausdorff_self_1d(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> Vec<f64> {
+pub fn hausdorff_self_1d(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
+
     if n == 0 || m == 0 || argvals.len() != m {
-        return Vec::new();
+        return FdMatrix::zeros(0, 0);
     }
 
     // Precompute squared time differences
@@ -240,13 +248,12 @@ pub fn hausdorff_self_1d(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> V
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
-                    // For each row s, find min over columns t
                     let max_row_min = (0..m)
                         .map(|s| {
-                            let x_s = data[i + s * n];
+                            let x_s = data[(i, s)];
                             (0..m)
                                 .map(|t| {
-                                    let y_t = data[j + t * n];
+                                    let y_t = data[(j, t)];
                                     let val_diff = x_s - y_t;
                                     (val_diff * val_diff + mtt[s * m + t]).sqrt()
                                 })
@@ -254,13 +261,12 @@ pub fn hausdorff_self_1d(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> V
                         })
                         .fold(f64::NEG_INFINITY, |a, b| a.max(b));
 
-                    // For each column t, find min over rows s
                     let max_col_min = (0..m)
                         .map(|t| {
-                            let y_t = data[j + t * n];
+                            let y_t = data[(j, t)];
                             (0..m)
                                 .map(|s| {
-                                    let x_s = data[i + s * n];
+                                    let x_s = data[(i, s)];
                                     let val_diff = x_s - y_t;
                                     (val_diff * val_diff + mtt[s * m + t]).sqrt()
                                 })
@@ -268,36 +274,31 @@ pub fn hausdorff_self_1d(data: &[f64], n: usize, m: usize, argvals: &[f64]) -> V
                         })
                         .fold(f64::NEG_INFINITY, |a, b| a.max(b));
 
-                    let hausdorff_dist = max_row_min.max(max_col_min);
-                    (i, j, hausdorff_dist)
+                    (i, j, max_row_min.max(max_col_min))
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
 
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
     }
 
-    distances
+    dist
 }
 
 /// Compute Hausdorff cross-distances for 1D functional data.
-pub fn hausdorff_cross_1d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
-    m: usize,
-    argvals: &[f64],
-) -> Vec<f64> {
-    if n1 == 0 || n2 == 0 || m == 0 || argvals.len() != m {
-        return Vec::new();
+pub fn hausdorff_cross_1d(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64]) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let m = data1.ncols();
+
+    if n1 == 0 || n2 == 0 || m == 0 || argvals.len() != m || data2.ncols() != m {
+        return FdMatrix::zeros(0, 0);
     }
 
-    // Precompute squared time differences
     let mtt: Vec<f64> = {
         let mut result = Vec::with_capacity(m * m);
         for s in 0..m {
@@ -309,16 +310,16 @@ pub fn hausdorff_cross_1d(
         result
     };
 
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| {
                     let max_row_min = (0..m)
                         .map(|s| {
-                            let x_s = data1[i + s * n1];
+                            let x_s = data1[(i, s)];
                             (0..m)
                                 .map(|t| {
-                                    let y_t = data2[j + t * n2];
+                                    let y_t = data2[(j, t)];
                                     let val_diff = x_s - y_t;
                                     (val_diff * val_diff + mtt[s * m + t]).sqrt()
                                 })
@@ -328,10 +329,10 @@ pub fn hausdorff_cross_1d(
 
                     let max_col_min = (0..m)
                         .map(|t| {
-                            let y_t = data2[j + t * n2];
+                            let y_t = data2[(j, t)];
                             (0..m)
                                 .map(|s| {
-                                    let x_s = data1[i + s * n1];
+                                    let x_s = data1[(i, s)];
                                     let val_diff = x_s - y_t;
                                     (val_diff * val_diff + mtt[s * m + t]).sqrt()
                                 })
@@ -339,22 +340,22 @@ pub fn hausdorff_cross_1d(
                         })
                         .fold(f64::NEG_INFINITY, |a, b| a.max(b));
 
-                    max_row_min.max(max_col_min)
+                    (i, j, max_row_min.max(max_col_min))
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
 
-    distances
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
+    }
+    dist
 }
 
-/// Compute DTW distance between two time series.
-///
-/// Uses Lp distance with optional Sakoe-Chiba window constraint.
 /// Allocate and initialize the DTW cost matrix with boundary conditions and window band.
 fn initialize_dtw_matrix(n: usize, m: usize, w: usize) -> Vec<Vec<f64>> {
     let mut dtw = vec![vec![0.0_f64; m + 1]; n + 1];
-
     for j in 0..=m {
         dtw[0][j] = f64::INFINITY;
     }
@@ -362,7 +363,6 @@ fn initialize_dtw_matrix(n: usize, m: usize, w: usize) -> Vec<Vec<f64>> {
         dtw[i][0] = f64::INFINITY;
     }
     dtw[0][0] = 0.0;
-
     for i in 1..=n {
         let r_i = i + 1;
         let j_start_r = 2.max(r_i as isize - w as isize) as usize;
@@ -374,7 +374,6 @@ fn initialize_dtw_matrix(n: usize, m: usize, w: usize) -> Vec<Vec<f64>> {
             }
         }
     }
-
     dtw
 }
 
@@ -402,6 +401,7 @@ fn fill_dtw_matrix(
     }
 }
 
+/// Compute DTW distance between two time series.
 pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
     let n = x.len();
     let m = y.len();
@@ -411,81 +411,64 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
 }
 
 /// Compute DTW distance matrix for self-distances (symmetric).
-pub fn dtw_self_1d(data: &[f64], n: usize, m: usize, p: f64, w: usize) -> Vec<f64> {
+pub fn dtw_self_1d(data: &FdMatrix, p: f64, w: usize) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
     if n == 0 || m == 0 {
-        return Vec::new();
+        return FdMatrix::zeros(0, 0);
     }
-
-    // Extract curves as vectors
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
-
+    let curves = data.rows();
     let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
-                    let dist = dtw_distance(&curves[i], &curves[j], p, w);
-                    (i, j, dist)
+                    let d = dtw_distance(&curves[i], &curves[j], p, w);
+                    (i, j, d)
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
     }
-
-    distances
+    dist
 }
 
 /// Compute DTW cross-distance matrix.
-pub fn dtw_cross_1d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
-    m1: usize,
-    m2: usize,
-    p: f64,
-    w: usize,
-) -> Vec<f64> {
+pub fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let m1 = data1.ncols();
+    let m2 = data2.ncols();
     if n1 == 0 || n2 == 0 || m1 == 0 || m2 == 0 {
-        return Vec::new();
+        return FdMatrix::zeros(0, 0);
     }
-
-    let curves1: Vec<Vec<f64>> = (0..n1)
-        .map(|i| (0..m1).map(|j| data1[i + j * n1]).collect())
-        .collect();
-    let curves2: Vec<Vec<f64>> = (0..n2)
-        .map(|i| (0..m2).map(|j| data2[i + j * n2]).collect())
-        .collect();
-
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
+    let curves1 = data1.rows();
+    let curves2 = data2.rows();
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
-                .map(|j| dtw_distance(&curves1[i], &curves2[j], p, w))
+                .map(|j| (i, j, dtw_distance(&curves1[i], &curves2[j], p, w)))
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    distances
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
+    }
+    dist
 }
 
 /// Compute Fourier coefficients for a curve using FFT.
 fn fft_coefficients(data: &[f64], nfreq: usize) -> Vec<f64> {
     let n = data.len();
     let nfreq = nfreq.min(n / 2);
-
     let mut planner = FftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n);
-
     let mut buffer: Vec<Complex<f64>> = data.iter().map(|&x| Complex::new(x, 0.0)).collect();
-
     fft.process(&mut buffer);
-
     buffer
         .iter()
         .take(nfreq + 1)
@@ -494,19 +477,16 @@ fn fft_coefficients(data: &[f64], nfreq: usize) -> Vec<f64> {
 }
 
 /// Compute semimetric based on Fourier coefficients for self-distances.
-pub fn fourier_self_1d(data: &[f64], n: usize, m: usize, nfreq: usize) -> Vec<f64> {
+pub fn fourier_self_1d(data: &FdMatrix, nfreq: usize) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
     if n == 0 || m == 0 {
-        return Vec::new();
+        return FdMatrix::zeros(0, 0);
     }
-
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
-
+    let curves = data.rows();
     let coeffs: Vec<Vec<f64>> = iter_maybe_parallel!(curves)
         .map(|curve| fft_coefficients(&curve, nfreq))
         .collect();
-
     let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
@@ -521,44 +501,31 @@ pub fn fourier_self_1d(data: &[f64], n: usize, m: usize, nfreq: usize) -> Vec<f6
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
     }
-
-    distances
+    dist
 }
 
 /// Compute semimetric based on Fourier coefficients for cross-distances.
-pub fn fourier_cross_1d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
-    m: usize,
-    nfreq: usize,
-) -> Vec<f64> {
-    if n1 == 0 || n2 == 0 || m == 0 {
-        return Vec::new();
+pub fn fourier_cross_1d(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let m = data1.ncols();
+    if n1 == 0 || n2 == 0 || m == 0 || data2.ncols() != m {
+        return FdMatrix::zeros(0, 0);
     }
-
-    let curves1: Vec<Vec<f64>> = (0..n1)
-        .map(|i| (0..m).map(|j| data1[i + j * n1]).collect())
-        .collect();
-    let curves2: Vec<Vec<f64>> = (0..n2)
-        .map(|i| (0..m).map(|j| data2[i + j * n2]).collect())
-        .collect();
-
+    let curves1 = data1.rows();
+    let curves2 = data2.rows();
     let coeffs1: Vec<Vec<f64>> = iter_maybe_parallel!(curves1)
         .map(|curve| fft_coefficients(&curve, nfreq))
         .collect();
     let coeffs2: Vec<Vec<f64>> = iter_maybe_parallel!(curves2)
         .map(|curve| fft_coefficients(&curve, nfreq))
         .collect();
-
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
                 .map(|j| {
@@ -567,17 +534,19 @@ pub fn fourier_cross_1d(
                         .zip(coeffs2[j].iter())
                         .map(|(a, b)| (a - b).powi(2))
                         .sum();
-                    dist_sq.sqrt()
+                    (i, j, dist_sq.sqrt())
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    distances
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
+    }
+    dist
 }
 
 /// Compute weighted L2 distance at a given horizontal shift.
-/// Returns None if fewer than half the points are valid.
 fn shifted_l2_distance(x: &[f64], y: &[f64], weights: &[f64], shift: i32) -> Option<f64> {
     let n = x.len();
     let mut sum = 0.0;
@@ -614,75 +583,66 @@ fn hshift_distance(x: &[f64], y: &[f64], weights: &[f64], max_shift: usize) -> f
 }
 
 /// Compute semimetric based on horizontal shift for self-distances.
-pub fn hshift_self_1d(
-    data: &[f64],
-    n: usize,
-    m: usize,
-    argvals: &[f64],
-    max_shift: usize,
-) -> Vec<f64> {
+pub fn hshift_self_1d(data: &FdMatrix, argvals: &[f64], max_shift: usize) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
     if n == 0 || m == 0 || argvals.len() != m {
-        return Vec::new();
+        return FdMatrix::zeros(0, 0);
     }
-
     let weights = simpsons_weights(argvals);
-
-    let curves: Vec<Vec<f64>> = (0..n)
-        .map(|i| (0..m).map(|j| data[i + j * n]).collect())
-        .collect();
-
+    let curves = data.rows();
     let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
-                    let dist = hshift_distance(&curves[i], &curves[j], &weights, max_shift);
-                    (i, j, dist)
+                    let d = hshift_distance(&curves[i], &curves[j], &weights, max_shift);
+                    (i, j, d)
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
     }
-
-    distances
+    dist
 }
 
 /// Compute semimetric based on horizontal shift for cross-distances.
 pub fn hshift_cross_1d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
-    m: usize,
+    data1: &FdMatrix,
+    data2: &FdMatrix,
     argvals: &[f64],
     max_shift: usize,
-) -> Vec<f64> {
-    if n1 == 0 || n2 == 0 || m == 0 || argvals.len() != m {
-        return Vec::new();
+) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let m = data1.ncols();
+    if n1 == 0 || n2 == 0 || m == 0 || argvals.len() != m || data2.ncols() != m {
+        return FdMatrix::zeros(0, 0);
     }
-
     let weights = simpsons_weights(argvals);
-
-    let curves1: Vec<Vec<f64>> = (0..n1)
-        .map(|i| (0..m).map(|j| data1[i + j * n1]).collect())
-        .collect();
-    let curves2: Vec<Vec<f64>> = (0..n2)
-        .map(|i| (0..m).map(|j| data2[i + j * n2]).collect())
-        .collect();
-
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
+    let curves1 = data1.rows();
+    let curves2 = data2.rows();
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
-                .map(|j| hshift_distance(&curves1[i], &curves2[j], &weights, max_shift))
+                .map(|j| {
+                    (
+                        i,
+                        j,
+                        hshift_distance(&curves1[i], &curves2[j], &weights, max_shift),
+                    )
+                })
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    distances
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
+    }
+    dist
 }
 
 /// Compute Hausdorff distance between two 3D point clouds.
@@ -701,7 +661,6 @@ pub fn hausdorff_3d(points1: &[(f64, f64, f64)], points2: &[(f64, f64, f64)]) ->
                 .fold(f64::INFINITY, f64::min)
         })
         .fold(0.0_f64, f64::max);
-
     let h21 = points2
         .iter()
         .map(|p2| {
@@ -716,105 +675,100 @@ pub fn hausdorff_3d(points1: &[(f64, f64, f64)], points2: &[(f64, f64, f64)]) ->
                 .fold(f64::INFINITY, f64::min)
         })
         .fold(0.0_f64, f64::max);
-
     h12.max(h21)
 }
 
 /// Compute Hausdorff self-distance for 2D surfaces.
-pub fn hausdorff_self_2d(data: &[f64], n: usize, argvals_s: &[f64], argvals_t: &[f64]) -> Vec<f64> {
+pub fn hausdorff_self_2d(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) -> FdMatrix {
+    let n = data.nrows();
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
     let n_points = m1 * m2;
-
-    if n == 0 || n_points == 0 {
-        return Vec::new();
+    if n == 0 || n_points == 0 || data.ncols() != n_points {
+        return FdMatrix::zeros(0, 0);
     }
-
     let surfaces: Vec<Vec<(f64, f64, f64)>> = (0..n)
         .map(|curve| {
             let mut points = Vec::with_capacity(n_points);
             for i in 0..m1 {
                 for j in 0..m2 {
                     let k = i * m2 + j;
-                    points.push((argvals_s[i], argvals_t[j], data[curve + k * n]));
+                    points.push((argvals_s[i], argvals_t[j], data[(curve, k)]));
                 }
             }
             points
         })
         .collect();
-
     let upper_triangle: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
-                    let dist = hausdorff_3d(&surfaces[i], &surfaces[j]);
-                    (i, j, dist)
+                    let d = hausdorff_3d(&surfaces[i], &surfaces[j]);
+                    (i, j, d)
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    let mut distances = vec![0.0; n * n];
-    for (i, j, dist) in upper_triangle {
-        distances[i + j * n] = dist;
-        distances[j + i * n] = dist;
+    let mut dist = FdMatrix::zeros(n, n);
+    for (i, j, d) in upper_triangle {
+        dist[(i, j)] = d;
+        dist[(j, i)] = d;
     }
-
-    distances
+    dist
 }
 
 /// Compute Hausdorff cross-distance for 2D surfaces.
 pub fn hausdorff_cross_2d(
-    data1: &[f64],
-    data2: &[f64],
-    n1: usize,
-    n2: usize,
+    data1: &FdMatrix,
+    data2: &FdMatrix,
     argvals_s: &[f64],
     argvals_t: &[f64],
-) -> Vec<f64> {
+) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
     let m1 = argvals_s.len();
     let m2 = argvals_t.len();
     let n_points = m1 * m2;
-
-    if n1 == 0 || n2 == 0 || n_points == 0 {
-        return Vec::new();
+    if n1 == 0 || n2 == 0 || n_points == 0 || data1.ncols() != n_points || data2.ncols() != n_points
+    {
+        return FdMatrix::zeros(0, 0);
     }
-
     let surfaces1: Vec<Vec<(f64, f64, f64)>> = (0..n1)
         .map(|curve| {
             let mut points = Vec::with_capacity(n_points);
             for i in 0..m1 {
                 for j in 0..m2 {
                     let k = i * m2 + j;
-                    points.push((argvals_s[i], argvals_t[j], data1[curve + k * n1]));
+                    points.push((argvals_s[i], argvals_t[j], data1[(curve, k)]));
                 }
             }
             points
         })
         .collect();
-
     let surfaces2: Vec<Vec<(f64, f64, f64)>> = (0..n2)
         .map(|curve| {
             let mut points = Vec::with_capacity(n_points);
             for i in 0..m1 {
                 for j in 0..m2 {
                     let k = i * m2 + j;
-                    points.push((argvals_s[i], argvals_t[j], data2[curve + k * n2]));
+                    points.push((argvals_s[i], argvals_t[j], data2[(curve, k)]));
                 }
             }
             points
         })
         .collect();
-
-    let distances: Vec<f64> = iter_maybe_parallel!(0..n1)
+    let pairs: Vec<(usize, usize, f64)> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
             (0..n2)
-                .map(|j| hausdorff_3d(&surfaces1[i], &surfaces2[j]))
+                .map(|j| (i, j, hausdorff_3d(&surfaces1[i], &surfaces2[j])))
                 .collect::<Vec<_>>()
         })
         .collect();
-
-    distances
+    let mut dist = FdMatrix::zeros(n1, n2);
+    for (i, j, d) in pairs {
+        dist[(i, j)] = d;
+    }
+    dist
 }
 
 #[cfg(test)]
@@ -826,16 +780,12 @@ mod tests {
         (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
     }
 
-    // ============== Lp distance tests ==============
-
     #[test]
     fn test_lp_self_distance() {
-        // Two curves: [0, 1] and [1, 2]
-        let data = vec![0.0, 1.0, 1.0, 2.0]; // column-major
+        let data = FdMatrix::from_column_major(vec![0.0, 1.0, 1.0, 2.0], 2, 2).unwrap();
         let argvals = vec![0.0, 1.0];
-        let dist = lp_self_1d(&data, 2, 2, &argvals, 2.0, &[]);
-        // L2 distance should be 1.0
-        assert!((dist[1] - 1.0).abs() < 0.1);
+        let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
+        assert!((dist[(0, 1)] - 1.0).abs() < 0.1);
     }
 
     #[test]
@@ -843,19 +793,18 @@ mod tests {
         let n = 5;
         let m = 20;
         let argvals = uniform_grid(m);
-        let mut data = vec![0.0; n * m];
+        let mut flat = vec![0.0; n * m];
         for i in 0..n {
             for j in 0..m {
-                data[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin();
+                flat[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin();
             }
         }
-        let dist = lp_self_1d(&data, n, m, &argvals, 2.0, &[]);
-
-        // Check symmetry
+        let data = FdMatrix::from_column_major(flat, n, m).unwrap();
+        let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Distance matrix should be symmetric"
                 );
             }
@@ -867,14 +816,11 @@ mod tests {
         let n = 4;
         let m = 15;
         let argvals = uniform_grid(m);
-        let data: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
-        let dist = lp_self_1d(&data, n, m, &argvals, 2.0, &[]);
-
+        let flat: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
+        let data = FdMatrix::from_column_major(flat, n, m).unwrap();
+        let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
         for i in 0..n {
-            assert!(
-                dist[i + i * n].abs() < 1e-10,
-                "Self-distance should be zero"
-            );
+            assert!(dist[(i, i)].abs() < 1e-10, "Self-distance should be zero");
         }
     }
 
@@ -884,20 +830,23 @@ mod tests {
         let n2 = 4;
         let m = 20;
         let argvals = uniform_grid(m);
-        let data1: Vec<f64> = (0..(n1 * m)).map(|i| i as f64 * 0.1).collect();
-        let data2: Vec<f64> = (0..(n2 * m)).map(|i| i as f64 * 0.2).collect();
-        let dist = lp_cross_1d(&data1, &data2, n1, n2, m, &argvals, 2.0, &[]);
-
-        assert_eq!(dist.len(), n1 * n2);
+        let data1 =
+            FdMatrix::from_column_major((0..(n1 * m)).map(|i| i as f64 * 0.1).collect(), n1, m)
+                .unwrap();
+        let data2 =
+            FdMatrix::from_column_major((0..(n2 * m)).map(|i| i as f64 * 0.2).collect(), n2, m)
+                .unwrap();
+        let dist = lp_cross_1d(&data1, &data2, &argvals, 2.0, &[]);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
     }
 
     #[test]
     fn test_lp_invalid() {
-        assert!(lp_self_1d(&[], 0, 0, &[], 2.0, &[]).is_empty());
-        assert!(lp_cross_1d(&[], &[], 0, 0, 0, &[], 2.0, &[]).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(lp_self_1d(&empty, &[], 2.0, &[]).is_empty());
+        assert!(lp_cross_1d(&empty, &empty, &[], 2.0, &[]).is_empty());
     }
-
-    // ============== DTW distance tests ==============
 
     #[test]
     fn test_dtw_distance() {
@@ -922,13 +871,14 @@ mod tests {
     fn test_dtw_self_symmetric() {
         let n = 4;
         let m = 15;
-        let data: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
-        let dist = dtw_self_1d(&data, n, m, 2.0, 5);
-
+        let data =
+            FdMatrix::from_column_major((0..(n * m)).map(|i| i as f64 * 0.1).collect(), n, m)
+                .unwrap();
+        let dist = dtw_self_1d(&data, 2.0, 5);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "DTW matrix should be symmetric"
                 );
             }
@@ -937,23 +887,26 @@ mod tests {
 
     #[test]
     fn test_dtw_invalid() {
-        assert!(dtw_self_1d(&[], 0, 0, 2.0, 5).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(dtw_self_1d(&empty, 2.0, 5).is_empty());
     }
-
-    // ============== Hausdorff distance tests ==============
 
     #[test]
     fn test_hausdorff_self_symmetric() {
         let n = 4;
         let m = 15;
         let argvals = uniform_grid(m);
-        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let dist = hausdorff_self_1d(&data, n, m, &argvals);
-
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let dist = hausdorff_self_1d(&data, &argvals);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Hausdorff matrix should be symmetric"
                 );
             }
@@ -965,35 +918,36 @@ mod tests {
         let n = 3;
         let m = 10;
         let argvals = uniform_grid(m);
-        let data: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
-        let dist = hausdorff_self_1d(&data, n, m, &argvals);
-
+        let data =
+            FdMatrix::from_column_major((0..(n * m)).map(|i| i as f64 * 0.1).collect(), n, m)
+                .unwrap();
+        let dist = hausdorff_self_1d(&data, &argvals);
         for i in 0..n {
-            assert!(
-                dist[i + i * n].abs() < 1e-10,
-                "Self-distance should be zero"
-            );
+            assert!(dist[(i, i)].abs() < 1e-10, "Self-distance should be zero");
         }
     }
 
     #[test]
     fn test_hausdorff_invalid() {
-        assert!(hausdorff_self_1d(&[], 0, 0, &[]).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(hausdorff_self_1d(&empty, &[]).is_empty());
     }
-
-    // ============== Fourier semimetric tests ==============
 
     #[test]
     fn test_fourier_self_symmetric() {
         let n = 4;
-        let m = 32; // Power of 2 for FFT efficiency
-        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let dist = fourier_self_1d(&data, n, m, 5);
-
+        let m = 32;
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let dist = fourier_self_1d(&data, 5);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Fourier distance should be symmetric"
                 );
             }
@@ -1004,36 +958,40 @@ mod tests {
     fn test_fourier_self_diagonal_zero() {
         let n = 3;
         let m = 32;
-        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.2).cos()).collect();
-        let dist = fourier_self_1d(&data, n, m, 8);
-
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let dist = fourier_self_1d(&data, 8);
         for i in 0..n {
-            assert!(
-                dist[i + i * n].abs() < 1e-10,
-                "Self-distance should be zero"
-            );
+            assert!(dist[(i, i)].abs() < 1e-10, "Self-distance should be zero");
         }
     }
 
     #[test]
     fn test_fourier_invalid() {
-        assert!(fourier_self_1d(&[], 0, 0, 5).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(fourier_self_1d(&empty, 5).is_empty());
     }
-
-    // ============== Horizontal shift semimetric tests ==============
 
     #[test]
     fn test_hshift_self_symmetric() {
         let n = 4;
         let m = 20;
         let argvals = uniform_grid(m);
-        let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let dist = hshift_self_1d(&data, n, m, &argvals, 3);
-
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let dist = hshift_self_1d(&data, &argvals, 3);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Hshift distance should be symmetric"
                 );
             }
@@ -1042,10 +1000,9 @@ mod tests {
 
     #[test]
     fn test_hshift_invalid() {
-        assert!(hshift_self_1d(&[], 0, 0, &[], 3).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(hshift_self_1d(&empty, &[], 3).is_empty());
     }
-
-    // ============== 3D Hausdorff tests ==============
 
     #[test]
     fn test_hausdorff_3d_identical() {
@@ -1072,8 +1029,6 @@ mod tests {
         );
     }
 
-    // ============== 2D surface tests ==============
-
     #[test]
     fn test_lp_2d_symmetric() {
         let n = 3;
@@ -1082,13 +1037,17 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-        let data: Vec<f64> = (0..(n * n_points)).map(|i| i as f64 * 0.1).collect();
-        let dist = lp_self_2d(&data, n, &argvals_s, &argvals_t, 2.0, &[]);
-
+        let data = FdMatrix::from_column_major(
+            (0..(n * n_points)).map(|i| i as f64 * 0.1).collect(),
+            n,
+            n_points,
+        )
+        .unwrap();
+        let dist = lp_self_2d(&data, &argvals_s, &argvals_t, 2.0, &[]);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "2D Lp distance should be symmetric"
                 );
             }
@@ -1097,7 +1056,8 @@ mod tests {
 
     #[test]
     fn test_lp_2d_invalid() {
-        assert!(lp_self_2d(&[], 0, &[], &[], 2.0, &[]).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(lp_self_2d(&empty, &[], &[], 2.0, &[]).is_empty());
     }
 
     #[test]
@@ -1108,15 +1068,19 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-        let data: Vec<f64> = (0..(n * n_points))
-            .map(|i| (i as f64 * 0.1).sin())
-            .collect();
-        let dist = hausdorff_self_2d(&data, n, &argvals_s, &argvals_t);
-
+        let data = FdMatrix::from_column_major(
+            (0..(n * n_points))
+                .map(|i| (i as f64 * 0.1).sin())
+                .collect(),
+            n,
+            n_points,
+        )
+        .unwrap();
+        let dist = hausdorff_self_2d(&data, &argvals_s, &argvals_t);
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "2D Hausdorff should be symmetric"
                 );
             }
@@ -1125,10 +1089,9 @@ mod tests {
 
     #[test]
     fn test_hausdorff_2d_invalid() {
-        assert!(hausdorff_self_2d(&[], 0, &[], &[]).is_empty());
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(hausdorff_self_2d(&empty, &[], &[]).is_empty());
     }
-
-    // ============== Cross-distance tests ==============
 
     #[test]
     fn test_hausdorff_cross_1d() {
@@ -1136,23 +1099,38 @@ mod tests {
         let n2 = 4;
         let m = 15;
         let argvals = uniform_grid(m);
-        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
-
-        let dist = hausdorff_cross_1d(&data1, &data2, n1, n2, m, &argvals);
-
-        assert_eq!(dist.len(), n1 * n2);
-        for &d in &dist {
-            assert!(d >= 0.0, "Hausdorff cross distance should be non-negative");
-            assert!(d.is_finite(), "Hausdorff cross distance should be finite");
+        let data1 = FdMatrix::from_column_major(
+            (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n1,
+            m,
+        )
+        .unwrap();
+        let data2 = FdMatrix::from_column_major(
+            (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+            n2,
+            m,
+        )
+        .unwrap();
+        let dist = hausdorff_cross_1d(&data1, &data2, &argvals);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
+        for j in 0..n2 {
+            for i in 0..n1 {
+                assert!(
+                    dist[(i, j)] >= 0.0,
+                    "Hausdorff cross distance should be non-negative"
+                );
+                assert!(
+                    dist[(i, j)].is_finite(),
+                    "Hausdorff cross distance should be finite"
+                );
+            }
         }
-
-        // Self-consistency: cross(A,A) diagonal should match self(A) diagonal
-        let self_dist = hausdorff_self_1d(&data1, n1, m, &argvals);
-        let cross_self = hausdorff_cross_1d(&data1, &data1, n1, n1, m, &argvals);
+        let self_dist = hausdorff_self_1d(&data1, &argvals);
+        let cross_self = hausdorff_cross_1d(&data1, &data1, &argvals);
         for i in 0..n1 {
             assert!(
-                (cross_self[i + i * n1] - self_dist[i + i * n1]).abs() < 1e-10,
+                (cross_self[(i, i)] - self_dist[(i, i)]).abs() < 1e-10,
                 "Cross-self diagonal should match self diagonal at {}",
                 i
             );
@@ -1164,25 +1142,45 @@ mod tests {
         let n1 = 3;
         let n2 = 4;
         let m = 15;
-        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
-
-        let dist = dtw_cross_1d(&data1, &data2, n1, n2, m, m, 2.0, 5);
-
-        assert_eq!(dist.len(), n1 * n2);
-        for &d in &dist {
-            assert!(d >= 0.0, "DTW cross distance should be non-negative");
-            assert!(d.is_finite(), "DTW cross distance should be finite");
+        let data1 = FdMatrix::from_column_major(
+            (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n1,
+            m,
+        )
+        .unwrap();
+        let data2 = FdMatrix::from_column_major(
+            (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+            n2,
+            m,
+        )
+        .unwrap();
+        let dist = dtw_cross_1d(&data1, &data2, 2.0, 5);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
+        for j in 0..n2 {
+            for i in 0..n1 {
+                assert!(
+                    dist[(i, j)] >= 0.0,
+                    "DTW cross distance should be non-negative"
+                );
+                assert!(
+                    dist[(i, j)].is_finite(),
+                    "DTW cross distance should be finite"
+                );
+            }
         }
-
-        // Identical curves should have distance ~0
-        let data_same: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let cross_self = dtw_cross_1d(&data_same, &data_same, n1, n1, m, m, 2.0, 5);
+        let data_same = FdMatrix::from_column_major(
+            (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n1,
+            m,
+        )
+        .unwrap();
+        let cross_self = dtw_cross_1d(&data_same, &data_same, 2.0, 5);
         for i in 0..n1 {
             assert!(
-                cross_self[i + i * n1] < 1e-8,
+                cross_self[(i, i)] < 1e-8,
                 "DTW self-distance should be ~0, got {}",
-                cross_self[i + i * n1]
+                cross_self[(i, i)]
             );
         }
     }
@@ -1192,15 +1190,32 @@ mod tests {
         let n1 = 3;
         let n2 = 4;
         let m = 32;
-        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
-
-        let dist = fourier_cross_1d(&data1, &data2, n1, n2, m, 5);
-
-        assert_eq!(dist.len(), n1 * n2);
-        for &d in &dist {
-            assert!(d >= 0.0, "Fourier cross distance should be non-negative");
-            assert!(d.is_finite(), "Fourier cross distance should be finite");
+        let data1 = FdMatrix::from_column_major(
+            (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n1,
+            m,
+        )
+        .unwrap();
+        let data2 = FdMatrix::from_column_major(
+            (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+            n2,
+            m,
+        )
+        .unwrap();
+        let dist = fourier_cross_1d(&data1, &data2, 5);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
+        for j in 0..n2 {
+            for i in 0..n1 {
+                assert!(
+                    dist[(i, j)] >= 0.0,
+                    "Fourier cross distance should be non-negative"
+                );
+                assert!(
+                    dist[(i, j)].is_finite(),
+                    "Fourier cross distance should be finite"
+                );
+            }
         }
     }
 
@@ -1210,19 +1225,34 @@ mod tests {
         let n2 = 4;
         let m = 20;
         let argvals = uniform_grid(m);
-        let data1: Vec<f64> = (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect();
-        let data2: Vec<f64> = (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect();
-
-        let dist = hshift_cross_1d(&data1, &data2, n1, n2, m, &argvals, 3);
-
-        assert_eq!(dist.len(), n1 * n2);
-        for &d in &dist {
-            assert!(d >= 0.0, "Hshift cross distance should be non-negative");
-            assert!(d.is_finite(), "Hshift cross distance should be finite");
+        let data1 = FdMatrix::from_column_major(
+            (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+            n1,
+            m,
+        )
+        .unwrap();
+        let data2 = FdMatrix::from_column_major(
+            (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+            n2,
+            m,
+        )
+        .unwrap();
+        let dist = hshift_cross_1d(&data1, &data2, &argvals, 3);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
+        for j in 0..n2 {
+            for i in 0..n1 {
+                assert!(
+                    dist[(i, j)] >= 0.0,
+                    "Hshift cross distance should be non-negative"
+                );
+                assert!(
+                    dist[(i, j)].is_finite(),
+                    "Hshift cross distance should be finite"
+                );
+            }
         }
     }
-
-    // ============== 2D surface distance tests ==============
 
     #[test]
     fn test_hausdorff_self_2d_properties() {
@@ -1232,25 +1262,25 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-        let data: Vec<f64> = (0..(n * n_points))
-            .map(|i| (i as f64 * 0.1).sin())
-            .collect();
-
-        let dist = hausdorff_self_2d(&data, n, &argvals_s, &argvals_t);
-
-        // Diagonal should be zero
+        let data = FdMatrix::from_column_major(
+            (0..(n * n_points))
+                .map(|i| (i as f64 * 0.1).sin())
+                .collect(),
+            n,
+            n_points,
+        )
+        .unwrap();
+        let dist = hausdorff_self_2d(&data, &argvals_s, &argvals_t);
         for i in 0..n {
             assert!(
-                dist[i + i * n].abs() < 1e-10,
+                dist[(i, i)].abs() < 1e-10,
                 "Hausdorff 2D self-distance should be zero on diagonal"
             );
         }
-
-        // Should be symmetric
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Hausdorff 2D should be symmetric"
                 );
             }
@@ -1266,20 +1296,36 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-
-        let data1: Vec<f64> = (0..(n1 * n_points))
-            .map(|i| (i as f64 * 0.1).sin())
-            .collect();
-        let data2: Vec<f64> = (0..(n2 * n_points))
-            .map(|i| (i as f64 * 0.2).cos())
-            .collect();
-
-        let dist = hausdorff_cross_2d(&data1, &data2, n1, n2, &argvals_s, &argvals_t);
-
-        assert_eq!(dist.len(), n1 * n2);
-        for &d in &dist {
-            assert!(d >= 0.0, "Hausdorff cross 2D should be non-negative");
-            assert!(d.is_finite(), "Hausdorff cross 2D should be finite");
+        let data1 = FdMatrix::from_column_major(
+            (0..(n1 * n_points))
+                .map(|i| (i as f64 * 0.1).sin())
+                .collect(),
+            n1,
+            n_points,
+        )
+        .unwrap();
+        let data2 = FdMatrix::from_column_major(
+            (0..(n2 * n_points))
+                .map(|i| (i as f64 * 0.2).cos())
+                .collect(),
+            n2,
+            n_points,
+        )
+        .unwrap();
+        let dist = hausdorff_cross_2d(&data1, &data2, &argvals_s, &argvals_t);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
+        for j in 0..n2 {
+            for i in 0..n1 {
+                assert!(
+                    dist[(i, j)] >= 0.0,
+                    "Hausdorff cross 2D should be non-negative"
+                );
+                assert!(
+                    dist[(i, j)].is_finite(),
+                    "Hausdorff cross 2D should be finite"
+                );
+            }
         }
     }
 
@@ -1292,35 +1338,35 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-
-        let data1: Vec<f64> = (0..(n1 * n_points))
-            .map(|i| (i as f64 * 0.1).sin())
-            .collect();
-        let data2: Vec<f64> = (0..(n2 * n_points))
-            .map(|i| (i as f64 * 0.2).cos())
-            .collect();
-
-        // Without user weights
-        let dist = lp_cross_2d(&data1, &data2, n1, n2, &argvals_s, &argvals_t, 2.0, &[]);
-        assert_eq!(dist.len(), n1 * n2);
-        for &d in &dist {
-            assert!(d >= 0.0, "Lp cross 2D should be non-negative");
-            assert!(d.is_finite(), "Lp cross 2D should be finite");
-        }
-
-        // With user weights
-        let user_weights: Vec<f64> = vec![1.0; n_points];
-        let dist_w = lp_cross_2d(
-            &data1,
-            &data2,
+        let data1 = FdMatrix::from_column_major(
+            (0..(n1 * n_points))
+                .map(|i| (i as f64 * 0.1).sin())
+                .collect(),
             n1,
+            n_points,
+        )
+        .unwrap();
+        let data2 = FdMatrix::from_column_major(
+            (0..(n2 * n_points))
+                .map(|i| (i as f64 * 0.2).cos())
+                .collect(),
             n2,
-            &argvals_s,
-            &argvals_t,
-            2.0,
-            &user_weights,
-        );
-        assert_eq!(dist_w.len(), n1 * n2);
+            n_points,
+        )
+        .unwrap();
+        let dist = lp_cross_2d(&data1, &data2, &argvals_s, &argvals_t, 2.0, &[]);
+        assert_eq!(dist.nrows(), n1);
+        assert_eq!(dist.ncols(), n2);
+        for j in 0..n2 {
+            for i in 0..n1 {
+                assert!(dist[(i, j)] >= 0.0, "Lp cross 2D should be non-negative");
+                assert!(dist[(i, j)].is_finite(), "Lp cross 2D should be finite");
+            }
+        }
+        let user_weights: Vec<f64> = vec![1.0; n_points];
+        let dist_w = lp_cross_2d(&data1, &data2, &argvals_s, &argvals_t, 2.0, &user_weights);
+        assert_eq!(dist_w.nrows(), n1);
+        assert_eq!(dist_w.ncols(), n2);
     }
 
     #[test]
@@ -1331,26 +1377,26 @@ mod tests {
         let argvals_s = uniform_grid(m1);
         let argvals_t = uniform_grid(m2);
         let n_points = m1 * m2;
-        let data: Vec<f64> = (0..(n * n_points)).map(|i| i as f64 * 0.1).collect();
-
+        let data = FdMatrix::from_column_major(
+            (0..(n * n_points)).map(|i| i as f64 * 0.1).collect(),
+            n,
+            n_points,
+        )
+        .unwrap();
         let user_weights: Vec<f64> = vec![2.0; n_points];
-        let dist = lp_self_2d(&data, n, &argvals_s, &argvals_t, 2.0, &user_weights);
-
-        assert_eq!(dist.len(), n * n);
-
-        // Diagonal should still be zero
+        let dist = lp_self_2d(&data, &argvals_s, &argvals_t, 2.0, &user_weights);
+        assert_eq!(dist.nrows(), n);
+        assert_eq!(dist.ncols(), n);
         for i in 0..n {
             assert!(
-                dist[i + i * n].abs() < 1e-10,
+                dist[(i, i)].abs() < 1e-10,
                 "Weighted Lp 2D self-distance should be zero on diagonal"
             );
         }
-
-        // Should be symmetric
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Weighted Lp 2D should be symmetric"
                 );
             }

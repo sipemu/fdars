@@ -5,6 +5,7 @@
 //! and confirms findings with depth-based measures.
 
 use fdars_core::depth::fraiman_muniz_1d;
+use fdars_core::matrix::FdMatrix;
 use fdars_core::outliers::{detect_outliers_lrt, outliers_threshold_lrt};
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 
@@ -34,19 +35,17 @@ fn main() {
     );
 
     // Create combined dataset with outliers at the end
-    let mut data = vec![0.0; n * m];
+    let mut mat = FdMatrix::zeros(n, m);
     for j in 0..m {
         for i in 0..n_normal {
-            data[i + j * n] = normal[i + j * n_normal];
+            mat[(i, j)] = normal[(i, j)];
         }
         // Outlier 1: Magnitude shift
-        data[n_normal + j * n] = normal[j * n_normal] + 4.0;
+        mat[(n_normal, j)] = normal[(0, j)] + 4.0;
         // Outlier 2: Shape anomaly (high-frequency oscillation)
-        data[(n_normal + 1) + j * n] =
-            normal[1 + j * n_normal] + 2.0 * (20.0 * std::f64::consts::PI * t[j]).sin();
+        mat[(n_normal + 1, j)] = normal[(1, j)] + 2.0 * (20.0 * std::f64::consts::PI * t[j]).sin();
         // Outlier 3: Partial shift (only in second half)
-        data[(n_normal + 2) + j * n] =
-            normal[2 + j * n_normal] + if t[j] > 0.5 { 3.5 } else { 0.0 };
+        mat[(n_normal + 2, j)] = normal[(2, j)] + if t[j] > 0.5 { 3.5 } else { 0.0 };
     }
 
     println!("  Normal curves: {n_normal}");
@@ -64,7 +63,7 @@ fn main() {
     let smo = 0.05; // smoothing parameter
     let trim = 0.10; // trimming proportion
     let percentile = 0.99;
-    let threshold = outliers_threshold_lrt(&data, n, m, nb, smo, trim, 42, percentile);
+    let threshold = outliers_threshold_lrt(&mat, nb, smo, trim, 42, percentile);
     println!("  Bootstrap replicates: {nb}");
     println!("  Smoothing: {smo}, Trim: {trim}");
     println!("  Percentile: {percentile}");
@@ -72,7 +71,7 @@ fn main() {
 
     // --- Section 2: Detect outliers ---
     println!("\n--- Outlier Detection ---");
-    let is_outlier = detect_outliers_lrt(&data, n, m, threshold, trim);
+    let is_outlier = detect_outliers_lrt(&mat, threshold, trim);
     println!("  Results:");
     let mut detected_indices = Vec::new();
     for (i, &outlier) in is_outlier.iter().enumerate() {
@@ -93,7 +92,7 @@ fn main() {
 
     // --- Section 3: Depth-based confirmation ---
     println!("\n--- Depth-Based Confirmation (Fraiman-Muniz) ---");
-    let depths = fraiman_muniz_1d(&data, &data, n, n, m, true);
+    let depths = fraiman_muniz_1d(&mat, &mat, true);
     let mut ranked: Vec<(usize, f64)> = depths.iter().cloned().enumerate().collect();
     ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 

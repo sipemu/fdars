@@ -14,6 +14,7 @@
 use std::collections::VecDeque;
 
 use crate::iter_maybe_parallel;
+use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -44,12 +45,12 @@ pub struct SortedReferenceState {
 impl SortedReferenceState {
     /// Build from a column-major reference matrix.
     ///
-    /// * `data_ori` – flat column-major data of shape `nori × n_points`
-    /// * `nori` – number of reference observations
-    /// * `n_points` – number of evaluation points
+    /// * `data_ori` – reference matrix of shape `nori × n_points`
     ///
     /// Complexity: O(T × N log N)  (parallelised over time points).
-    pub fn from_reference(data_ori: &[f64], nori: usize, n_points: usize) -> Self {
+    pub fn from_reference(data_ori: &FdMatrix) -> Self {
+        let nori = data_ori.nrows();
+        let n_points = data_ori.ncols();
         if nori == 0 || n_points == 0 {
             return Self {
                 sorted_columns: Vec::new(),
@@ -59,7 +60,7 @@ impl SortedReferenceState {
         }
         let sorted_columns: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_points)
             .map(|t| {
-                let mut col: Vec<f64> = (0..nori).map(|j| data_ori[j + t * nori]).collect();
+                let mut col: Vec<f64> = (0..nori).map(|j| data_ori[(j, t)]).collect();
                 col.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 col
             })
@@ -106,8 +107,8 @@ pub trait StreamingDepth {
     /// Depth of a single curve given as a contiguous `&[f64]` of length `n_points`.
     fn depth_one(&self, curve: &[f64]) -> f64;
 
-    /// Batch depth for column-major data (`nobj × n_points`).
-    fn depth_batch(&self, data_obj: &[f64], nobj: usize) -> Vec<f64>;
+    /// Batch depth for a matrix of query curves (`nobj × n_points`).
+    fn depth_batch(&self, data_obj: &FdMatrix) -> Vec<f64>;
 
     /// Number of evaluation points.
     fn n_points(&self) -> usize;
@@ -162,14 +163,15 @@ impl StreamingDepth for StreamingMbd {
         self.mbd_one_inner(curve)
     }
 
-    fn depth_batch(&self, data_obj: &[f64], nobj: usize) -> Vec<f64> {
+    fn depth_batch(&self, data_obj: &FdMatrix) -> Vec<f64> {
+        let nobj = data_obj.nrows();
         if nobj == 0 || self.state.n_points == 0 || self.state.nori < 2 {
             return vec![0.0; nobj];
         }
         let n_points = self.state.n_points;
         iter_maybe_parallel!(0..nobj)
             .map(|i| {
-                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[i + t * nobj]).collect();
+                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[(i, t)]).collect();
                 self.mbd_one_inner(&curve)
             })
             .collect()
@@ -231,14 +233,15 @@ impl StreamingDepth for StreamingFraimanMuniz {
         self.fm_one_inner(curve)
     }
 
-    fn depth_batch(&self, data_obj: &[f64], nobj: usize) -> Vec<f64> {
+    fn depth_batch(&self, data_obj: &FdMatrix) -> Vec<f64> {
+        let nobj = data_obj.nrows();
         if nobj == 0 || self.state.n_points == 0 || self.state.nori == 0 {
             return vec![0.0; nobj];
         }
         let n_points = self.state.n_points;
         iter_maybe_parallel!(0..nobj)
             .map(|i| {
-                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[i + t * nobj]).collect();
+                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[(i, t)]).collect();
                 self.fm_one_inner(&curve)
             })
             .collect()
@@ -270,10 +273,12 @@ pub struct FullReferenceState {
 
 impl FullReferenceState {
     /// Build from a column-major reference matrix.
-    pub fn from_reference(data_ori: &[f64], nori: usize, n_points: usize) -> Self {
-        let sorted = SortedReferenceState::from_reference(data_ori, nori, n_points);
+    pub fn from_reference(data_ori: &FdMatrix) -> Self {
+        let nori = data_ori.nrows();
+        let n_points = data_ori.ncols();
+        let sorted = SortedReferenceState::from_reference(data_ori);
         let values_by_curve: Vec<Vec<f64>> = (0..nori)
-            .map(|j| (0..n_points).map(|t| data_ori[j + t * nori]).collect())
+            .map(|j| (0..n_points).map(|t| data_ori[(j, t)]).collect())
             .collect();
         Self {
             sorted,
@@ -336,7 +341,8 @@ impl StreamingDepth for StreamingBd {
         self.bd_one_inner(curve)
     }
 
-    fn depth_batch(&self, data_obj: &[f64], nobj: usize) -> Vec<f64> {
+    fn depth_batch(&self, data_obj: &FdMatrix) -> Vec<f64> {
+        let nobj = data_obj.nrows();
         let n = self.state.sorted.nori;
         if nobj == 0 || self.state.sorted.n_points == 0 || n < 2 {
             return vec![0.0; nobj];
@@ -344,7 +350,7 @@ impl StreamingDepth for StreamingBd {
         let n_points = self.state.sorted.n_points;
         iter_maybe_parallel!(0..nobj)
             .map(|i| {
-                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[i + t * nobj]).collect();
+                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[(i, t)]).collect();
                 self.bd_one_inner(&curve)
             })
             .collect()
@@ -523,6 +529,7 @@ impl RollingReference {
 mod tests {
     use super::*;
     use crate::depth::{band_1d, fraiman_muniz_1d, modified_band_1d};
+    use crate::matrix::FdMatrix;
     use std::f64::consts::PI;
 
     fn uniform_grid(n: usize) -> Vec<f64> {
@@ -557,7 +564,8 @@ mod tests {
             10.0, 20.0, 30.0, 40.0, 50.0, // t=1
             100.0, 200.0, 300.0, 400.0, 500.0, // t=2
         ];
-        let state = SortedReferenceState::from_reference(&data, 5, 3);
+        let mat = FdMatrix::from_column_major(data, 5, 3).unwrap();
+        let state = SortedReferenceState::from_reference(&mat);
 
         // At t=0, x=3.0: below=2 (1,2), above=2 (4,5)
         let (below, above) = state.rank_at(0, 3.0);
@@ -574,7 +582,8 @@ mod tests {
     fn test_rank_boundary_values() {
         // All values identical
         let data = vec![5.0, 5.0, 5.0, 5.0];
-        let state = SortedReferenceState::from_reference(&data, 4, 1);
+        let mat = FdMatrix::from_column_major(data, 4, 1).unwrap();
+        let state = SortedReferenceState::from_reference(&mat);
 
         // x=5.0 exactly: none strictly below, none strictly above
         let (below, above) = state.rank_at(0, 5.0);
@@ -596,7 +605,8 @@ mod tests {
     fn test_rank_duplicates() {
         // Values with duplicates: [1, 2, 2, 3, 3, 3]
         let data = vec![1.0, 2.0, 2.0, 3.0, 3.0, 3.0];
-        let state = SortedReferenceState::from_reference(&data, 6, 1);
+        let mat = FdMatrix::from_column_major(data, 6, 1).unwrap();
+        let state = SortedReferenceState::from_reference(&mat);
 
         // x=2.0: below=1 (just 1), above=3 (three 3s)
         let (below, above) = state.rank_at(0, 2.0);
@@ -617,10 +627,11 @@ mod tests {
         let m = 20;
         let data = generate_centered_data(n, m);
 
-        let batch = modified_band_1d(&data, &data, n, n, m);
-        let state = SortedReferenceState::from_reference(&data, n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+        let batch = modified_band_1d(&mat, &mat);
+        let state = SortedReferenceState::from_reference(&mat);
         let streaming = StreamingMbd::new(state);
-        let streaming_result = streaming.depth_batch(&data, n);
+        let streaming_result = streaming.depth_batch(&mat);
 
         assert_eq!(batch.len(), streaming_result.len());
         for (b, s) in batch.iter().zip(streaming_result.iter()) {
@@ -639,11 +650,12 @@ mod tests {
         let m = 20;
         let data = generate_centered_data(n, m);
 
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
         for scale in [true, false] {
-            let batch = fraiman_muniz_1d(&data, &data, n, n, m, scale);
-            let state = SortedReferenceState::from_reference(&data, n, m);
+            let batch = fraiman_muniz_1d(&mat, &mat, scale);
+            let state = SortedReferenceState::from_reference(&mat);
             let streaming = StreamingFraimanMuniz::new(state, scale);
-            let streaming_result = streaming.depth_batch(&data, n);
+            let streaming_result = streaming.depth_batch(&mat);
 
             assert_eq!(batch.len(), streaming_result.len());
             for (b, s) in batch.iter().zip(streaming_result.iter()) {
@@ -664,10 +676,11 @@ mod tests {
         let m = 20;
         let data = generate_centered_data(n, m);
 
-        let batch = band_1d(&data, &data, n, n, m);
-        let full_state = FullReferenceState::from_reference(&data, n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+        let batch = band_1d(&mat, &mat);
+        let full_state = FullReferenceState::from_reference(&mat);
         let streaming = StreamingBd::new(full_state);
-        let streaming_result = streaming.depth_batch(&data, n);
+        let streaming_result = streaming.depth_batch(&mat);
 
         assert_eq!(batch.len(), streaming_result.len());
         for (b, s) in batch.iter().zip(streaming_result.iter()) {
@@ -719,7 +732,8 @@ mod tests {
         }
 
         // mbd_one should match batch for each curve
-        let batch = modified_band_1d(&data, &data, n, n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+        let batch = modified_band_1d(&mat, &mat);
         for i in 0..n {
             let curve = extract_curve(&data, i, n, m);
             let rolling_depth = rolling.mbd_one(&curve);
@@ -760,7 +774,8 @@ mod tests {
                 ref_data[idx + t * 3] = curves[ci][t];
             }
         }
-        let expected = SortedReferenceState::from_reference(&ref_data, 3, m);
+        let ref_mat = FdMatrix::from_column_major(ref_data, 3, m).unwrap();
+        let expected = SortedReferenceState::from_reference(&ref_mat);
 
         for t in 0..m {
             assert_eq!(
@@ -778,22 +793,23 @@ mod tests {
         let n = 20;
         let m = 30;
         let data = generate_centered_data(n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
 
-        let state_mbd = SortedReferenceState::from_reference(&data, n, m);
+        let state_mbd = SortedReferenceState::from_reference(&mat);
         let mbd = StreamingMbd::new(state_mbd);
-        for d in mbd.depth_batch(&data, n) {
+        for d in mbd.depth_batch(&mat) {
             assert!((0.0..=1.0).contains(&d), "MBD out of range: {}", d);
         }
 
-        let state_fm = SortedReferenceState::from_reference(&data, n, m);
+        let state_fm = SortedReferenceState::from_reference(&mat);
         let fm = StreamingFraimanMuniz::new(state_fm, true);
-        for d in fm.depth_batch(&data, n) {
+        for d in fm.depth_batch(&mat) {
             assert!((0.0..=1.0).contains(&d), "FM out of range: {}", d);
         }
 
-        let full = FullReferenceState::from_reference(&data, n, m);
+        let full = FullReferenceState::from_reference(&mat);
         let bd = StreamingBd::new(full);
-        for d in bd.depth_batch(&data, n) {
+        for d in bd.depth_batch(&mat) {
             assert!((0.0..=1.0).contains(&d), "BD out of range: {}", d);
         }
     }
@@ -803,10 +819,11 @@ mod tests {
         let n = 20;
         let m = 30;
         let data = generate_centered_data(n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
 
-        let state = SortedReferenceState::from_reference(&data, n, m);
+        let state = SortedReferenceState::from_reference(&mat);
         let mbd = StreamingMbd::new(state);
-        let depths = mbd.depth_batch(&data, n);
+        let depths = mbd.depth_batch(&mat);
 
         let central_depth = depths[n / 2];
         let edge_depth = depths[0];
@@ -820,11 +837,12 @@ mod tests {
 
     #[test]
     fn test_empty_inputs() {
-        let state = SortedReferenceState::from_reference(&[], 0, 0);
+        let empty = FdMatrix::zeros(0, 0);
+        let state = SortedReferenceState::from_reference(&empty);
         let mbd = StreamingMbd::new(state);
         assert_eq!(mbd.depth_one(&[]), 0.0);
 
-        let state = SortedReferenceState::from_reference(&[], 0, 0);
+        let state = SortedReferenceState::from_reference(&empty);
         let fm = StreamingFraimanMuniz::new(state, true);
         assert_eq!(fm.depth_one(&[]), 0.0);
     }
@@ -834,17 +852,17 @@ mod tests {
         let n = 10;
         let m = 15;
         let data = generate_centered_data(n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
 
         // Build a 1-curve column-major "matrix" from curve 3
         let curve = extract_curve(&data, 3, n, m);
-        let mut single_data = vec![0.0; m];
-        single_data[..m].copy_from_slice(&curve[..m]);
+        let single_mat = FdMatrix::from_column_major(curve.clone(), 1, m).unwrap();
 
-        let state = SortedReferenceState::from_reference(&data, n, m);
+        let state = SortedReferenceState::from_reference(&mat);
         let mbd = StreamingMbd::new(state);
 
         let one = mbd.depth_one(&curve);
-        let batch = mbd.depth_batch(&single_data, 1);
+        let batch = mbd.depth_batch(&single_mat);
         assert!(
             (one - batch[0]).abs() < 1e-14,
             "depth_one ({}) != depth_batch ({}) for single curve",
@@ -872,12 +890,13 @@ mod tests {
     fn test_single_reference_curve() {
         // nori=1: C(1,2) = 0, MBD is undefined → returns 0
         let data = vec![1.0, 2.0, 3.0]; // 1 curve, 3 time points
-        let state = SortedReferenceState::from_reference(&data, 1, 3);
+        let mat = FdMatrix::from_column_major(data, 1, 3).unwrap();
+        let state = SortedReferenceState::from_reference(&mat);
         let mbd = StreamingMbd::new(state);
         assert_eq!(mbd.depth_one(&[1.0, 2.0, 3.0]), 0.0);
 
         // BD also needs at least 2
-        let full = FullReferenceState::from_reference(&data, 1, 3);
+        let full = FullReferenceState::from_reference(&mat);
         let bd = StreamingBd::new(full);
         assert_eq!(bd.depth_one(&[1.0, 2.0, 3.0]), 0.0);
     }
@@ -899,7 +918,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "curve length")]
     fn test_curve_length_mismatch() {
-        let state = SortedReferenceState::from_reference(&[1.0, 2.0, 3.0, 4.0], 2, 2);
+        let mat = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        let state = SortedReferenceState::from_reference(&mat);
         let mbd = StreamingMbd::new(state);
         // Curve has 3 elements but n_points is 2 — should ideally be caught.
         // depth_one doesn't assert length (it just indexes), but rolling does.
@@ -925,8 +945,9 @@ mod tests {
         let snapshot = rolling.snapshot();
         let mbd = StreamingMbd::new(snapshot);
 
-        let batch_depths = modified_band_1d(&data, &data, n, n, m);
-        let streaming_depths = mbd.depth_batch(&data, n);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+        let batch_depths = modified_band_1d(&mat, &mat);
+        let streaming_depths = mbd.depth_batch(&mat);
 
         for (b, s) in batch_depths.iter().zip(streaming_depths.iter()) {
             assert!(

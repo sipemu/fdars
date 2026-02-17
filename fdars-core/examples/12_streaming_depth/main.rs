@@ -26,7 +26,7 @@ fn main() {
     let t = uniform_grid(m);
 
     // Reference data and new curves
-    let ref_data = sim_fundata(
+    let ref_mat = sim_fundata(
         n_ref,
         &t,
         big_m,
@@ -34,7 +34,7 @@ fn main() {
         EValType::Exponential,
         Some(42),
     );
-    let new_data = sim_fundata(
+    let new_mat = sim_fundata(
         n_new,
         &t,
         big_m,
@@ -42,28 +42,26 @@ fn main() {
         EValType::Exponential,
         Some(99),
     );
-
     // --- Section 1: Build reference state ---
     println!("--- Building Reference State ---");
-    let sorted_state = SortedReferenceState::from_reference(&ref_data, n_ref, m);
-    let full_state = FullReferenceState::from_reference(&ref_data, n_ref, m);
+    let sorted_state = SortedReferenceState::from_reference(&ref_mat);
+    let full_state = FullReferenceState::from_reference(&ref_mat);
     println!("  Reference curves: {}", sorted_state.nori());
     println!("  Grid points: {}", sorted_state.n_points());
 
     // --- Section 2: Streaming Modified Band Depth ---
     println!("\n--- Streaming Modified Band Depth ---");
-    let streaming_mbd =
-        StreamingMbd::new(SortedReferenceState::from_reference(&ref_data, n_ref, m));
+    let streaming_mbd = StreamingMbd::new(SortedReferenceState::from_reference(&ref_mat));
 
     // Score individual curves
     for i in 0..n_new {
-        let curve: Vec<f64> = (0..m).map(|j| new_data[i + j * n_new]).collect();
+        let curve: Vec<f64> = (0..m).map(|j| new_mat[(i, j)]).collect();
         let depth = streaming_mbd.depth_one(&curve);
         println!("  New curve {i}: streaming MBD = {depth:.6}");
     }
 
     // Score a batch
-    let batch_depths = streaming_mbd.depth_batch(&new_data, n_new);
+    let batch_depths = streaming_mbd.depth_batch(&new_mat);
     println!(
         "  Batch depths: {:?}",
         batch_depths
@@ -74,11 +72,9 @@ fn main() {
 
     // --- Section 3: Streaming Fraiman-Muniz ---
     println!("\n--- Streaming Fraiman-Muniz Depth ---");
-    let streaming_fm = StreamingFraimanMuniz::new(
-        SortedReferenceState::from_reference(&ref_data, n_ref, m),
-        true,
-    );
-    let fm_depths = streaming_fm.depth_batch(&new_data, n_new);
+    let streaming_fm =
+        StreamingFraimanMuniz::new(SortedReferenceState::from_reference(&ref_mat), true);
+    let fm_depths = streaming_fm.depth_batch(&new_mat);
     println!(
         "  Batch depths: {:?}",
         fm_depths
@@ -90,7 +86,7 @@ fn main() {
     // --- Section 4: Streaming Band Depth ---
     println!("\n--- Streaming Band Depth ---");
     let streaming_bd = StreamingBd::new(full_state);
-    let bd_depths = streaming_bd.depth_batch(&new_data, n_new);
+    let bd_depths = streaming_bd.depth_batch(&new_mat);
     println!(
         "  Batch depths: {:?}",
         bd_depths
@@ -102,15 +98,15 @@ fn main() {
     // --- Section 5: Compare streaming vs batch ---
     println!("\n--- Streaming vs Batch Comparison ---");
     // Batch: combine reference + new, compute depth of new w.r.t. reference
-    let batch_mbd = modified_band_1d(&new_data, &ref_data, n_new, n_ref, m);
-    let batch_fm = fraiman_muniz_1d(&new_data, &ref_data, n_new, n_ref, m, true);
-    let batch_bd = band_1d(&new_data, &ref_data, n_new, n_ref, m);
+    let batch_mbd = modified_band_1d(&new_mat, &ref_mat);
+    let batch_fm = fraiman_muniz_1d(&new_mat, &ref_mat, true);
+    let batch_bd = band_1d(&new_mat, &ref_mat);
 
     println!(
         "  {:>5} {:>12} {:>12} {:>12} {:>12} {:>12} {:>12}",
         "Curve", "S-MBD", "B-MBD", "S-FM", "B-FM", "S-BD", "B-BD"
     );
-    let stream_mbd_vals = streaming_mbd.depth_batch(&new_data, n_new);
+    let stream_mbd_vals = streaming_mbd.depth_batch(&new_mat);
     for i in 0..n_new {
         println!(
             "  {:>5} {:>12.6} {:>12.6} {:>12.6} {:>12.6} {:>12.6} {:>12.6}",
@@ -131,7 +127,7 @@ fn main() {
 
     // Fill the window with reference curves
     for i in 0..window_size {
-        let curve: Vec<f64> = (0..m).map(|j| ref_data[i + j * n_ref]).collect();
+        let curve: Vec<f64> = (0..m).map(|j| ref_mat[(i, j)]).collect();
         rolling.push(&curve);
     }
     println!(
@@ -141,7 +137,7 @@ fn main() {
     );
 
     // Score a new curve against the rolling window using snapshot()
-    let test_curve: Vec<f64> = (0..m).map(|j| new_data[j * n_new]).collect();
+    let test_curve: Vec<f64> = (0..m).map(|j| new_mat[(0, j)]).collect();
 
     // Build a streaming depth from the rolling window's snapshot
     let window_state = rolling.snapshot();
@@ -154,7 +150,7 @@ fn main() {
     println!("  Direct mbd_one: {direct_depth:.6}");
 
     // Slide the window by pushing a new curve (oldest is evicted)
-    let new_curve: Vec<f64> = (0..m).map(|j| ref_data[20 + j * n_ref]).collect();
+    let new_curve: Vec<f64> = (0..m).map(|j| ref_mat[(20, j)]).collect();
     let evicted = rolling.push(&new_curve);
     println!("  After sliding: evicted a curve = {}", evicted.is_some());
     println!("  Window length: {}", rolling.len());

@@ -20,6 +20,7 @@
 //! - **Legendre**: Orthonormal Legendre polynomials on \[0,1\]
 //! - **Wiener**: Eigenfunctions of the Wiener process
 
+use crate::matrix::FdMatrix;
 use crate::maybe_par_chunks_mut_enumerate;
 use rand::prelude::*;
 use rand_distr::Normal;
@@ -90,15 +91,15 @@ impl EValType {
 /// * `m` - Number of eigenfunctions
 ///
 /// # Returns
-/// Column-major matrix of size `len(t) × m` as flat vector
-pub fn fourier_eigenfunctions(t: &[f64], m: usize) -> Vec<f64> {
+/// `FdMatrix` of size `len(t) × m`
+pub fn fourier_eigenfunctions(t: &[f64], m: usize) -> FdMatrix {
     let n = t.len();
-    let mut phi = vec![0.0; n * m];
+    let mut phi = FdMatrix::zeros(n, m);
     let sqrt2 = 2.0_f64.sqrt();
 
     for (i, &ti) in t.iter().enumerate() {
         // φ_1(t) = 1
-        phi[i] = 1.0;
+        phi[(i, 0)] = 1.0;
 
         let mut k = 1; // current eigenfunction index
         let mut freq = 1; // frequency index
@@ -106,12 +107,12 @@ pub fn fourier_eigenfunctions(t: &[f64], m: usize) -> Vec<f64> {
         while k < m {
             // sin term: sqrt(2) * sin(2*pi*freq*t)
             if k < m {
-                phi[i + k * n] = sqrt2 * (2.0 * PI * freq as f64 * ti).sin();
+                phi[(i, k)] = sqrt2 * (2.0 * PI * freq as f64 * ti).sin();
                 k += 1;
             }
             // cos term: sqrt(2) * cos(2*pi*freq*t)
             if k < m {
-                phi[i + k * n] = sqrt2 * (2.0 * PI * freq as f64 * ti).cos();
+                phi[(i, k)] = sqrt2 * (2.0 * PI * freq as f64 * ti).cos();
                 k += 1;
             }
             freq += 1;
@@ -131,10 +132,10 @@ pub fn fourier_eigenfunctions(t: &[f64], m: usize) -> Vec<f64> {
 /// * `high` - If true, start at degree 2 (PolyHigh), otherwise start at degree 0
 ///
 /// # Returns
-/// Column-major matrix of size `len(t) × m` as flat vector
-pub fn legendre_eigenfunctions(t: &[f64], m: usize, high: bool) -> Vec<f64> {
+/// `FdMatrix` of size `len(t) × m`
+pub fn legendre_eigenfunctions(t: &[f64], m: usize, high: bool) -> FdMatrix {
     let n = t.len();
-    let mut phi = vec![0.0; n * m];
+    let mut phi = FdMatrix::zeros(n, m);
     let start_deg = if high { 2 } else { 0 };
 
     for (i, &ti) in t.iter().enumerate() {
@@ -147,7 +148,7 @@ pub fn legendre_eigenfunctions(t: &[f64], m: usize, high: bool) -> Vec<f64> {
             let p = legendre_p(x, deg);
             // Normalize: ||P_n||² on \[-1,1\] = 2/(2n+1), on \[0,1\] = 1/(2n+1)
             let norm = ((2 * deg + 1) as f64).sqrt();
-            phi[i + j * n] = p * norm;
+            phi[(i, j)] = p * norm;
         }
     }
     phi
@@ -188,17 +189,17 @@ fn legendre_p(x: f64, n: usize) -> f64 {
 /// * `m` - Number of eigenfunctions
 ///
 /// # Returns
-/// Column-major matrix of size `len(t) × m` as flat vector
-pub fn wiener_eigenfunctions(t: &[f64], m: usize) -> Vec<f64> {
+/// `FdMatrix` of size `len(t) × m`
+pub fn wiener_eigenfunctions(t: &[f64], m: usize) -> FdMatrix {
     let n = t.len();
-    let mut phi = vec![0.0; n * m];
+    let mut phi = FdMatrix::zeros(n, m);
     let sqrt2 = 2.0_f64.sqrt();
 
     for (i, &ti) in t.iter().enumerate() {
         for j in 0..m {
             let k = (j + 1) as f64;
             // φ_k(t) = sqrt(2) * sin((k - 0.5) * pi * t)
-            phi[i + j * n] = sqrt2 * ((k - 0.5) * PI * ti).sin();
+            phi[(i, j)] = sqrt2 * ((k - 0.5) * PI * ti).sin();
         }
     }
     phi
@@ -212,8 +213,8 @@ pub fn wiener_eigenfunctions(t: &[f64], m: usize) -> Vec<f64> {
 /// * `efun_type` - Type of eigenfunction basis
 ///
 /// # Returns
-/// Column-major matrix of size `len(t) × m` as flat vector
-pub fn eigenfunctions(t: &[f64], m: usize, efun_type: EFunType) -> Vec<f64> {
+/// `FdMatrix` of size `len(t) × m`
+pub fn eigenfunctions(t: &[f64], m: usize, efun_type: EFunType) -> FdMatrix {
     match efun_type {
         EFunType::Fourier => fourier_eigenfunctions(t, m),
         EFunType::Poly => legendre_eigenfunctions(t, m, false),
@@ -282,22 +283,22 @@ pub fn eigenvalues(m: usize, eval_type: EValType) -> Vec<f64> {
 ///
 /// # Arguments
 /// * `n` - Number of curves to generate
-/// * `phi` - Eigenfunctions matrix (m × M) in column-major format
-/// * `m` - Number of evaluation points
+/// * `phi` - Eigenfunctions matrix (m × big_m) as `FdMatrix`
 /// * `big_m` - Number of eigenfunctions
-/// * `lambda` - Eigenvalues (length M)
+/// * `lambda` - Eigenvalues (length big_m)
 /// * `seed` - Optional random seed for reproducibility
 ///
 /// # Returns
-/// Data matrix (n × m) in column-major format
+/// Data `FdMatrix` of size `n × m`
 pub fn sim_kl(
     n: usize,
-    phi: &[f64],
-    m: usize,
+    phi: &FdMatrix,
     big_m: usize,
     lambda: &[f64],
     seed: Option<u64>,
-) -> Vec<f64> {
+) -> FdMatrix {
+    let m = phi.nrows();
+
     // Create RNG
     let mut rng = match seed {
         Some(s) => StdRng::seed_from_u64(s),
@@ -317,7 +318,7 @@ pub fn sim_kl(
     }
 
     // Compute data = xi * phi^T
-    // xi: n × M, phi: m × M -> data: n × m
+    // xi: n × big_m, phi: m × big_m -> data: n × m
     let mut data = vec![0.0; n * m];
 
     // Parallelize over columns (evaluation points)
@@ -325,15 +326,15 @@ pub fn sim_kl(
         for i in 0..n {
             let mut sum = 0.0;
             for k in 0..big_m {
-                // phi[j + k*m] is φ_k(t_j)
+                // phi[(j, k)] is φ_k(t_j)
                 // xi[i + k*n] is ξ_{ik}
-                sum += xi[i + k * n] * phi[j + k * m];
+                sum += xi[i + k * n] * phi[(j, k)];
             }
             col[i] = sum;
         }
     });
 
-    data
+    FdMatrix::from_column_major(data, n, m).unwrap()
 }
 
 /// Simulate functional data with specified eigenfunction and eigenvalue types.
@@ -350,7 +351,7 @@ pub fn sim_kl(
 /// * `seed` - Optional random seed
 ///
 /// # Returns
-/// Data matrix (n × len(t)) in column-major format
+/// Data `FdMatrix` of size `n × len(t)`
 pub fn sim_fundata(
     n: usize,
     t: &[f64],
@@ -358,11 +359,10 @@ pub fn sim_fundata(
     efun_type: EFunType,
     eval_type: EValType,
     seed: Option<u64>,
-) -> Vec<f64> {
-    let m = t.len();
+) -> FdMatrix {
     let phi = eigenfunctions(t, big_m, efun_type);
     let lambda = eigenvalues(big_m, eval_type);
-    sim_kl(n, &phi, m, big_m, &lambda, seed)
+    sim_kl(n, &phi, big_m, &lambda, seed)
 }
 
 // =============================================================================
@@ -374,21 +374,13 @@ pub fn sim_fundata(
 /// Adds independent N(0, σ²) noise to each point.
 ///
 /// # Arguments
-/// * `data` - Data matrix (n × m) in column-major format
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Data `FdMatrix` (n × m)
 /// * `sd` - Standard deviation of noise
 /// * `seed` - Optional random seed
 ///
 /// # Returns
-/// Noisy data matrix (n × m) in column-major format
-pub fn add_error_pointwise(
-    data: &[f64],
-    _n: usize,
-    _m: usize,
-    sd: f64,
-    seed: Option<u64>,
-) -> Vec<f64> {
+/// Noisy data `FdMatrix` (n × m)
+pub fn add_error_pointwise(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMatrix {
     let mut rng = match seed {
         Some(s) => StdRng::seed_from_u64(s),
         None => StdRng::from_entropy(),
@@ -396,9 +388,13 @@ pub fn add_error_pointwise(
 
     let normal = Normal::new(0.0, sd).unwrap();
 
-    data.iter()
+    let noisy: Vec<f64> = data
+        .as_slice()
+        .iter()
         .map(|&x| x + rng.sample::<f64, _>(normal))
-        .collect()
+        .collect();
+
+    FdMatrix::from_column_major(noisy, data.nrows(), data.ncols()).unwrap()
 }
 
 /// Add curve-level Gaussian noise to functional data.
@@ -407,15 +403,16 @@ pub fn add_error_pointwise(
 /// has the same noise value.
 ///
 /// # Arguments
-/// * `data` - Data matrix (n × m) in column-major format
-/// * `n` - Number of samples
-/// * `m` - Number of evaluation points
+/// * `data` - Data `FdMatrix` (n × m)
 /// * `sd` - Standard deviation of noise
 /// * `seed` - Optional random seed
 ///
 /// # Returns
-/// Noisy data matrix (n × m) in column-major format
-pub fn add_error_curve(data: &[f64], n: usize, m: usize, sd: f64, seed: Option<u64>) -> Vec<f64> {
+/// Noisy data `FdMatrix` (n × m)
+pub fn add_error_curve(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
+
     let mut rng = match seed {
         Some(s) => StdRng::seed_from_u64(s),
         None => StdRng::from_entropy(),
@@ -427,13 +424,13 @@ pub fn add_error_curve(data: &[f64], n: usize, m: usize, sd: f64, seed: Option<u
     let curve_noise: Vec<f64> = (0..n).map(|_| rng.sample::<f64, _>(normal)).collect();
 
     // Add to data
-    let mut result = data.to_vec();
+    let mut result = data.as_slice().to_vec();
     for j in 0..m {
         for i in 0..n {
             result[i + j * n] += curve_noise[i];
         }
     }
-    result
+    FdMatrix::from_column_major(result, n, m).unwrap()
 }
 
 #[cfg(test)]
@@ -444,6 +441,8 @@ mod tests {
     fn test_fourier_eigenfunctions_dimensions() {
         let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
         let phi = fourier_eigenfunctions(&t, 5);
+        assert_eq!(phi.nrows(), 100);
+        assert_eq!(phi.ncols(), 5);
         assert_eq!(phi.len(), 100 * 5);
     }
 
@@ -454,7 +453,7 @@ mod tests {
 
         // First eigenfunction should be constant 1
         for i in 0..100 {
-            assert!((phi[i] - 1.0).abs() < 1e-10);
+            assert!((phi[(i, 0)] - 1.0).abs() < 1e-10);
         }
     }
 
@@ -481,7 +480,9 @@ mod tests {
         let phi = fourier_eigenfunctions(&t, 5);
         let lambda = eigenvalues_linear(5);
 
-        let data = sim_kl(10, &phi, 50, 5, &lambda, Some(42));
+        let data = sim_kl(10, &phi, 5, &lambda, Some(42));
+        assert_eq!(data.nrows(), 10);
+        assert_eq!(data.ncols(), 50);
         assert_eq!(data.len(), 10 * 50);
     }
 
@@ -489,17 +490,21 @@ mod tests {
     fn test_sim_fundata_dimensions() {
         let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
         let data = sim_fundata(20, &t, 5, EFunType::Fourier, EValType::Linear, Some(42));
+        assert_eq!(data.nrows(), 20);
+        assert_eq!(data.ncols(), 100);
         assert_eq!(data.len(), 20 * 100);
     }
 
     #[test]
     fn test_add_error_pointwise() {
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 x 3 matrix
-        let noisy = add_error_pointwise(&data, 2, 3, 0.1, Some(42));
+        let raw = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 x 3 matrix
+        let data = FdMatrix::from_column_major(raw.clone(), 2, 3).unwrap();
+        let noisy = add_error_pointwise(&data, 0.1, Some(42));
         assert_eq!(noisy.len(), 6);
         // Check that values changed but not by too much
+        let noisy_slice = noisy.as_slice();
         for i in 0..6 {
-            assert!((noisy[i] - data[i]).abs() < 1.0);
+            assert!((noisy_slice[i] - raw[i]).abs() < 1.0);
         }
     }
 
@@ -517,7 +522,7 @@ mod tests {
             for j2 in 0..m {
                 let mut integral = 0.0;
                 for i in 0..n {
-                    integral += phi[i + j1 * n] * phi[i + j2 * n] * dt;
+                    integral += phi[(i, j1)] * phi[(i, j2)] * dt;
                 }
                 let expected = if j1 == j2 { 1.0 } else { 0.0 };
                 assert!(
@@ -540,6 +545,8 @@ mod tests {
     fn test_wiener_eigenfunctions_dimensions() {
         let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
         let phi = wiener_eigenfunctions(&t, 7);
+        assert_eq!(phi.nrows(), 100);
+        assert_eq!(phi.ncols(), 7);
         assert_eq!(phi.len(), 100 * 7);
     }
 
@@ -557,7 +564,7 @@ mod tests {
             for j2 in 0..m {
                 let mut integral = 0.0;
                 for i in 0..n {
-                    integral += phi[i + j1 * n] * phi[i + j2 * n] * dt;
+                    integral += phi[(i, j1)] * phi[(i, j2)] * dt;
                 }
                 let expected = if j1 == j2 { 1.0 } else { 0.0 };
                 assert!(
@@ -583,10 +590,10 @@ mod tests {
         for (i, &ti) in t.iter().enumerate() {
             let expected = sqrt2 * (0.5 * PI * ti).sin();
             assert!(
-                (phi[i] - expected).abs() < 1e-10,
+                (phi[(i, 0)] - expected).abs() < 1e-10,
                 "k=1 at t={}: got {} expected {}",
                 ti,
-                phi[i],
+                phi[(i, 0)],
                 expected
             );
         }
@@ -595,10 +602,10 @@ mod tests {
         for (i, &ti) in t.iter().enumerate() {
             let expected = sqrt2 * (1.5 * PI * ti).sin();
             assert!(
-                (phi[i + t.len()] - expected).abs() < 1e-10,
+                (phi[(i, 1)] - expected).abs() < 1e-10,
                 "k=2 at t={}: got {} expected {}",
                 ti,
-                phi[i + t.len()],
+                phi[(i, 1)],
                 expected
             );
         }
@@ -650,17 +657,17 @@ mod tests {
     #[test]
     fn test_add_error_curve_properties() {
         // Curve-level noise: each observation in same curve gets same noise
-        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 curves x 3 points
+        let raw = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 curves x 3 points
         let n = 2;
-        let m = 3;
-        let noisy = add_error_curve(&data, n, m, 0.5, Some(42));
+        let data = FdMatrix::from_column_major(raw.clone(), n, 3).unwrap();
+        let noisy = add_error_curve(&data, 0.5, Some(42));
 
         assert_eq!(noisy.len(), 6);
 
         // Compute the difference for curve 0 at each point
-        let diff0_j0 = noisy[0] - data[0]; // curve 0, point 0
-        let diff0_j1 = noisy[n] - data[n]; // curve 0, point 1
-        let diff0_j2 = noisy[2 * n] - data[2 * n]; // curve 0, point 2
+        let diff0_j0 = noisy[(0, 0)] - raw[0]; // curve 0, point 0
+        let diff0_j1 = noisy[(0, 1)] - raw[n]; // curve 0, point 1
+        let diff0_j2 = noisy[(0, 2)] - raw[2 * n]; // curve 0, point 2
 
         // All differences for same curve should be equal (same noise added)
         assert!(
@@ -677,7 +684,7 @@ mod tests {
         );
 
         // Curve 1 should have different noise
-        let diff1_j0 = noisy[1] - data[1];
+        let diff1_j0 = noisy[(1, 0)] - raw[1];
         // Different curves should (with high probability) have different noise
         // We can't guarantee this, but with seed=42 they should differ
         assert!(
@@ -688,17 +695,20 @@ mod tests {
 
     #[test]
     fn test_add_error_curve_reproducibility() {
-        let data = vec![1.0, 2.0, 3.0, 4.0];
-        let noisy1 = add_error_curve(&data, 2, 2, 1.0, Some(123));
-        let noisy2 = add_error_curve(&data, 2, 2, 1.0, Some(123));
+        let raw = vec![1.0, 2.0, 3.0, 4.0];
+        let data = FdMatrix::from_column_major(raw, 2, 2).unwrap();
+        let noisy1 = add_error_curve(&data, 1.0, Some(123));
+        let noisy2 = add_error_curve(&data, 1.0, Some(123));
 
+        let s1 = noisy1.as_slice();
+        let s2 = noisy2.as_slice();
         for i in 0..4 {
             assert!(
-                (noisy1[i] - noisy2[i]).abs() < 1e-10,
+                (s1[i] - s2[i]).abs() < 1e-10,
                 "Reproducibility failed at {}: {} vs {}",
                 i,
-                noisy1[i],
-                noisy2[i]
+                s1[i],
+                s2[i]
             );
         }
     }

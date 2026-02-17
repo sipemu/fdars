@@ -22,7 +22,7 @@ fn main() {
     let big_m = 5;
     let t = uniform_grid(m);
 
-    let data = sim_fundata(
+    let data_mat = sim_fundata(
         n,
         &t,
         big_m,
@@ -34,7 +34,7 @@ fn main() {
     // --- Section 1: FPCA ---
     println!("--- Functional PCA ---");
     let ncomp = 4;
-    if let Some(fpca) = fdata_to_pc_1d(&data, n, m, ncomp) {
+    if let Some(fpca) = fdata_to_pc_1d(&data_mat, ncomp) {
         // Variance explained
         let total_var: f64 = fpca.singular_values.iter().map(|s| s * s).sum();
         println!(
@@ -58,7 +58,7 @@ fn main() {
         // Loadings (eigenfunctions)
         println!("\n  PC loadings (first 5 values of each):");
         for k in 0..ncomp {
-            let loading: Vec<f64> = (0..5).map(|j| fpca.rotation[j + k * m]).collect();
+            let loading: Vec<f64> = (0..5).map(|j| fpca.rotation[(j, k)]).collect();
             println!(
                 "    PC{}: {:?}",
                 k + 1,
@@ -78,7 +78,7 @@ fn main() {
         for i in 0..5 {
             print!("  {:>5}", i);
             for k in 0..ncomp {
-                print!(" {:>10.4}", fpca.scores[i + k * n]);
+                print!(" {:>10.4}", fpca.scores[(i, k)]);
             }
             println!();
         }
@@ -87,22 +87,18 @@ fn main() {
         println!("\n  Reconstruction error by number of components:");
         for nc in 1..=ncomp {
             // Reconstruct using nc components
-            let mut reconstructed = vec![0.0; n * m];
+            let mut mse = 0.0;
             for j in 0..m {
                 for i in 0..n {
                     let mut val = fpca.mean[j];
                     for k in 0..nc {
-                        val += fpca.scores[i + k * n] * fpca.rotation[j + k * m];
+                        val += fpca.scores[(i, k)] * fpca.rotation[(j, k)];
                     }
-                    reconstructed[i + j * n] = val;
+                    let orig = data_mat[(i, j)];
+                    mse += (orig - val).powi(2);
                 }
             }
-            let mse: f64 = data
-                .iter()
-                .zip(reconstructed.iter())
-                .map(|(a, b)| (a - b).powi(2))
-                .sum::<f64>()
-                / (n * m) as f64;
+            mse /= (n * m) as f64;
             println!("    {nc} components: MSE = {mse:.6}");
         }
     }
@@ -110,7 +106,7 @@ fn main() {
     // --- Section 2: PLS regression ---
     println!("\n--- PLS Regression ---");
     // Create a scalar response based on the integral of each curve
-    let curves = extract_curves(&data, n, m);
+    let curves = extract_curves(&data_mat);
     let y: Vec<f64> = curves.iter().map(|c| integrate_simpson(c, &t)).collect();
 
     println!("  Response (integral of each curve):");
@@ -120,10 +116,10 @@ fn main() {
     );
 
     let ncomp_pls = 3;
-    if let Some(pls) = fdata_to_pls_1d(&data, n, m, &y, ncomp_pls) {
+    if let Some(pls) = fdata_to_pls_1d(&data_mat, &y, ncomp_pls) {
         println!("\n  PLS weights (first 5 values of each component):");
         for k in 0..ncomp_pls {
-            let w: Vec<f64> = (0..5).map(|j| pls.weights[j + k * m]).collect();
+            let w: Vec<f64> = (0..5).map(|j| pls.weights[(j, k)]).collect();
             println!(
                 "    Comp {}: {:?}",
                 k + 1,
@@ -139,7 +135,7 @@ fn main() {
         for i in 0..5 {
             print!("  {:>5}", i);
             for k in 0..ncomp_pls {
-                print!(" {:>10.4}", pls.scores[i + k * n]);
+                print!(" {:>10.4}", pls.scores[(i, k)]);
             }
             println!();
         }
