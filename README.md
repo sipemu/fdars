@@ -1,6 +1,5 @@
 # Functional Data Analysis (FDA)
 
-[![R-CMD-check](https://github.com/sipemu/fdars/actions/workflows/r.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/r.yml)
 [![Rust CI](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core)
 [![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
@@ -45,7 +44,7 @@ install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  
 
 ```toml
 [dependencies]
-fdars-core = "0.1"
+fdars-core = "0.3"
 ```
 
 ## Documentation
