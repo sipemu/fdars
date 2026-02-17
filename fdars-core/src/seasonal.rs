@@ -947,6 +947,56 @@ fn sum_harmonic_power(
     (seasonal_power, total_power)
 }
 
+/// Return the new seasonal state if `ss` represents a valid threshold crossing,
+/// or `None` if the index should be skipped (NaN, no change, or too close to the
+/// previous change point).
+fn crossing_direction(
+    ss: f64,
+    threshold: f64,
+    in_seasonal: bool,
+    i: usize,
+    last_change_idx: Option<usize>,
+    min_dur_points: usize,
+) -> Option<bool> {
+    if ss.is_nan() {
+        return None;
+    }
+    let now_seasonal = ss > threshold;
+    if now_seasonal == in_seasonal {
+        return None;
+    }
+    if last_change_idx.is_some_and(|last_idx| i - last_idx < min_dur_points) {
+        return None;
+    }
+    Some(now_seasonal)
+}
+
+/// Build a `ChangePoint` for a threshold crossing at index `i`.
+fn build_change_point(
+    i: usize,
+    ss: f64,
+    now_seasonal: bool,
+    strength_curve: &[f64],
+    argvals: &[f64],
+) -> ChangePoint {
+    let change_type = if now_seasonal {
+        ChangeType::Onset
+    } else {
+        ChangeType::Cessation
+    };
+    let strength_before = if i > 0 && !strength_curve[i - 1].is_nan() {
+        strength_curve[i - 1]
+    } else {
+        ss
+    };
+    ChangePoint {
+        time: argvals[i],
+        change_type,
+        strength_before,
+        strength_after: ss,
+    }
+}
+
 /// Detect threshold crossings in a strength curve, returning change points.
 fn detect_threshold_crossings(
     strength_curve: &[f64],
@@ -959,39 +1009,24 @@ fn detect_threshold_crossings(
     let mut last_change_idx: Option<usize> = None;
 
     for (i, &ss) in strength_curve.iter().enumerate().skip(1) {
-        if ss.is_nan() {
+        let Some(now_seasonal) = crossing_direction(
+            ss,
+            threshold,
+            in_seasonal,
+            i,
+            last_change_idx,
+            min_dur_points,
+        ) else {
             continue;
-        }
-
-        let now_seasonal = ss > threshold;
-        if now_seasonal == in_seasonal {
-            continue;
-        }
-
-        if let Some(last_idx) = last_change_idx {
-            if i - last_idx < min_dur_points {
-                continue;
-            }
-        }
-
-        let change_type = if now_seasonal {
-            ChangeType::Onset
-        } else {
-            ChangeType::Cessation
         };
 
-        let strength_before = if i > 0 && !strength_curve[i - 1].is_nan() {
-            strength_curve[i - 1]
-        } else {
-            ss
-        };
-
-        change_points.push(ChangePoint {
-            time: argvals[i],
-            change_type,
-            strength_before,
-            strength_after: ss,
-        });
+        change_points.push(build_change_point(
+            i,
+            ss,
+            now_seasonal,
+            strength_curve,
+            argvals,
+        ));
 
         in_seasonal = now_seasonal;
         last_change_idx = Some(i);
