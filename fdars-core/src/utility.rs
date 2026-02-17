@@ -87,6 +87,42 @@ pub fn inner_product_matrix(data: &[f64], n: usize, m: usize, argvals: &[f64]) -
 }
 
 /// Compute the Adot matrix used in PCvM statistic.
+/// Packed symmetric index for 1-based indices in lower-triangular storage.
+fn packed_sym_index(a: usize, b: usize) -> usize {
+    let (hi, lo) = if a >= b { (a, b) } else { (b, a) };
+    hi * (hi - 1) / 2 + lo - 1
+}
+
+/// Compute the angular distance sum for a single (i, j) pair over all reference points.
+fn adot_pair_sum(inprod: &[f64], n: usize, i: usize, j: usize) -> f64 {
+    let ij = packed_sym_index(i, j);
+    let ii = packed_sym_index(i, i);
+    let jj = packed_sym_index(j, j);
+    let mut sumr = 0.0;
+
+    for r in 1..=n {
+        if i == r || j == r {
+            sumr += PI;
+        } else {
+            let rr = packed_sym_index(r, r);
+            let ir = packed_sym_index(i, r);
+            let rj = packed_sym_index(r, j);
+
+            let num = inprod[ij] - inprod[ir] - inprod[rj] + inprod[rr];
+            let aux1 = (inprod[ii] - 2.0 * inprod[ir] + inprod[rr]).sqrt();
+            let aux2 = (inprod[jj] - 2.0 * inprod[rj] + inprod[rr]).sqrt();
+            let den = aux1 * aux2;
+
+            let mut quo = if den.abs() > 1e-10 { num / den } else { 0.0 };
+            quo = quo.clamp(-1.0, 1.0);
+
+            sumr += (PI - quo.acos()).abs();
+        }
+    }
+
+    sumr
+}
+
 pub fn compute_adot(n: usize, inprod: &[f64]) -> Vec<f64> {
     if n == 0 {
         return Vec::new();
@@ -108,37 +144,7 @@ pub fn compute_adot(n: usize, inprod: &[f64]) -> Vec<f64> {
     // Compute adot values (parallel when feature enabled)
     let results: Vec<(usize, f64)> = iter_maybe_parallel!(pairs)
         .map(|(i, j)| {
-            let mut sumr = 0.0;
-
-            for r in 1..=n {
-                if i == r || j == r {
-                    sumr += PI;
-                } else {
-                    let auxi = i * (i - 1) / 2;
-                    let auxj = j * (j - 1) / 2;
-                    let auxr = r * (r - 1) / 2;
-
-                    let ij = auxi + j - 1;
-                    let ii = auxi + i - 1;
-                    let jj = auxj + j - 1;
-                    let rr = auxr + r - 1;
-
-                    let ir = if i > r { auxi + r - 1 } else { auxr + i - 1 };
-                    let rj = if r > j { auxr + j - 1 } else { auxj + r - 1 };
-                    let jr = rj;
-
-                    let num = inprod[ij] - inprod[ir] - inprod[rj] + inprod[rr];
-                    let aux1 = (inprod[ii] - 2.0 * inprod[ir] + inprod[rr]).sqrt();
-                    let aux2 = (inprod[jj] - 2.0 * inprod[jr] + inprod[rr]).sqrt();
-                    let den = aux1 * aux2;
-
-                    let mut quo = if den.abs() > 1e-10 { num / den } else { 0.0 };
-                    quo = quo.clamp(-1.0, 1.0);
-
-                    sumr += (PI - quo.acos()).abs();
-                }
-            }
-
+            let sumr = adot_pair_sum(inprod, n, i, j);
             let idx = 1 + ((i - 1) * (i - 2) / 2) + j - 1;
             (idx, sumr)
         })

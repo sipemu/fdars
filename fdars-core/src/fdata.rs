@@ -315,6 +315,35 @@ pub struct Deriv2DResult {
     pub dsdt: Vec<f64>,
 }
 
+/// Compute finite-difference step sizes for a grid.
+///
+/// Uses forward/backward difference at boundaries and central difference for interior.
+fn compute_step_sizes(argvals: &[f64]) -> Vec<f64> {
+    let m = argvals.len();
+    (0..m)
+        .map(|j| {
+            if j == 0 {
+                argvals[1] - argvals[0]
+            } else if j == m - 1 {
+                argvals[m - 1] - argvals[m - 2]
+            } else {
+                argvals[j + 1] - argvals[j - 1]
+            }
+        })
+        .collect()
+}
+
+/// Collect per-curve row vectors into a column-major matrix.
+fn reassemble_colmajor(rows: &[Vec<f64>], n: usize, ncol: usize) -> Vec<f64> {
+    let mut mat = vec![0.0; n * ncol];
+    for i in 0..n {
+        for j in 0..ncol {
+            mat[i + j * n] = rows[i][j];
+        }
+    }
+    mat
+}
+
 /// Compute 2D partial derivatives for surface data.
 ///
 /// For a surface f(s,t), computes:
@@ -342,40 +371,16 @@ pub fn deriv_2d(
         return None;
     }
 
-    // Pre-compute step sizes for s direction
-    let hs: Vec<f64> = (0..m1)
-        .map(|j| {
-            if j == 0 {
-                argvals_s[1] - argvals_s[0]
-            } else if j == m1 - 1 {
-                argvals_s[m1 - 1] - argvals_s[m1 - 2]
-            } else {
-                argvals_s[j + 1] - argvals_s[j - 1]
-            }
-        })
-        .collect();
-
-    // Pre-compute step sizes for t direction
-    let ht: Vec<f64> = (0..m2)
-        .map(|j| {
-            if j == 0 {
-                argvals_t[1] - argvals_t[0]
-            } else if j == m2 - 1 {
-                argvals_t[m2 - 1] - argvals_t[m2 - 2]
-            } else {
-                argvals_t[j + 1] - argvals_t[j - 1]
-            }
-        })
-        .collect();
+    let hs = compute_step_sizes(argvals_s);
+    let ht = compute_step_sizes(argvals_t);
 
     // Compute all derivatives in parallel over surfaces
     let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            let mut ds = vec![0.0; m1 * m2];
-            let mut dt = vec![0.0; m1 * m2];
-            let mut dsdt = vec![0.0; m1 * m2];
+            let mut ds = vec![0.0; ncol];
+            let mut dt = vec![0.0; ncol];
+            let mut dsdt = vec![0.0; ncol];
 
-            // Closure to access data for surface i
             let get_val = |si: usize, ti: usize| -> f64 { data[i + (si + ti * m1) * n] };
 
             for ti in 0..m2 {
@@ -393,23 +398,14 @@ pub fn deriv_2d(
         })
         .collect();
 
-    // Convert to column-major matrices
-    let mut ds_mat = vec![0.0; n * ncol];
-    let mut dt_mat = vec![0.0; n * ncol];
-    let mut dsdt_mat = vec![0.0; n * ncol];
-
-    for i in 0..n {
-        for j in 0..ncol {
-            ds_mat[i + j * n] = results[i].0[j];
-            dt_mat[i + j * n] = results[i].1[j];
-            dsdt_mat[i + j * n] = results[i].2[j];
-        }
-    }
+    let ds_vecs: Vec<Vec<f64>> = results.iter().map(|r| r.0.clone()).collect();
+    let dt_vecs: Vec<Vec<f64>> = results.iter().map(|r| r.1.clone()).collect();
+    let dsdt_vecs: Vec<Vec<f64>> = results.iter().map(|r| r.2.clone()).collect();
 
     Some(Deriv2DResult {
-        ds: ds_mat,
-        dt: dt_mat,
-        dsdt: dsdt_mat,
+        ds: reassemble_colmajor(&ds_vecs, n, ncol),
+        dt: reassemble_colmajor(&dt_vecs, n, ncol),
+        dsdt: reassemble_colmajor(&dsdt_vecs, n, ncol),
     })
 }
 

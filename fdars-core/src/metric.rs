@@ -351,13 +351,10 @@ pub fn hausdorff_cross_1d(
 /// Compute DTW distance between two time series.
 ///
 /// Uses Lp distance with optional Sakoe-Chiba window constraint.
-pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
-    let n = x.len();
-    let m = y.len();
-
+/// Allocate and initialize the DTW cost matrix with boundary conditions and window band.
+fn initialize_dtw_matrix(n: usize, m: usize, w: usize) -> Vec<Vec<f64>> {
     let mut dtw = vec![vec![0.0_f64; m + 1]; n + 1];
 
-    // Initialize boundaries
     for j in 0..=m {
         dtw[0][j] = f64::INFINITY;
     }
@@ -366,12 +363,10 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
     }
     dtw[0][0] = 0.0;
 
-    // Initialize cells within the window band
     for i in 1..=n {
         let r_i = i + 1;
         let j_start_r = 2.max(r_i as isize - w as isize) as usize;
         let j_end_r = (m + 1).min(r_i + w);
-
         for j_r in j_start_r..=j_end_r {
             let j = j_r - 1;
             if j <= m {
@@ -380,12 +375,23 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
         }
     }
 
-    // Fill the DTW matrix
+    dtw
+}
+
+/// Fill the DTW matrix using dynamic programming within the Sakoe-Chiba band.
+fn fill_dtw_matrix(
+    dtw: &mut [Vec<f64>],
+    x: &[f64],
+    y: &[f64],
+    n: usize,
+    m: usize,
+    w: usize,
+    p: f64,
+) {
     for i in 1..=n {
         let r_i = i + 1;
         let j_start_r = 2.max(r_i as isize - w as isize) as usize;
         let j_end_r = (m + 1).min(r_i + w);
-
         for j_r in j_start_r..=j_end_r {
             let j = j_r - 1;
             if j <= m && j >= 1 {
@@ -394,7 +400,13 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
             }
         }
     }
+}
 
+pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
+    let n = x.len();
+    let m = y.len();
+    let mut dtw = initialize_dtw_matrix(n, m, w);
+    fill_dtw_matrix(&mut dtw, x, y, n, m, w, p);
     dtw[n][m]
 }
 

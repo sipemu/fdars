@@ -130,6 +130,32 @@ fn flatten_centers_colmajor(centers: &[Vec<f64>], k: usize, m: usize) -> Vec<f64
     flat
 }
 
+/// Initialize a random membership matrix (n x k, column-major) with rows summing to 1.
+fn init_random_membership(n: usize, k: usize, rng: &mut StdRng) -> Vec<f64> {
+    let mut membership = vec![0.0; n * k];
+    for i in 0..n {
+        let mut row_sum = 0.0;
+        for c in 0..k {
+            let val = rng.gen::<f64>();
+            membership[i + c * n] = val;
+            row_sum += val;
+        }
+        for c in 0..k {
+            membership[i + c * n] /= row_sum;
+        }
+    }
+    membership
+}
+
+/// Group sample indices by their cluster assignment.
+fn cluster_member_indices(cluster: &[usize], k: usize) -> Vec<Vec<usize>> {
+    let mut indices = vec![Vec::new(); k];
+    for (i, &c) in cluster.iter().enumerate() {
+        indices[c].push(i);
+    }
+    indices
+}
+
 /// Assign each curve to its nearest center, returning cluster indices.
 fn assign_clusters(curves: &[Vec<f64>], centers: &[Vec<f64>], weights: &[f64]) -> Vec<usize> {
     slice_maybe_parallel!(curves)
@@ -456,19 +482,7 @@ pub fn fuzzy_cmeans_fd(
     // Extract curves using helper
     let curves = extract_curves(data, n, m);
 
-    // Initialize membership matrix randomly
-    let mut membership = vec![0.0; n * k];
-    for i in 0..n {
-        let mut row_sum = 0.0;
-        for c in 0..k {
-            let val = rng.gen::<f64>();
-            membership[i + c * n] = val;
-            row_sum += val;
-        }
-        for c in 0..k {
-            membership[i + c * n] /= row_sum;
-        }
-    }
+    let mut membership = init_random_membership(n, k, &mut rng);
 
     let mut centers = vec![vec![0.0; m]; k];
     let mut converged = false;
@@ -517,36 +531,26 @@ pub fn silhouette_score(
     let curves = extract_curves(data, n, m);
 
     let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
+    let members = cluster_member_indices(cluster, k);
 
     iter_maybe_parallel!(0..n)
         .map(|i| {
             let my_cluster = cluster[i];
 
-            let same_indices: Vec<usize> = cluster
+            let same_indices: Vec<usize> = members[my_cluster]
                 .iter()
-                .enumerate()
-                .filter(|(j, &c)| c == my_cluster && *j != i)
-                .map(|(j, _)| j)
+                .copied()
+                .filter(|&j| j != i)
                 .collect();
-
             let a_i = mean_cluster_distance(&curves[i], &curves, &same_indices, &weights);
 
             let mut b_i = f64::INFINITY;
             for c in 0..k {
-                if c == my_cluster {
-                    continue;
-                }
-                let other_indices: Vec<usize> = cluster
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, &cl)| cl == c)
-                    .map(|(j, _)| j)
-                    .collect();
-                if !other_indices.is_empty() {
+                if c != my_cluster && !members[c].is_empty() {
                     b_i = b_i.min(mean_cluster_distance(
                         &curves[i],
                         &curves,
-                        &other_indices,
+                        &members[c],
                         &weights,
                     ));
                 }

@@ -373,38 +373,50 @@ pub fn cov_irreg(
 
     for (si, &s) in s_grid.iter().enumerate() {
         for (ti, &t) in t_grid.iter().enumerate() {
-            let mut sum_weights = 0.0;
-            let mut sum_products = 0.0;
-
-            // Sum over all pairs of observations within each curve
-            for i in 0..n {
-                let start = offsets[i];
-                let end = offsets[i + 1];
-                let obs_t = &argvals[start..end];
-                let obs_c = &centered[start..end];
-
-                for j1 in 0..obs_t.len() {
-                    for j2 in 0..obs_t.len() {
-                        let u1 = (obs_t[j1] - s) / bandwidth;
-                        let u2 = (obs_t[j2] - t) / bandwidth;
-
-                        let w1 = kernel_gaussian(u1);
-                        let w2 = kernel_gaussian(u2);
-                        let w = w1 * w2;
-
-                        sum_weights += w;
-                        sum_products += w * obs_c[j1] * obs_c[j2];
-                    }
-                }
-            }
-
-            if sum_weights > 0.0 {
-                cov[si + ti * ns] = sum_products / sum_weights;
-            }
+            cov[si + ti * ns] =
+                accumulate_cov_at_point(offsets, argvals, &centered, n, s, t, bandwidth);
         }
     }
 
     cov
+}
+
+/// Compute kernel-weighted covariance estimate at a single (s, t) grid point.
+fn accumulate_cov_at_point(
+    offsets: &[usize],
+    obs_times: &[f64],
+    centered: &[f64],
+    n: usize,
+    s: f64,
+    t: f64,
+    bandwidth: f64,
+) -> f64 {
+    let mut sum_weights = 0.0;
+    let mut sum_products = 0.0;
+
+    for i in 0..n {
+        let start = offsets[i];
+        let end = offsets[i + 1];
+        let obs_t = &obs_times[start..end];
+        let obs_c = &centered[start..end];
+
+        for j1 in 0..obs_t.len() {
+            for j2 in 0..obs_t.len() {
+                let w1 = kernel_gaussian((obs_t[j1] - s) / bandwidth);
+                let w2 = kernel_gaussian((obs_t[j2] - t) / bandwidth);
+                let w = w1 * w2;
+
+                sum_weights += w;
+                sum_products += w * obs_c[j1] * obs_c[j2];
+            }
+        }
+    }
+
+    if sum_weights > 0.0 {
+        sum_products / sum_weights
+    } else {
+        0.0
+    }
 }
 
 // =============================================================================

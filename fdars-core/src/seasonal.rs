@@ -1269,42 +1269,129 @@ pub fn detect_multiple_periods(
     let mut detected = Vec::with_capacity(max_periods);
 
     for iteration in 1..=max_periods {
-        // Create single-sample data from residual
-        let residual_data: Vec<f64> = residual.clone();
-
-        // Estimate period
-        let est = estimate_period_fft(&residual_data, 1, m, argvals);
-
-        if est.confidence < min_confidence || est.period.is_nan() || est.period.is_infinite() {
-            break;
-        }
-
-        // Check seasonal strength at detected period
-        let strength = seasonal_strength_variance(&residual_data, 1, m, argvals, est.period, 3);
-
-        if strength < min_strength || strength.is_nan() {
-            break;
-        }
-
-        let (_a, _b, amplitude, phase) =
-            fit_and_subtract_sinusoid(&mut residual, argvals, est.period);
-
-        detected.push(DetectedPeriod {
-            period: est.period,
-            confidence: est.confidence,
-            strength,
-            amplitude,
-            phase,
+        match evaluate_next_period(
+            &mut residual,
+            m,
+            argvals,
+            min_confidence,
+            min_strength,
             iteration,
-        });
+        ) {
+            Some(period) => detected.push(period),
+            None => break,
+        }
     }
 
     detected
 }
 
+/// Evaluate and extract the next dominant period from the residual signal.
+///
+/// Returns `None` if no significant period is found (signals iteration should stop).
+fn evaluate_next_period(
+    residual: &mut [f64],
+    m: usize,
+    argvals: &[f64],
+    min_confidence: f64,
+    min_strength: f64,
+    iteration: usize,
+) -> Option<DetectedPeriod> {
+    let residual_data: Vec<f64> = residual.to_vec();
+    let est = estimate_period_fft(&residual_data, 1, m, argvals);
+
+    if est.confidence < min_confidence || est.period.is_nan() || est.period.is_infinite() {
+        return None;
+    }
+
+    let strength = seasonal_strength_variance(&residual_data, 1, m, argvals, est.period, 3);
+    if strength < min_strength || strength.is_nan() {
+        return None;
+    }
+
+    let (_a, _b, amplitude, phase) = fit_and_subtract_sinusoid(residual, argvals, est.period);
+
+    Some(DetectedPeriod {
+        period: est.period,
+        confidence: est.confidence,
+        strength,
+        amplitude,
+        phase,
+        iteration,
+    })
+}
+
 // ============================================================================
 // Peak Detection
 // ============================================================================
+
+/// Optionally smooth data using Fourier basis before peak detection.
+fn smooth_for_peaks(
+    data: &[f64],
+    n: usize,
+    m: usize,
+    argvals: &[f64],
+    smooth_first: bool,
+    smooth_nbasis: Option<usize>,
+) -> Vec<f64> {
+    if !smooth_first {
+        return data.to_vec();
+    }
+    let nbasis = smooth_nbasis
+        .unwrap_or_else(|| crate::basis::select_fourier_nbasis_gcv(data, n, m, argvals, 5, 25));
+    if let Some(result) = crate::basis::fourier_fit_1d(data, n, m, argvals, nbasis) {
+        result.fitted
+    } else {
+        data.to_vec()
+    }
+}
+
+/// Detect peaks in a single curve using derivative zero-crossings.
+fn detect_peaks_single_curve(
+    curve: &[f64],
+    d1: &[f64],
+    argvals: &[f64],
+    min_dist_points: usize,
+    min_prominence: Option<f64>,
+    data_range: f64,
+) -> (Vec<Peak>, Vec<f64>) {
+    let m = curve.len();
+    let mut peak_indices = Vec::new();
+    for j in 1..m {
+        if d1[j - 1] > 0.0 && d1[j] <= 0.0 {
+            let idx = if (d1[j - 1] - d1[j]).abs() > 1e-15 {
+                j - 1
+            } else {
+                j
+            };
+
+            if peak_indices.is_empty()
+                || idx - peak_indices[peak_indices.len() - 1] >= min_dist_points
+            {
+                peak_indices.push(idx);
+            }
+        }
+    }
+
+    let mut peaks: Vec<Peak> = peak_indices
+        .iter()
+        .map(|&idx| {
+            let prominence = compute_prominence(curve, idx) / data_range;
+            Peak {
+                time: argvals[idx],
+                value: curve[idx],
+                prominence,
+            }
+        })
+        .collect();
+
+    if let Some(min_prom) = min_prominence {
+        peaks.retain(|p| p.prominence >= min_prom);
+    }
+
+    let distances: Vec<f64> = peaks.windows(2).map(|w| w[1].time - w[0].time).collect();
+
+    (peaks, distances)
+}
 
 /// Detect peaks in functional data.
 ///
@@ -1342,21 +1429,7 @@ pub fn detect_peaks(
     let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
     let min_dist_points = min_distance.map(|d| (d / dt).round() as usize).unwrap_or(1);
 
-    // Optionally smooth the data using Fourier basis
-    let work_data = if smooth_first {
-        // Determine nbasis: use provided value or select via GCV
-        let nbasis = smooth_nbasis
-            .unwrap_or_else(|| crate::basis::select_fourier_nbasis_gcv(data, n, m, argvals, 5, 25));
-
-        // Use Fourier basis smoothing
-        if let Some(result) = crate::basis::fourier_fit_1d(data, n, m, argvals, nbasis) {
-            result.fitted
-        } else {
-            data.to_vec()
-        }
-    } else {
-        data.to_vec()
-    };
+    let work_data = smooth_for_peaks(data, n, m, argvals, smooth_first, smooth_nbasis);
 
     // Compute first derivative
     let deriv1 = deriv_1d(&work_data, n, m, argvals, 1);
@@ -1375,52 +1448,16 @@ pub fn detect_peaks(
     // Find peaks for each sample
     let results: Vec<(Vec<Peak>, Vec<f64>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            // Extract curve and derivative
             let curve: Vec<f64> = (0..m).map(|j| work_data[i + j * n]).collect();
             let d1: Vec<f64> = (0..m).map(|j| deriv1[i + j * n]).collect();
-
-            // Find zero crossings where derivative goes from positive to negative
-            let mut peak_indices = Vec::new();
-            for j in 1..m {
-                if d1[j - 1] > 0.0 && d1[j] <= 0.0 {
-                    // Interpolate to find more precise location
-                    let idx = if (d1[j - 1] - d1[j]).abs() > 1e-15 {
-                        j - 1
-                    } else {
-                        j
-                    };
-
-                    // Check minimum distance
-                    if peak_indices.is_empty()
-                        || idx - peak_indices[peak_indices.len() - 1] >= min_dist_points
-                    {
-                        peak_indices.push(idx);
-                    }
-                }
-            }
-
-            // Build peaks with prominence
-            let mut peaks: Vec<Peak> = peak_indices
-                .iter()
-                .map(|&idx| {
-                    let prominence = compute_prominence(&curve, idx) / data_range;
-                    Peak {
-                        time: argvals[idx],
-                        value: curve[idx],
-                        prominence,
-                    }
-                })
-                .collect();
-
-            // Filter by prominence
-            if let Some(min_prom) = min_prominence {
-                peaks.retain(|p| p.prominence >= min_prom);
-            }
-
-            // Compute inter-peak distances
-            let distances: Vec<f64> = peaks.windows(2).map(|w| w[1].time - w[0].time).collect();
-
-            (peaks, distances)
+            detect_peaks_single_curve(
+                &curve,
+                &d1,
+                argvals,
+                min_dist_points,
+                min_prominence,
+                data_range,
+            )
         })
         .collect();
 
@@ -3125,6 +3162,53 @@ pub struct CfdAutoperiodResult {
     pub confidences: Vec<f64>,
 }
 
+/// Convert spectral peak indices to candidate (period, normalized_power) pairs.
+fn generate_cfd_candidates(
+    frequencies: &[f64],
+    power_no_dc: &[f64],
+    peak_indices: &[usize],
+) -> Vec<(f64, f64)> {
+    let total_power: f64 = power_no_dc.iter().sum();
+    peak_indices
+        .iter()
+        .filter_map(|&peak_idx| {
+            let freq = frequencies[peak_idx + 1];
+            if freq > 1e-15 {
+                let period = 1.0 / freq;
+                let normalized_power = power_no_dc[peak_idx] / total_power.max(1e-15);
+                Some((period, normalized_power))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Validate clustered period candidates using ACF, returning (period, acf_score, power) triples.
+fn validate_cfd_candidates(clusters: &[(f64, f64)], acf: &[f64], dt: f64) -> Vec<(f64, f64, f64)> {
+    clusters
+        .iter()
+        .filter_map(|&(center, power_sum)| {
+            let acf_score = validate_period_acf(acf, center, dt);
+            if acf_score > 0.1 {
+                Some((center, acf_score, power_sum))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn empty_cfd_result() -> CfdAutoperiodResult {
+    CfdAutoperiodResult {
+        period: f64::NAN,
+        confidence: 0.0,
+        acf_validation: 0.0,
+        periods: Vec::new(),
+        confidences: Vec::new(),
+    }
+}
+
 /// CFDAutoperiod: Clustered Filtered Detrended Autoperiod
 ///
 /// Implements the CFDAutoperiod algorithm (Puech et al. 2020) which:
@@ -3156,13 +3240,7 @@ pub fn cfd_autoperiod(
     let min_size = min_cluster_size.unwrap_or(1);
 
     if n < 8 || argvals.len() != n {
-        return CfdAutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            acf_validation: 0.0,
-            periods: Vec::new(),
-            confidences: Vec::new(),
-        };
+        return empty_cfd_result();
     }
 
     let dt = (argvals[n - 1] - argvals[0]) / (n - 1) as f64;
@@ -3176,13 +3254,7 @@ pub fn cfd_autoperiod(
     let (frequencies, power) = periodogram(&diff, &diff_argvals);
 
     if frequencies.len() < 3 {
-        return CfdAutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            acf_validation: 0.0,
-            periods: Vec::new(),
-            confidences: Vec::new(),
-        };
+        return empty_cfd_result();
     }
 
     // Step 3: Find all candidate periods from spectral peaks
@@ -3190,63 +3262,23 @@ pub fn cfd_autoperiod(
     let peak_indices = find_spectral_peaks(&power_no_dc);
 
     if peak_indices.is_empty() {
-        return CfdAutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            acf_validation: 0.0,
-            periods: Vec::new(),
-            confidences: Vec::new(),
-        };
+        return empty_cfd_result();
     }
 
-    // Convert peak indices to periods with their powers
-    let total_power: f64 = power_no_dc.iter().sum();
-    let mut candidates: Vec<(f64, f64)> = Vec::new(); // (period, normalized_power)
-
-    for &peak_idx in &peak_indices {
-        let freq = frequencies[peak_idx + 1];
-        if freq > 1e-15 {
-            let period = 1.0 / freq;
-            let normalized_power = power_no_dc[peak_idx] / total_power.max(1e-15);
-            candidates.push((period, normalized_power));
-        }
-    }
-
+    let candidates = generate_cfd_candidates(&frequencies, &power_no_dc, &peak_indices);
     if candidates.is_empty() {
-        return CfdAutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            acf_validation: 0.0,
-            periods: Vec::new(),
-            confidences: Vec::new(),
-        };
+        return empty_cfd_result();
     }
 
     // Step 4: Cluster candidates using density-based approach
     let clusters = cluster_periods(&candidates, tol, min_size);
-
     if clusters.is_empty() {
-        return CfdAutoperiodResult {
-            period: f64::NAN,
-            confidence: 0.0,
-            acf_validation: 0.0,
-            periods: Vec::new(),
-            confidences: Vec::new(),
-        };
+        return empty_cfd_result();
     }
 
     // Step 5: Validate cluster centers using ACF on original signal
     let acf = autocorrelation(data, max_lag);
-
-    let mut validated: Vec<(f64, f64, f64)> = Vec::new(); // (period, acf_score, power)
-
-    for (center, power_sum) in clusters {
-        let acf_score = validate_period_acf(&acf, center, dt);
-        if acf_score > 0.1 {
-            // Only keep periods with reasonable ACF validation
-            validated.push((center, acf_score, power_sum));
-        }
-    }
+    let mut validated = validate_cfd_candidates(&clusters, &acf, dt);
 
     if validated.is_empty() {
         // Fall back to best cluster without ACF validation

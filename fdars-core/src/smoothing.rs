@@ -165,37 +165,49 @@ fn accumulate_weighted_normal_equations(
 /// Solve a linear system using Gaussian elimination with partial pivoting.
 /// Returns the solution vector, or a zero vector if the system is singular.
 /// Gaussian elimination with partial pivoting (forward pass).
+/// Find the row with the largest absolute value in column `col` at or below the diagonal.
+fn find_pivot(a: &[f64], p: usize, col: usize) -> usize {
+    let mut max_idx = col;
+    for j in (col + 1)..p {
+        if a[j * p + col].abs() > a[max_idx * p + col].abs() {
+            max_idx = j;
+        }
+    }
+    max_idx
+}
+
+/// Swap two rows in both the matrix `a` and the RHS vector `b`.
+fn swap_rows(a: &mut [f64], b: &mut [f64], p: usize, row_a: usize, row_b: usize) {
+    for k in 0..p {
+        a.swap(row_a * p + k, row_b * p + k);
+    }
+    b.swap(row_a, row_b);
+}
+
+/// Subtract a scaled copy of the pivot row from all rows below it.
+fn eliminate_below(a: &mut [f64], b: &mut [f64], p: usize, pivot_row: usize) {
+    let pivot = a[pivot_row * p + pivot_row];
+    for j in (pivot_row + 1)..p {
+        let factor = a[j * p + pivot_row] / pivot;
+        for k in pivot_row..p {
+            a[j * p + k] -= factor * a[pivot_row * p + k];
+        }
+        b[j] -= factor * b[pivot_row];
+    }
+}
+
 fn forward_eliminate(a: &mut [f64], b: &mut [f64], p: usize) {
     for i in 0..p {
-        // Find pivot
-        let mut max_idx = i;
-        for j in (i + 1)..p {
-            if a[j * p + i].abs() > a[max_idx * p + i].abs() {
-                max_idx = j;
-            }
-        }
-
-        // Swap rows
+        let max_idx = find_pivot(a, p, i);
         if max_idx != i {
-            for k in 0..p {
-                a.swap(i * p + k, max_idx * p + k);
-            }
-            b.swap(i, max_idx);
+            swap_rows(a, b, p, i, max_idx);
         }
 
-        let pivot = a[i * p + i];
-        if pivot.abs() < 1e-10 {
+        if a[i * p + i].abs() < 1e-10 {
             continue;
         }
 
-        // Eliminate below pivot
-        for j in (i + 1)..p {
-            let factor = a[j * p + i] / pivot;
-            for k in i..p {
-                a[j * p + k] -= factor * a[i * p + k];
-            }
-            b[j] -= factor * b[i];
-        }
+        eliminate_below(a, b, p, i);
     }
 }
 

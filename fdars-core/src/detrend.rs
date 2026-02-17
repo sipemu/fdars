@@ -11,7 +11,7 @@
 
 use crate::iter_maybe_parallel;
 use crate::smoothing::local_polynomial;
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, Dyn, SVD};
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -143,6 +143,34 @@ fn build_vandermonde_matrix(t_norm: &[f64], m: usize, n_coef: usize) -> DMatrix<
     design
 }
 
+/// Fit a polynomial to a single curve using a pre-computed SVD, returning (trend, detrended, coefs, rss).
+fn fit_polynomial_single_curve(
+    curve: &[f64],
+    svd: &SVD<f64, Dyn, Dyn>,
+    design: &DMatrix<f64>,
+    n_coef: usize,
+    m: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, f64) {
+    let y = DVector::from_row_slice(curve);
+
+    let beta = svd
+        .solve(&y, 1e-10)
+        .unwrap_or_else(|_| DVector::zeros(n_coef));
+
+    let fitted = design * &beta;
+    let mut trend = vec![0.0; m];
+    let mut detrended = vec![0.0; m];
+    let mut rss = 0.0;
+    for j in 0..m {
+        trend[j] = fitted[j];
+        detrended[j] = curve[j] - fitted[j];
+        rss += detrended[j].powi(2);
+    }
+
+    let coefs: Vec<f64> = beta.iter().cloned().collect();
+    (trend, detrended, coefs, rss)
+}
+
 /// Compute differences and reconstruct trend for a single curve.
 fn diff_single_curve(curve: &[f64], m: usize, order: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>, f64) {
     // First difference
@@ -240,30 +268,8 @@ pub fn detrend_polynomial(
     // Process each sample in parallel
     let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            // Extract curve
             let curve: Vec<f64> = (0..m).map(|j| data[i + j * n]).collect();
-            let y = DVector::from_row_slice(&curve);
-
-            // Solve least squares using SVD
-            let beta = svd
-                .solve(&y, 1e-10)
-                .unwrap_or_else(|_| DVector::zeros(n_coef));
-
-            // Compute fitted values (trend) and residuals
-            let fitted = &design * &beta;
-            let mut trend = vec![0.0; m];
-            let mut detrended = vec![0.0; m];
-            let mut rss = 0.0;
-            for j in 0..m {
-                trend[j] = fitted[j];
-                detrended[j] = curve[j] - fitted[j];
-                rss += detrended[j].powi(2);
-            }
-
-            // Extract coefficients
-            let coefs: Vec<f64> = beta.iter().cloned().collect();
-
-            (trend, detrended, coefs, rss)
+            fit_polynomial_single_curve(&curve, &svd, &design, n_coef, m)
         })
         .collect();
 
