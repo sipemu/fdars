@@ -12,7 +12,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 | Package | Language | Registry | Folder | Status |
 |---------|----------|----------|--------|--------|
-| fdars | R | CRAN | `fdars-r/` | [![CRAN status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/package=fdars) |
+| fdars | R | CRAN | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![CRAN status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/package=fdars) |
 | fdars-core | Rust | crates.io | `fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
 
 ## Features
@@ -33,7 +33,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ```r
 # From GitHub (requires Rust toolchain)
-devtools::install_github("sipemu/fdars", subdir = "fdars-r")
+devtools::install_github("sipemu/fdars-r")
 
 # From binary release (no Rust required)
 # Download from GitHub Releases, then:
