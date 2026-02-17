@@ -47,3 +47,59 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "seasonal_benchmarks"
 harness = false
+
+[[example]]
+name = "simulation"
+path = "examples/01_simulation/main.rs"
+
+[[example]]
+name = "functional_operations"
+path = "examples/02_functional_operations/main.rs"
+
+[[example]]
+name = "smoothing"
+path = "examples/03_smoothing/main.rs"
+
+[[example]]
+name = "basis_representation"
+path = "examples/04_basis_representation/main.rs"
+
+[[example]]
+name = "depth_measures"
+path = "examples/05_depth_measures/main.rs"
+
+[[example]]
+name = "distances_and_metrics"
+path = "examples/06_distances_and_metrics/main.rs"
+
+[[example]]
+name = "clustering"
+path = "examples/07_clustering/main.rs"
+
+[[example]]
+name = "regression"
+path = "examples/08_regression/main.rs"
+
+[[example]]
+name = "outlier_detection"
+path = "examples/09_outlier_detection/main.rs"
+
+[[example]]
+name = "seasonal_analysis"
+path = "examples/10_seasonal_analysis/main.rs"
+
+[[example]]
+name = "detrending"
+path = "examples/11_detrending/main.rs"
+
+[[example]]
+name = "streaming_depth"
+path = "examples/12_streaming_depth/main.rs"
+
+[[example]]
+name = "irregular_data"
+path = "examples/13_irregular_data/main.rs"
+
+[[example]]
+name = "complete_pipeline"
+path = "examples/14_complete_pipeline/main.rs"

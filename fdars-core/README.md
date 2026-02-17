@@ -77,6 +77,27 @@ let mean = fdata::mean_1d(&data, n, m);
 let depths = depth::fraiman_muniz_1d(&data, &data, n, n, m, true);
 ```
 
+## Examples
+
+The `examples/` directory contains 14 runnable examples progressing from basic to advanced:
+
+| # | Example | Command | Topics |
+|---|---------|---------|--------|
+| 01 | [Simulation](examples/01_simulation/) | `cargo run --example simulation` | KL expansion, eigenfunctions, noise |
+| 02 | [Functional Operations](examples/02_functional_operations/) | `cargo run --example functional_operations` | Mean, centering, derivatives, norms, inner products |
+| 03 | [Smoothing](examples/03_smoothing/) | `cargo run --example smoothing` | Nadaraya-Watson, local linear/polynomial, k-NN |
+| 04 | [Basis Representation](examples/04_basis_representation/) | `cargo run --example basis_representation` | B-splines, Fourier, P-splines, GCV/AIC/BIC |
+| 05 | [Depth Measures](examples/05_depth_measures/) | `cargo run --example depth_measures` | 8 depth measures, outlier ranking |
+| 06 | [Distances and Metrics](examples/06_distances_and_metrics/) | `cargo run --example distances_and_metrics` | Lp, Hausdorff, DTW, Fourier, h-shift |
+| 07 | [Clustering](examples/07_clustering/) | `cargo run --example clustering` | K-means, fuzzy c-means, silhouette, CH index |
+| 08 | [Regression](examples/08_regression/) | `cargo run --example regression` | FPCA, PLS regression |
+| 09 | [Outlier Detection](examples/09_outlier_detection/) | `cargo run --example outlier_detection` | LRT bootstrap, depth confirmation |
+| 10 | [Seasonal Analysis](examples/10_seasonal_analysis/) | `cargo run --example seasonal_analysis` | FFT, ACF, Autoperiod, SAZED, peak detection |
+| 11 | [Detrending](examples/11_detrending/) | `cargo run --example detrending` | Linear/polynomial/LOESS, STL decomposition |
+| 12 | [Streaming Depth](examples/12_streaming_depth/) | `cargo run --example streaming_depth` | Online depth, rolling windows |
+| 13 | [Irregular Data](examples/13_irregular_data/) | `cargo run --example irregular_data` | CSR storage, regularization, kernel mean |
+| 14 | [Complete Pipeline](examples/14_complete_pipeline/) | `cargo run --example complete_pipeline` | End-to-end: simulate → smooth → outliers → FPCA → cluster |
+
 ## Performance
 
 With the `parallel` feature (enabled by default), computationally intensive operations use `rayon` for multi-core performance. The library also supports WASM targets with sequential execution.
