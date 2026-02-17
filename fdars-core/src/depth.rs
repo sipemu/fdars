@@ -152,7 +152,7 @@ pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usi
                     })
                     .collect();
 
-                proj_ori.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                proj_ori.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
                 let below = proj_ori.iter().filter(|&&x| x < proj_i).count();
                 let above = proj_ori.iter().filter(|&&x| x > proj_i).count();

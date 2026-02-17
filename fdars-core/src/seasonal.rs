@@ -391,10 +391,15 @@ fn autocorrelation(data: &[f64], max_lag: usize) -> Vec<f64> {
 
 /// Try to add a peak, respecting minimum distance. Replaces previous peak if closer but higher.
 fn try_add_peak(peaks: &mut Vec<usize>, candidate: usize, signal: &[f64], min_distance: usize) {
-    if peaks.is_empty() || candidate - *peaks.last().unwrap() >= min_distance {
+    if let Some(&last) = peaks.last() {
+        if candidate - last >= min_distance {
+            peaks.push(candidate);
+        } else if signal[candidate] > signal[last] {
+            // Safe: peaks is non-empty since last() succeeded
+            *peaks.last_mut().unwrap_or(&mut 0) = candidate;
+        }
+    } else {
         peaks.push(candidate);
-    } else if signal[candidate] > signal[*peaks.last().unwrap()] {
-        *peaks.last_mut().unwrap() = candidate;
     }
 }
 
@@ -3483,7 +3488,7 @@ pub fn lomb_scargle(
     let (peak_idx, &peak_power) = power
         .iter()
         .enumerate()
-        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap_or((0, &0.0));
 
     let peak_frequency = freqs.get(peak_idx).copied().unwrap_or(0.0);
@@ -4225,9 +4230,16 @@ fn svd_decompose(trajectory: &[f64], l: usize, k: usize) -> (Vec<f64>, Vec<f64>,
     // Compute SVD
     let svd = SVD::new(mat, true, true);
 
-    // Extract components
-    let u_mat = svd.u.unwrap();
-    let vt_mat = svd.v_t.unwrap();
+    // Extract components (SVD::new with compute_u/v=true always produces both,
+    // but handle gracefully in case of degenerate input)
+    let u_mat = match svd.u {
+        Some(u) => u,
+        None => return (vec![], vec![], vec![]),
+    };
+    let vt_mat = match svd.v_t {
+        Some(vt) => vt,
+        None => return (vec![], vec![], vec![]),
+    };
     let sigma = svd.singular_values;
 
     // Convert to flat vectors

@@ -429,12 +429,14 @@ fn accumulate_cov_at_point(
 fn lp_distance_pair(t1: &[f64], x1: &[f64], t2: &[f64], x2: &[f64], p: f64) -> f64 {
     // Create union of time points
     let mut all_t: Vec<f64> = t1.iter().chain(t2.iter()).copied().collect();
-    all_t.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    all_t.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     all_t.dedup();
 
     // Filter to common range
-    let t_min = t1.first().unwrap().max(*t2.first().unwrap());
-    let t_max = t1.last().unwrap().min(*t2.last().unwrap());
+    let (t_min, t_max) = match (t1.first(), t1.last(), t2.first(), t2.last()) {
+        (Some(&a), Some(&b), Some(&c), Some(&d)) => (a.max(c), b.min(d)),
+        _ => return f64::NAN,
+    };
 
     let common_t: Vec<f64> = all_t
         .into_iter()

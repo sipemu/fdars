@@ -6,12 +6,99 @@
 //! scalar response.
 
 use fdars_core::helpers::extract_curves;
-use fdars_core::regression::{fdata_to_pc_1d, fdata_to_pls_1d};
+use fdars_core::matrix::FdMatrix;
+use fdars_core::regression::{fdata_to_pc_1d, fdata_to_pls_1d, FpcaResult};
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::utility::integrate_simpson;
 
 fn uniform_grid(m: usize) -> Vec<f64> {
     (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
+}
+
+fn print_variance_explained(fpca: &FpcaResult) {
+    let total_var: f64 = fpca.singular_values.iter().map(|s| s * s).sum();
+    println!(
+        "  Singular values: {:?}",
+        fpca.singular_values
+            .iter()
+            .map(|s| format!("{s:.4}"))
+            .collect::<Vec<_>>()
+    );
+
+    let mut cumvar = 0.0;
+    println!("  Variance explained:");
+    for (k, sv) in fpca.singular_values.iter().enumerate() {
+        let var_k = sv * sv;
+        cumvar += var_k;
+        let prop = var_k / total_var * 100.0;
+        let cumprop = cumvar / total_var * 100.0;
+        println!("    PC{}: {prop:.1}% (cumulative: {cumprop:.1}%)", k + 1);
+    }
+}
+
+fn print_loadings(fpca: &FpcaResult, ncomp: usize) {
+    println!("\n  PC loadings (first 5 values of each):");
+    for k in 0..ncomp {
+        let loading: Vec<f64> = (0..5).map(|j| fpca.rotation[(j, k)]).collect();
+        println!(
+            "    PC{}: {:?}",
+            k + 1,
+            loading
+                .iter()
+                .map(|x| format!("{x:.4}"))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+fn print_scores(fpca: &FpcaResult, ncomp: usize) {
+    println!("\n  PC scores (first 5 observations):");
+    println!(
+        "  {:>5} {:>10} {:>10} {:>10} {:>10}",
+        "Obs", "PC1", "PC2", "PC3", "PC4"
+    );
+    for i in 0..5 {
+        print!("  {:>5}", i);
+        for k in 0..ncomp {
+            print!(" {:>10.4}", fpca.scores[(i, k)]);
+        }
+        println!();
+    }
+}
+
+fn print_reconstruction_error(
+    fpca: &FpcaResult,
+    data_mat: &FdMatrix,
+    n: usize,
+    m: usize,
+    ncomp: usize,
+) {
+    println!("\n  Reconstruction error by number of components:");
+    for nc in 1..=ncomp {
+        let mse = compute_reconstruction_mse(fpca, data_mat, n, m, nc);
+        println!("    {nc} components: MSE = {mse:.6}");
+    }
+}
+
+fn compute_reconstruction_mse(
+    fpca: &FpcaResult,
+    data_mat: &FdMatrix,
+    n: usize,
+    m: usize,
+    nc: usize,
+) -> f64 {
+    let mut mse = 0.0;
+    for j in 0..m {
+        for i in 0..n {
+            let mut val = fpca.mean[j];
+            for k in 0..nc {
+                val += fpca.scores[(i, k)] * fpca.rotation[(j, k)];
+            }
+            let orig = data_mat[(i, j)];
+            mse += (orig - val).powi(2);
+        }
+    }
+    mse / (n * m) as f64
 }
 
 fn main() {
@@ -35,77 +122,14 @@ fn main() {
     println!("--- Functional PCA ---");
     let ncomp = 4;
     if let Some(fpca) = fdata_to_pc_1d(&data_mat, ncomp) {
-        // Variance explained
-        let total_var: f64 = fpca.singular_values.iter().map(|s| s * s).sum();
-        println!(
-            "  Singular values: {:?}",
-            fpca.singular_values
-                .iter()
-                .map(|s| format!("{s:.4}"))
-                .collect::<Vec<_>>()
-        );
-
-        let mut cumvar = 0.0;
-        println!("  Variance explained:");
-        for (k, sv) in fpca.singular_values.iter().enumerate() {
-            let var_k = sv * sv;
-            cumvar += var_k;
-            let prop = var_k / total_var * 100.0;
-            let cumprop = cumvar / total_var * 100.0;
-            println!("    PC{}: {prop:.1}% (cumulative: {cumprop:.1}%)", k + 1);
-        }
-
-        // Loadings (eigenfunctions)
-        println!("\n  PC loadings (first 5 values of each):");
-        for k in 0..ncomp {
-            let loading: Vec<f64> = (0..5).map(|j| fpca.rotation[(j, k)]).collect();
-            println!(
-                "    PC{}: {:?}",
-                k + 1,
-                loading
-                    .iter()
-                    .map(|x| format!("{x:.4}"))
-                    .collect::<Vec<_>>()
-            );
-        }
-
-        // Scores
-        println!("\n  PC scores (first 5 observations):");
-        println!(
-            "  {:>5} {:>10} {:>10} {:>10} {:>10}",
-            "Obs", "PC1", "PC2", "PC3", "PC4"
-        );
-        for i in 0..5 {
-            print!("  {:>5}", i);
-            for k in 0..ncomp {
-                print!(" {:>10.4}", fpca.scores[(i, k)]);
-            }
-            println!();
-        }
-
-        // Reconstruction error
-        println!("\n  Reconstruction error by number of components:");
-        for nc in 1..=ncomp {
-            // Reconstruct using nc components
-            let mut mse = 0.0;
-            for j in 0..m {
-                for i in 0..n {
-                    let mut val = fpca.mean[j];
-                    for k in 0..nc {
-                        val += fpca.scores[(i, k)] * fpca.rotation[(j, k)];
-                    }
-                    let orig = data_mat[(i, j)];
-                    mse += (orig - val).powi(2);
-                }
-            }
-            mse /= (n * m) as f64;
-            println!("    {nc} components: MSE = {mse:.6}");
-        }
+        print_variance_explained(&fpca);
+        print_loadings(&fpca, ncomp);
+        print_scores(&fpca, ncomp);
+        print_reconstruction_error(&fpca, &data_mat, n, m, ncomp);
     }
 
     // --- Section 2: PLS regression ---
     println!("\n--- PLS Regression ---");
-    // Create a scalar response based on the integral of each curve
     let curves = extract_curves(&data_mat);
     let y: Vec<f64> = curves.iter().map(|c| integrate_simpson(c, &t)).collect();
 

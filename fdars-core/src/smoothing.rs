@@ -301,7 +301,7 @@ pub fn knn_smoother(x: &[f64], y: &[f64], x_new: &[f64], k: usize) -> Vec<f64> {
                 .collect();
 
             // Partial sort to get k nearest
-            distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+            distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
             // Average of k nearest neighbors
             let sum: f64 = distances.iter().take(k).map(|(i, _)| y[*i]).sum();

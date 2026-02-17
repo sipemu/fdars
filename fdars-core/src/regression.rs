@@ -26,6 +26,55 @@ pub struct FpcaResult {
     pub centered: FdMatrix,
 }
 
+/// Center columns of a matrix and return (centered_matrix, column_means).
+fn center_columns(data: &FdMatrix) -> (FdMatrix, Vec<f64>) {
+    let (n, m) = data.shape();
+    let means: Vec<f64> = iter_maybe_parallel!(0..m)
+        .map(|j| {
+            let col = data.column(j);
+            let sum: f64 = col.iter().sum();
+            sum / n as f64
+        })
+        .collect();
+
+    let mut centered = FdMatrix::zeros(n, m);
+    for j in 0..m {
+        for i in 0..n {
+            centered[(i, j)] = data[(i, j)] - means[j];
+        }
+    }
+    (centered, means)
+}
+
+/// Extract rotation (V) and scores (U*S) from SVD results.
+fn extract_pc_components(
+    svd: &SVD<f64, nalgebra::Dyn, nalgebra::Dyn>,
+    n: usize,
+    m: usize,
+    ncomp: usize,
+) -> Option<(Vec<f64>, FdMatrix, FdMatrix)> {
+    let singular_values: Vec<f64> = svd.singular_values.iter().take(ncomp).cloned().collect();
+
+    let v_t = svd.v_t.as_ref()?;
+    let mut rotation = FdMatrix::zeros(m, ncomp);
+    for k in 0..ncomp {
+        for j in 0..m {
+            rotation[(j, k)] = v_t[(k, j)];
+        }
+    }
+
+    let u = svd.u.as_ref()?;
+    let mut scores = FdMatrix::zeros(n, ncomp);
+    for k in 0..ncomp {
+        let sv_k = singular_values[k];
+        for i in 0..n {
+            scores[(i, k)] = u[(i, k)] * sv_k;
+        }
+    }
+
+    Some((singular_values, rotation, scores))
+}
+
 /// Perform functional PCA via SVD on centered data.
 ///
 /// # Arguments
@@ -38,51 +87,9 @@ pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Option<FpcaResult> {
     }
 
     let ncomp = ncomp.min(n).min(m);
-
-    // Compute column means
-    let means: Vec<f64> = iter_maybe_parallel!(0..m)
-        .map(|j| {
-            let col = data.column(j);
-            let sum: f64 = col.iter().sum();
-            sum / n as f64
-        })
-        .collect();
-
-    // Center the data
-    let mut centered = FdMatrix::zeros(n, m);
-    for j in 0..m {
-        for i in 0..n {
-            centered[(i, j)] = data[(i, j)] - means[j];
-        }
-    }
-
-    // Convert centered data to nalgebra DMatrix for SVD
-    let matrix = centered.to_dmatrix();
-
-    // Compute SVD
-    let svd = SVD::new(matrix, true, true);
-
-    // Extract singular values
-    let singular_values: Vec<f64> = svd.singular_values.iter().take(ncomp).cloned().collect();
-
-    // Extract V (right singular vectors) into rotation matrix (m x ncomp)
-    let v_t = svd.v_t.as_ref()?;
-    let mut rotation = FdMatrix::zeros(m, ncomp);
-    for k in 0..ncomp {
-        for j in 0..m {
-            rotation[(j, k)] = v_t[(k, j)];
-        }
-    }
-
-    // Compute scores: X_centered * V = U * S (n x ncomp)
-    let u = svd.u.as_ref()?;
-    let mut scores = FdMatrix::zeros(n, ncomp);
-    for k in 0..ncomp {
-        let sv_k = singular_values[k];
-        for i in 0..n {
-            scores[(i, k)] = u[(i, k)] * sv_k;
-        }
-    }
+    let (centered, means) = center_columns(data);
+    let svd = SVD::new(centered.to_dmatrix(), true, true);
+    let (singular_values, rotation, scores) = extract_pc_components(&svd, n, m, ncomp)?;
 
     Some(FpcaResult {
         singular_values,
