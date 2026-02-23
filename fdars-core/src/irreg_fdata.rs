@@ -20,9 +20,19 @@
 //!
 //! The offsets would be: [0, 5, 8, 15]
 
+use crate::matrix::FdMatrix;
 use crate::{iter_maybe_parallel, slice_maybe_parallel};
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
+
+/// Kernel function type for smoothing operations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KernelType {
+    /// Epanechnikov kernel: K(u) = 0.75(1 - u²) for |u| ≤ 1
+    Epanechnikov,
+    /// Gaussian kernel: K(u) = exp(-u²/2) / √(2π)
+    Gaussian,
+}
 
 /// Compressed storage for irregular functional data.
 ///
@@ -96,6 +106,9 @@ impl IrregFdata {
 
     /// Create from flattened representation (for R interop).
     ///
+    /// Returns `None` if offsets are empty, argvals/values lengths differ,
+    /// the last offset doesn't match argvals length, or offsets are non-monotonic.
+    ///
     /// # Arguments
     /// * `offsets` - Start indices (length n+1)
     /// * `argvals` - All observation points concatenated
@@ -106,13 +119,20 @@ impl IrregFdata {
         argvals: Vec<f64>,
         values: Vec<f64>,
         rangeval: [f64; 2],
-    ) -> Self {
-        IrregFdata {
+    ) -> Option<Self> {
+        if offsets.is_empty()
+            || argvals.len() != values.len()
+            || *offsets.last()? != argvals.len()
+            || offsets.windows(2).any(|w| w[0] > w[1])
+        {
+            return None;
+        }
+        Some(IrregFdata {
             offsets,
             argvals,
             values,
             rangeval,
-        }
+        })
     }
 
     /// Number of observations.
@@ -172,22 +192,14 @@ impl IrregFdata {
 /// For curve i with observation points t_1, ..., t_m and values x_1, ..., x_m:
 /// ∫f_i(t)dt ≈ Σ_{j=1}^{m-1} (t_{j+1} - t_j) * (x_{j+1} + x_j) / 2
 ///
-/// # Arguments
-/// * `offsets` - Start indices (length n+1)
-/// * `argvals` - All observation points concatenated
-/// * `values` - All values concatenated
-///
 /// # Returns
 /// Vector of integrals, one per curve
-pub fn integrate_irreg(offsets: &[usize], argvals: &[f64], values: &[f64]) -> Vec<f64> {
-    let n = offsets.len() - 1;
+pub fn integrate_irreg(ifd: &IrregFdata) -> Vec<f64> {
+    let n = ifd.n_obs();
 
     iter_maybe_parallel!(0..n)
         .map(|i| {
-            let start = offsets[i];
-            let end = offsets[i + 1];
-            let t = &argvals[start..end];
-            let x = &values[start..end];
+            let (t, x) = ifd.get_obs(i);
 
             if t.len() < 2 {
                 return 0.0;
@@ -203,11 +215,6 @@ pub fn integrate_irreg(offsets: &[usize], argvals: &[f64], values: &[f64]) -> Ve
         .collect()
 }
 
-/// Compute integral for IrregFdata struct.
-pub fn integrate_irreg_struct(ifd: &IrregFdata) -> Vec<f64> {
-    integrate_irreg(&ifd.offsets, &ifd.argvals, &ifd.values)
-}
-
 // =============================================================================
 // Norms
 // =============================================================================
@@ -219,22 +226,17 @@ pub fn integrate_irreg_struct(ifd: &IrregFdata) -> Vec<f64> {
 /// Uses trapezoidal rule for integration.
 ///
 /// # Arguments
-/// * `offsets` - Start indices (length n+1)
-/// * `argvals` - All observation points concatenated
-/// * `values` - All values concatenated
+/// * `ifd` - Irregular functional data
 /// * `p` - Norm order (p >= 1)
 ///
 /// # Returns
 /// Vector of norms, one per curve
-pub fn norm_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f64) -> Vec<f64> {
-    let n = offsets.len() - 1;
+pub fn norm_lp_irreg(ifd: &IrregFdata, p: f64) -> Vec<f64> {
+    let n = ifd.n_obs();
 
     iter_maybe_parallel!(0..n)
         .map(|i| {
-            let start = offsets[i];
-            let end = offsets[i + 1];
-            let t = &argvals[start..end];
-            let x = &values[start..end];
+            let (t, x) = ifd.get_obs(i);
 
             if t.len() < 2 {
                 return 0.0;
@@ -272,34 +274,37 @@ fn kernel_gaussian(u: f64) -> f64 {
     (-0.5 * u * u).exp() / (2.0 * std::f64::consts::PI).sqrt()
 }
 
+impl KernelType {
+    #[inline]
+    fn as_fn(self) -> fn(f64) -> f64 {
+        match self {
+            KernelType::Epanechnikov => kernel_epanechnikov,
+            KernelType::Gaussian => kernel_gaussian,
+        }
+    }
+}
+
 /// Estimate mean function at specified target points using kernel smoothing.
 ///
 /// Uses local weighted averaging (Nadaraya-Watson estimator) at each target point:
 /// μ̂(t) = Σ_{i,j} K_h(t - t_{ij}) x_{ij} / Σ_{i,j} K_h(t - t_{ij})
 ///
 /// # Arguments
-/// * `offsets` - Start indices (length n+1)
-/// * `argvals` - All observation points concatenated
-/// * `values` - All values concatenated
+/// * `ifd` - Irregular functional data
 /// * `target_argvals` - Points at which to estimate the mean
 /// * `bandwidth` - Kernel bandwidth
-/// * `kernel_type` - 0 for Epanechnikov, 1 for Gaussian
+/// * `kernel_type` - Kernel function to use
 ///
 /// # Returns
 /// Estimated mean function values at target points
 pub fn mean_irreg(
-    offsets: &[usize],
-    argvals: &[f64],
-    values: &[f64],
+    ifd: &IrregFdata,
     target_argvals: &[f64],
     bandwidth: f64,
-    kernel_type: i32,
+    kernel_type: KernelType,
 ) -> Vec<f64> {
-    let n = offsets.len() - 1;
-    let kernel = match kernel_type {
-        0 => kernel_epanechnikov,
-        _ => kernel_gaussian,
-    };
+    let n = ifd.n_obs();
+    let kernel = kernel_type.as_fn();
 
     slice_maybe_parallel!(target_argvals)
         .map(|&t| {
@@ -307,10 +312,7 @@ pub fn mean_irreg(
             let mut sum_values = 0.0;
 
             for i in 0..n {
-                let start = offsets[i];
-                let end = offsets[i + 1];
-                let obs_t = &argvals[start..end];
-                let obs_x = &values[start..end];
+                let (obs_t, obs_x) = ifd.get_obs(i);
 
                 for (&ti, &xi) in obs_t.iter().zip(obs_x.iter()) {
                     let u = (ti - t) / bandwidth;
@@ -336,33 +338,24 @@ pub fn mean_irreg(
 /// Estimate covariance at a grid of points using local linear smoothing.
 ///
 /// # Arguments
-/// * `offsets` - Start indices (length n+1)
-/// * `argvals` - All observation points concatenated
-/// * `values` - All values concatenated
-/// * `mean_vals` - Pre-computed mean function at observation points (optional)
+/// * `ifd` - Irregular functional data
 /// * `s_grid` - First grid points for covariance
 /// * `t_grid` - Second grid points for covariance
 /// * `bandwidth` - Kernel bandwidth
 ///
 /// # Returns
-/// Covariance matrix estimate at (s_grid, t_grid) points
-pub fn cov_irreg(
-    offsets: &[usize],
-    argvals: &[f64],
-    values: &[f64],
-    s_grid: &[f64],
-    t_grid: &[f64],
-    bandwidth: f64,
-) -> Vec<f64> {
-    let n = offsets.len() - 1;
+/// Covariance matrix estimate at (s_grid, t_grid) points as `FdMatrix`
+pub fn cov_irreg(ifd: &IrregFdata, s_grid: &[f64], t_grid: &[f64], bandwidth: f64) -> FdMatrix {
+    let n = ifd.n_obs();
     let ns = s_grid.len();
     let nt = t_grid.len();
 
     // First estimate mean at all observation points
-    let mean_at_obs = mean_irreg(offsets, argvals, values, argvals, bandwidth, 1);
+    let mean_at_obs = mean_irreg(ifd, &ifd.argvals, bandwidth, KernelType::Gaussian);
 
     // Centered values
-    let centered: Vec<f64> = values
+    let centered: Vec<f64> = ifd
+        .values
         .iter()
         .zip(mean_at_obs.iter())
         .map(|(&v, &m)| v - m)
@@ -374,11 +367,11 @@ pub fn cov_irreg(
     for (si, &s) in s_grid.iter().enumerate() {
         for (ti, &t) in t_grid.iter().enumerate() {
             cov[si + ti * ns] =
-                accumulate_cov_at_point(offsets, argvals, &centered, n, s, t, bandwidth);
+                accumulate_cov_at_point(&ifd.offsets, &ifd.argvals, &centered, n, s, t, bandwidth);
         }
     }
 
-    cov
+    FdMatrix::from_column_major(cov, ns, nt).unwrap()
 }
 
 /// Compute kernel-weighted covariance estimate at a single (s, t) grid point.
@@ -486,15 +479,13 @@ fn linear_interp(argvals: &[f64], values: &[f64], t: f64) -> f64 {
 /// Compute pairwise Lp distances for irregular functional data.
 ///
 /// # Arguments
-/// * `offsets` - Start indices (length n+1)
-/// * `argvals` - All observation points concatenated
-/// * `values` - All values concatenated
+/// * `ifd` - Irregular functional data
 /// * `p` - Norm order
 ///
 /// # Returns
-/// Distance matrix (n × n) in column-major format
-pub fn metric_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f64) -> Vec<f64> {
-    let n = offsets.len() - 1;
+/// Distance matrix (n × n) as `FdMatrix`
+pub fn metric_lp_irreg(ifd: &IrregFdata, p: f64) -> FdMatrix {
+    let n = ifd.n_obs();
     let mut dist = vec![0.0; n * n];
 
     // Compute upper triangle in parallel
@@ -504,18 +495,9 @@ pub fn metric_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f6
 
     let distances: Vec<f64> = slice_maybe_parallel!(pairs)
         .map(|&(i, j)| {
-            let start_i = offsets[i];
-            let end_i = offsets[i + 1];
-            let start_j = offsets[j];
-            let end_j = offsets[j + 1];
-
-            lp_distance_pair(
-                &argvals[start_i..end_i],
-                &values[start_i..end_i],
-                &argvals[start_j..end_j],
-                &values[start_j..end_j],
-                p,
-            )
+            let (t_i, x_i) = ifd.get_obs(i);
+            let (t_j, x_j) = ifd.get_obs(j);
+            lp_distance_pair(t_i, x_i, t_j, x_j, p)
         })
         .collect();
 
@@ -525,7 +507,7 @@ pub fn metric_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f6
         dist[j + i * n] = distances[k];
     }
 
-    dist
+    FdMatrix::from_column_major(dist, n, n).unwrap()
 }
 
 // =============================================================================
@@ -537,28 +519,18 @@ pub fn metric_lp_irreg(offsets: &[usize], argvals: &[f64], values: &[f64], p: f6
 /// Missing values (outside observation range) are marked as NaN.
 ///
 /// # Arguments
-/// * `offsets` - Start indices (length n+1)
-/// * `argvals` - All observation points concatenated
-/// * `values` - All values concatenated
+/// * `ifd` - Irregular functional data
 /// * `target_grid` - Regular grid to interpolate to
 ///
 /// # Returns
-/// Data matrix (n × len(target_grid)) in column-major format
-pub fn to_regular_grid(
-    offsets: &[usize],
-    argvals: &[f64],
-    values: &[f64],
-    target_grid: &[f64],
-) -> Vec<f64> {
-    let n = offsets.len() - 1;
+/// Data matrix (n × len(target_grid)) as `FdMatrix`
+pub fn to_regular_grid(ifd: &IrregFdata, target_grid: &[f64]) -> FdMatrix {
+    let n = ifd.n_obs();
     let m = target_grid.len();
 
-    iter_maybe_parallel!(0..n)
+    let result = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
-            let start = offsets[i];
-            let end = offsets[i + 1];
-            let obs_t = &argvals[start..end];
-            let obs_x = &values[start..end];
+            let (obs_t, obs_x) = ifd.get_obs(i);
 
             target_grid
                 .iter()
@@ -580,12 +552,20 @@ pub fn to_regular_grid(
                 acc[i + j * n] = val;
             }
             acc
-        })
+        });
+
+    FdMatrix::from_column_major(result, n, m).unwrap()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_ifd(offsets: Vec<usize>, argvals: Vec<f64>, values: Vec<f64>) -> IrregFdata {
+        let range_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
+        let range_max = argvals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        IrregFdata::from_flat(offsets, argvals, values, [range_min, range_max]).unwrap()
+    }
 
     #[test]
     fn test_from_lists() {
@@ -619,11 +599,13 @@ mod tests {
     #[test]
     fn test_integrate_irreg() {
         // Integrate constant function = 1 over [0, 1]
-        let offsets = vec![0, 3, 6];
-        let argvals = vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0];
-        let values = vec![1.0, 1.0, 1.0, 2.0, 2.0, 2.0];
+        let ifd = make_ifd(
+            vec![0, 3, 6],
+            vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0],
+            vec![1.0, 1.0, 1.0, 2.0, 2.0, 2.0],
+        );
 
-        let integrals = integrate_irreg(&offsets, &argvals, &values);
+        let integrals = integrate_irreg(&ifd);
 
         assert!((integrals[0] - 1.0).abs() < 1e-10);
         assert!((integrals[1] - 2.0).abs() < 1e-10);
@@ -632,11 +614,9 @@ mod tests {
     #[test]
     fn test_norm_lp_irreg() {
         // L2 norm of constant function = c is c (on \[0,1\])
-        let offsets = vec![0, 3];
-        let argvals = vec![0.0, 0.5, 1.0];
-        let values = vec![2.0, 2.0, 2.0];
+        let ifd = make_ifd(vec![0, 3], vec![0.0, 0.5, 1.0], vec![2.0, 2.0, 2.0]);
 
-        let norms = norm_lp_irreg(&offsets, &argvals, &values, 2.0);
+        let norms = norm_lp_irreg(&ifd, 2.0);
 
         assert!((norms[0] - 2.0).abs() < 1e-10);
     }
@@ -653,12 +633,14 @@ mod tests {
     #[test]
     fn test_mean_irreg() {
         // Two identical curves should give exact mean
-        let offsets = vec![0, 3, 6];
-        let argvals = vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0];
-        let values = vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0];
+        let ifd = make_ifd(
+            vec![0, 3, 6],
+            vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0],
+            vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0],
+        );
 
         let target = vec![0.0, 0.5, 1.0];
-        let mean = mean_irreg(&offsets, &argvals, &values, &target, 0.5, 1);
+        let mean = mean_irreg(&ifd, &target, 0.5, KernelType::Gaussian);
 
         // Mean should be close to the common values
         assert!((mean[1] - 1.0).abs() < 0.3);
@@ -675,13 +657,34 @@ mod tests {
         let values = vec![1.0, 2.0, 3.0, 1.0, 3.0, 0.0, 1.0, 2.0, 3.0, 4.0];
         let rangeval = [0.0, 1.0];
 
-        let ifd = IrregFdata::from_flat(offsets.clone(), argvals.clone(), values.clone(), rangeval);
+        let ifd = IrregFdata::from_flat(offsets.clone(), argvals.clone(), values.clone(), rangeval)
+            .unwrap();
 
         assert_eq!(ifd.n_obs(), 3);
         assert_eq!(ifd.offsets, offsets);
         assert_eq!(ifd.argvals, argvals);
         assert_eq!(ifd.values, values);
         assert_eq!(ifd.rangeval, rangeval);
+    }
+
+    #[test]
+    fn test_from_flat_invalid() {
+        // Empty offsets
+        assert!(IrregFdata::from_flat(vec![], vec![], vec![], [0.0, 1.0]).is_none());
+        // Mismatched argvals/values lengths
+        assert!(IrregFdata::from_flat(vec![0, 2], vec![0.0, 1.0], vec![1.0], [0.0, 1.0]).is_none());
+        // Last offset doesn't match argvals length
+        assert!(
+            IrregFdata::from_flat(vec![0, 5], vec![0.0, 1.0], vec![1.0, 2.0], [0.0, 1.0]).is_none()
+        );
+        // Non-monotonic offsets
+        assert!(IrregFdata::from_flat(
+            vec![0, 3, 1],
+            vec![0.0, 1.0, 2.0],
+            vec![1.0, 2.0, 3.0],
+            [0.0, 2.0]
+        )
+        .is_none());
     }
 
     #[test]
@@ -763,23 +766,26 @@ mod tests {
     #[test]
     fn test_cov_irreg_identical_curves() {
         // Two identical curves should have zero covariance (no variability)
-        let offsets = vec![0, 5, 10];
-        let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0];
-        let values = vec![1.0, 2.0, 3.0, 2.0, 1.0, 1.0, 2.0, 3.0, 2.0, 1.0];
+        let ifd = make_ifd(
+            vec![0, 5, 10],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![1.0, 2.0, 3.0, 2.0, 1.0, 1.0, 2.0, 3.0, 2.0, 1.0],
+        );
 
         let grid = vec![0.25, 0.5, 0.75];
-        let cov = cov_irreg(&offsets, &argvals, &values, &grid, &grid, 0.3);
+        let cov = cov_irreg(&ifd, &grid, &grid, 0.3);
 
         // Covariance should be close to 0 (identical curves)
-        assert_eq!(cov.len(), 9);
+        assert_eq!(cov.nrows(), 3);
+        assert_eq!(cov.ncols(), 3);
         // Diagonal should be variance (close to 0 for identical curves)
         for i in 0..3 {
             assert!(
-                cov[i + i * 3].abs() < 0.5,
+                cov[(i, i)].abs() < 0.5,
                 "Diagonal cov[{},{}] = {} should be near 0",
                 i,
                 i,
-                cov[i + i * 3]
+                cov[(i, i)]
             );
         }
     }
@@ -787,29 +793,31 @@ mod tests {
     #[test]
     fn test_cov_irreg_symmetry() {
         // Covariance matrix should be symmetric
-        let offsets = vec![0, 5, 10, 15];
-        let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
-        ];
-        let values = vec![
-            1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 4.0, 1.0, 0.0, 2.0, 3.0, 2.0, 3.0, 2.0,
-        ];
+        let ifd = make_ifd(
+            vec![0, 5, 10, 15],
+            vec![
+                0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
+            ],
+            vec![
+                1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 4.0, 1.0, 0.0, 2.0, 3.0, 2.0, 3.0, 2.0,
+            ],
+        );
 
         let grid = vec![0.25, 0.5, 0.75];
-        let cov = cov_irreg(&offsets, &argvals, &values, &grid, &grid, 0.3);
+        let cov = cov_irreg(&ifd, &grid, &grid, 0.3);
 
         // Check symmetry: cov[i,j] = cov[j,i]
         for i in 0..3 {
             for j in 0..3 {
                 assert!(
-                    (cov[i + j * 3] - cov[j + i * 3]).abs() < 1e-10,
+                    (cov[(i, j)] - cov[(j, i)]).abs() < 1e-10,
                     "Cov[{},{}] = {} != Cov[{},{}] = {}",
                     i,
                     j,
-                    cov[i + j * 3],
+                    cov[(i, j)],
                     j,
                     i,
-                    cov[j + i * 3]
+                    cov[(j, i)]
                 );
             }
         }
@@ -818,39 +826,44 @@ mod tests {
     #[test]
     fn test_cov_irreg_diagonal_positive() {
         // Diagonal (variances) should be non-negative
-        let offsets = vec![0, 5, 10, 15];
-        let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
-        ];
-        let values = vec![
-            1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 4.0, 1.0, 0.0, 2.0, 3.0, 2.0, 3.0, 2.0,
-        ];
+        let ifd = make_ifd(
+            vec![0, 5, 10, 15],
+            vec![
+                0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
+            ],
+            vec![
+                1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 4.0, 1.0, 0.0, 2.0, 3.0, 2.0, 3.0, 2.0,
+            ],
+        );
 
         let grid = vec![0.25, 0.5, 0.75];
-        let cov = cov_irreg(&offsets, &argvals, &values, &grid, &grid, 0.3);
+        let cov = cov_irreg(&ifd, &grid, &grid, 0.3);
 
         for i in 0..3 {
             assert!(
-                cov[i + i * 3] >= -1e-10,
+                cov[(i, i)] >= -1e-10,
                 "Variance at {} should be non-negative: {}",
                 i,
-                cov[i + i * 3]
+                cov[(i, i)]
             );
         }
     }
 
     #[test]
     fn test_cov_irreg_different_grids() {
-        let offsets = vec![0, 5, 10];
-        let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0];
-        let values = vec![1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0];
+        let ifd = make_ifd(
+            vec![0, 5, 10],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0],
+        );
 
         let s_grid = vec![0.25, 0.5];
         let t_grid = vec![0.5, 0.75];
-        let cov = cov_irreg(&offsets, &argvals, &values, &s_grid, &t_grid, 0.3);
+        let cov = cov_irreg(&ifd, &s_grid, &t_grid, 0.3);
 
         // Should produce a 2x2 matrix
-        assert_eq!(cov.len(), 4);
+        assert_eq!(cov.nrows(), 2);
+        assert_eq!(cov.ncols(), 2);
     }
 
     // ========================================================================
@@ -860,21 +873,23 @@ mod tests {
     #[test]
     fn test_metric_lp_irreg_self_distance_zero() {
         // Distance to self should be 0
-        let offsets = vec![0, 5, 10];
-        let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0];
-        let values = vec![1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0];
+        let ifd = make_ifd(
+            vec![0, 5, 10],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0],
+        );
 
-        let dist = metric_lp_irreg(&offsets, &argvals, &values, 2.0);
+        let dist = metric_lp_irreg(&ifd, 2.0);
 
         // Diagonal should be 0
         let n = 2;
         for i in 0..n {
             assert!(
-                dist[i + i * n].abs() < 1e-10,
+                dist[(i, i)].abs() < 1e-10,
                 "Self-distance d[{},{}] = {} should be 0",
                 i,
                 i,
-                dist[i + i * n]
+                dist[(i, i)]
             );
         }
     }
@@ -882,28 +897,30 @@ mod tests {
     #[test]
     fn test_metric_lp_irreg_symmetry() {
         // Distance matrix should be symmetric
-        let offsets = vec![0, 5, 10, 15];
-        let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
-        ];
-        let values = vec![
-            1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0, 2.0, 3.0, 4.0, 3.0, 2.0,
-        ];
+        let ifd = make_ifd(
+            vec![0, 5, 10, 15],
+            vec![
+                0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
+            ],
+            vec![
+                1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 1.0, 0.0, 2.0, 3.0, 4.0, 3.0, 2.0,
+            ],
+        );
 
-        let dist = metric_lp_irreg(&offsets, &argvals, &values, 2.0);
+        let dist = metric_lp_irreg(&ifd, 2.0);
         let n = 3;
 
         for i in 0..n {
             for j in 0..n {
                 assert!(
-                    (dist[i + j * n] - dist[j + i * n]).abs() < 1e-10,
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
                     "Dist[{},{}] = {} != Dist[{},{}] = {}",
                     i,
                     j,
-                    dist[i + j * n],
+                    dist[(i, j)],
                     j,
                     i,
-                    dist[j + i * n]
+                    dist[(j, i)]
                 );
             }
         }
@@ -912,23 +929,24 @@ mod tests {
     #[test]
     fn test_metric_lp_irreg_triangle_inequality() {
         // Triangle inequality: d(a,c) <= d(a,b) + d(b,c)
-        let offsets = vec![0, 5, 10, 15];
-        let argvals = vec![
-            0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
-        ];
-        let values = vec![
-            0.0, 0.0, 0.0, 0.0, 0.0, // curve a
-            1.0, 1.0, 1.0, 1.0, 1.0, // curve b
-            2.0, 2.0, 2.0, 2.0, 2.0, // curve c
-        ];
+        let ifd = make_ifd(
+            vec![0, 5, 10, 15],
+            vec![
+                0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0,
+            ],
+            vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, // curve a
+                1.0, 1.0, 1.0, 1.0, 1.0, // curve b
+                2.0, 2.0, 2.0, 2.0, 2.0, // curve c
+            ],
+        );
 
-        let dist = metric_lp_irreg(&offsets, &argvals, &values, 2.0);
-        let n = 3;
+        let dist = metric_lp_irreg(&ifd, 2.0);
 
         // d(a,c) <= d(a,b) + d(b,c)
-        let d_ac = dist[2 * n];
-        let d_ab = dist[n];
-        let d_bc = dist[1 + 2 * n];
+        let d_ac = dist[(0, 2)];
+        let d_ab = dist[(0, 1)];
+        let d_bc = dist[(1, 2)];
 
         assert!(
             d_ac <= d_ab + d_bc + 1e-10,
@@ -945,57 +963,81 @@ mod tests {
 
     #[test]
     fn test_to_regular_grid_basic() {
-        let offsets = vec![0, 5];
-        let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0];
-        let values = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        let ifd = make_ifd(
+            vec![0, 5],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![0.0, 1.0, 2.0, 3.0, 4.0],
+        );
 
         let grid = vec![0.0, 0.5, 1.0];
-        let result = to_regular_grid(&offsets, &argvals, &values, &grid);
+        let result = to_regular_grid(&ifd, &grid);
 
         // Should produce 1 curve x 3 points
-        assert_eq!(result.len(), 3);
+        assert_eq!(result.nrows(), 1);
+        assert_eq!(result.ncols(), 3);
 
         // Check interpolated values
-        assert!((result[0] - 0.0).abs() < 1e-10, "At t=0: {}", result[0]);
-        assert!((result[1] - 2.0).abs() < 1e-10, "At t=0.5: {}", result[1]);
-        assert!((result[2] - 4.0).abs() < 1e-10, "At t=1: {}", result[2]);
+        assert!(
+            (result[(0, 0)] - 0.0).abs() < 1e-10,
+            "At t=0: {}",
+            result[(0, 0)]
+        );
+        assert!(
+            (result[(0, 1)] - 2.0).abs() < 1e-10,
+            "At t=0.5: {}",
+            result[(0, 1)]
+        );
+        assert!(
+            (result[(0, 2)] - 4.0).abs() < 1e-10,
+            "At t=1: {}",
+            result[(0, 2)]
+        );
     }
 
     #[test]
     fn test_to_regular_grid_multiple_curves() {
-        let offsets = vec![0, 5, 10];
-        let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0];
-        let values = vec![
-            0.0, 1.0, 2.0, 3.0, 4.0, // Linear: y = 4t
-            4.0, 3.0, 2.0, 1.0, 0.0, // Linear: y = 4 - 4t
-        ];
+        let ifd = make_ifd(
+            vec![0, 5, 10],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![
+                0.0, 1.0, 2.0, 3.0, 4.0, // Linear: y = 4t
+                4.0, 3.0, 2.0, 1.0, 0.0, // Linear: y = 4 - 4t
+            ],
+        );
 
         let grid = vec![0.0, 0.5, 1.0];
-        let result = to_regular_grid(&offsets, &argvals, &values, &grid);
+        let result = to_regular_grid(&ifd, &grid);
 
-        // Should produce 2 curves x 3 points = 6 values in column-major
-        assert_eq!(result.len(), 6);
+        // Should produce 2 curves x 3 points
+        assert_eq!(result.nrows(), 2);
+        assert_eq!(result.ncols(), 3);
 
         // Curve 0 at t=0.5 should be 2.0
-        assert!((result[2] - 2.0).abs() < 1e-10);
+        assert!((result[(0, 1)] - 2.0).abs() < 1e-10);
         // Curve 1 at t=0.5 should be 2.0
-        assert!((result[1 + 2] - 2.0).abs() < 1e-10);
+        assert!((result[(1, 1)] - 2.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_to_regular_grid_boundary_nan() {
-        let offsets = vec![0, 3];
-        let argvals = vec![0.2, 0.5, 0.8]; // Curve only defined on [0.2, 0.8]
-        let values = vec![1.0, 2.0, 3.0];
+        let ifd = make_ifd(
+            vec![0, 3],
+            vec![0.2, 0.5, 0.8], // Curve only defined on [0.2, 0.8]
+            vec![1.0, 2.0, 3.0],
+        );
 
         let grid = vec![0.0, 0.5, 1.0]; // Grid extends beyond curve range
-        let result = to_regular_grid(&offsets, &argvals, &values, &grid);
+        let result = to_regular_grid(&ifd, &grid);
 
         // At t=0.0 (before curve starts), should be NaN
-        assert!(result[0].is_nan(), "t=0 should be NaN");
+        assert!(result[(0, 0)].is_nan(), "t=0 should be NaN");
         // At t=0.5 (within range), should be valid
-        assert!((result[1] - 2.0).abs() < 1e-10, "t=0.5: {}", result[1]);
+        assert!(
+            (result[(0, 1)] - 2.0).abs() < 1e-10,
+            "t=0.5: {}",
+            result[(0, 1)]
+        );
         // At t=1.0 (after curve ends), should be NaN
-        assert!(result[2].is_nan(), "t=1 should be NaN");
+        assert!(result[(0, 2)].is_nan(), "t=1 should be NaN");
     }
 }

@@ -7,6 +7,7 @@
 
 use fdars_core::irreg_fdata::{
     integrate_irreg, mean_irreg, metric_lp_irreg, norm_lp_irreg, to_regular_grid, IrregFdata,
+    KernelType,
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -72,15 +73,15 @@ fn main() {
 
     // --- Section 4: Integration ---
     println!("\n--- Integration (trapezoidal) ---");
-    let integrals = integrate_irreg(&ifd.offsets, &ifd.argvals, &ifd.values);
+    let integrals = integrate_irreg(&ifd);
     for (i, &val) in integrals.iter().enumerate() {
         println!("  Curve {i}: integral = {val:.6}");
     }
 
     // --- Section 5: Lp norms ---
     println!("\n--- Lp Norms ---");
-    let l2_norms = norm_lp_irreg(&ifd.offsets, &ifd.argvals, &ifd.values, 2.0);
-    let l1_norms = norm_lp_irreg(&ifd.offsets, &ifd.argvals, &ifd.values, 1.0);
+    let l2_norms = norm_lp_irreg(&ifd, 2.0);
+    let l1_norms = norm_lp_irreg(&ifd, 1.0);
     for i in 0..n {
         println!("  Curve {i}: L1={:.4}, L2={:.4}", l1_norms[i], l2_norms[i]);
     }
@@ -92,15 +93,7 @@ fn main() {
         .map(|i| i as f64 / (target_m - 1) as f64)
         .collect();
     let bandwidth = 0.1;
-    let kernel_type = 0; // Gaussian kernel
-    let mean_fn = mean_irreg(
-        &ifd.offsets,
-        &ifd.argvals,
-        &ifd.values,
-        &target_grid,
-        bandwidth,
-        kernel_type,
-    );
+    let mean_fn = mean_irreg(&ifd, &target_grid, bandwidth, KernelType::Epanechnikov);
     println!("  Target grid: {target_m} equally spaced points");
     println!("  Bandwidth: {bandwidth}");
     println!("  Mean at t=0.0: {:.4}", mean_fn[0]);
@@ -109,29 +102,28 @@ fn main() {
 
     // --- Section 7: Pairwise distances ---
     println!("\n--- Pairwise Lp Distances ---");
-    let dists = metric_lp_irreg(&ifd.offsets, &ifd.argvals, &ifd.values, 2.0);
+    let dists = metric_lp_irreg(&ifd, 2.0);
     let n_pairs = n * (n - 1) / 2;
     println!("  Number of pairs: {n_pairs}");
-    let mut pair_idx = 0;
     for i in 0..n {
         for j in (i + 1)..n {
-            if pair_idx < dists.len() {
-                println!("  d({i},{j}) = {:.4}", dists[pair_idx]);
-            }
-            pair_idx += 1;
+            println!("  d({i},{j}) = {:.4}", dists[(i, j)]);
         }
     }
 
     // --- Section 8: Regularize to common grid ---
     println!("\n--- Regularization to Common Grid ---");
-    let regular = to_regular_grid(&ifd.offsets, &ifd.argvals, &ifd.values, &target_grid);
-    let n_regular = regular.len() / target_m;
+    let regular = to_regular_grid(&ifd, &target_grid);
     println!("  Regular grid: {target_m} points");
-    println!("  Regularized data: {n_regular} curves x {target_m} points");
+    println!(
+        "  Regularized data: {} curves x {} points",
+        regular.nrows(),
+        regular.ncols()
+    );
     for i in 0..n {
-        let first = regular[i];
-        let mid = regular[i + (target_m / 2) * n_regular];
-        let last = regular[i + (target_m - 1) * n_regular];
+        let first = regular[(i, 0)];
+        let mid = regular[(i, target_m / 2)];
+        let last = regular[(i, target_m - 1)];
         println!("  Curve {i}: first={first:.4}, mid={mid:.4}, last={last:.4}");
     }
 

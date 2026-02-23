@@ -70,7 +70,7 @@ pub use detrend::{DecomposeResult, TrendResult};
 pub use simulation::{EFunType, EValType};
 
 // Re-export irregular fdata types
-pub use irreg_fdata::IrregFdata;
+pub use irreg_fdata::{IrregFdata, KernelType};
 
 // Re-export streaming depth types
 pub use streaming_depth::{
