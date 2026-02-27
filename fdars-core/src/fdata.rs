@@ -263,6 +263,36 @@ pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
 ///
 /// # Returns
 /// Derivative data matrix
+/// Compute one derivative step: forward/central/backward differences written column-wise.
+fn deriv_1d_step(current: &FdMatrix, n: usize, m: usize, h0: f64, hn: f64, h_central: &[f64]) -> FdMatrix {
+    let mut next = FdMatrix::zeros(n, m);
+    // Column 0: forward difference
+    let src_col0 = current.column(0);
+    let src_col1 = current.column(1);
+    let dst = next.column_mut(0);
+    for i in 0..n {
+        dst[i] = (src_col1[i] - src_col0[i]) / h0;
+    }
+    // Interior columns: central difference
+    for j in 1..(m - 1) {
+        let src_prev = current.column(j - 1);
+        let src_next = current.column(j + 1);
+        let dst = next.column_mut(j);
+        let h = h_central[j - 1];
+        for i in 0..n {
+            dst[i] = (src_next[i] - src_prev[i]) / h;
+        }
+    }
+    // Column m-1: backward difference
+    let src_colm2 = current.column(m - 2);
+    let src_colm1 = current.column(m - 1);
+    let dst = next.column_mut(m - 1);
+    for i in 0..n {
+        dst[i] = (src_colm1[i] - src_colm2[i]) / hn;
+    }
+    next
+}
+
 pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
     let (n, m) = data.shape();
     if n == 0 || m == 0 || argvals.len() != m || nderiv < 1 {
@@ -279,36 +309,7 @@ pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
         .collect();
 
     for _ in 0..nderiv {
-        let mut next = FdMatrix::zeros(n, m);
-        // Column 0: forward difference
-        {
-            let src_col0 = current.column(0);
-            let src_col1 = current.column(1);
-            let dst = next.column_mut(0);
-            for i in 0..n {
-                dst[i] = (src_col1[i] - src_col0[i]) / h0;
-            }
-        }
-        // Interior columns: central difference
-        for j in 1..(m - 1) {
-            let src_prev = current.column(j - 1);
-            let src_next = current.column(j + 1);
-            let dst = next.column_mut(j);
-            let h = h_central[j - 1];
-            for i in 0..n {
-                dst[i] = (src_next[i] - src_prev[i]) / h;
-            }
-        }
-        // Column m-1: backward difference
-        {
-            let src_colm2 = current.column(m - 2);
-            let src_colm1 = current.column(m - 1);
-            let dst = next.column_mut(m - 1);
-            for i in 0..n {
-                dst[i] = (src_colm1[i] - src_colm2[i]) / hn;
-            }
-        }
-        current = next;
+        current = deriv_1d_step(&current, n, m, h0, hn, &h_central);
     }
 
     current

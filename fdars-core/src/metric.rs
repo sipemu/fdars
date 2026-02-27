@@ -360,57 +360,49 @@ pub fn hausdorff_cross_1d(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64]) -
     dist
 }
 
-/// Compute DTW distance between two time series using two-row DP.
-///
-/// Uses O(m) memory instead of O(nm) by keeping only two rows of the DP table.
-pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
+/// Run the two-row DTW dynamic programming loop with a given cost function.
+#[inline]
+fn dtw_dp_loop(
+    x: &[f64],
+    y: &[f64],
+    w: usize,
+    cost_fn: impl Fn(f64, f64) -> f64,
+) -> f64 {
     let n = x.len();
     let m = y.len();
-
     let mut prev = vec![f64::INFINITY; m + 1];
     let mut curr = vec![f64::INFINITY; m + 1];
     prev[0] = 0.0;
 
-    if (p - 2.0).abs() < 1e-14 {
-        for i in 1..=n {
-            curr.fill(f64::INFINITY);
-            let r_i = i + 1;
-            let j_start = (r_i as isize - w as isize).max(1) as usize;
-            let j_end = (r_i + w - 1).min(m);
-            for j in j_start..=j_end {
-                let d = x[i - 1] - y[j - 1];
-                let cost = d * d;
-                curr[j] = cost + prev[j].min(curr[j - 1]).min(prev[j - 1]);
-            }
-            std::mem::swap(&mut prev, &mut curr);
+    for i in 1..=n {
+        curr.fill(f64::INFINITY);
+        let r_i = i + 1;
+        let j_start = (r_i as isize - w as isize).max(1) as usize;
+        let j_end = (r_i + w - 1).min(m);
+        for j in j_start..=j_end {
+            let cost = cost_fn(x[i - 1], y[j - 1]);
+            curr[j] = cost + prev[j].min(curr[j - 1]).min(prev[j - 1]);
         }
-    } else if (p - 1.0).abs() < 1e-14 {
-        for i in 1..=n {
-            curr.fill(f64::INFINITY);
-            let r_i = i + 1;
-            let j_start = (r_i as isize - w as isize).max(1) as usize;
-            let j_end = (r_i + w - 1).min(m);
-            for j in j_start..=j_end {
-                let cost = (x[i - 1] - y[j - 1]).abs();
-                curr[j] = cost + prev[j].min(curr[j - 1]).min(prev[j - 1]);
-            }
-            std::mem::swap(&mut prev, &mut curr);
-        }
-    } else {
-        for i in 1..=n {
-            curr.fill(f64::INFINITY);
-            let r_i = i + 1;
-            let j_start = (r_i as isize - w as isize).max(1) as usize;
-            let j_end = (r_i + w - 1).min(m);
-            for j in j_start..=j_end {
-                let cost = (x[i - 1] - y[j - 1]).abs().powf(p);
-                curr[j] = cost + prev[j].min(curr[j - 1]).min(prev[j - 1]);
-            }
-            std::mem::swap(&mut prev, &mut curr);
-        }
+        std::mem::swap(&mut prev, &mut curr);
     }
 
     prev[m]
+}
+
+/// Compute DTW distance between two time series using two-row DP.
+///
+/// Uses O(m) memory instead of O(nm) by keeping only two rows of the DP table.
+pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
+    if (p - 2.0).abs() < 1e-14 {
+        dtw_dp_loop(x, y, w, |a, b| {
+            let d = a - b;
+            d * d
+        })
+    } else if (p - 1.0).abs() < 1e-14 {
+        dtw_dp_loop(x, y, w, |a, b| (a - b).abs())
+    } else {
+        dtw_dp_loop(x, y, w, |a, b| (a - b).abs().powf(p))
+    }
 }
 
 /// Compute DTW distance matrix for self-distances (symmetric).

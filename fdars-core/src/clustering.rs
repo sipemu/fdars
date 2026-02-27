@@ -40,6 +40,23 @@ pub struct KmeansResult {
 ///
 /// # Returns
 /// Vector of k initial cluster centers
+/// Select an index with probability proportional to the given weights.
+fn weighted_random_select(dist_sq: &[f64], rng: &mut StdRng) -> usize {
+    let total: f64 = dist_sq.iter().sum();
+    if total < NUMERICAL_EPS {
+        return rng.gen_range(0..dist_sq.len());
+    }
+    let r = rng.gen::<f64>() * total;
+    let mut cumsum = 0.0;
+    for (i, &d) in dist_sq.iter().enumerate() {
+        cumsum += d;
+        if cumsum >= r {
+            return i;
+        }
+    }
+    dist_sq.len() - 1
+}
+
 fn kmeans_plusplus_init(
     curves: &[Vec<f64>],
     k: usize,
@@ -64,30 +81,13 @@ fn kmeans_plusplus_init(
 
     // Remaining centers: probability proportional to D^2
     for _ in 1..k {
-        let total: f64 = min_dist_sq.iter().sum();
-
-        if total < NUMERICAL_EPS {
-            let idx = rng.gen_range(0..n);
-            centers.push(curves[idx].clone());
-        } else {
-            let r = rng.gen::<f64>() * total;
-            let mut cumsum = 0.0;
-            let mut chosen = 0;
-            for (i, &d) in min_dist_sq.iter().enumerate() {
-                cumsum += d;
-                if cumsum >= r {
-                    chosen = i;
-                    break;
-                }
-            }
-            centers.push(curves[chosen].clone());
-        }
+        let chosen = weighted_random_select(&min_dist_sq, rng);
+        centers.push(curves[chosen].clone());
 
         // Update min_dist_sq: only compute distance to the newest center
         let new_center = centers.last().unwrap();
         for (i, curve) in curves.iter().enumerate() {
-            let d = l2_distance(curve, new_center, weights);
-            let d_sq = d * d;
+            let d_sq = l2_distance(curve, new_center, weights).powi(2);
             if d_sq < min_dist_sq[i] {
                 min_dist_sq[i] = d_sq;
             }
