@@ -143,6 +143,21 @@ impl FdMatrix {
         (0..self.nrows).map(|i| self.row(i)).collect()
     }
 
+    /// Produce a single contiguous flat buffer in row-major order.
+    ///
+    /// Row `i` occupies `buf[i * ncols..(i + 1) * ncols]`. This is a single
+    /// allocation versus `nrows` allocations from `rows()`, and gives better
+    /// cache locality for row-oriented iteration.
+    pub fn to_row_major(&self) -> Vec<f64> {
+        let mut buf = vec![0.0; self.nrows * self.ncols];
+        for i in 0..self.nrows {
+            for j in 0..self.ncols {
+                buf[i * self.ncols + j] = self.data[i + j * self.nrows];
+            }
+        }
+        buf
+    }
+
     /// Flat slice of the underlying column-major data (zero-copy).
     #[inline]
     pub fn as_slice(&self) -> &[f64] {

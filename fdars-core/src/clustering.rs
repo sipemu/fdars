@@ -28,6 +28,10 @@ pub struct KmeansResult {
 
 /// K-means++ initialization: select initial centers with probability proportional to D^2.
 ///
+/// Uses incremental distance tracking: maintains a `min_dist_sq` vector and only
+/// computes distances to the newest center on each iteration, avoiding redundant
+/// distance computations to all existing centers.
+///
 /// # Arguments
 /// * `curves` - Vector of curve vectors
 /// * `k` - Number of clusters
@@ -49,20 +53,18 @@ fn kmeans_plusplus_init(
     let first_idx = rng.gen_range(0..n);
     centers.push(curves[first_idx].clone());
 
+    // Initialize min_dist_sq with squared distances to first center
+    let mut min_dist_sq: Vec<f64> = curves
+        .iter()
+        .map(|curve| {
+            let d = l2_distance(curve, &centers[0], weights);
+            d * d
+        })
+        .collect();
+
     // Remaining centers: probability proportional to D^2
     for _ in 1..k {
-        let distances: Vec<f64> = curves
-            .iter()
-            .map(|curve| {
-                centers
-                    .iter()
-                    .map(|c| l2_distance(curve, c, weights))
-                    .fold(f64::INFINITY, f64::min)
-            })
-            .collect();
-
-        let dist_sq: Vec<f64> = distances.iter().map(|d| d * d).collect();
-        let total: f64 = dist_sq.iter().sum();
+        let total: f64 = min_dist_sq.iter().sum();
 
         if total < NUMERICAL_EPS {
             let idx = rng.gen_range(0..n);
@@ -71,7 +73,7 @@ fn kmeans_plusplus_init(
             let r = rng.gen::<f64>() * total;
             let mut cumsum = 0.0;
             let mut chosen = 0;
-            for (i, &d) in dist_sq.iter().enumerate() {
+            for (i, &d) in min_dist_sq.iter().enumerate() {
                 cumsum += d;
                 if cumsum >= r {
                     chosen = i;
@@ -79,6 +81,16 @@ fn kmeans_plusplus_init(
                 }
             }
             centers.push(curves[chosen].clone());
+        }
+
+        // Update min_dist_sq: only compute distance to the newest center
+        let new_center = centers.last().unwrap();
+        for (i, curve) in curves.iter().enumerate() {
+            let d = l2_distance(curve, new_center, weights);
+            let d_sq = d * d;
+            if d_sq < min_dist_sq[i] {
+                min_dist_sq[i] = d_sq;
+            }
         }
     }
 

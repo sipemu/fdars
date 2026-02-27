@@ -220,16 +220,38 @@ pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
 
     let weights = simpsons_weights(argvals);
 
-    iter_maybe_parallel!(0..n)
-        .map(|i| {
-            let mut integral = 0.0;
-            for j in 0..m {
-                let val = data[(i, j)].abs().powf(p);
-                integral += val * weights[j];
-            }
-            integral.powf(1.0 / p)
-        })
-        .collect()
+    if (p - 2.0).abs() < 1e-14 {
+        iter_maybe_parallel!(0..n)
+            .map(|i| {
+                let mut integral = 0.0;
+                for j in 0..m {
+                    let v = data[(i, j)];
+                    integral += v * v * weights[j];
+                }
+                integral.sqrt()
+            })
+            .collect()
+    } else if (p - 1.0).abs() < 1e-14 {
+        iter_maybe_parallel!(0..n)
+            .map(|i| {
+                let mut integral = 0.0;
+                for j in 0..m {
+                    integral += data[(i, j)].abs() * weights[j];
+                }
+                integral
+            })
+            .collect()
+    } else {
+        iter_maybe_parallel!(0..n)
+            .map(|i| {
+                let mut integral = 0.0;
+                for j in 0..m {
+                    integral += data[(i, j)].abs().powf(p) * weights[j];
+                }
+                integral.powf(1.0 / p)
+            })
+            .collect()
+    }
 }
 
 /// Compute numerical derivative of functional data (parallelized over rows).
@@ -257,31 +279,33 @@ pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
         .collect();
 
     for _ in 0..nderiv {
-        // Compute derivative for each row in parallel
-        let deriv: Vec<f64> = iter_maybe_parallel!(0..n)
-            .flat_map(|i| {
-                let mut row_deriv = vec![0.0; m];
-
-                // Forward difference at left boundary
-                row_deriv[0] = (current[(i, 1)] - current[(i, 0)]) / h0;
-
-                // Central differences for interior points
-                for j in 1..(m - 1) {
-                    row_deriv[j] = (current[(i, j + 1)] - current[(i, j - 1)]) / h_central[j - 1];
-                }
-
-                // Backward difference at right boundary
-                row_deriv[m - 1] = (current[(i, m - 1)] - current[(i, m - 2)]) / hn;
-
-                row_deriv
-            })
-            .collect();
-
-        // Reorder from row-major to column-major order
         let mut next = FdMatrix::zeros(n, m);
-        for i in 0..n {
-            for j in 0..m {
-                next[(i, j)] = deriv[i * m + j];
+        // Column 0: forward difference
+        {
+            let src_col0 = current.column(0);
+            let src_col1 = current.column(1);
+            let dst = next.column_mut(0);
+            for i in 0..n {
+                dst[i] = (src_col1[i] - src_col0[i]) / h0;
+            }
+        }
+        // Interior columns: central difference
+        for j in 1..(m - 1) {
+            let src_prev = current.column(j - 1);
+            let src_next = current.column(j + 1);
+            let dst = next.column_mut(j);
+            let h = h_central[j - 1];
+            for i in 0..n {
+                dst[i] = (src_next[i] - src_prev[i]) / h;
+            }
+        }
+        // Column m-1: backward difference
+        {
+            let src_colm2 = current.column(m - 2);
+            let src_colm1 = current.column(m - 1);
+            let dst = next.column_mut(m - 1);
+            for i in 0..n {
+                dst[i] = (src_colm1[i] - src_colm2[i]) / hn;
             }
         }
         current = next;
@@ -382,9 +406,8 @@ pub fn deriv_2d(
         })
         .collect();
 
-    let ds_vecs: Vec<Vec<f64>> = results.iter().map(|r| r.0.clone()).collect();
-    let dt_vecs: Vec<Vec<f64>> = results.iter().map(|r| r.1.clone()).collect();
-    let dsdt_vecs: Vec<Vec<f64>> = results.iter().map(|r| r.2.clone()).collect();
+    let (ds_vecs, (dt_vecs, dsdt_vecs)): (Vec<Vec<f64>>, (Vec<Vec<f64>>, Vec<Vec<f64>>)) =
+        results.into_iter().map(|(a, b, c)| (a, (b, c))).unzip();
 
     Some(Deriv2DResult {
         ds: reassemble_colmajor(&ds_vecs, n, ncol),

@@ -50,6 +50,10 @@ serde_json = "1"
 name = "seasonal_benchmarks"
 harness = false
 
+[[bench]]
+name = "depth_benchmarks"
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"

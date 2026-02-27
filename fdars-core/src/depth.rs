@@ -6,6 +6,10 @@
 use crate::helpers::simpsons_weights;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+use crate::streaming_depth::{
+    FullReferenceState, SortedReferenceState, StreamingBd, StreamingDepth, StreamingFraimanMuniz,
+    StreamingMbd,
+};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 #[cfg(feature = "parallel")]
@@ -21,39 +25,12 @@ use rayon::iter::ParallelIterator;
 /// * `data_ori` - Reference data (nori x n_points)
 /// * `scale` - Whether to scale the depth values
 pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
-    let nobj = data_obj.nrows();
-    let nori = data_ori.nrows();
-    let n_points = data_obj.ncols();
-
-    if nobj == 0 || nori == 0 || n_points == 0 {
+    if data_obj.nrows() == 0 || data_ori.nrows() == 0 || data_obj.ncols() == 0 {
         return Vec::new();
     }
-
-    let scale_factor = if scale { 2.0 } else { 1.0 };
-
-    iter_maybe_parallel!(0..nobj)
-        .map(|i| {
-            let mut depth_sum = 0.0;
-
-            for t in 0..n_points {
-                let x_t = data_obj[(i, t)];
-                let mut le_count = 0;
-
-                for j in 0..nori {
-                    let y_t = data_ori[(j, t)];
-                    if y_t <= x_t {
-                        le_count += 1;
-                    }
-                }
-
-                let fn_x = le_count as f64 / nori as f64;
-                let univariate_depth = fn_x.min(1.0 - fn_x) * scale_factor;
-                depth_sum += univariate_depth;
-            }
-
-            depth_sum / n_points as f64
-        })
-        .collect()
+    let state = SortedReferenceState::from_reference(data_ori);
+    let streaming = StreamingFraimanMuniz::new(state, scale);
+    streaming.depth_batch(data_obj)
 }
 
 /// Compute Fraiman-Muniz depth for 2D functional data (surfaces).
@@ -132,31 +109,40 @@ pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usi
         })
         .collect();
 
+    // Pre-compute and pre-sort reference projections (identical for every query curve)
+    let sorted_proj_ori: Vec<Vec<f64>> = projections
+        .iter()
+        .map(|proj| {
+            let mut proj_ori: Vec<f64> = (0..nori)
+                .map(|j| {
+                    let mut p = 0.0;
+                    for t in 0..n_points {
+                        p += data_ori[(j, t)] * proj[t];
+                    }
+                    p
+                })
+                .collect();
+            proj_ori.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            proj_ori
+        })
+        .collect();
+
+    let denom = nori as f64 + 1.0;
+
     iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut total_depth = 0.0;
 
-            for proj in &projections {
+            for (proj, sorted_ori) in projections.iter().zip(sorted_proj_ori.iter()) {
                 let mut proj_i = 0.0;
                 for t in 0..n_points {
                     proj_i += data_obj[(i, t)] * proj[t];
                 }
 
-                let mut proj_ori: Vec<f64> = (0..nori)
-                    .map(|j| {
-                        let mut p = 0.0;
-                        for t in 0..n_points {
-                            p += data_ori[(j, t)] * proj[t];
-                        }
-                        p
-                    })
-                    .collect();
-
-                proj_ori.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-                let below = proj_ori.iter().filter(|&&x| x < proj_i).count();
-                let above = proj_ori.iter().filter(|&&x| x > proj_i).count();
-                let depth = (below.min(above) as f64 + 1.0) / (nori as f64 + 1.0);
+                // O(log N) rank lookup via binary search
+                let below = sorted_ori.partition_point(|&v| v < proj_i);
+                let above = nori - sorted_ori.partition_point(|&v| v <= proj_i);
+                let depth = (below.min(above) as f64 + 1.0) / denom;
 
                 total_depth += depth;
             }
@@ -193,29 +179,40 @@ pub fn random_tukey_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -
         })
         .collect();
 
+    // Pre-compute and pre-sort reference projections (identical for every query curve)
+    let sorted_proj_ori: Vec<Vec<f64>> = projections
+        .iter()
+        .map(|proj| {
+            let mut proj_ori: Vec<f64> = (0..nori)
+                .map(|j| {
+                    let mut p = 0.0;
+                    for t in 0..n_points {
+                        p += data_ori[(j, t)] * proj[t];
+                    }
+                    p
+                })
+                .collect();
+            proj_ori.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            proj_ori
+        })
+        .collect();
+
+    let denom = nori as f64 + 1.0;
+
     iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut min_depth = f64::INFINITY;
 
-            for proj in &projections {
+            for (proj, sorted_ori) in projections.iter().zip(sorted_proj_ori.iter()) {
                 let mut proj_i = 0.0;
                 for t in 0..n_points {
                     proj_i += data_obj[(i, t)] * proj[t];
                 }
 
-                let proj_ori: Vec<f64> = (0..nori)
-                    .map(|j| {
-                        let mut p = 0.0;
-                        for t in 0..n_points {
-                            p += data_ori[(j, t)] * proj[t];
-                        }
-                        p
-                    })
-                    .collect();
-
-                let below = proj_ori.iter().filter(|&&x| x < proj_i).count();
-                let above = proj_ori.iter().filter(|&&x| x > proj_i).count();
-                let depth = (below.min(above) as f64 + 1.0) / (nori as f64 + 1.0);
+                // O(log N) rank lookup via binary search
+                let below = sorted_ori.partition_point(|&v| v < proj_i);
+                let above = nori - sorted_ori.partition_point(|&v| v <= proj_i);
+                let depth = (below.min(above) as f64 + 1.0) / denom;
 
                 min_depth = min_depth.min(depth);
             }
@@ -245,18 +242,19 @@ pub fn functional_spatial_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f6
             let mut sum_unit = vec![0.0; n_points];
 
             for j in 0..nori {
-                let mut direction = vec![0.0; n_points];
+                // First pass: compute norm without allocating a direction buffer
                 let mut norm_sq = 0.0;
-
                 for t in 0..n_points {
-                    direction[t] = data_ori[(j, t)] - data_obj[(i, t)];
-                    norm_sq += direction[t] * direction[t];
+                    let d = data_ori[(j, t)] - data_obj[(i, t)];
+                    norm_sq += d * d;
                 }
 
                 let norm = norm_sq.sqrt();
                 if norm > 1e-10 {
+                    // Second pass: accumulate unit-vector sum using the known norm
+                    let inv_norm = 1.0 / norm;
                     for t in 0..n_points {
-                        sum_unit[t] += direction[t] / norm;
+                        sum_unit[t] += (data_ori[(j, t)] - data_obj[(i, t)]) * inv_norm;
                     }
                 }
             }
@@ -301,15 +299,28 @@ fn kernel_pair_contribution(j: usize, k: usize, m1: &[Vec<f64>], m2: &[f64]) -> 
 
 /// Accumulate the kernel spatial depth statistic for a single observation.
 /// Returns (total_sum, valid_count) from the double sum over reference pairs.
+///
+/// Exploits symmetry: `kernel_pair_contribution(j, k, m1, m2) == kernel_pair_contribution(k, j, m1, m2)`
+/// since m1 is symmetric and the formula `(1 + m1[j][k] - m2[j] - m2[k]) / (sqrt(2-2*m2[j]) * sqrt(2-2*m2[k]))`
+/// is symmetric in j and k. Loops over the upper triangle only.
 fn kfsd_accumulate(m2: &[f64], m1: &[Vec<f64>], nori: usize) -> (f64, usize) {
     let mut total_sum = 0.0;
     let mut valid_count = 0;
 
+    // Diagonal contributions (j == k)
     for j in 0..nori {
-        for k in 0..nori {
+        if let Some(val) = kernel_pair_contribution(j, j, m1, m2) {
+            total_sum += val;
+            valid_count += 1;
+        }
+    }
+
+    // Upper triangle contributions (j < k), counted twice by symmetry
+    for j in 0..nori {
+        for k in (j + 1)..nori {
             if let Some(val) = kernel_pair_contribution(j, k, m1, m2) {
-                total_sum += val;
-                valid_count += 1;
+                total_sum += 2.0 * val;
+                valid_count += 2;
             }
         }
     }
@@ -378,46 +389,6 @@ fn kfsd_weighted(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, weights: &[f6
         .collect()
 }
 
-/// Check if curve i is entirely inside the band formed by reference curves j and k.
-fn curve_inside_band(
-    data_obj: &FdMatrix,
-    data_ori: &FdMatrix,
-    i: usize,
-    j: usize,
-    k: usize,
-) -> bool {
-    let n_points = data_obj.ncols();
-    for t in 0..n_points {
-        let x_t = data_obj[(i, t)];
-        let y_j_t = data_ori[(j, t)];
-        let y_k_t = data_ori[(k, t)];
-        if x_t < y_j_t.min(y_k_t) || x_t > y_j_t.max(y_k_t) {
-            return false;
-        }
-    }
-    true
-}
-
-/// Proportion of time points where curve i is inside the band formed by curves j and k.
-fn proportion_inside_band(
-    data_obj: &FdMatrix,
-    data_ori: &FdMatrix,
-    i: usize,
-    j: usize,
-    k: usize,
-) -> f64 {
-    let n_points = data_obj.ncols();
-    let mut count = 0usize;
-    for t in 0..n_points {
-        let x_t = data_obj[(i, t)];
-        let y_j_t = data_ori[(j, t)];
-        let y_k_t = data_ori[(k, t)];
-        if x_t >= y_j_t.min(y_k_t) && x_t <= y_j_t.max(y_k_t) {
-            count += 1;
-        }
-    }
-    count as f64 / n_points as f64
-}
 
 /// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
 ///
@@ -458,60 +429,24 @@ pub fn kernel_functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h:
 ///
 /// BD(x) = proportion of pairs (i,j) where x lies within the band formed by curves i and j.
 pub fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
-    let nobj = data_obj.nrows();
-    let nori = data_ori.nrows();
-    let n_points = data_obj.ncols();
-
-    if nobj == 0 || nori < 2 || n_points == 0 {
+    if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {
         return Vec::new();
     }
-
-    let n_pairs = (nori * (nori - 1)) / 2;
-
-    iter_maybe_parallel!(0..nobj)
-        .map(|i| {
-            let mut count_in_band = 0usize;
-
-            for j in 0..nori {
-                for k in (j + 1)..nori {
-                    if curve_inside_band(data_obj, data_ori, i, j, k) {
-                        count_in_band += 1;
-                    }
-                }
-            }
-
-            count_in_band as f64 / n_pairs as f64
-        })
-        .collect()
+    let state = FullReferenceState::from_reference(data_ori);
+    let streaming = StreamingBd::new(state);
+    streaming.depth_batch(data_obj)
 }
 
 /// Compute Modified Band Depth (MBD) for 1D functional data.
 ///
 /// MBD(x) = average over pairs of the proportion of the domain where x is inside the band.
 pub fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
-    let nobj = data_obj.nrows();
-    let nori = data_ori.nrows();
-    let n_points = data_obj.ncols();
-
-    if nobj == 0 || nori < 2 || n_points == 0 {
+    if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {
         return Vec::new();
     }
-
-    let n_pairs = (nori * (nori - 1)) / 2;
-
-    iter_maybe_parallel!(0..nobj)
-        .map(|i| {
-            let mut total_proportion = 0.0;
-
-            for j in 0..nori {
-                for k in (j + 1)..nori {
-                    total_proportion += proportion_inside_band(data_obj, data_ori, i, j, k);
-                }
-            }
-
-            total_proportion / n_pairs as f64
-        })
-        .collect()
+    let state = SortedReferenceState::from_reference(data_ori);
+    let streaming = StreamingMbd::new(state);
+    streaming.depth_batch(data_obj)
 }
 
 /// Compute Modified Epigraph Index (MEI) for 1D functional data.
@@ -914,6 +849,71 @@ mod tests {
         assert_eq!(depths.len(), n);
         for d in &depths {
             assert!(*d >= 0.0 && *d <= 1.0, "RP 2D depth should be in [0, 1]");
+        }
+    }
+
+    // ============== Golden-value regression tests ==============
+
+    /// Fixed small dataset: 5 curves, 10 time points (deterministic)
+    fn golden_data() -> FdMatrix {
+        let n = 5;
+        let m = 10;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            let offset = (i as f64 - n as f64 / 2.0) / (n as f64);
+            for j in 0..m {
+                data[i + j * n] = (2.0 * PI * argvals[j]).sin() + offset;
+            }
+        }
+        FdMatrix::from_column_major(data, n, m).unwrap()
+    }
+
+    #[test]
+    fn test_fm_golden_values_scaled() {
+        let data = golden_data();
+        let depths = fraiman_muniz_1d(&data, &data, true);
+        let expected = [0.4, 0.8, 0.8, 0.4, 0.0];
+        assert_eq!(depths.len(), expected.len());
+        for (d, e) in depths.iter().zip(expected.iter()) {
+            assert!(
+                (d - e).abs() < 1e-10,
+                "FM scaled golden mismatch: got {}, expected {}",
+                d,
+                e
+            );
+        }
+    }
+
+    #[test]
+    fn test_fm_golden_values_unscaled() {
+        let data = golden_data();
+        let depths = fraiman_muniz_1d(&data, &data, false);
+        let expected = [0.2, 0.4, 0.4, 0.2, 0.0];
+        assert_eq!(depths.len(), expected.len());
+        for (d, e) in depths.iter().zip(expected.iter()) {
+            assert!(
+                (d - e).abs() < 1e-10,
+                "FM unscaled golden mismatch: got {}, expected {}",
+                d,
+                e
+            );
+        }
+    }
+
+    #[test]
+    fn test_mbd_golden_values() {
+        let data = golden_data();
+        let depths = modified_band_1d(&data, &data);
+        let expected = [0.4, 0.7, 0.8, 0.7, 0.4];
+        assert_eq!(depths.len(), expected.len());
+        for (d, e) in depths.iter().zip(expected.iter()) {
+            assert!(
+                (d - e).abs() < 1e-10,
+                "MBD golden mismatch: got {}, expected {}",
+                d,
+                e
+            );
         }
     }
 }

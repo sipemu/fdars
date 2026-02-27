@@ -60,7 +60,7 @@ impl SortedReferenceState {
         }
         let sorted_columns: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_points)
             .map(|t| {
-                let mut col: Vec<f64> = (0..nori).map(|j| data_ori[(j, t)]).collect();
+                let mut col = data_ori.column(t).to_vec();
                 col.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 col
             })
@@ -156,6 +156,23 @@ impl StreamingMbd {
         }
         total as f64 / (cn2 as f64 * t_len as f64)
     }
+
+    /// Compute MBD for row `row` of `data` without allocating a temporary Vec.
+    #[inline]
+    fn mbd_one_from_row(&self, data: &FdMatrix, row: usize) -> f64 {
+        let n = self.state.nori;
+        if n < 2 {
+            return 0.0;
+        }
+        let cn2 = c2(n);
+        let t_len = self.state.n_points;
+        let mut total = 0usize;
+        for t in 0..t_len {
+            let (below, above) = self.state.rank_at(t, data[(row, t)]);
+            total += cn2 - c2(below) - c2(above);
+        }
+        total as f64 / (cn2 as f64 * t_len as f64)
+    }
 }
 
 impl StreamingDepth for StreamingMbd {
@@ -168,12 +185,8 @@ impl StreamingDepth for StreamingMbd {
         if nobj == 0 || self.state.n_points == 0 || self.state.nori < 2 {
             return vec![0.0; nobj];
         }
-        let n_points = self.state.n_points;
         iter_maybe_parallel!(0..nobj)
-            .map(|i| {
-                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[(i, t)]).collect();
-                self.mbd_one_inner(&curve)
-            })
+            .map(|i| self.mbd_one_from_row(data_obj, i))
             .collect()
     }
 
@@ -226,6 +239,28 @@ impl StreamingFraimanMuniz {
         }
         depth_sum / t_len as f64
     }
+
+    /// Compute FM depth for row `row` of `data` without allocating a temporary Vec.
+    #[inline]
+    fn fm_one_from_row(&self, data: &FdMatrix, row: usize) -> f64 {
+        let n = self.state.nori;
+        if n == 0 {
+            return 0.0;
+        }
+        let t_len = self.state.n_points;
+        if t_len == 0 {
+            return 0.0;
+        }
+        let scale_factor = if self.scale { 2.0 } else { 1.0 };
+        let mut depth_sum = 0.0;
+        for t in 0..t_len {
+            let col = &self.state.sorted_columns[t];
+            let at_or_below = col.partition_point(|&v| v <= data[(row, t)]);
+            let fn_x = at_or_below as f64 / n as f64;
+            depth_sum += fn_x.min(1.0 - fn_x) * scale_factor;
+        }
+        depth_sum / t_len as f64
+    }
 }
 
 impl StreamingDepth for StreamingFraimanMuniz {
@@ -238,12 +273,8 @@ impl StreamingDepth for StreamingFraimanMuniz {
         if nobj == 0 || self.state.n_points == 0 || self.state.nori == 0 {
             return vec![0.0; nobj];
         }
-        let n_points = self.state.n_points;
         iter_maybe_parallel!(0..nobj)
-            .map(|i| {
-                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[(i, t)]).collect();
-                self.fm_one_inner(&curve)
-            })
+            .map(|i| self.fm_one_from_row(data_obj, i))
             .collect()
     }
 
@@ -334,6 +365,39 @@ impl StreamingBd {
         }
         count_in_band as f64 / n_pairs as f64
     }
+
+    /// Compute BD for row `row` of `data` without allocating a temporary Vec.
+    #[inline]
+    fn bd_one_from_row(&self, data: &FdMatrix, row: usize) -> f64 {
+        let n = self.state.sorted.nori;
+        if n < 2 {
+            return 0.0;
+        }
+        let n_pairs = c2(n);
+        let n_points = self.state.sorted.n_points;
+
+        let mut count_in_band = 0usize;
+        for j in 0..n {
+            for k in (j + 1)..n {
+                let mut inside = true;
+                for t in 0..n_points {
+                    let x_t = data[(row, t)];
+                    let y_j_t = self.state.values_by_curve[j][t];
+                    let y_k_t = self.state.values_by_curve[k][t];
+                    let band_min = y_j_t.min(y_k_t);
+                    let band_max = y_j_t.max(y_k_t);
+                    if x_t < band_min || x_t > band_max {
+                        inside = false;
+                        break;
+                    }
+                }
+                if inside {
+                    count_in_band += 1;
+                }
+            }
+        }
+        count_in_band as f64 / n_pairs as f64
+    }
 }
 
 impl StreamingDepth for StreamingBd {
@@ -347,12 +411,8 @@ impl StreamingDepth for StreamingBd {
         if nobj == 0 || self.state.sorted.n_points == 0 || n < 2 {
             return vec![0.0; nobj];
         }
-        let n_points = self.state.sorted.n_points;
         iter_maybe_parallel!(0..nobj)
-            .map(|i| {
-                let curve: Vec<f64> = (0..n_points).map(|t| data_obj[(i, t)]).collect();
-                self.bd_one_inner(&curve)
-            })
+            .map(|i| self.bd_one_from_row(data_obj, i))
             .collect()
     }
 

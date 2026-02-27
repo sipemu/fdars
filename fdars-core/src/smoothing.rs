@@ -146,16 +146,12 @@ fn accumulate_weighted_normal_equations(
         let w = kernel_fn(u);
         let d = x[i] - x0;
 
-        let mut powers = vec![1.0; p];
-        for j in 1..p {
-            powers[j] = powers[j - 1] * d;
-        }
-
         for j in 0..p {
+            let w_dj = w * d.powi(j as i32);
             for k in 0..p {
-                xtx[j * p + k] += w * powers[j] * powers[k];
+                xtx[j * p + k] += w_dj * d.powi(k as i32);
             }
-            xty[j] += w * powers[j] * y[i];
+            xty[j] += w_dj * y[i];
         }
     }
 

@@ -2,15 +2,12 @@
 //!
 //! This module provides functional PCA, PLS, and ridge regression.
 
-use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "linalg")]
 use anofox_regression::solvers::RidgeRegressor;
 #[cfg(feature = "linalg")]
 use anofox_regression::{FittedRegressor, Regressor};
 use nalgebra::SVD;
-#[cfg(feature = "parallel")]
-use rayon::iter::ParallelIterator;
 
 /// Result of functional PCA.
 pub struct FpcaResult {
@@ -29,18 +26,15 @@ pub struct FpcaResult {
 /// Center columns of a matrix and return (centered_matrix, column_means).
 fn center_columns(data: &FdMatrix) -> (FdMatrix, Vec<f64>) {
     let (n, m) = data.shape();
-    let means: Vec<f64> = iter_maybe_parallel!(0..m)
-        .map(|j| {
-            let col = data.column(j);
-            let sum: f64 = col.iter().sum();
-            sum / n as f64
-        })
-        .collect();
-
     let mut centered = FdMatrix::zeros(n, m);
+    let mut means = vec![0.0; m];
     for j in 0..m {
+        let col = data.column(j);
+        let mean = col.iter().sum::<f64>() / n as f64;
+        means[j] = mean;
+        let out_col = centered.column_mut(j);
         for i in 0..n {
-            centered[(i, j)] = data[(i, j)] - means[j];
+            out_col[i] = col[i] - mean;
         }
     }
     (centered, means)

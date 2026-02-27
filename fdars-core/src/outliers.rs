@@ -3,9 +3,9 @@
 //! This module provides methods for detecting outliers in functional data
 //! based on depth measures and likelihood ratio tests.
 
-use crate::depth::fraiman_muniz_1d;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+use crate::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFraimanMuniz};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 #[cfg(feature = "parallel")]
@@ -19,8 +19,13 @@ fn compute_trimmed_stats(data: &FdMatrix, depths: &[f64], n_keep: usize) -> (Vec
 
     let mut depth_idx: Vec<(usize, f64)> =
         depths.iter().enumerate().map(|(i, &d)| (i, d)).collect();
-    depth_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    let keep_idx: Vec<usize> = depth_idx.iter().take(n_keep).map(|(i, _)| *i).collect();
+    // O(n) partial sort instead of O(n log n) full sort — we only need the top n_keep elements
+    if n_keep < depth_idx.len() {
+        depth_idx.select_nth_unstable_by(n_keep - 1, |a, b| {
+            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+    let keep_idx: Vec<usize> = depth_idx[..n_keep].iter().map(|(i, _)| *i).collect();
 
     let mut trimmed_mean = vec![0.0; m];
     for j in 0..m {
@@ -111,16 +116,24 @@ pub fn outliers_threshold_lrt(
 
             // Resample with replacement and add smoothing noise
             let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
+            // Pre-generate all noise values to preserve RNG sequence
+            let noise_vals: Vec<f64> = (0..n * m)
+                .map(|_| rng.sample::<f64, _>(StandardNormal))
+                .collect();
             let mut boot_data = FdMatrix::zeros(n, m);
-            for (new_i, &old_i) in indices.iter().enumerate() {
-                for j in 0..m {
-                    let noise: f64 = rng.sample::<f64, _>(StandardNormal) * smo * col_vars[j];
+            // Column-first iteration for cache-friendly writes in column-major layout
+            for j in 0..m {
+                let smo_var = smo * col_vars[j];
+                for (new_i, &old_i) in indices.iter().enumerate() {
+                    let noise = noise_vals[new_i * m + j] * smo_var;
                     boot_data[(new_i, j)] = data[(old_i, j)] + noise;
                 }
             }
 
             // Compute trimmed stats from bootstrap sample
-            let depths = fraiman_muniz_1d(&boot_data, &boot_data, true);
+            let state = SortedReferenceState::from_reference(&boot_data);
+            let streaming_fm = StreamingFraimanMuniz::new(state, true);
+            let depths = streaming_fm.depth_batch(&boot_data);
             let (trimmed_mean, trimmed_var) = compute_trimmed_stats(&boot_data, &depths, n_keep);
 
             // Find max normalized distance across all observations
@@ -156,7 +169,9 @@ pub fn detect_outliers_lrt(data: &FdMatrix, threshold: f64, trim: f64) -> Vec<bo
 
     let n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
 
-    let depths = fraiman_muniz_1d(data, data, true);
+    let state = SortedReferenceState::from_reference(data);
+    let streaming_fm = StreamingFraimanMuniz::new(state, true);
+    let depths = streaming_fm.depth_batch(data);
     let (trimmed_mean, trimmed_var) = compute_trimmed_stats(data, &depths, n_keep);
 
     iter_maybe_parallel!(0..n)
