@@ -37,7 +37,13 @@ pub struct TrendResult {
 
 impl TrendResult {
     /// Construct a no-op TrendResult (zero trend, data copied to detrended).
-    fn empty(data: &FdMatrix, n: usize, m: usize, method: Cow<'static, str>, n_params: usize) -> Self {
+    fn empty(
+        data: &FdMatrix,
+        n: usize,
+        m: usize,
+        method: Cow<'static, str>,
+        n_params: usize,
+    ) -> Self {
         TrendResult {
             trend: FdMatrix::zeros(n, m),
             detrended: FdMatrix::from_slice(data.as_slice(), n, m)
@@ -245,7 +251,13 @@ fn reassemble_trend_results(
 pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m < degree + 1 || argvals.len() != m || degree == 0 {
-        return TrendResult::empty(data, n, m, Cow::Owned(format!("polynomial({})", degree)), degree + 1);
+        return TrendResult::empty(
+            data,
+            n,
+            m,
+            Cow::Owned(format!("polynomial({})", degree)),
+            degree + 1,
+        );
     }
     if degree == 1 {
         let mut result = detrend_linear(data, argvals);
@@ -293,8 +305,7 @@ pub fn detrend_diff(data: &FdMatrix, order: usize) -> TrendResult {
             diff_single_curve(&curve, m, order)
         })
         .collect();
-    let (trend, detrended, coefficients, rss) =
-        reassemble_polynomial_results(results, n, m, order);
+    let (trend, detrended, coefficients, rss) = reassemble_polynomial_results(results, n, m, order);
     TrendResult {
         trend,
         detrended,
@@ -314,7 +325,13 @@ pub fn detrend_loess(
 ) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m < 3 || argvals.len() != m || bandwidth <= 0.0 {
-        return TrendResult::empty(data, n, m, Cow::Borrowed("loess"), (m as f64 * bandwidth.max(0.0)).ceil() as usize);
+        return TrendResult::empty(
+            data,
+            n,
+            m,
+            Cow::Borrowed("loess"),
+            (m as f64 * bandwidth.max(0.0)).ceil() as usize,
+        );
     }
     let t_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
     let t_max = argvals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);

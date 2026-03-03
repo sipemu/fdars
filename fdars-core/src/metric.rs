@@ -65,18 +65,11 @@ fn merge_weights(base: Vec<f64>, user_weights: &[f64]) -> Vec<f64> {
 
 /// Build a symmetric distance matrix by computing upper-triangle entries in parallel.
 #[inline]
-fn self_distance_matrix(
-    n: usize,
-    compute: impl Fn(usize, usize) -> f64 + Sync,
-) -> FdMatrix {
+fn self_distance_matrix(n: usize, compute: impl Fn(usize, usize) -> f64 + Sync) -> FdMatrix {
     // Pre-allocate flat buffer for upper triangle: n*(n-1)/2 entries
     let tri_len = n * (n - 1) / 2;
     let upper_vals: Vec<f64> = iter_maybe_parallel!(0..n)
-        .flat_map(|i| {
-            ((i + 1)..n)
-                .map(|j| compute(i, j))
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|i| ((i + 1)..n).map(|j| compute(i, j)).collect::<Vec<_>>())
         .collect();
     debug_assert_eq!(upper_vals.len(), tri_len);
     // Scatter into symmetric matrix
@@ -102,11 +95,7 @@ fn cross_distance_matrix(
 ) -> FdMatrix {
     // Pre-allocate flat buffer for all n1*n2 entries (row-major order)
     let vals: Vec<f64> = iter_maybe_parallel!(0..n1)
-        .flat_map(|i| {
-            (0..n2)
-                .map(|j| compute(i, j))
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|i| (0..n2).map(|j| compute(i, j)).collect::<Vec<_>>())
         .collect();
     // Scatter row-major vals into column-major FdMatrix
     let mut dist = FdMatrix::zeros(n1, n2);
@@ -340,12 +329,7 @@ pub fn hausdorff_cross_1d(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64]) -
 
 /// Run the two-row DTW dynamic programming loop with a given cost function.
 #[inline]
-fn dtw_dp_loop(
-    x: &[f64],
-    y: &[f64],
-    w: usize,
-    cost_fn: impl Fn(f64, f64) -> f64,
-) -> f64 {
+fn dtw_dp_loop(x: &[f64], y: &[f64], w: usize, cost_fn: impl Fn(f64, f64) -> f64) -> f64 {
     let n = x.len();
     let m = y.len();
     let mut prev = vec![f64::INFINITY; m + 1];
@@ -415,12 +399,7 @@ pub fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdM
     let rm1 = data1.to_row_major();
     let rm2 = data2.to_row_major();
     cross_distance_matrix(n1, n2, |i, j| {
-        dtw_distance(
-            &rm1[i * m1..(i + 1) * m1],
-            &rm2[j * m2..(j + 1) * m2],
-            p,
-            w,
-        )
+        dtw_distance(&rm1[i * m1..(i + 1) * m1], &rm2[j * m2..(j + 1) * m2], p, w)
     })
 }
 

@@ -369,7 +369,6 @@ fn kfsd_weighted(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, weights: &[f6
         .collect()
 }
 
-
 /// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
 ///
 /// Implements the RKHS-based formulation.

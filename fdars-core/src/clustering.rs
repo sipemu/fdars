@@ -85,8 +85,7 @@ fn kmeans_plusplus_init(
     // Remaining centers: probability proportional to D^2
     for c_idx in 1..k {
         let chosen = weighted_random_select(&min_dist_sq, rng);
-        centers[c_idx * m..(c_idx + 1) * m]
-            .copy_from_slice(&curves[chosen * m..(chosen + 1) * m]);
+        centers[c_idx * m..(c_idx + 1) * m].copy_from_slice(&curves[chosen * m..(chosen + 1) * m]);
 
         // Update min_dist_sq: only compute distance to the newest center
         let new_center = &centers[c_idx * m..(c_idx + 1) * m];
@@ -664,8 +663,7 @@ pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) ->
         return 0.0;
     }
 
-    let (centers, global_mean, counts) =
-        compute_centers_and_global_mean(&curves, n, m, cluster, k);
+    let (centers, global_mean, counts) = compute_centers_and_global_mean(&curves, n, m, cluster, k);
 
     let mut bgss = 0.0;
     for c in 0..k {

@@ -60,20 +60,28 @@ fn bench_streaming_construction_and_query(c: &mut Criterion) {
     let t = 200;
     for &n in &[50, 200, 500, 1000, 2300] {
         let data = generate_centered_data(n, t);
-        group.bench_with_input(BenchmarkId::new("FM_construct+query/N", n), &data, |b, data| {
-            b.iter(|| {
-                let state = SortedReferenceState::from_reference(black_box(data));
-                let fm = StreamingFraimanMuniz::new(state, true);
-                fm.depth_batch(black_box(data))
-            })
-        });
-        group.bench_with_input(BenchmarkId::new("MBD_construct+query/N", n), &data, |b, data| {
-            b.iter(|| {
-                let state = SortedReferenceState::from_reference(black_box(data));
-                let mbd = StreamingMbd::new(state);
-                mbd.depth_batch(black_box(data))
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("FM_construct+query/N", n),
+            &data,
+            |b, data| {
+                b.iter(|| {
+                    let state = SortedReferenceState::from_reference(black_box(data));
+                    let fm = StreamingFraimanMuniz::new(state, true);
+                    fm.depth_batch(black_box(data))
+                })
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("MBD_construct+query/N", n),
+            &data,
+            |b, data| {
+                b.iter(|| {
+                    let state = SortedReferenceState::from_reference(black_box(data));
+                    let mbd = StreamingMbd::new(state);
+                    mbd.depth_batch(black_box(data))
+                })
+            },
+        );
     }
     group.finish();
 }
@@ -85,9 +93,7 @@ fn bench_outliers(c: &mut Criterion) {
     let data = generate_centered_data(n, t);
     for &nb in &[10, 50] {
         group.bench_with_input(BenchmarkId::new("nb", nb), &nb, |b, &nb| {
-            b.iter(|| {
-                outliers_threshold_lrt(black_box(&data), nb, 0.1, 0.1, 42, 0.95)
-            })
+            b.iter(|| outliers_threshold_lrt(black_box(&data), nb, 0.1, 0.1, 42, 0.95))
         });
     }
     group.finish();
@@ -203,7 +209,12 @@ fn bench_kfsd(c: &mut Criterion) {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
         group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
             b.iter(|| {
-                kernel_functional_spatial_1d(black_box(data), black_box(data), black_box(&argvals), 0.5)
+                kernel_functional_spatial_1d(
+                    black_box(data),
+                    black_box(data),
+                    black_box(&argvals),
+                    0.5,
+                )
             })
         });
     }
@@ -258,9 +269,7 @@ fn bench_calinski_harabasz(c: &mut Criterion) {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
         let cluster: Vec<usize> = (0..n).map(|i| i % 3).collect();
         group.bench_with_input(BenchmarkId::new("N", n), &n, |b, _| {
-            b.iter(|| {
-                calinski_harabasz(black_box(&data), black_box(&argvals), black_box(&cluster))
-            })
+            b.iter(|| calinski_harabasz(black_box(&data), black_box(&argvals), black_box(&cluster)))
         });
     }
     group.finish();

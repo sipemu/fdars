@@ -264,7 +264,14 @@ pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
 /// # Returns
 /// Derivative data matrix
 /// Compute one derivative step: forward/central/backward differences written column-wise.
-fn deriv_1d_step(current: &FdMatrix, n: usize, m: usize, h0: f64, hn: f64, h_central: &[f64]) -> FdMatrix {
+fn deriv_1d_step(
+    current: &FdMatrix,
+    n: usize,
+    m: usize,
+    h0: f64,
+    hn: f64,
+    h_central: &[f64],
+) -> FdMatrix {
     let mut next = FdMatrix::zeros(n, m);
     // Column 0: forward difference
     let src_col0 = current.column(0);
