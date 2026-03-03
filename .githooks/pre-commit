@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Pre-commit hook that mirrors the CI checks in rust-ci.yml
+# Install: git config core.hooksPath .githooks
+set -e
+
+BOLD='\033[1m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+cd fdars-core
+
+pass() { echo -e "  ${GREEN}✓${NC} $1"; }
+fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
+step() { echo -e "${BOLD}$1${NC}"; }
+
+step "Pre-commit checks"
+
+# 1. Format check (matches CI: cargo fmt --all -- --check)
+step "[1/4] Checking formatting..."
+if cargo fmt --all -- --check 2>/dev/null; then
+    pass "cargo fmt"
+else
+    fail "cargo fmt -- run 'cargo fmt' to fix"
+fi
+
+# 2. Clippy (matches CI flags exactly)
+step "[2/4] Running clippy..."
+if cargo clippy --all-targets --all-features -- -D warnings \
+    -A clippy::too_many_arguments \
+    -A clippy::useless_vec \
+    -A clippy::type_complexity \
+    -A clippy::manual_memcpy \
+    -A clippy::wildcard_in_or_patterns 2>&1; then
+    pass "clippy"
+else
+    fail "clippy"
+fi
+
+# 3. Tests (both feature configs, matches CI)
+step "[3/4] Running tests..."
+if cargo test --all-features 2>&1; then
+    pass "tests (all features)"
+else
+    fail "tests (all features)"
+fi
+if cargo test --no-default-features --features linalg 2>&1; then
+    pass "tests (sequential/linalg)"
+else
+    fail "tests (sequential/linalg)"
+fi
+
+# 4. Doc build (matches CI: RUSTDOCFLAGS=-Dwarnings)
+step "[4/4] Building docs..."
+if RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --all-features 2>&1; then
+    pass "docs"
+else
+    fail "docs"
+fi
+
+echo -e "\n${GREEN}${BOLD}All pre-commit checks passed.${NC}"
