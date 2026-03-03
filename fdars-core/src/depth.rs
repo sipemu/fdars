@@ -81,6 +81,88 @@ pub fn modal_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     modal_1d(data_obj, data_ori, h)
 }
 
+/// Shared implementation for random projection-based depth measures.
+///
+/// Generates `nproj` random projections, projects both object and reference
+/// curves to scalars, and computes univariate depth via binary-search ranking.
+/// The `aggregate` and `finalize` closures control how per-projection depths
+/// are combined (e.g. average for RP depth, minimum for Tukey depth).
+fn random_depth_core(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    nproj: usize,
+    init: f64,
+    aggregate: impl Fn(f64, f64) -> f64 + Sync,
+    finalize: impl Fn(f64, usize) -> f64 + Sync,
+) -> Vec<f64> {
+    let nobj = data_obj.nrows();
+    let nori = data_ori.nrows();
+    let n_points = data_obj.ncols();
+
+    if nobj == 0 || nori == 0 || n_points == 0 || nproj == 0 {
+        return Vec::new();
+    }
+
+    let mut rng = rand::thread_rng();
+    let m = n_points;
+    let mut projections = vec![0.0; nproj * m];
+    for p_idx in 0..nproj {
+        let base = p_idx * m;
+        let mut norm_sq = 0.0;
+        for t in 0..m {
+            let v: f64 = rng.sample(StandardNormal);
+            projections[base + t] = v;
+            norm_sq += v * v;
+        }
+        let inv_norm = 1.0 / norm_sq.sqrt();
+        for t in 0..m {
+            projections[base + t] *= inv_norm;
+        }
+    }
+
+    // Pre-compute and pre-sort reference projections (identical for every query curve)
+    let mut sorted_proj_ori = vec![0.0; nproj * nori];
+    for p_idx in 0..nproj {
+        let proj = &projections[p_idx * m..(p_idx + 1) * m];
+        let spo = &mut sorted_proj_ori[p_idx * nori..(p_idx + 1) * nori];
+        for j in 0..nori {
+            let mut dot = 0.0;
+            for t in 0..m {
+                dot += data_ori[(j, t)] * proj[t];
+            }
+            spo[j] = dot;
+        }
+        spo.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
+    let denom = nori as f64 + 1.0;
+
+    iter_maybe_parallel!(0..nobj)
+        .map(|i| {
+            let mut acc = init;
+
+            for p_idx in 0..nproj {
+                let proj = &projections[p_idx * m..(p_idx + 1) * m];
+                let sorted_ori = &sorted_proj_ori[p_idx * nori..(p_idx + 1) * nori];
+
+                let mut proj_i = 0.0;
+                for t in 0..m {
+                    proj_i += data_obj[(i, t)] * proj[t];
+                }
+
+                // O(log N) rank lookup via binary search
+                let below = sorted_ori.partition_point(|&v| v < proj_i);
+                let above = nori - sorted_ori.partition_point(|&v| v <= proj_i);
+                let depth = (below.min(above) as f64 + 1.0) / denom;
+
+                acc = aggregate(acc, depth);
+            }
+
+            finalize(acc, nproj)
+        })
+        .collect()
+}
+
 /// Compute random projection depth for 1D functional data.
 ///
 /// Projects curves to scalars using random projections and computes
@@ -91,65 +173,14 @@ pub fn modal_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
 /// * `data_ori` - Reference data
 /// * `nproj` - Number of random projections
 pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
-    let nobj = data_obj.nrows();
-    let nori = data_ori.nrows();
-    let n_points = data_obj.ncols();
-
-    if nobj == 0 || nori == 0 || n_points == 0 || nproj == 0 {
-        return Vec::new();
-    }
-
-    let mut rng = rand::thread_rng();
-    let projections: Vec<Vec<f64>> = (0..nproj)
-        .map(|_| {
-            let mut proj: Vec<f64> = (0..n_points).map(|_| rng.sample(StandardNormal)).collect();
-            let norm: f64 = proj.iter().map(|x| x * x).sum::<f64>().sqrt();
-            proj.iter_mut().for_each(|x| *x /= norm);
-            proj
-        })
-        .collect();
-
-    // Pre-compute and pre-sort reference projections (identical for every query curve)
-    let sorted_proj_ori: Vec<Vec<f64>> = projections
-        .iter()
-        .map(|proj| {
-            let mut proj_ori: Vec<f64> = (0..nori)
-                .map(|j| {
-                    let mut p = 0.0;
-                    for t in 0..n_points {
-                        p += data_ori[(j, t)] * proj[t];
-                    }
-                    p
-                })
-                .collect();
-            proj_ori.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            proj_ori
-        })
-        .collect();
-
-    let denom = nori as f64 + 1.0;
-
-    iter_maybe_parallel!(0..nobj)
-        .map(|i| {
-            let mut total_depth = 0.0;
-
-            for (proj, sorted_ori) in projections.iter().zip(sorted_proj_ori.iter()) {
-                let mut proj_i = 0.0;
-                for t in 0..n_points {
-                    proj_i += data_obj[(i, t)] * proj[t];
-                }
-
-                // O(log N) rank lookup via binary search
-                let below = sorted_ori.partition_point(|&v| v < proj_i);
-                let above = nori - sorted_ori.partition_point(|&v| v <= proj_i);
-                let depth = (below.min(above) as f64 + 1.0) / denom;
-
-                total_depth += depth;
-            }
-
-            total_depth / nproj as f64
-        })
-        .collect()
+    random_depth_core(
+        data_obj,
+        data_ori,
+        nproj,
+        0.0,
+        |acc, d| acc + d,
+        |acc, n| acc / n as f64,
+    )
 }
 
 /// Compute random projection depth for 2D functional data.
@@ -161,65 +192,14 @@ pub fn random_projection_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usi
 ///
 /// Takes the minimum over all random projections (more conservative than RP depth).
 pub fn random_tukey_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
-    let nobj = data_obj.nrows();
-    let nori = data_ori.nrows();
-    let n_points = data_obj.ncols();
-
-    if nobj == 0 || nori == 0 || n_points == 0 || nproj == 0 {
-        return Vec::new();
-    }
-
-    let mut rng = rand::thread_rng();
-    let projections: Vec<Vec<f64>> = (0..nproj)
-        .map(|_| {
-            let mut proj: Vec<f64> = (0..n_points).map(|_| rng.sample(StandardNormal)).collect();
-            let norm: f64 = proj.iter().map(|x| x * x).sum::<f64>().sqrt();
-            proj.iter_mut().for_each(|x| *x /= norm);
-            proj
-        })
-        .collect();
-
-    // Pre-compute and pre-sort reference projections (identical for every query curve)
-    let sorted_proj_ori: Vec<Vec<f64>> = projections
-        .iter()
-        .map(|proj| {
-            let mut proj_ori: Vec<f64> = (0..nori)
-                .map(|j| {
-                    let mut p = 0.0;
-                    for t in 0..n_points {
-                        p += data_ori[(j, t)] * proj[t];
-                    }
-                    p
-                })
-                .collect();
-            proj_ori.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            proj_ori
-        })
-        .collect();
-
-    let denom = nori as f64 + 1.0;
-
-    iter_maybe_parallel!(0..nobj)
-        .map(|i| {
-            let mut min_depth = f64::INFINITY;
-
-            for (proj, sorted_ori) in projections.iter().zip(sorted_proj_ori.iter()) {
-                let mut proj_i = 0.0;
-                for t in 0..n_points {
-                    proj_i += data_obj[(i, t)] * proj[t];
-                }
-
-                // O(log N) rank lookup via binary search
-                let below = sorted_ori.partition_point(|&v| v < proj_i);
-                let above = nori - sorted_ori.partition_point(|&v| v <= proj_i);
-                let depth = (below.min(above) as f64 + 1.0) / denom;
-
-                min_depth = min_depth.min(depth);
-            }
-
-            min_depth
-        })
-        .collect()
+    random_depth_core(
+        data_obj,
+        data_ori,
+        nproj,
+        f64::INFINITY,
+        f64::min,
+        |acc, _| acc,
+    )
 }
 
 /// Compute random Tukey depth for 2D functional data.
@@ -276,7 +256,7 @@ pub fn functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f6
 }
 
 /// Compute kernel distance contribution for a single (j,k) pair.
-fn kernel_pair_contribution(j: usize, k: usize, m1: &[Vec<f64>], m2: &[f64]) -> Option<f64> {
+fn kernel_pair_contribution(j: usize, k: usize, m1: &FdMatrix, m2: &[f64]) -> Option<f64> {
     let denom_j_sq = 2.0 - 2.0 * m2[j];
     if denom_j_sq < 1e-20 {
         return None;
@@ -289,7 +269,7 @@ fn kernel_pair_contribution(j: usize, k: usize, m1: &[Vec<f64>], m2: &[f64]) -> 
     if denom <= 1e-20 {
         return None;
     }
-    let m_ijk = (1.0 + m1[j][k] - m2[j] - m2[k]) / denom;
+    let m_ijk = (1.0 + m1[(j, k)] - m2[j] - m2[k]) / denom;
     if m_ijk.is_finite() {
         Some(m_ijk)
     } else {
@@ -303,7 +283,7 @@ fn kernel_pair_contribution(j: usize, k: usize, m1: &[Vec<f64>], m2: &[f64]) -> 
 /// Exploits symmetry: `kernel_pair_contribution(j, k, m1, m2) == kernel_pair_contribution(k, j, m1, m2)`
 /// since m1 is symmetric and the formula `(1 + m1[j][k] - m2[j] - m2[k]) / (sqrt(2-2*m2[j]) * sqrt(2-2*m2[k]))`
 /// is symmetric in j and k. Loops over the upper triangle only.
-fn kfsd_accumulate(m2: &[f64], m1: &[Vec<f64>], nori: usize) -> (f64, usize) {
+fn kfsd_accumulate(m2: &[f64], m1: &FdMatrix, nori: usize) -> (f64, usize) {
     let mut total_sum = 0.0;
     let mut valid_count = 0;
 
@@ -352,13 +332,13 @@ fn kfsd_weighted(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, weights: &[f6
         })
         .collect();
 
-    let mut m1 = vec![vec![0.0; nori]; nori];
+    let mut m1 = FdMatrix::zeros(nori, nori);
     for j in 0..nori {
-        m1[j][j] = 1.0;
+        m1[(j, j)] = 1.0;
     }
     for (j, k, kval) in m1_upper {
-        m1[j][k] = kval;
-        m1[k][j] = kval;
+        m1[(j, k)] = kval;
+        m1[(k, j)] = kval;
     }
 
     let nori_f64 = nori as f64;

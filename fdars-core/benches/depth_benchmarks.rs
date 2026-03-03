@@ -3,11 +3,14 @@
 //! Compares performance of FM depth, MBD, and outlier detection at various sizes.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use fdars_core::clustering::{calinski_harabasz, fuzzy_cmeans_fd, kmeans_fd, silhouette_score};
 use fdars_core::depth::{
-    band_1d, fraiman_muniz_1d, functional_spatial_1d, modified_band_1d, random_projection_1d,
+    band_1d, fraiman_muniz_1d, functional_spatial_1d, kernel_functional_spatial_1d,
+    modified_band_1d, random_projection_1d,
 };
-use fdars_core::matrix::FdMatrix;
 use fdars_core::fdata::norm_lp_1d;
+use fdars_core::irreg_fdata::{norm_lp_irreg, IrregFdata};
+use fdars_core::matrix::FdMatrix;
 use fdars_core::metric::{dtw_self_1d, fourier_self_1d, hausdorff_self_1d, lp_self_1d};
 use fdars_core::outliers::outliers_threshold_lrt;
 use fdars_core::streaming_depth::{
@@ -192,6 +195,102 @@ fn bench_norm_lp(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_kfsd(c: &mut Criterion) {
+    let mut group = c.benchmark_group("kfsd_1d");
+    let m = 100;
+    for &n in &[20, 50, 100] {
+        let data = generate_centered_data(n, m);
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
+            b.iter(|| {
+                kernel_functional_spatial_1d(black_box(data), black_box(data), black_box(&argvals), 0.5)
+            })
+        });
+    }
+    group.finish();
+}
+
+fn bench_kmeans(c: &mut Criterion) {
+    let mut group = c.benchmark_group("kmeans_fd");
+    let m = 100;
+    for &n in &[50, 200, 500] {
+        let data = generate_centered_data(n, m);
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
+            b.iter(|| kmeans_fd(black_box(data), black_box(&argvals), 3, 50, 1e-6, 42))
+        });
+    }
+    group.finish();
+}
+
+fn bench_fuzzy_cmeans(c: &mut Criterion) {
+    let mut group = c.benchmark_group("fuzzy_cmeans_fd");
+    let m = 100;
+    for &n in &[50, 200] {
+        let data = generate_centered_data(n, m);
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
+            b.iter(|| fuzzy_cmeans_fd(black_box(data), black_box(&argvals), 3, 2.0, 50, 1e-6, 42))
+        });
+    }
+    group.finish();
+}
+
+fn bench_silhouette(c: &mut Criterion) {
+    let mut group = c.benchmark_group("silhouette_score");
+    let m = 100;
+    for &n in &[50, 200] {
+        let data = generate_centered_data(n, m);
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let cluster: Vec<usize> = (0..n).map(|i| i % 3).collect();
+        group.bench_with_input(BenchmarkId::new("N", n), &n, |b, _| {
+            b.iter(|| silhouette_score(black_box(&data), black_box(&argvals), black_box(&cluster)))
+        });
+    }
+    group.finish();
+}
+
+fn bench_calinski_harabasz(c: &mut Criterion) {
+    let mut group = c.benchmark_group("calinski_harabasz");
+    let m = 100;
+    for &n in &[50, 200, 500] {
+        let data = generate_centered_data(n, m);
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let cluster: Vec<usize> = (0..n).map(|i| i % 3).collect();
+        group.bench_with_input(BenchmarkId::new("N", n), &n, |b, _| {
+            b.iter(|| {
+                calinski_harabasz(black_box(&data), black_box(&argvals), black_box(&cluster))
+            })
+        });
+    }
+    group.finish();
+}
+
+fn bench_norm_lp_irreg(c: &mut Criterion) {
+    let mut group = c.benchmark_group("norm_lp_irreg");
+    let m = 200;
+    let n = 500;
+    // Build irregular data with uniform spacing (worst case: same as regular)
+    let argvals_list: Vec<Vec<f64>> = (0..n)
+        .map(|_| (0..m).map(|j| j as f64 / (m - 1) as f64).collect())
+        .collect();
+    let values_list: Vec<Vec<f64>> = (0..n)
+        .map(|i| {
+            let offset = (i as f64 - n as f64 / 2.0) / (n as f64);
+            (0..m)
+                .map(|j| (2.0 * PI * j as f64 / (m - 1) as f64).sin() + offset)
+                .collect()
+        })
+        .collect();
+    let ifd = IrregFdata::from_lists(&argvals_list, &values_list);
+    for &p in &[1.0, 2.0, 3.0] {
+        group.bench_with_input(BenchmarkId::new("p", p as i32), &p, |b, &p| {
+            b.iter(|| norm_lp_irreg(black_box(&ifd), p))
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fraiman_muniz,
@@ -206,5 +305,11 @@ criterion_group!(
     bench_fourier,
     bench_lp_distance,
     bench_norm_lp,
+    bench_kfsd,
+    bench_kmeans,
+    bench_fuzzy_cmeans,
+    bench_silhouette,
+    bench_calinski_harabasz,
+    bench_norm_lp_irreg,
 );
 criterion_main!(benches);

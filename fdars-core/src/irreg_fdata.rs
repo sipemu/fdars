@@ -243,13 +243,27 @@ pub fn norm_lp_irreg(ifd: &IrregFdata, p: f64) -> Vec<f64> {
             }
 
             let mut integral = 0.0;
-            for j in 1..t.len() {
-                let h = t[j] - t[j - 1];
-                let val_left = x[j - 1].abs().powf(p);
-                let val_right = x[j].abs().powf(p);
-                integral += 0.5 * h * (val_left + val_right);
+            if (p - 1.0).abs() < 1e-14 {
+                for j in 1..t.len() {
+                    let h = t[j] - t[j - 1];
+                    integral += 0.5 * h * (x[j - 1].abs() + x[j].abs());
+                }
+                integral
+            } else if (p - 2.0).abs() < 1e-14 {
+                for j in 1..t.len() {
+                    let h = t[j] - t[j - 1];
+                    integral += 0.5 * h * (x[j - 1] * x[j - 1] + x[j] * x[j]);
+                }
+                integral.sqrt()
+            } else {
+                for j in 1..t.len() {
+                    let h = t[j] - t[j - 1];
+                    let val_left = x[j - 1].abs().powf(p);
+                    let val_right = x[j].abs().powf(p);
+                    integral += 0.5 * h * (val_left + val_right);
+                }
+                integral.powf(1.0 / p)
             }
-            integral.powf(1.0 / p)
         })
         .collect()
 }
@@ -446,14 +460,29 @@ fn lp_distance_pair(t1: &[f64], x1: &[f64], t2: &[f64], x2: &[f64], p: f64) -> f
 
     // Compute integral of |y1 - y2|^p
     let mut integral = 0.0;
-    for j in 1..common_t.len() {
-        let h = common_t[j] - common_t[j - 1];
-        let val_left = (y1[j - 1] - y2[j - 1]).abs().powf(p);
-        let val_right = (y1[j] - y2[j]).abs().powf(p);
-        integral += 0.5 * h * (val_left + val_right);
+    if (p - 1.0).abs() < 1e-14 {
+        for j in 1..common_t.len() {
+            let h = common_t[j] - common_t[j - 1];
+            integral += 0.5 * h * ((y1[j - 1] - y2[j - 1]).abs() + (y1[j] - y2[j]).abs());
+        }
+        integral
+    } else if (p - 2.0).abs() < 1e-14 {
+        for j in 1..common_t.len() {
+            let h = common_t[j] - common_t[j - 1];
+            let d_left = y1[j - 1] - y2[j - 1];
+            let d_right = y1[j] - y2[j];
+            integral += 0.5 * h * (d_left * d_left + d_right * d_right);
+        }
+        integral.sqrt()
+    } else {
+        for j in 1..common_t.len() {
+            let h = common_t[j] - common_t[j - 1];
+            let val_left = (y1[j - 1] - y2[j - 1]).abs().powf(p);
+            let val_right = (y1[j] - y2[j]).abs().powf(p);
+            integral += 0.5 * h * (val_left + val_right);
+        }
+        integral.powf(1.0 / p)
     }
-
-    integral.powf(1.0 / p)
 }
 
 /// Linear interpolation at point t.

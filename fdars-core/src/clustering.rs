@@ -33,13 +33,15 @@ pub struct KmeansResult {
 /// distance computations to all existing centers.
 ///
 /// # Arguments
-/// * `curves` - Vector of curve vectors
+/// * `curves` - Flat row-major buffer of curves (n curves, each m values)
+/// * `n` - Number of curves
+/// * `m` - Number of evaluation points per curve
 /// * `k` - Number of clusters
 /// * `weights` - Integration weights for L2 distance
 /// * `rng` - Random number generator
 ///
 /// # Returns
-/// Vector of k initial cluster centers
+/// Flat buffer of k initial cluster centers (k * m values)
 /// Select an index with probability proportional to the given weights.
 fn weighted_random_select(dist_sq: &[f64], rng: &mut StdRng) -> usize {
     let total: f64 = dist_sq.iter().sum();
@@ -58,36 +60,38 @@ fn weighted_random_select(dist_sq: &[f64], rng: &mut StdRng) -> usize {
 }
 
 fn kmeans_plusplus_init(
-    curves: &[Vec<f64>],
+    curves: &[f64],
+    n: usize,
+    m: usize,
     k: usize,
     weights: &[f64],
     rng: &mut StdRng,
-) -> Vec<Vec<f64>> {
-    let n = curves.len();
-    let mut centers: Vec<Vec<f64>> = Vec::with_capacity(k);
+) -> Vec<f64> {
+    let mut centers = vec![0.0; k * m];
 
     // First center: random
     let first_idx = rng.gen_range(0..n);
-    centers.push(curves[first_idx].clone());
+    centers[..m].copy_from_slice(&curves[first_idx * m..(first_idx + 1) * m]);
 
     // Initialize min_dist_sq with squared distances to first center
-    let mut min_dist_sq: Vec<f64> = curves
-        .iter()
-        .map(|curve| {
-            let d = l2_distance(curve, &centers[0], weights);
+    let center0 = &centers[..m];
+    let mut min_dist_sq: Vec<f64> = (0..n)
+        .map(|i| {
+            let d = l2_distance(&curves[i * m..(i + 1) * m], center0, weights);
             d * d
         })
         .collect();
 
     // Remaining centers: probability proportional to D^2
-    for _ in 1..k {
+    for c_idx in 1..k {
         let chosen = weighted_random_select(&min_dist_sq, rng);
-        centers.push(curves[chosen].clone());
+        centers[c_idx * m..(c_idx + 1) * m]
+            .copy_from_slice(&curves[chosen * m..(chosen + 1) * m]);
 
         // Update min_dist_sq: only compute distance to the newest center
-        let new_center = centers.last().unwrap();
-        for (i, curve) in curves.iter().enumerate() {
-            let d_sq = l2_distance(curve, new_center, weights).powi(2);
+        let new_center = &centers[c_idx * m..(c_idx + 1) * m];
+        for i in 0..n {
+            let d_sq = l2_distance(&curves[i * m..(i + 1) * m], new_center, weights).powi(2);
             if d_sq < min_dist_sq[i] {
                 min_dist_sq[i] = d_sq;
             }
@@ -97,24 +101,22 @@ fn kmeans_plusplus_init(
     centers
 }
 
-/// Compute fuzzy membership values for a single observation.
+/// Compute fuzzy membership values for a single observation, writing into `out`.
 ///
 /// # Arguments
 /// * `distances` - Distances from the observation to each cluster center
+/// * `k` - Number of clusters
 /// * `exponent` - Exponent for fuzzy membership (2 / (fuzziness - 1))
-///
-/// # Returns
-/// Vector of membership values (one per cluster)
-fn compute_fuzzy_membership(distances: &[f64], exponent: f64) -> Vec<f64> {
-    let k = distances.len();
-    let mut membership = vec![0.0; k];
+/// * `out` - Output slice (length k) to write membership values into
+fn compute_fuzzy_membership_into(distances: &[f64], k: usize, exponent: f64, out: &mut [f64]) {
+    out[..k].fill(0.0);
 
     // Check if observation is very close to any center
-    for (c, &dist) in distances.iter().enumerate() {
+    for (c, &dist) in distances[..k].iter().enumerate() {
         if dist < NUMERICAL_EPS {
             // Assign full membership to this cluster
-            membership[c] = 1.0;
-            return membership;
+            out[c] = 1.0;
+            return;
         }
     }
 
@@ -126,18 +128,16 @@ fn compute_fuzzy_membership(distances: &[f64], exponent: f64) -> Vec<f64> {
                 sum += (distances[c] / distances[c2]).powf(exponent);
             }
         }
-        membership[c] = if sum > NUMERICAL_EPS { 1.0 / sum } else { 1.0 };
+        out[c] = if sum > NUMERICAL_EPS { 1.0 / sum } else { 1.0 };
     }
-
-    membership
 }
 
-/// Build an FdMatrix (k x m) from Vec<Vec<f64>> centers.
-fn centers_to_matrix(centers: &[Vec<f64>], k: usize, m: usize) -> FdMatrix {
+/// Build an FdMatrix (k x m) from flat row-major centers buffer.
+fn centers_to_matrix(centers: &[f64], k: usize, m: usize) -> FdMatrix {
     let mut flat = vec![0.0; k * m];
     for c in 0..k {
         for j in 0..m {
-            flat[c + j * k] = centers[c][j];
+            flat[c + j * k] = centers[c * m + j];
         }
     }
     FdMatrix::from_column_major(flat, k, m).unwrap()
@@ -170,12 +170,23 @@ fn cluster_member_indices(cluster: &[usize], k: usize) -> Vec<Vec<usize>> {
 }
 
 /// Assign each curve to its nearest center, returning cluster indices.
-fn assign_clusters(curves: &[Vec<f64>], centers: &[Vec<f64>], weights: &[f64]) -> Vec<usize> {
-    slice_maybe_parallel!(curves)
-        .map(|curve| {
+fn assign_clusters(
+    curves: &[f64],
+    n: usize,
+    m: usize,
+    centers: &[f64],
+    k: usize,
+    weights: &[f64],
+) -> Vec<usize> {
+    // Build a slice of curve slices for parallel iteration
+    let curve_indices: Vec<usize> = (0..n).collect();
+    slice_maybe_parallel!(curve_indices)
+        .map(|&i| {
+            let curve = &curves[i * m..(i + 1) * m];
             let mut best_cluster = 0;
             let mut best_dist = f64::INFINITY;
-            for (c, center) in centers.iter().enumerate() {
+            for c in 0..k {
+                let center = &centers[c * m..(c + 1) * m];
                 let dist = l2_distance(curve, center, weights);
                 if dist < best_dist {
                     best_dist = dist;
@@ -189,52 +200,60 @@ fn assign_clusters(curves: &[Vec<f64>], centers: &[Vec<f64>], weights: &[f64]) -
 
 /// Compute new cluster centers from curve assignments.
 fn update_kmeans_centers(
-    curves: &[Vec<f64>],
-    assignments: &[usize],
-    centers: &[Vec<f64>],
-    k: usize,
+    curves: &[f64],
+    n: usize,
     m: usize,
-) -> Vec<Vec<f64>> {
-    (0..k)
-        .map(|c| {
-            let members: Vec<usize> = assignments
-                .iter()
-                .enumerate()
-                .filter(|(_, &cl)| cl == c)
-                .map(|(i, _)| i)
-                .collect();
+    assignments: &[usize],
+    old_centers: &[f64],
+    k: usize,
+) -> Vec<f64> {
+    let mut centers = vec![0.0; k * m];
+    let mut counts = vec![0usize; k];
 
-            if members.is_empty() {
-                centers[c].clone()
-            } else {
-                let mut center = vec![0.0; m];
-                for &i in &members {
-                    for j in 0..m {
-                        center[j] += curves[i][j];
-                    }
-                }
-                let n_members = members.len() as f64;
-                for j in 0..m {
-                    center[j] /= n_members;
-                }
-                center
+    for i in 0..n {
+        let c = assignments[i];
+        counts[c] += 1;
+        let curve = &curves[i * m..(i + 1) * m];
+        let center = &mut centers[c * m..(c + 1) * m];
+        for j in 0..m {
+            center[j] += curve[j];
+        }
+    }
+
+    for c in 0..k {
+        if counts[c] > 0 {
+            let center = &mut centers[c * m..(c + 1) * m];
+            let n_members = counts[c] as f64;
+            for j in 0..m {
+                center[j] /= n_members;
             }
-        })
-        .collect()
+        } else {
+            // Keep old center for empty clusters
+            centers[c * m..(c + 1) * m].copy_from_slice(&old_centers[c * m..(c + 1) * m]);
+        }
+    }
+
+    centers
 }
 
 /// Compute within-cluster sum of squares for each cluster.
 fn compute_within_ss(
-    curves: &[Vec<f64>],
-    centers: &[Vec<f64>],
+    curves: &[f64],
+    n: usize,
+    m: usize,
+    centers: &[f64],
     assignments: &[usize],
     k: usize,
     weights: &[f64],
 ) -> Vec<f64> {
     let mut withinss = vec![0.0; k];
-    for (i, curve) in curves.iter().enumerate() {
+    for i in 0..n {
         let c = assignments[i];
-        let dist = l2_distance(curve, &centers[c], weights);
+        let dist = l2_distance(
+            &curves[i * m..(i + 1) * m],
+            &centers[c * m..(c + 1) * m],
+            weights,
+        );
         withinss[c] += dist * dist;
     }
     withinss
@@ -242,28 +261,30 @@ fn compute_within_ss(
 
 /// Update fuzzy c-means cluster centers from membership values.
 fn update_fuzzy_centers(
-    curves: &[Vec<f64>],
+    curves: &[f64],
+    n: usize,
+    m: usize,
     membership: &FdMatrix,
     k: usize,
-    m: usize,
     fuzziness: f64,
-) -> Vec<Vec<f64>> {
-    let mut centers = vec![vec![0.0; m]; k];
+) -> Vec<f64> {
+    let mut centers = vec![0.0; k * m];
     for c in 0..k {
-        let mut numerator = vec![0.0; m];
         let mut denominator = 0.0;
+        let center = &mut centers[c * m..(c + 1) * m];
 
-        for (i, curve) in curves.iter().enumerate() {
+        for i in 0..n {
             let weight = membership[(i, c)].powf(fuzziness);
+            let curve = &curves[i * m..(i + 1) * m];
             for j in 0..m {
-                numerator[j] += weight * curve[j];
+                center[j] += weight * curve[j];
             }
             denominator += weight;
         }
 
         if denominator > NUMERICAL_EPS {
             for j in 0..m {
-                centers[c][j] = numerator[j] / denominator;
+                center[j] /= denominator;
             }
         }
     }
@@ -272,24 +293,27 @@ fn update_fuzzy_centers(
 
 /// Update fuzzy membership values and compute max change.
 fn update_fuzzy_membership_step(
-    curves: &[Vec<f64>],
-    centers: &[Vec<f64>],
-    old_membership: &FdMatrix,
+    curves: &[f64],
+    n: usize,
+    m: usize,
+    centers: &[f64],
     k: usize,
+    old_membership: &FdMatrix,
     exponent: f64,
     weights: &[f64],
 ) -> (FdMatrix, f64) {
-    let n = curves.len();
     let mut new_membership = FdMatrix::zeros(n, k);
     let mut max_change = 0.0;
+    let mut distances = vec![0.0; k];
+    let mut memberships = vec![0.0; k];
 
-    for (i, curve) in curves.iter().enumerate() {
-        let distances: Vec<f64> = centers
-            .iter()
-            .map(|c| l2_distance(curve, c, weights))
-            .collect();
+    for i in 0..n {
+        let curve = &curves[i * m..(i + 1) * m];
+        for c in 0..k {
+            distances[c] = l2_distance(curve, &centers[c * m..(c + 1) * m], weights);
+        }
 
-        let memberships = compute_fuzzy_membership(&distances, exponent);
+        compute_fuzzy_membership_into(&distances, k, exponent, &mut memberships);
 
         for c in 0..k {
             new_membership[(i, c)] = memberships[c];
@@ -306,7 +330,8 @@ fn update_fuzzy_membership_step(
 /// Compute mean L2 distance from a curve to a set of curve indices.
 fn mean_cluster_distance(
     curve: &[f64],
-    curves: &[Vec<f64>],
+    curves: &[f64],
+    m: usize,
     indices: &[usize],
     weights: &[f64],
 ) -> f64 {
@@ -315,21 +340,22 @@ fn mean_cluster_distance(
     }
     let sum: f64 = indices
         .iter()
-        .map(|&j| l2_distance(curve, &curves[j], weights))
+        .map(|&j| l2_distance(curve, &curves[j * m..(j + 1) * m], weights))
         .sum();
     sum / indices.len() as f64
 }
 
 /// Compute cluster centers, global mean, and counts from curves and assignments.
 fn compute_centers_and_global_mean(
-    curves: &[Vec<f64>],
+    curves: &[f64],
+    n: usize,
+    m: usize,
     assignments: &[usize],
     k: usize,
-    m: usize,
-) -> (Vec<Vec<f64>>, Vec<f64>, Vec<usize>) {
-    let n = curves.len();
+) -> (Vec<f64>, Vec<f64>, Vec<usize>) {
     let mut global_mean = vec![0.0; m];
-    for curve in curves {
+    for i in 0..n {
+        let curve = &curves[i * m..(i + 1) * m];
         for j in 0..m {
             global_mean[j] += curve[j];
         }
@@ -338,19 +364,22 @@ fn compute_centers_and_global_mean(
         global_mean[j] /= n as f64;
     }
 
-    let mut centers = vec![vec![0.0; m]; k];
+    let mut centers = vec![0.0; k * m];
     let mut counts = vec![0usize; k];
-    for (i, curve) in curves.iter().enumerate() {
+    for i in 0..n {
         let c = assignments[i];
         counts[c] += 1;
+        let curve = &curves[i * m..(i + 1) * m];
+        let center = &mut centers[c * m..(c + 1) * m];
         for j in 0..m {
-            centers[c][j] += curve[j];
+            center[j] += curve[j];
         }
     }
     for c in 0..k {
         if counts[c] > 0 {
+            let center = &mut centers[c * m..(c + 1) * m];
             for j in 0..m {
-                centers[c][j] /= counts[c] as f64;
+                center[j] /= counts[c] as f64;
             }
         }
     }
@@ -360,40 +389,46 @@ fn compute_centers_and_global_mean(
 
 /// Run one k-means iteration: assign clusters, update centers, compute movement.
 fn kmeans_step(
-    curves: &[Vec<f64>],
-    centers: &[Vec<f64>],
-    weights: &[f64],
-    k: usize,
+    curves: &[f64],
+    n: usize,
     m: usize,
-) -> (Vec<usize>, Vec<Vec<f64>>, f64) {
-    let new_cluster = assign_clusters(curves, centers, weights);
-    let new_centers = update_kmeans_centers(curves, &new_cluster, centers, k, m);
-    let max_movement = centers
-        .iter()
-        .zip(new_centers.iter())
-        .map(|(old, new)| l2_distance(old, new, weights))
+    centers: &[f64],
+    k: usize,
+    weights: &[f64],
+) -> (Vec<usize>, Vec<f64>, f64) {
+    let new_cluster = assign_clusters(curves, n, m, centers, k, weights);
+    let new_centers = update_kmeans_centers(curves, n, m, &new_cluster, centers, k);
+    let max_movement = (0..k)
+        .map(|c| {
+            l2_distance(
+                &centers[c * m..(c + 1) * m],
+                &new_centers[c * m..(c + 1) * m],
+                weights,
+            )
+        })
         .fold(0.0, f64::max);
     (new_cluster, new_centers, max_movement)
 }
 
 /// Run the k-means iteration loop until convergence or max iterations.
 fn kmeans_iterate(
-    curves: &[Vec<f64>],
-    mut centers: Vec<Vec<f64>>,
-    weights: &[f64],
-    k: usize,
+    curves: &[f64],
+    n: usize,
     m: usize,
+    mut centers: Vec<f64>,
+    k: usize,
+    weights: &[f64],
     max_iter: usize,
     tol: f64,
-) -> (Vec<usize>, Vec<Vec<f64>>, usize, bool) {
-    let n = curves.len();
+) -> (Vec<usize>, Vec<f64>, usize, bool) {
     let mut cluster = vec![0usize; n];
     let mut converged = false;
     let mut iter = 0;
 
     for iteration in 0..max_iter {
         iter = iteration + 1;
-        let (new_cluster, new_centers, max_movement) = kmeans_step(curves, &centers, weights, k, m);
+        let (new_cluster, new_centers, max_movement) =
+            kmeans_step(curves, n, m, &centers, k, weights);
 
         if new_cluster == cluster {
             converged = true;
@@ -445,16 +480,16 @@ pub fn kmeans_fd(
     let weights = simpsons_weights(argvals);
     let mut rng = StdRng::seed_from_u64(seed);
 
-    // Extract curves
-    let curves = data.rows();
+    // Extract curves as flat row-major buffer
+    let curves = data.to_row_major();
 
-    // K-means++ initialization using helper
-    let centers = kmeans_plusplus_init(&curves, k, &weights, &mut rng);
+    // K-means++ initialization
+    let centers = kmeans_plusplus_init(&curves, n, m, k, &weights, &mut rng);
 
     let (cluster, centers, iter, converged) =
-        kmeans_iterate(&curves, centers, &weights, k, m, max_iter, tol);
+        kmeans_iterate(&curves, n, m, centers, k, &weights, max_iter, tol);
 
-    let withinss = compute_within_ss(&curves, &centers, &cluster, k, &weights);
+    let withinss = compute_within_ss(&curves, n, m, &centers, &cluster, k, &weights);
     let tot_withinss: f64 = withinss.iter().sum();
     let centers_mat = centers_to_matrix(&centers, k, m);
 
@@ -514,12 +549,12 @@ pub fn fuzzy_cmeans_fd(
     let weights = simpsons_weights(argvals);
     let mut rng = StdRng::seed_from_u64(seed);
 
-    // Extract curves
-    let curves = data.rows();
+    // Extract curves as flat row-major buffer
+    let curves = data.to_row_major();
 
     let mut membership = init_random_membership(n, k, &mut rng);
 
-    let mut centers = vec![vec![0.0; m]; k];
+    let mut centers = vec![0.0; k * m];
     let mut converged = false;
     let mut iter = 0;
     let exponent = 2.0 / (fuzziness - 1.0);
@@ -527,10 +562,18 @@ pub fn fuzzy_cmeans_fd(
     for iteration in 0..max_iter {
         iter = iteration + 1;
 
-        centers = update_fuzzy_centers(&curves, &membership, k, m, fuzziness);
+        centers = update_fuzzy_centers(&curves, n, m, &membership, k, fuzziness);
 
-        let (new_membership, max_change) =
-            update_fuzzy_membership_step(&curves, &centers, &membership, k, exponent, &weights);
+        let (new_membership, max_change) = update_fuzzy_membership_step(
+            &curves,
+            n,
+            m,
+            &centers,
+            k,
+            &membership,
+            exponent,
+            &weights,
+        );
 
         membership = new_membership;
 
@@ -560,7 +603,7 @@ pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> 
     }
 
     let weights = simpsons_weights(argvals);
-    let curves = data.rows();
+    let curves = data.to_row_major();
 
     let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
     let members = cluster_member_indices(cluster, k);
@@ -568,20 +611,22 @@ pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> 
     iter_maybe_parallel!(0..n)
         .map(|i| {
             let my_cluster = cluster[i];
+            let curve_i = &curves[i * m..(i + 1) * m];
 
             let same_indices: Vec<usize> = members[my_cluster]
                 .iter()
                 .copied()
                 .filter(|&j| j != i)
                 .collect();
-            let a_i = mean_cluster_distance(&curves[i], &curves, &same_indices, &weights);
+            let a_i = mean_cluster_distance(curve_i, &curves, m, &same_indices, &weights);
 
             let mut b_i = f64::INFINITY;
             for c in 0..k {
                 if c != my_cluster && !members[c].is_empty() {
                     b_i = b_i.min(mean_cluster_distance(
-                        &curves[i],
+                        curve_i,
                         &curves,
+                        m,
                         &members[c],
                         &weights,
                     ));
@@ -612,22 +657,23 @@ pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) ->
     }
 
     let weights = simpsons_weights(argvals);
-    let curves = data.rows();
+    let curves = data.to_row_major();
 
     let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
     if k < 2 {
         return 0.0;
     }
 
-    let (centers, global_mean, counts) = compute_centers_and_global_mean(&curves, cluster, k, m);
+    let (centers, global_mean, counts) =
+        compute_centers_and_global_mean(&curves, n, m, cluster, k);
 
     let mut bgss = 0.0;
     for c in 0..k {
-        let dist = l2_distance(&centers[c], &global_mean, &weights);
+        let dist = l2_distance(&centers[c * m..(c + 1) * m], &global_mean, &weights);
         bgss += counts[c] as f64 * dist * dist;
     }
 
-    let wgss_vec = compute_within_ss(&curves, &centers, cluster, k, &weights);
+    let wgss_vec = compute_within_ss(&curves, n, m, &centers, cluster, k, &weights);
     let wgss: f64 = wgss_vec.iter().sum();
 
     if wgss < NUMERICAL_EPS {

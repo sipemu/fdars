@@ -35,6 +35,21 @@ pub struct TrendResult {
     pub n_params: usize,
 }
 
+impl TrendResult {
+    /// Construct a no-op TrendResult (zero trend, data copied to detrended).
+    fn empty(data: &FdMatrix, n: usize, m: usize, method: Cow<'static, str>, n_params: usize) -> Self {
+        TrendResult {
+            trend: FdMatrix::zeros(n, m),
+            detrended: FdMatrix::from_slice(data.as_slice(), n, m)
+                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
+            method,
+            coefficients: None,
+            rss: vec![0.0; n],
+            n_params,
+        }
+    }
+}
+
 /// Result of seasonal decomposition.
 #[derive(Debug, Clone)]
 pub struct DecomposeResult {
@@ -61,15 +76,7 @@ pub struct DecomposeResult {
 pub fn detrend_linear(data: &FdMatrix, argvals: &[f64]) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m < 2 || argvals.len() != m {
-        return TrendResult {
-            trend: FdMatrix::zeros(n, m),
-            detrended: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
-            method: Cow::Borrowed("linear"),
-            coefficients: None,
-            rss: vec![0.0; n],
-            n_params: 2,
-        };
+        return TrendResult::empty(data, n, m, Cow::Borrowed("linear"), 2);
     }
 
     let mean_t: f64 = argvals.iter().sum::<f64>() / m as f64;
@@ -215,19 +222,30 @@ fn reassemble_polynomial_results(
     (trend, detrended, coefficients, rss)
 }
 
+/// Reassemble per-curve (trend, detrended, rss) results into FdMatrix outputs.
+fn reassemble_trend_results(
+    results: Vec<(Vec<f64>, Vec<f64>, f64)>,
+    n: usize,
+    m: usize,
+) -> (FdMatrix, FdMatrix, Vec<f64>) {
+    let mut trend = FdMatrix::zeros(n, m);
+    let mut detrended = FdMatrix::zeros(n, m);
+    let mut rss = vec![0.0; n];
+    for (i, (t, d, r)) in results.into_iter().enumerate() {
+        for j in 0..m {
+            trend[(i, j)] = t[j];
+            detrended[(i, j)] = d[j];
+        }
+        rss[i] = r;
+    }
+    (trend, detrended, rss)
+}
+
 /// Remove polynomial trend from functional data using QR decomposition.
 pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m < degree + 1 || argvals.len() != m || degree == 0 {
-        return TrendResult {
-            trend: FdMatrix::zeros(n, m),
-            detrended: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
-            method: Cow::Owned(format!("polynomial({})", degree)),
-            coefficients: None,
-            rss: vec![0.0; n],
-            n_params: degree + 1,
-        };
+        return TrendResult::empty(data, n, m, Cow::Owned(format!("polynomial({})", degree)), degree + 1);
     }
     if degree == 1 {
         let mut result = detrend_linear(data, argvals);
@@ -267,15 +285,7 @@ pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> Tr
 pub fn detrend_diff(data: &FdMatrix, order: usize) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m <= order || order == 0 || order > 2 {
-        return TrendResult {
-            trend: FdMatrix::zeros(n, m),
-            detrended: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
-            method: Cow::Owned(format!("diff{}", order)),
-            coefficients: None,
-            rss: vec![0.0; n],
-            n_params: order,
-        };
+        return TrendResult::empty(data, n, m, Cow::Owned(format!("diff{}", order)), order);
     }
     let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
@@ -283,20 +293,8 @@ pub fn detrend_diff(data: &FdMatrix, order: usize) -> TrendResult {
             diff_single_curve(&curve, m, order)
         })
         .collect();
-    let mut trend = FdMatrix::zeros(n, m);
-    let mut detrended = FdMatrix::zeros(n, m);
-    let mut coefficients = FdMatrix::zeros(n, order);
-    let mut rss = vec![0.0; n];
-    for (i, (t, d, init, r)) in results.into_iter().enumerate() {
-        for j in 0..m {
-            trend[(i, j)] = t[j];
-            detrended[(i, j)] = d[j];
-        }
-        for k in 0..order {
-            coefficients[(i, k)] = init[k];
-        }
-        rss[i] = r;
-    }
+    let (trend, detrended, coefficients, rss) =
+        reassemble_polynomial_results(results, n, m, order);
     TrendResult {
         trend,
         detrended,
@@ -316,15 +314,7 @@ pub fn detrend_loess(
 ) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m < 3 || argvals.len() != m || bandwidth <= 0.0 {
-        return TrendResult {
-            trend: FdMatrix::zeros(n, m),
-            detrended: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
-            method: Cow::Borrowed("loess"),
-            coefficients: None,
-            rss: vec![0.0; n],
-            n_params: (m as f64 * bandwidth).ceil() as usize,
-        };
+        return TrendResult::empty(data, n, m, Cow::Borrowed("loess"), (m as f64 * bandwidth.max(0.0)).ceil() as usize);
     }
     let t_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
     let t_max = argvals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -343,16 +333,7 @@ pub fn detrend_loess(
             (trend, detrended, rss)
         })
         .collect();
-    let mut trend = FdMatrix::zeros(n, m);
-    let mut detrended = FdMatrix::zeros(n, m);
-    let mut rss = vec![0.0; n];
-    for (i, (t, d, r)) in results.into_iter().enumerate() {
-        for j in 0..m {
-            trend[(i, j)] = t[j];
-            detrended[(i, j)] = d[j];
-        }
-        rss[i] = r;
-    }
+    let (trend, detrended, rss) = reassemble_trend_results(results, n, m);
     let n_params = (m as f64 * bandwidth).ceil() as usize;
     TrendResult {
         trend,
@@ -368,15 +349,7 @@ pub fn detrend_loess(
 pub fn auto_detrend(data: &FdMatrix, argvals: &[f64]) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m < 4 || argvals.len() != m {
-        return TrendResult {
-            trend: FdMatrix::zeros(n, m),
-            detrended: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
-            method: Cow::Borrowed("auto(none)"),
-            coefficients: None,
-            rss: vec![0.0; n],
-            n_params: 0,
-        };
+        return TrendResult::empty(data, n, m, Cow::Borrowed("auto(none)"), 0);
     }
     let compute_aic = |result: &TrendResult| -> f64 {
         let mut total_aic = 0.0;
