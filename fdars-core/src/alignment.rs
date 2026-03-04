@@ -113,6 +113,178 @@ fn normalize_warp(gamma: &mut [f64], argvals: &[f64]) {
     }
 }
 
+// ─── Sphere Geometry for Warping Functions ──────────────────────────────────
+// Implements the Hilbert sphere representation of warping functions used by
+// fdasrvf's `SqrtMeanInverse`: psi(t) = sqrt(gamma'(t)).
+
+/// Trapezoidal integration of `y` over `x`.
+fn trapz(y: &[f64], x: &[f64]) -> f64 {
+    let mut sum = 0.0;
+    for k in 1..y.len() {
+        sum += 0.5 * (y[k] + y[k - 1]) * (x[k] - x[k - 1]);
+    }
+    sum
+}
+
+/// Numerical gradient with uniform spacing (forward/central/backward differences).
+fn gradient_uniform(y: &[f64], h: f64) -> Vec<f64> {
+    let n = y.len();
+    let mut g = vec![0.0; n];
+    if n < 2 {
+        return g;
+    }
+    g[0] = (y[1] - y[0]) / h;
+    for i in 1..(n - 1) {
+        g[i] = (y[i + 1] - y[i - 1]) / (2.0 * h);
+    }
+    g[n - 1] = (y[n - 1] - y[n - 2]) / h;
+    g
+}
+
+/// Convert warping function to Hilbert sphere representation: psi = sqrt(gamma').
+fn gam_to_psi(gam: &[f64], h: f64) -> Vec<f64> {
+    gradient_uniform(gam, h)
+        .iter()
+        .map(|&g| g.max(0.0).sqrt())
+        .collect()
+}
+
+/// Convert psi back to warping function: gamma = cumtrapz(psi^2), normalized to [0,1].
+fn psi_to_gam(psi: &[f64], time: &[f64]) -> Vec<f64> {
+    let psi_sq: Vec<f64> = psi.iter().map(|&p| p * p).collect();
+    let gam = cumulative_trapz(&psi_sq, time);
+    let min_val = gam.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_val = gam.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let range = (max_val - min_val).max(1e-10);
+    gam.iter().map(|&v| (v - min_val) / range).collect()
+}
+
+/// L2 inner product: integral(psi1 * psi2 dt) via trapezoidal rule.
+fn inner_product_l2(psi1: &[f64], psi2: &[f64], time: &[f64]) -> f64 {
+    let prod: Vec<f64> = psi1.iter().zip(psi2.iter()).map(|(&a, &b)| a * b).collect();
+    trapz(&prod, time)
+}
+
+/// L2 norm: sqrt(integral(psi^2 dt)).
+fn l2_norm_l2(psi: &[f64], time: &[f64]) -> f64 {
+    inner_product_l2(psi, psi, time).max(0.0).sqrt()
+}
+
+/// Inverse exponential (log) map on the Hilbert sphere.
+/// Returns tangent vector at `mu` pointing toward `psi`.
+fn inv_exp_map_sphere(mu: &[f64], psi: &[f64], time: &[f64]) -> Vec<f64> {
+    let ip = inner_product_l2(mu, psi, time).clamp(-1.0, 1.0);
+    let theta = ip.acos();
+    if theta < 1e-10 {
+        vec![0.0; mu.len()]
+    } else {
+        let coeff = theta / theta.sin();
+        let cos_theta = theta.cos();
+        mu.iter()
+            .zip(psi.iter())
+            .map(|(&m, &p)| coeff * (p - cos_theta * m))
+            .collect()
+    }
+}
+
+/// Exponential map on the Hilbert sphere.
+/// Moves from `psi` along tangent vector `v`.
+fn exp_map_sphere(psi: &[f64], v: &[f64], time: &[f64]) -> Vec<f64> {
+    let v_norm = l2_norm_l2(v, time);
+    if v_norm < 1e-10 {
+        psi.to_vec()
+    } else {
+        let cos_n = v_norm.cos();
+        let sin_n = v_norm.sin();
+        psi.iter()
+            .zip(v.iter())
+            .map(|(&p, &vi)| cos_n * p + sin_n * vi / v_norm)
+            .collect()
+    }
+}
+
+/// Invert a warping function: find gamma_inv such that gamma_inv(gamma(t)) = t.
+/// `gam` and `time` are both on [0,1].
+fn invert_gamma(gam: &[f64], time: &[f64]) -> Vec<f64> {
+    let n = time.len();
+    // Interpolate (gam -> time) at query points time
+    // i.e., for each t in time, find s such that gam(s) = t, return s
+    let mut gam_inv: Vec<f64> = time.iter().map(|&t| linear_interp(gam, time, t)).collect();
+    gam_inv[0] = time[0];
+    gam_inv[n - 1] = time[n - 1];
+    gam_inv
+}
+
+/// Karcher mean of warping functions on the Hilbert sphere, then invert.
+/// Port of fdasrvf's `SqrtMeanInverse`.
+///
+/// Takes a matrix of warping functions (n × m) on the argvals domain,
+/// computes the Fréchet mean of their sqrt-derivative representations
+/// on the unit Hilbert sphere, converts back to a warping function,
+/// and returns its inverse (on the argvals domain).
+fn sqrt_mean_inverse(gammas: &FdMatrix, argvals: &[f64]) -> Vec<f64> {
+    let (n, m) = gammas.shape();
+    let t0 = argvals[0];
+    let t1 = argvals[m - 1];
+    let domain = t1 - t0;
+
+    // Work on [0,1] internally
+    let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let binsize = 1.0 / (m - 1) as f64;
+
+    // Convert each gamma to psi = sqrt(gamma') on the unit sphere
+    let mut psis: Vec<Vec<f64>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let gam_01: Vec<f64> = (0..m).map(|j| (gammas[(i, j)] - t0) / domain).collect();
+        psis.push(gam_to_psi(&gam_01, binsize));
+    }
+
+    // Initialize mu as pointwise mean of psis
+    let mut mu = vec![0.0; m];
+    for psi in &psis {
+        for j in 0..m {
+            mu[j] += psi[j];
+        }
+    }
+    for j in 0..m {
+        mu[j] /= n as f64;
+    }
+
+    // Karcher mean iteration on the Hilbert sphere
+    let step_size = 0.3;
+    let max_iter = 501;
+
+    for _ in 0..max_iter {
+        // Compute mean shooting vector (Karcher gradient)
+        let mut vbar = vec![0.0; m];
+        for psi in &psis {
+            let v = inv_exp_map_sphere(&mu, psi, &time);
+            for j in 0..m {
+                vbar[j] += v[j];
+            }
+        }
+        for j in 0..m {
+            vbar[j] /= n as f64;
+        }
+
+        // Convergence check
+        if l2_norm_l2(&vbar, &time) <= 1e-8 {
+            break;
+        }
+
+        // Move mu along geodesic
+        let scaled: Vec<f64> = vbar.iter().map(|&v| v * step_size).collect();
+        mu = exp_map_sphere(&mu, &scaled, &time);
+    }
+
+    // Convert mean psi back to warping function, then invert
+    let gam_mu = psi_to_gam(&mu, &time);
+    let gam_inv = invert_gamma(&gam_mu, &time);
+
+    // Scale back to argvals domain
+    gam_inv.iter().map(|&g| t0 + g * domain).collect()
+}
+
 // ─── SRSF Transform and Inverse ─────────────────────────────────────────────
 
 /// Compute the Square-Root Slope Function (SRSF) transform.
@@ -198,138 +370,186 @@ pub fn compose_warps(gamma1: &[f64], gamma2: &[f64], argvals: &[f64]) -> Vec<f64
 }
 
 // ─── Dynamic Programming Alignment ──────────────────────────────────────────
+// Faithful port of fdasrvf's DP algorithm (dp_grid.cpp / dp_nbhd.cpp).
 
-/// Convert a DP traceback path into a warping function sampled at argvals.
-fn path_to_gamma(path: &[(usize, usize)], argvals: &[f64], grid: &[f64]) -> Vec<f64> {
-    if path.is_empty() {
-        return argvals.to_vec();
-    }
-
-    // Extract the warping from the path: γ maps grid[path[k].0] -> grid[path[k].1]
-    let path_t: Vec<f64> = path.iter().map(|&(i, _)| grid[i]).collect();
-    let path_g: Vec<f64> = path.iter().map(|&(_, j)| grid[j]).collect();
-
-    // Interpolate to get γ at each argval
-    let mut gamma: Vec<f64> = argvals
-        .iter()
-        .map(|&t| linear_interp(&path_t, &path_g, t))
-        .collect();
-
-    normalize_warp(&mut gamma, argvals);
-    gamma
-}
-
-/// Pick the minimum-cost move (diagonal / horizontal / vertical) and write into `curr_row` and `trace`.
-#[inline]
-fn dp_pick_best(
-    prev_row: &[f64],
-    curr_row: &mut [f64],
-    trace: &mut [u8],
-    q1_i: f64,
-    q2_j: f64,
-    dt_i: f64,
-    dt_j: f64,
-    j: usize,
-    trace_off: usize,
-) {
-    // Diagonal: (i-1,j-1) → (i,j) with slope correction
-    let sqrt_slope = (dt_j / dt_i).sqrt();
-    let vd = q1_i - q2_j * sqrt_slope;
-    let cost_diag = prev_row[j - 1] + vd * vd * dt_i;
-
-    // Horizontal: (i, j-1) → (i, j)
-    let vh = q1_i - q2_j;
-    let cost_horiz = curr_row[j - 1] + vh * vh * dt_j;
-
-    // Vertical: (i-1, j) → (i, j)
-    let cost_vert = prev_row[j] + vh * vh * dt_i;
-
-    if cost_diag <= cost_horiz && cost_diag <= cost_vert {
-        curr_row[j] = cost_diag;
-        trace[trace_off + j] = 0;
-    } else if cost_horiz <= cost_vert {
-        curr_row[j] = cost_horiz;
-        trace[trace_off + j] = 1;
+/// Greatest common divisor (Euclidean algorithm).
+#[cfg(test)]
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 {
+        a
     } else {
-        curr_row[j] = cost_vert;
-        trace[trace_off + j] = 2;
+        gcd(b, a % b)
     }
 }
 
-/// Traceback through the DP trace matrix to recover the optimal path.
-fn dp_traceback(trace: &[u8], m: usize) -> Vec<(usize, usize)> {
-    let mut path = Vec::with_capacity(2 * m);
-    let (mut i, mut j) = (m - 1, m - 1);
-    path.push((i, j));
-
-    while i > 0 || j > 0 {
-        match trace[i * m + j] {
-            0 => {
-                i -= 1;
-                j -= 1;
+/// Generate coprime neighborhood: all (i,j) with 1 ≤ i,j ≤ nbhd_dim, gcd(i,j) = 1.
+/// With nbhd_dim=7 this produces 35 pairs, matching fdasrvf's default.
+#[cfg(test)]
+fn generate_coprime_nbhd(nbhd_dim: usize) -> Vec<(usize, usize)> {
+    let mut pairs = Vec::new();
+    for i in 1..=nbhd_dim {
+        for j in 1..=nbhd_dim {
+            if gcd(i, j) == 1 {
+                pairs.push((i, j));
             }
-            1 => j -= 1,
-            _ => i -= 1,
         }
-        path.push((i, j));
+    }
+    pairs
+}
+
+/// Pre-computed coprime neighborhood for nbhd_dim=7 (fdasrvf default).
+/// All (dr, dc) with 1 ≤ dr, dc ≤ 7 and gcd(dr, dc) = 1.
+/// dr = row delta (q2 direction), dc = column delta (q1 direction).
+#[rustfmt::skip]
+const COPRIME_NBHD_7: [(usize, usize); 35] = [
+    (1,1),(1,2),(1,3),(1,4),(1,5),(1,6),(1,7),
+    (2,1),      (2,3),      (2,5),      (2,7),
+    (3,1),(3,2),      (3,4),(3,5),      (3,7),
+    (4,1),      (4,3),      (4,5),      (4,7),
+    (5,1),(5,2),(5,3),(5,4),      (5,6),(5,7),
+    (6,1),                  (6,5),      (6,7),
+    (7,1),(7,2),(7,3),(7,4),(7,5),(7,6),
+];
+
+/// Compute the edge weight for a move from grid point (sr, sc) to (tr, tc).
+///
+/// Port of fdasrvf's `dp_edge_weight` for 1-D curves on a shared uniform grid.
+/// - Rows = q2 indices, columns = q1 indices (matching fdasrvf convention).
+/// - `slope = (argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc])` = γ'
+/// - Walks through sub-intervals synchronized at both curves' breakpoints,
+///   accumulating `(q1[idx1] - √slope · q2[idx2])² · dt`.
+#[inline]
+fn dp_edge_weight(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    sc: usize,
+    tc: usize,
+    sr: usize,
+    tr: usize,
+) -> f64 {
+    let n1 = tc - sc;
+    let n2 = tr - sr;
+    if n1 == 0 || n2 == 0 {
+        return f64::INFINITY;
     }
 
-    path.reverse();
-    path
+    let slope = (argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc]);
+    let rslope = slope.sqrt();
+
+    // Walk through sub-intervals synchronized at breakpoints of both curves
+    let mut weight = 0.0;
+    let mut i1 = 0usize; // sub-interval index in q1 direction
+    let mut i2 = 0usize; // sub-interval index in q2 direction
+
+    while i1 < n1 && i2 < n2 {
+        // Current sub-interval boundaries as fractions of the total span
+        let left1 = i1 as f64 / n1 as f64;
+        let right1 = (i1 + 1) as f64 / n1 as f64;
+        let left2 = i2 as f64 / n2 as f64;
+        let right2 = (i2 + 1) as f64 / n2 as f64;
+
+        let left = left1.max(left2);
+        let right = right1.min(right2);
+        let dt = right - left;
+
+        if dt > 0.0 {
+            let diff = q1[sc + i1] - rslope * q2[sr + i2];
+            weight += diff * diff * dt;
+        }
+
+        // Advance whichever sub-interval ends first
+        if right1 < right2 {
+            i1 += 1;
+        } else if right2 < right1 {
+            i2 += 1;
+        } else {
+            i1 += 1;
+            i2 += 1;
+        }
+    }
+
+    // Scale by the span in q1 direction
+    weight * (argvals[tc] - argvals[sc])
 }
 
 /// Core DP alignment between two SRSFs on a grid.
 ///
 /// Finds the optimal warping γ minimizing ‖q₁ - (q₂∘γ)√γ'‖².
+/// Uses fdasrvf's coprime neighborhood (nbhd_dim=7 → 35 move directions).
+/// SRSFs are L2-normalized before alignment (matching fdasrvf's `optimum.reparam`).
 fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64]) -> Vec<f64> {
     let m = argvals.len();
     if m < 2 {
         return argvals.to_vec();
     }
 
-    let grid = argvals;
-    let mut prev_row = vec![f64::MAX; m];
-    let mut curr_row = vec![f64::MAX; m];
-    // 0 = diagonal, 1 = horizontal, 2 = vertical
-    let mut trace = vec![0u8; m * m];
+    // Normalize SRSFs to unit L2 norm (matching fdasrvf's optimum.reparam)
+    let norm1 = q1.iter().map(|&v| v * v).sum::<f64>().sqrt().max(1e-10);
+    let norm2 = q2.iter().map(|&v| v * v).sum::<f64>().sqrt().max(1e-10);
+    let q1n: Vec<f64> = q1.iter().map(|&v| v / norm1).collect();
+    let q2n: Vec<f64> = q2.iter().map(|&v| v / norm2).collect();
 
-    // First row: can only come from left
-    prev_row[0] = 0.0;
-    for j in 1..m {
-        let dt = grid[j] - grid[j - 1];
-        let val = q1[0] - q2[j];
-        prev_row[j] = prev_row[j - 1] + val * val * dt;
-        trace[j] = 1;
-    }
+    // Full m×m cost table and parent pointers
+    // Rows = q2 index, Columns = q1 index (matching fdasrvf)
+    let mut e = vec![f64::INFINITY; m * m];
+    let mut parent = vec![u32::MAX; m * m];
+    e[0] = 0.0;
 
-    // Fill remaining rows
-    for i in 1..m {
-        let dt_i = grid[i] - grid[i - 1];
-        let val = q1[i] - q2[0];
-        curr_row[0] = prev_row[0] + val * val * dt_i;
-        trace[i * m] = 2;
-
-        let trace_off = i * m;
-        for j in 1..m {
-            let dt_j = grid[j] - grid[j - 1];
-            dp_pick_best(
-                &prev_row,
-                &mut curr_row,
-                &mut trace,
-                q1[i],
-                q2[j],
-                dt_i,
-                dt_j,
-                j,
-                trace_off,
-            );
+    for tr in 1..m {
+        for tc in 1..m {
+            let idx = tr * m + tc;
+            for &(dr, dc) in &COPRIME_NBHD_7 {
+                if dr > tr || dc > tc {
+                    continue;
+                }
+                let sr = tr - dr;
+                let sc = tc - dc;
+                let src_idx = sr * m + sc;
+                if e[src_idx] == f64::INFINITY {
+                    continue;
+                }
+                let w = dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr);
+                let cost = e[src_idx] + w;
+                if cost < e[idx] {
+                    e[idx] = cost;
+                    parent[idx] = src_idx as u32;
+                }
+            }
         }
-
-        std::mem::swap(&mut prev_row, &mut curr_row);
     }
 
-    let path = dp_traceback(&trace, m);
-    path_to_gamma(&path, argvals, grid)
+    // Traceback from (m-1, m-1) to (0, 0) using parent pointers
+    let mut path_tc = Vec::with_capacity(2 * m);
+    let mut path_tr = Vec::with_capacity(2 * m);
+    let mut cur = (m - 1) * m + (m - 1);
+    loop {
+        let tr = cur / m;
+        let tc = cur % m;
+        path_tc.push(argvals[tc]);
+        path_tr.push(argvals[tr]);
+        if cur == 0 {
+            break;
+        }
+        if parent[cur] == u32::MAX {
+            break;
+        }
+        cur = parent[cur] as usize;
+    }
+
+    // Reverse to forward order
+    path_tc.reverse();
+    path_tr.reverse();
+
+    // Re-interpolate gamma onto the argvals grid
+    // path_tc = t values (q1 side), path_tr = gamma values (q2 side)
+    let mut gamma: Vec<f64> = argvals
+        .iter()
+        .map(|&t| linear_interp(&path_tc, &path_tr, t))
+        .collect();
+
+    normalize_warp(&mut gamma, argvals);
+    gamma
 }
 
 // ─── Public Alignment Functions ─────────────────────────────────────────────
@@ -511,10 +731,19 @@ pub fn elastic_cross_distance_matrix(
 
 // ─── Karcher Mean ───────────────────────────────────────────────────────────
 
-/// Check convergence of the Karcher mean iteration.
-fn mean_has_converged(q_old: &[f64], q_new: &[f64], weights: &[f64], tol: f64) -> bool {
-    let dist = l2_distance(q_old, q_new, weights);
-    dist < tol
+/// Compute relative change between successive mean SRSFs.
+///
+/// Returns `‖q_new - q_old‖₂ / ‖q_old‖₂`, matching R's fdasrvf
+/// `time_warping` convergence metric (unweighted discrete L2 norm).
+fn relative_change(q_old: &[f64], q_new: &[f64]) -> f64 {
+    let diff_norm: f64 = q_old
+        .iter()
+        .zip(q_new.iter())
+        .map(|(&a, &b)| (a - b).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let old_norm: f64 = q_old.iter().map(|&v| v * v).sum::<f64>().sqrt().max(1e-10);
+    diff_norm / old_norm
 }
 
 /// Compute a single SRSF from a slice (single-row convenience).
@@ -620,14 +849,51 @@ pub fn karcher_mean(
     tol: f64,
 ) -> KarcherMeanResult {
     let (n, m) = data.shape();
-    let weights = simpsons_weights(argvals);
 
-    let mut mu = mean_1d(data);
-    let mut mu_q = srsf_single(&mu, argvals);
+    // Step 1: Compute SRSFs and select closest observed SRSF to the mean as template
+    let srsf_mat = srsf_transform(data, argvals);
+    let mnq = mean_1d(&srsf_mat);
+    let mut min_dist = f64::INFINITY;
+    let mut min_idx = 0;
+    for i in 0..n {
+        let dist_sq: f64 = (0..m).map(|j| (srsf_mat[(i, j)] - mnq[j]).powi(2)).sum();
+        if dist_sq < min_dist {
+            min_dist = dist_sq;
+            min_idx = i;
+        }
+    }
+    let mut mu_q = srsf_mat.row(min_idx);
+    let mut mu = data.row(min_idx);
 
+    // Step 2: Pre-iteration centering with SqrtMeanInverse
+    // Align all curves to the selected template, then center the template
+    {
+        let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
+            .map(|i| {
+                let fi = data.row(i);
+                let qi = srsf_single(&fi, argvals);
+                align_srsf_pair(&mu_q, &qi, argvals)
+            })
+            .collect();
+
+        let mut init_gammas = FdMatrix::zeros(n, m);
+        for (i, (gamma, _)) in align_results.iter().enumerate() {
+            for j in 0..m {
+                init_gammas[(i, j)] = gamma[j];
+            }
+        }
+
+        // Center: compute inverse mean warp, apply to template
+        let gam_inv = sqrt_mean_inverse(&init_gammas, argvals);
+        mu = reparameterize_curve(&mu, argvals, &gam_inv);
+        mu_q = srsf_single(&mu, argvals);
+    }
+
+    // Step 3: Main Karcher mean iteration
     let mut converged = false;
     let mut n_iter = 0;
     let mut final_gammas = FdMatrix::zeros(n, m);
+    let mut prev_rel = 0.0_f64;
 
     for iter in 0..max_iter {
         n_iter = iter + 1;
@@ -642,16 +908,41 @@ pub fn karcher_mean(
 
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
 
-        if mean_has_converged(&mu_q, &mu_q_new, &weights, tol) {
+        let rel = relative_change(&mu_q, &mu_q_new);
+        if rel < f64::EPSILON || (iter > 0 && rel - prev_rel <= tol * prev_rel) {
             converged = true;
             mu_q = mu_q_new;
             break;
         }
+        prev_rel = rel;
 
         mu_q = mu_q_new;
         mu = srsf_inverse(&mu_q, argvals, mu[0]);
     }
 
+    // Step 4: Post-convergence centering with SqrtMeanInverse
+    let gam_inv = sqrt_mean_inverse(&final_gammas, argvals);
+    let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let gam_inv_dev = gradient_uniform(&gam_inv, h);
+
+    // Center the mean SRSF: (mu_q ∘ gamI) * sqrt(gamI')
+    let mu_q_warped = reparameterize_curve(&mu_q, argvals, &gam_inv);
+    mu_q = mu_q_warped
+        .iter()
+        .zip(gam_inv_dev.iter())
+        .map(|(&q, &gd)| q * gd.max(0.0).sqrt())
+        .collect();
+
+    // Center each curve's warp: gamma_centered = gamma ∘ gamI
+    for i in 0..n {
+        let gam_i: Vec<f64> = (0..m).map(|j| final_gammas[(i, j)]).collect();
+        let gam_centered = reparameterize_curve(&gam_i, argvals, &gam_inv);
+        for j in 0..m {
+            final_gammas[(i, j)] = gam_centered[j];
+        }
+    }
+
+    // Reconstruct mean curve from centered SRSF
     let initial_mean = mean_1d(data);
     mu = srsf_inverse(&mu_q, argvals, initial_mean[0]);
     let final_aligned = apply_stored_warps(data, &final_gammas, argvals);
@@ -1697,17 +1988,114 @@ mod tests {
         }
     }
 
-    // ── dp_traceback ──
+    // ── gcd ──
 
     #[test]
-    fn test_dp_traceback_all_diagonal() {
-        // Trace matrix with all diagonal (0) moves
-        let m = 5;
-        let trace = vec![0u8; m * m];
-        let path = dp_traceback(&trace, m);
-        assert_eq!(path.first(), Some(&(0, 0)));
-        assert_eq!(path.last(), Some(&(m - 1, m - 1)));
-        assert_eq!(path.len(), m);
+    fn test_gcd_basic() {
+        assert_eq!(gcd(1, 1), 1);
+        assert_eq!(gcd(6, 4), 2);
+        assert_eq!(gcd(7, 5), 1);
+        assert_eq!(gcd(12, 8), 4);
+        assert_eq!(gcd(7, 0), 7);
+        assert_eq!(gcd(0, 5), 5);
+    }
+
+    // ── generate_coprime_nbhd ──
+
+    #[test]
+    fn test_coprime_nbhd_count() {
+        assert_eq!(generate_coprime_nbhd(1).len(), 1); // just (1,1)
+        assert_eq!(generate_coprime_nbhd(7).len(), 35);
+    }
+
+    #[test]
+    fn test_coprime_nbhd_matches_const() {
+        let generated = generate_coprime_nbhd(7);
+        assert_eq!(generated.len(), COPRIME_NBHD_7.len());
+        for (i, pair) in generated.iter().enumerate() {
+            assert_eq!(*pair, COPRIME_NBHD_7[i], "mismatch at index {i}");
+        }
+    }
+
+    #[test]
+    fn test_coprime_nbhd_all_coprime() {
+        for &(i, j) in &COPRIME_NBHD_7 {
+            assert_eq!(gcd(i, j), 1, "({i},{j}) should be coprime");
+            assert!((1..=7).contains(&i));
+            assert!((1..=7).contains(&j));
+        }
+    }
+
+    // ── dp_edge_weight ──
+
+    #[test]
+    fn test_dp_edge_weight_diagonal() {
+        // Diagonal move (1,1): weight = (q1[sc] - sqrt(1)*q2[sr])^2 * h
+        let t = uniform_grid(10);
+        let q1 = vec![1.0; 10];
+        let q2 = vec![1.0; 10];
+        // Identical SRSFs: weight should be 0
+        let w = dp_edge_weight(&q1, &q2, &t, 0, 1, 0, 1);
+        assert!(w.abs() < 1e-12, "identical SRSFs should have zero cost");
+    }
+
+    #[test]
+    fn test_dp_edge_weight_non_diagonal() {
+        // Move (1,2): n1=2, n2=1, slope = h/(2h) = 0.5
+        let t = uniform_grid(10);
+        let q1 = vec![1.0; 10];
+        let q2 = vec![0.0; 10];
+        let w = dp_edge_weight(&q1, &q2, &t, 0, 2, 0, 1);
+        // diff = q1[0] - sqrt(0.5)*q2[0] = 1.0 - 0 = 1.0
+        // weight = 1.0^2 * 1.0 * (t[2]-t[0]) = 2/9
+        let expected = 2.0 / 9.0;
+        assert!(
+            (w - expected).abs() < 1e-10,
+            "dp_edge_weight (1,2): expected {expected}, got {w}"
+        );
+    }
+
+    #[test]
+    fn test_dp_edge_weight_zero_span() {
+        let t = uniform_grid(10);
+        let q1 = vec![1.0; 10];
+        let q2 = vec![1.0; 10];
+        // n1=0: should return INFINITY
+        assert_eq!(dp_edge_weight(&q1, &q2, &t, 3, 3, 0, 1), f64::INFINITY);
+        // n2=0: should return INFINITY
+        assert_eq!(dp_edge_weight(&q1, &q2, &t, 0, 1, 3, 3), f64::INFINITY);
+    }
+
+    // ── DP alignment quality ──
+
+    #[test]
+    fn test_alignment_improves_distance() {
+        // Aligned SRSF distance should be less than unaligned SRSF distance
+        let m = 50;
+        let t = uniform_grid(m);
+        let f1: Vec<f64> = t
+            .iter()
+            .map(|&x| (2.0 * std::f64::consts::PI * x).sin())
+            .collect();
+        // Use a larger shift so improvement is clear
+        let f2: Vec<f64> = t
+            .iter()
+            .map(|&x| (2.0 * std::f64::consts::PI * (x + 0.2)).sin())
+            .collect();
+
+        let q1 = srsf_single(&f1, &t);
+        let q2 = srsf_single(&f2, &t);
+        let weights = simpsons_weights(&t);
+        let unaligned_srsf_dist = l2_distance(&q1, &q2, &weights);
+
+        let result = elastic_align_pair(&f1, &f2, &t);
+
+        assert!(
+            result.distance <= unaligned_srsf_dist + 1e-6,
+            "aligned SRSF dist ({}) should be <= unaligned SRSF dist ({})",
+            result.distance,
+            unaligned_srsf_dist
+        );
     }
 
     // ── Edge case: constant data ──

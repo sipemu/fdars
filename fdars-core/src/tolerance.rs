@@ -63,6 +63,34 @@ pub enum MultiplierDistribution {
     Rademacher,
 }
 
+/// Bootstrap method for the equivalence test.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EquivalenceBootstrap {
+    /// Multiplier bootstrap (Gaussian or Rademacher weights)
+    Multiplier(MultiplierDistribution),
+    /// Percentile bootstrap (resample with replacement)
+    Percentile,
+}
+
+/// Result of a functional equivalence test (TOST).
+#[derive(Debug, Clone)]
+pub struct EquivalenceTestResult {
+    /// Test statistic: sup_t |d_hat(t)|
+    pub test_statistic: f64,
+    /// Bootstrap p-value
+    pub p_value: f64,
+    /// Critical value c_alpha from bootstrap distribution
+    pub critical_value: f64,
+    /// Simultaneous confidence band for the mean difference
+    pub scb: ToleranceBand,
+    /// Whether the entire SCB lies within [-delta, delta]
+    pub equivalent: bool,
+    /// Equivalence margin
+    pub delta: f64,
+    /// Significance level
+    pub alpha: f64,
+}
+
 /// Exponential family for generalized FPCA tolerance bands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExponentialFamily {
@@ -740,6 +768,290 @@ pub fn elastic_tolerance_band(
     fpca_tolerance_band(&karcher.aligned_data, ncomp, nb, coverage, band_type, seed)
 }
 
+// ─── Equivalence Test (TOST) ────────────────────────────────────────────────
+
+/// Bootstrap sup-norm statistics for two-sample multiplier bootstrap.
+fn equivalence_multiplier_sup_stats(
+    centered1: &FdMatrix,
+    centered2: &FdMatrix,
+    pooled_se: &[f64],
+    n1: usize,
+    n2: usize,
+    m: usize,
+    nb: usize,
+    multiplier: MultiplierDistribution,
+    seed: u64,
+) -> Vec<f64> {
+    let n1f = n1 as f64;
+    let n2f = n2 as f64;
+    iter_maybe_parallel!(0..nb)
+        .map(|b| {
+            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let g1 = generate_multiplier_weights(&mut rng, n1, multiplier);
+            let g2 = generate_multiplier_weights(&mut rng, n2, multiplier);
+            (0..m)
+                .map(|j| {
+                    let s1: f64 = (0..n1).map(|i| g1[i] * centered1[(i, j)]).sum::<f64>() / n1f;
+                    let s2: f64 = (0..n2).map(|i| g2[i] * centered2[(i, j)]).sum::<f64>() / n2f;
+                    ((s1 - s2) / pooled_se[j]).abs()
+                })
+                .fold(0.0_f64, f64::max)
+        })
+        .collect()
+}
+
+/// Bootstrap sup-norm statistics for two-sample percentile bootstrap.
+fn equivalence_percentile_sup_stats(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    d_hat: &[f64],
+    n1: usize,
+    n2: usize,
+    m: usize,
+    nb: usize,
+    seed: u64,
+) -> Vec<f64> {
+    iter_maybe_parallel!(0..nb)
+        .map(|b| {
+            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let idx1: Vec<usize> = (0..n1).map(|_| rng.gen_range(0..n1)).collect();
+            let idx2: Vec<usize> = (0..n2).map(|_| rng.gen_range(0..n2)).collect();
+            (0..m)
+                .map(|j| {
+                    let m1: f64 = idx1.iter().map(|&i| data1[(i, j)]).sum::<f64>() / n1 as f64;
+                    let m2: f64 = idx2.iter().map(|&i| data2[(i, j)]).sum::<f64>() / n2 as f64;
+                    ((m1 - m2) - d_hat[j]).abs()
+                })
+                .fold(0.0_f64, f64::max)
+        })
+        .collect()
+}
+
+/// Bootstrap sup-norm statistics for one-sample multiplier bootstrap.
+fn equivalence_one_sample_multiplier_stats(
+    centered: &FdMatrix,
+    sigma: &[f64],
+    n: usize,
+    m: usize,
+    nb: usize,
+    multiplier: MultiplierDistribution,
+    seed: u64,
+) -> Vec<f64> {
+    let sqrt_n = (n as f64).sqrt();
+    iter_maybe_parallel!(0..nb)
+        .map(|b| {
+            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let g = generate_multiplier_weights(&mut rng, n, multiplier);
+            (0..m)
+                .map(|j| {
+                    let z: f64 =
+                        (0..n).map(|i| g[i] * centered[(i, j)]).sum::<f64>() / (sqrt_n * sigma[j]);
+                    z.abs()
+                })
+                .fold(0.0_f64, f64::max)
+        })
+        .collect()
+}
+
+/// Bootstrap sup-norm statistics for one-sample percentile bootstrap.
+fn equivalence_one_sample_percentile_stats(
+    data: &FdMatrix,
+    mu0: &[f64],
+    d_hat: &[f64],
+    n: usize,
+    m: usize,
+    nb: usize,
+    seed: u64,
+) -> Vec<f64> {
+    iter_maybe_parallel!(0..nb)
+        .map(|b| {
+            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let idx: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
+            (0..m)
+                .map(|j| {
+                    let boot_mean: f64 = idx.iter().map(|&i| data[(i, j)]).sum::<f64>() / n as f64;
+                    ((boot_mean - mu0[j]) - d_hat[j]).abs()
+                })
+                .fold(0.0_f64, f64::max)
+        })
+        .collect()
+}
+
+/// Validate common equivalence test parameters.
+fn valid_equivalence_params(delta: f64, alpha: f64, nb: usize) -> bool {
+    delta > 0.0 && alpha > 0.0 && alpha < 0.5 && nb > 0
+}
+
+/// Build an [`EquivalenceTestResult`] from bootstrap sup-norm statistics.
+///
+/// When `se` is non-empty the band is scaled per-point (multiplier bootstrap);
+/// otherwise a constant half-width is used (percentile bootstrap).
+fn build_equivalence_result(
+    mut sup_stats: Vec<f64>,
+    d_hat: Vec<f64>,
+    se: &[f64],
+    delta: f64,
+    alpha: f64,
+    nb: usize,
+) -> EquivalenceTestResult {
+    let m = d_hat.len();
+    let test_statistic = d_hat.iter().fold(0.0_f64, |a, &v| a.max(v.abs()));
+    let use_se = !se.is_empty();
+    let c_alpha = percentile_sorted(&mut sup_stats, 1.0 - 2.0 * alpha);
+
+    let half_width: Vec<f64> = if use_se {
+        se.iter().map(|&s| c_alpha * s).collect()
+    } else {
+        vec![c_alpha; m]
+    };
+    let scb = build_band(d_hat.clone(), half_width);
+
+    let equivalent = scb.upper.iter().all(|&u| u < delta) && scb.lower.iter().all(|&l| l > -delta);
+
+    let c_threshold = if use_se {
+        (0..m)
+            .map(|j| (delta - d_hat[j].abs()) / se[j])
+            .fold(f64::INFINITY, f64::min)
+    } else {
+        delta - test_statistic
+    };
+    let p_value = if c_threshold <= 0.0 {
+        1.0
+    } else {
+        let count = sup_stats.iter().filter(|&&t| t >= c_threshold).count();
+        (count as f64 / (2.0 * nb as f64)).min(1.0)
+    };
+
+    EquivalenceTestResult {
+        test_statistic,
+        p_value,
+        critical_value: c_alpha,
+        scb,
+        equivalent,
+        delta,
+        alpha,
+    }
+}
+
+/// Test functional equivalence between two groups using TOST.
+///
+/// Determines whether the mean difference between two groups of functional
+/// observations lies entirely within the margin \[-δ, δ\] using the sup-norm.
+///
+/// # Arguments
+/// * `data1` — Functional data matrix for group 1 (n1 × m)
+/// * `data2` — Functional data matrix for group 2 (n2 × m)
+/// * `delta` — Equivalence margin (δ > 0)
+/// * `alpha` — Significance level (0 < α < 0.5)
+/// * `nb` — Number of bootstrap replicates
+/// * `bootstrap` — Bootstrap method ([`EquivalenceBootstrap`])
+/// * `seed` — Random seed for reproducibility
+///
+/// # Returns
+/// `Some(EquivalenceTestResult)` on success, `None` if inputs are invalid.
+pub fn equivalence_test(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    delta: f64,
+    alpha: f64,
+    nb: usize,
+    bootstrap: EquivalenceBootstrap,
+    seed: u64,
+) -> Option<EquivalenceTestResult> {
+    let (n1, m1) = data1.shape();
+    let (n2, m2) = data2.shape();
+    if n1 < 3 || n2 < 3 || m1 != m2 || m1 == 0 || !valid_equivalence_params(delta, alpha, nb) {
+        return None;
+    }
+    let m = m1;
+
+    let mean1 = mean_1d(data1);
+    let mean2 = mean_1d(data2);
+    let d_hat: Vec<f64> = (0..m).map(|j| mean1[j] - mean2[j]).collect();
+
+    let (sup_stats, se) = match bootstrap {
+        EquivalenceBootstrap::Multiplier(mult) => {
+            let c1 = crate::fdata::center_1d(data1);
+            let c2 = crate::fdata::center_1d(data2);
+            let sig1 = residual_sigma(data1, &mean1, n1, m);
+            let sig2 = residual_sigma(data2, &mean2, n2, m);
+            let pse: Vec<f64> = (0..m)
+                .map(|j| {
+                    (sig1[j] * sig1[j] / n1 as f64 + sig2[j] * sig2[j] / n2 as f64)
+                        .sqrt()
+                        .max(1e-15)
+                })
+                .collect();
+            let stats = equivalence_multiplier_sup_stats(&c1, &c2, &pse, n1, n2, m, nb, mult, seed);
+            (stats, pse)
+        }
+        EquivalenceBootstrap::Percentile => {
+            let stats = equivalence_percentile_sup_stats(data1, data2, &d_hat, n1, n2, m, nb, seed);
+            (stats, vec![])
+        }
+    };
+
+    Some(build_equivalence_result(
+        sup_stats, d_hat, &se, delta, alpha, nb,
+    ))
+}
+
+/// Test functional equivalence of one group's mean to a reference function.
+///
+/// Determines whether the mean of functional observations differs from
+/// a reference function μ₀ by at most δ in sup-norm.
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n × m)
+/// * `mu0` — Reference function values (length m)
+/// * `delta` — Equivalence margin (δ > 0)
+/// * `alpha` — Significance level (0 < α < 0.5)
+/// * `nb` — Number of bootstrap replicates
+/// * `bootstrap` — Bootstrap method ([`EquivalenceBootstrap`])
+/// * `seed` — Random seed for reproducibility
+///
+/// # Returns
+/// `Some(EquivalenceTestResult)` on success, `None` if inputs are invalid.
+pub fn equivalence_test_one_sample(
+    data: &FdMatrix,
+    mu0: &[f64],
+    delta: f64,
+    alpha: f64,
+    nb: usize,
+    bootstrap: EquivalenceBootstrap,
+    seed: u64,
+) -> Option<EquivalenceTestResult> {
+    let (n, m) = data.shape();
+    if n < 3 || m == 0 || mu0.len() != m || !valid_equivalence_params(delta, alpha, nb) {
+        return None;
+    }
+
+    let mean = mean_1d(data);
+    let d_hat: Vec<f64> = (0..m).map(|j| mean[j] - mu0[j]).collect();
+
+    let (sup_stats, se) = match bootstrap {
+        EquivalenceBootstrap::Multiplier(mult) => {
+            let centered = crate::fdata::center_1d(data);
+            let sigma = residual_sigma(data, &mean, n, m);
+            let se: Vec<f64> = sigma
+                .iter()
+                .map(|&s| (s / (n as f64).sqrt()).max(1e-15))
+                .collect();
+            let stats =
+                equivalence_one_sample_multiplier_stats(&centered, &sigma, n, m, nb, mult, seed);
+            (stats, se)
+        }
+        EquivalenceBootstrap::Percentile => {
+            let stats = equivalence_one_sample_percentile_stats(data, mu0, &d_hat, n, m, nb, seed);
+            (stats, vec![])
+        }
+    };
+
+    Some(build_equivalence_result(
+        sup_stats, d_hat, &se, delta, alpha, nb,
+    ))
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1378,5 +1690,291 @@ mod tests {
         assert!(
             elastic_tolerance_band(&tiny, &t, 1, 10, 0.95, BandType::Pointwise, 5, 42).is_none()
         );
+    }
+
+    // ── Equivalence test (TOST) tests ──
+
+    fn make_equivalent_groups() -> (FdMatrix, FdMatrix) {
+        let m = 50;
+        let t = uniform_grid(m);
+        let d1 = sim_fundata(
+            30,
+            &t,
+            5,
+            EFunType::Fourier,
+            EValType::Exponential,
+            Some(42),
+        );
+        let d2 = sim_fundata(
+            30,
+            &t,
+            5,
+            EFunType::Fourier,
+            EValType::Exponential,
+            Some(142),
+        );
+        (d1, d2)
+    }
+
+    fn make_shifted_groups() -> (FdMatrix, FdMatrix) {
+        let m = 50;
+        let t = uniform_grid(m);
+        let d1 = sim_fundata(
+            30,
+            &t,
+            5,
+            EFunType::Fourier,
+            EValType::Exponential,
+            Some(42),
+        );
+        let mut d2 = sim_fundata(
+            30,
+            &t,
+            5,
+            EFunType::Fourier,
+            EValType::Exponential,
+            Some(142),
+        );
+        let (n2, m2) = d2.shape();
+        for i in 0..n2 {
+            for j in 0..m2 {
+                d2[(i, j)] += 10.0;
+            }
+        }
+        (d1, d2)
+    }
+
+    #[test]
+    fn test_equivalence_invalid_inputs() {
+        let (data1, data2) = make_equivalent_groups();
+        let bs = EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian);
+
+        let tiny = FdMatrix::zeros(2, 50);
+        assert!(equivalence_test(&tiny, &data2, 1.0, 0.05, 100, bs, 42).is_none());
+        assert!(equivalence_test(&data1, &tiny, 1.0, 0.05, 100, bs, 42).is_none());
+
+        let wrong_m = FdMatrix::zeros(30, 40);
+        assert!(equivalence_test(&data1, &wrong_m, 1.0, 0.05, 100, bs, 42).is_none());
+
+        assert!(equivalence_test(&data1, &data2, 0.0, 0.05, 100, bs, 42).is_none());
+        assert!(equivalence_test(&data1, &data2, -1.0, 0.05, 100, bs, 42).is_none());
+        assert!(equivalence_test(&data1, &data2, 1.0, 0.0, 100, bs, 42).is_none());
+        assert!(equivalence_test(&data1, &data2, 1.0, 0.5, 100, bs, 42).is_none());
+        assert!(equivalence_test(&data1, &data2, 1.0, 0.05, 0, bs, 42).is_none());
+    }
+
+    #[test]
+    fn test_equivalence_deterministic() {
+        let (data1, data2) = make_equivalent_groups();
+        let bs = EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian);
+
+        let r1 = equivalence_test(&data1, &data2, 5.0, 0.05, 100, bs, 42).unwrap();
+        let r2 = equivalence_test(&data1, &data2, 5.0, 0.05, 100, bs, 42).unwrap();
+
+        assert_eq!(r1.test_statistic, r2.test_statistic);
+        assert_eq!(r1.p_value, r2.p_value);
+        assert_eq!(r1.critical_value, r2.critical_value);
+        assert_eq!(r1.equivalent, r2.equivalent);
+    }
+
+    #[test]
+    fn test_equivalence_identical_groups() {
+        let data = make_test_data();
+        let r = equivalence_test(
+            &data,
+            &data,
+            10.0,
+            0.05,
+            200,
+            EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian),
+            42,
+        )
+        .unwrap();
+        assert!(
+            r.equivalent,
+            "Identical groups with large delta should be equivalent"
+        );
+    }
+
+    #[test]
+    fn test_equivalence_different_groups() {
+        let (data1, data2) = make_shifted_groups();
+        let r = equivalence_test(
+            &data1,
+            &data2,
+            0.5,
+            0.05,
+            200,
+            EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian),
+            42,
+        )
+        .unwrap();
+        assert!(
+            !r.equivalent,
+            "Shifted groups with small delta should not be equivalent"
+        );
+    }
+
+    #[test]
+    fn test_equivalence_scb_properties() {
+        let (data1, data2) = make_equivalent_groups();
+        let r = equivalence_test(
+            &data1,
+            &data2,
+            5.0,
+            0.05,
+            200,
+            EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian),
+            42,
+        )
+        .unwrap();
+
+        for j in 0..r.scb.lower.len() {
+            assert!(
+                r.scb.lower[j] < r.scb.center[j],
+                "lower[{j}] should be < center[{j}]"
+            );
+            assert!(
+                r.scb.center[j] < r.scb.upper[j],
+                "center[{j}] should be < upper[{j}]"
+            );
+        }
+    }
+
+    #[test]
+    fn test_equivalence_larger_delta_easier() {
+        let (data1, data2) = make_equivalent_groups();
+        let bs = EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian);
+
+        let r_small = equivalence_test(&data1, &data2, 1.0, 0.05, 200, bs, 42).unwrap();
+        let r_large = equivalence_test(&data1, &data2, 100.0, 0.05, 200, bs, 42).unwrap();
+
+        assert!(
+            r_large.equivalent || !r_small.equivalent,
+            "Larger delta should be at least as likely equivalent"
+        );
+        assert!(
+            r_large.p_value <= r_small.p_value + 1e-10,
+            "Larger delta p-value ({}) should be <= smaller delta p-value ({})",
+            r_large.p_value,
+            r_small.p_value
+        );
+    }
+
+    #[test]
+    fn test_equivalence_pvalue_range() {
+        let (data1, data2) = make_equivalent_groups();
+        let r = equivalence_test(
+            &data1,
+            &data2,
+            5.0,
+            0.05,
+            200,
+            EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian),
+            42,
+        )
+        .unwrap();
+        assert!(r.p_value >= 0.0, "p_value should be >= 0");
+        assert!(r.p_value <= 1.0, "p_value should be <= 1");
+    }
+
+    #[test]
+    fn test_equivalence_pvalue_consistent() {
+        let (data1, data2) = make_equivalent_groups();
+        let bs = EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian);
+
+        let r = equivalence_test(&data1, &data2, 100.0, 0.05, 500, bs, 42).unwrap();
+        if r.equivalent {
+            assert!(
+                r.p_value < r.alpha,
+                "equivalent=true should imply p_value ({}) < alpha ({})",
+                r.p_value,
+                r.alpha
+            );
+        }
+
+        let r2 = equivalence_test(&data1, &data2, 0.001, 0.05, 500, bs, 42).unwrap();
+        if !r2.equivalent {
+            assert!(
+                r2.p_value >= r2.alpha,
+                "equivalent=false should imply p_value ({}) >= alpha ({})",
+                r2.p_value,
+                r2.alpha
+            );
+        }
+    }
+
+    #[test]
+    fn test_equivalence_percentile() {
+        let (data1, data2) = make_equivalent_groups();
+        let r = equivalence_test(
+            &data1,
+            &data2,
+            5.0,
+            0.05,
+            200,
+            EquivalenceBootstrap::Percentile,
+            42,
+        )
+        .unwrap();
+
+        assert!(r.test_statistic >= 0.0);
+        assert!(r.p_value >= 0.0 && r.p_value <= 1.0);
+        assert!(r.critical_value >= 0.0);
+    }
+
+    #[test]
+    fn test_equivalence_one_sample_equivalent() {
+        let data = make_test_data();
+        let mu0 = mean_1d(&data);
+
+        let r = equivalence_test_one_sample(
+            &data,
+            &mu0,
+            10.0,
+            0.05,
+            200,
+            EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian),
+            42,
+        )
+        .unwrap();
+        assert!(
+            r.equivalent,
+            "Data vs its own mean with large delta should be equivalent"
+        );
+    }
+
+    #[test]
+    fn test_equivalence_one_sample_shifted() {
+        let data = make_test_data();
+        let mu0 = vec![100.0; data.ncols()];
+
+        let r = equivalence_test_one_sample(
+            &data,
+            &mu0,
+            0.5,
+            0.05,
+            200,
+            EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian),
+            42,
+        )
+        .unwrap();
+        assert!(
+            !r.equivalent,
+            "Data vs far-away mu0 should not be equivalent"
+        );
+    }
+
+    #[test]
+    fn test_equivalence_one_sample_invalid() {
+        let data = make_test_data();
+        let mu0 = vec![0.0; data.ncols()];
+        let bs = EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian);
+
+        let tiny = FdMatrix::zeros(2, data.ncols());
+        assert!(equivalence_test_one_sample(&tiny, &mu0, 1.0, 0.05, 100, bs, 42).is_none());
+        assert!(equivalence_test_one_sample(&data, &[0.0; 10], 1.0, 0.05, 100, bs, 42).is_none());
+        assert!(equivalence_test_one_sample(&data, &mu0, 0.0, 0.05, 100, bs, 42).is_none());
+        assert!(equivalence_test_one_sample(&data, &mu0, 1.0, 0.5, 100, bs, 42).is_none());
     }
 }

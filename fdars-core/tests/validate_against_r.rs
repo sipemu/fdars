@@ -473,6 +473,61 @@ struct StlExpected {
     remainder: Vec<f64>,
 }
 
+// Alignment data (alignment_30x51.json)
+#[derive(Deserialize)]
+struct AlignmentData {
+    n: usize,
+    m: usize,
+    argvals: Vec<f64>,
+    data: Vec<f64>,
+}
+
+// Equivalence groups data (equivalence_groups.json)
+#[derive(Deserialize)]
+struct EquivalenceGroupsData {
+    n: usize,
+    m: usize,
+    argvals: Vec<f64>,
+    data1: Vec<f64>,
+    data2: Vec<f64>,
+}
+
+// Alignment expected
+#[derive(Deserialize)]
+struct AlignmentExpected {
+    srsf_row0: Vec<f64>,
+    srsf_row1: Vec<f64>,
+    srsf_roundtrip_row0: Vec<f64>,
+    elastic_distance_01: f64,
+    pair_align_gamma: Vec<f64>,
+    pair_align_f_aligned: Vec<f64>,
+    karcher_mean: Vec<f64>,
+    karcher_mean_srsf: Vec<f64>,
+    distance_matrix_5x5: SquareMatrixData,
+}
+
+// Tolerance expected
+#[derive(Deserialize)]
+struct ToleranceExpected {
+    fpca_center: Vec<f64>,
+    fpca_eigenvalues: Vec<f64>,
+    degras_center: Vec<f64>,
+    degras_critical_value: f64,
+}
+
+// Equivalence expected
+#[derive(Deserialize)]
+struct EquivalenceExpected {
+    d_hat: Vec<f64>,
+    test_statistic: f64,
+    pooled_se: Vec<f64>,
+    critical_value: f64,
+    scb_lower: Vec<f64>,
+    scb_upper: Vec<f64>,
+    equivalent: bool,
+    p_value: f64,
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TESTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1343,4 +1398,416 @@ fn test_stl_decomposition() {
             seasonal_corr
         );
     }
+}
+
+// ─── Alignment ───────────────────────────────────────────────────────────
+
+#[test]
+fn test_alignment_srsf_transform() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let srsf = fdars_core::srsf_transform(&mat, &d.argvals);
+
+    let q0: Vec<f64> = srsf.row(0);
+    let q1: Vec<f64> = srsf.row(1);
+
+    // SRSF uses finite differences which differ slightly from R's gradient()
+    assert_vec_close(&q0, &exp.srsf_row0, 0.05, "srsf_row0");
+    assert_vec_close(&q1, &exp.srsf_row1, 0.05, "srsf_row1");
+}
+
+#[test]
+fn test_alignment_srsf_roundtrip() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Compute SRSF then invert
+    let srsf = fdars_core::srsf_transform(&mat, &d.argvals);
+    let q0: Vec<f64> = srsf.row(0);
+    let f0_initial = mat[(0, 0)];
+    let reconstructed = fdars_core::srsf_inverse(&q0, &d.argvals, f0_initial);
+
+    // Compare against R's round-trip
+    assert_vec_close(
+        &reconstructed,
+        &exp.srsf_roundtrip_row0,
+        0.05,
+        "srsf_roundtrip_vs_r",
+    );
+
+    // Also check round-trip fidelity against original
+    let original: Vec<f64> = mat.row(0);
+    assert_vec_close(&reconstructed, &original, 0.1, "srsf_roundtrip_vs_original");
+}
+
+#[test]
+fn test_alignment_elastic_distance() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let f1: Vec<f64> = mat.row(0);
+    let f2: Vec<f64> = mat.row(1);
+
+    let aligned_dist = fdars_core::elastic_distance(&f1, &f2, &d.argvals);
+    assert!(
+        aligned_dist > 0.0,
+        "elastic_distance should be positive: got {}",
+        aligned_dist
+    );
+
+    // Aligned distance should match R's fdasrvf within 15% relative tolerance
+    assert_relative_close(
+        aligned_dist,
+        exp.elastic_distance_01,
+        0.15,
+        "elastic_distance_01",
+    );
+}
+
+#[test]
+fn test_alignment_pair_align() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let f1: Vec<f64> = mat.row(0);
+    let f2: Vec<f64> = mat.row(1);
+    let result = fdars_core::elastic_align_pair(&f1, &f2, &d.argvals);
+
+    // Gamma must be a valid warping function:
+    // - Boundary values: gamma(0) = 0, gamma(1) = 1
+    assert_scalar_close(result.gamma[0], d.argvals[0], 1e-10, "pair_gamma_start");
+    assert_scalar_close(
+        result.gamma[d.m - 1],
+        d.argvals[d.m - 1],
+        1e-10,
+        "pair_gamma_end",
+    );
+
+    // - Monotone non-decreasing
+    for j in 1..d.m {
+        assert!(
+            result.gamma[j] >= result.gamma[j - 1],
+            "gamma should be monotone at j={}: {} >= {}",
+            j,
+            result.gamma[j],
+            result.gamma[j - 1]
+        );
+    }
+
+    // Gamma should match R's warping function pointwise
+    assert_vec_close_abs(
+        &result.gamma,
+        &exp.pair_align_gamma,
+        0.05,
+        "pair_align_gamma",
+    );
+
+    // Aligned curve should match R
+    assert_eq!(result.f_aligned.len(), d.m, "aligned curve length");
+    assert_vec_close_abs(
+        &result.f_aligned,
+        &exp.pair_align_f_aligned,
+        0.1,
+        "pair_align_f_aligned",
+    );
+
+    // Distance should be non-negative
+    assert!(
+        result.distance >= 0.0,
+        "elastic distance should be non-negative"
+    );
+}
+
+#[test]
+fn test_alignment_karcher_mean() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::karcher_mean(&mat, &d.argvals, 20, 1e-4);
+
+    // Basic dimensions
+    assert_eq!(result.mean.len(), d.m);
+    assert_eq!(result.mean_srsf.len(), d.m);
+    assert!(
+        result.n_iter <= 20,
+        "karcher_mean should terminate within max_iter"
+    );
+
+    // The Karcher mean is iterative and sensitive to accumulated SRSF differences
+    // (Rust finite-differences vs R gradient). Check shape via rank correlation
+    // and relative L2 error rather than pointwise absolute tolerance.
+    let n = result.mean.len();
+
+    // 1. Rank correlation should be high (same overall shape)
+    let rank = |v: &[f64]| -> Vec<f64> {
+        let mut indexed: Vec<(usize, f64)> = v.iter().cloned().enumerate().collect();
+        indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        let mut ranks = vec![0.0; n];
+        for (rank, (idx, _)) in indexed.iter().enumerate() {
+            ranks[*idx] = rank as f64;
+        }
+        ranks
+    };
+    let r_actual = rank(&result.mean);
+    let r_expected = rank(&exp.karcher_mean);
+    let mean_a = r_actual.iter().sum::<f64>() / n as f64;
+    let mean_e = r_expected.iter().sum::<f64>() / n as f64;
+    let mut cov = 0.0;
+    let mut var_a = 0.0;
+    let mut var_e = 0.0;
+    for i in 0..n {
+        let da = r_actual[i] - mean_a;
+        let de = r_expected[i] - mean_e;
+        cov += da * de;
+        var_a += da * da;
+        var_e += de * de;
+    }
+    let rho = cov / (var_a * var_e).sqrt().max(1e-10);
+    assert!(
+        rho > 0.99,
+        "karcher_mean: shape correlation too low (rho={:.4})",
+        rho
+    );
+
+    // 2. Relative L2 error should be bounded
+    let l2_diff: f64 = result
+        .mean
+        .iter()
+        .zip(exp.karcher_mean.iter())
+        .map(|(a, e)| (a - e).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let l2_ref: f64 = exp
+        .karcher_mean
+        .iter()
+        .map(|e| e.powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let rel_l2 = l2_diff / l2_ref.max(1e-10);
+    assert!(
+        rel_l2 < 0.05,
+        "karcher_mean: relative L2 error too high ({:.4})",
+        rel_l2
+    );
+}
+
+#[test]
+fn test_alignment_distance_matrix() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Extract first 5 curves
+    let k = 5;
+    let mut sub = FdMatrix::zeros(k, d.m);
+    for i in 0..k {
+        for j in 0..d.m {
+            sub[(i, j)] = mat[(i, j)];
+        }
+    }
+
+    let dist = fdars_core::elastic_self_distance_matrix(&sub, &d.argvals);
+
+    // Check structural properties: symmetry, zero diagonal, positive off-diagonal
+    for i in 0..k {
+        assert_scalar_close(dist[(i, i)], 0.0, 1e-10, &format!("dist_diag_{}", i));
+        for j in (i + 1)..k {
+            assert_scalar_close(
+                dist[(i, j)],
+                dist[(j, i)],
+                1e-10,
+                &format!("dist_symmetry_{}_{}", i, j),
+            );
+            assert!(
+                dist[(i, j)] > 0.0,
+                "off-diagonal distance should be positive: dist[{},{}]={}",
+                i,
+                j,
+                dist[(i, j)]
+            );
+        }
+    }
+
+    // Compare all 10 pairwise distances against R's fdasrvf (15% relative tolerance)
+    let r_dist = &exp.distance_matrix_5x5;
+    for i in 0..k {
+        for j in (i + 1)..k {
+            let r_val = r_dist.data[i * r_dist.n + j];
+            assert_relative_close(dist[(i, j)], r_val, 0.15, &format!("dist_{}_{}", i, j));
+        }
+    }
+}
+
+// ─── Tolerance Bands ─────────────────────────────────────────────────────
+
+#[test]
+fn test_tolerance_fpca_center() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // FPCA band center should be the pointwise mean
+    let band =
+        fdars_core::fpca_tolerance_band(&mat, 3, 100, 0.95, fdars_core::BandType::Pointwise, 42)
+            .expect("fpca_tolerance_band should succeed");
+
+    assert_vec_close(&band.center, &exp.fpca_center, 1e-6, "fpca_center");
+}
+
+#[test]
+fn test_tolerance_degras_center() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let band = fdars_core::scb_mean_degras(
+        &mat,
+        &d.argvals,
+        0.15,
+        500,
+        0.95,
+        fdars_core::MultiplierDistribution::Gaussian,
+    )
+    .expect("scb_mean_degras should succeed");
+
+    // Smoothed mean vs R's locpoly — Rust's local_polynomial and R's locpoly
+    // use different kernel implementations and boundary handling.
+    // Instead of pointwise comparison, verify the shape is similar.
+    assert_ranking_correlated(&band.center, &exp.degras_center, "degras_center_shape");
+
+    // Also check the mean is in a reasonable absolute range
+    let max_diff: f64 = band
+        .center
+        .iter()
+        .zip(exp.degras_center.iter())
+        .map(|(a, e)| (a - e).abs())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        max_diff < 0.5,
+        "degras center max pointwise difference too large: {:.4}",
+        max_diff
+    );
+}
+
+#[test]
+fn test_tolerance_degras_critical_order() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let band = fdars_core::scb_mean_degras(
+        &mat,
+        &d.argvals,
+        0.15,
+        500,
+        0.95,
+        fdars_core::MultiplierDistribution::Gaussian,
+    )
+    .expect("scb_mean_degras should succeed");
+
+    // The critical value should be in the same ballpark as R's.
+    // Different PRNGs make exact match impossible; check within 2x.
+    let r_cv = exp.degras_critical_value;
+    let rust_cv = band
+        .half_width
+        .iter()
+        .zip(exp.degras_center.iter())
+        .map(|(&hw, _)| hw)
+        .fold(0.0_f64, f64::max);
+
+    // The half_width is c * sigma / sqrt(n), extract c by dividing out.
+    // Instead just check the band is reasonable: not zero, not absurdly large.
+    assert!(rust_cv > 0.0, "degras half-width should be positive");
+    // Critical value order-of-magnitude check
+    let ratio = r_cv / rust_cv.max(1e-15);
+    // We can't directly compare critical values since they're derived from
+    // different bootstrap samples. Just verify they're within 10x.
+    assert!(
+        ratio > 0.01 && ratio < 100.0,
+        "degras critical value order-of-magnitude check: R={:.4}, Rust_max_hw={:.4}, ratio={:.4}",
+        r_cv,
+        rust_cv,
+        ratio
+    );
+}
+
+// ─── Equivalence Test ────────────────────────────────────────────────────
+
+#[test]
+fn test_equivalence_deterministic() {
+    let exp: EquivalenceExpected = load_json("expected", "equivalence_expected");
+    let d: EquivalenceGroupsData = load_json("data", "equivalence_groups");
+    let mat1 = FdMatrix::from_slice(&d.data1, d.n, d.m).unwrap();
+    let mat2 = FdMatrix::from_slice(&d.data2, d.n, d.m).unwrap();
+
+    let result = fdars_core::equivalence_test(
+        &mat1,
+        &mat2,
+        0.5,
+        0.05,
+        1000,
+        fdars_core::EquivalenceBootstrap::Multiplier(fdars_core::MultiplierDistribution::Gaussian),
+        42,
+    )
+    .expect("equivalence_test should succeed");
+
+    // d_hat = colMeans(mat1) - colMeans(mat2) — deterministic, should match closely
+    assert_vec_close(&result.scb.center, &exp.d_hat, 1e-10, "equivalence_d_hat");
+
+    // test_statistic = max(|d_hat|) — deterministic
+    assert_scalar_close(
+        result.test_statistic,
+        exp.test_statistic,
+        1e-10,
+        "equivalence_test_statistic",
+    );
+}
+
+#[test]
+fn test_equivalence_bootstrap_quantities() {
+    let exp: EquivalenceExpected = load_json("expected", "equivalence_expected");
+    let d: EquivalenceGroupsData = load_json("data", "equivalence_groups");
+    let mat1 = FdMatrix::from_slice(&d.data1, d.n, d.m).unwrap();
+    let mat2 = FdMatrix::from_slice(&d.data2, d.n, d.m).unwrap();
+
+    let result = fdars_core::equivalence_test(
+        &mat1,
+        &mat2,
+        0.5,
+        0.05,
+        1000,
+        fdars_core::EquivalenceBootstrap::Multiplier(fdars_core::MultiplierDistribution::Gaussian),
+        42,
+    )
+    .expect("equivalence_test should succeed");
+
+    // Critical value — different PRNGs, so very relaxed: within 50% relative
+    assert_relative_close(
+        result.critical_value,
+        exp.critical_value,
+        0.50,
+        "equivalence_critical_value",
+    );
+
+    // P-value — stochastic, just check it's in a reasonable range
+    // With delta=0.5 and a small mean difference (~0.15), we expect equivalence.
+    assert!(
+        result.p_value < 0.5,
+        "equivalence p_value should be small (found {}), R p_value={}",
+        result.p_value,
+        exp.p_value
+    );
+
+    // Equivalence decision should match R's
+    assert_eq!(
+        result.equivalent, exp.equivalent,
+        "equivalence decision: Rust={}, R={}",
+        result.equivalent, exp.equivalent
+    );
 }

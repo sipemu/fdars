@@ -15,7 +15,7 @@ message("=== Installing fdars-core validation dependencies ===\n")
 
 # Core FDA
 message("-- Core FDA packages --")
-for (pkg in c("fda", "fda.usc", "roahd", "ddalpha")) install_if_missing(pkg)
+for (pkg in c("fda", "fda.usc", "roahd", "ddalpha", "fdasrvf")) install_if_missing(pkg)
 
 # Statistics / Regression
 message("\n-- Regression packages --")
