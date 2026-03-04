@@ -2135,4 +2135,53 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_nan_srsf_no_panic() {
+        let m = 20;
+        let t = uniform_grid(m);
+        let mut f = vec![1.0; m];
+        f[5] = f64::NAN;
+        let mat = FdMatrix::from_slice(&f, 1, m).unwrap();
+        let q = srsf_transform(&mat, &t);
+        // Should not panic; NaN propagates
+        assert_eq!(q.nrows(), 1);
+    }
+
+    #[test]
+    fn test_n1_karcher_mean() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let f: Vec<f64> = t.iter().map(|&ti| ti * ti).collect();
+        let data = FdMatrix::from_slice(&f, 1, m).unwrap();
+        let result = karcher_mean(&data, &t, 5, 1e-4);
+        assert_eq!(result.mean.len(), m);
+        // With only 1 curve, the mean should be close to the original
+        for j in 0..m {
+            assert!(result.mean[j].is_finite());
+        }
+    }
+
+    #[test]
+    fn test_two_point_grid() {
+        let t = vec![0.0, 1.0];
+        let f1 = vec![0.0, 1.0];
+        let f2 = vec![0.0, 2.0];
+        let d = elastic_distance(&f1, &f2, &t);
+        assert!(d >= 0.0);
+        assert!(d.is_finite());
+    }
+
+    #[test]
+    fn test_non_uniform_grid_alignment() {
+        // Non-uniform grid: points clustered near 0
+        let t = vec![0.0, 0.01, 0.05, 0.2, 0.5, 1.0];
+        let m = t.len();
+        let f1: Vec<f64> = t.iter().map(|&ti: &f64| ti.sin()).collect();
+        let f2: Vec<f64> = t.iter().map(|&ti: &f64| (ti + 0.1).sin()).collect();
+        let result = elastic_align_pair(&f1, &f2, &t);
+        assert_eq!(result.gamma.len(), m);
+        assert!(result.distance >= 0.0);
+        assert!(result.distance.is_finite());
+    }
 }

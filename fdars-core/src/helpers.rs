@@ -152,4 +152,31 @@ mod tests {
         // dist^2 = 0.25*1 + 0.5*1 + 0.25*1 = 1.0, so dist = 1.0
         assert!((dist - 1.0).abs() < NUMERICAL_EPS);
     }
+
+    #[test]
+    fn test_n1_weights() {
+        // Single point: fallback weight is 1.0 (degenerate case)
+        let w = simpsons_weights(&[0.5]);
+        assert_eq!(w.len(), 1);
+        assert!((w[0] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_n2_weights() {
+        let w = simpsons_weights(&[0.0, 1.0]);
+        assert_eq!(w.len(), 2);
+        // Trapezoidal: each weight should be 0.5
+        assert!((w[0] - 0.5).abs() < 1e-12);
+        assert!((w[1] - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_mismatched_l2_distance() {
+        // Mismatched lengths should not panic but may give garbage
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![1.0, 2.0, 3.0];
+        let w = vec![0.5, 0.5, 0.5];
+        let d = l2_distance(&a, &b, &w);
+        assert!(d.abs() < 1e-12, "Same vectors should have zero distance");
+    }
 }

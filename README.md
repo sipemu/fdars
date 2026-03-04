@@ -26,6 +26,12 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Regression**: Functional PCA, PLS, ridge regression
 - **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
 - **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; seasonal strength metrics; amplitude modulation detection
+- **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean, elastic distance matrices
+- **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands
+- **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
+- **Detrending**: Linear, polynomial, LOESS, spline, differencing; classical and STL decomposition
+- **Streaming Depth**: Online FM, MBD, BD depth with sorted-reference O(log N) updates
+- **Irregular Data**: CSR-compressed storage, kernel mean/covariance, Lp metric, grid regularization
 
 ## Installation
 
@@ -45,7 +51,7 @@ install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  
 
 ```toml
 [dependencies]
-fdars-core = "0.3"
+fdars-core = "0.6"
 ```
 
 Or install from the repository:
@@ -65,36 +71,39 @@ For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.3", default-features = false }
+fdars-core = { version = "0.6", default-features = false }
 ```
 
 ## Data Layout
 
-Functional data is represented as column-major matrices stored in flat `Vec<f64>`:
-- For n observations with m evaluation points: `data[i + j * n]` gives observation i at point j
+Functional data is represented using the [`FdMatrix`](https://docs.rs/fdars-core/latest/fdars_core/matrix/struct.FdMatrix.html) type, a column-major matrix wrapping a flat `Vec<f64>` with safe `(i, j)` indexing and dimension tracking:
+- For n observations with m evaluation points: `data[(i, j)]` gives observation i at point j
+- Zero-copy column access via `data.column(j)`, row gather via `data.row(i)`
+- nalgebra interop via `to_dmatrix()` / `from_dmatrix()` for SVD operations
 - 2D surfaces (n observations, m1 x m2 grid): stored as n x (m1*m2) matrices
 
 ## Quick Start
 
 ```rust
-use fdars_core::{fdata, depth, helpers};
+use fdars_core::{FdMatrix, fdata, depth};
 
 // Create sample functional data (3 observations, 10 points each)
 let n = 3;
 let m = 10;
 let data: Vec<f64> = (0..(n * m)).map(|i| (i as f64).sin()).collect();
+let mat = FdMatrix::from_column_major(data, n, m).unwrap();
 let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
 
 // Compute mean function
-let mean = fdata::mean_1d(&data, n, m);
+let mean = fdata::mean_1d(&mat);
 
 // Compute Fraiman-Muniz depth
-let depths = depth::fraiman_muniz_1d(&data, &data, n, n, m, true);
+let depths = depth::fraiman_muniz_1d(&mat, &mat, true);
 ```
 
 ## Examples
 
-The [`fdars-core/examples/`](fdars-core/examples/) directory contains 14 runnable examples progressing from basic to advanced:
+The [`fdars-core/examples/`](fdars-core/examples/) directory contains 17 runnable examples progressing from basic to advanced:
 
 | # | Example | Command | Topics |
 |---|---------|---------|--------|
@@ -112,6 +121,9 @@ The [`fdars-core/examples/`](fdars-core/examples/) directory contains 14 runnabl
 | 12 | [Streaming Depth](fdars-core/examples/12_streaming_depth/) | `cargo run -p fdars-core --example streaming_depth` | Online depth, rolling windows |
 | 13 | [Irregular Data](fdars-core/examples/13_irregular_data/) | `cargo run -p fdars-core --example irregular_data` | CSR storage, regularization, kernel mean |
 | 14 | [Complete Pipeline](fdars-core/examples/14_complete_pipeline/) | `cargo run -p fdars-core --example complete_pipeline` | End-to-end: simulate → smooth → outliers → FPCA → cluster |
+| 15 | [Tolerance Bands](fdars-core/examples/15_tolerance_bands/) | `cargo run -p fdars-core --example tolerance_bands` | FPCA, conformal, Degras SCB, exponential family bands |
+| 16 | [Elastic Alignment](fdars-core/examples/16_elastic_alignment/) | `cargo run -p fdars-core --example elastic_alignment` | SRSF, DP alignment, Karcher mean, elastic distances |
+| 17 | [Equivalence Test](fdars-core/examples/17_equivalence_test/) | `cargo run -p fdars-core --example equivalence_test` | Functional TOST, bootstrap, one/two-sample tests |
 
 ## Performance
 

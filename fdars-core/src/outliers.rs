@@ -346,4 +346,47 @@ mod tests {
             "Should return all false for n < 3"
         );
     }
+
+    #[test]
+    fn test_identical_data_outliers() {
+        let n = 10;
+        let m = 20;
+        let data = FdMatrix::from_column_major(vec![1.0; n * m], n, m).unwrap();
+        let flags = detect_outliers_lrt(&data, 1.0, 0.15);
+        assert_eq!(flags.len(), n);
+        // All identical → no outliers
+        for &f in &flags {
+            assert!(!f);
+        }
+    }
+
+    #[test]
+    fn test_n3_minimal_outliers() {
+        // Minimum viable: 3 curves
+        let n = 3;
+        let m = 10;
+        let mut data_vec = vec![0.0; n * m];
+        // Third curve is an outlier
+        for j in 0..m {
+            data_vec[j * n] = 0.0;
+            data_vec[1 + j * n] = 0.1;
+            data_vec[2 + j * n] = 100.0;
+        }
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let flags = detect_outliers_lrt(&data, 0.5, 0.15);
+        assert_eq!(flags.len(), n);
+    }
+
+    #[test]
+    fn test_all_false_high_threshold() {
+        let n = 10;
+        let m = 20;
+        let data_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        // Very high threshold → no outliers
+        let flags = detect_outliers_lrt(&data, 1e10, 0.15);
+        for &f in &flags {
+            assert!(!f, "High threshold should produce no outliers");
+        }
+    }
 }

@@ -1079,4 +1079,44 @@ mod tests {
         let ch = calinski_harabasz(&data, &t, &[]);
         assert!(ch.abs() < 1e-10);
     }
+
+    #[test]
+    fn test_identical_curves_kmeans() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let n = 10;
+        // All curves identical
+        let data_vec: Vec<f64> = (0..n * m)
+            .map(|idx| (2.0 * PI * (idx % m) as f64 / (m - 1) as f64).sin())
+            .collect();
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let result = kmeans_fd(&data, &t, 2, 100, 1e-6, 42);
+        // Should not panic with identical data
+        assert_eq!(result.cluster.len(), n);
+    }
+
+    #[test]
+    fn test_k_equals_n() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let n = 5;
+        let (data, _) = generate_two_clusters(n, m);
+        let result = kmeans_fd(&data, &t, 2 * n, 100, 1e-6, 42);
+        // k == n: each curve is its own cluster
+        assert_eq!(result.cluster.len(), 2 * n);
+    }
+
+    #[test]
+    fn test_n2_kmeans() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(2, m);
+        for j in 0..m {
+            data[(0, j)] = 0.0;
+            data[(1, j)] = 10.0;
+        }
+        let result = kmeans_fd(&data, &t, 2, 100, 1e-6, 42);
+        assert_eq!(result.cluster.len(), 2);
+        assert_ne!(result.cluster[0], result.cluster[1]);
+    }
 }

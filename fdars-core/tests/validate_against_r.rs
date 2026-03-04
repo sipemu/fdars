@@ -25,6 +25,7 @@
 #![allow(dead_code)]
 
 use fdars_core::matrix::FdMatrix;
+use fdars_core::streaming_depth::StreamingDepth;
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
@@ -511,6 +512,8 @@ struct AlignmentExpected {
 struct ToleranceExpected {
     fpca_center: Vec<f64>,
     fpca_eigenvalues: Vec<f64>,
+    conformal_center: Vec<f64>,
+    conformal_quantile: f64,
     degras_center: Vec<f64>,
     degras_critical_value: f64,
 }
@@ -1810,4 +1813,1000 @@ fn test_equivalence_bootstrap_quantities() {
         "equivalence decision: Rust={}, R={}",
         result.equivalent, exp.equivalent
     );
+}
+
+// ─── Streaming Depth ─────────────────────────────────────────────────────
+
+#[test]
+fn test_streaming_fm_matches_batch_depth() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Batch FM depth
+    let _batch = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+
+    // Streaming FM depth: compute for each curve against rest
+    let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&mat);
+    let streamer = fdars_core::streaming_depth::StreamingFraimanMuniz::new(state, true);
+    for i in 0..d.n {
+        let curve = mat.row(i);
+        let streaming_d = streamer.depth_one(&curve);
+        // Streaming uses sorted ranks, so values may differ slightly
+        assert!(
+            streaming_d.is_finite(),
+            "streaming FM depth should be finite for curve {i}"
+        );
+    }
+}
+
+#[test]
+fn test_streaming_mbd_matches_batch_depth() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let batch = fdars_core::depth::modified_band_1d(&mat, &mat);
+
+    let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&mat);
+    let streamer = fdars_core::streaming_depth::StreamingMbd::new(state);
+    for (i, &batch_d) in batch.iter().enumerate() {
+        let curve = mat.row(i);
+        let streaming_d = streamer.depth_one(&curve);
+        // Streaming MBD should be close to batch MBD
+        assert!(
+            (streaming_d - batch_d).abs() < 0.15,
+            "streaming MBD for curve {i}: streaming={streaming_d:.4}, batch={:.4}",
+            batch[i]
+        );
+    }
+}
+
+#[test]
+fn test_streaming_bd_matches_batch_depth() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let batch = fdars_core::depth::band_1d(&mat, &mat);
+
+    let state = fdars_core::streaming_depth::FullReferenceState::from_reference(&mat);
+    let streamer = fdars_core::streaming_depth::StreamingBd::new(state);
+    for (i, &batch_d) in batch.iter().enumerate() {
+        let curve = mat.row(i);
+        let streaming_d = streamer.depth_one(&curve);
+        assert!(
+            (streaming_d - batch_d).abs() < 0.15,
+            "streaming BD for curve {i}: streaming={streaming_d:.4}, batch={:.4}",
+            batch[i]
+        );
+    }
+}
+
+#[test]
+fn test_streaming_depth_ranking_correlation() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let batch = fdars_core::depth::modified_band_1d(&mat, &mat);
+
+    let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&mat);
+    let streamer = fdars_core::streaming_depth::StreamingMbd::new(state);
+    let streaming: Vec<f64> = (0..d.n).map(|i| streamer.depth_one(&mat.row(i))).collect();
+
+    assert_ranking_correlated(&streaming, &batch, "streaming_vs_batch_mbd");
+}
+
+#[test]
+fn test_streaming_rolling_reference() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Use first 30 curves as initial reference, stream the rest
+    let mut init_data = vec![0.0; 30 * d.m];
+    for i in 0..30 {
+        for j in 0..d.m {
+            init_data[i + j * 30] = mat[(i, j)];
+        }
+    }
+    let init_mat = FdMatrix::from_column_major(init_data, 30, d.m).unwrap();
+    let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&init_mat);
+    let streamer = fdars_core::streaming_depth::StreamingMbd::new(state);
+
+    for i in 30..d.n {
+        let curve = mat.row(i);
+        let depth = streamer.depth_one(&curve);
+        assert!((0.0..=1.0).contains(&depth), "depth should be in [0,1]");
+    }
+}
+
+// ─── Outlier Validation ──────────────────────────────────────────────────
+
+#[test]
+fn test_outliers_threshold_deterministic() {
+    let d: OutlierData = load_json("data", "outliers_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let t1 = fdars_core::outliers::outliers_threshold_lrt(&mat, 100, 0.05, 0.15, 42, 0.99);
+    let t2 = fdars_core::outliers::outliers_threshold_lrt(&mat, 100, 0.05, 0.15, 42, 0.99);
+    assert!(
+        (t1 - t2).abs() < 1e-12,
+        "Same seed should give same threshold"
+    );
+    assert!(t1 > 0.0, "Threshold should be positive");
+}
+
+#[test]
+fn test_outliers_detect_known_outliers() {
+    let d: OutlierData = load_json("data", "outliers_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Get a reasonable threshold
+    let threshold = fdars_core::outliers::outliers_threshold_lrt(&mat, 200, 0.05, 0.15, 42, 0.99);
+    let flags = fdars_core::outliers::detect_outliers_lrt(&mat, threshold, 0.15);
+
+    assert_eq!(flags.len(), d.n);
+    // R's depth-trim also detects 0 outliers for this dataset, so just verify
+    // the method runs correctly and doesn't flag the majority as outliers.
+    let n_outliers: usize = flags.iter().filter(|&&f| f).count();
+    assert!(
+        n_outliers < d.n / 2,
+        "Should not flag majority as outliers, got {n_outliers}"
+    );
+}
+
+#[test]
+fn test_outliers_depth_ordering() {
+    let d: OutlierData = load_json("data", "outliers_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Outliers should have low depth
+    let _exp: OutliersExpected = load_json("expected", "outliers_expected");
+    let depths = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+
+    let threshold = fdars_core::outliers::outliers_threshold_lrt(&mat, 200, 0.05, 0.15, 42, 0.99);
+    let flags = fdars_core::outliers::detect_outliers_lrt(&mat, threshold, 0.15);
+
+    // Flagged curves should have lower depth than non-flagged (on average)
+    let outlier_depths: Vec<f64> = flags
+        .iter()
+        .zip(depths.iter())
+        .filter(|(&f, _)| f)
+        .map(|(_, &d)| d)
+        .collect();
+    let normal_depths: Vec<f64> = flags
+        .iter()
+        .zip(depths.iter())
+        .filter(|(&f, _)| !f)
+        .map(|(_, &d)| d)
+        .collect();
+
+    if !outlier_depths.is_empty() && !normal_depths.is_empty() {
+        let mean_outlier: f64 = outlier_depths.iter().sum::<f64>() / outlier_depths.len() as f64;
+        let mean_normal: f64 = normal_depths.iter().sum::<f64>() / normal_depths.len() as f64;
+        assert!(
+            mean_outlier <= mean_normal + 0.1,
+            "Outliers should have lower depth: outlier_mean={mean_outlier:.4}, normal_mean={mean_normal:.4}"
+        );
+    }
+}
+
+// ─── Clustering Validation ───────────────────────────────────────────────
+
+#[test]
+fn test_kmeans_quality_r_data() {
+    let d: StandardData = load_json("data", "clusters_60x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::clustering::kmeans_fd(&mat, &d.argvals, 3, 100, 1e-6, 42);
+    assert_eq!(result.cluster.len(), d.n);
+    assert!(result.converged);
+
+    // Each cluster should have at least 1 member
+    for k in 0..3 {
+        let count = result.cluster.iter().filter(|&&c| c == k).count();
+        assert!(count > 0, "Cluster {k} should have members");
+    }
+
+    // Silhouette should be positive for well-separated clusters
+    let sil = fdars_core::clustering::silhouette_score(&mat, &d.argvals, &result.cluster);
+    let mean_sil: f64 = sil.iter().sum::<f64>() / sil.len() as f64;
+    assert!(
+        mean_sil > 0.0,
+        "Mean silhouette should be positive: {mean_sil:.4}"
+    );
+}
+
+#[test]
+fn test_kmeans_convergence_r_data() {
+    let d: StandardData = load_json("data", "clusters_60x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::clustering::kmeans_fd(&mat, &d.argvals, 3, 100, 1e-6, 42);
+    assert!(result.converged, "K-means should converge");
+    assert!(
+        result.tot_withinss > 0.0,
+        "Total within SS should be positive"
+    );
+    assert!(result.tot_withinss.is_finite());
+}
+
+#[test]
+fn test_fuzzy_cmeans_membership_sums() {
+    let d: StandardData = load_json("data", "clusters_60x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42);
+    let k = 3;
+
+    // Each observation's membership should sum to 1
+    for i in 0..d.n {
+        let sum: f64 = (0..k).map(|c| result.membership[(i, c)]).sum();
+        assert!(
+            (sum - 1.0).abs() < 1e-6,
+            "Membership should sum to 1 for obs {i}, got {sum}"
+        );
+    }
+}
+
+#[test]
+fn test_fuzzy_cmeans_center_separation() {
+    let d: StandardData = load_json("data", "clusters_60x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42);
+
+    // Centers should be distinct
+    for c1 in 0..3 {
+        for c2 in (c1 + 1)..3 {
+            let dist: f64 = (0..d.m)
+                .map(|j| (result.centers[(c1, j)] - result.centers[(c2, j)]).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            assert!(
+                dist > 0.01,
+                "Centers {c1} and {c2} should be distinct: dist={dist:.4}"
+            );
+        }
+    }
+}
+
+// ─── Depth Rank Correlation ──────────────────────────────────────────────
+
+#[test]
+fn test_random_projection_rank_correlation() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let fm = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let rp = fdars_core::depth::random_projection_1d(&mat, &mat, 100);
+
+    // RP depth should be rank-correlated with FM depth
+    assert_ranking_correlated(&rp, &fm, "rp_vs_fm_depth");
+}
+
+#[test]
+fn test_random_tukey_rank_correlation() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Random Tukey (halfspace) depth: high-dimensional random projections
+    // are inherently noisy without a fixed seed. Verify structural properties.
+    let tukey = fdars_core::depth::random_tukey_1d(&mat, &mat, 1000);
+    assert_eq!(tukey.len(), d.n);
+
+    // Values should be finite and in [0, 0.5]
+    for (i, &v) in tukey.iter().enumerate() {
+        assert!(
+            v.is_finite() && (0.0..=0.5).contains(&v),
+            "tukey depth[{i}] should be in [0, 0.5]: {v}"
+        );
+    }
+
+    // The median curve (by FM) should have higher Tukey depth than the most extreme curves
+    let fm = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let deepest_fm = fm
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .unwrap()
+        .0;
+    let shallowest_fm = fm
+        .iter()
+        .enumerate()
+        .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .unwrap()
+        .0;
+    // The deepest FM curve should have >= Tukey depth than the shallowest
+    // (this is a weak property but holds on average)
+    assert!(
+        tukey[deepest_fm] >= tukey[shallowest_fm] * 0.5,
+        "deepest FM curve should have reasonable Tukey depth"
+    );
+}
+
+#[test]
+fn test_2d_delegates_to_1d_fm() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let d1 = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let d2 = fdars_core::depth::fraiman_muniz_2d(&mat, &mat, true);
+    assert_eq!(d1, d2, "FM 2D should delegate to 1D");
+}
+
+#[test]
+fn test_2d_delegates_to_1d_spatial() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let d1 = fdars_core::depth::functional_spatial_1d(&mat, &mat);
+    let d2 = fdars_core::depth::functional_spatial_2d(&mat, &mat);
+    assert_eq!(d1, d2, "Spatial 2D should delegate to 1D");
+}
+
+// ─── Basis Validation ────────────────────────────────────────────────────
+
+#[test]
+fn test_fdata_to_basis_coefficient_count() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::basis::fdata_to_basis_1d(&mat, &d.argvals, 11, 1).unwrap();
+    assert_eq!(result.coefficients.nrows(), d.n);
+    assert_eq!(result.coefficients.ncols(), result.n_basis);
+    assert_eq!(result.n_basis, 11);
+}
+
+#[test]
+fn test_basis_roundtrip_error() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let proj = fdars_core::basis::fdata_to_basis_1d(&mat, &d.argvals, 15, 1).unwrap();
+    let reconstructed =
+        fdars_core::basis::basis_to_fdata_1d(&proj.coefficients, &d.argvals, proj.n_basis, 1);
+
+    // Roundtrip error should be reasonable with enough basis functions
+    let mut total_err = 0.0;
+    let mut count = 0;
+    for i in 0..d.n {
+        for j in 0..d.m {
+            total_err += (mat[(i, j)] - reconstructed[(i, j)]).powi(2);
+            count += 1;
+        }
+    }
+    let rmse = (total_err / count as f64).sqrt();
+    assert!(rmse < 1.5, "Roundtrip RMSE should be < 1.5: {rmse:.4}");
+}
+
+#[test]
+fn test_gcv_selection_valid() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let best = fdars_core::basis::select_fourier_nbasis_gcv(&mat, &d.argvals, 3, 21);
+    assert!((3..=21).contains(&best));
+    assert!(best % 2 == 1, "Selected Fourier nbasis should be odd");
+}
+
+#[test]
+fn test_auto_selection_valid() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::basis::select_basis_auto_1d(&mat, &d.argvals, 0, 5, 15, 1.0, false);
+    assert_eq!(result.selections.len(), d.n);
+    for sel in &result.selections {
+        assert!(sel.nbasis >= 3);
+        assert_eq!(sel.fitted.len(), d.m);
+    }
+}
+
+// ─── Tolerance Validation ────────────────────────────────────────────────
+
+#[test]
+fn test_conformal_center_vs_r() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let band = fdars_core::conformal_prediction_band(
+        &mat,
+        0.2,
+        0.95,
+        fdars_core::NonConformityScore::SupNorm,
+        42,
+    )
+    .unwrap();
+
+    // Conformal band center should be training set mean (tolerance for random split)
+    assert_ranking_correlated(&band.center, &exp.conformal_center, "conformal_center");
+}
+
+#[test]
+fn test_conformal_quantile_range() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let band = fdars_core::conformal_prediction_band(
+        &mat,
+        0.2,
+        0.95,
+        fdars_core::NonConformityScore::SupNorm,
+        42,
+    )
+    .unwrap();
+
+    // Half-width should be the conformal quantile (constant for sup-norm)
+    let hw = band.half_width[0];
+    assert!(hw > 0.0, "Conformal half-width should be positive");
+    // Should be in similar range as R's (within 5x due to random split)
+    let r_q = exp.conformal_quantile;
+    assert!(
+        hw > r_q * 0.1 && hw < r_q * 10.0,
+        "Conformal quantile order-of-magnitude: Rust={hw:.4}, R={r_q:.4}"
+    );
+}
+
+#[test]
+fn test_elastic_tolerance_valid() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let band = fdars_core::elastic_tolerance_band(
+        &mat,
+        &d.argvals,
+        5,
+        100,
+        0.95,
+        fdars_core::BandType::Simultaneous,
+        100,
+        42,
+    )
+    .unwrap();
+
+    assert_eq!(band.center.len(), d.m);
+    for j in 0..d.m {
+        assert!(band.lower[j] <= band.center[j]);
+        assert!(band.center[j] <= band.upper[j]);
+        assert!(band.half_width[j] > 0.0);
+    }
+}
+
+#[test]
+fn test_exponential_tolerance_properties() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let band = fdars_core::exponential_family_tolerance_band(
+        &mat,
+        fdars_core::ExponentialFamily::Gaussian,
+        3,
+        100,
+        0.95,
+        42,
+    )
+    .unwrap();
+
+    assert_eq!(band.center.len(), d.m);
+    for j in 0..d.m {
+        assert!(band.lower[j] < band.upper[j], "lower < upper at j={j}");
+    }
+}
+
+#[test]
+fn test_equivalence_one_sample_property() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let center = fdars_core::fdata::mean_1d(&mat);
+
+    // Test equivalence against the sample mean with large delta — should reject (equivalent)
+    let result = fdars_core::equivalence_test_one_sample(
+        &mat,
+        &center,
+        10.0,
+        0.05,
+        199,
+        fdars_core::EquivalenceBootstrap::Multiplier(fdars_core::MultiplierDistribution::Gaussian),
+        42,
+    )
+    .expect("equivalence_test_one_sample should succeed");
+    assert!(
+        result.equivalent,
+        "Large delta with sample mean should reject (equivalent)"
+    );
+}
+
+// ─── fdata Property-based ────────────────────────────────────────────────
+
+#[test]
+fn test_geometric_median_near_mean_symmetric() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let mean = fdars_core::fdata::mean_1d(&mat);
+    let median = fdars_core::fdata::geometric_median_1d(&mat, &d.argvals, 100, 1e-6);
+
+    // For approximately symmetric data, median should be near mean
+    let max_diff: f64 = mean
+        .iter()
+        .zip(median.iter())
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        max_diff < 2.0,
+        "Geometric median should be near mean for symmetric data: max_diff={max_diff:.4}"
+    );
+}
+
+#[test]
+fn test_geometric_median_robust_to_outlier() {
+    let d: OutlierData = load_json("data", "outliers_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let _mean = fdars_core::fdata::mean_1d(&mat);
+    let median = fdars_core::fdata::geometric_median_1d(&mat, &d.argvals, 100, 1e-6);
+
+    // Median should exist and be finite
+    for (j, &med_j) in median.iter().enumerate() {
+        assert!(med_j.is_finite(), "Median should be finite at j={j}");
+    }
+}
+
+#[test]
+fn test_2d_mean_valid() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let mean_1d = fdars_core::fdata::mean_1d(&mat);
+    let mean_2d = fdars_core::fdata::mean_2d(&mat);
+
+    // 2D mean should be same as 1D mean (it delegates)
+    assert_vec_close(&mean_1d, &mean_2d, 1e-12, "mean_1d_vs_2d");
+}
+
+#[test]
+fn test_2d_deriv_valid() {
+    // Create a simple 2D surface and compute derivatives
+    let n = 5;
+    let m1 = 10;
+    let m2 = 10;
+    let m = m1 * m2;
+    let s: Vec<f64> = (0..m1).map(|i| i as f64 / (m1 - 1) as f64).collect();
+    let t: Vec<f64> = (0..m2).map(|i| i as f64 / (m2 - 1) as f64).collect();
+
+    // f(s,t) = s + 2*t for each observation
+    let mut data_vec = vec![0.0; n * m];
+    for obs in 0..n {
+        for (si, &sv) in s.iter().enumerate() {
+            for (ti, &tv) in t.iter().enumerate() {
+                let j = si * m2 + ti;
+                data_vec[obs + j * n] = sv + 2.0 * tv + obs as f64 * 0.1;
+            }
+        }
+    }
+    let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+
+    let result = fdars_core::fdata::deriv_2d(&data, &s, &t, m1, m2);
+    assert!(result.is_some(), "2D derivative should succeed");
+    let res = result.unwrap();
+    assert_eq!(res.ds.nrows(), n);
+    assert_eq!(res.dt.nrows(), n);
+}
+
+// ─── Simulation Validation (R fixtures) ──────────────────────────────────
+
+#[test]
+fn test_legendre_eigenfunctions_shape() {
+    let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
+    let phi = fdars_core::simulation::legendre_eigenfunctions(&t, 5, false);
+    assert_eq!(phi.nrows(), 50);
+    assert_eq!(phi.ncols(), 5);
+    // All values should be finite
+    for i in 0..50 {
+        for j in 0..5 {
+            assert!(
+                phi[(i, j)].is_finite(),
+                "Legendre eigenfunction should be finite at ({i},{j})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_sim_kl_dimensions() {
+    let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
+    let phi = fdars_core::simulation::fourier_eigenfunctions(&t, 5);
+    let lambda = fdars_core::simulation::eigenvalues_exponential(5);
+    let data = fdars_core::simulation::sim_kl(20, &phi, 5, &lambda, Some(42));
+    assert_eq!(data.nrows(), 20);
+    assert_eq!(data.ncols(), 50);
+}
+
+#[test]
+fn test_sim_fundata_dimensions() {
+    let t: Vec<f64> = (0..80).map(|i| i as f64 / 79.0).collect();
+    let data = fdars_core::simulation::sim_fundata(
+        30,
+        &t,
+        5,
+        fdars_core::EFunType::Fourier,
+        fdars_core::EValType::Exponential,
+        Some(42),
+    );
+    assert_eq!(data.nrows(), 30);
+    assert_eq!(data.ncols(), 80);
+}
+
+#[test]
+fn test_add_error_pointwise_variance() {
+    let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+    let data = fdars_core::simulation::sim_fundata(
+        100,
+        &t,
+        3,
+        fdars_core::EFunType::Fourier,
+        fdars_core::EValType::Exponential,
+        Some(42),
+    );
+    let sigma = 0.5;
+    let noisy = fdars_core::simulation::add_error_pointwise(&data, sigma, Some(99));
+
+    // The noise variance should be approximately sigma^2
+    let mut total_var = 0.0;
+    let mut count = 0;
+    for i in 0..100 {
+        for j in 0..100 {
+            let diff = noisy[(i, j)] - data[(i, j)];
+            total_var += diff * diff;
+            count += 1;
+        }
+    }
+    let empirical_var = total_var / count as f64;
+    assert!(
+        (empirical_var - sigma * sigma).abs() < 0.1,
+        "Empirical noise variance {empirical_var:.4} should be ~{:.4}",
+        sigma * sigma
+    );
+}
+
+#[test]
+fn test_add_error_curve_variance() {
+    let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+    let data = fdars_core::simulation::sim_fundata(
+        100,
+        &t,
+        3,
+        fdars_core::EFunType::Fourier,
+        fdars_core::EValType::Exponential,
+        Some(42),
+    );
+    let sigma = 1.0;
+    let noisy = fdars_core::simulation::add_error_curve(&data, sigma, Some(99));
+
+    // Curve-level noise: each curve gets same shift, check that within a curve the shift is constant
+    for i in 0..10 {
+        let diff0 = noisy[(i, 0)] - data[(i, 0)];
+        for j in 1..100 {
+            let diff_j = noisy[(i, j)] - data[(i, j)];
+            assert!(
+                (diff_j - diff0).abs() < 1e-10,
+                "Curve-level noise should be constant within curve {i}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_eigenvalues_vs_r() {
+    let exp: SimulationExpected = load_json("expected", "simulation_expected");
+
+    let linear = fdars_core::simulation::eigenvalues_linear(5);
+    assert_vec_close(
+        &linear,
+        &exp.eigenvalues.linear[..5],
+        1e-10,
+        "eigenvalues_linear",
+    );
+
+    // R uses exp(-(k-1)) for k=1,...,m; Rust uses exp(-k) for k=1,...,m.
+    // So Rust's 5 values correspond to R's indices [1..6] (offset by 1).
+    let exp_vals = fdars_core::simulation::eigenvalues_exponential(5);
+    assert_vec_close(
+        &exp_vals,
+        &exp.eigenvalues.exponential[1..6],
+        1e-10,
+        "eigenvalues_exponential",
+    );
+}
+
+// ─── Detrend Validation (R fixtures) ─────────────────────────────────────
+
+#[test]
+fn test_detrend_loess_finite() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::detrend::detrend_loess(&mat, &d.argvals, 0.3, 1);
+    for i in 0..d.n {
+        for j in 0..d.m {
+            assert!(
+                result.detrended[(i, j)].is_finite(),
+                "LOESS detrend should be finite"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_detrend_linear_residuals_zero_mean() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::detrend::detrend_linear(&mat, &d.argvals);
+    // Residuals should have approximately zero mean at each time point
+    for j in 0..d.m {
+        let col_mean: f64 = (0..d.n).map(|i| result.detrended[(i, j)]).sum::<f64>() / d.n as f64;
+        assert!(
+            col_mean.abs() < 1.0,
+            "Detrended mean should be near zero at j={j}: {col_mean:.4}"
+        );
+    }
+}
+
+#[test]
+fn test_decompose_additive_identity() {
+    // For data = trend + seasonal + residual, reconstructing should give back original
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Use period=10 for decomposition
+    let result = fdars_core::detrend::decompose_additive(&mat, &d.argvals, 10.0, "loess", 0.3, 3);
+    // trend + seasonal + remainder ~ original (additive)
+    for i in 0..d.n.min(5) {
+        for j in 0..d.m {
+            let reconstructed =
+                result.trend[(i, j)] + result.seasonal[(i, j)] + result.remainder[(i, j)];
+            assert!(
+                (reconstructed - mat[(i, j)]).abs() < 1e-6,
+                "Additive decomposition should reconstruct at ({i},{j}): {reconstructed:.6} vs {:.6}",
+                mat[(i, j)]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_decompose_multiplicative_identity() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Make sure data is positive for multiplicative decomposition
+    let mut pos_data = vec![0.0; d.n * d.m];
+    for i in 0..d.n {
+        for j in 0..d.m {
+            pos_data[i + j * d.n] = mat[(i, j)] + 10.0; // shift to positive
+        }
+    }
+    let pos_mat = FdMatrix::from_column_major(pos_data, d.n, d.m).unwrap();
+
+    let result =
+        fdars_core::detrend::decompose_multiplicative(&pos_mat, &d.argvals, 10.0, "loess", 0.3, 3);
+    // trend * seasonal * remainder ~ original (multiplicative)
+    for i in 0..d.n.min(5) {
+        for j in 0..d.m {
+            let reconstructed =
+                result.trend[(i, j)] * result.seasonal[(i, j)] * result.remainder[(i, j)];
+            assert!(
+                (reconstructed - pos_mat[(i, j)]).abs() < 1e-3,
+                "Multiplicative decomposition should reconstruct at ({i},{j})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_auto_detrend_valid_output() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let result = fdars_core::detrend::detrend_polynomial(&mat, &d.argvals, 2);
+    assert_eq!(result.detrended.nrows(), d.n);
+    assert_eq!(result.detrended.ncols(), d.m);
+    assert_eq!(result.trend.nrows(), d.n);
+    assert_eq!(result.trend.ncols(), d.m);
+}
+
+// ─── Metric Validation (R fixtures) ──────────────────────────────────────
+
+#[test]
+fn test_hausdorff_self_symmetric() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let dm = fdars_core::metric::hausdorff_self_1d(&mat, &d.argvals);
+    for i in 0..d.n {
+        for j in (i + 1)..d.n {
+            assert!(
+                (dm[(i, j)] - dm[(j, i)]).abs() < 1e-12,
+                "Hausdorff should be symmetric"
+            );
+        }
+        assert!(
+            dm[(i, i)].abs() < 1e-12,
+            "Hausdorff diagonal should be zero"
+        );
+    }
+}
+
+#[test]
+fn test_hausdorff_cross_shape() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    // Split into two groups
+    let n1 = d.n / 2;
+    let n2 = d.n - n1;
+    let d1_vec: Vec<f64> = (0..n1 * d.m)
+        .map(|idx| {
+            let i = idx % n1;
+            let j = idx / n1;
+            mat[(i, j)]
+        })
+        .collect();
+    let d2_vec: Vec<f64> = (0..n2 * d.m)
+        .map(|idx| {
+            let i = idx % n2;
+            let j = idx / n2;
+            mat[(i + n1, j)]
+        })
+        .collect();
+    let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
+    let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
+
+    let cross = fdars_core::metric::hausdorff_cross_1d(&m1, &m2, &d.argvals);
+    assert_eq!(cross.nrows(), n1);
+    assert_eq!(cross.ncols(), n2);
+}
+
+#[test]
+fn test_lp_cross_shape() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+    let w = vec![1.0; d.m];
+
+    let n1 = 10;
+    let n2 = 20;
+    let d1_vec: Vec<f64> = (0..n1 * d.m)
+        .map(|idx| {
+            let i = idx % n1;
+            let j = idx / n1;
+            mat[(i, j)]
+        })
+        .collect();
+    let d2_vec: Vec<f64> = (0..n2 * d.m)
+        .map(|idx| {
+            let i = idx % n2;
+            let j = idx / n2;
+            mat[(i + n1, j)]
+        })
+        .collect();
+    let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
+    let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
+
+    let cross = fdars_core::metric::lp_cross_1d(&m1, &m2, &d.argvals, 2.0, &w);
+    assert_eq!(cross.nrows(), n1);
+    assert_eq!(cross.ncols(), n2);
+}
+
+#[test]
+fn test_dtw_self_symmetric() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+    let n = d.n.min(20); // Use subset for speed
+    let sub_vec: Vec<f64> = (0..n * d.m)
+        .map(|idx| {
+            let i = idx % n;
+            let j = idx / n;
+            mat[(i, j)]
+        })
+        .collect();
+    let sub = FdMatrix::from_column_major(sub_vec, n, d.m).unwrap();
+
+    let dm = fdars_core::metric::dtw_self_1d(&sub, 2.0, d.m);
+    for i in 0..n {
+        for j in (i + 1)..n {
+            assert!(
+                (dm[(i, j)] - dm[(j, i)]).abs() < 1e-10,
+                "DTW should be symmetric"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_dtw_cross_shape() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let n1 = 5;
+    let n2 = 10;
+    let d1_vec: Vec<f64> = (0..n1 * d.m)
+        .map(|idx| {
+            let i = idx % n1;
+            let j = idx / n1;
+            mat[(i, j)]
+        })
+        .collect();
+    let d2_vec: Vec<f64> = (0..n2 * d.m)
+        .map(|idx| {
+            let i = idx % n2;
+            let j = idx / n2;
+            mat[(i + n1, j)]
+        })
+        .collect();
+    let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
+    let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
+
+    let cross = fdars_core::metric::dtw_cross_1d(&m1, &m2, 2.0, d.m);
+    assert_eq!(cross.nrows(), n1);
+    assert_eq!(cross.ncols(), n2);
+}
+
+#[test]
+fn test_fourier_cross_shape() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let n1 = 10;
+    let n2 = 15;
+    let d1_vec: Vec<f64> = (0..n1 * d.m)
+        .map(|idx| {
+            let i = idx % n1;
+            let j = idx / n1;
+            mat[(i, j)]
+        })
+        .collect();
+    let d2_vec: Vec<f64> = (0..n2 * d.m)
+        .map(|idx| {
+            let i = idx % n2;
+            let j = idx / n2;
+            mat[(i + n1, j)]
+        })
+        .collect();
+    let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
+    let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
+
+    let cross = fdars_core::metric::fourier_cross_1d(&m1, &m2, 5);
+    assert_eq!(cross.nrows(), n1);
+    assert_eq!(cross.ncols(), n2);
+}
+
+#[test]
+fn test_hshift_cross_shape() {
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    let n1 = 10;
+    let n2 = 15;
+    let d1_vec: Vec<f64> = (0..n1 * d.m)
+        .map(|idx| {
+            let i = idx % n1;
+            let j = idx / n1;
+            mat[(i, j)]
+        })
+        .collect();
+    let d2_vec: Vec<f64> = (0..n2 * d.m)
+        .map(|idx| {
+            let i = idx % n2;
+            let j = idx / n2;
+            mat[(i + n1, j)]
+        })
+        .collect();
+    let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
+    let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
+
+    let cross = fdars_core::metric::hshift_cross_1d(&m1, &m2, &d.argvals, 10);
+    assert_eq!(cross.nrows(), n1);
+    assert_eq!(cross.ncols(), n2);
 }

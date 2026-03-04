@@ -1977,4 +1977,58 @@ mod tests {
         assert!(equivalence_test_one_sample(&data, &mu0, 0.0, 0.05, 100, bs, 42).is_none());
         assert!(equivalence_test_one_sample(&data, &mu0, 1.0, 0.5, 100, bs, 42).is_none());
     }
+
+    #[test]
+    fn test_constant_data_fpca_tolerance() {
+        let n = 10;
+        let m = 20;
+        let data = FdMatrix::from_column_major(vec![5.0; n * m], n, m).unwrap();
+        // Constant data: FPCA tolerance band should be tight around 5.0
+        let band = fpca_tolerance_band(&data, 2, 200, 0.95, BandType::Pointwise, 42);
+        // Constant data may cause FPCA to fail (zero variance), so handle both cases
+        if let Some(band) = band {
+            assert_eq!(band.lower.len(), m);
+            assert_eq!(band.upper.len(), m);
+            for j in 0..m {
+                assert!(band.lower[j].is_finite());
+                assert!(band.upper[j].is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn test_n3_fpca_tolerance() {
+        // Minimum viable: 3 curves
+        let n = 3;
+        let m = 20;
+        let data_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let band = fpca_tolerance_band(&data, 2, 100, 0.90, BandType::Pointwise, 42);
+        if let Some(band) = band {
+            assert_eq!(band.lower.len(), m);
+            assert_eq!(band.upper.len(), m);
+        }
+    }
+
+    #[test]
+    fn test_delta_zero_equivalence() {
+        // delta=0 means testing exact equality (should always reject / return None due to invalid params)
+        let n = 10;
+        let m = 20;
+        let data1_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data2_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin() + 0.5).collect();
+        let data1 = FdMatrix::from_column_major(data1_vec, n, m).unwrap();
+        let data2 = FdMatrix::from_column_major(data2_vec, n, m).unwrap();
+        let result = equivalence_test(
+            &data1,
+            &data2,
+            0.0,
+            0.05,
+            199,
+            EquivalenceBootstrap::Percentile,
+            42,
+        );
+        // With delta=0, valid_equivalence_params returns false, so result should be None
+        assert!(result.is_none());
+    }
 }

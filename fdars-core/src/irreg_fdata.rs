@@ -1069,4 +1069,33 @@ mod tests {
         // At t=1.0 (after curve ends), should be NaN
         assert!(result[(0, 2)].is_nan(), "t=1 should be NaN");
     }
+
+    #[test]
+    fn test_empty_from_lists() {
+        let ifd = IrregFdata::from_lists(&[], &[]);
+        assert_eq!(ifd.n_obs(), 0);
+    }
+
+    #[test]
+    fn test_single_point_curve() {
+        let argvals = vec![vec![0.5]];
+        let values = vec![vec![1.0]];
+        let ifd = IrregFdata::from_lists(&argvals, &values);
+        assert_eq!(ifd.n_obs(), 1);
+        assert_eq!(ifd.n_points(0), 1);
+        let (a, v) = ifd.get_obs(0);
+        assert_eq!(a, &[0.5]);
+        assert_eq!(v, &[1.0]);
+    }
+
+    #[test]
+    fn test_nan_values_irreg() {
+        let argvals = vec![vec![0.0, 0.5, 1.0]];
+        let values = vec![vec![1.0, f64::NAN, 3.0]];
+        let ifd = IrregFdata::from_lists(&argvals, &values);
+        let integrals = integrate_irreg(&ifd);
+        assert_eq!(integrals.len(), 1);
+        // NaN should propagate
+        assert!(integrals[0].is_nan());
+    }
 }

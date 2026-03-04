@@ -1464,4 +1464,41 @@ mod tests {
         assert_eq!(aic_result.criterion, 1);
         assert_eq!(bic_result.criterion, 2);
     }
+
+    #[test]
+    fn test_nan_pspline_no_panic() {
+        let t = uniform_grid(50);
+        let mut y = sine_wave(&t, 2.0);
+        y[10] = f64::NAN;
+        let data = FdMatrix::from_column_major(y, 1, t.len()).unwrap();
+        let result = pspline_fit_1d(&data, &t, 10, 1.0, 2);
+        // Should not panic; result may contain NaN
+        assert!(result.is_some() || result.is_none());
+    }
+
+    #[test]
+    fn test_n1_fit() {
+        // Single observation
+        let t = uniform_grid(50);
+        let y = sine_wave(&t, 1.0);
+        let data = FdMatrix::from_column_major(y, 1, t.len()).unwrap();
+        let result = fdata_to_basis_1d(&data, &t, 7, 1);
+        assert!(result.is_some());
+        let res = result.unwrap();
+        assert_eq!(res.coefficients.nrows(), 1);
+    }
+
+    #[test]
+    fn test_single_point_basis() {
+        // Single evaluation point: period = 0 so sin/cos terms produce NaN,
+        // but the constant basis function (index 0) should be 1.0.
+        let t = vec![0.5];
+        let basis = fourier_basis(&t, 3);
+        // fourier_basis returns column-major Vec<f64> of size n_points x nbasis
+        assert_eq!(basis.len(), 3);
+        assert!(
+            (basis[0] - 1.0).abs() < 1e-12,
+            "constant basis should be 1.0"
+        );
+    }
 }

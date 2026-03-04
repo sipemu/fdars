@@ -760,4 +760,48 @@ mod tests {
         let phi_wiener_direct = wiener_eigenfunctions(&t, m);
         assert_eq!(phi_wiener, phi_wiener_direct);
     }
+
+    #[test]
+    fn test_sigma_zero_error() {
+        let t: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+        let data = sim_fundata(5, &t, 3, EFunType::Fourier, EValType::Exponential, Some(42));
+        let noisy = add_error_pointwise(&data, 0.0, Some(42));
+        // sigma=0 → no noise added, should be identical
+        for i in 0..5 {
+            for j in 0..20 {
+                assert!(
+                    (noisy[(i, j)] - data[(i, j)]).abs() < 1e-12,
+                    "Zero-sigma error should not change data"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_ncomp1_eigenfunctions() {
+        let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
+        let phi = fourier_eigenfunctions(&t, 1);
+        assert_eq!(phi.nrows(), t.len());
+        assert_eq!(phi.ncols(), 1);
+        // First Fourier eigenfunction should be constant
+        let first_val = phi[(0, 0)];
+        for i in 1..t.len() {
+            assert!((phi[(i, 0)] - first_val).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_deterministic_seed() {
+        let t: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
+        let d1 = sim_fundata(10, &t, 3, EFunType::Fourier, EValType::Linear, Some(123));
+        let d2 = sim_fundata(10, &t, 3, EFunType::Fourier, EValType::Linear, Some(123));
+        for i in 0..10 {
+            for j in 0..30 {
+                assert!(
+                    (d1[(i, j)] - d2[(i, j)]).abs() < 1e-12,
+                    "Same seed should produce identical results"
+                );
+            }
+        }
+    }
 }

@@ -1265,4 +1265,58 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_nan_lp_no_panic() {
+        let m = 10;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let mut data_vec = vec![1.0; 3 * m];
+        data_vec[5] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, 3, m).unwrap();
+        let w = vec![1.0; m];
+        let dm = lp_self_1d(&data, &argvals, 2.0, &w);
+        assert_eq!(dm.nrows(), 3);
+    }
+
+    #[test]
+    fn test_n1_self_metric() {
+        let m = 10;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let data = FdMatrix::from_column_major(vec![1.0; m], 1, m).unwrap();
+        let w = vec![1.0; m];
+        let dm = lp_self_1d(&data, &argvals, 2.0, &w);
+        assert_eq!(dm.shape(), (1, 1));
+        assert!(dm[(0, 0)].abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_inf_hausdorff() {
+        let m = 10;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let mut data_vec = vec![1.0; 2 * m];
+        data_vec[0] = f64::INFINITY;
+        let data = FdMatrix::from_column_major(data_vec, 2, m).unwrap();
+        let dm = hausdorff_self_1d(&data, &argvals);
+        assert_eq!(dm.nrows(), 2);
+        // Should not panic
+    }
+
+    #[test]
+    fn test_non_uniform_lp() {
+        // Non-uniform grid
+        let argvals = vec![0.0, 0.1, 0.5, 1.0];
+        let m = argvals.len();
+        let data_vec: Vec<f64> = vec![
+            1.0, 2.0, // col 0
+            1.0, 2.0, // col 1
+            1.0, 2.0, // col 2
+            1.0, 2.0, // col 3
+        ];
+        let data = FdMatrix::from_column_major(data_vec, 2, m).unwrap();
+        let w = vec![1.0; m];
+        let dm = lp_self_1d(&data, &argvals, 2.0, &w);
+        assert_eq!(dm.shape(), (2, 2));
+        // Constant offset curves: distance should be > 0
+        assert!(dm[(0, 1)] > 0.0);
+    }
 }

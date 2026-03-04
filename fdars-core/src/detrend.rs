@@ -1372,4 +1372,49 @@ mod tests {
         let result = detrend_loess(&data2, &[0.0, 1.0], 0.3, 1);
         assert_eq!(result.detrended.as_slice(), &[1.0, 2.0]);
     }
+
+    #[test]
+    fn test_nan_linear_detrend() {
+        let m = 20;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let mut data_vec = vec![1.0; m];
+        data_vec[5] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, 1, m).unwrap();
+        let result = detrend_linear(&data, &argvals);
+        // Should not panic
+        assert_eq!(result.detrended.nrows(), 1);
+    }
+
+    #[test]
+    fn test_n1_detrend() {
+        let m = 50;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let data_vec: Vec<f64> = argvals.iter().map(|&t| 2.0 * t + 1.0).collect();
+        let data = FdMatrix::from_column_major(data_vec, 1, m).unwrap();
+        let result = detrend_linear(&data, &argvals);
+        assert_eq!(result.detrended.ncols(), m);
+        // Detrended linear should be near zero
+        for j in 0..m {
+            assert!(result.detrended[(0, j)].abs() < 0.1);
+        }
+    }
+
+    #[test]
+    fn test_constant_signal_detrend() {
+        let m = 30;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let data = FdMatrix::from_column_major(vec![5.0; m], 1, m).unwrap();
+        let result = detrend_linear(&data, &argvals);
+        // A constant has zero slope, so detrended = data - mean
+        assert_eq!(result.detrended.ncols(), m);
+    }
+
+    #[test]
+    fn test_m2_minimal_detrend() {
+        // Minimal grid: 2 points
+        let argvals = vec![0.0, 1.0];
+        let data = FdMatrix::from_column_major(vec![0.0, 1.0], 1, 2).unwrap();
+        let result = detrend_linear(&data, &argvals);
+        assert_eq!(result.detrended.ncols(), 2);
+    }
 }

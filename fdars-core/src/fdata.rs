@@ -874,4 +874,65 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_nan_mean_no_panic() {
+        let mut data_vec = vec![1.0; 6];
+        data_vec[2] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, 2, 3).unwrap();
+        let m = mean_1d(&data);
+        assert_eq!(m.len(), 3);
+    }
+
+    #[test]
+    fn test_nan_center_no_panic() {
+        let mut data_vec = vec![1.0; 6];
+        data_vec[2] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, 2, 3).unwrap();
+        let c = center_1d(&data);
+        assert_eq!(c.nrows(), 2);
+    }
+
+    #[test]
+    fn test_nan_norm_no_panic() {
+        let mut data_vec = vec![1.0; 6];
+        data_vec[2] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, 2, 3).unwrap();
+        let argvals = vec![0.0, 0.5, 1.0];
+        let norms = norm_lp_1d(&data, &argvals, 2.0);
+        assert_eq!(norms.len(), 2);
+    }
+
+    #[test]
+    fn test_n1_norm() {
+        let data = FdMatrix::from_column_major(vec![0.0, 1.0, 0.0], 1, 3).unwrap();
+        let argvals = vec![0.0, 0.5, 1.0];
+        let norms = norm_lp_1d(&data, &argvals, 2.0);
+        assert_eq!(norms.len(), 1);
+        assert!(norms[0] > 0.0);
+    }
+
+    #[test]
+    fn test_n2_center() {
+        let data = FdMatrix::from_column_major(vec![1.0, 3.0, 2.0, 4.0], 2, 2).unwrap();
+        let centered = center_1d(&data);
+        // Mean at each point: [2.0, 3.0]
+        // centered[0,0] = 1.0 - 2.0 = -1.0
+        assert!((centered[(0, 0)] - (-1.0)).abs() < 1e-12);
+        assert!((centered[(1, 0)] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_deriv_nderiv0() {
+        // nderiv=0 returns a zero matrix (guard clause treats it as no-op)
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3).unwrap();
+        let argvals = vec![0.0, 0.5, 1.0];
+        let result = deriv_1d(&data, &argvals, 0);
+        assert_eq!(result.shape(), data.shape());
+        for i in 0..2 {
+            for j in 0..3 {
+                assert!(result[(i, j)].abs() < 1e-12);
+            }
+        }
+    }
 }

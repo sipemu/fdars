@@ -911,4 +911,60 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_nan_fm_no_panic() {
+        let n = 5;
+        let m = 10;
+        let mut data_vec = vec![0.0; n * m];
+        data_vec[3] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let depths = fraiman_muniz_1d(&data, &data, true);
+        assert_eq!(depths.len(), n);
+    }
+
+    #[test]
+    fn test_nan_mbd_no_panic() {
+        let n = 5;
+        let m = 10;
+        let mut data_vec = vec![0.0; n * m];
+        data_vec[3] = f64::NAN;
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let depths = modified_band_1d(&data, &data);
+        assert_eq!(depths.len(), n);
+    }
+
+    #[test]
+    fn test_n1_depths() {
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        let fm = fraiman_muniz_1d(&data, &data, true);
+        assert_eq!(fm.len(), 1);
+        let modal = modal_1d(&data, &data, 0.5);
+        assert_eq!(modal.len(), 1);
+        let spatial = functional_spatial_1d(&data, &data);
+        assert_eq!(spatial.len(), 1);
+    }
+
+    #[test]
+    fn test_n2_band_depth() {
+        // Band depth needs at least 2 reference curves
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        let depths = band_1d(&data, &data);
+        assert_eq!(depths.len(), 2);
+        for &d in &depths {
+            assert!((0.0..=1.0).contains(&d));
+        }
+    }
+
+    #[test]
+    fn test_inf_spatial_depth() {
+        let n = 3;
+        let m = 5;
+        let mut data_vec = vec![1.0; n * m];
+        data_vec[0] = f64::INFINITY;
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let depths = functional_spatial_1d(&data, &data);
+        assert_eq!(depths.len(), n);
+        // Should not panic
+    }
 }

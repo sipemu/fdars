@@ -573,4 +573,41 @@ mod tests {
         let result = smoothing_matrix_nw(&[0.0, 1.0], 0.0, "gaussian");
         assert!(result.is_empty());
     }
+
+    #[test]
+    fn test_nan_nw_no_panic() {
+        let x = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+        let mut y = vec![0.0, 1.0, 2.0, 1.0, 0.0];
+        y[2] = f64::NAN;
+        let result = nadaraya_watson(&x, &y, &x, 0.3, "gaussian");
+        assert_eq!(result.len(), x.len());
+        // NaN should propagate but not panic
+    }
+
+    #[test]
+    fn test_n1_smoother() {
+        // Single data point
+        let x = vec![0.5];
+        let y = vec![3.0];
+        let x_new = vec![0.5];
+        let result = nadaraya_watson(&x, &y, &x_new, 0.3, "gaussian");
+        assert_eq!(result.len(), 1);
+        assert!(
+            (result[0] - 3.0).abs() < 1e-6,
+            "Single point smoother should return the value"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_x_smoother() {
+        // Duplicate x values
+        let x = vec![0.0, 0.0, 0.5, 1.0, 1.0];
+        let y = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let x_new = vec![0.0, 0.5, 1.0];
+        let result = nadaraya_watson(&x, &y, &x_new, 0.3, "gaussian");
+        assert_eq!(result.len(), 3);
+        for v in &result {
+            assert!(v.is_finite());
+        }
+    }
 }

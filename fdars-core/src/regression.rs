@@ -724,4 +724,46 @@ mod tests {
         let result = ridge_regression_fit(&x, &y, 0.1, true);
         assert!(result.error.is_some());
     }
+
+    #[test]
+    fn test_all_zero_fpca() {
+        // All-zero data: centering leaves zeros, SVD should return trivial result
+        let n = 5;
+        let m = 20;
+        let data = FdMatrix::zeros(n, m);
+        let result = fdata_to_pc_1d(&data, 2);
+        // Should not panic; may return Some with zero singular values
+        if let Some(res) = result {
+            assert_eq!(res.scores.nrows(), n);
+            for &sv in &res.singular_values {
+                assert!(
+                    sv.abs() < 1e-10,
+                    "All-zero data should have zero singular values"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_n1_pca() {
+        // Single observation: PCA should return None (can't compute with n=1)
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        let result = fdata_to_pc_1d(&data, 1);
+        // With n=1, centering leaves all zeros, so SVD may fail or return trivial result
+        // Just ensure no panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_constant_y_pls() {
+        let n = 10;
+        let m = 20;
+        let data_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let y = vec![5.0; n]; // Constant response
+        let result = fdata_to_pls_1d(&data, &y, 2);
+        // Constant y → centering makes y all zeros, PLS may fail
+        // Just ensure no panic
+        let _ = result;
+    }
 }

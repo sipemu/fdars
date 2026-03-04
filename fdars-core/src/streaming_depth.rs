@@ -1018,4 +1018,41 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_nan_reference_streaming() {
+        // Reference data with NaN
+        let n_ref = 5;
+        let m = 10;
+        let mut ref_data = vec![0.0; n_ref * m];
+        ref_data[3] = f64::NAN;
+        let ref_mat = FdMatrix::from_column_major(ref_data, n_ref, m).unwrap();
+        let state = SortedReferenceState::from_reference(&ref_mat);
+        let streamer = StreamingMbd::new(state);
+        let new_curve: Vec<f64> = vec![1.0; m];
+        let depth = streamer.depth_one(&new_curve);
+        // Should not panic, depth may be NaN
+        let _ = depth;
+    }
+
+    #[test]
+    fn test_n2_mbd_streaming() {
+        // Minimum reference set: 2 curves
+        let ref_data = FdMatrix::from_column_major(vec![0.0, 1.0, 0.0, 1.0], 2, 2).unwrap();
+        let state = SortedReferenceState::from_reference(&ref_data);
+        let streamer = StreamingMbd::new(state);
+        let depth = streamer.depth_one(&[0.5, 0.5]);
+        assert!(depth.is_finite());
+        assert!((0.0..=1.0).contains(&depth));
+    }
+
+    #[test]
+    fn test_single_timepoint_streaming() {
+        // m=1: single time point
+        let ref_data = FdMatrix::from_column_major(vec![0.0, 1.0, 2.0], 3, 1).unwrap();
+        let state = SortedReferenceState::from_reference(&ref_data);
+        let streamer = StreamingMbd::new(state);
+        let depth = streamer.depth_one(&[1.0]);
+        assert!(depth.is_finite());
+    }
 }
