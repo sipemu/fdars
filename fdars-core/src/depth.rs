@@ -81,6 +81,56 @@ pub fn modal_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     modal_1d(data_obj, data_ori, h)
 }
 
+/// Generate `nproj` unit-norm random projection vectors of dimension `m`.
+///
+/// Returns a flat buffer of length `nproj * m` where projection `p` occupies
+/// `[p*m .. (p+1)*m]`.
+fn generate_random_projections(nproj: usize, m: usize) -> Vec<f64> {
+    let mut rng = rand::thread_rng();
+    let mut projections = vec![0.0; nproj * m];
+    for p_idx in 0..nproj {
+        let base = p_idx * m;
+        let mut norm_sq = 0.0;
+        for t in 0..m {
+            let v: f64 = rng.sample(StandardNormal);
+            projections[base + t] = v;
+            norm_sq += v * v;
+        }
+        let inv_norm = 1.0 / norm_sq.sqrt();
+        for t in 0..m {
+            projections[base + t] *= inv_norm;
+        }
+    }
+    projections
+}
+
+/// Project each reference curve onto each projection direction and sort.
+///
+/// Returns a flat buffer of length `nproj * nori` where the sorted projections
+/// for direction `p` occupy `[p*nori .. (p+1)*nori]`.
+fn project_and_sort_reference(
+    data_ori: &FdMatrix,
+    projections: &[f64],
+    nproj: usize,
+    nori: usize,
+    m: usize,
+) -> Vec<f64> {
+    let mut sorted = vec![0.0; nproj * nori];
+    for p_idx in 0..nproj {
+        let proj = &projections[p_idx * m..(p_idx + 1) * m];
+        let spo = &mut sorted[p_idx * nori..(p_idx + 1) * nori];
+        for j in 0..nori {
+            let mut dot = 0.0;
+            for t in 0..m {
+                dot += data_ori[(j, t)] * proj[t];
+            }
+            spo[j] = dot;
+        }
+        spo.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    }
+    sorted
+}
+
 /// Shared implementation for random projection-based depth measures.
 ///
 /// Generates `nproj` random projections, projects both object and reference
@@ -97,50 +147,19 @@ fn random_depth_core(
 ) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
-    let n_points = data_obj.ncols();
+    let m = data_obj.ncols();
 
-    if nobj == 0 || nori == 0 || n_points == 0 || nproj == 0 {
+    if nobj == 0 || nori == 0 || m == 0 || nproj == 0 {
         return Vec::new();
     }
 
-    let mut rng = rand::thread_rng();
-    let m = n_points;
-    let mut projections = vec![0.0; nproj * m];
-    for p_idx in 0..nproj {
-        let base = p_idx * m;
-        let mut norm_sq = 0.0;
-        for t in 0..m {
-            let v: f64 = rng.sample(StandardNormal);
-            projections[base + t] = v;
-            norm_sq += v * v;
-        }
-        let inv_norm = 1.0 / norm_sq.sqrt();
-        for t in 0..m {
-            projections[base + t] *= inv_norm;
-        }
-    }
-
-    // Pre-compute and pre-sort reference projections (identical for every query curve)
-    let mut sorted_proj_ori = vec![0.0; nproj * nori];
-    for p_idx in 0..nproj {
-        let proj = &projections[p_idx * m..(p_idx + 1) * m];
-        let spo = &mut sorted_proj_ori[p_idx * nori..(p_idx + 1) * nori];
-        for j in 0..nori {
-            let mut dot = 0.0;
-            for t in 0..m {
-                dot += data_ori[(j, t)] * proj[t];
-            }
-            spo[j] = dot;
-        }
-        spo.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    }
-
+    let projections = generate_random_projections(nproj, m);
+    let sorted_proj_ori = project_and_sort_reference(data_ori, &projections, nproj, nori, m);
     let denom = nori as f64 + 1.0;
 
     iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut acc = init;
-
             for p_idx in 0..nproj {
                 let proj = &projections[p_idx * m..(p_idx + 1) * m];
                 let sorted_ori = &sorted_proj_ori[p_idx * nori..(p_idx + 1) * nori];
@@ -150,14 +169,11 @@ fn random_depth_core(
                     proj_i += data_obj[(i, t)] * proj[t];
                 }
 
-                // O(log N) rank lookup via binary search
                 let below = sorted_ori.partition_point(|&v| v < proj_i);
                 let above = nori - sorted_ori.partition_point(|&v| v <= proj_i);
                 let depth = (below.min(above) as f64 + 1.0) / denom;
-
                 acc = aggregate(acc, depth);
             }
-
             finalize(acc, nproj)
         })
         .collect()

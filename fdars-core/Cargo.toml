@@ -1,6 +1,6 @@
 [package]
 name = "fdars-core"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 authors = ["Simon Muller"]
 description = "Functional Data Analysis algorithms in Rust"
@@ -109,3 +109,11 @@ path = "examples/13_irregular_data/main.rs"
 [[example]]
 name = "complete_pipeline"
 path = "examples/14_complete_pipeline/main.rs"
+
+[[example]]
+name = "tolerance_bands"
+path = "examples/15_tolerance_bands/main.rs"
+
+[[example]]
+name = "elastic_alignment"
+path = "examples/16_elastic_alignment/main.rs"

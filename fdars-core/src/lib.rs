@@ -30,6 +30,7 @@
 pub mod matrix;
 pub mod parallel;
 
+pub mod alignment;
 pub mod basis;
 pub mod clustering;
 pub mod depth;
@@ -44,10 +45,18 @@ pub mod seasonal;
 pub mod simulation;
 pub mod smoothing;
 pub mod streaming_depth;
+pub mod tolerance;
 pub mod utility;
 
 // Re-export matrix type
 pub use matrix::FdMatrix;
+
+// Re-export alignment types and functions
+pub use alignment::{
+    align_to_target, compose_warps, elastic_align_pair, elastic_cross_distance_matrix,
+    elastic_distance, elastic_self_distance_matrix, karcher_mean, reparameterize_curve,
+    srsf_inverse, srsf_transform, AlignmentResult, AlignmentSetResult, KarcherMeanResult,
+};
 
 // Re-export commonly used items
 pub use helpers::{
@@ -71,6 +80,13 @@ pub use simulation::{EFunType, EValType};
 
 // Re-export irregular fdata types
 pub use irreg_fdata::{IrregFdata, KernelType};
+
+// Re-export tolerance band types
+pub use tolerance::{
+    conformal_prediction_band, elastic_tolerance_band, exponential_family_tolerance_band,
+    fpca_tolerance_band, scb_mean_degras, BandType, ExponentialFamily, MultiplierDistribution,
+    NonConformityScore, ToleranceBand,
+};
 
 // Re-export streaming depth types
 pub use streaming_depth::{
