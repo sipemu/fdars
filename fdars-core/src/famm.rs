@@ -180,6 +180,137 @@ struct ScalarMixedResult {
     sigma2_eps: f64, // residual variance
 }
 
+/// Precomputed subject structure for the mixed model.
+struct SubjectStructure {
+    counts: Vec<usize>,
+    obs: Vec<Vec<usize>>,
+}
+
+impl SubjectStructure {
+    fn new(subject_map: &[usize], n_subjects: usize, n: usize) -> Self {
+        let mut counts = vec![0usize; n_subjects];
+        let mut obs: Vec<Vec<usize>> = vec![Vec::new(); n_subjects];
+        for i in 0..n {
+            let s = subject_map[i];
+            counts[s] += 1;
+            obs[s].push(i);
+        }
+        Self { counts, obs }
+    }
+}
+
+/// Compute shrinkage weights: w_s = σ²_u / (σ²_u + σ²_e / n_s).
+fn shrinkage_weights(ss: &SubjectStructure, sigma2_u: f64, sigma2_e: f64) -> Vec<f64> {
+    ss.counts
+        .iter()
+        .map(|&c| {
+            let ns = c as f64;
+            if ns < 1.0 {
+                0.0
+            } else {
+                sigma2_u / (sigma2_u + sigma2_e / ns)
+            }
+        })
+        .collect()
+}
+
+/// GLS fixed effect update using block-diagonal V^{-1}.
+///
+/// Computes γ = (X'V⁻¹X)⁻¹ X'V⁻¹y exploiting the balanced random intercept structure.
+fn gls_update_gamma(
+    cov: &FdMatrix,
+    p: usize,
+    ss: &SubjectStructure,
+    weights: &[f64],
+    y: &[f64],
+    sigma2_e: f64,
+) -> Option<Vec<f64>> {
+    let n_subjects = ss.counts.len();
+    let mut xtvinvx = vec![0.0; p * p];
+    let mut xtvinvy = vec![0.0; p];
+    let inv_e = 1.0 / sigma2_e;
+
+    for s in 0..n_subjects {
+        let ns = ss.counts[s] as f64;
+        if ns < 1.0 {
+            continue;
+        }
+        let w_s = weights[s];
+
+        // Subject-level sums
+        let mut x_sum = vec![0.0; p];
+        let mut y_sum = 0.0;
+        for &i in &ss.obs[s] {
+            for r in 0..p {
+                x_sum[r] += cov[(i, r)];
+            }
+            y_sum += y[i];
+        }
+
+        // Accumulate X'V^{-1}X and X'V^{-1}y
+        for &i in &ss.obs[s] {
+            let mut vinv_x = vec![0.0; p];
+            for r in 0..p {
+                vinv_x[r] = inv_e * (cov[(i, r)] - w_s * x_sum[r] / ns);
+            }
+            let vinv_y = inv_e * (y[i] - w_s * y_sum / ns);
+
+            for r in 0..p {
+                xtvinvy[r] += cov[(i, r)] * vinv_y;
+                for c in r..p {
+                    let val = cov[(i, r)] * vinv_x[c];
+                    xtvinvx[r * p + c] += val;
+                    if r != c {
+                        xtvinvx[c * p + r] += val;
+                    }
+                }
+            }
+        }
+    }
+
+    for j in 0..p {
+        xtvinvx[j * p + j] += 1e-10;
+    }
+    cholesky_solve(&xtvinvx, &xtvinvy, p)
+}
+
+/// REML EM update for variance components.
+///
+/// Returns (σ²_u_new, σ²_e_new) from the conditional expectations.
+fn reml_variance_update(
+    residuals: &[f64],
+    ss: &SubjectStructure,
+    weights: &[f64],
+    sigma2_u: f64,
+) -> (f64, f64) {
+    let n_subjects = ss.counts.len();
+    let n: usize = ss.counts.iter().sum();
+    let mut sigma2_u_new = 0.0;
+    let mut sigma2_e_new = 0.0;
+
+    for s in 0..n_subjects {
+        let ns = ss.counts[s] as f64;
+        if ns < 1.0 {
+            continue;
+        }
+        let w_s = weights[s];
+        let mean_r_s: f64 = ss.obs[s].iter().map(|&i| residuals[i]).sum::<f64>() / ns;
+        let u_hat_s = w_s * mean_r_s;
+        let cond_var_s = sigma2_u * (1.0 - w_s);
+
+        sigma2_u_new += u_hat_s * u_hat_s + cond_var_s;
+        for &i in &ss.obs[s] {
+            sigma2_e_new += (residuals[i] - u_hat_s).powi(2);
+        }
+        sigma2_e_new += ns * cond_var_s;
+    }
+
+    (
+        (sigma2_u_new / n_subjects as f64).max(1e-15),
+        (sigma2_e_new / n as f64).max(1e-15),
+    )
+}
+
 /// Fit scalar mixed model: y_ij = x_i'γ + u_i + e_ij.
 ///
 /// Uses iterative GLS for fixed effects + REML EM for variance components,
@@ -193,23 +324,14 @@ fn fit_scalar_mixed_model(
     p: usize,
 ) -> ScalarMixedResult {
     let n = y.len();
+    let ss = SubjectStructure::new(subject_map, n_subjects, n);
 
-    // Precompute subject structure
-    let mut subject_counts = vec![0usize; n_subjects];
-    let mut subject_obs: Vec<Vec<usize>> = vec![Vec::new(); n_subjects];
-    for i in 0..n {
-        let s = subject_map[i];
-        subject_counts[s] += 1;
-        subject_obs[s].push(i);
-    }
-
-    // Initialize: OLS fixed effects + Henderson's ANOVA for variance components
+    // Initialize from OLS + Henderson's ANOVA
     let gamma_init = estimate_fixed_effects(y, covariates, p, n);
     let residuals_init = compute_ols_residuals(y, covariates, &gamma_init, p, n);
     let (mut sigma2_u, mut sigma2_e) =
         estimate_variance_components(&residuals_init, subject_map, n_subjects, n);
 
-    // Ensure positive initial variances
     if sigma2_e < 1e-15 {
         sigma2_e = 1e-6;
     }
@@ -218,132 +340,28 @@ fn fit_scalar_mixed_model(
     }
 
     let mut gamma = gamma_init;
-    let max_iter = 50;
 
-    for _iter in 0..max_iter {
+    for _iter in 0..50 {
         let sigma2_u_old = sigma2_u;
         let sigma2_e_old = sigma2_e;
 
-        // Step 1: Compute shrinkage weights per subject
-        // w_s = sigma2_u / (sigma2_u + sigma2_e / n_s)
-        let weights: Vec<f64> = (0..n_subjects)
-            .map(|s| {
-                let ns = subject_counts[s] as f64;
-                if ns < 1.0 {
-                    return 0.0;
-                }
-                sigma2_u / (sigma2_u + sigma2_e / ns)
-            })
-            .collect();
+        let weights = shrinkage_weights(&ss, sigma2_u, sigma2_e);
 
-        // Step 2: GLS fixed effects using block-diagonal V^{-1}
-        // V_i^{-1} = (1/sigma2_e) * [I - w_i * (1/n_i) * J]
-        // X' V^{-1} y and X' V^{-1} X computed exploiting block structure
         if let Some(cov) = covariates.filter(|_| p > 0) {
-            let mut xtvinvx = vec![0.0; p * p];
-            let mut xtvinvy = vec![0.0; p];
-
-            for s in 0..n_subjects {
-                let ns = subject_counts[s] as f64;
-                if ns < 1.0 {
-                    continue;
-                }
-                let w_s = weights[s];
-                let inv_e = 1.0 / sigma2_e;
-
-                // Compute subject-level sums of x and y
-                let mut x_sum = vec![0.0; p];
-                let mut y_sum = 0.0;
-                for &i in &subject_obs[s] {
-                    for r in 0..p {
-                        x_sum[r] += cov[(i, r)];
-                    }
-                    y_sum += y[i];
-                }
-
-                // V^{-1} x_i = (1/sigma2_e) * (x_i - w_s * x_bar_s)
-                // where x_bar_s = x_sum / n_s
-                for &i in &subject_obs[s] {
-                    let mut vinv_x = vec![0.0; p];
-                    for r in 0..p {
-                        vinv_x[r] = inv_e * (cov[(i, r)] - w_s * x_sum[r] / ns);
-                    }
-                    let vinv_y = inv_e * (y[i] - w_s * y_sum / ns);
-
-                    for r in 0..p {
-                        xtvinvy[r] += cov[(i, r)] * vinv_y;
-                        for c in r..p {
-                            let val = cov[(i, r)] * vinv_x[c];
-                            xtvinvx[r * p + c] += val;
-                            if r != c {
-                                xtvinvx[c * p + r] += val;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Regularize
-            for j in 0..p {
-                xtvinvx[j * p + j] += 1e-10;
-            }
-
-            if let Some(g) = cholesky_solve(&xtvinvx, &xtvinvy, p) {
+            if let Some(g) = gls_update_gamma(cov, p, &ss, &weights, y, sigma2_e) {
                 gamma = g;
             }
         }
 
-        // Step 3: GLS residuals
         let r = compute_ols_residuals(y, covariates, &gamma, p, n);
+        (sigma2_u, sigma2_e) = reml_variance_update(&r, &ss, &weights, sigma2_u);
 
-        // Step 4: REML EM update for variance components
-        let mut sigma2_u_new = 0.0;
-        let mut sigma2_e_new = 0.0;
-
-        for s in 0..n_subjects {
-            let ns = subject_counts[s] as f64;
-            if ns < 1.0 {
-                continue;
-            }
-            let w_s = weights[s];
-
-            // Mean residual for subject s
-            let mean_r_s: f64 = subject_obs[s].iter().map(|&i| r[i]).sum::<f64>() / ns;
-
-            // BLUP: u_hat_s = w_s * mean_r_s
-            let u_hat_s = w_s * mean_r_s;
-
-            // Conditional variance: cond_var_s = sigma2_u * (1 - w_s)
-            let cond_var_s = sigma2_u * (1.0 - w_s);
-
-            // EM update for sigma2_u: E[u_s^2] = u_hat_s^2 + cond_var_s
-            sigma2_u_new += u_hat_s * u_hat_s + cond_var_s;
-
-            // EM update for sigma2_e: E[sum (e_is)^2]
-            for &i in &subject_obs[s] {
-                let e_hat = r[i] - u_hat_s;
-                sigma2_e_new += e_hat * e_hat;
-            }
-            // Add conditional variance contribution to residual
-            sigma2_e_new += ns * cond_var_s;
-        }
-
-        sigma2_u_new /= n_subjects as f64;
-        sigma2_e_new /= n as f64;
-
-        // Ensure positivity
-        sigma2_u = sigma2_u_new.max(1e-15);
-        sigma2_e = sigma2_e_new.max(1e-15);
-
-        // Step 5: Convergence check
         let delta = (sigma2_u - sigma2_u_old).abs() + (sigma2_e - sigma2_e_old).abs();
-        let scale = sigma2_u_old + sigma2_e_old;
-        if delta < 1e-10 * scale {
+        if delta < 1e-10 * (sigma2_u_old + sigma2_e_old) {
             break;
         }
     }
 
-    // Final BLUP for random effects
     let final_residuals = compute_ols_residuals(y, covariates, &gamma, p, n);
     let u_hat = compute_blup(
         &final_residuals,
@@ -396,9 +414,8 @@ fn estimate_fixed_effects(
     cholesky_solve(&xtx, &xty, p).unwrap_or(vec![0.0; p])
 }
 
-/// Cholesky solve: A x = b where A is p×p symmetric positive definite.
-fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
-    // Factor A = L L'
+/// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or None if singular.
+fn cholesky_factor_famm(a: &[f64], p: usize) -> Option<Vec<f64>> {
     let mut l = vec![0.0; p * p];
     for j in 0..p {
         let mut sum = 0.0;
@@ -418,8 +435,11 @@ fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
             l[i * p + j] = (a[i * p + j] - s) / l[j * p + j];
         }
     }
+    Some(l)
+}
 
-    // Forward solve: L z = b
+/// Solve L z = b (forward) then L' x = z (back).
+fn cholesky_triangular_solve(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
     let mut z = vec![0.0; p];
     for i in 0..p {
         let mut s = 0.0;
@@ -428,18 +448,20 @@ fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
         }
         z[i] = (b[i] - s) / l[i * p + i];
     }
-
-    // Back solve: L' x = z
-    let mut x = vec![0.0; p];
     for i in (0..p).rev() {
         let mut s = 0.0;
         for j in (i + 1)..p {
-            s += l[j * p + i] * x[j];
+            s += l[j * p + i] * z[j];
         }
-        x[i] = (z[i] - s) / l[i * p + i];
+        z[i] = (z[i] - s) / l[i * p + i];
     }
+    z
+}
 
-    Some(x)
+/// Cholesky solve: A x = b where A is p×p symmetric positive definite.
+fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
+    let l = cholesky_factor_famm(a, p)?;
+    Some(cholesky_triangular_solve(&l, b, p))
 }
 
 /// Compute OLS residuals: r = y - X*gamma.

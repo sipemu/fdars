@@ -445,6 +445,84 @@ fn compute_beta_se(
 // fosr_fpc: FPC-based function-on-scalar regression (matches R's fda.usc approach)
 // ---------------------------------------------------------------------------
 
+/// OLS regression of each FPC score on the design matrix.
+///
+/// Returns gamma_all\[comp\]\[coef\] = (X'X)^{-1} X' scores\[:,comp\].
+fn regress_scores_on_design(
+    design: &FdMatrix,
+    scores: &FdMatrix,
+    n: usize,
+    k: usize,
+    p_total: usize,
+) -> Option<Vec<Vec<f64>>> {
+    let xtx = compute_xtx(design);
+    let l = cholesky_factor(&xtx, p_total)?;
+
+    let gamma_all: Vec<Vec<f64>> = (0..k)
+        .map(|comp| {
+            let mut xts = vec![0.0; p_total];
+            for j in 0..p_total {
+                for i in 0..n {
+                    xts[j] += design[(i, j)] * scores[(i, comp)];
+                }
+            }
+            cholesky_forward_back(&l, &xts, p_total)
+        })
+        .collect();
+    Some(gamma_all)
+}
+
+/// Reconstruct β_j(t) = Σ_k gamma\[comp\]\[1+j\] · φ_k(t) for each predictor j.
+fn reconstruct_beta_fpc(
+    gamma_all: &[Vec<f64>],
+    rotation: &FdMatrix,
+    p: usize,
+    k: usize,
+    m: usize,
+) -> FdMatrix {
+    let mut beta = FdMatrix::zeros(p, m);
+    for j in 0..p {
+        for t in 0..m {
+            let mut val = 0.0;
+            for comp in 0..k {
+                val += gamma_all[comp][1 + j] * rotation[(t, comp)];
+            }
+            beta[(j, t)] = val;
+        }
+    }
+    beta
+}
+
+/// Compute intercept function: μ(t) + Σ_k γ_intercept\[k\] · φ_k(t).
+fn compute_intercept_fpc(
+    mean: &[f64],
+    gamma_all: &[Vec<f64>],
+    rotation: &FdMatrix,
+    k: usize,
+    m: usize,
+) -> Vec<f64> {
+    let mut intercept = mean.to_vec();
+    for t in 0..m {
+        for comp in 0..k {
+            intercept[t] += gamma_all[comp][0] * rotation[(t, comp)];
+        }
+    }
+    intercept
+}
+
+/// Extract L²-normalized beta_scores from regression coefficients.
+fn extract_beta_scores(gamma_all: &[Vec<f64>], p: usize, k: usize, m: usize) -> Vec<Vec<f64>> {
+    let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
+    let score_scale = h.sqrt();
+    (0..p)
+        .map(|j| {
+            (0..k)
+                .map(|comp| gamma_all[comp][1 + j] * score_scale)
+                .collect()
+        })
+        .collect()
+}
+
 /// FPC-based function-on-scalar regression.
 ///
 /// Reduces the functional response to FPC scores, regresses each score on the
@@ -462,52 +540,41 @@ pub fn fosr_fpc(data: &FdMatrix, predictors: &FdMatrix, ncomp: usize) -> Option<
         return None;
     }
 
-    // Step 1: FPCA on functional response
     let fpca = fdata_to_pc_1d(data, ncomp)?;
-    let k = fpca.scores.ncols(); // actual components (may be < ncomp)
-
-    // Step 2: Build design matrix [1 | predictors] for OLS on scores
-    let p_total = p + 1; // intercept + p predictors
+    let k = fpca.scores.ncols();
+    let p_total = p + 1;
     let design = build_fosr_design(predictors, n);
 
-    // Solve OLS: for each component, regress scores[:,comp] on design
-    // gamma_all[comp] = (X'X)^{-1} X' scores[:,comp]  — length p_total
-    let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p_total)?;
+    let gamma_all = regress_scores_on_design(&design, &fpca.scores, n, k, p_total)?;
+    let beta = reconstruct_beta_fpc(&gamma_all, &fpca.rotation, p, k, m);
+    let intercept = compute_intercept_fpc(&fpca.mean, &gamma_all, &fpca.rotation, k, m);
 
-    let mut gamma_all = vec![vec![0.0; p_total]; k]; // gamma_all[comp][coef]
-    for comp in 0..k {
-        let mut xts = vec![0.0; p_total];
-        for j in 0..p_total {
-            for i in 0..n {
-                xts[j] += design[(i, j)] * fpca.scores[(i, comp)];
-            }
-        }
-        gamma_all[comp] = cholesky_forward_back(&l, &xts, p_total);
-    }
+    let (fitted, residuals) = compute_fosr_fpc_fitted(data, &intercept, &beta, predictors);
+    let r_squared_t = pointwise_r_squared(data, &fitted);
+    let r_squared = r_squared_t.iter().sum::<f64>() / m as f64;
+    let beta_scores = extract_beta_scores(&gamma_all, p, k, m);
 
-    // Step 3: Reconstruct beta functions
-    // beta_j(t) = Σ_k gamma[comp][1+j] * rotation[t][comp]
-    let mut beta = FdMatrix::zeros(p, m);
-    for j in 0..p {
-        for t in 0..m {
-            let mut val = 0.0;
-            for comp in 0..k {
-                val += gamma_all[comp][1 + j] * fpca.rotation[(t, comp)];
-            }
-            beta[(j, t)] = val;
-        }
-    }
+    Some(FosrFpcResult {
+        intercept,
+        beta,
+        fitted,
+        residuals,
+        r_squared_t,
+        r_squared,
+        beta_scores,
+        ncomp: k,
+    })
+}
 
-    // Step 4: Intercept function = mean(t) + Σ_k gamma_intercept[k] * rotation[t][k]
-    let mut intercept = fpca.mean.clone();
-    for t in 0..m {
-        for comp in 0..k {
-            intercept[t] += gamma_all[comp][0] * fpca.rotation[(t, comp)];
-        }
-    }
-
-    // Step 5: Fitted values and residuals
+/// Compute fitted values and residuals for FPC-based FOSR.
+fn compute_fosr_fpc_fitted(
+    data: &FdMatrix,
+    intercept: &[f64],
+    beta: &FdMatrix,
+    predictors: &FdMatrix,
+) -> (FdMatrix, FdMatrix) {
+    let (n, m) = data.shape();
+    let p = predictors.ncols();
     let mut fitted = FdMatrix::zeros(n, m);
     let mut residuals = FdMatrix::zeros(n, m);
     for i in 0..n {
@@ -520,32 +587,7 @@ pub fn fosr_fpc(data: &FdMatrix, predictors: &FdMatrix, ncomp: usize) -> Option<
             residuals[(i, t)] = data[(i, t)] - yhat;
         }
     }
-
-    let r_squared_t = pointwise_r_squared(data, &fitted);
-    let r_squared = r_squared_t.iter().sum::<f64>() / m as f64;
-
-    // Extract beta_scores: gamma[j][k] = gamma_all[k][1+j]
-    // Scale by sqrt(h) to report in L²-normalized space (matching R's fdata2pc convention)
-    let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
-    let score_scale = h.sqrt();
-    let beta_scores: Vec<Vec<f64>> = (0..p)
-        .map(|j| {
-            (0..k)
-                .map(|comp| gamma_all[comp][1 + j] * score_scale)
-                .collect()
-        })
-        .collect();
-
-    Some(FosrFpcResult {
-        intercept,
-        beta,
-        fitted,
-        residuals,
-        r_squared_t,
-        r_squared,
-        beta_scores,
-        ncomp: k,
-    })
+    (fitted, residuals)
 }
 
 /// Predict new functional responses from a fitted FOSR model.

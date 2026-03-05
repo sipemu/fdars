@@ -12,28 +12,48 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 | Package | Language | Registry | Folder | Status |
 |---------|----------|----------|--------|--------|
-| fdars | R | CRAN | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![CRAN status](https://www.r-pkg.org/badges/version/fdars)](https://CRAN.R-project.org/package=fdars) |
+| fdars | R | GitHub | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![R Package](https://img.shields.io/badge/R-package-blue)](https://github.com/sipemu/fdars-r) |
 | fdars-core | Rust | crates.io | `fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
 
 ## Features
 
+### Core Operations
+
 - **Functional Data Operations**: Mean, centering, derivatives, Lp norms, geometric median
+- **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
+- **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
+
+### Descriptive Analysis
+
 - **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, functional spatial, kernel functional spatial, modified epigraph index
 - **Distance Metrics**: Lp distances, Hausdorff, DTW, Fourier-based semimetric, horizontal shift semimetric
-- **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
-- **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation; GMM with BIC/ICL model selection
-- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation
-- **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
+- **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
+
+### Regression
+
 - **Scalar-on-Function Regression**: FPC linear model, nonparametric kernel, functional logistic, CV component selection
 - **Function-on-Scalar Regression**: Penalized pointwise OLS, FPC-based FOSR, functional ANOVA with permutation test
-- **Mixed Effects Models**: Functional mixed model via FPCA + iterative GLS/REML, prediction, permutation hypothesis tests
 - **Regression**: Functional PCA, PLS, ridge regression
-- **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
+- **Mixed Effects Models**: Functional mixed model via FPCA + iterative GLS/REML, prediction, permutation hypothesis tests
+
+### Classification & Clustering
+
+- **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation; GMM with BIC/ICL model selection
+- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation
+
+### Time Series & Alignment
+
 - **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; seasonal strength metrics; amplitude modulation detection
 - **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean, elastic distance matrices
+- **Detrending**: Linear, polynomial, LOESS, spline, differencing; classical and STL decomposition
+
+### Inference & Diagnostics
+
 - **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands
 - **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
-- **Detrending**: Linear, polynomial, LOESS, spline, differencing; classical and STL decomposition
+
+### Specialized
+
 - **Streaming Depth**: Online FM, MBD, BD depth with sorted-reference O(log N) updates
 - **Irregular Data**: CSR-compressed storage, kernel mean/covariance, Lp metric, grid regularization
 

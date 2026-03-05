@@ -302,6 +302,29 @@ pub fn fclassif_lda(
 // QDA: Quadratic Discriminant Analysis
 // ---------------------------------------------------------------------------
 
+/// Accumulate symmetric covariance from feature rows.
+fn accumulate_class_cov(
+    features: &FdMatrix,
+    members: &[usize],
+    mean: &[f64],
+    d: usize,
+) -> Vec<f64> {
+    let mut cov = vec![0.0; d * d];
+    for &i in members {
+        for r in 0..d {
+            let dr = features[(i, r)] - mean[r];
+            for s in r..d {
+                let val = dr * (features[(i, s)] - mean[s]);
+                cov[r * d + s] += val;
+                if r != s {
+                    cov[s * d + r] += val;
+                }
+            }
+        }
+    }
+    cov
+}
+
 /// Per-class covariance matrices.
 fn qda_class_covariances(
     features: &FdMatrix,
@@ -311,33 +334,21 @@ fn qda_class_covariances(
 ) -> Vec<Vec<f64>> {
     let n = features.nrows();
     let d = features.ncols();
-    let mut covariances = Vec::with_capacity(g);
 
-    for c in 0..g {
-        let members: Vec<usize> = (0..n).filter(|&i| labels[i] == c).collect();
-        let nc = members.len().max(1) as f64;
-        let mut cov = vec![0.0; d * d];
-        for &i in &members {
-            for r in 0..d {
-                let dr = features[(i, r)] - class_means[c][r];
-                for s in r..d {
-                    let val = dr * (features[(i, s)] - class_means[c][s]);
-                    cov[r * d + s] += val;
-                    if r != s {
-                        cov[s * d + r] += val;
-                    }
-                }
+    (0..g)
+        .map(|c| {
+            let members: Vec<usize> = (0..n).filter(|&i| labels[i] == c).collect();
+            let nc = members.len().max(1) as f64;
+            let mut cov = accumulate_class_cov(features, &members, &class_means[c], d);
+            for v in cov.iter_mut() {
+                *v /= nc;
             }
-        }
-        for v in cov.iter_mut() {
-            *v /= nc;
-        }
-        for j in 0..d {
-            cov[j * d + j] += 1e-6;
-        }
-        covariances.push(cov);
-    }
-    covariances
+            for j in 0..d {
+                cov[j * d + j] += 1e-6;
+            }
+            cov
+        })
+        .collect()
 }
 
 /// Compute QDA parameters: class means, Cholesky factors, log-dets, priors.
@@ -765,6 +776,40 @@ fn kernel_classify_loo(
 ///
 /// Computes functional depth of each observation w.r.t. each class,
 /// then classifies by maximum depth.
+/// Compute depth of all observations w.r.t. each class.
+fn compute_class_depths(data: &FdMatrix, class_indices: &[Vec<usize>], n: usize) -> FdMatrix {
+    let g = class_indices.len();
+    let mut depth_scores = FdMatrix::zeros(n, g);
+    for c in 0..g {
+        if class_indices[c].is_empty() {
+            continue;
+        }
+        let class_data = extract_class_data(data, &class_indices[c]);
+        let depths = fraiman_muniz_1d(data, &class_data, true);
+        for i in 0..n {
+            depth_scores[(i, c)] = depths[i];
+        }
+    }
+    depth_scores
+}
+
+/// Blend functional depth scores with scalar rank depth from covariates.
+fn blend_scalar_depths(
+    depth_scores: &mut FdMatrix,
+    cov: &FdMatrix,
+    class_indices: &[Vec<usize>],
+    n: usize,
+) {
+    let g = class_indices.len();
+    let p = cov.ncols();
+    for c in 0..g {
+        for i in 0..n {
+            let sd = scalar_depth_for_obs(cov, i, &class_indices[c], p);
+            depth_scores[(i, c)] = 0.7 * depth_scores[(i, c)] + 0.3 * sd;
+        }
+    }
+}
+
 pub fn fclassif_dd(
     data: &FdMatrix,
     y: &[usize],
@@ -780,36 +825,16 @@ pub fn fclassif_dd(
         return None;
     }
 
-    // Split data by class
     let class_indices: Vec<Vec<usize>> = (0..g)
         .map(|c| (0..n).filter(|&i| labels[i] == c).collect())
         .collect();
 
-    // Compute depth of each observation w.r.t. each class
-    let mut depth_scores = FdMatrix::zeros(n, g);
-    for c in 0..g {
-        if class_indices[c].is_empty() {
-            continue;
-        }
-        let class_data = extract_class_data(data, &class_indices[c]);
-        let depths = fraiman_muniz_1d(data, &class_data, true);
-        for i in 0..n {
-            depth_scores[(i, c)] = depths[i];
-        }
-    }
+    let mut depth_scores = compute_class_depths(data, &class_indices, n);
 
-    // If covariates present, blend functional depth with scalar rank depth
     if let Some(cov) = covariates {
-        let p = cov.ncols();
-        for c in 0..g {
-            for i in 0..n {
-                let sd = scalar_depth_for_obs(cov, i, &class_indices[c], p);
-                depth_scores[(i, c)] = 0.7 * depth_scores[(i, c)] + 0.3 * sd;
-            }
-        }
+        blend_scalar_depths(&mut depth_scores, cov, &class_indices, n);
     }
 
-    // Classify: assign to class with maximum depth
     let predicted: Vec<usize> = (0..n)
         .map(|i| {
             let scores: Vec<f64> = (0..g).map(|c| depth_scores[(i, c)]).collect();

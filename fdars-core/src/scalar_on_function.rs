@@ -409,6 +409,16 @@ pub fn fregre_lm(
 // fregre_cv: Cross-validation for K selection
 // ---------------------------------------------------------------------------
 
+/// Copy a subset of rows from src into dst.
+fn copy_rows(dst: &mut FdMatrix, src: &FdMatrix, src_rows: &[usize]) {
+    let ncols = src.ncols();
+    for (dst_i, &src_i) in src_rows.iter().enumerate() {
+        for j in 0..ncols {
+            dst[(dst_i, j)] = src[(src_i, j)];
+        }
+    }
+}
+
 /// Split data into train/test for a given fold.
 fn cv_split_fold(
     data: &FdMatrix,
@@ -426,44 +436,28 @@ fn cv_split_fold(
 ) {
     let n = data.nrows();
     let ncols = data.ncols();
-    let n_test = test_end - test_start;
-    let n_train = n - n_test;
 
-    let mut train_data = FdMatrix::zeros(n_train, ncols);
-    let mut train_y = Vec::with_capacity(n_train);
-    let mut test_data = FdMatrix::zeros(n_test, ncols);
-    let mut test_y = Vec::with_capacity(n_test);
+    let train_idx: Vec<usize> = (0..test_start).chain(test_end..n).collect();
+    let test_idx: Vec<usize> = (test_start..test_end).collect();
 
-    let mut train_sc = scalar_covariates.map(|sc| FdMatrix::zeros(n_train, sc.ncols()));
-    let mut test_sc = scalar_covariates.map(|sc| FdMatrix::zeros(n_test, sc.ncols()));
+    let mut train_data = FdMatrix::zeros(train_idx.len(), ncols);
+    let mut test_data = FdMatrix::zeros(test_idx.len(), ncols);
+    copy_rows(&mut train_data, data, &train_idx);
+    copy_rows(&mut test_data, data, &test_idx);
 
-    let mut ti = 0;
-    let mut tei = 0;
-    for i in 0..n {
-        let is_test = i >= test_start && i < test_end;
-        let (target, idx) = if is_test {
-            (&mut test_data, &mut tei)
-        } else {
-            (&mut train_data, &mut ti)
-        };
-        for j in 0..ncols {
-            target[(*idx, j)] = data[(i, j)];
-        }
-        if is_test {
-            test_y.push(y[i]);
-        } else {
-            train_y.push(y[i]);
-        }
-        if let (Some(sc), Some(ref mut tsc), Some(ref mut tesc)) =
-            (scalar_covariates, &mut train_sc, &mut test_sc)
-        {
-            let tgt = if is_test { &mut *tesc } else { &mut *tsc };
-            for j in 0..sc.ncols() {
-                tgt[(*idx, j)] = sc[(i, j)];
-            }
-        }
-        *idx += 1;
-    }
+    let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+    let test_y: Vec<f64> = test_idx.iter().map(|&i| y[i]).collect();
+
+    let train_sc = scalar_covariates.map(|sc| {
+        let mut m = FdMatrix::zeros(train_idx.len(), sc.ncols());
+        copy_rows(&mut m, sc, &train_idx);
+        m
+    });
+    let test_sc = scalar_covariates.map(|sc| {
+        let mut m = FdMatrix::zeros(test_idx.len(), sc.ncols());
+        copy_rows(&mut m, sc, &test_idx);
+        m
+    });
 
     (train_data, train_y, test_data, test_y, train_sc, test_sc)
 }
@@ -685,8 +679,28 @@ fn nw_loo_predict(
     }
 }
 
+/// LOO-CV error for Nadaraya-Watson with a single bandwidth.
+fn loo_cv_error(dists: &[f64], y: &[f64], n: usize, h: f64) -> f64 {
+    (0..n)
+        .map(|i| {
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for j in 0..n {
+                if i == j {
+                    continue;
+                }
+                let w = gaussian_kernel(dists[i * n + j], h);
+                num += w * y[j];
+                den += w;
+            }
+            let yhat = if den > 1e-15 { num / den } else { y[i] };
+            (y[i] - yhat).powi(2)
+        })
+        .sum::<f64>()
+        / n as f64
+}
+
 /// Select bandwidth by minimizing LOO-CV error on a grid of distance quantiles.
-/// Uses only the given distance matrix (single kernel, not product).
 fn select_bandwidth_loo(dists: &[f64], y: &[f64], n: usize, _other_dists: Option<&[f64]>) -> f64 {
     let mut nonzero_dists: Vec<f64> = (0..n)
         .flat_map(|i| ((i + 1)..n).map(move |j| dists[i * n + j]))
@@ -706,25 +720,7 @@ fn select_bandwidth_loo(dists: &[f64], y: &[f64], n: usize, _other_dists: Option
         let q = qi as f64 / (n_cand + 1) as f64;
         let idx = ((nonzero_dists.len() as f64 * q) as usize).min(nonzero_dists.len() - 1);
         let h = nonzero_dists[idx].max(1e-10);
-
-        let cv: f64 = (0..n)
-            .map(|i| {
-                let mut num = 0.0;
-                let mut den = 0.0;
-                for j in 0..n {
-                    if i == j {
-                        continue;
-                    }
-                    let w = gaussian_kernel(dists[i * n + j], h);
-                    num += w * y[j];
-                    den += w;
-                }
-                let yhat = if den > 1e-15 { num / den } else { y[i] };
-                (y[i] - yhat).powi(2)
-            })
-            .sum::<f64>()
-            / n as f64;
-
+        let cv = loo_cv_error(dists, y, n, h);
         if cv < best_cv {
             best_cv = cv;
             best_h = h;
