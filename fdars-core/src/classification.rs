@@ -111,18 +111,16 @@ fn build_feature_matrix(
 // LDA: Linear Discriminant Analysis
 // ---------------------------------------------------------------------------
 
-/// Compute per-class means and pooled within-class covariance.
-fn lda_params(
+/// Compute per-class means, counts, and priors from labeled features.
+fn class_means_and_priors(
     features: &FdMatrix,
     labels: &[usize],
     g: usize,
-) -> (Vec<Vec<f64>>, Vec<f64>, Vec<f64>) {
+) -> (Vec<Vec<f64>>, Vec<usize>, Vec<f64>) {
     let n = features.nrows();
     let d = features.ncols();
-
     let mut counts = vec![0usize; g];
     let mut class_means = vec![vec![0.0; d]; g];
-
     for i in 0..n {
         let c = labels[i];
         counts[c] += 1;
@@ -137,8 +135,19 @@ fn lda_params(
             }
         }
     }
+    let priors: Vec<f64> = counts.iter().map(|&c| c as f64 / n as f64).collect();
+    (class_means, counts, priors)
+}
 
-    // Pooled within-class covariance (d x d, row-major)
+/// Compute pooled within-class covariance (symmetric, regularized).
+fn pooled_within_cov(
+    features: &FdMatrix,
+    labels: &[usize],
+    class_means: &[Vec<f64>],
+    g: usize,
+) -> Vec<f64> {
+    let n = features.nrows();
+    let d = features.ncols();
     let mut cov = vec![0.0; d * d];
     for i in 0..n {
         let c = labels[i];
@@ -157,12 +166,20 @@ fn lda_params(
     for v in cov.iter_mut() {
         *v /= scale;
     }
-    // Regularize
     for j in 0..d {
         cov[j * d + j] += 1e-6;
     }
+    cov
+}
 
-    let priors: Vec<f64> = counts.iter().map(|&c| c as f64 / n as f64).collect();
+/// Compute per-class means and pooled within-class covariance.
+fn lda_params(
+    features: &FdMatrix,
+    labels: &[usize],
+    g: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>, Vec<f64>) {
+    let (class_means, _counts, priors) = class_means_and_priors(features, labels, g);
+    let cov = pooled_within_cov(features, labels, &class_means, g);
     (class_means, cov, priors)
 }
 
@@ -323,6 +340,25 @@ fn qda_class_covariances(
     covariances
 }
 
+/// Compute QDA parameters: class means, Cholesky factors, log-dets, priors.
+fn build_qda_params(
+    features: &FdMatrix,
+    labels: &[usize],
+    g: usize,
+) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<f64>, Vec<f64>)> {
+    let d = features.ncols();
+    let (class_means, _counts, priors) = class_means_and_priors(features, labels, g);
+    let class_covs = qda_class_covariances(features, labels, &class_means, g);
+    let mut class_chols = Vec::with_capacity(g);
+    let mut class_log_dets = Vec::with_capacity(g);
+    for cov in &class_covs {
+        let chol = cholesky_d(cov, d)?;
+        class_log_dets.push(log_det_cholesky(&chol, d));
+        class_chols.push(chol);
+    }
+    Some((class_means, class_chols, class_log_dets, priors))
+}
+
 /// Log-determinant from Cholesky factor.
 fn log_det_cholesky(l: &[f64], d: usize) -> f64 {
     let mut s = 0.0;
@@ -380,36 +416,9 @@ pub fn fclassif_qda(
     }
 
     let (features, _mean, _rotation) = build_feature_matrix(data, covariates, ncomp)?;
-    let d = features.ncols();
 
-    // Compute class means and priors
-    let mut counts = vec![0usize; g];
-    let mut class_means = vec![vec![0.0; d]; g];
-    for i in 0..n {
-        let c = labels[i];
-        counts[c] += 1;
-        for j in 0..d {
-            class_means[c][j] += features[(i, j)];
-        }
-    }
-    for c in 0..g {
-        if counts[c] > 0 {
-            for j in 0..d {
-                class_means[c][j] /= counts[c] as f64;
-            }
-        }
-    }
-    let priors: Vec<f64> = counts.iter().map(|&c| c as f64 / n as f64).collect();
-
-    let class_covs = qda_class_covariances(&features, &labels, &class_means, g);
-    let mut class_chols = Vec::with_capacity(g);
-    let mut class_log_dets = Vec::with_capacity(g);
-    for cov in &class_covs {
-        let chol = cholesky_d(cov, d)?;
-        let ld = log_det_cholesky(&chol, d);
-        class_chols.push(chol);
-        class_log_dets.push(ld);
-    }
+    let (class_means, class_chols, class_log_dets, priors) =
+        build_qda_params(&features, &labels, g)?;
 
     let predicted = qda_predict(
         &features,
@@ -987,19 +996,11 @@ fn cv_fold_predict(
     }
 }
 
-/// Project test data onto training FPCA and classify with LDA.
-fn project_and_classify_lda(
-    test_data: &FdMatrix,
-    fpca: &crate::regression::FpcaResult,
-    train_labels: &[usize],
-    _train_cov: Option<&FdMatrix>,
-    _ncomp: usize,
-) -> Vec<usize> {
+/// Project test data onto FPCA basis (mean-center, multiply by rotation).
+fn project_test_onto_fpca(test_data: &FdMatrix, fpca: &crate::regression::FpcaResult) -> FdMatrix {
     let n_test = test_data.nrows();
     let m = test_data.ncols();
     let d_pc = fpca.scores.ncols();
-
-    // Project test data onto training PCs
     let mut test_features = FdMatrix::zeros(n_test, d_pc);
     for i in 0..n_test {
         for k in 0..d_pc {
@@ -1010,15 +1011,26 @@ fn project_and_classify_lda(
             test_features[(i, k)] = score;
         }
     }
+    test_features
+}
 
-    // Build training features
+/// Project test data onto training FPCA and classify with LDA.
+fn project_and_classify_lda(
+    test_data: &FdMatrix,
+    fpca: &crate::regression::FpcaResult,
+    train_labels: &[usize],
+    _train_cov: Option<&FdMatrix>,
+    _ncomp: usize,
+) -> Vec<usize> {
+    let test_features = project_test_onto_fpca(test_data, fpca);
+
     let train_features = &fpca.scores;
     let (labels, g) = remap_labels(train_labels);
     let (class_means, cov, priors) = lda_params(train_features, &labels, g);
     let d = train_features.ncols();
     match cholesky_d(&cov, d) {
         Some(chol) => lda_predict(&test_features, &class_means, &chol, &priors, g),
-        None => vec![0; n_test],
+        None => vec![0; test_data.nrows()],
     }
 }
 
@@ -1031,67 +1043,22 @@ fn project_and_classify_qda(
     _ncomp: usize,
 ) -> Vec<usize> {
     let n_test = test_data.nrows();
-    let m = test_data.ncols();
-    let d_pc = fpca.scores.ncols();
-
-    let mut test_features = FdMatrix::zeros(n_test, d_pc);
-    for i in 0..n_test {
-        for k in 0..d_pc {
-            let mut score = 0.0;
-            for j in 0..m {
-                score += (test_data[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)];
-            }
-            test_features[(i, k)] = score;
-        }
-    }
+    let test_features = project_test_onto_fpca(test_data, fpca);
 
     let (labels, g) = remap_labels(train_labels);
     let train_features = &fpca.scores;
-    let d = d_pc;
 
-    let mut counts = vec![0usize; g];
-    let mut class_means = vec![vec![0.0; d]; g];
-    for i in 0..train_features.nrows() {
-        let c = labels[i];
-        counts[c] += 1;
-        for j in 0..d {
-            class_means[c][j] += train_features[(i, j)];
-        }
+    match build_qda_params(train_features, &labels, g) {
+        Some((class_means, class_chols, class_log_dets, priors)) => qda_predict(
+            &test_features,
+            &class_means,
+            &class_chols,
+            &class_log_dets,
+            &priors,
+            g,
+        ),
+        None => vec![0; n_test],
     }
-    for c in 0..g {
-        if counts[c] > 0 {
-            for j in 0..d {
-                class_means[c][j] /= counts[c] as f64;
-            }
-        }
-    }
-    let priors: Vec<f64> = counts
-        .iter()
-        .map(|&c| c as f64 / train_features.nrows() as f64)
-        .collect();
-
-    let class_covs = qda_class_covariances(train_features, &labels, &class_means, g);
-    let mut class_chols = Vec::new();
-    let mut class_log_dets = Vec::new();
-    for cov in &class_covs {
-        match cholesky_d(cov, d) {
-            Some(chol) => {
-                let ld = log_det_cholesky(&chol, d);
-                class_chols.push(chol);
-                class_log_dets.push(ld);
-            }
-            None => return vec![0; n_test],
-        }
-    }
-
-    qda_predict(
-        &test_features,
-        &class_means,
-        &class_chols,
-        &class_log_dets,
-        &priors,
-        g,
-    )
 }
 
 /// Project test data and classify with k-NN.
