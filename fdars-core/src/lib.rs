@@ -37,6 +37,7 @@ pub mod depth;
 pub mod detrend;
 pub mod fdata;
 pub mod function_on_scalar;
+pub mod gmm;
 pub mod helpers;
 pub mod irreg_fdata;
 pub mod landmark;
@@ -120,6 +121,9 @@ pub use scalar_on_function::{
     fregre_cv, fregre_lm, fregre_np_mixed, functional_logistic, predict_fregre_lm,
     predict_fregre_np, FregreCvResult, FregreLmResult, FregreNpResult, FunctionalLogisticResult,
 };
+
+// Re-export GMM clustering types
+pub use gmm::{gmm_cluster, gmm_em, predict_gmm, CovType, GmmClusterResult, GmmResult};
 
 // Re-export streaming depth types
 pub use streaming_depth::{
