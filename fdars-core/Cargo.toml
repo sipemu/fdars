@@ -129,3 +129,23 @@ path = "examples/18_landmark_registration/main.rs"
 [[example]]
 name = "tsrvf"
 path = "examples/19_tsrvf/main.rs"
+
+[[example]]
+name = "scalar_on_function"
+path = "examples/20_scalar_on_function/main.rs"
+
+[[example]]
+name = "function_on_scalar"
+path = "examples/21_function_on_scalar/main.rs"
+
+[[example]]
+name = "gmm_clustering"
+path = "examples/22_gmm_clustering/main.rs"
+
+[[example]]
+name = "classification"
+path = "examples/23_classification/main.rs"
+
+[[example]]
+name = "mixed_effects"
+path = "examples/24_mixed_effects/main.rs"

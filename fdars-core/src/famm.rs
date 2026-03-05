@@ -85,6 +85,11 @@ pub fn fmm(
     let k = fpca.scores.ncols(); // actual number of components
 
     // Step 2: For each FPC score, fit scalar mixed model
+    // Normalize scores by sqrt(h) to match R's L²-weighted FPCA convention.
+    // This ensures variance components are on the same scale as R's lmer().
+    let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
+    let score_scale = h.sqrt();
+
     let p = covariates.map_or(0, |c| c.ncols());
     let mut gamma = vec![vec![0.0; k]; p]; // gamma[j][k] = fixed effect coeff j for component k
     let mut u_hat = vec![vec![0.0; k]; n_subjects]; // u_hat[i][k] = random effect for subject i, component k
@@ -92,20 +97,26 @@ pub fn fmm(
     let mut sigma2_eps_total = 0.0;
 
     for comp in 0..k {
-        let scores: Vec<f64> = (0..n_total).map(|i| fpca.scores[(i, comp)]).collect();
+        // Scale scores to L²-normalized space
+        let scores: Vec<f64> = (0..n_total)
+            .map(|i| fpca.scores[(i, comp)] * score_scale)
+            .collect();
         let result = fit_scalar_mixed_model(&scores, &subject_map, n_subjects, covariates, p);
+        // Scale gamma back to original score space for beta reconstruction
         for j in 0..p {
-            gamma[j][comp] = result.gamma[j];
+            gamma[j][comp] = result.gamma[j] / score_scale;
         }
         for s in 0..n_subjects {
-            u_hat[s][comp] = result.u_hat[s];
+            // Scale u_hat back for random effect reconstruction
+            u_hat[s][comp] = result.u_hat[s] / score_scale;
         }
+        // Keep variance components in L²-normalized space (matching R)
         sigma2_u[comp] = result.sigma2_u;
         sigma2_eps_total += result.sigma2_eps;
     }
     let sigma2_eps = sigma2_eps_total / k as f64;
 
-    // Step 3: Recover functional coefficients
+    // Step 3: Recover functional coefficients (using gamma in original scale)
     let beta_functions = recover_beta_functions(&gamma, &fpca.rotation, p, m, k);
     let random_effects = recover_random_effects(&u_hat, &fpca.rotation, n_subjects, m, k);
 
@@ -171,7 +182,9 @@ struct ScalarMixedResult {
 
 /// Fit scalar mixed model: y_ij = x_i'γ + u_i + e_ij.
 ///
-/// Uses Henderson's mixed model equations with REML-like variance estimation.
+/// Uses iterative GLS for fixed effects + REML EM for variance components,
+/// matching R's lmer() behavior. Initializes from Henderson's ANOVA, then
+/// iterates until convergence.
 fn fit_scalar_mixed_model(
     y: &[f64],
     subject_map: &[usize],
@@ -181,24 +194,170 @@ fn fit_scalar_mixed_model(
 ) -> ScalarMixedResult {
     let n = y.len();
 
-    // Step 1: Estimate fixed effects via OLS (ignoring random effects initially)
-    let gamma = estimate_fixed_effects(y, covariates, p, n);
+    // Precompute subject structure
+    let mut subject_counts = vec![0usize; n_subjects];
+    let mut subject_obs: Vec<Vec<usize>> = vec![Vec::new(); n_subjects];
+    for i in 0..n {
+        let s = subject_map[i];
+        subject_counts[s] += 1;
+        subject_obs[s].push(i);
+    }
 
-    // Step 2: Compute residuals from fixed effects
-    let residuals = compute_ols_residuals(y, covariates, &gamma, p, n);
+    // Initialize: OLS fixed effects + Henderson's ANOVA for variance components
+    let gamma_init = estimate_fixed_effects(y, covariates, p, n);
+    let residuals_init = compute_ols_residuals(y, covariates, &gamma_init, p, n);
+    let (mut sigma2_u, mut sigma2_e) =
+        estimate_variance_components(&residuals_init, subject_map, n_subjects, n);
 
-    // Step 3: Estimate variance components
-    let (sigma2_u, sigma2_eps) =
-        estimate_variance_components(&residuals, subject_map, n_subjects, n);
+    // Ensure positive initial variances
+    if sigma2_e < 1e-15 {
+        sigma2_e = 1e-6;
+    }
+    if sigma2_u < 1e-15 {
+        sigma2_u = sigma2_e * 0.1;
+    }
 
-    // Step 4: Compute BLUP for random effects
-    let u_hat = compute_blup(&residuals, subject_map, n_subjects, sigma2_u, sigma2_eps);
+    let mut gamma = gamma_init;
+    let max_iter = 50;
+
+    for _iter in 0..max_iter {
+        let sigma2_u_old = sigma2_u;
+        let sigma2_e_old = sigma2_e;
+
+        // Step 1: Compute shrinkage weights per subject
+        // w_s = sigma2_u / (sigma2_u + sigma2_e / n_s)
+        let weights: Vec<f64> = (0..n_subjects)
+            .map(|s| {
+                let ns = subject_counts[s] as f64;
+                if ns < 1.0 {
+                    return 0.0;
+                }
+                sigma2_u / (sigma2_u + sigma2_e / ns)
+            })
+            .collect();
+
+        // Step 2: GLS fixed effects using block-diagonal V^{-1}
+        // V_i^{-1} = (1/sigma2_e) * [I - w_i * (1/n_i) * J]
+        // X' V^{-1} y and X' V^{-1} X computed exploiting block structure
+        if let Some(cov) = covariates.filter(|_| p > 0) {
+            let mut xtvinvx = vec![0.0; p * p];
+            let mut xtvinvy = vec![0.0; p];
+
+            for s in 0..n_subjects {
+                let ns = subject_counts[s] as f64;
+                if ns < 1.0 {
+                    continue;
+                }
+                let w_s = weights[s];
+                let inv_e = 1.0 / sigma2_e;
+
+                // Compute subject-level sums of x and y
+                let mut x_sum = vec![0.0; p];
+                let mut y_sum = 0.0;
+                for &i in &subject_obs[s] {
+                    for r in 0..p {
+                        x_sum[r] += cov[(i, r)];
+                    }
+                    y_sum += y[i];
+                }
+
+                // V^{-1} x_i = (1/sigma2_e) * (x_i - w_s * x_bar_s)
+                // where x_bar_s = x_sum / n_s
+                for &i in &subject_obs[s] {
+                    let mut vinv_x = vec![0.0; p];
+                    for r in 0..p {
+                        vinv_x[r] = inv_e * (cov[(i, r)] - w_s * x_sum[r] / ns);
+                    }
+                    let vinv_y = inv_e * (y[i] - w_s * y_sum / ns);
+
+                    for r in 0..p {
+                        xtvinvy[r] += cov[(i, r)] * vinv_y;
+                        for c in r..p {
+                            let val = cov[(i, r)] * vinv_x[c];
+                            xtvinvx[r * p + c] += val;
+                            if r != c {
+                                xtvinvx[c * p + r] += val;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Regularize
+            for j in 0..p {
+                xtvinvx[j * p + j] += 1e-10;
+            }
+
+            if let Some(g) = cholesky_solve(&xtvinvx, &xtvinvy, p) {
+                gamma = g;
+            }
+        }
+
+        // Step 3: GLS residuals
+        let r = compute_ols_residuals(y, covariates, &gamma, p, n);
+
+        // Step 4: REML EM update for variance components
+        let mut sigma2_u_new = 0.0;
+        let mut sigma2_e_new = 0.0;
+
+        for s in 0..n_subjects {
+            let ns = subject_counts[s] as f64;
+            if ns < 1.0 {
+                continue;
+            }
+            let w_s = weights[s];
+
+            // Mean residual for subject s
+            let mean_r_s: f64 = subject_obs[s].iter().map(|&i| r[i]).sum::<f64>() / ns;
+
+            // BLUP: u_hat_s = w_s * mean_r_s
+            let u_hat_s = w_s * mean_r_s;
+
+            // Conditional variance: cond_var_s = sigma2_u * (1 - w_s)
+            let cond_var_s = sigma2_u * (1.0 - w_s);
+
+            // EM update for sigma2_u: E[u_s^2] = u_hat_s^2 + cond_var_s
+            sigma2_u_new += u_hat_s * u_hat_s + cond_var_s;
+
+            // EM update for sigma2_e: E[sum (e_is)^2]
+            for &i in &subject_obs[s] {
+                let e_hat = r[i] - u_hat_s;
+                sigma2_e_new += e_hat * e_hat;
+            }
+            // Add conditional variance contribution to residual
+            sigma2_e_new += ns * cond_var_s;
+        }
+
+        sigma2_u_new /= n_subjects as f64;
+        sigma2_e_new /= n as f64;
+
+        // Ensure positivity
+        sigma2_u = sigma2_u_new.max(1e-15);
+        sigma2_e = sigma2_e_new.max(1e-15);
+
+        // Step 5: Convergence check
+        let delta = (sigma2_u - sigma2_u_old).abs() + (sigma2_e - sigma2_e_old).abs();
+        let scale = sigma2_u_old + sigma2_e_old;
+        if delta < 1e-10 * scale {
+            break;
+        }
+    }
+
+    // Final BLUP for random effects
+    let final_residuals = compute_ols_residuals(y, covariates, &gamma, p, n);
+    let u_hat = compute_blup(
+        &final_residuals,
+        subject_map,
+        n_subjects,
+        sigma2_u,
+        sigma2_e,
+    );
 
     ScalarMixedResult {
         gamma,
         u_hat,
         sigma2_u,
-        sigma2_eps,
+        sigma2_eps: sigma2_e,
     }
 }
 

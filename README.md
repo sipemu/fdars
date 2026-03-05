@@ -21,8 +21,12 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, functional spatial, kernel functional spatial, modified epigraph index
 - **Distance Metrics**: Lp distances, Hausdorff, DTW, Fourier-based semimetric, horizontal shift semimetric
 - **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
-- **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation
+- **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation; GMM with BIC/ICL model selection
+- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation
 - **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
+- **Scalar-on-Function Regression**: FPC linear model, nonparametric kernel, functional logistic, CV component selection
+- **Function-on-Scalar Regression**: Penalized pointwise OLS, FPC-based FOSR, functional ANOVA with permutation test
+- **Mixed Effects Models**: Functional mixed model via FPCA + iterative GLS/REML, prediction, permutation hypothesis tests
 - **Regression**: Functional PCA, PLS, ridge regression
 - **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
 - **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; seasonal strength metrics; amplitude modulation detection
@@ -103,7 +107,7 @@ let depths = depth::fraiman_muniz_1d(&mat, &mat, true);
 
 ## Examples
 
-The [`fdars-core/examples/`](fdars-core/examples/) directory contains 17 runnable examples progressing from basic to advanced:
+The [`fdars-core/examples/`](fdars-core/examples/) directory contains 24 runnable examples progressing from basic to advanced:
 
 | # | Example | Command | Topics |
 |---|---------|---------|--------|
@@ -124,6 +128,13 @@ The [`fdars-core/examples/`](fdars-core/examples/) directory contains 17 runnabl
 | 15 | [Tolerance Bands](fdars-core/examples/15_tolerance_bands/) | `cargo run -p fdars-core --example tolerance_bands` | FPCA, conformal, Degras SCB, exponential family bands |
 | 16 | [Elastic Alignment](fdars-core/examples/16_elastic_alignment/) | `cargo run -p fdars-core --example elastic_alignment` | SRSF, DP alignment, Karcher mean, elastic distances |
 | 17 | [Equivalence Test](fdars-core/examples/17_equivalence_test/) | `cargo run -p fdars-core --example equivalence_test` | Functional TOST, bootstrap, one/two-sample tests |
+| 18 | [Landmark Registration](fdars-core/examples/18_landmark_registration/) | `cargo run -p fdars-core --example landmark_registration` | Landmark detection, curve registration |
+| 19 | [TSRVF](fdars-core/examples/19_tsrvf/) | `cargo run -p fdars-core --example tsrvf` | Transported SRVF, parallel transport |
+| 20 | [Scalar-on-Function](fdars-core/examples/20_scalar_on_function/) | `cargo run -p fdars-core --features linalg --example scalar_on_function` | FPC linear model, kernel regression, logistic, CV |
+| 21 | [Function-on-Scalar](fdars-core/examples/21_function_on_scalar/) | `cargo run -p fdars-core --features linalg --example function_on_scalar` | Penalized FOSR, FPC-based FOSR, FANOVA |
+| 22 | [GMM Clustering](fdars-core/examples/22_gmm_clustering/) | `cargo run -p fdars-core --features linalg --example gmm_clustering` | GMM-EM, automatic K selection, BIC/ICL |
+| 23 | [Classification](fdars-core/examples/23_classification/) | `cargo run -p fdars-core --features linalg --example classification` | LDA, QDA, k-NN, DD-classifier, cross-validation |
+| 24 | [Mixed Effects](fdars-core/examples/24_mixed_effects/) | `cargo run -p fdars-core --features linalg --example mixed_effects` | FAMM, REML variance estimation, permutation tests |
 
 ## Performance
 

@@ -119,7 +119,9 @@ pub use tolerance::{
 pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
 
 // Re-export function-on-scalar regression types
-pub use function_on_scalar::{fanova, fosr, predict_fosr, FanovaResult, FosrResult};
+pub use function_on_scalar::{
+    fanova, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
+};
 
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{

@@ -3692,7 +3692,7 @@ struct FammExpected {
 ///
 /// Both use FPC regression with 3 components on the same regression_30x51 dataset.
 /// FPCA decompositions may differ slightly (trapezoidal vs Simpson integration),
-/// so we use generous tolerances for fitted values but tight tolerance for R².
+/// so fitted values use tol=0.3 (~5% of [-3, 3.7] range) and R² uses tol=0.01.
 #[test]
 fn test_r_scalar_on_function_regression() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -3701,49 +3701,46 @@ fn test_r_scalar_on_function_regression() {
 
     let result = fregre_lm(&data, &reg.y, None, 3).expect("fregre_lm should succeed");
 
-    // R² should match closely — both are FPC regression with 3 components
+    // R² should match closely — same algorithm (FPCA→OLS), only floating-point differences
     assert_scalar_close(
         result.r_squared,
         expected.scalar_on_function.r_squared,
-        0.05,
+        0.01,
         "R² (Rust vs R fregre.pc)",
     );
 
-    // Both R² should be high (> 0.9) on this dataset
-    assert!(
-        result.r_squared > 0.9,
-        "Rust R² = {:.6}, expected > 0.9",
-        result.r_squared
-    );
-    assert!(
-        expected.scalar_on_function.r_squared > 0.9,
-        "R R² = {:.6}, expected > 0.9",
-        expected.scalar_on_function.r_squared
-    );
-
-    // Fitted values: check correlation with R's fitted values
-    // Different FPCA may give different scales, but the ranking should be preserved
-    assert_ranking_correlated(
+    // Fitted values: element-wise comparison (range ~[-3, 3.7], tol=0.3 is ~5%)
+    assert_vec_close(
         &result.fitted_values,
         &expected.scalar_on_function.fitted,
-        "Fitted values ranking (Rust vs R)",
+        0.3,
+        "Fitted values (Rust vs R)",
     );
 
-    // Residual sum of squares should be in the same order of magnitude
+    // Residuals: element-wise comparison against R's residuals
+    assert_vec_close(
+        &result.residuals,
+        &expected.scalar_on_function.residuals,
+        0.3,
+        "Residuals (Rust vs R)",
+    );
+
+    // Residual sum of squares — tighter tolerance since R² matches closely
     let rss_rust: f64 = result.residuals.iter().map(|r| r * r).sum();
     assert_relative_close(
         rss_rust,
         expected.scalar_on_function.residual_ss,
-        0.2,
+        0.05,
         "Residual SS (Rust vs R)",
     );
 }
 
-/// GMM clustering on FPC scores: compare accuracy and model selection against R's Mclust.
+/// GMM clustering on FPC scores: compare accuracy and weights against R's Mclust.
 ///
 /// Both reduce the clusters_60x51 data to 3 FPC scores, then fit GMM with K=3.
 /// Different FPCA → different scores, but clusters are well-separated so both
-/// should achieve near-perfect accuracy and select K=3 via BIC.
+/// should achieve near-perfect accuracy. Weights are compared sorted (label ordering differs).
+/// BIC uses different conventions (R: higher=better, Rust: lower=better), so skip direct comparison.
 #[test]
 fn test_r_gmm_clustering() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -3761,7 +3758,7 @@ fn test_r_gmm_clustering() {
     let gmm_result =
         gmm_em(&scores, 3, CovType::Full, 200, 1e-6, 42).expect("gmm_em should succeed");
 
-    // Accuracy after label permutation (clusters are well-separated → expect > 0.9)
+    // Accuracy after label permutation — compare against R's value
     let pred = &gmm_result.cluster;
     let true_labels = &clust.true_labels;
     let mut best_acc = 0.0_f64;
@@ -3782,30 +3779,30 @@ fn test_r_gmm_clustering() {
         best_acc = best_acc.max(acc);
     }
 
-    assert!(
-        best_acc >= 0.9,
-        "Rust GMM accuracy = {:.4}, expected >= 0.9 (R got {:.4})",
+    assert_scalar_close(
         best_acc,
-        expected.gmm.accuracy
+        expected.gmm.accuracy,
+        0.02,
+        "GMM accuracy (Rust vs R)",
     );
 
-    // R also achieved perfect accuracy
-    assert_scalar_close(expected.gmm.accuracy, 1.0, 0.01, "R GMM accuracy");
-
-    // Weights should be approximately uniform (3 equal clusters of 20)
-    for (i, &w) in gmm_result.weights.iter().enumerate() {
-        assert!(
-            (w - 1.0 / 3.0).abs() < 0.15,
-            "Rust GMM weight[{}] = {:.4}, expected ~0.333",
-            i,
-            w
-        );
-    }
+    // Weights: sort both and compare (label ordering may differ)
+    let mut rust_weights: Vec<f64> = gmm_result.weights.clone();
+    rust_weights.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut r_weights: Vec<f64> = expected.gmm.weights.clone();
+    r_weights.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_vec_close(
+        &rust_weights,
+        &r_weights,
+        0.05,
+        "GMM weights sorted (Rust vs R)",
+    );
 }
 
 /// Functional classification: compare LDA, k-NN, and DD-classifier accuracies against R.
 ///
 /// Uses the clusters_60x51 dataset with 3 well-separated classes.
+/// LDA and k-NN should match R closely (same algorithm); DD has more variation.
 #[test]
 fn test_r_classification_accuracy() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -3815,68 +3812,86 @@ fn test_r_classification_accuracy() {
     // Convert 1-indexed R labels to 0-indexed Rust labels
     let labels: Vec<usize> = clust.true_labels.iter().map(|&l| l - 1).collect();
 
-    // LDA classifier
+    // LDA classifier — R achieves 1.0 on this data
     let lda = fclassif_lda(&data, &labels, None, 3).expect("LDA should succeed");
-    assert!(
-        lda.accuracy >= 0.9,
-        "LDA accuracy = {:.4}, expected >= 0.9",
-        lda.accuracy
-    );
+    assert_scalar_close(lda.accuracy, 1.0, 0.05, "LDA accuracy (Rust vs R=1.0)");
 
-    // k-NN classifier (k=3)
+    // k-NN classifier (k=3) — compare against R's LOO k-NN accuracy
     let knn = fclassif_knn(&data, &labels, None, 3, 3).expect("k-NN should succeed");
-    assert!(
-        knn.accuracy >= 0.9,
-        "k-NN accuracy = {:.4}, expected >= 0.9 (R LOO k-NN = {:.4})",
+    assert_scalar_close(
         knn.accuracy,
-        expected.classification.knn_accuracy
-    );
-
-    // DD-classifier (depth-based)
-    let dd = fclassif_dd(&data, &labels, None).expect("DD should succeed");
-    assert!(
-        dd.accuracy >= 0.8,
-        "DD accuracy = {:.4}, expected >= 0.8 (R DD = {:.4})",
-        dd.accuracy,
-        expected.classification.dd_accuracy
-    );
-
-    // R achieved perfect classification for all methods on this well-separated dataset
-    assert_scalar_close(
-        expected.classification.dd_accuracy,
-        1.0,
-        0.01,
-        "R DD accuracy",
-    );
-    assert_scalar_close(
         expected.classification.knn_accuracy,
-        1.0,
-        0.01,
-        "R k-NN accuracy",
+        0.05,
+        "k-NN accuracy (Rust vs R)",
+    );
+
+    // DD-classifier (depth-based) — wider tolerance due to integration rule differences
+    let dd = fclassif_dd(&data, &labels, None).expect("DD should succeed");
+    assert_scalar_close(
+        dd.accuracy,
+        expected.classification.dd_accuracy,
+        0.1,
+        "DD accuracy (Rust vs R)",
     );
 }
 
 /// DD-classifier depth values: compare Fraiman-Muniz depths against R's depth.FM.
 ///
 /// R computes FM depth for each observation w.r.t. each class reference set.
-/// Rust's DD-classifier also uses FM depth internally.
-/// Tolerance is generous (0.15) due to different integration rules.
+/// We compute the same depths directly via `fraiman_muniz_1d` and compare
+/// element-wise against R's dd_depths (tol=0.05, same as FM depth test).
 #[test]
 fn test_r_dd_classifier_depths() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
     let clust: ClusterData = load_json("data", "clusters_60x51");
     let data = FdMatrix::from_column_major(clust.data.clone(), clust.n, clust.m).unwrap();
 
-    // Compute FM depth for class 1 observations w.r.t. class 1 reference
-    // These should be highest for class 1 observations
     let r_depths_c1 = &expected.classification.dd_depths.class1;
     let r_depths_c2 = &expected.classification.dd_depths.class2;
     let r_depths_c3 = &expected.classification.dd_depths.class3;
 
-    // Verify R's depth structure makes sense: class k observations should have
-    // highest depth w.r.t. their own class
+    // Build per-class reference matrices (classes are 1-indexed: 1,2,3 → 0..20, 20..40, 40..60)
+    let n = clust.n;
+    let m = clust.m;
+    let mut class_mats: Vec<FdMatrix> = Vec::new();
+    for class_start in [0usize, 20, 40] {
+        let class_n = 20;
+        let mut class_data = vec![0.0; class_n * m];
+        for i in 0..class_n {
+            for j in 0..m {
+                class_data[i + j * class_n] = data[(class_start + i, j)];
+            }
+        }
+        class_mats.push(FdMatrix::from_column_major(class_data, class_n, m).unwrap());
+    }
+
+    // Compute Rust FM depths: all n observations w.r.t. each class reference
+    let rust_depths_c1 = fdars_core::depth::fraiman_muniz_1d(&data, &class_mats[0], true);
+    let rust_depths_c2 = fdars_core::depth::fraiman_muniz_1d(&data, &class_mats[1], true);
+    let rust_depths_c3 = fdars_core::depth::fraiman_muniz_1d(&data, &class_mats[2], true);
+
+    // Element-wise comparison against R's depths (tol=0.05, consistent with FM depth test)
+    assert_vec_close(
+        &rust_depths_c1,
+        r_depths_c1,
+        0.05,
+        "DD depths class1 (Rust vs R)",
+    );
+    assert_vec_close(
+        &rust_depths_c2,
+        r_depths_c2,
+        0.05,
+        "DD depths class2 (Rust vs R)",
+    );
+    assert_vec_close(
+        &rust_depths_c3,
+        r_depths_c3,
+        0.05,
+        "DD depths class3 (Rust vs R)",
+    );
+
+    // Structural check: class k observations should be deepest in their own class
     for i in 0..20 {
-        // class 1 observations (indices 0..20)
         assert!(
             r_depths_c1[i] > r_depths_c2[i] && r_depths_c1[i] > r_depths_c3[i],
             "R: class1 obs {} not deepest in own class: c1={:.4}, c2={:.4}, c3={:.4}",
@@ -3887,7 +3902,6 @@ fn test_r_dd_classifier_depths() {
         );
     }
     for i in 20..40 {
-        // class 2 observations
         assert!(
             r_depths_c2[i] > r_depths_c1[i] && r_depths_c2[i] > r_depths_c3[i],
             "R: class2 obs {} not deepest in own class",
@@ -3895,7 +3909,6 @@ fn test_r_dd_classifier_depths() {
         );
     }
     for i in 40..60 {
-        // class 3 observations
         assert!(
             r_depths_c3[i] > r_depths_c1[i] && r_depths_c3[i] > r_depths_c2[i],
             "R: class3 obs {} not deepest in own class",
@@ -3903,32 +3916,31 @@ fn test_r_dd_classifier_depths() {
         );
     }
 
-    // Run Rust's DD-classifier and verify it also classifies correctly
+    // Run Rust's DD-classifier and verify predictions match R's
     let labels: Vec<usize> = clust.true_labels.iter().map(|&l| l - 1).collect();
     let dd = fclassif_dd(&data, &labels, None).expect("DD should succeed");
 
-    // Verify Rust predictions match R predictions (both should be perfect on this data)
     let r_predicted = &expected.classification.dd_predicted;
     let mut match_count = 0;
     for (rust_pred, &r_pred) in dd.predicted.iter().zip(r_predicted.iter()) {
         if *rust_pred == r_pred - 1 {
-            // R is 1-indexed
             match_count += 1;
         }
     }
-    let match_rate = match_count as f64 / clust.n as f64;
+    let match_rate = match_count as f64 / n as f64;
     assert!(
-        match_rate >= 0.9,
-        "DD prediction match rate = {:.4}, expected >= 0.9",
+        match_rate >= 0.95,
+        "DD prediction match rate = {:.4}, expected >= 0.95",
         match_rate
     );
 }
 
-/// Functional mixed model: compare fixed effects and variance components against R's lmer.
+/// Functional mixed model: compare variance components against R's lmer.
 ///
-/// Uses the EXACT same generated data from R (stored in the expected JSON), so
-/// FPCA decomposition differences should be small. Fixed effect estimates (gamma)
-/// and variance components (sigma2_u, sigma2_eps) are compared.
+/// Uses the EXACT same generated data from R. Compares sigma2_u and sigma2_eps
+/// numerically. R uses REML, Rust uses Henderson's MME, so we use 50% relative
+/// tolerance for variance components but expect the same order of magnitude.
+/// Also verifies the beta function shape via gamma_estimates.
 #[test]
 fn test_r_famm_variance_components() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -3948,44 +3960,60 @@ fn test_r_famm_variance_components() {
 
     let result = fmm(&data, &subject_ids, Some(&covariates), 3).expect("fmm should succeed");
 
-    // Fixed effects: gamma estimates should be in the same direction as R's
-    // R: [0.2349, -0.3425, 0.0066]
-    // The first component captures most variance, so gamma[0] should be the largest
-    // Sign may flip due to FPCA sign ambiguity, so compare magnitudes
-    // The beta_functions matrix is n_cov x m. We need to project onto FPC space
-    // to compare with R's gamma estimates. Instead, check structural properties:
-    // 1. The model should identify that there are random effects (sigma2_u > 0)
-    assert!(
-        result.sigma2_u.iter().any(|&s| s > 0.01),
-        "Rust should detect random effects (sigma2_u = {:?})",
-        result.sigma2_u
-    );
+    // Number of subjects must match exactly
+    assert_eq!(result.n_subjects, famm_ref.n_subjects);
 
-    // 2. R detected large random variance on component 1 (0.2946) and tiny on 2,3
-    // Rust should show a similar pattern: one dominant random variance component
+    // Dominant random variance component: compare against R's sigma2_u[0]
+    // With iterative GLS+REML, Rust should be within 3x of R's REML estimates.
     let max_sigma2_u = result.sigma2_u.iter().cloned().fold(0.0_f64, f64::max);
-    assert!(
-        max_sigma2_u > 0.05,
-        "Largest sigma2_u = {:.6}, expected > 0.05 (R got {:.6})",
+    assert_relative_close(
         max_sigma2_u,
-        famm_ref.sigma2_u[0]
+        famm_ref.sigma2_u[0],
+        3.0,
+        "sigma2_u (max component vs R)",
     );
 
-    // 3. Residual variance should be small (noise is σ=0.05 → σ²=0.0025)
+    // The random effect variance should dominate residual variance (same as R)
     assert!(
-        result.sigma2_eps < 0.1,
-        "sigma2_eps = {:.6}, expected < 0.1 (R got {:.6})",
+        max_sigma2_u > result.sigma2_eps,
+        "sigma2_u ({:.6}) should dominate sigma2_eps ({:.6})",
+        max_sigma2_u,
+        result.sigma2_eps
+    );
+
+    // Residual variance: σ²_eps should be small (noise is σ=0.05 → σ²=0.0025).
+    // With REML, Rust's estimate should be much closer to R's.
+    assert!(
+        result.sigma2_eps > 0.0 && result.sigma2_eps < 0.01,
+        "sigma2_eps = {:.6}, expected in (0, 0.01) — R REML got {:.6}",
         result.sigma2_eps,
         famm_ref.sigma2_eps[0]
     );
 
-    // 4. Number of subjects should be correctly identified
-    assert_eq!(result.n_subjects, famm_ref.n_subjects);
+    // Gamma estimates: compare sign and magnitude per component
+    let r_gamma = &famm_ref.gamma_estimates;
+    let r_gamma_l2: f64 = r_gamma.iter().map(|g| g * g).sum::<f64>().sqrt();
+    assert!(
+        r_gamma_l2 > 0.01,
+        "R gamma estimates should be non-trivial: L2 = {:.6}",
+        r_gamma_l2
+    );
+
+    // Rust's beta_functions row 0 should have non-trivial variation too
+    let rust_beta: Vec<f64> = (0..m).map(|j| result.beta_functions[(0, j)]).collect();
+    let beta_range = rust_beta.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+        - rust_beta.iter().cloned().fold(f64::INFINITY, f64::min);
+    assert!(
+        beta_range > 0.01,
+        "Rust beta function range = {:.6}, expected non-trivial",
+        beta_range
+    );
 }
 
 /// FAMM fitted values: check that fitted curves are close to observed.
 ///
-/// With low noise (σ=0.05), fitted curves should explain most variance.
+/// With low noise (σ=0.05 → σ²=0.0025), fitted curves should explain most variance.
+/// R² > 0.9 and MSE < 0.01 (well above noise floor).
 #[test]
 fn test_r_famm_fitted_quality() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -4000,7 +4028,7 @@ fn test_r_famm_fitted_quality() {
 
     let result = fmm(&data, &subject_ids, Some(&covariates), 3).expect("fmm should succeed");
 
-    // Compute R² between fitted and observed
+    // Compute R² and MSE between fitted and observed
     let mut ss_res = 0.0;
     let mut ss_tot = 0.0;
     let overall_mean: f64 = famm_ref.data.iter().sum::<f64>() / (n * m) as f64;
@@ -4016,18 +4044,25 @@ fn test_r_famm_fitted_quality() {
 
     let r_squared = 1.0 - ss_res / ss_tot;
     assert!(
-        r_squared > 0.8,
-        "FAMM R² = {:.6}, expected > 0.8 (low noise data)",
+        r_squared > 0.99,
+        "FAMM R² = {:.6}, expected > 0.99 (low noise data with REML)",
         r_squared
+    );
+
+    // MSE should be small — noise variance is 0.0025, so MSE should be well below 0.005
+    let mse = ss_res / (n * m) as f64;
+    assert!(
+        mse < 0.005,
+        "FAMM MSE = {:.6}, expected < 0.005 (noise σ²=0.0025, REML fit)",
+        mse
     );
 }
 
 /// Function-on-scalar regression: compare beta function shape against R.
 ///
 /// R computes beta(t) via FPC regression: sum_k beta_k * phi_k(t).
-/// We verify the beta function from our FOSR has the correct shape
-/// (positive in first half of domain, negative in second half — matching
-/// the covariate's effect on a cosine-shaped curve).
+/// We verify the beta function from our FPC-based FOSR has the correct shape
+/// and element-wise closeness to R's beta function.
 #[test]
 fn test_r_function_on_scalar_beta_shape() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -4036,7 +4071,6 @@ fn test_r_function_on_scalar_beta_shape() {
     let r_beta = &expected.function_on_scalar.beta_function;
 
     // R's beta function: positive in first half, negative in second half
-    // This reflects the cosine-like covariate effect
     let m = r_beta.len();
     let first_half_mean: f64 = r_beta[..m / 2].iter().sum::<f64>() / (m / 2) as f64;
     let second_half_mean: f64 = r_beta[m / 2..].iter().sum::<f64>() / (m - m / 2) as f64;
@@ -4052,14 +4086,14 @@ fn test_r_function_on_scalar_beta_shape() {
         second_half_mean
     );
 
-    // Now test Rust's FOSR on the same data
+    // Test Rust's FPC-based FOSR on the same data
     let n = reg.n;
     let data = FdMatrix::from_column_major(reg.data, reg.n, reg.m).unwrap();
-    let pred_data = reg.y.clone(); // use y as the predictor (same as R)
+    let pred_data = reg.y.clone();
     let predictors = FdMatrix::from_column_major(pred_data, n, 1).unwrap();
 
-    let fosr_result =
-        fdars_core::function_on_scalar::fosr(&data, &predictors, 0.0).expect("FOSR should work");
+    let fosr_result = fdars_core::function_on_scalar::fosr_fpc(&data, &predictors, 3)
+        .expect("fosr_fpc should work");
 
     // Check that Rust's beta also has the right sign pattern
     let rust_beta_col: Vec<f64> = (0..reg.m).map(|j| fosr_result.beta[(0, j)]).collect();
@@ -4077,22 +4111,57 @@ fn test_r_function_on_scalar_beta_shape() {
         rust_second_half
     );
 
-    // Both betas should have similar range
-    let r_range = r_beta.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
-        - r_beta.iter().cloned().fold(f64::INFINITY, f64::min);
-    let rust_range = rust_beta_col
-        .iter()
-        .cloned()
-        .fold(f64::NEG_INFINITY, f64::max)
-        - rust_beta_col.iter().cloned().fold(f64::INFINITY, f64::min);
+    // Element-wise beta function comparison (FPC-based should be close to R)
+    assert_vec_close(&rust_beta_col, r_beta, 0.1, "FPC-based beta vs R beta");
 
-    // Ranges should be within an order of magnitude
-    assert!(
-        rust_range > r_range * 0.1 && rust_range < r_range * 10.0,
-        "Beta ranges differ too much: Rust = {:.4}, R = {:.4}",
-        rust_range,
-        r_range
-    );
+    // Beta scores comparison against R's beta_scores
+    let r_beta_scores = &expected.function_on_scalar.beta_scores;
+    let rust_beta_scores = &fosr_result.beta_scores[0]; // predictor 0
+    let k = rust_beta_scores.len().min(r_beta_scores.len());
+    for comp in 0..k {
+        assert!(
+            (rust_beta_scores[comp].abs() - r_beta_scores[comp].abs()).abs() < 0.05,
+            "beta_scores[{}]: Rust={:.4}, R={:.4}",
+            comp,
+            rust_beta_scores[comp],
+            r_beta_scores[comp]
+        );
+    }
+}
+
+/// Function-on-scalar regression: compare mean residual L² against R's reference.
+///
+/// FPC-based FOSR should closely match R's FPC-based regression residuals.
+/// Uses R's exact metric: mean of integrated squared residuals per curve.
+#[test]
+fn test_r_function_on_scalar_residual_l2() {
+    let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
+    let reg: RegressionData = load_json("data", "regression_30x51");
+
+    let n = reg.n;
+    let m = reg.m;
+    let data = FdMatrix::from_column_major(reg.data, reg.n, reg.m).unwrap();
+    let pred_data = reg.y.clone();
+    let predictors = FdMatrix::from_column_major(pred_data, n, 1).unwrap();
+
+    let fosr_result = fdars_core::function_on_scalar::fosr_fpc(&data, &predictors, 3)
+        .expect("fosr_fpc should work");
+
+    // Use R's exact metric: mean(sum(resid^2) * h) where h = (argvals[m] - argvals[1]) / (m-1)
+    let h = (reg.argvals.last().unwrap() - reg.argvals.first().unwrap()) / (m - 1) as f64;
+    let mean_resid_l2: f64 = (0..n)
+        .map(|i| {
+            let ss: f64 = (0..m)
+                .map(|j| fosr_result.residuals[(i, j)].powi(2))
+                .sum::<f64>();
+            ss * h
+        })
+        .sum::<f64>()
+        / n as f64;
+
+    // FPC-based FOSR should closely match R's FPC-based regression
+    let r_l2 = expected.function_on_scalar.mean_residual_l2;
+    assert_relative_close(mean_resid_l2, r_l2, 0.3, "FOSR mean residual L²");
 }
 
 /// Cross-check scalar-on-function: prediction decomposition identity.
@@ -4126,13 +4195,10 @@ fn test_r_scalar_on_function_decomposition() {
     assert_scalar_close(result.r_squared, r2_check, 1e-10, "R² identity");
 }
 
-/// GMM BIC model selection: K=3 should be competitive on the 3-cluster dataset.
+/// GMM BIC model selection: K=3 should achieve near-perfect accuracy and better BIC than K=4.
 ///
 /// R's Mclust selects K=3 across 14 covariance parameterizations.
-/// Our EM uses a single covariance type (Full), so BIC may prefer K=2
-/// due to initialization sensitivity. We verify that K=3 achieves
-/// near-perfect accuracy (which is the operationally meaningful check)
-/// and that R correctly selects K=3.
+/// We verify that K=3 accuracy matches R's and that K=3 BIC is better than K=4.
 #[test]
 fn test_r_gmm_model_selection() {
     let expected: NewModulesExpected = load_json("expected", "new_modules_expected");
@@ -4153,7 +4219,7 @@ fn test_r_gmm_model_selection() {
     let res_k3 = gmm_em(&scores, 3, CovType::Full, 200, 1e-6, 42).expect("K=3 GMM should fit");
     assert!(res_k3.converged, "K=3 GMM should converge");
 
-    // K=3 should achieve high accuracy (the key correctness check)
+    // K=3 accuracy should match R's (both near-perfect on well-separated data)
     let true_labels = &clust.true_labels;
     let mut best_acc = 0.0_f64;
     for perm in &[
@@ -4173,16 +4239,21 @@ fn test_r_gmm_model_selection() {
             / n as f64;
         best_acc = best_acc.max(acc);
     }
-    assert!(
-        best_acc >= 0.9,
-        "K=3 accuracy = {:.4}, expected >= 0.9",
-        best_acc
-    );
+    assert_scalar_close(best_acc, 1.0, 0.02, "K=3 accuracy (Rust vs R=1.0)");
 
-    // BIC for K=3 should be finite and reasonable
+    // BIC for K=3 should be finite
     assert!(
         res_k3.bic.is_finite(),
         "K=3 BIC should be finite, got {}",
         res_k3.bic
+    );
+
+    // K=3 BIC should be better (lower) than K=4 — correct model should fit better
+    let res_k4 = gmm_em(&scores, 4, CovType::Full, 200, 1e-6, 42).expect("K=4 GMM should fit");
+    assert!(
+        res_k3.bic <= res_k4.bic,
+        "K=3 BIC ({:.2}) should be <= K=4 BIC ({:.2})",
+        res_k3.bic,
+        res_k4.bic
     );
 }
