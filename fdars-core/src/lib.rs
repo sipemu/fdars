@@ -38,6 +38,7 @@ pub mod detrend;
 pub mod fdata;
 pub mod helpers;
 pub mod irreg_fdata;
+pub mod landmark;
 pub mod metric;
 pub mod outliers;
 pub mod regression;
@@ -47,21 +48,35 @@ pub mod smoothing;
 pub mod streaming_depth;
 pub mod tolerance;
 pub mod utility;
+pub mod warping;
 
-// Re-export matrix type
-pub use matrix::FdMatrix;
+// Re-export matrix types
+pub use matrix::{FdCurveSet, FdMatrix};
 
 // Re-export alignment types and functions
 pub use alignment::{
-    align_to_target, compose_warps, elastic_align_pair, elastic_cross_distance_matrix,
-    elastic_distance, elastic_self_distance_matrix, karcher_mean, reparameterize_curve,
-    srsf_inverse, srsf_transform, AlignmentResult, AlignmentSetResult, KarcherMeanResult,
+    align_to_target, alignment_quality, amplitude_distance, amplitude_self_distance_matrix,
+    compose_warps, elastic_align_pair, elastic_align_pair_constrained, elastic_align_pair_nd,
+    elastic_align_pair_with_landmarks, elastic_cross_distance_matrix, elastic_decomposition,
+    elastic_distance, elastic_distance_nd, elastic_self_distance_matrix, karcher_mean,
+    pairwise_consistency, phase_distance_pair, phase_self_distance_matrix, reparameterize_curve,
+    srsf_inverse, srsf_inverse_nd, srsf_transform, srsf_transform_nd, tsrvf_from_alignment,
+    tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform, tsrvf_transform_with_method,
+    warp_complexity, warp_smoothness, AlignmentQuality, AlignmentResult, AlignmentResultNd,
+    AlignmentSetResult, ConstrainedAlignmentResult, DecompositionResult, KarcherMeanResult,
+    TransportMethod, TsrvfResult,
 };
 
 // Re-export commonly used items
 pub use helpers::{
-    extract_curves, l2_distance, simpsons_weights, simpsons_weights_2d, DEFAULT_CONVERGENCE_TOL,
-    NUMERICAL_EPS,
+    cumulative_trapz, extract_curves, gradient_uniform, l2_distance, linear_interp,
+    simpsons_weights, simpsons_weights_2d, trapz, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
+};
+
+// Re-export warping utilities
+pub use warping::{
+    exp_map_sphere, gam_to_psi, inner_product_l2, inv_exp_map_sphere, invert_gamma, l2_norm_l2,
+    normalize_warp, phase_distance, psi_to_gam,
 };
 
 // Re-export seasonal analysis types
@@ -70,6 +85,12 @@ pub use seasonal::{
     sazed_fdata, AutoperiodCandidate, AutoperiodResult, CfdAutoperiodResult, ChangeDetectionResult,
     ChangePoint, ChangeType, DetectedPeriod, InstantaneousPeriod, Peak, PeakDetectionResult,
     PeriodEstimate, SazedComponents, SazedResult, StrengthMethod,
+};
+
+// Re-export landmark registration types
+pub use landmark::{
+    detect_and_register, detect_landmarks, landmark_register, Landmark, LandmarkKind,
+    LandmarkResult,
 };
 
 // Re-export detrending types

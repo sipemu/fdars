@@ -404,7 +404,7 @@ fn try_add_peak(peaks: &mut Vec<usize>, candidate: usize, signal: &[f64], min_di
 }
 
 /// Find peaks in a 1D signal, returning indices.
-fn find_peaks_1d(signal: &[f64], min_distance: usize) -> Vec<usize> {
+pub(crate) fn find_peaks_1d(signal: &[f64], min_distance: usize) -> Vec<usize> {
     let n = signal.len();
     if n < 3 {
         return Vec::new();
@@ -422,7 +422,7 @@ fn find_peaks_1d(signal: &[f64], min_distance: usize) -> Vec<usize> {
 }
 
 /// Compute prominence for a peak (height above surrounding valleys).
-fn compute_prominence(signal: &[f64], peak_idx: usize) -> f64 {
+pub(crate) fn compute_prominence(signal: &[f64], peak_idx: usize) -> f64 {
     let n = signal.len();
     let peak_val = signal[peak_idx];
 

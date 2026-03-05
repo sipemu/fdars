@@ -8,6 +8,7 @@
 use fdars_core::matrix::FdMatrix;
 use fdars_core::metric::{
     dtw_self_1d, fourier_self_1d, hausdorff_self_1d, hshift_self_1d, lp_cross_1d, lp_self_1d,
+    soft_dtw_distance, soft_dtw_div_self_1d, soft_dtw_self_1d,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 
@@ -119,16 +120,37 @@ fn main() {
         println!();
     }
 
-    // --- Section 9: Metric comparison ---
+    // --- Section 9: Soft-DTW distances ---
+    println!("\n--- Soft-DTW Distance Matrix (gamma=1.0) ---");
+    let sdtw_dists = soft_dtw_self_1d(&data, 1.0);
+    print_dist_matrix(&sdtw_dists, 5);
+
+    // Gamma sweep: show how smoothing affects distances
+    println!("\n--- Soft-DTW Gamma Sweep (curves 0 vs 1) ---");
+    let row0 = data.row(0);
+    let row1 = data.row(1);
+    for &gamma in &[0.01, 0.1, 1.0, 10.0] {
+        let d = soft_dtw_distance(&row0, &row1, gamma);
+        println!("  gamma={gamma:>5.2}: distance = {d:.6}");
+    }
+
+    // Divergence: proper non-negative discrepancy
+    println!("\n--- Soft-DTW Divergence Matrix (gamma=1.0) ---");
+    let sdtw_div = soft_dtw_div_self_1d(&data, 1.0);
+    print_dist_matrix(&sdtw_div, 5);
+
+    // --- Section 10: Metric comparison ---
     // dist[(0, 1)] = distance between curve 0 and curve 1
     println!("\n--- Metric Comparison (distance between curves 0 and 1) ---");
-    println!("  L1:        {:.6}", l1_dists[(0, 1)]);
-    println!("  L2:        {:.6}", l2_dists[(0, 1)]);
-    println!("  L-inf:     {:.6}", linf_dists[(0, 1)]);
-    println!("  Hausdorff: {:.6}", haus_dists[(0, 1)]);
-    println!("  DTW:       {:.6}", dtw_dists[(0, 1)]);
-    println!("  Fourier:   {:.6}", fourier_dists[(0, 1)]);
-    println!("  H-shift:   {:.6}", hshift_dists[(0, 1)]);
+    println!("  L1:         {:.6}", l1_dists[(0, 1)]);
+    println!("  L2:         {:.6}", l2_dists[(0, 1)]);
+    println!("  L-inf:      {:.6}", linf_dists[(0, 1)]);
+    println!("  Hausdorff:  {:.6}", haus_dists[(0, 1)]);
+    println!("  DTW:        {:.6}", dtw_dists[(0, 1)]);
+    println!("  Fourier:    {:.6}", fourier_dists[(0, 1)]);
+    println!("  H-shift:    {:.6}", hshift_dists[(0, 1)]);
+    println!("  Soft-DTW:   {:.6}", sdtw_dists[(0, 1)]);
+    println!("  SDTW-div:   {:.6}", sdtw_div[(0, 1)]);
 
     println!("\n=== Done ===");
 }

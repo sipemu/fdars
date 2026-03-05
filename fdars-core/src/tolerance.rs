@@ -762,7 +762,7 @@ pub fn elastic_tolerance_band(
     }
 
     // Step 1: Karcher mean → aligned data
-    let karcher = crate::alignment::karcher_mean(data, argvals, max_iter, 1e-4);
+    let karcher = crate::alignment::karcher_mean(data, argvals, max_iter, 1e-4, 0.0);
 
     // Step 2: FPCA tolerance band on aligned data
     fpca_tolerance_band(&karcher.aligned_data, ncomp, nb, coverage, band_type, seed)

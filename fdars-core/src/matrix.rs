@@ -255,6 +255,77 @@ impl std::fmt::Display for FdMatrix {
     }
 }
 
+/// A set of multidimensional functional curves in R^d.
+///
+/// Each dimension is stored as a separate [`FdMatrix`] (n curves × m points).
+/// For d=1 this is equivalent to a single `FdMatrix`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FdCurveSet {
+    /// One matrix per coordinate dimension, each n × m.
+    pub dims: Vec<FdMatrix>,
+}
+
+impl FdCurveSet {
+    /// Number of coordinate dimensions (d).
+    pub fn ndim(&self) -> usize {
+        self.dims.len()
+    }
+
+    /// Number of curves (n).
+    pub fn ncurves(&self) -> usize {
+        if self.dims.is_empty() {
+            0
+        } else {
+            self.dims[0].nrows()
+        }
+    }
+
+    /// Number of evaluation points (m).
+    pub fn npoints(&self) -> usize {
+        if self.dims.is_empty() {
+            0
+        } else {
+            self.dims[0].ncols()
+        }
+    }
+
+    /// Wrap a single 1D `FdMatrix` as a `FdCurveSet`.
+    pub fn from_1d(data: FdMatrix) -> Self {
+        Self { dims: vec![data] }
+    }
+
+    /// Build from multiple dimension matrices.
+    ///
+    /// Returns `None` if `dims` is empty or if dimensions are inconsistent.
+    pub fn from_dims(dims: Vec<FdMatrix>) -> Option<Self> {
+        if dims.is_empty() {
+            return None;
+        }
+        let (n, m) = dims[0].shape();
+        if dims.iter().any(|d| d.shape() != (n, m)) {
+            return None;
+        }
+        Some(Self { dims })
+    }
+
+    /// Extract the R^d point for a given curve and time index.
+    pub fn point(&self, curve: usize, time_idx: usize) -> Vec<f64> {
+        self.dims.iter().map(|d| d[(curve, time_idx)]).collect()
+    }
+}
+
+impl std::fmt::Display for FdCurveSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "FdCurveSet(d={}, n={}, m={})",
+            self.ndim(),
+            self.ncurves(),
+            self.npoints()
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -6,6 +6,7 @@
 //! - Dynamic Time Warping (DTW)
 //! - Fourier-based semimetric
 //! - Horizontal shift semimetric
+//! - Soft-DTW (differentiable DTW relaxation)
 //! - Kullback-Leibler divergence
 
 use crate::helpers::{simpsons_weights, simpsons_weights_2d};
@@ -401,6 +402,350 @@ pub fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdM
     cross_distance_matrix(n1, n2, |i, j| {
         dtw_distance(&rm1[i * m1..(i + 1) * m1], &rm2[j * m2..(j + 1) * m2], p, w)
     })
+}
+
+// ─── Soft-DTW ────────────────────────────────────────────────────────────────
+// Differentiable relaxation of DTW using log-sum-exp softmin.
+// Reference: Cuturi & Blondel, "Soft-DTW: a Differentiable Loss Function for
+// Time-Series" (ICML 2017).
+
+/// Result of the Soft-DTW barycenter computation.
+#[derive(Debug, Clone)]
+pub struct SoftDtwBarycenterResult {
+    /// The barycenter time series.
+    pub barycenter: Vec<f64>,
+    /// Number of iterations used.
+    pub n_iter: usize,
+    /// Whether the algorithm converged.
+    pub converged: bool,
+}
+
+/// Soft minimum of three values using log-sum-exp trick for numerical stability.
+///
+/// As γ→0 this approaches hard min; as γ→∞ it approaches the mean.
+#[inline]
+fn softmin3(a: f64, b: f64, c: f64, gamma: f64) -> f64 {
+    let min_val = a.min(b).min(c);
+    if !min_val.is_finite() {
+        return min_val;
+    }
+    let neg_inv_gamma = -1.0 / gamma;
+    let ea = ((a - min_val) * neg_inv_gamma).exp();
+    let eb = ((b - min_val) * neg_inv_gamma).exp();
+    let ec = ((c - min_val) * neg_inv_gamma).exp();
+    min_val - gamma * (ea + eb + ec).ln()
+}
+
+/// Compute Soft-DTW distance between two 1D time series.
+///
+/// Uses squared Euclidean cost and 2-row DP with O(m) memory.
+///
+/// # Arguments
+/// * `x` — First time series
+/// * `y` — Second time series
+/// * `gamma` — Smoothing parameter (> 0). Smaller = closer to hard DTW.
+pub fn soft_dtw_distance(x: &[f64], y: &[f64], gamma: f64) -> f64 {
+    let n = x.len();
+    let m = y.len();
+    if n == 0 || m == 0 {
+        return 0.0;
+    }
+
+    let mut prev = vec![f64::INFINITY; m + 1];
+    let mut curr = vec![f64::INFINITY; m + 1];
+    prev[0] = 0.0;
+
+    for i in 1..=n {
+        curr.fill(f64::INFINITY);
+        for j in 1..=m {
+            let d = x[i - 1] - y[j - 1];
+            let cost = d * d;
+            curr[j] = cost + softmin3(prev[j], curr[j - 1], prev[j - 1], gamma);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[m]
+}
+
+/// Compute Soft-DTW divergence: `sdtw(x,y) - 0.5*(sdtw(x,x) + sdtw(y,y))`.
+///
+/// The divergence is non-negative and equals zero when x == y, making it
+/// a proper discrepancy measure (unlike raw Soft-DTW which can be negative).
+pub fn soft_dtw_divergence(x: &[f64], y: &[f64], gamma: f64) -> f64 {
+    let xy = soft_dtw_distance(x, y, gamma);
+    let xx = soft_dtw_distance(x, x, gamma);
+    let yy = soft_dtw_distance(y, y, gamma);
+    xy - 0.5 * (xx + yy)
+}
+
+/// Compute Soft-DTW self-distance matrix (symmetric n×n).
+pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
+    if n == 0 || m == 0 {
+        return FdMatrix::zeros(0, 0);
+    }
+    let rm = data.to_row_major();
+    self_distance_matrix(n, |i, j| {
+        soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[j * m..(j + 1) * m], gamma)
+    })
+}
+
+/// Compute Soft-DTW cross-distance matrix (n1×n2).
+pub fn soft_dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let m1 = data1.ncols();
+    let m2 = data2.ncols();
+    if n1 == 0 || n2 == 0 || m1 == 0 || m2 == 0 {
+        return FdMatrix::zeros(0, 0);
+    }
+    let rm1 = data1.to_row_major();
+    let rm2 = data2.to_row_major();
+    cross_distance_matrix(n1, n2, |i, j| {
+        soft_dtw_distance(
+            &rm1[i * m1..(i + 1) * m1],
+            &rm2[j * m2..(j + 1) * m2],
+            gamma,
+        )
+    })
+}
+
+/// Compute Soft-DTW divergence self-distance matrix (symmetric n×n).
+pub fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
+    let n = data.nrows();
+    let m = data.ncols();
+    if n == 0 || m == 0 {
+        return FdMatrix::zeros(0, 0);
+    }
+    let rm = data.to_row_major();
+    // Pre-compute self-distances for divergence
+    let self_dists: Vec<f64> = iter_maybe_parallel!(0..n)
+        .map(|i| soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[i * m..(i + 1) * m], gamma))
+        .collect();
+    self_distance_matrix(n, |i, j| {
+        let xy = soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[j * m..(j + 1) * m], gamma);
+        xy - 0.5 * (self_dists[i] + self_dists[j])
+    })
+}
+
+/// Compute Soft-DTW divergence cross-distance matrix (n1×n2).
+pub fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
+    let n1 = data1.nrows();
+    let n2 = data2.nrows();
+    let m1 = data1.ncols();
+    let m2 = data2.ncols();
+    if n1 == 0 || n2 == 0 || m1 == 0 || m2 == 0 {
+        return FdMatrix::zeros(0, 0);
+    }
+    let rm1 = data1.to_row_major();
+    let rm2 = data2.to_row_major();
+    let self1: Vec<f64> = iter_maybe_parallel!(0..n1)
+        .map(|i| {
+            soft_dtw_distance(
+                &rm1[i * m1..(i + 1) * m1],
+                &rm1[i * m1..(i + 1) * m1],
+                gamma,
+            )
+        })
+        .collect();
+    let self2: Vec<f64> = iter_maybe_parallel!(0..n2)
+        .map(|j| {
+            soft_dtw_distance(
+                &rm2[j * m2..(j + 1) * m2],
+                &rm2[j * m2..(j + 1) * m2],
+                gamma,
+            )
+        })
+        .collect();
+    cross_distance_matrix(n1, n2, |i, j| {
+        let xy = soft_dtw_distance(
+            &rm1[i * m1..(i + 1) * m1],
+            &rm2[j * m2..(j + 1) * m2],
+            gamma,
+        );
+        xy - 0.5 * (self1[i] + self2[j])
+    })
+}
+
+/// Full forward pass: returns the (n+1)×(m+1) R table needed for the backward pass.
+fn soft_dtw_forward(x: &[f64], y: &[f64], gamma: f64) -> Vec<Vec<f64>> {
+    let n = x.len();
+    let m = y.len();
+    let mut r = vec![vec![f64::INFINITY; m + 1]; n + 1];
+    r[0][0] = 0.0;
+
+    for i in 1..=n {
+        for j in 1..=m {
+            let d = x[i - 1] - y[j - 1];
+            let cost = d * d;
+            r[i][j] = cost + softmin3(r[i - 1][j], r[i][j - 1], r[i - 1][j - 1], gamma);
+        }
+    }
+    r
+}
+
+/// Backward pass: compute E matrix (soft alignment weights) from the R table.
+///
+/// E[i][j] represents the contribution of alignment (i,j) to the gradient.
+fn soft_dtw_backward(x: &[f64], y: &[f64], r: &[Vec<f64>], gamma: f64) -> Vec<Vec<f64>> {
+    let n = x.len();
+    let m = y.len();
+    let mut e = vec![vec![0.0; m + 2]; n + 2];
+    // Boundary: E[n][m] = 1 (the endpoint contributes fully)
+    e[n][m] = 1.0;
+
+    // Also set up sentinel R values: R[n+1][*] = R[*][m+1] = INF
+    // We'll handle this via bounds checking
+
+    for i in (1..=n).rev() {
+        for j in (1..=m).rev() {
+            // Contribution from (i+1, j): R[i+1][j] used R[i][j] via the "up" move
+            let a = if i < n {
+                e[i + 1][j]
+                    * (-(r[i][j] - r[i + 1][j] + r[i + 1][j] - softmin3_val(r, i + 1, j, gamma))
+                        / gamma)
+                        .exp()
+            } else {
+                0.0
+            };
+            // Contribution from (i, j+1): R[i][j+1] used R[i][j] via the "right" move
+            let b = if j < m {
+                e[i][j + 1]
+                    * (-(r[i][j] - r[i][j + 1] + r[i][j + 1] - softmin3_val(r, i, j + 1, gamma))
+                        / gamma)
+                        .exp()
+            } else {
+                0.0
+            };
+            // Contribution from (i+1, j+1): R[i+1][j+1] used R[i][j] via the "diagonal" move
+            let c = if i < n && j < m {
+                e[i + 1][j + 1]
+                    * (-(r[i][j] - r[i + 1][j + 1] + r[i + 1][j + 1]
+                        - softmin3_val(r, i + 1, j + 1, gamma))
+                        / gamma)
+                        .exp()
+            } else {
+                0.0
+            };
+            e[i][j] = a + b + c;
+        }
+    }
+    e
+}
+
+/// Helper: extract softmin3 value at position (i,j) in the R table.
+#[inline]
+fn softmin3_val(r: &[Vec<f64>], i: usize, j: usize, gamma: f64) -> f64 {
+    softmin3(
+        if i > 0 { r[i - 1][j] } else { f64::INFINITY },
+        if j > 0 { r[i][j - 1] } else { f64::INFINITY },
+        if i > 0 && j > 0 {
+            r[i - 1][j - 1]
+        } else {
+            f64::INFINITY
+        },
+        gamma,
+    )
+}
+
+/// Accumulate the Soft-DTW gradient for one series into `grad`.
+///
+/// Performs forward pass, backward pass, and double-loop gradient accumulation.
+fn soft_dtw_accumulate_gradient(bary: &[f64], xi: &[f64], gamma: f64, grad: &mut [f64]) {
+    let m = bary.len();
+    let r = soft_dtw_forward(bary, xi, gamma);
+    let e = soft_dtw_backward(bary, xi, &r, gamma);
+    for k in 1..=m {
+        let mut g = 0.0;
+        for j in 1..=xi.len() {
+            g += e[k][j] * 2.0 * (bary[k - 1] - xi[j - 1]);
+        }
+        grad[k - 1] += g;
+    }
+}
+
+/// Apply one gradient descent step and check convergence.
+///
+/// Returns `true` if the relative change is below `tol`.
+fn update_barycenter(bary: &mut [f64], grad: &[f64], lr: f64, tol: f64) -> bool {
+    let mut max_change = 0.0_f64;
+    let mut max_val = 0.0_f64;
+    for (b, &g) in bary.iter_mut().zip(grad.iter()) {
+        let update = lr * g;
+        *b -= update;
+        max_change = max_change.max(update.abs());
+        max_val = max_val.max(b.abs());
+    }
+    max_val > 0.0 && max_change / max_val < tol
+}
+
+/// Compute the Soft-DTW barycenter of a set of time series using gradient descent.
+///
+/// # Arguments
+/// * `data` — Input time series as FdMatrix (n rows × m columns)
+/// * `gamma` — Soft-DTW smoothing parameter
+/// * `max_iter` — Maximum number of gradient descent iterations
+/// * `tol` — Convergence tolerance (relative change in barycenter)
+///
+/// # Returns
+/// [`SoftDtwBarycenterResult`] containing the barycenter, iteration count, and convergence flag.
+/// Initialize the barycenter as the pointwise mean of all series.
+fn init_barycenter_mean(rm: &[f64], n: usize, m: usize) -> Vec<f64> {
+    let mut bary = vec![0.0; m];
+    for i in 0..n {
+        for j in 0..m {
+            bary[j] += rm[i * m + j];
+        }
+    }
+    for j in 0..m {
+        bary[j] /= n as f64;
+    }
+    bary
+}
+
+pub fn soft_dtw_barycenter(
+    data: &FdMatrix,
+    gamma: f64,
+    max_iter: usize,
+    tol: f64,
+) -> SoftDtwBarycenterResult {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 {
+        return SoftDtwBarycenterResult {
+            barycenter: Vec::new(),
+            n_iter: 0,
+            converged: true,
+        };
+    }
+
+    let rm = data.to_row_major();
+    let mut bary = init_barycenter_mean(&rm, n, m);
+    let lr = 1.0 / n as f64;
+    let mut converged = false;
+    let mut n_iter = 0;
+
+    for iter in 0..max_iter {
+        n_iter = iter + 1;
+
+        let mut grad = vec![0.0; m];
+        for i in 0..n {
+            let xi = &rm[i * m..(i + 1) * m];
+            soft_dtw_accumulate_gradient(&bary, xi, gamma, &mut grad);
+        }
+
+        if update_barycenter(&mut bary, &grad, lr, tol) {
+            converged = true;
+            break;
+        }
+    }
+
+    SoftDtwBarycenterResult {
+        barycenter: bary,
+        n_iter,
+        converged,
+    }
 }
 
 /// Compute Fourier coefficients for a curve using a pre-planned FFT.
@@ -1318,5 +1663,292 @@ mod tests {
         assert_eq!(dm.shape(), (2, 2));
         // Constant offset curves: distance should be > 0
         assert!(dm[(0, 1)] > 0.0);
+    }
+
+    // ── Soft-DTW tests ──
+
+    #[test]
+    fn test_softmin3_approaches_hard_min() {
+        let (a, b, c) = (1.0, 3.0, 5.0);
+        // Small gamma → hard min
+        let result = softmin3(a, b, c, 0.001);
+        assert!(
+            (result - 1.0).abs() < 0.01,
+            "softmin3 with small gamma should approach hard min, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_softmin3_large_gamma() {
+        let (a, b, c) = (1.0, 3.0, 5.0);
+        // Large gamma → approaches negative bias from ln(3)
+        let result = softmin3(a, b, c, 1000.0);
+        // With very large gamma, softmin3 ≈ min - gamma * ln(3)
+        assert!(
+            result.is_finite(),
+            "softmin3 with large gamma should be finite"
+        );
+    }
+
+    #[test]
+    fn test_softmin3_stability_large_values() {
+        let result = softmin3(1e300, 1e300 + 1.0, 1e300 + 2.0, 1.0);
+        assert!(
+            result.is_finite(),
+            "softmin3 should handle large values without overflow"
+        );
+    }
+
+    #[test]
+    fn test_soft_dtw_identical_series() {
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let div = soft_dtw_divergence(&x, &x, 1.0);
+        assert!(
+            div.abs() < 1e-10,
+            "Divergence of identical series should be ~0, got {div}"
+        );
+    }
+
+    #[test]
+    fn test_soft_dtw_converges_to_hard_dtw() {
+        let x = vec![1.0, 2.0, 3.0, 4.0];
+        let y = vec![2.0, 3.0, 4.0, 5.0];
+        let hard = dtw_distance(&x, &y, 2.0, 10);
+        let soft = soft_dtw_distance(&x, &y, 0.001);
+        assert!(
+            (soft - hard).abs() < 0.1,
+            "Soft-DTW with small gamma should approach hard DTW²: soft={soft}, hard={hard}"
+        );
+    }
+
+    #[test]
+    fn test_soft_dtw_self_symmetric() {
+        let n = 4;
+        let m = 10;
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.2).sin()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let dist = soft_dtw_self_1d(&data, 1.0);
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
+                    "Soft-DTW matrix should be symmetric"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_soft_dtw_cross_vs_self() {
+        let n = 3;
+        let m = 10;
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.2).sin()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let cross = soft_dtw_cross_1d(&data, &data, 1.0);
+        let self_mat = soft_dtw_self_1d(&data, 1.0);
+        // Off-diagonal entries should match (diagonal differs because self_distance_matrix
+        // leaves diagonal as 0, but sdtw(x,x) > 0 for soft-DTW)
+        for i in 0..n {
+            for j in 0..n {
+                if i != j {
+                    assert!(
+                        (cross[(i, j)] - self_mat[(i, j)]).abs() < 1e-10,
+                        "Cross(data,data) should match self at ({i},{j})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_soft_dtw_divergence_nonneg() {
+        let n = 4;
+        let m = 10;
+        let data = FdMatrix::from_column_major(
+            (0..(n * m)).map(|i| (i as f64 * 0.3).sin()).collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let div = soft_dtw_div_self_1d(&data, 1.0);
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    div[(i, j)] >= -1e-10,
+                    "Divergence should be non-negative, got {} at ({i},{j})",
+                    div[(i, j)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_soft_dtw_single_point() {
+        let x = vec![3.0];
+        let y = vec![5.0];
+        let dist = soft_dtw_distance(&x, &y, 1.0);
+        let expected = (3.0 - 5.0_f64).powi(2);
+        assert!(
+            (dist - expected).abs() < 1e-10,
+            "Single-point sdtw should be (a-b)², got {dist}, expected {expected}"
+        );
+    }
+
+    #[test]
+    fn test_soft_dtw_barycenter_identical() {
+        let m = 10;
+        let series: Vec<f64> = (0..m).map(|i| (i as f64 * 0.3).sin()).collect();
+        // Stack 5 identical copies
+        let mut flat = Vec::with_capacity(5 * m);
+        for _ in 0..5 {
+            flat.extend_from_slice(&series);
+        }
+        // Column-major: for n=5, m=10
+        let mut col_major = vec![0.0; 5 * m];
+        for i in 0..5 {
+            for j in 0..m {
+                col_major[i + j * 5] = flat[i * m + j];
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, 5, m).unwrap();
+        let result = soft_dtw_barycenter(&data, 1.0, 50, 1e-6);
+        for j in 0..m {
+            assert!(
+                (result.barycenter[j] - series[j]).abs() < 0.5,
+                "Barycenter of identical series should be close to the series at j={j}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_soft_dtw_barycenter_shifted() {
+        let m = 20;
+        let n = 3;
+        // Create shifted copies: sin(t), sin(t)+1, sin(t)+2
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                let t = j as f64 / (m - 1) as f64;
+                col_major[i + j * n] = (2.0 * PI * t).sin() + i as f64;
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+        let result = soft_dtw_barycenter(&data, 1.0, 100, 1e-6);
+        // Barycenter should be approximately sin(t)+1 (the middle)
+        let mean_val: f64 = result.barycenter.iter().sum::<f64>() / m as f64;
+        assert!(
+            (mean_val - 1.0).abs() < 0.5,
+            "Barycenter mean should be ~1.0 (middle of shifts), got {mean_val}"
+        );
+    }
+
+    #[test]
+    fn test_soft_dtw_empty() {
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(soft_dtw_self_1d(&empty, 1.0).is_empty());
+        assert!(soft_dtw_cross_1d(&empty, &empty, 1.0).is_empty());
+        assert!(soft_dtw_div_self_1d(&empty, 1.0).is_empty());
+    }
+
+    #[test]
+    fn test_soft_dtw_gamma_effect() {
+        let x = vec![0.0, 1.0, 0.0];
+        let y = vec![0.0, 0.0, 1.0];
+        let d_small = soft_dtw_distance(&x, &y, 0.01);
+        let d_large = soft_dtw_distance(&x, &y, 10.0);
+        // Larger gamma produces more smoothing (smaller soft-dtw value due to more averaging)
+        assert!(
+            d_small > d_large || (d_small - d_large).abs() < 1e-5,
+            "Larger gamma should generally produce smaller or equal soft-DTW: small={d_small}, large={d_large}"
+        );
+    }
+
+    // ── Reference-value tests (tslearn) ─────────────────────────────────────
+
+    #[test]
+    fn test_soft_dtw_reference_tslearn_pairwise() {
+        // Reference: tslearn.metrics.soft_dtw with (n_timestamps, 1) arrays
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let y = vec![2.0, 3.0, 4.0, 5.0, 6.0];
+
+        let dxy = soft_dtw_distance(&x, &y, 1.0);
+        let dxx = soft_dtw_distance(&x, &x, 1.0);
+        let dyy = soft_dtw_distance(&y, &y, 1.0);
+
+        // tslearn reference values (gamma=1.0)
+        let dxy_ref = -0.277175357237551;
+        let dxx_ref = -2.488408256052583;
+        let dyy_ref = -2.488408256052583;
+
+        let rel = |a: f64, b: f64| (a - b).abs() / b.abs().max(1e-10);
+        assert!(
+            rel(dxy, dxy_ref) < 1e-6,
+            "d(x,y): got {dxy}, expected {dxy_ref}"
+        );
+        assert!(
+            rel(dxx, dxx_ref) < 1e-6,
+            "d(x,x): got {dxx}, expected {dxx_ref}"
+        );
+        assert!(
+            rel(dyy, dyy_ref) < 1e-6,
+            "d(y,y): got {dyy}, expected {dyy_ref}"
+        );
+
+        // Divergence = d(x,y) - 0.5*(d(x,x) + d(y,y))
+        let div = dxy - 0.5 * (dxx + dyy);
+        let div_ref = 2.211232898815032;
+        assert!(
+            rel(div, div_ref) < 1e-6,
+            "divergence: got {div}, expected {div_ref}"
+        );
+    }
+
+    #[test]
+    fn test_soft_dtw_reference_tslearn_gamma_sweep() {
+        // Reference: tslearn.metrics.soft_dtw at multiple gamma values
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let y = vec![2.0, 3.0, 4.0, 5.0, 6.0];
+
+        let cases: [(f64, f64); 3] = [
+            (0.1, 1.999963681086807),
+            (1.0, -0.277175357237551),
+            (10.0, -46.741_092_332_890_21),
+        ];
+
+        for (gamma, expected) in cases {
+            let actual = soft_dtw_distance(&x, &y, gamma);
+            let denom = expected.abs().max(1e-10);
+            assert!(
+                (actual - expected).abs() / denom < 1e-5,
+                "gamma={gamma}: got {actual}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_soft_dtw_divergence_reference_tslearn() {
+        let x = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let y = vec![2.0, 3.0, 4.0, 5.0, 6.0];
+
+        let div_xy = soft_dtw_divergence(&x, &y, 1.0);
+        let div_ref = 2.211232898815032;
+        assert!(
+            (div_xy - div_ref).abs() / div_ref.abs() < 1e-6,
+            "divergence(x,y): got {div_xy}, expected {div_ref}"
+        );
+
+        let div_xx = soft_dtw_divergence(&x, &x, 1.0);
+        assert!(
+            div_xx.abs() < 1e-6,
+            "divergence(x,x) should be ~0, got {div_xx}"
+        );
     }
 }

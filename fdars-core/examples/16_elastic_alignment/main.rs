@@ -66,7 +66,7 @@ fn main() {
     let weights = simpsons_weights(&t);
     let l2_before = l2_distance(&f1, &f2, &weights);
 
-    let result = elastic_align_pair(&f1, &f2, &t);
+    let result = elastic_align_pair(&f1, &f2, &t, 0.0);
     let l2_after = l2_distance(&f1, &result.f_aligned, &weights);
 
     println!("  Elastic distance: {:.6}", result.distance);
@@ -88,7 +88,7 @@ fn main() {
     );
 
     // Alignment of identical curves
-    let self_result = elastic_align_pair(&f1, &f1, &t);
+    let self_result = elastic_align_pair(&f1, &f1, &t, 0.0);
     println!(
         "  Self-alignment distance: {:.6} (should be ~0)",
         self_result.distance
@@ -119,7 +119,7 @@ fn main() {
 
     // ── 4. Karcher mean ──
     println!("\n=== 4. Karcher Mean ===");
-    let km = karcher_mean(&data, &t, 15, 1e-4);
+    let km = karcher_mean(&data, &t, 15, 1e-4, 0.0);
     println!(
         "  Converged: {} after {} iterations",
         km.converged, km.n_iter
@@ -148,7 +148,7 @@ fn main() {
 
     // ── 5. Align all curves to Karcher mean ──
     println!("\n=== 5. Align to Target (Karcher mean) ===");
-    let aligned = align_to_target(&data, &km.mean, &t);
+    let aligned = align_to_target(&data, &km.mean, &t, 0.0);
     println!(
         "  Mean elastic distance: {:.6}",
         aligned.distances.iter().sum::<f64>() / n as f64
@@ -170,7 +170,7 @@ fn main() {
     println!("\n=== 6. Elastic Distance Matrix (first 5 curves) ===");
     let small_n = 5;
     let small_data = subset_data(&data, small_n, m);
-    let dm = elastic_self_distance_matrix(&small_data, &t);
+    let dm = elastic_self_distance_matrix(&small_data, &t, 0.0);
     for i in 0..small_n {
         let row: Vec<String> = (0..small_n).map(|j| format!("{:.4}", dm[(i, j)])).collect();
         println!("  [{}]", row.join(", "));
@@ -189,7 +189,7 @@ fn main() {
     // Direct pairwise check
     let f0 = small_data.row(0);
     let f1_small = small_data.row(1);
-    let d01 = elastic_distance(&f0, &f1_small, &t);
+    let d01 = elastic_distance(&f0, &f1_small, &t, 0.0);
     println!(
         "  Matrix (0,1) = {:.4}, pairwise d(0,1) = {d01:.4}",
         dm[(0, 1)]
@@ -207,7 +207,7 @@ fn main() {
         }
         d
     };
-    let cdm = elastic_cross_distance_matrix(&data_a, &data_b, &t);
+    let cdm = elastic_cross_distance_matrix(&data_a, &data_b, &t, 0.0);
     println!("  Shape: {:?}", cdm.shape());
     for i in 0..3 {
         let row: Vec<String> = (0..4).map(|j| format!("{:.4}", cdm[(i, j)])).collect();

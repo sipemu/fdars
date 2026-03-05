@@ -102,6 +102,64 @@ pub fn simpsons_weights_2d(argvals_s: &[f64], argvals_t: &[f64]) -> Vec<f64> {
     weights
 }
 
+/// Linear interpolation at point `t` using binary search.
+///
+/// Clamps to boundary values outside the domain of `x`.
+pub fn linear_interp(x: &[f64], y: &[f64], t: f64) -> f64 {
+    if t <= x[0] {
+        return y[0];
+    }
+    let last = x.len() - 1;
+    if t >= x[last] {
+        return y[last];
+    }
+
+    let idx = match x.binary_search_by(|v| v.partial_cmp(&t).unwrap()) {
+        Ok(i) => return y[i],
+        Err(i) => i,
+    };
+
+    let t0 = x[idx - 1];
+    let t1 = x[idx];
+    let y0 = y[idx - 1];
+    let y1 = y[idx];
+    y0 + (y1 - y0) * (t - t0) / (t1 - t0)
+}
+
+/// Cumulative trapezoidal integration.
+pub fn cumulative_trapz(y: &[f64], x: &[f64]) -> Vec<f64> {
+    let n = y.len();
+    let mut out = vec![0.0; n];
+    for k in 1..n {
+        out[k] = out[k - 1] + 0.5 * (y[k] + y[k - 1]) * (x[k] - x[k - 1]);
+    }
+    out
+}
+
+/// Trapezoidal integration of `y` over `x`.
+pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
+    let mut sum = 0.0;
+    for k in 1..y.len() {
+        sum += 0.5 * (y[k] + y[k - 1]) * (x[k] - x[k - 1]);
+    }
+    sum
+}
+
+/// Numerical gradient with uniform spacing (forward/central/backward differences).
+pub fn gradient_uniform(y: &[f64], h: f64) -> Vec<f64> {
+    let n = y.len();
+    let mut g = vec![0.0; n];
+    if n < 2 {
+        return g;
+    }
+    g[0] = (y[1] - y[0]) / h;
+    for i in 1..(n - 1) {
+        g[i] = (y[i + 1] - y[i - 1]) / (2.0 * h);
+    }
+    g[n - 1] = (y[n - 1] - y[n - 2]) / h;
+    g
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,5 +236,66 @@ mod tests {
         let w = vec![0.5, 0.5, 0.5];
         let d = l2_distance(&a, &b, &w);
         assert!(d.abs() < 1e-12, "Same vectors should have zero distance");
+    }
+
+    // ── trapz ──
+
+    #[test]
+    fn test_trapz_sine() {
+        // ∫₀^π sin(x) dx = 2
+        let m = 1000;
+        let x: Vec<f64> = (0..m)
+            .map(|i| std::f64::consts::PI * i as f64 / (m - 1) as f64)
+            .collect();
+        let y: Vec<f64> = x.iter().map(|&xi| xi.sin()).collect();
+        let result = trapz(&y, &x);
+        assert!(
+            (result - 2.0).abs() < 1e-4,
+            "∫ sin(x) dx over [0,π] should be ~2, got {result}"
+        );
+    }
+
+    // ── cumulative_trapz ──
+
+    #[test]
+    fn test_cumulative_trapz_matches_final() {
+        let m = 100;
+        let x: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi).collect();
+        let cum = cumulative_trapz(&y, &x);
+        let total = trapz(&y, &x);
+        assert!(
+            (cum[m - 1] - total).abs() < 1e-12,
+            "Final cumulative value should match trapz"
+        );
+    }
+
+    // ── linear_interp ──
+
+    #[test]
+    fn test_linear_interp_boundary_clamp() {
+        let x = vec![0.0, 0.5, 1.0];
+        let y = vec![10.0, 20.0, 30.0];
+        assert!((linear_interp(&x, &y, -1.0) - 10.0).abs() < 1e-12);
+        assert!((linear_interp(&x, &y, 2.0) - 30.0).abs() < 1e-12);
+        assert!((linear_interp(&x, &y, 0.25) - 15.0).abs() < 1e-12);
+    }
+
+    // ── gradient_uniform ──
+
+    #[test]
+    fn test_gradient_uniform_linear() {
+        // f(x) = 3x → f'(x) = 3 everywhere
+        let m = 50;
+        let h = 1.0 / (m - 1) as f64;
+        let y: Vec<f64> = (0..m).map(|i| 3.0 * i as f64 * h).collect();
+        let g = gradient_uniform(&y, h);
+        for i in 0..m {
+            assert!(
+                (g[i] - 3.0).abs() < 1e-10,
+                "gradient of 3x should be 3 at i={i}, got {}",
+                g[i]
+            );
+        }
     }
 }
