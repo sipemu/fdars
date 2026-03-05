@@ -32,6 +32,7 @@ pub mod parallel;
 
 pub mod alignment;
 pub mod basis;
+pub mod classification;
 pub mod clustering;
 pub mod depth;
 pub mod detrend;
@@ -120,6 +121,12 @@ pub use function_on_scalar::{fanova, fosr, predict_fosr, FanovaResult, FosrResul
 pub use scalar_on_function::{
     fregre_cv, fregre_lm, fregre_np_mixed, functional_logistic, predict_fregre_lm,
     predict_fregre_np, FregreCvResult, FregreLmResult, FregreNpResult, FunctionalLogisticResult,
+};
+
+// Re-export classification types
+pub use classification::{
+    fclassif_cv, fclassif_dd, fclassif_kernel, fclassif_knn, fclassif_lda, fclassif_qda,
+    ClassifCvResult, ClassifResult,
 };
 
 // Re-export GMM clustering types
