@@ -12,13 +12,14 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 | Package | Language | Registry | Folder | Status |
 |---------|----------|----------|--------|--------|
-| fdars | R | GitHub | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![R Package](https://img.shields.io/badge/R-package-blue)](https://github.com/sipemu/fdars-r) |
+| fdars | R | CRAN | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![CRAN](https://www.r-pkg.org/badges/version/fdars)](https://cran.r-project.org/package=fdars) |
 | fdars-core | Rust | crates.io | `fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
 
 ## Features
 
 ### Core Operations
 
+- **Simulation**: Karhunen-Loève expansion with Fourier/Legendre/Wiener eigenfunctions, pointwise and curve-level noise
 - **Functional Data Operations**: Mean, centering, derivatives, Lp norms, geometric median
 - **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
 - **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
@@ -26,7 +27,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 ### Descriptive Analysis
 
 - **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, functional spatial, kernel functional spatial, modified epigraph index
-- **Distance Metrics**: Lp distances, Hausdorff, DTW, Fourier-based semimetric, horizontal shift semimetric
+- **Distance Metrics**: Lp distances, Hausdorff, DTW, Soft-DTW (with barycenter averaging), elastic (Fisher-Rao), amplitude/phase distances, Fourier-based semimetric, horizontal shift semimetric
 - **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
 
 ### Regression
@@ -43,9 +44,9 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ### Time Series & Alignment
 
-- **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; seasonal strength metrics; amplitude modulation detection
-- **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean, elastic distance matrices
-- **Detrending**: Linear, polynomial, LOESS, spline, differencing; classical and STL decomposition
+- **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; Lomb-Scargle periodogram; matrix profile; SSA; peak detection; seasonal strength metrics; amplitude modulation detection; seasonality change detection
+- **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean, elastic distance matrices, amplitude/phase decomposition, landmark registration, transported SRVF (TSRVF)
+- **Detrending**: Linear, polynomial, LOESS, differencing; classical, additive/multiplicative, and STL decomposition
 
 ### Inference & Diagnostics
 
@@ -62,13 +63,10 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 ### R (fdars)
 
 ```r
-# From GitHub (requires Rust toolchain)
-devtools::install_github("sipemu/fdars-r")
+install.packages("fdars")
 
-# From binary release (no Rust required)
-# Download from GitHub Releases, then:
-install.packages("path/to/fdars_x.y.z.tgz", repos = NULL, type = "mac.binary")  # macOS
-install.packages("path/to/fdars_x.y.z.zip", repos = NULL, type = "win.binary")  # Windows
+# Development version from GitHub (requires Rust toolchain)
+devtools::install_github("sipemu/fdars-r")
 ```
 
 ### Rust (fdars-core)
