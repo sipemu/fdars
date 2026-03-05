@@ -42,6 +42,7 @@ pub mod landmark;
 pub mod metric;
 pub mod outliers;
 pub mod regression;
+pub mod scalar_on_function;
 pub mod seasonal;
 pub mod simulation;
 pub mod smoothing;
@@ -108,6 +109,12 @@ pub use tolerance::{
     equivalence_test_one_sample, exponential_family_tolerance_band, fpca_tolerance_band,
     scb_mean_degras, BandType, EquivalenceBootstrap, EquivalenceTestResult, ExponentialFamily,
     MultiplierDistribution, NonConformityScore, ToleranceBand,
+};
+
+// Re-export scalar-on-function regression types
+pub use scalar_on_function::{
+    fregre_cv, fregre_lm, fregre_np_mixed, functional_logistic, predict_fregre_lm,
+    predict_fregre_np, FregreCvResult, FregreLmResult, FregreNpResult, FunctionalLogisticResult,
 };
 
 // Re-export streaming depth types
