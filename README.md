@@ -73,7 +73,7 @@ devtools::install_github("sipemu/fdars-r")
 
 ```toml
 [dependencies]
-fdars-core = "0.6"
+fdars-core = "0.7"
 ```
 
 Or install from the repository:
