@@ -36,6 +36,7 @@ pub mod classification;
 pub mod clustering;
 pub mod depth;
 pub mod detrend;
+pub mod famm;
 pub mod fdata;
 pub mod function_on_scalar;
 pub mod gmm;
@@ -113,6 +114,9 @@ pub use tolerance::{
     scb_mean_degras, BandType, EquivalenceBootstrap, EquivalenceTestResult, ExponentialFamily,
     MultiplierDistribution, NonConformityScore, ToleranceBand,
 };
+
+// Re-export FAMM types
+pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
 
 // Re-export function-on-scalar regression types
 pub use function_on_scalar::{fanova, fosr, predict_fosr, FanovaResult, FosrResult};
