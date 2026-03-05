@@ -282,7 +282,11 @@ fn compute_r_squared(y: &[f64], residuals: &[f64], p_total: usize) -> (f64, f64)
     let y_mean = y.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
     let ss_res: f64 = residuals.iter().map(|r| r * r).sum();
-    let r_squared = if ss_tot > 0.0 { 1.0 - ss_res / ss_tot } else { 0.0 };
+    let r_squared = if ss_tot > 0.0 {
+        1.0 - ss_res / ss_tot
+    } else {
+        0.0
+    };
     let df_model = (p_total - 1) as f64;
     let r_squared_adj = if n as f64 - df_model - 1.0 > 0.0 {
         1.0 - (1.0 - r_squared) * (n as f64 - 1.0) / (n as f64 - df_model - 1.0)
@@ -358,7 +362,11 @@ pub fn fregre_lm(
     let (coeffs, hat_diag) = ols_solve(&design, y)?;
 
     let fitted_values = compute_fitted(&design, &coeffs);
-    let residuals: Vec<f64> = y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
     let (r_squared, r_squared_adj) = compute_r_squared(y, &residuals, p_total);
 
     let ss_res: f64 = residuals.iter().map(|r| r * r).sum();
@@ -408,7 +416,14 @@ fn cv_split_fold(
     scalar_covariates: Option<&FdMatrix>,
     test_start: usize,
     test_end: usize,
-) -> (FdMatrix, Vec<f64>, FdMatrix, Vec<f64>, Option<FdMatrix>, Option<FdMatrix>) {
+) -> (
+    FdMatrix,
+    Vec<f64>,
+    FdMatrix,
+    Vec<f64>,
+    Option<FdMatrix>,
+    Option<FdMatrix>,
+) {
     let n = data.nrows();
     let ncols = data.ncols();
     let n_test = test_end - test_start;
@@ -468,7 +483,11 @@ fn cv_error_for_k(
 
     for fold in 0..n_folds {
         let test_start = fold * fold_size;
-        let test_end = if fold == n_folds - 1 { n } else { test_start + fold_size };
+        let test_end = if fold == n_folds - 1 {
+            n
+        } else {
+            test_start + fold_size
+        };
         let n_test = test_end - test_start;
         if n - n_test < k + 2 {
             continue;
@@ -494,7 +513,11 @@ fn cv_error_for_k(
         count += n_test;
     }
 
-    if count > 0 { Some(total_error / count as f64) } else { None }
+    if count > 0 {
+        Some(total_error / count as f64)
+    } else {
+        None
+    }
 }
 
 /// K-fold cross-validation for selecting the number of FPC components.
@@ -655,7 +678,11 @@ fn nw_loo_predict(
         num += w * y[j];
         den += w;
     }
-    if den > 1e-15 { num / den } else { y[i] }
+    if den > 1e-15 {
+        num / den
+    } else {
+        y[i]
+    }
 }
 
 /// Select bandwidth by minimizing LOO-CV error on a grid of distance quantiles.
@@ -756,13 +783,25 @@ pub fn fregre_np_mixed(
     let mut fitted_values = vec![0.0; n];
     let mut cv_error = 0.0;
     for i in 0..n {
-        fitted_values[i] =
-            nw_loo_predict(i, n, y, &func_dists, &scalar_dists, h_func, h_scalar, has_scalar);
+        fitted_values[i] = nw_loo_predict(
+            i,
+            n,
+            y,
+            &func_dists,
+            &scalar_dists,
+            h_func,
+            h_scalar,
+            has_scalar,
+        );
         cv_error += (y[i] - fitted_values[i]).powi(2);
     }
     cv_error /= n as f64;
 
-    let residuals: Vec<f64> = y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
     let (r_squared, _) = compute_r_squared(y, &residuals, 1);
 
     Some(FregreNpResult {
@@ -796,8 +835,7 @@ pub fn predict_fregre_np(
             let mut num = 0.0;
             let mut den = 0.0;
             for j in 0..n_train {
-                let d_func =
-                    crate::helpers::l2_distance(&new_row, &train_data.row(j), &weights);
+                let d_func = crate::helpers::l2_distance(&new_row, &train_data.row(j), &weights);
                 let kf = gaussian_kernel(d_func, h_func);
                 let ks = match (new_scalar, train_scalar) {
                     (Some(ns), Some(ts)) => {
@@ -812,7 +850,11 @@ pub fn predict_fregre_np(
                 num += w * y[j];
                 den += w;
             }
-            if den > 1e-15 { num / den } else { 0.0 }
+            if den > 1e-15 {
+                num / den
+            } else {
+                0.0
+            }
         })
         .collect()
 }
@@ -823,11 +865,7 @@ pub fn predict_fregre_np(
 
 /// One IRLS step: compute working response and solve weighted least squares.
 /// Returns updated beta or None if system is singular.
-fn irls_step(
-    design: &FdMatrix,
-    y: &[f64],
-    beta: &[f64],
-) -> Option<Vec<f64>> {
+fn irls_step(design: &FdMatrix, y: &[f64], beta: &[f64]) -> Option<Vec<f64>> {
     let (n, p) = design.shape();
 
     // Linear predictor η = Xβ, probabilities μ = sigmoid(η)
@@ -922,8 +960,10 @@ fn build_logistic_result(
     let n = y.len();
     let eta = compute_fitted(design, &beta);
     let probabilities: Vec<f64> = eta.iter().map(|&e| sigmoid(e)).collect();
-    let predicted_classes: Vec<u8> =
-        probabilities.iter().map(|&p| if p >= 0.5 { 1 } else { 0 }).collect();
+    let predicted_classes: Vec<u8> = probabilities
+        .iter()
+        .map(|&p| if p >= 0.5 { 1 } else { 0 })
+        .collect();
     let correct: usize = predicted_classes
         .iter()
         .zip(y)
@@ -983,7 +1023,9 @@ pub fn functional_logistic(
     let tol = if tol <= 0.0 { 1e-6 } else { tol };
 
     let (beta, iterations) = irls_loop(&design, y, max_iter, tol);
-    Some(build_logistic_result(&design, beta, y, fpca, ncomp, m, iterations))
+    Some(build_logistic_result(
+        &design, beta, y, fpca, ncomp, m, iterations,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1009,8 +1051,7 @@ mod tests {
                 data[(i, j)] =
                     (2.0 * PI * t[j] + phase).sin() + amplitude * (4.0 * PI * t[j]).cos();
             }
-            y[i] = 2.0 * phase + 3.0 * amplitude
-                + 0.05 * (seed.wrapping_add(i as u64) % 10) as f64;
+            y[i] = 2.0 * phase + 3.0 * amplitude + 0.05 * (seed.wrapping_add(i as u64) % 10) as f64;
         }
         (data, y, t)
     }
@@ -1178,7 +1219,10 @@ mod tests {
         let result = fregre_np_mixed(&data, &y, &t, None, 0.5, 0.0);
         assert!(result.is_some());
         let fit = result.unwrap();
-        assert!((fit.h_func - 0.5).abs() < 1e-10, "Should use provided bandwidth");
+        assert!(
+            (fit.h_func - 0.5).abs() < 1e-10,
+            "Should use provided bandwidth"
+        );
     }
 
     // ----- functional_logistic tests -----
@@ -1203,7 +1247,7 @@ mod tests {
         assert_eq!(fit.predicted_classes.len(), 30);
         assert!(fit.accuracy >= 0.0 && fit.accuracy <= 1.0);
         for &p in &fit.probabilities {
-            assert!(p >= 0.0 && p <= 1.0, "Probability out of range: {}", p);
+            assert!((0.0..=1.0).contains(&p), "Probability out of range: {}", p);
         }
     }
 

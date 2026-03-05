@@ -36,6 +36,7 @@ pub mod clustering;
 pub mod depth;
 pub mod detrend;
 pub mod fdata;
+pub mod function_on_scalar;
 pub mod helpers;
 pub mod irreg_fdata;
 pub mod landmark;
@@ -110,6 +111,9 @@ pub use tolerance::{
     scb_mean_degras, BandType, EquivalenceBootstrap, EquivalenceTestResult, ExponentialFamily,
     MultiplierDistribution, NonConformityScore, ToleranceBand,
 };
+
+// Re-export function-on-scalar regression types
+pub use function_on_scalar::{fanova, fosr, predict_fosr, FanovaResult, FosrResult};
 
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
