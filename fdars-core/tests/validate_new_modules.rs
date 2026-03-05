@@ -122,7 +122,10 @@ fn generate_longitudinal_data(
 
 mod scalar_on_function {
     use super::*;
-    use fdars_core::{fregre_cv, fregre_lm, functional_logistic, predict_fregre_lm};
+    use fdars_core::{
+        fregre_cv, fregre_lm, fregre_np_mixed, functional_logistic, predict_fregre_lm,
+        predict_fregre_np,
+    };
 
     /// Property: R² ∈ [0, 1] for well-specified models.
     #[test]
@@ -339,6 +342,67 @@ mod scalar_on_function {
             result.r_squared
         );
     }
+
+    /// Property: nonparametric regression produces finite fitted values and valid R².
+    #[test]
+    fn test_np_mixed_finite_output() {
+        let (data, argvals) = generate_curves(30, 51, 109);
+        let mut rng = Lcg::new(209);
+        let n = data.nrows();
+        let m = data.ncols();
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let s: f64 = (0..m).map(|j| data[(i, j)]).sum::<f64>() / m as f64;
+                s + rng.next_normal() * 0.3
+            })
+            .collect();
+
+        let result = fregre_np_mixed(&data, &y, &argvals, None, 0.5, 0.5).unwrap();
+        assert_eq!(result.fitted_values.len(), n);
+        for (i, &v) in result.fitted_values.iter().enumerate() {
+            assert!(v.is_finite(), "NP fitted[{}] = {} not finite", i, v);
+        }
+        // fitted + residuals = y
+        for (i, &yi) in y.iter().enumerate() {
+            let reconstructed = result.fitted_values[i] + result.residuals[i];
+            assert!(
+                (reconstructed - yi).abs() < 1e-10,
+                "NP fitted+resid != y at {}",
+                i
+            );
+        }
+    }
+
+    /// Property: predict_fregre_np produces finite predictions.
+    #[test]
+    fn test_predict_np_finite() {
+        let (data, argvals) = generate_curves(30, 51, 110);
+        let mut rng = Lcg::new(210);
+        let n = data.nrows();
+        let m = data.ncols();
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let s: f64 = (0..m).map(|j| data[(i, j)]).sum::<f64>() / m as f64;
+                s + rng.next_normal() * 0.3
+            })
+            .collect();
+
+        // Predict on the first 5 observations as "new" data
+        let new_n = 5;
+        let mut new_col_major = vec![0.0; new_n * m];
+        for i in 0..new_n {
+            for j in 0..m {
+                new_col_major[i + j * new_n] = data[(i, j)];
+            }
+        }
+        let new_data = FdMatrix::from_column_major(new_col_major, new_n, m).unwrap();
+
+        let predicted = predict_fregre_np(&data, &y, None, &new_data, None, &argvals, 0.5, 0.5);
+        assert_eq!(predicted.len(), new_n);
+        for (i, &v) in predicted.iter().enumerate() {
+            assert!(v.is_finite(), "NP predict[{}] = {} not finite", i, v);
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -524,7 +588,7 @@ mod function_on_scalar {
 
 mod gmm_clustering {
     use super::*;
-    use fdars_core::{gmm_em, CovType};
+    use fdars_core::{gmm_cluster, gmm_em, predict_gmm, CovType};
 
     /// Generate well-separated 2D Gaussian clusters as Vec<Vec<f64>>.
     fn gen_gmm_features(k: usize, n_per: usize, seed: u64) -> (Vec<Vec<f64>>, Vec<usize>) {
@@ -656,6 +720,106 @@ mod gmm_clustering {
         assert!(result.log_likelihood.is_finite());
         assert!(result.converged);
     }
+
+    /// Property: gmm_cluster auto-selects K via BIC on functional data.
+    #[test]
+    fn test_gmm_cluster_auto_k() {
+        let (data, _, argvals) = generate_classification_data(20, 3, 51, 408);
+
+        let result = gmm_cluster(
+            &data,
+            &argvals,
+            None,
+            &[2, 3, 4],
+            5,
+            0, // B-spline
+            CovType::Diagonal,
+            0.0,
+            100,
+            1e-6,
+            3,
+            42,
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            result.best.k >= 2 && result.best.k <= 4,
+            "Selected K={} out of range [2,4]",
+            result.best.k
+        );
+        assert!(result.best.log_likelihood.is_finite());
+        assert!(result.best.bic.is_finite());
+        assert_eq!(result.bic_values.len(), 3);
+    }
+
+    /// Property: predict_gmm assigns new data to valid clusters with valid memberships.
+    #[test]
+    fn test_predict_gmm_valid() {
+        let (data, _, argvals) = generate_classification_data(20, 3, 51, 409);
+
+        let cluster_result = gmm_cluster(
+            &data,
+            &argvals,
+            None,
+            &[3],
+            5,
+            0,
+            CovType::Diagonal,
+            0.0,
+            100,
+            1e-6,
+            3,
+            42,
+            false,
+        )
+        .unwrap();
+
+        // Predict on a subset as "new" data
+        let new_n = 10;
+        let m = data.ncols();
+        let mut new_col_major = vec![0.0; new_n * m];
+        for i in 0..new_n {
+            for j in 0..m {
+                new_col_major[i + j * new_n] = data[(i, j)];
+            }
+        }
+        let new_data = FdMatrix::from_column_major(new_col_major, new_n, m).unwrap();
+
+        let (pred_labels, pred_membership) = predict_gmm(
+            &new_data,
+            &argvals,
+            None,
+            &cluster_result.best,
+            5,
+            0,
+            0.0,
+            CovType::Diagonal,
+        )
+        .unwrap();
+
+        assert_eq!(pred_labels.len(), new_n);
+        assert_eq!(pred_membership.nrows(), new_n);
+        assert_eq!(pred_membership.ncols(), cluster_result.best.k);
+
+        // Labels in valid range
+        for (i, &l) in pred_labels.iter().enumerate() {
+            assert!(l < cluster_result.best.k, "pred label[{}]={} >= K", i, l);
+        }
+
+        // Membership rows sum to 1
+        for i in 0..new_n {
+            let row_sum: f64 = (0..cluster_result.best.k)
+                .map(|c| pred_membership[(i, c)])
+                .sum();
+            assert!(
+                (row_sum - 1.0).abs() < 1e-6,
+                "Membership[{}] sum = {}",
+                i,
+                row_sum
+            );
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -664,7 +828,9 @@ mod gmm_clustering {
 
 mod classification {
     use super::*;
-    use fdars_core::{fclassif_dd, fclassif_knn, fclassif_lda, fclassif_qda};
+    use fdars_core::{
+        fclassif_cv, fclassif_dd, fclassif_kernel, fclassif_knn, fclassif_lda, fclassif_qda,
+    };
 
     /// Property: confusion matrix rows sum to class counts.
     #[test]
@@ -794,6 +960,50 @@ mod classification {
                 acc
             );
         }
+    }
+
+    /// Property: kernel classifier produces valid accuracy and predictions.
+    #[test]
+    fn test_kernel_classifier_valid() {
+        let (data, labels, argvals) = generate_classification_data(20, 3, 51, 509);
+        let result = fclassif_kernel(&data, &argvals, &labels, None, 0.5, 0.5).unwrap();
+
+        assert!(
+            result.accuracy > 1.0 / 3.0,
+            "Kernel accuracy {} below chance",
+            result.accuracy
+        );
+        assert_eq!(result.predicted.len(), data.nrows());
+        for (i, &pred) in result.predicted.iter().enumerate() {
+            assert!(pred < 3, "Kernel predicted[{}] = {} >= 3", i, pred);
+        }
+    }
+
+    /// Property: cross-validation produces valid error rate and selects ncomp.
+    #[test]
+    fn test_cv_valid_output() {
+        let (data, labels, argvals) = generate_classification_data(20, 3, 51, 510);
+        let cv_result = fclassif_cv(&data, &argvals, &labels, None, "lda", 3, 5, 42).unwrap();
+
+        assert!(
+            (0.0..=1.0).contains(&cv_result.error_rate),
+            "CV error rate {} out of [0, 1]",
+            cv_result.error_rate
+        );
+        assert_eq!(cv_result.fold_errors.len(), 5);
+        for (i, &e) in cv_result.fold_errors.iter().enumerate() {
+            assert!(
+                (0.0..=1.0).contains(&e),
+                "Fold {} error {} out of [0, 1]",
+                i,
+                e
+            );
+        }
+        assert!(
+            cv_result.best_ncomp >= 1,
+            "best_ncomp {} < 1",
+            cv_result.best_ncomp
+        );
     }
 }
 
