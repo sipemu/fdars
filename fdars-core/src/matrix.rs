@@ -522,6 +522,56 @@ mod tests {
     }
 
     #[test]
+    fn test_fd_curve_set_empty() {
+        assert!(FdCurveSet::from_dims(vec![]).is_none());
+        let cs = FdCurveSet::from_dims(vec![]).unwrap_or(FdCurveSet { dims: vec![] });
+        assert_eq!(cs.ndim(), 0);
+        assert_eq!(cs.ncurves(), 0);
+        assert_eq!(cs.npoints(), 0);
+        assert_eq!(format!("{}", cs), "FdCurveSet(d=0, n=0, m=0)");
+    }
+
+    #[test]
+    fn test_fd_curve_set_from_1d() {
+        let mat = sample_3x4();
+        let cs = FdCurveSet::from_1d(mat.clone());
+        assert_eq!(cs.ndim(), 1);
+        assert_eq!(cs.ncurves(), 3);
+        assert_eq!(cs.npoints(), 4);
+        assert_eq!(cs.point(0, 0), vec![1.0]);
+        assert_eq!(cs.point(1, 2), vec![8.0]);
+    }
+
+    #[test]
+    fn test_fd_curve_set_from_dims_consistent() {
+        let m1 = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        let m2 = FdMatrix::from_column_major(vec![5.0, 6.0, 7.0, 8.0], 2, 2).unwrap();
+        let cs = FdCurveSet::from_dims(vec![m1, m2]).unwrap();
+        assert_eq!(cs.ndim(), 2);
+        assert_eq!(cs.point(0, 0), vec![1.0, 5.0]);
+        assert_eq!(cs.point(1, 1), vec![4.0, 8.0]);
+        assert_eq!(format!("{}", cs), "FdCurveSet(d=2, n=2, m=2)");
+    }
+
+    #[test]
+    fn test_fd_curve_set_from_dims_inconsistent() {
+        let m1 = FdMatrix::from_column_major(vec![1.0, 2.0], 2, 1).unwrap();
+        let m2 = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
+        assert!(FdCurveSet::from_dims(vec![m1, m2]).is_none());
+    }
+
+    #[test]
+    fn test_to_row_major() {
+        let mat = sample_3x4();
+        let rm = mat.to_row_major();
+        // Row 0: [1,4,7,10], Row 1: [2,5,8,11], Row 2: [3,6,9,12]
+        assert_eq!(
+            rm,
+            vec![1.0, 4.0, 7.0, 10.0, 2.0, 5.0, 8.0, 11.0, 3.0, 6.0, 9.0, 12.0]
+        );
+    }
+
+    #[test]
     fn test_column_major_layout_matches_manual() {
         // Verify that FdMatrix[(i, j)] == data[i + j * n] for all i, j
         let n = 5;

@@ -1320,6 +1320,451 @@ mod tests {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // Additional coverage tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: generate two-class data with scalar covariates.
+    fn generate_two_class_with_covariates(
+        n_per: usize,
+        m: usize,
+        p_cov: usize,
+    ) -> (FdMatrix, Vec<usize>, Vec<f64>, FdMatrix) {
+        let (data, labels, t) = generate_two_class_data(n_per, m);
+        let n = 2 * n_per;
+        // Covariates: class 0 → low values, class 1 → high values
+        let mut cov_data = vec![0.0; n * p_cov];
+        for i in 0..n {
+            for j in 0..p_cov {
+                let base = if labels[i] == 0 { 0.0 } else { 5.0 };
+                cov_data[i + j * n] = base + 0.1 * ((i * 3 + j * 7) % 50) as f64 / 50.0;
+            }
+        }
+        let covariates = FdMatrix::from_column_major(cov_data, n, p_cov).unwrap();
+        (data, labels, t, covariates)
+    }
+
+    #[test]
+    fn test_fclassif_cv_qda() {
+        let (data, labels, t) = generate_two_class_data(25, 50);
+        let result = fclassif_cv(&data, &t, &labels, None, "qda", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(
+            result.error_rate < 0.4,
+            "QDA CV error should be low: {}",
+            result.error_rate
+        );
+        assert_eq!(result.best_ncomp, 3);
+    }
+
+    #[test]
+    fn test_fclassif_cv_knn() {
+        let (data, labels, t) = generate_two_class_data(25, 50);
+        let result = fclassif_cv(&data, &t, &labels, None, "knn", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(
+            result.error_rate < 0.4,
+            "k-NN CV error should be low: {}",
+            result.error_rate
+        );
+    }
+
+    #[test]
+    fn test_fclassif_cv_kernel() {
+        let (data, labels, t) = generate_two_class_data(25, 50);
+        let result = fclassif_cv(&data, &t, &labels, None, "kernel", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        // Kernel CV: placeholder prediction may not be accurate, just ensure it runs
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_dd() {
+        let (data, labels, t) = generate_two_class_data(25, 50);
+        let result = fclassif_cv(&data, &t, &labels, None, "dd", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_invalid_method() {
+        let (data, labels, t) = generate_two_class_data(25, 50);
+        // "bogus" method hits the `_ => None` arm in cv_fold_predict
+        let result = fclassif_cv(&data, &t, &labels, None, "bogus", 3, 5, 42);
+
+        // Should still return Some — fold errors will be 1.0 for each fold
+        let r = result.unwrap();
+        assert!((r.error_rate - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fclassif_cv_too_few_folds() {
+        let (data, labels, t) = generate_two_class_data(10, 50);
+        // nfold < 2 → None
+        assert!(fclassif_cv(&data, &t, &labels, None, "lda", 3, 1, 42).is_none());
+        // n < nfold → None
+        assert!(fclassif_cv(&data, &t, &labels, None, "lda", 3, 100, 42).is_none());
+    }
+
+    #[test]
+    fn test_fclassif_cv_single_class() {
+        let (data, _labels, t) = generate_two_class_data(10, 50);
+        let single = vec![0usize; 20]; // only one class
+        assert!(fclassif_cv(&data, &t, &single, None, "lda", 3, 5, 42).is_none());
+    }
+
+    #[test]
+    fn test_fclassif_kernel_with_covariates() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(20, 50, 2);
+        let result = fclassif_kernel(&data, &t, &labels, Some(&covariates), 0.0, 0.0).unwrap();
+
+        assert_eq!(result.predicted.len(), 40);
+        assert!(
+            result.accuracy > 0.5,
+            "Kernel+cov accuracy should be reasonable: {}",
+            result.accuracy
+        );
+        assert_eq!(result.ncomp, 0); // kernel doesn't use ncomp
+    }
+
+    #[test]
+    fn test_fclassif_kernel_with_covariates_manual_bandwidth() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(15, 50, 1);
+        // Provide explicit bandwidths (>0 skips LOO selection)
+        let result = fclassif_kernel(&data, &t, &labels, Some(&covariates), 1.0, 1.0).unwrap();
+
+        assert_eq!(result.predicted.len(), 30);
+        assert!(result.accuracy >= 0.0 && result.accuracy <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_dd_with_covariates() {
+        let (data, labels, _t, covariates) = generate_two_class_with_covariates(20, 50, 2);
+        let result = fclassif_dd(&data, &labels, Some(&covariates)).unwrap();
+
+        assert_eq!(result.predicted.len(), 40);
+        assert_eq!(result.n_classes, 2);
+        assert!(
+            result.accuracy > 0.5,
+            "DD+cov accuracy should be reasonable: {}",
+            result.accuracy
+        );
+        assert!(result.probabilities.is_some());
+    }
+
+    #[test]
+    fn test_fclassif_dd_with_single_covariate() {
+        // Curves are identical; only the covariate separates classes
+        let n_per = 15;
+        let n = 2 * n_per;
+        let m = 50;
+        let t = uniform_grid(m);
+
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            for (j, &tj) in t.iter().enumerate() {
+                col_major[i + j * n] = (2.0 * PI * tj).sin();
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+        let labels: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
+
+        // Covariate: class 0 → [0..1], class 1 → [10..11]
+        let mut cov_data = vec![0.0; n];
+        for i in 0..n_per {
+            cov_data[i] = i as f64 / n_per as f64;
+        }
+        for i in n_per..n {
+            cov_data[i] = 10.0 + (i - n_per) as f64 / n_per as f64;
+        }
+        let covariates = FdMatrix::from_column_major(cov_data, n, 1).unwrap();
+
+        let result = fclassif_dd(&data, &labels, Some(&covariates)).unwrap();
+        // The scalar blending should help even when curves are identical
+        assert!(
+            result.accuracy >= 0.5,
+            "DD with scalar covariate: {}",
+            result.accuracy
+        );
+    }
+
+    #[test]
+    fn test_scalar_depth_for_obs_edge_cases() {
+        // Empty class indices → depth = 0
+        let cov = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 4, 1).unwrap();
+        assert_eq!(scalar_depth_for_obs(&cov, 0, &[], 1), 0.0);
+
+        // p=0 → depth = 0
+        let cov0 = FdMatrix::zeros(4, 0);
+        assert_eq!(scalar_depth_for_obs(&cov0, 0, &[0, 1, 2, 3], 0), 0.0);
+
+        // Normal case: all indices
+        let depth = scalar_depth_for_obs(&cov, 1, &[0, 1, 2, 3], 1);
+        assert!(depth > 0.0 && depth <= 0.5, "depth={}", depth);
+
+        // Observation is at the extremes
+        let depth_min = scalar_depth_for_obs(&cov, 0, &[0, 1, 2, 3], 1);
+        let depth_max = scalar_depth_for_obs(&cov, 3, &[0, 1, 2, 3], 1);
+        // Extreme observations should have low depth
+        assert!(depth_min <= 0.5, "depth_min={}", depth_min);
+        assert!(depth_max <= 0.5, "depth_max={}", depth_max);
+    }
+
+    #[test]
+    fn test_scalar_depth_for_obs_multivariate() {
+        // 2 covariates
+        let cov =
+            FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0], 4, 2)
+                .unwrap();
+        let depth = scalar_depth_for_obs(&cov, 1, &[0, 1, 2, 3], 2);
+        assert!(depth > 0.0 && depth <= 0.5, "multivar depth={}", depth);
+    }
+
+    #[test]
+    fn test_blend_scalar_depths_modifies_scores() {
+        let n = 6;
+        let g = 2;
+        let mut depth_scores = FdMatrix::zeros(n, g);
+        // Fill with some values
+        for i in 0..n {
+            depth_scores[(i, 0)] = 0.5;
+            depth_scores[(i, 1)] = 0.3;
+        }
+
+        let cov = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 10.0, 20.0, 30.0], n, 1).unwrap();
+        let class_indices = vec![vec![0, 1, 2], vec![3, 4, 5]];
+
+        let original_00 = depth_scores[(0, 0)];
+        blend_scalar_depths(&mut depth_scores, &cov, &class_indices, n);
+
+        // Scores should have been modified (blended with 0.7 / 0.3 weights)
+        let blended_00 = depth_scores[(0, 0)];
+        // blended = 0.7 * 0.5 + 0.3 * scalar_depth
+        assert!(
+            (blended_00 - original_00).abs() > 1e-10,
+            "blend should change scores: original={}, blended={}",
+            original_00,
+            blended_00
+        );
+    }
+
+    #[test]
+    fn test_compute_pairwise_scalar() {
+        let n = 4;
+        // 2 covariates
+        let cov = FdMatrix::from_column_major(vec![0.0, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0], n, 2)
+            .unwrap();
+        let dists = compute_pairwise_scalar(&cov);
+        assert_eq!(dists.len(), n * n);
+
+        // Diagonal should be zero
+        for i in 0..n {
+            assert!((dists[i * n + i]).abs() < 1e-15);
+        }
+        // Symmetry
+        for i in 0..n {
+            for j in 0..n {
+                assert!((dists[i * n + j] - dists[j * n + i]).abs() < 1e-15);
+            }
+        }
+        // d(0,1) = sqrt(1^2 + 0^2) = 1.0
+        assert!((dists[1] - 1.0).abs() < 1e-10);
+        // d(0,3) = sqrt(3^2 + 0^2) = 3.0
+        assert!((dists[3] - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fclassif_cv_lda_with_covariates() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
+        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "lda", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_qda_with_covariates() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
+        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "qda", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_knn_with_covariates() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
+        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "knn", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_kernel_with_covariates() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
+        let result =
+            fclassif_cv(&data, &t, &labels, Some(&covariates), "kernel", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_dd_with_covariates() {
+        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 2);
+        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "dd", 3, 5, 42).unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_kernel_invalid_inputs() {
+        let data = FdMatrix::zeros(0, 0);
+        assert!(fclassif_kernel(&data, &[], &[], None, 0.0, 0.0).is_none());
+
+        let data = FdMatrix::zeros(5, 10);
+        let t = uniform_grid(10);
+        let labels = vec![0; 5]; // single class
+        assert!(fclassif_kernel(&data, &t, &labels, None, 0.0, 0.0).is_none());
+
+        // Mismatched argvals length
+        let labels2 = vec![0, 0, 0, 1, 1];
+        let wrong_t = vec![0.0, 1.0]; // wrong length
+        assert!(fclassif_kernel(&data, &wrong_t, &labels2, None, 0.0, 0.0).is_none());
+    }
+
+    #[test]
+    fn test_fclassif_dd_invalid_inputs() {
+        let data = FdMatrix::zeros(0, 0);
+        assert!(fclassif_dd(&data, &[], None).is_none());
+
+        let data = FdMatrix::zeros(5, 10);
+        let labels = vec![0; 5]; // single class
+        assert!(fclassif_dd(&data, &labels, None).is_none());
+    }
+
+    #[test]
+    fn test_argmax_class_empty() {
+        assert_eq!(argmax_class(&[]), 0);
+        assert_eq!(argmax_class(&[0.1]), 0);
+        assert_eq!(argmax_class(&[0.1, 0.9, 0.5]), 1);
+    }
+
+    #[test]
+    fn test_gaussian_kernel_values() {
+        // h=0 → 0
+        assert_eq!(gaussian_kernel(1.0, 0.0), 0.0);
+        // dist=0 → 1
+        assert!((gaussian_kernel(0.0, 1.0) - 1.0).abs() < 1e-15);
+        // Normal case
+        let k = gaussian_kernel(1.0, 1.0);
+        let expected = (-0.5_f64).exp();
+        assert!((k - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fclassif_qda_with_covariates() {
+        let (data, labels, _t, covariates) = generate_two_class_with_covariates(20, 50, 1);
+        let result = fclassif_qda(&data, &labels, Some(&covariates), 3).unwrap();
+
+        assert_eq!(result.predicted.len(), 40);
+        assert!(
+            result.accuracy > 0.5,
+            "QDA+cov accuracy: {}",
+            result.accuracy
+        );
+    }
+
+    #[test]
+    fn test_fclassif_knn_with_covariates() {
+        let (data, labels, _t, covariates) = generate_two_class_with_covariates(20, 50, 1);
+        let result = fclassif_knn(&data, &labels, Some(&covariates), 3, 5).unwrap();
+
+        assert_eq!(result.predicted.len(), 40);
+        assert!(
+            result.accuracy > 0.5,
+            "k-NN+cov accuracy: {}",
+            result.accuracy
+        );
+    }
+
+    #[test]
+    fn test_fclassif_knn_invalid_k() {
+        let (data, labels, _t) = generate_two_class_data(10, 50);
+        // k_nn == 0 → None
+        assert!(fclassif_knn(&data, &labels, None, 3, 0).is_none());
+    }
+
+    #[test]
+    fn test_bandwidth_candidates_empty_distances() {
+        // All distances zero → candidates filtered out
+        let dists = vec![0.0; 9];
+        let cands = bandwidth_candidates(&dists, 3);
+        assert!(cands.is_empty());
+    }
+
+    #[test]
+    fn test_select_bandwidth_loo_empty_candidates() {
+        // All distances zero → empty candidates → default bandwidth
+        let dists = vec![0.0; 9];
+        let labels = vec![0, 0, 1];
+        let h = select_bandwidth_loo(&dists, &labels, 2, 3, true);
+        assert!((h - 1.0).abs() < 1e-10, "default func bandwidth: {}", h);
+
+        let h2 = select_bandwidth_loo(&dists, &labels, 2, 3, false);
+        assert!((h2 - 0.5).abs() < 1e-10, "default scalar bandwidth: {}", h2);
+    }
+
+    #[test]
+    fn test_fold_split() {
+        let folds = vec![0, 1, 2, 0, 1, 2];
+        let (train, test) = fold_split(&folds, 1);
+        assert_eq!(train, vec![0, 2, 3, 5]);
+        assert_eq!(test, vec![1, 4]);
+    }
+
+    #[test]
+    fn test_assign_folds_deterministic() {
+        let f1 = assign_folds(10, 3, 42);
+        let f2 = assign_folds(10, 3, 42);
+        assert_eq!(f1, f2);
+
+        // All fold indices in [0, nfold)
+        for &f in &f1 {
+            assert!(f < 3);
+        }
+    }
+
+    #[test]
+    fn test_project_test_onto_fpca() {
+        let n_train = 20;
+        let m = 50;
+        let ncomp = 3;
+        let (data, _labels, _t) = generate_two_class_data(n_train / 2, m);
+
+        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+
+        // Create small "test" matrix
+        let n_test = 5;
+        let mut test_col = vec![0.0; n_test * m];
+        for i in 0..n_test {
+            for j in 0..m {
+                test_col[i + j * n_test] = data[(i, j)] + 0.01;
+            }
+        }
+        let test_data = FdMatrix::from_column_major(test_col, n_test, m).unwrap();
+
+        let projected = project_test_onto_fpca(&test_data, &fpca);
+        assert_eq!(projected.nrows(), n_test);
+        assert_eq!(projected.ncols(), ncomp);
+    }
+
     #[test]
     fn test_fclassif_three_classes() {
         let n_per = 15;

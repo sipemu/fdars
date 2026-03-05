@@ -720,6 +720,157 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_landmarks_short_curve() {
+        // m < 3 should return empty
+        let t = vec![0.0, 1.0];
+        let curve = vec![1.0, 2.0];
+        assert!(detect_landmarks(&curve, &t, LandmarkKind::Peak, 0.0).is_empty());
+    }
+
+    #[test]
+    fn test_detect_landmarks_mismatched_lengths() {
+        let t = vec![0.0, 0.5, 1.0];
+        let curve = vec![1.0, 2.0]; // wrong length
+        assert!(detect_landmarks(&curve, &t, LandmarkKind::Peak, 0.0).is_empty());
+    }
+
+    #[test]
+    fn test_detect_landmarks_custom_kind() {
+        let t = uniform_grid(50);
+        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        // Custom kind always returns empty
+        assert!(detect_landmarks(&curve, &t, LandmarkKind::Custom, 0.0).is_empty());
+    }
+
+    #[test]
+    fn test_detect_inflections() {
+        let m = 200;
+        let t = uniform_grid(m);
+        // sin(2πt) has inflections at t≈0 and t≈0.5
+        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let lms = detect_landmarks(&curve, &t, LandmarkKind::Inflection, 0.0);
+        assert!(!lms.is_empty(), "Should detect inflection points");
+        // Check kind
+        assert!(lms
+            .iter()
+            .all(|l| matches!(l.kind, LandmarkKind::Inflection)));
+    }
+
+    #[test]
+    fn test_detect_inflections_short_curve() {
+        // m < 4 should return empty
+        let t = vec![0.0, 0.5, 1.0];
+        let curve = vec![0.0, 1.0, 0.0];
+        let lms = detect_landmarks(&curve, &t, LandmarkKind::Inflection, 0.0);
+        assert!(lms.is_empty());
+    }
+
+    #[test]
+    fn test_detect_peaks_high_prominence_filter() {
+        let m = 200;
+        let t = uniform_grid(m);
+        // Small bumps should be filtered by high prominence
+        let curve: Vec<f64> = t.iter().map(|&ti| 0.01 * (2.0 * PI * ti).sin()).collect();
+        let lms = detect_landmarks(&curve, &t, LandmarkKind::Peak, 1.0);
+        assert!(lms.is_empty(), "High prominence should filter small bumps");
+    }
+
+    #[test]
+    fn test_detect_valleys_high_prominence_filter() {
+        let m = 200;
+        let t = uniform_grid(m);
+        let curve: Vec<f64> = t.iter().map(|&ti| 0.01 * (2.0 * PI * ti).sin()).collect();
+        let lms = detect_landmarks(&curve, &t, LandmarkKind::Valley, 1.0);
+        assert!(
+            lms.is_empty(),
+            "High prominence should filter small valleys"
+        );
+    }
+
+    #[test]
+    fn test_hermite_tangents_two_points() {
+        // k=2 branch
+        let (delta, d) = hermite_tangents(&[0.0, 1.0], &[0.0, 1.0]);
+        assert_eq!(delta.len(), 1);
+        assert!((delta[0] - 1.0).abs() < 1e-15);
+        assert!((d[0] - 1.0).abs() < 1e-15);
+        assert!((d[1] - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_hermite_tangents_zero_dx() {
+        // Two coincident knots → delta should be 0
+        let (delta, _d) = hermite_tangents(&[0.5, 0.5, 1.0], &[1.0, 2.0, 3.0]);
+        assert!((delta[0]).abs() < 1e-10, "Zero dx should give zero delta");
+    }
+
+    #[test]
+    fn test_landmark_register_empty_data() {
+        let data = FdMatrix::zeros(0, 0);
+        let result = landmark_register(&data, &[], &[], None);
+        assert_eq!(result.registered.nrows(), 0);
+    }
+
+    #[test]
+    fn test_landmark_register_mismatched_argvals() {
+        let m = 10;
+        let _t = uniform_grid(m);
+        let data = FdMatrix::from_column_major(vec![1.0; m], 1, m).unwrap();
+        let wrong_t = vec![0.0; m + 1]; // wrong length
+        let landmarks = vec![vec![0.5]];
+        let result = landmark_register(&data, &wrong_t, &landmarks, None);
+        // Should return early with cloned data
+        assert_eq!(result.registered.nrows(), 1);
+    }
+
+    #[test]
+    fn test_landmark_register_mismatched_n_landmarks() {
+        let m = 10;
+        let t = uniform_grid(m);
+        let data = FdMatrix::from_column_major(vec![1.0; 2 * m], 2, m).unwrap();
+        // Only provide 1 landmark vec for 2 curves
+        let landmarks = vec![vec![0.5]];
+        let result = landmark_register(&data, &t, &landmarks, None);
+        assert_eq!(result.registered.nrows(), 2);
+    }
+
+    #[test]
+    fn test_landmark_register_with_target() {
+        let m = 100;
+        let n = 3;
+        let t = uniform_grid(m);
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                col_major[i + j * n] = (2.0 * PI * (t[j] - 0.02 * i as f64)).sin();
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+        let landmarks = vec![vec![0.25], vec![0.27], vec![0.29]];
+        let target = vec![0.25];
+        let result = landmark_register(&data, &t, &landmarks, Some(&target));
+        assert_eq!(result.target_landmarks, vec![0.25]);
+        assert_eq!(result.registered.shape(), (n, m));
+    }
+
+    #[test]
+    fn test_detect_and_register_empty() {
+        let data = FdMatrix::zeros(0, 0);
+        let result = detect_and_register(&data, &[], LandmarkKind::Peak, 0.1, 1);
+        assert_eq!(result.registered.nrows(), 0);
+        assert!(result.landmarks.is_empty());
+    }
+
+    #[test]
+    fn test_detect_and_register_mismatched_argvals() {
+        let m = 10;
+        let data = FdMatrix::from_column_major(vec![1.0; m], 1, m).unwrap();
+        let wrong_t = vec![0.0; m + 1];
+        let result = detect_and_register(&data, &wrong_t, LandmarkKind::Peak, 0.1, 1);
+        assert_eq!(result.registered.nrows(), 1);
+    }
+
+    #[test]
     fn test_monotone_warp_reference_scipy_extreme() {
         // Reference: scipy PchipInterpolator([0,0.5,0.6,1], [0,0.2,0.8,1])
         // Extreme warp: source landmarks [0.2, 0.8] mapped to [0.5, 0.6]

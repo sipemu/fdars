@@ -1047,6 +1047,126 @@ mod tests {
     }
 
     #[test]
+    fn test_trait_n_points_n_reference() {
+        let n = 5;
+        let m = 3;
+        let data = generate_centered_data(n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+
+        let state = SortedReferenceState::from_reference(&mat);
+        assert_eq!(state.nori(), n);
+        assert_eq!(state.n_points(), m);
+
+        let mbd = StreamingMbd::new(SortedReferenceState::from_reference(&mat));
+        assert_eq!(mbd.n_points(), m);
+        assert_eq!(mbd.n_reference(), n);
+
+        let fm = StreamingFraimanMuniz::new(SortedReferenceState::from_reference(&mat), true);
+        assert_eq!(fm.n_points(), m);
+        assert_eq!(fm.n_reference(), n);
+
+        let full = FullReferenceState::from_reference(&mat);
+        let bd = StreamingBd::new(full);
+        assert_eq!(bd.n_points(), m);
+        assert_eq!(bd.n_reference(), n);
+    }
+
+    #[test]
+    fn test_bd_depth_one_matches_batch() {
+        let n = 8;
+        let m = 10;
+        let data = generate_centered_data(n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+        let full = FullReferenceState::from_reference(&mat);
+        let bd = StreamingBd::new(full);
+
+        // depth_one should match depth_batch for single curve
+        let curve = extract_curve(&data, 3, n, m);
+        let single_mat = FdMatrix::from_column_major(curve.clone(), 1, m).unwrap();
+        let one = bd.depth_one(&curve);
+        let batch = bd.depth_batch(&single_mat);
+        assert!((one - batch[0]).abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_bd_batch_empty() {
+        let ref_data = FdMatrix::from_column_major(vec![0.0, 1.0, 0.0, 1.0], 2, 2).unwrap();
+        let full = FullReferenceState::from_reference(&ref_data);
+        let bd = StreamingBd::new(full);
+
+        // Empty query matrix
+        let empty = FdMatrix::zeros(0, 2);
+        assert!(bd.depth_batch(&empty).is_empty());
+    }
+
+    #[test]
+    fn test_bd_single_ref_returns_zero() {
+        let ref_data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        let full = FullReferenceState::from_reference(&ref_data);
+        let bd = StreamingBd::new(full);
+        assert_eq!(bd.depth_one(&[1.5, 2.5, 2.0]), 0.0);
+    }
+
+    #[test]
+    fn test_mbd_batch_empty_ref() {
+        let mat = FdMatrix::zeros(0, 0);
+        let state = SortedReferenceState::from_reference(&mat);
+        let mbd = StreamingMbd::new(state);
+        let query = FdMatrix::from_column_major(vec![1.0, 2.0], 1, 2).unwrap();
+        let result = mbd.depth_batch(&query);
+        assert_eq!(result, vec![0.0]);
+    }
+
+    #[test]
+    fn test_fm_batch_empty_ref() {
+        let mat = FdMatrix::zeros(0, 0);
+        let state = SortedReferenceState::from_reference(&mat);
+        let fm = StreamingFraimanMuniz::new(state, false);
+        let query = FdMatrix::from_column_major(vec![1.0, 2.0], 1, 2).unwrap();
+        let result = fm.depth_batch(&query);
+        assert_eq!(result, vec![0.0]);
+    }
+
+    #[test]
+    fn test_fm_unscaled_depth() {
+        // Test with scale=false
+        let n = 10;
+        let m = 15;
+        let data = generate_centered_data(n, m);
+        let mat = FdMatrix::from_slice(&data, n, m).unwrap();
+        let state = SortedReferenceState::from_reference(&mat);
+        let fm = StreamingFraimanMuniz::new(state, false);
+        let depths = fm.depth_batch(&mat);
+        // All depths should be in [0, 0.5] for unscaled
+        for d in &depths {
+            assert!(
+                (0.0..=0.5 + 1e-10).contains(d),
+                "Unscaled FM depth {} > 0.5",
+                d
+            );
+        }
+    }
+
+    #[test]
+    fn test_rolling_is_empty_and_capacity() {
+        let rolling = RollingReference::new(5, 3);
+        assert!(rolling.is_empty());
+        assert_eq!(rolling.capacity(), 5);
+        assert_eq!(rolling.len(), 0);
+    }
+
+    #[test]
+    fn test_rolling_mbd_with_two_curves() {
+        let mut rolling = RollingReference::new(5, 3);
+        rolling.push(&[0.0, 0.0, 0.0]);
+        rolling.push(&[1.0, 1.0, 1.0]);
+        // Query a curve in between
+        let d = rolling.mbd_one(&[0.5, 0.5, 0.5]);
+        assert!(d.is_finite());
+        assert!((0.0..=1.0).contains(&d));
+    }
+
+    #[test]
     fn test_single_timepoint_streaming() {
         // m=1: single time point
         let ref_data = FdMatrix::from_column_major(vec![0.0, 1.0, 2.0], 3, 1).unwrap();

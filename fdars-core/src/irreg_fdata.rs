@@ -1071,6 +1071,121 @@ mod tests {
     }
 
     #[test]
+    fn test_integrate_single_point_curve() {
+        // Single-point curve: integral should be 0
+        let ifd = make_ifd(
+            vec![0, 1, 4],
+            vec![0.5, 0.0, 0.5, 1.0],
+            vec![1.0, 0.0, 1.0, 2.0],
+        );
+        let integrals = integrate_irreg(&ifd);
+        assert_eq!(integrals.len(), 2);
+        assert!(
+            (integrals[0]).abs() < 1e-10,
+            "Single-point integral should be 0"
+        );
+        assert!((integrals[1] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_norm_lp_l1() {
+        // L1 norm of constant function = c is c on [0,1]
+        let ifd = make_ifd(vec![0, 3], vec![0.0, 0.5, 1.0], vec![2.0, 2.0, 2.0]);
+        let norms = norm_lp_irreg(&ifd, 1.0);
+        assert!(
+            (norms[0] - 2.0).abs() < 1e-10,
+            "L1 norm of 2 = {}",
+            norms[0]
+        );
+    }
+
+    #[test]
+    fn test_norm_lp_general_p() {
+        // L3 norm of constant function = c is c on [0,1]
+        let ifd = make_ifd(vec![0, 3], vec![0.0, 0.5, 1.0], vec![3.0, 3.0, 3.0]);
+        let norms = norm_lp_irreg(&ifd, 3.0);
+        assert!((norms[0] - 3.0).abs() < 0.1, "L3 norm of 3 = {}", norms[0]);
+    }
+
+    #[test]
+    fn test_norm_lp_single_point() {
+        // Single-point curve: norm should be 0
+        let ifd = make_ifd(vec![0, 1], vec![0.5], vec![5.0]);
+        let norms = norm_lp_irreg(&ifd, 2.0);
+        assert!((norms[0]).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_mean_irreg_epanechnikov() {
+        let ifd = make_ifd(
+            vec![0, 3, 6],
+            vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0],
+            vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0],
+        );
+        let target = vec![0.0, 0.5, 1.0];
+        let mean = mean_irreg(&ifd, &target, 0.5, KernelType::Epanechnikov);
+        // Mean of identical curves should match the values
+        assert!(
+            (mean[1] - 1.0).abs() < 0.5,
+            "Epanechnikov mean at 0.5: {}",
+            mean[1]
+        );
+    }
+
+    #[test]
+    fn test_mean_irreg_zero_weight() {
+        // Tiny bandwidth far from data → zero weights → NaN
+        let ifd = make_ifd(vec![0, 3], vec![0.0, 0.5, 1.0], vec![1.0, 2.0, 3.0]);
+        let target = vec![100.0]; // far from data
+        let mean = mean_irreg(&ifd, &target, 0.001, KernelType::Epanechnikov);
+        assert!(mean[0].is_nan(), "Should be NaN with zero weights");
+    }
+
+    #[test]
+    fn test_metric_lp_l1() {
+        let ifd = make_ifd(
+            vec![0, 5, 10],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        );
+        let dist = metric_lp_irreg(&ifd, 1.0);
+        assert!(dist[(0, 1)] > 0.0, "L1 distance should be positive");
+        assert!(
+            (dist[(0, 1)] - 1.0).abs() < 1e-10,
+            "L1 distance of 0 and 1: {}",
+            dist[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_metric_lp_general_p() {
+        let ifd = make_ifd(
+            vec![0, 5, 10],
+            vec![0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.25, 0.5, 0.75, 1.0],
+            vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        );
+        let dist = metric_lp_irreg(&ifd, 3.0);
+        assert!(dist[(0, 1)] > 0.0, "L3 distance should be positive");
+        // L3 distance of |0-1|^3 integrated = 1, then ^(1/3) = 1
+        assert!(
+            (dist[(0, 1)] - 1.0).abs() < 0.1,
+            "L3 distance: {}",
+            dist[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_metric_lp_non_overlapping_curves() {
+        // Curves on non-overlapping ranges: common_t < 2 → NaN
+        let ifd = IrregFdata::from_lists(
+            &[vec![0.0, 0.5], vec![2.0, 3.0]],
+            &[vec![1.0, 2.0], vec![3.0, 4.0]],
+        );
+        let dist = metric_lp_irreg(&ifd, 2.0);
+        assert!(dist[(0, 1)].is_nan(), "Non-overlapping should give NaN");
+    }
+
+    #[test]
     fn test_empty_from_lists() {
         let ifd = IrregFdata::from_lists(&[], &[]);
         assert_eq!(ifd.n_obs(), 0);

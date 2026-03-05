@@ -991,6 +991,8 @@ pub struct TsrvfResult {
     pub mean_srsf_norm: f64,
     /// Per-curve aligned SRSF norms (length n).
     pub srsf_norms: Vec<f64>,
+    /// Per-curve initial values f_i(0) for SRSF inverse reconstruction (length n).
+    pub initial_values: Vec<f64>,
     /// Warping functions from Karcher mean computation (n × m).
     pub gammas: FdMatrix,
     /// Whether the Karcher mean converged.
@@ -1079,12 +1081,17 @@ pub fn tsrvf_from_alignment(karcher: &KarcherMeanResult, argvals: &[f64]) -> Tsr
         }
     }
 
+    // Store per-curve initial values for SRSF inverse reconstruction.
+    // Warping preserves f_i(0) since gamma(0) = 0.
+    let initial_values: Vec<f64> = (0..n).map(|i| karcher.aligned_data[(i, 0)]).collect();
+
     TsrvfResult {
         tangent_vectors,
         mean: karcher.mean.clone(),
         mean_srsf: karcher.mean_srsf.clone(),
         mean_srsf_norm: mean_norm,
         srsf_norms,
+        initial_values,
         gammas: karcher.gammas.clone(),
         converged: karcher.converged,
     }
@@ -1127,8 +1134,8 @@ pub fn tsrvf_inverse(tsrvf: &TsrvfResult, argvals: &[f64]) -> FdMatrix {
             // Rescale by original norm
             let qi: Vec<f64> = qi_unit.iter().map(|&q| q * tsrvf.srsf_norms[i]).collect();
 
-            // Reconstruct curve from SRSF
-            srsf_inverse(&qi, argvals, tsrvf.mean[0])
+            // Reconstruct curve from SRSF using per-curve initial value
+            srsf_inverse(&qi, argvals, tsrvf.initial_values[i])
         })
         .collect();
 
@@ -1287,12 +1294,15 @@ pub fn tsrvf_from_alignment_with_method(
         }
     }
 
+    let initial_values: Vec<f64> = (0..n).map(|i| karcher.aligned_data[(i, 0)]).collect();
+
     TsrvfResult {
         tangent_vectors,
         mean: karcher.mean.clone(),
         mean_srsf: karcher.mean_srsf.clone(),
         mean_srsf_norm: mean_norm,
         srsf_norms,
+        initial_values,
         gammas: karcher.gammas.clone(),
         converged: karcher.converged,
     }
@@ -3340,6 +3350,68 @@ mod tests {
                 );
             }
         }
+        // Issue #12: per-curve initial values should be preserved
+        for i in 0..n {
+            assert!(
+                (reconstructed[(i, 0)] - result.initial_values[i]).abs() < 1e-6,
+                "Curve {i} initial value: expected {}, got {}",
+                result.initial_values[i],
+                reconstructed[(i, 0)]
+            );
+        }
+    }
+
+    #[test]
+    fn test_tsrvf_initial_values_per_curve() {
+        // Issue #12: tsrvf_inverse must use per-curve initial values, not mean[0]
+        let m = 50;
+        let n = 5;
+        let t = uniform_grid(m);
+
+        // Create curves with distinct initial values
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            let offset = (i as f64 + 1.0) * 2.0; // offsets: 2, 4, 6, 8, 10
+            for j in 0..m {
+                col_major[i + j * n] = offset + (2.0 * std::f64::consts::PI * t[j]).sin();
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+
+        let result = tsrvf_transform(&data, &t, 15, 1e-4, 0.0);
+
+        // initial_values should differ per curve
+        assert_eq!(result.initial_values.len(), n);
+        let all_same = result
+            .initial_values
+            .windows(2)
+            .all(|w| (w[0] - w[1]).abs() < 1e-10);
+        assert!(
+            !all_same,
+            "Initial values should differ per curve: {:?}",
+            result.initial_values
+        );
+
+        // Reconstruct and check initial values are preserved
+        let reconstructed = tsrvf_inverse(&result, &t);
+        for i in 0..n {
+            assert!(
+                (reconstructed[(i, 0)] - result.initial_values[i]).abs() < 1e-6,
+                "Curve {i}: reconstructed f(0) = {}, expected {}",
+                reconstructed[(i, 0)],
+                result.initial_values[i]
+            );
+        }
+
+        // Before the fix, all curves would have reconstructed[(i, 0)] ≈ mean[0]
+        // Verify they are NOT all the same
+        let recon_initials: Vec<f64> = (0..n).map(|i| reconstructed[(i, 0)]).collect();
+        let all_recon_same = recon_initials.windows(2).all(|w| (w[0] - w[1]).abs() < 0.1);
+        assert!(
+            !all_recon_same,
+            "Reconstructed initial values must vary per curve: {:?}",
+            recon_initials
+        );
     }
 
     #[test]
