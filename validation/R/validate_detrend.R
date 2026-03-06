@@ -142,6 +142,29 @@ results$additive_decomposition <- tryCatch({
   NULL
 })
 
+# ---- (f) LOESS detrend on seasonal data ----------------------------------------
+message("  Computing LOESS detrend on seasonal data...")
+results$loess_detrend <- tryCatch({
+  seasonal_data <- load_data("seasonal_200")
+  noisy_sine <- seasonal_data$noisy_sine
+  t_vals <- seasonal_data$t
+
+  fit <- loess(noisy_sine ~ t_vals, span = 0.75)
+  trend <- as.numeric(predict(fit))
+  detrended <- noisy_sine - trend
+
+  message(sprintf("    LOESS trend range: [%.4f, %.4f]", min(trend), max(trend)))
+
+  list(
+    trend = trend,
+    detrended = detrended,
+    span = 0.75
+  )
+}, error = function(e) {
+  warning(sprintf("LOESS detrend failed: %s", conditionMessage(e)))
+  NULL
+})
+
 # ---- Save results --------------------------------------------------------------
 message("\n  Saving expected detrend values...")
 save_expected(results, "detrend_expected")

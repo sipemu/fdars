@@ -154,6 +154,112 @@ results$period_estimation <- tryCatch({
   NULL
 })
 
+# ---- (f) SSA reconstruction ----------------------------------------------------
+message("  Computing SSA reconstruction (Rssa) on noisy_sine...")
+results$ssa_reconstruction <- tryCatch({
+  if (!requireNamespace("Rssa", quietly = TRUE)) {
+    message("    Rssa package not available, skipping")
+    NULL
+  } else {
+    s <- Rssa::ssa(noisy_sine, L = 50)
+    recon <- Rssa::reconstruct(s, groups = list(c(1, 2)))
+    component <- as.numeric(recon[[1]])
+
+    message(sprintf("    SSA reconstructed component length: %d", length(component)))
+
+    list(
+      component_1_2 = component,
+      window_length = 50
+    )
+  }
+}, error = function(e) {
+  warning(sprintf("SSA reconstruction failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---- (g) Hilbert transform amplitude -------------------------------------------
+message("  Computing Hilbert transform amplitude (pracma) on noisy_sine...")
+results$hilbert_amplitude <- tryCatch({
+  # Manual Hilbert transform via FFT
+  n_h <- length(noisy_sine)
+  fft_vals <- fft(noisy_sine)
+  h <- rep(0, n_h)
+  h[1] <- 1
+  if (n_h > 1) {
+    if (n_h %% 2 == 0) {
+      h[2:(n_h/2)] <- 2
+      h[n_h/2 + 1] <- 1
+    } else {
+      h[2:((n_h+1)/2)] <- 2
+    }
+  }
+  analytic <- fft(fft_vals * h, inverse = TRUE) / n_h
+  amplitude <- Mod(analytic)
+
+  message(sprintf("    Hilbert amplitude: mean=%.4f, sd=%.4f", mean(amplitude), sd(amplitude)))
+
+  list(
+    amplitude = as.numeric(amplitude)
+  )
+}, error = function(e) {
+  warning(sprintf("Hilbert transform failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---- (h) Seasonal strength (variance ratio) -----------------------------------
+message("  Computing seasonal strength via variance ratio...")
+results$seasonal_strength <- tryCatch({
+  dt <- (max(t_vals) - min(t_vals)) / (n_ts - 1)
+  freq <- round(true_period / dt)
+
+  ts_obj <- ts(noisy_sine, frequency = freq)
+  decomp <- stats::decompose(ts_obj, type = "additive")
+
+  # Seasonal strength = 1 - Var(remainder) / Var(deseasonalized)
+  remainder <- as.numeric(decomp$random)
+  seasonal <- as.numeric(decomp$seasonal)
+  trend <- as.numeric(decomp$trend)
+
+  # Remove NAs from boundary
+  valid <- !is.na(remainder) & !is.na(trend)
+  deseasonalized <- noisy_sine[valid] - seasonal[valid]
+  remainder_valid <- remainder[valid]
+
+  strength <- 1 - var(remainder_valid) / var(deseasonalized)
+
+  message(sprintf("    Seasonal strength: %.4f", strength))
+
+  list(
+    strength = strength,
+    frequency = freq
+  )
+}, error = function(e) {
+  warning(sprintf("Seasonal strength failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---- (i) Additive seasonal component from decompose ---------------------------
+message("  Computing additive decomposition seasonal component...")
+results$decompose_seasonal <- tryCatch({
+  dt <- (max(t_vals) - min(t_vals)) / (n_ts - 1)
+  freq <- round(true_period / dt)
+
+  ts_obj <- ts(noisy_sine, frequency = freq)
+  decomp <- stats::decompose(ts_obj, type = "additive")
+
+  seasonal_component <- as.numeric(decomp$seasonal)
+
+  message(sprintf("    Seasonal component length: %d", length(seasonal_component)))
+
+  list(
+    seasonal = seasonal_component,
+    frequency = freq
+  )
+}, error = function(e) {
+  warning(sprintf("Decompose seasonal failed: %s", conditionMessage(e)))
+  NULL
+})
+
 # ---- Save results --------------------------------------------------------------
 message("\n  Saving expected seasonal values...")
 save_expected(results, "seasonal_expected")

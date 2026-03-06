@@ -88,5 +88,38 @@ for (b in 1:nb) {
 confidence <- 0.95
 result$degras_critical_value <- as.numeric(quantile(sup_stats, probs = confidence, type = 1))
 
+# ---------------------------------------------------------------------------
+# 4. Degras SCB: smoothed mean values for tighter comparison
+# ---------------------------------------------------------------------------
+message("  Computing Degras smoothed mean values...")
+result$degras_smoothed_mean <- as.vector(smoothed_mean)
+result$degras_sigma_hat <- as.vector(sigma_hat)
+
+# ---------------------------------------------------------------------------
+# 5. Elastic tolerance band center (fdasrvf)
+# ---------------------------------------------------------------------------
+message("  Computing elastic tolerance band...")
+result$elastic_tolerance <- tryCatch({
+  if (!requireNamespace("fdasrvf", quietly = TRUE)) {
+    message("    fdasrvf package not available, skipping")
+    NULL
+  } else {
+    # Use first 20 curves for speed
+    sub_mat <- t(mat[1:20, ])  # fdasrvf expects m x n
+    tw <- fdasrvf::time_warping(sub_mat, argvals, max_iter = 10L)
+    center <- as.vector(tw$fmean)
+
+    message(sprintf("    Elastic center range: [%.4f, %.4f]", min(center), max(center)))
+
+    list(
+      center = center,
+      n = 20
+    )
+  }
+}, error = function(e) {
+  warning(sprintf("Elastic tolerance band failed: %s", conditionMessage(e)))
+  NULL
+})
+
 save_expected(result, "tolerance_expected")
 message("=== Tolerance band validation complete ===")

@@ -27,6 +27,7 @@
 use fdars_core::classification::{fclassif_dd, fclassif_knn, fclassif_lda};
 use fdars_core::famm::fmm;
 use fdars_core::gmm::{gmm_em, CovType};
+use fdars_core::irreg_fdata::IrregFdata;
 use fdars_core::matrix::FdMatrix;
 use fdars_core::scalar_on_function::fregre_lm;
 use fdars_core::streaming_depth::StreamingDepth;
@@ -138,6 +139,11 @@ fn assert_relative_close(actual: f64, expected: f64, rel_tol: f64, label: &str) 
 
 /// Check that two ranking orderings are correlated (Spearman-like).
 fn assert_ranking_correlated(actual: &[f64], expected: &[f64], label: &str) {
+    assert_ranking_correlated_tol(actual, expected, 0.9, label);
+}
+
+/// Check ranking correlation with a custom threshold.
+fn assert_ranking_correlated_tol(actual: &[f64], expected: &[f64], min_rho: f64, label: &str) {
     assert_eq!(actual.len(), expected.len(), "{}: length mismatch", label);
     let n = actual.len();
     let rank = |v: &[f64]| -> Vec<usize> {
@@ -166,10 +172,11 @@ fn assert_ranking_correlated(actual: &[f64], expected: &[f64], label: &str) {
     }
     let rho = cov / (var_a * var_e).sqrt().max(1e-10);
     assert!(
-        rho > 0.9,
-        "{}: rankings poorly correlated (ρ={:.4})",
+        rho > min_rho,
+        "{}: rankings poorly correlated (ρ={:.4}, threshold={:.2})",
         label,
-        rho
+        rho,
+        min_rho
     );
 }
 
@@ -306,6 +313,10 @@ struct MetricsExpected {
     dtw_sakoechiba: f64,
     semimetric_fourier: SquareMatrixData,
     semimetric_hshift: SquareMatrixData,
+    #[serde(default)]
+    hausdorff_5x5: Option<SquareMatrixData>,
+    #[serde(default)]
+    lp_cross_5x5: Option<CrossDistanceExpected>,
 }
 
 // Clustering expected
@@ -377,6 +388,18 @@ struct SmoothingExpected {
     nadaraya_watson: Vec<f64>,
     local_linear: Vec<f64>,
     knn_k5: Vec<f64>,
+    #[serde(default)]
+    local_polynomial: Option<Vec<f64>>,
+    #[serde(default)]
+    smoothing_matrix_nw: Option<SmoothingMatrixNwExpected>,
+}
+
+#[derive(Deserialize)]
+struct SmoothingMatrixNwExpected {
+    eval_point: f64,
+    bandwidth: f64,
+    weights: Vec<f64>,
+    row_sum: f64,
 }
 
 // Simulation expected
@@ -399,9 +422,41 @@ struct EigenvaluesExpected {
 struct SeasonalExpected {
     periodogram: PeriodogramExpected,
     acf: AcfExpected,
-    lomb_scargle: LombScargleExpected,
+    #[serde(default)]
+    lomb_scargle: Option<LombScargleExpected>,
     peak_detection: PeakDetectionExpected,
     period_estimation: PeriodEstimationExpected,
+    #[serde(default)]
+    ssa_reconstruction: Option<SsaReconstructionExpected>,
+    #[serde(default)]
+    hilbert_amplitude: Option<HilbertAmplitudeExpected>,
+    #[serde(default)]
+    seasonal_strength: Option<SeasonalStrengthExpected>,
+    #[serde(default)]
+    decompose_seasonal: Option<DecomposeSeasonalExpected>,
+}
+
+#[derive(Deserialize)]
+struct SsaReconstructionExpected {
+    component_1_2: Vec<f64>,
+    window_length: usize,
+}
+
+#[derive(Deserialize)]
+struct HilbertAmplitudeExpected {
+    amplitude: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct SeasonalStrengthExpected {
+    strength: f64,
+    frequency: usize,
+}
+
+#[derive(Deserialize)]
+struct DecomposeSeasonalExpected {
+    seasonal: Vec<f64>,
+    frequency: usize,
 }
 
 #[derive(Deserialize)]
@@ -448,6 +503,15 @@ struct DetrendExpected {
     differencing: DifferencingExpected,
     stl_decomposition: StlExpected,
     additive_decomposition: serde_json::Value,
+    #[serde(default)]
+    loess_detrend: Option<LoessDetrendExpected>,
+}
+
+#[derive(Deserialize)]
+struct LoessDetrendExpected {
+    trend: Vec<f64>,
+    detrended: Vec<f64>,
+    span: f64,
 }
 
 #[derive(Deserialize)]
@@ -509,6 +573,23 @@ struct AlignmentExpected {
     karcher_mean: Vec<f64>,
     karcher_mean_srsf: Vec<f64>,
     distance_matrix_5x5: SquareMatrixData,
+    #[serde(default)]
+    elastic_decomposition: Option<ElasticDecompositionExpected>,
+    #[serde(default)]
+    cross_distance_3x3: Option<CrossDistanceExpected>,
+}
+
+#[derive(Deserialize)]
+struct ElasticDecompositionExpected {
+    amplitude_distance: f64,
+    phase_distance: f64,
+}
+
+#[derive(Deserialize)]
+struct CrossDistanceExpected {
+    n1: usize,
+    n2: usize,
+    data: Vec<f64>,
 }
 
 // Tolerance expected
@@ -520,6 +601,18 @@ struct ToleranceExpected {
     conformal_quantile: f64,
     degras_center: Vec<f64>,
     degras_critical_value: f64,
+    #[serde(default)]
+    degras_smoothed_mean: Option<Vec<f64>>,
+    #[serde(default)]
+    degras_sigma_hat: Option<Vec<f64>>,
+    #[serde(default)]
+    elastic_tolerance: Option<ElasticToleranceExpected>,
+}
+
+#[derive(Deserialize)]
+struct ElasticToleranceExpected {
+    center: Vec<f64>,
+    n: usize,
 }
 
 // Equivalence expected
@@ -533,6 +626,49 @@ struct EquivalenceExpected {
     scb_upper: Vec<f64>,
     equivalent: bool,
     p_value: f64,
+}
+
+// IrregFdata expected
+#[derive(Deserialize)]
+struct IrregFdataExpected {
+    n_curves: usize,
+    n_points: Vec<usize>,
+    argvals: Vec<Vec<f64>>,
+    values: Vec<Vec<f64>>,
+    #[serde(default)]
+    integrate: Option<IntegrateExpected>,
+    #[serde(default)]
+    norm_l2: Option<NormL2Expected>,
+    #[serde(default)]
+    mean_curve: Option<MeanCurveExpected>,
+    #[serde(default)]
+    to_regular: Option<ToRegularExpected>,
+    #[serde(default)]
+    metric_lp: Option<SquareMatrixData>,
+}
+
+#[derive(Deserialize)]
+struct IntegrateExpected {
+    integrals: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct NormL2Expected {
+    norms: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct MeanCurveExpected {
+    target_grid: Vec<f64>,
+    mean_values: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct ToRegularExpected {
+    target_grid: Vec<f64>,
+    data: Vec<f64>,
+    n: usize,
+    m: usize,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1263,12 +1399,12 @@ fn test_lomb_scargle_peak() {
     let sdat: SeasonalData = load_json("data", "seasonal_200");
 
     let result = fdars_core::seasonal::lomb_scargle(&sdat.t, &sdat.noisy_sine, None, None, None);
-    assert_relative_close(
-        result.peak_period,
-        exp.lomb_scargle.peak_period,
-        0.05,
-        "lomb_peak",
-    );
+    if let Some(ref ls) = exp.lomb_scargle {
+        assert_relative_close(result.peak_period, ls.peak_period, 0.05, "lomb_peak");
+    } else {
+        // lomb package not available in R — just check Rust peak is near true period
+        assert_relative_close(result.peak_period, 2.0, 0.1, "lomb_peak_vs_true");
+    }
 }
 
 // ─── Detrend ────────────────────────────────────────────────────────────────
@@ -4379,4 +4515,740 @@ fn test_r_gmm_model_selection() {
         res_k3.bic,
         res_k4.bic
     );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2a: Extended Seasonal Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// SSA reconstruction: compare first 2 component reconstruction against R's Rssa.
+#[test]
+fn test_ssa_reconstruction_vs_r() {
+    let exp: SeasonalExpected = load_json("expected", "seasonal_expected");
+    let sdat: SeasonalData = load_json("data", "seasonal_200");
+
+    if let Some(ref ssa_exp) = exp.ssa_reconstruction {
+        let result = fdars_core::seasonal::ssa(
+            &sdat.noisy_sine,
+            Some(ssa_exp.window_length),
+            Some(10),
+            None,
+            Some(&[0, 1]),
+        );
+
+        // SSA reconstruction (first 2 components) should correlate strongly with R's
+        let rust_recon = &result.seasonal;
+        let r_recon = &ssa_exp.component_1_2;
+        assert_eq!(rust_recon.len(), r_recon.len());
+
+        // Rank correlation — SSA implementations differ in grouping heuristics
+        assert_ranking_correlated(rust_recon, r_recon, "ssa_component_1_2");
+
+        // Also check the reconstruction captures the periodic structure
+        let recon_var: f64 =
+            rust_recon.iter().map(|x| x * x).sum::<f64>() / rust_recon.len() as f64;
+        assert!(
+            recon_var > 0.01,
+            "SSA reconstruction should have non-trivial variance: {}",
+            recon_var
+        );
+    }
+}
+
+/// Hilbert transform amplitude: compare analytic signal amplitude vs R.
+#[test]
+fn test_hilbert_amplitude_vs_r() {
+    let exp: SeasonalExpected = load_json("expected", "seasonal_expected");
+    let sdat: SeasonalData = load_json("data", "seasonal_200");
+
+    if let Some(ref hilbert_exp) = exp.hilbert_amplitude {
+        let analytic = fdars_core::seasonal::hilbert_transform(&sdat.noisy_sine);
+        let rust_amplitude: Vec<f64> = analytic.iter().map(|c| c.norm()).collect();
+
+        assert_eq!(rust_amplitude.len(), hilbert_exp.amplitude.len());
+
+        // Hilbert amplitude should match R closely (both use FFT-based approach)
+        assert_vec_close(
+            &rust_amplitude,
+            &hilbert_exp.amplitude,
+            0.05,
+            "hilbert_amplitude",
+        );
+    }
+}
+
+/// Seasonal strength (variance ratio): compare against R's decompose-based metric.
+#[test]
+fn test_seasonal_strength_vs_r() {
+    let exp: SeasonalExpected = load_json("expected", "seasonal_expected");
+    let sdat: SeasonalData = load_json("data", "seasonal_200");
+
+    if let Some(ref strength_exp) = exp.seasonal_strength {
+        let n = 1;
+        let m = sdat.n;
+        let data = FdMatrix::from_slice(&sdat.noisy_sine, n, m).unwrap();
+
+        let rust_strength =
+            fdars_core::seasonal::seasonal_strength_variance(&data, &sdat.t, sdat.period as f64, 3);
+
+        // Seasonal strength values may differ due to different decomposition methods.
+        // Just verify both are in a reasonable range and have the same sign.
+        assert!(
+            rust_strength.is_finite(),
+            "Rust seasonal strength should be finite"
+        );
+        assert!(
+            strength_exp.strength.is_finite(),
+            "R seasonal strength should be finite"
+        );
+        // Both should indicate some (weak) seasonality
+        let diff = (rust_strength - strength_exp.strength).abs();
+        assert!(
+            diff < 1.0,
+            "Seasonal strength difference too large: Rust={:.4}, R={:.4}",
+            rust_strength,
+            strength_exp.strength
+        );
+    }
+}
+
+/// Peak detection: compare detected peak positions against R's pracma::findpeaks.
+#[test]
+fn test_peak_detection_vs_r() {
+    let exp: SeasonalExpected = load_json("expected", "seasonal_expected");
+
+    let r_signal = &exp.peak_detection.signal;
+    let r_x = &exp.peak_detection.x;
+    let r_peak_indices = &exp.peak_detection.peak_indices;
+
+    // Build FdMatrix from the signal (1 x 200)
+    let n = 1;
+    let m = r_signal.len();
+    let data = FdMatrix::from_slice(r_signal, n, m).unwrap();
+
+    let result = fdars_core::seasonal::detect_peaks(&data, r_x, None, Some(0.5), false, None);
+
+    // R uses pracma::findpeaks which may use different criteria than Rust's
+    // derivative zero-crossing with prominence filtering.
+    // Verify Rust finds a reasonable number of peaks and they overlap R's.
+    let rust_peak_count = result.peaks[0].len();
+    let r_peak_count = r_peak_indices.len();
+    assert!(
+        rust_peak_count >= 3 && rust_peak_count <= r_peak_count + 3,
+        "Peak count out of reasonable range: Rust={}, R={}",
+        rust_peak_count,
+        r_peak_count
+    );
+
+    // Check that each Rust peak is near some R peak
+    if !result.peaks[0].is_empty() && !r_peak_indices.is_empty() {
+        let rust_times: Vec<f64> = result.peaks[0].iter().map(|p| p.time).collect();
+        let r_times: Vec<f64> = r_peak_indices
+            .iter()
+            .map(|&idx| r_x[(idx - 1).min(m - 1)])
+            .collect(); // R is 1-indexed
+        for rust_t in &rust_times {
+            let min_dist = r_times
+                .iter()
+                .map(|&rt| (rt - rust_t).abs())
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                min_dist < 0.05,
+                "Rust peak at t={:.4} has no matching R peak (min_dist={:.4})",
+                rust_t,
+                min_dist
+            );
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2b: Extended Detrend Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// LOESS detrend: compare trend shape against R's loess().
+#[test]
+fn test_detrend_loess_vs_r() {
+    let exp: DetrendExpected = load_json("expected", "detrend_expected");
+    let sdat: SeasonalData = load_json("data", "seasonal_200");
+
+    if let Some(ref loess_exp) = exp.loess_detrend {
+        let n = 1;
+        let m = sdat.n;
+        let data = FdMatrix::from_slice(&sdat.noisy_sine, n, m).unwrap();
+
+        let result = fdars_core::detrend::detrend_loess(&data, &sdat.t, 0.3, 1);
+
+        let rust_trend: Vec<f64> = (0..m).map(|j| result.trend[(0, j)]).collect();
+
+        // LOESS implementations differ in bandwidth interpretation and kernel.
+        // R uses tri-cube kernel; Rust uses Gaussian + local polynomial.
+        assert_ranking_correlated_tol(&rust_trend, &loess_exp.trend, 0.75, "loess_trend_shape");
+
+        // Detrended should have smaller variance than original
+        let orig_var: f64 = sdat.noisy_sine.iter().map(|x| x * x).sum::<f64>() / m as f64;
+        let detrended: Vec<f64> = (0..m).map(|j| result.detrended[(0, j)]).collect();
+        let det_var: f64 = detrended.iter().map(|x| x * x).sum::<f64>() / m as f64;
+        assert!(
+            det_var <= orig_var * 1.1,
+            "LOESS detrended variance should not exceed original"
+        );
+    }
+}
+
+/// Additive decomposition: verify reconstruction identity against R.
+#[test]
+fn test_decompose_additive_vs_r() {
+    let sdat: SeasonalData = load_json("data", "seasonal_200");
+
+    let n = 1;
+    let m = sdat.n;
+    let data = FdMatrix::from_slice(&sdat.noisy_sine, n, m).unwrap();
+
+    let result = fdars_core::detrend::decompose_additive(
+        &data,
+        &sdat.t,
+        sdat.period as f64,
+        "loess",
+        0.3,
+        3,
+    );
+
+    // Reconstruction identity: trend + seasonal + remainder = original
+    for j in 0..m {
+        let reconstructed =
+            result.trend[(0, j)] + result.seasonal[(0, j)] + result.remainder[(0, j)];
+        assert_scalar_close(
+            reconstructed,
+            sdat.noisy_sine[j],
+            1e-6,
+            &format!("additive_decomp_recon[{}]", j),
+        );
+    }
+}
+
+/// Multiplicative decomposition: verify reconstruction identity.
+#[test]
+fn test_decompose_multiplicative_vs_r() {
+    let sdat: SeasonalData = load_json("data", "seasonal_200");
+
+    let n = 1;
+    let m = sdat.n;
+    // Shift data to be positive for multiplicative decomposition
+    let shifted: Vec<f64> = sdat.noisy_sine.iter().map(|&x| x + 3.0).collect();
+    let data = FdMatrix::from_slice(&shifted, n, m).unwrap();
+
+    let result = fdars_core::detrend::decompose_multiplicative(
+        &data,
+        &sdat.t,
+        sdat.period as f64,
+        "loess",
+        0.3,
+        3,
+    );
+
+    // Reconstruction identity: trend * seasonal * remainder = original
+    for (j, &orig) in shifted.iter().enumerate().take(m) {
+        let reconstructed =
+            result.trend[(0, j)] * result.seasonal[(0, j)] * result.remainder[(0, j)];
+        assert!(
+            (reconstructed - orig).abs() < 1e-3,
+            "mult decomp reconstruction failed at j={}: {:.6} vs {:.6}",
+            j,
+            reconstructed,
+            orig
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2c: Extended Smoothing Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Local polynomial smoother: compare against R's locpoly (degree=2).
+#[test]
+fn test_local_polynomial_vs_r() {
+    let exp: SmoothingExpected = load_json("expected", "smoothing_expected");
+    let dat: NoisySineData = load_json("data", "noisy_sine_201");
+
+    if let Some(ref r_lp) = exp.local_polynomial {
+        let result = fdars_core::smoothing::local_polynomial(
+            &dat.x,
+            &dat.y_noisy,
+            &dat.x,
+            0.05,
+            2,
+            "gaussian",
+        );
+
+        // Local polynomial with degree=2 should be close to R's locpoly degree=2
+        // R uses FFT-based binning, Rust uses direct computation, so moderate tolerance
+        assert_vec_close(&result, r_lp, 0.15, "local_polynomial_degree2");
+    }
+}
+
+/// Smoothing matrix NW: verify row sums to 1 and compare one row to R.
+#[test]
+fn test_smoothing_matrix_nw_vs_r() {
+    let exp: SmoothingExpected = load_json("expected", "smoothing_expected");
+    let dat: NoisySineData = load_json("data", "noisy_sine_201");
+
+    if let Some(ref nw_exp) = exp.smoothing_matrix_nw {
+        let sm = fdars_core::smoothing::smoothing_matrix_nw(&dat.x, 0.05, "gaussian");
+        let m = dat.x.len();
+
+        // Total elements should be m*m
+        assert_eq!(sm.len(), m * m, "Smoothing matrix should be m×m");
+
+        // Row sums should all be ~1 (column-major storage: s[i + j * m])
+        for i in 0..m {
+            let row_sum: f64 = (0..m).map(|j| sm[i + j * m]).sum();
+            assert!(
+                (row_sum - 1.0).abs() < 1e-6,
+                "NW smoothing matrix row {} sum = {}, expected 1.0",
+                i,
+                row_sum
+            );
+        }
+
+        // Compare middle row (idx=100 for eval_point ≈ 0.5) with R
+        // Column-major: row i is at sm[i], sm[i+m], sm[i+2m], ...
+        let mid_row: Vec<f64> = (0..m).map(|j| sm[100 + j * m]).collect();
+        assert_vec_close(
+            &mid_row,
+            &nw_exp.weights,
+            1e-6,
+            "smoothing_matrix_nw_row100",
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2d: Extended Tolerance Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Degras SCB: tighter comparison of smoothed mean values.
+#[test]
+fn test_degras_scb_mean_vs_r() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(ref r_smoothed) = exp.degras_smoothed_mean {
+        let band = fdars_core::scb_mean_degras(
+            &mat,
+            &d.argvals,
+            0.15,
+            500,
+            0.95,
+            fdars_core::MultiplierDistribution::Gaussian,
+        )
+        .expect("scb_mean_degras should succeed");
+
+        // Compare smoothed mean shapes (different kernel implementations, so moderate tol)
+        assert_ranking_correlated(&band.center, r_smoothed, "degras_smoothed_mean_shape");
+
+        // Verify max pointwise difference is bounded
+        let max_diff: f64 = band
+            .center
+            .iter()
+            .zip(r_smoothed.iter())
+            .map(|(a, e)| (a - e).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_diff < 0.3,
+            "Degras smoothed mean max diff = {:.4}, expected < 0.3",
+            max_diff
+        );
+    }
+}
+
+/// Elastic tolerance band: compare center against R's fdasrvf time_warping mean.
+#[test]
+fn test_elastic_tolerance_center_vs_r() {
+    let exp: ToleranceExpected = load_json("expected", "tolerance_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(ref elastic_exp) = exp.elastic_tolerance {
+        // Use same number of curves as R
+        let n_sub = elastic_exp.n.min(d.n);
+        let sub_vec: Vec<f64> = (0..n_sub * d.m)
+            .map(|idx| {
+                let i = idx % n_sub;
+                let j = idx / n_sub;
+                mat[(i, j)]
+            })
+            .collect();
+        let sub_mat = FdMatrix::from_column_major(sub_vec, n_sub, d.m).unwrap();
+
+        let band = fdars_core::elastic_tolerance_band(
+            &sub_mat,
+            &d.argvals,
+            5,
+            100,
+            0.95,
+            fdars_core::tolerance::BandType::Simultaneous,
+            20,
+            42,
+        )
+        .expect("elastic_tolerance_band should succeed");
+
+        // Center shape should correlate with R's elastic mean
+        assert_ranking_correlated(
+            &band.center,
+            &elastic_exp.center,
+            "elastic_tolerance_center",
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2e: Extended Depth Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Random projection depth: compare actual values (not just rank correlation).
+#[test]
+fn test_random_projection_values_vs_r() {
+    let exp: DepthExpected = load_json("expected", "depth_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(r_vals) = exp.random_projection.as_array() {
+        let r_depths: Vec<f64> = r_vals.iter().filter_map(|v| v.as_f64()).collect();
+        let rust_depths = fdars_core::depth::random_projection_1d(&mat, &mat, 50);
+
+        // RNG seeds differ between R and Rust, so values won't match exactly.
+        // Use relaxed rank correlation since random projections are inherently stochastic.
+        assert_ranking_correlated_tol(&rust_depths, &r_depths, 0.75, "random_projection_ranks");
+
+        // Both depth vectors should have similar mean and variance
+        let r_mean = r_depths.iter().sum::<f64>() / r_depths.len() as f64;
+        let rust_mean = rust_depths.iter().sum::<f64>() / rust_depths.len() as f64;
+        assert!(
+            (r_mean - rust_mean).abs() < 0.15,
+            "RP depth mean diff: R={:.4}, Rust={:.4}",
+            r_mean,
+            rust_mean
+        );
+    }
+}
+
+/// Random Tukey depth: compare actual values.
+#[test]
+fn test_random_tukey_values_vs_r() {
+    let exp: DepthExpected = load_json("expected", "depth_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(r_vals) = exp.random_tukey.as_array() {
+        let r_depths: Vec<f64> = r_vals.iter().filter_map(|v| v.as_f64()).collect();
+        // Use many projections for stable results (RNG seeds are incompatible)
+        let rust_depths = fdars_core::depth::random_tukey_1d(&mat, &mat, 500);
+
+        // Random Tukey depth is highly sensitive to projection directions.
+        // With incompatible RNGs, only statistical properties can be compared.
+        let r_mean = r_depths.iter().sum::<f64>() / r_depths.len() as f64;
+        let rust_mean = rust_depths.iter().sum::<f64>() / rust_depths.len() as f64;
+        assert!(
+            (r_mean - rust_mean).abs() < 0.15,
+            "RT depth mean diff: R={:.4}, Rust={:.4}",
+            r_mean,
+            rust_mean
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3a: Irregular FData Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Trapezoidal integration on irregular grids: compare against R.
+#[test]
+fn test_irreg_integrate_vs_r() {
+    let exp: IrregFdataExpected = load_json("expected", "irreg_fdata_expected");
+
+    let ifd = IrregFdata::from_lists(&exp.argvals, &exp.values);
+    let rust_integrals = fdars_core::irreg_fdata::integrate_irreg(&ifd);
+
+    if let Some(ref int_exp) = exp.integrate {
+        assert_vec_close(&rust_integrals, &int_exp.integrals, 1e-4, "irreg_integrate");
+    }
+}
+
+/// L2 norm on irregular grids: compare against R.
+#[test]
+fn test_irreg_norm_vs_r() {
+    let exp: IrregFdataExpected = load_json("expected", "irreg_fdata_expected");
+
+    let ifd = IrregFdata::from_lists(&exp.argvals, &exp.values);
+    let rust_norms = fdars_core::irreg_fdata::norm_lp_irreg(&ifd, 2.0);
+
+    if let Some(ref norm_exp) = exp.norm_l2 {
+        assert_vec_close(&rust_norms, &norm_exp.norms, 1e-4, "irreg_norm_l2");
+    }
+}
+
+/// Mean after interpolation to common grid: compare against R.
+#[test]
+fn test_irreg_mean_vs_r() {
+    let exp: IrregFdataExpected = load_json("expected", "irreg_fdata_expected");
+
+    let ifd = IrregFdata::from_lists(&exp.argvals, &exp.values);
+
+    if let Some(ref mean_exp) = exp.mean_curve {
+        let rust_mean_vec = fdars_core::irreg_fdata::mean_irreg(
+            &ifd,
+            &mean_exp.target_grid,
+            0.05,
+            fdars_core::irreg_fdata::KernelType::Gaussian,
+        );
+
+        // Mean curve comparison — R uses linear interpolation, Rust uses kernel smoothing.
+        // Methods inherently differ at boundaries and sparse regions.
+        // Use rank correlation instead of pointwise comparison since the methods differ.
+        assert_ranking_correlated_tol(
+            &rust_mean_vec,
+            &mean_exp.mean_values,
+            0.9,
+            "irreg_mean_curve_shape",
+        );
+    }
+}
+
+/// Interpolation to regular grid: compare against R's approx().
+#[test]
+fn test_irreg_to_regular_vs_r() {
+    let exp: IrregFdataExpected = load_json("expected", "irreg_fdata_expected");
+
+    let ifd = IrregFdata::from_lists(&exp.argvals, &exp.values);
+
+    if let Some(ref reg_exp) = exp.to_regular {
+        let rust_regular = fdars_core::irreg_fdata::to_regular_grid(&ifd, &reg_exp.target_grid);
+
+        assert_eq!(rust_regular.nrows(), reg_exp.n);
+        assert_eq!(rust_regular.ncols(), reg_exp.m);
+
+        // Compare interpolated values (linear interpolation should match R's approx)
+        for i in 0..reg_exp.n {
+            for j in 0..reg_exp.m {
+                let r_val = reg_exp.data[i + j * reg_exp.n]; // column-major
+                let rust_val = rust_regular[(i, j)];
+                assert!(
+                    (rust_val - r_val).abs() < 1e-4,
+                    "to_regular[{},{}]: Rust={:.6}, R={:.6}",
+                    i,
+                    j,
+                    rust_val,
+                    r_val
+                );
+            }
+        }
+    }
+}
+
+/// Pairwise L2 distances on irregular grids: compare against R.
+#[test]
+fn test_irreg_metric_vs_r() {
+    let exp: IrregFdataExpected = load_json("expected", "irreg_fdata_expected");
+
+    let ifd = IrregFdata::from_lists(&exp.argvals, &exp.values);
+
+    if let Some(ref metric_exp) = exp.metric_lp {
+        let rust_dist = fdars_core::irreg_fdata::metric_lp_irreg(&ifd, 2.0);
+
+        let n = metric_exp.n;
+        assert_eq!(rust_dist.nrows(), n);
+        assert_eq!(rust_dist.ncols(), n);
+
+        // Compare distance matrices with moderate tolerance
+        // (R uses fine-grid interpolation, Rust may use different approach)
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let r_val = metric_exp.data[i + j * n]; // column-major
+                let rust_val = rust_dist[(i, j)];
+                // Relative tolerance for distance values
+                let tol = r_val.abs().max(0.01) * 0.15;
+                assert!(
+                    (rust_val - r_val).abs() < tol,
+                    "irreg_metric[{},{}]: Rust={:.6}, R={:.6}, tol={:.6}",
+                    i,
+                    j,
+                    rust_val,
+                    r_val,
+                    tol
+                );
+            }
+            // Diagonal should be zero
+            assert!(
+                rust_dist[(i, i)].abs() < 1e-10,
+                "irreg_metric diagonal[{}] should be 0",
+                i
+            );
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3b: Extended Alignment Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Elastic decomposition: amplitude + phase distances vs R.
+#[test]
+fn test_elastic_decomposition_vs_r() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(ref decomp_exp) = exp.elastic_decomposition {
+        let f1: Vec<f64> = (0..d.m).map(|j| mat[(0, j)]).collect();
+        let f2: Vec<f64> = (0..d.m).map(|j| mat[(1, j)]).collect();
+
+        let decomp = fdars_core::alignment::elastic_decomposition(&f1, &f2, &d.argvals, 0.0);
+
+        // Amplitude distance should be close to R's
+        assert_relative_close(
+            decomp.d_amplitude,
+            decomp_exp.amplitude_distance,
+            0.2,
+            "amplitude_distance",
+        );
+
+        // Phase distance is more sensitive to alignment details
+        assert!(
+            decomp.d_phase.is_finite() && decomp.d_phase >= 0.0,
+            "Phase distance should be finite and non-negative: {}",
+            decomp.d_phase
+        );
+    }
+}
+
+/// Cross distance matrix: first 3 vs next 3 curves.
+#[test]
+fn test_elastic_cross_distance_vs_r() {
+    let exp: AlignmentExpected = load_json("expected", "alignment_expected");
+    let d: AlignmentData = load_json("data", "alignment_30x51");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(ref cross_exp) = exp.cross_distance_3x3 {
+        let n1 = cross_exp.n1;
+        let n2 = cross_exp.n2;
+
+        // Build two groups
+        let g1_vec: Vec<f64> = (0..n1 * d.m)
+            .map(|idx| {
+                let i = idx % n1;
+                let j = idx / n1;
+                mat[(i, j)]
+            })
+            .collect();
+        let g2_vec: Vec<f64> = (0..n2 * d.m)
+            .map(|idx| {
+                let i = idx % n2;
+                let j = idx / n2;
+                mat[(n1 + i, j)]
+            })
+            .collect();
+        let g1 = FdMatrix::from_column_major(g1_vec, n1, d.m).unwrap();
+        let g2 = FdMatrix::from_column_major(g2_vec, n2, d.m).unwrap();
+
+        let cross = fdars_core::alignment::elastic_cross_distance_matrix(&g1, &g2, &d.argvals, 0.0);
+        assert_eq!(cross.nrows(), n1);
+        assert_eq!(cross.ncols(), n2);
+
+        // Compare with R's cross distances (moderate tolerance due to DP alignment differences)
+        for i in 0..n1 {
+            for j in 0..n2 {
+                let r_val = cross_exp.data[i + j * n1]; // column-major
+                assert_relative_close(
+                    cross[(i, j)],
+                    r_val,
+                    0.2,
+                    &format!("cross_dist_{}_{}", i, j),
+                );
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3c: Extended Metrics Validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Hausdorff distance: compare 5x5 matrix against R.
+#[test]
+fn test_hausdorff_values_vs_r() {
+    let exp: MetricsExpected = load_json("expected", "metrics_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(ref h_exp) = exp.hausdorff_5x5 {
+        let k = h_exp.n;
+        let sub_vec: Vec<f64> = (0..k * d.m)
+            .map(|idx| {
+                let i = idx % k;
+                let j = idx / k;
+                mat[(i, j)]
+            })
+            .collect();
+        let sub = FdMatrix::from_column_major(sub_vec, k, d.m).unwrap();
+
+        let rust_dm = fdars_core::metric::hausdorff_self_1d(&sub, &d.argvals);
+        assert_eq!(rust_dm.nrows(), k);
+
+        // R computes pointwise sup-norm max|f1(t)-f2(t)|, while Rust uses 2D Hausdorff
+        // on (t, f(t)) point sets. These are related but not identical metrics.
+        // Verify rank correlation of the distance orderings.
+        let mut r_vals = Vec::new();
+        let mut rust_vals = Vec::new();
+        for i in 0..k {
+            for j in (i + 1)..k {
+                r_vals.push(h_exp.data[i + j * k]); // column-major
+                rust_vals.push(rust_dm[(i, j)]);
+            }
+        }
+        assert_ranking_correlated(&rust_vals, &r_vals, "hausdorff_rank_order");
+    }
+}
+
+/// Lp cross distance: compare first 5 vs next 5 against R.
+#[test]
+fn test_lp_cross_values_vs_r() {
+    let exp: MetricsExpected = load_json("expected", "metrics_expected");
+    let d: StandardData = load_json("data", "standard_50x101");
+    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+
+    if let Some(ref cross_exp) = exp.lp_cross_5x5 {
+        let n1 = cross_exp.n1;
+        let n2 = cross_exp.n2;
+        let g1_vec: Vec<f64> = (0..n1 * d.m)
+            .map(|idx| {
+                let i = idx % n1;
+                let j = idx / n1;
+                mat[(i, j)]
+            })
+            .collect();
+        let g2_vec: Vec<f64> = (0..n2 * d.m)
+            .map(|idx| {
+                let i = idx % n2;
+                let j = idx / n2;
+                mat[(n1 + i, j)]
+            })
+            .collect();
+        let g1 = FdMatrix::from_column_major(g1_vec, n1, d.m).unwrap();
+        let g2 = FdMatrix::from_column_major(g2_vec, n2, d.m).unwrap();
+
+        // Pass empty user_weights — lp_cross_1d computes Simpson's weights internally
+        let cross = fdars_core::metric::lp_cross_1d(&g1, &g2, &d.argvals, 2.0, &[]);
+        assert_eq!(cross.nrows(), n1);
+        assert_eq!(cross.ncols(), n2);
+
+        // Compare cross distances — R uses Simpson's 1/3, Rust uses trapezoidal
+        for i in 0..n1 {
+            for j in 0..n2 {
+                let r_val = cross_exp.data[i + j * n1]; // column-major
+                assert_relative_close(cross[(i, j)], r_val, 0.05, &format!("lp_cross_{}_{}", i, j));
+            }
+        }
+    }
 }

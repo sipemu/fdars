@@ -103,5 +103,53 @@ result$distance_matrix_5x5 <- list(
   data = as.vector(dist_mat)  # column-major
 )
 
+# ---------------------------------------------------------------------------
+# 7. Elastic decomposition: amplitude and phase distances
+# ---------------------------------------------------------------------------
+message("  Computing elastic decomposition (amplitude + phase)...")
+result$elastic_decomposition <- tryCatch({
+  # Amplitude distance: ||q1 - q2_aligned|| (same as elastic distance)
+  amplitude_dist <- sqrt(sum(w * (q0_srsf - q1_aligned_srsf)^2))
+
+  # Phase distance: ||gamma - identity||_{L2}
+  identity_gamma <- argvals
+  gamma_diff <- pa_01$gam - identity_gamma
+  phase_dist <- sqrt(sum(w * gamma_diff^2))
+
+  message(sprintf("    Amplitude dist: %.6f, Phase dist: %.6f", amplitude_dist, phase_dist))
+
+  list(
+    amplitude_distance = amplitude_dist,
+    phase_distance = phase_dist
+  )
+}, error = function(e) {
+  warning(sprintf("Elastic decomposition failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---------------------------------------------------------------------------
+# 8. Cross distance matrix: first 3 vs next 3 curves
+# ---------------------------------------------------------------------------
+message("  Computing 3x3 cross distance matrix...")
+result$cross_distance_3x3 <- tryCatch({
+  n1 <- 3
+  n2 <- 3
+  cross_mat <- matrix(0, nrow = n1, ncol = n2)
+  for (i in 1:n1) {
+    for (j in 1:n2) {
+      cross_mat[i, j] <- l2_srsf_distance(mat[i, ], mat[n1 + j, ], argvals)
+    }
+  }
+
+  list(
+    n1 = n1,
+    n2 = n2,
+    data = as.vector(cross_mat)  # column-major
+  )
+}, error = function(e) {
+  warning(sprintf("Cross distance matrix failed: %s", conditionMessage(e)))
+  NULL
+})
+
 save_expected(result, "alignment_expected")
 message("=== Alignment validation complete ===")

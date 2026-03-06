@@ -11,6 +11,10 @@ script_dir <- dirname(normalizePath(sub("^--file=", "", grep("^--file=", command
 source(file.path(script_dir, "helpers.R"))
 
 library(fda.usc)
+if (!requireNamespace("dtw", quietly = TRUE)) {
+  message("  dtw package not available, installing...")
+  install.packages("dtw", repos = "https://cloud.r-project.org", quiet = TRUE)
+}
 library(dtw)
 
 message("=== Validating metric/distance functions ===\n")
@@ -94,6 +98,49 @@ results$semimetric_hshift <- tryCatch({
   )
 }, error = function(e) {
   warning(sprintf("Hshift semimetric failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---- (e) Hausdorff distances on first 5 curves ------------------------------
+message("  Computing Hausdorff distances on first 5 curves...")
+results$hausdorff_5x5 <- tryCatch({
+  k <- 5
+  dist_mat <- matrix(0, nrow = k, ncol = k)
+  for (i in 1:k) {
+    for (j in 1:k) {
+      if (i < j) {
+        # Hausdorff: max of directed Hausdorff distances
+        f1 <- mat[i, ]
+        f2 <- mat[j, ]
+        d12 <- max(abs(f1 - f2))  # sup-norm = functional Hausdorff for same-grid data
+        dist_mat[i, j] <- d12
+        dist_mat[j, i] <- d12
+      }
+    }
+  }
+  list(
+    n = k,
+    data = as.numeric(dist_mat)
+  )
+}, error = function(e) {
+  warning(sprintf("Hausdorff distances failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---- (f) Lp (L2) cross distance between two groups --------------------------
+message("  Computing Lp L2 cross distance (first 5 vs next 5)...")
+results$lp_cross_5x5 <- tryCatch({
+  fdata_g1 <- fda.usc::fdata(mat[1:5, ], argvals = argvals)
+  fdata_g2 <- fda.usc::fdata(mat[6:10, ], argvals = argvals)
+  dist_mat <- fda.usc::metric.lp(fdata_g1, fdata_g2, lp = 2)
+  dist_mat <- as.matrix(dist_mat)
+  list(
+    n1 = 5,
+    n2 = 5,
+    data = as.numeric(dist_mat)
+  )
+}, error = function(e) {
+  warning(sprintf("Lp cross distance failed: %s", conditionMessage(e)))
   NULL
 })
 

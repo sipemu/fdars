@@ -19,7 +19,7 @@ for (pkg in c("fda", "fda.usc", "roahd", "ddalpha", "fdasrvf")) install_if_missi
 
 # Statistics / Regression
 message("\n-- Regression packages --")
-for (pkg in c("pls", "glmnet", "MASS")) install_if_missing(pkg)
+for (pkg in c("pls", "glmnet", "MASS", "lme4")) install_if_missing(pkg)
 
 # Smoothing
 message("\n-- Smoothing packages --")
@@ -27,11 +27,15 @@ for (pkg in c("KernSmooth", "locpol", "FNN")) install_if_missing(pkg)
 
 # Clustering
 message("\n-- Clustering packages --")
-for (pkg in c("e1071", "cluster", "fpc")) install_if_missing(pkg)
+for (pkg in c("e1071", "cluster", "fpc", "mclust")) install_if_missing(pkg)
+
+# Classification
+message("\n-- Classification packages --")
+for (pkg in c("class")) install_if_missing(pkg)
 
 # Time Series / Seasonal
 message("\n-- Time series packages --")
-for (pkg in c("lomb", "Rssa", "tsmp")) install_if_missing(pkg)
+for (pkg in c("lomb", "Rssa", "tsmp", "dtw")) install_if_missing(pkg)
 
 # Utilities
 message("\n-- Utility packages --")

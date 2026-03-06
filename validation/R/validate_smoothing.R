@@ -49,6 +49,40 @@ results$knn_k5 <- tryCatch({
   NULL
 })
 
+# ---- (d) Local polynomial (degree=2) with Gaussian kernel --------------------
+message("  Computing local polynomial smoother (bandwidth=0.05, degree=2)...")
+results$local_polynomial <- tryCatch({
+  fit <- KernSmooth::locpoly(x, y, bandwidth = 0.05, degree = 2,
+                             gridsize = 201, range.x = c(0, 1))
+  as.numeric(fit$y)
+}, error = function(e) {
+  warning(sprintf("Local polynomial failed: %s", conditionMessage(e)))
+  NULL
+})
+
+# ---- (e) Smoothing matrix NW: row sums and one row --------------------------
+message("  Computing NW smoothing matrix for evaluation point x[101]...")
+results$smoothing_matrix_nw <- tryCatch({
+  # Compute explicit NW weights for a single evaluation point x[101] (midpoint)
+  eval_point <- x[101]  # should be ~0.5
+  bw <- 0.05
+  # Gaussian kernel weights: K((x_i - eval_point) / bw) / sum(K(...))
+  raw_weights <- dnorm((x - eval_point) / bw)
+  weights <- raw_weights / sum(raw_weights)
+
+  message(sprintf("    Eval point: %.4f, Row sum: %.12f", eval_point, sum(weights)))
+
+  list(
+    eval_point = eval_point,
+    bandwidth = bw,
+    weights = as.numeric(weights),
+    row_sum = sum(weights)
+  )
+}, error = function(e) {
+  warning(sprintf("Smoothing matrix NW failed: %s", conditionMessage(e)))
+  NULL
+})
+
 # ---- Save results -------------------------------------------------------------
 save_expected(results, "smoothing_expected")
 message("\nDone.\n")
