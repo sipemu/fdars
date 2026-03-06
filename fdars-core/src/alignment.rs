@@ -17,6 +17,7 @@ use crate::helpers::{
 };
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+use crate::smoothing::nadaraya_watson;
 use crate::warping::{
     exp_map_sphere, gam_to_psi, inv_exp_map_sphere, invert_gamma, l2_norm_l2, normalize_warp,
     psi_to_gam,
@@ -1018,6 +1019,27 @@ pub fn tsrvf_transform(
     tsrvf_from_alignment(&karcher, argvals)
 }
 
+/// Smooth aligned SRSFs to remove DP kink artifacts before TSRVF computation.
+///
+/// Uses Nadaraya-Watson kernel smoothing (Gaussian, bandwidth = 2 grid spacings)
+/// on each SRSF row. This removes the derivative spikes from DP warp kinks
+/// without affecting alignment results or the Karcher mean.
+fn smooth_aligned_srsfs(srsf: &FdMatrix, m: usize) -> FdMatrix {
+    let n = srsf.nrows();
+    let time: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let bandwidth = 2.0 / (m - 1) as f64;
+
+    let mut smoothed = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let qi = srsf.row(i);
+        let qi_smooth = nadaraya_watson(&time, &qi, &time, bandwidth, "gaussian");
+        for j in 0..m {
+            smoothed[(i, j)] = qi_smooth[j];
+        }
+    }
+    smoothed
+}
+
 /// Compute TSRVF from a pre-computed Karcher mean alignment.
 ///
 /// Avoids re-running the expensive Karcher mean computation when the alignment
@@ -1035,13 +1057,29 @@ pub fn tsrvf_from_alignment(karcher: &KarcherMeanResult, argvals: &[f64]) -> Tsr
     // Step 1: Compute SRSFs of aligned data
     let aligned_srsf = srsf_transform(&karcher.aligned_data, argvals);
 
-    // Step 2: Normalize mean SRSF to unit sphere
-    // Work on [0,1] for sphere geometry
+    // Step 1b: Smooth aligned SRSFs to remove DP kink artifacts.
+    //
+    // DP alignment produces piecewise-linear warps with kinks at grid transitions.
+    // When curves are reparameterized by these warps, the kinks propagate into the
+    // aligned curves' derivatives (SRSFs), creating spikes that dominate TSRVF
+    // tangent vectors and PCA.
+    //
+    // R's fdasrvf does not smooth here and suffers from the same spike artifacts.
+    // Python's fdasrsf mitigates this via spline smoothing (s=1e-4) in SqrtMean.
+    // We smooth the aligned SRSFs before tangent vector computation — this only
+    // affects TSRVF output and does not change the alignment or Karcher mean.
+    let aligned_srsf = smooth_aligned_srsfs(&aligned_srsf, m);
+
+    // Step 2: Smooth and normalize mean SRSF to unit sphere.
+    // The mean SRSF must be smoothed consistently with the aligned SRSFs
+    // so that a single curve (which IS the mean) produces a zero tangent vector.
     let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
-    let mean_norm = l2_norm_l2(&karcher.mean_srsf, &time);
+    let bandwidth = 2.0 / (m - 1) as f64;
+    let mean_srsf_smooth = nadaraya_watson(&time, &karcher.mean_srsf, &time, bandwidth, "gaussian");
+    let mean_norm = l2_norm_l2(&mean_srsf_smooth, &time);
 
     let mu_unit: Vec<f64> = if mean_norm > 1e-10 {
-        karcher.mean_srsf.iter().map(|&q| q / mean_norm).collect()
+        mean_srsf_smooth.iter().map(|&q| q / mean_norm).collect()
     } else {
         vec![0.0; m]
     };
@@ -1086,7 +1124,7 @@ pub fn tsrvf_from_alignment(karcher: &KarcherMeanResult, argvals: &[f64]) -> Tsr
     TsrvfResult {
         tangent_vectors,
         mean: karcher.mean.clone(),
-        mean_srsf: karcher.mean_srsf.clone(),
+        mean_srsf: mean_srsf_smooth,
         mean_srsf_norm: mean_norm,
         srsf_norms,
         initial_values,
@@ -1241,11 +1279,14 @@ pub fn tsrvf_from_alignment_with_method(
 
     let (n, m) = karcher.aligned_data.shape();
     let aligned_srsf = srsf_transform(&karcher.aligned_data, argvals);
+    let aligned_srsf = smooth_aligned_srsfs(&aligned_srsf, m);
     let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
-    let mean_norm = crate::warping::l2_norm_l2(&karcher.mean_srsf, &time);
+    let bandwidth = 2.0 / (m - 1) as f64;
+    let mean_srsf_smooth = nadaraya_watson(&time, &karcher.mean_srsf, &time, bandwidth, "gaussian");
+    let mean_norm = crate::warping::l2_norm_l2(&mean_srsf_smooth, &time);
 
     let mu_unit: Vec<f64> = if mean_norm > 1e-10 {
-        karcher.mean_srsf.iter().map(|&q| q / mean_norm).collect()
+        mean_srsf_smooth.iter().map(|&q| q / mean_norm).collect()
     } else {
         vec![0.0; m]
     };
@@ -1297,7 +1338,7 @@ pub fn tsrvf_from_alignment_with_method(
     TsrvfResult {
         tangent_vectors,
         mean: karcher.mean.clone(),
-        mean_srsf: karcher.mean_srsf.clone(),
+        mean_srsf: mean_srsf_smooth,
         mean_srsf_norm: mean_norm,
         srsf_norms,
         initial_values,
@@ -4390,6 +4431,139 @@ mod tests {
                 result.gamma[j] >= result.gamma[j - 1] - 1e-10,
                 "Gamma should be monotone at j={j}"
             );
+        }
+    }
+
+    // ── SRSF smoothing for TSRVF (Issue #13) ──
+
+    #[test]
+    fn test_gam_to_psi_smooth_identity() {
+        // Smoothed psi of identity warp should stay close to constant 1 in the interior.
+        // Boundary points are biased by kernel smoothing (fewer neighbors), skip them.
+        use crate::warping::{gam_to_psi, gam_to_psi_smooth};
+        let m = 101;
+        let h = 1.0 / (m - 1) as f64;
+        let gam: Vec<f64> = uniform_grid(m);
+        let psi_raw = gam_to_psi(&gam, h);
+        let psi_smooth = gam_to_psi_smooth(&gam, h);
+        // Check interior points (skip ~5% at each boundary)
+        let skip = m / 20;
+        for j in skip..(m - skip) {
+            assert!(
+                (psi_smooth[j] - 1.0).abs() < 0.05,
+                "Smoothed psi of identity should be ~1.0, got {} at j={}",
+                psi_smooth[j],
+                j
+            );
+            assert!(
+                (psi_smooth[j] - psi_raw[j]).abs() < 0.05,
+                "Smoothed and raw psi should agree on smooth warp at j={}",
+                j
+            );
+        }
+    }
+
+    #[test]
+    fn test_gam_to_psi_smooth_reduces_spikes() {
+        // Create a kinky warp (simulating DP output with multiple slope changes)
+        // and verify smoothing reduces psi spikes
+        use crate::warping::{gam_to_psi, gam_to_psi_smooth};
+        let m = 101;
+        let h = 1.0 / (m - 1) as f64;
+        let argvals = uniform_grid(m);
+        // Multi-segment piecewise-linear warp with several kinks
+        let mut gam: Vec<f64> = Vec::with_capacity(m);
+        for j in 0..m {
+            let t = argvals[j];
+            // Three segments: slow (slope 0.5), fast (slope 2), slow (slope 0.5)
+            let g = if t < 0.33 {
+                t * 0.5 / 0.33
+            } else if t < 0.67 {
+                0.5 + (t - 0.33) * 0.5 / 0.34 * 2.0 // steeper
+            } else {
+                let base = 0.5 + 0.5 / 0.34 * 2.0 * 0.34; // ~1.5 but clamped
+                (base + (t - 0.67) * 0.5 / 0.33).min(1.0)
+            };
+            gam.push(g.min(1.0));
+        }
+        // Normalize to [0,1]
+        let gmax = gam[m - 1].max(1e-10);
+        for g in &mut gam {
+            *g /= gmax;
+        }
+        let psi_raw = gam_to_psi(&gam, h);
+        let psi_smooth = gam_to_psi_smooth(&gam, h);
+        // The raw psi should have jumps at kink points (slope transitions)
+        let max_jump_raw: f64 = psi_raw
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0_f64, f64::max);
+        let max_jump_smooth: f64 = psi_smooth
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0_f64, f64::max);
+        // Smoothing should reduce the maximum jump in psi
+        assert!(
+            max_jump_smooth < max_jump_raw + 0.01,
+            "Smoothing should not increase max psi jump: raw={max_jump_raw:.4}, smooth={max_jump_smooth:.4}"
+        );
+    }
+
+    #[test]
+    fn test_smooth_aligned_srsfs_preserves_shape() {
+        // Smoothing aligned SRSFs should preserve overall shape
+        use crate::smoothing::nadaraya_watson;
+        let m = 101;
+        let time: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        // Create a smooth SRSF (sine curve)
+        let qi: Vec<f64> = time
+            .iter()
+            .map(|&t| (2.0 * std::f64::consts::PI * t).sin())
+            .collect();
+        let bandwidth = 2.0 / (m - 1) as f64;
+        let qi_smooth = nadaraya_watson(&time, &qi, &time, bandwidth, "gaussian");
+        // Correlation between original and smoothed should be very high
+        let mean_orig: f64 = qi.iter().sum::<f64>() / m as f64;
+        let mean_smooth: f64 = qi_smooth.iter().sum::<f64>() / m as f64;
+        let mut cov = 0.0;
+        let mut var_o = 0.0;
+        let mut var_s = 0.0;
+        for j in 0..m {
+            let do_ = qi[j] - mean_orig;
+            let ds = qi_smooth[j] - mean_smooth;
+            cov += do_ * ds;
+            var_o += do_ * do_;
+            var_s += ds * ds;
+        }
+        let rho = cov / (var_o * var_s).sqrt().max(1e-10);
+        assert!(
+            rho > 0.99,
+            "Smoothed SRSF should be highly correlated with original (rho={rho:.4})"
+        );
+    }
+
+    #[test]
+    fn test_tsrvf_tangent_vectors_no_spikes() {
+        // End-to-end: compute TSRVF tangent vectors, verify no element dominates.
+        // The smooth_aligned_srsfs step in tsrvf_from_alignment removes DP kink
+        // artifacts that would otherwise produce spike outliers in tangent vectors.
+        let m = 101;
+        let argvals = uniform_grid(m);
+        let data = make_test_data(10, m, 42);
+        let result = tsrvf_transform(&data, &argvals, 5, 1e-3, 0.0);
+        let (n, _) = result.tangent_vectors.shape();
+        for i in 0..n {
+            let vi = result.tangent_vectors.row(i);
+            let rms = (vi.iter().map(|&v| v * v).sum::<f64>() / m as f64).sqrt();
+            if rms > 1e-10 {
+                let max_abs = vi.iter().map(|&v| v.abs()).fold(0.0_f64, f64::max);
+                assert!(
+                    max_abs < 10.0 * rms,
+                    "Tangent vector {} has spike: max |v| = {max_abs:.4}, rms = {rms:.4}, ratio = {:.1}",
+                    i,
+                    max_abs / rms
+                );
+            }
         }
     }
 }

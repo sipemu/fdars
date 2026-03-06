@@ -80,8 +80,8 @@ pub use helpers::{
 
 // Re-export warping utilities
 pub use warping::{
-    exp_map_sphere, gam_to_psi, inner_product_l2, inv_exp_map_sphere, invert_gamma, l2_norm_l2,
-    normalize_warp, phase_distance, psi_to_gam,
+    exp_map_sphere, gam_to_psi, gam_to_psi_smooth, inner_product_l2, inv_exp_map_sphere,
+    invert_gamma, l2_norm_l2, normalize_warp, phase_distance, psi_to_gam,
 };
 
 // Re-export seasonal analysis types

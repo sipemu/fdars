@@ -10,6 +10,7 @@
 //! - [`phase_distance`] — Geodesic distance from a warp to the identity
 
 use crate::helpers::{cumulative_trapz, gradient_uniform, linear_interp, trapz};
+use crate::smoothing::nadaraya_watson;
 
 /// Ensure γ is a valid warping: monotone non-decreasing, with correct boundary values.
 pub fn normalize_warp(gamma: &mut [f64], argvals: &[f64]) {
@@ -33,6 +34,34 @@ pub fn normalize_warp(gamma: &mut [f64], argvals: &[f64]) {
 /// Convert warping function to Hilbert sphere representation: ψ = √γ'.
 pub fn gam_to_psi(gam: &[f64], h: f64) -> Vec<f64> {
     gradient_uniform(gam, h)
+        .iter()
+        .map(|&g| g.max(0.0).sqrt())
+        .collect()
+}
+
+/// Convert warping function to smoothed Hilbert sphere representation.
+///
+/// Like [`gam_to_psi`], but smooths γ before differentiating to remove
+/// DP grid kinks. Matches Python fdasrsf's `SqrtMean(smooth=True)` which
+/// uses spline smoothing (s=1e-4) before computing ψ = √γ'.
+///
+/// We use Nadaraya-Watson kernel smoothing on γ with bandwidth proportional
+/// to the grid spacing, then differentiate the smoothed result. This prevents
+/// derivative spikes from propagating into TSRVF tangent vectors and FPCA.
+pub fn gam_to_psi_smooth(gam: &[f64], h: f64) -> Vec<f64> {
+    let m = gam.len();
+    if m < 3 {
+        return gam_to_psi(gam, h);
+    }
+
+    let time: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+
+    // Smooth gamma with Nadaraya-Watson (bandwidth = 2 grid spacings).
+    // This removes DP kinks while preserving the overall warp shape.
+    let bandwidth = 2.0 * h;
+    let gam_smooth = nadaraya_watson(&time, gam, &time, bandwidth, "gaussian");
+
+    gradient_uniform(&gam_smooth, h)
         .iter()
         .map(|&g| g.max(0.0).sqrt())
         .collect()

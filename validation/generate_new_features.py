@@ -302,6 +302,139 @@ def generate_tsrvf_expected():
     }
 
 
+def nadaraya_watson_gaussian(x, y, x_new, bandwidth):
+    """Nadaraya-Watson kernel smoother with Gaussian kernel.
+
+    Matches the Rust implementation in smoothing.rs exactly:
+      K(u) = exp(-0.5 * u²) / sqrt(2π)
+      ŷ(x₀) = Σ K((xᵢ - x₀)/h) yᵢ / Σ K((xᵢ - x₀)/h)
+    """
+    result = np.zeros(len(x_new))
+    for idx, x0 in enumerate(x_new):
+        u = (x - x0) / bandwidth
+        w = np.exp(-0.5 * u * u) / np.sqrt(2 * np.pi)
+        denom = w.sum()
+        if denom > 1e-10:
+            result[idx] = (w * y).sum() / denom
+        else:
+            result[idx] = 0.0
+    return result
+
+
+def generate_tsrvf_smoothed_expected():
+    """Generate smoothed TSRVF reference values.
+
+    Applies the same Nadaraya-Watson smoothing to aligned SRSFs as Rust's
+    tsrvf_from_alignment does (bandwidth = 2/(m-1), Gaussian kernel), then
+    computes tangent vectors from the smoothed data.
+
+    This validates that Rust's smoothing + tangent vector computation matches
+    Python applying the identical smoothing procedure to the same input data.
+
+    Background:
+    - R fdasrvf does NOT smooth — it suffers from DP kink spike artifacts
+    - Python fdasrsf uses spline smoothing (s=1e-4) in SqrtMean(smooth=True)
+      on warping functions, which is a different smoothing target
+    - Our Rust code smooths aligned SRSFs with Nadaraya-Watson before computing
+      tangent vectors — this test validates that exact pipeline
+    """
+    import fdasrsf as fs
+
+    data, argvals, n, m = load_standard_data()
+
+    # Use same subset as raw TSRVF test
+    n_sub = 10
+    sub = data[:n_sub]
+    f = sub.T  # (m, n_sub)
+    time = argvals.copy()
+
+    # Compute alignment using fdasrsf (same as raw test)
+    obj = fs.fdawarp(f, time)
+    obj.srsf_align(MaxItr=30)
+
+    # Internal [0,1] time grid and bandwidth matching Rust
+    time_01 = np.linspace(0, 1, m)
+    bandwidth = 2.0 / (m - 1)
+
+    # Compute SRSFs of aligned curves (gradient-based, matching Rust's srsf_transform)
+    h = (argvals[-1] - argvals[0]) / (m - 1)
+    aligned_srsfs = np.zeros((m, n_sub))
+    for i in range(n_sub):
+        fi = obj.fn[:, i]
+        grad = np.gradient(fi, h)
+        aligned_srsfs[:, i] = np.sign(grad) * np.sqrt(np.abs(grad))
+
+    # Use obj.mqn directly — this is the Karcher mean SRSF that Rust receives
+    # as karcher.mean_srsf in tsrvf_from_alignment.
+    # (NOT the SRSF of obj.fmean, which is a different quantity.)
+    mean_srsf = obj.mqn
+
+    # Smooth aligned SRSFs with NW (matching Rust's smooth_aligned_srsfs)
+    smoothed_srsfs = np.zeros((m, n_sub))
+    for i in range(n_sub):
+        smoothed_srsfs[:, i] = nadaraya_watson_gaussian(
+            time_01, aligned_srsfs[:, i], time_01, bandwidth
+        )
+
+    # Smooth mean SRSF with same NW (matching Rust's tsrvf_from_alignment)
+    mean_srsf_smooth = nadaraya_watson_gaussian(time_01, mean_srsf, time_01, bandwidth)
+
+    # Compute tangent vectors from smoothed data
+    mean_srsf_norm = np.sqrt(np.trapezoid(mean_srsf_smooth**2, time_01))
+    mu_unit = mean_srsf_smooth / mean_srsf_norm if mean_srsf_norm > 1e-10 else np.zeros(m)
+
+    smoothed_srsf_norms = []
+    tangent_vectors = []
+    for i in range(n_sub):
+        qi = smoothed_srsfs[:, i]
+        qi_norm = np.sqrt(np.trapezoid(qi**2, time_01))
+        smoothed_srsf_norms.append(float(qi_norm))
+
+        if qi_norm > 1e-10 and mean_srsf_norm > 1e-10:
+            qi_unit = qi / qi_norm
+            ip = np.trapezoid(mu_unit * qi_unit, time_01)
+            ip = np.clip(ip, -1, 1)
+            theta = np.arccos(ip)
+            if theta > 1e-10:
+                coeff = theta / np.sin(theta)
+                vi = coeff * (qi_unit - np.cos(theta) * mu_unit)
+            else:
+                vi = np.zeros(m)
+        else:
+            vi = np.zeros(m)
+        tangent_vectors.append(vi.tolist())
+
+    # Mean tangent vector norm (should be small)
+    mean_tv = np.mean(tangent_vectors, axis=0)
+    mean_tv_norm = np.sqrt(np.trapezoid(mean_tv**2, time_01))
+
+    tv_norms = []
+    for vi in tangent_vectors:
+        vi = np.array(vi)
+        tv_norms.append(float(np.sqrt(np.trapezoid(vi**2, time_01))))
+
+    # Export smoothed aligned SRSFs (column-major for FdMatrix)
+    smoothed_srsfs_flat = []
+    for j in range(m):
+        for i in range(n_sub):
+            smoothed_srsfs_flat.append(float(smoothed_srsfs[j, i]))
+
+    return {
+        "n_sub": n_sub,
+        "m": m,
+        # Smoothed mean SRSF
+        "smoothed_mean_srsf": mean_srsf_smooth.tolist(),
+        "smoothed_mean_srsf_norm": float(mean_srsf_norm),
+        # Smoothed aligned SRSFs (column-major flat)
+        "smoothed_srsfs_flat": smoothed_srsfs_flat,
+        "smoothed_srsf_norms": smoothed_srsf_norms,
+        # Tangent vectors from smoothed data (row-major flat)
+        "tangent_vectors_flat": np.array(tangent_vectors).flatten().tolist(),
+        "tangent_vector_norms": tv_norms,
+        "mean_tangent_norm": float(mean_tv_norm),
+    }
+
+
 def generate_soft_dtw_barycenter_expected():
     """Generate Soft-DTW barycenter reference values using tslearn."""
     from tslearn.barycenters import softdtw_barycenter
@@ -369,6 +502,13 @@ def main():
     print(f"  aligned_srsf_norms = {tsrvf['aligned_srsf_norms'][:5]}")
     print(f"  tangent_vector_norms = {tsrvf['tangent_vector_norms'][:5]}")
 
+    print("\nGenerating smoothed TSRVF validation data...")
+    tsrvf_smoothed = generate_tsrvf_smoothed_expected()
+    print(f"  smoothed mean_srsf_norm = {tsrvf_smoothed['smoothed_mean_srsf_norm']:.6f}")
+    print(f"  smoothed mean_tangent_norm = {tsrvf_smoothed['mean_tangent_norm']:.6f}")
+    print(f"  smoothed srsf_norms = {tsrvf_smoothed['smoothed_srsf_norms'][:5]}")
+    print(f"  smoothed tv_norms = {tsrvf_smoothed['tangent_vector_norms'][:5]}")
+
     print("\nGenerating Soft-DTW barycenter validation data...")
     soft_dtw_bary = generate_soft_dtw_barycenter_expected()
     bary_mean = np.mean(soft_dtw_bary["barycenter"])
@@ -383,6 +523,7 @@ def main():
         "soft_dtw": soft_dtw,
         "landmark": landmark,
         "tsrvf": tsrvf,
+        "tsrvf_smoothed": tsrvf_smoothed,
         "soft_dtw_barycenter": soft_dtw_bary,
         "landmark_sinusoid": landmark_sinusoid,
     }

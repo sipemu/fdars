@@ -3468,41 +3468,164 @@ fn test_tsrvf_from_alignment_vs_prealigned() {
 
     let result = fdars_core::alignment::tsrvf_from_alignment(&karcher, &time);
 
-    // Mean SRSF norm should match
-    assert_relative_close(
-        result.mean_srsf_norm,
-        t.mean_srsf_norm,
-        1e-4,
-        "tsrvf_from_alignment mean_srsf_norm",
-    );
-
-    // SRSF norms: ~5% difference expected because tsrvf_from_alignment recomputes
-    // SRSFs from aligned curves via finite differences, while fdasrsf stores
-    // pre-computed SRSFs. The core transport math is validated with 1e-6 tolerance
-    // in test_tsrvf_transport_from_prealigned.
-    let mut max_srsf_rel = 0.0_f64;
-    for i in 0..n_sub {
-        let rel_err =
-            (result.srsf_norms[i] - t.aligned_srsf_norms[i]).abs() / t.aligned_srsf_norms[i];
-        max_srsf_rel = max_srsf_rel.max(rel_err);
-    }
+    // Mean SRSF norm differs from R because we apply Nadaraya-Watson smoothing
+    // to aligned SRSFs and mean SRSF before tangent vector computation.
+    // This removes DP kink artifacts that R's fdasrvf propagates into TSRVF
+    // tangent vectors (matching Python fdasrsf's SqrtMean(smooth=True) approach).
+    // Verify the smoothed norm is positive and finite.
     assert!(
-        max_srsf_rel < 0.05,
-        "tsrvf_from_alignment max SRSF norm rel_err={max_srsf_rel:.4} exceeds 0.05"
+        result.mean_srsf_norm > 0.0 && result.mean_srsf_norm.is_finite(),
+        "Smoothed mean_srsf_norm should be positive and finite, got {}",
+        result.mean_srsf_norm
     );
 
-    // Tangent vector norms should track fdasrsf's, allowing for SRSF recomputation error
-    let mut max_tv_rel = 0.0_f64;
+    // SRSF norms differ from R because our smoothing removes DP kink spike energy
+    // that inflates R's norms. Verify norms are positive and finite.
+    for i in 0..n_sub {
+        assert!(
+            result.srsf_norms[i] > 0.0 && result.srsf_norms[i].is_finite(),
+            "SRSF norm {} should be positive and finite, got {}",
+            i,
+            result.srsf_norms[i]
+        );
+    }
+
+    // Tangent vector norms: the smoothing intentionally changes these by removing
+    // DP artifacts. Verify they are finite and non-negative.
     for i in 0..n_sub {
         let tv_norm = l2_norm(&result.tangent_vectors.row(i), &time);
-        let expected_norm = t.tangent_vector_norms[i];
-        let rel_err = (tv_norm - expected_norm).abs() / expected_norm.max(1e-10);
-        max_tv_rel = max_tv_rel.max(rel_err);
+        assert!(
+            tv_norm.is_finite(),
+            "Tangent vector {i} norm should be finite, got {tv_norm}"
+        );
+    }
+}
+
+// ── Smoothed TSRVF validation against Python ────────────────────────────────
+
+/// Reference data for smoothed TSRVF — Python applies the same Nadaraya-Watson
+/// smoothing as Rust's `tsrvf_from_alignment` to aligned SRSFs before computing
+/// tangent vectors on the Hilbert sphere.
+#[derive(Deserialize)]
+struct TsrvfSmoothedExpected {
+    n_sub: usize,
+    m: usize,
+    smoothed_mean_srsf: Vec<f64>,
+    smoothed_mean_srsf_norm: f64,
+    smoothed_srsfs_flat: Vec<f64>,
+    smoothed_srsf_norms: Vec<f64>,
+    tangent_vectors_flat: Vec<f64>,
+    tangent_vector_norms: Vec<f64>,
+    mean_tangent_norm: f64,
+}
+
+#[derive(Deserialize)]
+struct NewFeaturesWithSmoothed {
+    tsrvf: TsrvfExpected,
+    tsrvf_smoothed: TsrvfSmoothedExpected,
+}
+
+#[test]
+fn test_tsrvf_smoothed_vs_python() {
+    // Validate that Rust's tsrvf_from_alignment produces the same smoothed
+    // tangent vectors as Python when applying identical Nadaraya-Watson
+    // smoothing (bandwidth=2/(m-1), Gaussian kernel) to aligned SRSFs.
+    let exp: NewFeaturesWithSmoothed = load_json("expected", "new_features_expected");
+    let raw = &exp.tsrvf;
+    let smoothed = &exp.tsrvf_smoothed;
+
+    let n_sub = raw.n_sub;
+    let m = raw.m;
+    assert_eq!(smoothed.n_sub, n_sub);
+    assert_eq!(smoothed.m, m);
+    let time: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+
+    // Build KarcherMeanResult from fdasrsf's pre-aligned data
+    let aligned_data =
+        FdMatrix::from_column_major(raw.aligned_curves_flat.clone(), n_sub, m).unwrap();
+    let gammas = FdMatrix::from_column_major(raw.gammas_flat.clone(), n_sub, m).unwrap();
+
+    let karcher = fdars_core::alignment::KarcherMeanResult {
+        mean: raw.mean_curve.clone(),
+        mean_srsf: raw.mean_srsf.clone(),
+        gammas,
+        aligned_data,
+        n_iter: 1,
+        converged: true,
+    };
+
+    let result = fdars_core::alignment::tsrvf_from_alignment(&karcher, &time);
+
+    // Validate smoothed mean SRSF norm (tight tolerance — same NW implementation)
+    assert_relative_close(
+        result.mean_srsf_norm,
+        smoothed.smoothed_mean_srsf_norm,
+        1e-6,
+        "smoothed mean SRSF norm",
+    );
+
+    // Validate smoothed mean SRSF values
+    let mean_l2_err = l2_norm(
+        &result
+            .mean_srsf
+            .iter()
+            .zip(smoothed.smoothed_mean_srsf.iter())
+            .map(|(&a, &b)| a - b)
+            .collect::<Vec<_>>(),
+        &time,
+    );
+    let mean_l2_rel = mean_l2_err / smoothed.smoothed_mean_srsf_norm.max(1e-10);
+    assert!(
+        mean_l2_rel < 1e-6,
+        "Smoothed mean SRSF L2 relative error = {mean_l2_rel:.2e}, expected < 1e-6"
+    );
+
+    // Validate per-curve SRSF norms
+    let mut max_norm_err = 0.0_f64;
+    for i in 0..n_sub {
+        let rel_err = (result.srsf_norms[i] - smoothed.smoothed_srsf_norms[i]).abs()
+            / smoothed.smoothed_srsf_norms[i].max(1e-10);
+        max_norm_err = max_norm_err.max(rel_err);
     }
     assert!(
-        max_tv_rel < 0.15,
-        "tsrvf_from_alignment max TV norm rel_err={max_tv_rel:.4} exceeds 0.15"
+        max_norm_err < 1e-6,
+        "Max smoothed SRSF norm relative error = {max_norm_err:.2e}, expected < 1e-6"
     );
+
+    // Validate tangent vector norms
+    let mut max_tv_norm_err = 0.0_f64;
+    for i in 0..n_sub {
+        let rust_tv_norm = l2_norm(&result.tangent_vectors.row(i), &time);
+        let py_tv_norm = smoothed.tangent_vector_norms[i];
+        let rel_err = (rust_tv_norm - py_tv_norm).abs() / py_tv_norm.max(1e-10);
+        max_tv_norm_err = max_tv_norm_err.max(rel_err);
+    }
+    assert!(
+        max_tv_norm_err < 1e-6,
+        "Max tangent vector norm relative error = {max_tv_norm_err:.2e}, expected < 1e-6"
+    );
+
+    // Validate tangent vector values (row-major: data[i*m + j])
+    for i in 0..n_sub {
+        let rust_tv = result.tangent_vectors.row(i);
+        let py_tv: Vec<f64> = (0..m)
+            .map(|j| smoothed.tangent_vectors_flat[i * m + j])
+            .collect();
+
+        let diff: Vec<f64> = rust_tv
+            .iter()
+            .zip(py_tv.iter())
+            .map(|(&a, &b)| a - b)
+            .collect();
+        let diff_norm = l2_norm(&diff, &time);
+        let py_norm = smoothed.tangent_vector_norms[i].max(1e-10);
+        let rel_err = diff_norm / py_norm;
+
+        assert!(
+            rel_err < 1e-6,
+            "Tangent vector {i} relative L2 error = {rel_err:.2e}, expected < 1e-6"
+        );
+    }
 }
 
 // ── Soft-DTW barycenter vs tslearn ──────────────────────────────────────────
