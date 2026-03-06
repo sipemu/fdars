@@ -933,7 +933,6 @@ pub fn karcher_mean(
     let mut converged = false;
     let mut n_iter = 0;
     let mut final_gammas = FdMatrix::zeros(n, m);
-    let mut prev_rel = 0.0_f64;
 
     for iter in 0..max_iter {
         n_iter = iter + 1;
@@ -949,12 +948,11 @@ pub fn karcher_mean(
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
 
         let rel = relative_change(&mu_q, &mu_q_new);
-        if rel < f64::EPSILON || (iter > 0 && rel - prev_rel <= tol * prev_rel) {
+        if rel < tol {
             converged = true;
             mu_q = mu_q_new;
             break;
         }
-        prev_rel = rel;
 
         mu_q = mu_q_new;
         mu = srsf_inverse(&mu_q, argvals, mu[0]);
@@ -2841,6 +2839,43 @@ mod tests {
         for j in 0..40 {
             assert!(result.mean[j].is_finite());
         }
+    }
+
+    #[test]
+    fn test_karcher_mean_convergence_not_premature() {
+        // The old convergence criterion (rel - prev_rel <= tol * prev_rel) was
+        // always satisfied when the algorithm improved, causing premature exit
+        // after 2 iterations. With the fix (rel < tol), the algorithm should
+        // actually iterate until convergence or hitting the iteration cap.
+        let n = 10;
+        let m = 50;
+        let t = uniform_grid(m);
+
+        // Create phase-shifted curves that genuinely need alignment
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            let shift = (i as f64 - 5.0) * 0.05;
+            for j in 0..m {
+                col_major[i + j * n] = (2.0 * std::f64::consts::PI * (t[j] - shift)).sin();
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+
+        // With an impossibly tight tolerance, the algorithm should hit the
+        // iteration cap rather than "converging" after 2 iterations.
+        let result = karcher_mean(&data, &t, 20, 1e-15, 0.0);
+        assert!(
+            result.n_iter > 2,
+            "With tol=1e-15 the algorithm should iterate beyond 2, got n_iter={}",
+            result.n_iter
+        );
+
+        // With a reasonable tolerance, it should converge and report so
+        let result_loose = karcher_mean(&data, &t, 20, 1e-2, 0.0);
+        assert!(
+            result_loose.converged,
+            "With tol=1e-2 the algorithm should converge"
+        );
     }
 
     // ── Align to target ──
