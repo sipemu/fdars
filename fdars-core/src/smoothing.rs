@@ -21,10 +21,21 @@ fn epanechnikov_kernel(u: f64) -> f64 {
     }
 }
 
+/// Tri-cube kernel function (used by R's loess()).
+fn tricube_kernel(u: f64) -> f64 {
+    let abs_u = u.abs();
+    if abs_u < 1.0 {
+        (1.0 - abs_u.powi(3)).powi(3)
+    } else {
+        0.0
+    }
+}
+
 /// Get kernel function by name.
 fn get_kernel(kernel_type: &str) -> fn(f64) -> f64 {
     match kernel_type.to_lowercase().as_str() {
         "epanechnikov" | "epan" => epanechnikov_kernel,
+        "tricube" | "tri-cube" => tricube_kernel,
         _ => gaussian_kernel,
     }
 }

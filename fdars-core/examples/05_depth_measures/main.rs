@@ -111,7 +111,7 @@ fn main() {
 
     // --- Section 7: Functional spatial depth ---
     println!("\n--- Functional Spatial Depth ---");
-    let fsd = functional_spatial_1d(&mat, &mat);
+    let fsd = functional_spatial_1d(&mat, &mat, None);
     let fsd_rank = rank_indices(&fsd);
     println!("  Deepest 3:  {:?}", &fsd_rank[..3]);
     println!("  Shallowest 3: {:?}", &fsd_rank[n - 3..]);

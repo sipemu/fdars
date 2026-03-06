@@ -38,9 +38,11 @@ pub fn l2_distance(curve1: &[f64], curve2: &[f64], weights: &[f64]) -> f64 {
     dist_sq.sqrt()
 }
 
-/// Compute Simpson's rule integration weights for non-uniform grid.
+/// Compute Simpson's 1/3 rule integration weights for a grid.
 ///
-/// Returns weights for trapezoidal rule integration.
+/// For odd n (even number of intervals): standard composite Simpson's 1/3 rule.
+/// For even n: Simpson's 1/3 for first n-1 points, trapezoidal for last interval.
+/// For non-uniform grids: generalized Simpson's weights per sub-interval pair.
 ///
 /// # Arguments
 /// * `argvals` - Grid points (evaluation points)
@@ -63,14 +65,68 @@ pub fn simpsons_weights(argvals: &[f64]) -> Vec<f64> {
         return weights;
     }
 
-    // For non-uniform spacing, use composite trapezoidal rule
-    for i in 0..n {
-        if i == 0 {
-            weights[i] = (argvals[1] - argvals[0]) / 2.0;
-        } else if i == n - 1 {
-            weights[i] = (argvals[n - 1] - argvals[n - 2]) / 2.0;
+    // Check if grid is uniform
+    let h0 = argvals[1] - argvals[0];
+    let is_uniform = argvals
+        .windows(2)
+        .all(|w| ((w[1] - w[0]) - h0).abs() < 1e-12 * h0.abs());
+
+    if is_uniform {
+        // Uniform grid: standard composite Simpson's 1/3
+        let n_intervals = n - 1;
+        if n_intervals % 2 == 0 {
+            // Even number of intervals (odd n): pure Simpson's
+            // Pattern: [1, 4, 2, 4, 2, ..., 4, 1] * h/3
+            weights[0] = h0 / 3.0;
+            weights[n - 1] = h0 / 3.0;
+            for i in 1..n - 1 {
+                weights[i] = if i % 2 == 1 {
+                    4.0 * h0 / 3.0
+                } else {
+                    2.0 * h0 / 3.0
+                };
+            }
         } else {
-            weights[i] = (argvals[i + 1] - argvals[i - 1]) / 2.0;
+            // Odd number of intervals (even n): Simpson's for first n-2 intervals,
+            // trapezoidal for last interval
+            let n_simp = n - 1; // number of points for Simpson's part
+            weights[0] = h0 / 3.0;
+            weights[n_simp - 1] = h0 / 3.0;
+            for i in 1..n_simp - 1 {
+                weights[i] = if i % 2 == 1 {
+                    4.0 * h0 / 3.0
+                } else {
+                    2.0 * h0 / 3.0
+                };
+            }
+            // Add trapezoidal for last interval
+            weights[n_simp - 1] += h0 / 2.0;
+            weights[n - 1] += h0 / 2.0;
+        }
+    } else {
+        // Non-uniform grid: generalized Simpson's for each pair of intervals
+        let n_intervals = n - 1;
+        let n_pairs = n_intervals / 2;
+
+        for k in 0..n_pairs {
+            let i0 = 2 * k;
+            let i1 = i0 + 1;
+            let i2 = i0 + 2;
+            let h1 = argvals[i1] - argvals[i0];
+            let h2 = argvals[i2] - argvals[i1];
+            let h_sum = h1 + h2;
+
+            // Generalized Simpson's weights for non-uniform spacing
+            weights[i0] += (2.0 * h1 - h2) * h_sum / (6.0 * h1);
+            weights[i1] += h_sum * h_sum * h_sum / (6.0 * h1 * h2);
+            weights[i2] += (2.0 * h2 - h1) * h_sum / (6.0 * h2);
+        }
+
+        // If odd number of intervals, add trapezoidal for last interval
+        if n_intervals % 2 == 1 {
+            let h_last = argvals[n - 1] - argvals[n - 2];
+            weights[n - 2] += h_last / 2.0;
+            weights[n - 1] += h_last / 2.0;
         }
     }
 
@@ -126,13 +182,43 @@ pub fn linear_interp(x: &[f64], y: &[f64], t: f64) -> f64 {
     y0 + (y1 - y0) * (t - t0) / (t1 - t0)
 }
 
-/// Cumulative trapezoidal integration.
+/// Cumulative integration using Simpson's rule where possible.
+///
+/// For pairs of intervals uses Simpson's 1/3 rule for higher accuracy.
+/// Falls back to trapezoidal for the last interval if n is even.
 pub fn cumulative_trapz(y: &[f64], x: &[f64]) -> Vec<f64> {
     let n = y.len();
     let mut out = vec![0.0; n];
-    for k in 1..n {
+    if n < 2 {
+        return out;
+    }
+
+    // Process pairs of intervals with Simpson's rule
+    let mut k = 1;
+    while k + 1 < n {
+        let h1 = x[k] - x[k - 1];
+        let h2 = x[k + 1] - x[k];
+        let h_sum = h1 + h2;
+
+        // Generalized Simpson's for this pair of intervals
+        let integral = h_sum / 6.0
+            * (y[k - 1] * (2.0 * h1 - h2) / h1
+                + y[k] * h_sum * h_sum / (h1 * h2)
+                + y[k + 1] * (2.0 * h2 - h1) / h2);
+
+        out[k] = out[k - 1] + {
+            // First sub-interval: use trapezoidal for the intermediate value
+            0.5 * (y[k] + y[k - 1]) * h1
+        };
+        out[k + 1] = out[k - 1] + integral;
+        k += 2;
+    }
+
+    // If there's a remaining interval, use trapezoidal
+    if k < n {
         out[k] = out[k - 1] + 0.5 * (y[k] + y[k - 1]) * (x[k] - x[k - 1]);
     }
+
     out
 }
 
@@ -145,18 +231,53 @@ pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
     sum
 }
 
-/// Numerical gradient with uniform spacing (forward/central/backward differences).
+/// Numerical gradient with uniform spacing using 5-point stencil (O(h⁴)).
+///
+/// Interior points use the 5-point central difference:
+///   `g[i] = (-y[i+2] + 8*y[i+1] - 8*y[i-1] + y[i-2]) / (12*h)`
+///
+/// Near-boundary points use appropriate forward/backward formulas.
 pub fn gradient_uniform(y: &[f64], h: f64) -> Vec<f64> {
     let n = y.len();
     let mut g = vec![0.0; n];
     if n < 2 {
         return g;
     }
-    g[0] = (y[1] - y[0]) / h;
-    for i in 1..(n - 1) {
-        g[i] = (y[i + 1] - y[i - 1]) / (2.0 * h);
+    if n == 2 {
+        g[0] = (y[1] - y[0]) / h;
+        g[1] = (y[1] - y[0]) / h;
+        return g;
     }
-    g[n - 1] = (y[n - 1] - y[n - 2]) / h;
+    if n == 3 {
+        g[0] = (-3.0 * y[0] + 4.0 * y[1] - y[2]) / (2.0 * h);
+        g[1] = (y[2] - y[0]) / (2.0 * h);
+        g[2] = (y[0] - 4.0 * y[1] + 3.0 * y[2]) / (2.0 * h);
+        return g;
+    }
+    if n == 4 {
+        g[0] = (-3.0 * y[0] + 4.0 * y[1] - y[2]) / (2.0 * h);
+        g[1] = (y[2] - y[0]) / (2.0 * h);
+        g[2] = (y[3] - y[1]) / (2.0 * h);
+        g[3] = (y[1] - 4.0 * y[2] + 3.0 * y[3]) / (2.0 * h);
+        return g;
+    }
+
+    // n >= 5: use 5-point stencil for interior, 4-point formulas at boundaries
+    // Left boundary: O(h³) forward formula
+    g[0] = (-25.0 * y[0] + 48.0 * y[1] - 36.0 * y[2] + 16.0 * y[3] - 3.0 * y[4]) / (12.0 * h);
+    g[1] = (-3.0 * y[0] - 10.0 * y[1] + 18.0 * y[2] - 6.0 * y[3] + y[4]) / (12.0 * h);
+
+    // Interior: 5-point central difference O(h⁴)
+    for i in 2..n - 2 {
+        g[i] = (-y[i + 2] + 8.0 * y[i + 1] - 8.0 * y[i - 1] + y[i - 2]) / (12.0 * h);
+    }
+
+    // Right boundary: O(h³) backward formula
+    g[n - 2] = (-y[n - 5] + 6.0 * y[n - 4] - 18.0 * y[n - 3] + 10.0 * y[n - 2] + 3.0 * y[n - 1])
+        / (12.0 * h);
+    g[n - 1] = (3.0 * y[n - 5] - 16.0 * y[n - 4] + 36.0 * y[n - 3] - 48.0 * y[n - 2]
+        + 25.0 * y[n - 1])
+        / (12.0 * h);
     g
 }
 

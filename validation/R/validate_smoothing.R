@@ -2,7 +2,6 @@
 script_dir <- dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))))
 source(file.path(script_dir, "helpers.R"))
 
-library(KernSmooth)
 library(FNN)
 
 message("=== Validating smoothing methods ===\n")
@@ -16,22 +15,45 @@ m <- dat$m
 results <- list()
 
 # ---- (a) Nadaraya-Watson (local constant) with Gaussian kernel ----------------
-message("  Computing Nadaraya-Watson smoother (bandwidth=0.05, degree=0)...")
+# Use EXACT Nadaraya-Watson (not locpoly binning) to match Rust's implementation
+message("  Computing exact Nadaraya-Watson smoother (bandwidth=0.05, degree=0)...")
 results$nadaraya_watson <- tryCatch({
-  fit <- KernSmooth::locpoly(x, y, bandwidth = 0.05, degree = 0,
-                             gridsize = 201, range.x = c(0, 1))
-  as.numeric(fit$y)
+  bw <- 0.05
+  # Compute exact NW using kernel weights
+  nw_weights <- dnorm(outer(x, x, "-") / bw)
+  nw_weights <- nw_weights / rowSums(nw_weights)
+  as.numeric(nw_weights %*% y)
 }, error = function(e) {
   warning(sprintf("Nadaraya-Watson failed: %s", conditionMessage(e)))
   NULL
 })
 
 # ---- (b) Local linear with Gaussian kernel ------------------------------------
-message("  Computing local linear smoother (bandwidth=0.05, degree=1)...")
+# Use exact weighted least squares instead of locpoly binning
+message("  Computing exact local linear smoother (bandwidth=0.05, degree=1)...")
 results$local_linear <- tryCatch({
-  fit <- KernSmooth::locpoly(x, y, bandwidth = 0.05, degree = 1,
-                             gridsize = 201, range.x = c(0, 1))
-  as.numeric(fit$y)
+  bw <- 0.05
+  n <- length(x)
+  fitted <- numeric(n)
+  for (i in 1:n) {
+    u <- (x - x[i]) / bw
+    w <- dnorm(u)
+    d <- x - x[i]
+    s0 <- sum(w)
+    s1 <- sum(w * d)
+    s2 <- sum(w * d^2)
+    t0 <- sum(w * y)
+    t1 <- sum(w * y * d)
+    det <- s0 * s2 - s1^2
+    if (abs(det) > 1e-10) {
+      fitted[i] <- (s2 * t0 - s1 * t1) / det
+    } else if (s0 > 1e-10) {
+      fitted[i] <- t0 / s0
+    } else {
+      fitted[i] <- 0
+    }
+  }
+  as.numeric(fitted)
 }, error = function(e) {
   warning(sprintf("Local linear failed: %s", conditionMessage(e)))
   NULL
@@ -50,11 +72,31 @@ results$knn_k5 <- tryCatch({
 })
 
 # ---- (d) Local polynomial (degree=2) with Gaussian kernel --------------------
-message("  Computing local polynomial smoother (bandwidth=0.05, degree=2)...")
+# Use exact weighted least squares instead of locpoly binning
+message("  Computing exact local polynomial smoother (bandwidth=0.05, degree=2)...")
 results$local_polynomial <- tryCatch({
-  fit <- KernSmooth::locpoly(x, y, bandwidth = 0.05, degree = 2,
-                             gridsize = 201, range.x = c(0, 1))
-  as.numeric(fit$y)
+  bw <- 0.05
+  n <- length(x)
+  p <- 3  # degree 2 + 1
+  fitted <- numeric(n)
+  for (i in 1:n) {
+    u <- (x - x[i]) / bw
+    w <- dnorm(u)
+    d <- x - x[i]
+    # Build weighted normal equations
+    xtx <- matrix(0, p, p)
+    xty <- numeric(p)
+    for (j in 1:p) {
+      w_dj <- w * d^(j-1)
+      for (k in 1:p) {
+        xtx[j, k] <- sum(w_dj * d^(k-1))
+      }
+      xty[j] <- sum(w_dj * y)
+    }
+    coefs <- tryCatch(solve(xtx, xty), error = function(e) c(sum(w * y) / sum(w), rep(0, p-1)))
+    fitted[i] <- coefs[1]
+  }
+  as.numeric(fitted)
 }, error = function(e) {
   warning(sprintf("Local polynomial failed: %s", conditionMessage(e)))
   NULL

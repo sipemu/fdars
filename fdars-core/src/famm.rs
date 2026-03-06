@@ -277,11 +277,13 @@ fn gls_update_gamma(
 /// REML EM update for variance components.
 ///
 /// Returns (σ²_u_new, σ²_e_new) from the conditional expectations.
+/// Uses n - p divisor for σ²_e (REML correction where p = number of fixed effects).
 fn reml_variance_update(
     residuals: &[f64],
     ss: &SubjectStructure,
     weights: &[f64],
     sigma2_u: f64,
+    p: usize,
 ) -> (f64, f64) {
     let n_subjects = ss.counts.len();
     let n: usize = ss.counts.iter().sum();
@@ -305,9 +307,12 @@ fn reml_variance_update(
         sigma2_e_new += ns * cond_var_s;
     }
 
+    // REML divisor: n - p for residual variance (matches R's lmer)
+    let denom_e = (n.saturating_sub(p)).max(1) as f64;
+
     (
         (sigma2_u_new / n_subjects as f64).max(1e-15),
-        (sigma2_e_new / n as f64).max(1e-15),
+        (sigma2_e_new / denom_e).max(1e-15),
     )
 }
 
@@ -354,7 +359,7 @@ fn fit_scalar_mixed_model(
         }
 
         let r = compute_ols_residuals(y, covariates, &gamma, p, n);
-        (sigma2_u, sigma2_e) = reml_variance_update(&r, &ss, &weights, sigma2_u);
+        (sigma2_u, sigma2_e) = reml_variance_update(&r, &ss, &weights, sigma2_u, p);
 
         let delta = (sigma2_u - sigma2_u_old).abs() + (sigma2_e - sigma2_e_old).abs();
         if delta < 1e-10 * (sigma2_u_old + sigma2_e_old) {

@@ -340,7 +340,7 @@ pub fn detrend_loess(
         .map(|i| {
             let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
             let trend =
-                local_polynomial(argvals, &curve, argvals, abs_bandwidth, degree, "gaussian");
+                local_polynomial(argvals, &curve, argvals, abs_bandwidth, degree, "tricube");
             let mut detrended = vec![0.0; m];
             let mut rss = 0.0;
             for j in 0..m {

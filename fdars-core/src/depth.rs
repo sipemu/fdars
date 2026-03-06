@@ -85,8 +85,13 @@ pub fn modal_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
 ///
 /// Returns a flat buffer of length `nproj * m` where projection `p` occupies
 /// `[p*m .. (p+1)*m]`.
-fn generate_random_projections(nproj: usize, m: usize) -> Vec<f64> {
-    let mut rng = rand::thread_rng();
+///
+/// If `seed` is Some, uses a deterministic RNG seeded from the given value.
+fn generate_random_projections(nproj: usize, m: usize, seed: Option<u64>) -> Vec<f64> {
+    let mut rng: Box<dyn RngCore> = match seed {
+        Some(s) => Box::new(StdRng::seed_from_u64(s)),
+        None => Box::new(rand::thread_rng()),
+    };
     let mut projections = vec![0.0; nproj * m];
     for p_idx in 0..nproj {
         let base = p_idx * m;
@@ -141,6 +146,7 @@ fn random_depth_core(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
     nproj: usize,
+    seed: Option<u64>,
     init: f64,
     aggregate: impl Fn(f64, f64) -> f64 + Sync,
     finalize: impl Fn(f64, usize) -> f64 + Sync,
@@ -153,7 +159,7 @@ fn random_depth_core(
         return Vec::new();
     }
 
-    let projections = generate_random_projections(nproj, m);
+    let projections = generate_random_projections(nproj, m, seed);
     let sorted_proj_ori = project_and_sort_reference(data_ori, &projections, nproj, nori, m);
     let denom = nori as f64 + 1.0;
 
@@ -189,10 +195,21 @@ fn random_depth_core(
 /// * `data_ori` - Reference data
 /// * `nproj` - Number of random projections
 pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
+    random_projection_1d_seeded(data_obj, data_ori, nproj, None)
+}
+
+/// Compute random projection depth with optional seed for reproducibility.
+pub fn random_projection_1d_seeded(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    nproj: usize,
+    seed: Option<u64>,
+) -> Vec<f64> {
     random_depth_core(
         data_obj,
         data_ori,
         nproj,
+        seed,
         0.0,
         |acc, d| acc + d,
         |acc, n| acc / n as f64,
@@ -208,10 +225,21 @@ pub fn random_projection_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usi
 ///
 /// Takes the minimum over all random projections (more conservative than RP depth).
 pub fn random_tukey_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
+    random_tukey_1d_seeded(data_obj, data_ori, nproj, None)
+}
+
+/// Compute random Tukey depth with optional seed for reproducibility.
+pub fn random_tukey_1d_seeded(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    nproj: usize,
+    seed: Option<u64>,
+) -> Vec<f64> {
     random_depth_core(
         data_obj,
         data_ori,
         nproj,
+        seed,
         f64::INFINITY,
         f64::min,
         |acc, _| acc,
@@ -224,7 +252,18 @@ pub fn random_tukey_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -
 }
 
 /// Compute Functional Spatial Depth for 1D functional data.
-pub fn functional_spatial_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
+///
+/// Uses L2 norm with Simpson's integration weights to match R's `depth.FSD()`.
+///
+/// # Arguments
+/// * `data_obj` - Data to compute depth for (nobj x n_points)
+/// * `data_ori` - Reference data (nori x n_points)
+/// * `argvals` - Optional evaluation grid; if None, uses uniform \[0,1\] grid
+pub fn functional_spatial_1d(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    argvals: Option<&[f64]>,
+) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
     let n_points = data_obj.ncols();
@@ -233,21 +272,31 @@ pub fn functional_spatial_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f6
         return Vec::new();
     }
 
+    // Build integration weights from argvals
+    let default_argvals: Vec<f64>;
+    let weights = if let Some(av) = argvals {
+        simpsons_weights(av)
+    } else {
+        default_argvals = (0..n_points)
+            .map(|i| i as f64 / (n_points - 1).max(1) as f64)
+            .collect();
+        simpsons_weights(&default_argvals)
+    };
+
     iter_maybe_parallel!(0..nobj)
         .map(|i| {
             let mut sum_unit = vec![0.0; n_points];
 
             for j in 0..nori {
-                // First pass: compute norm without allocating a direction buffer
+                // Compute L2 norm with integration weights
                 let mut norm_sq = 0.0;
                 for t in 0..n_points {
                     let d = data_ori[(j, t)] - data_obj[(i, t)];
-                    norm_sq += d * d;
+                    norm_sq += weights[t] * d * d;
                 }
 
                 let norm = norm_sq.sqrt();
                 if norm > 1e-10 {
-                    // Second pass: accumulate unit-vector sum using the known norm
                     let inv_norm = 1.0 / norm;
                     for t in 0..n_points {
                         sum_unit[t] += (data_ori[(j, t)] - data_obj[(i, t)]) * inv_norm;
@@ -255,10 +304,11 @@ pub fn functional_spatial_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f6
                 }
             }
 
+            // Compute L2 norm of average unit vector with integration weights
             let mut avg_norm_sq = 0.0;
             for t in 0..n_points {
                 let avg = sum_unit[t] / nori as f64;
-                avg_norm_sq += avg * avg;
+                avg_norm_sq += weights[t] * avg * avg;
             }
 
             1.0 - avg_norm_sq.sqrt()
@@ -268,7 +318,7 @@ pub fn functional_spatial_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f6
 
 /// Compute Functional Spatial Depth for 2D functional data.
 pub fn functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
-    functional_spatial_1d(data_obj, data_ori)
+    functional_spatial_1d(data_obj, data_ori, None)
 }
 
 /// Compute kernel distance contribution for a single (j,k) pair.
@@ -447,6 +497,7 @@ pub fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
 /// Compute Modified Epigraph Index (MEI) for 1D functional data.
 ///
 /// MEI measures the proportion of time a curve is below other curves.
+/// Matches R's `roahd::MEI()`: uses `<=` comparison with 0.5 adjustment for ties.
 pub fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
@@ -467,10 +518,9 @@ pub fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> V
                     let xi = data_obj[(i, t)];
                     let xj = data_ori[(j, t)];
 
-                    if xi < xj {
+                    // R's roahd::MEI uses <= for the epigraph condition
+                    if xi <= xj {
                         count += 1.0;
-                    } else if (xi - xj).abs() < 1e-12 {
-                        count += 0.5;
                     }
                 }
 
@@ -628,7 +678,7 @@ mod tests {
         let n = 15;
         let m = 20;
         let data = generate_centered_data(n, m);
-        let depths = functional_spatial_1d(&data, &data);
+        let depths = functional_spatial_1d(&data, &data, None);
 
         for d in &depths {
             assert!(*d >= 0.0 && *d <= 1.0, "Spatial depth should be in [0, 1]");
@@ -638,7 +688,7 @@ mod tests {
     #[test]
     fn test_functional_spatial_invalid() {
         let empty = FdMatrix::zeros(0, 0);
-        assert!(functional_spatial_1d(&empty, &empty).is_empty());
+        assert!(functional_spatial_1d(&empty, &empty, None).is_empty());
     }
 
     // ============== Band depth tests ==============
@@ -830,7 +880,7 @@ mod tests {
         let n = 10;
         let m = 15;
         let data = generate_centered_data(n, m);
-        let depths_1d = functional_spatial_1d(&data, &data);
+        let depths_1d = functional_spatial_1d(&data, &data, None);
         let depths_2d = functional_spatial_2d(&data, &data);
         assert_eq!(depths_1d, depths_2d);
     }
@@ -941,7 +991,7 @@ mod tests {
         assert_eq!(fm.len(), 1);
         let modal = modal_1d(&data, &data, 0.5);
         assert_eq!(modal.len(), 1);
-        let spatial = functional_spatial_1d(&data, &data);
+        let spatial = functional_spatial_1d(&data, &data, None);
         assert_eq!(spatial.len(), 1);
     }
 
@@ -963,7 +1013,7 @@ mod tests {
         let mut data_vec = vec![1.0; n * m];
         data_vec[0] = f64::INFINITY;
         let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
-        let depths = functional_spatial_1d(&data, &data);
+        let depths = functional_spatial_1d(&data, &data, None);
         assert_eq!(depths.len(), n);
         // Should not panic
     }

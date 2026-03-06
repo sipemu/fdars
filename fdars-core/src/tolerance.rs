@@ -466,13 +466,13 @@ pub fn conformal_prediction_band(
 
 // ─── SCB for the Mean (Degras) ──────────────────────────────────────────────
 
-/// Compute pointwise residual standard deviation.
+/// Compute pointwise residual standard deviation (using n-1 divisor to match R's sd()).
 fn residual_sigma(data: &FdMatrix, center: &[f64], n: usize, m: usize) -> Vec<f64> {
-    let nf = n as f64;
+    let nf_minus1 = (n as f64 - 1.0).max(1.0);
     (0..m)
         .map(|j| {
             let var: f64 = (0..n).map(|i| (data[(i, j)] - center[j]).powi(2)).sum();
-            (var / nf).sqrt().max(1e-15)
+            (var / nf_minus1).sqrt().max(1e-15)
         })
         .collect()
 }

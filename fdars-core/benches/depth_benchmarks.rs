@@ -118,7 +118,7 @@ fn bench_functional_spatial(c: &mut Criterion) {
     for &n in &[50, 200, 500] {
         let data = generate_centered_data(n, t);
         group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
-            b.iter(|| functional_spatial_1d(black_box(data), black_box(data)))
+            b.iter(|| functional_spatial_1d(black_box(data), black_box(data), None))
         });
     }
     group.finish();
