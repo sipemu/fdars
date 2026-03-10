@@ -72,65 +72,68 @@ pub fn simpsons_weights(argvals: &[f64]) -> Vec<f64> {
         .all(|w| ((w[1] - w[0]) - h0).abs() < 1e-12 * h0.abs());
 
     if is_uniform {
-        // Uniform grid: standard composite Simpson's 1/3
-        let n_intervals = n - 1;
-        if n_intervals % 2 == 0 {
-            // Even number of intervals (odd n): pure Simpson's
-            // Pattern: [1, 4, 2, 4, 2, ..., 4, 1] * h/3
-            weights[0] = h0 / 3.0;
-            weights[n - 1] = h0 / 3.0;
-            for i in 1..n - 1 {
-                weights[i] = if i % 2 == 1 {
-                    4.0 * h0 / 3.0
-                } else {
-                    2.0 * h0 / 3.0
-                };
-            }
-        } else {
-            // Odd number of intervals (even n): Simpson's for first n-2 intervals,
-            // trapezoidal for last interval
-            let n_simp = n - 1; // number of points for Simpson's part
-            weights[0] = h0 / 3.0;
-            weights[n_simp - 1] = h0 / 3.0;
-            for i in 1..n_simp - 1 {
-                weights[i] = if i % 2 == 1 {
-                    4.0 * h0 / 3.0
-                } else {
-                    2.0 * h0 / 3.0
-                };
-            }
-            // Add trapezoidal for last interval
-            weights[n_simp - 1] += h0 / 2.0;
-            weights[n - 1] += h0 / 2.0;
-        }
+        simpsons_weights_uniform(&mut weights, n, h0);
     } else {
-        // Non-uniform grid: generalized Simpson's for each pair of intervals
-        let n_intervals = n - 1;
-        let n_pairs = n_intervals / 2;
-
-        for k in 0..n_pairs {
-            let i0 = 2 * k;
-            let i1 = i0 + 1;
-            let i2 = i0 + 2;
-            let h1 = argvals[i1] - argvals[i0];
-            let h2 = argvals[i2] - argvals[i1];
-            let h_sum = h1 + h2;
-
-            // Generalized Simpson's weights for non-uniform spacing
-            weights[i0] += (2.0 * h1 - h2) * h_sum / (6.0 * h1);
-            weights[i1] += h_sum * h_sum * h_sum / (6.0 * h1 * h2);
-            weights[i2] += (2.0 * h2 - h1) * h_sum / (6.0 * h2);
-        }
-
-        // If odd number of intervals, add trapezoidal for last interval
-        if n_intervals % 2 == 1 {
-            let h_last = argvals[n - 1] - argvals[n - 2];
-            weights[n - 2] += h_last / 2.0;
-            weights[n - 1] += h_last / 2.0;
-        }
+        simpsons_weights_nonuniform(&mut weights, argvals, n);
     }
 
     weights
+}
+
+/// Uniform grid Simpson's 1/3 weights.
+fn simpsons_weights_uniform(weights: &mut [f64], n: usize, h0: f64) {
+    let n_intervals = n - 1;
+    if n_intervals % 2 == 0 {
+        // Even number of intervals (odd n): pure Simpson's
+        weights[0] = h0 / 3.0;
+        weights[n - 1] = h0 / 3.0;
+        for i in 1..n - 1 {
+            weights[i] = if i % 2 == 1 {
+                4.0 * h0 / 3.0
+            } else {
+                2.0 * h0 / 3.0
+            };
+        }
+    } else {
+        // Odd number of intervals (even n): Simpson's + trapezoidal for last
+        let n_simp = n - 1;
+        weights[0] = h0 / 3.0;
+        weights[n_simp - 1] = h0 / 3.0;
+        for i in 1..n_simp - 1 {
+            weights[i] = if i % 2 == 1 {
+                4.0 * h0 / 3.0
+            } else {
+                2.0 * h0 / 3.0
+            };
+        }
+        weights[n_simp - 1] += h0 / 2.0;
+        weights[n - 1] += h0 / 2.0;
+    }
+}
+
+/// Non-uniform grid generalized Simpson's weights.
+fn simpsons_weights_nonuniform(weights: &mut [f64], argvals: &[f64], n: usize) {
+    let n_intervals = n - 1;
+    let n_pairs = n_intervals / 2;
+
+    for k in 0..n_pairs {
+        let i0 = 2 * k;
+        let i1 = i0 + 1;
+        let i2 = i0 + 2;
+        let h1 = argvals[i1] - argvals[i0];
+        let h2 = argvals[i2] - argvals[i1];
+        let h_sum = h1 + h2;
+
+        weights[i0] += (2.0 * h1 - h2) * h_sum / (6.0 * h1);
+        weights[i1] += h_sum * h_sum * h_sum / (6.0 * h1 * h2);
+        weights[i2] += (2.0 * h2 - h1) * h_sum / (6.0 * h2);
+    }
+
+    if n_intervals % 2 == 1 {
+        let h_last = argvals[n - 1] - argvals[n - 2];
+        weights[n - 2] += h_last / 2.0;
+        weights[n - 1] += h_last / 2.0;
+    }
 }
 
 /// Compute 2D integration weights using tensor product of 1D weights.

@@ -48,7 +48,45 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean, elastic distance matrices, amplitude/phase decomposition, landmark registration, transported SRVF (TSRVF)
 - **Detrending**: Linear, polynomial, LOESS, differencing; classical, additive/multiplicative, and STL decomposition
 
-### Inference & Diagnostics
+### Explainability & Diagnostics
+
+- **Bootstrap Confidence Intervals**: Pointwise and simultaneous CIs for β(t) via bootstrap
+- **Beta Decomposition**: FPC-level variance proportions and coefficient attribution
+- **PDP/ICE Curves**: Partial dependence and individual conditional expectation for FPC scores
+- **Permutation Importance**: FPC-level importance via R² drop (linear and logistic)
+- **Pointwise Variable Importance**: Per-grid-point contribution to prediction variance
+- **Influence Diagnostics**: Cook's distance, leverage, studentized residuals
+- **DFBETAS/DFFITS**: Leave-one-out influence measures with cutoff thresholds
+- **VIF**: Variance inflation factors for multicollinearity detection
+- **SHAP Values**: Exact linear SHAP and Kernel SHAP for logistic models
+- **Prediction Intervals**: Confidence and prediction intervals with Cornish-Fisher correction
+- **ALE Plots**: Accumulated local effects for FPC scores (linear and logistic)
+- **Friedman H-statistic**: Pairwise FPC interaction strength
+- **LOO-CV / PRESS**: Leave-one-out cross-validation diagnostics
+- **Sobol Indices**: Global sensitivity analysis for FPC contributions
+- **Calibration Diagnostics**: Brier score, log loss, Hosmer-Lemeshow test
+- **Functional Saliency Maps**: Pointwise gradient-based importance
+- **Domain Selection**: Interval importance for regression/classification
+- **Conditional Permutation Importance**: Correlation-adjusted permutation importance
+- **Counterfactual Explanations**: Minimal FPC score changes to reach a target prediction
+- **Prototype/Criticism Selection**: MMD-based representative and outlier observations
+- **LIME**: Local interpretable model-agnostic explanations in FPC score space
+- **Expected Calibration Error**: ECE, MCE, and adaptive calibration error
+- **Conformal Prediction**: Distribution-free split-conformal prediction intervals
+- **Regression Depth**: Depth-based diagnostics for coefficients and observations
+- **Stability Analysis**: Bootstrap robustness of β(t), coefficients, and importance rankings
+- **Anchor Explanations**: Beam-search rule extraction in FPC score space
+
+### Elastic Analysis
+
+- **Elastic FPCA**: Vertical, horizontal, and joint functional PCA after alignment
+- **Elastic Regression**: Alignment-integrated scalar-on-function regression
+- **Elastic PCR**: Principal component regression with elastic alignment
+- **Elastic Logistic**: Binary classification with elastic alignment
+- **Elastic Changepoint Detection**: Amplitude and phase changepoint tests with permutation
+- **Elastic Attribution**: Amplitude vs phase importance decomposition
+
+### Inference
 
 - **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands
 - **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
@@ -57,6 +95,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 - **Streaming Depth**: Online FM, MBD, BD depth with sorted-reference O(log N) updates
 - **Irregular Data**: CSR-compressed storage, kernel mean/covariance, Lp metric, grid regularization
+- **Smooth Basis**: B-spline basis representation with smoothing penalty
 
 ## Installation
 
@@ -125,7 +164,7 @@ let depths = depth::fraiman_muniz_1d(&mat, &mat, true);
 
 ## Examples
 
-The [`fdars-core/examples/`](fdars-core/examples/) directory contains 24 runnable examples progressing from basic to advanced:
+The [`fdars-core/examples/`](fdars-core/examples/) directory contains 26 runnable examples progressing from basic to advanced:
 
 | # | Example | Command | Topics |
 |---|---------|---------|--------|
@@ -153,6 +192,8 @@ The [`fdars-core/examples/`](fdars-core/examples/) directory contains 24 runnabl
 | 22 | [GMM Clustering](fdars-core/examples/22_gmm_clustering/) | `cargo run -p fdars-core --features linalg --example gmm_clustering` | GMM-EM, automatic K selection, BIC/ICL |
 | 23 | [Classification](fdars-core/examples/23_classification/) | `cargo run -p fdars-core --features linalg --example classification` | LDA, QDA, k-NN, DD-classifier, cross-validation |
 | 24 | [Mixed Effects](fdars-core/examples/24_mixed_effects/) | `cargo run -p fdars-core --features linalg --example mixed_effects` | FAMM, REML variance estimation, permutation tests |
+| 25 | [Explainability](fdars-core/examples/25_explainability/) | `cargo run -p fdars-core --features linalg --example explainability` | Bootstrap CI, SHAP, ALE, PDP, VIF, DFBETAS, ECE, conformal, anchors |
+| 26 | [Elastic Analysis](fdars-core/examples/26_elastic_analysis/) | `cargo run -p fdars-core --features linalg --example elastic_analysis` | Elastic FPCA, regression, PCR, logistic, changepoint detection |
 
 ## Performance
 

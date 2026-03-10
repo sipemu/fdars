@@ -467,6 +467,48 @@ fn log_component_density(z: &[f64], mean: &[f64], cov: &[f64], d: usize, cov_typ
 
 /// E-step: compute log-responsibilities and log-likelihood.
 /// Returns (responsibilities as n×k flat row-major, log_likelihood).
+/// Compute log(π_c * N(z_i | μ_c, Σ_c)) for each component c.
+fn compute_log_component_probs(
+    feature: &[f64],
+    means: &[Vec<f64>],
+    covariances: &[Vec<f64>],
+    weights: &[f64],
+    k: usize,
+    d: usize,
+    cov_type: CovType,
+) -> Vec<f64> {
+    let mut log_probs = vec![f64::NEG_INFINITY; k];
+    for c in 0..k {
+        if weights[c] > 1e-15 {
+            log_probs[c] = weights[c].ln()
+                + log_component_density(feature, &means[c], &covariances[c], d, cov_type);
+        }
+    }
+    log_probs
+}
+
+/// Normalize log-probabilities to responsibilities via log-sum-exp. Returns log-likelihood contribution.
+fn normalize_responsibilities(log_probs: &[f64], resp: &mut [f64]) -> f64 {
+    let k = log_probs.len();
+    let max_lp = log_probs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    if max_lp == f64::NEG_INFINITY {
+        for c in 0..k {
+            resp[c] = 1.0 / k as f64;
+        }
+        return 0.0;
+    }
+    let lse = max_lp
+        + log_probs
+            .iter()
+            .map(|&lp| (lp - max_lp).exp())
+            .sum::<f64>()
+            .ln();
+    for c in 0..k {
+        resp[c] = (log_probs[c] - lse).exp();
+    }
+    lse
+}
+
 fn e_step(
     features: &[Vec<f64>],
     means: &[Vec<f64>],
@@ -481,36 +523,9 @@ fn e_step(
     let mut ll = 0.0;
 
     for i in 0..n {
-        // Compute log(π_c * N(z_i | μ_c, Σ_c)) for each c
-        let mut log_probs = vec![f64::NEG_INFINITY; k];
-        for c in 0..k {
-            if weights[c] > 1e-15 {
-                log_probs[c] = weights[c].ln()
-                    + log_component_density(&features[i], &means[c], &covariances[c], d, cov_type);
-            }
-        }
-
-        // Log-sum-exp for numerical stability
-        let max_lp = log_probs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        if max_lp == f64::NEG_INFINITY {
-            // All components give -inf density; assign uniform
-            for c in 0..k {
-                resp[i * k + c] = 1.0 / k as f64;
-            }
-            continue;
-        }
-
-        let lse = max_lp
-            + log_probs
-                .iter()
-                .map(|&lp| (lp - max_lp).exp())
-                .sum::<f64>()
-                .ln();
-        ll += lse;
-
-        for c in 0..k {
-            resp[i * k + c] = (log_probs[c] - lse).exp();
-        }
+        let log_probs =
+            compute_log_component_probs(&features[i], means, covariances, weights, k, d, cov_type);
+        ll += normalize_responsibilities(&log_probs, &mut resp[i * k..(i + 1) * k]);
     }
 
     (resp, ll)
@@ -678,33 +693,19 @@ pub fn gmm_em(
         weights = new_weights;
     }
 
-    // Final E-step for log-likelihood
-    let (final_resp, log_likelihood) =
-        e_step(features, &means, &covariances, &weights, k, d, cov_type);
-    resp = final_resp;
-
-    let n_params = count_params(k, d, cov_type);
-    let bic = compute_bic(log_likelihood, n, n_params);
-    let icl = compute_icl(bic, &resp, n, k);
-
-    // Hard assignments and membership matrix
-    let cluster = hard_assignments(&resp, n, k);
-    let membership = resp_to_membership(&resp, n, k);
-
-    Some(GmmResult {
-        cluster,
-        membership,
+    // Final E-step and model selection
+    Some(finalize_gmm(
+        features,
         means,
         covariances,
         weights,
-        log_likelihood,
-        bic,
-        icl,
-        iterations,
-        converged,
         k,
         d,
-    })
+        n,
+        cov_type,
+        iterations,
+        converged,
+    ))
 }
 
 /// Convert flat responsibilities to hard cluster assignments.
@@ -877,6 +878,42 @@ pub fn predict_gmm(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+/// Finalize GMM: run final E-step, compute BIC/ICL, extract assignments.
+fn finalize_gmm(
+    features: &[Vec<f64>],
+    means: Vec<Vec<f64>>,
+    covariances: Vec<Vec<f64>>,
+    weights: Vec<f64>,
+    k: usize,
+    d: usize,
+    n: usize,
+    cov_type: CovType,
+    iterations: usize,
+    converged: bool,
+) -> GmmResult {
+    let (resp, log_likelihood) = e_step(features, &means, &covariances, &weights, k, d, cov_type);
+    let n_params = count_params(k, d, cov_type);
+    let bic = compute_bic(log_likelihood, n, n_params);
+    let icl = compute_icl(bic, &resp, n, k);
+    let cluster = hard_assignments(&resp, n, k);
+    let membership = resp_to_membership(&resp, n, k);
+
+    GmmResult {
+        cluster,
+        membership,
+        means,
+        covariances,
+        weights,
+        log_likelihood,
+        bic,
+        icl,
+        iterations,
+        converged,
+        k,
+        d,
+    }
+}
 
 #[cfg(test)]
 mod tests {

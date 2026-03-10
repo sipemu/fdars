@@ -14,8 +14,12 @@
 //! - [`functional_logistic`]: Logistic regression for binary outcomes
 //! - [`fregre_cv`]: Cross-validation for number of FPC components
 
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use rand::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -27,6 +31,8 @@ pub struct FregreLmResult {
     pub intercept: f64,
     /// Functional coefficient β(t), evaluated on the original grid (length m)
     pub beta_t: Vec<f64>,
+    /// Pointwise standard errors of β(t) (length m)
+    pub beta_se: Vec<f64>,
     /// Scalar coefficients γ (one per scalar covariate)
     pub gamma: Vec<f64>,
     /// Fitted values ŷ (length n)
@@ -73,6 +79,8 @@ pub struct FunctionalLogisticResult {
     pub intercept: f64,
     /// Functional coefficient β(t), evaluated on the original grid (length m)
     pub beta_t: Vec<f64>,
+    /// Pointwise standard errors of β(t) (length m)
+    pub beta_se: Vec<f64>,
     /// Scalar coefficients γ (one per scalar covariate)
     pub gamma: Vec<f64>,
     /// Predicted probabilities P(Y=1) (length n)
@@ -83,6 +91,8 @@ pub struct FunctionalLogisticResult {
     pub ncomp: usize,
     /// Classification accuracy on training data
     pub accuracy: f64,
+    /// Standard errors of all coefficients (intercept, FPC scores, scalar covariates)
+    pub std_errors: Vec<f64>,
     /// Regression coefficients on (FPC scores, scalar covariates) — internal
     pub coefficients: Vec<f64>,
     /// Log-likelihood at convergence
@@ -110,7 +120,7 @@ pub struct FregreCvResult {
 // ---------------------------------------------------------------------------
 
 /// Compute X'X (symmetric, p×p stored flat row-major).
-fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
+pub(crate) fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
     let (n, p) = x.shape();
     let mut xtx = vec![0.0; p * p];
     for k in 0..p {
@@ -141,7 +151,7 @@ fn compute_xty(x: &FdMatrix, y: &[f64]) -> Vec<f64> {
 }
 
 /// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or None if singular.
-fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
+pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
     let mut l = vec![0.0; p * p];
     for j in 0..p {
         let mut diag = a[j * p + j];
@@ -164,7 +174,7 @@ fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
 }
 
 /// Solve Lz = b (forward) then L'x = z (back). L is p×p flat row-major.
-fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
+pub(crate) fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
     let mut z = b.to_vec();
     for j in 0..p {
         for k in 0..j {
@@ -188,7 +198,7 @@ fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
 }
 
 /// Compute hat matrix diagonal: H_ii = x_i' (X'X)^{-1} x_i, given Cholesky factor L of X'X.
-fn compute_hat_diagonal(x: &FdMatrix, l: &[f64]) -> Vec<f64> {
+pub(crate) fn compute_hat_diagonal(x: &FdMatrix, l: &[f64]) -> Vec<f64> {
     let (n, p) = x.shape();
     let mut hat_diag = vec![0.0; n];
     for i in 0..n {
@@ -227,7 +237,42 @@ fn compute_ols_std_errors(l: &[f64], p: usize, sigma2: f64) -> Vec<f64> {
 // ---------------------------------------------------------------------------
 
 /// Build design matrix: \[1, ξ_1, ..., ξ_K, z_1, ..., z_p\].
-fn build_design_matrix(
+/// Validate inputs for fregre_lm / functional_logistic.
+fn validate_fregre_inputs(
+    n: usize,
+    m: usize,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+) -> Option<()> {
+    if n < 3 || m == 0 || y.len() != n {
+        return None;
+    }
+    if let Some(sc) = scalar_covariates {
+        if sc.nrows() != n {
+            return None;
+        }
+    }
+    Some(())
+}
+
+/// Resolve ncomp: auto-select via CV if 0, otherwise clamp.
+fn resolve_ncomp(
+    ncomp: usize,
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    n: usize,
+    m: usize,
+) -> Option<usize> {
+    if ncomp == 0 {
+        let cv = fregre_cv(data, y, scalar_covariates, 1, m.min(n - 1).min(20), 5)?;
+        Some(cv.optimal_k)
+    } else {
+        Some(ncomp.min(n - 1).min(m))
+    }
+}
+
+pub(crate) fn build_design_matrix(
     fpca_scores: &FdMatrix,
     ncomp: usize,
     scalar_covariates: Option<&FdMatrix>,
@@ -260,6 +305,22 @@ fn recover_beta_t(fpc_coeffs: &[f64], rotation: &FdMatrix, m: usize) -> Vec<f64>
         }
     }
     beta_t
+}
+
+/// Pointwise standard error of β(t) via error propagation through FPCA rotation.
+///
+/// SE[β(t_j)]² = Σ_k φ_k(t_j)² · SE[γ_k]²
+fn compute_beta_se(gamma_se: &[f64], rotation: &FdMatrix, m: usize) -> Vec<f64> {
+    let ncomp = gamma_se.len();
+    let mut beta_se = vec![0.0; m];
+    for j in 0..m {
+        let mut var_j = 0.0;
+        for k in 0..ncomp {
+            var_j += rotation[(j, k)].powi(2) * gamma_se[k].powi(2);
+        }
+        beta_se[j] = var_j.sqrt();
+    }
+    beta_se
 }
 
 /// Compute fitted values ŷ = X β.
@@ -340,21 +401,9 @@ pub fn fregre_lm(
     ncomp: usize,
 ) -> Option<FregreLmResult> {
     let (n, m) = data.shape();
-    if n < 3 || m == 0 || y.len() != n {
-        return None;
-    }
-    if let Some(sc) = scalar_covariates {
-        if sc.nrows() != n {
-            return None;
-        }
-    }
+    validate_fregre_inputs(n, m, y, scalar_covariates)?;
 
-    let ncomp = if ncomp == 0 {
-        let cv = fregre_cv(data, y, scalar_covariates, 1, m.min(n - 1).min(20), 5)?;
-        cv.optimal_k
-    } else {
-        ncomp.min(n - 1).min(m)
-    };
+    let ncomp = resolve_ncomp(ncomp, data, y, scalar_covariates, n, m)?;
 
     let fpca = fdata_to_pc_1d(data, ncomp)?;
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);
@@ -386,11 +435,13 @@ pub fn fregre_lm(
         / n as f64;
 
     let beta_t = recover_beta_t(&coeffs[1..1 + ncomp], &fpca.rotation, m);
+    let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
     let gamma: Vec<f64> = coeffs[1 + ncomp..].to_vec();
 
     Some(FregreLmResult {
         intercept: coeffs[0],
         beta_t,
+        beta_se,
         gamma,
         fitted_values,
         residuals,
@@ -910,7 +961,7 @@ fn logistic_log_likelihood(probabilities: &[f64], y: &[f64]) -> f64 {
 }
 
 /// Sigmoid function: 1 / (1 + exp(-x))
-fn sigmoid(x: f64) -> f64 {
+pub(crate) fn sigmoid(x: f64) -> f64 {
     if x >= 0.0 {
         1.0 / (1.0 + (-x).exp())
     } else {
@@ -953,7 +1004,7 @@ fn build_logistic_result(
     m: usize,
     iterations: usize,
 ) -> FunctionalLogisticResult {
-    let n = y.len();
+    let (n, p) = design.shape();
     let eta = compute_fitted(design, &beta);
     let probabilities: Vec<f64> = eta.iter().map(|&e| sigmoid(e)).collect();
     let predicted_classes: Vec<u8> = probabilities
@@ -968,15 +1019,38 @@ fn build_logistic_result(
     let beta_t = recover_beta_t(&beta[1..1 + ncomp], &fpca.rotation, m);
     let gamma: Vec<f64> = beta[1 + ncomp..].to_vec();
 
+    // Compute coefficient SEs from Fisher information matrix (X'WX)^{-1}
+    let w: Vec<f64> = probabilities
+        .iter()
+        .map(|&mu| (mu * (1.0 - mu)).max(1e-10))
+        .collect();
+    let mut xtwx = vec![0.0; p * p];
+    for k in 0..p {
+        for j in k..p {
+            let mut s = 0.0;
+            for i in 0..n {
+                s += design[(i, k)] * w[i] * design[(i, j)];
+            }
+            xtwx[k * p + j] = s;
+            xtwx[j * p + k] = s;
+        }
+    }
+    let std_errors = cholesky_factor(&xtwx, p)
+        .map(|l| compute_ols_std_errors(&l, p, 1.0))
+        .unwrap_or_else(|| vec![f64::NAN; p]);
+    let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
+
     FunctionalLogisticResult {
         intercept: beta[0],
         beta_t,
+        beta_se,
         gamma,
         accuracy: correct as f64 / n as f64,
         log_likelihood: logistic_log_likelihood(&probabilities, y),
         probabilities,
         predicted_classes,
         ncomp,
+        std_errors,
         coefficients: beta,
         iterations,
         fpca,
@@ -1022,6 +1096,250 @@ pub fn functional_logistic(
     Some(build_logistic_result(
         &design, beta, y, fpca, ncomp, m, iterations,
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap CIs for β(t)
+// ---------------------------------------------------------------------------
+
+/// Result of bootstrap confidence intervals for β(t).
+pub struct BootstrapCiResult {
+    /// Pointwise lower bound (length m).
+    pub lower: Vec<f64>,
+    /// Pointwise upper bound (length m).
+    pub upper: Vec<f64>,
+    /// Original β(t) estimate (length m).
+    pub center: Vec<f64>,
+    /// Simultaneous lower bound (sup-norm adjusted, length m).
+    pub sim_lower: Vec<f64>,
+    /// Simultaneous upper bound (sup-norm adjusted, length m).
+    pub sim_upper: Vec<f64>,
+    /// Number of bootstrap replicates that converged.
+    pub n_boot_success: usize,
+}
+
+/// Gather rows from `src` by index (with replacement), returning a new matrix.
+fn subsample_rows(src: &FdMatrix, indices: &[usize]) -> FdMatrix {
+    let ncols = src.ncols();
+    let mut out = FdMatrix::zeros(indices.len(), ncols);
+    for (dst_i, &src_i) in indices.iter().enumerate() {
+        for j in 0..ncols {
+            out[(dst_i, j)] = src[(src_i, j)];
+        }
+    }
+    out
+}
+
+/// Compute the q-th quantile of a sorted slice (linear interpolation).
+fn quantile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return f64::NAN;
+    }
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let pos = q * (sorted.len() - 1) as f64;
+    let lo = pos.floor() as usize;
+    let hi = lo + 1;
+    let frac = pos - lo as f64;
+    if hi >= sorted.len() {
+        sorted[sorted.len() - 1]
+    } else {
+        sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+    }
+}
+
+/// Bootstrap confidence intervals for β(t) from a functional linear model.
+///
+/// Uses cases bootstrap (resampling observation indices with replacement) to
+/// build pointwise and simultaneous confidence bands for the functional
+/// coefficient β(t).
+///
+/// # Arguments
+/// * `data` — Functional predictor matrix (n × m)
+/// * `y` — Scalar response vector (length n)
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
+/// * `ncomp` — Number of FPC components
+/// * `n_boot` — Number of bootstrap replicates
+/// * `alpha` — Significance level (e.g., 0.05 for 95% CI)
+/// * `seed` — RNG seed for reproducibility
+pub fn bootstrap_ci_fregre_lm(
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    ncomp: usize,
+    n_boot: usize,
+    alpha: f64,
+    seed: u64,
+) -> Option<BootstrapCiResult> {
+    let (n, m) = data.shape();
+    if n < 3 || m == 0 || y.len() != n || n_boot == 0 || alpha <= 0.0 || alpha >= 1.0 {
+        return None;
+    }
+
+    // Fit original model
+    let original = fregre_lm(data, y, scalar_covariates, ncomp)?;
+    let center = original.beta_t.clone();
+
+    // Bootstrap replicates
+    let boot_betas: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_boot)
+        .filter_map(|b| {
+            let mut rng = StdRng::seed_from_u64(seed.wrapping_add(b as u64));
+            let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
+
+            let boot_data = subsample_rows(data, &indices);
+            let boot_y: Vec<f64> = indices.iter().map(|&i| y[i]).collect();
+            let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &indices));
+
+            fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp).map(|fit| fit.beta_t)
+        })
+        .collect();
+
+    let n_boot_success = boot_betas.len();
+    if n_boot_success < 3 {
+        return None;
+    }
+
+    // Pointwise bands: sort each grid point across replicates
+    let lo_q = alpha / 2.0;
+    let hi_q = 1.0 - alpha / 2.0;
+    let mut lower = vec![0.0; m];
+    let mut upper = vec![0.0; m];
+    let mut boot_se = vec![0.0; m];
+
+    for j in 0..m {
+        let mut vals: Vec<f64> = boot_betas.iter().map(|b| b[j]).collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        lower[j] = quantile(&vals, lo_q);
+        upper[j] = quantile(&vals, hi_q);
+
+        // Bootstrap SE at this grid point
+        let mean_j: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
+        let var_j: f64 =
+            vals.iter().map(|&v| (v - mean_j).powi(2)).sum::<f64>() / (vals.len() - 1) as f64;
+        boot_se[j] = var_j.sqrt().max(1e-15);
+    }
+
+    // Simultaneous bands: sup-norm bootstrap
+    let mut t_stats: Vec<f64> = boot_betas
+        .iter()
+        .map(|b| {
+            (0..m)
+                .map(|j| ((b[j] - center[j]) / boot_se[j]).abs())
+                .fold(0.0_f64, f64::max)
+        })
+        .collect();
+    t_stats.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let c_alpha = quantile(&t_stats, 1.0 - alpha);
+    let sim_lower: Vec<f64> = (0..m).map(|j| center[j] - c_alpha * boot_se[j]).collect();
+    let sim_upper: Vec<f64> = (0..m).map(|j| center[j] + c_alpha * boot_se[j]).collect();
+
+    Some(BootstrapCiResult {
+        lower,
+        upper,
+        center,
+        sim_lower,
+        sim_upper,
+        n_boot_success,
+    })
+}
+
+/// Bootstrap confidence intervals for β(t) from a functional logistic model.
+///
+/// Same algorithm as [`bootstrap_ci_fregre_lm`] but using [`functional_logistic`]
+/// as the inner estimator. Degenerate resamples (all-0 or all-1 y) fail naturally.
+///
+/// # Arguments
+/// * `data` — Functional predictor matrix (n × m)
+/// * `y` — Binary response vector (0.0 or 1.0, length n)
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
+/// * `ncomp` — Number of FPC components
+/// * `n_boot` — Number of bootstrap replicates
+/// * `alpha` — Significance level
+/// * `seed` — RNG seed
+/// * `max_iter` — Maximum IRLS iterations per replicate
+/// * `tol` — IRLS convergence tolerance
+pub fn bootstrap_ci_functional_logistic(
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    ncomp: usize,
+    n_boot: usize,
+    alpha: f64,
+    seed: u64,
+    max_iter: usize,
+    tol: f64,
+) -> Option<BootstrapCiResult> {
+    let (n, m) = data.shape();
+    if n < 3 || m == 0 || y.len() != n || n_boot == 0 || alpha <= 0.0 || alpha >= 1.0 {
+        return None;
+    }
+
+    // Fit original model
+    let original = functional_logistic(data, y, scalar_covariates, ncomp, max_iter, tol)?;
+    let center = original.beta_t.clone();
+
+    // Bootstrap replicates
+    let boot_betas: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_boot)
+        .filter_map(|b| {
+            let mut rng = StdRng::seed_from_u64(seed.wrapping_add(b as u64));
+            let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
+
+            let boot_data = subsample_rows(data, &indices);
+            let boot_y: Vec<f64> = indices.iter().map(|&i| y[i]).collect();
+            let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &indices));
+
+            functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, max_iter, tol)
+                .map(|fit| fit.beta_t)
+        })
+        .collect();
+
+    let n_boot_success = boot_betas.len();
+    if n_boot_success < 3 {
+        return None;
+    }
+
+    let lo_q = alpha / 2.0;
+    let hi_q = 1.0 - alpha / 2.0;
+    let mut lower = vec![0.0; m];
+    let mut upper = vec![0.0; m];
+    let mut boot_se = vec![0.0; m];
+
+    for j in 0..m {
+        let mut vals: Vec<f64> = boot_betas.iter().map(|b| b[j]).collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        lower[j] = quantile(&vals, lo_q);
+        upper[j] = quantile(&vals, hi_q);
+
+        let mean_j: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
+        let var_j: f64 =
+            vals.iter().map(|&v| (v - mean_j).powi(2)).sum::<f64>() / (vals.len() - 1) as f64;
+        boot_se[j] = var_j.sqrt().max(1e-15);
+    }
+
+    let mut t_stats: Vec<f64> = boot_betas
+        .iter()
+        .map(|b| {
+            (0..m)
+                .map(|j| ((b[j] - center[j]) / boot_se[j]).abs())
+                .fold(0.0_f64, f64::max)
+        })
+        .collect();
+    t_stats.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let c_alpha = quantile(&t_stats, 1.0 - alpha);
+    let sim_lower: Vec<f64> = (0..m).map(|j| center[j] - c_alpha * boot_se[j]).collect();
+    let sim_upper: Vec<f64> = (0..m).map(|j| center[j] + c_alpha * boot_se[j]).collect();
+
+    Some(BootstrapCiResult {
+        lower,
+        upper,
+        center,
+        sim_lower,
+        sim_upper,
+        n_boot_success,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1330,5 +1648,238 @@ mod tests {
         assert!(sigmoid(10.0) > 0.999);
         assert!(sigmoid(-10.0) < 0.001);
         assert!((sigmoid(3.0) + sigmoid(-3.0) - 1.0).abs() < 1e-10);
+    }
+
+    // ----- beta_se tests -----
+
+    #[test]
+    fn test_fregre_lm_beta_se() {
+        let (data, y, _t) = generate_test_data(30, 50, 42);
+        let fit = fregre_lm(&data, &y, None, 3).unwrap();
+        assert_eq!(fit.beta_se.len(), 50, "beta_se should have length m");
+        for (j, &se) in fit.beta_se.iter().enumerate() {
+            assert!(
+                se > 0.0 && se.is_finite(),
+                "beta_se[{}] should be positive finite, got {}",
+                j,
+                se
+            );
+        }
+    }
+
+    #[test]
+    fn test_fregre_lm_beta_se_coverage() {
+        // Use generate_test_data which is known to produce valid FPCA, then check SE properties
+        let (data, y, _t) = generate_test_data(50, 50, 99);
+        let fit = fregre_lm(&data, &y, None, 3).unwrap();
+        assert_eq!(fit.beta_se.len(), 50);
+        // With valid data, beta_se should be positive everywhere
+        for (j, &se) in fit.beta_se.iter().enumerate() {
+            assert!(
+                se > 0.0 && se.is_finite(),
+                "beta_se[{}] should be positive finite, got {}",
+                j,
+                se
+            );
+        }
+        // The CI band [beta_t ± 2·SE] should have non-zero width everywhere
+        for j in 0..50 {
+            let width = 4.0 * fit.beta_se[j];
+            assert!(width > 0.0, "CI width should be positive at j={}", j);
+        }
+    }
+
+    #[test]
+    fn test_functional_logistic_beta_se() {
+        let (data, y_cont, _t) = generate_test_data(30, 50, 42);
+        let y_median = {
+            let mut sorted = y_cont.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted[sorted.len() / 2]
+        };
+        let y_bin: Vec<f64> = y_cont
+            .iter()
+            .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
+            .collect();
+
+        let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
+        assert_eq!(fit.beta_se.len(), 50, "beta_se should have length m");
+        assert_eq!(
+            fit.std_errors.len(),
+            1 + 3,
+            "std_errors should have length 1 + ncomp"
+        );
+        for (j, &se) in fit.beta_se.iter().enumerate() {
+            assert!(
+                se > 0.0 && se.is_finite(),
+                "beta_se[{}] should be positive finite, got {}",
+                j,
+                se
+            );
+        }
+        for (j, &se) in fit.std_errors.iter().enumerate() {
+            assert!(
+                se > 0.0 && se.is_finite(),
+                "std_errors[{}] should be positive finite, got {}",
+                j,
+                se
+            );
+        }
+    }
+
+    #[test]
+    fn test_beta_se_zero_for_constant() {
+        // When all curves are nearly identical, β(t) ≈ 0 but SE should still be finite/positive
+        let n = 30;
+        let m = 20;
+        let mut data = FdMatrix::zeros(n, m);
+        let mut y = vec![0.0; n];
+        for i in 0..n {
+            for j in 0..m {
+                // Nearly identical curves with tiny variation
+                data[(i, j)] = 1.0 + 0.001 * (i as f64 / n as f64);
+            }
+            y[i] = i as f64 / n as f64;
+        }
+        let fit = fregre_lm(&data, &y, None, 1).unwrap();
+        assert_eq!(fit.beta_se.len(), m);
+        for (j, &se) in fit.beta_se.iter().enumerate() {
+            assert!(
+                se.is_finite() && se >= 0.0,
+                "beta_se[{}] should be finite non-negative, got {}",
+                j,
+                se
+            );
+        }
+    }
+
+    // ----- Bootstrap CI tests -----
+
+    #[test]
+    fn test_bootstrap_ci_fregre_lm_shape() {
+        let (data, y, _t) = generate_test_data(30, 20, 42);
+        let result = bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 0.05, 123);
+        assert!(result.is_some(), "bootstrap_ci_fregre_lm should succeed");
+        let ci = result.unwrap();
+        assert_eq!(ci.lower.len(), 20);
+        assert_eq!(ci.upper.len(), 20);
+        assert_eq!(ci.center.len(), 20);
+        assert_eq!(ci.sim_lower.len(), 20);
+        assert_eq!(ci.sim_upper.len(), 20);
+        assert!(ci.n_boot_success > 0);
+    }
+
+    #[test]
+    fn test_bootstrap_ci_fregre_lm_ordering() {
+        let (data, y, _t) = generate_test_data(30, 20, 42);
+        let ci = bootstrap_ci_fregre_lm(&data, &y, None, 2, 100, 0.05, 42).unwrap();
+        for j in 0..20 {
+            // Pointwise: lower ≤ center ≤ upper
+            assert!(
+                ci.lower[j] <= ci.center[j] + 1e-10,
+                "lower <= center at j={}: {} > {}",
+                j,
+                ci.lower[j],
+                ci.center[j]
+            );
+            assert!(
+                ci.center[j] <= ci.upper[j] + 1e-10,
+                "center <= upper at j={}: {} > {}",
+                j,
+                ci.center[j],
+                ci.upper[j]
+            );
+            // Simultaneous: sim_lower ≤ center ≤ sim_upper
+            assert!(
+                ci.sim_lower[j] <= ci.center[j] + 1e-10,
+                "sim_lower <= center at j={}: {} > {}",
+                j,
+                ci.sim_lower[j],
+                ci.center[j]
+            );
+            assert!(
+                ci.center[j] <= ci.sim_upper[j] + 1e-10,
+                "center <= sim_upper at j={}: {} > {}",
+                j,
+                ci.center[j],
+                ci.sim_upper[j]
+            );
+        }
+        // Simultaneous band should be wider on average
+        let pw_width: f64 = (0..20).map(|j| ci.upper[j] - ci.lower[j]).sum::<f64>() / 20.0;
+        let sim_width: f64 = (0..20)
+            .map(|j| ci.sim_upper[j] - ci.sim_lower[j])
+            .sum::<f64>()
+            / 20.0;
+        assert!(
+            sim_width >= pw_width - 1e-10,
+            "Simultaneous band should be wider on average: sim={}, pw={}",
+            sim_width,
+            pw_width
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_ci_fregre_lm_center_matches_fit() {
+        let (data, y, _t) = generate_test_data(30, 20, 42);
+        let fit = fregre_lm(&data, &y, None, 2).unwrap();
+        let ci = bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 0.05, 42).unwrap();
+        for j in 0..20 {
+            assert!(
+                (ci.center[j] - fit.beta_t[j]).abs() < 1e-12,
+                "center should match original beta_t at j={}",
+                j
+            );
+        }
+    }
+
+    #[test]
+    fn test_bootstrap_ci_functional_logistic_shape() {
+        let (data, y_cont, _t) = generate_test_data(40, 20, 42);
+        let y_median = {
+            let mut sorted = y_cont.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted[sorted.len() / 2]
+        };
+        let y_bin: Vec<f64> = y_cont
+            .iter()
+            .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
+            .collect();
+
+        let result =
+            bootstrap_ci_functional_logistic(&data, &y_bin, None, 2, 50, 0.05, 123, 25, 1e-6);
+        assert!(
+            result.is_some(),
+            "bootstrap_ci_functional_logistic should succeed"
+        );
+        let ci = result.unwrap();
+        assert_eq!(ci.lower.len(), 20);
+        assert_eq!(ci.upper.len(), 20);
+        assert_eq!(ci.center.len(), 20);
+        assert!(ci.n_boot_success > 0);
+    }
+
+    #[test]
+    fn test_bootstrap_ci_logistic_ordering() {
+        let (data, y_cont, _t) = generate_test_data(40, 20, 42);
+        let y_median = {
+            let mut sorted = y_cont.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted[sorted.len() / 2]
+        };
+        let y_bin: Vec<f64> = y_cont
+            .iter()
+            .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
+            .collect();
+
+        let ci = bootstrap_ci_functional_logistic(&data, &y_bin, None, 2, 100, 0.05, 42, 25, 1e-6)
+            .unwrap();
+        for j in 0..20 {
+            assert!(
+                ci.lower[j] <= ci.upper[j] + 1e-10,
+                "lower <= upper at j={}",
+                j
+            );
+        }
     }
 }

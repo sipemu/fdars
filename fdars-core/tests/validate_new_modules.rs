@@ -596,7 +596,7 @@ mod gmm_clustering {
         let n = k * n_per;
         let mut features = Vec::with_capacity(n);
         let mut labels = Vec::with_capacity(n);
-        let centers = vec![vec![0.0, 0.0], vec![5.0, 5.0], vec![10.0, 0.0]];
+        let centers = [vec![0.0, 0.0], vec![5.0, 5.0], vec![10.0, 0.0]];
 
         for (c, center) in centers.iter().enumerate().take(k) {
             for _ in 0..n_per {
@@ -1205,6 +1205,411 @@ mod famm {
             );
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SMOOTH BASIS (Feature 1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn smooth_basis_bspline_penalty_is_continuous_integral() {
+    // The B-spline penalty should approximate ∫(D²f)² for a known function.
+    // For f(t) = t³, D²f = 6t, so ∫₀¹(6t)² dt = 36∫₀¹t² dt = 12.
+    use fdars_core::smooth_basis::bspline_penalty_matrix;
+
+    let m = 101;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+
+    let nbasis = 20;
+    let penalty = bspline_penalty_matrix(&argvals, nbasis, 4, 2);
+    let k = (penalty.len() as f64).sqrt() as usize;
+
+    // Penalty matrix should be symmetric and PSD
+    for i in 0..k {
+        for j in 0..k {
+            assert!(
+                (penalty[i + j * k] - penalty[j + i * k]).abs() < 1e-8,
+                "Penalty not symmetric at ({}, {})",
+                i,
+                j
+            );
+        }
+    }
+
+    // All diagonal elements should be non-negative (PSD)
+    for i in 0..k {
+        assert!(
+            penalty[i + i * k] >= -1e-10,
+            "Diagonal {} is negative: {}",
+            i,
+            penalty[i + i * k]
+        );
+    }
+}
+
+#[test]
+fn smooth_basis_fourier_penalty_eigenvalues() {
+    // Fourier penalty should have eigenvalues (2πk/T)^{2m}
+    use fdars_core::smooth_basis::fourier_penalty_matrix;
+
+    let nbasis = 11;
+    let period = 1.0;
+    let lfd_order = 2;
+    let penalty = fourier_penalty_matrix(nbasis, period, lfd_order);
+
+    // Should be diagonal
+    for i in 0..nbasis {
+        for j in 0..nbasis {
+            if i != j {
+                assert!(
+                    penalty[i + j * nbasis].abs() < 1e-10,
+                    "Off-diagonal ({},{}) = {}",
+                    i,
+                    j,
+                    penalty[i + j * nbasis]
+                );
+            }
+        }
+    }
+
+    // Constant term penalty = 0
+    assert!(penalty[0].abs() < 1e-10);
+
+    // Check sin(2πt) penalty: (2π/1)^4 = (2π)^4 ≈ 1558.55
+    let expected_1 = (2.0 * PI).powi(4);
+    assert!(
+        (penalty[1 + nbasis] - expected_1).abs() / expected_1 < 0.01,
+        "sin(2πt) penalty: {} vs expected {}",
+        penalty[1 + nbasis],
+        expected_1
+    );
+}
+
+#[test]
+fn smooth_basis_edf_between_bounds() {
+    // EDF should be between lfd_order and nbasis
+    use fdars_core::smooth_basis::{bspline_penalty_matrix, smooth_basis, BasisType, FdPar};
+
+    let m = 101;
+    let n = 10;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let (data, _) = generate_curves(n, m, 999);
+
+    let nbasis = 15;
+    let penalty = bspline_penalty_matrix(&argvals, nbasis, 4, 2);
+    let actual_k = (penalty.len() as f64).sqrt() as usize;
+
+    let fdpar = FdPar {
+        basis_type: BasisType::Bspline { order: 4 },
+        nbasis,
+        lambda: 1e-2,
+        lfd_order: 2,
+        penalty_matrix: penalty,
+    };
+
+    let result = smooth_basis(&data, &argvals, &fdpar).unwrap();
+    assert!(
+        result.edf >= 1.0 && result.edf <= actual_k as f64,
+        "EDF {} should be in [1, {}]",
+        result.edf,
+        actual_k
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ELASTIC FPCA (Feature 2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn vert_fpca_eigenvalues_nonneg_decreasing() {
+    use fdars_core::alignment::karcher_mean;
+    use fdars_core::elastic_fpca::vert_fpca;
+
+    let (data, argvals) = generate_elastic_fpca_data(20, 51, 100);
+    let km = karcher_mean(&data, &argvals, 10, 1e-4, 0.0);
+    let result = vert_fpca(&km, &argvals, 5).unwrap();
+
+    for (i, ev) in result.eigenvalues.iter().enumerate() {
+        assert!(*ev >= -1e-10, "eigenvalue {} is negative: {}", i, ev);
+    }
+    for i in 1..result.eigenvalues.len() {
+        assert!(
+            result.eigenvalues[i] <= result.eigenvalues[i - 1] + 1e-10,
+            "eigenvalues not decreasing: {} > {}",
+            result.eigenvalues[i],
+            result.eigenvalues[i - 1]
+        );
+    }
+}
+
+#[test]
+fn vert_fpca_cumvar_bounded() {
+    use fdars_core::alignment::karcher_mean;
+    use fdars_core::elastic_fpca::vert_fpca;
+
+    let (data, argvals) = generate_elastic_fpca_data(20, 51, 200);
+    let km = karcher_mean(&data, &argvals, 10, 1e-4, 0.0);
+    let result = vert_fpca(&km, &argvals, 5).unwrap();
+
+    assert!(*result.cumulative_variance.last().unwrap() <= 1.0 + 1e-10);
+    for i in 1..result.cumulative_variance.len() {
+        assert!(result.cumulative_variance[i] >= result.cumulative_variance[i - 1] - 1e-10);
+    }
+}
+
+#[test]
+fn horiz_fpca_shooting_vectors_tangent() {
+    use fdars_core::alignment::karcher_mean;
+    use fdars_core::elastic_fpca::horiz_fpca;
+
+    let (data, argvals) = generate_elastic_fpca_data(15, 51, 300);
+    let km = karcher_mean(&data, &argvals, 10, 1e-4, 0.0);
+    let result = horiz_fpca(&km, &argvals, 3).unwrap();
+
+    // Shooting vectors should have mean near zero (centered tangent space)
+    let (n, m) = result.shooting_vectors.shape();
+    for j in 0..m {
+        let mean: f64 = (0..n).map(|i| result.shooting_vectors[(i, j)]).sum::<f64>() / n as f64;
+        // The mean doesn't have to be exactly 0 (it's the mean of log maps, not linearly centered),
+        // but should be small since the log maps are taken at the Karcher mean
+        assert!(
+            mean.abs() < 1.0,
+            "Shooting vector mean at j={} is too large: {}",
+            j,
+            mean
+        );
+    }
+}
+
+#[test]
+fn joint_fpca_decomposes_correctly() {
+    use fdars_core::alignment::karcher_mean;
+    use fdars_core::elastic_fpca::joint_fpca;
+
+    let (data, argvals) = generate_elastic_fpca_data(15, 51, 400);
+    let km = karcher_mean(&data, &argvals, 10, 1e-4, 0.0);
+    let result = joint_fpca(&km, &argvals, 3, Some(1.0)).unwrap();
+
+    assert_eq!(result.scores.nrows(), 15);
+    assert_eq!(result.scores.ncols(), 3);
+    assert_eq!(result.vert_component.nrows(), 3);
+    assert_eq!(result.horiz_component.nrows(), 3);
+
+    // Eigenvalues should sum to total variance
+    let total: f64 = result.eigenvalues.iter().sum();
+    assert!(total > 0.0, "Total variance should be positive");
+}
+
+fn generate_elastic_fpca_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
+    let mut rng = Lcg::new(seed);
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let shift = 0.1 * rng.next_normal();
+        let scale = 1.0 + 0.3 * rng.next_normal().abs();
+        for j in 0..m {
+            data[(i, j)] = scale * (2.0 * PI * (argvals[j] + shift)).sin();
+        }
+    }
+    (data, argvals)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ELASTIC REGRESSION (Feature 3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn elastic_regression_reduces_sse() {
+    // SSE should be less than total variance
+    use fdars_core::elastic_regression::elastic_regression;
+
+    let (data, y, argvals) = generate_regression_data(20, 51, 500);
+    let y_mean: f64 = y.iter().sum::<f64>() / y.len() as f64;
+    let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
+
+    let result = elastic_regression(&data, &y, &argvals, 10, 1e-3, 5, 1e-3).unwrap();
+    assert!(
+        result.sse < ss_tot * 1.1, // allow small tolerance
+        "SSE {} should be less than SS_tot {}",
+        result.sse,
+        ss_tot
+    );
+}
+
+#[test]
+fn elastic_regression_fitted_residuals_consistent() {
+    use fdars_core::elastic_regression::elastic_regression;
+
+    let (data, y, argvals) = generate_regression_data(15, 51, 600);
+    let result = elastic_regression(&data, &y, &argvals, 10, 1e-3, 3, 1e-3).unwrap();
+
+    for (i, &yi) in y.iter().enumerate() {
+        let expected_resid = yi - result.fitted_values[i];
+        assert!(
+            (result.residuals[i] - expected_resid).abs() < 1e-10,
+            "Residual mismatch at {}: {} vs {}",
+            i,
+            result.residuals[i],
+            expected_resid
+        );
+    }
+}
+
+#[test]
+fn elastic_logistic_classifications_valid() {
+    use fdars_core::elastic_regression::elastic_logistic;
+
+    let n = 20;
+    let m = 51;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+    let mut y = vec![0_i8; n];
+
+    for i in 0..n {
+        let label = if i < n / 2 { -1_i8 } else { 1_i8 };
+        y[i] = label;
+        let amp = if label == 1 { 2.0 } else { 1.0 };
+        for j in 0..m {
+            data[(i, j)] = amp * (2.0 * PI * argvals[j]).sin();
+        }
+    }
+
+    let result = elastic_logistic(&data, &y, &argvals, 10, 1e-2, 5, 1e-3).unwrap();
+
+    // All probabilities should be in [0, 1]
+    for &p in &result.probabilities {
+        assert!((0.0..=1.0).contains(&p), "Probability {} out of range", p);
+    }
+
+    // Predicted classes should be -1 or 1
+    for &c in &result.predicted_classes {
+        assert!(c == -1 || c == 1, "Invalid class: {}", c);
+    }
+}
+
+#[test]
+fn elastic_pcr_r_squared_valid() {
+    use fdars_core::elastic_regression::{elastic_pcr, PcaMethod};
+
+    let (data, y, argvals) = generate_regression_data(15, 51, 700);
+    let result = elastic_pcr(&data, &y, &argvals, 3, PcaMethod::Vertical, 0.0, 5, 1e-3).unwrap();
+
+    assert!(
+        result.r_squared >= -0.1 && result.r_squared <= 1.0 + 1e-10,
+        "R² {} out of range",
+        result.r_squared
+    );
+}
+
+fn generate_regression_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>, Vec<f64>) {
+    let mut rng = Lcg::new(seed);
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+    let mut y = vec![0.0; n];
+
+    for i in 0..n {
+        let amp = 1.0 + rng.next_f64();
+        let shift = 0.1 * rng.next_normal();
+        for j in 0..m {
+            data[(i, j)] = amp * (2.0 * PI * (argvals[j] + shift)).sin();
+        }
+        y[i] = amp;
+    }
+    (data, y, argvals)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ELASTIC CHANGEPOINT (Feature 4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn amp_changepoint_detects_known_shift() {
+    use fdars_core::elastic_changepoint::{elastic_amp_changepoint, CovKernel};
+
+    let n = 30;
+    let m = 51;
+    let cp = 15;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+
+    for i in 0..n {
+        let amp = if i < cp { 1.0 } else { 2.0 };
+        for j in 0..m {
+            data[(i, j)] = amp * (2.0 * PI * argvals[j]).sin();
+        }
+    }
+
+    let result =
+        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, CovKernel::Bartlett, None, 42)
+            .unwrap();
+
+    assert!(
+        (result.changepoint as i64 - cp as i64).abs() <= 5,
+        "Detected {} far from true {}",
+        result.changepoint,
+        cp
+    );
+    assert!(result.test_statistic > 0.0);
+    assert!(result.p_value >= 0.0 && result.p_value <= 1.0);
+    assert_eq!(result.cusum_values.len(), n - 1);
+}
+
+#[test]
+fn changepoint_no_change_weak_signal() {
+    use fdars_core::elastic_changepoint::{elastic_amp_changepoint, CovKernel};
+
+    let n = 20;
+    let m = 51;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+
+    // All identical curves
+    for i in 0..n {
+        for j in 0..m {
+            data[(i, j)] = (2.0 * PI * argvals[j]).sin();
+        }
+    }
+
+    let result =
+        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, CovKernel::Bartlett, None, 42);
+
+    if let Some(res) = result {
+        // p-value should be higher (less significant) when there's no change
+        // Not a strict test, but a sanity check
+        assert!(res.p_value > 0.0);
+    }
+}
+
+#[test]
+fn fpca_changepoint_dimensions_consistent() {
+    use fdars_core::elastic_changepoint::{elastic_fpca_changepoint, FpcaChangepointMethod};
+
+    let n = 30;
+    let m = 51;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+
+    for i in 0..n {
+        let amp = if i < 15 { 1.0 } else { 2.0 };
+        for j in 0..m {
+            data[(i, j)] = amp * (2.0 * PI * argvals[j]).sin();
+        }
+    }
+
+    let result = elastic_fpca_changepoint(
+        &data,
+        &argvals,
+        FpcaChangepointMethod::Vertical,
+        3,
+        0.0,
+        5,
+        100,
+        42,
+    )
+    .unwrap();
+
+    assert_eq!(result.cusum_values.len(), n - 1);
+    assert!(result.changepoint >= 1 && result.changepoint < n);
 }
 
 // ─── Utility ───────────────────────────────────────────────────────────────

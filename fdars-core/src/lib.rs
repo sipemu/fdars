@@ -55,6 +55,14 @@ pub mod tolerance;
 pub mod utility;
 pub mod warping;
 
+// Elastic analysis modules
+pub mod elastic_changepoint;
+pub mod elastic_explain;
+pub mod elastic_fpca;
+pub mod elastic_regression;
+pub mod explain;
+pub mod smooth_basis;
+
 // Re-export matrix types
 pub use matrix::{FdCurveSet, FdMatrix};
 
@@ -125,8 +133,34 @@ pub use function_on_scalar::{
 
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
-    fregre_cv, fregre_lm, fregre_np_mixed, functional_logistic, predict_fregre_lm,
-    predict_fregre_np, FregreCvResult, FregreLmResult, FregreNpResult, FunctionalLogisticResult,
+    bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_cv, fregre_lm,
+    fregre_np_mixed, functional_logistic, predict_fregre_lm, predict_fregre_np, BootstrapCiResult,
+    FregreCvResult, FregreLmResult, FregreNpResult, FunctionalLogisticResult,
+};
+
+// Re-export explainability types
+pub use elastic_explain::{elastic_pcr_attribution, ElasticAttributionResult};
+pub use explain::{
+    anchor_explanation, anchor_explanation_logistic, beta_decomposition,
+    beta_decomposition_logistic, calibration_diagnostics, conditional_permutation_importance,
+    conditional_permutation_importance_logistic, conformal_prediction_residuals,
+    counterfactual_logistic, counterfactual_regression, dfbetas_dffits, domain_selection,
+    domain_selection_logistic, expected_calibration_error, explanation_stability,
+    explanation_stability_logistic, fpc_ale, fpc_ale_logistic, fpc_permutation_importance,
+    fpc_permutation_importance_logistic, fpc_shap_values, fpc_shap_values_logistic, fpc_vif,
+    fpc_vif_logistic, friedman_h_statistic, friedman_h_statistic_logistic, functional_pdp,
+    functional_pdp_logistic, functional_saliency, functional_saliency_logistic,
+    influence_diagnostics, lime_explanation, lime_explanation_logistic, loo_cv_press,
+    pointwise_importance, pointwise_importance_logistic, prediction_intervals, prototype_criticism,
+    regression_depth, regression_depth_logistic, significant_regions, significant_regions_from_se,
+    sobol_indices, sobol_indices_logistic, AleResult, AnchorCondition, AnchorResult, AnchorRule,
+    BetaDecomposition, CalibrationDiagnosticsResult, ConditionalPermutationImportanceResult,
+    ConformalPredictionResult, CounterfactualResult, DepthType, DfbetasDffitsResult,
+    DomainSelectionResult, EceResult, FpcPermutationImportance, FpcShapValues, FriedmanHResult,
+    FunctionalPdpResult, FunctionalSaliencyResult, ImportantInterval, InfluenceDiagnostics,
+    LimeResult, LooCvResult, PointwiseImportanceResult, PredictionIntervalResult,
+    PrototypeCriticismResult, RegressionDepthResult, SignificanceDirection, SignificantRegion,
+    SobolIndicesResult, StabilityAnalysisResult, VifResult,
 };
 
 // Re-export classification types
@@ -142,4 +176,27 @@ pub use gmm::{gmm_cluster, gmm_em, predict_gmm, CovType, GmmClusterResult, GmmRe
 pub use streaming_depth::{
     FullReferenceState, RollingReference, SortedReferenceState, StreamingBd, StreamingDepth,
     StreamingFraimanMuniz, StreamingMbd,
+};
+
+// Re-export smooth basis types
+pub use smooth_basis::{
+    bspline_penalty_matrix, fourier_penalty_matrix, smooth_basis, smooth_basis_gcv, BasisType,
+    FdPar, SmoothBasisResult,
+};
+
+// Re-export elastic FPCA types
+pub use elastic_fpca::{
+    horiz_fpca, joint_fpca, vert_fpca, HorizFpcaResult, JointFpcaResult, VertFpcaResult,
+};
+
+// Re-export elastic regression types
+pub use elastic_regression::{
+    elastic_logistic, elastic_pcr, elastic_regression, ElasticLogisticResult, ElasticPcrResult,
+    ElasticRegressionResult, PcaMethod,
+};
+
+// Re-export elastic changepoint types
+pub use elastic_changepoint::{
+    elastic_amp_changepoint, elastic_fpca_changepoint, elastic_ph_changepoint, ChangepointResult,
+    ChangepointType, CovKernel, FpcaChangepointMethod,
 };

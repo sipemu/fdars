@@ -62,35 +62,27 @@ fn main() {
     }
 
     // Measure alignment improvement
-    let mut orig_peak_var = 0.0;
-    let mut reg_peak_var = 0.0;
-    let mut orig_peaks = Vec::new();
-    let mut reg_peaks = Vec::new();
-
-    for i in 0..n {
-        let orig_curve = data.row(i);
-        let orig_lms = detect_landmarks(&orig_curve, &t, LandmarkKind::Peak, 0.5);
-        if let Some(p) = orig_lms.first() {
-            orig_peaks.push(p.position);
+    let collect_first_peaks = |fdata: &FdMatrix| -> Vec<f64> {
+        (0..n)
+            .filter_map(|i| {
+                let curve = fdata.row(i);
+                detect_landmarks(&curve, &t, LandmarkKind::Peak, 0.5)
+                    .first()
+                    .map(|p| p.position)
+            })
+            .collect()
+    };
+    let variance = |vals: &[f64]| -> f64 {
+        if vals.is_empty() {
+            return 0.0;
         }
-
-        let reg_curve = result.registered.row(i);
-        let reg_lms = detect_landmarks(&reg_curve, &t, LandmarkKind::Peak, 0.5);
-        if let Some(p) = reg_lms.first() {
-            reg_peaks.push(p.position);
-        }
-    }
-
-    if !orig_peaks.is_empty() {
-        let mean: f64 = orig_peaks.iter().sum::<f64>() / orig_peaks.len() as f64;
-        orig_peak_var =
-            orig_peaks.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / orig_peaks.len() as f64;
-    }
-    if !reg_peaks.is_empty() {
-        let mean: f64 = reg_peaks.iter().sum::<f64>() / reg_peaks.len() as f64;
-        reg_peak_var =
-            reg_peaks.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / reg_peaks.len() as f64;
-    }
+        let mean = vals.iter().sum::<f64>() / vals.len() as f64;
+        vals.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / vals.len() as f64
+    };
+    let orig_peaks = collect_first_peaks(&data);
+    let reg_peaks = collect_first_peaks(&result.registered);
+    let orig_peak_var = variance(&orig_peaks);
+    let reg_peak_var = variance(&reg_peaks);
 
     println!("\n--- Alignment Quality ---");
     println!("  Peak position variance before: {orig_peak_var:.6}");

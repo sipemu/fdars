@@ -64,6 +64,9 @@ pub struct KarcherMeanResult {
     pub n_iter: usize,
     /// Whether the algorithm converged.
     pub converged: bool,
+    /// Pre-computed SRSFs of aligned curves (n × m), if available.
+    /// When set, FPCA functions use these instead of recomputing from `aligned_data`.
+    pub aligned_srsfs: Option<FdMatrix>,
 }
 
 // Private helpers are now in crate::helpers and crate::warping.
@@ -99,7 +102,7 @@ fn karcher_sphere_step(mu: &mut Vec<f64>, psis: &[Vec<f64>], time: &[f64], step_
     false
 }
 
-fn sqrt_mean_inverse(gammas: &FdMatrix, argvals: &[f64]) -> Vec<f64> {
+pub(crate) fn sqrt_mean_inverse(gammas: &FdMatrix, argvals: &[f64]) -> Vec<f64> {
     let (n, m) = gammas.shape();
     let t0 = argvals[0];
     let t1 = argvals[m - 1];
@@ -433,7 +436,7 @@ fn dp_path_to_gamma(path: &[(usize, usize)], argvals: &[f64]) -> Vec<f64> {
 /// Finds the optimal warping γ minimizing ‖q₁ - (q₂∘γ)√γ'‖².
 /// Uses fdasrvf's coprime neighborhood (nbhd_dim=7 → 35 move directions).
 /// SRSFs are L2-normalized before alignment (matching fdasrvf's `optimum.reparam`).
-fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda: f64) -> Vec<f64> {
+pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda: f64) -> Vec<f64> {
     let m = argvals.len();
     if m < 2 {
         return argvals.to_vec();
@@ -969,6 +972,7 @@ pub fn karcher_mean(
         aligned_data: final_aligned,
         n_iter,
         converged,
+        aligned_srsfs: None,
     }
 }
 

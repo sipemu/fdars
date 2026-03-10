@@ -235,43 +235,69 @@ fn gls_update_gamma(
         if ns < 1.0 {
             continue;
         }
-        let w_s = weights[s];
-
-        // Subject-level sums
-        let mut x_sum = vec![0.0; p];
-        let mut y_sum = 0.0;
-        for &i in &ss.obs[s] {
-            for r in 0..p {
-                x_sum[r] += cov[(i, r)];
-            }
-            y_sum += y[i];
-        }
-
-        // Accumulate X'V^{-1}X and X'V^{-1}y
-        for &i in &ss.obs[s] {
-            let mut vinv_x = vec![0.0; p];
-            for r in 0..p {
-                vinv_x[r] = inv_e * (cov[(i, r)] - w_s * x_sum[r] / ns);
-            }
-            let vinv_y = inv_e * (y[i] - w_s * y_sum / ns);
-
-            for r in 0..p {
-                xtvinvy[r] += cov[(i, r)] * vinv_y;
-                for c in r..p {
-                    let val = cov[(i, r)] * vinv_x[c];
-                    xtvinvx[r * p + c] += val;
-                    if r != c {
-                        xtvinvx[c * p + r] += val;
-                    }
-                }
-            }
-        }
+        let (x_sum, y_sum) = subject_sums(cov, y, &ss.obs[s], p);
+        accumulate_gls_terms(
+            cov,
+            y,
+            &ss.obs[s],
+            &x_sum,
+            y_sum,
+            weights[s],
+            ns,
+            inv_e,
+            p,
+            &mut xtvinvx,
+            &mut xtvinvy,
+        );
     }
 
     for j in 0..p {
         xtvinvx[j * p + j] += 1e-10;
     }
     cholesky_solve(&xtvinvx, &xtvinvy, p)
+}
+
+/// Compute subject-level covariate sums and response sum.
+fn subject_sums(cov: &FdMatrix, y: &[f64], obs: &[usize], p: usize) -> (Vec<f64>, f64) {
+    let mut x_sum = vec![0.0; p];
+    let mut y_sum = 0.0;
+    for &i in obs {
+        for r in 0..p {
+            x_sum[r] += cov[(i, r)];
+        }
+        y_sum += y[i];
+    }
+    (x_sum, y_sum)
+}
+
+/// Accumulate X'V^{-1}X and X'V^{-1}y for one subject.
+fn accumulate_gls_terms(
+    cov: &FdMatrix,
+    y: &[f64],
+    obs: &[usize],
+    x_sum: &[f64],
+    y_sum: f64,
+    w_s: f64,
+    ns: f64,
+    inv_e: f64,
+    p: usize,
+    xtvinvx: &mut [f64],
+    xtvinvy: &mut [f64],
+) {
+    for &i in obs {
+        let vinv_y = inv_e * (y[i] - w_s * y_sum / ns);
+        for r in 0..p {
+            xtvinvy[r] += cov[(i, r)] * vinv_y;
+            for c in r..p {
+                let vinv_xc = inv_e * (cov[(i, c)] - w_s * x_sum[c] / ns);
+                let val = cov[(i, r)] * vinv_xc;
+                xtvinvx[r * p + c] += val;
+                if r != c {
+                    xtvinvx[c * p + r] += val;
+                }
+            }
+        }
+    }
 }
 
 /// REML EM update for variance components.

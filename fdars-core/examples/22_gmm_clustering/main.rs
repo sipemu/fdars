@@ -101,31 +101,36 @@ fn main() {
     );
 }
 
+/// Find the best unused (row, col) entry in the confusion matrix.
+fn find_best_match(conf: &[Vec<usize>], used: &[bool], k: usize) -> (usize, usize, usize) {
+    let mut best = (0, 0, 0);
+    for (r, row) in conf.iter().enumerate() {
+        for (c, &val) in row.iter().enumerate() {
+            if !used[c] && val > best.2 {
+                best = (r, c, val);
+            }
+        }
+    }
+    let _ = k;
+    best
+}
+
 /// Compute accuracy with best label permutation (greedy matching).
 fn compute_accuracy(predicted: &[usize], true_labels: &[usize], k: usize) -> f64 {
     let n = predicted.len();
-    // Build confusion matrix
     let mut conf = vec![vec![0usize; k]; k];
     for i in 0..n {
         if predicted[i] < k && true_labels[i] < k {
             conf[true_labels[i]][predicted[i]] += 1;
         }
     }
-    // Greedy match: pick the best column for each row
     let mut used = vec![false; k];
     let mut correct = 0;
     for _ in 0..k {
-        let mut best = (0, 0, 0);
-        for (r, row) in conf.iter().enumerate() {
-            for (c, &val) in row.iter().enumerate() {
-                if !used[c] && val > best.2 {
-                    best = (r, c, val);
-                }
-            }
-        }
+        let best = find_best_match(&conf, &used, k);
         used[best.1] = true;
         correct += best.2;
-        conf[best.0] = vec![0; k]; // clear row
+        conf[best.0] = vec![0; k];
     }
     correct as f64 / n as f64
 }

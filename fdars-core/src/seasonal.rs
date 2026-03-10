@@ -3229,9 +3229,27 @@ fn empty_cfd_result() -> CfdAutoperiodResult {
 
 /// Extract spectral candidates from differenced data: difference, periodogram, peak-find, generate.
 fn extract_cfd_spectral_candidates(data: &[f64], argvals: &[f64]) -> Option<Vec<(f64, f64)>> {
-    let diff: Vec<f64> = data.windows(2).map(|w| w[1] - w[0]).collect();
-    let diff_argvals: Vec<f64> = argvals.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
-    let (frequencies, power) = periodogram(&diff, &diff_argvals);
+    let n = data.len();
+    // Linear detrending instead of first-order differencing.
+    // Differencing is a high-pass filter that attenuates long-period signals
+    // by (2π/period)², making them undetectable. Linear detrending removes
+    // the DC/trend component without any frequency-dependent distortion.
+    let mean_x: f64 = argvals.iter().sum::<f64>() / n as f64;
+    let mean_y: f64 = data.iter().sum::<f64>() / n as f64;
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for i in 0..n {
+        let dx = argvals[i] - mean_x;
+        num += dx * (data[i] - mean_y);
+        den += dx * dx;
+    }
+    let slope = if den.abs() > 1e-15 { num / den } else { 0.0 };
+    let detrended: Vec<f64> = data
+        .iter()
+        .zip(argvals.iter())
+        .map(|(&y, &x)| y - (mean_y + slope * (x - mean_x)))
+        .collect();
+    let (frequencies, power) = periodogram(&detrended, argvals);
     if frequencies.len() < 3 {
         return None;
     }
@@ -7306,6 +7324,27 @@ mod tests {
         let result = cfd_autoperiod(&data, &argvals, None, None);
         // Should handle gracefully
         assert!(result.period.is_finite() || result.period.is_nan());
+    }
+
+    #[test]
+    fn test_cfd_autoperiod_long_period() {
+        // 8 years of daily temperature-like data with annual period (365 days).
+        // Regression test for GH-14: differencing attenuated long-period signals,
+        // returning period ≈ 2.2 instead of 365. Linear detrending fixes this.
+        let n = 365 * 8;
+        let argvals: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let data: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 15.0 + 10.0 * (2.0 * PI * t / 365.0).sin() + 0.001 * t)
+            .collect();
+        let result = cfd_autoperiod(&data, &argvals, None, None);
+        let err = (result.period - 365.0).abs();
+        assert!(
+            err < 2.0,
+            "long-period detection: expected ~365, got {:.1} (err={:.1})",
+            result.period,
+            err
+        );
     }
 
     #[test]
