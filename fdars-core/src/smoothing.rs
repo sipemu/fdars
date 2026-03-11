@@ -238,6 +238,15 @@ fn solve_gaussian(a: &mut [f64], b: &mut [f64], p: usize) -> Vec<f64> {
     back_substitute(a, b, p)
 }
 
+/// Solve a linear system Ax = b via Gaussian elimination with partial pivoting.
+///
+/// Public wrapper for use by other modules (e.g., `fregre_basis_cv`).
+/// `a` is a p×p matrix in row-major order, `b` is the RHS vector of length p.
+/// Both are modified in place.
+pub fn solve_gaussian_pub(a: &mut [f64], b: &mut [f64], p: usize) -> Vec<f64> {
+    solve_gaussian(a, b, p)
+}
+
 /// Local polynomial regression smoother.
 ///
 /// # Arguments
@@ -344,6 +353,308 @@ pub fn smoothing_matrix_nw(x: &[f64], bandwidth: f64, kernel: &str) -> Vec<f64> 
     }
 
     s
+}
+
+// ─── Cross-Validation for Kernel Smoothers ──────────────────────────────────
+
+/// CV criterion type for bandwidth selection.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CvCriterion {
+    /// Leave-one-out cross-validation (R's `CV.S`).
+    Cv,
+    /// Generalized cross-validation (R's `GCV.S`).
+    Gcv,
+}
+
+/// Result of bandwidth optimization.
+#[derive(Debug, Clone)]
+pub struct OptimBandwidthResult {
+    /// Optimal bandwidth.
+    pub h_opt: f64,
+    /// Criterion used.
+    pub criterion: CvCriterion,
+    /// Criterion value at optimal h.
+    pub value: f64,
+}
+
+/// LOO-CV score for a kernel smoother (R's `CV.S`).
+///
+/// Computes the leave-one-out CV score by zeroing the diagonal of the
+/// smoothing matrix, re-normalizing rows, and computing mean squared error.
+///
+/// # Arguments
+/// * `x` — Predictor values
+/// * `y` — Response values
+/// * `bandwidth` — Kernel bandwidth
+/// * `kernel` — Kernel type ("gaussian", "epanechnikov", "tricube")
+///
+/// # Returns
+/// Mean squared LOO prediction error, or `INFINITY` if inputs are invalid.
+pub fn cv_smoother(x: &[f64], y: &[f64], bandwidth: f64, kernel: &str) -> f64 {
+    let n = x.len();
+    if n < 2 || y.len() != n || bandwidth <= 0.0 {
+        return f64::INFINITY;
+    }
+
+    // Get the smoother matrix S
+    let mut s = smoothing_matrix_nw(x, bandwidth, kernel);
+    if s.is_empty() {
+        return f64::INFINITY;
+    }
+
+    // Zero the diagonal → S_cv (LOO smoother)
+    for i in 0..n {
+        s[i + i * n] = 0.0;
+    }
+
+    // Re-normalize each row so it sums to 1
+    for i in 0..n {
+        let row_sum: f64 = (0..n).map(|j| s[i + j * n]).sum();
+        if row_sum > 1e-10 {
+            for j in 0..n {
+                s[i + j * n] /= row_sum;
+            }
+        }
+    }
+
+    // Compute y_hat = S_cv * y, then MSE
+    let mut mse = 0.0;
+    for i in 0..n {
+        let y_hat: f64 = (0..n).map(|j| s[i + j * n] * y[j]).sum();
+        let resid = y[i] - y_hat;
+        mse += resid * resid;
+    }
+    mse / n as f64
+}
+
+/// GCV score for a kernel smoother (R's `GCV.S`).
+///
+/// Computes `(RSS / n) / (1 - tr(S) / n)²`.
+///
+/// # Arguments
+/// * `x` — Predictor values
+/// * `y` — Response values
+/// * `bandwidth` — Kernel bandwidth
+/// * `kernel` — Kernel type
+///
+/// # Returns
+/// GCV score, or `INFINITY` if inputs are invalid or denominator is near zero.
+pub fn gcv_smoother(x: &[f64], y: &[f64], bandwidth: f64, kernel: &str) -> f64 {
+    let n = x.len();
+    if n < 2 || y.len() != n || bandwidth <= 0.0 {
+        return f64::INFINITY;
+    }
+
+    let s = smoothing_matrix_nw(x, bandwidth, kernel);
+    if s.is_empty() {
+        return f64::INFINITY;
+    }
+
+    // y_hat = S * y
+    let mut rss = 0.0;
+    for i in 0..n {
+        let y_hat: f64 = (0..n).map(|j| s[i + j * n] * y[j]).sum();
+        let resid = y[i] - y_hat;
+        rss += resid * resid;
+    }
+
+    // trace(S) = sum of diagonal
+    let trace_s: f64 = (0..n).map(|i| s[i + i * n]).sum();
+
+    let denom = 1.0 - trace_s / n as f64;
+    if denom.abs() < 1e-10 {
+        f64::INFINITY
+    } else {
+        (rss / n as f64) / (denom * denom)
+    }
+}
+
+/// Bandwidth optimizer for kernel smoothers (R's `optim.np`).
+///
+/// Grid search over evenly-spaced bandwidths, selecting the one that
+/// minimizes the specified criterion (CV or GCV).
+///
+/// # Arguments
+/// * `x` — Predictor values
+/// * `y` — Response values
+/// * `h_range` — Optional `(h_min, h_max)`. Defaults to `(h_default / 5, h_default * 5)`
+///   where `h_default = (x_max - x_min) / n^0.2`.
+/// * `criterion` — CV or GCV
+/// * `kernel` — Kernel type
+/// * `n_grid` — Number of grid points (default: 50)
+pub fn optim_bandwidth(
+    x: &[f64],
+    y: &[f64],
+    h_range: Option<(f64, f64)>,
+    criterion: CvCriterion,
+    kernel: &str,
+    n_grid: usize,
+) -> OptimBandwidthResult {
+    let n = x.len();
+    let n_grid = n_grid.max(2);
+
+    // Determine search range
+    let (h_min, h_max) = match h_range {
+        Some((lo, hi)) if lo > 0.0 && hi > lo => (lo, hi),
+        _ => {
+            let x_min = x.iter().cloned().fold(f64::INFINITY, f64::min);
+            let x_max = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let h_default = (x_max - x_min) / (n as f64).powf(0.2);
+            let h_default = h_default.max(1e-10);
+            (h_default / 5.0, h_default * 5.0)
+        }
+    };
+
+    let score_fn = match criterion {
+        CvCriterion::Cv => cv_smoother,
+        CvCriterion::Gcv => gcv_smoother,
+    };
+
+    let mut best_h = h_min;
+    let mut best_score = f64::INFINITY;
+
+    for i in 0..n_grid {
+        let h = h_min + (h_max - h_min) * i as f64 / (n_grid - 1) as f64;
+        let score = score_fn(x, y, h, kernel);
+        if score < best_score {
+            best_score = score;
+            best_h = h;
+        }
+    }
+
+    OptimBandwidthResult {
+        h_opt: best_h,
+        criterion,
+        value: best_score,
+    }
+}
+
+// ─── kNN CV Functions ───────────────────────────────────────────────────────
+
+/// Result of kNN k-selection by cross-validation.
+#[derive(Debug, Clone)]
+pub struct KnnCvResult {
+    /// Optimal k (number of neighbors).
+    pub optimal_k: usize,
+    /// CV error for each k tested (index 0 = k=1).
+    pub cv_errors: Vec<f64>,
+}
+
+/// Global LOO-CV for kNN k selection (R's `knn.gcv`).
+///
+/// For each candidate k, computes LOO prediction error using a
+/// kernel-weighted kNN estimator with Epanechnikov kernel.
+///
+/// # Arguments
+/// * `x` — Predictor values
+/// * `y` — Response values
+/// * `max_k` — Maximum k to test (tests k = 1, 2, …, max_k)
+pub fn knn_gcv(x: &[f64], y: &[f64], max_k: usize) -> KnnCvResult {
+    let n = x.len();
+    let max_k = max_k.min(n.saturating_sub(1)).max(1);
+
+    // Precompute sorted distances from each point to all others
+    let mut sorted_neighbors: Vec<Vec<(usize, f64)>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut dists: Vec<(usize, f64)> = (0..n)
+            .filter(|&j| j != i)
+            .map(|j| (j, (x[j] - x[i]).abs()))
+            .collect();
+        dists.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        sorted_neighbors.push(dists);
+    }
+
+    let mut cv_errors = Vec::with_capacity(max_k);
+
+    for k in 1..=max_k {
+        let mut mse = 0.0;
+        for i in 0..n {
+            let neighbors = &sorted_neighbors[i];
+            // Bandwidth: midpoint between k-th and (k+1)-th NN distances
+            let d_k = if k <= neighbors.len() {
+                neighbors[k - 1].1
+            } else {
+                neighbors.last().map(|x| x.1).unwrap_or(1.0)
+            };
+            let d_k1 = if k < neighbors.len() {
+                neighbors[k].1
+            } else {
+                d_k * 2.0
+            };
+            let h = (d_k + d_k1) / 2.0;
+            let h = h.max(1e-10);
+
+            // Epanechnikov kernel weighted prediction
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for &(j, dist) in neighbors.iter().take(k) {
+                let u = dist / h;
+                let w = epanechnikov_kernel(u);
+                num += w * y[j];
+                den += w;
+            }
+            let y_hat = if den > 1e-10 { num / den } else { y[i] };
+            mse += (y[i] - y_hat).powi(2);
+        }
+        cv_errors.push(mse / n as f64);
+    }
+
+    let optimal_k = cv_errors
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i + 1)
+        .unwrap_or(1);
+
+    KnnCvResult {
+        optimal_k,
+        cv_errors,
+    }
+}
+
+/// Local (per-observation) LOO-CV for kNN k selection (R's `knn.lcv`).
+///
+/// For each observation, independently selects the best k by minimizing
+/// the absolute LOO prediction error at that point.
+///
+/// # Arguments
+/// * `x` — Predictor values
+/// * `y` — Response values
+/// * `max_k` — Maximum k to test
+///
+/// # Returns
+/// Vector of per-observation optimal k values (length n).
+pub fn knn_lcv(x: &[f64], y: &[f64], max_k: usize) -> Vec<usize> {
+    let n = x.len();
+    let max_k = max_k.min(n.saturating_sub(1)).max(1);
+
+    let mut per_obs_k = vec![1usize; n];
+
+    for i in 0..n {
+        // Sort neighbors by distance (excluding self)
+        let mut neighbors: Vec<(usize, f64)> = (0..n)
+            .filter(|&j| j != i)
+            .map(|j| (j, (x[j] - x[i]).abs()))
+            .collect();
+        neighbors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut best_k = 1;
+        let mut best_err = f64::INFINITY;
+
+        for k in 1..=max_k {
+            // Simple kNN average of k nearest neighbors
+            let sum: f64 = neighbors.iter().take(k).map(|&(j, _)| y[j]).sum();
+            let y_hat = sum / k as f64;
+            let err = (y[i] - y_hat).abs();
+            if err < best_err {
+                best_err = err;
+                best_k = k;
+            }
+        }
+        per_obs_k[i] = best_k;
+    }
+
+    per_obs_k
 }
 
 #[cfg(test)]
@@ -619,6 +930,130 @@ mod tests {
         assert_eq!(result.len(), 3);
         for v in &result {
             assert!(v.is_finite());
+        }
+    }
+
+    // ============== CV smoother tests ==============
+
+    #[test]
+    fn test_cv_smoother_linear_data() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
+        let cv = cv_smoother(&x, &y, 0.2, "gaussian");
+        assert!(cv.is_finite());
+        assert!(cv >= 0.0);
+        assert!(cv < 1.0, "CV error for smooth linear data should be small");
+    }
+
+    #[test]
+    fn test_cv_smoother_invalid() {
+        assert_eq!(cv_smoother(&[], &[], 0.1, "gaussian"), f64::INFINITY);
+        assert_eq!(
+            cv_smoother(&[0.0, 1.0], &[1.0, 2.0], -0.1, "gaussian"),
+            f64::INFINITY
+        );
+    }
+
+    #[test]
+    fn test_gcv_smoother_linear_data() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
+        let gcv = gcv_smoother(&x, &y, 0.2, "gaussian");
+        assert!(gcv.is_finite());
+        assert!(gcv >= 0.0);
+    }
+
+    #[test]
+    fn test_gcv_smoother_invalid() {
+        assert_eq!(gcv_smoother(&[], &[], 0.1, "gaussian"), f64::INFINITY);
+    }
+
+    #[test]
+    fn test_optim_bandwidth_returns_valid() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin())
+            .collect();
+
+        let result = optim_bandwidth(&x, &y, None, CvCriterion::Gcv, "gaussian", 20);
+        assert!(result.h_opt > 0.0);
+        assert!(result.value.is_finite());
+        assert_eq!(result.criterion, CvCriterion::Gcv);
+    }
+
+    #[test]
+    fn test_optim_bandwidth_cv_vs_gcv() {
+        let x = uniform_grid(25);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+
+        let cv_result = optim_bandwidth(&x, &y, None, CvCriterion::Cv, "gaussian", 20);
+        let gcv_result = optim_bandwidth(&x, &y, None, CvCriterion::Gcv, "gaussian", 20);
+
+        assert!(cv_result.h_opt > 0.0);
+        assert!(gcv_result.h_opt > 0.0);
+    }
+
+    #[test]
+    fn test_optim_bandwidth_custom_range() {
+        let x = uniform_grid(20);
+        let y: Vec<f64> = x.to_vec();
+        let result = optim_bandwidth(&x, &y, Some((0.05, 0.5)), CvCriterion::Cv, "gaussian", 10);
+        assert!(result.h_opt >= 0.05);
+        assert!(result.h_opt <= 0.5);
+    }
+
+    // ============== kNN CV tests ==============
+
+    #[test]
+    fn test_knn_gcv_returns_valid() {
+        let x = uniform_grid(20);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+
+        let result = knn_gcv(&x, &y, 10);
+        assert!(result.optimal_k >= 1);
+        assert!(result.optimal_k <= 10);
+        assert_eq!(result.cv_errors.len(), 10);
+        for &e in &result.cv_errors {
+            assert!(e.is_finite());
+            assert!(e >= 0.0);
+        }
+    }
+
+    #[test]
+    fn test_knn_gcv_constant_data() {
+        let x = uniform_grid(15);
+        let y = vec![5.0; 15];
+        let result = knn_gcv(&x, &y, 5);
+        // For constant data, error should be near zero for any k
+        for &e in &result.cv_errors {
+            assert!(e < 0.01, "Constant data: CV error should be near zero");
+        }
+    }
+
+    #[test]
+    fn test_knn_lcv_returns_valid() {
+        let x = uniform_grid(15);
+        let y: Vec<f64> = x.to_vec();
+
+        let result = knn_lcv(&x, &y, 5);
+        assert_eq!(result.len(), 15);
+        for &k in &result {
+            assert!(k >= 1);
+            assert!(k <= 5);
+        }
+    }
+
+    #[test]
+    fn test_knn_lcv_constant_data() {
+        let x = uniform_grid(10);
+        let y = vec![3.0; 10];
+        let result = knn_lcv(&x, &y, 5);
+        assert_eq!(result.len(), 10);
+        // For constant data, all k values should give zero error
+        // so k=1 is optimal (first tested)
+        for &k in &result {
+            assert!(k >= 1);
         }
     }
 }

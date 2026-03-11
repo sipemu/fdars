@@ -84,14 +84,43 @@ pub fn outliers_threshold_lrt(
     seed: u64,
     percentile: f64,
 ) -> f64 {
+    outliers_threshold_lrt_with_dist(data, nb, smo, trim, seed, percentile).0
+}
+
+/// Compute bootstrap threshold and full null distribution for LRT outlier detection.
+///
+/// Same as [`outliers_threshold_lrt`] but also returns the sorted bootstrap
+/// distribution of max-distances, enabling per-curve p-value computation:
+/// `p = (sum(boot_dist >= d) + 1) / (B + 1)`.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n observations x m evaluation points)
+/// * `nb` - Number of bootstrap iterations
+/// * `smo` - Smoothing parameter for bootstrap
+/// * `trim` - Trimming proportion
+/// * `seed` - Random seed
+/// * `percentile` - Percentile for threshold (e.g., 0.99 for 99th percentile)
+///
+/// # Returns
+/// `(threshold, sorted_distribution)` — threshold at specified percentile and the
+/// full sorted bootstrap null distribution of max-distances (length `nb`).
+pub fn outliers_threshold_lrt_with_dist(
+    data: &FdMatrix,
+    nb: usize,
+    smo: f64,
+    trim: f64,
+    seed: u64,
+    percentile: f64,
+) -> (f64, Vec<f64>) {
     let n = data.nrows();
     let m = data.ncols();
 
     if n < 3 || m == 0 {
-        return 0.0;
+        return (0.0, vec![]);
     }
 
-    let n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
+    let n_keep = ((1.0 - trim) * n as f64).ceil().max(1.0) as usize;
+    let n_keep = n_keep.min(n);
 
     // Compute column standard deviations for smoothing
     let col_vars: Vec<f64> = (0..m)
@@ -143,11 +172,12 @@ pub fn outliers_threshold_lrt(
         })
         .collect();
 
-    // Return threshold at specified percentile
+    // Sort and extract threshold at specified percentile
     let mut sorted_dists = max_dists;
     sorted_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let idx = ((nb as f64 * percentile) as usize).min(nb.saturating_sub(1));
-    sorted_dists.get(idx).copied().unwrap_or(0.0)
+    let threshold = sorted_dists.get(idx).copied().unwrap_or(0.0);
+    (threshold, sorted_dists)
 }
 
 /// Detect outliers using LRT method.
@@ -167,7 +197,8 @@ pub fn detect_outliers_lrt(data: &FdMatrix, threshold: f64, trim: f64) -> Vec<bo
         return vec![false; n];
     }
 
-    let n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
+    let n_keep = ((1.0 - trim) * n as f64).ceil().max(1.0) as usize;
+    let n_keep = n_keep.min(n);
 
     let state = SortedReferenceState::from_reference(data);
     let streaming_fm = StreamingFraimanMuniz::new(state, true);
@@ -377,6 +408,81 @@ mod tests {
         assert_eq!(flags.len(), n);
     }
 
+    // ============== With-distribution tests ==============
+
+    #[test]
+    fn test_with_dist_returns_sorted_distribution() {
+        let data = generate_normal_fdata(20, 30, 42);
+        let nb = 50;
+        let (threshold, dist) = outliers_threshold_lrt_with_dist(&data, nb, 0.1, 0.1, 42, 0.95);
+
+        assert_eq!(dist.len(), nb, "Distribution length should equal nb");
+        for w in dist.windows(2) {
+            assert!(w[0] <= w[1], "Distribution should be sorted");
+        }
+        let idx = ((nb as f64 * 0.95) as usize).min(nb - 1);
+        assert!(
+            (threshold - dist[idx]).abs() < 1e-10,
+            "Threshold should match distribution at percentile index"
+        );
+    }
+
+    #[test]
+    fn test_with_dist_matches_scalar() {
+        let data = generate_normal_fdata(15, 25, 99);
+        let scalar = outliers_threshold_lrt(&data, 40, 0.1, 0.1, 123, 0.95);
+        let (with_dist, _) = outliers_threshold_lrt_with_dist(&data, 40, 0.1, 0.1, 123, 0.95);
+        assert!(
+            (scalar - with_dist).abs() < 1e-10,
+            "Scalar version should match with_dist version"
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_dist_enables_pvalue() {
+        let n = 20;
+        let m = 30;
+        let data = generate_data_with_outlier(n, m, 1);
+        let trim = 0.1;
+
+        let (_, dist) = outliers_threshold_lrt_with_dist(&data, 200, 0.1, trim, 42, 0.99);
+        let nb = dist.len();
+
+        // Compute per-curve distances
+        let n_keep = ((1.0 - trim) * n as f64).ceil() as usize;
+        let state = SortedReferenceState::from_reference(&data);
+        let streaming_fm = StreamingFraimanMuniz::new(state, true);
+        let depths = streaming_fm.depth_batch(&data);
+        let (tmean, tvar) = compute_trimmed_stats(&data, &depths, n_keep);
+
+        // p-value for the outlier curve (last one)
+        let d_outlier = normalized_distance(&data, n - 1, &tmean, &tvar);
+        let p_outlier =
+            (dist.iter().filter(|&&v| v >= d_outlier).count() as f64 + 1.0) / (nb as f64 + 1.0);
+
+        // p-value for a normal curve (first one)
+        let d_normal = normalized_distance(&data, 0, &tmean, &tvar);
+        let p_normal =
+            (dist.iter().filter(|&&v| v >= d_normal).count() as f64 + 1.0) / (nb as f64 + 1.0);
+
+        assert!(
+            p_outlier < 0.05,
+            "Outlier should have small p-value, got {p_outlier}"
+        );
+        assert!(
+            p_normal > 0.05,
+            "Normal curve should have large p-value, got {p_normal}"
+        );
+    }
+
+    #[test]
+    fn test_with_dist_invalid_input() {
+        let data = FdMatrix::zeros(2, 30);
+        let (threshold, dist) = outliers_threshold_lrt_with_dist(&data, 50, 0.1, 0.1, 42, 0.95);
+        assert!(threshold.abs() < 1e-10);
+        assert!(dist.is_empty(), "Should return empty dist for n < 3");
+    }
+
     #[test]
     fn test_all_false_high_threshold() {
         let n = 10;
@@ -387,6 +493,197 @@ mod tests {
         let flags = detect_outliers_lrt(&data, 1e10, 0.15);
         for &f in &flags {
             assert!(!f, "High threshold should produce no outliers");
+        }
+    }
+
+    // ============== n_keep clamping tests ==============
+
+    #[test]
+    fn test_trim_zero_no_trimming() {
+        // trim=0 → n_keep=n, exercises the skip-partial-sort branch in compute_trimmed_stats
+        let data = generate_normal_fdata(10, 20, 42);
+        let threshold = outliers_threshold_lrt(&data, 30, 0.1, 0.0, 42, 0.95);
+        assert!(threshold > 0.0);
+        let flags = detect_outliers_lrt(&data, threshold, 0.0);
+        assert_eq!(flags.len(), 10);
+    }
+
+    #[test]
+    fn test_trim_near_one_heavy_trimming() {
+        // trim=0.9 → n_keep=1, exercises minimal trim set (single deepest curve)
+        let data = generate_normal_fdata(10, 20, 42);
+        let threshold = outliers_threshold_lrt(&data, 30, 0.1, 0.9, 42, 0.95);
+        assert!(threshold >= 0.0);
+        let flags = detect_outliers_lrt(&data, threshold, 0.9);
+        assert_eq!(flags.len(), 10);
+    }
+
+    #[test]
+    fn test_trim_one_clamps_to_one() {
+        // trim=1.0 → n_keep would be 0, must clamp to 1 (was a panic before fix)
+        let data = generate_normal_fdata(10, 20, 42);
+        let threshold = outliers_threshold_lrt(&data, 30, 0.1, 1.0, 42, 0.95);
+        assert!(threshold >= 0.0);
+        let flags = detect_outliers_lrt(&data, threshold, 1.0);
+        assert_eq!(flags.len(), 10);
+    }
+
+    #[test]
+    fn test_trim_negative_clamps_to_n() {
+        // trim=-0.5 → n_keep would exceed n, must clamp to n (was a panic before fix)
+        let data = generate_normal_fdata(10, 20, 42);
+        let threshold = outliers_threshold_lrt(&data, 30, 0.1, -0.5, 42, 0.95);
+        assert!(threshold > 0.0);
+        let flags = detect_outliers_lrt(&data, threshold, -0.5);
+        assert_eq!(flags.len(), 10);
+    }
+
+    // ============== Bootstrap parameter edge cases ==============
+
+    #[test]
+    fn test_smo_zero_no_noise() {
+        // smo=0 → bootstrap resamples without smoothing noise
+        let data = generate_normal_fdata(10, 20, 42);
+        let (threshold, dist) = outliers_threshold_lrt_with_dist(&data, 30, 0.0, 0.1, 42, 0.95);
+        assert!(threshold > 0.0);
+        assert_eq!(dist.len(), 30);
+    }
+
+    #[test]
+    fn test_nb_zero_empty_bootstrap() {
+        let data = generate_normal_fdata(10, 20, 42);
+        let (threshold, dist) = outliers_threshold_lrt_with_dist(&data, 0, 0.1, 0.1, 42, 0.95);
+        assert!(threshold.abs() < 1e-10);
+        assert!(dist.is_empty());
+    }
+
+    #[test]
+    fn test_nb_one_single_bootstrap() {
+        let data = generate_normal_fdata(10, 20, 42);
+        let (threshold, dist) = outliers_threshold_lrt_with_dist(&data, 1, 0.1, 0.1, 42, 0.95);
+        assert_eq!(dist.len(), 1);
+        // With 1 iteration, threshold must equal the single value
+        assert!((threshold - dist[0]).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_percentile_zero_returns_minimum() {
+        let data = generate_normal_fdata(15, 20, 42);
+        let nb = 50;
+        let (_, dist) = outliers_threshold_lrt_with_dist(&data, nb, 0.1, 0.1, 42, 0.95);
+        let t_zero = outliers_threshold_lrt(&data, nb, 0.1, 0.1, 42, 0.0);
+        assert!(
+            (t_zero - dist[0]).abs() < 1e-10,
+            "percentile=0 should return the minimum of the distribution"
+        );
+    }
+
+    #[test]
+    fn test_percentile_one_returns_maximum() {
+        let data = generate_normal_fdata(15, 20, 42);
+        let nb = 50;
+        let (_, dist) = outliers_threshold_lrt_with_dist(&data, nb, 0.1, 0.1, 42, 0.95);
+        let t_one = outliers_threshold_lrt(&data, nb, 0.1, 0.1, 42, 1.0);
+        assert!(
+            (t_one - *dist.last().unwrap()).abs() < 1e-10,
+            "percentile=1 should return the maximum of the distribution"
+        );
+    }
+
+    // ============== Distribution invariant tests ==============
+
+    #[test]
+    fn test_distribution_values_non_negative() {
+        let data = generate_normal_fdata(15, 20, 42);
+        let (_, dist) = outliers_threshold_lrt_with_dist(&data, 50, 0.1, 0.1, 42, 0.95);
+        for &v in &dist {
+            assert!(v >= 0.0, "Max-distances must be non-negative, got {v}");
+        }
+    }
+
+    // ============== detect_outliers_lrt edge cases ==============
+
+    #[test]
+    fn test_detect_m_zero_returns_all_false() {
+        let data = FdMatrix::zeros(10, 0);
+        let flags = detect_outliers_lrt(&data, 3.0, 0.1);
+        assert_eq!(flags.len(), 10);
+        assert!(flags.iter().all(|&f| !f));
+    }
+
+    #[test]
+    fn test_detect_multiple_outliers() {
+        let data = generate_data_with_outlier(20, 30, 3);
+        let flags = detect_outliers_lrt(&data, 3.0, 0.1);
+        // All three outlier curves (indices 17, 18, 19) should be detected
+        let outlier_count = flags[17..20].iter().filter(|&&x| x).count();
+        assert!(
+            outlier_count >= 2,
+            "At least 2 of 3 outliers should be detected, got {outlier_count}"
+        );
+    }
+
+    // ============== End-to-end integration ==============
+
+    #[test]
+    fn test_end_to_end_threshold_then_detect() {
+        let data = generate_data_with_outlier(20, 30, 2);
+        let threshold = outliers_threshold_lrt(&data, 100, 0.1, 0.1, 42, 0.99);
+        let flags = detect_outliers_lrt(&data, threshold, 0.1);
+
+        // Outlier curves (last 2) should be flagged
+        assert!(
+            flags[18] || flags[19],
+            "At least one outlier should be detected in end-to-end flow"
+        );
+        // Normal curves should mostly not be flagged
+        let false_positives = flags[..18].iter().filter(|&&x| x).count();
+        assert!(
+            false_positives <= 2,
+            "False positive count should be low, got {false_positives}"
+        );
+    }
+
+    #[test]
+    fn test_end_to_end_with_dist_pvalues_all_curves() {
+        // Full pipeline: bootstrap dist → per-curve p-values → outlier classification
+        let n = 25;
+        let m = 30;
+        let data = generate_data_with_outlier(n, m, 2);
+        let trim = 0.1;
+
+        let (_, dist) = outliers_threshold_lrt_with_dist(&data, 200, 0.1, trim, 42, 0.99);
+        let nb = dist.len();
+
+        let n_keep = ((1.0 - trim) * n as f64).ceil().max(1.0) as usize;
+        let n_keep = n_keep.min(n);
+        let state = SortedReferenceState::from_reference(&data);
+        let streaming_fm = StreamingFraimanMuniz::new(state, true);
+        let depths = streaming_fm.depth_batch(&data);
+        let (tmean, tvar) = compute_trimmed_stats(&data, &depths, n_keep);
+
+        // Compute p-values for all curves
+        let pvalues: Vec<f64> = (0..n)
+            .map(|i| {
+                let d = normalized_distance(&data, i, &tmean, &tvar);
+                (dist.iter().filter(|&&v| v >= d).count() as f64 + 1.0) / (nb as f64 + 1.0)
+            })
+            .collect();
+
+        // Normal curves (0..23) should have large p-values
+        let normal_small_p = pvalues[..23].iter().filter(|&&p| p < 0.01).count();
+        assert_eq!(
+            normal_small_p, 0,
+            "Normal curves should not have tiny p-values"
+        );
+
+        // Outlier curves (23, 24) should have small p-values
+        for &i in &[23, 24] {
+            assert!(
+                pvalues[i] < 0.05,
+                "Outlier curve {i} should have small p-value, got {}",
+                pvalues[i]
+            );
         }
     }
 }
