@@ -84,7 +84,7 @@ pub fn bspline_penalty_matrix(
     order: usize,
     lfd_order: usize,
 ) -> Vec<f64> {
-    if nbasis < 2 || order < 1 || lfd_order >= order {
+    if nbasis < 2 || order < 1 || lfd_order >= order || argvals.len() < 2 {
         return vec![0.0; nbasis * nbasis];
     }
 
@@ -133,6 +133,7 @@ pub fn fourier_penalty_matrix(nbasis: usize, period: f64, lfd_order: usize) -> V
     // penalty[0] = 0 (already zero)
 
     // For sin/cos pairs: eigenvalue is (2πk/T)^(2m)
+    // Matches R's fda package convention (sqrt(2)-normalized basis)
     let mut freq = 1;
     let mut idx = 1;
     while idx < k {
@@ -202,8 +203,10 @@ pub fn smooth_basis(data: &FdMatrix, argvals: &[f64], fdpar: &FdPar) -> Option<S
     let total_points = (n * m) as f64;
     let gcv = compute_gcv(total_rss, total_points, edf, m);
     let mse = total_rss / total_points;
-    let aic = total_points * mse.max(1e-300).ln() + 2.0 * edf;
-    let bic = total_points * mse.max(1e-300).ln() + total_points.ln() * edf;
+    // Total effective degrees of freedom = n curves * per-curve edf
+    let total_edf = n as f64 * edf;
+    let aic = total_points * mse.max(1e-300).ln() + 2.0 * total_edf;
+    let bic = total_points * mse.max(1e-300).ln() + total_points.ln() * total_edf;
 
     Some(SmoothBasisResult {
         coefficients: all_coefs,

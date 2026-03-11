@@ -919,7 +919,7 @@ fn build_equivalence_result(
         1.0
     } else {
         let count = sup_stats.iter().filter(|&&t| t >= c_threshold).count();
-        (count as f64 / (2.0 * nb as f64)).min(1.0)
+        (count as f64 / nb as f64).min(1.0)
     };
 
     EquivalenceTestResult {

@@ -302,8 +302,11 @@ fn deriv_1d_step(
 
 pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
     let (n, m) = data.shape();
-    if n == 0 || m < 2 || argvals.len() != m || nderiv < 1 {
+    if n == 0 || m < 2 || argvals.len() != m {
         return FdMatrix::zeros(n, m);
+    }
+    if nderiv == 0 {
+        return data.clone();
     }
 
     let mut current = data.clone();
@@ -386,7 +389,14 @@ pub fn deriv_2d(
 ) -> Option<Deriv2DResult> {
     let n = data.nrows();
     let ncol = m1 * m2;
-    if n == 0 || ncol == 0 || argvals_s.len() != m1 || argvals_t.len() != m2 {
+    if n == 0
+        || ncol == 0
+        || m1 < 2
+        || m2 < 2
+        || data.ncols() != ncol
+        || argvals_s.len() != m1
+        || argvals_t.len() != m2
+    {
         return None;
     }
 
@@ -927,14 +937,14 @@ mod tests {
 
     #[test]
     fn test_deriv_nderiv0() {
-        // nderiv=0 returns a zero matrix (guard clause treats it as no-op)
+        // nderiv=0 returns the original data (0th derivative = identity)
         let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3).unwrap();
         let argvals = vec![0.0, 0.5, 1.0];
         let result = deriv_1d(&data, &argvals, 0);
         assert_eq!(result.shape(), data.shape());
         for i in 0..2 {
             for j in 0..3 {
-                assert!(result[(i, j)].abs() < 1e-12);
+                assert!((result[(i, j)] - data[(i, j)]).abs() < 1e-12);
             }
         }
     }

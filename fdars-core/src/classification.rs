@@ -924,6 +924,7 @@ pub fn fclassif_cv(
             &test_data,
             argvals,
             &train_labels,
+            g,
             train_cov.as_ref(),
             test_cov.as_ref(),
             method,
@@ -981,31 +982,27 @@ fn cv_fold_predict(
     test_data: &FdMatrix,
     _argvals: &[f64],
     train_labels: &[usize],
+    g: usize,
     train_cov: Option<&FdMatrix>,
-    _test_cov: Option<&FdMatrix>,
+    test_cov: Option<&FdMatrix>,
     method: &str,
     ncomp: usize,
 ) -> Option<Vec<usize>> {
+    let fpca = fdata_to_pc_1d(train_data, ncomp)?;
     match method {
         "lda" => {
-            let _result = fclassif_lda(train_data, train_labels, train_cov, ncomp)?;
-            // Re-predict on test data using training FPCA
-            let fpca = fdata_to_pc_1d(train_data, ncomp)?;
             let predictions =
-                project_and_classify_lda(test_data, &fpca, train_labels, train_cov, ncomp);
+                project_and_classify_lda(test_data, &fpca, train_labels, g, train_cov, test_cov);
             Some(predictions)
         }
         "qda" => {
-            let _result = fclassif_qda(train_data, train_labels, train_cov, ncomp)?;
-            let fpca = fdata_to_pc_1d(train_data, ncomp)?;
             let predictions =
-                project_and_classify_qda(test_data, &fpca, train_labels, train_cov, ncomp);
+                project_and_classify_qda(test_data, &fpca, train_labels, g, train_cov, test_cov);
             Some(predictions)
         }
         "knn" => {
-            let fpca = fdata_to_pc_1d(train_data, ncomp)?;
             let predictions =
-                project_and_classify_knn(test_data, &fpca, train_labels, train_cov, ncomp, 5);
+                project_and_classify_knn(test_data, &fpca, train_labels, g, train_cov, test_cov, 5);
             Some(predictions)
         }
         // kernel and dd classifiers don't support out-of-sample prediction on new data
@@ -1032,19 +1029,42 @@ fn project_test_onto_fpca(test_data: &FdMatrix, fpca: &crate::regression::FpcaRe
     test_features
 }
 
+/// Append scalar covariates to FPCA scores to form augmented feature matrix.
+fn append_covariates(scores: &FdMatrix, covariates: Option<&FdMatrix>) -> FdMatrix {
+    match covariates {
+        None => scores.clone(),
+        Some(cov) => {
+            let n = scores.nrows();
+            let d_pc = scores.ncols();
+            let d_cov = cov.ncols();
+            let mut features = FdMatrix::zeros(n, d_pc + d_cov);
+            for i in 0..n {
+                for j in 0..d_pc {
+                    features[(i, j)] = scores[(i, j)];
+                }
+                for j in 0..d_cov {
+                    features[(i, d_pc + j)] = cov[(i, j)];
+                }
+            }
+            features
+        }
+    }
+}
+
 /// Project test data onto training FPCA and classify with LDA.
 fn project_and_classify_lda(
     test_data: &FdMatrix,
     fpca: &crate::regression::FpcaResult,
     train_labels: &[usize],
-    _train_cov: Option<&FdMatrix>,
-    _ncomp: usize,
+    g: usize,
+    train_cov: Option<&FdMatrix>,
+    test_cov: Option<&FdMatrix>,
 ) -> Vec<usize> {
-    let test_features = project_test_onto_fpca(test_data, fpca);
+    let test_pc = project_test_onto_fpca(test_data, fpca);
+    let test_features = append_covariates(&test_pc, test_cov);
 
-    let train_features = &fpca.scores;
-    let (labels, g) = remap_labels(train_labels);
-    let (class_means, cov, priors) = lda_params(train_features, &labels, g);
+    let train_features = append_covariates(&fpca.scores, train_cov);
+    let (class_means, cov, priors) = lda_params(&train_features, train_labels, g);
     let d = train_features.ncols();
     match cholesky_d(&cov, d) {
         Some(chol) => lda_predict(&test_features, &class_means, &chol, &priors, g),
@@ -1057,16 +1077,17 @@ fn project_and_classify_qda(
     test_data: &FdMatrix,
     fpca: &crate::regression::FpcaResult,
     train_labels: &[usize],
-    _train_cov: Option<&FdMatrix>,
-    _ncomp: usize,
+    g: usize,
+    train_cov: Option<&FdMatrix>,
+    test_cov: Option<&FdMatrix>,
 ) -> Vec<usize> {
     let n_test = test_data.nrows();
-    let test_features = project_test_onto_fpca(test_data, fpca);
+    let test_pc = project_test_onto_fpca(test_data, fpca);
+    let test_features = append_covariates(&test_pc, test_cov);
 
-    let (labels, g) = remap_labels(train_labels);
-    let train_features = &fpca.scores;
+    let train_features = append_covariates(&fpca.scores, train_cov);
 
-    match build_qda_params(train_features, &labels, g) {
+    match build_qda_params(&train_features, train_labels, g) {
         Some((class_means, class_chols, class_log_dets, priors)) => qda_predict(
             &test_features,
             &class_means,
@@ -1084,32 +1105,28 @@ fn project_and_classify_knn(
     test_data: &FdMatrix,
     fpca: &crate::regression::FpcaResult,
     train_labels: &[usize],
-    _train_cov: Option<&FdMatrix>,
-    _ncomp: usize,
+    g: usize,
+    train_cov: Option<&FdMatrix>,
+    test_cov: Option<&FdMatrix>,
     k_nn: usize,
 ) -> Vec<usize> {
     let n_test = test_data.nrows();
     let n_train = fpca.scores.nrows();
-    let m = test_data.ncols();
-    let d = fpca.scores.ncols();
 
-    let (labels, g) = remap_labels(train_labels);
+    let test_pc = project_test_onto_fpca(test_data, fpca);
+    let test_features = append_covariates(&test_pc, test_cov);
+    let train_features = append_covariates(&fpca.scores, train_cov);
+    let d = train_features.ncols();
 
     (0..n_test)
         .map(|i| {
-            // Project test observation
-            let mut xi = vec![0.0; d];
-            for k in 0..d {
-                for j in 0..m {
-                    xi[k] += (test_data[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)];
-                }
-            }
-
-            // Distances to all training points
+            // Distances to all training points in augmented feature space
             let mut dists: Vec<(f64, usize)> = (0..n_train)
                 .map(|t| {
-                    let d_sq: f64 = (0..d).map(|k| (xi[k] - fpca.scores[(t, k)]).powi(2)).sum();
-                    (d_sq, labels[t])
+                    let d_sq: f64 = (0..d)
+                        .map(|k| (test_features[(i, k)] - train_features[(t, k)]).powi(2))
+                        .sum();
+                    (d_sq, train_labels[t])
                 })
                 .collect();
             dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));

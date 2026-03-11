@@ -480,6 +480,9 @@ pub fn soft_dtw_divergence(x: &[f64], y: &[f64], gamma: f64) -> f64 {
 }
 
 /// Compute Soft-DTW self-distance matrix (symmetric n×n).
+///
+/// Note: unlike true metrics, `sdtw(x, x) != 0` for finite gamma,
+/// so the diagonal is computed explicitly.
 pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     let n = data.nrows();
     let m = data.ncols();
@@ -487,9 +490,14 @@ pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
         return FdMatrix::zeros(0, 0);
     }
     let rm = data.to_row_major();
-    self_distance_matrix(n, |i, j| {
+    let mut dist = self_distance_matrix(n, |i, j| {
         soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[j * m..(j + 1) * m], gamma)
-    })
+    });
+    // Fill diagonal: sdtw(x, x) is typically negative for finite gamma
+    for i in 0..n {
+        dist[(i, i)] = soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[i * m..(i + 1) * m], gamma);
+    }
+    dist
 }
 
 /// Compute Soft-DTW cross-distance matrix (n1×n2).
@@ -940,7 +948,7 @@ fn extract_surfaces(
             let mut points = Vec::with_capacity(m1 * m2);
             for i in 0..m1 {
                 for j in 0..m2 {
-                    let k = i * m2 + j;
+                    let k = i + j * m1;
                     points.push((argvals_s[i], argvals_t[j], data[(curve, k)]));
                 }
             }

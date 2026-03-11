@@ -70,7 +70,12 @@ pub fn functional_pdp(
     n_grid: usize,
 ) -> Option<FunctionalPdpResult> {
     let (n, m) = data.shape();
-    if component >= fit.ncomp || n_grid < 2 || n == 0 || m != fit.fpca.mean.len() {
+    if component >= fit.ncomp
+        || n_grid < 2
+        || n == 0
+        || m != fit.fpca.mean.len()
+        || n != fit.fitted_values.len()
+    {
         return None;
     }
 
@@ -667,13 +672,23 @@ pub fn fpc_permutation_importance(
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
 
-    // Baseline R²
+    // Baseline R² — compute from same FPC-only prediction used in permuted path
+    // to ensure consistent comparison (gamma terms are constant across permutations)
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
     if ss_tot == 0.0 {
         return None;
     }
-    let ss_res_base: f64 = fit.residuals.iter().map(|r| r * r).sum();
+    let identity_idx: Vec<usize> = (0..n).collect();
+    let ss_res_base = permuted_ss_res_linear(
+        &scores,
+        &fit.coefficients,
+        y,
+        n,
+        ncomp,
+        ncomp,
+        &identity_idx,
+    );
     let baseline = 1.0 - ss_res_base / ss_tot;
 
     let mut rng = StdRng::seed_from_u64(seed);

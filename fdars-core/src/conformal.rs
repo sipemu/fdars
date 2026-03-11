@@ -1416,7 +1416,7 @@ pub fn cv_conformal_classification(
 /// Requires n refits, so this is the most sample-efficient but most expensive method.
 ///
 /// The `fit_predict` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`
-/// and returns `Some((loo_pred, test_preds))`.
+/// and returns `Some((predictions, _))` — predictions on `predict_data`.
 pub fn jackknife_plus_regression(
     data: &FdMatrix,
     y: &[f64],
@@ -1464,7 +1464,7 @@ pub fn jackknife_plus_regression(
         loo_residuals[i] = (y[i] - loo_pred[0]).abs();
 
         // Predict on test data
-        let (_, test_preds) = fit_predict(
+        let (test_preds, _) = fit_predict(
             &train_data,
             &train_y,
             train_sc.as_ref(),
@@ -1495,14 +1495,13 @@ pub fn jackknife_plus_regression(
             .map(|i| test_preds_all[j][i] - loo_residuals[i])
             .collect();
         lower_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        // Exact order statistic: ceil((n+1)*q) - 1 as 0-based index (Barber et al. 2021)
-        let lo_k = ((n + 1) as f64 * q_lo).ceil() as usize;
-        let lo_idx = if lo_k == 0 {
-            0
+        // Lower bound: floor((n+1)*q_lo) as rank (Barber et al. 2021, Corollary 2)
+        let lo_k = ((n + 1) as f64 * q_lo).floor() as usize;
+        if lo_k == 0 {
+            lower[j] = f64::NEG_INFINITY;
         } else {
-            (lo_k - 1).min(n.saturating_sub(1))
-        };
-        lower[j] = lower_vals[lo_idx];
+            lower[j] = lower_vals[(lo_k - 1).min(n.saturating_sub(1))];
+        }
 
         // Upper bounds: ŷ_{-i}(x_test) + R_i
         let mut upper_vals: Vec<f64> = (0..n)

@@ -145,7 +145,7 @@ fn simpsons_weights_nonuniform(weights: &mut [f64], argvals: &[f64], n: usize) {
 /// * `argvals_t` - Grid points in t direction
 ///
 /// # Returns
-/// Flattened vector of integration weights (row-major order)
+/// Flattened vector of integration weights (column-major: s-varies-fastest, matching FdMatrix surface layout)
 pub fn simpsons_weights_2d(argvals_s: &[f64], argvals_t: &[f64]) -> Vec<f64> {
     let weights_s = simpsons_weights(argvals_s);
     let weights_t = simpsons_weights(argvals_t);
@@ -155,7 +155,7 @@ pub fn simpsons_weights_2d(argvals_s: &[f64], argvals_t: &[f64]) -> Vec<f64> {
     let mut weights = vec![0.0; m1 * m2];
     for i in 0..m1 {
         for j in 0..m2 {
-            weights[i * m2 + j] = weights_s[i] * weights_t[j];
+            weights[i + j * m1] = weights_s[i] * weights_t[j];
         }
     }
     weights

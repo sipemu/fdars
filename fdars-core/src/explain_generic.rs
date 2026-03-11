@@ -486,18 +486,14 @@ pub fn generic_shap_values(
     let mean_scores = compute_column_means(&scores, ncomp);
     let mean_z = compute_mean_scalar(scalar_covariates, p_scalar, n);
 
-    let base_value: f64 = (0..n)
-        .map(|i| {
-            let s: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
-            let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-                scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
-            } else {
-                None
-            };
-            model.predict_from_scores(&s, obs_z.as_deref())
-        })
-        .sum::<f64>()
-        / n as f64;
+    let base_value = model.predict_from_scores(
+        &mean_scores,
+        if mean_z.is_empty() {
+            None
+        } else {
+            Some(&mean_z)
+        },
+    );
 
     let mut values = FdMatrix::zeros(n, ncomp);
     let mut rng = StdRng::seed_from_u64(seed);

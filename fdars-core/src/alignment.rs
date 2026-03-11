@@ -1016,6 +1016,9 @@ pub fn karcher_mean(
     }
 
     // Phase 2: fine iterations (or all iterations if m <= 50)
+    if fine_iters > 0 {
+        converged = false; // Fine phase must independently converge
+    }
     let fine_start = n_iter;
     for iter in 0..fine_iters {
         n_iter = fine_start + iter + 1;
