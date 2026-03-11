@@ -43,7 +43,7 @@ pub struct ClassifCvResult {
 // ---------------------------------------------------------------------------
 
 /// Count distinct classes and remap labels to 0..G-1.
-fn remap_labels(y: &[usize]) -> (Vec<usize>, usize) {
+pub(crate) fn remap_labels(y: &[usize]) -> (Vec<usize>, usize) {
     let mut labels: Vec<usize> = y.to_vec();
     let mut unique: Vec<usize> = y.to_vec();
     unique.sort_unstable();
@@ -81,7 +81,7 @@ fn compute_accuracy(true_labels: &[usize], pred_labels: &[usize]) -> f64 {
 }
 
 /// Extract FPC scores and append optional scalar covariates.
-fn build_feature_matrix(
+pub(crate) fn build_feature_matrix(
     data: &FdMatrix,
     covariates: Option<&FdMatrix>,
     ncomp: usize,
@@ -173,7 +173,7 @@ fn pooled_within_cov(
 }
 
 /// Compute per-class means and pooled within-class covariance.
-fn lda_params(
+pub(crate) fn lda_params(
     features: &FdMatrix,
     labels: &[usize],
     g: usize,
@@ -184,7 +184,7 @@ fn lda_params(
 }
 
 /// Cholesky factorization of d×d row-major matrix.
-fn cholesky_d(mat: &[f64], d: usize) -> Option<Vec<f64>> {
+pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Option<Vec<f64>> {
     let mut l = vec![0.0; d * d];
     for j in 0..d {
         let mut sum = 0.0;
@@ -208,7 +208,7 @@ fn cholesky_d(mat: &[f64], d: usize) -> Option<Vec<f64>> {
 }
 
 /// Forward solve L * x = b.
-fn forward_solve(l: &[f64], b: &[f64], d: usize) -> Vec<f64> {
+pub(crate) fn forward_solve(l: &[f64], b: &[f64], d: usize) -> Vec<f64> {
     let mut x = vec![0.0; d];
     for i in 0..d {
         let mut s = 0.0;
@@ -221,14 +221,14 @@ fn forward_solve(l: &[f64], b: &[f64], d: usize) -> Vec<f64> {
 }
 
 /// Mahalanobis distance squared: (x-mu)^T Sigma^{-1} (x-mu) via Cholesky.
-fn mahalanobis_sq(x: &[f64], mu: &[f64], chol: &[f64], d: usize) -> f64 {
+pub(crate) fn mahalanobis_sq(x: &[f64], mu: &[f64], chol: &[f64], d: usize) -> f64 {
     let diff: Vec<f64> = x.iter().zip(mu.iter()).map(|(&a, &b)| a - b).collect();
     let y = forward_solve(chol, &diff, d);
     y.iter().map(|&v| v * v).sum()
 }
 
 /// LDA prediction: assign to class minimizing Mahalanobis distance (with prior).
-fn lda_predict(
+pub(crate) fn lda_predict(
     features: &FdMatrix,
     class_means: &[Vec<f64>],
     cov_chol: &[f64],
@@ -352,7 +352,7 @@ fn qda_class_covariances(
 }
 
 /// Compute QDA parameters: class means, Cholesky factors, log-dets, priors.
-fn build_qda_params(
+pub(crate) fn build_qda_params(
     features: &FdMatrix,
     labels: &[usize],
     g: usize,
@@ -371,7 +371,7 @@ fn build_qda_params(
 }
 
 /// Log-determinant from Cholesky factor.
-fn log_det_cholesky(l: &[f64], d: usize) -> f64 {
+pub(crate) fn log_det_cholesky(l: &[f64], d: usize) -> f64 {
     let mut s = 0.0;
     for i in 0..d {
         s += l[i * d + i].ln();
@@ -380,7 +380,7 @@ fn log_det_cholesky(l: &[f64], d: usize) -> f64 {
 }
 
 /// QDA prediction: per-class covariance.
-fn qda_predict(
+pub(crate) fn qda_predict(
     features: &FdMatrix,
     class_means: &[Vec<f64>],
     class_chols: &[Vec<f64>],
@@ -499,7 +499,7 @@ pub fn fclassif_knn(
 }
 
 /// Leave-one-out k-NN prediction.
-fn knn_predict_loo(
+pub(crate) fn knn_predict_loo(
     features: &FdMatrix,
     labels: &[usize],
     g: usize,
@@ -1133,6 +1133,472 @@ fn project_and_classify_knn(
                 .unwrap_or(0)
         })
         .collect()
+}
+
+// ===========================================================================
+// ClassifFit: wrapper for explainability trait
+// ===========================================================================
+
+use crate::explain_generic::{FpcPredictor, TaskType};
+
+/// Classification method with stored parameters for prediction.
+pub enum ClassifMethod {
+    /// Linear Discriminant Analysis.
+    Lda {
+        class_means: Vec<Vec<f64>>,
+        cov_chol: Vec<f64>,
+        priors: Vec<f64>,
+        n_classes: usize,
+    },
+    /// Quadratic Discriminant Analysis.
+    Qda {
+        class_means: Vec<Vec<f64>>,
+        class_chols: Vec<Vec<f64>>,
+        class_log_dets: Vec<f64>,
+        priors: Vec<f64>,
+        n_classes: usize,
+    },
+    /// k-Nearest Neighbors.
+    Knn {
+        training_scores: FdMatrix,
+        training_labels: Vec<usize>,
+        k: usize,
+        n_classes: usize,
+    },
+}
+
+/// A fitted classification model that retains FPCA components for explainability.
+pub struct ClassifFit {
+    /// Classification result (predicted labels, accuracy, confusion matrix).
+    pub result: ClassifResult,
+    /// FPCA mean function (length m).
+    pub fpca_mean: Vec<f64>,
+    /// FPCA rotation matrix (m × ncomp).
+    pub fpca_rotation: FdMatrix,
+    /// FPCA scores (n × ncomp).
+    pub fpca_scores: FdMatrix,
+    /// Number of FPC components used.
+    pub ncomp: usize,
+    /// The classification method with stored parameters.
+    pub method: ClassifMethod,
+}
+
+/// FPC + LDA classification, retaining FPCA and LDA parameters for explainability.
+pub fn fclassif_lda_fit(
+    data: &FdMatrix,
+    y: &[usize],
+    covariates: Option<&FdMatrix>,
+    ncomp: usize,
+) -> Option<ClassifFit> {
+    let n = data.nrows();
+    if n == 0 || y.len() != n || ncomp == 0 {
+        return None;
+    }
+
+    let (labels, g) = remap_labels(y);
+    if g < 2 {
+        return None;
+    }
+
+    let (features, mean, rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    let d = features.ncols();
+    let (class_means, cov, priors) = lda_params(&features, &labels, g);
+    let chol = cholesky_d(&cov, d)?;
+
+    let predicted = lda_predict(&features, &class_means, &chol, &priors, g);
+    let accuracy = compute_accuracy(&labels, &predicted);
+    let confusion = confusion_matrix(&labels, &predicted, g);
+
+    let fpca_scores = {
+        let actual_ncomp = features.ncols().min(ncomp);
+        let fpca = fdata_to_pc_1d(data, actual_ncomp)?;
+        fpca.scores
+    };
+
+    Some(ClassifFit {
+        result: ClassifResult {
+            predicted,
+            probabilities: None,
+            accuracy,
+            confusion,
+            n_classes: g,
+            ncomp: features.ncols().min(ncomp),
+        },
+        fpca_mean: mean,
+        fpca_rotation: rotation,
+        fpca_scores,
+        ncomp: features.ncols().min(ncomp),
+        method: ClassifMethod::Lda {
+            class_means,
+            cov_chol: chol,
+            priors,
+            n_classes: g,
+        },
+    })
+}
+
+/// FPC + QDA classification, retaining FPCA and QDA parameters for explainability.
+pub fn fclassif_qda_fit(
+    data: &FdMatrix,
+    y: &[usize],
+    covariates: Option<&FdMatrix>,
+    ncomp: usize,
+) -> Option<ClassifFit> {
+    let n = data.nrows();
+    if n == 0 || y.len() != n || ncomp == 0 {
+        return None;
+    }
+
+    let (labels, g) = remap_labels(y);
+    if g < 2 {
+        return None;
+    }
+
+    let (features, mean, rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    let (class_means, class_chols, class_log_dets, priors) =
+        build_qda_params(&features, &labels, g)?;
+
+    let predicted = qda_predict(
+        &features,
+        &class_means,
+        &class_chols,
+        &class_log_dets,
+        &priors,
+        g,
+    );
+    let accuracy = compute_accuracy(&labels, &predicted);
+    let confusion = confusion_matrix(&labels, &predicted, g);
+
+    let fpca_scores = {
+        let actual_ncomp = features.ncols().min(ncomp);
+        let fpca = fdata_to_pc_1d(data, actual_ncomp)?;
+        fpca.scores
+    };
+
+    Some(ClassifFit {
+        result: ClassifResult {
+            predicted,
+            probabilities: None,
+            accuracy,
+            confusion,
+            n_classes: g,
+            ncomp: features.ncols().min(ncomp),
+        },
+        fpca_mean: mean,
+        fpca_rotation: rotation,
+        fpca_scores,
+        ncomp: features.ncols().min(ncomp),
+        method: ClassifMethod::Qda {
+            class_means,
+            class_chols,
+            class_log_dets,
+            priors,
+            n_classes: g,
+        },
+    })
+}
+
+/// FPC + k-NN classification, retaining FPCA and training data for explainability.
+pub fn fclassif_knn_fit(
+    data: &FdMatrix,
+    y: &[usize],
+    covariates: Option<&FdMatrix>,
+    ncomp: usize,
+    k_nn: usize,
+) -> Option<ClassifFit> {
+    let n = data.nrows();
+    if n == 0 || y.len() != n || ncomp == 0 || k_nn == 0 {
+        return None;
+    }
+
+    let (labels, g) = remap_labels(y);
+    if g < 2 {
+        return None;
+    }
+
+    let (features, mean, rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    let d = features.ncols();
+
+    let predicted = knn_predict_loo(&features, &labels, g, d, k_nn);
+    let accuracy = compute_accuracy(&labels, &predicted);
+    let confusion = confusion_matrix(&labels, &predicted, g);
+
+    let fpca_scores = {
+        let actual_ncomp = features.ncols().min(ncomp);
+        let fpca = fdata_to_pc_1d(data, actual_ncomp)?;
+        fpca.scores
+    };
+
+    Some(ClassifFit {
+        result: ClassifResult {
+            predicted: predicted.clone(),
+            probabilities: None,
+            accuracy,
+            confusion,
+            n_classes: g,
+            ncomp: d.min(ncomp),
+        },
+        fpca_mean: mean,
+        fpca_rotation: rotation,
+        fpca_scores: fpca_scores.clone(),
+        ncomp: d.min(ncomp),
+        method: ClassifMethod::Knn {
+            training_scores: fpca_scores,
+            training_labels: labels,
+            k: k_nn,
+            n_classes: g,
+        },
+    })
+}
+
+// ---------------------------------------------------------------------------
+// FpcPredictor impl for ClassifFit
+// ---------------------------------------------------------------------------
+
+impl FpcPredictor for ClassifFit {
+    fn fpca_mean(&self) -> &[f64] {
+        &self.fpca_mean
+    }
+
+    fn fpca_rotation(&self) -> &FdMatrix {
+        &self.fpca_rotation
+    }
+
+    fn ncomp(&self) -> usize {
+        self.ncomp
+    }
+
+    fn training_scores(&self) -> &FdMatrix {
+        &self.fpca_scores
+    }
+
+    fn task_type(&self) -> TaskType {
+        match &self.method {
+            ClassifMethod::Lda { n_classes, .. }
+            | ClassifMethod::Qda { n_classes, .. }
+            | ClassifMethod::Knn { n_classes, .. } => {
+                if *n_classes == 2 {
+                    TaskType::BinaryClassification
+                } else {
+                    TaskType::MulticlassClassification(*n_classes)
+                }
+            }
+        }
+    }
+
+    fn predict_from_scores(&self, scores: &[f64], _scalar_covariates: Option<&[f64]>) -> f64 {
+        match &self.method {
+            ClassifMethod::Lda {
+                class_means,
+                cov_chol,
+                priors,
+                n_classes,
+            } => {
+                let g = *n_classes;
+                let d = scores.len();
+                if g == 2 {
+                    // Return P(Y=1) via softmax of discriminant scores
+                    let score0 = priors[0].max(1e-15).ln()
+                        - 0.5 * mahalanobis_sq(scores, &class_means[0], cov_chol, d);
+                    let score1 = priors[1].max(1e-15).ln()
+                        - 0.5 * mahalanobis_sq(scores, &class_means[1], cov_chol, d);
+                    let max_s = score0.max(score1);
+                    let exp0 = (score0 - max_s).exp();
+                    let exp1 = (score1 - max_s).exp();
+                    exp1 / (exp0 + exp1)
+                } else {
+                    // Return predicted class as f64
+                    let mut best_class = 0;
+                    let mut best_score = f64::NEG_INFINITY;
+                    for c in 0..g {
+                        let maha = mahalanobis_sq(scores, &class_means[c], cov_chol, d);
+                        let s = priors[c].max(1e-15).ln() - 0.5 * maha;
+                        if s > best_score {
+                            best_score = s;
+                            best_class = c;
+                        }
+                    }
+                    best_class as f64
+                }
+            }
+            ClassifMethod::Qda {
+                class_means,
+                class_chols,
+                class_log_dets,
+                priors,
+                n_classes,
+            } => {
+                let g = *n_classes;
+                let d = scores.len();
+                if g == 2 {
+                    // Return P(Y=1) via softmax of discriminant scores
+                    let score0 = priors[0].max(1e-15).ln()
+                        - 0.5
+                            * (class_log_dets[0]
+                                + mahalanobis_sq(scores, &class_means[0], &class_chols[0], d));
+                    let score1 = priors[1].max(1e-15).ln()
+                        - 0.5
+                            * (class_log_dets[1]
+                                + mahalanobis_sq(scores, &class_means[1], &class_chols[1], d));
+                    let max_s = score0.max(score1);
+                    let exp0 = (score0 - max_s).exp();
+                    let exp1 = (score1 - max_s).exp();
+                    exp1 / (exp0 + exp1)
+                } else {
+                    let mut best_class = 0;
+                    let mut best_score = f64::NEG_INFINITY;
+                    for c in 0..g {
+                        let maha = mahalanobis_sq(scores, &class_means[c], &class_chols[c], d);
+                        let s = priors[c].max(1e-15).ln() - 0.5 * (class_log_dets[c] + maha);
+                        if s > best_score {
+                            best_score = s;
+                            best_class = c;
+                        }
+                    }
+                    best_class as f64
+                }
+            }
+            ClassifMethod::Knn {
+                training_scores,
+                training_labels,
+                k,
+                n_classes,
+            } => {
+                let g = *n_classes;
+                let n_train = training_scores.nrows();
+                let d = scores.len();
+                let k_nn = (*k).min(n_train);
+
+                let mut dists: Vec<(f64, usize)> = (0..n_train)
+                    .map(|j| {
+                        let d_sq: f64 = (0..d)
+                            .map(|c| (scores[c] - training_scores[(j, c)]).powi(2))
+                            .sum();
+                        (d_sq, training_labels[j])
+                    })
+                    .collect();
+                dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+                let mut votes = vec![0usize; g];
+                for &(_, label) in dists.iter().take(k_nn) {
+                    if label < g {
+                        votes[label] += 1;
+                    }
+                }
+
+                if g == 2 {
+                    // Return proportion voting for class 1 as probability
+                    votes[1] as f64 / k_nn as f64
+                } else {
+                    // Return majority vote class as f64
+                    votes
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|&(_, &v)| v)
+                        .map(|(c, _)| c as f64)
+                        .unwrap_or(0.0)
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Class probability vectors (for conformal prediction sets)
+// ---------------------------------------------------------------------------
+
+/// Compute full class probability vectors for each observation.
+///
+/// Returns `n × g` probability vectors suitable for conformal classification.
+/// For each observation, the probabilities sum to 1.
+pub(crate) fn classif_predict_probs(fit: &ClassifFit, scores: &FdMatrix) -> Vec<Vec<f64>> {
+    let n = scores.nrows();
+    let d = scores.ncols();
+    match &fit.method {
+        ClassifMethod::Lda {
+            class_means,
+            cov_chol,
+            priors,
+            n_classes,
+        } => {
+            let g = *n_classes;
+            (0..n)
+                .map(|i| {
+                    let x: Vec<f64> = (0..d).map(|j| scores[(i, j)]).collect();
+                    let disc: Vec<f64> = (0..g)
+                        .map(|c| {
+                            priors[c].max(1e-15).ln()
+                                - 0.5 * mahalanobis_sq(&x, &class_means[c], cov_chol, d)
+                        })
+                        .collect();
+                    softmax(&disc)
+                })
+                .collect()
+        }
+        ClassifMethod::Qda {
+            class_means,
+            class_chols,
+            class_log_dets,
+            priors,
+            n_classes,
+        } => {
+            let g = *n_classes;
+            (0..n)
+                .map(|i| {
+                    let x: Vec<f64> = (0..d).map(|j| scores[(i, j)]).collect();
+                    let disc: Vec<f64> = (0..g)
+                        .map(|c| {
+                            priors[c].max(1e-15).ln()
+                                - 0.5
+                                    * (class_log_dets[c]
+                                        + mahalanobis_sq(&x, &class_means[c], &class_chols[c], d))
+                        })
+                        .collect();
+                    softmax(&disc)
+                })
+                .collect()
+        }
+        ClassifMethod::Knn {
+            training_scores,
+            training_labels,
+            k,
+            n_classes,
+        } => {
+            let g = *n_classes;
+            let n_train = training_scores.nrows();
+            let k_nn = (*k).min(n_train);
+            (0..n)
+                .map(|i| {
+                    let x: Vec<f64> = (0..d).map(|j| scores[(i, j)]).collect();
+                    let mut dists: Vec<(f64, usize)> = (0..n_train)
+                        .map(|j| {
+                            let d_sq: f64 = (0..d)
+                                .map(|c| (x[c] - training_scores[(j, c)]).powi(2))
+                                .sum();
+                            (d_sq, training_labels[j])
+                        })
+                        .collect();
+                    dists
+                        .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                    let mut votes = vec![0usize; g];
+                    for &(_, label) in dists.iter().take(k_nn) {
+                        if label < g {
+                            votes[label] += 1;
+                        }
+                    }
+                    votes.iter().map(|&v| v as f64 / k_nn as f64).collect()
+                })
+                .collect()
+        }
+    }
+}
+
+/// Softmax of a vector of log-scores → probabilities.
+fn softmax(scores: &[f64]) -> Vec<f64> {
+    let max_s = scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let exps: Vec<f64> = scores.iter().map(|&s| (s - max_s).exp()).collect();
+    let sum: f64 = exps.iter().sum();
+    exps.iter().map(|&e| e / sum).collect()
 }
 
 // ---------------------------------------------------------------------------

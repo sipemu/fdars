@@ -1343,6 +1343,361 @@ pub fn bootstrap_ci_functional_logistic(
 }
 
 // ---------------------------------------------------------------------------
+// Basis regression CV (R's fregre.basis.cv)
+// ---------------------------------------------------------------------------
+
+/// Result of lambda selection for basis regression via cross-validation.
+pub struct FregreBasisCvResult {
+    /// Optimal smoothing parameter lambda.
+    pub optimal_lambda: f64,
+    /// Mean CV error for each lambda.
+    pub cv_errors: Vec<f64>,
+    /// SE of CV error across folds for each lambda.
+    pub cv_se: Vec<f64>,
+    /// Lambda values tested.
+    pub lambda_values: Vec<f64>,
+    /// Minimum mean CV error.
+    pub min_cv_error: f64,
+}
+
+/// K-fold CV for selecting the regularization parameter lambda
+/// in basis-regression (R's `fregre.basis.cv`).
+///
+/// Projects functional predictors onto a B-spline or Fourier basis,
+/// fits a ridge regression on the resulting coefficients for each lambda,
+/// and selects the lambda minimizing mean CV error.
+///
+/// # Arguments
+/// * `data` — Functional predictor matrix (n × m)
+/// * `y` — Scalar response vector (length n)
+/// * `argvals` — Evaluation grid (length m)
+/// * `n_folds` — Number of CV folds
+/// * `lambda_range` — Lambda values to test. If `None`, uses 20 log-spaced
+///   values from 1e-4 to 1e4.
+/// * `nbasis` — Number of basis functions
+/// * `basis_type` — Basis type (B-spline or Fourier)
+pub fn fregre_basis_cv(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    n_folds: usize,
+    lambda_range: Option<&[f64]>,
+    nbasis: usize,
+    basis_type: &crate::smooth_basis::BasisType,
+) -> Option<FregreBasisCvResult> {
+    use crate::smooth_basis::{smooth_basis, BasisType, FdPar};
+
+    let (n, m) = data.shape();
+    if n < n_folds || m == 0 || y.len() != n || argvals.len() != m || nbasis < 2 {
+        return None;
+    }
+
+    // Default lambda grid
+    let default_lambdas: Vec<f64> = if lambda_range.is_none() {
+        (0..20)
+            .map(|i| {
+                let log_lam = -4.0 + 8.0 * i as f64 / 19.0;
+                10.0_f64.powf(log_lam)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let lambdas = lambda_range.unwrap_or(&default_lambdas);
+
+    if lambdas.is_empty() {
+        return None;
+    }
+
+    // Compute penalty matrix once
+    let penalty = match basis_type {
+        BasisType::Bspline { order } => {
+            crate::smooth_basis::bspline_penalty_matrix(argvals, nbasis, *order, 2)
+        }
+        BasisType::Fourier { period } => {
+            crate::smooth_basis::fourier_penalty_matrix(nbasis, *period, 2)
+        }
+    };
+
+    // Create folds
+    let folds = crate::cv::create_folds(n, n_folds, 42);
+
+    let mut cv_errors = vec![0.0; lambdas.len()];
+    let mut cv_fold_errors: Vec<Vec<f64>> = vec![Vec::with_capacity(n_folds); lambdas.len()];
+
+    for fold in 0..n_folds {
+        let (train_idx, test_idx) = crate::cv::fold_indices(&folds, fold);
+        if train_idx.is_empty() || test_idx.is_empty() {
+            continue;
+        }
+
+        let train_data = crate::cv::subset_rows(data, &train_idx);
+        let train_y = crate::cv::subset_vec(y, &train_idx);
+        let test_data = crate::cv::subset_rows(data, &test_idx);
+        let test_y = crate::cv::subset_vec(y, &test_idx);
+
+        for (li, &lam) in lambdas.iter().enumerate() {
+            let fdpar = FdPar {
+                basis_type: basis_type.clone(),
+                nbasis,
+                lambda: lam,
+                lfd_order: 2,
+                penalty_matrix: penalty.clone(),
+            };
+
+            // Project training curves to basis coefficients
+            let train_result = match smooth_basis(&train_data, argvals, &fdpar) {
+                Some(r) => r,
+                None => {
+                    cv_fold_errors[li].push(f64::INFINITY);
+                    continue;
+                }
+            };
+
+            // Project test curves to basis coefficients
+            let test_result = match smooth_basis(&test_data, argvals, &fdpar) {
+                Some(r) => r,
+                None => {
+                    cv_fold_errors[li].push(f64::INFINITY);
+                    continue;
+                }
+            };
+
+            // Fit linear model on training coefficients -> y
+            let train_coefs = &train_result.coefficients;
+            let test_coefs = &test_result.coefficients;
+            let n_train = train_idx.len();
+            let n_test = test_idx.len();
+            let k = train_coefs.ncols();
+
+            // Simple OLS: (X'X + lam*I) \ X'y
+            let mut xtx = vec![0.0; k * k];
+            let mut xty_vec = vec![0.0; k];
+            for i in 0..n_train {
+                for j in 0..k {
+                    xty_vec[j] += train_coefs[(i, j)] * train_y[i];
+                    for l in 0..k {
+                        xtx[j * k + l] += train_coefs[(i, j)] * train_coefs[(i, l)];
+                    }
+                }
+            }
+            // Add ridge
+            for j in 0..k {
+                xtx[j * k + j] += lam;
+            }
+
+            // Solve via Gaussian elimination
+            let beta = {
+                let mut a = xtx;
+                let mut b = xty_vec;
+                crate::smoothing::solve_gaussian_pub(&mut a, &mut b, k)
+            };
+
+            // Predict on test set
+            let mut fold_mse = 0.0;
+            for i in 0..n_test {
+                let mut yhat = 0.0;
+                for j in 0..k {
+                    yhat += test_coefs[(i, j)] * beta[j];
+                }
+                fold_mse += (test_y[i] - yhat).powi(2);
+            }
+            fold_mse /= n_test as f64;
+            cv_fold_errors[li].push(fold_mse);
+        }
+    }
+
+    // Compute mean and SE across folds
+    let mut cv_se = vec![0.0; lambdas.len()];
+    for li in 0..lambdas.len() {
+        let errs = &cv_fold_errors[li];
+        if errs.is_empty() {
+            cv_errors[li] = f64::INFINITY;
+            continue;
+        }
+        let mean = errs.iter().sum::<f64>() / errs.len() as f64;
+        cv_errors[li] = mean;
+        if errs.len() > 1 {
+            let var =
+                errs.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / (errs.len() - 1) as f64;
+            cv_se[li] = (var / errs.len() as f64).sqrt();
+        }
+    }
+
+    let (best_idx, &min_cv_error) = cv_errors
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+
+    Some(FregreBasisCvResult {
+        optimal_lambda: lambdas[best_idx],
+        cv_errors,
+        cv_se,
+        lambda_values: lambdas.to_vec(),
+        min_cv_error,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Nonparametric regression bandwidth CV (R's fregre.np.cv)
+// ---------------------------------------------------------------------------
+
+/// Result of bandwidth selection for nonparametric regression via CV.
+pub struct FregreNpCvResult {
+    /// Optimal bandwidth.
+    pub optimal_h: f64,
+    /// Mean CV error for each bandwidth.
+    pub cv_errors: Vec<f64>,
+    /// SE of CV error across folds for each bandwidth.
+    pub cv_se: Vec<f64>,
+    /// Bandwidth values tested.
+    pub h_values: Vec<f64>,
+    /// Minimum mean CV error.
+    pub min_cv_error: f64,
+}
+
+/// K-fold CV for selecting the bandwidth in functional nonparametric
+/// regression (R's `fregre.np.cv`).
+///
+/// Computes a full n×n L2 distance matrix once, then for each candidate
+/// bandwidth and each fold, does Nadaraya-Watson prediction.
+///
+/// # Arguments
+/// * `data` — Functional predictor matrix (n × m)
+/// * `y` — Scalar response vector (length n)
+/// * `argvals` — Evaluation grid (length m)
+/// * `n_folds` — Number of CV folds
+/// * `h_range` — Bandwidth values to test. If `None`, uses 20 quantiles
+///   (5th to 95th percentile) of the pairwise L2 distances.
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
+pub fn fregre_np_cv(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    n_folds: usize,
+    h_range: Option<&[f64]>,
+    scalar_covariates: Option<&FdMatrix>,
+) -> Option<FregreNpCvResult> {
+    let (n, m) = data.shape();
+    if n < n_folds || m == 0 || y.len() != n || argvals.len() != m || n < 3 {
+        return None;
+    }
+
+    // Compute full distance matrix
+    let func_dists = compute_pairwise_distances(data, argvals);
+    let has_scalar = scalar_covariates.is_some();
+    let scalar_dists = scalar_covariates
+        .map(compute_scalar_distances)
+        .unwrap_or_default();
+
+    // Default h grid: 20 quantiles of pairwise distances
+    let default_h: Vec<f64> = if h_range.is_none() {
+        let mut nonzero: Vec<f64> = Vec::new();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let d = func_dists[i * n + j];
+                if d > 0.0 {
+                    nonzero.push(d);
+                }
+            }
+        }
+        nonzero.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        if nonzero.is_empty() {
+            return None;
+        }
+        (1..=20)
+            .map(|qi| {
+                let q = 0.05 + 0.90 * (qi - 1) as f64 / 19.0;
+                let idx = ((nonzero.len() as f64 * q) as usize).min(nonzero.len() - 1);
+                nonzero[idx].max(1e-10)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let h_values = h_range.unwrap_or(&default_h);
+
+    if h_values.is_empty() {
+        return None;
+    }
+
+    let folds = crate::cv::create_folds(n, n_folds, 42);
+
+    let mut cv_errors = vec![0.0; h_values.len()];
+    let mut cv_fold_errors: Vec<Vec<f64>> = vec![Vec::with_capacity(n_folds); h_values.len()];
+
+    // Select scalar bandwidth once (from full data)
+    let h_scalar = if has_scalar {
+        select_bandwidth_loo(&scalar_dists, y, n, Some(&func_dists))
+    } else {
+        1.0
+    };
+
+    for fold in 0..n_folds {
+        let (train_idx, test_idx) = crate::cv::fold_indices(&folds, fold);
+        if train_idx.is_empty() || test_idx.is_empty() {
+            continue;
+        }
+
+        let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+
+        for (hi, &h) in h_values.iter().enumerate() {
+            let mut fold_mse = 0.0;
+            for &ti in &test_idx {
+                // NW prediction using only training data
+                let mut num = 0.0;
+                let mut den = 0.0;
+                for (local_j, &tj) in train_idx.iter().enumerate() {
+                    let kf = gaussian_kernel(func_dists[ti * n + tj], h);
+                    let ks = if has_scalar {
+                        gaussian_kernel(scalar_dists[ti * n + tj], h_scalar)
+                    } else {
+                        1.0
+                    };
+                    let w = kf * ks;
+                    num += w * train_y[local_j];
+                    den += w;
+                }
+                let y_hat = if den > 1e-15 { num / den } else { y[ti] };
+                fold_mse += (y[ti] - y_hat).powi(2);
+            }
+            fold_mse /= test_idx.len() as f64;
+            cv_fold_errors[hi].push(fold_mse);
+        }
+    }
+
+    // Compute mean and SE
+    let mut cv_se = vec![0.0; h_values.len()];
+    for hi in 0..h_values.len() {
+        let errs = &cv_fold_errors[hi];
+        if errs.is_empty() {
+            cv_errors[hi] = f64::INFINITY;
+            continue;
+        }
+        let mean = errs.iter().sum::<f64>() / errs.len() as f64;
+        cv_errors[hi] = mean;
+        if errs.len() > 1 {
+            let var =
+                errs.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / (errs.len() - 1) as f64;
+            cv_se[hi] = (var / errs.len() as f64).sqrt();
+        }
+    }
+
+    let (best_idx, &min_cv_error) = cv_errors
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+
+    Some(FregreNpCvResult {
+        optimal_h: h_values[best_idx],
+        cv_errors,
+        cv_se,
+        h_values: h_values.to_vec(),
+        min_cv_error,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1881,5 +2236,69 @@ mod tests {
                 j
             );
         }
+    }
+
+    // ----- fregre_basis_cv tests -----
+
+    #[test]
+    fn test_fregre_basis_cv_returns_result() {
+        let (data, y, t) = generate_test_data(30, 20, 42);
+        let result = fregre_basis_cv(
+            &data,
+            &y,
+            &t,
+            5,
+            None,
+            7,
+            &crate::smooth_basis::BasisType::Bspline { order: 4 },
+        );
+        assert!(result.is_some(), "fregre_basis_cv should succeed");
+        let res = result.unwrap();
+        assert!(res.optimal_lambda > 0.0);
+        assert_eq!(res.cv_errors.len(), 20); // default 20 lambdas
+        assert!(res.min_cv_error >= 0.0);
+    }
+
+    #[test]
+    fn test_fregre_basis_cv_custom_lambdas() {
+        let (data, y, t) = generate_test_data(25, 15, 42);
+        let lambdas = vec![0.001, 0.01, 0.1, 1.0, 10.0];
+        let result = fregre_basis_cv(
+            &data,
+            &y,
+            &t,
+            5,
+            Some(&lambdas),
+            7,
+            &crate::smooth_basis::BasisType::Bspline { order: 4 },
+        );
+        assert!(result.is_some());
+        let res = result.unwrap();
+        assert_eq!(res.lambda_values.len(), 5);
+        assert!(lambdas.contains(&res.optimal_lambda));
+    }
+
+    // ----- fregre_np_cv tests -----
+
+    #[test]
+    fn test_fregre_np_cv_returns_result() {
+        let (data, y, t) = generate_test_data(25, 15, 42);
+        let result = fregre_np_cv(&data, &y, &t, 5, None, None);
+        assert!(result.is_some(), "fregre_np_cv should succeed");
+        let res = result.unwrap();
+        assert!(res.optimal_h > 0.0);
+        assert_eq!(res.cv_errors.len(), 20); // default 20 quantiles
+        assert!(res.min_cv_error >= 0.0);
+    }
+
+    #[test]
+    fn test_fregre_np_cv_custom_h() {
+        let (data, y, t) = generate_test_data(20, 10, 42);
+        let h_vals = vec![0.1, 0.5, 1.0, 2.0];
+        let result = fregre_np_cv(&data, &y, &t, 3, Some(&h_vals), None);
+        assert!(result.is_some());
+        let res = result.unwrap();
+        assert_eq!(res.h_values.len(), 4);
+        assert!(h_vals.contains(&res.optimal_h));
     }
 }

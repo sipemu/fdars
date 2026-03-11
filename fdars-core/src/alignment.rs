@@ -919,6 +919,34 @@ fn post_center_results(
     (mu, mu_q_centered, final_aligned)
 }
 
+/// Downsample argvals and signal by `factor`, keeping first and last points.
+fn downsample_uniform(signal: &[f64], argvals: &[f64], factor: usize) -> (Vec<f64>, Vec<f64>) {
+    let m = signal.len();
+    if factor <= 1 || m <= 2 {
+        return (signal.to_vec(), argvals.to_vec());
+    }
+    let mut sig = Vec::new();
+    let mut arg = Vec::new();
+    for i in (0..m).step_by(factor) {
+        sig.push(signal[i]);
+        arg.push(argvals[i]);
+    }
+    // Ensure last point is included
+    if (m - 1) % factor != 0 {
+        sig.push(signal[m - 1]);
+        arg.push(argvals[m - 1]);
+    }
+    (sig, arg)
+}
+
+/// Upsample signal from coarse grid to fine grid via linear interpolation.
+fn upsample_to_fine(coarse: &[f64], argvals_coarse: &[f64], argvals_fine: &[f64]) -> Vec<f64> {
+    argvals_fine
+        .iter()
+        .map(|&t| linear_interp(argvals_coarse, coarse, t))
+        .collect()
+}
+
 pub fn karcher_mean(
     data: &FdMatrix,
     argvals: &[f64],
@@ -938,8 +966,59 @@ pub fn karcher_mean(
     let mut n_iter = 0;
     let mut final_gammas = FdMatrix::zeros(n, m);
 
-    for iter in 0..max_iter {
-        n_iter = iter + 1;
+    // Coarse-to-fine strategy: run initial iterations on downsampled grid
+    // Only worthwhile for large grids with enough iterations to split
+    let coarse_factor = if m > 50 && max_iter >= 10 { 4 } else { 1 };
+    let coarse_iters = if coarse_factor > 1 { max_iter / 2 } else { 0 };
+    let fine_iters = max_iter - coarse_iters;
+
+    // Phase 1: coarse iterations
+    if coarse_iters > 0 {
+        let (mu_q_coarse, argvals_coarse) = downsample_uniform(&mu_q, argvals, coarse_factor);
+        let m_c = argvals_coarse.len();
+        let mut mu_q_c = mu_q_coarse;
+
+        // Downsample all curves to coarse grid
+        let data_coarse: Vec<Vec<f64>> = (0..n)
+            .map(|i| {
+                let row = data.row(i);
+                downsample_uniform(&row, argvals, coarse_factor).0
+            })
+            .collect();
+
+        let mut coarse_gammas = FdMatrix::zeros(n, m_c);
+
+        for iter in 0..coarse_iters {
+            n_iter = iter + 1;
+
+            let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
+                .map(|i| {
+                    let qi = srsf_single(&data_coarse[i], &argvals_coarse);
+                    align_srsf_pair(&mu_q_c, &qi, &argvals_coarse, lambda)
+                })
+                .collect();
+
+            let mu_q_new = accumulate_alignments(&align_results, &mut coarse_gammas, m_c, n);
+
+            let rel = relative_change(&mu_q_c, &mu_q_new);
+            if rel < tol {
+                converged = true;
+                mu_q_c = mu_q_new;
+                break;
+            }
+
+            mu_q_c = mu_q_new;
+        }
+
+        // Upsample coarse mu_q to fine grid
+        mu_q = upsample_to_fine(&mu_q_c, &argvals_coarse, argvals);
+        mu = srsf_inverse(&mu_q, argvals, mu[0]);
+    }
+
+    // Phase 2: fine iterations (or all iterations if m <= 50)
+    let fine_start = n_iter;
+    for iter in 0..fine_iters {
+        n_iter = fine_start + iter + 1;
 
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
             .map(|i| {
@@ -960,6 +1039,19 @@ pub fn karcher_mean(
 
         mu_q = mu_q_new;
         mu = srsf_inverse(&mu_q, argvals, mu[0]);
+    }
+
+    // If coarse converged but no fine iterations ran, do one fine pass for final_gammas
+    if converged && fine_start > 0 {
+        let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
+            .map(|i| {
+                let fi = data.row(i);
+                let qi = srsf_single(&fi, argvals);
+                align_srsf_pair(&mu_q, &qi, argvals, lambda)
+            })
+            .collect();
+        let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
+        mu_q = mu_q_new;
     }
 
     let (mu_final, mu_q_final, final_aligned) =

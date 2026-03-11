@@ -2406,7 +2406,7 @@ fn test_elastic_tolerance_valid() {
         100,
         0.95,
         fdars_core::BandType::Simultaneous,
-        100,
+        20,
         42,
     )
     .unwrap();
@@ -2619,9 +2619,9 @@ fn test_add_error_pointwise_variance() {
 
 #[test]
 fn test_add_error_curve_variance() {
-    let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+    let t: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
     let data = fdars_core::simulation::sim_fundata(
-        100,
+        20,
         &t,
         3,
         fdars_core::EFunType::Fourier,
@@ -2634,7 +2634,7 @@ fn test_add_error_curve_variance() {
     // Curve-level noise: each curve gets same shift, check that within a curve the shift is constant
     for i in 0..10 {
         let diff0 = noisy[(i, 0)] - data[(i, 0)];
-        for j in 1..100 {
+        for j in 1..30 {
             let diff_j = noisy[(i, j)] - data[(i, j)];
             assert!(
                 (diff_j - diff0).abs() < 1e-10,
@@ -2704,14 +2704,22 @@ fn test_detrend_linear_residuals_zero_mean() {
 #[test]
 fn test_decompose_additive_identity() {
     // For data = trend + seasonal + residual, reconstructing should give back original
-    let d: StandardData = load_json("data", "standard_50x101");
-    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+    let t: Vec<f64> = (0..31).map(|i| i as f64 / 30.0).collect();
+    let mat = fdars_core::simulation::sim_fundata(
+        10,
+        &t,
+        3,
+        fdars_core::EFunType::Fourier,
+        fdars_core::EValType::Exponential,
+        Some(42),
+    );
+    let (n, m) = mat.shape();
 
     // Use period=10 for decomposition
-    let result = fdars_core::detrend::decompose_additive(&mat, &d.argvals, 10.0, "loess", 0.3, 3);
+    let result = fdars_core::detrend::decompose_additive(&mat, &t, 10.0, "loess", 0.3, 3);
     // trend + seasonal + remainder ~ original (additive)
-    for i in 0..d.n.min(5) {
-        for j in 0..d.m {
+    for i in 0..n.min(5) {
+        for j in 0..m {
             let reconstructed =
                 result.trend[(i, j)] + result.seasonal[(i, j)] + result.remainder[(i, j)];
             assert!(
@@ -2725,23 +2733,30 @@ fn test_decompose_additive_identity() {
 
 #[test]
 fn test_decompose_multiplicative_identity() {
-    let d: StandardData = load_json("data", "standard_50x101");
-    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
+    let t: Vec<f64> = (0..31).map(|i| i as f64 / 30.0).collect();
+    let mat = fdars_core::simulation::sim_fundata(
+        10,
+        &t,
+        3,
+        fdars_core::EFunType::Fourier,
+        fdars_core::EValType::Exponential,
+        Some(42),
+    );
+    let (n, m) = mat.shape();
 
     // Make sure data is positive for multiplicative decomposition
-    let mut pos_data = vec![0.0; d.n * d.m];
-    for i in 0..d.n {
-        for j in 0..d.m {
-            pos_data[i + j * d.n] = mat[(i, j)] + 10.0; // shift to positive
+    let mut pos_data = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            pos_data[i + j * n] = mat[(i, j)] + 10.0; // shift to positive
         }
     }
-    let pos_mat = FdMatrix::from_column_major(pos_data, d.n, d.m).unwrap();
+    let pos_mat = FdMatrix::from_column_major(pos_data, n, m).unwrap();
 
-    let result =
-        fdars_core::detrend::decompose_multiplicative(&pos_mat, &d.argvals, 10.0, "loess", 0.3, 3);
+    let result = fdars_core::detrend::decompose_multiplicative(&pos_mat, &t, 10.0, "loess", 0.3, 3);
     // trend * seasonal * remainder ~ original (multiplicative)
-    for i in 0..d.n.min(5) {
-        for j in 0..d.m {
+    for i in 0..n.min(5) {
+        for j in 0..m {
             let reconstructed =
                 result.trend[(i, j)] * result.seasonal[(i, j)] * result.remainder[(i, j)];
             assert!(

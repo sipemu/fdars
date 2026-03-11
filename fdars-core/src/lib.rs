@@ -34,6 +34,7 @@ pub mod alignment;
 pub mod basis;
 pub mod classification;
 pub mod clustering;
+pub mod cv;
 pub mod depth;
 pub mod detrend;
 pub mod famm;
@@ -56,11 +57,13 @@ pub mod utility;
 pub mod warping;
 
 // Elastic analysis modules
+pub mod conformal;
 pub mod elastic_changepoint;
 pub mod elastic_explain;
 pub mod elastic_fpca;
 pub mod elastic_regression;
 pub mod explain;
+pub mod explain_generic;
 pub mod smooth_basis;
 
 // Re-export matrix types
@@ -133,9 +136,19 @@ pub use function_on_scalar::{
 
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
-    bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_cv, fregre_lm,
-    fregre_np_mixed, functional_logistic, predict_fregre_lm, predict_fregre_np, BootstrapCiResult,
-    FregreCvResult, FregreLmResult, FregreNpResult, FunctionalLogisticResult,
+    bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_basis_cv, fregre_cv,
+    fregre_lm, fregre_np_cv, fregre_np_mixed, functional_logistic, predict_fregre_lm,
+    predict_fregre_np, BootstrapCiResult, FregreBasisCvResult, FregreCvResult, FregreLmResult,
+    FregreNpCvResult, FregreNpResult, FunctionalLogisticResult,
+};
+
+// Re-export generic explainability types
+pub use explain_generic::{
+    generic_ale, generic_anchor, generic_conditional_permutation_importance,
+    generic_counterfactual, generic_domain_selection, generic_friedman_h, generic_lime,
+    generic_pdp, generic_permutation_importance, generic_prototype_criticism, generic_saliency,
+    generic_shap_values, generic_sobol_indices, generic_stability, generic_vif, FpcPredictor,
+    TaskType,
 };
 
 // Re-export explainability types
@@ -165,8 +178,18 @@ pub use explain::{
 
 // Re-export classification types
 pub use classification::{
-    fclassif_cv, fclassif_dd, fclassif_kernel, fclassif_knn, fclassif_lda, fclassif_qda,
-    ClassifCvResult, ClassifResult,
+    fclassif_cv, fclassif_dd, fclassif_kernel, fclassif_knn, fclassif_knn_fit, fclassif_lda,
+    fclassif_lda_fit, fclassif_qda, fclassif_qda_fit, ClassifCvResult, ClassifFit, ClassifMethod,
+    ClassifResult,
+};
+
+// Re-export conformal prediction types
+pub use conformal::{
+    conformal_classif, conformal_elastic_logistic, conformal_elastic_pcr,
+    conformal_elastic_regression, conformal_fregre_lm, conformal_fregre_np,
+    conformal_generic_classification, conformal_generic_regression, conformal_logistic,
+    cv_conformal_classification, cv_conformal_regression, jackknife_plus_regression,
+    ClassificationScore, ConformalClassificationResult, ConformalMethod, ConformalRegressionResult,
 };
 
 // Re-export GMM clustering types
@@ -180,8 +203,8 @@ pub use streaming_depth::{
 
 // Re-export smooth basis types
 pub use smooth_basis::{
-    bspline_penalty_matrix, fourier_penalty_matrix, smooth_basis, smooth_basis_gcv, BasisType,
-    FdPar, SmoothBasisResult,
+    basis_nbasis_cv, bspline_penalty_matrix, fourier_penalty_matrix, smooth_basis,
+    smooth_basis_gcv, BasisCriterion, BasisNbasisCvResult, BasisType, FdPar, SmoothBasisResult,
 };
 
 // Re-export elastic FPCA types
@@ -199,4 +222,16 @@ pub use elastic_regression::{
 pub use elastic_changepoint::{
     elastic_amp_changepoint, elastic_fpca_changepoint, elastic_ph_changepoint, ChangepointResult,
     ChangepointType, CovKernel, FpcaChangepointMethod,
+};
+
+// Re-export cross-validation utilities
+pub use cv::{
+    create_folds, create_stratified_folds, cv_fdata, fold_indices, subset_rows, subset_vec,
+    CvFdataResult, CvMetrics, CvType,
+};
+
+// Re-export smoothing CV types
+pub use smoothing::{
+    cv_smoother, gcv_smoother, knn_gcv, knn_lcv, optim_bandwidth, CvCriterion, KnnCvResult,
+    OptimBandwidthResult,
 };

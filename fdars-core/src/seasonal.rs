@@ -361,7 +361,25 @@ fn periodogram(data: &[f64], argvals: &[f64]) -> (Vec<f64>, Vec<f64>) {
     (frequencies, power)
 }
 
+/// Naive O(n·max_lag) autocorrelation for small inputs.
+fn autocorrelation_naive(data: &[f64], max_lag: usize, mean: f64, var: f64) -> Vec<f64> {
+    let n = data.len();
+    let max_lag = max_lag.min(n - 1);
+    let mut acf = Vec::with_capacity(max_lag + 1);
+    for lag in 0..=max_lag {
+        let mut sum = 0.0;
+        for i in 0..(n - lag) {
+            sum += (data[i] - mean) * (data[i + lag] - mean);
+        }
+        acf.push(sum / (n as f64 * var));
+    }
+    acf
+}
+
 /// Compute autocorrelation function up to max_lag.
+///
+/// Uses FFT-based Wiener-Khinchin theorem for n > 64, falling back to
+/// direct computation for small inputs where FFT overhead isn't worthwhile.
 fn autocorrelation(data: &[f64], max_lag: usize) -> Vec<f64> {
     let n = data.len();
     if n == 0 {
@@ -376,17 +394,39 @@ fn autocorrelation(data: &[f64], max_lag: usize) -> Vec<f64> {
     }
 
     let max_lag = max_lag.min(n - 1);
-    let mut acf = Vec::with_capacity(max_lag + 1);
 
-    for lag in 0..=max_lag {
-        let mut sum = 0.0;
-        for i in 0..(n - lag) {
-            sum += (data[i] - mean) * (data[i + lag] - mean);
-        }
-        acf.push(sum / (n as f64 * var));
+    if n <= 64 {
+        return autocorrelation_naive(data, max_lag, mean, var);
     }
 
-    acf
+    // FFT-based ACF via Wiener-Khinchin theorem
+    let fft_len = (2 * n).next_power_of_two();
+
+    let mut planner = FftPlanner::<f64>::new();
+    let fft_forward = planner.plan_fft_forward(fft_len);
+    let fft_inverse = planner.plan_fft_inverse(fft_len);
+
+    // Zero-padded, mean-centered signal
+    let mut buffer: Vec<Complex<f64>> = Vec::with_capacity(fft_len);
+    for &x in data {
+        buffer.push(Complex::new(x - mean, 0.0));
+    }
+    buffer.resize(fft_len, Complex::new(0.0, 0.0));
+
+    // Forward FFT
+    fft_forward.process(&mut buffer);
+
+    // Power spectral density: |F(k)|²
+    for c in buffer.iter_mut() {
+        *c = Complex::new(c.norm_sqr(), 0.0);
+    }
+
+    // Inverse FFT
+    fft_inverse.process(&mut buffer);
+
+    // Normalize and extract lags 0..=max_lag
+    let norm = fft_len as f64 * n as f64 * var;
+    (0..=max_lag).map(|lag| buffer[lag].re / norm).collect()
 }
 
 /// Try to add a peak, respecting minimum distance. Replaces previous peak if closer but higher.
@@ -7625,5 +7665,29 @@ mod tests {
         let acf = vec![1.0, 0.8, 0.5, 0.3, 0.4, 0.6];
         let end = find_acf_descent_end(&acf);
         assert_eq!(end, 3, "Should find uptick at index 3 (i-1 where i=4)");
+    }
+
+    #[test]
+    fn test_autocorrelation_fft_matches_naive() {
+        // Generate a signal long enough to exercise the FFT path (n > 64)
+        let n = 200;
+        let data: Vec<f64> = (0..n)
+            .map(|i| (2.0 * PI * i as f64 / 20.0).sin() + 0.5 * (i as f64 * 0.1).cos())
+            .collect();
+        let max_lag = 50;
+
+        let mean: f64 = data.iter().sum::<f64>() / n as f64;
+        let var: f64 = data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+
+        let naive = autocorrelation_naive(&data, max_lag, mean, var);
+        let fft = autocorrelation(&data, max_lag); // n=200 > 64, takes FFT path
+
+        assert_eq!(naive.len(), fft.len());
+        for (lag, (n_val, f_val)) in naive.iter().zip(fft.iter()).enumerate() {
+            assert!(
+                (n_val - f_val).abs() < 1e-10,
+                "Mismatch at lag {lag}: naive={n_val}, fft={f_val}"
+            );
+        }
     }
 }

@@ -160,7 +160,12 @@ pub fn functional_pdp_logistic(
 // Helper: project data → FPC scores
 // ---------------------------------------------------------------------------
 
-fn project_scores(data: &FdMatrix, mean: &[f64], rotation: &FdMatrix, ncomp: usize) -> FdMatrix {
+pub(crate) fn project_scores(
+    data: &FdMatrix,
+    mean: &[f64],
+    rotation: &FdMatrix,
+    ncomp: usize,
+) -> FdMatrix {
     let (n, m) = data.shape();
     let mut scores = FdMatrix::zeros(n, ncomp);
     for i in 0..n {
@@ -176,7 +181,7 @@ fn project_scores(data: &FdMatrix, mean: &[f64], rotation: &FdMatrix, ncomp: usi
 }
 
 /// Subsample rows from an FdMatrix.
-fn subsample_rows(data: &FdMatrix, indices: &[usize]) -> FdMatrix {
+pub(crate) fn subsample_rows(data: &FdMatrix, indices: &[usize]) -> FdMatrix {
     let ncols = data.ncols();
     let mut out = FdMatrix::zeros(indices.len(), ncols);
     for (new_i, &orig_i) in indices.iter().enumerate() {
@@ -354,7 +359,7 @@ fn coefficient_std_from_bootstrap(all_coefs: &[Vec<f64>], ncomp: usize) -> Vec<f
 }
 
 /// Compute depth of scores using the specified depth type.
-fn compute_score_depths(scores: &FdMatrix, depth_type: DepthType) -> Vec<f64> {
+pub(crate) fn compute_score_depths(scores: &FdMatrix, depth_type: DepthType) -> Vec<f64> {
     match depth_type {
         DepthType::FraimanMuniz => depth::fraiman_muniz_1d(scores, scores, false),
         DepthType::ModifiedBand => depth::modified_band_1d(scores, scores),
@@ -363,7 +368,7 @@ fn compute_score_depths(scores: &FdMatrix, depth_type: DepthType) -> Vec<f64> {
 }
 
 /// Compute beta depth from bootstrap coefficient vectors.
-fn beta_depth_from_bootstrap(
+pub(crate) fn beta_depth_from_bootstrap(
     boot_coefs: &[Vec<f64>],
     orig_coefs: &[f64],
     ncomp: usize,
@@ -386,7 +391,7 @@ fn beta_depth_from_bootstrap(
 }
 
 /// Build stability result from collected bootstrap data.
-fn build_stability_result(
+pub(crate) fn build_stability_result(
     all_beta_t: &[Vec<f64>],
     all_coefs: &[Vec<f64>],
     all_abs_coefs: &[Vec<f64>],
@@ -832,7 +837,7 @@ pub struct FriedmanHResult {
 }
 
 /// Compute the grid for a single FPC score column.
-fn make_grid(scores: &FdMatrix, component: usize, n_grid: usize) -> Vec<f64> {
+pub(crate) fn make_grid(scores: &FdMatrix, component: usize, n_grid: usize) -> Vec<f64> {
     let n = scores.nrows();
     let mut mn = f64::INFINITY;
     let mut mx = f64::NEG_INFINITY;
@@ -1100,7 +1105,7 @@ pub fn fpc_vif_logistic(
     compute_vif_from_scores(&scores, ncomp, scalar_covariates, n)
 }
 
-fn compute_vif_from_scores(
+pub(crate) fn compute_vif_from_scores(
     scores: &FdMatrix,
     ncomp: usize,
     scalar_covariates: Option<&FdMatrix>,
@@ -1609,7 +1614,7 @@ pub fn fpc_ale_logistic(
     )
 }
 
-fn compute_ale(
+pub(crate) fn compute_ale(
     scores: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
     n: usize,
@@ -2088,7 +2093,7 @@ pub fn domain_selection_logistic(
     compute_domain_selection(&fit.beta_t, window_width, threshold)
 }
 
-fn compute_domain_selection(
+pub(crate) fn compute_domain_selection(
     beta_t: &[f64],
     window_width: usize,
     threshold: f64,
@@ -2434,7 +2439,7 @@ pub struct PrototypeCriticismResult {
 }
 
 /// Compute pairwise Gaussian kernel matrix from FPC scores.
-fn gaussian_kernel_matrix(scores: &FdMatrix, ncomp: usize, bandwidth: f64) -> Vec<f64> {
+pub(crate) fn gaussian_kernel_matrix(scores: &FdMatrix, ncomp: usize, bandwidth: f64) -> Vec<f64> {
     let n = scores.nrows();
     let mut k = vec![0.0; n * n];
     let bw2 = 2.0 * bandwidth * bandwidth;
@@ -2627,7 +2632,7 @@ pub fn lime_explanation_logistic(
     )
 }
 
-fn compute_lime(
+pub(crate) fn compute_lime(
     obs_scores: &[f64],
     score_sd: &[f64],
     ncomp: usize,
@@ -3314,7 +3319,7 @@ fn build_anchor_rule(
 }
 
 /// Compute column means of an FdMatrix.
-fn compute_column_means(mat: &FdMatrix, ncols: usize) -> Vec<f64> {
+pub(crate) fn compute_column_means(mat: &FdMatrix, ncols: usize) -> Vec<f64> {
     let n = mat.nrows();
     let mut means = vec![0.0; ncols];
     for k in 0..ncols {
@@ -3327,7 +3332,7 @@ fn compute_column_means(mat: &FdMatrix, ncols: usize) -> Vec<f64> {
 }
 
 /// Compute mean scalar covariates from an optional FdMatrix.
-fn compute_mean_scalar(
+pub(crate) fn compute_mean_scalar(
     scalar_covariates: Option<&FdMatrix>,
     p_scalar: usize,
     n: usize,
@@ -3351,7 +3356,7 @@ fn compute_mean_scalar(
 }
 
 /// Compute Shapley kernel weight for a coalition of given size.
-fn shapley_kernel_weight(ncomp: usize, s_size: usize) -> f64 {
+pub(crate) fn shapley_kernel_weight(ncomp: usize, s_size: usize) -> f64 {
     if s_size == 0 || s_size == ncomp {
         1e6
     } else {
@@ -3365,7 +3370,7 @@ fn shapley_kernel_weight(ncomp: usize, s_size: usize) -> f64 {
 }
 
 /// Sample a random coalition of FPC components via Fisher-Yates partial shuffle.
-fn sample_random_coalition(rng: &mut StdRng, ncomp: usize) -> (Vec<bool>, usize) {
+pub(crate) fn sample_random_coalition(rng: &mut StdRng, ncomp: usize) -> (Vec<bool>, usize) {
     let s_size = if ncomp <= 1 {
         rng.gen_range(0..=1usize)
     } else {
@@ -3384,7 +3389,11 @@ fn sample_random_coalition(rng: &mut StdRng, ncomp: usize) -> (Vec<bool>, usize)
 }
 
 /// Build coalition scores: use observation value if in coalition, mean otherwise.
-fn build_coalition_scores(coalition: &[bool], obs_scores: &[f64], mean_scores: &[f64]) -> Vec<f64> {
+pub(crate) fn build_coalition_scores(
+    coalition: &[bool],
+    obs_scores: &[f64],
+    mean_scores: &[f64],
+) -> Vec<f64> {
     coalition
         .iter()
         .enumerate()
@@ -3399,7 +3408,7 @@ fn build_coalition_scores(coalition: &[bool], obs_scores: &[f64], mean_scores: &
 }
 
 /// Get observation's scalar covariates, or use mean if unavailable.
-fn get_obs_scalar(
+pub(crate) fn get_obs_scalar(
     scalar_covariates: Option<&FdMatrix>,
     i: usize,
     p_scalar: usize,
@@ -3416,7 +3425,7 @@ fn get_obs_scalar(
 }
 
 /// Accumulate one WLS sample for Kernel SHAP: A'A += w z z', A'b += w z y.
-fn accumulate_kernel_shap_sample(
+pub(crate) fn accumulate_kernel_shap_sample(
     ata: &mut [f64],
     atb: &mut [f64],
     coalition: &[bool],
@@ -3486,7 +3495,7 @@ fn pdp_2d_linear(
 }
 
 /// Compute H² statistic from 1D and 2D PDPs.
-fn compute_h_squared(
+pub(crate) fn compute_h_squared(
     pdp_2d: &FdMatrix,
     pdp_j: &[f64],
     pdp_k: &[f64],
@@ -3512,7 +3521,7 @@ fn compute_h_squared(
 }
 
 /// Compute conditioning bins for conditional permutation importance.
-fn compute_conditioning_bins(
+pub(crate) fn compute_conditioning_bins(
     scores: &FdMatrix,
     ncomp: usize,
     target_k: usize,
@@ -3545,7 +3554,7 @@ fn compute_conditioning_bins(
 }
 
 /// Clone an FdMatrix of scores.
-fn clone_scores_matrix(scores: &FdMatrix, n: usize, ncomp: usize) -> FdMatrix {
+pub(crate) fn clone_scores_matrix(scores: &FdMatrix, n: usize, ncomp: usize) -> FdMatrix {
     let mut perm = FdMatrix::zeros(n, ncomp);
     for i in 0..n {
         for c in 0..ncomp {
@@ -3556,7 +3565,7 @@ fn clone_scores_matrix(scores: &FdMatrix, n: usize, ncomp: usize) -> FdMatrix {
 }
 
 /// Shuffle component k within conditional bins.
-fn shuffle_within_bins(
+pub(crate) fn shuffle_within_bins(
     perm_scores: &mut FdMatrix,
     scores: &FdMatrix,
     bins: &[Vec<usize>],
@@ -3576,7 +3585,7 @@ fn shuffle_within_bins(
 }
 
 /// Shuffle component k globally (unconditional).
-fn shuffle_global(
+pub(crate) fn shuffle_global(
     perm_scores: &mut FdMatrix,
     scores: &FdMatrix,
     k: usize,
@@ -3591,7 +3600,7 @@ fn shuffle_global(
 }
 
 /// Run conditional + unconditional permutations for one component and return mean metrics.
-fn permute_component<F: Fn(&FdMatrix) -> f64>(
+pub(crate) fn permute_component<F: Fn(&FdMatrix) -> f64>(
     scores: &FdMatrix,
     bins: &[Vec<usize>],
     k: usize,
@@ -3615,7 +3624,7 @@ fn permute_component<F: Fn(&FdMatrix) -> f64>(
 }
 
 /// Greedy MMD-based prototype selection.
-fn greedy_prototype_selection(
+pub(crate) fn greedy_prototype_selection(
     mu_data: &[f64],
     kernel: &[f64],
     n: usize,
@@ -3633,7 +3642,12 @@ fn greedy_prototype_selection(
 }
 
 /// Compute witness function values.
-fn compute_witness(kernel: &[f64], mu_data: &[f64], selected: &[usize], n: usize) -> Vec<f64> {
+pub(crate) fn compute_witness(
+    kernel: &[f64],
+    mu_data: &[f64],
+    selected: &[usize],
+    n: usize,
+) -> Vec<f64> {
     let mut witness = vec![0.0; n];
     for i in 0..n {
         let mean_k_selected: f64 =
@@ -3713,7 +3727,7 @@ fn logistic_eta_base(
 }
 
 /// Compute column means of ICE curves → PDP.
-fn ice_to_pdp(ice_curves: &FdMatrix, n: usize, n_grid: usize) -> Vec<f64> {
+pub(crate) fn ice_to_pdp(ice_curves: &FdMatrix, n: usize, n_grid: usize) -> Vec<f64> {
     let mut pdp = vec![0.0; n_grid];
     for g in 0..n_grid {
         for i in 0..n {
@@ -3767,7 +3781,7 @@ fn merge_overlapping_intervals(raw: Vec<(usize, usize, f64)>) -> Vec<ImportantIn
 }
 
 /// Reconstruct delta function from delta scores and rotation matrix.
-fn reconstruct_delta_function(
+pub(crate) fn reconstruct_delta_function(
     delta_scores: &[f64],
     rotation: &FdMatrix,
     ncomp: usize,
@@ -3971,7 +3985,7 @@ fn beam_search_candidates(
 }
 
 /// Compute saliency map: saliency[(i,j)] = Σ_k weight_k × (scores[(i,k)] - mean_k) × rotation[(j,k)].
-fn compute_saliency_map(
+pub(crate) fn compute_saliency_map(
     scores: &FdMatrix,
     mean_scores: &[f64],
     weights: &[f64],
@@ -3994,7 +4008,7 @@ fn compute_saliency_map(
 }
 
 /// Mean absolute value per column of an n×m matrix.
-fn mean_absolute_column(mat: &FdMatrix, n: usize, m: usize) -> Vec<f64> {
+pub(crate) fn mean_absolute_column(mat: &FdMatrix, n: usize, m: usize) -> Vec<f64> {
     let mut result = vec![0.0; m];
     for j in 0..m {
         for i in 0..n {
@@ -4094,7 +4108,7 @@ fn logistic_counterfactual_descent(
 }
 
 /// Generate Sobol A and B matrices by resampling from FPC scores.
-fn generate_sobol_matrices(
+pub(crate) fn generate_sobol_matrices(
     scores: &FdMatrix,
     n: usize,
     ncomp: usize,
@@ -4115,7 +4129,7 @@ fn generate_sobol_matrices(
 }
 
 /// Compute first-order and total-order Sobol indices for one component.
-fn compute_sobol_component(
+pub(crate) fn compute_sobol_component(
     mat_a: &[Vec<f64>],
     mat_b: &[Vec<f64>],
     f_a: &[f64],
@@ -4234,7 +4248,7 @@ fn bootstrap_logistic_stability(
 }
 
 /// Compute median pairwise distance from FPC scores (bandwidth heuristic).
-fn median_bandwidth(scores: &FdMatrix, n: usize, ncomp: usize) -> f64 {
+pub(crate) fn median_bandwidth(scores: &FdMatrix, n: usize, ncomp: usize) -> f64 {
     let mut dists: Vec<f64> = Vec::with_capacity(n * (n - 1) / 2);
     for i in 0..n {
         for j in (i + 1)..n {
@@ -4255,7 +4269,7 @@ fn median_bandwidth(scores: &FdMatrix, n: usize, ncomp: usize) -> f64 {
 }
 
 /// Compute kernel mean: mu_data[i] = (1/n) Σ_j K(i,j).
-fn compute_kernel_mean(kernel: &[f64], n: usize) -> Vec<f64> {
+pub(crate) fn compute_kernel_mean(kernel: &[f64], n: usize) -> Vec<f64> {
     let mut mu_data = vec![0.0; n];
     for i in 0..n {
         for j in 0..n {
@@ -4344,7 +4358,7 @@ fn conformal_quantile_and_coverage(
 }
 
 /// Compute score variance for each component (mean-zero scores from FPCA).
-fn compute_score_variance(scores: &FdMatrix, n: usize, ncomp: usize) -> Vec<f64> {
+pub(crate) fn compute_score_variance(scores: &FdMatrix, n: usize, ncomp: usize) -> Vec<f64> {
     let mut score_variance = vec![0.0; ncomp];
     for k in 0..ncomp {
         let mut ss = 0.0;
@@ -4464,7 +4478,7 @@ fn bootstrap_logistic_coefs(
 }
 
 /// Solve Kernel SHAP for one observation: regularize ATA, Cholesky solve, store in values matrix.
-fn solve_kernel_shap_obs(
+pub(crate) fn solve_kernel_shap_obs(
     ata: &mut [f64],
     atb: &[f64],
     ncomp: usize,
@@ -4549,7 +4563,7 @@ fn assign_ale_bins(
 }
 
 /// Beam search for anchor rules in FPC score space.
-fn anchor_beam_search(
+pub(crate) fn anchor_beam_search(
     scores: &FdMatrix,
     ncomp: usize,
     n: usize,
