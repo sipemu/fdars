@@ -83,13 +83,13 @@ fn compute_accuracy(true_labels: &[usize], pred_labels: &[usize]) -> f64 {
 /// Extract FPC scores and append optional scalar covariates.
 pub(crate) fn build_feature_matrix(
     data: &FdMatrix,
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
 ) -> Option<(FdMatrix, Vec<f64>, FdMatrix)> {
     let fpca = fdata_to_pc_1d(data, ncomp)?;
     let n = data.nrows();
     let d_pc = fpca.scores.ncols();
-    let d_cov = covariates.map_or(0, |c| c.ncols());
+    let d_cov = scalar_covariates.map_or(0, |c| c.ncols());
     let d = d_pc + d_cov;
 
     let mut features = FdMatrix::zeros(n, d);
@@ -97,7 +97,7 @@ pub(crate) fn build_feature_matrix(
         for j in 0..d_pc {
             features[(i, j)] = fpca.scores[(i, j)];
         }
-        if let Some(cov) = covariates {
+        if let Some(cov) = scalar_covariates {
             for j in 0..d_cov {
                 features[(i, d_pc + j)] = cov[(i, j)];
             }
@@ -261,12 +261,12 @@ pub(crate) fn lda_predict(
 /// # Arguments
 /// * `data` — Functional data (n × m)
 /// * `y` — Class labels (length n)
-/// * `covariates` — Optional scalar covariates (n × p)
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
 /// * `ncomp` — Number of FPC components
 pub fn fclassif_lda(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
 ) -> Option<ClassifResult> {
     let n = data.nrows();
@@ -279,7 +279,7 @@ pub fn fclassif_lda(
         return None;
     }
 
-    let (features, _mean, _rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
     let d = features.ncols();
     let (class_means, cov, priors) = lda_params(&features, &labels, g);
     let chol = cholesky_d(&cov, d)?;
@@ -414,7 +414,7 @@ pub(crate) fn qda_predict(
 pub fn fclassif_qda(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
 ) -> Option<ClassifResult> {
     let n = data.nrows();
@@ -427,7 +427,7 @@ pub fn fclassif_qda(
         return None;
     }
 
-    let (features, _mean, _rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
 
     let (class_means, class_chols, class_log_dets, priors) =
         build_qda_params(&features, &labels, g)?;
@@ -462,13 +462,13 @@ pub fn fclassif_qda(
 /// # Arguments
 /// * `data` — Functional data (n × m)
 /// * `y` — Class labels
-/// * `covariates` — Optional scalar covariates
+/// * `scalar_covariates` — Optional scalar covariates
 /// * `ncomp` — Number of FPC components
 /// * `k_nn` — Number of nearest neighbors
 pub fn fclassif_knn(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
     k_nn: usize,
 ) -> Option<ClassifResult> {
@@ -482,7 +482,7 @@ pub fn fclassif_knn(
         return None;
     }
 
-    let (features, _mean, _rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
     let d = features.ncols();
 
     let predicted = knn_predict_loo(&features, &labels, g, d, k_nn);
@@ -623,14 +623,14 @@ fn gaussian_kernel(dist: f64, h: f64) -> f64 {
 /// * `data` — Functional data (n × m)
 /// * `argvals` — Evaluation points
 /// * `y` — Class labels
-/// * `covariates` — Optional scalar covariates (n × p)
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
 /// * `h_func` — Functional bandwidth (0 = auto via LOO-CV)
 /// * `h_scalar` — Scalar bandwidth (0 = auto)
 pub fn fclassif_kernel(
     data: &FdMatrix,
     argvals: &[f64],
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     h_func: f64,
     h_scalar: f64,
 ) -> Option<ClassifResult> {
@@ -651,7 +651,7 @@ pub fn fclassif_kernel(
     let func_dists = compute_pairwise_l2(data, &weights);
 
     // Compute pairwise scalar distances if covariates exist
-    let scalar_dists = covariates.map(compute_pairwise_scalar);
+    let scalar_dists = scalar_covariates.map(compute_pairwise_scalar);
 
     // Select bandwidths via LOO if needed
     let h_f = if h_func > 0.0 {
@@ -703,15 +703,15 @@ fn compute_pairwise_l2(data: &FdMatrix, weights: &[f64]) -> Vec<f64> {
 }
 
 /// Compute pairwise Euclidean distances between scalar covariate vectors.
-fn compute_pairwise_scalar(covariates: &FdMatrix) -> Vec<f64> {
-    let n = covariates.nrows();
-    let p = covariates.ncols();
+fn compute_pairwise_scalar(scalar_covariates: &FdMatrix) -> Vec<f64> {
+    let n = scalar_covariates.nrows();
+    let p = scalar_covariates.ncols();
     let mut dists = vec![0.0; n * n];
     for i in 0..n {
         for j in (i + 1)..n {
             let mut d_sq = 0.0;
             for k in 0..p {
-                d_sq += (covariates[(i, k)] - covariates[(j, k)]).powi(2);
+                d_sq += (scalar_covariates[(i, k)] - scalar_covariates[(j, k)]).powi(2);
             }
             let d = d_sq.sqrt();
             dists[i * n + j] = d;
@@ -814,7 +814,7 @@ fn blend_scalar_depths(
 pub fn fclassif_dd(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
 ) -> Option<ClassifResult> {
     let n = data.nrows();
     if n == 0 || y.len() != n {
@@ -832,7 +832,7 @@ pub fn fclassif_dd(
 
     let mut depth_scores = compute_class_depths(data, &class_indices, n);
 
-    if let Some(cov) = covariates {
+    if let Some(cov) = scalar_covariates {
         blend_scalar_depths(&mut depth_scores, cov, &class_indices, n);
     }
 
@@ -879,7 +879,7 @@ fn extract_class_data(data: &FdMatrix, indices: &[usize]) -> FdMatrix {
 /// * `data` — Functional data (n × m)
 /// * `argvals` — Evaluation points
 /// * `y` — Class labels
-/// * `covariates` — Optional scalar covariates
+/// * `scalar_covariates` — Optional scalar covariates
 /// * `method` — "lda", "qda", "knn", "kernel", "dd"
 /// * `ncomp` — Number of FPC components (for lda/qda/knn)
 /// * `nfold` — Number of CV folds
@@ -888,7 +888,7 @@ pub fn fclassif_cv(
     data: &FdMatrix,
     argvals: &[f64],
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     method: &str,
     ncomp: usize,
     nfold: usize,
@@ -916,8 +916,8 @@ pub fn fclassif_cv(
         let train_labels: Vec<usize> = train_idx.iter().map(|&i| labels[i]).collect();
         let test_labels: Vec<usize> = test_idx.iter().map(|&i| labels[i]).collect();
 
-        let train_cov = covariates.map(|c| extract_class_data(c, &train_idx));
-        let test_cov = covariates.map(|c| extract_class_data(c, &test_idx));
+        let train_cov = scalar_covariates.map(|c| extract_class_data(c, &train_idx));
+        let test_cov = scalar_covariates.map(|c| extract_class_data(c, &test_idx));
 
         let predictions = cv_fold_predict(
             &train_data,
@@ -1030,8 +1030,8 @@ fn project_test_onto_fpca(test_data: &FdMatrix, fpca: &crate::regression::FpcaRe
 }
 
 /// Append scalar covariates to FPCA scores to form augmented feature matrix.
-fn append_covariates(scores: &FdMatrix, covariates: Option<&FdMatrix>) -> FdMatrix {
-    match covariates {
+fn append_scalar_covariates(scores: &FdMatrix, scalar_covariates: Option<&FdMatrix>) -> FdMatrix {
+    match scalar_covariates {
         None => scores.clone(),
         Some(cov) => {
             let n = scores.nrows();
@@ -1061,9 +1061,9 @@ fn project_and_classify_lda(
     test_cov: Option<&FdMatrix>,
 ) -> Vec<usize> {
     let test_pc = project_test_onto_fpca(test_data, fpca);
-    let test_features = append_covariates(&test_pc, test_cov);
+    let test_features = append_scalar_covariates(&test_pc, test_cov);
 
-    let train_features = append_covariates(&fpca.scores, train_cov);
+    let train_features = append_scalar_covariates(&fpca.scores, train_cov);
     let (class_means, cov, priors) = lda_params(&train_features, train_labels, g);
     let d = train_features.ncols();
     match cholesky_d(&cov, d) {
@@ -1083,9 +1083,9 @@ fn project_and_classify_qda(
 ) -> Vec<usize> {
     let n_test = test_data.nrows();
     let test_pc = project_test_onto_fpca(test_data, fpca);
-    let test_features = append_covariates(&test_pc, test_cov);
+    let test_features = append_scalar_covariates(&test_pc, test_cov);
 
-    let train_features = append_covariates(&fpca.scores, train_cov);
+    let train_features = append_scalar_covariates(&fpca.scores, train_cov);
 
     match build_qda_params(&train_features, train_labels, g) {
         Some((class_means, class_chols, class_log_dets, priors)) => qda_predict(
@@ -1114,8 +1114,8 @@ fn project_and_classify_knn(
     let n_train = fpca.scores.nrows();
 
     let test_pc = project_test_onto_fpca(test_data, fpca);
-    let test_features = append_covariates(&test_pc, test_cov);
-    let train_features = append_covariates(&fpca.scores, train_cov);
+    let test_features = append_scalar_covariates(&test_pc, test_cov);
+    let train_features = append_scalar_covariates(&fpca.scores, train_cov);
     let d = train_features.ncols();
 
     (0..n_test)
@@ -1197,7 +1197,7 @@ pub struct ClassifFit {
 pub fn fclassif_lda_fit(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
 ) -> Option<ClassifFit> {
     let n = data.nrows();
@@ -1210,10 +1210,10 @@ pub fn fclassif_lda_fit(
         return None;
     }
 
-    // _fit variants use FPCA-only features (no covariates) so that stored
+    // _fit variants use FPCA-only features (no scalar_covariates) so that stored
     // dimensions are consistent with FpcPredictor::project() / predict_from_scores().
     let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
-    let _ = covariates; // acknowledged but not used — see docstring
+    let _ = scalar_covariates; // acknowledged but not used — see docstring
     let d = features.ncols();
     let (class_means, cov, priors) = lda_params(&features, &labels, g);
     let chol = cholesky_d(&cov, d)?;
@@ -1248,7 +1248,7 @@ pub fn fclassif_lda_fit(
 pub fn fclassif_qda_fit(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
 ) -> Option<ClassifFit> {
     let n = data.nrows();
@@ -1263,7 +1263,7 @@ pub fn fclassif_qda_fit(
 
     // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
     let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
-    let _ = covariates;
+    let _ = scalar_covariates;
     let (class_means, class_chols, class_log_dets, priors) =
         build_qda_params(&features, &labels, g)?;
 
@@ -1306,7 +1306,7 @@ pub fn fclassif_qda_fit(
 pub fn fclassif_knn_fit(
     data: &FdMatrix,
     y: &[usize],
-    covariates: Option<&FdMatrix>,
+    scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
     k_nn: usize,
 ) -> Option<ClassifFit> {
@@ -1322,7 +1322,7 @@ pub fn fclassif_knn_fit(
 
     // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
     let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
-    let _ = covariates;
+    let _ = scalar_covariates;
     let d = features.ncols();
 
     let predicted = knn_predict_loo(&features, &labels, g, d, k_nn);
@@ -1754,7 +1754,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fclassif_lda_with_covariates() {
+    fn test_fclassif_lda_with_scalar_covariates() {
         let n_per = 15;
         let n = 2 * n_per;
         let m = 50;
@@ -1774,11 +1774,11 @@ mod tests {
         for i in n_per..n {
             cov_data[i] = 10.0;
         }
-        let covariates = FdMatrix::from_column_major(cov_data, n, 1).unwrap();
+        let scalar_covariates = FdMatrix::from_column_major(cov_data, n, 1).unwrap();
 
         let labels: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
 
-        let result = fclassif_lda(&data, &labels, Some(&covariates), 2).unwrap();
+        let result = fclassif_lda(&data, &labels, Some(&scalar_covariates), 2).unwrap();
         assert!(
             result.accuracy > 0.9,
             "Covariate should enable separation: {}",
@@ -1791,7 +1791,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Helper: generate two-class data with scalar covariates.
-    fn generate_two_class_with_covariates(
+    fn generate_two_class_with_scalar_covariates(
         n_per: usize,
         m: usize,
         p_cov: usize,
@@ -1806,8 +1806,8 @@ mod tests {
                 cov_data[i + j * n] = base + 0.1 * ((i * 3 + j * 7) % 50) as f64 / 50.0;
             }
         }
-        let covariates = FdMatrix::from_column_major(cov_data, n, p_cov).unwrap();
-        (data, labels, t, covariates)
+        let scalar_covariates = FdMatrix::from_column_major(cov_data, n, p_cov).unwrap();
+        (data, labels, t, scalar_covariates)
     }
 
     #[test]
@@ -1884,9 +1884,11 @@ mod tests {
     }
 
     #[test]
-    fn test_fclassif_kernel_with_covariates() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(20, 50, 2);
-        let result = fclassif_kernel(&data, &t, &labels, Some(&covariates), 0.0, 0.0).unwrap();
+    fn test_fclassif_kernel_with_scalar_covariates() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(20, 50, 2);
+        let result =
+            fclassif_kernel(&data, &t, &labels, Some(&scalar_covariates), 0.0, 0.0).unwrap();
 
         assert_eq!(result.predicted.len(), 40);
         assert!(
@@ -1898,19 +1900,22 @@ mod tests {
     }
 
     #[test]
-    fn test_fclassif_kernel_with_covariates_manual_bandwidth() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(15, 50, 1);
+    fn test_fclassif_kernel_with_scalar_covariates_manual_bandwidth() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(15, 50, 1);
         // Provide explicit bandwidths (>0 skips LOO selection)
-        let result = fclassif_kernel(&data, &t, &labels, Some(&covariates), 1.0, 1.0).unwrap();
+        let result =
+            fclassif_kernel(&data, &t, &labels, Some(&scalar_covariates), 1.0, 1.0).unwrap();
 
         assert_eq!(result.predicted.len(), 30);
         assert!(result.accuracy >= 0.0 && result.accuracy <= 1.0);
     }
 
     #[test]
-    fn test_fclassif_dd_with_covariates() {
-        let (data, labels, _t, covariates) = generate_two_class_with_covariates(20, 50, 2);
-        let result = fclassif_dd(&data, &labels, Some(&covariates)).unwrap();
+    fn test_fclassif_dd_with_scalar_covariates() {
+        let (data, labels, _t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(20, 50, 2);
+        let result = fclassif_dd(&data, &labels, Some(&scalar_covariates)).unwrap();
 
         assert_eq!(result.predicted.len(), 40);
         assert_eq!(result.n_classes, 2);
@@ -1947,9 +1952,9 @@ mod tests {
         for i in n_per..n {
             cov_data[i] = 10.0 + (i - n_per) as f64 / n_per as f64;
         }
-        let covariates = FdMatrix::from_column_major(cov_data, n, 1).unwrap();
+        let scalar_covariates = FdMatrix::from_column_major(cov_data, n, 1).unwrap();
 
-        let result = fclassif_dd(&data, &labels, Some(&covariates)).unwrap();
+        let result = fclassif_dd(&data, &labels, Some(&scalar_covariates)).unwrap();
         // The scalar blending should help even when curves are identical
         assert!(
             result.accuracy >= 0.5,
@@ -1982,7 +1987,7 @@ mod tests {
 
     #[test]
     fn test_scalar_depth_for_obs_multivariate() {
-        // 2 covariates
+        // 2 scalar_covariates
         let cov =
             FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0], 4, 2)
                 .unwrap();
@@ -2021,7 +2026,7 @@ mod tests {
     #[test]
     fn test_compute_pairwise_scalar() {
         let n = 4;
-        // 2 covariates
+        // 2 scalar_covariates
         let cov = FdMatrix::from_column_major(vec![0.0, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0], n, 2)
             .unwrap();
         let dists = compute_pairwise_scalar(&cov);
@@ -2044,46 +2049,91 @@ mod tests {
     }
 
     #[test]
-    fn test_fclassif_cv_lda_with_covariates() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
-        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "lda", 3, 5, 42).unwrap();
+    fn test_fclassif_cv_lda_with_scalar_covariates() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(25, 50, 1);
+        let result = fclassif_cv(
+            &data,
+            &t,
+            &labels,
+            Some(&scalar_covariates),
+            "lda",
+            3,
+            5,
+            42,
+        )
+        .unwrap();
 
         assert_eq!(result.fold_errors.len(), 5);
         assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
     }
 
     #[test]
-    fn test_fclassif_cv_qda_with_covariates() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
-        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "qda", 3, 5, 42).unwrap();
+    fn test_fclassif_cv_qda_with_scalar_covariates() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(25, 50, 1);
+        let result = fclassif_cv(
+            &data,
+            &t,
+            &labels,
+            Some(&scalar_covariates),
+            "qda",
+            3,
+            5,
+            42,
+        )
+        .unwrap();
 
         assert_eq!(result.fold_errors.len(), 5);
         assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
     }
 
     #[test]
-    fn test_fclassif_cv_knn_with_covariates() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
-        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "knn", 3, 5, 42).unwrap();
+    fn test_fclassif_cv_knn_with_scalar_covariates() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(25, 50, 1);
+        let result = fclassif_cv(
+            &data,
+            &t,
+            &labels,
+            Some(&scalar_covariates),
+            "knn",
+            3,
+            5,
+            42,
+        )
+        .unwrap();
 
         assert_eq!(result.fold_errors.len(), 5);
         assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
     }
 
     #[test]
-    fn test_fclassif_cv_kernel_with_covariates() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 1);
+    fn test_fclassif_cv_kernel_with_scalar_covariates() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(25, 50, 1);
+        let result = fclassif_cv(
+            &data,
+            &t,
+            &labels,
+            Some(&scalar_covariates),
+            "kernel",
+            3,
+            5,
+            42,
+        )
+        .unwrap();
+
+        assert_eq!(result.fold_errors.len(), 5);
+        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+    }
+
+    #[test]
+    fn test_fclassif_cv_dd_with_scalar_covariates() {
+        let (data, labels, t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(25, 50, 2);
         let result =
-            fclassif_cv(&data, &t, &labels, Some(&covariates), "kernel", 3, 5, 42).unwrap();
-
-        assert_eq!(result.fold_errors.len(), 5);
-        assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
-    }
-
-    #[test]
-    fn test_fclassif_cv_dd_with_covariates() {
-        let (data, labels, t, covariates) = generate_two_class_with_covariates(25, 50, 2);
-        let result = fclassif_cv(&data, &t, &labels, Some(&covariates), "dd", 3, 5, 42).unwrap();
+            fclassif_cv(&data, &t, &labels, Some(&scalar_covariates), "dd", 3, 5, 42).unwrap();
 
         assert_eq!(result.fold_errors.len(), 5);
         assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
@@ -2135,9 +2185,10 @@ mod tests {
     }
 
     #[test]
-    fn test_fclassif_qda_with_covariates() {
-        let (data, labels, _t, covariates) = generate_two_class_with_covariates(20, 50, 1);
-        let result = fclassif_qda(&data, &labels, Some(&covariates), 3).unwrap();
+    fn test_fclassif_qda_with_scalar_covariates() {
+        let (data, labels, _t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(20, 50, 1);
+        let result = fclassif_qda(&data, &labels, Some(&scalar_covariates), 3).unwrap();
 
         assert_eq!(result.predicted.len(), 40);
         assert!(
@@ -2148,9 +2199,10 @@ mod tests {
     }
 
     #[test]
-    fn test_fclassif_knn_with_covariates() {
-        let (data, labels, _t, covariates) = generate_two_class_with_covariates(20, 50, 1);
-        let result = fclassif_knn(&data, &labels, Some(&covariates), 3, 5).unwrap();
+    fn test_fclassif_knn_with_scalar_covariates() {
+        let (data, labels, _t, scalar_covariates) =
+            generate_two_class_with_scalar_covariates(20, 50, 1);
+        let result = fclassif_knn(&data, &labels, Some(&scalar_covariates), 3, 5).unwrap();
 
         assert_eq!(result.predicted.len(), 40);
         assert!(

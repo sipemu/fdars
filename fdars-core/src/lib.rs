@@ -85,8 +85,9 @@ pub use alignment::{
 
 // Re-export commonly used items
 pub use helpers::{
-    cumulative_trapz, extract_curves, gradient_uniform, l2_distance, linear_interp,
-    simpsons_weights, simpsons_weights_2d, trapz, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
+    cumulative_trapz, extract_curves, gradient, gradient_nonuniform, gradient_uniform, l2_distance,
+    linear_interp, simpsons_weights, simpsons_weights_2d, trapz, DEFAULT_CONVERGENCE_TOL,
+    NUMERICAL_EPS,
 };
 
 // Re-export warping utilities
@@ -137,9 +138,10 @@ pub use function_on_scalar::{
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
     bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_basis_cv, fregre_cv,
-    fregre_lm, fregre_np_cv, fregre_np_mixed, functional_logistic, predict_fregre_lm,
-    predict_fregre_np, BootstrapCiResult, FregreBasisCvResult, FregreCvResult, FregreLmResult,
-    FregreNpCvResult, FregreNpResult, FunctionalLogisticResult,
+    fregre_lm, fregre_np_cv, fregre_np_mixed, functional_logistic, model_selection_ncomp,
+    predict_fregre_lm, predict_fregre_np, predict_functional_logistic, BootstrapCiResult,
+    FregreBasisCvResult, FregreCvResult, FregreLmResult, FregreNpCvResult, FregreNpResult,
+    FunctionalLogisticResult, ModelSelectionResult, SelectionCriterion,
 };
 
 // Re-export generic explainability types
@@ -214,8 +216,9 @@ pub use elastic_fpca::{
 
 // Re-export elastic regression types
 pub use elastic_regression::{
-    elastic_logistic, elastic_pcr, elastic_regression, ElasticLogisticResult, ElasticPcrResult,
-    ElasticRegressionResult, PcaMethod,
+    elastic_logistic, elastic_pcr, elastic_regression, predict_elastic_logistic,
+    predict_elastic_regression, ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult,
+    PcaMethod,
 };
 
 // Re-export elastic changepoint types

@@ -56,6 +56,10 @@ pub struct FregreLmResult {
     pub residual_se: f64,
     /// GCV criterion value (if computed)
     pub gcv: f64,
+    /// Akaike Information Criterion
+    pub aic: f64,
+    /// Bayesian Information Criterion
+    pub bic: f64,
 }
 
 /// Result of nonparametric functional regression with mixed predictors.
@@ -102,6 +106,10 @@ pub struct FunctionalLogisticResult {
     pub iterations: usize,
     /// FPCA result (for projecting new data)
     pub fpca: FpcaResult,
+    /// Akaike Information Criterion
+    pub aic: f64,
+    /// Bayesian Information Criterion
+    pub bic: f64,
 }
 
 /// Result of cross-validation for K selection.
@@ -114,6 +122,25 @@ pub struct FregreCvResult {
     pub optimal_k: usize,
     /// Minimum CV error
     pub min_cv_error: f64,
+}
+
+/// Criterion used for model selection.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SelectionCriterion {
+    /// Akaike Information Criterion
+    Aic,
+    /// Bayesian Information Criterion
+    Bic,
+    /// Generalized Cross-Validation
+    Gcv,
+}
+
+/// Result of ncomp model selection.
+pub struct ModelSelectionResult {
+    /// Best number of FPC components by the chosen criterion
+    pub best_ncomp: usize,
+    /// (ncomp, AIC, BIC, GCV) for each candidate
+    pub criteria: Vec<(usize, f64, f64, f64)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +466,11 @@ pub fn fregre_lm(
     let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
     let gamma: Vec<f64> = coeffs[1 + ncomp..].to_vec();
 
+    let nf = n as f64;
+    let rss = ss_res;
+    let aic = nf * (rss / nf).ln() + 2.0 * p_total as f64;
+    let bic = nf * (rss / nf).ln() + (nf).ln() * p_total as f64;
+
     Some(FregreLmResult {
         intercept: coeffs[0],
         beta_t,
@@ -454,6 +486,8 @@ pub fn fregre_lm(
         coefficients: coeffs,
         residual_se,
         gcv,
+        aic,
+        bic,
     })
 }
 
@@ -588,6 +622,71 @@ pub fn fregre_cv(
         cv_errors,
         optimal_k: k_values[optimal_idx],
         min_cv_error,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Model selection
+// ---------------------------------------------------------------------------
+
+/// Select optimal ncomp for `fregre_lm` using AIC, BIC, or GCV.
+///
+/// Fits models for `ncomp = 1..=max_ncomp`, collects information criteria,
+/// and returns the best ncomp under the chosen criterion.
+///
+/// # Arguments
+/// * `data` — Functional predictor matrix (n × m)
+/// * `y` — Scalar responses (length n)
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
+/// * `max_ncomp` — Maximum number of FPC components to try
+/// * `criterion` — Which criterion to minimise
+pub fn model_selection_ncomp(
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    max_ncomp: usize,
+    criterion: SelectionCriterion,
+) -> Option<ModelSelectionResult> {
+    if max_ncomp == 0 {
+        return None;
+    }
+
+    let mut criteria = Vec::with_capacity(max_ncomp);
+
+    for k in 1..=max_ncomp {
+        if let Some(fit) = fregre_lm(data, y, scalar_covariates, k) {
+            criteria.push((k, fit.aic, fit.bic, fit.gcv));
+        }
+    }
+
+    if criteria.is_empty() {
+        return None;
+    }
+
+    let best_idx = match criterion {
+        SelectionCriterion::Aic => criteria
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0),
+        SelectionCriterion::Bic => criteria
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0),
+        SelectionCriterion::Gcv => criteria
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0),
+    };
+
+    Some(ModelSelectionResult {
+        best_ncomp: criteria[best_idx].0,
+        criteria,
     })
 }
 
@@ -1014,13 +1113,20 @@ fn build_logistic_result(
         .unwrap_or_else(|| vec![f64::NAN; p]);
     let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
 
+    let ll = logistic_log_likelihood(&probabilities, y);
+    let deviance = -2.0 * ll;
+    let nf = n as f64;
+    let pf = p as f64;
+    let aic = deviance + 2.0 * pf;
+    let bic = deviance + nf.ln() * pf;
+
     FunctionalLogisticResult {
         intercept: beta[0],
         beta_t,
         beta_se,
         gamma,
-        accuracy: correct as f64 / n as f64,
-        log_likelihood: logistic_log_likelihood(&probabilities, y),
+        accuracy: correct as f64 / nf,
+        log_likelihood: ll,
         probabilities,
         predicted_classes,
         ncomp,
@@ -1028,6 +1134,8 @@ fn build_logistic_result(
         coefficients: beta,
         iterations,
         fpca,
+        aic,
+        bic,
     }
 }
 
@@ -1671,6 +1779,62 @@ pub fn fregre_np_cv(
         h_values: h_values.to_vec(),
         min_cv_error,
     })
+}
+
+/// Predict probabilities P(Y=1) for new data using a fitted functional logistic model.
+///
+/// Projects new curves through the stored FPCA, computes linear predictor,
+/// and applies sigmoid.
+///
+/// # Arguments
+/// * `fit` — A fitted [`FunctionalLogisticResult`]
+/// * `new_data` — New functional predictor matrix (n_new × m)
+/// * `new_scalar` — Optional new scalar covariates (n_new × p)
+pub fn predict_functional_logistic(
+    fit: &FunctionalLogisticResult,
+    new_data: &FdMatrix,
+    new_scalar: Option<&FdMatrix>,
+) -> Vec<f64> {
+    let (n_new, m) = new_data.shape();
+    let ncomp = fit.ncomp;
+    let p_scalar = fit.gamma.len();
+
+    (0..n_new)
+        .map(|i| {
+            let mut eta = fit.coefficients[0]; // intercept
+            for k in 0..ncomp {
+                let mut s = 0.0;
+                for j in 0..m {
+                    s += (new_data[(i, j)] - fit.fpca.mean[j]) * fit.fpca.rotation[(j, k)];
+                }
+                eta += fit.coefficients[1 + k] * s;
+            }
+            if let Some(sc) = new_scalar {
+                for j in 0..p_scalar {
+                    eta += fit.gamma[j] * sc[(i, j)];
+                }
+            }
+            sigmoid(eta)
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Predict methods on result structs
+// ---------------------------------------------------------------------------
+
+impl FregreLmResult {
+    /// Predict new responses. Delegates to [`predict_fregre_lm`].
+    pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
+        predict_fregre_lm(self, new_data, new_scalar)
+    }
+}
+
+impl FunctionalLogisticResult {
+    /// Predict P(Y=1) for new data. Delegates to [`predict_functional_logistic`].
+    pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
+        predict_functional_logistic(self, new_data, new_scalar)
+    }
 }
 
 // ---------------------------------------------------------------------------

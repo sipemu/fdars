@@ -609,6 +609,7 @@ pub fn generic_sobol_indices(
     let f_b: Vec<f64> = mat_b.iter().map(|s| eval_model(s)).collect();
 
     let mean_fa = f_a.iter().sum::<f64>() / n_samples as f64;
+    // Monte Carlo estimate, population variance
     let var_fa = f_a.iter().map(|&v| (v - mean_fa).powi(2)).sum::<f64>() / n_samples as f64;
 
     if var_fa < 1e-15 {

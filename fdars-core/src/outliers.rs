@@ -133,6 +133,7 @@ pub fn outliers_threshold_lrt_with_dist(
                 sum_sq += val * val;
             }
             let mean = sum / n as f64;
+            // Bootstrap variance, population formula
             let var = sum_sq / n as f64 - mean * mean;
             var.max(0.0).sqrt()
         })

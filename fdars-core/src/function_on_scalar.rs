@@ -759,6 +759,13 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Option<Fanova
     })
 }
 
+impl FosrResult {
+    /// Predict functional responses for new predictors. Delegates to [`predict_fosr`].
+    pub fn predict(&self, new_predictors: &FdMatrix) -> FdMatrix {
+        predict_fosr(self, new_predictors)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

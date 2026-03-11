@@ -387,6 +387,7 @@ fn autocorrelation(data: &[f64], max_lag: usize) -> Vec<f64> {
     }
 
     let mean: f64 = data.iter().sum::<f64>() / n as f64;
+    // ACF convention: divide by n (matches R's acf(); divisor cancels in normalized ratio)
     let var: f64 = data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
 
     if var < 1e-15 {

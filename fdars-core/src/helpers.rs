@@ -284,6 +284,91 @@ pub fn gradient_uniform(y: &[f64], h: f64) -> Vec<f64> {
     g
 }
 
+/// Numerical gradient for non-uniform grids using 3-point Lagrange derivative.
+///
+/// At interior points uses the three-point formula:
+///   `g[i] = y[i-1]*h_r/(-h_l*(h_l+h_r)) + y[i]*(h_r-h_l)/(h_l*h_r) + y[i+1]*h_l/(h_r*(h_l+h_r))`
+/// where `h_l = t[i]-t[i-1]` and `h_r = t[i+1]-t[i]`.
+///
+/// Boundary points use forward/backward 3-point formulas.
+pub fn gradient_nonuniform(y: &[f64], t: &[f64]) -> Vec<f64> {
+    let n = y.len();
+    assert_eq!(n, t.len(), "y and t must have the same length");
+    let mut g = vec![0.0; n];
+    if n < 2 {
+        return g;
+    }
+    if n == 2 {
+        let h = t[1] - t[0];
+        if h.abs() < 1e-15 {
+            return g;
+        }
+        g[0] = (y[1] - y[0]) / h;
+        g[1] = g[0];
+        return g;
+    }
+
+    // Left boundary: 3-point forward Lagrange derivative
+    let h0 = t[1] - t[0];
+    let h1 = t[2] - t[0];
+    if h0.abs() > 1e-15 && h1.abs() > 1e-15 && (h1 - h0).abs() > 1e-15 {
+        g[0] = y[0] * (-h1 - h0) / (h0 * h1) + y[1] * h1 / (h0 * (h1 - h0))
+            - y[2] * h0 / (h1 * (h1 - h0));
+    } else {
+        g[0] = (y[1] - y[0]) / h0.max(1e-15);
+    }
+
+    // Interior: 3-point Lagrange central formula
+    for i in 1..n - 1 {
+        let h_l = t[i] - t[i - 1];
+        let h_r = t[i + 1] - t[i];
+        let h_sum = h_l + h_r;
+        if h_l.abs() < 1e-15 || h_r.abs() < 1e-15 || h_sum.abs() < 1e-15 {
+            g[i] = 0.0;
+            continue;
+        }
+        g[i] = -y[i - 1] * h_r / (h_l * h_sum)
+            + y[i] * (h_r - h_l) / (h_l * h_r)
+            + y[i + 1] * h_l / (h_r * h_sum);
+    }
+
+    // Right boundary: 3-point backward Lagrange derivative
+    let h_last = t[n - 1] - t[n - 2];
+    let h_prev = t[n - 1] - t[n - 3];
+    let h_mid = t[n - 2] - t[n - 3];
+    if h_last.abs() > 1e-15 && h_prev.abs() > 1e-15 && h_mid.abs() > 1e-15 {
+        g[n - 1] = y[n - 3] * h_last / (h_mid * h_prev) - y[n - 2] * h_prev / (h_mid * h_last)
+            + y[n - 1] * (h_prev + h_last) / (h_prev * h_last);
+    } else {
+        g[n - 1] = (y[n - 1] - y[n - 2]) / h_last.max(1e-15);
+    }
+
+    g
+}
+
+/// Numerical gradient that auto-detects uniform vs non-uniform grids.
+///
+/// If the grid `t` is uniformly spaced (max|Δt_i − Δt_0| < ε), dispatches to
+/// [`gradient_uniform`] for optimal accuracy. Otherwise falls back to
+/// [`gradient_nonuniform`].
+pub fn gradient(y: &[f64], t: &[f64]) -> Vec<f64> {
+    let n = t.len();
+    if n < 2 {
+        return vec![0.0; y.len()];
+    }
+
+    let h0 = t[1] - t[0];
+    let is_uniform = t
+        .windows(2)
+        .all(|w| ((w[1] - w[0]) - h0).abs() < 1e-12 * h0.abs().max(1.0));
+
+    if is_uniform {
+        gradient_uniform(y, h0)
+    } else {
+        gradient_nonuniform(y, t)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

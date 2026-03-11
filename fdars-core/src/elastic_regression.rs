@@ -944,6 +944,60 @@ fn binary_search_warps(
         .collect()
 }
 
+/// Predict new responses using a fitted elastic regression model.
+///
+/// Transforms new curves to SRSFs, aligns them using the training warps as
+/// a template (identity alignment for new data), then applies the fitted
+/// regression coefficients.
+///
+/// # Arguments
+/// * `fit` — A fitted [`ElasticRegressionResult`]
+/// * `new_data` — New functional data (n_new × m)
+/// * `argvals` — Evaluation points (length m)
+pub fn predict_elastic_regression(
+    fit: &ElasticRegressionResult,
+    new_data: &FdMatrix,
+    argvals: &[f64],
+) -> Vec<f64> {
+    let weights = simpsons_weights(argvals);
+    let q_new = srsf_transform(new_data, argvals);
+    srsf_fitted_values(&q_new, &fit.beta, &weights, fit.alpha)
+}
+
+/// Predict probabilities for new data using a fitted elastic logistic model.
+///
+/// Transforms new curves to SRSFs and applies the fitted logistic
+/// coefficients to produce P(Y=1).
+///
+/// # Arguments
+/// * `fit` — A fitted [`ElasticLogisticResult`]
+/// * `new_data` — New functional data (n_new × m)
+/// * `argvals` — Evaluation points (length m)
+pub fn predict_elastic_logistic(
+    fit: &ElasticLogisticResult,
+    new_data: &FdMatrix,
+    argvals: &[f64],
+) -> Vec<f64> {
+    let weights = simpsons_weights(argvals);
+    let q_new = srsf_transform(new_data, argvals);
+    let eta = srsf_fitted_values(&q_new, &fit.beta, &weights, fit.alpha);
+    eta.iter().map(|&e| 1.0 / (1.0 + (-e).exp())).collect()
+}
+
+impl ElasticRegressionResult {
+    /// Predict responses for new data. Delegates to [`predict_elastic_regression`].
+    pub fn predict(&self, new_data: &FdMatrix, argvals: &[f64]) -> Vec<f64> {
+        predict_elastic_regression(self, new_data, argvals)
+    }
+}
+
+impl ElasticLogisticResult {
+    /// Predict probabilities for new data. Delegates to [`predict_elastic_logistic`].
+    pub fn predict(&self, new_data: &FdMatrix, argvals: &[f64]) -> Vec<f64> {
+        predict_elastic_logistic(self, new_data, argvals)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

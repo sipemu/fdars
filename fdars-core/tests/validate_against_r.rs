@@ -775,8 +775,8 @@ fn test_fdata_l2_norm() {
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
     let actual = fdars_core::fdata::norm_lp_1d(&mat, &dat.argvals, 2.0);
-    // R's norm.fdata uses its own integration; Rust uses Simpson's 1/3
-    assert_vec_close(&actual, &exp.norm_l2, 1e-2, "l2_norms");
+    // R's norm.fdata uses trapezoidal; Rust uses Simpson's 1/3 — inherent integration gap ~4e-3
+    assert_vec_close(&actual, &exp.norm_l2, 5e-3, "l2_norms");
 }
 
 // ─── Depth ──────────────────────────────────────────────────────────────────
@@ -1038,8 +1038,8 @@ fn test_lp_l2_distance_matrix() {
 
     let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
     let actual = fdars_core::metric::lp_self_1d(&sub_mat, &dat.argvals, 2.0, &[]);
-    // R's metric.lp uses its own integration; Rust uses Simpson's 1/3
-    assert_vec_close(actual.as_slice(), &exp.lp_l2.data, 1e-2, "lp_l2_distance");
+    // R's metric.lp uses trapezoidal; Rust uses Simpson's 1/3 — inherent integration gap ~6e-3
+    assert_vec_close(actual.as_slice(), &exp.lp_l2.data, 6e-3, "lp_l2_distance");
 }
 
 #[test]
@@ -1579,7 +1579,7 @@ fn test_alignment_srsf_roundtrip() {
     let f0_initial = mat[(0, 0)];
     let reconstructed = fdars_core::srsf_inverse(&q0, &d.argvals, f0_initial);
 
-    // Compare against R's round-trip
+    // Compare against R's round-trip (5-point gradient helps accuracy)
     assert_vec_close(
         &reconstructed,
         &exp.srsf_roundtrip_row0,
@@ -1589,7 +1589,12 @@ fn test_alignment_srsf_roundtrip() {
 
     // Also check round-trip fidelity against original
     let original: Vec<f64> = mat.row(0);
-    assert_vec_close(&reconstructed, &original, 0.1, "srsf_roundtrip_vs_original");
+    assert_vec_close(
+        &reconstructed,
+        &original,
+        0.05,
+        "srsf_roundtrip_vs_original",
+    );
 }
 
 #[test]
@@ -4806,8 +4811,8 @@ fn test_local_polynomial_vs_r() {
         );
 
         // Local polynomial with degree=2 should be close to R's locpoly degree=2
-        // R uses FFT-based binning, Rust uses direct computation, so moderate tolerance
-        assert_vec_close(&result, r_lp, 0.15, "local_polynomial_degree2");
+        // R uses FFT-based binning, Rust uses direct computation
+        assert_vec_close(&result, r_lp, 0.1, "local_polynomial_degree2");
     }
 }
 
@@ -6064,5 +6069,394 @@ fn validate_elastic_amp_changepoint() {
         result.p_value >= 0.0 && result.p_value <= 1.0,
         "p_value={} should be in [0,1]",
         result.p_value
+    );
+}
+
+// ─── Conformal Prediction ────────────────────────────────────────────────────
+
+/// Split conformal regression: coverage should be ≥ 1−α on calibration set.
+#[test]
+fn validate_conformal_split_regression() {
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+    let n = reg.n;
+    let alpha = 0.1;
+
+    // Use first 20 as train, last 10 as test
+    let n_train = 20;
+    let n_test = n - n_train;
+    let train_data = fdars_core::cv::subset_rows(&data, &(0..n_train).collect::<Vec<_>>());
+    let train_y: Vec<f64> = reg.y[..n_train].to_vec();
+    let test_data = fdars_core::cv::subset_rows(&data, &(n_train..n).collect::<Vec<_>>());
+
+    let result = fdars_core::conformal::conformal_fregre_lm(
+        &train_data,
+        &train_y,
+        &test_data,
+        None,
+        None,
+        3,
+        0.5,
+        alpha,
+        42,
+    )
+    .expect("conformal_fregre_lm should succeed");
+
+    // Basic structural checks
+    assert_eq!(result.predictions.len(), n_test);
+    assert_eq!(result.lower.len(), n_test);
+    assert_eq!(result.upper.len(), n_test);
+
+    // Intervals should be well-ordered: lower ≤ prediction ≤ upper
+    for i in 0..n_test {
+        assert!(
+            result.lower[i] <= result.predictions[i] + 1e-10,
+            "lower[{}]={} > prediction[{}]={}",
+            i,
+            result.lower[i],
+            i,
+            result.predictions[i]
+        );
+        assert!(
+            result.predictions[i] <= result.upper[i] + 1e-10,
+            "prediction[{}]={} > upper[{}]={}",
+            i,
+            result.predictions[i],
+            i,
+            result.upper[i]
+        );
+    }
+
+    // Calibration coverage should be ≥ 1−α (conformal guarantee)
+    assert!(
+        result.coverage >= 1.0 - alpha - 0.01,
+        "calibration coverage {} should be ≥ {}",
+        result.coverage,
+        1.0 - alpha
+    );
+}
+
+/// Jackknife+ regression: intervals should be valid and coverage ≥ 1−α.
+#[test]
+fn validate_conformal_jackknife_plus() {
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+    let alpha = 0.1;
+
+    let n_train = 20;
+    let n_test = reg.n - n_train;
+    let train_data = fdars_core::cv::subset_rows(&data, &(0..n_train).collect::<Vec<_>>());
+    let train_y: Vec<f64> = reg.y[..n_train].to_vec();
+    let test_data = fdars_core::cv::subset_rows(&data, &(n_train..reg.n).collect::<Vec<_>>());
+
+    let result = fdars_core::conformal::jackknife_plus_regression(
+        &train_data,
+        &train_y,
+        &test_data,
+        None,
+        None,
+        |tr_d, tr_y, tr_sc, te_d, te_sc| {
+            let fit = fdars_core::scalar_on_function::fregre_lm(tr_d, tr_y, tr_sc, 3)?;
+            let train_pred = fit.fitted_values.clone();
+            let test_pred = fdars_core::scalar_on_function::predict_fregre_lm(&fit, te_d, te_sc);
+            Some((train_pred, test_pred))
+        },
+        alpha,
+    )
+    .expect("jackknife_plus should succeed");
+
+    assert_eq!(result.predictions.len(), n_test);
+    for i in 0..n_test {
+        assert!(
+            result.lower[i] <= result.upper[i] + 1e-10,
+            "jackknife+ lower[{}]={} > upper[{}]={}",
+            i,
+            result.lower[i],
+            i,
+            result.upper[i]
+        );
+    }
+}
+
+/// Conformal classification (LAC): prediction sets should contain true class often.
+#[test]
+fn validate_conformal_classification_lac() {
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+    // Create binary labels from y
+    let y_mean: f64 = reg.y.iter().sum::<f64>() / reg.n as f64;
+    let labels: Vec<usize> = reg
+        .y
+        .iter()
+        .map(|&v| if v > y_mean { 1 } else { 0 })
+        .collect();
+    let alpha = 0.2;
+
+    let n_train = 20;
+    let train_data = fdars_core::cv::subset_rows(&data, &(0..n_train).collect::<Vec<_>>());
+    let train_labels: Vec<usize> = labels[..n_train].to_vec();
+    let test_data = fdars_core::cv::subset_rows(&data, &(n_train..reg.n).collect::<Vec<_>>());
+
+    let result = fdars_core::conformal::conformal_classif(
+        &train_data,
+        &train_labels,
+        &test_data,
+        None,
+        None,
+        3,
+        "lda",
+        5,
+        fdars_core::conformal::ClassificationScore::Lac,
+        0.5,
+        alpha,
+        42,
+    )
+    .expect("conformal_classif LAC should succeed");
+
+    assert_eq!(result.predicted_classes.len(), reg.n - n_train);
+    assert_eq!(result.prediction_sets.len(), reg.n - n_train);
+
+    // Each prediction set should be non-empty
+    for (i, ps) in result.prediction_sets.iter().enumerate() {
+        assert!(!ps.is_empty(), "prediction set {} is empty", i);
+    }
+
+    // Average set size should be ≥ 1
+    assert!(
+        result.average_set_size >= 1.0,
+        "average set size {} < 1.0",
+        result.average_set_size
+    );
+}
+
+// ─── Cross-Validation ────────────────────────────────────────────────────────
+
+/// 5-fold CV on regression: RMSE should be positive and finite.
+#[test]
+fn validate_cv_fdata_regression() {
+    use std::any::Any;
+
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+
+    let result = fdars_core::cv::cv_fdata(
+        &data,
+        &reg.y,
+        |train_data: &FdMatrix, train_y: &[f64]| -> Box<dyn Any> {
+            let fit = fdars_core::scalar_on_function::fregre_lm(train_data, train_y, None, 3);
+            Box::new(fit)
+        },
+        |model: &dyn Any, test_data: &FdMatrix| -> Vec<f64> {
+            let fit = model
+                .downcast_ref::<Option<fdars_core::scalar_on_function::FregreLmResult>>()
+                .and_then(|o| o.as_ref());
+            match fit {
+                Some(f) => fdars_core::scalar_on_function::predict_fregre_lm(f, test_data, None),
+                None => vec![0.0; test_data.nrows()],
+            }
+        },
+        5,
+        1,
+        fdars_core::cv::CvType::Regression,
+        false,
+        42,
+    );
+
+    match &result.metrics {
+        fdars_core::cv::CvMetrics::Regression { rmse, .. } => {
+            assert!(
+                *rmse > 0.0 && rmse.is_finite(),
+                "CV RMSE={} should be positive and finite",
+                rmse
+            );
+        }
+        _ => panic!("Expected regression metrics"),
+    }
+    assert_eq!(result.fold_metrics.len(), 5);
+}
+
+/// Stratified folds: each fold should contain proportional class representation.
+#[test]
+fn validate_cv_stratified_folds() {
+    let n = 30;
+    let labels: Vec<usize> = (0..n).map(|i| if i < 20 { 0 } else { 1 }).collect();
+    let folds = fdars_core::cv::create_stratified_folds(n, &labels, 5, 42);
+
+    assert_eq!(folds.len(), n);
+
+    // Check all fold indices are in 0..5
+    for &f in &folds {
+        assert!(f < 5, "fold index {} >= 5", f);
+    }
+
+    // Each fold should have roughly n/5 = 6 elements
+    for fold_id in 0..5 {
+        let count = folds.iter().filter(|&&f| f == fold_id).count();
+        assert!(
+            (4..=8).contains(&count),
+            "fold {} has {} elements (expected ~6)",
+            fold_id,
+            count
+        );
+    }
+
+    // Check that class proportions are roughly maintained per fold
+    for fold_id in 0..5 {
+        let fold_class0: usize = folds
+            .iter()
+            .enumerate()
+            .filter(|(_, &f)| f == fold_id)
+            .filter(|(i, _)| labels[*i] == 0)
+            .count();
+        let fold_total = folds.iter().filter(|&&f| f == fold_id).count();
+        let ratio = fold_class0 as f64 / fold_total as f64;
+        // Population ratio is 20/30 ≈ 0.667
+        assert!(
+            ratio > 0.3 && ratio < 1.0,
+            "fold {} class-0 ratio={} is too far from 0.667",
+            fold_id,
+            ratio
+        );
+    }
+}
+
+// ─── Generic vs Dedicated Explainability ─────────────────────────────────────
+
+/// Generic PDP on FregreLmResult should match dedicated functional_pdp.
+#[test]
+fn validate_generic_pdp_vs_dedicated() {
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+    let fit = fregre_lm(&data, &reg.y, None, 3).expect("fregre_lm should succeed");
+
+    let dedicated = fdars_core::explain::functional_pdp(&fit, &data, None, 0, 20)
+        .expect("functional_pdp should succeed");
+    let generic = fdars_core::explain_generic::generic_pdp(&fit, &data, None, 0, 20)
+        .expect("generic_pdp should succeed");
+
+    // Grid values should match exactly (same algorithm)
+    assert_vec_close(
+        &generic.grid_values,
+        &dedicated.grid_values,
+        1e-10,
+        "pdp_grid_values",
+    );
+
+    // Mean PDP curve should match
+    assert_vec_close(&generic.pdp_curve, &dedicated.pdp_curve, 1e-10, "pdp_curve");
+}
+
+/// Generic SHAP on FregreLmResult should match dedicated fpc_shap_values.
+/// For linear models both are exact, so they should agree closely.
+#[test]
+fn validate_generic_shap_vs_dedicated() {
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+    let fit = fregre_lm(&data, &reg.y, None, 3).expect("fregre_lm should succeed");
+
+    let dedicated = fdars_core::explain::fpc_shap_values(&fit, &data, None)
+        .expect("fpc_shap_values should succeed");
+    // generic uses sampling but for linear models, large n_samples converges
+    let generic = fdars_core::explain_generic::generic_shap_values(&fit, &data, None, 10000, 42)
+        .expect("generic_shap_values should succeed");
+
+    let (n, ncomp) = (dedicated.values.nrows(), dedicated.values.ncols());
+    assert_eq!(n, generic.values.nrows(), "SHAP nrows mismatch");
+    assert_eq!(ncomp, generic.values.ncols(), "SHAP ncols mismatch");
+
+    // Base values should match
+    assert!(
+        (dedicated.base_value - generic.base_value).abs() < 1e-6,
+        "base_value: dedicated={}, generic={}",
+        dedicated.base_value,
+        generic.base_value
+    );
+
+    // SHAP values should match (may have sampling noise for generic)
+    let mut ded_data = Vec::with_capacity(n * ncomp);
+    let mut gen_data = Vec::with_capacity(n * ncomp);
+    for i in 0..n {
+        for j in 0..ncomp {
+            ded_data.push(dedicated.values[(i, j)]);
+            gen_data.push(generic.values[(i, j)]);
+        }
+    }
+    assert_vec_close(&gen_data, &ded_data, 0.1, "shap_values");
+}
+
+/// Generic ALE on FregreLmResult should match dedicated fpc_ale.
+#[test]
+fn validate_generic_ale_vs_dedicated() {
+    let reg: RegressionData = load_json("data", "regression_30x51");
+    let data = FdMatrix::from_column_major(reg.data.clone(), reg.n, reg.m).unwrap();
+    let fit = fregre_lm(&data, &reg.y, None, 3).expect("fregre_lm should succeed");
+
+    let dedicated =
+        fdars_core::explain::fpc_ale(&fit, &data, None, 0, 10).expect("fpc_ale should succeed");
+    let generic = fdars_core::explain_generic::generic_ale(&fit, &data, None, 0, 10)
+        .expect("generic_ale should succeed");
+
+    // ALE effects should match
+    assert_vec_close(
+        &generic.ale_values,
+        &dedicated.ale_values,
+        1e-10,
+        "ale_values",
+    );
+    assert_vec_close(
+        &generic.bin_midpoints,
+        &dedicated.bin_midpoints,
+        1e-10,
+        "ale_bin_midpoints",
+    );
+}
+
+// ─── Elastic Phase Changepoint ───────────────────────────────────────────────
+
+/// Phase changepoint with known phase shift should detect location.
+#[test]
+fn validate_elastic_phase_changepoint() {
+    use std::f64::consts::PI;
+
+    let n = 30;
+    let m = 51;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut col_major_data = vec![0.0; n * m];
+
+    // First half: sin(2πt), second half: sin(2π(t+0.2)) — phase-shifted
+    for i in 0..n {
+        let phase_shift = if i < n / 2 { 0.0 } else { 0.2 };
+        for j in 0..m {
+            let t = argvals[j];
+            col_major_data[i + j * n] = (2.0 * PI * (t + phase_shift)).sin();
+        }
+    }
+
+    let data = FdMatrix::from_column_major(col_major_data, n, m).unwrap();
+    let result = fdars_core::elastic_changepoint::elastic_ph_changepoint(
+        &data,
+        &argvals,
+        0.0,
+        10,
+        100,
+        fdars_core::elastic_changepoint::CovKernel::Bartlett,
+        None,
+        42,
+    )
+    .expect("elastic_ph_changepoint should succeed");
+
+    // Detected changepoint should be near the midpoint (n/2 = 15)
+    let cp = result.changepoint;
+    assert!(
+        (10..=20).contains(&cp),
+        "changepoint {} should be near 15 (phase shift at sample 15)",
+        cp
+    );
+
+    // Test statistic should be positive
+    assert!(
+        result.test_statistic > 0.0,
+        "test_statistic {} should be positive",
+        result.test_statistic
     );
 }
