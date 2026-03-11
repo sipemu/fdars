@@ -179,14 +179,23 @@ fn compute_baseline_metric(
                 .sum();
             1.0 - ss_res / ss_tot
         }
-        TaskType::BinaryClassification | TaskType::MulticlassClassification(_) => {
-            // Accuracy
+        TaskType::BinaryClassification => {
             let correct: usize = (0..n)
                 .filter(|&i| {
                     let s: Vec<f64> = (0..model.ncomp()).map(|k| scores[(i, k)]).collect();
                     let pred = model.predict_from_scores(&s, None);
                     let pred_class = if pred >= 0.5 { 1.0 } else { 0.0 };
                     (pred_class - y[i]).abs() < 1e-10
+                })
+                .count();
+            correct as f64 / n as f64
+        }
+        TaskType::MulticlassClassification(_) => {
+            let correct: usize = (0..n)
+                .filter(|&i| {
+                    let s: Vec<f64> = (0..model.ncomp()).map(|k| scores[(i, k)]).collect();
+                    let pred = model.predict_from_scores(&s, None);
+                    (pred.round() - y[i]).abs() < 1e-10
                 })
                 .count();
             correct as f64 / n as f64
@@ -218,13 +227,23 @@ fn compute_metric_from_score_matrix(
                 .sum();
             1.0 - ss_res / ss_tot
         }
-        TaskType::BinaryClassification | TaskType::MulticlassClassification(_) => {
+        TaskType::BinaryClassification => {
             let correct: usize = (0..n)
                 .filter(|&i| {
                     let s: Vec<f64> = (0..ncomp).map(|k| score_mat[(i, k)]).collect();
                     let pred = model.predict_from_scores(&s, None);
                     let pred_class = if pred >= 0.5 { 1.0 } else { 0.0 };
                     (pred_class - y[i]).abs() < 1e-10
+                })
+                .count();
+            correct as f64 / n as f64
+        }
+        TaskType::MulticlassClassification(_) => {
+            let correct: usize = (0..n)
+                .filter(|&i| {
+                    let s: Vec<f64> = (0..ncomp).map(|k| score_mat[(i, k)]).collect();
+                    let pred = model.predict_from_scores(&s, None);
+                    (pred.round() - y[i]).abs() < 1e-10
                 })
                 .count();
             correct as f64 / n as f64
@@ -746,12 +765,12 @@ pub fn generic_counterfactual(
                 found: true,
             })
         }
-        TaskType::BinaryClassification | TaskType::MulticlassClassification(_) => {
-            // Gradient descent toward target value (opposite class)
+        TaskType::BinaryClassification => {
+            // Gradient descent toward opposite class (binary: P(Y=1) threshold 0.5)
             let mut current_scores = original_scores.clone();
             let mut current_pred = original_prediction;
             let original_class = if original_prediction >= 0.5 { 1.0 } else { 0.0 };
-            let target_class = if original_class >= 0.5 { 0.0 } else { 1.0 };
+            let target_class = 1.0 - original_class;
 
             let mut found = false;
             let eps = 1e-5;
@@ -762,19 +781,74 @@ pub fn generic_counterfactual(
                     found = true;
                     break;
                 }
-                // Numerical gradient
+                let mut grads = vec![0.0; ncomp];
                 for k in 0..ncomp {
                     let mut s_plus = current_scores.clone();
                     s_plus[k] += eps;
                     let f_plus = model.predict_from_scores(&s_plus, None);
-                    let grad = (f_plus - current_pred) / eps;
-                    current_scores[k] -= step_size * (current_pred - target_class) * grad;
+                    grads[k] = (f_plus - current_pred) / eps;
+                }
+                for k in 0..ncomp {
+                    current_scores[k] -= step_size * (current_pred - target_class) * grads[k];
                 }
             }
             if !found {
                 current_pred = model.predict_from_scores(&current_scores, None);
                 let pred_class = if current_pred >= 0.5 { 1.0 } else { 0.0 };
                 found = (pred_class - target_class).abs() < 1e-10;
+            }
+
+            let delta_scores: Vec<f64> = current_scores
+                .iter()
+                .zip(&original_scores)
+                .map(|(&c, &o)| c - o)
+                .collect();
+            let delta_function =
+                reconstruct_delta_function(&delta_scores, model.fpca_rotation(), ncomp, m);
+            let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
+
+            Some(CounterfactualResult {
+                observation,
+                original_scores,
+                counterfactual_scores: current_scores,
+                delta_scores,
+                delta_function,
+                distance,
+                original_prediction,
+                counterfactual_prediction: current_pred,
+                found,
+            })
+        }
+        TaskType::MulticlassClassification(_) => {
+            // Gradient descent toward nearest different class (multiclass: pred is class label)
+            let mut current_scores = original_scores.clone();
+            let mut current_pred = original_prediction;
+            let original_class = original_prediction.round();
+
+            let mut found = false;
+            let eps = 1e-5;
+            for _ in 0..max_iter {
+                current_pred = model.predict_from_scores(&current_scores, None);
+                let pred_class = current_pred.round();
+                if (pred_class - original_class).abs() > 0.5 {
+                    found = true;
+                    break;
+                }
+                let mut grads = vec![0.0; ncomp];
+                for k in 0..ncomp {
+                    let mut s_plus = current_scores.clone();
+                    s_plus[k] += eps;
+                    let f_plus = model.predict_from_scores(&s_plus, None);
+                    grads[k] = (f_plus - current_pred) / eps;
+                }
+                let grad_norm: f64 = grads.iter().map(|g| g * g).sum::<f64>().sqrt().max(1e-12);
+                for k in 0..ncomp {
+                    current_scores[k] += step_size * grads[k] / grad_norm;
+                }
+            }
+            if !found {
+                current_pred = model.predict_from_scores(&current_scores, None);
+                found = (current_pred.round() - original_class).abs() > 0.5;
             }
 
             let delta_scores: Vec<f64> = current_scores
@@ -1025,12 +1099,16 @@ pub fn generic_anchor(
             let tol = pred_std.max(1e-10);
             Box::new(move |i: usize| (all_preds[i] - obs_pred).abs() <= tol)
         }
-        TaskType::BinaryClassification | TaskType::MulticlassClassification(_) => {
+        TaskType::BinaryClassification => {
             let obs_class: f64 = if obs_pred >= 0.5 { 1.0 } else { 0.0 };
             Box::new(move |i: usize| {
                 let class_i: f64 = if all_preds[i] >= 0.5 { 1.0 } else { 0.0 };
                 (class_i - obs_class).abs() < 1e-10
             })
+        }
+        TaskType::MulticlassClassification(_) => {
+            let obs_class = obs_pred.round();
+            Box::new(move |i: usize| (all_preds[i].round() - obs_class).abs() < 1e-10)
         }
     };
 

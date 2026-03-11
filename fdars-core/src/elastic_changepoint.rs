@@ -138,10 +138,11 @@ pub fn elastic_ph_changepoint(
 
     let km = karcher_mean(data, argvals, max_iter, 1e-4, lambda);
 
-    // Compute shooting vectors from warps
+    // Compute shooting vectors from warps (live on uniform [0,1] grid, not argvals)
     let shooting = compute_shooting_vectors(&km, argvals)?;
 
-    let weights = simpsons_weights(argvals);
+    let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let weights = simpsons_weights(&time);
     let cusum_values = functional_cusum(&shooting, &weights);
     let (changepoint, test_statistic) = find_max_cusum(&cusum_values);
 
@@ -233,10 +234,10 @@ fn compute_shooting_vectors(km: &KarcherMeanResult, argvals: &[f64]) -> Option<F
     Some(shooting_vectors_from_psis(&psis, &mu_psi, &time))
 }
 
-/// Functional CUSUM: S_n(k) = (1/(m*n²)) Σ_j (cumsum_j - (k/n)*total_j)²
+/// Functional CUSUM: S_n(k) = (1/n²) Σ_j w_j * (cumsum_j - (k/n)*total_j)²
 ///
-/// Matches R's fdasrvf formula: `sum(diff_vec^2) / (m * n^2)`.
-fn functional_cusum(data: &FdMatrix, _weights: &[f64]) -> Vec<f64> {
+/// Uses Simpson's quadrature weights for spatial integration.
+fn functional_cusum(data: &FdMatrix, weights: &[f64]) -> Vec<f64> {
     let (n, m) = data.shape();
     let mut cusum_values = Vec::with_capacity(n - 1);
 
@@ -254,14 +255,14 @@ fn functional_cusum(data: &FdMatrix, _weights: &[f64]) -> Vec<f64> {
             cumsum[j] += data[(k - 1, j)];
         }
 
-        // S_n(k) = (1/(m*n²)) Σ_j (cumsum_j - (k/n)*total_j)²
+        // S_n(k) = (1/n²) Σ_j w_j * (cumsum_j - (k/n)*total_j)²
         let ratio = k as f64 / n as f64;
         let mut s = 0.0;
         for j in 0..m {
             let diff = cumsum[j] - ratio * total[j];
-            s += diff * diff;
+            s += weights[j] * diff * diff;
         }
-        s /= (m * n * n) as f64;
+        s /= (n * n) as f64;
         cusum_values.push(s);
     }
 

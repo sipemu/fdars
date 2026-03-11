@@ -302,7 +302,7 @@ fn deriv_1d_step(
 
 pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
     let (n, m) = data.shape();
-    if n == 0 || m == 0 || argvals.len() != m || nderiv < 1 {
+    if n == 0 || m < 2 || argvals.len() != m || nderiv < 1 {
         return FdMatrix::zeros(n, m);
     }
 
@@ -337,6 +337,9 @@ pub struct Deriv2DResult {
 /// Uses forward/backward difference at boundaries and central difference for interior.
 fn compute_step_sizes(argvals: &[f64]) -> Vec<f64> {
     let m = argvals.len();
+    if m < 2 {
+        return vec![1.0; m];
+    }
     (0..m)
         .map(|j| {
             if j == 0 {

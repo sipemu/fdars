@@ -15,6 +15,7 @@ use std::any::Any;
 /// Returns a vector of length `n` where element `i` is the fold index (0..n_folds)
 /// that observation `i` belongs to.
 pub fn create_folds(n: usize, n_folds: usize, seed: u64) -> Vec<usize> {
+    let n_folds = n_folds.max(1);
     let mut rng = StdRng::seed_from_u64(seed);
     let mut indices: Vec<usize> = (0..n).collect();
     indices.shuffle(&mut rng);
@@ -30,6 +31,7 @@ pub fn create_folds(n: usize, n_folds: usize, seed: u64) -> Vec<usize> {
 ///
 /// Ensures each fold has approximately the same class distribution.
 pub fn create_stratified_folds(n: usize, y: &[usize], n_folds: usize, seed: u64) -> Vec<usize> {
+    let n_folds = n_folds.max(1);
     let mut rng = StdRng::seed_from_u64(seed);
     let n_classes = y.iter().copied().max().unwrap_or(0) + 1;
 

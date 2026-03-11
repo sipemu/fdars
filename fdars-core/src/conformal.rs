@@ -119,15 +119,22 @@ fn conformal_split(n: usize, cal_fraction: f64, seed: u64) -> (Vec<usize>, Vec<u
     (proper_idx, cal_idx)
 }
 
-/// Compute conformal quantile: ceil((n_cal + 1) * (1 - alpha)) / n_cal, clamped to [0, 1].
+/// Compute conformal quantile: the k-th smallest score where k = ceil((n+1)*(1-alpha)).
+///
+/// Uses exact order statistic (no interpolation) to preserve the finite-sample
+/// coverage guarantee. Returns `f64::INFINITY` when k > n (conservative: infinite
+/// interval gives 100% coverage).
 fn conformal_quantile(scores: &mut [f64], alpha: f64) -> f64 {
     let n = scores.len();
     if n == 0 {
         return 0.0;
     }
     scores.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let q_level = (((n + 1) as f64 * (1.0 - alpha)).ceil() / n as f64).min(1.0);
-    quantile_sorted(scores, q_level)
+    let k = ((n + 1) as f64 * (1.0 - alpha)).ceil() as usize;
+    if k > n {
+        return f64::INFINITY;
+    }
+    scores[k.saturating_sub(1)]
 }
 
 /// Empirical coverage: fraction of scores ≤ quantile.
@@ -139,7 +146,8 @@ fn empirical_coverage(scores: &[f64], quantile: f64) -> f64 {
     scores.iter().filter(|&&s| s <= quantile).count() as f64 / n as f64
 }
 
-/// Quantile of a pre-sorted slice using linear interpolation.
+/// Quantile of a pre-sorted slice using linear interpolation (for non-conformal uses).
+#[allow(dead_code)]
 fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     let n = sorted.len();
     if n == 0 {
@@ -222,7 +230,11 @@ fn lac_prediction_set(probs: &[f64], quantile: f64) -> Vec<usize> {
         .collect()
 }
 
-/// Build APS prediction set: include classes in descending probability order until cumulative ≥ 1 - quantile.
+/// Build APS prediction set: include classes in descending probability order until cumulative ≥ quantile.
+///
+/// The APS non-conformity score is the cumulative probability until the true class
+/// is included. A class k is in the prediction set if its APS score ≤ the calibration
+/// quantile, which means we include classes until cumulative probability reaches the quantile.
 fn aps_prediction_set(probs: &[f64], quantile: f64) -> Vec<usize> {
     let g = probs.len();
     let mut order: Vec<usize> = (0..g).collect();
@@ -231,13 +243,12 @@ fn aps_prediction_set(probs: &[f64], quantile: f64) -> Vec<usize> {
             .partial_cmp(&probs[a])
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    let threshold = 1.0 - quantile;
     let mut cum = 0.0;
     let mut set = Vec::new();
     for &c in &order {
         set.push(c);
         cum += probs[c];
-        if cum >= threshold {
+        if cum >= quantile {
             break;
         }
     }
@@ -301,6 +312,32 @@ fn compute_cal_scores(
             ClassificationScore::Aps => aps_score(p, y),
         })
         .collect()
+}
+
+/// Vertically stack two matrices with the same number of columns.
+fn vstack(a: &FdMatrix, b: &FdMatrix) -> FdMatrix {
+    let m = a.ncols();
+    debug_assert_eq!(m, b.ncols());
+    let na = a.nrows();
+    let nb = b.nrows();
+    let mut out = FdMatrix::zeros(na + nb, m);
+    for j in 0..m {
+        for i in 0..na {
+            out[(i, j)] = a[(i, j)];
+        }
+        for i in 0..nb {
+            out[(na + i, j)] = b[(i, j)];
+        }
+    }
+    out
+}
+
+/// Vertically stack two optional matrices.
+fn vstack_opt(a: Option<&FdMatrix>, b: Option<&FdMatrix>) -> Option<FdMatrix> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(vstack(a, b)),
+        _ => None,
+    }
 }
 
 /// Subset a usize vector by indices.
@@ -999,8 +1036,13 @@ fn predict_elastic_logistic_probs(
 /// Generic split-conformal prediction intervals for any [`FpcPredictor`] model.
 ///
 /// Does **not** refit — uses the full model's predictions and calibrates on a
-/// held-out portion of the training data. Coverage is approximately correct
-/// (slightly optimistic vs. split conformal with refit).
+/// held-out portion of the training data.
+///
+/// **Warning**: The model was trained on all data including the calibration set,
+/// so calibration residuals are in-sample and systematically too small. This
+/// breaks the distribution-free coverage guarantee and produces intervals that
+/// are too narrow (optimistic). For valid coverage, use the refit-based or CV+
+/// variants instead. This function is provided as a fast heuristic only.
 pub fn conformal_generic_regression(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1065,6 +1107,10 @@ pub fn conformal_generic_regression(
 /// Does **not** refit — uses the full model's predictions. For binary classification,
 /// uses `predict_from_scores` which returns P(Y=1); for multiclass, returns class
 /// label as f64 (so prediction sets may be less informative).
+///
+/// **Warning**: Same data leakage caveat as [`conformal_generic_regression`] —
+/// the model was trained on all data including the calibration set. Coverage
+/// guarantee is broken. Use refit-based variants for valid coverage.
 pub fn conformal_generic_classification(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1162,9 +1208,9 @@ pub fn conformal_generic_classification(
 /// Uses K-fold CV: each fold produces out-of-fold predictions that serve
 /// as calibration residuals, so no data is "wasted" on calibration.
 ///
-/// The `fit_predict` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`
-/// and returns `Some((cal_preds, test_preds))` — predictions on held-out fold
-/// and on test data.
+/// The `fit_predict` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`,
+/// fits a model on `train_data`/`train_y`, and returns `Some((preds, _))` — predictions on
+/// `predict_data`. Only the first element of the tuple is used; the second is ignored.
 pub fn cv_conformal_regression(
     data: &FdMatrix,
     y: &[f64],
@@ -1206,14 +1252,21 @@ pub fn cv_conformal_regression(
         let cal_data = subset_rows(data, &test_idx);
         let cal_sc = scalar_train.map(|sc| subset_rows(sc, &test_idx));
 
-        // Get calibration predictions (on held-out fold)
-        let (cal_preds, _) = fit_predict(
+        // Single call: predict on combined [cal_data; test_data] to avoid double model fit
+        let n_cal_fold = cal_data.nrows();
+        let combined = vstack(&cal_data, test_data);
+        let combined_sc = vstack_opt(cal_sc.as_ref(), scalar_test);
+        let (all_preds, _) = fit_predict(
             &train_data,
             &train_y,
             train_sc.as_ref(),
-            &cal_data,
-            cal_sc.as_ref(),
+            &combined,
+            combined_sc.as_ref(),
         )?;
+
+        // Split predictions: first n_cal_fold are calibration, rest are test
+        let cal_preds = &all_preds[..n_cal_fold];
+        let test_preds_fold = &all_preds[n_cal_fold..];
 
         // Store calibration residuals at their original positions
         for (local_i, &orig_i) in test_idx.iter().enumerate() {
@@ -1221,15 +1274,6 @@ pub fn cv_conformal_regression(
                 all_cal_residuals[orig_i] = (y[orig_i] - cal_preds[local_i]).abs();
             }
         }
-
-        // Get test predictions from this fold's model
-        let (_, test_preds_fold) = fit_predict(
-            &train_data,
-            &train_y,
-            train_sc.as_ref(),
-            test_data,
-            scalar_test,
-        )?;
 
         for j in 0..n_test {
             if j < test_preds_fold.len() {
@@ -1259,8 +1303,9 @@ pub fn cv_conformal_regression(
 
 /// Cross-conformal (CV+) prediction sets for classification.
 ///
-/// The `fit_predict_probs` closure returns `(cal_probs, test_probs)` — vectors
-/// of class probability vectors.
+/// The `fit_predict_probs` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`,
+/// fits on `train_data`/`train_y`, and returns `Some((probs, _))` — probability vectors on
+/// `predict_data`. Only the first element of the tuple is used.
 pub fn cv_conformal_classification(
     data: &FdMatrix,
     y: &[usize],
@@ -1304,13 +1349,21 @@ pub fn cv_conformal_classification(
         let cal_data = subset_rows(data, &test_idx);
         let cal_sc = scalar_train.map(|sc| subset_rows(sc, &test_idx));
 
-        let (cal_probs, _) = fit_predict_probs(
+        // Single call: predict on combined [cal_data; test_data] to avoid double model fit
+        let n_cal_fold = cal_data.nrows();
+        let combined = vstack(&cal_data, test_data);
+        let combined_sc = vstack_opt(cal_sc.as_ref(), scalar_test);
+        let (all_probs, _) = fit_predict_probs(
             &train_data,
             &train_y,
             train_sc.as_ref(),
-            &cal_data,
-            cal_sc.as_ref(),
+            &combined,
+            combined_sc.as_ref(),
         )?;
+
+        // Split predictions: first n_cal_fold are calibration, rest are test
+        let cal_probs: Vec<Vec<f64>> = all_probs[..n_cal_fold].to_vec();
+        let test_probs: Vec<Vec<f64>> = all_probs[n_cal_fold..].to_vec();
 
         // Calibration scores
         let cal_true = subset_vec_usize(y, &test_idx);
@@ -1320,15 +1373,6 @@ pub fn cv_conformal_classification(
                 all_cal_scores[orig_i] = cal_scores[local_i];
             }
         }
-
-        // Test probabilities from this fold
-        let (_, test_probs) = fit_predict_probs(
-            &train_data,
-            &train_y,
-            train_sc.as_ref(),
-            test_data,
-            scalar_test,
-        )?;
 
         for j in 0..n_test.min(test_probs.len()) {
             for c in 0..n_classes.min(test_probs[j].len()) {
@@ -1451,14 +1495,27 @@ pub fn jackknife_plus_regression(
             .map(|i| test_preds_all[j][i] - loo_residuals[i])
             .collect();
         lower_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        lower[j] = quantile_sorted(&lower_vals, q_lo);
+        // Exact order statistic: ceil((n+1)*q) - 1 as 0-based index (Barber et al. 2021)
+        let lo_k = ((n + 1) as f64 * q_lo).ceil() as usize;
+        let lo_idx = if lo_k == 0 {
+            0
+        } else {
+            (lo_k - 1).min(n.saturating_sub(1))
+        };
+        lower[j] = lower_vals[lo_idx];
 
         // Upper bounds: ŷ_{-i}(x_test) + R_i
         let mut upper_vals: Vec<f64> = (0..n)
             .map(|i| test_preds_all[j][i] + loo_residuals[i])
             .collect();
         upper_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        upper[j] = quantile_sorted(&upper_vals, q_hi);
+        let hi_k = ((n + 1) as f64 * q_hi).ceil() as usize;
+        let hi_idx = if hi_k > n {
+            n.saturating_sub(1)
+        } else {
+            (hi_k - 1).min(n.saturating_sub(1))
+        };
+        upper[j] = upper_vals[hi_idx];
     }
 
     // Coverage on LOO (using mean prediction)
@@ -1591,14 +1648,20 @@ mod tests {
     #[test]
     fn test_prediction_sets_aps() {
         let probs = vec![0.7, 0.2, 0.1];
-        // quantile = 0.5 → threshold = 0.5: include classes until cumulative ≥ 0.5
+        // quantile = 0.5: include classes until cumulative ≥ 0.5
         // Sorted: [0(0.7), 1(0.2), 2(0.1)]. Cumulative: 0.7 ≥ 0.5 → {0}
         let set = aps_prediction_set(&probs, 0.5);
         assert_eq!(set, vec![0]);
 
-        // quantile = 0.15 → threshold = 0.85: need cumulative ≥ 0.85 → {0, 1}
-        let set = aps_prediction_set(&probs, 0.15);
+        // quantile = 0.85: include classes until cumulative ≥ 0.85
+        // Sorted: [0(0.7), 1(0.2), 2(0.1)]. 0.7 < 0.85, add 1: 0.9 ≥ 0.85 → {0, 1}
+        let set = aps_prediction_set(&probs, 0.85);
         assert_eq!(set, vec![0, 1]);
+
+        // quantile = 0.95: include classes until cumulative ≥ 0.95
+        // 0.7 < 0.95, 0.9 < 0.95, 1.0 ≥ 0.95 → {0, 1, 2}
+        let set = aps_prediction_set(&probs, 0.95);
+        assert_eq!(set, vec![0, 1, 2]);
     }
 
     // ── Regression integration tests ─────────────────────────────────────

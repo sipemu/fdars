@@ -6035,7 +6035,8 @@ fn validate_elastic_amp_changepoint() {
         result.changepoint, acp.detected_changepoint
     );
 
-    // CUSUM values: direct comparison (near-exact for simple sine data)
+    // CUSUM values: now use Simpson's quadrature weights (not uniform 1/m),
+    // so values differ from R's uniform-weight reference by ~2%. Use looser tolerance.
     assert_eq!(
         result.cusum_values.len(),
         acp.cusum_values.len(),
@@ -6047,14 +6048,14 @@ fn validate_elastic_amp_changepoint() {
         .zip(&acp.cusum_values)
         .enumerate()
     {
-        assert_relative_close(*rust_v, *r_v, 1e-4, &format!("cusum[{}]", k));
+        assert_relative_close(*rust_v, *r_v, 0.05, &format!("cusum[{}]", k));
     }
 
-    // Test statistic: direct comparison
+    // Test statistic: same tolerance as CUSUM
     assert_relative_close(
         result.test_statistic,
         acp.test_statistic,
-        1e-4,
+        0.05,
         "test_statistic",
     );
 

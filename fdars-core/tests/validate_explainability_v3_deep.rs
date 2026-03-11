@@ -552,17 +552,24 @@ fn shap_linear_with_scalar_covariates_still_efficient() {
 }
 
 #[test]
-fn shap_logistic_base_value_is_mean_probability() {
+fn shap_logistic_base_value_is_prediction_at_mean() {
     let (data, y_bin) = binary_data(80, 40, 42);
-    let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
+    let ncomp = 3;
+    let fit = functional_logistic(&data, &y_bin, None, ncomp, 25, 1e-6).unwrap();
     let shap = fdars_core::fpc_shap_values_logistic(&fit, &data, None, 200, 42).unwrap();
 
-    let mean_prob = fit.probabilities.iter().sum::<f64>() / 80.0;
+    // base_value should equal sigmoid(intercept + sum(coef_k * mean_score_k)),
+    // i.e., the model's prediction evaluated at the mean FPC scores.
+    let mut eta = fit.intercept;
+    for k in 0..ncomp {
+        eta += fit.coefficients[1 + k] * shap.mean_scores[k];
+    }
+    let expected_base = 1.0 / (1.0 + (-eta).exp());
     assert!(
-        (shap.base_value - mean_prob).abs() < 1e-10,
-        "Base value should equal mean probability: {} vs {}",
+        (shap.base_value - expected_base).abs() < 1e-10,
+        "Base value should equal prediction at mean features: {} vs {}",
         shap.base_value,
-        mean_prob
+        expected_base
     );
 }
 

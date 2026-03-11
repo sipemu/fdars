@@ -268,8 +268,11 @@ pub fn local_polynomial(
     kernel: &str,
 ) -> Vec<f64> {
     let n = x.len();
-    if n == 0 || y.len() != n || x_new.is_empty() || bandwidth <= 0.0 || degree == 0 {
+    if n == 0 || y.len() != n || x_new.is_empty() || bandwidth <= 0.0 {
         return vec![0.0; x_new.len()];
+    }
+    if degree == 0 {
+        return nadaraya_watson(x, y, x_new, bandwidth, kernel);
     }
 
     if degree == 1 {
@@ -819,9 +822,10 @@ mod tests {
 
     #[test]
     fn test_lp_invalid_input() {
-        // Zero degree
+        // Zero degree delegates to Nadaraya-Watson (not zeros)
         let result = local_polynomial(&[0.0, 1.0], &[1.0, 2.0], &[0.5], 0.1, 0, "gaussian");
-        assert_eq!(result, vec![0.0]);
+        let nw = nadaraya_watson(&[0.0, 1.0], &[1.0, 2.0], &[0.5], 0.1, "gaussian");
+        assert_eq!(result, nw);
 
         // Empty input
         let result = local_polynomial(&[], &[], &[0.5], 0.1, 2, "gaussian");

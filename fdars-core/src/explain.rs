@@ -1243,7 +1243,7 @@ pub fn fpc_shap_values_logistic(
         sigmoid(eta)
     };
 
-    let base_value = fit.probabilities.iter().sum::<f64>() / n as f64;
+    let base_value = predict_proba(&mean_scores, &mean_z);
     let mut values = FdMatrix::zeros(n, ncomp);
     let mut rng = StdRng::seed_from_u64(seed);
 
@@ -3841,7 +3841,7 @@ fn compute_coefficient_se(l: &[f64], mse: f64, p: usize) -> Vec<f64> {
         let mut ej = vec![0.0; p];
         ej[j] = 1.0;
         let v = cholesky_forward_back(l, &ej, p);
-        se[j] = (mse * v.iter().map(|vi| vi * vi).sum::<f64>().max(0.0)).sqrt();
+        se[j] = (mse * v[j].max(0.0)).sqrt();
     }
     se
 }
@@ -4100,6 +4100,8 @@ fn logistic_counterfactual_descent(
             return (current_scores, current_pred, true);
         }
         for k in 0..ncomp {
+            // Cross-entropy gradient: dL/ds_k = (p - target) * coef_k
+            // The sigmoid derivative p*(1-p) cancels with the cross-entropy denominator.
             let grad = (current_pred - target_class as f64) * coefficients[1 + k];
             current_scores[k] -= step_size * grad;
         }

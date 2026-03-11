@@ -338,10 +338,11 @@ fn qda_class_covariances(
     (0..g)
         .map(|c| {
             let members: Vec<usize> = (0..n).filter(|&i| labels[i] == c).collect();
-            let nc = members.len().max(1) as f64;
+            let nc = members.len();
+            let divisor = (nc.saturating_sub(1)).max(1) as f64;
             let mut cov = accumulate_class_cov(features, &members, &class_means[c], d);
             for v in cov.iter_mut() {
-                *v /= nc;
+                *v /= divisor;
             }
             for j in 0..d {
                 cov[j * d + j] += 1e-6;
@@ -978,7 +979,7 @@ fn fold_split(folds: &[usize], fold: usize) -> (Vec<usize>, Vec<usize>) {
 fn cv_fold_predict(
     train_data: &FdMatrix,
     test_data: &FdMatrix,
-    argvals: &[f64],
+    _argvals: &[f64],
     train_labels: &[usize],
     train_cov: Option<&FdMatrix>,
     _test_cov: Option<&FdMatrix>,
@@ -1007,16 +1008,8 @@ fn cv_fold_predict(
                 project_and_classify_knn(test_data, &fpca, train_labels, train_cov, ncomp, 5);
             Some(predictions)
         }
-        "kernel" => {
-            // For kernel, combine train+test and predict test subset
-            let result = fclassif_kernel(train_data, argvals, train_labels, train_cov, 0.0, 0.0)?;
-            // Simple: use same bandwidth to predict test
-            Some(vec![result.predicted[0]; test_data.nrows()]) // placeholder
-        }
-        "dd" => {
-            let result = fclassif_dd(train_data, train_labels, train_cov)?;
-            Some(vec![result.predicted[0]; test_data.nrows()])
-        }
+        // kernel and dd classifiers don't support out-of-sample prediction on new data
+        "kernel" | "dd" => None,
         _ => None,
     }
 }
@@ -1200,7 +1193,10 @@ pub fn fclassif_lda_fit(
         return None;
     }
 
-    let (features, mean, rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    // _fit variants use FPCA-only features (no covariates) so that stored
+    // dimensions are consistent with FpcPredictor::project() / predict_from_scores().
+    let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
+    let _ = covariates; // acknowledged but not used — see docstring
     let d = features.ncols();
     let (class_means, cov, priors) = lda_params(&features, &labels, g);
     let chol = cholesky_d(&cov, d)?;
@@ -1209,12 +1205,6 @@ pub fn fclassif_lda_fit(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    let fpca_scores = {
-        let actual_ncomp = features.ncols().min(ncomp);
-        let fpca = fdata_to_pc_1d(data, actual_ncomp)?;
-        fpca.scores
-    };
-
     Some(ClassifFit {
         result: ClassifResult {
             predicted,
@@ -1222,12 +1212,12 @@ pub fn fclassif_lda_fit(
             accuracy,
             confusion,
             n_classes: g,
-            ncomp: features.ncols().min(ncomp),
+            ncomp: d,
         },
-        fpca_mean: mean,
+        fpca_mean: mean.clone(),
         fpca_rotation: rotation,
-        fpca_scores,
-        ncomp: features.ncols().min(ncomp),
+        fpca_scores: features,
+        ncomp: d,
         method: ClassifMethod::Lda {
             class_means,
             cov_chol: chol,
@@ -1254,7 +1244,9 @@ pub fn fclassif_qda_fit(
         return None;
     }
 
-    let (features, mean, rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
+    let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
+    let _ = covariates;
     let (class_means, class_chols, class_log_dets, priors) =
         build_qda_params(&features, &labels, g)?;
 
@@ -1268,12 +1260,7 @@ pub fn fclassif_qda_fit(
     );
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
-
-    let fpca_scores = {
-        let actual_ncomp = features.ncols().min(ncomp);
-        let fpca = fdata_to_pc_1d(data, actual_ncomp)?;
-        fpca.scores
-    };
+    let d = features.ncols();
 
     Some(ClassifFit {
         result: ClassifResult {
@@ -1282,12 +1269,12 @@ pub fn fclassif_qda_fit(
             accuracy,
             confusion,
             n_classes: g,
-            ncomp: features.ncols().min(ncomp),
+            ncomp: d,
         },
-        fpca_mean: mean,
+        fpca_mean: mean.clone(),
         fpca_rotation: rotation,
-        fpca_scores,
-        ncomp: features.ncols().min(ncomp),
+        fpca_scores: features,
+        ncomp: d,
         method: ClassifMethod::Qda {
             class_means,
             class_chols,
@@ -1316,34 +1303,30 @@ pub fn fclassif_knn_fit(
         return None;
     }
 
-    let (features, mean, rotation) = build_feature_matrix(data, covariates, ncomp)?;
+    // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
+    let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
+    let _ = covariates;
     let d = features.ncols();
 
     let predicted = knn_predict_loo(&features, &labels, g, d, k_nn);
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    let fpca_scores = {
-        let actual_ncomp = features.ncols().min(ncomp);
-        let fpca = fdata_to_pc_1d(data, actual_ncomp)?;
-        fpca.scores
-    };
-
     Some(ClassifFit {
         result: ClassifResult {
-            predicted: predicted.clone(),
+            predicted,
             probabilities: None,
             accuracy,
             confusion,
             n_classes: g,
-            ncomp: d.min(ncomp),
+            ncomp: d,
         },
-        fpca_mean: mean,
+        fpca_mean: mean.clone(),
         fpca_rotation: rotation,
-        fpca_scores: fpca_scores.clone(),
-        ncomp: d.min(ncomp),
+        fpca_scores: features.clone(),
+        ncomp: d,
         method: ClassifMethod::Knn {
-            training_scores: fpca_scores,
+            training_scores: features,
             training_labels: labels,
             k: k_nn,
             n_classes: g,

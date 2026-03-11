@@ -508,13 +508,24 @@ pub fn hilbert_transform(signal: &[f64]) -> Vec<Complex<f64>> {
     fft_forward.process(&mut buffer);
 
     // Create analytic signal in frequency domain
-    // H[0] = 1, H[1..n/2] = 2, H[n/2] = 1 (if n even), H[n/2+1..] = 0
+    // H[0] = 1 (DC), positive freqs = 2, Nyquist = 1 (even only), negative freqs = 0
     let half = n / 2;
-    for k in 1..half {
-        buffer[k] *= 2.0;
-    }
-    for k in (half + 1)..n {
-        buffer[k] = Complex::new(0.0, 0.0);
+    if n % 2 == 0 {
+        // Even: bins 1..half-1 get 2, bin half (Nyquist) stays 1, rest 0
+        for k in 1..half {
+            buffer[k] *= 2.0;
+        }
+        for k in (half + 1)..n {
+            buffer[k] = Complex::new(0.0, 0.0);
+        }
+    } else {
+        // Odd: bins 1..=half get 2, rest 0 (no Nyquist bin)
+        for k in 1..=half {
+            buffer[k] *= 2.0;
+        }
+        for k in (half + 1)..n {
+            buffer[k] = Complex::new(0.0, 0.0);
+        }
     }
 
     // Inverse FFT
@@ -3513,8 +3524,18 @@ pub fn lomb_scargle(
     nyquist_factor: Option<f64>,
 ) -> LombScargleResult {
     let n = times.len();
-    assert_eq!(n, values.len(), "times and values must have same length");
-    assert!(n >= 3, "Need at least 3 data points");
+    if n != values.len() || n < 3 {
+        return LombScargleResult {
+            frequencies: vec![],
+            periods: vec![],
+            power: vec![],
+            peak_period: f64::NAN,
+            peak_frequency: f64::NAN,
+            peak_power: f64::NAN,
+            false_alarm_probability: f64::NAN,
+            significance: f64::NAN,
+        };
+    }
 
     // Compute mean and variance
     let mean_y: f64 = values.iter().sum::<f64>() / n as f64;
@@ -3809,11 +3830,17 @@ pub fn matrix_profile(
         default_m.max(4).min(n / 2)
     });
 
-    assert!(m >= 3, "Subsequence length must be at least 3");
-    assert!(
-        m <= n / 2,
-        "Subsequence length must be at most half the series length"
-    );
+    if m < 3 || m > n / 2 {
+        return MatrixProfileResult {
+            profile: vec![],
+            profile_index: vec![],
+            subsequence_length: m,
+            detected_periods: vec![],
+            arc_counts: vec![],
+            primary_period: f64::NAN,
+            confidence: 0.0,
+        };
+    }
 
     let exclusion_zone = exclusion_zone.unwrap_or(0.5);
     let exclusion_radius = (m as f64 * exclusion_zone).ceil() as usize;

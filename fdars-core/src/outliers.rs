@@ -141,7 +141,7 @@ pub fn outliers_threshold_lrt_with_dist(
     // Run bootstrap iterations in parallel
     let max_dists: Vec<f64> = iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = StdRng::seed_from_u64(seed.wrapping_add(b as u64));
 
             // Resample with replacement and add smoothing noise
             let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();

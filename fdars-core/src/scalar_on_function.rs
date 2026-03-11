@@ -14,6 +14,7 @@
 //! - [`functional_logistic`]: Logistic regression for binary outcomes
 //! - [`fregre_cv`]: Cross-validation for number of FPC components
 
+use crate::cv::create_folds;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc_1d, FpcaResult};
@@ -470,76 +471,46 @@ fn copy_rows(dst: &mut FdMatrix, src: &FdMatrix, src_rows: &[usize]) {
     }
 }
 
-/// Split data into train/test for a given fold.
-fn cv_split_fold(
-    data: &FdMatrix,
-    y: &[f64],
-    scalar_covariates: Option<&FdMatrix>,
-    test_start: usize,
-    test_end: usize,
-) -> (
-    FdMatrix,
-    Vec<f64>,
-    FdMatrix,
-    Vec<f64>,
-    Option<FdMatrix>,
-    Option<FdMatrix>,
-) {
-    let n = data.nrows();
-    let ncols = data.ncols();
-
-    let train_idx: Vec<usize> = (0..test_start).chain(test_end..n).collect();
-    let test_idx: Vec<usize> = (test_start..test_end).collect();
-
-    let mut train_data = FdMatrix::zeros(train_idx.len(), ncols);
-    let mut test_data = FdMatrix::zeros(test_idx.len(), ncols);
-    copy_rows(&mut train_data, data, &train_idx);
-    copy_rows(&mut test_data, data, &test_idx);
-
-    let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
-    let test_y: Vec<f64> = test_idx.iter().map(|&i| y[i]).collect();
-
-    let train_sc = scalar_covariates.map(|sc| {
-        let mut m = FdMatrix::zeros(train_idx.len(), sc.ncols());
-        copy_rows(&mut m, sc, &train_idx);
-        m
-    });
-    let test_sc = scalar_covariates.map(|sc| {
-        let mut m = FdMatrix::zeros(test_idx.len(), sc.ncols());
-        copy_rows(&mut m, sc, &test_idx);
-        m
-    });
-
-    (train_data, train_y, test_data, test_y, train_sc, test_sc)
-}
-
-/// Compute CV error for a single K across all folds.
+/// Compute CV error for a single K across all folds (randomized assignment).
 fn cv_error_for_k(
     data: &FdMatrix,
     y: &[f64],
     scalar_covariates: Option<&FdMatrix>,
     k: usize,
     n_folds: usize,
+    folds: &[usize],
 ) -> Option<f64> {
     let n = data.nrows();
-    let fold_size = n / n_folds;
+    let ncols = data.ncols();
     let mut total_error = 0.0;
     let mut count = 0;
 
     for fold in 0..n_folds {
-        let test_start = fold * fold_size;
-        let test_end = if fold == n_folds - 1 {
-            n
-        } else {
-            test_start + fold_size
-        };
-        let n_test = test_end - test_start;
-        if n - n_test < k + 2 {
+        let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
+        let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
+        let n_test = test_idx.len();
+        if n_test == 0 || train_idx.len() < k + 2 {
             continue;
         }
 
-        let (train_data, train_y, test_data, test_y, train_sc, test_sc) =
-            cv_split_fold(data, y, scalar_covariates, test_start, test_end);
+        let mut train_data = FdMatrix::zeros(train_idx.len(), ncols);
+        let mut test_data = FdMatrix::zeros(n_test, ncols);
+        copy_rows(&mut train_data, data, &train_idx);
+        copy_rows(&mut test_data, data, &test_idx);
+
+        let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+        let test_y: Vec<f64> = test_idx.iter().map(|&i| y[i]).collect();
+
+        let train_sc = scalar_covariates.map(|sc| {
+            let mut m = FdMatrix::zeros(train_idx.len(), sc.ncols());
+            copy_rows(&mut m, sc, &train_idx);
+            m
+        });
+        let test_sc = scalar_covariates.map(|sc| {
+            let mut m = FdMatrix::zeros(n_test, sc.ncols());
+            copy_rows(&mut m, sc, &test_idx);
+            m
+        });
 
         let fit = match fregre_lm(&train_data, &train_y, train_sc.as_ref(), k) {
             Some(f) => f,
@@ -589,11 +560,14 @@ pub fn fregre_cv(
 
     let k_max = k_max.min(n - 2).min(data.ncols());
 
+    // Use randomized fold assignment (consistent seed for reproducibility)
+    let folds = create_folds(n, n_folds, 42);
+
     let mut k_values = Vec::new();
     let mut cv_errors = Vec::new();
 
     for k in k_min..=k_max {
-        if let Some(err) = cv_error_for_k(data, y, scalar_covariates, k, n_folds) {
+        if let Some(err) = cv_error_for_k(data, y, scalar_covariates, k, n_folds, &folds) {
             k_values.push(k);
             cv_errors.push(err);
         }
@@ -1470,7 +1444,7 @@ pub fn fregre_basis_cv(
             let n_test = test_idx.len();
             let k = train_coefs.ncols();
 
-            // Simple OLS: (X'X + lam*I) \ X'y
+            // Penalized OLS: (X'X + lam*P) \ X'y
             let mut xtx = vec![0.0; k * k];
             let mut xty_vec = vec![0.0; k];
             for i in 0..n_train {
@@ -1481,9 +1455,11 @@ pub fn fregre_basis_cv(
                     }
                 }
             }
-            // Add ridge
+            // Add roughness penalty: lam * P (not ridge lam * I)
             for j in 0..k {
-                xtx[j * k + j] += lam;
+                for l in 0..k {
+                    xtx[j * k + l] += lam * penalty[j * k + l];
+                }
             }
 
             // Solve via Gaussian elimination
