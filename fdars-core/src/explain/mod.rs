@@ -103,7 +103,7 @@ pub use advanced::{
 // ===========================================================================
 
 pub(crate) use helpers::{
-    accumulate_kernel_shap_sample, anchor_beam_search, build_coalition_scores,
+    accumulate_kernel_shap_sample, anchor_beam_search,
     build_stability_result, clone_scores_matrix, compute_ale, compute_column_means,
     compute_conditioning_bins, compute_domain_selection, compute_h_squared, compute_kernel_mean,
     compute_lime, compute_mean_scalar, compute_saliency_map, compute_sobol_component,

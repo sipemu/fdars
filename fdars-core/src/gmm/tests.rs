@@ -2,6 +2,7 @@ use super::cluster::run_multiple_inits;
 use super::em::count_params;
 use super::init::build_features;
 use super::*;
+use crate::basis::projection::ProjectionBasisType;
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 use std::f64::consts::PI;
@@ -36,7 +37,7 @@ fn generate_two_clusters(n_per: usize, m: usize) -> (FdMatrix, Vec<f64>) {
 #[test]
 fn test_gmm_em_basic() {
     let (data, t) = generate_two_clusters(15, 50);
-    let features = build_features(&data, &t, None, 8, 0, 1.0).expect("Feature extraction failed");
+    let features = build_features(&data, &t, None, 8, ProjectionBasisType::Bspline, 1.0).expect("Feature extraction failed");
     let result = gmm_em(&features.0, 2, CovType::Full, 100, 1e-6, 42).unwrap();
 
     assert_eq!(result.cluster.len(), 30);
@@ -89,7 +90,7 @@ fn test_gmm_em_finds_clusters() {
 #[test]
 fn test_gmm_em_diagonal_covariance() {
     let (data, t) = generate_two_clusters(15, 50);
-    let (features, _d) = build_features(&data, &t, None, 8, 0, 1.0).unwrap();
+    let (features, _d) = build_features(&data, &t, None, 8, ProjectionBasisType::Bspline, 1.0).unwrap();
 
     let result = gmm_em(&features, 2, CovType::Diagonal, 100, 1e-6, 42).unwrap();
     assert_eq!(result.cluster.len(), 30);
@@ -103,7 +104,7 @@ fn test_gmm_em_diagonal_covariance() {
 #[test]
 fn test_gmm_membership_sums_to_one() {
     let (data, t) = generate_two_clusters(10, 50);
-    let (features, _d) = build_features(&data, &t, None, 6, 0, 1.0).unwrap();
+    let (features, _d) = build_features(&data, &t, None, 6, ProjectionBasisType::Bspline, 1.0).unwrap();
 
     let result = gmm_em(&features, 2, CovType::Full, 100, 1e-6, 42).unwrap();
 
@@ -122,7 +123,7 @@ fn test_gmm_membership_sums_to_one() {
 #[test]
 fn test_gmm_bic_icl_finite() {
     let (data, t) = generate_two_clusters(10, 50);
-    let (features, _d) = build_features(&data, &t, None, 6, 0, 1.0).unwrap();
+    let (features, _d) = build_features(&data, &t, None, 6, ProjectionBasisType::Bspline, 1.0).unwrap();
 
     let result = gmm_em(&features, 2, CovType::Full, 100, 1e-6, 42).unwrap();
 
@@ -213,7 +214,7 @@ fn test_predict_gmm() {
     let n_per = 15;
     let (data, t) = generate_two_clusters(n_per, 50);
     let nbasis = 8;
-    let basis_type = 0;
+    let basis_type = ProjectionBasisType::Bspline;
 
     let result = gmm_cluster(
         &data,
@@ -277,7 +278,7 @@ fn test_gmm_em_invalid_input() {
 #[test]
 fn test_gmm_deterministic() {
     let (data, t) = generate_two_clusters(10, 50);
-    let (features, _d) = build_features(&data, &t, None, 6, 0, 1.0).unwrap();
+    let (features, _d) = build_features(&data, &t, None, 6, ProjectionBasisType::Bspline, 1.0).unwrap();
 
     let r1 = gmm_em(&features, 2, CovType::Full, 100, 1e-6, 42).unwrap();
     let r2 = gmm_em(&features, 2, CovType::Full, 100, 1e-6, 42).unwrap();
@@ -297,7 +298,7 @@ fn test_count_params() {
 #[test]
 fn test_gmm_k1() {
     let (data, t) = generate_two_clusters(10, 50);
-    let (features, _d) = build_features(&data, &t, None, 6, 0, 1.0).unwrap();
+    let (features, _d) = build_features(&data, &t, None, 6, ProjectionBasisType::Bspline, 1.0).unwrap();
 
     let result = gmm_em(&features, 1, CovType::Full, 100, 1e-6, 42).unwrap();
     assert!(result.cluster.iter().all(|&c| c == 0));
@@ -307,7 +308,7 @@ fn test_gmm_k1() {
 #[test]
 fn test_gmm_weights_sum_to_one() {
     let (data, t) = generate_two_clusters(10, 50);
-    let (features, _d) = build_features(&data, &t, None, 6, 0, 1.0).unwrap();
+    let (features, _d) = build_features(&data, &t, None, 6, ProjectionBasisType::Bspline, 1.0).unwrap();
 
     let result = gmm_em(&features, 3, CovType::Diagonal, 100, 1e-6, 42).unwrap();
     let sum: f64 = result.weights.iter().sum();

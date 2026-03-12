@@ -2,7 +2,8 @@
 
 use super::covariance::compute_covariances;
 use super::CovType;
-use crate::basis::fdata_to_basis_1d;
+use crate::basis::projection::ProjectionBasisType;
+use crate::basis::fdata_to_basis;
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 
@@ -17,11 +18,11 @@ pub(super) fn build_features(
     argvals: &[f64],
     covariates: Option<&FdMatrix>,
     nbasis: usize,
-    basis_type: i32,
+    basis_type: ProjectionBasisType,
     cov_weight: f64,
 ) -> Option<(Vec<Vec<f64>>, usize)> {
     let n = data.nrows();
-    let proj = fdata_to_basis_1d(data, argvals, nbasis, basis_type)?;
+    let proj = fdata_to_basis(data, argvals, nbasis, basis_type)?;
     let coef = &proj.coefficients;
     let d_basis = coef.ncols();
 

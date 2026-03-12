@@ -1059,4 +1059,234 @@ mod tests {
             assert!(k >= 1);
         }
     }
+
+    // ============== Tricube kernel tests ==============
+
+    #[test]
+    fn test_tricube_kernel_values() {
+        // At u=0, tricube should be 1.0
+        let k0 = tricube_kernel(0.0);
+        assert!((k0 - 1.0).abs() < 1e-10, "tricube(0) should be 1.0");
+
+        // At |u| >= 1, tricube should be 0.0
+        assert_eq!(tricube_kernel(1.0), 0.0, "tricube(1) should be 0");
+        assert_eq!(tricube_kernel(-1.0), 0.0, "tricube(-1) should be 0");
+        assert_eq!(tricube_kernel(2.0), 0.0, "tricube(2) should be 0");
+
+        // At u=0.5, should be positive and less than 1
+        let k05 = tricube_kernel(0.5);
+        assert!(k05 > 0.0 && k05 < 1.0, "tricube(0.5) should be in (0, 1)");
+    }
+
+    #[test]
+    fn test_nw_tricube_constant_data() {
+        let x = uniform_grid(20);
+        let y = vec![5.0; 20];
+
+        let y_smooth = nadaraya_watson(&x, &y, &x, 0.2, "tricube");
+
+        for &yi in &y_smooth {
+            assert!(
+                (yi - 5.0).abs() < 0.1,
+                "Tricube NW: constant data should remain constant"
+            );
+        }
+    }
+
+    #[test]
+    fn test_nw_tricube_linear_data() {
+        let x = uniform_grid(50);
+        let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
+
+        let y_smooth = nadaraya_watson(&x, &y, &x, 0.2, "tricube");
+
+        // Interior points should be approximately correct
+        for i in 10..40 {
+            let expected = 2.0 * x[i] + 1.0;
+            assert!(
+                (y_smooth[i] - expected).abs() < 0.3,
+                "Tricube NW: linear trend should be approximately preserved at i={i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_nw_tricube_vs_gaussian() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin())
+            .collect();
+
+        let y_gauss = nadaraya_watson(&x, &y, &x, 0.15, "gaussian");
+        let y_tri = nadaraya_watson(&x, &y, &x, 0.15, "tricube");
+
+        assert_eq!(y_gauss.len(), y_tri.len());
+
+        // Both should produce valid output
+        assert!(y_tri.iter().all(|v| v.is_finite()));
+
+        // They should be different
+        let diff: f64 = y_gauss
+            .iter()
+            .zip(&y_tri)
+            .map(|(a, b)| (a - b).abs())
+            .sum();
+        assert!(
+            diff > 0.0,
+            "Gaussian and tricube kernels should give different results"
+        );
+    }
+
+    #[test]
+    fn test_nw_tricube_vs_epanechnikov() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin())
+            .collect();
+
+        let y_epan = nadaraya_watson(&x, &y, &x, 0.15, "epanechnikov");
+        let y_tri = nadaraya_watson(&x, &y, &x, 0.15, "tricube");
+
+        // Both compact support kernels should produce finite output
+        assert!(y_epan.iter().all(|v| v.is_finite()));
+        assert!(y_tri.iter().all(|v| v.is_finite()));
+
+        // Should differ since kernel shapes are different
+        let diff: f64 = y_epan
+            .iter()
+            .zip(&y_tri)
+            .map(|(a, b)| (a - b).abs())
+            .sum();
+        assert!(
+            diff > 0.0,
+            "Epanechnikov and tricube should give different results"
+        );
+    }
+
+    #[test]
+    fn test_ll_tricube_constant_data() {
+        let x = uniform_grid(20);
+        let y = vec![3.0; 20];
+
+        let y_smooth = local_linear(&x, &y, &x, 0.2, "tricube");
+
+        for &yi in &y_smooth {
+            assert!(
+                (yi - 3.0).abs() < 0.1,
+                "Tricube LL: constant should remain constant"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ll_tricube_linear_data() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| 3.0 * xi + 2.0).collect();
+
+        let y_smooth = local_linear(&x, &y, &x, 0.2, "tricube");
+
+        // Local linear should fit linear data well in the interior
+        for i in 5..25 {
+            let expected = 3.0 * x[i] + 2.0;
+            assert!(
+                (y_smooth[i] - expected).abs() < 0.2,
+                "Tricube LL: should fit linear data well at i={i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ll_tricube_vs_gaussian() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+
+        let y_gauss = local_linear(&x, &y, &x, 0.15, "gaussian");
+        let y_tri = local_linear(&x, &y, &x, 0.15, "tricube");
+
+        assert_eq!(y_gauss.len(), y_tri.len());
+        assert!(y_tri.iter().all(|v| v.is_finite()));
+
+        let diff: f64 = y_gauss
+            .iter()
+            .zip(&y_tri)
+            .map(|(a, b)| (a - b).abs())
+            .sum();
+        assert!(
+            diff > 0.0,
+            "Gaussian and tricube local linear should differ"
+        );
+    }
+
+    #[test]
+    fn test_lp_tricube_quadratic() {
+        let x = uniform_grid(40);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+
+        let y_smooth = local_polynomial(&x, &y, &x, 0.15, 2, "tricube");
+
+        // Local quadratic with tricube should fit well in interior
+        for i in 8..32 {
+            let expected = x[i] * x[i];
+            assert!(
+                (y_smooth[i] - expected).abs() < 0.15,
+                "Tricube LP: should fit quadratic data at i={i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_kernel_tricube_aliases() {
+        // "tricube" and "tri-cube" should both resolve to the tricube kernel
+        let k1 = get_kernel("tricube");
+        let k2 = get_kernel("tri-cube");
+
+        let test_val = 0.5;
+        assert!(
+            (k1(test_val) - k2(test_val)).abs() < 1e-15,
+            "Both tricube aliases should give the same result"
+        );
+    }
+
+    #[test]
+    fn test_smoothing_matrix_tricube() {
+        let x = uniform_grid(10);
+        let s = smoothing_matrix_nw(&x, 0.2, "tricube");
+
+        assert_eq!(s.len(), 100);
+
+        // Each row should sum to 1 (row stochastic)
+        for i in 0..10 {
+            let row_sum: f64 = (0..10).map(|j| s[i + j * 10]).sum();
+            assert!(
+                (row_sum - 1.0).abs() < 1e-10,
+                "Tricube: row {} should sum to 1, got {}",
+                i,
+                row_sum
+            );
+        }
+    }
+
+    #[test]
+    fn test_cv_smoother_tricube() {
+        let x = uniform_grid(30);
+        let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
+        let cv = cv_smoother(&x, &y, 0.2, "tricube");
+        assert!(cv.is_finite());
+        assert!(cv >= 0.0);
+    }
+
+    #[test]
+    fn test_optim_bandwidth_tricube() {
+        let x = uniform_grid(25);
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin())
+            .collect();
+
+        let result = optim_bandwidth(&x, &y, None, CvCriterion::Gcv, "tricube", 20);
+        assert!(result.h_opt > 0.0);
+        assert!(result.value.is_finite());
+    }
 }

@@ -5,7 +5,7 @@ use crate::matrix::FdMatrix;
 use super::compute_mean_curve;
 
 /// Result of Lomb-Scargle periodogram analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LombScargleResult {
     /// Test frequencies
     pub frequencies: Vec<f64>,

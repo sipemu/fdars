@@ -8,7 +8,7 @@ use crate::helpers::{cumulative_trapz, l2_distance, simpsons_weights};
 use crate::matrix::{FdCurveSet, FdMatrix};
 
 /// Result of aligning multidimensional (R^d) curves.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlignmentResultNd {
     /// Optimal warping function (length m), same for all dimensions.
     pub gamma: Vec<f64>,

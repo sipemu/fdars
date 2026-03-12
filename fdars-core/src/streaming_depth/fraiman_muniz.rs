@@ -14,7 +14,7 @@ use super::StreamingDepth;
 /// time point: Fn(x) = #{ref <= x} / N.
 ///
 /// Per-query complexity: **O(T x log N)** instead of O(T x N).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamingFraimanMuniz {
     state: SortedReferenceState,
     scale: bool,

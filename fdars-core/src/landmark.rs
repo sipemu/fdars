@@ -28,7 +28,7 @@ pub enum LandmarkKind {
 }
 
 /// A detected landmark on a curve.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Landmark {
     /// Position on the domain (t-value).
     pub position: f64,
@@ -41,7 +41,7 @@ pub struct Landmark {
 }
 
 /// Result of landmark registration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LandmarkResult {
     /// Registered (aligned) curves (n × m).
     pub registered: FdMatrix,

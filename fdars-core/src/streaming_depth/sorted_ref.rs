@@ -9,7 +9,7 @@ use rayon::iter::ParallelIterator;
 ///
 /// Constructed once from a column-major reference matrix and then shared
 /// (immutably) by any number of streaming depth estimators.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SortedReferenceState {
     /// `sorted_columns[t]` contains the reference values at time point `t`, sorted ascending.
     pub(crate) sorted_columns: Vec<Vec<f64>>,

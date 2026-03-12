@@ -166,7 +166,7 @@ mod types {
     }
 
     /// Result of peak timing variability analysis.
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct PeakTimingResult {
         /// Peak times for each cycle
         pub peak_times: Vec<f64>,

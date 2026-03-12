@@ -8,7 +8,7 @@ use crate::matrix::FdMatrix;
 use crate::warping::normalize_warp;
 
 /// Result of landmark-constrained elastic alignment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConstrainedAlignmentResult {
     /// Optimal warping function (length m).
     pub gamma: Vec<f64>,

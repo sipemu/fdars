@@ -99,7 +99,11 @@ pub(crate) fn knn_predict_loo(
                     (d_sq, labels[j])
                 })
                 .collect();
-            dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            if k_nn > 0 && k_nn < dists.len() {
+                dists.select_nth_unstable_by(k_nn - 1, |a, b| {
+                    a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
 
             // Majority vote among k nearest
             let mut votes = vec![0usize; g];

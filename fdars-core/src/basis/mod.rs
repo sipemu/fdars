@@ -22,5 +22,8 @@ pub use auto_select::{select_basis_auto_1d, BasisAutoSelectionResult, SingleCurv
 pub use bspline::bspline_basis;
 pub use fourier::{fourier_basis, fourier_basis_with_period};
 pub use fourier_fit::{fourier_fit_1d, select_fourier_nbasis_gcv, FourierFitResult};
-pub use projection::{basis_to_fdata_1d, fdata_to_basis_1d, BasisProjectionResult};
+pub use projection::{
+    basis_to_fdata, basis_to_fdata_1d, fdata_to_basis, fdata_to_basis_1d,
+    BasisProjectionResult, ProjectionBasisType,
+};
 pub use pspline::{difference_matrix, pspline_fit_1d, PsplineFitResult};

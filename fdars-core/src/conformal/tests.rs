@@ -325,3 +325,311 @@ fn test_alpha_affects_interval_width() {
     // Wider alpha -> narrower intervals (lower quantile)
     assert!(r1.residual_quantile >= r2.residual_quantile);
 }
+
+// -- Elastic conformal regression tests ────────────────────────────────
+
+fn make_elastic_test_data(
+    n: usize,
+    m: usize,
+    seed: u64,
+) -> (FdMatrix, Vec<f64>, FdMatrix, Vec<f64>) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+    let mut y = vec![0.0; n];
+    for i in 0..n {
+        let amp = 1.0 + 0.5 * (i as f64 / n as f64);
+        let shift = 0.1 * rng.gen::<f64>();
+        for j in 0..m {
+            data[(i, j)] = amp * (2.0 * PI * (argvals[j] + shift)).sin()
+                + 0.05 * rng.gen::<f64>();
+        }
+        y[i] = amp + 0.1 * rng.gen::<f64>();
+    }
+    let n_test = 5;
+    let mut test_data = FdMatrix::zeros(n_test, m);
+    for i in 0..n_test {
+        let amp = 1.0 + 0.3 * rng.gen::<f64>();
+        let shift = 0.1 * rng.gen::<f64>();
+        for j in 0..m {
+            test_data[(i, j)] = amp * (2.0 * PI * (argvals[j] + shift)).sin()
+                + 0.05 * rng.gen::<f64>();
+        }
+    }
+    (data, y, test_data, argvals)
+}
+
+fn make_elastic_classif_data(
+    n: usize,
+    m: usize,
+    seed: u64,
+) -> (FdMatrix, Vec<i8>, FdMatrix, Vec<f64>) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+    let mut y = vec![0_i8; n];
+    for i in 0..n {
+        let label = if i < n / 2 { -1_i8 } else { 1_i8 };
+        y[i] = label;
+        let amp = if label == 1 { 2.0 } else { 1.0 };
+        for j in 0..m {
+            data[(i, j)] = amp * (2.0 * PI * argvals[j]).sin() + 0.1 * rng.gen::<f64>();
+        }
+    }
+    let n_test = 4;
+    let mut test_data = FdMatrix::zeros(n_test, m);
+    for i in 0..n_test {
+        let amp = if i < 2 { 1.0 } else { 2.0 };
+        for j in 0..m {
+            test_data[(i, j)] = amp * (2.0 * PI * argvals[j]).sin() + 0.1 * rng.gen::<f64>();
+        }
+    }
+    (data, y, test_data, argvals)
+}
+
+#[test]
+fn test_conformal_elastic_regression_basic() {
+    let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    let r = conformal_elastic_regression(
+        &data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 0.1, 42,
+    )
+    .unwrap();
+    assert_eq!(r.predictions.len(), 5);
+    assert_eq!(r.lower.len(), 5);
+    assert_eq!(r.upper.len(), 5);
+    for i in 0..5 {
+        assert!(
+            r.upper[i] > r.lower[i],
+            "Interval must have positive width at index {i}"
+        );
+        assert!(r.predictions[i].is_finite());
+    }
+    assert!(r.coverage >= 0.0 && r.coverage <= 1.0);
+    assert!(!r.calibration_scores.is_empty());
+}
+
+#[test]
+fn test_conformal_elastic_regression_dimension_mismatch_y() {
+    let (data, _y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    let wrong_y = vec![1.0; 10]; // wrong length
+    let result = conformal_elastic_regression(
+        &data, &wrong_y, &test_data, &argvals, 10, 1e-3, 0.3, 0.1, 42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_regression_dimension_mismatch_cols() {
+    let (data, y, _test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    let bad_test = FdMatrix::zeros(3, 30); // different ncols
+    let result = conformal_elastic_regression(
+        &data, &y, &bad_test, &argvals, 10, 1e-3, 0.3, 0.1, 42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_regression_too_few_obs() {
+    let data = FdMatrix::zeros(3, 10);
+    let y = vec![1.0; 3];
+    let test = FdMatrix::zeros(2, 10);
+    let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+    let result = conformal_elastic_regression(
+        &data, &y, &test, &argvals, 5, 1e-3, 0.3, 0.1, 42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_regression_invalid_alpha() {
+    let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    assert!(conformal_elastic_regression(
+        &data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 0.0, 42
+    )
+    .is_err());
+    assert!(conformal_elastic_regression(
+        &data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 1.0, 42
+    )
+    .is_err());
+}
+
+#[test]
+fn test_conformal_elastic_regression_invalid_cal_fraction() {
+    let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    assert!(conformal_elastic_regression(
+        &data, &y, &test_data, &argvals, 10, 1e-3, 0.0, 0.1, 42
+    )
+    .is_err());
+    assert!(conformal_elastic_regression(
+        &data, &y, &test_data, &argvals, 10, 1e-3, 1.0, 0.1, 42
+    )
+    .is_err());
+}
+
+#[test]
+fn test_conformal_elastic_pcr_basic() {
+    use crate::elastic_regression::PcaMethod;
+    let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    let r = conformal_elastic_pcr(
+        &data,
+        &y,
+        &test_data,
+        &argvals,
+        2,
+        PcaMethod::Vertical,
+        0.0,
+        0.3,
+        0.1,
+        42,
+    )
+    .unwrap();
+    assert_eq!(r.predictions.len(), 5);
+    assert_eq!(r.lower.len(), 5);
+    assert_eq!(r.upper.len(), 5);
+    for i in 0..5 {
+        assert!(r.upper[i] > r.lower[i]);
+        assert!(r.predictions[i].is_finite());
+    }
+    assert!(r.coverage >= 0.0 && r.coverage <= 1.0);
+}
+
+#[test]
+fn test_conformal_elastic_pcr_dimension_mismatch() {
+    use crate::elastic_regression::PcaMethod;
+    let (data, y, _test, argvals) = make_elastic_test_data(20, 51, 42);
+    let bad_test = FdMatrix::zeros(3, 30);
+    let result = conformal_elastic_pcr(
+        &data,
+        &y,
+        &bad_test,
+        &argvals,
+        2,
+        PcaMethod::Vertical,
+        0.0,
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_pcr_y_length_mismatch() {
+    use crate::elastic_regression::PcaMethod;
+    let (data, _y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
+    let wrong_y = vec![1.0; 5];
+    let result = conformal_elastic_pcr(
+        &data,
+        &wrong_y,
+        &test_data,
+        &argvals,
+        2,
+        PcaMethod::Vertical,
+        0.0,
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_logistic_basic() {
+    let (data, y, test_data, argvals) = make_elastic_classif_data(20, 51, 42);
+    let r = conformal_elastic_logistic(
+        &data,
+        &y,
+        &test_data,
+        &argvals,
+        1e-2,
+        ClassificationScore::Lac,
+        0.3,
+        0.1,
+        42,
+    )
+    .unwrap();
+    assert_eq!(r.prediction_sets.len(), 4);
+    for set in &r.prediction_sets {
+        assert!(!set.is_empty());
+        assert!(set.len() <= 2, "Binary classification: set size at most 2");
+    }
+    assert!(r.average_set_size >= 1.0);
+    assert!(r.coverage >= 0.0 && r.coverage <= 1.0);
+}
+
+#[test]
+fn test_conformal_elastic_logistic_aps() {
+    let (data, y, test_data, argvals) = make_elastic_classif_data(20, 51, 42);
+    let r = conformal_elastic_logistic(
+        &data,
+        &y,
+        &test_data,
+        &argvals,
+        1e-2,
+        ClassificationScore::Aps,
+        0.3,
+        0.1,
+        42,
+    )
+    .unwrap();
+    assert_eq!(r.prediction_sets.len(), 4);
+    for set in &r.prediction_sets {
+        assert!(!set.is_empty());
+    }
+}
+
+#[test]
+fn test_conformal_elastic_logistic_dimension_mismatch() {
+    let (data, y, _test, argvals) = make_elastic_classif_data(20, 51, 42);
+    let bad_test = FdMatrix::zeros(2, 30);
+    let result = conformal_elastic_logistic(
+        &data,
+        &y,
+        &bad_test,
+        &argvals,
+        1e-2,
+        ClassificationScore::Lac,
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_logistic_y_length_mismatch() {
+    let (data, _y, test_data, argvals) = make_elastic_classif_data(20, 51, 42);
+    let wrong_y = vec![1_i8; 5];
+    let result = conformal_elastic_logistic(
+        &data,
+        &wrong_y,
+        &test_data,
+        &argvals,
+        1e-2,
+        ClassificationScore::Lac,
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_conformal_elastic_logistic_too_few_obs() {
+    let data = FdMatrix::zeros(3, 10);
+    let y = vec![1_i8, -1, 1];
+    let test = FdMatrix::zeros(2, 10);
+    let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+    let result = conformal_elastic_logistic(
+        &data,
+        &y,
+        &test,
+        &argvals,
+        1e-2,
+        ClassificationScore::Lac,
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}

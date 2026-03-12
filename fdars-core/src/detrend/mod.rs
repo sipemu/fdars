@@ -138,4 +138,4 @@ pub use diff::detrend_diff;
 pub use linear::detrend_linear;
 pub use loess::detrend_loess;
 pub use polynomial::detrend_polynomial;
-pub use stl::{stl_decompose, stl_fdata, StlResult};
+pub use stl::{stl_decompose, stl_decompose_with_config, stl_fdata, StlConfig, StlResult};

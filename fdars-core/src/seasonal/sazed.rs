@@ -6,7 +6,7 @@ use super::{
 };
 
 /// Result of SAZED ensemble period detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SazedResult {
     /// Primary detected period (consensus from ensemble)
     pub period: f64,
@@ -19,7 +19,7 @@ pub struct SazedResult {
 }
 
 /// Individual period estimates from each SAZED component.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SazedComponents {
     /// Period from spectral (FFT) detection
     pub spectral: f64,

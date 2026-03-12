@@ -13,7 +13,7 @@ use rand::prelude::*;
 // ===========================================================================
 
 /// Calibration diagnostics for a functional logistic regression model.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CalibrationDiagnosticsResult {
     /// Brier score: (1/n) Σ (p_i - y_i)².
     pub brier_score: f64,
@@ -113,7 +113,7 @@ pub fn calibration_diagnostics(
 // ===========================================================================
 
 /// Result of expected calibration error analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EceResult {
     /// Expected calibration error: Σ (n_b/n) |acc_b - conf_b|.
     pub ece: f64,
@@ -207,7 +207,7 @@ pub fn expected_calibration_error(
 // ===========================================================================
 
 /// Result of split-conformal prediction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConformalPredictionResult {
     /// Predictions on test data (length n_test).
     pub predictions: Vec<f64>,
@@ -349,7 +349,7 @@ pub enum DepthType {
 }
 
 /// Result of regression depth analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegressionDepthResult {
     /// Depth of β̂ in bootstrap distribution.
     pub beta_depth: f64,
@@ -536,7 +536,7 @@ pub fn regression_depth_logistic(
 // ===========================================================================
 
 /// Result of bootstrap stability analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StabilityAnalysisResult {
     /// Pointwise std of β(t) across bootstraps (length m).
     pub beta_t_std: Vec<f64>,
@@ -718,7 +718,7 @@ pub fn explanation_stability_logistic(
 // ===========================================================================
 
 /// A single condition in an anchor rule.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnchorCondition {
     /// FPC component index.
     pub component: usize,
@@ -729,7 +729,7 @@ pub struct AnchorCondition {
 }
 
 /// An anchor rule consisting of FPC score conditions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnchorRule {
     /// Conditions forming the rule (conjunction).
     pub conditions: Vec<AnchorCondition>,
@@ -742,7 +742,7 @@ pub struct AnchorRule {
 }
 
 /// Result of anchor explanation for one observation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnchorResult {
     /// The anchor rule.
     pub rule: AnchorRule,

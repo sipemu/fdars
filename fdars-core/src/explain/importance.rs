@@ -11,7 +11,7 @@ use rand::prelude::*;
 // ===========================================================================
 
 /// Result of FPC permutation importance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FpcPermutationImportance {
     /// R^2 (or accuracy) drop per component (length ncomp).
     pub importance: Vec<f64>,
@@ -236,7 +236,7 @@ fn permuted_ss_res_linear(
 // ===========================================================================
 
 /// Result of pointwise variable importance analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PointwiseImportanceResult {
     /// Importance at each grid point (length m).
     pub importance: Vec<f64>,
@@ -392,7 +392,7 @@ fn compute_pointwise_importance_core(
 // ===========================================================================
 
 /// Result of conditional permutation importance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalPermutationImportanceResult {
     /// Conditional importance per FPC component, length ncomp.
     pub importance: Vec<f64>,

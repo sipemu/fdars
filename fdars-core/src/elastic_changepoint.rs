@@ -23,7 +23,7 @@ use rand::SeedableRng;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Result of changepoint detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChangepointResult {
     /// Estimated changepoint location (index in 1..n-1).
     pub changepoint: usize,

@@ -17,7 +17,7 @@ use rayon::iter::ParallelIterator;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Result of the TSRVF transform.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TsrvfResult {
     /// Tangent vectors in Euclidean space (n × m).
     pub tangent_vectors: FdMatrix,

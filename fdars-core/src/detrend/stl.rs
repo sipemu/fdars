@@ -30,6 +30,63 @@ pub struct StlResult {
     pub outer_iterations: usize,
 }
 
+/// Configuration for STL decomposition.
+///
+/// Collects all tuning parameters for [`stl_decompose_with_config`], with sensible
+/// defaults obtained via [`StlConfig::default()`].
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::detrend::stl::StlConfig;
+///
+/// let config = StlConfig {
+///     robust: true,
+///     s_window: Some(13),
+///     ..StlConfig::default()
+/// };
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct StlConfig {
+    /// Seasonal smoothing window (default: `None` for auto = 7).
+    pub s_window: Option<usize>,
+    /// Trend smoothing window (default: `None` for auto).
+    pub t_window: Option<usize>,
+    /// Low-pass filter window (default: `None` for auto = period).
+    pub l_window: Option<usize>,
+    /// Whether to use robust (bisquare) weights (default: false).
+    pub robust: bool,
+    /// Number of inner loop iterations (default: `None` for auto = 2).
+    pub inner_iterations: Option<usize>,
+    /// Number of outer loop iterations (default: `None` for auto = 1 or 15 if robust).
+    pub outer_iterations: Option<usize>,
+}
+
+/// STL Decomposition using a [`StlConfig`] struct.
+///
+/// This is the config-based alternative to [`stl_decompose`]. It takes data
+/// and period directly, and reads all tuning parameters from the config.
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n x m)
+/// * `period` — Seasonal period length
+/// * `config` — Tuning parameters
+pub fn stl_decompose_with_config(
+    data: &FdMatrix,
+    period: usize,
+    config: &StlConfig,
+) -> StlResult {
+    stl_decompose(
+        data,
+        period,
+        config.s_window,
+        config.t_window,
+        config.l_window,
+        config.robust,
+        config.inner_iterations,
+        config.outer_iterations,
+    )
+}
+
 /// STL Decomposition: Seasonal and Trend decomposition using LOESS
 pub fn stl_decompose(
     data: &FdMatrix,

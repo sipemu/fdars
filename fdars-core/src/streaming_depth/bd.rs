@@ -12,7 +12,7 @@ use super::{c2, StreamingDepth};
 ///
 /// Required by Band Depth (BD), which checks all-or-nothing containment across
 /// ALL time points and therefore cannot decompose into per-point rank queries.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FullReferenceState {
     /// Sorted columns for rank queries (shared with MBD/FM estimators if desired).
     pub sorted: SortedReferenceState,
@@ -44,7 +44,7 @@ impl FullReferenceState {
 /// decoupling** (no re-parsing the matrix) and **early-exit per pair** (break
 /// on first time point where x is outside the band), not an asymptotic
 /// improvement.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamingBd {
     state: FullReferenceState,
 }

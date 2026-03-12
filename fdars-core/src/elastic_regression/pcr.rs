@@ -10,7 +10,7 @@ use nalgebra::{DMatrix, DVector};
 use super::{ElasticPcrConfig, PcaMethod};
 
 /// Result of elastic principal component regression.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ElasticPcrResult {
     /// Intercept.
     pub alpha: f64,

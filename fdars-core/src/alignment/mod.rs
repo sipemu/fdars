@@ -57,7 +57,7 @@ use crate::warping::normalize_warp;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Result of aligning one curve to another.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlignmentResult {
     /// Warping function γ mapping the domain to itself.
     pub gamma: Vec<f64>,
@@ -68,7 +68,7 @@ pub struct AlignmentResult {
 }
 
 /// Result of aligning a set of curves to a common target.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlignmentSetResult {
     /// Warping functions (n × m).
     pub gammas: FdMatrix,
@@ -79,7 +79,7 @@ pub struct AlignmentSetResult {
 }
 
 /// Result of the Karcher mean computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KarcherMeanResult {
     /// Karcher mean curve.
     pub mean: Vec<f64>,

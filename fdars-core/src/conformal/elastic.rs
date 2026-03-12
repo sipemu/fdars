@@ -11,8 +11,8 @@ use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 
 use super::{
-    build_regression_result, conformal_split, validate_split_inputs, ConformalMethod,
-    ConformalRegressionResult,
+    build_regression_result, conformal_split, validate_split_inputs, ConformalConfig,
+    ConformalMethod, ConformalRegressionResult,
 };
 
 /// Split-conformal prediction intervals for elastic regression.
@@ -166,6 +166,68 @@ pub fn conformal_elastic_pcr(
         alpha,
         ConformalMethod::Split,
     ))
+}
+
+/// Split-conformal prediction intervals for elastic regression using a [`ConformalConfig`].
+///
+/// This is the config-based alternative to [`conformal_elastic_regression`].
+///
+/// # Errors
+///
+/// Same error conditions as [`conformal_elastic_regression`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn conformal_elastic_regression_with_config(
+    data: &FdMatrix,
+    y: &[f64],
+    test_data: &FdMatrix,
+    argvals: &[f64],
+    ncomp_beta: usize,
+    lambda: f64,
+    config: &ConformalConfig,
+) -> Result<ConformalRegressionResult, FdarError> {
+    conformal_elastic_regression(
+        data,
+        y,
+        test_data,
+        argvals,
+        ncomp_beta,
+        lambda,
+        config.cal_fraction,
+        config.alpha,
+        config.seed,
+    )
+}
+
+/// Split-conformal prediction intervals for elastic PCR using a [`ConformalConfig`].
+///
+/// This is the config-based alternative to [`conformal_elastic_pcr`].
+///
+/// # Errors
+///
+/// Same error conditions as [`conformal_elastic_pcr`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn conformal_elastic_pcr_with_config(
+    data: &FdMatrix,
+    y: &[f64],
+    test_data: &FdMatrix,
+    argvals: &[f64],
+    ncomp: usize,
+    pca_method: PcaMethod,
+    lambda: f64,
+    config: &ConformalConfig,
+) -> Result<ConformalRegressionResult, FdarError> {
+    conformal_elastic_pcr(
+        data,
+        y,
+        test_data,
+        argvals,
+        ncomp,
+        pca_method,
+        lambda,
+        config.cal_fraction,
+        config.alpha,
+        config.seed,
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

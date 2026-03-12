@@ -91,6 +91,9 @@ pub(crate) fn get_obs_scalar(
 }
 
 /// Accumulate one WLS sample for Kernel SHAP: A'A += w z z', A'b += w z y.
+///
+/// Since z is a binary vector (1 for active coalition members, 0 otherwise),
+/// we only iterate over active indices to skip zero multiplications.
 pub(crate) fn accumulate_kernel_shap_sample(
     ata: &mut [f64],
     atb: &mut [f64],
@@ -99,13 +102,20 @@ pub(crate) fn accumulate_kernel_shap_sample(
     y_val: f64,
     ncomp: usize,
 ) {
-    for k1 in 0..ncomp {
-        let z1 = if coalition[k1] { 1.0 } else { 0.0 };
-        for k2 in 0..ncomp {
-            let z2 = if coalition[k2] { 1.0 } else { 0.0 };
-            ata[k1 * ncomp + k2] += weight * z1 * z2;
+    // Collect active coalition indices to skip zero entries in the outer product
+    let active: Vec<usize> = coalition
+        .iter()
+        .enumerate()
+        .filter(|(_, &c)| c)
+        .map(|(i, _)| i)
+        .collect();
+
+    let wy = weight * y_val;
+    for &k1 in &active {
+        for &k2 in &active {
+            ata[k1 * ncomp + k2] += weight;
         }
-        atb[k1] += weight * z1 * y_val;
+        atb[k1] += wy;
     }
 }
 

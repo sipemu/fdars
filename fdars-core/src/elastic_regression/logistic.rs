@@ -9,7 +9,7 @@ use super::{
 };
 
 /// Result of elastic logistic regression.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ElasticLogisticResult {
     /// Intercept.
     pub alpha: f64,

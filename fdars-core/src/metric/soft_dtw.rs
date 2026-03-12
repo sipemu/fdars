@@ -86,17 +86,16 @@ pub fn soft_dtw_divergence(x: &[f64], y: &[f64], gamma: f64) -> f64 {
 /// so the diagonal is computed explicitly.
 pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     let n = data.nrows();
-    let m = data.ncols();
-    if n == 0 || m == 0 {
+    if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rm = data.to_row_major();
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     let mut dist = self_distance_matrix(n, |i, j| {
-        soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[j * m..(j + 1) * m], gamma)
+        soft_dtw_distance(&rows[i], &rows[j], gamma)
     });
     // Fill diagonal: sdtw(x, x) is typically negative for finite gamma
     for i in 0..n {
-        dist[(i, i)] = soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[i * m..(i + 1) * m], gamma);
+        dist[(i, i)] = soft_dtw_distance(&rows[i], &rows[i], gamma);
     }
     dist
 }
@@ -105,36 +104,29 @@ pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
 pub fn soft_dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
-    let m1 = data1.ncols();
-    let m2 = data2.ncols();
-    if n1 == 0 || n2 == 0 || m1 == 0 || m2 == 0 {
+    if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rm1 = data1.to_row_major();
-    let rm2 = data2.to_row_major();
+    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
+    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
     cross_distance_matrix(n1, n2, |i, j| {
-        soft_dtw_distance(
-            &rm1[i * m1..(i + 1) * m1],
-            &rm2[j * m2..(j + 1) * m2],
-            gamma,
-        )
+        soft_dtw_distance(&rows1[i], &rows2[j], gamma)
     })
 }
 
 /// Compute Soft-DTW divergence self-distance matrix (symmetric n x n).
 pub fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     let n = data.nrows();
-    let m = data.ncols();
-    if n == 0 || m == 0 {
+    if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rm = data.to_row_major();
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     // Pre-compute self-distances for divergence
     let self_dists: Vec<f64> = iter_maybe_parallel!(0..n)
-        .map(|i| soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[i * m..(i + 1) * m], gamma))
+        .map(|i| soft_dtw_distance(&rows[i], &rows[i], gamma))
         .collect();
     self_distance_matrix(n, |i, j| {
-        let xy = soft_dtw_distance(&rm[i * m..(i + 1) * m], &rm[j * m..(j + 1) * m], gamma);
+        let xy = soft_dtw_distance(&rows[i], &rows[j], gamma);
         xy - 0.5 * (self_dists[i] + self_dists[j])
     })
 }
@@ -143,37 +135,19 @@ pub fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
 pub fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
-    let m1 = data1.ncols();
-    let m2 = data2.ncols();
-    if n1 == 0 || n2 == 0 || m1 == 0 || m2 == 0 {
+    if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rm1 = data1.to_row_major();
-    let rm2 = data2.to_row_major();
+    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
+    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
     let self1: Vec<f64> = iter_maybe_parallel!(0..n1)
-        .map(|i| {
-            soft_dtw_distance(
-                &rm1[i * m1..(i + 1) * m1],
-                &rm1[i * m1..(i + 1) * m1],
-                gamma,
-            )
-        })
+        .map(|i| soft_dtw_distance(&rows1[i], &rows1[i], gamma))
         .collect();
     let self2: Vec<f64> = iter_maybe_parallel!(0..n2)
-        .map(|j| {
-            soft_dtw_distance(
-                &rm2[j * m2..(j + 1) * m2],
-                &rm2[j * m2..(j + 1) * m2],
-                gamma,
-            )
-        })
+        .map(|j| soft_dtw_distance(&rows2[j], &rows2[j], gamma))
         .collect();
     cross_distance_matrix(n1, n2, |i, j| {
-        let xy = soft_dtw_distance(
-            &rm1[i * m1..(i + 1) * m1],
-            &rm2[j * m2..(j + 1) * m2],
-            gamma,
-        );
+        let xy = soft_dtw_distance(&rows1[i], &rows2[j], gamma);
         xy - 0.5 * (self1[i] + self2[j])
     })
 }
@@ -291,15 +265,17 @@ fn update_barycenter(bary: &mut [f64], grad: &[f64], lr: f64, tol: f64) -> bool 
 }
 
 /// Initialize the barycenter as the pointwise mean of all series.
-fn init_barycenter_mean(rm: &[f64], n: usize, m: usize) -> Vec<f64> {
+fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
+    let n = rows.len();
+    let m = rows[0].len();
     let mut bary = vec![0.0; m];
-    for i in 0..n {
-        for j in 0..m {
-            bary[j] += rm[i * m + j];
+    for row in rows {
+        for (j, val) in row.iter().enumerate() {
+            bary[j] += val;
         }
     }
-    for j in 0..m {
-        bary[j] /= n as f64;
+    for v in &mut bary {
+        *v /= n as f64;
     }
     bary
 }
@@ -329,8 +305,8 @@ pub fn soft_dtw_barycenter(
         };
     }
 
-    let rm = data.to_row_major();
-    let mut bary = init_barycenter_mean(&rm, n, m);
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+    let mut bary = init_barycenter_mean(&rows);
     let lr = 1.0 / n as f64;
     let mut converged = false;
     let mut n_iter = 0;
@@ -339,9 +315,8 @@ pub fn soft_dtw_barycenter(
         n_iter = iter + 1;
 
         let mut grad = vec![0.0; m];
-        for i in 0..n {
-            let xi = &rm[i * m..(i + 1) * m];
-            soft_dtw_accumulate_gradient(&bary, xi, gamma, &mut grad);
+        for row in &rows {
+            soft_dtw_accumulate_gradient(&bary, row, gamma, &mut grad);
         }
 
         if update_barycenter(&mut bary, &grad, lr, tol) {

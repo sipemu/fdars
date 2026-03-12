@@ -6,7 +6,7 @@ use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
 
 /// Result of a functional partial dependence plot.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionalPdpResult {
     /// FPC score grid values (length n_grid).
     pub grid_values: Vec<f64>,
@@ -204,7 +204,7 @@ pub fn functional_pdp_logistic(
 // ---------------------------------------------------------------------------
 
 /// Per-FPC decomposition of the functional coefficient beta(t).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BetaDecomposition {
     /// `components[k]` = coef_k * phi_k(t), each of length m.
     pub components: Vec<Vec<f64>>,
@@ -313,7 +313,7 @@ pub enum SignificanceDirection {
 }
 
 /// A contiguous interval where the confidence band excludes zero.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SignificantRegion {
     /// Start index (inclusive).
     pub start_idx: usize,

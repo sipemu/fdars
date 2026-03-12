@@ -31,9 +31,9 @@ pub fn fourier_self_1d(data: &FdMatrix, nfreq: usize) -> FdMatrix {
     }
     let mut planner = FftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(m);
-    let rm = data.to_row_major();
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     let coeffs: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
-        .map(|i| fft_coefficients_with_plan(&rm[i * m..(i + 1) * m], nfreq, fft.as_ref()))
+        .map(|i| fft_coefficients_with_plan(&rows[i], nfreq, fft.as_ref()))
         .collect();
     self_distance_matrix(n, |i, j| {
         coeffs[i]
@@ -55,13 +55,13 @@ pub fn fourier_cross_1d(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize) -> FdM
     }
     let mut planner = FftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(m);
-    let rm1 = data1.to_row_major();
-    let rm2 = data2.to_row_major();
+    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
+    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
     let coeffs1: Vec<Vec<f64>> = iter_maybe_parallel!(0..n1)
-        .map(|i| fft_coefficients_with_plan(&rm1[i * m..(i + 1) * m], nfreq, fft.as_ref()))
+        .map(|i| fft_coefficients_with_plan(&rows1[i], nfreq, fft.as_ref()))
         .collect();
     let coeffs2: Vec<Vec<f64>> = iter_maybe_parallel!(0..n2)
-        .map(|i| fft_coefficients_with_plan(&rm2[i * m..(i + 1) * m], nfreq, fft.as_ref()))
+        .map(|i| fft_coefficients_with_plan(&rows2[i], nfreq, fft.as_ref()))
         .collect();
     cross_distance_matrix(n1, n2, |i, j| {
         coeffs1[i]

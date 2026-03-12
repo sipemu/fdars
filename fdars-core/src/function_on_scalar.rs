@@ -85,7 +85,7 @@ fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
 // ---------------------------------------------------------------------------
 
 /// Result of function-on-scalar regression.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FosrResult {
     /// Intercept function μ(t) (length m)
     pub intercept: Vec<f64>,
@@ -108,7 +108,7 @@ pub struct FosrResult {
 }
 
 /// Result of FPC-based function-on-scalar regression.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FosrFpcResult {
     /// Intercept function μ(t) (length m)
     pub intercept: Vec<f64>,
@@ -129,7 +129,7 @@ pub struct FosrFpcResult {
 }
 
 /// Result of functional ANOVA.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FanovaResult {
     /// Group mean functions (k × m matrix, row g = mean curve of group g)
     pub group_means: FdMatrix,

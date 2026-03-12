@@ -1,8 +1,7 @@
 use crate::error::FdarError;
 use crate::explain::{
-    accumulate_kernel_shap_sample, build_coalition_scores, compute_column_means,
-    compute_mean_scalar, get_obs_scalar, sample_random_coalition, shapley_kernel_weight,
-    solve_kernel_shap_obs, FpcShapValues,
+    accumulate_kernel_shap_sample, compute_column_means, compute_mean_scalar, get_obs_scalar,
+    sample_random_coalition, shapley_kernel_weight, solve_kernel_shap_obs, FpcShapValues,
 };
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -82,18 +81,25 @@ pub fn generic_shap_values(
 
             let mut ata = vec![0.0; ncomp * ncomp];
             let mut atb = vec![0.0; ncomp];
+            // Pre-allocate coalition scores buffer outside the inner loop
+            let mut coal_scores = vec![0.0; ncomp];
+
+            // Pre-compute f_base once (it is constant across all coalitions)
+            let f_base = model.predict_from_scores(
+                &mean_scores,
+                if obs_z.is_empty() { None } else { Some(&obs_z) },
+            );
 
             for _ in 0..n_samples {
                 let (coalition, s_size) = sample_random_coalition(&mut rng_i, ncomp);
                 let weight = shapley_kernel_weight(ncomp, s_size);
-                let coal_scores = build_coalition_scores(&coalition, &obs_scores, &mean_scores);
+                // Reuse pre-allocated buffer instead of allocating a new Vec each iteration
+                for (k, &in_coal) in coalition.iter().enumerate() {
+                    coal_scores[k] = if in_coal { obs_scores[k] } else { mean_scores[k] };
+                }
 
                 let f_coal = model.predict_from_scores(
                     &coal_scores,
-                    if obs_z.is_empty() { None } else { Some(&obs_z) },
-                );
-                let f_base = model.predict_from_scores(
-                    &mean_scores,
                     if obs_z.is_empty() { None } else { Some(&obs_z) },
                 );
                 let y_val = f_coal - f_base;

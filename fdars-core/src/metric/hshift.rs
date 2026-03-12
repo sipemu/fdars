@@ -49,14 +49,9 @@ pub fn hshift_self_1d(data: &FdMatrix, argvals: &[f64], max_shift: usize) -> FdM
         return FdMatrix::zeros(0, 0);
     }
     let weights = simpsons_weights(argvals);
-    let rm = data.to_row_major();
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     self_distance_matrix(n, |i, j| {
-        hshift_distance(
-            &rm[i * m..(i + 1) * m],
-            &rm[j * m..(j + 1) * m],
-            &weights,
-            max_shift,
-        )
+        hshift_distance(&rows[i], &rows[j], &weights, max_shift)
     })
 }
 
@@ -74,14 +69,9 @@ pub fn hshift_cross_1d(
         return FdMatrix::zeros(0, 0);
     }
     let weights = simpsons_weights(argvals);
-    let rm1 = data1.to_row_major();
-    let rm2 = data2.to_row_major();
+    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
+    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
     cross_distance_matrix(n1, n2, |i, j| {
-        hshift_distance(
-            &rm1[i * m..(i + 1) * m],
-            &rm2[j * m..(j + 1) * m],
-            &weights,
-            max_shift,
-        )
+        hshift_distance(&rows1[i], &rows2[j], &weights, max_shift)
     })
 }

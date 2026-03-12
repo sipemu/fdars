@@ -6,8 +6,8 @@
 //! Fourier fitting with automatic basis selection.
 
 use fdars_core::basis::{
-    basis_to_fdata_1d, bspline_basis, fdata_to_basis_1d, fourier_basis, fourier_fit_1d,
-    pspline_fit_1d, select_fourier_nbasis_gcv,
+    basis_to_fdata, bspline_basis, fdata_to_basis, fourier_basis, fourier_fit_1d,
+    pspline_fit_1d, select_fourier_nbasis_gcv, ProjectionBasisType,
 };
 use fdars_core::simulation::{add_error_pointwise, sim_fundata, EFunType, EValType};
 
@@ -70,18 +70,18 @@ fn main() {
     // --- Section 3: Project to basis and reconstruct ---
     println!("\n--- Basis Projection and Reconstruction ---");
 
-    // B-spline projection (basis_type=0)
-    if let Some(proj) = fdata_to_basis_1d(&noisy, &t, nbasis_bspline, 0) {
+    // B-spline projection
+    if let Some(proj) = fdata_to_basis(&noisy, &t, nbasis_bspline, ProjectionBasisType::Bspline) {
         println!("  B-spline coefficients: {} per curve", proj.n_basis);
-        let reconstructed = basis_to_fdata_1d(&proj.coefficients, &t, proj.n_basis, 0);
+        let reconstructed = basis_to_fdata(&proj.coefficients, &t, proj.n_basis, ProjectionBasisType::Bspline);
         let err = rmse(reconstructed.as_slice(), &clean);
         println!("  B-spline reconstruction RMSE vs clean: {err:.6}");
     }
 
-    // Fourier projection (basis_type=1)
-    if let Some(proj) = fdata_to_basis_1d(&noisy, &t, nbasis_fourier, 1) {
+    // Fourier projection
+    if let Some(proj) = fdata_to_basis(&noisy, &t, nbasis_fourier, ProjectionBasisType::Fourier) {
         println!("  Fourier coefficients: {} per curve", proj.n_basis);
-        let reconstructed = basis_to_fdata_1d(&proj.coefficients, &t, proj.n_basis, 1);
+        let reconstructed = basis_to_fdata(&proj.coefficients, &t, proj.n_basis, ProjectionBasisType::Fourier);
         let err = rmse(reconstructed.as_slice(), &clean);
         println!("  Fourier reconstruction RMSE vs clean: {err:.6}");
     }

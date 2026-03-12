@@ -588,7 +588,7 @@ mod function_on_scalar {
 
 mod gmm_clustering {
     use super::*;
-    use fdars_core::{gmm_cluster, gmm_em, predict_gmm, CovType};
+    use fdars_core::{gmm_cluster, gmm_em, predict_gmm, CovType, ProjectionBasisType};
 
     /// Generate well-separated 2D Gaussian clusters as Vec<Vec<f64>>.
     fn gen_gmm_features(k: usize, n_per: usize, seed: u64) -> (Vec<Vec<f64>>, Vec<usize>) {
@@ -732,7 +732,7 @@ mod gmm_clustering {
             None,
             &[2, 3, 4],
             5,
-            0, // B-spline
+            ProjectionBasisType::Bspline,
             CovType::Diagonal,
             0.0,
             100,
@@ -764,7 +764,7 @@ mod gmm_clustering {
             None,
             &[3],
             5,
-            0,
+            ProjectionBasisType::Bspline,
             CovType::Diagonal,
             0.0,
             100,
@@ -792,7 +792,7 @@ mod gmm_clustering {
             None,
             &cluster_result.best,
             5,
-            0,
+            ProjectionBasisType::Bspline,
             0.0,
             CovType::Diagonal,
         )

@@ -31,7 +31,7 @@ use crate::matrix::FdMatrix;
 // ─── Config Structs ─────────────────────────────────────────────────────────
 
 /// Configuration for [`elastic_regression`] and [`elastic_logistic`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ElasticConfig {
     /// Number of basis functions for the beta coefficient (for elastic_regression).
     pub ncomp_beta: usize,
@@ -55,7 +55,7 @@ impl Default for ElasticConfig {
 }
 
 /// Configuration for [`elastic_pcr`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ElasticPcrConfig {
     /// Number of principal components to retain.
     pub ncomp: usize,

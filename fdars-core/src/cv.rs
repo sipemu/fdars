@@ -93,7 +93,7 @@ pub enum CvType {
 }
 
 /// Cross-validation metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CvMetrics {
     /// Regression metrics.
     Regression { rmse: f64, mae: f64, r_squared: f64 },
@@ -105,7 +105,7 @@ pub enum CvMetrics {
 }
 
 /// Result of unified cross-validation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CvFdataResult {
     /// Out-of-fold predictions (length n); for repeated CV, averaged across reps.
     pub oof_predictions: Vec<f64>,

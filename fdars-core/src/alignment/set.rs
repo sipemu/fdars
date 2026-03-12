@@ -9,7 +9,7 @@ use crate::matrix::FdMatrix;
 use rayon::iter::ParallelIterator;
 
 /// Result of elastic phase-amplitude decomposition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DecompositionResult {
     /// Full alignment result.
     pub alignment: AlignmentResult,

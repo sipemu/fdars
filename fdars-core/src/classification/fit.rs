@@ -16,7 +16,7 @@ use super::{
 use super::cv::fclassif_cv;
 
 /// Classification method with stored parameters for prediction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClassifMethod {
     /// Linear Discriminant Analysis.
     Lda {
@@ -43,7 +43,7 @@ pub enum ClassifMethod {
 }
 
 /// A fitted classification model that retains FPCA components for explainability.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassifFit {
     /// Classification result (predicted labels, accuracy, confusion matrix).
     pub result: ClassifResult,
@@ -542,7 +542,7 @@ fn softmax(scores: &[f64]) -> Vec<f64> {
 // ─── Config-based API ───────────────────────────────────────────────────────
 
 /// Configuration for [`fclassif_cv`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassifCvConfig {
     /// Classification method name (one of "lda", "qda", "knn", "kernel", "dd").
     pub method: String,

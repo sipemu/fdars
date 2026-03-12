@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Basis type for penalized smoothing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BasisType {
     /// B-spline basis with given order (typically 4 for cubic).
     Bspline { order: usize },
@@ -27,7 +27,7 @@ pub enum BasisType {
 }
 
 /// Functional data parameter object (basis + penalty specification).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FdPar {
     /// Type of basis system.
     pub basis_type: BasisType,
@@ -42,7 +42,7 @@ pub struct FdPar {
 }
 
 /// Result of basis-penalized smoothing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SmoothBasisResult {
     /// Basis coefficients (n × K).
     pub coefficients: FdMatrix,
@@ -444,7 +444,7 @@ pub enum BasisCriterion {
 }
 
 /// Result of nbasis selection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BasisNbasisCvResult {
     /// Optimal number of basis functions.
     pub optimal_nbasis: usize,

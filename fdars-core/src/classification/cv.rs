@@ -280,10 +280,15 @@ fn project_and_classify_knn(
                     (d_sq, train_labels[t])
                 })
                 .collect();
-            dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            let k_eff = k_nn.min(n_train);
+            if k_eff > 0 && k_eff < dists.len() {
+                dists.select_nth_unstable_by(k_eff - 1, |a, b| {
+                    a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
 
             let mut votes = vec![0usize; g];
-            for &(_, label) in dists.iter().take(k_nn.min(n_train)) {
+            for &(_, label) in dists.iter().take(k_eff) {
                 votes[label] += 1;
             }
             votes

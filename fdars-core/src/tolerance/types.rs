@@ -1,5 +1,5 @@
 /// Result of a tolerance band computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToleranceBand {
     /// Lower bound at each evaluation point
     pub lower: Vec<f64>,
@@ -48,7 +48,7 @@ pub enum EquivalenceBootstrap {
 }
 
 /// Result of a functional equivalence test (TOST).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EquivalenceTestResult {
     /// Test statistic: sup_t |d_hat(t)|
     pub test_statistic: f64,

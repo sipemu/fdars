@@ -3,6 +3,7 @@
 use super::bspline::bspline_basis;
 use super::fourier::fourier_basis;
 use super::helpers::{compute_model_criterion, svd_pseudoinverse};
+use super::projection::ProjectionBasisType;
 use super::pspline::difference_matrix;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -13,8 +14,8 @@ use rayon::iter::ParallelIterator;
 /// Result of automatic basis selection for a single curve.
 #[derive(Debug, Clone)]
 pub struct SingleCurveSelection {
-    /// Selected basis type: 0 = P-spline, 1 = Fourier
-    pub basis_type: i32,
+    /// Selected basis type.
+    pub basis_type: ProjectionBasisType,
     /// Selected number of basis functions
     pub nbasis: usize,
     /// Best criterion score (GCV, AIC, or BIC)
@@ -329,16 +330,16 @@ pub fn select_basis_auto_1d(
             let (basis_type, result) = match (fourier_best, pspline_best) {
                 (Some(f), Some(p)) => {
                     if f.score <= p.score {
-                        (1i32, f)
+                        (ProjectionBasisType::Fourier, f)
                     } else {
-                        (0i32, p)
+                        (ProjectionBasisType::Bspline, p)
                     }
                 }
-                (Some(f), None) => (1, f),
-                (None, Some(p)) => (0, p),
+                (Some(f), None) => (ProjectionBasisType::Fourier, f),
+                (None, Some(p)) => (ProjectionBasisType::Bspline, p),
                 (None, None) => {
                     return SingleCurveSelection {
-                        basis_type: 0,
+                        basis_type: ProjectionBasisType::Bspline,
                         nbasis: pspline_min,
                         score: f64::INFINITY,
                         coefficients: Vec::new(),

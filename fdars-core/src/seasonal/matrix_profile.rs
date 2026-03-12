@@ -3,7 +3,7 @@ use crate::matrix::FdMatrix;
 use super::compute_mean_curve;
 
 /// Result of Matrix Profile computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatrixProfileResult {
     /// The matrix profile (minimum z-normalized distance for each position)
     pub profile: Vec<f64>,

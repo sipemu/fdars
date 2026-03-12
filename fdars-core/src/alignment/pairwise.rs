@@ -1,6 +1,6 @@
 //! Pairwise elastic alignment, distance computation, and distance matrices.
 
-use super::srsf::{reparameterize_curve, srsf_transform};
+use super::srsf::{reparameterize_curve, srsf_single, srsf_transform};
 use super::{dp_alignment_core, AlignmentResult};
 use crate::helpers::{l2_distance, simpsons_weights};
 use crate::iter_maybe_parallel;
@@ -25,38 +25,9 @@ use rayon::iter::ParallelIterator;
 /// [`AlignmentResult`] with warping function, aligned curve, and elastic distance.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> AlignmentResult {
-    let m = f1.len();
-
-    // Build single-row FdMatrices for SRSF computation
-    let f1_mat = FdMatrix::from_slice(f1, 1, m).expect("dimension invariant: data.len() == n * m");
-    let f2_mat = FdMatrix::from_slice(f2, 1, m).expect("dimension invariant: data.len() == n * m");
-
-    let q1_mat = srsf_transform(&f1_mat, argvals);
-    let q2_mat = srsf_transform(&f2_mat, argvals);
-
-    let q1: Vec<f64> = q1_mat.row(0);
-    let q2: Vec<f64> = q2_mat.row(0);
-
-    // Find optimal warping via DP
-    let gamma = dp_alignment_core(&q1, &q2, argvals, lambda);
-
-    // Apply warping to f2
-    let f_aligned = reparameterize_curve(f2, argvals, &gamma);
-
-    // Compute elastic distance: L2 distance between q1 and aligned q2 SRSF
-    let f_aligned_mat =
-        FdMatrix::from_slice(&f_aligned, 1, m).expect("dimension invariant: data.len() == n * m");
-    let q_aligned_mat = srsf_transform(&f_aligned_mat, argvals);
-    let q_aligned: Vec<f64> = q_aligned_mat.row(0);
-
-    let weights = simpsons_weights(argvals);
-    let distance = l2_distance(&q1, &q_aligned, &weights);
-
-    AlignmentResult {
-        gamma,
-        f_aligned,
-        distance,
-    }
+    let q1 = srsf_single(f1, argvals);
+    let q2 = srsf_single(f2, argvals);
+    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, lambda)
 }
 
 /// Compute the elastic distance between two curves.
@@ -73,9 +44,62 @@ pub fn elastic_distance(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) ->
     elastic_align_pair(f1, f2, argvals, lambda).distance
 }
 
+// ─── Internal Helpers with Pre-computed SRSFs ────────────────────────────────
+
+/// Align curve f2 to curve f1 given their pre-computed SRSFs.
+///
+/// This avoids redundant SRSF computation when calling from distance matrix
+/// routines where the same curve's SRSF would otherwise be recomputed for
+/// every pair.
+fn elastic_align_pair_from_srsf(
+    f2: &[f64],
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+) -> AlignmentResult {
+    // Find optimal warping via DP
+    let gamma = dp_alignment_core(q1, q2, argvals, lambda);
+
+    // Apply warping to f2
+    let f_aligned = reparameterize_curve(f2, argvals, &gamma);
+
+    // Compute elastic distance: L2 distance between q1 and aligned q2 SRSF
+    let q_aligned = srsf_single(&f_aligned, argvals);
+
+    let weights = simpsons_weights(argvals);
+    let distance = l2_distance(q1, &q_aligned, &weights);
+
+    AlignmentResult {
+        gamma,
+        f_aligned,
+        distance,
+    }
+}
+
+/// Compute elastic distance given a raw curve f2, and pre-computed SRSFs q1, q2.
+///
+/// The raw f2 is needed to reparameterize before computing the aligned SRSF.
+fn elastic_distance_from_srsf(
+    f2: &[f64],
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+) -> f64 {
+    let gamma = dp_alignment_core(q1, q2, argvals, lambda);
+    let f_aligned = reparameterize_curve(f2, argvals, &gamma);
+    let q_aligned = srsf_single(&f_aligned, argvals);
+    let weights = simpsons_weights(argvals);
+    l2_distance(q1, &q_aligned, &weights)
+}
+
 // ─── Distance Matrices ──────────────────────────────────────────────────────
 
 /// Compute the symmetric elastic distance matrix for a set of curves.
+///
+/// Pre-computes SRSF transforms for all curves once (O(n)) instead of
+/// recomputing each curve's SRSF for every pair (O(n²)).
 ///
 /// Uses upper-triangle computation with parallelism, following the
 /// `self_distance_matrix` pattern from `metric.rs`.
@@ -90,13 +114,17 @@ pub fn elastic_distance(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) ->
 pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f64) -> FdMatrix {
     let n = data.nrows();
 
+    // Pre-compute all SRSF transforms once
+    let srsfs = srsf_transform(data, argvals);
+
     let upper_vals: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
-            let fi = data.row(i);
+            let qi = srsfs.row(i);
             ((i + 1)..n)
                 .map(|j| {
                     let fj = data.row(j);
-                    elastic_distance(&fi, &fj, argvals, lambda)
+                    let qj = srsfs.row(j);
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, lambda)
                 })
                 .collect::<Vec<_>>()
         })
@@ -117,6 +145,9 @@ pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f6
 
 /// Compute the elastic distance matrix between two sets of curves.
 ///
+/// Pre-computes SRSF transforms for both datasets once instead of
+/// recomputing each curve's SRSF for every pair.
+///
 /// # Arguments
 /// * `data1` — First dataset (n1 × m)
 /// * `data2` — Second dataset (n2 × m)
@@ -134,13 +165,18 @@ pub fn elastic_cross_distance_matrix(
     let n1 = data1.nrows();
     let n2 = data2.nrows();
 
+    // Pre-compute all SRSF transforms once for both datasets
+    let srsfs1 = srsf_transform(data1, argvals);
+    let srsfs2 = srsf_transform(data2, argvals);
+
     let vals: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
-            let fi = data1.row(i);
+            let qi = srsfs1.row(i);
             (0..n2)
                 .map(|j| {
                     let fj = data2.row(j);
-                    elastic_distance(&fi, &fj, argvals, lambda)
+                    let qj = srsfs2.row(j);
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, lambda)
                 })
                 .collect::<Vec<_>>()
         })

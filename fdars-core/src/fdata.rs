@@ -326,7 +326,7 @@ pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
 }
 
 /// Result of 2D partial derivatives.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Deriv2DResult {
     /// Partial derivative with respect to s (∂f/∂s)
     pub ds: FdMatrix,

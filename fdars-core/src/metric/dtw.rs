@@ -54,28 +54,21 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
 /// Compute DTW distance matrix for self-distances (symmetric).
 pub fn dtw_self_1d(data: &FdMatrix, p: f64, w: usize) -> FdMatrix {
     let n = data.nrows();
-    let m = data.ncols();
-    if n == 0 || m == 0 {
+    if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rm = data.to_row_major();
-    self_distance_matrix(n, |i, j| {
-        dtw_distance(&rm[i * m..(i + 1) * m], &rm[j * m..(j + 1) * m], p, w)
-    })
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+    self_distance_matrix(n, |i, j| dtw_distance(&rows[i], &rows[j], p, w))
 }
 
 /// Compute DTW cross-distance matrix.
 pub fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
-    let m1 = data1.ncols();
-    let m2 = data2.ncols();
-    if n1 == 0 || n2 == 0 || m1 == 0 || m2 == 0 {
+    if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rm1 = data1.to_row_major();
-    let rm2 = data2.to_row_major();
-    cross_distance_matrix(n1, n2, |i, j| {
-        dtw_distance(&rm1[i * m1..(i + 1) * m1], &rm2[j * m2..(j + 1) * m2], p, w)
-    })
+    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
+    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
+    cross_distance_matrix(n1, n2, |i, j| dtw_distance(&rows1[i], &rows2[j], p, w))
 }

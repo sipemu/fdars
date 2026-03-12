@@ -72,5 +72,5 @@ pub struct GmmClusterResult {
 }
 
 // Re-export all public items
-pub use cluster::{gmm_cluster, predict_gmm};
+pub use cluster::{gmm_cluster, gmm_cluster_with_config, predict_gmm, GmmClusterConfig};
 pub use em::gmm_em;

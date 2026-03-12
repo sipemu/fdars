@@ -18,7 +18,7 @@ use super::{c2, StreamingDepth};
 /// MBD(x) = (1 / (C(N,2) x T)) x sum_t [C(N,2) - C(b_t,2) - C(a_t,2)]
 ///
 /// Per-query complexity: **O(T x log N)** instead of O(N^2 x T).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamingMbd {
     state: SortedReferenceState,
 }

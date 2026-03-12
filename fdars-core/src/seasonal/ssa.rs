@@ -3,7 +3,7 @@ use crate::matrix::FdMatrix;
 use super::compute_mean_curve;
 
 /// Result of Singular Spectrum Analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SsaResult {
     /// Reconstructed trend component
     pub trend: Vec<f64>,

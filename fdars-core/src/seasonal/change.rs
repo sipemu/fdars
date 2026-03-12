@@ -39,7 +39,7 @@ pub enum ModulationType {
 }
 
 /// Result of amplitude modulation detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AmplitudeModulationResult {
     /// Whether seasonality is present (using robust spectral method)
     pub is_seasonal: bool,
@@ -64,7 +64,7 @@ pub struct AmplitudeModulationResult {
 }
 
 /// Result of wavelet-based amplitude modulation detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WaveletAmplitudeResult {
     /// Whether seasonality is present
     pub is_seasonal: bool,
@@ -100,7 +100,7 @@ pub enum SeasonalType {
 }
 
 /// Result of seasonality classification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SeasonalityClassification {
     /// Whether the series is seasonal overall
     pub is_seasonal: bool,

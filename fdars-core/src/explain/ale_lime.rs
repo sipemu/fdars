@@ -9,7 +9,7 @@ use crate::scalar_on_function::{FregreLmResult, FunctionalLogisticResult};
 // ===========================================================================
 
 /// Result of Accumulated Local Effects analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AleResult {
     /// Bin midpoints (length n_bins_actual).
     pub bin_midpoints: Vec<f64>,
@@ -63,7 +63,7 @@ pub fn fpc_ale_logistic(
 // ===========================================================================
 
 /// Result of a LIME local surrogate explanation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LimeResult {
     /// Index of the observation being explained.
     pub observation: usize,

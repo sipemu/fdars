@@ -53,16 +53,28 @@ pub fn generic_pdp(
 
     let p_scalar = scalar_covariates.map_or(0, crate::matrix::FdMatrix::ncols);
     let mut ice_curves = FdMatrix::zeros(n, n_grid);
+    // Pre-allocate buffers outside the observation loop and reuse them
+    let mut obs_scores = vec![0.0; ncomp];
+    let mut obs_z = vec![0.0; p_scalar];
     for i in 0..n {
-        let mut obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
-        let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-            scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+        for k in 0..ncomp {
+            obs_scores[k] = scores[(i, k)];
+        }
+        let obs_z_slice: Option<&[f64]> = if p_scalar > 0 {
+            if let Some(sc) = scalar_covariates {
+                for j in 0..p_scalar {
+                    obs_z[j] = sc[(i, j)];
+                }
+                Some(&obs_z)
+            } else {
+                None
+            }
         } else {
             None
         };
         for g in 0..n_grid {
             obs_scores[component] = grid_values[g];
-            ice_curves[(i, g)] = model.predict_from_scores(&obs_scores, obs_z.as_deref());
+            ice_curves[(i, g)] = model.predict_from_scores(&obs_scores, obs_z_slice);
         }
     }
 

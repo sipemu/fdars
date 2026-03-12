@@ -115,7 +115,7 @@ pub use landmark::{
 };
 
 // Re-export detrending types
-pub use detrend::{DecomposeResult, TrendResult};
+pub use detrend::{DecomposeResult, StlConfig, StlResult, TrendResult};
 
 // Re-export simulation types
 pub use simulation::{EFunType, EValType};
@@ -192,14 +192,19 @@ pub use classification::{
 // Re-export conformal prediction types
 pub use conformal::{
     conformal_classif, conformal_elastic_logistic, conformal_elastic_pcr,
-    conformal_elastic_regression, conformal_fregre_lm, conformal_fregre_np,
+    conformal_elastic_pcr_with_config, conformal_elastic_regression,
+    conformal_elastic_regression_with_config, conformal_fregre_lm, conformal_fregre_np,
     conformal_generic_classification, conformal_generic_regression, conformal_logistic,
     cv_conformal_classification, cv_conformal_regression, jackknife_plus_regression,
-    ClassificationScore, ConformalClassificationResult, ConformalMethod, ConformalRegressionResult,
+    ClassificationScore, ConformalClassificationResult, ConformalConfig, ConformalMethod,
+    ConformalRegressionResult,
 };
 
 // Re-export GMM clustering types
-pub use gmm::{gmm_cluster, gmm_em, predict_gmm, CovType, GmmClusterResult, GmmResult};
+pub use gmm::{
+    gmm_cluster, gmm_cluster_with_config, gmm_em, predict_gmm, CovType, GmmClusterConfig,
+    GmmClusterResult, GmmResult,
+};
 
 // Re-export streaming depth types
 pub use streaming_depth::{
@@ -290,8 +295,9 @@ pub use fdata::{
 
 // Re-export basis representation types and functions
 pub use basis::{
-    basis_to_fdata_1d, bspline_basis, difference_matrix, fdata_to_basis_1d, fourier_basis,
-    fourier_basis_with_period, fourier_fit_1d, pspline_fit_1d, select_basis_auto_1d,
-    select_fourier_nbasis_gcv, BasisAutoSelectionResult, BasisProjectionResult, FourierFitResult,
-    PsplineFitResult, SingleCurveSelection,
+    basis_to_fdata, basis_to_fdata_1d, bspline_basis, difference_matrix, fdata_to_basis,
+    fdata_to_basis_1d, fourier_basis, fourier_basis_with_period, fourier_fit_1d, pspline_fit_1d,
+    select_basis_auto_1d, select_fourier_nbasis_gcv, BasisAutoSelectionResult,
+    BasisProjectionResult, FourierFitResult, ProjectionBasisType, PsplineFitResult,
+    SingleCurveSelection,
 };

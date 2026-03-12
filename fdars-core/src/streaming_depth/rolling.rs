@@ -12,7 +12,7 @@ use super::sorted_ref::SortedReferenceState;
 /// `Vec::remove`) and the new value is inserted (binary-search + `Vec::insert`).
 ///
 /// Complexity per push: O(T x N) due to element shifting in the sorted vectors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RollingReference {
     curves: VecDeque<Vec<f64>>,
     capacity: usize,

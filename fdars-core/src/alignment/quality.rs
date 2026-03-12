@@ -8,7 +8,7 @@ use crate::helpers::{gradient_uniform, l2_distance, simpsons_weights};
 use crate::matrix::FdMatrix;
 
 /// Comprehensive alignment quality assessment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlignmentQuality {
     /// Per-curve geodesic distance from warp to identity.
     pub warp_complexity: Vec<f64>,

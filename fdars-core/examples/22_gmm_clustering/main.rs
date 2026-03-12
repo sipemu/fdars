@@ -5,6 +5,7 @@
 //! - Full pipeline with automatic K selection (`gmm_cluster`)
 //! - Prediction on new data (`predict_gmm`)
 
+use fdars_core::basis::ProjectionBasisType;
 use fdars_core::gmm::{gmm_cluster, gmm_em, predict_gmm, CovType};
 use fdars_core::matrix::FdMatrix;
 use fdars_core::regression::fdata_to_pc_1d;
@@ -64,7 +65,7 @@ fn main() {
         None,       // no scalar covariates
         &[2, 3, 4], // test K=2,3,4
         5,          // 5 basis functions
-        0,          // B-spline basis
+        ProjectionBasisType::Bspline,
         CovType::Full,
         1.0,   // covariate weight
         200,   // max EM iterations
@@ -90,7 +91,7 @@ fn main() {
     let new_col = t.iter().map(|&tj| (2.0 * PI * tj).sin()).collect();
     let new_data = FdMatrix::from_column_major(new_col, 1, m).unwrap();
     let (labels, probs) =
-        predict_gmm(&new_data, &t, None, &result.best, 5, 0, 1.0, CovType::Full).unwrap();
+        predict_gmm(&new_data, &t, None, &result.best, 5, ProjectionBasisType::Bspline, 1.0, CovType::Full).unwrap();
     println!("  Assigned cluster: {}", labels[0]);
     println!(
         "  Membership: [{}]",

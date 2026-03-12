@@ -97,6 +97,40 @@ pub struct ConformalClassificationResult {
     pub score_type: ClassificationScore,
 }
 
+/// Configuration for split-conformal prediction.
+///
+/// Collects the common tuning parameters shared by all conformal prediction
+/// functions, with sensible defaults obtained via [`ConformalConfig::default()`].
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::conformal::ConformalConfig;
+///
+/// let config = ConformalConfig {
+///     alpha: 0.05,   // 95% coverage
+///     ..ConformalConfig::default()
+/// };
+/// ```
+#[derive(Debug, Clone)]
+pub struct ConformalConfig {
+    /// Fraction of data reserved for calibration (default: 0.25).
+    pub cal_fraction: f64,
+    /// Miscoverage level, e.g. 0.1 for 90% intervals (default: 0.1).
+    pub alpha: f64,
+    /// Random seed for the calibration/training split (default: 42).
+    pub seed: u64,
+}
+
+impl Default for ConformalConfig {
+    fn default() -> Self {
+        Self {
+            cal_fraction: 0.25,
+            alpha: 0.1,
+            seed: 42,
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Core helpers
 // ═══════════════════════════════════════════════════════════════════════════
@@ -398,6 +432,9 @@ pub(super) fn validate_split_inputs(
 
 pub use classification::{conformal_classif, conformal_elastic_logistic, conformal_logistic};
 pub use cv::{cv_conformal_classification, cv_conformal_regression, jackknife_plus_regression};
-pub use elastic::{conformal_elastic_pcr, conformal_elastic_regression};
+pub use elastic::{
+    conformal_elastic_pcr, conformal_elastic_pcr_with_config, conformal_elastic_regression,
+    conformal_elastic_regression_with_config,
+};
 pub use generic::{conformal_generic_classification, conformal_generic_regression};
 pub use regression::{conformal_fregre_lm, conformal_fregre_np};

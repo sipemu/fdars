@@ -3,6 +3,7 @@
 use super::em::{e_step, gmm_em, hard_assignments, resp_to_membership};
 use super::init::build_features;
 use super::{CovType, GmmClusterResult, GmmResult};
+use crate::basis::projection::ProjectionBasisType;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
@@ -31,6 +32,102 @@ pub(super) fn run_multiple_inits(
     best
 }
 
+/// Configuration for GMM-based functional clustering.
+///
+/// Collects all tuning parameters for [`gmm_cluster_with_config`], with sensible
+/// defaults obtained via [`GmmClusterConfig::default()`].
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::gmm::cluster::GmmClusterConfig;
+/// use fdars_core::gmm::CovType;
+/// use fdars_core::basis::ProjectionBasisType;
+///
+/// let config = GmmClusterConfig {
+///     nbasis: 10,
+///     cov_type: CovType::Full,
+///     ..GmmClusterConfig::default()
+/// };
+/// ```
+#[derive(Debug, Clone)]
+pub struct GmmClusterConfig {
+    /// Number of basis functions for projection (default: 5).
+    pub nbasis: usize,
+    /// Basis type for projection (default: `Bspline`).
+    pub basis_type: ProjectionBasisType,
+    /// Covariance structure (default: `Diagonal`).
+    pub cov_type: CovType,
+    /// Scaling factor for covariates (default: 1.0).
+    pub cov_weight: f64,
+    /// Maximum EM iterations per K (default: 200).
+    pub max_iter: usize,
+    /// Convergence tolerance (default: 1e-6).
+    pub tol: f64,
+    /// Number of random initializations per K (default: 3).
+    pub n_init: usize,
+    /// Base random seed (default: 42).
+    pub seed: u64,
+    /// If true, select K by ICL; otherwise by BIC (default: false).
+    pub use_icl: bool,
+}
+
+impl Default for GmmClusterConfig {
+    fn default() -> Self {
+        Self {
+            nbasis: 5,
+            basis_type: ProjectionBasisType::Bspline,
+            cov_type: CovType::Diagonal,
+            cov_weight: 1.0,
+            max_iter: 200,
+            tol: 1e-6,
+            n_init: 3,
+            seed: 42,
+            use_icl: false,
+        }
+    }
+}
+
+/// GMM clustering using a [`GmmClusterConfig`] struct.
+///
+/// This is the config-based alternative to [`gmm_cluster`]. It takes data
+/// parameters directly and reads all tuning parameters from the config.
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n x m)
+/// * `argvals` — Evaluation points (length m)
+/// * `covariates` — Optional scalar covariates (n x p)
+/// * `k_range` — Range of K values to try
+/// * `config` — Tuning parameters
+///
+/// # Errors
+///
+/// Returns [`FdarError::ComputationFailed`] if basis projection fails or no
+/// valid GMM fit is found for any K in the given range.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gmm_cluster_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    covariates: Option<&FdMatrix>,
+    k_range: &[usize],
+    config: &GmmClusterConfig,
+) -> Result<GmmClusterResult, FdarError> {
+    gmm_cluster(
+        data,
+        argvals,
+        covariates,
+        k_range,
+        config.nbasis,
+        config.basis_type,
+        config.cov_type,
+        config.cov_weight,
+        config.max_iter,
+        config.tol,
+        config.n_init,
+        config.seed,
+        config.use_icl,
+    )
+}
+
 /// Main clustering function: project curves onto basis, concatenate covariates,
 /// and fit GMM with automatic K selection.
 ///
@@ -40,7 +137,7 @@ pub(super) fn run_multiple_inits(
 /// * `covariates` — Optional scalar covariates (n × p)
 /// * `k_range` — Range of K values to try (e.g., `2..=5`)
 /// * `nbasis` — Number of basis functions for projection
-/// * `basis_type` — 0 = B-spline, 1 = Fourier
+/// * `basis_type` — Basis type for projection
 /// * `cov_type` — Covariance structure
 /// * `cov_weight` — Scaling factor for covariates (default 1.0)
 /// * `max_iter` — Maximum EM iterations per K
@@ -60,7 +157,7 @@ pub fn gmm_cluster(
     covariates: Option<&FdMatrix>,
     k_range: &[usize],
     nbasis: usize,
-    basis_type: i32,
+    basis_type: ProjectionBasisType,
     cov_type: CovType,
     cov_weight: f64,
     max_iter: usize,
@@ -132,7 +229,7 @@ pub fn predict_gmm(
     new_covariates: Option<&FdMatrix>,
     result: &GmmResult,
     nbasis: usize,
-    basis_type: i32,
+    basis_type: ProjectionBasisType,
     cov_weight: f64,
     cov_type: CovType,
 ) -> Result<(Vec<usize>, FdMatrix), FdarError> {

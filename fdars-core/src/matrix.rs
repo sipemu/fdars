@@ -148,6 +148,60 @@ impl FdMatrix {
             .collect()
     }
 
+    /// Copy a single row into a pre-allocated buffer (zero allocation).
+    ///
+    /// # Panics
+    /// Panics if `buf.len() < ncols` or `row >= nrows`.
+    #[inline]
+    pub fn row_to_buf(&self, row: usize, buf: &mut [f64]) {
+        debug_assert!(row < self.nrows, "row {row} out of bounds for {} rows", self.nrows);
+        debug_assert!(buf.len() >= self.ncols, "buffer len {} < ncols {}", buf.len(), self.ncols);
+        let n = self.nrows;
+        for j in 0..self.ncols {
+            buf[j] = self.data[row + j * n];
+        }
+    }
+
+    /// Compute the dot product of two rows without materializing either one.
+    ///
+    /// The rows may come from different matrices (which must have the same `ncols`).
+    ///
+    /// # Panics
+    /// Panics (in debug) if `row_a >= self.nrows`, `row_b >= other.nrows`,
+    /// or `self.ncols != other.ncols`.
+    #[inline]
+    pub fn row_dot(&self, row_a: usize, other: &FdMatrix, row_b: usize) -> f64 {
+        debug_assert_eq!(self.ncols, other.ncols, "ncols mismatch in row_dot");
+        let na = self.nrows;
+        let nb = other.nrows;
+        let mut sum = 0.0;
+        for j in 0..self.ncols {
+            sum += self.data[row_a + j * na] * other.data[row_b + j * nb];
+        }
+        sum
+    }
+
+    /// Compute the squared L2 distance between two rows without allocation.
+    ///
+    /// Equivalent to `||self.row(row_a) - other.row(row_b)||^2` but without
+    /// materializing either row vector.
+    ///
+    /// # Panics
+    /// Panics (in debug) if `row_a >= self.nrows`, `row_b >= other.nrows`,
+    /// or `self.ncols != other.ncols`.
+    #[inline]
+    pub fn row_l2_sq(&self, row_a: usize, other: &FdMatrix, row_b: usize) -> f64 {
+        debug_assert_eq!(self.ncols, other.ncols, "ncols mismatch in row_l2_sq");
+        let na = self.nrows;
+        let nb = other.nrows;
+        let mut sum = 0.0;
+        for j in 0..self.ncols {
+            let d = self.data[row_a + j * na] - other.data[row_b + j * nb];
+            sum += d * d;
+        }
+        sum
+    }
+
     /// Extract all rows as `Vec<Vec<f64>>`.
     ///
     /// Equivalent to the former `extract_curves` function.
@@ -589,6 +643,76 @@ mod tests {
             rm,
             vec![1.0, 4.0, 7.0, 10.0, 2.0, 5.0, 8.0, 11.0, 3.0, 6.0, 9.0, 12.0]
         );
+    }
+
+    #[test]
+    fn test_row_to_buf() {
+        let mat = sample_3x4();
+        let mut buf = vec![0.0; 4];
+        mat.row_to_buf(0, &mut buf);
+        assert_eq!(buf, vec![1.0, 4.0, 7.0, 10.0]);
+        mat.row_to_buf(1, &mut buf);
+        assert_eq!(buf, vec![2.0, 5.0, 8.0, 11.0]);
+        mat.row_to_buf(2, &mut buf);
+        assert_eq!(buf, vec![3.0, 6.0, 9.0, 12.0]);
+    }
+
+    #[test]
+    fn test_row_to_buf_larger_buffer() {
+        let mat = sample_3x4();
+        let mut buf = vec![99.0; 6]; // bigger than ncols
+        mat.row_to_buf(0, &mut buf);
+        assert_eq!(&buf[..4], &[1.0, 4.0, 7.0, 10.0]);
+        // Remaining elements unchanged
+        assert_eq!(buf[4], 99.0);
+    }
+
+    #[test]
+    fn test_row_dot_same_matrix() {
+        let mat = sample_3x4();
+        // row0 = [1, 4, 7, 10], row1 = [2, 5, 8, 11]
+        // dot = 1*2 + 4*5 + 7*8 + 10*11 = 2 + 20 + 56 + 110 = 188
+        assert_eq!(mat.row_dot(0, &mat, 1), 188.0);
+        // self dot: row0 . row0 = 1+16+49+100 = 166
+        assert_eq!(mat.row_dot(0, &mat, 0), 166.0);
+    }
+
+    #[test]
+    fn test_row_dot_different_matrices() {
+        let mat1 = sample_3x4();
+        let data2 = vec![
+            10.0, 20.0, 30.0, // col 0
+            40.0, 50.0, 60.0, // col 1
+            70.0, 80.0, 90.0, // col 2
+            100.0, 110.0, 120.0, // col 3
+        ];
+        let mat2 = FdMatrix::from_column_major(data2, 3, 4).unwrap();
+        // mat1 row0 = [1, 4, 7, 10], mat2 row0 = [10, 40, 70, 100]
+        // dot = 10 + 160 + 490 + 1000 = 1660
+        assert_eq!(mat1.row_dot(0, &mat2, 0), 1660.0);
+    }
+
+    #[test]
+    fn test_row_l2_sq_identical() {
+        let mat = sample_3x4();
+        assert_eq!(mat.row_l2_sq(0, &mat, 0), 0.0);
+        assert_eq!(mat.row_l2_sq(1, &mat, 1), 0.0);
+    }
+
+    #[test]
+    fn test_row_l2_sq_different() {
+        let mat = sample_3x4();
+        // row0 = [1,4,7,10], row1 = [2,5,8,11]
+        // diff = [-1,-1,-1,-1], sq sum = 4
+        assert_eq!(mat.row_l2_sq(0, &mat, 1), 4.0);
+    }
+
+    #[test]
+    fn test_row_l2_sq_cross_matrix() {
+        let mat1 = FdMatrix::from_column_major(vec![0.0, 0.0], 1, 2).unwrap();
+        let mat2 = FdMatrix::from_column_major(vec![3.0, 4.0], 1, 2).unwrap();
+        // row0 = [0, 0], row0 = [3, 4], sq dist = 9 + 16 = 25
+        assert_eq!(mat1.row_l2_sq(0, &mat2, 0), 25.0);
     }
 
     #[test]

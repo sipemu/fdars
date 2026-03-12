@@ -6,7 +6,7 @@ use super::{
 };
 
 /// Result of Autoperiod detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AutoperiodResult {
     /// Detected period
     pub period: f64,
@@ -21,7 +21,7 @@ pub struct AutoperiodResult {
 }
 
 /// A candidate period from Autoperiod detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AutoperiodCandidate {
     /// Candidate period
     pub period: f64,
@@ -188,7 +188,7 @@ pub fn autoperiod_fdata(
 }
 
 /// Result of CFDAutoperiod detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CfdAutoperiodResult {
     /// Detected period (primary)
     pub period: f64,
