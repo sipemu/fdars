@@ -110,7 +110,7 @@ pub(super) fn select_bandwidth_loo(
         .flat_map(|i| ((i + 1)..n).map(move |j| dists[i * n + j]))
         .filter(|&d| d > 0.0)
         .collect();
-    nonzero_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut nonzero_dists);
 
     if nonzero_dists.is_empty() {
         return 1.0;

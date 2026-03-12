@@ -68,7 +68,7 @@ pub(super) fn build_band(center: Vec<f64>, half_width: Vec<f64>) -> ToleranceBan
 
 /// Extract the percentile value from a sorted slice.
 pub(super) fn percentile_sorted(sorted: &mut [f64], p: f64) -> f64 {
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(sorted);
     let idx = ((sorted.len() as f64 * p).ceil() as usize).min(sorted.len()) - 1;
     sorted[idx]
 }

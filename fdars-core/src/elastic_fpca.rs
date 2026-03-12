@@ -820,19 +820,19 @@ mod tests {
     }
 
     #[test]
-    fn test_vert_fpca_ncomp_sensitivity() {
+    fn test_vert_fpca_ncomp_sensitivity() -> Result<(), crate::error::FdarError> {
         let (data, t) = generate_test_data(15, 51);
         let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
 
         for &ncomp in &[1, 2, 5, 10] {
-            let res = vert_fpca(&km, &t, ncomp)
-                .unwrap_or_else(|_| panic!("vert_fpca ncomp={} should succeed", ncomp));
+            let res = vert_fpca(&km, &t, ncomp)?;
             assert_eq!(res.scores.shape(), (15, ncomp));
             assert_eq!(res.eigenvalues.len(), ncomp);
             assert_eq!(res.eigenfunctions_q.shape(), (ncomp, 52));
             assert_eq!(res.eigenfunctions_f.shape(), (ncomp, 51));
             assert_eq!(res.cumulative_variance.len(), ncomp);
         }
+        Ok(())
     }
 
     #[test]

@@ -77,7 +77,7 @@ fn main() {
 
     // --- Section 1: K-means clustering ---
     println!("\n--- K-Means Clustering (k=3) ---");
-    let km = kmeans_fd(&combined, &t, 3, 100, 1e-6, 42);
+    let km = kmeans_fd(&combined, &t, 3, 100, 1e-6, 42).unwrap();
     println!("  Converged: {} (iter: {})", km.converged, km.iter);
     println!("  Total within-SS: {:.4}", km.tot_withinss);
     println!(
@@ -121,7 +121,7 @@ fn main() {
     // --- Section 4: Choosing k ---
     println!("\n--- Choosing k (Silhouette + CH for k=2..5) ---");
     for k in 2..=5 {
-        let km_k = kmeans_fd(&combined, &t, k, 100, 1e-6, 42);
+        let km_k = kmeans_fd(&combined, &t, k, 100, 1e-6, 42).unwrap();
         let sil_k = silhouette_score(&combined, &t, &km_k.cluster);
         let mean_sil_k: f64 = sil_k.iter().sum::<f64>() / sil_k.len() as f64;
         let ch_k = calinski_harabasz(&combined, &t, &km_k.cluster);
@@ -133,7 +133,7 @@ fn main() {
 
     // --- Section 5: Fuzzy C-means ---
     println!("\n--- Fuzzy C-Means (k=3, fuzziness=2.0) ---");
-    let fcm = fuzzy_cmeans_fd(&combined, &t, 3, 2.0, 100, 1e-6, 42);
+    let fcm = fuzzy_cmeans_fd(&combined, &t, 3, 2.0, 100, 1e-6, 42).unwrap();
     println!("  Converged: {} (iter: {})", fcm.converged, fcm.iter);
 
     // Show membership matrix for first few curves

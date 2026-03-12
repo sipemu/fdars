@@ -194,7 +194,7 @@ fn test_functional_logistic_basic() {
     let (data, y_cont, _t) = generate_test_data(30, 50, 42);
     let y_median = {
         let mut sorted = y_cont.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
     let y_bin: Vec<f64> = y_cont
@@ -218,7 +218,7 @@ fn test_functional_logistic_with_scalar_covariates() {
     let (data, y_cont, _t) = generate_test_data(30, 50, 42);
     let y_median = {
         let mut sorted = y_cont.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
     let y_bin: Vec<f64> = y_cont
@@ -248,7 +248,7 @@ fn test_functional_logistic_convergence() {
     let (data, y_cont, _t) = generate_test_data(40, 50, 42);
     let y_median = {
         let mut sorted = y_cont.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
     let y_bin: Vec<f64> = y_cont
@@ -342,7 +342,7 @@ fn test_functional_logistic_beta_se() {
     let (data, y_cont, _t) = generate_test_data(30, 50, 42);
     let y_median = {
         let mut sorted = y_cont.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
     let y_bin: Vec<f64> = y_cont
@@ -486,7 +486,7 @@ fn test_bootstrap_ci_functional_logistic_shape() {
     let (data, y_cont, _t) = generate_test_data(40, 20, 42);
     let y_median = {
         let mut sorted = y_cont.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
     let y_bin: Vec<f64> = y_cont
@@ -511,7 +511,7 @@ fn test_bootstrap_ci_logistic_ordering() {
     let (data, y_cont, _t) = generate_test_data(40, 20, 42);
     let y_median = {
         let mut sorted = y_cont.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
     let y_bin: Vec<f64> = y_cont

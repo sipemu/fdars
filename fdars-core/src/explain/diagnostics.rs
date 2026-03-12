@@ -62,11 +62,15 @@ pub(crate) fn compute_vif_from_scores(
     ncomp: usize,
     scalar_covariates: Option<&FdMatrix>,
     n: usize,
-) -> Option<VifResult> {
+) -> Result<VifResult, FdarError> {
     let p_scalar = scalar_covariates.map_or(0, super::super::matrix::FdMatrix::ncols);
     let p = ncomp + p_scalar;
     if p == 0 || n <= p {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "scores",
+            expected: format!("n > p (p={p})"),
+            actual: format!("n={n}"),
+        });
     }
 
     let x_noi = build_no_intercept_matrix(scores, ncomp, scalar_covariates, n);
@@ -93,7 +97,7 @@ pub(crate) fn compute_vif_from_scores(
     let n_moderate = vif.iter().filter(|&&v| v > 5.0).count();
     let n_severe = vif.iter().filter(|&&v| v > 10.0).count();
 
-    Some(VifResult {
+    Ok(VifResult {
         vif,
         labels,
         mean_vif,
@@ -185,10 +189,7 @@ pub fn influence_diagnostics(
     }
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "influence_diagnostics",
-        detail: "Cholesky factorization failed".into(),
-    })?;
+    let l = cholesky_factor(&xtx, p)?;
     let leverage = compute_hat_diagonal(&design, &l);
 
     let ss_res: f64 = fit.residuals.iter().map(|r| r * r).sum();
@@ -278,10 +279,7 @@ pub fn dfbetas_dffits(
     }
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "dfbetas_dffits",
-        detail: "Cholesky factorization failed".into(),
-    })?;
+    let l = cholesky_factor(&xtx, p)?;
     let hat_diag = compute_hat_diagonal(&design, &l);
 
     let ss_res: f64 = fit.residuals.iter().map(|r| r * r).sum();
@@ -460,10 +458,7 @@ pub fn prediction_intervals(
     }
 
     let xtx = compute_xtx(&train_design);
-    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "prediction_intervals",
-        detail: "Cholesky factorization failed".into(),
-    })?;
+    let l = cholesky_factor(&xtx, p)?;
 
     let residual_se = fit.residual_se;
     let df = n_train - p;
@@ -654,10 +649,7 @@ pub fn loo_cv_press(
     }
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "loo_cv_press",
-        detail: "Cholesky factorization failed".into(),
-    })?;
+    let l = cholesky_factor(&xtx, p)?;
     let leverage = compute_hat_diagonal(&design, &l);
 
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;

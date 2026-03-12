@@ -120,7 +120,7 @@ pub(crate) fn solve_kernel_shap_obs(
     for k in 0..ncomp {
         ata[k * ncomp + k] += 1e-10;
     }
-    if let Some(l) = cholesky_factor(ata, ncomp) {
+    if let Ok(l) = cholesky_factor(ata, ncomp) {
         let phi = cholesky_forward_back(&l, atb, ncomp);
         for k in 0..ncomp {
             values[(i, k)] = phi[k];

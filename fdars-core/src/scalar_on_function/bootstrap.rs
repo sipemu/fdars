@@ -131,7 +131,7 @@ pub fn bootstrap_ci_fregre_lm(
 
     for j in 0..m {
         let mut vals: Vec<f64> = boot_betas.iter().map(|b| b[j]).collect();
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut vals);
         lower[j] = quantile(&vals, lo_q);
         upper[j] = quantile(&vals, hi_q);
 
@@ -151,7 +151,7 @@ pub fn bootstrap_ci_fregre_lm(
                 .fold(0.0_f64, f64::max)
         })
         .collect();
-    t_stats.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut t_stats);
 
     let c_alpha = quantile(&t_stats, 1.0 - alpha);
     let sim_lower: Vec<f64> = (0..m).map(|j| center[j] - c_alpha * boot_se[j]).collect();
@@ -253,7 +253,7 @@ pub fn bootstrap_ci_functional_logistic(
 
     for j in 0..m {
         let mut vals: Vec<f64> = boot_betas.iter().map(|b| b[j]).collect();
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut vals);
         lower[j] = quantile(&vals, lo_q);
         upper[j] = quantile(&vals, hi_q);
 
@@ -271,7 +271,7 @@ pub fn bootstrap_ci_functional_logistic(
                 .fold(0.0_f64, f64::max)
         })
         .collect();
-    t_stats.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut t_stats);
 
     let c_alpha = quantile(&t_stats, 1.0 - alpha);
     let sim_lower: Vec<f64> = (0..m).map(|j| center[j] - c_alpha * boot_se[j]).collect();

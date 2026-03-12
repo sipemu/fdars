@@ -118,3 +118,4 @@ pub(crate) use diagnostics::compute_vif_from_scores;
 
 #[cfg(test)]
 mod tests;
+

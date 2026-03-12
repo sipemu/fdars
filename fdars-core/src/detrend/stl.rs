@@ -262,7 +262,7 @@ fn compute_robustness_weights(residuals: &[f64]) -> Vec<f64> {
         return vec![];
     }
     let mut abs_residuals: Vec<f64> = residuals.iter().map(|&r| r.abs()).collect();
-    abs_residuals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut abs_residuals);
     let median_idx = m / 2;
     let mad = if m % 2 == 0 {
         (abs_residuals[median_idx - 1] + abs_residuals[median_idx]) / 2.0

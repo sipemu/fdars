@@ -2146,7 +2146,7 @@ fn test_kmeans_quality_r_data() {
     let d: StandardData = load_json("data", "clusters_60x51");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::clustering::kmeans_fd(&mat, &d.argvals, 3, 100, 1e-6, 42);
+    let result = fdars_core::clustering::kmeans_fd(&mat, &d.argvals, 3, 100, 1e-6, 42).unwrap();
     assert_eq!(result.cluster.len(), d.n);
     assert!(result.converged);
 
@@ -2170,7 +2170,7 @@ fn test_kmeans_convergence_r_data() {
     let d: StandardData = load_json("data", "clusters_60x51");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::clustering::kmeans_fd(&mat, &d.argvals, 3, 100, 1e-6, 42);
+    let result = fdars_core::clustering::kmeans_fd(&mat, &d.argvals, 3, 100, 1e-6, 42).unwrap();
     assert!(result.converged, "K-means should converge");
     assert!(
         result.tot_withinss > 0.0,
@@ -2184,7 +2184,7 @@ fn test_fuzzy_cmeans_membership_sums() {
     let d: StandardData = load_json("data", "clusters_60x51");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42);
+    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42).unwrap();
     let k = 3;
 
     // Each observation's membership should sum to 1
@@ -2202,7 +2202,7 @@ fn test_fuzzy_cmeans_center_separation() {
     let d: StandardData = load_json("data", "clusters_60x51");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42);
+    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42).unwrap();
 
     // Centers should be distinct
     for c1 in 0..3 {

@@ -39,7 +39,7 @@ fn irls_step(design: &FdMatrix, y: &[f64], beta: &[f64]) -> Option<Vec<f64>> {
         xtwz[k] = s;
     }
 
-    cholesky_solve(&xtwx, &xtwz, p)
+    cholesky_solve(&xtwx, &xtwz, p).ok()
 }
 
 /// Compute log-likelihood of logistic model.
@@ -120,7 +120,7 @@ fn build_logistic_result(
         }
     }
     let std_errors = cholesky_factor(&xtwx, p)
-        .map_or_else(|| vec![f64::NAN; p], |l| compute_ols_std_errors(&l, p, 1.0));
+        .map_or_else(|_| vec![f64::NAN; p], |l| compute_ols_std_errors(&l, p, 1.0));
     let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
 
     let ll = logistic_log_likelihood(&probabilities, y);

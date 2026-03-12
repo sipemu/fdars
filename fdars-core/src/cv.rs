@@ -352,6 +352,7 @@ fn compute_metrics(y_true: &[f64], y_pred: &[f64], cv_type: CvType) -> CvMetrics
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::FdarError;
 
     #[test]
     fn test_create_folds_basic() {
@@ -409,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cv_fdata_regression() {
+    fn test_cv_fdata_regression() -> Result<(), FdarError> {
         // Simple test: predict mean
         let n = 20;
         let m = 5;
@@ -444,8 +445,14 @@ mod tests {
         assert!(result.oof_sd.is_none());
         match &result.metrics {
             CvMetrics::Regression { rmse, .. } => assert!(*rmse > 0.0),
-            _ => panic!("Expected regression metrics"),
+            _ => {
+                return Err(FdarError::ComputationFailed {
+                    operation: "cv_fdata_regression",
+                    detail: "expected regression metrics".into(),
+                });
+            }
         }
+        Ok(())
     }
 
     #[test]
@@ -474,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_metrics_classification() {
+    fn test_compute_metrics_classification() -> Result<(), FdarError> {
         let y_true = vec![0.0, 0.0, 1.0, 1.0];
         let y_pred = vec![0.0, 1.0, 1.0, 1.0]; // 1 misclassification
         let m = compute_metrics(&y_true, &y_pred, CvType::Classification);
@@ -488,7 +495,13 @@ mod tests {
                 assert_eq!(confusion[0][1], 1); // true 0, pred 1
                 assert_eq!(confusion[1][1], 2); // true 1, pred 1
             }
-            _ => panic!("Expected classification metrics"),
+            _ => {
+                return Err(FdarError::ComputationFailed {
+                    operation: "compute_metrics_classification",
+                    detail: "expected classification metrics".into(),
+                });
+            }
         }
+        Ok(())
     }
 }

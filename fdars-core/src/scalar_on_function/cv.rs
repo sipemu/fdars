@@ -237,7 +237,7 @@ fn select_default_bandwidth_grid(func_dists: &[f64], n: usize) -> Result<Vec<f64
             }
         }
     }
-    nonzero.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut nonzero);
     if nonzero.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "select_default_bandwidth_grid",

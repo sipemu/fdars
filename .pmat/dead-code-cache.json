@@ -1,0 +1,29 @@
+{
+  "tree_hash": "28d87b6a8fd85e958d7050b00924cb3bb08544f7",
+  "pmat_version": "3.6.1",
+  "timestamp": "2026-02-27T11:04:43.351408650Z",
+  "report": {
+    "files_with_dead_code": [
+      {
+        "file_path": "fdars-core/src/seasonal.rs",
+        "dead_items": [
+          {
+            "name": "cwt_morlet",
+            "kind": "Suppressed",
+            "line": 542,
+            "column": 1,
+            "message": "fn `cwt_morlet` has #[allow(dead_code)] suppression (explicit dead code admission)"
+          }
+        ],
+        "file_dead_percentage": 0.06440186765416198
+      }
+    ],
+    "total_dead_items": 1,
+    "dead_code_percentage": 0.008685456203587093,
+    "total_lines": 23027,
+    "dead_lines": 2,
+    "dead_by_type": {
+      "suppressed": 1
+    }
+  }
+}

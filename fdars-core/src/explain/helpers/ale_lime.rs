@@ -178,7 +178,7 @@ pub(crate) fn compute_lime(
         ata[j * p + j] += 1e-10;
     }
 
-    let l = cholesky_factor(&ata, p)?;
+    let l = cholesky_factor(&ata, p).ok()?;
     let beta = cholesky_forward_back(&l, &atb, p);
 
     let local_intercept = beta[0];

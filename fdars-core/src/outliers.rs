@@ -177,7 +177,7 @@ pub fn outliers_threshold_lrt_with_dist(
 
     // Sort and extract threshold at specified percentile
     let mut sorted_dists = max_dists;
-    sorted_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut sorted_dists);
     let idx =
         crate::utility::f64_to_usize_clamped(nb as f64 * percentile).min(nb.saturating_sub(1));
     let threshold = sorted_dists.get(idx).copied().unwrap_or(0.0);

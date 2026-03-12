@@ -6,6 +6,11 @@ pub const NUMERICAL_EPS: f64 = 1e-10;
 /// Default convergence tolerance for iterative algorithms.
 pub const DEFAULT_CONVERGENCE_TOL: f64 = 1e-6;
 
+/// Sort a slice using total ordering that treats NaN as equal.
+pub fn sort_nan_safe(slice: &mut [f64]) {
+    slice.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+}
+
 /// Extract curves from column-major data matrix.
 ///
 /// Converts a flat column-major matrix into a vector of curve vectors,
