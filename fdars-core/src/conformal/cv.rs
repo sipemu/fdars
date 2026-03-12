@@ -497,7 +497,7 @@ pub fn jackknife_plus_regression(
         let mut lower_vals: Vec<f64> = (0..n)
             .map(|i| test_preds_all[j][i] - loo_residuals[i])
             .collect();
-        lower_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut lower_vals);
         // Lower bound: floor((n+1)*q_lo) as rank (Barber et al. 2021, Corollary 2)
         let lo_k = ((n + 1) as f64 * q_lo).floor() as usize;
         if lo_k == 0 {
@@ -510,7 +510,7 @@ pub fn jackknife_plus_regression(
         let mut upper_vals: Vec<f64> = (0..n)
             .map(|i| test_preds_all[j][i] + loo_residuals[i])
             .collect();
-        upper_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        crate::helpers::sort_nan_safe(&mut upper_vals);
         let hi_k = ((n + 1) as f64 * q_hi).ceil() as usize;
         let hi_idx = if hi_k > n {
             n.saturating_sub(1)

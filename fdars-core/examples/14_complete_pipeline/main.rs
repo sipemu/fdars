@@ -244,7 +244,7 @@ fn main() {
         // Step 5: Clustering
         println!("\n--- Step 5: K-Means Clustering ---");
         let k = 2;
-        let km = kmeans_fd(&clean_mat, &t, k, 100, 1e-6, 42);
+        let km = kmeans_fd(&clean_mat, &t, k, 100, 1e-6, 42).unwrap();
         print_clustering_results(&km, &clean_mat, &t, &clean_indices, n_per_group, n_clean, k);
 
         // Step 6: Depth-based characterization

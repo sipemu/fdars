@@ -166,10 +166,5 @@ pub fn generic_vif(
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
-    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n).ok_or_else(|| {
-        FdarError::ComputationFailed {
-            operation: "generic_vif",
-            detail: "compute_vif_from_scores returned None".into(),
-        }
-    })
+    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n)
 }

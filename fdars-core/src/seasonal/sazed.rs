@@ -227,7 +227,7 @@ fn sazed_spectral_with_confidence(data: &[f64], argvals: &[f64]) -> (f64, f64) {
 
     // Calculate noise floor as median
     let mut sorted_power = power_no_dc.clone();
-    sorted_power.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut sorted_power);
     let noise_floor = sorted_power[sorted_power.len() / 2].max(1e-15);
 
     // Find global maximum
@@ -349,7 +349,7 @@ fn sazed_zero_crossing_with_confidence(data: &[f64], dt: f64, max_lag: usize) ->
     let consistency = (1.0 - std / mean.max(1e-15)).clamp(0.0, 1.0);
 
     // Median half-period
-    half_periods.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut half_periods);
     let median_half = half_periods[half_periods.len() / 2];
 
     (2.0 * median_half * dt, consistency)

@@ -58,7 +58,7 @@ pub fn fregre_lm(
     let sigma2 = ss_res / df_resid;
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p_total).unwrap_or_else(|| vec![1.0; p_total * p_total]);
+    let l = cholesky_factor(&xtx, p_total).unwrap_or_else(|_| vec![1.0; p_total * p_total]);
     let std_errors = compute_ols_std_errors(&l, p_total, sigma2);
 
     let gcv = hat_diag

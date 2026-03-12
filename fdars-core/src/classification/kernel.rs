@@ -48,7 +48,7 @@ pub(super) fn bandwidth_candidates(dists: &[f64], n: usize) -> Vec<f64> {
             all_dists.push(dists[i * n + j]);
         }
     }
-    all_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut all_dists);
 
     (1..=20)
         .map(|p| {

@@ -261,7 +261,7 @@ pub(crate) fn solve_kernel_shap_obs(
     for k in 0..ncomp {
         ata[k * ncomp + k] += 1e-10;
     }
-    if let Some(l) = cholesky_factor(ata, ncomp) {
+    if let Ok(l) = cholesky_factor(ata, ncomp) {
         let phi = cholesky_forward_back(&l, atb, ncomp);
         for k in 0..ncomp {
             values[(i, k)] = phi[k];
@@ -433,7 +433,7 @@ pub(crate) fn median_bandwidth(scores: &FdMatrix, n: usize, ncomp: usize) -> f64
             dists.push(d2.sqrt());
         }
     }
-    dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut dists);
     if dists.is_empty() {
         1.0
     } else {
@@ -833,7 +833,7 @@ pub(crate) fn compute_lime(
         ata[j * p + j] += 1e-10;
     }
 
-    let l = cholesky_factor(&ata, p)?;
+    let l = cholesky_factor(&ata, p).ok()?;
     let beta = cholesky_forward_back(&l, &atb, p);
 
     let local_intercept = beta[0];
@@ -995,7 +995,7 @@ pub(crate) fn anchor_beam_search(
 /// Compute quantile bin edges for a column of scores.
 fn compute_bin_edges(scores: &FdMatrix, component: usize, n: usize, n_bins: usize) -> Vec<f64> {
     let mut vals: Vec<f64> = (0..n).map(|i| scores[(i, component)]).collect();
-    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut vals);
     let mut edges = Vec::with_capacity(n_bins + 1);
     edges.push(f64::NEG_INFINITY);
     for b in 1..n_bins {
@@ -1556,7 +1556,7 @@ pub(super) fn conformal_quantile_and_coverage(
 ) -> (f64, f64) {
     let q_level = (((cal_n + 1) as f64 * (1.0 - alpha)).ceil() / cal_n as f64).min(1.0);
     let mut sorted_scores = calibration_scores.to_vec();
-    sorted_scores.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut sorted_scores);
     let residual_quantile = quantile_sorted(&sorted_scores, q_level);
 
     let coverage = calibration_scores

@@ -126,7 +126,7 @@ pub(super) fn conformal_quantile(scores: &mut [f64], alpha: f64) -> f64 {
     if n == 0 {
         return 0.0;
     }
-    scores.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(scores);
     let k = ((n + 1) as f64 * (1.0 - alpha)).ceil() as usize;
     if k > n {
         return f64::INFINITY;

@@ -446,7 +446,7 @@ fn accumulate_cov_at_point(
 fn lp_distance_pair(t1: &[f64], x1: &[f64], t2: &[f64], x2: &[f64], p: f64) -> f64 {
     // Create union of time points
     let mut all_t: Vec<f64> = t1.iter().chain(t2.iter()).copied().collect();
-    all_t.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut all_t);
     all_t.dedup();
 
     // Filter to common range

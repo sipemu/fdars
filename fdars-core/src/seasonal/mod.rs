@@ -1010,7 +1010,7 @@ pub(super) fn find_spectral_peaks(power: &[f64]) -> Vec<usize> {
 
     // Estimate noise floor as median power
     let mut sorted_power: Vec<f64> = power.to_vec();
-    sorted_power.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    crate::helpers::sort_nan_safe(&mut sorted_power);
     let noise_floor = sorted_power[sorted_power.len() / 2];
     let threshold = noise_floor * 2.0; // Peaks must be at least 2x median
 

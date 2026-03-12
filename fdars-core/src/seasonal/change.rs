@@ -681,7 +681,7 @@ pub fn detect_seasonality_changes_auto(
                 .copied()
                 .filter(|x| x.is_finite())
                 .collect();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            crate::helpers::sort_nan_safe(&mut sorted);
             if sorted.is_empty() {
                 0.5
             } else {

@@ -236,8 +236,8 @@ fn compute_xty(x: &FdMatrix, y: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or None if singular.
-pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
+/// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or error if singular.
+pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
     let mut l = vec![0.0; p * p];
     for j in 0..p {
         let mut diag = a[j * p + j];
@@ -245,7 +245,10 @@ pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
             diag -= l[j * p + k] * l[j * p + k];
         }
         if diag <= 1e-12 {
-            return None;
+            return Err(FdarError::ComputationFailed {
+                operation: "Cholesky factorization",
+                detail: "matrix is singular or near-singular".into(),
+            });
         }
         l[j * p + j] = diag.sqrt();
         for i in (j + 1)..p {
@@ -256,7 +259,7 @@ pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
             l[i * p + j] = s / l[j * p + j];
         }
     }
-    Some(l)
+    Ok(l)
 }
 
 /// Solve Lz = b (forward) then L'x = z (back). L is p×p flat row-major.
@@ -278,9 +281,9 @@ pub(crate) fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> 
 }
 
 /// Solve Ax = b via Cholesky decomposition (A must be symmetric positive definite).
-fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
+fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
     let l = cholesky_factor(a, p)?;
-    Some(cholesky_forward_back(&l, b, p))
+    Ok(cholesky_forward_back(&l, b, p))
 }
 
 /// Compute hat matrix diagonal: H_ii = x_i' (X'X)^{-1} x_i, given Cholesky factor L of X'X.
@@ -482,10 +485,7 @@ fn ols_solve(x: &FdMatrix, y: &[f64]) -> Result<(Vec<f64>, Vec<f64>), FdarError>
     }
     let xtx = compute_xtx(x);
     let xty = compute_xty(x, y);
-    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "OLS Cholesky factorization",
-        detail: "X'X is singular or near-singular".to_string(),
-    })?;
+    let l = cholesky_factor(&xtx, p)?;
     let b = cholesky_forward_back(&l, &xty, p);
     let hat_diag = compute_hat_diagonal(x, &l);
     Ok((b, hat_diag))
