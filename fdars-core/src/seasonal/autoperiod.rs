@@ -154,7 +154,7 @@ pub fn autoperiod(
                 .partial_cmp(&b.combined_score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
-        .unwrap();
+        .expect("checked: candidates is non-empty");
 
     AutoperiodResult {
         period: best.period,

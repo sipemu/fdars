@@ -116,8 +116,10 @@ pub fn ssa(
     let (trend_idx, seasonal_idx, detected_period, confidence) =
         if trend_components.is_some() || seasonal_components.is_some() {
             // Use provided groupings
-            let t_idx: Vec<usize> = trend_components.map(|v| v.to_vec()).unwrap_or_default();
-            let s_idx: Vec<usize> = seasonal_components.map(|v| v.to_vec()).unwrap_or_default();
+            let t_idx: Vec<usize> = trend_components.map(<[usize]>::to_vec).unwrap_or_default();
+            let s_idx: Vec<usize> = seasonal_components
+                .map(<[usize]>::to_vec)
+                .unwrap_or_default();
             (t_idx, s_idx, 0.0, 0.0)
         } else {
             // Auto-detect groupings
@@ -190,9 +192,9 @@ pub(super) fn svd_decompose(
     let sigma = svd.singular_values;
 
     // Convert to flat vectors
-    let u: Vec<f64> = u_mat.iter().cloned().collect();
-    let sigma_vec: Vec<f64> = sigma.iter().cloned().collect();
-    let vt: Vec<f64> = vt_mat.iter().cloned().collect();
+    let u: Vec<f64> = u_mat.iter().copied().collect();
+    let sigma_vec: Vec<f64> = sigma.iter().copied().collect();
+    let vt: Vec<f64> = vt_mat.iter().copied().collect();
 
     (u, sigma_vec, vt)
 }

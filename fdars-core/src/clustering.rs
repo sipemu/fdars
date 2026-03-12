@@ -139,7 +139,7 @@ fn centers_to_matrix(centers: &[f64], k: usize, m: usize) -> FdMatrix {
             flat[c + j * k] = centers[c * m + j];
         }
     }
-    FdMatrix::from_column_major(flat, k, m).unwrap()
+    FdMatrix::from_column_major(flat, k, m).expect("dimension invariant: data.len() == n * m")
 }
 
 /// Initialize a random membership matrix (n x k) with rows summing to 1.
@@ -604,7 +604,7 @@ pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> 
     let weights = simpsons_weights(argvals);
     let curves = data.to_row_major();
 
-    let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
+    let k = cluster.iter().copied().max().unwrap_or(0) + 1;
     let members = cluster_member_indices(cluster, k);
 
     iter_maybe_parallel!(0..n)
@@ -658,7 +658,7 @@ pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) ->
     let weights = simpsons_weights(argvals);
     let curves = data.to_row_major();
 
-    let k = cluster.iter().cloned().max().unwrap_or(0) + 1;
+    let k = cluster.iter().copied().max().unwrap_or(0) + 1;
     if k < 2 {
         return 0.0;
     }

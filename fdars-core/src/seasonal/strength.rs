@@ -169,7 +169,7 @@ pub fn seasonal_strength_wavelet(data: &FdMatrix, argvals: &[f64], period: f64) 
 
     let wavelet_power: f64 = wavelet_coeffs[interior_start..interior_end]
         .iter()
-        .map(|c| c.norm_sqr())
+        .map(nalgebra::Complex::norm_sqr)
         .sum::<f64>()
         / (interior_end - interior_start) as f64;
 
@@ -221,7 +221,8 @@ pub fn seasonal_strength_windowed(
             let window_argvals: Vec<f64> = argvals[start..end].to_vec();
 
             // Create single-sample FdMatrix for the strength functions
-            let single_mat = FdMatrix::from_column_major(window_data, 1, window_m).unwrap();
+            let single_mat = FdMatrix::from_column_major(window_data, 1, window_m)
+                .expect("dimension invariant: data.len() == n * m");
 
             match method {
                 StrengthMethod::Variance => {

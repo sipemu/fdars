@@ -25,6 +25,12 @@ pub struct FpcShapValues {
 /// For linear models, SHAP values are exact: `values[(i,k)] = coef[1+k] * (score_i_k - mean_k)`.
 /// The efficiency property holds: `base_value + sum_k values[(i,k)] ~ fitted_values[i]`
 /// (with scalar covariate effects absorbed into the base value).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 pub fn fpc_shap_values(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -42,7 +48,7 @@ pub fn fpc_shap_values(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let ncomp = fit.ncomp;
@@ -82,6 +88,13 @@ pub fn fpc_shap_values(
 /// Kernel SHAP values for a functional logistic regression model.
 ///
 /// Uses sampling-based Kernel SHAP approximation since the logistic link is nonlinear.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `n_samples` is zero or `fit.ncomp`
+/// is zero.
 pub fn fpc_shap_values_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -101,7 +114,7 @@ pub fn fpc_shap_values_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_samples == 0 {
@@ -187,6 +200,13 @@ pub struct FriedmanHResult {
 }
 
 /// Friedman H-statistic for interaction between two FPC components (linear model).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `component_j == component_k`,
+/// `n_grid < 2`, or either component index is `>= fit.ncomp`.
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
 pub fn friedman_h_statistic(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -212,7 +232,7 @@ pub fn friedman_h_statistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_grid < 2 {
@@ -265,6 +285,14 @@ pub fn friedman_h_statistic(
 }
 
 /// Friedman H-statistic for interaction between two FPC components (logistic model).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `component_j == component_k`,
+/// `n_grid < 2`, either component index is `>= fit.ncomp`, or
+/// `scalar_covariates` is `None` when the model has scalar covariates.
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
 pub fn friedman_h_statistic_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -293,7 +321,7 @@ pub fn friedman_h_statistic_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_grid < 2 {
@@ -306,8 +334,7 @@ pub fn friedman_h_statistic_logistic(
         return Err(FdarError::InvalidParameter {
             parameter: "component",
             message: format!(
-                "component_j={} or component_k={} >= ncomp={}",
-                component_j, component_k, ncomp
+                "component_j={component_j} or component_k={component_k} >= ncomp={ncomp}"
             ),
         });
     }

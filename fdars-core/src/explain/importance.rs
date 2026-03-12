@@ -21,6 +21,14 @@ pub struct FpcPermutationImportance {
 }
 
 /// Permutation importance for a linear functional regression (metric = R^2).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or `y.len()` does not match the row
+/// count.
+/// Returns [`FdarError::InvalidParameter`] if `n_perm` is zero.
+/// Returns [`FdarError::ComputationFailed`] if the total sum of squares is zero.
 pub fn fpc_permutation_importance(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -39,7 +47,7 @@ pub fn fpc_permutation_importance(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -47,7 +55,7 @@ pub fn fpc_permutation_importance(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_perm == 0 {
@@ -107,6 +115,13 @@ pub fn fpc_permutation_importance(
 }
 
 /// Permutation importance for functional logistic regression (metric = accuracy).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or `y.len()` does not match the row
+/// count.
+/// Returns [`FdarError::InvalidParameter`] if `n_perm` is zero.
 pub fn fpc_permutation_importance_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -125,7 +140,7 @@ pub fn fpc_permutation_importance_logistic(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -133,7 +148,7 @@ pub fn fpc_permutation_importance_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_perm == 0 {
@@ -232,6 +247,12 @@ pub struct PointwiseImportanceResult {
 /// Pointwise variable importance for a linear functional regression model.
 ///
 /// Measures how much X(t_j) contributes to prediction variance via the FPC decomposition.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+/// Returns [`FdarError::InvalidDimension`] if the rotation matrix has zero rows
+/// or the scores matrix has fewer than 2 rows.
 pub fn pointwise_importance(fit: &FregreLmResult) -> Result<PointwiseImportanceResult, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.rotation.nrows();
@@ -253,7 +274,7 @@ pub fn pointwise_importance(fit: &FregreLmResult) -> Result<PointwiseImportanceR
         return Err(FdarError::InvalidDimension {
             parameter: "scores",
             expected: ">=2 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
 
@@ -276,6 +297,12 @@ pub fn pointwise_importance(fit: &FregreLmResult) -> Result<PointwiseImportanceR
 }
 
 /// Pointwise variable importance for a functional logistic regression model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+/// Returns [`FdarError::InvalidDimension`] if the rotation matrix has zero rows
+/// or the scores matrix has fewer than 2 rows.
 pub fn pointwise_importance_logistic(
     fit: &FunctionalLogisticResult,
 ) -> Result<PointwiseImportanceResult, FdarError> {
@@ -299,7 +326,7 @@ pub fn pointwise_importance_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "scores",
             expected: ">=2 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
 
@@ -371,6 +398,14 @@ pub struct ConditionalPermutationImportanceResult {
 }
 
 /// Conditional permutation importance for a linear functional regression model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or `y.len()` does not match the row
+/// count.
+/// Returns [`FdarError::InvalidParameter`] if `n_perm` or `n_bins` is zero.
+/// Returns [`FdarError::ComputationFailed`] if the total sum of squares is zero.
 pub fn conditional_permutation_importance(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -391,7 +426,7 @@ pub fn conditional_permutation_importance(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -399,7 +434,7 @@ pub fn conditional_permutation_importance(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_perm == 0 {
@@ -465,6 +500,13 @@ pub fn conditional_permutation_importance(
 }
 
 /// Conditional permutation importance for a functional logistic regression model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or `y.len()` does not match the row
+/// count.
+/// Returns [`FdarError::InvalidParameter`] if `n_perm` or `n_bins` is zero.
 pub fn conditional_permutation_importance_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -485,7 +527,7 @@ pub fn conditional_permutation_importance_logistic(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -493,7 +535,7 @@ pub fn conditional_permutation_importance_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_perm == 0 {

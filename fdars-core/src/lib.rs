@@ -183,9 +183,9 @@ pub use explain::{
 
 // Re-export classification types
 pub use classification::{
-    fclassif_cv, fclassif_dd, fclassif_kernel, fclassif_knn, fclassif_knn_fit, fclassif_lda,
-    fclassif_lda_fit, fclassif_qda, fclassif_qda_fit, ClassifCvResult, ClassifFit, ClassifMethod,
-    ClassifResult,
+    fclassif_cv, fclassif_cv_with_config, fclassif_dd, fclassif_kernel, fclassif_knn,
+    fclassif_knn_fit, fclassif_lda, fclassif_lda_fit, fclassif_qda, fclassif_qda_fit,
+    ClassifCvConfig, ClassifCvResult, ClassifFit, ClassifMethod, ClassifResult,
 };
 
 // Re-export conformal prediction types
@@ -219,9 +219,10 @@ pub use elastic_fpca::{
 
 // Re-export elastic regression types
 pub use elastic_regression::{
-    elastic_logistic, elastic_pcr, elastic_regression, predict_elastic_logistic,
-    predict_elastic_regression, ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult,
-    PcaMethod,
+    elastic_logistic, elastic_logistic_with_config, elastic_pcr, elastic_pcr_with_config,
+    elastic_regression, elastic_regression_with_config, predict_elastic_logistic,
+    predict_elastic_regression, ElasticConfig, ElasticLogisticResult, ElasticPcrConfig,
+    ElasticPcrResult, ElasticRegressionResult, PcaMethod,
 };
 
 // Re-export elastic changepoint types

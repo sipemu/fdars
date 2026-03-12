@@ -33,6 +33,14 @@ pub struct CounterfactualResult {
 }
 
 /// Counterfactual explanation for a linear functional regression model (analytical).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n` or `fit.ncomp`
+/// is zero.
+/// Returns [`FdarError::InvalidDimension`] if `data` column count does not match
+/// `fit.fpca.mean`.
+/// Returns [`FdarError::ComputationFailed`] if the coefficient norm is near zero.
 pub fn counterfactual_regression(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -44,14 +52,14 @@ pub fn counterfactual_regression(
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if m != fit.fpca.mean.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let _ = scalar_covariates;
@@ -104,6 +112,13 @@ pub fn counterfactual_regression(
 }
 
 /// Counterfactual explanation for a functional logistic regression model (gradient descent).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n` or `fit.ncomp`
+/// is zero.
+/// Returns [`FdarError::InvalidDimension`] if `data` column count does not match
+/// `fit.fpca.mean`.
 pub fn counterfactual_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -116,14 +131,14 @@ pub fn counterfactual_logistic(
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if m != fit.fpca.mean.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let _ = scalar_covariates;
@@ -196,7 +211,7 @@ fn logistic_counterfactual_descent(
         }
         for k in 0..ncomp {
             // Cross-entropy gradient: dL/ds_k = (p - target) * coef_k
-            let grad = (current_pred - target_class as f64) * coefficients[1 + k];
+            let grad = (current_pred - f64::from(target_class)) * coefficients[1 + k];
             current_scores[k] -= step_size * grad;
         }
     }
@@ -239,6 +254,12 @@ pub struct PrototypeCriticismResult {
 ///
 /// Takes an `FpcaResult` directly -- works with both linear and logistic models
 /// (caller passes `&fit.fpca`).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `fpca.scores` has zero rows.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero, `n_prototypes`
+/// is zero, or `n_prototypes > n`.
 pub fn prototype_criticism(
     fpca: &FpcaResult,
     ncomp: usize,
@@ -269,7 +290,7 @@ pub fn prototype_criticism(
     if n_prototypes > n {
         return Err(FdarError::InvalidParameter {
             parameter: "n_prototypes",
-            message: format!("n_prototypes {} > n {}", n_prototypes, n),
+            message: format!("n_prototypes {n_prototypes} > n {n}"),
         });
     }
     let n_crit = n_criticisms.min(n.saturating_sub(n_prototypes));

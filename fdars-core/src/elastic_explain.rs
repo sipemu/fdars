@@ -42,6 +42,16 @@ pub struct ElasticAttributionResult {
 /// * `ncomp` — Number of components to use for attribution
 /// * `n_perm` — Number of permutation replicates for importance
 /// * `seed` — RNG seed for permutation reproducibility
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `y.len()` does not match the
+/// number of fitted values in `result`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero or there are
+/// fewer than 2 observations.
+/// Returns [`FdarError::ComputationFailed`] if the joint FPCA result is
+/// missing from a `PcaMethod::Joint` model.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_pcr_attribution(
     result: &ElasticPcrResult,
     y: &[f64],

@@ -316,6 +316,14 @@ fn fpca_simultaneous_boot(
 /// # Returns
 /// `Ok(ToleranceBand)` on success, or `Err(FdarError)` if inputs are invalid or FPCA fails.
 ///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 3 rows
+/// or zero columns.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero, `nb` is zero,
+/// or `coverage` is not in the open interval (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the underlying FPCA fails.
+///
 /// # Examples
 ///
 /// ```
@@ -329,6 +337,7 @@ fn fpca_simultaneous_boot(
 /// assert_eq!(band.lower.len(), 50);
 /// assert!(band.lower.iter().zip(band.upper.iter()).all(|(l, u)| l < u));
 /// ```
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpca_tolerance_band(
     data: &FdMatrix,
     ncomp: usize,
@@ -342,7 +351,7 @@ pub fn fpca_tolerance_band(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "at least 3 rows and 1 column".to_string(),
-            actual: format!("{} x {}", n, m),
+            actual: format!("{n} x {m}"),
         });
     }
     if ncomp == 0 {
@@ -360,7 +369,7 @@ pub fn fpca_tolerance_band(
     if coverage <= 0.0 || coverage >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "coverage",
-            message: format!("must be in (0, 1), got {}", coverage),
+            message: format!("must be in (0, 1), got {coverage}"),
         });
     }
 

@@ -587,8 +587,8 @@ pub(super) fn otsu_threshold(values: &[f64]) -> f64 {
         return 0.5;
     }
 
-    let vmin = valid.iter().cloned().fold(f64::INFINITY, f64::min);
-    let vmax = valid.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let vmin = valid.iter().copied().fold(f64::INFINITY, f64::min);
+    let vmax = valid.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
     if (vmax - vmin).abs() < 1e-10 {
         return (vmin + vmax) / 2.0;
@@ -648,11 +648,11 @@ pub(super) fn analyze_amplitude_envelope(
     let mean_amp = interior_envelope.iter().sum::<f64>() / n_interior;
     let min_amp = interior_envelope
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::INFINITY, f64::min);
     let max_amp = interior_envelope
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::NEG_INFINITY, f64::max);
 
     let variance = interior_envelope
@@ -843,8 +843,8 @@ pub(super) fn compute_cycle_strengths(
 
 /// Build a histogram from valid values. Returns (histogram, min_val, bin_width).
 pub(super) fn build_histogram(valid: &[f64], n_bins: usize) -> (Vec<usize>, f64, f64) {
-    let min_val = valid.iter().cloned().fold(f64::INFINITY, f64::min);
-    let max_val = valid.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let min_val = valid.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_val = valid.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let bin_width = (max_val - min_val) / n_bins as f64;
     let mut histogram = vec![0usize; n_bins];
     for &v in valid {

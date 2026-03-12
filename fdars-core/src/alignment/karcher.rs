@@ -284,6 +284,7 @@ fn upsample_to_fine(coarse: &[f64], argvals_coarse: &[f64], argvals_fine: &[f64]
 /// assert_eq!(result.mean.len(), 50);
 /// assert!(result.n_iter <= 20);
 /// ```
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn karcher_mean(
     data: &FdMatrix,
     argvals: &[f64],

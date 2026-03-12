@@ -213,8 +213,8 @@ pub(super) fn generate_ls_frequencies(
     }
 
     // Time span
-    let t_min = times.iter().cloned().fold(f64::INFINITY, f64::min);
-    let t_max = times.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let t_min = times.iter().copied().fold(f64::INFINITY, f64::min);
+    let t_max = times.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let t_span = (t_max - t_min).max(1e-10);
 
     // Minimum frequency: one cycle over the observation span

@@ -171,7 +171,7 @@ fn fit_polynomial_single_curve(
         detrended[j] = curve[j] - fitted[j];
         rss += detrended[j].powi(2);
     }
-    let coefs: Vec<f64> = beta.iter().cloned().collect();
+    let coefs: Vec<f64> = beta.iter().copied().collect();
     (trend, detrended, coefs, rss)
 }
 
@@ -255,7 +255,7 @@ pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> Tr
             data,
             n,
             m,
-            Cow::Owned(format!("polynomial({})", degree)),
+            Cow::Owned(format!("polynomial({degree})")),
             degree + 1,
         );
     }
@@ -265,8 +265,8 @@ pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> Tr
         return result;
     }
     let n_coef = degree + 1;
-    let t_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
-    let t_max = argvals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let t_min = argvals.iter().copied().fold(f64::INFINITY, f64::min);
+    let t_max = argvals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let t_range = if (t_max - t_min).abs() > 1e-15 {
         t_max - t_min
     } else {
@@ -286,7 +286,7 @@ pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> Tr
     TrendResult {
         trend,
         detrended,
-        method: Cow::Owned(format!("polynomial({})", degree)),
+        method: Cow::Owned(format!("polynomial({degree})")),
         coefficients: Some(coefficients),
         rss,
         n_params: n_coef,
@@ -297,7 +297,7 @@ pub fn detrend_polynomial(data: &FdMatrix, argvals: &[f64], degree: usize) -> Tr
 pub fn detrend_diff(data: &FdMatrix, order: usize) -> TrendResult {
     let (n, m) = data.shape();
     if n == 0 || m <= order || order == 0 || order > 2 {
-        return TrendResult::empty(data, n, m, Cow::Owned(format!("diff{}", order)), order);
+        return TrendResult::empty(data, n, m, Cow::Owned(format!("diff{order}")), order);
     }
     let results: Vec<(Vec<f64>, Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
@@ -309,7 +309,7 @@ pub fn detrend_diff(data: &FdMatrix, order: usize) -> TrendResult {
     TrendResult {
         trend,
         detrended,
-        method: Cow::Owned(format!("diff{}", order)),
+        method: Cow::Owned(format!("diff{order}")),
         coefficients: Some(coefficients),
         rss,
         n_params: order,
@@ -333,8 +333,8 @@ pub fn detrend_loess(
             (m as f64 * bandwidth.max(0.0)).ceil() as usize,
         );
     }
-    let t_min = argvals.iter().cloned().fold(f64::INFINITY, f64::min);
-    let t_max = argvals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let t_min = argvals.iter().copied().fold(f64::INFINITY, f64::min);
+    let t_max = argvals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let abs_bandwidth = (t_max - t_min) * bandwidth;
     let results: Vec<(Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
@@ -399,8 +399,8 @@ pub fn auto_detrend(data: &FdMatrix, argvals: &[f64]) -> TrendResult {
     let (_, best_name, mut best_result) = methods
         .into_iter()
         .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap();
-    best_result.method = Cow::Owned(format!("auto({})", best_name));
+        .expect("non-empty iterator");
+    best_result.method = Cow::Owned(format!("auto({best_name})"));
     best_result
 }
 
@@ -427,7 +427,7 @@ fn fit_fourier_seasonal(
         .solve(&y, 1e-10)
         .unwrap_or_else(|_| DVector::zeros(n_coef));
     let fitted = &design * &coef;
-    let seasonal: Vec<f64> = fitted.iter().cloned().collect();
+    let seasonal: Vec<f64> = fitted.iter().copied().collect();
     let remainder: Vec<f64> = (0..m).map(|j| detrended_i[j] - seasonal[j]).collect();
     (seasonal, remainder)
 }
@@ -507,11 +507,12 @@ pub fn decompose_multiplicative(
     let min_val = data
         .as_slice()
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::INFINITY, f64::min);
     let shift = if min_val <= 0.0 { -min_val + 1.0 } else { 0.0 };
     let log_data_vec: Vec<f64> = data.as_slice().iter().map(|&x| (x + shift).ln()).collect();
-    let log_data = FdMatrix::from_column_major(log_data_vec, n, m).unwrap();
+    let log_data = FdMatrix::from_column_major(log_data_vec, n, m)
+        .expect("dimension invariant: data.len() == n * m");
     let additive_result = decompose_additive(
         &log_data,
         argvals,
@@ -613,7 +614,8 @@ pub fn stl_decompose(
     let mut trend = FdMatrix::zeros(n, m);
     let mut seasonal = FdMatrix::zeros(n, m);
     let mut remainder = FdMatrix::zeros(n, m);
-    let mut weights = FdMatrix::from_column_major(vec![1.0; n * m], n, m).unwrap();
+    let mut weights = FdMatrix::from_column_major(vec![1.0; n * m], n, m)
+        .expect("dimension invariant: data.len() == n * m");
     for (i, (t, s, r, w)) in results.into_iter().enumerate() {
         for j in 0..m {
             trend[(i, j)] = t[j];

@@ -30,6 +30,14 @@ pub struct FunctionalPdpResult {
 /// * `scalar_covariates` -- Optional scalar covariates (n x p)
 /// * `component` -- Which FPC component to vary (0-indexed, must be < fit.ncomp)
 /// * `n_grid` -- Number of grid points (must be >= 2)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or its row count does not match
+/// `fit.fitted_values`.
+/// Returns [`FdarError::InvalidParameter`] if `component >= fit.ncomp` or
+/// `n_grid < 2`.
 pub fn functional_pdp(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -49,14 +57,14 @@ pub fn functional_pdp(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n != fit.fitted_values.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} rows matching fitted_values", fit.fitted_values.len()),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if component >= fit.ncomp {
@@ -105,6 +113,14 @@ pub fn functional_pdp(
 /// * `scalar_covariates` -- Optional scalar covariates (n x p)
 /// * `component` -- Which FPC component to vary (0-indexed, must be < fit.ncomp)
 /// * `n_grid` -- Number of grid points (must be >= 2)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `component >= fit.ncomp`,
+/// `n_grid < 2`, or `scalar_covariates` is `None` when the model has scalar
+/// covariates.
 pub fn functional_pdp_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -124,7 +140,7 @@ pub fn functional_pdp_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if component >= fit.ncomp {
@@ -195,6 +211,11 @@ pub struct BetaDecomposition {
 }
 
 /// Decompose beta(t) = sum_k coef_k * phi_k(t) for a linear functional regression.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+/// Returns [`FdarError::InvalidDimension`] if `fit.fpca.mean` has zero length.
 pub fn beta_decomposition(fit: &FregreLmResult) -> Result<BetaDecomposition, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.mean.len();
@@ -215,6 +236,11 @@ pub fn beta_decomposition(fit: &FregreLmResult) -> Result<BetaDecomposition, Fda
 }
 
 /// Decompose beta(t) for a functional logistic regression.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+/// Returns [`FdarError::InvalidDimension`] if `fit.fpca.mean` has zero length.
 pub fn beta_decomposition_logistic(
     fit: &FunctionalLogisticResult,
 ) -> Result<BetaDecomposition, FdarError> {
@@ -292,6 +318,11 @@ pub struct SignificantRegion {
 }
 
 /// Identify contiguous regions where the CI `[lower, upper]` excludes zero.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `lower` is empty or
+/// `lower.len() != upper.len()`.
 pub fn significant_regions(
     lower: &[f64],
     upper: &[f64],
@@ -333,6 +364,11 @@ pub fn significant_regions(
 }
 
 /// Build CI from beta(t) +/- z * SE, then find significant regions.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `beta_t` is empty or
+/// `beta_t.len() != beta_se.len()`.
 pub fn significant_regions_from_se(
     beta_t: &[f64],
     beta_se: &[f64],

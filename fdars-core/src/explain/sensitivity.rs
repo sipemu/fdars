@@ -25,6 +25,14 @@ pub struct SobolIndicesResult {
 /// Exact Sobol sensitivity indices for a linear functional regression model.
 ///
 /// For an additive model with orthogonal FPC predictors, first-order = total-order.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 2 rows, its
+/// column count does not match `fit.fpca.mean`, or `y.len()` does not match the
+/// row count.
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if the variance of `y` is zero.
 pub fn sobol_indices(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -36,13 +44,13 @@ pub fn sobol_indices(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: ">=2 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -50,7 +58,7 @@ pub fn sobol_indices(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let _ = scalar_covariates; // not needed for variance decomposition
@@ -89,6 +97,15 @@ pub fn sobol_indices(
 }
 
 /// Sobol sensitivity indices for a functional logistic regression model (Saltelli MC).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 2 rows or its
+/// column count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `n_samples` is zero or `fit.ncomp`
+/// is zero.
+/// Returns [`FdarError::ComputationFailed`] if the variance of predictions is
+/// near zero.
 pub fn sobol_indices_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -101,14 +118,14 @@ pub fn sobol_indices_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: ">=2 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if m != fit.fpca.mean.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_samples == 0 {
@@ -198,6 +215,12 @@ pub struct FunctionalSaliencyResult {
 /// Functional saliency maps for a linear functional regression model.
 ///
 /// Lifts FPC-level SHAP attributions to the function domain via the rotation matrix.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 pub fn functional_saliency(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -215,7 +238,7 @@ pub fn functional_saliency(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let _ = scalar_covariates;
@@ -248,6 +271,11 @@ pub fn functional_saliency(
 }
 
 /// Functional saliency maps for a functional logistic regression model (gradient-based).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `fit.probabilities` is empty or
+/// `fit.beta_t` has zero length.
 pub fn functional_saliency_logistic(
     fit: &FunctionalLogisticResult,
 ) -> Result<FunctionalSaliencyResult, FdarError> {
@@ -319,6 +347,12 @@ pub struct DomainSelectionResult {
 }
 
 /// Domain selection for a linear functional regression model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `beta_t`, `window_width`, or
+/// `threshold` are invalid (e.g., empty `beta_t`, zero `window_width`, or
+/// `window_width` exceeding `beta_t` length).
 pub fn domain_selection(
     fit: &FregreLmResult,
     window_width: usize,
@@ -333,6 +367,12 @@ pub fn domain_selection(
 }
 
 /// Domain selection for a functional logistic regression model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `beta_t`, `window_width`, or
+/// `threshold` are invalid (e.g., empty `beta_t`, zero `window_width`, or
+/// `window_width` exceeding `beta_t` length).
 pub fn domain_selection_logistic(
     fit: &FunctionalLogisticResult,
     window_width: usize,

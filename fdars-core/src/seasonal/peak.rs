@@ -104,12 +104,13 @@ pub fn detect_peaks(
     }
 
     let dt = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
-    let min_dist_points = min_distance.map(|d| (d / dt).round() as usize).unwrap_or(1);
+    let min_dist_points = min_distance.map_or(1, |d| (d / dt).round() as usize);
 
     let work_data = smooth_for_peaks(data, argvals, smooth_first, smooth_nbasis);
 
     // Compute first derivative
-    let work_mat = FdMatrix::from_column_major(work_data.clone(), n, m).unwrap();
+    let work_mat = FdMatrix::from_column_major(work_data.clone(), n, m)
+        .expect("dimension invariant: data.len() == n * m");
     let deriv1 = deriv_1d(&work_mat, argvals, 1).into_vec();
 
     // Compute data range for prominence normalization
@@ -143,7 +144,7 @@ pub fn detect_peaks(
     let inter_peak_distances: Vec<Vec<f64>> = results.iter().map(|(_, d)| d.clone()).collect();
 
     // Compute mean period from all inter-peak distances
-    let all_distances: Vec<f64> = inter_peak_distances.iter().flatten().cloned().collect();
+    let all_distances: Vec<f64> = inter_peak_distances.iter().flatten().copied().collect();
     let mean_period = if all_distances.is_empty() {
         f64::NAN
     } else {

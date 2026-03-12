@@ -29,65 +29,29 @@ pub struct VifResult {
 /// Variance inflation factors for FPC scores (and optional scalar covariates).
 ///
 /// For orthogonal FPC scores without scalar covariates, VIF should be approximately 1.
+///
+/// # Errors
+///
+/// See [`crate::explain_generic::generic_vif`] for error conditions.
 pub fn fpc_vif(
     fit: &FregreLmResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
 ) -> Result<VifResult, FdarError> {
-    let (n, m) = data.shape();
-    if n == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: ">0 rows".into(),
-            actual: "0".into(),
-        });
-    }
-    if m != fit.fpca.mean.len() {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
-        });
-    }
-    let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
-    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n).ok_or_else(|| {
-        FdarError::ComputationFailed {
-            operation: "fpc_vif",
-            detail: "VIF computation failed (singular matrix or n <= p)".into(),
-        }
-    })
+    crate::explain_generic::generic_vif(fit, data, scalar_covariates)
 }
 
 /// VIF for a functional logistic regression model.
+///
+/// # Errors
+///
+/// See [`crate::explain_generic::generic_vif`] for error conditions.
 pub fn fpc_vif_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
 ) -> Result<VifResult, FdarError> {
-    let (n, m) = data.shape();
-    if n == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: ">0 rows".into(),
-            actual: "0".into(),
-        });
-    }
-    if m != fit.fpca.mean.len() {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
-        });
-    }
-    let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
-    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n).ok_or_else(|| {
-        FdarError::ComputationFailed {
-            operation: "fpc_vif_logistic",
-            detail: "VIF computation failed (singular matrix or n <= p)".into(),
-        }
-    })
+    crate::explain_generic::generic_vif(fit, data, scalar_covariates)
 }
 
 pub(crate) fn compute_vif_from_scores(
@@ -96,7 +60,7 @@ pub(crate) fn compute_vif_from_scores(
     scalar_covariates: Option<&FdMatrix>,
     n: usize,
 ) -> Option<VifResult> {
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::super::matrix::FdMatrix::ncols);
     let p = ncomp + p_scalar;
     if p == 0 || n <= p {
         return None;
@@ -116,10 +80,10 @@ pub(crate) fn compute_vif_from_scores(
 
     let mut labels = Vec::with_capacity(p);
     for k in 0..ncomp {
-        labels.push(format!("FPC_{}", k));
+        labels.push(format!("FPC_{k}"));
     }
     for j in 0..p_scalar {
-        labels.push(format!("scalar_{}", j));
+        labels.push(format!("scalar_{j}"));
     }
 
     let mean_vif = vif.iter().sum::<f64>() / p as f64;
@@ -142,7 +106,7 @@ fn build_no_intercept_matrix(
     scalar_covariates: Option<&FdMatrix>,
     n: usize,
 ) -> FdMatrix {
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::super::matrix::FdMatrix::ncols);
     let p = ncomp + p_scalar;
     let mut x = FdMatrix::zeros(n, p);
     for i in 0..n {
@@ -175,6 +139,13 @@ pub struct InfluenceDiagnostics {
 }
 
 /// Compute leverage and Cook's distance for a linear functional regression.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or the number of rows is not greater
+/// than the number of model parameters.
+/// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails.
 pub fn influence_diagnostics(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -192,7 +163,7 @@ pub fn influence_diagnostics(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let ncomp = fit.ncomp;
@@ -203,8 +174,8 @@ pub fn influence_diagnostics(
     if n <= p {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
-            expected: format!(">{} rows (more than parameters)", p),
-            actual: format!("{}", n),
+            expected: format!(">{p} rows (more than parameters)"),
+            actual: format!("{n}"),
         });
     }
 
@@ -258,6 +229,14 @@ pub struct DfbetasDffitsResult {
 ///
 /// DFBETAS measures how much each coefficient changes when observation i is deleted.
 /// DFFITS measures how much the fitted value changes when observation i is deleted.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, or the number of rows is not greater
+/// than the number of model parameters.
+/// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails or
+/// the residual standard error is near zero.
 pub fn dfbetas_dffits(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -275,7 +254,7 @@ pub fn dfbetas_dffits(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let ncomp = fit.ncomp;
@@ -286,8 +265,8 @@ pub fn dfbetas_dffits(
     if n <= p {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
-            expected: format!(">{} rows (more than parameters)", p),
-            actual: format!("{}", n),
+            expected: format!(">{p} rows (more than parameters)"),
+            actual: format!("{n}"),
         });
     }
 
@@ -406,6 +385,14 @@ pub struct PredictionIntervalResult {
 ///
 /// Computes prediction intervals accounting for both estimation uncertainty
 /// (through the hat matrix) and residual variance.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `confidence_level` is not in (0, 1).
+/// Returns [`FdarError::InvalidDimension`] if `train_data` or `new_data` has zero
+/// rows, column counts do not match `fit.fpca.mean` or each other, or the number
+/// of training rows is not greater than the number of model parameters.
+/// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails.
 pub fn prediction_intervals(
     fit: &FregreLmResult,
     train_data: &FdMatrix,
@@ -433,7 +420,7 @@ pub fn prediction_intervals(
         return Err(FdarError::InvalidDimension {
             parameter: "train_data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if n_new == 0 {
@@ -446,8 +433,8 @@ pub fn prediction_intervals(
     if m_new != m {
         return Err(FdarError::InvalidDimension {
             parameter: "new_data",
-            expected: format!("{} columns (matching train)", m),
-            actual: format!("{}", m_new),
+            expected: format!("{m} columns (matching train)"),
+            actual: format!("{m_new}"),
         });
     }
     let ncomp = fit.ncomp;
@@ -458,8 +445,8 @@ pub fn prediction_intervals(
     if n_train <= p {
         return Err(FdarError::InvalidDimension {
             parameter: "train_data",
-            expected: format!(">{} rows (more than parameters)", p),
-            actual: format!("{}", n_train),
+            expected: format!(">{p} rows (more than parameters)"),
+            actual: format!("{n_train}"),
         });
     }
 
@@ -607,6 +594,14 @@ pub struct LooCvResult {
 /// LOO-CV / PRESS diagnostics for a linear functional regression model.
 ///
 /// Uses the hat-matrix shortcut: LOO residual = e_i / (1 - h_ii).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its column
+/// count does not match `fit.fpca.mean`, `y.len()` does not match the row count,
+/// or the number of rows is not greater than the number of model parameters.
+/// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails or
+/// the total sum of squares is zero.
 pub fn loo_cv_press(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -624,7 +619,7 @@ pub fn loo_cv_press(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -632,7 +627,7 @@ pub fn loo_cv_press(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     let ncomp = fit.ncomp;
@@ -642,8 +637,8 @@ pub fn loo_cv_press(
     if n <= p {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
-            expected: format!(">{} rows (more than parameters)", p),
-            actual: format!("{}", n),
+            expected: format!(">{p} rows (more than parameters)"),
+            actual: format!("{n}"),
         });
     }
 

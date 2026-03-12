@@ -742,15 +742,15 @@ fn compute_ale_bin_edges(sorted_col: &[(f64, usize)], n: usize, n_bins: usize) -
     let mut bin_edges = Vec::with_capacity(actual_bins + 1);
     bin_edges.push(sorted_col[0].0);
     for b in 1..actual_bins {
-        let idx = (b as f64 / actual_bins as f64 * n as f64) as usize;
+        let idx = crate::utility::f64_to_usize_clamped(b as f64 / actual_bins as f64 * n as f64);
         let idx = idx.min(n - 1);
         let val = sorted_col[idx].0;
-        if (val - *bin_edges.last().unwrap()).abs() > 1e-15 {
+        if (val - *bin_edges.last().expect("non-empty collection")).abs() > 1e-15 {
             bin_edges.push(val);
         }
     }
     let last_val = sorted_col[n - 1].0;
-    if (last_val - *bin_edges.last().unwrap()).abs() > 1e-15 {
+    if (last_val - *bin_edges.last().expect("non-empty collection")).abs() > 1e-15 {
         bin_edges.push(last_val);
     }
     if bin_edges.len() < 2 {
@@ -971,7 +971,7 @@ pub(crate) fn anchor_beam_search(
         }
 
         let (new_conds, prec, matching) = candidates.remove(0);
-        used[*new_conds.last().unwrap()] = true;
+        used[*new_conds.last().expect("non-empty collection")] = true;
         best_conditions = new_conds;
         best_precision = prec;
         best_matching = matching;
@@ -1257,8 +1257,8 @@ pub(crate) fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
         return sorted[0];
     }
     let idx = q * (n - 1) as f64;
-    let lo = idx.floor() as usize;
-    let hi = idx.ceil() as usize;
+    let lo = crate::utility::f64_to_usize_clamped(idx.floor());
+    let hi = crate::utility::f64_to_usize_clamped(idx.ceil());
     let lo = lo.min(n - 1);
     let hi = hi.min(n - 1);
     if lo == hi {
@@ -1489,8 +1489,7 @@ pub(super) fn logistic_pdp_mean(
             let s = replacements
                 .iter()
                 .find(|&&(comp, _)| comp == c)
-                .map(|&(_, val)| val)
-                .unwrap_or(scores[(i, c)]);
+                .map_or(scores[(i, c)], |&(_, val)| val);
             eta += coefficients[1 + c] * s;
         }
         if let Some(sc) = scalar_covariates {
@@ -1544,7 +1543,7 @@ pub(super) fn validate_conformal_inputs(
     if !(shapes_ok && params_ok) {
         return None;
     }
-    let n_cal = ((n as f64 * cal_fraction).round() as usize).max(2);
+    let n_cal = crate::utility::f64_to_usize_clamped((n as f64 * cal_fraction).round()).max(2);
     let n_proper = n - n_cal;
     (n_proper >= ncomp + 2).then_some((n_cal, n_proper))
 }

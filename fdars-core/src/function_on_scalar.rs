@@ -189,8 +189,7 @@ fn penalized_solve(
     let l = cholesky_factor(&a, p).ok_or_else(|| FdarError::ComputationFailed {
         operation: "penalized_solve",
         detail: format!(
-            "Cholesky factorization of (X'X + {:.4}*P) failed; matrix is singular or near-singular",
-            lambda
+            "Cholesky factorization of (X'X + {lambda:.4}*P) failed; matrix is singular or near-singular"
         ),
     })?;
 
@@ -251,6 +250,13 @@ fn compute_fosr_gcv(residuals: &FdMatrix, trace_h: f64) -> f64 {
 ///
 /// # Returns
 /// [`FosrResult`] with coefficient functions, fitted values, and diagnostics
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero columns,
+/// `predictors` row count does not match `data`, or `n < p + 2`.
+/// Returns [`FdarError::ComputationFailed`] if the penalized Cholesky solve
+/// is singular.
 /// Build design matrix with intercept: \[1, z_1, ..., z_p\].
 fn build_fosr_design(predictors: &FdMatrix, n: usize) -> FdMatrix {
     let p = predictors.ncols();
@@ -293,6 +299,7 @@ fn drop_intercept_rows(full: &FdMatrix, p: usize, m: usize) -> FdMatrix {
     out
 }
 
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Result<FosrResult, FdarError> {
     let (n, m) = data.shape();
     let p = predictors.ncols();
@@ -306,7 +313,7 @@ pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Result<FosrR
     if predictors.nrows() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "predictors",
-            expected: format!("{} rows (matching data)", n),
+            expected: format!("{n} rows (matching data)"),
             actual: format!("{} rows", predictors.nrows()),
         });
     }
@@ -314,7 +321,7 @@ pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Result<FosrR
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("at least {} observations (p + 2)", p + 2),
-            actual: format!("{} observations", n),
+            actual: format!("{n} observations"),
         });
     }
 
@@ -566,6 +573,15 @@ fn extract_beta_scores(gamma_all: &[Vec<f64>], p: usize, k: usize, m: usize) -> 
 /// * `data` - Functional response matrix (n × m)
 /// * `predictors` - Scalar predictor matrix (n × p)
 /// * `ncomp` - Number of FPC components to use
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero columns,
+/// `predictors` row count does not match `data`, or `n < p + 2`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if FPCA fails or the OLS
+/// Cholesky factorization of X'X is singular.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fosr_fpc(
     data: &FdMatrix,
     predictors: &FdMatrix,
@@ -583,7 +599,7 @@ pub fn fosr_fpc(
     if predictors.nrows() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "predictors",
-            expected: format!("{} rows (matching data)", n),
+            expected: format!("{n} rows (matching data)"),
             actual: format!("{} rows", predictors.nrows()),
         });
     }
@@ -591,7 +607,7 @@ pub fn fosr_fpc(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("at least {} observations (p + 2)", p + 2),
-            actual: format!("{} observations", n),
+            actual: format!("{n} observations"),
         });
     }
     if ncomp == 0 {
@@ -765,6 +781,14 @@ fn global_f_statistic(f_t: &[f64]) -> f64 {
 ///
 /// # Returns
 /// [`FanovaResult`] with group means, F-statistics, and permutation p-value
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero columns,
+/// `groups.len()` does not match the number of rows in `data`, or `n < 3`.
+/// Returns [`FdarError::InvalidParameter`] if fewer than 2 distinct groups
+/// are present.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<FanovaResult, FdarError> {
     let (n, m) = data.shape();
     if m == 0 {
@@ -777,7 +801,7 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
     if groups.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "groups",
-            expected: format!("{} elements (matching data rows)", n),
+            expected: format!("{n} elements (matching data rows)"),
             actual: format!("{} elements", groups.len()),
         });
     }
@@ -785,7 +809,7 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "at least 3 observations".to_string(),
-            actual: format!("{} observations", n),
+            actual: format!("{n} observations"),
         });
     }
 
@@ -796,10 +820,7 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
     if n_groups < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "groups",
-            message: format!(
-                "at least 2 distinct groups required, but only {} found",
-                n_groups
-            ),
+            message: format!("at least 2 distinct groups required, but only {n_groups} found"),
         });
     }
 

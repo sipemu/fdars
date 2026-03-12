@@ -32,17 +32,16 @@ impl fmt::Display for FdarError {
                 actual,
             } => write!(
                 f,
-                "invalid dimension for '{}': expected {}, got {}",
-                parameter, expected, actual
+                "invalid dimension for '{parameter}': expected {expected}, got {actual}"
             ),
             FdarError::InvalidParameter { parameter, message } => {
-                write!(f, "invalid parameter '{}': {}", parameter, message)
+                write!(f, "invalid parameter '{parameter}': {message}")
             }
             FdarError::ComputationFailed { operation, detail } => {
-                write!(f, "{} failed: {}", operation, detail)
+                write!(f, "{operation} failed: {detail}")
             }
             FdarError::InvalidEnumValue { enum_name, value } => {
-                write!(f, "invalid value {} for enum '{}'", value, enum_name)
+                write!(f, "invalid value {value} for enum '{enum_name}'")
             }
         }
     }

@@ -66,6 +66,14 @@ pub struct FmmTestResult {
 /// 1. Pool curves, compute FPCA
 /// 2. For each FPC score, fit scalar mixed model: ξ_ijk = x_i'γ_k + u_ik + e_ijk
 /// 3. Recover β̂(t) and b̂_i(t) from component coefficients
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` is empty (zero rows or
+/// columns), or if `subject_ids.len()` does not match the number of rows.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if the underlying FPCA fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fmm(
     data: &FdMatrix,
     subject_ids: &[usize],
@@ -78,13 +86,13 @@ pub fn fmm(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "non-empty matrix".to_string(),
-            actual: format!("{} x {}", n_total, m),
+            actual: format!("{n_total} x {m}"),
         });
     }
     if subject_ids.len() != n_total {
         return Err(FdarError::InvalidDimension {
             parameter: "subject_ids",
-            expected: format!("length {}", n_total),
+            expected: format!("length {n_total}"),
             actual: format!("length {}", subject_ids.len()),
         });
     }
@@ -108,7 +116,7 @@ pub fn fmm(
     let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
     let score_scale = h.sqrt();
 
-    let p = covariates.map_or(0, |c| c.ncols());
+    let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let mut gamma = vec![vec![0.0; k]; p]; // gamma[j][k] = fixed effect coeff j for component k
     let mut u_hat = vec![vec![0.0; k]; n_subjects]; // u_hat[i][k] = random effect for subject i, component k
     let mut sigma2_u = vec![0.0; k];
@@ -438,7 +446,7 @@ fn estimate_fixed_effects(
     if p == 0 || covariates.is_none() {
         return Vec::new();
     }
-    let cov = covariates.unwrap();
+    let cov = covariates.expect("checked: covariates is Some");
 
     // Solve (X'X)γ = X'y via Cholesky
     let mut xtx = vec![0.0; p * p];
@@ -726,7 +734,7 @@ fn compute_fitted_residuals(
 /// Returns predicted curves (n_new × m) using only fixed effects (no random effects for new subjects).
 pub fn fmm_predict(result: &FmmResult, new_covariates: Option<&FdMatrix>) -> FdMatrix {
     let m = result.mean_function.len();
-    let n_new = new_covariates.map_or(1, |c| c.nrows());
+    let n_new = new_covariates.map_or(1, super::matrix::FdMatrix::nrows);
     let p = result.beta_functions.nrows();
 
     let mut predicted = FdMatrix::zeros(n_new, m);
@@ -760,6 +768,13 @@ pub fn fmm_predict(result: &FmmResult, new_covariates: Option<&FdMatrix>) -> FdM
 /// * `ncomp` — Number of FPC components
 /// * `n_perm` — Number of permutations
 /// * `seed` — Random seed
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, or
+/// `covariates` has zero columns.
+/// Propagates errors from [`fmm`] (e.g., dimension mismatches or FPCA failure).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fmm_test_fixed(
     data: &FdMatrix,
     subject_ids: &[usize],
@@ -775,7 +790,7 @@ pub fn fmm_test_fixed(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "non-empty matrix".to_string(),
-            actual: format!("{} rows", n_total),
+            actual: format!("{n_total} rows"),
         });
     }
     if p == 0 {

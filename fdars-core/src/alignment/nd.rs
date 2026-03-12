@@ -207,7 +207,9 @@ pub fn elastic_align_pair_nd(
     let f_aligned_set = {
         let dims: Vec<FdMatrix> = f_aligned
             .iter()
-            .map(|fa| FdMatrix::from_slice(fa, 1, m).unwrap())
+            .map(|fa| {
+                FdMatrix::from_slice(fa, 1, m).expect("dimension invariant: data.len() == n * m")
+            })
             .collect();
         FdCurveSet { dims }
     };

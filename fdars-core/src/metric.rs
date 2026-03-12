@@ -286,9 +286,9 @@ fn directed_hausdorff_sq(
                     let val_diff = x_s - y_t;
                     val_diff * val_diff + mtt[s * m + t]
                 })
-                .fold(f64::INFINITY, |a, b| a.min(b))
+                .fold(f64::INFINITY, f64::min)
         })
-        .fold(f64::NEG_INFINITY, |a, b| a.max(b))
+        .fold(f64::NEG_INFINITY, f64::max)
 }
 
 /// Compute Hausdorff distance matrix for self-distances (symmetric).

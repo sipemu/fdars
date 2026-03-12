@@ -137,7 +137,7 @@ pub fn fourier_penalty_matrix(nbasis: usize, period: f64, lfd_order: usize) -> V
     let mut freq = 1;
     let mut idx = 1;
     while idx < k {
-        let omega = 2.0 * PI * freq as f64 / period;
+        let omega = 2.0 * PI * f64::from(freq) / period;
         let eigenval = omega.powi(2 * lfd_order as i32);
 
         // sin component
@@ -369,7 +369,7 @@ fn invert_penalized_system(system: &DMatrix<f64>, k: usize) -> Option<DMatrix<f6
     let svd = nalgebra::SVD::new(system.clone(), true, true);
     let u = svd.u.as_ref()?;
     let v_t = svd.v_t.as_ref()?;
-    let max_sv: f64 = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let max_sv: f64 = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
     let eps = 1e-10 * max_sv;
     let mut inv = DMatrix::<f64>::zeros(k, k);
     for ii in 0..k {
@@ -567,7 +567,7 @@ fn evaluate_nbasis_cv(
         }
 
         if total_count > 0 {
-            scores.push(total_mse / total_count as f64);
+            scores.push(total_mse / f64::from(total_count));
         } else {
             scores.push(f64::INFINITY);
         }

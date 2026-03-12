@@ -258,6 +258,14 @@ fn compute_metric_from_score_matrix(
 // ===========================================================================
 
 /// Generic partial dependence plot / ICE curves for any FPC-based model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model's FPCA mean length.
+/// Returns [`FdarError::InvalidParameter`] if `component >= ncomp` or
+/// `n_grid < 2`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_pdp(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -289,14 +297,14 @@ pub fn generic_pdp(
     if n_grid < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "n_grid",
-            message: format!("n_grid must be >= 2, got {}", n_grid),
+            message: format!("n_grid must be >= 2, got {n_grid}"),
         });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
     let grid_values = make_grid(&scores, component, n_grid);
 
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let mut ice_curves = FdMatrix::zeros(n, n_grid);
     for i in 0..n {
         let mut obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
@@ -328,6 +336,13 @@ pub fn generic_pdp(
 /// Generic permutation importance for any FPC-based model.
 ///
 /// Uses R² for regression, accuracy for classification.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its
+/// column count does not match the model, or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `n_perm` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_permutation_importance(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -402,7 +417,86 @@ pub fn generic_permutation_importance(
 // 3. Generic Friedman H-statistic
 // ===========================================================================
 
+/// Compute the 2D partial dependence surface over a grid of two components.
+///
+/// For each pair `(grid_j[gj], grid_k[gk])`, fixes components `component_j`
+/// and `component_k` to those grid values and averages the model prediction
+/// over all `n` observations.
+fn compute_pdp_grid_2d(
+    model: &dyn FpcPredictor,
+    scores: &FdMatrix,
+    grid_j: &[f64],
+    grid_k: &[f64],
+    component_j: usize,
+    component_k: usize,
+    ncomp: usize,
+    n: usize,
+    scalar_covariates: Option<&FdMatrix>,
+    p_scalar: usize,
+    n_grid: usize,
+) -> FdMatrix {
+    let mut pdp_2d = FdMatrix::zeros(n_grid, n_grid);
+    for (gj_idx, &gj) in grid_j.iter().enumerate() {
+        for (gk_idx, &gk) in grid_k.iter().enumerate() {
+            let mut sum = 0.0;
+            for i in 0..n {
+                let mut s: Vec<f64> = (0..ncomp).map(|c| scores[(i, c)]).collect();
+                s[component_j] = gj;
+                s[component_k] = gk;
+                let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
+                    scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+                } else {
+                    None
+                };
+                sum += model.predict_from_scores(&s, obs_z.as_deref());
+            }
+            pdp_2d[(gj_idx, gk_idx)] = sum / n as f64;
+        }
+    }
+    pdp_2d
+}
+
+/// Compute the H-squared statistic from marginal and joint PDP surfaces.
+///
+/// First computes the mean prediction `f_bar` (averaging over all observations),
+/// then delegates to [`crate::explain::compute_h_squared`] for the actual
+/// interaction / total-variance ratio.
+fn compute_h_squared_from_pdps(
+    model: &dyn FpcPredictor,
+    scores: &FdMatrix,
+    pdp_2d: &FdMatrix,
+    pdp_j: &[f64],
+    pdp_k: &[f64],
+    ncomp: usize,
+    n: usize,
+    scalar_covariates: Option<&FdMatrix>,
+    p_scalar: usize,
+    n_grid: usize,
+) -> f64 {
+    let f_bar: f64 = (0..n)
+        .map(|i| {
+            let s: Vec<f64> = (0..ncomp).map(|c| scores[(i, c)]).collect();
+            let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
+                scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+            } else {
+                None
+            };
+            model.predict_from_scores(&s, obs_z.as_deref())
+        })
+        .sum::<f64>()
+        / n as f64;
+    crate::explain::compute_h_squared(pdp_2d, pdp_j, pdp_k, f_bar, n_grid)
+}
+
 /// Generic Friedman H-statistic for interaction between two FPC components.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `component_j == component_k`,
+/// `n_grid < 2`, or either component index is `>= ncomp`.
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_friedman_h(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -436,15 +530,14 @@ pub fn generic_friedman_h(
     if n_grid < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "n_grid",
-            message: format!("n_grid must be >= 2, got {}", n_grid),
+            message: format!("n_grid must be >= 2, got {n_grid}"),
         });
     }
     if component_j >= ncomp || component_k >= ncomp {
         return Err(FdarError::InvalidParameter {
             parameter: "component",
             message: format!(
-                "component_j={} or component_k={} >= ncomp={}",
-                component_j, component_k, ncomp
+                "component_j={component_j} or component_k={component_k} >= ncomp={ncomp}"
             ),
         });
     }
@@ -452,7 +545,7 @@ pub fn generic_friedman_h(
     let scores = model.project(data);
     let grid_j = make_grid(&scores, component_j, n_grid);
     let grid_k = make_grid(&scores, component_k, n_grid);
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
 
     // Compute 1D PDPs via generic predict
     let pdp_j: Vec<f64> = grid_j
@@ -491,41 +584,32 @@ pub fn generic_friedman_h(
         })
         .collect();
 
-    // Compute 2D PDP
-    let mut pdp_2d = FdMatrix::zeros(n_grid, n_grid);
-    for (gj_idx, &gj) in grid_j.iter().enumerate() {
-        for (gk_idx, &gk) in grid_k.iter().enumerate() {
-            let mut sum = 0.0;
-            for i in 0..n {
-                let mut s: Vec<f64> = (0..ncomp).map(|c| scores[(i, c)]).collect();
-                s[component_j] = gj;
-                s[component_k] = gk;
-                let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-                    scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
-                } else {
-                    None
-                };
-                sum += model.predict_from_scores(&s, obs_z.as_deref());
-            }
-            pdp_2d[(gj_idx, gk_idx)] = sum / n as f64;
-        }
-    }
+    let pdp_2d = compute_pdp_grid_2d(
+        model,
+        &scores,
+        &grid_j,
+        &grid_k,
+        component_j,
+        component_k,
+        ncomp,
+        n,
+        scalar_covariates,
+        p_scalar,
+        n_grid,
+    );
 
-    // Mean prediction
-    let f_bar: f64 = (0..n)
-        .map(|i| {
-            let s: Vec<f64> = (0..ncomp).map(|c| scores[(i, c)]).collect();
-            let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-                scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
-            } else {
-                None
-            };
-            model.predict_from_scores(&s, obs_z.as_deref())
-        })
-        .sum::<f64>()
-        / n as f64;
-
-    let h_squared = crate::explain::compute_h_squared(&pdp_2d, &pdp_j, &pdp_k, f_bar, n_grid);
+    let h_squared = compute_h_squared_from_pdps(
+        model,
+        &scores,
+        &pdp_2d,
+        &pdp_j,
+        &pdp_k,
+        ncomp,
+        n,
+        scalar_covariates,
+        p_scalar,
+        n_grid,
+    );
 
     Ok(FriedmanHResult {
         component_j,
@@ -545,6 +629,14 @@ pub fn generic_friedman_h(
 ///
 /// For nonlinear models uses sampling-based Kernel SHAP; linear models get
 /// the same approximation (which converges to exact with enough samples).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if `n_samples` is zero or the
+/// model has zero components.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_shap_values(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -580,7 +672,7 @@ pub fn generic_shap_values(
             message: "model has 0 components".into(),
         });
     }
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let scores = model.project(data);
     let mean_scores = compute_column_means(&scores, ncomp);
     let mean_z = compute_mean_scalar(scalar_covariates, p_scalar, n);
@@ -650,6 +742,16 @@ pub fn generic_shap_values(
 // ===========================================================================
 
 /// Generic ALE plot for an FPC component in any FPC-based model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 2 rows
+/// or its column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if `n_bins` is zero or
+/// `component >= ncomp`.
+/// Returns [`FdarError::ComputationFailed`] if the internal ALE computation
+/// fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_ale(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -662,7 +764,7 @@ pub fn generic_ale(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "n >= 2".into(),
-            actual: format!("{} rows", n),
+            actual: format!("{n} rows"),
         });
     }
     if m != model.fpca_mean().len() {
@@ -685,7 +787,7 @@ pub fn generic_ale(
         });
     }
     let ncomp = model.ncomp();
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let scores = model.project(data);
 
     let predict = |obs_scores: &[f64], obs_scalar: Option<&[f64]>| -> f64 {
@@ -713,6 +815,16 @@ pub fn generic_ale(
 // ===========================================================================
 
 /// Generic Sobol sensitivity indices for any FPC-based model (Saltelli MC).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 2 rows
+/// or its column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if `n_samples` is zero or the
+/// model has zero components.
+/// Returns [`FdarError::ComputationFailed`] if the variance of model output
+/// is near zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_sobol_indices(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -725,7 +837,7 @@ pub fn generic_sobol_indices(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "n >= 2".into(),
-            actual: format!("{} rows", n),
+            actual: format!("{n} rows"),
         });
     }
     if m != model.fpca_mean().len() {
@@ -748,7 +860,7 @@ pub fn generic_sobol_indices(
             message: "model has 0 components".into(),
         });
     }
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let scores = model.project(data);
     let mean_z = compute_mean_scalar(scalar_covariates, p_scalar, n);
 
@@ -811,6 +923,13 @@ pub fn generic_sobol_indices(
 // ===========================================================================
 
 /// Generic conditional permutation importance for any FPC-based model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, its
+/// column count does not match the model, or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `n_perm` or `n_bins` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_conditional_permutation_importance(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -970,6 +1089,16 @@ fn counterfactual_gd_search(
 ///
 /// For regression: uses analytical projection toward target_value.
 /// For classification: uses gradient descent toward the opposite class.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n` or the
+/// model has zero components.
+/// Returns [`FdarError::InvalidDimension`] if `data` columns do not match
+/// the model.
+/// Returns [`FdarError::ComputationFailed`] if the gradient norm is near
+/// zero (regression only).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_counterfactual(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -983,7 +1112,7 @@ pub fn generic_counterfactual(
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if m != model.fpca_mean().len() {
@@ -1095,6 +1224,17 @@ pub fn generic_counterfactual(
 // ===========================================================================
 
 /// Generic LIME explanation for any FPC-based model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n`,
+/// `n_samples` is zero, `kernel_width <= 0`, or the model has zero
+/// components.
+/// Returns [`FdarError::InvalidDimension`] if `data` columns do not match
+/// the model.
+/// Returns [`FdarError::ComputationFailed`] if the internal LIME
+/// computation fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_lime(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1108,7 +1248,7 @@ pub fn generic_lime(
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if m != model.fpca_mean().len() {
@@ -1127,7 +1267,7 @@ pub fn generic_lime(
     if kernel_width <= 0.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "kernel_width",
-            message: format!("kernel_width must be > 0, got {}", kernel_width),
+            message: format!("kernel_width must be > 0, got {kernel_width}"),
         });
     }
     let ncomp = model.ncomp();
@@ -1175,6 +1315,14 @@ pub fn generic_lime(
 /// Generic functional saliency maps via SHAP-weighted rotation.
 ///
 /// Lifts FPC-level attributions to the function domain.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if the model has zero components
+/// or `n_samples` is zero (propagated from [`generic_shap_values`]).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_saliency(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1253,6 +1401,16 @@ pub fn generic_saliency(
 ///
 /// Computes pointwise importance from the model's effective β(t) reconstruction
 /// via SHAP weights, then finds important intervals via sliding window.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if the model has zero components
+/// or `n_samples` is zero (propagated from [`generic_shap_values`]).
+/// Returns [`FdarError::ComputationFailed`] if the domain selection
+/// computation fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_domain_selection(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1327,6 +1485,14 @@ pub fn generic_domain_selection(
 // ===========================================================================
 
 /// Generic anchor explanation for any FPC-based model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n` or
+/// `n_bins < 2`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_anchor(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1353,18 +1519,18 @@ pub fn generic_anchor(
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if n_bins < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "n_bins",
-            message: format!("n_bins must be >= 2, got {}", n_bins),
+            message: format!("n_bins must be >= 2, got {n_bins}"),
         });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
-    let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
+    let p_scalar = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
 
     let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(observation, k)]).collect();
     let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
@@ -1440,6 +1606,16 @@ pub fn generic_anchor(
 ///
 /// Note: This only works for regression and logistic models since it requires
 /// refitting. For classification models, bootstrap refitting is not yet supported.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 rows,
+/// zero columns, or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `n_boot < 2`, `ncomp` is
+/// zero, or `task_type` is `MulticlassClassification`.
+/// Returns [`FdarError::ComputationFailed`] if not enough bootstrap refits
+/// succeed.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_stability(
     data: &FdMatrix,
     y: &[f64],
@@ -1454,7 +1630,7 @@ pub fn generic_stability(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "n >= 4".into(),
-            actual: format!("{} rows", n),
+            actual: format!("{n} rows"),
         });
     }
     if m == 0 {
@@ -1474,7 +1650,7 @@ pub fn generic_stability(
     if n_boot < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "n_boot",
-            message: format!("n_boot must be >= 2, got {}", n_boot),
+            message: format!("n_boot must be >= 2, got {n_boot}"),
         });
     }
     if ncomp == 0 {
@@ -1554,6 +1730,14 @@ pub fn generic_stability(
 // ===========================================================================
 
 /// Generic VIF for any FPC-based model (only depends on score matrix).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+/// Returns [`FdarError::ComputationFailed`] if the internal VIF computation
+/// fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_vif(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1589,6 +1773,14 @@ pub fn generic_vif(
 // ===========================================================================
 
 /// Generic prototype/criticism selection for any FPC-based model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its
+/// column count does not match the model.
+/// Returns [`FdarError::InvalidParameter`] if the model has zero components,
+/// `n_prototypes` is zero, or `n_prototypes > n`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn generic_prototype_criticism(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1626,7 +1818,7 @@ pub fn generic_prototype_criticism(
     if n_prototypes > n {
         return Err(FdarError::InvalidParameter {
             parameter: "n_prototypes",
-            message: format!("n_prototypes {} > n {}", n_prototypes, n),
+            message: format!("n_prototypes {n_prototypes} > n {n}"),
         });
     }
     let n_crit = n_criticisms.min(n.saturating_sub(n_prototypes));

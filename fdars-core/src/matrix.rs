@@ -321,7 +321,7 @@ impl FdCurveSet {
         if dims.iter().any(|d| d.shape() != (n, m)) {
             return Err(crate::FdarError::InvalidDimension {
                 parameter: "dims",
-                expected: format!("all ({}, {})", n, m),
+                expected: format!("all ({n}, {m})"),
                 actual: "inconsistent shapes".to_string(),
             });
         }

@@ -29,6 +29,7 @@ pub struct DecompositionResult {
 ///
 /// # Returns
 /// [`AlignmentSetResult`] with all warping functions, aligned curves, and distances.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn align_to_target(
     data: &FdMatrix,
     target: &[f64],

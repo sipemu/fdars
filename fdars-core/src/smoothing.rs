@@ -500,8 +500,8 @@ pub fn optim_bandwidth(
     let (h_min, h_max) = match h_range {
         Some((lo, hi)) if lo > 0.0 && hi > lo => (lo, hi),
         _ => {
-            let x_min = x.iter().cloned().fold(f64::INFINITY, f64::min);
-            let x_max = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let x_min = x.iter().copied().fold(f64::INFINITY, f64::min);
+            let x_max = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
             let h_default = (x_max - x_min) / (n as f64).powf(0.2);
             let h_default = h_default.max(1e-10);
             (h_default / 5.0, h_default * 5.0)
@@ -577,7 +577,7 @@ pub fn knn_gcv(x: &[f64], y: &[f64], max_k: usize) -> KnnCvResult {
             let d_k = if k <= neighbors.len() {
                 neighbors[k - 1].1
             } else {
-                neighbors.last().map(|x| x.1).unwrap_or(1.0)
+                neighbors.last().map_or(1.0, |x| x.1)
             };
             let d_k1 = if k < neighbors.len() {
                 neighbors[k].1
@@ -606,8 +606,7 @@ pub fn knn_gcv(x: &[f64], y: &[f64], max_k: usize) -> KnnCvResult {
         .iter()
         .enumerate()
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(i, _)| i + 1)
-        .unwrap_or(1);
+        .map_or(1, |(i, _)| i + 1);
 
     KnnCvResult {
         optimal_k,

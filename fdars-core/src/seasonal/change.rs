@@ -509,7 +509,7 @@ pub fn analyze_peak_timing(
     // Compute cycle indices (1-indexed)
     let cycle_indices: Vec<usize> = peak_times
         .iter()
-        .map(|&t| ((t - t_start) / period).floor() as usize + 1)
+        .map(|&t| crate::utility::f64_to_usize_clamped(((t - t_start) / period).floor()) + 1)
         .collect();
 
     // Compute statistics
@@ -525,11 +525,11 @@ pub fn analyze_peak_timing(
 
     let min_timing = normalized_timing
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::INFINITY, f64::min);
     let max_timing = normalized_timing
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::NEG_INFINITY, f64::max);
     let range_timing = max_timing - min_timing;
 
@@ -685,7 +685,7 @@ pub fn detect_seasonality_changes_auto(
             if sorted.is_empty() {
                 0.5
             } else {
-                let idx = ((p / 100.0) * sorted.len() as f64) as usize;
+                let idx = crate::utility::f64_to_usize_clamped((p / 100.0) * sorted.len() as f64);
                 sorted[idx.min(sorted.len() - 1)]
             }
         }

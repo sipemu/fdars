@@ -140,7 +140,7 @@ fn build_features(
     let coef = &proj.coefficients;
     let d_basis = coef.ncols();
 
-    let d_cov = covariates.map_or(0, |c| c.ncols());
+    let d_cov = covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let d = d_basis + d_cov;
 
     let mut features = Vec::with_capacity(n);
@@ -492,7 +492,7 @@ fn compute_log_component_probs(
 /// Normalize log-probabilities to responsibilities via log-sum-exp. Returns log-likelihood contribution.
 fn normalize_responsibilities(log_probs: &[f64], resp: &mut [f64]) -> f64 {
     let k = log_probs.len();
-    let max_lp = log_probs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_lp = log_probs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     if max_lp == f64::NEG_INFINITY {
         for c in 0..k {
             resp[c] = 1.0 / k as f64;
@@ -664,6 +664,13 @@ fn compute_icl(bic: f64, resp: &[f64], n: usize, k: usize) -> f64 {
 ///
 /// # Returns
 /// `GmmResult` with cluster assignments, membership, parameters, and model selection criteria.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `features` is empty or has
+/// zero-dimensional feature vectors.
+/// Returns [`FdarError::InvalidParameter`] if `k` is zero or exceeds `n`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn gmm_em(
     features: &[Vec<f64>],
     k: usize,
@@ -689,7 +696,7 @@ pub fn gmm_em(
     if k > n {
         return Err(FdarError::InvalidParameter {
             parameter: "k",
-            message: format!("must be <= n ({}), got {}", n, k),
+            message: format!("must be <= n ({n}), got {k}"),
         });
     }
     let d = features[0].len();
@@ -773,7 +780,7 @@ fn resp_to_membership(resp: &[f64], n: usize, k: usize) -> FdMatrix {
             col_major[i + c * n] = resp[i * k + c];
         }
     }
-    FdMatrix::from_column_major(col_major, n, k).unwrap()
+    FdMatrix::from_column_major(col_major, n, k).expect("dimension invariant: data.len() == n * m")
 }
 
 /// Main clustering function: project curves onto basis, concatenate covariates,
@@ -793,6 +800,12 @@ fn resp_to_membership(resp: &[f64], n: usize, k: usize) -> FdMatrix {
 /// * `n_init` — Number of random initializations per K
 /// * `seed` — Base random seed
 /// * `use_icl` — If true, select K by ICL; otherwise by BIC
+///
+/// # Errors
+///
+/// Returns [`FdarError::ComputationFailed`] if basis projection fails or no
+/// valid GMM fit is found for any K in the given range.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn gmm_cluster(
     data: &FdMatrix,
     argvals: &[f64],
@@ -884,6 +897,12 @@ fn run_multiple_inits(
 /// * `basis_type` — Basis type (must match training)
 /// * `cov_weight` — Covariate weight (must match training)
 /// * `cov_type` — Covariance type (must match training)
+///
+/// # Errors
+///
+/// Returns [`FdarError::ComputationFailed`] if basis projection fails for the
+/// new data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn predict_gmm(
     new_data: &FdMatrix,
     argvals: &[f64],

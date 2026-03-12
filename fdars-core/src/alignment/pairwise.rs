@@ -23,12 +23,13 @@ use rayon::iter::ParallelIterator;
 ///
 /// # Returns
 /// [`AlignmentResult`] with warping function, aligned curve, and elastic distance.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> AlignmentResult {
     let m = f1.len();
 
     // Build single-row FdMatrices for SRSF computation
-    let f1_mat = FdMatrix::from_slice(f1, 1, m).unwrap();
-    let f2_mat = FdMatrix::from_slice(f2, 1, m).unwrap();
+    let f1_mat = FdMatrix::from_slice(f1, 1, m).expect("dimension invariant: data.len() == n * m");
+    let f2_mat = FdMatrix::from_slice(f2, 1, m).expect("dimension invariant: data.len() == n * m");
 
     let q1_mat = srsf_transform(&f1_mat, argvals);
     let q2_mat = srsf_transform(&f2_mat, argvals);
@@ -43,7 +44,8 @@ pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) 
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
 
     // Compute elastic distance: L2 distance between q1 and aligned q2 SRSF
-    let f_aligned_mat = FdMatrix::from_slice(&f_aligned, 1, m).unwrap();
+    let f_aligned_mat =
+        FdMatrix::from_slice(&f_aligned, 1, m).expect("dimension invariant: data.len() == n * m");
     let q_aligned_mat = srsf_transform(&f_aligned_mat, argvals);
     let q_aligned: Vec<f64> = q_aligned_mat.row(0);
 
@@ -66,6 +68,7 @@ pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) 
 /// * `f2` — Second curve (length m)
 /// * `argvals` — Evaluation points (length m)
 /// * `lambda` — Penalty weight on warp deviation from identity (0.0 = no penalty)
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_distance(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> f64 {
     elastic_align_pair(f1, f2, argvals, lambda).distance
 }

@@ -474,7 +474,10 @@ impl RollingReference {
         );
 
         let evicted = if self.curves.len() == self.capacity {
-            let old = self.curves.pop_front().unwrap();
+            let old = self
+                .curves
+                .pop_front()
+                .expect("capacity invariant: deque is non-empty");
             // Remove old values from sorted columns
             for t in 0..self.n_points {
                 let col = &mut self.sorted_columns[t];

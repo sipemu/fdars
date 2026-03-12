@@ -48,7 +48,7 @@ fn extract_pc_components(
     m: usize,
     ncomp: usize,
 ) -> Option<(Vec<f64>, FdMatrix, FdMatrix)> {
-    let singular_values: Vec<f64> = svd.singular_values.iter().take(ncomp).cloned().collect();
+    let singular_values: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
 
     let v_t = svd.v_t.as_ref()?;
     let mut rotation = FdMatrix::zeros(m, ncomp);
@@ -75,26 +75,34 @@ fn extract_pc_components(
 /// # Arguments
 /// * `data` - Matrix (n x m): n observations, m evaluation points
 /// * `ncomp` - Number of components to extract
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or zero columns.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition fails to
+/// produce U or V_t matrices.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarError> {
     let (n, m) = data.shape();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "n > 0 rows".to_string(),
-            actual: format!("n = {}", n),
+            actual: format!("n = {n}"),
         });
     }
     if m == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "m > 0 columns".to_string(),
-            actual: format!("m = {}", m),
+            actual: format!("m = {m}"),
         });
     }
     if ncomp < 1 {
         return Err(FdarError::InvalidParameter {
             parameter: "ncomp",
-            message: format!("ncomp must be >= 1, got {}", ncomp),
+            message: format!("ncomp must be >= 1, got {ncomp}"),
         });
     }
 
@@ -225,33 +233,40 @@ fn pls_nipals_step(
 /// * `data` - Matrix (n x m): n observations, m evaluation points
 /// * `y` - Response vector (length n)
 /// * `ncomp` - Number of components to extract
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or zero
+/// columns, or if `y.len()` does not equal the number of rows in `data`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsResult, FdarError> {
     let (n, m) = data.shape();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "n > 0 rows".to_string(),
-            actual: format!("n = {}", n),
+            actual: format!("n = {n}"),
         });
     }
     if m == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "m > 0 columns".to_string(),
-            actual: format!("m = {}", m),
+            actual: format!("m = {m}"),
         });
     }
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("length {}", n),
+            expected: format!("length {n}"),
             actual: format!("length {}", y.len()),
         });
     }
     if ncomp < 1 {
         return Err(FdarError::InvalidParameter {
             parameter: "ncomp",
-            message: format!("ncomp must be >= 1, got {}", ncomp),
+            message: format!("ncomp must be >= 1, got {ncomp}"),
         });
     }
 
@@ -366,7 +381,7 @@ pub fn ridge_regression_fit(
                 residuals: Vec::new(),
                 r_squared: 0.0,
                 lambda,
-                error: Some(format!("Fit failed: {:?}", e)),
+                error: Some(format!("Fit failed: {e:?}")),
             }
         }
     };

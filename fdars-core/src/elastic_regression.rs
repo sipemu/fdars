@@ -21,6 +21,59 @@ use crate::matrix::FdMatrix;
 use crate::smooth_basis::bspline_penalty_matrix;
 use nalgebra::{DMatrix, DVector};
 
+// ─── Config Structs ─────────────────────────────────────────────────────────
+
+/// Configuration for [`elastic_regression`] and [`elastic_logistic`].
+#[derive(Debug, Clone)]
+pub struct ElasticConfig {
+    /// Number of basis functions for the beta coefficient (for elastic_regression).
+    pub ncomp_beta: usize,
+    /// Roughness penalty weight.
+    pub lambda: f64,
+    /// Maximum iterations for iterative alignment.
+    pub max_iter: usize,
+    /// Convergence tolerance.
+    pub tol: f64,
+}
+
+impl Default for ElasticConfig {
+    fn default() -> Self {
+        Self {
+            ncomp_beta: 10,
+            lambda: 0.0,
+            max_iter: 20,
+            tol: 1e-4,
+        }
+    }
+}
+
+/// Configuration for [`elastic_pcr`].
+#[derive(Debug, Clone)]
+pub struct ElasticPcrConfig {
+    /// Number of principal components to retain.
+    pub ncomp: usize,
+    /// PCA method (vertical, horizontal, or joint).
+    pub pca_method: PcaMethod,
+    /// Roughness penalty weight.
+    pub lambda: f64,
+    /// Maximum iterations for Karcher mean.
+    pub max_iter: usize,
+    /// Convergence tolerance for Karcher mean.
+    pub tol: f64,
+}
+
+impl Default for ElasticPcrConfig {
+    fn default() -> Self {
+        Self {
+            ncomp: 3,
+            pca_method: PcaMethod::Vertical,
+            lambda: 0.0,
+            max_iter: 20,
+            tol: 1e-4,
+        }
+    }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Result of elastic scalar-on-function regression.
@@ -121,6 +174,14 @@ pub struct ElasticPcrResult {
 /// * `lambda` — Roughness penalty on β
 /// * `max_iter` — Maximum iterations (default: 20)
 /// * `tol` — Convergence tolerance (default: 1e-4)
+///
+/// # Errors
+///
+/// Returns [`crate::FdarError::InvalidDimension`] if `n < 2`, `m < 2`,
+/// `y.len() != n`, `argvals.len() != m`, or `ncomp_beta < 2`.
+/// Returns [`crate::FdarError::ComputationFailed`] if a regression iteration fails
+/// to converge (e.g., singular penalized system).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_regression(
     data: &FdMatrix,
     y: &[f64],
@@ -225,6 +286,12 @@ pub fn elastic_regression(
 /// * `lambda` — Roughness penalty on β
 /// * `max_iter` — Maximum iterations
 /// * `tol` — Convergence tolerance
+///
+/// # Errors
+///
+/// Returns [`crate::FdarError::InvalidDimension`] if `n < 2`, `m < 2`,
+/// `y.len() != n`, or `argvals.len() != m`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_logistic(
     data: &FdMatrix,
     y: &[i8],
@@ -347,6 +414,14 @@ fn logistic_loss(prob: &[f64], y: &[i8], beta: &[f64], lambda: f64) -> f64 {
 /// * `lambda` — Alignment penalty (passed to karcher_mean)
 /// * `max_iter` — Maximum iterations for karcher_mean
 /// * `tol` — Convergence tolerance for karcher_mean
+///
+/// # Errors
+///
+/// Returns [`crate::FdarError::InvalidDimension`] if `n < 2`, `y.len() != n`, or
+/// `ncomp < 1`.
+/// Returns [`crate::FdarError::ComputationFailed`] if the elastic FPCA step or OLS
+/// on PC scores fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_pcr(
     data: &FdMatrix,
     y: &[f64],
@@ -569,7 +644,7 @@ fn solve_penalized_ols(
         let svd = nalgebra::SVD::new(system, true, true);
         svd.solve(&rhs, 1e-10).ok()?
     };
-    Some(coefs.iter().cloned().collect())
+    Some(coefs.iter().copied().collect())
 }
 
 /// Reconstruct β(t) = Σ c_k B_k(t) from B-spline coefficients.
@@ -716,7 +791,7 @@ fn ols_on_scores(
         let svd = nalgebra::SVD::new(xtx, true, true);
         svd.solve(&xty, 1e-10).ok()?
     };
-    let coefs: Vec<f64> = coefficients.iter().cloned().collect();
+    let coefs: Vec<f64> = coefficients.iter().copied().collect();
 
     let alpha = y_mean
         - coefs
@@ -858,7 +933,7 @@ fn update_logistic_warps(
     let (n, m) = q_all.shape();
     for i in 0..n {
         let qi: Vec<f64> = (0..m).map(|j| q_all[(i, j)]).collect();
-        let beta_signed: Vec<f64> = beta.iter().map(|&b| b * y[i] as f64).collect();
+        let beta_signed: Vec<f64> = beta.iter().map(|&b| b * f64::from(y[i])).collect();
         let new_gam = dp_alignment_core(&beta_signed, &qi, argvals, lambda);
         for j in 0..m {
             gammas[(i, j)] = new_gam[j];
@@ -1031,6 +1106,72 @@ impl ElasticLogisticResult {
     pub fn predict(&self, new_data: &FdMatrix, argvals: &[f64]) -> Vec<f64> {
         predict_elastic_logistic(self, new_data, argvals)
     }
+}
+
+// ─── Config-based API ───────────────────────────────────────────────────────
+
+/// Elastic scalar-on-function regression using a configuration struct.
+///
+/// Equivalent to [`elastic_regression`] but bundles method parameters in [`ElasticConfig`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_regression_with_config(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    config: &ElasticConfig,
+) -> Result<ElasticRegressionResult, crate::FdarError> {
+    elastic_regression(
+        data,
+        y,
+        argvals,
+        config.ncomp_beta,
+        config.lambda,
+        config.max_iter,
+        config.tol,
+    )
+}
+
+/// Elastic logistic regression using a configuration struct.
+///
+/// Equivalent to [`elastic_logistic`] but bundles method parameters in [`ElasticConfig`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_logistic_with_config(
+    data: &FdMatrix,
+    y: &[i8],
+    argvals: &[f64],
+    config: &ElasticConfig,
+) -> Result<ElasticLogisticResult, crate::FdarError> {
+    elastic_logistic(
+        data,
+        y,
+        argvals,
+        config.ncomp_beta,
+        config.lambda,
+        config.max_iter,
+        config.tol,
+    )
+}
+
+/// Elastic PCR using a configuration struct.
+///
+/// Equivalent to [`elastic_pcr`] but bundles method parameters in [`ElasticPcrConfig`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_pcr_with_config(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    config: &ElasticPcrConfig,
+) -> Result<ElasticPcrResult, crate::FdarError> {
+    elastic_pcr(
+        data,
+        y,
+        argvals,
+        config.ncomp,
+        config.pca_method,
+        config.lambda,
+        config.max_iter,
+        config.tol,
+    )
 }
 
 #[cfg(test)]

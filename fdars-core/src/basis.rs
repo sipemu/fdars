@@ -17,7 +17,7 @@ use std::f64::consts::PI;
 fn svd_pseudoinverse(mat: &DMatrix<f64>) -> Option<DMatrix<f64>> {
     let n = mat.nrows();
     let svd = SVD::new(mat.clone(), true, true);
-    let max_sv = svd.singular_values.iter().cloned().fold(0.0_f64, f64::max);
+    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
     let eps = 1e-10 * max_sv;
 
     let u = svd.u.as_ref()?;
@@ -133,8 +133,8 @@ pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     let n = t.len();
     let nbasis = nknots + order;
 
-    let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
-    let t_max = t.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let t_min = t.iter().copied().fold(f64::INFINITY, f64::min);
+    let t_max = t.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
     let knots = construct_bspline_knots(t_min, t_max, nknots, order);
     let t_max_knot_idx = order + nknots - 1;
@@ -161,8 +161,8 @@ pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
 /// The period is automatically set to the range of evaluation points (t_max - t_min).
 /// For explicit period control, use `fourier_basis_with_period`.
 pub fn fourier_basis(t: &[f64], nbasis: usize) -> Vec<f64> {
-    let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
-    let t_max = t.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let t_min = t.iter().copied().fold(f64::INFINITY, f64::min);
+    let t_max = t.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let period = t_max - t_min;
     fourier_basis_with_period(t, nbasis, period)
 }
@@ -182,7 +182,7 @@ pub fn fourier_basis(t: &[f64], nbasis: usize) -> Vec<f64> {
 /// Column-major matrix (n_points x nbasis) stored as flat vector
 pub fn fourier_basis_with_period(t: &[f64], nbasis: usize, period: f64) -> Vec<f64> {
     let n = t.len();
-    let t_min = t.iter().cloned().fold(f64::INFINITY, f64::min);
+    let t_min = t.iter().copied().fold(f64::INFINITY, f64::min);
 
     let mut basis = vec![0.0; n * nbasis];
 
@@ -195,11 +195,11 @@ pub fn fourier_basis_with_period(t: &[f64], nbasis: usize, period: f64) -> Vec<f
         let mut freq = 1;
         while k < nbasis {
             if k < nbasis {
-                basis[i + k * n] = (freq as f64 * x).sin();
+                basis[i + k * n] = (f64::from(freq) * x).sin();
                 k += 1;
             }
             if k < nbasis {
-                basis[i + k * n] = (freq as f64 * x).cos();
+                basis[i + k * n] = (f64::from(freq) * x).cos();
                 k += 1;
             }
             freq += 1;
@@ -297,7 +297,8 @@ pub fn fdata_to_basis_1d(
         .collect();
 
     Some(BasisProjectionResult {
-        coefficients: FdMatrix::from_column_major(coefs, n, actual_nbasis).unwrap(),
+        coefficients: FdMatrix::from_column_major(coefs, n, actual_nbasis)
+            .expect("dimension invariant: data.len() == n * m"),
         n_basis: actual_nbasis,
     })
 }
@@ -339,7 +340,7 @@ pub fn basis_to_fdata_1d(
         })
         .collect();
 
-    FdMatrix::from_column_major(flat, n, m).unwrap()
+    FdMatrix::from_column_major(flat, n, m).expect("dimension invariant: data.len() == n * m")
 }
 
 /// Result of P-spline fitting.
@@ -656,13 +657,16 @@ fn detect_seasonality_fft(curve: &[f64]) -> bool {
     fft.process(&mut input);
 
     // Compute power spectrum (skip DC component and Nyquist)
-    let powers: Vec<f64> = input[1..n / 2].iter().map(|c| c.norm_sqr()).collect();
+    let powers: Vec<f64> = input[1..n / 2]
+        .iter()
+        .map(nalgebra::Complex::norm_sqr)
+        .collect();
 
     if powers.is_empty() {
         return false;
     }
 
-    let max_power = powers.iter().cloned().fold(0.0_f64, f64::max);
+    let max_power = powers.iter().copied().fold(0.0_f64, f64::max);
     let mean_power = powers.iter().sum::<f64>() / powers.len() as f64;
 
     // Seasonal if peak is significantly above mean

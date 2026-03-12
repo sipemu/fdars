@@ -280,7 +280,7 @@ fn build_classification_result(
         })
         .collect();
 
-    let set_sizes: Vec<usize> = prediction_sets.iter().map(|s| s.len()).collect();
+    let set_sizes: Vec<usize> = prediction_sets.iter().map(std::vec::Vec::len).collect();
     let average_set_size = if set_sizes.is_empty() {
         0.0
     } else {
@@ -358,8 +358,7 @@ fn argmax(probs: &[f64]) -> usize {
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(i, _)| i)
-        .unwrap_or(0)
+        .map_or(0, |(i, _)| i)
 }
 
 /// Validate common inputs for split conformal.
@@ -373,7 +372,7 @@ fn validate_split_inputs(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "at least 4 observations".to_string(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if n_test == 0 {
@@ -386,13 +385,13 @@ fn validate_split_inputs(
     if cal_fraction <= 0.0 || cal_fraction >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "cal_fraction",
-            message: format!("must be in (0, 1), got {}", cal_fraction),
+            message: format!("must be in (0, 1), got {cal_fraction}"),
         });
     }
     if alpha <= 0.0 || alpha >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "alpha",
-            message: format!("must be in (0, 1), got {}", alpha),
+            message: format!("must be in (0, 1), got {alpha}"),
         });
     }
     Ok(())
@@ -417,6 +416,16 @@ fn validate_split_inputs(
 /// * `cal_fraction` — Fraction for calibration (0, 1)
 /// * `alpha` — Miscoverage level (e.g. 0.1 for 90 % intervals)
 /// * `seed` — Random seed
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
+/// or the proper training set is too small for the requested `ncomp`.
+/// Returns [`FdarError::ComputationFailed`] if the internal `fregre_lm` model fitting fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_fregre_lm(
     data: &FdMatrix,
     y: &[f64],
@@ -433,7 +442,7 @@ pub fn conformal_fregre_lm(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -487,6 +496,15 @@ pub fn conformal_fregre_lm(
 /// Split-conformal prediction intervals for nonparametric kernel regression.
 ///
 /// Refits [`fregre_np_mixed`] on the proper-training subset.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the internal `fregre_np_mixed` fitting fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_fregre_np(
     data: &FdMatrix,
     y: &[f64],
@@ -505,7 +523,7 @@ pub fn conformal_fregre_np(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -576,6 +594,15 @@ pub fn conformal_fregre_np(
 ///
 /// Refits [`elastic_regression`] on the proper-training subset and predicts
 /// on calibration / test data using the estimated β(t) and warping.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the internal `elastic_regression` fitting fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_elastic_regression(
     data: &FdMatrix,
     y: &[f64],
@@ -592,7 +619,7 @@ pub fn conformal_elastic_regression(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -642,6 +669,15 @@ pub fn conformal_elastic_regression(
 /// Split-conformal prediction intervals for elastic PCR.
 ///
 /// Refits [`elastic_pcr`] on the proper-training subset.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if `elastic_pcr` fitting or prediction fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_elastic_pcr(
     data: &FdMatrix,
     y: &[f64],
@@ -659,7 +695,7 @@ pub fn conformal_elastic_pcr(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -744,24 +780,19 @@ fn predict_elastic_reg(
         .collect()
 }
 
-/// Predict from elastic PCR result on new data.
+/// Project new curves onto elastic PCA eigenfunctions to obtain PC scores.
 ///
-/// Aligns new curves to the Karcher mean, projects onto stored FPCA components,
-/// and applies the linear model.
-fn predict_elastic_pcr_fn(
+/// Aligns each new SRSF to the Karcher mean, then projects the centered/aligned
+/// representation onto the stored eigenfunctions for the chosen PCA method.
+fn rebuild_elastic_pcr_model(
     result: &ElasticPcrResult,
-    new_data: &FdMatrix,
+    q_new: &FdMatrix,
     argvals: &[f64],
-) -> Result<Vec<f64>, FdarError> {
-    let (n_new, m) = new_data.shape();
-    let km = &result.karcher;
+) -> Result<FdMatrix, FdarError> {
+    let (n_new, m) = q_new.shape();
+    let mean_srsf = &result.karcher.mean_srsf;
 
-    // Use the stored mean SRSF from the Karcher mean result
-    let mean_srsf = &km.mean_srsf;
-    let q_new = crate::alignment::srsf_transform(new_data, argvals);
-
-    // Get PC scores for new curves
-    let scores = match result.pca_method {
+    match result.pca_method {
         PcaMethod::Vertical => {
             let fpca = result
                 .vert_fpca
@@ -771,7 +802,6 @@ fn predict_elastic_pcr_fn(
                     detail: "vertical FPCA result missing".to_string(),
                 })?;
             let ncomp = fpca.scores.ncols();
-            // eigenfunctions_q is (ncomp × (m+1)), use first m columns
             let mut sc = FdMatrix::zeros(n_new, ncomp);
             for i in 0..n_new {
                 let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
@@ -780,19 +810,17 @@ fn predict_elastic_pcr_fn(
                 let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
                 let gam_deriv = crate::helpers::gradient_uniform(&gam, h);
 
-                // Project aligned SRSF onto eigenfunctions
                 for k in 0..ncomp {
                     let mut s = 0.0;
                     for j in 0..m {
                         let q_aligned = q_warped[j] * gam_deriv[j].max(0.0).sqrt();
                         let centered = q_aligned - mean_srsf[j.min(mean_srsf.len() - 1)];
-                        // eigenfunctions_q is (ncomp × (m+1)): row k, column j
                         s += centered * fpca.eigenfunctions_q[(k, j)];
                     }
                     sc[(i, k)] = s;
                 }
             }
-            sc
+            Ok(sc)
         }
         PcaMethod::Horizontal => {
             let fpca = result
@@ -807,7 +835,6 @@ fn predict_elastic_pcr_fn(
             for i in 0..n_new {
                 let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
                 let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
-                // Project warping function onto horizontal eigenfunctions
                 let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
                 let psi = crate::warping::gam_to_psi(&gam, h);
                 for k in 0..ncomp {
@@ -819,7 +846,7 @@ fn predict_elastic_pcr_fn(
                     sc[(i, k)] = s;
                 }
             }
-            sc
+            Ok(sc)
         }
         PcaMethod::Joint => {
             let fpca = result
@@ -838,7 +865,6 @@ fn predict_elastic_pcr_fn(
                 let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
                 let gam_deriv = crate::helpers::gradient_uniform(&gam, h);
 
-                // Joint scores via vertical component (ncomp × (m+1))
                 for k in 0..ncomp {
                     let mut s = 0.0;
                     for j in 0..m {
@@ -850,20 +876,41 @@ fn predict_elastic_pcr_fn(
                     sc[(i, k)] = s;
                 }
             }
-            sc
-        }
-    };
-
-    // Apply linear model: y = alpha + sum(coef_k * score_k)
-    let ncomp = result.coefficients.len();
-    let mut preds = vec![0.0; n_new];
-    for i in 0..n_new {
-        preds[i] = result.alpha;
-        for k in 0..ncomp.min(scores.ncols()) {
-            preds[i] += result.coefficients[k] * scores[(i, k)];
+            Ok(sc)
         }
     }
-    Ok(preds)
+}
+
+/// Apply the elastic PCR linear model: y_i = alpha + sum_k(coef_k * score_ik).
+fn predict_from_elastic_pca(alpha: f64, coefficients: &[f64], scores: &FdMatrix) -> Vec<f64> {
+    let n = scores.nrows();
+    let ncomp = coefficients.len().min(scores.ncols());
+    let mut preds = vec![0.0; n];
+    for i in 0..n {
+        preds[i] = alpha;
+        for k in 0..ncomp {
+            preds[i] += coefficients[k] * scores[(i, k)];
+        }
+    }
+    preds
+}
+
+/// Predict from elastic PCR result on new data.
+///
+/// Aligns new curves to the Karcher mean, projects onto stored FPCA components,
+/// and applies the linear model.
+fn predict_elastic_pcr_fn(
+    result: &ElasticPcrResult,
+    new_data: &FdMatrix,
+    argvals: &[f64],
+) -> Result<Vec<f64>, FdarError> {
+    let q_new = crate::alignment::srsf_transform(new_data, argvals);
+    let scores = rebuild_elastic_pcr_model(result, &q_new, argvals)?;
+    Ok(predict_from_elastic_pca(
+        result.alpha,
+        &result.coefficients,
+        &scores,
+    ))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -880,6 +927,16 @@ fn predict_elastic_pcr_fn(
 /// * `classifier` — One of `"lda"`, `"qda"`, or `"knn"`
 /// * `k_nn` — Number of neighbors (only used if `classifier == "knn"`)
 /// * `score_type` — [`ClassificationScore::Lac`] or [`ClassificationScore::Aps`]
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
+/// or `classifier` is not one of `"lda"`, `"qda"`, or `"knn"`.
+/// Returns [`FdarError::ComputationFailed`] if the classifier fitting fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_classif(
     data: &FdMatrix,
     y: &[usize],
@@ -899,7 +956,7 @@ pub fn conformal_classif(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -926,8 +983,7 @@ pub fn conformal_classif(
             return Err(FdarError::InvalidParameter {
                 parameter: "classifier",
                 message: format!(
-                    "unknown classifier '{}', expected 'lda', 'qda', or 'knn'",
-                    classifier
+                    "unknown classifier '{classifier}', expected 'lda', 'qda', or 'knn'"
                 ),
             })
         }
@@ -959,6 +1015,16 @@ pub fn conformal_classif(
 ///
 /// Refits [`functional_logistic`] on the proper-training subset.
 /// Binary classification → prediction sets of size 1 or 2.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
+/// or the proper training set is too small for the requested `ncomp`.
+/// Returns [`FdarError::ComputationFailed`] if the `functional_logistic` fitting fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_logistic(
     data: &FdMatrix,
     y: &[f64],
@@ -978,7 +1044,7 @@ pub fn conformal_logistic(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -1051,6 +1117,15 @@ pub fn conformal_logistic(
 /// Split-conformal prediction sets for elastic logistic regression.
 ///
 /// Refits [`elastic_logistic`] on the proper-training subset.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `data` and `test_data` have different numbers of columns.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the `elastic_logistic` fitting fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_elastic_logistic(
     data: &FdMatrix,
     y: &[i8],
@@ -1067,7 +1142,7 @@ pub fn conformal_elastic_logistic(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -1182,6 +1257,13 @@ fn predict_elastic_logistic_probs(
 /// breaks the distribution-free coverage guarantee and produces intervals that
 /// are too narrow (optimistic). For valid coverage, use the refit-based or CV+
 /// variants instead. This function is provided as a fast heuristic only.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, or `y` length differs from the number of rows in `data`.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_generic_regression(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1198,7 +1280,7 @@ pub fn conformal_generic_regression(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -1255,6 +1337,14 @@ pub fn conformal_generic_regression(
 /// **Warning**: Same data leakage caveat as [`conformal_generic_regression`] —
 /// the model was trained on all data including the calibration set. Coverage
 /// guarantee is broken. Use refit-based variants for valid coverage.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, or `y` length differs from the number of rows in `data`.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
+/// or the model's task type is `Regression` instead of a classification type.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_generic_classification(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
@@ -1272,7 +1362,7 @@ pub fn conformal_generic_classification(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
@@ -1365,6 +1455,15 @@ pub fn conformal_generic_classification(
 /// The `fit_predict` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`,
 /// fits a model on `train_data`/`train_y`, and returns `Some((preds, _))` — predictions on
 /// `predict_data`. Only the first element of the tuple is used; the second is ignored.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, or `y` length differs from the number of rows in `data`.
+/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the `fit_predict` closure returns `None`
+/// on any fold, or no valid folds are produced.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn cv_conformal_regression(
     data: &FdMatrix,
     y: &[f64],
@@ -1388,7 +1487,7 @@ pub fn cv_conformal_regression(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "at least 4 observations".to_string(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if n_test == 0 {
@@ -1401,14 +1500,14 @@ pub fn cv_conformal_regression(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
     if alpha <= 0.0 || alpha >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "alpha",
-            message: format!("must be in (0, 1), got {}", alpha),
+            message: format!("must be in (0, 1), got {alpha}"),
         });
     }
     let n_folds = n_folds.max(2).min(n);
@@ -1443,7 +1542,7 @@ pub fn cv_conformal_regression(
         )
         .ok_or_else(|| FdarError::ComputationFailed {
             operation: "cv_conformal_regression",
-            detail: format!("fit_predict closure returned None on fold {}", fold),
+            detail: format!("fit_predict closure returned None on fold {fold}"),
         })?;
 
         // Split predictions: first n_cal_fold are calibration, rest are test
@@ -1486,11 +1585,117 @@ pub fn cv_conformal_regression(
     ))
 }
 
+/// Run one fold of cross-conformal classification.
+///
+/// Fits the model on train indices, predicts on calibration + test combined,
+/// and returns `(cal_scores_with_indices, test_probs)`.
+fn conformal_classif_fold(
+    data: &FdMatrix,
+    y: &[usize],
+    test_data: &FdMatrix,
+    scalar_train: Option<&FdMatrix>,
+    scalar_test: Option<&FdMatrix>,
+    train_idx: &[usize],
+    test_idx: &[usize],
+    fold: usize,
+    score_type: ClassificationScore,
+    fit_predict_probs: &dyn Fn(
+        &FdMatrix,
+        &[usize],
+        Option<&FdMatrix>,
+        &FdMatrix,
+        Option<&FdMatrix>,
+    ) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>)>,
+) -> Result<(Vec<(usize, f64)>, Vec<Vec<f64>>), FdarError> {
+    let train_data = subset_rows(data, train_idx);
+    let train_y = subset_vec_usize(y, train_idx);
+    let train_sc = scalar_train.map(|sc| subset_rows(sc, train_idx));
+    let cal_data = subset_rows(data, test_idx);
+    let cal_sc = scalar_train.map(|sc| subset_rows(sc, test_idx));
+
+    // Single call: predict on combined [cal_data; test_data] to avoid double model fit
+    let n_cal_fold = cal_data.nrows();
+    let combined = vstack(&cal_data, test_data);
+    let combined_sc = vstack_opt(cal_sc.as_ref(), scalar_test);
+    let (all_probs, _) = fit_predict_probs(
+        &train_data,
+        &train_y,
+        train_sc.as_ref(),
+        &combined,
+        combined_sc.as_ref(),
+    )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "cv_conformal_classification",
+        detail: format!("fit_predict_probs closure returned None on fold {fold}"),
+    })?;
+
+    // Split predictions: first n_cal_fold are calibration, rest are test
+    let cal_probs: Vec<Vec<f64>> = all_probs[..n_cal_fold].to_vec();
+    let test_probs: Vec<Vec<f64>> = all_probs[n_cal_fold..].to_vec();
+
+    // Calibration scores paired with original indices
+    let cal_true = subset_vec_usize(y, test_idx);
+    let cal_scores = compute_cal_scores(&cal_probs, &cal_true, score_type);
+    let indexed_scores: Vec<(usize, f64)> = test_idx
+        .iter()
+        .enumerate()
+        .filter(|&(local_i, _)| local_i < cal_scores.len())
+        .map(|(local_i, &orig_i)| (orig_i, cal_scores[local_i]))
+        .collect();
+
+    Ok((indexed_scores, test_probs))
+}
+
+/// Aggregate per-fold conformal classification results into a final prediction.
+///
+/// Averages test probabilities across folds, determines predicted classes, and
+/// builds the final [`ConformalClassificationResult`].
+fn aggregate_conformal_results(
+    all_cal_scores: Vec<f64>,
+    test_probs_sum: Vec<Vec<f64>>,
+    n_models: usize,
+    n_folds: usize,
+    alpha: f64,
+    score_type: ClassificationScore,
+) -> Result<ConformalClassificationResult, FdarError> {
+    if n_models == 0 {
+        return Err(FdarError::ComputationFailed {
+            operation: "cv_conformal_classification",
+            detail: "no valid folds produced".to_string(),
+        });
+    }
+
+    let test_probs_avg: Vec<Vec<f64>> = test_probs_sum
+        .iter()
+        .map(|probs| probs.iter().map(|&p| p / n_models as f64).collect())
+        .collect();
+    let test_pred_classes: Vec<usize> = test_probs_avg.iter().map(|p| argmax(p)).collect();
+
+    Ok(build_classification_result(
+        all_cal_scores,
+        &test_probs_avg,
+        test_pred_classes,
+        alpha,
+        ConformalMethod::CrossConformal { n_folds },
+        score_type,
+    ))
+}
+
 /// Cross-conformal (CV+) prediction sets for classification.
 ///
 /// The `fit_predict_probs` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`,
 /// fits on `train_data`/`train_y`, and returns `Some((probs, _))` — probability vectors on
 /// `predict_data`. Only the first element of the tuple is used.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `y` is empty (no classes can be determined).
+/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the `fit_predict_probs` closure returns
+/// `None` on any fold, or no valid folds are produced.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn cv_conformal_classification(
     data: &FdMatrix,
     y: &[usize],
@@ -1515,7 +1720,7 @@ pub fn cv_conformal_classification(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "at least 4 observations".to_string(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if n_test == 0 {
@@ -1528,14 +1733,14 @@ pub fn cv_conformal_classification(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
     if alpha <= 0.0 || alpha >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "alpha",
-            message: format!("must be in (0, 1), got {}", alpha),
+            message: format!("must be in (0, 1), got {alpha}"),
         });
     }
     let n_classes = y
@@ -1561,41 +1766,22 @@ pub fn cv_conformal_classification(
             continue;
         }
 
-        let train_data = subset_rows(data, &train_idx);
-        let train_y = subset_vec_usize(y, &train_idx);
-        let train_sc = scalar_train.map(|sc| subset_rows(sc, &train_idx));
-        let cal_data = subset_rows(data, &test_idx);
-        let cal_sc = scalar_train.map(|sc| subset_rows(sc, &test_idx));
+        let (indexed_scores, test_probs) = conformal_classif_fold(
+            data,
+            y,
+            test_data,
+            scalar_train,
+            scalar_test,
+            &train_idx,
+            &test_idx,
+            fold,
+            score_type,
+            &fit_predict_probs,
+        )?;
 
-        // Single call: predict on combined [cal_data; test_data] to avoid double model fit
-        let n_cal_fold = cal_data.nrows();
-        let combined = vstack(&cal_data, test_data);
-        let combined_sc = vstack_opt(cal_sc.as_ref(), scalar_test);
-        let (all_probs, _) = fit_predict_probs(
-            &train_data,
-            &train_y,
-            train_sc.as_ref(),
-            &combined,
-            combined_sc.as_ref(),
-        )
-        .ok_or_else(|| FdarError::ComputationFailed {
-            operation: "cv_conformal_classification",
-            detail: format!("fit_predict_probs closure returned None on fold {}", fold),
-        })?;
-
-        // Split predictions: first n_cal_fold are calibration, rest are test
-        let cal_probs: Vec<Vec<f64>> = all_probs[..n_cal_fold].to_vec();
-        let test_probs: Vec<Vec<f64>> = all_probs[n_cal_fold..].to_vec();
-
-        // Calibration scores
-        let cal_true = subset_vec_usize(y, &test_idx);
-        let cal_scores = compute_cal_scores(&cal_probs, &cal_true, score_type);
-        for (local_i, &orig_i) in test_idx.iter().enumerate() {
-            if local_i < cal_scores.len() {
-                all_cal_scores[orig_i] = cal_scores[local_i];
-            }
+        for (orig_i, score) in indexed_scores {
+            all_cal_scores[orig_i] = score;
         }
-
         for j in 0..n_test.min(test_probs.len()) {
             for c in 0..n_classes.min(test_probs[j].len()) {
                 test_probs_sum[j][c] += test_probs[j][c];
@@ -1604,28 +1790,14 @@ pub fn cv_conformal_classification(
         n_models += 1;
     }
 
-    if n_models == 0 {
-        return Err(FdarError::ComputationFailed {
-            operation: "cv_conformal_classification",
-            detail: "no valid folds produced".to_string(),
-        });
-    }
-
-    // Average test probabilities
-    let test_probs_avg: Vec<Vec<f64>> = test_probs_sum
-        .iter()
-        .map(|probs| probs.iter().map(|&p| p / n_models as f64).collect())
-        .collect();
-    let test_pred_classes: Vec<usize> = test_probs_avg.iter().map(|p| argmax(p)).collect();
-
-    Ok(build_classification_result(
+    aggregate_conformal_results(
         all_cal_scores,
-        &test_probs_avg,
-        test_pred_classes,
+        test_probs_sum,
+        n_models,
+        n_folds,
         alpha,
-        ConformalMethod::CrossConformal { n_folds },
         score_type,
-    ))
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1642,6 +1814,15 @@ pub fn cv_conformal_classification(
 ///
 /// The `fit_predict` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`
 /// and returns `Some((predictions, _))` — predictions on `predict_data`.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, or `y` length differs from the number of rows in `data`.
+/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the `fit_predict` closure returns `None`
+/// on any leave-one-out iteration.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn jackknife_plus_regression(
     data: &FdMatrix,
     y: &[f64],
@@ -1663,7 +1844,7 @@ pub fn jackknife_plus_regression(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: "at least 4 observations".to_string(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if n_test == 0 {
@@ -1676,14 +1857,14 @@ pub fn jackknife_plus_regression(
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{}", n),
+            expected: format!("{n}"),
             actual: format!("{}", y.len()),
         });
     }
     if alpha <= 0.0 || alpha >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "alpha",
-            message: format!("must be in (0, 1), got {}", alpha),
+            message: format!("must be in (0, 1), got {alpha}"),
         });
     }
 
@@ -1711,7 +1892,7 @@ pub fn jackknife_plus_regression(
         )
         .ok_or_else(|| FdarError::ComputationFailed {
             operation: "jackknife_plus_regression",
-            detail: format!("fit_predict closure returned None on LOO iteration {}", i),
+            detail: format!("fit_predict closure returned None on LOO iteration {i}"),
         })?;
 
         loo_residuals[i] = (y[i] - loo_pred[0]).abs();
@@ -1727,8 +1908,7 @@ pub fn jackknife_plus_regression(
         .ok_or_else(|| FdarError::ComputationFailed {
             operation: "jackknife_plus_regression",
             detail: format!(
-                "fit_predict closure returned None on test prediction for LOO iteration {}",
-                i
+                "fit_predict closure returned None on test prediction for LOO iteration {i}"
             ),
         })?;
 

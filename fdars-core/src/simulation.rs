@@ -113,12 +113,12 @@ pub fn fourier_eigenfunctions(t: &[f64], m: usize) -> FdMatrix {
         while k < m {
             // sin term: sqrt(2) * sin(2*pi*freq*t)
             if k < m {
-                phi[(i, k)] = sqrt2 * (2.0 * PI * freq as f64 * ti).sin();
+                phi[(i, k)] = sqrt2 * (2.0 * PI * f64::from(freq) * ti).sin();
                 k += 1;
             }
             // cos term: sqrt(2) * cos(2*pi*freq*t)
             if k < m {
-                phi[(i, k)] = sqrt2 * (2.0 * PI * freq as f64 * ti).cos();
+                phi[(i, k)] = sqrt2 * (2.0 * PI * f64::from(freq) * ti).cos();
                 k += 1;
             }
             freq += 1;
@@ -311,7 +311,7 @@ pub fn sim_kl(
         None => StdRng::from_entropy(),
     };
 
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let normal = Normal::new(0.0, 1.0).expect("valid distribution parameters");
 
     // Generate scores ξ ~ N(0, λ) for all curves
     // xi is n × big_m in column-major format
@@ -340,7 +340,7 @@ pub fn sim_kl(
         }
     });
 
-    FdMatrix::from_column_major(data, n, m).unwrap()
+    FdMatrix::from_column_major(data, n, m).expect("dimension invariant: data.len() == n * m")
 }
 
 /// Simulate functional data with specified eigenfunction and eigenvalue types.
@@ -392,7 +392,7 @@ pub fn add_error_pointwise(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMat
         None => StdRng::from_entropy(),
     };
 
-    let normal = Normal::new(0.0, sd).unwrap();
+    let normal = Normal::new(0.0, sd).expect("valid distribution parameters: sd > 0");
 
     let noisy: Vec<f64> = data
         .as_slice()
@@ -400,7 +400,8 @@ pub fn add_error_pointwise(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMat
         .map(|&x| x + rng.sample::<f64, _>(normal))
         .collect();
 
-    FdMatrix::from_column_major(noisy, data.nrows(), data.ncols()).unwrap()
+    FdMatrix::from_column_major(noisy, data.nrows(), data.ncols())
+        .expect("dimension invariant: data.len() == n * m")
 }
 
 /// Add curve-level Gaussian noise to functional data.
@@ -424,7 +425,7 @@ pub fn add_error_curve(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMatrix 
         None => StdRng::from_entropy(),
     };
 
-    let normal = Normal::new(0.0, sd).unwrap();
+    let normal = Normal::new(0.0, sd).expect("valid distribution parameters: sd > 0");
 
     // Generate one noise value per curve
     let curve_noise: Vec<f64> = (0..n).map(|_| rng.sample::<f64, _>(normal)).collect();
@@ -436,7 +437,7 @@ pub fn add_error_curve(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMatrix 
             result[i + j * n] += curve_noise[i];
         }
     }
-    FdMatrix::from_column_major(result, n, m).unwrap()
+    FdMatrix::from_column_major(result, n, m).expect("dimension invariant: data.len() == n * m")
 }
 
 #[cfg(test)]

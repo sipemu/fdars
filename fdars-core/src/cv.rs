@@ -139,7 +139,10 @@ fn create_cv_folds(
     if stratified {
         match cv_type {
             CvType::Classification => {
-                let y_class: Vec<usize> = y.iter().map(|&v| v as usize).collect();
+                let y_class: Vec<usize> = y
+                    .iter()
+                    .map(|&v| crate::utility::f64_to_usize_clamped(v))
+                    .collect();
                 create_stratified_folds(n, &y_class, n_folds, seed)
             }
             CvType::Regression => {
@@ -165,7 +168,10 @@ fn create_cv_folds(
 fn aggregate_oof_predictions(all_oof: Vec<Vec<f64>>, n: usize) -> (Vec<f64>, Option<Vec<f64>>) {
     let nrep = all_oof.len();
     if nrep == 1 {
-        return (all_oof.into_iter().next().unwrap(), None);
+        return (
+            all_oof.into_iter().next().expect("non-empty iterator"),
+            None,
+        );
     }
     let mut mean_oof = vec![0.0; n];
     for oof in &all_oof {

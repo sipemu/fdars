@@ -158,8 +158,8 @@ pub fn elastic_align_pair_constrained(
     }
 
     // Compute & normalize SRSFs
-    let f1_mat = FdMatrix::from_slice(f1, 1, m).unwrap();
-    let f2_mat = FdMatrix::from_slice(f2, 1, m).unwrap();
+    let f1_mat = FdMatrix::from_slice(f1, 1, m).expect("dimension invariant: data.len() == n * m");
+    let f2_mat = FdMatrix::from_slice(f2, 1, m).expect("dimension invariant: data.len() == n * m");
     let q1_mat = srsf_transform(&f1_mat, argvals);
     let q2_mat = srsf_transform(&f2_mat, argvals);
     let q1: Vec<f64> = q1_mat.row(0);
@@ -173,7 +173,8 @@ pub fn elastic_align_pair_constrained(
     let gamma = segmented_dp_gamma(&q1n, &q2n, argvals, &waypoints, lambda);
 
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
-    let f_aligned_mat = FdMatrix::from_slice(&f_aligned, 1, m).unwrap();
+    let f_aligned_mat =
+        FdMatrix::from_slice(&f_aligned, 1, m).expect("dimension invariant: data.len() == n * m");
     let q_aligned_mat = srsf_transform(&f_aligned_mat, argvals);
     let q_aligned: Vec<f64> = q_aligned_mat.row(0);
     let weights = simpsons_weights(argvals);

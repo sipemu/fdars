@@ -31,6 +31,12 @@ pub struct CalibrationDiagnosticsResult {
 }
 
 /// Calibration diagnostics for a functional logistic regression model.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `fit.probabilities` is empty or
+/// `y.len()` does not match the number of probabilities.
+/// Returns [`FdarError::InvalidParameter`] if `n_groups < 2`.
 pub fn calibration_diagnostics(
     fit: &FunctionalLogisticResult,
     y: &[f64],
@@ -47,7 +53,7 @@ pub fn calibration_diagnostics(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching probabilities)", n),
+            expected: format!("{n} (matching probabilities)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -124,6 +130,12 @@ pub struct EceResult {
 /// * `fit` — A fitted [`FunctionalLogisticResult`]
 /// * `y` — Binary labels (0/1), length n
 /// * `n_bins` — Number of bins for equal-width binning
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `fit.probabilities` is empty or
+/// `y.len()` does not match the number of probabilities.
+/// Returns [`FdarError::InvalidParameter`] if `n_bins` is zero.
 pub fn expected_calibration_error(
     fit: &FunctionalLogisticResult,
     y: &[f64],
@@ -140,7 +152,7 @@ pub fn expected_calibration_error(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching probabilities)", n),
+            expected: format!("{n} (matching probabilities)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -221,6 +233,14 @@ pub struct ConformalPredictionResult {
 /// * `cal_fraction` — Fraction of training data for calibration (0, 1)
 /// * `alpha` — Miscoverage level (e.g. 0.1 for 90% intervals)
 /// * `seed` — Random seed
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if input dimensions or parameters
+/// are invalid (e.g., mismatched columns between train and test, `cal_fraction`
+/// outside (0, 1), `alpha` outside (0, 1), or too few training observations).
+/// May also propagate errors from [`crate::scalar_on_function::fregre_lm`]
+/// when refitting on the proper-training subset.
 pub fn conformal_prediction_residuals(
     fit: &FregreLmResult,
     train_data: &FdMatrix,
@@ -349,6 +369,14 @@ pub struct RegressionDepthResult {
 /// * `n_boot` — Number of bootstrap iterations
 /// * `depth_type` — Which depth measure to use
 /// * `seed` — Random seed
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 rows,
+/// zero columns, or `y.len()` does not match the row count.
+/// Returns [`FdarError::InvalidParameter`] if `n_boot` is zero.
+/// Returns [`FdarError::ComputationFailed`] if score depth computation returns
+/// empty.
 pub fn regression_depth(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -363,7 +391,7 @@ pub fn regression_depth(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: ">=4 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if m == 0 {
@@ -376,7 +404,7 @@ pub fn regression_depth(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -422,6 +450,14 @@ pub fn regression_depth(
 }
 
 /// Regression depth diagnostics for a functional logistic regression.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 rows,
+/// zero columns, or `y.len()` does not match the row count.
+/// Returns [`FdarError::InvalidParameter`] if `n_boot` is zero.
+/// Returns [`FdarError::ComputationFailed`] if score depth computation returns
+/// empty.
 pub fn regression_depth_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -436,7 +472,7 @@ pub fn regression_depth_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: ">=4 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if m == 0 {
@@ -449,7 +485,7 @@ pub fn regression_depth_logistic(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -510,6 +546,14 @@ pub struct StabilityAnalysisResult {
 ///
 /// Refits the model on `n_boot` bootstrap samples and reports variability
 /// of β(t), FPC coefficients, R², and importance rankings.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 rows,
+/// zero columns, or `y.len()` does not match the row count.
+/// Returns [`FdarError::InvalidParameter`] if `n_boot < 2` or `ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if there are insufficient successful
+/// bootstrap refits.
 pub fn explanation_stability(
     data: &FdMatrix,
     y: &[f64],
@@ -523,7 +567,7 @@ pub fn explanation_stability(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: ">=4 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if m == 0 {
@@ -536,7 +580,7 @@ pub fn explanation_stability(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -588,6 +632,14 @@ pub fn explanation_stability(
 }
 
 /// Bootstrap stability analysis of a functional logistic regression.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 rows,
+/// zero columns, or `y.len()` does not match the row count.
+/// Returns [`FdarError::InvalidParameter`] if `n_boot < 2` or `ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if there are insufficient successful
+/// bootstrap refits.
 pub fn explanation_stability_logistic(
     data: &FdMatrix,
     y: &[f64],
@@ -601,7 +653,7 @@ pub fn explanation_stability_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: ">=4 rows".into(),
-            actual: format!("{}", n),
+            actual: format!("{n}"),
         });
     }
     if m == 0 {
@@ -614,7 +666,7 @@ pub fn explanation_stability_logistic(
     if n != y.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
-            expected: format!("{} (matching data rows)", n),
+            expected: format!("{n} (matching data rows)"),
             actual: format!("{}", y.len()),
         });
     }
@@ -697,6 +749,12 @@ pub struct AnchorResult {
 /// * `observation` — Index of observation to explain
 /// * `precision_threshold` — Minimum precision (e.g. 0.95)
 /// * `n_bins` — Number of quantile bins per FPC dimension
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n` or `n_bins < 2`.
 pub fn anchor_explanation(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -717,13 +775,13 @@ pub fn anchor_explanation(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if n_bins < 2 {
@@ -771,6 +829,12 @@ pub fn anchor_explanation(
 /// Anchor explanation for a functional logistic regression.
 ///
 /// "Same prediction" = same predicted class.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
+/// count does not match `fit.fpca.mean`.
+/// Returns [`FdarError::InvalidParameter`] if `observation >= n` or `n_bins < 2`.
 pub fn anchor_explanation_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -791,13 +855,13 @@ pub fn anchor_explanation_logistic(
         return Err(FdarError::InvalidDimension {
             parameter: "data",
             expected: format!("{} columns", fit.fpca.mean.len()),
-            actual: format!("{}", m),
+            actual: format!("{m}"),
         });
     }
     if observation >= n {
         return Err(FdarError::InvalidParameter {
             parameter: "observation",
-            message: format!("observation {} >= n {}", observation, n),
+            message: format!("observation {observation} >= n {n}"),
         });
     }
     if n_bins < 2 {

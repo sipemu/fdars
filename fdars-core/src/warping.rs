@@ -71,8 +71,8 @@ pub fn gam_to_psi_smooth(gam: &[f64], h: f64) -> Vec<f64> {
 pub fn psi_to_gam(psi: &[f64], time: &[f64]) -> Vec<f64> {
     let psi_sq: Vec<f64> = psi.iter().map(|&p| p * p).collect();
     let gam = cumulative_trapz(&psi_sq, time);
-    let min_val = gam.iter().cloned().fold(f64::INFINITY, f64::min);
-    let max_val = gam.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let min_val = gam.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_val = gam.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let range = (max_val - min_val).max(1e-10);
     gam.iter().map(|&v| (v - min_val) / range).collect()
 }

@@ -16,6 +16,7 @@ use crate::matrix::FdMatrix;
 ///
 /// # Returns
 /// FdMatrix of SRSFs with the same shape as input.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn srsf_transform(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
     let (n, m) = data.shape();
     if n == 0 || m == 0 || argvals.len() != m {
@@ -91,7 +92,7 @@ pub fn compose_warps(gamma1: &[f64], gamma2: &[f64], argvals: &[f64]) -> Vec<f64
 /// Compute a single SRSF from a slice (single-row convenience).
 pub(crate) fn srsf_single(f: &[f64], argvals: &[f64]) -> Vec<f64> {
     let m = f.len();
-    let mat = FdMatrix::from_slice(f, 1, m).unwrap();
+    let mat = FdMatrix::from_slice(f, 1, m).expect("dimension invariant: data.len() == n * m");
     let q_mat = srsf_transform(&mat, argvals);
     q_mat.row(0)
 }

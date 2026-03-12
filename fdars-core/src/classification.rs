@@ -94,7 +94,7 @@ pub(crate) fn build_feature_matrix(
     let fpca = fdata_to_pc_1d(data, ncomp)?;
     let n = data.nrows();
     let d_pc = fpca.scores.ncols();
-    let d_cov = scalar_covariates.map_or(0, |c| c.ncols());
+    let d_cov = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
     let d = d_pc + d_cov;
 
     let mut features = FdMatrix::zeros(n, d);
@@ -200,7 +200,7 @@ pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Result<Vec<f64>, FdarError> {
         if diag <= 0.0 {
             return Err(FdarError::ComputationFailed {
                 operation: "cholesky_d",
-                detail: format!("non-positive diagonal at index {}", j),
+                detail: format!("non-positive diagonal at index {j}"),
             });
         }
         l[j * d + j] = diag.sqrt();
@@ -271,6 +271,15 @@ pub(crate) fn lda_predict(
 /// * `y` — Class labels (length n)
 /// * `scalar_covariates` — Optional scalar covariates (n × p)
 /// * `ncomp` — Number of FPC components
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
+/// Returns [`FdarError::ComputationFailed`] if the pooled covariance Cholesky factorization fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_lda(
     data: &FdMatrix,
     y: &[usize],
@@ -296,7 +305,7 @@ pub fn fclassif_lda(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -432,6 +441,15 @@ pub(crate) fn qda_predict(
 }
 
 /// FPC + QDA classification.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
+/// Returns [`FdarError::ComputationFailed`] if a per-class covariance Cholesky factorization fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_qda(
     data: &FdMatrix,
     y: &[usize],
@@ -457,7 +475,7 @@ pub fn fclassif_qda(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -499,6 +517,15 @@ pub fn fclassif_qda(
 /// * `scalar_covariates` — Optional scalar covariates
 /// * `ncomp` — Number of FPC components
 /// * `k_nn` — Number of nearest neighbors
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `k_nn` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_knn(
     data: &FdMatrix,
     y: &[usize],
@@ -531,7 +558,7 @@ pub fn fclassif_knn(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -585,8 +612,7 @@ pub(crate) fn knn_predict_loo(
                 .iter()
                 .enumerate()
                 .max_by_key(|&(_, &v)| v)
-                .map(|(c, _)| c)
-                .unwrap_or(0)
+                .map_or(0, |(c, _)| c)
         })
         .collect()
 }
@@ -601,8 +627,7 @@ fn argmax_class(scores: &[f64]) -> usize {
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(c, _)| c)
-        .unwrap_or(0)
+        .map_or(0, |(c, _)| c)
 }
 
 /// Compute marginal rank-based scalar depth of observation i w.r.t. class c.
@@ -636,7 +661,7 @@ fn bandwidth_candidates(dists: &[f64], n: usize) -> Vec<f64> {
 
     (1..=20)
         .map(|p| {
-            let idx = (p as f64 / 20.0 * (all_dists.len() - 1) as f64) as usize;
+            let idx = (f64::from(p) / 20.0 * (all_dists.len() - 1) as f64) as usize;
             all_dists[idx.min(all_dists.len() - 1)]
         })
         .filter(|&h| h > 1e-15)
@@ -681,6 +706,13 @@ fn gaussian_kernel(dist: f64, h: f64) -> f64 {
 /// * `scalar_covariates` — Optional scalar covariates (n × p)
 /// * `h_func` — Functional bandwidth (0 = auto via LOO-CV)
 /// * `h_scalar` — Scalar bandwidth (0 = auto)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows, `y.len() != n`,
+/// or `argvals.len() != m`.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_kernel(
     data: &FdMatrix,
     y: &[usize],
@@ -709,7 +741,7 @@ pub fn fclassif_kernel(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -888,6 +920,13 @@ fn blend_scalar_depths(
     }
 }
 
+/// Depth-based DD-classifier for functional data.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_dd(
     data: &FdMatrix,
     y: &[usize],
@@ -906,7 +945,7 @@ pub fn fclassif_dd(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -968,6 +1007,12 @@ fn extract_class_data(data: &FdMatrix, indices: &[usize]) -> FdMatrix {
 /// * `ncomp` — Number of FPC components (for lda/qda/knn)
 /// * `nfold` — Number of CV folds
 /// * `seed` — Random seed for fold assignment
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `nfold < 2` or `nfold > n`.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_cv(
     data: &FdMatrix,
     argvals: &[f64],
@@ -982,7 +1027,7 @@ pub fn fclassif_cv(
     if n < nfold || nfold < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "nfold",
-            message: format!("need 2 <= nfold <= n, got nfold={}, n={}", nfold, n),
+            message: format!("need 2 <= nfold <= n, got nfold={nfold}, n={n}"),
         });
     }
 
@@ -990,7 +1035,7 @@ pub fn fclassif_cv(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -1229,8 +1274,7 @@ fn project_and_classify_knn(
                 .iter()
                 .enumerate()
                 .max_by_key(|&(_, &v)| v)
-                .map(|(c, _)| c)
-                .unwrap_or(0)
+                .map_or(0, |(c, _)| c)
         })
         .collect()
 }
@@ -1284,6 +1328,15 @@ pub struct ClassifFit {
 }
 
 /// FPC + LDA classification, retaining FPCA and LDA parameters for explainability.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
+/// Returns [`FdarError::ComputationFailed`] if the pooled covariance Cholesky factorization fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_lda_fit(
     data: &FdMatrix,
     y: &[usize],
@@ -1309,7 +1362,7 @@ pub fn fclassif_lda_fit(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -1348,6 +1401,15 @@ pub fn fclassif_lda_fit(
 }
 
 /// FPC + QDA classification, retaining FPCA and QDA parameters for explainability.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
+/// Returns [`FdarError::ComputationFailed`] if a per-class covariance Cholesky factorization fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_qda_fit(
     data: &FdMatrix,
     y: &[usize],
@@ -1373,7 +1435,7 @@ pub fn fclassif_qda_fit(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -1419,6 +1481,15 @@ pub fn fclassif_qda_fit(
 }
 
 /// FPC + k-NN classification, retaining FPCA and training data for explainability.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or `y.len() != n`.
+/// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `k_nn` is zero.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+/// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_knn_fit(
     data: &FdMatrix,
     y: &[usize],
@@ -1451,7 +1522,7 @@ pub fn fclassif_knn_fit(
     if g < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "y",
-            message: format!("need at least 2 classes, got {}", g),
+            message: format!("need at least 2 classes, got {g}"),
         });
     }
 
@@ -1630,8 +1701,7 @@ impl FpcPredictor for ClassifFit {
                         .iter()
                         .enumerate()
                         .max_by_key(|&(_, &v)| v)
-                        .map(|(c, _)| c as f64)
-                        .unwrap_or(0.0)
+                        .map_or(0.0, |(c, _)| c as f64)
                 }
             }
         }
@@ -1730,13 +1800,67 @@ pub(crate) fn classif_predict_probs(fit: &ClassifFit, scores: &FdMatrix) -> Vec<
 
 /// Softmax of a vector of log-scores → probabilities.
 fn softmax(scores: &[f64]) -> Vec<f64> {
-    let max_s = scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_s = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let exps: Vec<f64> = scores.iter().map(|&s| (s - max_s).exp()).collect();
     let sum: f64 = exps.iter().sum();
     exps.iter().map(|&e| e / sum).collect()
 }
 
 // ---------------------------------------------------------------------------
+// ─── Config-based API ───────────────────────────────────────────────────────
+
+/// Configuration for [`fclassif_cv`].
+#[derive(Debug, Clone)]
+pub struct ClassifCvConfig {
+    /// Classification method name (one of "lda", "qda", "knn", "kernel", "dd").
+    pub method: String,
+    /// Number of FPC components.
+    pub ncomp: usize,
+    /// Number of cross-validation folds.
+    pub nfold: usize,
+    /// Random seed for fold assignment.
+    pub seed: u64,
+}
+
+impl Default for ClassifCvConfig {
+    fn default() -> Self {
+        Self {
+            method: "lda".to_string(),
+            ncomp: 3,
+            nfold: 5,
+            seed: 42,
+        }
+    }
+}
+
+/// Cross-validated classification using a configuration struct.
+///
+/// Equivalent to [`fclassif_cv`] but bundles method parameters in [`ClassifCvConfig`].
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `config.nfold < 2` or `config.nfold > n`.
+/// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fclassif_cv_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    y: &[usize],
+    scalar_covariates: Option<&FdMatrix>,
+    config: &ClassifCvConfig,
+) -> Result<ClassifCvResult, FdarError> {
+    fclassif_cv(
+        data,
+        argvals,
+        y,
+        scalar_covariates,
+        &config.method,
+        config.ncomp,
+        config.nfold,
+        config.seed,
+    )
+}
+
 // Tests
 // ---------------------------------------------------------------------------
 

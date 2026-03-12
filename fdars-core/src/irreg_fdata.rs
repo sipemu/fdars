@@ -71,7 +71,7 @@ impl IrregFdata {
         let mut offsets = Vec::with_capacity(n + 1);
         offsets.push(0);
 
-        let total_points: usize = argvals_list.iter().map(|v| v.len()).sum();
+        let total_points: usize = argvals_list.iter().map(std::vec::Vec::len).sum();
         let mut argvals = Vec::with_capacity(total_points);
         let mut values = Vec::with_capacity(total_points);
 
@@ -82,8 +82,7 @@ impl IrregFdata {
             assert_eq!(
                 argvals_list[i].len(),
                 values_list[i].len(),
-                "Observation {} has mismatched argvals/values lengths",
-                i
+                "Observation {i} has mismatched argvals/values lengths"
             );
 
             argvals.extend_from_slice(&argvals_list[i]);
@@ -396,7 +395,7 @@ pub fn cov_irreg(ifd: &IrregFdata, s_grid: &[f64], t_grid: &[f64], bandwidth: f6
         }
     }
 
-    FdMatrix::from_column_major(cov, ns, nt).unwrap()
+    FdMatrix::from_column_major(cov, ns, nt).expect("dimension invariant: data.len() == n * m")
 }
 
 /// Compute kernel-weighted covariance estimate at a single (s, t) grid point.
@@ -506,7 +505,10 @@ fn linear_interp(argvals: &[f64], values: &[f64], t: f64) -> f64 {
     }
 
     // Find the interval
-    let idx = argvals.iter().position(|&x| x > t).unwrap();
+    let idx = argvals
+        .iter()
+        .position(|&x| x > t)
+        .expect("element must exist in collection");
     let t0 = argvals[idx - 1];
     let t1 = argvals[idx];
     let x0 = values[idx - 1];
@@ -547,7 +549,7 @@ pub fn metric_lp_irreg(ifd: &IrregFdata, p: f64) -> FdMatrix {
         dist[j + i * n] = distances[k];
     }
 
-    FdMatrix::from_column_major(dist, n, n).unwrap()
+    FdMatrix::from_column_major(dist, n, n).expect("dimension invariant: data.len() == n * m")
 }
 
 // =============================================================================
@@ -594,7 +596,7 @@ pub fn to_regular_grid(ifd: &IrregFdata, target_grid: &[f64]) -> FdMatrix {
             acc
         });
 
-    FdMatrix::from_column_major(result, n, m).unwrap()
+    FdMatrix::from_column_major(result, n, m).expect("dimension invariant: data.len() == n * m")
 }
 
 #[cfg(test)]

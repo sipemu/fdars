@@ -105,7 +105,7 @@ pub fn estimate_period_acf(
     }
 
     // Compute mean curve
-    let mat = FdMatrix::from_slice(data, n, m).unwrap();
+    let mat = FdMatrix::from_slice(data, n, m).expect("dimension invariant: data.len() == n * m");
     let mean_curve = compute_mean_curve(&mat);
 
     let acf = super::autocorrelation(&mean_curve, max_lag);
@@ -170,7 +170,7 @@ pub fn estimate_period_regression(
     }
 
     // Compute mean curve
-    let mat = FdMatrix::from_slice(data, n, m).unwrap();
+    let mat = FdMatrix::from_slice(data, n, m).expect("dimension invariant: data.len() == n * m");
     let mean_curve = compute_mean_curve(&mat);
 
     let nbasis = 1 + 2 * n_harmonics;
@@ -212,7 +212,7 @@ pub fn estimate_period_regression(
     let (best_period, min_rss) = results
         .iter()
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .cloned()
+        .copied()
         .unwrap_or((f64::NAN, f64::INFINITY));
 
     // Confidence based on how much better the best is vs average
@@ -269,7 +269,7 @@ pub fn detect_multiple_periods(
     }
 
     // Compute mean curve
-    let mat = FdMatrix::from_slice(data, n, m).unwrap();
+    let mat = FdMatrix::from_slice(data, n, m).expect("dimension invariant: data.len() == n * m");
     let mean_curve = compute_mean_curve(&mat);
 
     let mut residual = mean_curve.clone();
@@ -303,7 +303,8 @@ fn evaluate_next_period(
     min_strength: f64,
     iteration: usize,
 ) -> Option<DetectedPeriod> {
-    let residual_mat = FdMatrix::from_slice(residual, 1, m).unwrap();
+    let residual_mat =
+        FdMatrix::from_slice(residual, 1, m).expect("dimension invariant: data.len() == n * m");
     let est = estimate_period_fft(&residual_mat, argvals);
 
     if est.confidence < min_confidence || est.period.is_nan() || est.period.is_infinite() {
