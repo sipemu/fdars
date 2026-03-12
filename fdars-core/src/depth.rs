@@ -6,6 +6,7 @@
 use crate::helpers::simpsons_weights;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+use crate::maybe_par_chunks_mut_enumerate;
 use crate::streaming_depth::{
     FullReferenceState, SortedReferenceState, StreamingBd, StreamingDepth, StreamingFraimanMuniz,
     StreamingMbd,
@@ -121,9 +122,8 @@ fn project_and_sort_reference(
     m: usize,
 ) -> Vec<f64> {
     let mut sorted = vec![0.0; nproj * nori];
-    for p_idx in 0..nproj {
+    maybe_par_chunks_mut_enumerate!(sorted, nori, |(p_idx, spo): (usize, &mut [f64])| {
         let proj = &projections[p_idx * m..(p_idx + 1) * m];
-        let spo = &mut sorted[p_idx * nori..(p_idx + 1) * nori];
         for j in 0..nori {
             let mut dot = 0.0;
             for t in 0..m {
@@ -132,7 +132,7 @@ fn project_and_sort_reference(
             spo[j] = dot;
         }
         spo.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    }
+    });
     sorted
 }
 

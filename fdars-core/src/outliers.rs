@@ -27,23 +27,28 @@ fn compute_trimmed_stats(data: &FdMatrix, depths: &[f64], n_keep: usize) -> (Vec
     }
     let keep_idx: Vec<usize> = depth_idx[..n_keep].iter().map(|(i, _)| *i).collect();
 
-    let mut trimmed_mean = vec![0.0; m];
-    for j in 0..m {
-        for &i in &keep_idx {
-            trimmed_mean[j] += data[(i, j)];
-        }
-        trimmed_mean[j] /= n_keep as f64;
-    }
+    let results: Vec<(f64, f64)> = iter_maybe_parallel!(0..m)
+        .map(|j| {
+            let mut mean_j = 0.0;
+            for &i in &keep_idx {
+                mean_j += data[(i, j)];
+            }
+            mean_j /= n_keep as f64;
 
-    let mut trimmed_var = vec![0.0; m];
-    for j in 0..m {
-        for &i in &keep_idx {
-            let diff = data[(i, j)] - trimmed_mean[j];
-            trimmed_var[j] += diff * diff;
-        }
-        trimmed_var[j] /= n_keep as f64;
-        trimmed_var[j] = trimmed_var[j].max(1e-10);
-    }
+            let mut var_j = 0.0;
+            for &i in &keep_idx {
+                let diff = data[(i, j)] - mean_j;
+                var_j += diff * diff;
+            }
+            var_j /= n_keep as f64;
+            var_j = var_j.max(1e-10);
+
+            (mean_j, var_j)
+        })
+        .collect();
+
+    let trimmed_mean: Vec<f64> = results.iter().map(|&(m, _)| m).collect();
+    let trimmed_var: Vec<f64> = results.iter().map(|&(_, v)| v).collect();
 
     (trimmed_mean, trimmed_var)
 }
@@ -123,7 +128,7 @@ pub fn outliers_threshold_lrt_with_dist(
     let n_keep = n_keep.min(n);
 
     // Compute column standard deviations for smoothing
-    let col_vars: Vec<f64> = (0..m)
+    let col_vars: Vec<f64> = iter_maybe_parallel!(0..m)
         .map(|j| {
             let mut sum = 0.0;
             let mut sum_sq = 0.0;
