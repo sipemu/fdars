@@ -220,7 +220,7 @@ fn main() {
     // Pointwise band
     let pw_band = elastic_tolerance_band(&data, &t, 3, 100, 0.95, BandType::Pointwise, 10, 42);
     match pw_band {
-        Some(b) => {
+        Ok(b) => {
             let mean_hw: f64 = b.half_width.iter().sum::<f64>() / m as f64;
             println!("  Pointwise 95% band:");
             println!(
@@ -234,18 +234,18 @@ fn main() {
                 b.lower.iter().zip(b.upper.iter()).all(|(l, u)| l < u)
             );
         }
-        None => println!("  Pointwise band: failed"),
+        Err(e) => println!("  Pointwise band: failed ({e})"),
     }
 
     // Simultaneous band
     let sim_band = elastic_tolerance_band(&data, &t, 3, 100, 0.95, BandType::Simultaneous, 10, 42);
     match sim_band {
-        Some(b) => {
+        Ok(b) => {
             let mean_hw: f64 = b.half_width.iter().sum::<f64>() / m as f64;
             println!("  Simultaneous 95% band:");
             println!("    Mean half-width: {mean_hw:.4}");
         }
-        None => println!("  Simultaneous band: failed"),
+        Err(e) => println!("  Simultaneous band: failed ({e})"),
     }
 
     // Compare coverage levels
