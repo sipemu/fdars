@@ -6,7 +6,7 @@
 use crate::error::FdarError;
 use crate::helpers::{l2_distance, simpsons_weights, NUMERICAL_EPS};
 use crate::matrix::FdMatrix;
-use crate::{iter_maybe_parallel, slice_maybe_parallel};
+use crate::{iter_maybe_parallel, maybe_par_chunks_mut_enumerate, slice_maybe_parallel};
 use rand::prelude::*;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
@@ -91,12 +91,12 @@ fn kmeans_plusplus_init(
 
         // Update min_dist_sq: only compute distance to the newest center
         let new_center = &centers[c_idx * m..(c_idx + 1) * m];
-        for i in 0..n {
+        maybe_par_chunks_mut_enumerate!(min_dist_sq, 1, |(i, chunk): (usize, &mut [f64])| {
             let d_sq = l2_distance(&curves[i * m..(i + 1) * m], new_center, weights).powi(2);
-            if d_sq < min_dist_sq[i] {
-                min_dist_sq[i] = d_sq;
+            if d_sq < chunk[0] {
+                chunk[0] = d_sq;
             }
-        }
+        });
     }
 
     centers

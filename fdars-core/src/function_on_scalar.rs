@@ -12,8 +12,11 @@
 //! - [`predict_fosr`]: Predict new curves from fitted model
 
 use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 // ---------------------------------------------------------------------------
 // Linear algebra helpers (self-contained)
@@ -372,16 +375,27 @@ fn compute_fosr_fitted(
 ) -> (FdMatrix, FdMatrix) {
     let (n, m) = data.shape();
     let p_total = design.ncols();
+    let rows: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let mut fitted_row = vec![0.0; m];
+            let mut resid_row = vec![0.0; m];
+            for t in 0..m {
+                let mut yhat = 0.0;
+                for j in 0..p_total {
+                    yhat += design[(i, j)] * beta[(j, t)];
+                }
+                fitted_row[t] = yhat;
+                resid_row[t] = data[(i, t)] - yhat;
+            }
+            (fitted_row, resid_row)
+        })
+        .collect();
     let mut fitted = FdMatrix::zeros(n, m);
     let mut residuals = FdMatrix::zeros(n, m);
-    for i in 0..n {
+    for (i, (fr, rr)) in rows.into_iter().enumerate() {
         for t in 0..m {
-            let mut yhat = 0.0;
-            for j in 0..p_total {
-                yhat += design[(i, j)] * beta[(j, t)];
-            }
-            fitted[(i, t)] = yhat;
-            residuals[(i, t)] = data[(i, t)] - yhat;
+            fitted[(i, t)] = fr[t];
+            residuals[(i, t)] = rr[t];
         }
     }
     (fitted, residuals)
