@@ -44,6 +44,7 @@ pub mod detrend;
 pub mod famm;
 pub mod fdata;
 pub mod function_on_scalar;
+pub mod function_on_scalar_2d;
 pub mod gmm;
 pub mod helpers;
 pub mod irreg_fdata;
@@ -138,6 +139,7 @@ pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
 pub use function_on_scalar::{
     fanova, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
 };
+pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{

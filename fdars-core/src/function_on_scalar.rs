@@ -64,7 +64,7 @@ fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
 }
 
 /// Compute X'X (symmetric, p×p stored flat row-major).
-fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
+pub(crate) fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
     let (n, p) = x.shape();
     let mut xtx = vec![0.0; p * p];
     for k in 0..p {
@@ -154,7 +154,7 @@ pub struct FanovaResult {
 // ---------------------------------------------------------------------------
 
 /// Build second-order difference penalty matrix D'D (p×p, flat row-major).
-fn penalty_matrix(m: usize) -> Vec<f64> {
+pub(crate) fn penalty_matrix(m: usize) -> Vec<f64> {
     if m < 3 {
         return vec![0.0; m * m];
     }
@@ -212,7 +212,7 @@ fn penalized_solve(
 }
 
 /// Compute pointwise R² at each grid point.
-fn pointwise_r_squared(data: &FdMatrix, fitted: &FdMatrix) -> Vec<f64> {
+pub(crate) fn pointwise_r_squared(data: &FdMatrix, fitted: &FdMatrix) -> Vec<f64> {
     let (n, m) = data.shape();
     (0..m)
         .map(|t| {
@@ -264,7 +264,7 @@ fn compute_fosr_gcv(residuals: &FdMatrix, trace_h: f64) -> f64 {
 /// Returns [`FdarError::ComputationFailed`] if the penalized Cholesky solve
 /// is singular.
 /// Build design matrix with intercept: \[1, z_1, ..., z_p\].
-fn build_fosr_design(predictors: &FdMatrix, n: usize) -> FdMatrix {
+pub(crate) fn build_fosr_design(predictors: &FdMatrix, n: usize) -> FdMatrix {
     let p = predictors.ncols();
     let p_total = p + 1;
     let mut design = FdMatrix::zeros(n, p_total);
@@ -278,7 +278,7 @@ fn build_fosr_design(predictors: &FdMatrix, n: usize) -> FdMatrix {
 }
 
 /// Compute X'Y (p_total × m).
-fn compute_xty_matrix(design: &FdMatrix, data: &FdMatrix) -> FdMatrix {
+pub(crate) fn compute_xty_matrix(design: &FdMatrix, data: &FdMatrix) -> FdMatrix {
     let (n, m) = data.shape();
     let p_total = design.ncols();
     let mut xty = FdMatrix::zeros(p_total, m);
