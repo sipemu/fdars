@@ -8,7 +8,7 @@
 //! - [`conformal_fregre_np`] — Nonparametric kernel regression
 //! - [`conformal_elastic_regression`] — Elastic alignment regression
 //! - [`conformal_elastic_pcr`] — Elastic principal component regression
-//! - [`conformal_generic_regression`] — Any [`FpcPredictor`] model
+//! - [`conformal_generic_regression`] — Any [`FpcPredictor`](crate::explain_generic::FpcPredictor) model
 //! - [`cv_conformal_regression`] — Cross-conformal (CV+) with closure
 //! - [`jackknife_plus_regression`] — Jackknife+ with closure
 //!
@@ -16,7 +16,7 @@
 //! - [`conformal_classif`] — LDA / QDA / kNN classifiers
 //! - [`conformal_logistic`] — Functional logistic regression
 //! - [`conformal_elastic_logistic`] — Elastic logistic regression
-//! - [`conformal_generic_classification`] — Any [`FpcPredictor`] model
+//! - [`conformal_generic_classification`] — Any [`FpcPredictor`](crate::explain_generic::FpcPredictor) model
 //! - [`cv_conformal_classification`] — Cross-conformal (CV+) with closure
 
 use crate::error::FdarError;
