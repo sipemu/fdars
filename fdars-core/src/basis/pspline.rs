@@ -37,6 +37,7 @@ pub fn difference_matrix(n: usize, order: usize) -> DMatrix<f64> {
 }
 
 /// Result of P-spline fitting.
+#[derive(Debug, Clone)]
 pub struct PsplineFitResult {
     /// Coefficient matrix (n x nbasis)
     pub coefficients: FdMatrix,

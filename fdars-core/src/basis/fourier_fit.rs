@@ -6,6 +6,7 @@ use crate::matrix::FdMatrix;
 use nalgebra::{DMatrix, DVector};
 
 /// Result of Fourier basis fitting.
+#[derive(Debug, Clone)]
 pub struct FourierFitResult {
     /// Coefficient matrix (n x nbasis)
     pub coefficients: FdMatrix,

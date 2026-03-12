@@ -11,7 +11,7 @@ use nalgebra::{DMatrix, DVector};
 use rayon::iter::ParallelIterator;
 
 /// Result of automatic basis selection for a single curve.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SingleCurveSelection {
     /// Selected basis type: 0 = P-spline, 1 = Fourier
     pub basis_type: i32,
@@ -32,6 +32,7 @@ pub struct SingleCurveSelection {
 }
 
 /// Result of automatic basis selection for all curves.
+#[derive(Debug, Clone)]
 pub struct BasisAutoSelectionResult {
     /// Per-curve selection results
     pub selections: Vec<SingleCurveSelection>,

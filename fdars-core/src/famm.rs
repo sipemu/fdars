@@ -15,6 +15,7 @@ use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 
 /// Result of a functional mixed model fit.
+#[derive(Debug, Clone)]
 pub struct FmmResult {
     /// Overall mean function μ̂(t) (length m)
     pub mean_function: Vec<f64>,
@@ -41,6 +42,7 @@ pub struct FmmResult {
 }
 
 /// Result of fixed effect hypothesis test.
+#[derive(Debug, Clone)]
 pub struct FmmTestResult {
     /// F-statistic per covariate (length p)
     pub f_statistics: Vec<f64>,

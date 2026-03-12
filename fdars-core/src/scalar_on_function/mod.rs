@@ -41,6 +41,7 @@ pub use nonparametric::{fregre_np_mixed, predict_fregre_np};
 // ---------------------------------------------------------------------------
 
 /// Result of functional linear regression.
+#[derive(Debug, Clone)]
 pub struct FregreLmResult {
     /// Intercept α
     pub intercept: f64,
@@ -77,6 +78,7 @@ pub struct FregreLmResult {
 }
 
 /// Result of nonparametric functional regression with mixed predictors.
+#[derive(Debug, Clone)]
 pub struct FregreNpResult {
     /// Fitted values ŷ (length n)
     pub fitted_values: Vec<f64>,
@@ -93,6 +95,7 @@ pub struct FregreNpResult {
 }
 
 /// Result of functional logistic regression.
+#[derive(Debug, Clone)]
 pub struct FunctionalLogisticResult {
     /// Intercept α
     pub intercept: f64,
@@ -127,6 +130,7 @@ pub struct FunctionalLogisticResult {
 }
 
 /// Result of cross-validation for K selection.
+#[derive(Debug, Clone)]
 pub struct FregreCvResult {
     /// Candidate K values tested
     pub k_values: Vec<usize>,
@@ -150,6 +154,7 @@ pub enum SelectionCriterion {
 }
 
 /// Result of ncomp model selection.
+#[derive(Debug, Clone)]
 pub struct ModelSelectionResult {
     /// Best number of FPC components by the chosen criterion
     pub best_ncomp: usize,
@@ -158,6 +163,7 @@ pub struct ModelSelectionResult {
 }
 
 /// Result of bootstrap confidence intervals for β(t).
+#[derive(Debug, Clone)]
 pub struct BootstrapCiResult {
     /// Pointwise lower bound (length m).
     pub lower: Vec<f64>,
@@ -174,6 +180,7 @@ pub struct BootstrapCiResult {
 }
 
 /// Result of lambda selection for basis regression via cross-validation.
+#[derive(Debug, Clone)]
 pub struct FregreBasisCvResult {
     /// Optimal smoothing parameter lambda.
     pub optimal_lambda: f64,
@@ -188,6 +195,7 @@ pub struct FregreBasisCvResult {
 }
 
 /// Result of bandwidth selection for nonparametric regression via CV.
+#[derive(Debug, Clone)]
 pub struct FregreNpCvResult {
     /// Optimal bandwidth.
     pub optimal_h: f64,

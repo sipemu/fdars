@@ -13,6 +13,7 @@ use crate::scalar_on_function::{
 // ===========================================================================
 
 /// Result of VIF analysis for FPC-based regression.
+#[derive(Debug, Clone)]
 pub struct VifResult {
     /// VIF values (length ncomp + p_scalar, excludes intercept).
     pub vif: Vec<f64>,
@@ -127,6 +128,7 @@ fn build_no_intercept_matrix(
 // ===========================================================================
 
 /// Cook's distance and leverage diagnostics for the FPC regression.
+#[derive(Debug, Clone)]
 pub struct InfluenceDiagnostics {
     /// Hat matrix diagonal h_ii (length n).
     pub leverage: Vec<f64>,
@@ -210,6 +212,7 @@ pub fn influence_diagnostics(
 // ===========================================================================
 
 /// Result of DFBETAS/DFFITS influence diagnostics.
+#[derive(Debug, Clone)]
 pub struct DfbetasDffitsResult {
     /// DFBETAS values (n x p).
     pub dfbetas: FdMatrix,
@@ -364,6 +367,7 @@ fn compute_obs_influence(
 // ===========================================================================
 
 /// Result of prediction interval computation.
+#[derive(Debug, Clone)]
 pub struct PredictionIntervalResult {
     /// Point predictions y_hat_new (length n_new).
     pub predictions: Vec<f64>,
@@ -578,6 +582,7 @@ fn compute_prediction_interval_obs(
 // ===========================================================================
 
 /// Result of leave-one-out cross-validation diagnostics.
+#[derive(Debug, Clone)]
 pub struct LooCvResult {
     /// LOO residuals: e_i / (1 - h_ii), length n.
     pub loo_residuals: Vec<f64>,

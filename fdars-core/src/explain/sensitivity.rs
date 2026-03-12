@@ -11,6 +11,7 @@ use rand::prelude::*;
 // ===========================================================================
 
 /// Sobol first-order and total-order sensitivity indices.
+#[derive(Debug, Clone)]
 pub struct SobolIndicesResult {
     /// First-order indices S_k, length ncomp.
     pub first_order: Vec<f64>,
@@ -205,6 +206,7 @@ pub fn sobol_indices_logistic(
 // ===========================================================================
 
 /// Functional saliency map result.
+#[derive(Debug, Clone)]
 pub struct FunctionalSaliencyResult {
     /// Saliency map (n x m).
     pub saliency_map: FdMatrix,
@@ -325,6 +327,7 @@ pub fn functional_saliency_logistic(
 // ===========================================================================
 
 /// An important interval in the function domain.
+#[derive(Debug, Clone)]
 pub struct ImportantInterval {
     /// Start index (inclusive).
     pub start_idx: usize,
@@ -335,6 +338,7 @@ pub struct ImportantInterval {
 }
 
 /// Result of domain selection analysis.
+#[derive(Debug, Clone)]
 pub struct DomainSelectionResult {
     /// Pointwise importance: |beta(t)|^2, length m.
     pub pointwise_importance: Vec<f64>,

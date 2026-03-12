@@ -35,6 +35,7 @@ fn c2(k: usize) -> usize {
 ///
 /// Constructed once from a column-major reference matrix and then shared
 /// (immutably) by any number of streaming depth estimators.
+#[derive(Debug, Clone)]
 pub struct SortedReferenceState {
     /// `sorted_columns[t]` contains the reference values at time point `t`, sorted ascending.
     sorted_columns: Vec<Vec<f64>>,
@@ -131,6 +132,7 @@ pub trait StreamingDepth {
 /// MBD(x) = (1 / (C(N,2) × T)) × Σ_t [C(N,2) − C(b_t,2) − C(a_t,2)]
 ///
 /// Per-query complexity: **O(T × log N)** instead of O(N² × T).
+#[derive(Debug, Clone)]
 pub struct StreamingMbd {
     state: SortedReferenceState,
 }
@@ -209,6 +211,7 @@ impl StreamingDepth for StreamingMbd {
 /// time point: Fn(x) = #{ref ≤ x} / N.
 ///
 /// Per-query complexity: **O(T × log N)** instead of O(T × N).
+#[derive(Debug, Clone)]
 pub struct StreamingFraimanMuniz {
     state: SortedReferenceState,
     scale: bool,
@@ -295,6 +298,7 @@ impl StreamingDepth for StreamingFraimanMuniz {
 ///
 /// Required by Band Depth (BD), which checks all-or-nothing containment across
 /// ALL time points and therefore cannot decompose into per-point rank queries.
+#[derive(Debug, Clone)]
 pub struct FullReferenceState {
     /// Sorted columns for rank queries (shared with MBD/FM estimators if desired).
     pub sorted: SortedReferenceState,
@@ -325,6 +329,7 @@ impl FullReferenceState {
 /// decoupling** (no re-parsing the matrix) and **early-exit per pair** (break
 /// on first time point where x is outside the band), not an asymptotic
 /// improvement.
+#[derive(Debug, Clone)]
 pub struct StreamingBd {
     state: FullReferenceState,
 }
@@ -436,6 +441,7 @@ impl StreamingDepth for StreamingBd {
 /// `Vec::remove`) and the new value is inserted (binary-search + `Vec::insert`).
 ///
 /// Complexity per push: O(T × N) due to element shifting in the sorted vectors.
+#[derive(Debug, Clone)]
 pub struct RollingReference {
     curves: VecDeque<Vec<f64>>,
     capacity: usize,

@@ -185,6 +185,7 @@ pub fn pcvm_statistic(adot_vec: &[f64], residuals: &[f64]) -> f64 {
 }
 
 /// Result of random projection statistics.
+#[derive(Debug, Clone)]
 pub struct RpStatResult {
     /// CvM statistics for each projection
     pub cvm: Vec<f64>,

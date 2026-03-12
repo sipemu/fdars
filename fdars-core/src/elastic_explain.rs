@@ -16,6 +16,7 @@ use crate::matrix::FdMatrix;
 use rand::prelude::*;
 
 /// Result of elastic amplitude/phase attribution.
+#[derive(Debug, Clone)]
 pub struct ElasticAttributionResult {
     /// Per-observation amplitude contribution (length n).
     pub amplitude_contribution: Vec<f64>,

@@ -10,6 +10,7 @@ use nalgebra::DMatrix;
 use rayon::iter::ParallelIterator;
 
 /// Result of basis projection.
+#[derive(Debug, Clone)]
 pub struct BasisProjectionResult {
     /// Coefficient matrix (n_samples x n_basis)
     pub coefficients: FdMatrix,

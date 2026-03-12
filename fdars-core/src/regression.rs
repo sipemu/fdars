@@ -11,6 +11,7 @@ use anofox_regression::{FittedRegressor, Regressor};
 use nalgebra::SVD;
 
 /// Result of functional PCA.
+#[derive(Debug, Clone)]
 pub struct FpcaResult {
     /// Singular values
     pub singular_values: Vec<f64>,
@@ -125,6 +126,7 @@ pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarE
 }
 
 /// Result of PLS regression.
+#[derive(Debug, Clone)]
 pub struct PlsResult {
     /// Weight vectors, m x ncomp
     pub weights: FdMatrix,
@@ -316,6 +318,7 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsRe
 }
 
 /// Result of ridge regression fit.
+#[derive(Debug, Clone)]
 #[cfg(feature = "linalg")]
 pub struct RidgeResult {
     /// Coefficients

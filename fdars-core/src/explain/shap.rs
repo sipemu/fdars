@@ -11,6 +11,7 @@ use rand::prelude::*;
 // ===========================================================================
 
 /// FPC-level SHAP values for model interpretability.
+#[derive(Debug, Clone)]
 pub struct FpcShapValues {
     /// SHAP values (n x ncomp).
     pub values: FdMatrix,
@@ -184,6 +185,7 @@ pub fn fpc_shap_values_logistic(
 // ===========================================================================
 
 /// Result of the Friedman H-statistic for interaction between two FPC components.
+#[derive(Debug, Clone)]
 pub struct FriedmanHResult {
     /// First component index.
     pub component_j: usize,

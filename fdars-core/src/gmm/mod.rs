@@ -32,6 +32,7 @@ pub enum CovType {
 }
 
 /// Result from a single GMM fit with fixed K.
+#[derive(Debug, Clone)]
 pub struct GmmResult {
     /// Hard cluster assignments (length n)
     pub cluster: Vec<usize>,
@@ -60,6 +61,7 @@ pub struct GmmResult {
 }
 
 /// Result from automatic K selection.
+#[derive(Debug, Clone)]
 pub struct GmmClusterResult {
     /// Best GMM result (by BIC or ICL)
     pub best: GmmResult,
