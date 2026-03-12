@@ -48,6 +48,7 @@ impl SortedReferenceState {
     /// * `data_ori` – reference matrix of shape `nori × n_points`
     ///
     /// Complexity: O(T × N log N)  (parallelised over time points).
+    #[must_use = "expensive computation whose result should not be discarded"]
     pub fn from_reference(data_ori: &FdMatrix) -> Self {
         let nori = data_ori.nrows();
         let n_points = data_ori.ncols();
@@ -304,6 +305,7 @@ pub struct FullReferenceState {
 
 impl FullReferenceState {
     /// Build from a column-major reference matrix.
+    #[must_use = "expensive computation whose result should not be discarded"]
     pub fn from_reference(data_ori: &FdMatrix) -> Self {
         let nori = data_ori.nrows();
         let n_points = data_ori.ncols();
@@ -530,6 +532,7 @@ impl RollingReference {
     ///
     /// This clones the sorted columns. For repeated queries, prefer
     /// [`mbd_one`](Self::mbd_one) which queries the window directly.
+    #[must_use = "expensive computation whose result should not be discarded"]
     pub fn snapshot(&self) -> SortedReferenceState {
         SortedReferenceState {
             sorted_columns: self.sorted_columns.clone(),
@@ -541,6 +544,7 @@ impl RollingReference {
     /// Compute rank-based MBD for a single curve directly against the current window.
     ///
     /// Avoids the overhead of cloning sorted columns into a snapshot.
+    #[must_use = "expensive computation whose result should not be discarded"]
     pub fn mbd_one(&self, curve: &[f64]) -> f64 {
         let n = self.curves.len();
         if n < 2 || self.n_points == 0 {

@@ -38,6 +38,7 @@ pub struct FunctionalPdpResult {
 /// `fit.fitted_values`.
 /// Returns [`FdarError::InvalidParameter`] if `component >= fit.ncomp` or
 /// `n_grid < 2`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_pdp(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -121,6 +122,7 @@ pub fn functional_pdp(
 /// Returns [`FdarError::InvalidParameter`] if `component >= fit.ncomp`,
 /// `n_grid < 2`, or `scalar_covariates` is `None` when the model has scalar
 /// covariates.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_pdp_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -216,6 +218,7 @@ pub struct BetaDecomposition {
 ///
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 /// Returns [`FdarError::InvalidDimension`] if `fit.fpca.mean` has zero length.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn beta_decomposition(fit: &FregreLmResult) -> Result<BetaDecomposition, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.mean.len();
@@ -241,6 +244,7 @@ pub fn beta_decomposition(fit: &FregreLmResult) -> Result<BetaDecomposition, Fda
 ///
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 /// Returns [`FdarError::InvalidDimension`] if `fit.fpca.mean` has zero length.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn beta_decomposition_logistic(
     fit: &FunctionalLogisticResult,
 ) -> Result<BetaDecomposition, FdarError> {
@@ -323,6 +327,7 @@ pub struct SignificantRegion {
 ///
 /// Returns [`FdarError::InvalidDimension`] if `lower` is empty or
 /// `lower.len() != upper.len()`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn significant_regions(
     lower: &[f64],
     upper: &[f64],
@@ -369,6 +374,7 @@ pub fn significant_regions(
 ///
 /// Returns [`FdarError::InvalidDimension`] if `beta_t` is empty or
 /// `beta_t.len() != beta_se.len()`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn significant_regions_from_se(
     beta_t: &[f64],
     beta_se: &[f64],

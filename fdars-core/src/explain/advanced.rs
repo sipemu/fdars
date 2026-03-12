@@ -37,6 +37,7 @@ pub struct CalibrationDiagnosticsResult {
 /// Returns [`FdarError::InvalidDimension`] if `fit.probabilities` is empty or
 /// `y.len()` does not match the number of probabilities.
 /// Returns [`FdarError::InvalidParameter`] if `n_groups < 2`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn calibration_diagnostics(
     fit: &FunctionalLogisticResult,
     y: &[f64],
@@ -136,6 +137,7 @@ pub struct EceResult {
 /// Returns [`FdarError::InvalidDimension`] if `fit.probabilities` is empty or
 /// `y.len()` does not match the number of probabilities.
 /// Returns [`FdarError::InvalidParameter`] if `n_bins` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn expected_calibration_error(
     fit: &FunctionalLogisticResult,
     y: &[f64],
@@ -241,6 +243,7 @@ pub struct ConformalPredictionResult {
 /// outside (0, 1), `alpha` outside (0, 1), or too few training observations).
 /// May also propagate errors from [`crate::scalar_on_function::fregre_lm`]
 /// when refitting on the proper-training subset.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_prediction_residuals(
     fit: &FregreLmResult,
     train_data: &FdMatrix,
@@ -377,6 +380,7 @@ pub struct RegressionDepthResult {
 /// Returns [`FdarError::InvalidParameter`] if `n_boot` is zero.
 /// Returns [`FdarError::ComputationFailed`] if score depth computation returns
 /// empty.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn regression_depth(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -458,6 +462,7 @@ pub fn regression_depth(
 /// Returns [`FdarError::InvalidParameter`] if `n_boot` is zero.
 /// Returns [`FdarError::ComputationFailed`] if score depth computation returns
 /// empty.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn regression_depth_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -554,6 +559,7 @@ pub struct StabilityAnalysisResult {
 /// Returns [`FdarError::InvalidParameter`] if `n_boot < 2` or `ncomp` is zero.
 /// Returns [`FdarError::ComputationFailed`] if there are insufficient successful
 /// bootstrap refits.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn explanation_stability(
     data: &FdMatrix,
     y: &[f64],
@@ -640,6 +646,7 @@ pub fn explanation_stability(
 /// Returns [`FdarError::InvalidParameter`] if `n_boot < 2` or `ncomp` is zero.
 /// Returns [`FdarError::ComputationFailed`] if there are insufficient successful
 /// bootstrap refits.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn explanation_stability_logistic(
     data: &FdMatrix,
     y: &[f64],
@@ -755,6 +762,7 @@ pub struct AnchorResult {
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
 /// Returns [`FdarError::InvalidParameter`] if `observation >= n` or `n_bins < 2`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn anchor_explanation(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -835,6 +843,7 @@ pub fn anchor_explanation(
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
 /// Returns [`FdarError::InvalidParameter`] if `observation >= n` or `n_bins < 2`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn anchor_explanation_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,

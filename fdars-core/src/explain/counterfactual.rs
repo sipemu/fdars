@@ -41,6 +41,7 @@ pub struct CounterfactualResult {
 /// Returns [`FdarError::InvalidDimension`] if `data` column count does not match
 /// `fit.fpca.mean`.
 /// Returns [`FdarError::ComputationFailed`] if the coefficient norm is near zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn counterfactual_regression(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -119,6 +120,7 @@ pub fn counterfactual_regression(
 /// is zero.
 /// Returns [`FdarError::InvalidDimension`] if `data` column count does not match
 /// `fit.fpca.mean`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn counterfactual_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -260,6 +262,7 @@ pub struct PrototypeCriticismResult {
 /// Returns [`FdarError::InvalidDimension`] if `fpca.scores` has zero rows.
 /// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero, `n_prototypes`
 /// is zero, or `n_prototypes > n`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn prototype_criticism(
     fpca: &FpcaResult,
     ncomp: usize,

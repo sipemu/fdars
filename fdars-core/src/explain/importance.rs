@@ -29,6 +29,7 @@ pub struct FpcPermutationImportance {
 /// count.
 /// Returns [`FdarError::InvalidParameter`] if `n_perm` is zero.
 /// Returns [`FdarError::ComputationFailed`] if the total sum of squares is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_permutation_importance(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -122,6 +123,7 @@ pub fn fpc_permutation_importance(
 /// count does not match `fit.fpca.mean`, or `y.len()` does not match the row
 /// count.
 /// Returns [`FdarError::InvalidParameter`] if `n_perm` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_permutation_importance_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -253,6 +255,7 @@ pub struct PointwiseImportanceResult {
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 /// Returns [`FdarError::InvalidDimension`] if the rotation matrix has zero rows
 /// or the scores matrix has fewer than 2 rows.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn pointwise_importance(fit: &FregreLmResult) -> Result<PointwiseImportanceResult, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.rotation.nrows();
@@ -303,6 +306,7 @@ pub fn pointwise_importance(fit: &FregreLmResult) -> Result<PointwiseImportanceR
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 /// Returns [`FdarError::InvalidDimension`] if the rotation matrix has zero rows
 /// or the scores matrix has fewer than 2 rows.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn pointwise_importance_logistic(
     fit: &FunctionalLogisticResult,
 ) -> Result<PointwiseImportanceResult, FdarError> {
@@ -406,6 +410,7 @@ pub struct ConditionalPermutationImportanceResult {
 /// count.
 /// Returns [`FdarError::InvalidParameter`] if `n_perm` or `n_bins` is zero.
 /// Returns [`FdarError::ComputationFailed`] if the total sum of squares is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conditional_permutation_importance(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -507,6 +512,7 @@ pub fn conditional_permutation_importance(
 /// count does not match `fit.fpca.mean`, or `y.len()` does not match the row
 /// count.
 /// Returns [`FdarError::InvalidParameter`] if `n_perm` or `n_bins` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn conditional_permutation_importance_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,

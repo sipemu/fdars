@@ -342,6 +342,7 @@ pub struct RidgeResult {
 /// * `lambda` - Regularization parameter
 /// * `with_intercept` - Whether to include intercept
 #[cfg(feature = "linalg")]
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn ridge_regression_fit(
     x: &FdMatrix,
     y: &[f64],

@@ -30,6 +30,7 @@ pub struct AleResult {
 /// # Errors
 ///
 /// See [`crate::explain_generic::generic_ale`] for error conditions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_ale(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -45,6 +46,7 @@ pub fn fpc_ale(
 /// # Errors
 ///
 /// See [`crate::explain_generic::generic_ale`] for error conditions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_ale_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -78,6 +80,7 @@ pub struct LimeResult {
 /// # Errors
 ///
 /// See [`crate::explain_generic::generic_lime`] for error conditions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn lime_explanation(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -103,6 +106,7 @@ pub fn lime_explanation(
 /// # Errors
 ///
 /// See [`crate::explain_generic::generic_lime`] for error conditions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn lime_explanation_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,

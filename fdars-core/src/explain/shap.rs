@@ -31,6 +31,7 @@ pub struct FpcShapValues {
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_shap_values(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -95,6 +96,7 @@ pub fn fpc_shap_values(
 /// count does not match `fit.fpca.mean`.
 /// Returns [`FdarError::InvalidParameter`] if `n_samples` is zero or `fit.ncomp`
 /// is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_shap_values_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -207,6 +209,7 @@ pub struct FriedmanHResult {
 /// `n_grid < 2`, or either component index is `>= fit.ncomp`.
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn friedman_h_statistic(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -293,6 +296,7 @@ pub fn friedman_h_statistic(
 /// `scalar_covariates` is `None` when the model has scalar covariates.
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn friedman_h_statistic_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,

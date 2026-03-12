@@ -24,6 +24,7 @@ use rayon::iter::ParallelIterator;
 /// * `data_obj` - Data to compute depth for (nobj x n_points)
 /// * `data_ori` - Reference data (nori x n_points)
 /// * `scale` - Whether to scale the depth values
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() == 0 || data_obj.ncols() == 0 {
         return Vec::new();
@@ -34,6 +35,7 @@ pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -
 }
 
 /// Compute Fraiman-Muniz depth for 2D functional data (surfaces).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fraiman_muniz_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
     // Same implementation as 1D - iterate over all grid points
     fraiman_muniz_1d(data_obj, data_ori, scale)
@@ -47,6 +49,7 @@ pub fn fraiman_muniz_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -
 /// * `data_obj` - Data to compute depth for
 /// * `data_ori` - Reference data
 /// * `h` - Bandwidth parameter
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
@@ -77,6 +80,7 @@ pub fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
 }
 
 /// Compute modal depth for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn modal_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     modal_1d(data_obj, data_ori, h)
 }
@@ -194,11 +198,13 @@ fn random_depth_core(
 /// * `data_obj` - Data to compute depth for
 /// * `data_ori` - Reference data
 /// * `nproj` - Number of random projections
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_projection_1d_seeded(data_obj, data_ori, nproj, None)
 }
 
 /// Compute random projection depth with optional seed for reproducibility.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_projection_1d_seeded(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
@@ -217,6 +223,7 @@ pub fn random_projection_1d_seeded(
 }
 
 /// Compute random projection depth for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_projection_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_projection_1d(data_obj, data_ori, nproj)
 }
@@ -224,11 +231,13 @@ pub fn random_projection_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usi
 /// Compute random Tukey depth for 1D functional data.
 ///
 /// Takes the minimum over all random projections (more conservative than RP depth).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_tukey_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_tukey_1d_seeded(data_obj, data_ori, nproj, None)
 }
 
 /// Compute random Tukey depth with optional seed for reproducibility.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_tukey_1d_seeded(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
@@ -247,6 +256,7 @@ pub fn random_tukey_1d_seeded(
 }
 
 /// Compute random Tukey depth for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_tukey_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_tukey_1d(data_obj, data_ori, nproj)
 }
@@ -259,6 +269,7 @@ pub fn random_tukey_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -
 /// * `data_obj` - Data to compute depth for (nobj x n_points)
 /// * `data_ori` - Reference data (nori x n_points)
 /// * `argvals` - Optional evaluation grid; if None, uses uniform \[0,1\] grid
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_spatial_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
@@ -317,6 +328,7 @@ pub fn functional_spatial_1d(
 }
 
 /// Compute Functional Spatial Depth for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     functional_spatial_1d(data_obj, data_ori, None)
 }
@@ -438,6 +450,7 @@ fn kfsd_weighted(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, weights: &[f6
 /// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
 ///
 /// Implements the RKHS-based formulation.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn kernel_functional_spatial_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
@@ -457,6 +470,7 @@ pub fn kernel_functional_spatial_1d(
 }
 
 /// Compute Kernel Functional Spatial Depth (KFSD) for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn kernel_functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
@@ -473,6 +487,7 @@ pub fn kernel_functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h:
 /// Compute Band Depth (BD) for 1D functional data.
 ///
 /// BD(x) = proportion of pairs (i,j) where x lies within the band formed by curves i and j.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {
         return Vec::new();
@@ -485,6 +500,7 @@ pub fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
 /// Compute Modified Band Depth (MBD) for 1D functional data.
 ///
 /// MBD(x) = average over pairs of the proportion of the domain where x is inside the band.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {
         return Vec::new();
@@ -498,6 +514,7 @@ pub fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
 ///
 /// MEI measures the proportion of time a curve is below other curves.
 /// Matches R's `roahd::MEI()`: uses `<=` comparison with 0.5 adjustment for ties.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
