@@ -357,7 +357,7 @@ pub(crate) fn compute_conditioning_bins(
 
     let mut sorted_cond: Vec<(f64, usize)> =
         cond_var.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-    sorted_cond.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    sorted_cond.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let actual_bins = n_bins.min(n);
     let mut bin_assignment = vec![0usize; n];
     for (rank, &(_, idx)) in sorted_cond.iter().enumerate() {
@@ -433,7 +433,7 @@ pub(crate) fn median_bandwidth(scores: &FdMatrix, n: usize, ncomp: usize) -> f64
             dists.push(d2.sqrt());
         }
     }
-    dists.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     if dists.is_empty() {
         1.0
     } else {
@@ -613,7 +613,11 @@ pub(crate) fn compute_domain_selection(
     }
 
     let mut intervals = merge_overlapping_intervals(raw_intervals);
-    intervals.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap());
+    intervals.sort_by(|a, b| {
+        b.importance
+            .partial_cmp(&a.importance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Some(DomainSelectionResult {
         pointwise_importance,

@@ -27,8 +27,11 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
+pub mod error;
 pub mod matrix;
 pub mod parallel;
+
+pub use error::FdarError;
 
 pub mod alignment;
 pub mod basis;

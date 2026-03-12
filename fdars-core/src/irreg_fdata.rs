@@ -119,15 +119,26 @@ impl IrregFdata {
         argvals: Vec<f64>,
         values: Vec<f64>,
         rangeval: [f64; 2],
-    ) -> Option<Self> {
+    ) -> Result<Self, crate::FdarError> {
+        let last = offsets.last().copied().unwrap_or(0);
         if offsets.is_empty()
             || argvals.len() != values.len()
-            || *offsets.last()? != argvals.len()
+            || last != argvals.len()
             || offsets.windows(2).any(|w| w[0] > w[1])
         {
-            return None;
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "offsets/argvals/values",
+                expected: "non-empty offsets, argvals.len() == values.len(), monotone offsets"
+                    .to_string(),
+                actual: format!(
+                    "offsets.len()={}, argvals.len()={}, values.len()={}",
+                    offsets.len(),
+                    argvals.len(),
+                    values.len()
+                ),
+            });
         }
-        Some(IrregFdata {
+        Ok(IrregFdata {
             offsets,
             argvals,
             values,
@@ -699,12 +710,12 @@ mod tests {
     #[test]
     fn test_from_flat_invalid() {
         // Empty offsets
-        assert!(IrregFdata::from_flat(vec![], vec![], vec![], [0.0, 1.0]).is_none());
+        assert!(IrregFdata::from_flat(vec![], vec![], vec![], [0.0, 1.0]).is_err());
         // Mismatched argvals/values lengths
-        assert!(IrregFdata::from_flat(vec![0, 2], vec![0.0, 1.0], vec![1.0], [0.0, 1.0]).is_none());
+        assert!(IrregFdata::from_flat(vec![0, 2], vec![0.0, 1.0], vec![1.0], [0.0, 1.0]).is_err());
         // Last offset doesn't match argvals length
         assert!(
-            IrregFdata::from_flat(vec![0, 5], vec![0.0, 1.0], vec![1.0, 2.0], [0.0, 1.0]).is_none()
+            IrregFdata::from_flat(vec![0, 5], vec![0.0, 1.0], vec![1.0, 2.0], [0.0, 1.0]).is_err()
         );
         // Non-monotonic offsets
         assert!(IrregFdata::from_flat(
@@ -713,7 +724,7 @@ mod tests {
             vec![1.0, 2.0, 3.0],
             [0.0, 2.0]
         )
-        .is_none());
+        .is_err());
     }
 
     #[test]

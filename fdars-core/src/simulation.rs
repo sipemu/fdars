@@ -41,13 +41,16 @@ pub enum EFunType {
 
 impl EFunType {
     /// Create from integer (for FFI)
-    pub fn from_i32(value: i32) -> Option<Self> {
+    pub fn from_i32(value: i32) -> Result<Self, crate::FdarError> {
         match value {
-            0 => Some(EFunType::Fourier),
-            1 => Some(EFunType::Poly),
-            2 => Some(EFunType::PolyHigh),
-            3 => Some(EFunType::Wiener),
-            _ => None,
+            0 => Ok(EFunType::Fourier),
+            1 => Ok(EFunType::Poly),
+            2 => Ok(EFunType::PolyHigh),
+            3 => Ok(EFunType::Wiener),
+            _ => Err(crate::FdarError::InvalidEnumValue {
+                enum_name: "EFunType",
+                value,
+            }),
         }
     }
 }
@@ -65,12 +68,15 @@ pub enum EValType {
 
 impl EValType {
     /// Create from integer (for FFI)
-    pub fn from_i32(value: i32) -> Option<Self> {
+    pub fn from_i32(value: i32) -> Result<Self, crate::FdarError> {
         match value {
-            0 => Some(EValType::Linear),
-            1 => Some(EValType::Exponential),
-            2 => Some(EValType::Wiener),
-            _ => None,
+            0 => Ok(EValType::Linear),
+            1 => Ok(EValType::Exponential),
+            2 => Ok(EValType::Wiener),
+            _ => Err(crate::FdarError::InvalidEnumValue {
+                enum_name: "EValType",
+                value,
+            }),
         }
     }
 }
@@ -719,23 +725,23 @@ mod tests {
 
     #[test]
     fn test_efun_type_from_i32() {
-        assert_eq!(EFunType::from_i32(0), Some(EFunType::Fourier));
-        assert_eq!(EFunType::from_i32(1), Some(EFunType::Poly));
-        assert_eq!(EFunType::from_i32(2), Some(EFunType::PolyHigh));
-        assert_eq!(EFunType::from_i32(3), Some(EFunType::Wiener));
-        assert_eq!(EFunType::from_i32(-1), None);
-        assert_eq!(EFunType::from_i32(4), None);
-        assert_eq!(EFunType::from_i32(100), None);
+        assert_eq!(EFunType::from_i32(0), Ok(EFunType::Fourier));
+        assert_eq!(EFunType::from_i32(1), Ok(EFunType::Poly));
+        assert_eq!(EFunType::from_i32(2), Ok(EFunType::PolyHigh));
+        assert_eq!(EFunType::from_i32(3), Ok(EFunType::Wiener));
+        assert!(EFunType::from_i32(-1).is_err());
+        assert!(EFunType::from_i32(4).is_err());
+        assert!(EFunType::from_i32(100).is_err());
     }
 
     #[test]
     fn test_eval_type_from_i32() {
-        assert_eq!(EValType::from_i32(0), Some(EValType::Linear));
-        assert_eq!(EValType::from_i32(1), Some(EValType::Exponential));
-        assert_eq!(EValType::from_i32(2), Some(EValType::Wiener));
-        assert_eq!(EValType::from_i32(-1), None);
-        assert_eq!(EValType::from_i32(3), None);
-        assert_eq!(EValType::from_i32(99), None);
+        assert_eq!(EValType::from_i32(0), Ok(EValType::Linear));
+        assert_eq!(EValType::from_i32(1), Ok(EValType::Exponential));
+        assert_eq!(EValType::from_i32(2), Ok(EValType::Wiener));
+        assert!(EValType::from_i32(-1).is_err());
+        assert!(EValType::from_i32(3).is_err());
+        assert!(EValType::from_i32(99).is_err());
     }
 
     #[test]

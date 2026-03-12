@@ -87,10 +87,20 @@ pub fn vert_fpca(
     karcher: &KarcherMeanResult,
     argvals: &[f64],
     ncomp: usize,
-) -> Option<VertFpcaResult> {
+) -> Result<VertFpcaResult, crate::FdarError> {
     let (n, m) = karcher.aligned_data.shape();
     if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "aligned_data/argvals",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, ncomp={}, argvals.len()={}",
+                n,
+                m,
+                ncomp,
+                argvals.len()
+            ),
+        });
     }
     let ncomp = ncomp.min(n - 1).min(m);
     let m_aug = m + 1;
@@ -107,7 +117,13 @@ pub fn vert_fpca(
     let k_mat = build_symmetric_covariance(&q_aug, &mean_q, n, m_aug);
 
     let svd = SVD::new(k_mat, true, true);
-    let u_cov = svd.u.as_ref()?;
+    let u_cov = svd
+        .u
+        .as_ref()
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute U matrix".to_string(),
+        })?;
 
     let eigenvalues: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
     let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
@@ -137,7 +153,7 @@ pub fn vert_fpca(
         }
     }
 
-    Some(VertFpcaResult {
+    Ok(VertFpcaResult {
         scores,
         eigenfunctions_q,
         eigenfunctions_f,
@@ -164,10 +180,20 @@ pub fn horiz_fpca(
     karcher: &KarcherMeanResult,
     argvals: &[f64],
     ncomp: usize,
-) -> Option<HorizFpcaResult> {
+) -> Result<HorizFpcaResult, crate::FdarError> {
     let (n, m) = karcher.gammas.shape();
     if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "gammas/argvals",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, ncomp={}, argvals.len()={}",
+                n,
+                m,
+                ncomp,
+                argvals.len()
+            ),
+        });
     }
     let ncomp = ncomp.min(n - 1).min(m);
 
@@ -183,8 +209,19 @@ pub fn horiz_fpca(
     let (centered, _mean_v) = center_matrix(&shooting, n, m);
 
     let svd = SVD::new(centered.to_dmatrix(), true, true);
-    let v_t = svd.v_t.as_ref()?;
-    let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n)?;
+    let v_t = svd
+        .v_t
+        .as_ref()
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute V^T matrix".to_string(),
+        })?;
+    let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n).ok_or_else(|| {
+        crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute scores".to_string(),
+        }
+    })?;
     let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
 
     // Eigenfunctions in ψ space
@@ -206,7 +243,7 @@ pub fn horiz_fpca(
         }
     }
 
-    Some(HorizFpcaResult {
+    Ok(HorizFpcaResult {
         scores,
         eigenfunctions_psi,
         eigenfunctions_gam,
@@ -234,10 +271,20 @@ pub fn joint_fpca(
     argvals: &[f64],
     ncomp: usize,
     balance_c: Option<f64>,
-) -> Option<JointFpcaResult> {
+) -> Result<JointFpcaResult, crate::FdarError> {
     let (n, m) = karcher.aligned_data.shape();
     if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "aligned_data/argvals",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, ncomp={}, argvals.len()={}",
+                n,
+                m,
+                ncomp,
+                argvals.len()
+            ),
+        });
     }
 
     let _vert = vert_fpca(karcher, argvals, ncomp)?;
@@ -263,14 +310,25 @@ pub fn joint_fpca(
     let combined = build_combined_representation(&q_centered, shooting, c, n, m_aug, m);
 
     let svd = SVD::new(combined.to_dmatrix(), true, true);
-    let v_t = svd.v_t.as_ref()?;
-    let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n)?;
+    let v_t = svd
+        .v_t
+        .as_ref()
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute V^T matrix".to_string(),
+        })?;
+    let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n).ok_or_else(|| {
+        crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute scores".to_string(),
+        }
+    })?;
     let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
 
     // Split eigenvectors into amplitude and phase parts
     let (vert_component, horiz_component) = split_joint_eigenvectors(v_t, ncomp, m_aug, m);
 
-    Some(JointFpcaResult {
+    Ok(JointFpcaResult {
         scores,
         eigenvalues,
         cumulative_variance,
@@ -633,7 +691,7 @@ mod tests {
         let (data, t) = generate_test_data(15, 51);
         let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
         let result = vert_fpca(&km, &t, 3);
-        assert!(result.is_some(), "vert_fpca should succeed");
+        assert!(result.is_ok(), "vert_fpca should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.scores.shape(), (15, 3));
@@ -664,7 +722,7 @@ mod tests {
         let (data, t) = generate_test_data(15, 51);
         let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
         let result = horiz_fpca(&km, &t, 3);
-        assert!(result.is_some(), "horiz_fpca should succeed");
+        assert!(result.is_ok(), "horiz_fpca should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.scores.shape(), (15, 3));
@@ -678,7 +736,7 @@ mod tests {
         let (data, t) = generate_test_data(15, 51);
         let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
         let result = joint_fpca(&km, &t, 3, Some(1.0));
-        assert!(result.is_some(), "joint_fpca should succeed");
+        assert!(result.is_ok(), "joint_fpca should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.scores.shape(), (15, 3));
@@ -692,7 +750,7 @@ mod tests {
         let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
         let result = joint_fpca(&km, &t, 3, None);
         assert!(
-            result.is_some(),
+            result.is_ok(),
             "joint_fpca with C optimization should succeed"
         );
     }
@@ -710,6 +768,105 @@ mod tests {
             converged: true,
             aligned_srsfs: None,
         };
-        assert!(vert_fpca(&km, &t, 3).is_none());
+        assert!(vert_fpca(&km, &t, 3).is_err());
+    }
+
+    #[test]
+    fn test_horiz_fpca_eigenvalue_properties() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+        let res = horiz_fpca(&km, &t, 3).expect("horiz_fpca should succeed");
+
+        // Eigenvalues non-negative
+        for ev in &res.eigenvalues {
+            assert!(*ev >= -1e-10, "Eigenvalue should be non-negative: {}", ev);
+        }
+        // Eigenvalues decreasing
+        for i in 1..res.eigenvalues.len() {
+            assert!(
+                res.eigenvalues[i] <= res.eigenvalues[i - 1] + 1e-10,
+                "Eigenvalues should be decreasing"
+            );
+        }
+        // Cumulative variance increasing and <= 1
+        for i in 1..res.cumulative_variance.len() {
+            assert!(res.cumulative_variance[i] >= res.cumulative_variance[i - 1] - 1e-10);
+        }
+        assert!(*res.cumulative_variance.last().unwrap() <= 1.0 + 1e-10);
+    }
+
+    #[test]
+    fn test_joint_fpca_eigenvalue_properties() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+        let res = joint_fpca(&km, &t, 3, Some(1.0)).expect("joint_fpca should succeed");
+
+        // Eigenvalues non-negative
+        for ev in &res.eigenvalues {
+            assert!(*ev >= -1e-10, "Eigenvalue should be non-negative: {}", ev);
+        }
+        // Eigenvalues decreasing
+        for i in 1..res.eigenvalues.len() {
+            assert!(
+                res.eigenvalues[i] <= res.eigenvalues[i - 1] + 1e-10,
+                "Eigenvalues should be decreasing"
+            );
+        }
+        // Cumulative variance increasing and <= 1
+        for i in 1..res.cumulative_variance.len() {
+            assert!(res.cumulative_variance[i] >= res.cumulative_variance[i - 1] - 1e-10);
+        }
+        assert!(*res.cumulative_variance.last().unwrap() <= 1.0 + 1e-10);
+    }
+
+    #[test]
+    fn test_vert_fpca_ncomp_sensitivity() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+
+        for &ncomp in &[1, 2, 5, 10] {
+            let res = vert_fpca(&km, &t, ncomp)
+                .unwrap_or_else(|_| panic!("vert_fpca ncomp={} should succeed", ncomp));
+            assert_eq!(res.scores.shape(), (15, ncomp));
+            assert_eq!(res.eigenvalues.len(), ncomp);
+            assert_eq!(res.eigenfunctions_q.shape(), (ncomp, 52));
+            assert_eq!(res.eigenfunctions_f.shape(), (ncomp, 51));
+            assert_eq!(res.cumulative_variance.len(), ncomp);
+        }
+    }
+
+    #[test]
+    fn test_vert_fpca_score_orthogonality() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+        let res = vert_fpca(&km, &t, 3).expect("vert_fpca should succeed");
+
+        let n = 15;
+        // Check approximate orthogonality of score vectors
+        for k1 in 0..3 {
+            for k2 in (k1 + 1)..3 {
+                let dot: f64 = (0..n)
+                    .map(|i| res.scores[(i, k1)] * res.scores[(i, k2)])
+                    .sum();
+                let norm1: f64 = (0..n)
+                    .map(|i| res.scores[(i, k1)].powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                let norm2: f64 = (0..n)
+                    .map(|i| res.scores[(i, k2)].powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                if norm1 > 1e-10 && norm2 > 1e-10 {
+                    let cos_angle = (dot / (norm1 * norm2)).abs();
+                    assert!(
+                        cos_angle < 0.15,
+                        "Score components {} and {} should be approximately orthogonal, cos={}",
+                        k1,
+                        k2,
+                        cos_angle
+                    );
+                }
+            }
+        }
     }
 }

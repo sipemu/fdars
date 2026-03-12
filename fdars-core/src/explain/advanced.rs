@@ -616,7 +616,7 @@ pub fn anchor_explanation_logistic(
                 eta += fit.gamma[j] * sc[(i, j)];
             }
         }
-        let pred_class = if sigmoid(eta) >= 0.5 { 1u8 } else { 0u8 };
+        let pred_class = if sigmoid(eta) >= 0.5 { 1usize } else { 0usize };
         pred_class == obs_class
     };
 

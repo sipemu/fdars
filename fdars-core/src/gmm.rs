@@ -211,7 +211,7 @@ fn assign_nearest(features: &[Vec<f64>], centers: &[Vec<f64>]) -> Vec<usize> {
                 .iter()
                 .enumerate()
                 .map(|(c, ctr)| (c, dist_sq(f, ctr)))
-                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map_or(0, |(c, _)| c)
         })
         .collect()

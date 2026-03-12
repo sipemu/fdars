@@ -45,22 +45,34 @@ pub struct FdMatrix {
 impl FdMatrix {
     /// Create from flat column-major data with dimension validation.
     ///
-    /// Returns `None` if `data.len() != nrows * ncols`.
-    pub fn from_column_major(data: Vec<f64>, nrows: usize, ncols: usize) -> Option<Self> {
+    /// Returns `Err` if `data.len() != nrows * ncols`.
+    pub fn from_column_major(
+        data: Vec<f64>,
+        nrows: usize,
+        ncols: usize,
+    ) -> Result<Self, crate::FdarError> {
         if data.len() != nrows * ncols {
-            return None;
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("{}", nrows * ncols),
+                actual: format!("{}", data.len()),
+            });
         }
-        Some(Self { data, nrows, ncols })
+        Ok(Self { data, nrows, ncols })
     }
 
     /// Create from a borrowed slice (copies the data).
     ///
-    /// Returns `None` if `data.len() != nrows * ncols`.
-    pub fn from_slice(data: &[f64], nrows: usize, ncols: usize) -> Option<Self> {
+    /// Returns `Err` if `data.len() != nrows * ncols`.
+    pub fn from_slice(data: &[f64], nrows: usize, ncols: usize) -> Result<Self, crate::FdarError> {
         if data.len() != nrows * ncols {
-            return None;
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("{}", nrows * ncols),
+                actual: format!("{}", data.len()),
+            });
         }
-        Some(Self {
+        Ok(Self {
             data: data.to_vec(),
             nrows,
             ncols,
@@ -296,16 +308,24 @@ impl FdCurveSet {
 
     /// Build from multiple dimension matrices.
     ///
-    /// Returns `None` if `dims` is empty or if dimensions are inconsistent.
-    pub fn from_dims(dims: Vec<FdMatrix>) -> Option<Self> {
+    /// Returns `Err` if `dims` is empty or if dimensions are inconsistent.
+    pub fn from_dims(dims: Vec<FdMatrix>) -> Result<Self, crate::FdarError> {
         if dims.is_empty() {
-            return None;
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "dims",
+                expected: "non-empty".to_string(),
+                actual: "empty".to_string(),
+            });
         }
         let (n, m) = dims[0].shape();
         if dims.iter().any(|d| d.shape() != (n, m)) {
-            return None;
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "dims",
+                expected: format!("all ({}, {})", n, m),
+                actual: "inconsistent shapes".to_string(),
+            });
         }
-        Some(Self { dims })
+        Ok(Self { dims })
     }
 
     /// Extract the R^d point for a given curve and time index.
@@ -353,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_from_column_major_invalid() {
-        assert!(FdMatrix::from_column_major(vec![1.0, 2.0], 3, 4).is_none());
+        assert!(FdMatrix::from_column_major(vec![1.0, 2.0], 3, 4).is_err());
     }
 
     #[test]
@@ -367,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_from_slice_invalid() {
-        assert!(FdMatrix::from_slice(&[1.0, 2.0], 3, 3).is_none());
+        assert!(FdMatrix::from_slice(&[1.0, 2.0], 3, 3).is_err());
     }
 
     #[test]
@@ -523,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_fd_curve_set_empty() {
-        assert!(FdCurveSet::from_dims(vec![]).is_none());
+        assert!(FdCurveSet::from_dims(vec![]).is_err());
         let cs = FdCurveSet::from_dims(vec![]).unwrap_or(FdCurveSet { dims: vec![] });
         assert_eq!(cs.ndim(), 0);
         assert_eq!(cs.ncurves(), 0);
@@ -557,7 +577,7 @@ mod tests {
     fn test_fd_curve_set_from_dims_inconsistent() {
         let m1 = FdMatrix::from_column_major(vec![1.0, 2.0], 2, 1).unwrap();
         let m2 = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
-        assert!(FdCurveSet::from_dims(vec![m1, m2]).is_none());
+        assert!(FdCurveSet::from_dims(vec![m1, m2]).is_err());
     }
 
     #[test]

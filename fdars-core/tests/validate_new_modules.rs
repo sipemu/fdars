@@ -1481,9 +1481,9 @@ fn elastic_logistic_classifications_valid() {
         assert!((0.0..=1.0).contains(&p), "Probability {} out of range", p);
     }
 
-    // Predicted classes should be -1 or 1
+    // Predicted classes should be 0 or 1
     for &c in &result.predicted_classes {
-        assert!(c == -1 || c == 1, "Invalid class: {}", c);
+        assert!(c == 0 || c == 1, "Invalid class: {}", c);
     }
 }
 
@@ -1573,7 +1573,7 @@ fn changepoint_no_change_weak_signal() {
     let result =
         elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, CovKernel::Bartlett, None, 42);
 
-    if let Some(res) = result {
+    if let Ok(res) = result {
         // p-value should be higher (less significant) when there's no change
         // Not a strict test, but a sanity check
         assert!(res.p_value > 0.0);

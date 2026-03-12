@@ -173,7 +173,7 @@ pub fn linear_interp(x: &[f64], y: &[f64], t: f64) -> f64 {
         return y[last];
     }
 
-    let idx = match x.binary_search_by(|v| v.partial_cmp(&t).unwrap()) {
+    let idx = match x.binary_search_by(|v| v.partial_cmp(&t).unwrap_or(std::cmp::Ordering::Equal)) {
         Ok(i) => return y[i],
         Err(i) => i,
     };

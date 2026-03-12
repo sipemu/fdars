@@ -1439,7 +1439,7 @@ fn smooth_for_peaks(
     }
     let nbasis = smooth_nbasis
         .unwrap_or_else(|| crate::basis::select_fourier_nbasis_gcv(data, argvals, 5, 25));
-    if let Some(result) = crate::basis::fourier_fit_1d(data, argvals, nbasis) {
+    if let Ok(result) = crate::basis::fourier_fit_1d(data, argvals, nbasis) {
         result.fitted.into_vec()
     } else {
         data.as_slice().to_vec()

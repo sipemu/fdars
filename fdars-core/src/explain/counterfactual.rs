@@ -234,7 +234,7 @@ pub fn prototype_criticism(
         .filter(|i| !is_selected[*i])
         .map(|i| (i, witness[i].abs()))
         .collect();
-    criticism_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    criticism_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     let criticism_indices: Vec<usize> = criticism_candidates
         .iter()

@@ -47,7 +47,7 @@ impl TrendResult {
         TrendResult {
             trend: FdMatrix::zeros(n, m),
             detrended: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
+                .unwrap_or_else(|_| FdMatrix::zeros(n, m)),
             method,
             coefficients: None,
             rss: vec![0.0; n],
@@ -447,7 +447,7 @@ pub fn decompose_additive(
             trend: FdMatrix::zeros(n, m),
             seasonal: FdMatrix::zeros(n, m),
             remainder: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
+                .unwrap_or_else(|_| FdMatrix::zeros(n, m)),
             period,
             method: Cow::Borrowed("additive"),
         };
@@ -499,7 +499,7 @@ pub fn decompose_multiplicative(
             trend: FdMatrix::zeros(n, m),
             seasonal: FdMatrix::zeros(n, m),
             remainder: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
+                .unwrap_or_else(|_| FdMatrix::zeros(n, m)),
             period,
             method: Cow::Borrowed("multiplicative"),
         };
@@ -583,9 +583,9 @@ pub fn stl_decompose(
             trend: FdMatrix::zeros(n, m),
             seasonal: FdMatrix::zeros(n, m),
             remainder: FdMatrix::from_slice(data.as_slice(), n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
+                .unwrap_or_else(|_| FdMatrix::zeros(n, m)),
             weights: FdMatrix::from_column_major(vec![1.0; n * m], n, m)
-                .unwrap_or_else(|| FdMatrix::zeros(n, m)),
+                .unwrap_or_else(|_| FdMatrix::zeros(n, m)),
             period,
             s_window: 0,
             t_window: 0,

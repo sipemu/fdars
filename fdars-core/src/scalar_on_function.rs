@@ -91,7 +91,7 @@ pub struct FunctionalLogisticResult {
     /// Predicted probabilities P(Y=1) (length n)
     pub probabilities: Vec<f64>,
     /// Predicted class labels (0 or 1)
-    pub predicted_classes: Vec<u8>,
+    pub predicted_classes: Vec<usize>,
     /// Number of FPC components used
     pub ncomp: usize,
     /// Classification accuracy on training data
@@ -614,7 +614,7 @@ pub fn fregre_cv(
     let (optimal_idx, &min_cv_error) = cv_errors
         .iter()
         .enumerate()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap();
 
     Some(FregreCvResult {
@@ -830,7 +830,7 @@ fn select_bandwidth_loo(dists: &[f64], y: &[f64], n: usize, _other_dists: Option
         .flat_map(|i| ((i + 1)..n).map(move |j| dists[i * n + j]))
         .filter(|&d| d > 0.0)
         .collect();
-    nonzero_dists.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    nonzero_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     if nonzero_dists.is_empty() {
         return 1.0;
@@ -1080,7 +1080,7 @@ fn build_logistic_result(
     let (n, p) = design.shape();
     let eta = compute_fitted(design, &beta);
     let probabilities: Vec<f64> = eta.iter().map(|&e| sigmoid(e)).collect();
-    let predicted_classes: Vec<u8> = probabilities
+    let predicted_classes: Vec<usize> = probabilities
         .iter()
         .map(|&p| if p >= 0.5 { 1 } else { 0 })
         .collect();
@@ -1529,8 +1529,8 @@ pub fn fregre_basis_cv(
 
             // Project training curves to basis coefficients
             let train_result = match smooth_basis(&train_data, argvals, &fdpar) {
-                Some(r) => r,
-                None => {
+                Ok(r) => r,
+                Err(_) => {
                     cv_fold_errors[li].push(f64::INFINITY);
                     continue;
                 }
@@ -1538,8 +1538,8 @@ pub fn fregre_basis_cv(
 
             // Project test curves to basis coefficients
             let test_result = match smooth_basis(&test_data, argvals, &fdpar) {
-                Some(r) => r,
-                None => {
+                Ok(r) => r,
+                Err(_) => {
                     cv_fold_errors[li].push(f64::INFINITY);
                     continue;
                 }
@@ -2041,7 +2041,7 @@ mod tests {
         let (data, y_cont, _t) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -2065,7 +2065,7 @@ mod tests {
         let (data, y_cont, _t) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -2095,7 +2095,7 @@ mod tests {
         let (data, y_cont, _t) = generate_test_data(40, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -2189,7 +2189,7 @@ mod tests {
         let (data, y_cont, _t) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -2333,7 +2333,7 @@ mod tests {
         let (data, y_cont, _t) = generate_test_data(40, 20, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -2359,7 +2359,7 @@ mod tests {
         let (data, y_cont, _t) = generate_test_data(40, 20, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont

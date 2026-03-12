@@ -90,10 +90,14 @@ pub fn elastic_amp_changepoint(
     _cov_kernel: CovKernel,
     _cov_bandwidth: Option<usize>,
     seed: u64,
-) -> Option<ChangepointResult> {
+) -> Result<ChangepointResult, crate::FdarError> {
     let (n, m) = data.shape();
     if n < 4 || m < 2 || argvals.len() != m {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n >= 4, m >= 2, argvals.len() == m".to_string(),
+            actual: format!("n={}, m={}, argvals.len()={}", n, m, argvals.len()),
+        });
     }
 
     // Alignment
@@ -108,7 +112,7 @@ pub fn elastic_amp_changepoint(
     // Monte Carlo p-value via permutation
     let p_value = mc_pvalue_permutation(test_statistic, &km.aligned_data, &weights, n_mc, seed);
 
-    Some(ChangepointResult {
+    Ok(ChangepointResult {
         changepoint,
         test_statistic,
         p_value,
@@ -130,16 +134,25 @@ pub fn elastic_ph_changepoint(
     _cov_kernel: CovKernel,
     _cov_bandwidth: Option<usize>,
     seed: u64,
-) -> Option<ChangepointResult> {
+) -> Result<ChangepointResult, crate::FdarError> {
     let (n, m) = data.shape();
     if n < 4 || m < 2 || argvals.len() != m {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n >= 4, m >= 2, argvals.len() == m".to_string(),
+            actual: format!("n={}, m={}, argvals.len()={}", n, m, argvals.len()),
+        });
     }
 
     let km = karcher_mean(data, argvals, max_iter, 1e-4, lambda);
 
     // Compute shooting vectors from warps (live on uniform [0,1] grid, not argvals)
-    let shooting = compute_shooting_vectors(&km, argvals)?;
+    let shooting = compute_shooting_vectors(&km, argvals).ok_or_else(|| {
+        crate::FdarError::ComputationFailed {
+            operation: "compute_shooting_vectors",
+            detail: "failed to compute shooting vectors from warps".to_string(),
+        }
+    })?;
 
     let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
     let weights = simpsons_weights(&time);
@@ -149,7 +162,7 @@ pub fn elastic_ph_changepoint(
     // Monte Carlo p-value via permutation
     let p_value = mc_pvalue_permutation(test_statistic, &shooting, &weights, n_mc, seed);
 
-    Some(ChangepointResult {
+    Ok(ChangepointResult {
         changepoint,
         test_statistic,
         p_value,
@@ -181,10 +194,20 @@ pub fn elastic_fpca_changepoint(
     max_iter: usize,
     n_mc: usize,
     seed: u64,
-) -> Option<ChangepointResult> {
+) -> Result<ChangepointResult, crate::FdarError> {
     let (n, m) = data.shape();
     if n < 4 || m < 2 || argvals.len() != m || ncomp < 1 {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n >= 4, m >= 2, argvals.len() == m, ncomp >= 1".to_string(),
+            actual: format!(
+                "n={}, m={}, argvals.len()={}, ncomp={}",
+                n,
+                m,
+                argvals.len(),
+                ncomp
+            ),
+        });
     }
 
     let km = karcher_mean(data, argvals, max_iter, 1e-4, lambda);
@@ -212,7 +235,7 @@ pub fn elastic_fpca_changepoint(
     // Monte Carlo p-value via permutation
     let p_value = mc_pvalue_permutation_hotelling(test_statistic, &scores, n_mc, seed);
 
-    Some(ChangepointResult {
+    Ok(ChangepointResult {
         changepoint,
         test_statistic,
         p_value,
@@ -434,7 +457,7 @@ mod tests {
         let (data, t) = generate_changepoint_data(n, m, cp);
 
         let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 42);
-        assert!(result.is_some(), "amp changepoint should succeed");
+        assert!(result.is_ok(), "amp changepoint should succeed");
 
         let res = result.unwrap();
         assert!(
@@ -469,7 +492,7 @@ mod tests {
         }
 
         let result = elastic_ph_changepoint(&data, &t, 0.0, 5, 100, CovKernel::Bartlett, None, 42);
-        assert!(result.is_some());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -489,7 +512,7 @@ mod tests {
             100,
             42,
         );
-        assert!(result.is_some(), "fpca changepoint should succeed");
+        assert!(result.is_ok(), "fpca changepoint should succeed");
     }
 
     #[test]
@@ -506,7 +529,7 @@ mod tests {
         }
 
         let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 200, CovKernel::Bartlett, None, 42);
-        if let Some(res) = result {
+        if let Ok(res) = result {
             assert!(
                 res.p_value > 0.1,
                 "No change should not be significant, got p={}",
@@ -554,7 +577,64 @@ mod tests {
         let t: Vec<f64> = (0..5).map(|i| i as f64 / 4.0).collect();
         // n=2 < 4 → should return None
         assert!(
-            elastic_amp_changepoint(&data, &t, 0.0, 5, 100, CovKernel::Simple, None, 42).is_none()
+            elastic_amp_changepoint(&data, &t, 0.0, 5, 100, CovKernel::Simple, None, 42).is_err()
         );
+    }
+
+    #[test]
+    fn test_fpca_changepoint_horizontal() {
+        let n = 30;
+        let m = 51;
+        let cp = 15;
+        let (data, t) = generate_changepoint_data(n, m, cp);
+
+        let result = elastic_fpca_changepoint(
+            &data,
+            &t,
+            FpcaChangepointMethod::Horizontal,
+            3,
+            0.0,
+            5,
+            100,
+            42,
+        );
+        assert!(
+            result.is_ok(),
+            "fpca changepoint (horizontal) should succeed"
+        );
+
+        let res = result.unwrap();
+        assert_eq!(res.cusum_values.len(), n - 1);
+    }
+
+    #[test]
+    fn test_fpca_changepoint_joint() {
+        let n = 30;
+        let m = 51;
+        let cp = 15;
+        let (data, t) = generate_changepoint_data(n, m, cp);
+
+        let result =
+            elastic_fpca_changepoint(&data, &t, FpcaChangepointMethod::Joint, 3, 0.0, 5, 100, 42);
+        assert!(result.is_ok(), "fpca changepoint (joint) should succeed");
+
+        let res = result.unwrap();
+        assert_eq!(res.cusum_values.len(), n - 1);
+    }
+
+    #[test]
+    fn test_changepoint_seed_determinism() {
+        let n = 30;
+        let m = 51;
+        let cp = 15;
+        let (data, t) = generate_changepoint_data(n, m, cp);
+
+        let res1 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 42)
+            .expect("should succeed");
+        let res2 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 42)
+            .expect("should succeed");
+
+        assert_eq!(res1.changepoint, res2.changepoint);
+        assert!((res1.p_value - res2.p_value).abs() < 1e-10);
     }
 }

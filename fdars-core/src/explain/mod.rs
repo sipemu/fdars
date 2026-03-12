@@ -182,7 +182,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -246,7 +246,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -264,7 +264,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -327,7 +327,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -465,7 +465,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -577,7 +577,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(40, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -622,7 +622,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(40, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -703,7 +703,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -767,7 +767,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(50, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -860,7 +860,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -903,7 +903,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -1013,7 +1013,12 @@ mod tests {
         let db = dfbetas_dffits(&fit, &data, None).unwrap();
         let infl = influence_diagnostics(&fit, &data, None).unwrap();
         let mut dffits_order: Vec<usize> = (0..40).collect();
-        dffits_order.sort_by(|&a, &b| db.dffits[b].abs().partial_cmp(&db.dffits[a].abs()).unwrap());
+        dffits_order.sort_by(|&a, &b| {
+            db.dffits[b]
+                .abs()
+                .partial_cmp(&db.dffits[a].abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let mut cooks_order: Vec<usize> = (0..40).collect();
         cooks_order.sort_by(|&a, &b| {
             infl.cooks_distance[b]
@@ -1200,7 +1205,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(50, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont
@@ -1291,7 +1296,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1312,7 +1317,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1333,7 +1338,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1351,7 +1356,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1380,7 +1385,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1534,7 +1539,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1634,7 +1639,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(30, 50, 42);
         let y_bin = {
             let mut s = y_cont.clone();
-            s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let med = s[s.len() / 2];
             y_cont
                 .iter()
@@ -1670,7 +1675,7 @@ mod tests {
         let (data, y_cont) = generate_test_data(40, 50, 42);
         let y_median = {
             let mut sorted = y_cont.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             sorted[sorted.len() / 2]
         };
         let y_bin: Vec<f64> = y_cont

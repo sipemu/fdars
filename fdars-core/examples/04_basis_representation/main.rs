@@ -102,7 +102,7 @@ fn main() {
     // --- Section 5: Fourier fitting ---
     println!("\n--- Fourier Fitting ---");
     for nb in [5, 9, 15, 21] {
-        if let Some(result) = fourier_fit_1d(&noisy, &t, nb) {
+        if let Ok(result) = fourier_fit_1d(&noisy, &t, nb) {
             let err = rmse(result.fitted.as_slice(), &clean);
             println!("  nbasis={nb:2}: RMSE={err:.6}, GCV={:.6}", result.gcv);
         }
@@ -112,7 +112,7 @@ fn main() {
     println!("\n--- Automatic Fourier Basis Selection (GCV) ---");
     let best_nb = select_fourier_nbasis_gcv(&noisy, &t, 3, 25);
     println!("  Selected nbasis: {best_nb}");
-    if let Some(result) = fourier_fit_1d(&noisy, &t, best_nb) {
+    if let Ok(result) = fourier_fit_1d(&noisy, &t, best_nb) {
         let err = rmse(result.fitted.as_slice(), &clean);
         println!("  RMSE with best nbasis: {err:.6}");
     }

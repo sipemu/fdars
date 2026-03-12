@@ -550,7 +550,8 @@ pub fn conformal_elastic_regression(
         lambda,
         20,
         1e-4,
-    )?;
+    )
+    .ok()?;
 
     // Calibration predictions
     let cal_data = subsample_rows(data, &cal_idx);
@@ -609,7 +610,8 @@ pub fn conformal_elastic_pcr(
         lambda,
         20,
         1e-4,
-    )?;
+    )
+    .ok()?;
 
     // Calibration predictions
     let cal_data = subsample_rows(data, &cal_idx);
@@ -945,7 +947,7 @@ pub fn conformal_elastic_logistic(
     let proper_data = subsample_rows(data, &proper_idx);
     let proper_y = subset_vec_i8(y, &proper_idx);
 
-    let refit = elastic_logistic(&proper_data, &proper_y, argvals, 20, lambda, 50, 1e-4)?;
+    let refit = elastic_logistic(&proper_data, &proper_y, argvals, 20, lambda, 50, 1e-4).ok()?;
 
     // Calibration probabilities
     let cal_data = subsample_rows(data, &cal_idx);

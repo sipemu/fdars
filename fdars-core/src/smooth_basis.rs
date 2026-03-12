@@ -170,10 +170,24 @@ pub fn fourier_penalty_matrix(nbasis: usize, period: f64, lfd_order: usize) -> V
 ///
 /// # Returns
 /// [`SmoothBasisResult`] with coefficients, fitted values, and diagnostics.
-pub fn smooth_basis(data: &FdMatrix, argvals: &[f64], fdpar: &FdPar) -> Option<SmoothBasisResult> {
+pub fn smooth_basis(
+    data: &FdMatrix,
+    argvals: &[f64],
+    fdpar: &FdPar,
+) -> Result<SmoothBasisResult, crate::FdarError> {
     let (n, m) = data.shape();
     if n == 0 || m == 0 || argvals.len() != m || fdpar.nbasis < 2 {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/argvals/fdpar",
+            expected: "n > 0, m > 0, argvals.len() == m, nbasis >= 2".to_string(),
+            actual: format!(
+                "n={}, m={}, argvals.len()={}, nbasis={}",
+                n,
+                m,
+                argvals.len(),
+                fdpar.nbasis
+            ),
+        });
     }
 
     // Evaluate basis on argvals
@@ -190,7 +204,11 @@ pub fn smooth_basis(data: &FdMatrix, argvals: &[f64], fdpar: &FdPar) -> Option<S
         &btb + fdpar.lambda * &r_mat + ridge_eps * DMatrix::<f64>::identity(k, k);
 
     // Invert the penalized system
-    let system_inv = invert_penalized_system(&system, k)?;
+    let system_inv =
+        invert_penalized_system(&system, k).ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "matrix inversion",
+            detail: "failed to invert penalized system (Φ'Φ + λR)".to_string(),
+        })?;
 
     // Hat matrix: H = Φ (Φ'Φ + λR)^{-1} Φ'  →  EDF = tr(H)
     let h_mat = &b_mat * &system_inv * b_mat.transpose();
@@ -208,7 +226,7 @@ pub fn smooth_basis(data: &FdMatrix, argvals: &[f64], fdpar: &FdPar) -> Option<S
     let aic = total_points * mse.max(1e-300).ln() + 2.0 * total_edf;
     let bic = total_points * mse.max(1e-300).ln() + total_points.ln() * total_edf;
 
-    Some(SmoothBasisResult {
+    Ok(SmoothBasisResult {
         coefficients: all_coefs,
         fitted: all_fitted,
         edf,
@@ -268,7 +286,7 @@ pub fn smooth_basis_gcv(
             penalty_matrix: penalty.clone(),
         };
 
-        if let Some(result) = smooth_basis(data, argvals, &fdpar) {
+        if let Ok(result) = smooth_basis(data, argvals, &fdpar) {
             if result.gcv < best_gcv {
                 best_gcv = result.gcv;
                 best_result = Some(result);
@@ -493,7 +511,7 @@ pub fn basis_nbasis_cv(
                 };
 
                 match smooth_basis(data, argvals, &fdpar) {
-                    Some(result) => {
+                    Ok(result) => {
                         let score = match criterion {
                             BasisCriterion::Gcv => result.gcv,
                             BasisCriterion::Aic => result.aic,
@@ -502,7 +520,7 @@ pub fn basis_nbasis_cv(
                         };
                         scores.push(score);
                     }
-                    None => scores.push(f64::INFINITY),
+                    Err(_) => scores.push(f64::INFINITY),
                 }
             }
         }
@@ -539,7 +557,7 @@ pub fn basis_nbasis_cv(
                         penalty_matrix: penalty.clone(),
                     };
 
-                    if let Some(train_result) = smooth_basis(&train_data, argvals, &fdpar) {
+                    if let Ok(train_result) = smooth_basis(&train_data, argvals, &fdpar) {
                         // Evaluate basis
                         let (basis_flat, actual_k) = evaluate_basis(argvals, basis_type, nb);
                         let b_mat = DMatrix::from_column_slice(m, actual_k, &basis_flat);
@@ -693,7 +711,7 @@ mod tests {
         };
 
         let result = smooth_basis(&data, &t, &fdpar);
-        assert!(result.is_some(), "smooth_basis should succeed");
+        assert!(result.is_ok(), "smooth_basis should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.fitted.shape(), (n, m));
@@ -728,7 +746,7 @@ mod tests {
         };
 
         let result = smooth_basis(&data, &t, &fdpar);
-        assert!(result.is_some());
+        assert!(result.is_ok());
 
         let res = result.unwrap();
         // Fourier basis should fit periodic data well

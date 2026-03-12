@@ -215,7 +215,7 @@ fn hermite_eval(t: f64, x_knots: &[f64], y_knots: &[f64], d: &[f64]) -> f64 {
     } else if t >= x_knots[k - 1] {
         k - 2
     } else {
-        match x_knots.binary_search_by(|v| v.partial_cmp(&t).unwrap()) {
+        match x_knots.binary_search_by(|v| v.partial_cmp(&t).unwrap_or(std::cmp::Ordering::Equal)) {
             Ok(i) => i.min(k - 2),
             Err(i) => (i - 1).min(k - 2),
         }

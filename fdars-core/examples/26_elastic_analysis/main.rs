@@ -50,7 +50,7 @@ fn demo_fpca(data: &FdMatrix, t: &[f64]) {
     println!("  Karcher mean iterations: {}", km.n_iter);
 
     println!("\n  --- Vertical FPCA (amplitude variation) ---");
-    if let Some(vfpca) = fdars_core::vert_fpca(&km, t, 3) {
+    if let Ok(vfpca) = fdars_core::vert_fpca(&km, t, 3) {
         print_fpca_result(
             "vertical",
             vfpca.eigenvalues.len(),
@@ -58,7 +58,7 @@ fn demo_fpca(data: &FdMatrix, t: &[f64]) {
         );
     }
     println!("\n  --- Horizontal FPCA (phase variation) ---");
-    if let Some(hfpca) = fdars_core::horiz_fpca(&km, t, 2) {
+    if let Ok(hfpca) = fdars_core::horiz_fpca(&km, t, 2) {
         print_fpca_result(
             "horizontal",
             hfpca.eigenvalues.len(),
@@ -66,7 +66,7 @@ fn demo_fpca(data: &FdMatrix, t: &[f64]) {
         );
     }
     println!("\n  --- Joint FPCA (combined) ---");
-    if let Some(jfpca) = fdars_core::joint_fpca(&km, t, 3, None) {
+    if let Ok(jfpca) = fdars_core::joint_fpca(&km, t, 3, None) {
         println!("  Balance parameter c: {:.4}", jfpca.balance_c);
         print_fpca_result("joint", jfpca.eigenvalues.len(), &jfpca.cumulative_variance);
     }
@@ -74,7 +74,7 @@ fn demo_fpca(data: &FdMatrix, t: &[f64]) {
 
 fn demo_regression(data: &FdMatrix, y: &[f64], y_class: &[i8], t: &[f64], n: usize) {
     println!("\n=== 2. Elastic Regression ===");
-    if let Some(ereg) = fdars_core::elastic_regression(data, y, t, 4, 0.01, 20, 1e-4) {
+    if let Ok(ereg) = fdars_core::elastic_regression(data, y, t, 4, 0.01, 20, 1e-4) {
         println!(
             "  R² = {:.4}, Iterations: {}, SSE = {:.4}",
             ereg.r_squared, ereg.n_iter, ereg.sse
@@ -84,8 +84,7 @@ fn demo_regression(data: &FdMatrix, y: &[f64], y_class: &[i8], t: &[f64], n: usi
     }
 
     println!("\n=== 3. Elastic PCR ===");
-    if let Some(epcr) = fdars_core::elastic_pcr(data, y, t, 3, PcaMethod::Vertical, 0.01, 15, 1e-4)
-    {
+    if let Ok(epcr) = fdars_core::elastic_pcr(data, y, t, 3, PcaMethod::Vertical, 0.01, 15, 1e-4) {
         println!(
             "  R² = {:.4}, Components: {}",
             epcr.r_squared,
@@ -102,7 +101,7 @@ fn demo_regression(data: &FdMatrix, y: &[f64], y_class: &[i8], t: &[f64], n: usi
     }
 
     println!("\n=== 5. Elastic Logistic Classification ===");
-    if let Some(elog) = fdars_core::elastic_logistic(data, y_class, t, 4, 0.01, 20, 1e-4) {
+    if let Ok(elog) = fdars_core::elastic_logistic(data, y_class, t, 4, 0.01, 20, 1e-4) {
         println!("  Accuracy: {:.1}%", elog.accuracy * 100.0);
         let n_pos = elog.predicted_classes.iter().filter(|&&c| c == 1).count();
         println!("  Predicted: {} positive, {} negative", n_pos, n - n_pos);
@@ -122,7 +121,7 @@ fn demo_changepoint(t: &[f64], n: usize, m: usize) {
     }
     let cp_data = FdMatrix::from_column_major(cp_col, n, m).unwrap();
 
-    if let Some(cp) = fdars_core::elastic_amp_changepoint(
+    if let Ok(cp) = fdars_core::elastic_amp_changepoint(
         &cp_data,
         t,
         0.01,
@@ -138,7 +137,7 @@ fn demo_changepoint(t: &[f64], n: usize, m: usize) {
             cp.test_statistic, cp.p_value
         );
     }
-    if let Some(cp) = fdars_core::elastic_ph_changepoint(
+    if let Ok(cp) = fdars_core::elastic_ph_changepoint(
         &cp_data,
         t,
         0.01,

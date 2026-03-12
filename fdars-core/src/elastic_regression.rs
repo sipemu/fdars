@@ -55,8 +55,8 @@ pub struct ElasticLogisticResult {
     pub beta: Vec<f64>,
     /// Predicted probabilities, length n.
     pub probabilities: Vec<f64>,
-    /// Predicted class labels (-1 or 1), length n.
-    pub predicted_classes: Vec<i8>,
+    /// Predicted class labels (0 or 1), length n.
+    pub predicted_classes: Vec<usize>,
     /// Classification accuracy.
     pub accuracy: f64,
     /// Logistic loss.
@@ -129,10 +129,22 @@ pub fn elastic_regression(
     lambda: f64,
     max_iter: usize,
     tol: f64,
-) -> Option<ElasticRegressionResult> {
+) -> Result<ElasticRegressionResult, crate::FdarError> {
     let (n, m) = data.shape();
     if n < 2 || m < 2 || y.len() != n || argvals.len() != m || ncomp_beta < 2 {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/y/argvals",
+            expected: "n >= 2, m >= 2, y.len() == n, argvals.len() == m, ncomp_beta >= 2"
+                .to_string(),
+            actual: format!(
+                "n={}, m={}, y.len()={}, argvals.len()={}, ncomp_beta={}",
+                n,
+                m,
+                y.len(),
+                argvals.len(),
+                ncomp_beta
+            ),
+        });
     }
 
     let weights = simpsons_weights(argvals);
@@ -162,7 +174,11 @@ pub fn elastic_regression(
             n,
             m,
             actual_nbasis,
-        )?;
+        )
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "regression_iteration",
+            detail: format!("iteration {} failed", iter + 1),
+        })?;
 
         if beta_converged(&beta_new, &beta, tol) && iter > 0 {
             beta = beta_new;
@@ -182,7 +198,7 @@ pub fn elastic_regression(
     let fitted_values = srsf_fitted_values(&aligned_srsfs, &beta, &weights, alpha);
     let (residuals, sse, r_squared) = compute_regression_residuals(y, &fitted_values, y_mean);
 
-    Some(ElasticRegressionResult {
+    Ok(ElasticRegressionResult {
         alpha,
         beta,
         fitted_values,
@@ -217,10 +233,20 @@ pub fn elastic_logistic(
     lambda: f64,
     max_iter: usize,
     tol: f64,
-) -> Option<ElasticLogisticResult> {
+) -> Result<ElasticLogisticResult, crate::FdarError> {
     let (n, m) = data.shape();
     if n < 2 || m < 2 || y.len() != n || argvals.len() != m {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/y/argvals",
+            expected: "n >= 2, m >= 2, y.len() == n, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, y.len()={}, argvals.len()={}",
+                n,
+                m,
+                y.len(),
+                argvals.len()
+            ),
+        });
     }
 
     let weights = simpsons_weights(argvals);
@@ -277,7 +303,7 @@ pub fn elastic_logistic(
     let (probabilities, predicted_classes, accuracy, loss) =
         compute_logistic_predictions(&aligned_srsfs, &beta, &weights, alpha, y, lambda);
 
-    Some(ElasticLogisticResult {
+    Ok(ElasticLogisticResult {
         alpha,
         beta,
         probabilities,
@@ -330,10 +356,14 @@ pub fn elastic_pcr(
     lambda: f64,
     max_iter: usize,
     tol: f64,
-) -> Option<ElasticPcrResult> {
+) -> Result<ElasticPcrResult, crate::FdarError> {
     let (n, _m) = data.shape();
     if n < 2 || y.len() != n || ncomp < 1 {
-        return None;
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n >= 2, y.len() == n, ncomp >= 1".to_string(),
+            actual: format!("n={}, y.len()={}, ncomp={}", n, y.len(), ncomp),
+        });
     }
 
     // Karcher mean alignment
@@ -367,9 +397,14 @@ pub fn elastic_pcr(
 
     let actual_ncomp = scores_mat.ncols();
     let (coefs, alpha, fitted_values, sse, r_squared) =
-        ols_on_scores(&scores_mat, y, n, actual_ncomp)?;
+        ols_on_scores(&scores_mat, y, n, actual_ncomp).ok_or_else(|| {
+            crate::FdarError::ComputationFailed {
+                operation: "OLS",
+                detail: "OLS on PC scores failed".to_string(),
+            }
+        })?;
 
-    Some(ElasticPcrResult {
+    Ok(ElasticPcrResult {
         alpha,
         coefficients: coefs,
         fitted_values,
@@ -860,18 +895,18 @@ fn compute_logistic_predictions(
     alpha: f64,
     y: &[i8],
     lambda: f64,
-) -> (Vec<f64>, Vec<i8>, f64, f64) {
+) -> (Vec<f64>, Vec<usize>, f64, f64) {
     let n = y.len();
     let eta = srsf_fitted_values(aligned_srsfs, beta, weights, alpha);
     let probabilities: Vec<f64> = eta.iter().map(|&e| 1.0 / (1.0 + (-e).exp())).collect();
-    let predicted_classes: Vec<i8> = probabilities
+    let predicted_classes: Vec<usize> = probabilities
         .iter()
-        .map(|&p| if p >= 0.5 { 1 } else { -1 })
+        .map(|&p| if p >= 0.5 { 1 } else { 0 })
         .collect();
     let accuracy = predicted_classes
         .iter()
         .zip(y.iter())
-        .filter(|(&p, &t)| p == t)
+        .filter(|(&p, &t)| p == (if t == 1 { 1usize } else { 0usize }))
         .count() as f64
         / n as f64;
     let loss = logistic_loss(&probabilities, y, beta, lambda);
@@ -1023,7 +1058,7 @@ mod tests {
     fn test_elastic_regression_basic() {
         let (data, y, t) = generate_test_data(15, 51);
         let result = elastic_regression(&data, &y, &t, 10, 1e-3, 5, 1e-3);
-        assert!(result.is_some(), "elastic_regression should succeed");
+        assert!(result.is_ok(), "elastic_regression should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.fitted_values.len(), 15);
@@ -1050,7 +1085,7 @@ mod tests {
         }
 
         let result = elastic_logistic(&data, &y, &t, 10, 1e-2, 5, 1e-3);
-        assert!(result.is_some(), "elastic_logistic should succeed");
+        assert!(result.is_ok(), "elastic_logistic should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.probabilities.len(), n);
@@ -1062,7 +1097,7 @@ mod tests {
     fn test_elastic_pcr_vertical() {
         let (data, y, t) = generate_test_data(15, 51);
         let result = elastic_pcr(&data, &y, &t, 3, PcaMethod::Vertical, 0.0, 5, 1e-3);
-        assert!(result.is_some(), "elastic_pcr (vertical) should succeed");
+        assert!(result.is_ok(), "elastic_pcr (vertical) should succeed");
 
         let res = result.unwrap();
         assert_eq!(res.fitted_values.len(), 15);
@@ -1073,7 +1108,7 @@ mod tests {
     fn test_elastic_pcr_horizontal() {
         let (data, y, t) = generate_test_data(15, 51);
         let result = elastic_pcr(&data, &y, &t, 3, PcaMethod::Horizontal, 0.0, 5, 1e-3);
-        assert!(result.is_some(), "elastic_pcr (horizontal) should succeed");
+        assert!(result.is_ok(), "elastic_pcr (horizontal) should succeed");
     }
 
     #[test]
@@ -1081,6 +1116,94 @@ mod tests {
         let data = FdMatrix::zeros(1, 10);
         let y = vec![1.0];
         let t: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-        assert!(elastic_regression(&data, &y, &t, 5, 1e-3, 5, 1e-3).is_none());
+        assert!(elastic_regression(&data, &y, &t, 5, 1e-3, 5, 1e-3).is_err());
+    }
+
+    #[test]
+    fn test_predict_elastic_regression() {
+        let (data, y, t) = generate_test_data(15, 51);
+        let fit = elastic_regression(&data, &y, &t, 10, 1e-3, 5, 1e-3)
+            .expect("elastic_regression should succeed");
+
+        // Standalone function
+        let preds = predict_elastic_regression(&fit, &data, &t);
+        assert_eq!(preds.len(), 15);
+        assert!(preds.iter().all(|v| v.is_finite()));
+
+        // Method syntax
+        let preds2 = fit.predict(&data, &t);
+        assert_eq!(preds, preds2);
+    }
+
+    #[test]
+    fn test_predict_elastic_logistic() {
+        let n = 20;
+        let m = 51;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(n, m);
+        let mut y = vec![0_i8; n];
+
+        for i in 0..n {
+            let label = if i < n / 2 { -1_i8 } else { 1_i8 };
+            y[i] = label;
+            let amp = if label == 1 { 2.0 } else { 1.0 };
+            for j in 0..m {
+                data[(i, j)] = amp * (2.0 * PI * t[j]).sin();
+            }
+        }
+
+        let fit = elastic_logistic(&data, &y, &t, 10, 1e-2, 5, 1e-3)
+            .expect("elastic_logistic should succeed");
+
+        // Standalone function
+        let probs = predict_elastic_logistic(&fit, &data, &t);
+        assert_eq!(probs.len(), n);
+        assert!(probs.iter().all(|&p| (0.0..=1.0).contains(&p)));
+
+        // Method syntax
+        let probs2 = fit.predict(&data, &t);
+        assert_eq!(probs, probs2);
+    }
+
+    #[test]
+    fn test_elastic_pcr_joint() {
+        let (data, y, t) = generate_test_data(15, 51);
+        let result = elastic_pcr(&data, &y, &t, 3, PcaMethod::Joint, 0.0, 5, 1e-3);
+        assert!(result.is_ok(), "elastic_pcr (joint) should succeed");
+
+        let res = result.unwrap();
+        assert_eq!(res.fitted_values.len(), 15);
+        assert_eq!(res.coefficients.len(), 3);
+        assert!(res.joint_fpca.is_some());
+    }
+
+    #[test]
+    fn test_elastic_logistic_probability_bounds() {
+        let n = 20;
+        let m = 51;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(n, m);
+        let mut y = vec![0_i8; n];
+
+        for i in 0..n {
+            let label = if i < n / 2 { -1_i8 } else { 1_i8 };
+            y[i] = label;
+            let amp = if label == 1 { 2.0 } else { 1.0 };
+            for j in 0..m {
+                data[(i, j)] = amp * (2.0 * PI * t[j]).sin();
+            }
+        }
+
+        let res = elastic_logistic(&data, &y, &t, 10, 1e-2, 5, 1e-3)
+            .expect("elastic_logistic should succeed");
+
+        // All probabilities in [0, 1]
+        assert!(res.probabilities.iter().all(|&p| (0.0..=1.0).contains(&p)));
+
+        // All predicted classes in {0, 1}
+        assert!(res.predicted_classes.iter().all(|&c| c == 0 || c == 1));
+
+        // Accuracy in [0, 1]
+        assert!((0.0..=1.0).contains(&res.accuracy));
     }
 }
