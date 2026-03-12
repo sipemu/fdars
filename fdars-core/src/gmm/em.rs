@@ -4,7 +4,7 @@ use super::covariance::{
     accumulate_diag_cov_weighted, accumulate_full_cov_weighted, identity_cov, regularize_cov,
 };
 use super::init::{init_params_from_assignments, kmeans_init_assignments};
-use super::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
+use crate::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
 use super::{CovType, GmmResult};
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
@@ -19,8 +19,8 @@ fn log_component_density(z: &[f64], mean: &[f64], cov: &[f64], d: usize, cov_typ
     match cov_type {
         CovType::Full => {
             let chol = match cholesky_d(cov, d) {
-                Some(l) => l,
-                None => return f64::NEG_INFINITY,
+                Ok(l) => l,
+                Err(_) => return f64::NEG_INFINITY,
             };
             let log_det = log_det_from_cholesky(&chol, d);
             let maha = mahalanobis_sq(z, mean, &chol, d);

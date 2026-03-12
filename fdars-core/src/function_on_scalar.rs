@@ -672,6 +672,7 @@ fn compute_fosr_fpc_fitted(
 /// # Arguments
 /// * `result` - Fitted [`FosrResult`]
 /// * `new_predictors` - New scalar predictors (n_new × p)
+#[must_use = "prediction result should not be discarded"]
 pub fn predict_fosr(result: &FosrResult, new_predictors: &FdMatrix) -> FdMatrix {
     let n_new = new_predictors.nrows();
     let m = result.intercept.len();

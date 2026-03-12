@@ -83,6 +83,34 @@ fn confusion_matrix(true_labels: &[usize], pred_labels: &[usize], g: usize) -> V
     cm
 }
 
+/// Compute per-class means, counts, and priors from labeled features.
+pub(crate) fn class_means_and_priors(
+    features: &FdMatrix,
+    labels: &[usize],
+    g: usize,
+) -> (Vec<Vec<f64>>, Vec<usize>, Vec<f64>) {
+    let n = features.nrows();
+    let d = features.ncols();
+    let mut counts = vec![0usize; g];
+    let mut class_means = vec![vec![0.0; d]; g];
+    for i in 0..n {
+        let c = labels[i];
+        counts[c] += 1;
+        for j in 0..d {
+            class_means[c][j] += features[(i, j)];
+        }
+    }
+    for c in 0..g {
+        if counts[c] > 0 {
+            for j in 0..d {
+                class_means[c][j] /= counts[c] as f64;
+            }
+        }
+    }
+    let priors: Vec<f64> = counts.iter().map(|&c| c as f64 / n as f64).collect();
+    (class_means, counts, priors)
+}
+
 /// Accuracy from labels.
 fn compute_accuracy(true_labels: &[usize], pred_labels: &[usize]) -> f64 {
     let n = true_labels.len();

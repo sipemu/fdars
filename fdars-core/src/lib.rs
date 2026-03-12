@@ -28,6 +28,7 @@
 #![allow(clippy::type_complexity)]
 
 pub mod error;
+pub(crate) mod linalg;
 pub mod matrix;
 pub mod parallel;
 

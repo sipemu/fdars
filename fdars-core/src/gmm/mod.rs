@@ -15,8 +15,6 @@ pub mod cluster;
 pub mod covariance;
 pub mod em;
 pub mod init;
-pub mod linalg;
-
 #[cfg(test)]
 mod tests;
 

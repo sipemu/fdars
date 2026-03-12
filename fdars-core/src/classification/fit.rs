@@ -5,7 +5,8 @@ use crate::explain_generic::{FpcPredictor, TaskType};
 use crate::matrix::FdMatrix;
 
 use super::knn::knn_predict_loo;
-use super::lda::{cholesky_d, lda_params, lda_predict, mahalanobis_sq};
+use crate::linalg::{cholesky_d, mahalanobis_sq};
+use super::lda::{lda_params, lda_predict};
 use super::qda::{build_qda_params, qda_predict};
 use super::{
     build_feature_matrix, compute_accuracy, confusion_matrix, remap_labels, ClassifCvResult,

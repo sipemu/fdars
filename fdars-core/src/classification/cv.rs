@@ -4,7 +4,8 @@ use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 
-use super::lda::{cholesky_d, lda_params, lda_predict};
+use crate::linalg::cholesky_d;
+use super::lda::{lda_params, lda_predict};
 use super::qda::{build_qda_params, qda_predict};
 use super::{remap_labels, ClassifCvResult};
 

@@ -732,6 +732,7 @@ fn compute_fitted_residuals(
 /// * `new_covariates` — Covariates for new subjects (n_new × p)
 ///
 /// Returns predicted curves (n_new × m) using only fixed effects (no random effects for new subjects).
+#[must_use = "prediction result should not be discarded"]
 pub fn fmm_predict(result: &FmmResult, new_covariates: Option<&FdMatrix>) -> FdMatrix {
     let m = result.mean_function.len();
     let n_new = new_covariates.map_or(1, super::matrix::FdMatrix::nrows);

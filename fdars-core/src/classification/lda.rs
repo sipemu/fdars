@@ -1,39 +1,13 @@
 //! LDA: Linear Discriminant Analysis internals.
 
 use crate::error::FdarError;
+use crate::linalg::{cholesky_d, mahalanobis_sq};
 use crate::matrix::FdMatrix;
 
 use super::{
-    build_feature_matrix, compute_accuracy, confusion_matrix, remap_labels, ClassifResult,
+    build_feature_matrix, class_means_and_priors, compute_accuracy, confusion_matrix,
+    remap_labels, ClassifResult,
 };
-
-/// Compute per-class means, counts, and priors from labeled features.
-fn class_means_and_priors(
-    features: &FdMatrix,
-    labels: &[usize],
-    g: usize,
-) -> (Vec<Vec<f64>>, Vec<usize>, Vec<f64>) {
-    let n = features.nrows();
-    let d = features.ncols();
-    let mut counts = vec![0usize; g];
-    let mut class_means = vec![vec![0.0; d]; g];
-    for i in 0..n {
-        let c = labels[i];
-        counts[c] += 1;
-        for j in 0..d {
-            class_means[c][j] += features[(i, j)];
-        }
-    }
-    for c in 0..g {
-        if counts[c] > 0 {
-            for j in 0..d {
-                class_means[c][j] /= counts[c] as f64;
-            }
-        }
-    }
-    let priors: Vec<f64> = counts.iter().map(|&c| c as f64 / n as f64).collect();
-    (class_means, counts, priors)
-}
 
 /// Compute pooled within-class covariance (symmetric, regularized).
 fn pooled_within_cov(
@@ -77,53 +51,6 @@ pub(crate) fn lda_params(
     let (class_means, _counts, priors) = class_means_and_priors(features, labels, g);
     let cov = pooled_within_cov(features, labels, &class_means, g);
     (class_means, cov, priors)
-}
-
-/// Cholesky factorization of d×d row-major matrix.
-pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Result<Vec<f64>, FdarError> {
-    let mut l = vec![0.0; d * d];
-    for j in 0..d {
-        let mut sum = 0.0;
-        for k in 0..j {
-            sum += l[j * d + k] * l[j * d + k];
-        }
-        let diag = mat[j * d + j] - sum;
-        if diag <= 0.0 {
-            return Err(FdarError::ComputationFailed {
-                operation: "cholesky_d",
-                detail: format!("non-positive diagonal at index {j}"),
-            });
-        }
-        l[j * d + j] = diag.sqrt();
-        for i in (j + 1)..d {
-            let mut s = 0.0;
-            for k in 0..j {
-                s += l[i * d + k] * l[j * d + k];
-            }
-            l[i * d + j] = (mat[i * d + j] - s) / l[j * d + j];
-        }
-    }
-    Ok(l)
-}
-
-/// Forward solve L * x = b.
-pub(crate) fn forward_solve(l: &[f64], b: &[f64], d: usize) -> Vec<f64> {
-    let mut x = vec![0.0; d];
-    for i in 0..d {
-        let mut s = 0.0;
-        for j in 0..i {
-            s += l[i * d + j] * x[j];
-        }
-        x[i] = (b[i] - s) / l[i * d + i];
-    }
-    x
-}
-
-/// Mahalanobis distance squared: (x-mu)^T Sigma^{-1} (x-mu) via Cholesky.
-pub(crate) fn mahalanobis_sq(x: &[f64], mu: &[f64], chol: &[f64], d: usize) -> f64 {
-    let diff: Vec<f64> = x.iter().zip(mu.iter()).map(|(&a, &b)| a - b).collect();
-    let y = forward_solve(chol, &diff, d);
-    y.iter().map(|&v| v * v).sum()
 }
 
 /// LDA prediction: assign to class minimizing Mahalanobis distance (with prior).

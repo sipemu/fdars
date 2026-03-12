@@ -1,40 +1,13 @@
 //! QDA: Quadratic Discriminant Analysis internals.
 
 use crate::error::FdarError;
+use crate::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
 use crate::matrix::FdMatrix;
 
-use super::lda::{cholesky_d, mahalanobis_sq};
 use super::{
-    build_feature_matrix, compute_accuracy, confusion_matrix, remap_labels, ClassifResult,
+    build_feature_matrix, class_means_and_priors, compute_accuracy, confusion_matrix,
+    remap_labels, ClassifResult,
 };
-
-/// Compute per-class means, counts, and priors from labeled features.
-fn class_means_and_priors(
-    features: &FdMatrix,
-    labels: &[usize],
-    g: usize,
-) -> (Vec<Vec<f64>>, Vec<usize>, Vec<f64>) {
-    let n = features.nrows();
-    let d = features.ncols();
-    let mut counts = vec![0usize; g];
-    let mut class_means = vec![vec![0.0; d]; g];
-    for i in 0..n {
-        let c = labels[i];
-        counts[c] += 1;
-        for j in 0..d {
-            class_means[c][j] += features[(i, j)];
-        }
-    }
-    for c in 0..g {
-        if counts[c] > 0 {
-            for j in 0..d {
-                class_means[c][j] /= counts[c] as f64;
-            }
-        }
-    }
-    let priors: Vec<f64> = counts.iter().map(|&c| c as f64 / n as f64).collect();
-    (class_means, counts, priors)
-}
 
 /// Accumulate symmetric covariance from feature rows.
 fn accumulate_class_cov(
@@ -99,19 +72,10 @@ pub(crate) fn build_qda_params(
     let mut class_log_dets = Vec::with_capacity(g);
     for cov in &class_covs {
         let chol = cholesky_d(cov, d)?;
-        class_log_dets.push(log_det_cholesky(&chol, d));
+        class_log_dets.push(log_det_from_cholesky(&chol, d));
         class_chols.push(chol);
     }
     Ok((class_means, class_chols, class_log_dets, priors))
-}
-
-/// Log-determinant from Cholesky factor.
-pub(crate) fn log_det_cholesky(l: &[f64], d: usize) -> f64 {
-    let mut s = 0.0;
-    for i in 0..d {
-        s += l[i * d + i].ln();
-    }
-    2.0 * s
 }
 
 /// QDA prediction: per-class covariance.
