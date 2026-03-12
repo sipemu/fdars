@@ -243,3 +243,55 @@ pub use smoothing::{
     cv_smoother, gcv_smoother, knn_gcv, knn_lcv, optim_bandwidth, CvCriterion, KnnCvResult,
     OptimBandwidthResult,
 };
+
+// Re-export regression types
+pub use regression::{fdata_to_pc_1d, fdata_to_pls_1d, FpcaResult, PlsResult};
+#[cfg(feature = "linalg")]
+pub use regression::{ridge_regression_fit, RidgeResult};
+
+// Re-export clustering types
+pub use clustering::{
+    calinski_harabasz, fuzzy_cmeans_fd, kmeans_fd, silhouette_score, FuzzyCmeansResult,
+    KmeansResult,
+};
+
+// Re-export distance metric types and functions
+pub use metric::{
+    dtw_cross_1d, dtw_distance, dtw_self_1d, fourier_cross_1d, fourier_self_1d, hausdorff_3d,
+    hausdorff_cross_1d, hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d, hshift_cross_1d,
+    hshift_self_1d, lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d, soft_dtw_barycenter,
+    soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d, soft_dtw_div_self_1d,
+    soft_dtw_divergence, soft_dtw_self_1d, SoftDtwBarycenterResult,
+};
+
+// Re-export depth measure functions
+pub use depth::{
+    band_1d, fraiman_muniz_1d, fraiman_muniz_2d, functional_spatial_1d, functional_spatial_2d,
+    kernel_functional_spatial_1d, kernel_functional_spatial_2d, modal_1d, modal_2d,
+    modified_band_1d, modified_epigraph_index_1d, random_projection_1d,
+    random_projection_1d_seeded, random_projection_2d, random_tukey_1d, random_tukey_1d_seeded,
+    random_tukey_2d,
+};
+
+// Re-export outlier detection functions
+pub use outliers::{detect_outliers_lrt, outliers_threshold_lrt, outliers_threshold_lrt_with_dist};
+
+// Re-export utility functions
+pub use utility::{
+    compute_adot, inner_product, inner_product_matrix, integrate_simpson, knn_loocv, knn_predict,
+    pcvm_statistic, rp_stat, RpStatResult,
+};
+
+// Re-export functional data operation types and functions
+pub use fdata::{
+    center_1d, deriv_1d, deriv_2d, geometric_median_1d, geometric_median_2d, mean_1d, mean_2d,
+    norm_lp_1d, Deriv2DResult,
+};
+
+// Re-export basis representation types and functions
+pub use basis::{
+    basis_to_fdata_1d, bspline_basis, difference_matrix, fdata_to_basis_1d, fourier_basis,
+    fourier_basis_with_period, fourier_fit_1d, pspline_fit_1d, select_basis_auto_1d,
+    select_fourier_nbasis_gcv, BasisAutoSelectionResult, BasisProjectionResult, FourierFitResult,
+    PsplineFitResult, SingleCurveSelection,
+};
