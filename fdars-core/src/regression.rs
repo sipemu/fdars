@@ -2,6 +2,7 @@
 //!
 //! This module provides functional PCA, PLS, and ridge regression.
 
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "linalg")]
 use anofox_regression::solvers::RidgeRegressor;
@@ -74,18 +75,39 @@ fn extract_pc_components(
 /// # Arguments
 /// * `data` - Matrix (n x m): n observations, m evaluation points
 /// * `ncomp` - Number of components to extract
-pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Option<FpcaResult> {
+pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m == 0 || ncomp < 1 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0 rows".to_string(),
+            actual: format!("n = {}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "m > 0 columns".to_string(),
+            actual: format!("m = {}", m),
+        });
+    }
+    if ncomp < 1 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: format!("ncomp must be >= 1, got {}", ncomp),
+        });
     }
 
     let ncomp = ncomp.min(n).min(m);
     let (centered, means) = center_columns(data);
     let svd = SVD::new(centered.to_dmatrix(), true, true);
-    let (singular_values, rotation, scores) = extract_pc_components(&svd, n, m, ncomp)?;
+    let (singular_values, rotation, scores) =
+        extract_pc_components(&svd, n, m, ncomp).ok_or_else(|| FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "failed to extract U or V_t from SVD decomposition".to_string(),
+        })?;
 
-    Some(FpcaResult {
+    Ok(FpcaResult {
         singular_values,
         rotation,
         scores,
@@ -203,10 +225,34 @@ fn pls_nipals_step(
 /// * `data` - Matrix (n x m): n observations, m evaluation points
 /// * `y` - Response vector (length n)
 /// * `ncomp` - Number of components to extract
-pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Option<PlsResult> {
+pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m == 0 || y.len() != n || ncomp < 1 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0 rows".to_string(),
+            actual: format!("n = {}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "m > 0 columns".to_string(),
+            actual: format!("m = {}", m),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("length {}", n),
+            actual: format!("length {}", y.len()),
+        });
+    }
+    if ncomp < 1 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: format!("ncomp must be >= 1, got {}", ncomp),
+        });
     }
 
     let ncomp = ncomp.min(n).min(m);
@@ -247,7 +293,7 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Option<PlsRe
         );
     }
 
-    Some(PlsResult {
+    Ok(PlsResult {
         weights,
         scores,
         loadings,
@@ -401,7 +447,7 @@ mod tests {
         let (data, _) = generate_test_fdata(n, m);
 
         let result = fdata_to_pc_1d(&data, ncomp);
-        assert!(result.is_some());
+        assert!(result.is_ok());
 
         let fpca = result.unwrap();
         assert_eq!(fpca.singular_values.len(), ncomp);
@@ -463,12 +509,12 @@ mod tests {
         // Empty data
         let empty = FdMatrix::zeros(0, 50);
         let result = fdata_to_pc_1d(&empty, 3);
-        assert!(result.is_none());
+        assert!(result.is_err());
 
         // Zero components
         let (data, _) = generate_test_fdata(10, 50);
         let result = fdata_to_pc_1d(&data, 0);
-        assert!(result.is_none());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -516,7 +562,7 @@ mod tests {
         let y: Vec<f64> = (0..n).map(|i| (i as f64 / n as f64) + 0.1).collect();
 
         let result = fdata_to_pls_1d(&x, &y, ncomp);
-        assert!(result.is_some());
+        assert!(result.is_ok());
 
         let pls = result.unwrap();
         assert_eq!(pls.weights.shape(), (m, ncomp));
@@ -555,12 +601,12 @@ mod tests {
 
         // Wrong y length
         let result = fdata_to_pls_1d(&x, &[0.0; 5], 2);
-        assert!(result.is_none());
+        assert!(result.is_err());
 
         // Zero components
         let y = vec![0.0; 10];
         let result = fdata_to_pls_1d(&x, &y, 0);
-        assert!(result.is_none());
+        assert!(result.is_err());
     }
 
     // ============== Ridge regression tests ==============
@@ -732,8 +778,8 @@ mod tests {
         let m = 20;
         let data = FdMatrix::zeros(n, m);
         let result = fdata_to_pc_1d(&data, 2);
-        // Should not panic; may return Some with zero singular values
-        if let Some(res) = result {
+        // Should not panic; may return Ok with zero singular values
+        if let Ok(res) = result {
             assert_eq!(res.scores.nrows(), n);
             for &sv in &res.singular_values {
                 assert!(
@@ -746,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_n1_pca() {
-        // Single observation: PCA should return None (can't compute with n=1)
+        // Single observation: centering leaves all zeros, SVD may return trivial result
         let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
         let result = fdata_to_pc_1d(&data, 1);
         // With n=1, centering leaves all zeros, so SVD may fail or return trivial result

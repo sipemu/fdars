@@ -127,20 +127,71 @@ pub struct CvFdataResult {
 
 // ─── Unified CV Framework ────────────────────────────────────────────────────
 
+/// Create CV folds based on strategy (stratified or random).
+fn create_cv_folds(
+    n: usize,
+    y: &[f64],
+    n_folds: usize,
+    cv_type: CvType,
+    stratified: bool,
+    seed: u64,
+) -> Vec<usize> {
+    if stratified {
+        match cv_type {
+            CvType::Classification => {
+                let y_class: Vec<usize> = y.iter().map(|&v| v as usize).collect();
+                create_stratified_folds(n, &y_class, n_folds, seed)
+            }
+            CvType::Regression => {
+                let mut sorted_y: Vec<(usize, f64)> = y.iter().copied().enumerate().collect();
+                sorted_y.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                let n_bins = n_folds.min(n);
+                let bin_labels: Vec<usize> = {
+                    let mut labels = vec![0usize; n];
+                    for (rank, &(orig_i, _)) in sorted_y.iter().enumerate() {
+                        labels[orig_i] = (rank * n_bins / n).min(n_bins - 1);
+                    }
+                    labels
+                };
+                create_stratified_folds(n, &bin_labels, n_folds, seed)
+            }
+        }
+    } else {
+        create_folds(n, n_folds, seed)
+    }
+}
+
+/// Aggregate out-of-fold predictions across repetitions (mean and SD).
+fn aggregate_oof_predictions(all_oof: Vec<Vec<f64>>, n: usize) -> (Vec<f64>, Option<Vec<f64>>) {
+    let nrep = all_oof.len();
+    if nrep == 1 {
+        return (all_oof.into_iter().next().unwrap(), None);
+    }
+    let mut mean_oof = vec![0.0; n];
+    for oof in &all_oof {
+        for i in 0..n {
+            mean_oof[i] += oof[i];
+        }
+    }
+    for v in &mut mean_oof {
+        *v /= nrep as f64;
+    }
+
+    let mut sd_oof = vec![0.0; n];
+    for oof in &all_oof {
+        for i in 0..n {
+            let diff = oof[i] - mean_oof[i];
+            sd_oof[i] += diff * diff;
+        }
+    }
+    for v in &mut sd_oof {
+        *v = (*v / (nrep as f64 - 1.0).max(1.0)).sqrt();
+    }
+
+    (mean_oof, Some(sd_oof))
+}
+
 /// Generic k-fold + repeated cross-validation framework (R's `cv.fdata`).
-///
-/// The user provides fit/predict closures so this works with any model.
-///
-/// # Arguments
-/// * `data` — Functional data matrix (n × m)
-/// * `y` — Response vector (length n); for classification, should be 0, 1, 2, …
-/// * `fit_fn` — Closure that fits a model on training data and returns a boxed model
-/// * `predict_fn` — Closure that predicts from a model on test data
-/// * `n_folds` — Number of CV folds
-/// * `nrep` — Number of repetitions (1 = single CV, >1 = repeated)
-/// * `cv_type` — Whether this is regression or classification
-/// * `stratified` — Whether to stratify folds
-/// * `seed` — Random seed for fold assignment
 pub fn cv_fdata<F, P>(
     data: &FdMatrix,
     y: &[f64],
@@ -160,7 +211,6 @@ where
     let nrep = nrep.max(1);
     let n_folds = n_folds.max(2).min(n);
 
-    // Storage for repeated CV
     let mut all_oof: Vec<Vec<f64>> = Vec::with_capacity(nrep);
     let mut all_rep_metrics: Vec<CvMetrics> = Vec::with_capacity(nrep);
     let mut last_folds = vec![0usize; n];
@@ -168,33 +218,7 @@ where
 
     for r in 0..nrep {
         let rep_seed = seed.wrapping_add(r as u64);
-
-        // Create folds
-        let folds = if stratified {
-            match cv_type {
-                CvType::Classification => {
-                    let y_class: Vec<usize> = y.iter().map(|&v| v as usize).collect();
-                    create_stratified_folds(n, &y_class, n_folds, rep_seed)
-                }
-                CvType::Regression => {
-                    // Stratify by quantile bin
-                    let mut sorted_y: Vec<(usize, f64)> = y.iter().copied().enumerate().collect();
-                    sorted_y
-                        .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                    let n_bins = n_folds.min(n);
-                    let bin_labels: Vec<usize> = {
-                        let mut labels = vec![0usize; n];
-                        for (rank, &(orig_i, _)) in sorted_y.iter().enumerate() {
-                            labels[orig_i] = (rank * n_bins / n).min(n_bins - 1);
-                        }
-                        labels
-                    };
-                    create_stratified_folds(n, &bin_labels, n_folds, rep_seed)
-                }
-            }
-        } else {
-            create_folds(n, n_folds, rep_seed)
-        };
+        let folds = create_cv_folds(n, y, n_folds, cv_type, stratified, rep_seed);
 
         let mut oof_preds = vec![0.0; n];
         let mut fold_metrics = Vec::with_capacity(n_folds);
@@ -229,34 +253,7 @@ where
         last_fold_metrics = fold_metrics;
     }
 
-    // Aggregate across repetitions
-    let (final_oof, oof_sd) = if nrep == 1 {
-        (all_oof.into_iter().next().unwrap(), None)
-    } else {
-        let mut mean_oof = vec![0.0; n];
-        for oof in &all_oof {
-            for i in 0..n {
-                mean_oof[i] += oof[i];
-            }
-        }
-        for v in &mut mean_oof {
-            *v /= nrep as f64;
-        }
-
-        let mut sd_oof = vec![0.0; n];
-        for oof in &all_oof {
-            for i in 0..n {
-                let diff = oof[i] - mean_oof[i];
-                sd_oof[i] += diff * diff;
-            }
-        }
-        for v in &mut sd_oof {
-            *v = (*v / (nrep as f64 - 1.0).max(1.0)).sqrt();
-        }
-
-        (mean_oof, Some(sd_oof))
-    };
-
+    let (final_oof, oof_sd) = aggregate_oof_predictions(all_oof, n);
     let overall_metrics = compute_metrics(y, &final_oof, cv_type);
 
     CvFdataResult {

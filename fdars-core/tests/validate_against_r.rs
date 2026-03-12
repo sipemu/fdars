@@ -6156,7 +6156,7 @@ fn validate_conformal_jackknife_plus() {
         None,
         None,
         |tr_d, tr_y, tr_sc, te_d, te_sc| {
-            let fit = fdars_core::scalar_on_function::fregre_lm(tr_d, tr_y, tr_sc, 3)?;
+            let fit = fdars_core::scalar_on_function::fregre_lm(tr_d, tr_y, tr_sc, 3).ok()?;
             let train_pred = fit.fitted_values.clone();
             let test_pred = fdars_core::scalar_on_function::predict_fregre_lm(&fit, te_d, te_sc);
             Some((train_pred, test_pred))

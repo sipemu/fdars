@@ -1,6 +1,7 @@
 //! VIF, influence diagnostics, DFBETAS/DFFITS, prediction intervals, and LOO-CV.
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{
     build_design_matrix, cholesky_factor, cholesky_forward_back, compute_hat_diagonal, compute_xtx,
@@ -32,14 +33,30 @@ pub fn fpc_vif(
     fit: &FregreLmResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<VifResult> {
+) -> Result<VifResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
-    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n)
+    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n).ok_or_else(|| {
+        FdarError::ComputationFailed {
+            operation: "fpc_vif",
+            detail: "VIF computation failed (singular matrix or n <= p)".into(),
+        }
+    })
 }
 
 /// VIF for a functional logistic regression model.
@@ -47,14 +64,30 @@ pub fn fpc_vif_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<VifResult> {
+) -> Result<VifResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
-    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n)
+    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n).ok_or_else(|| {
+        FdarError::ComputationFailed {
+            operation: "fpc_vif_logistic",
+            detail: "VIF computation failed (singular matrix or n <= p)".into(),
+        }
+    })
 }
 
 pub(crate) fn compute_vif_from_scores(
@@ -146,10 +179,21 @@ pub fn influence_diagnostics(
     fit: &FregreLmResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<InfluenceDiagnostics> {
+) -> Result<InfluenceDiagnostics, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -157,11 +201,18 @@ pub fn influence_diagnostics(
     let p = design.ncols();
 
     if n <= p {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!(">{} rows (more than parameters)", p),
+            actual: format!("{}", n),
+        });
     }
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p)?;
+    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "influence_diagnostics",
+        detail: "Cholesky factorization failed".into(),
+    })?;
     let leverage = compute_hat_diagonal(&design, &l);
 
     let ss_res: f64 = fit.residuals.iter().map(|r| r * r).sum();
@@ -175,7 +226,7 @@ pub fn influence_diagnostics(
         cooks_distance[i] = if denom > 0.0 { e * e * h / denom } else { 0.0 };
     }
 
-    Some(InfluenceDiagnostics {
+    Ok(InfluenceDiagnostics {
         leverage,
         cooks_distance,
         p,
@@ -211,10 +262,21 @@ pub fn dfbetas_dffits(
     fit: &FregreLmResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<DfbetasDffitsResult> {
+) -> Result<DfbetasDffitsResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -222,11 +284,18 @@ pub fn dfbetas_dffits(
     let p = design.ncols();
 
     if n <= p {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!(">{} rows (more than parameters)", p),
+            actual: format!("{}", n),
+        });
     }
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p)?;
+    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "dfbetas_dffits",
+        detail: "Cholesky factorization failed".into(),
+    })?;
     let hat_diag = compute_hat_diagonal(&design, &l);
 
     let ss_res: f64 = fit.residuals.iter().map(|r| r * r).sum();
@@ -234,7 +303,10 @@ pub fn dfbetas_dffits(
     let s = mse.sqrt();
 
     if s < 1e-15 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "dfbetas_dffits",
+            detail: "residual standard error is near zero".into(),
+        });
     }
 
     let se = compute_coefficient_se(&l, mse, p);
@@ -256,7 +328,7 @@ pub fn dfbetas_dffits(
     let dfbetas_cutoff = 2.0 / (n as f64).sqrt();
     let dffits_cutoff = 2.0 * (p as f64 / n as f64).sqrt();
 
-    Some(DfbetasDffitsResult {
+    Ok(DfbetasDffitsResult {
         dfbetas,
         dffits,
         studentized_residuals,
@@ -341,17 +413,42 @@ pub fn prediction_intervals(
     new_data: &FdMatrix,
     new_scalar: Option<&FdMatrix>,
     confidence_level: f64,
-) -> Option<PredictionIntervalResult> {
+) -> Result<PredictionIntervalResult, FdarError> {
     let (n_train, m) = train_data.shape();
     let (n_new, m_new) = new_data.shape();
-    if confidence_level <= 0.0
-        || confidence_level >= 1.0
-        || n_train == 0
-        || m != fit.fpca.mean.len()
-        || n_new == 0
-        || m_new != m
-    {
-        return None;
+    if confidence_level <= 0.0 || confidence_level >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "confidence_level",
+            message: "must be in (0, 1)".into(),
+        });
+    }
+    if n_train == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "train_data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "train_data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_new == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m_new != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data",
+            expected: format!("{} columns (matching train)", m),
+            actual: format!("{}", m_new),
+        });
     }
     let ncomp = fit.ncomp;
 
@@ -359,11 +456,18 @@ pub fn prediction_intervals(
     let train_design = build_design_matrix(&train_scores, ncomp, train_scalar, n_train);
     let p = train_design.ncols();
     if n_train <= p {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "train_data",
+            expected: format!(">{} rows (more than parameters)", p),
+            actual: format!("{}", n_train),
+        });
     }
 
     let xtx = compute_xtx(&train_design);
-    let l = cholesky_factor(&xtx, p)?;
+    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "prediction_intervals",
+        detail: "Cholesky factorization failed".into(),
+    })?;
 
     let residual_se = fit.residual_se;
     let df = n_train - p;
@@ -389,7 +493,7 @@ pub fn prediction_intervals(
         prediction_se[i] = pse;
     }
 
-    Some(PredictionIntervalResult {
+    Ok(PredictionIntervalResult {
         predictions,
         lower,
         upper,
@@ -508,27 +612,55 @@ pub fn loo_cv_press(
     data: &FdMatrix,
     y: &[f64],
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<LooCvResult> {
+) -> Result<LooCvResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
     let design = build_design_matrix(&scores, ncomp, scalar_covariates, n);
     let p = design.ncols();
     if n <= p {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!(">{} rows (more than parameters)", p),
+            actual: format!("{}", n),
+        });
     }
 
     let xtx = compute_xtx(&design);
-    let l = cholesky_factor(&xtx, p)?;
+    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "loo_cv_press",
+        detail: "Cholesky factorization failed".into(),
+    })?;
     let leverage = compute_hat_diagonal(&design, &l);
 
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
     let tss: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
     if tss == 0.0 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "loo_cv_press",
+            detail: "total sum of squares is zero".into(),
+        });
     }
 
     let mut loo_residuals = vec![0.0; n];
@@ -541,7 +673,7 @@ pub fn loo_cv_press(
 
     let loo_r_squared = 1.0 - press / tss;
 
-    Some(LooCvResult {
+    Ok(LooCvResult {
         loo_residuals,
         press,
         loo_r_squared,

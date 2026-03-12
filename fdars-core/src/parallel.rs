@@ -154,3 +154,56 @@ pub use maybe_par_chunks_mut;
 pub use maybe_par_chunks_mut_enumerate;
 pub use slice_maybe_parallel;
 pub use slice_maybe_parallel_mut;
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
+    #[test]
+    fn test_iter_maybe_parallel_range() {
+        let mut result: Vec<usize> = iter_maybe_parallel!(0..10).map(|i| i * 2).collect();
+        result.sort(); // rayon may reorder
+        assert_eq!(result, vec![0, 2, 4, 6, 8, 10, 12, 14, 16, 18]);
+    }
+
+    #[test]
+    fn test_slice_maybe_parallel_map() {
+        let vec = vec![1.0_f64, 2.0, 3.0, 4.0, 5.0];
+        let mut result: Vec<f64> = slice_maybe_parallel!(vec).map(|&x| x * x).collect();
+        result.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(result, vec![1.0, 4.0, 9.0, 16.0, 25.0]);
+    }
+
+    #[test]
+    fn test_slice_maybe_parallel_mut() {
+        let mut vec = vec![1.0_f64, 2.0, 3.0, 4.0];
+        slice_maybe_parallel_mut!(vec).for_each(|x| *x *= 3.0);
+        assert_eq!(vec, vec![3.0, 6.0, 9.0, 12.0]);
+    }
+
+    #[test]
+    fn test_maybe_par_chunks_mut() {
+        let mut vec = vec![0.0_f64; 12];
+        maybe_par_chunks_mut!(vec, 4, |chunk: &mut [f64]| {
+            for x in chunk.iter_mut() {
+                *x = 1.0;
+            }
+        });
+        assert!(vec.iter().all(|&x| x == 1.0));
+    }
+
+    #[test]
+    fn test_maybe_par_chunks_mut_enumerate() {
+        let mut vec = vec![0.0_f64; 12];
+        maybe_par_chunks_mut_enumerate!(vec, 4, |(idx, chunk): (usize, &mut [f64])| {
+            for x in chunk.iter_mut() {
+                *x = idx as f64;
+            }
+        });
+        assert_eq!(
+            vec,
+            vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
+        );
+    }
+}

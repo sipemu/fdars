@@ -747,14 +747,14 @@ fn domain_selection_intervals_sorted_by_importance() {
 fn domain_selection_zero_threshold_returns_none() {
     let (data, y) = regression_data(60, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::domain_selection(&fit, 5, 0.0).is_none());
+    assert!(fdars_core::domain_selection(&fit, 5, 0.0).is_err());
 }
 
 #[test]
 fn domain_selection_window_exceeding_m_returns_none() {
     let (data, y) = regression_data(60, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::domain_selection(&fit, 31, 0.01).is_none());
+    assert!(fdars_core::domain_selection(&fit, 31, 0.01).is_err());
 }
 
 #[test]
@@ -1142,7 +1142,7 @@ fn prototype_criticism_too_many_returns_none() {
     let (data, y) = regression_data(20, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     // Requesting more prototypes than observations
-    assert!(fdars_core::prototype_criticism(&fit.fpca, 3, 21, 0).is_none());
+    assert!(fdars_core::prototype_criticism(&fit.fpca, 3, 21, 0).is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

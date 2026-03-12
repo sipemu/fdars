@@ -1,6 +1,7 @@
 //! Permutation importance, pointwise importance, and conditional permutation importance.
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
 use rand::prelude::*;
@@ -26,10 +27,34 @@ pub fn fpc_permutation_importance(
     y: &[f64],
     n_perm: usize,
     seed: u64,
-) -> Option<FpcPermutationImportance> {
+) -> Result<FpcPermutationImportance, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != fit.fpca.mean.len() || n_perm == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be > 0".into(),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -39,7 +64,10 @@ pub fn fpc_permutation_importance(
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
     if ss_tot == 0.0 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "fpc_permutation_importance",
+            detail: "total sum of squares is zero".into(),
+        });
     }
     let identity_idx: Vec<usize> = (0..n).collect();
     let ss_res_base = permuted_ss_res_linear(
@@ -71,7 +99,7 @@ pub fn fpc_permutation_importance(
         importance[k] = baseline - mean_perm;
     }
 
-    Some(FpcPermutationImportance {
+    Ok(FpcPermutationImportance {
         importance,
         baseline_metric: baseline,
         permuted_metric,
@@ -85,10 +113,34 @@ pub fn fpc_permutation_importance_logistic(
     y: &[f64],
     n_perm: usize,
     seed: u64,
-) -> Option<FpcPermutationImportance> {
+) -> Result<FpcPermutationImportance, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != fit.fpca.mean.len() || n_perm == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be > 0".into(),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -128,7 +180,7 @@ pub fn fpc_permutation_importance_logistic(
         importance[k] = baseline - mean_acc;
     }
 
-    Some(FpcPermutationImportance {
+    Ok(FpcPermutationImportance {
         importance,
         baseline_metric: baseline,
         permuted_metric,
@@ -180,12 +232,29 @@ pub struct PointwiseImportanceResult {
 /// Pointwise variable importance for a linear functional regression model.
 ///
 /// Measures how much X(t_j) contributes to prediction variance via the FPC decomposition.
-pub fn pointwise_importance(fit: &FregreLmResult) -> Option<PointwiseImportanceResult> {
+pub fn pointwise_importance(fit: &FregreLmResult) -> Result<PointwiseImportanceResult, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.rotation.nrows();
     let n = fit.fpca.scores.nrows();
-    if ncomp == 0 || m == 0 || n < 2 {
-        return None;
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "rotation",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "scores",
+            expected: ">=2 rows".into(),
+            actual: format!("{}", n),
+        });
     }
 
     let score_variance = compute_score_variance(&fit.fpca.scores, n, ncomp);
@@ -198,7 +267,7 @@ pub fn pointwise_importance(fit: &FregreLmResult) -> Option<PointwiseImportanceR
             m,
         );
 
-    Some(PointwiseImportanceResult {
+    Ok(PointwiseImportanceResult {
         importance,
         importance_normalized,
         component_importance,
@@ -209,12 +278,29 @@ pub fn pointwise_importance(fit: &FregreLmResult) -> Option<PointwiseImportanceR
 /// Pointwise variable importance for a functional logistic regression model.
 pub fn pointwise_importance_logistic(
     fit: &FunctionalLogisticResult,
-) -> Option<PointwiseImportanceResult> {
+) -> Result<PointwiseImportanceResult, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.rotation.nrows();
     let n = fit.fpca.scores.nrows();
-    if ncomp == 0 || m == 0 || n < 2 {
-        return None;
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "rotation",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "scores",
+            expected: ">=2 rows".into(),
+            actual: format!("{}", n),
+        });
     }
 
     let score_variance = compute_score_variance(&fit.fpca.scores, n, ncomp);
@@ -227,7 +313,7 @@ pub fn pointwise_importance_logistic(
             m,
         );
 
-    Some(PointwiseImportanceResult {
+    Ok(PointwiseImportanceResult {
         importance,
         importance_normalized,
         component_importance,
@@ -293,10 +379,40 @@ pub fn conditional_permutation_importance(
     n_bins: usize,
     n_perm: usize,
     seed: u64,
-) -> Option<ConditionalPermutationImportanceResult> {
+) -> Result<ConditionalPermutationImportanceResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != fit.fpca.mean.len() || n_perm == 0 || n_bins == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be > 0".into(),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be > 0".into(),
+        });
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
@@ -305,7 +421,10 @@ pub fn conditional_permutation_importance(
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
     if ss_tot == 0.0 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "conditional_permutation_importance",
+            detail: "total sum of squares is zero".into(),
+        });
     }
     let ss_res_base: f64 = fit.residuals.iter().map(|r| r * r).sum();
     let baseline = 1.0 - ss_res_base / ss_tot;
@@ -337,7 +456,7 @@ pub fn conditional_permutation_importance(
         unconditional_importance[k] = baseline - mean_uncond;
     }
 
-    Some(ConditionalPermutationImportanceResult {
+    Ok(ConditionalPermutationImportanceResult {
         importance,
         baseline_metric: baseline,
         permuted_metric,
@@ -354,10 +473,40 @@ pub fn conditional_permutation_importance_logistic(
     n_bins: usize,
     n_perm: usize,
     seed: u64,
-) -> Option<ConditionalPermutationImportanceResult> {
+) -> Result<ConditionalPermutationImportanceResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != fit.fpca.mean.len() || n_perm == 0 || n_bins == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be > 0".into(),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be > 0".into(),
+        });
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
@@ -403,7 +552,7 @@ pub fn conditional_permutation_importance_logistic(
         unconditional_importance[k] = baseline - mean_uncond;
     }
 
-    Some(ConditionalPermutationImportanceResult {
+    Ok(ConditionalPermutationImportanceResult {
         importance,
         baseline_metric: baseline,
         permuted_metric,

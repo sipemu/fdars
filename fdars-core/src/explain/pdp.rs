@@ -1,6 +1,7 @@
 //! PDP/ICE and beta decomposition.
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
 
@@ -35,15 +36,40 @@ pub fn functional_pdp(
     _scalar_covariates: Option<&FdMatrix>,
     component: usize,
     n_grid: usize,
-) -> Option<FunctionalPdpResult> {
+) -> Result<FunctionalPdpResult, FdarError> {
     let (n, m) = data.shape();
-    if component >= fit.ncomp
-        || n_grid < 2
-        || n == 0
-        || m != fit.fpca.mean.len()
-        || n != fit.fitted_values.len()
-    {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n != fit.fitted_values.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} rows matching fitted_values", fit.fitted_values.len()),
+            actual: format!("{}", n),
+        });
+    }
+    if component >= fit.ncomp {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!("component {} >= ncomp {}", component, fit.ncomp),
+        });
+    }
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: "must be >= 2".into(),
+        });
     }
 
     let ncomp = fit.ncomp;
@@ -61,7 +87,7 @@ pub fn functional_pdp(
 
     let pdp_curve = ice_to_pdp(&ice_curves, n, n_grid);
 
-    Some(FunctionalPdpResult {
+    Ok(FunctionalPdpResult {
         grid_values,
         pdp_curve,
         ice_curves,
@@ -85,16 +111,42 @@ pub fn functional_pdp_logistic(
     scalar_covariates: Option<&FdMatrix>,
     component: usize,
     n_grid: usize,
-) -> Option<FunctionalPdpResult> {
+) -> Result<FunctionalPdpResult, FdarError> {
     let (n, m) = data.shape();
-    if component >= fit.ncomp || n_grid < 2 || n == 0 || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if component >= fit.ncomp {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!("component {} >= ncomp {}", component, fit.ncomp),
+        });
+    }
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: "must be >= 2".into(),
+        });
     }
 
     let ncomp = fit.ncomp;
     let p_scalar = fit.gamma.len();
     if p_scalar > 0 && scalar_covariates.is_none() {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "scalar_covariates",
+            message: "required when model has scalar covariates".into(),
+        });
     }
 
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -120,7 +172,7 @@ pub fn functional_pdp_logistic(
 
     let pdp_curve = ice_to_pdp(&ice_curves, n, n_grid);
 
-    Some(FunctionalPdpResult {
+    Ok(FunctionalPdpResult {
         grid_values,
         pdp_curve,
         ice_curves,
@@ -143,21 +195,43 @@ pub struct BetaDecomposition {
 }
 
 /// Decompose beta(t) = sum_k coef_k * phi_k(t) for a linear functional regression.
-pub fn beta_decomposition(fit: &FregreLmResult) -> Option<BetaDecomposition> {
+pub fn beta_decomposition(fit: &FregreLmResult) -> Result<BetaDecomposition, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.mean.len();
-    if ncomp == 0 || m == 0 {
-        return None;
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "fpca.mean",
+            expected: ">0 length".into(),
+            actual: "0".into(),
+        });
     }
     decompose_beta(&fit.coefficients, &fit.fpca.rotation, ncomp, m)
 }
 
 /// Decompose beta(t) for a functional logistic regression.
-pub fn beta_decomposition_logistic(fit: &FunctionalLogisticResult) -> Option<BetaDecomposition> {
+pub fn beta_decomposition_logistic(
+    fit: &FunctionalLogisticResult,
+) -> Result<BetaDecomposition, FdarError> {
     let ncomp = fit.ncomp;
     let m = fit.fpca.mean.len();
-    if ncomp == 0 || m == 0 {
-        return None;
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "fpca.mean",
+            expected: ">0 length".into(),
+            actual: "0".into(),
+        });
     }
     decompose_beta(&fit.coefficients, &fit.fpca.rotation, ncomp, m)
 }
@@ -167,7 +241,7 @@ fn decompose_beta(
     rotation: &FdMatrix,
     ncomp: usize,
     m: usize,
-) -> Option<BetaDecomposition> {
+) -> Result<BetaDecomposition, FdarError> {
     let mut components = Vec::with_capacity(ncomp);
     let mut coefs = Vec::with_capacity(ncomp);
     let mut norms_sq = Vec::with_capacity(ncomp);
@@ -188,7 +262,7 @@ fn decompose_beta(
         vec![0.0; ncomp]
     };
 
-    Some(BetaDecomposition {
+    Ok(BetaDecomposition {
         components,
         coefficients: coefs,
         variance_proportion,
@@ -218,9 +292,23 @@ pub struct SignificantRegion {
 }
 
 /// Identify contiguous regions where the CI `[lower, upper]` excludes zero.
-pub fn significant_regions(lower: &[f64], upper: &[f64]) -> Option<Vec<SignificantRegion>> {
-    if lower.len() != upper.len() || lower.is_empty() {
-        return None;
+pub fn significant_regions(
+    lower: &[f64],
+    upper: &[f64],
+) -> Result<Vec<SignificantRegion>, FdarError> {
+    if lower.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "lower",
+            expected: ">0 length".into(),
+            actual: "0".into(),
+        });
+    }
+    if lower.len() != upper.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "upper",
+            expected: format!("{} (matching lower)", lower.len()),
+            actual: format!("{}", upper.len()),
+        });
     }
     let n = lower.len();
     let mut regions = Vec::new();
@@ -241,7 +329,7 @@ pub fn significant_regions(lower: &[f64], upper: &[f64]) -> Option<Vec<Significa
             i += 1;
         }
     }
-    Some(regions)
+    Ok(regions)
 }
 
 /// Build CI from beta(t) +/- z * SE, then find significant regions.
@@ -249,9 +337,20 @@ pub fn significant_regions_from_se(
     beta_t: &[f64],
     beta_se: &[f64],
     z_alpha: f64,
-) -> Option<Vec<SignificantRegion>> {
-    if beta_t.len() != beta_se.len() || beta_t.is_empty() {
-        return None;
+) -> Result<Vec<SignificantRegion>, FdarError> {
+    if beta_t.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "beta_t",
+            expected: ">0 length".into(),
+            actual: "0".into(),
+        });
+    }
+    if beta_t.len() != beta_se.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "beta_se",
+            expected: format!("{} (matching beta_t)", beta_t.len()),
+            actual: format!("{}", beta_se.len()),
+        });
     }
     let lower: Vec<f64> = beta_t
         .iter()

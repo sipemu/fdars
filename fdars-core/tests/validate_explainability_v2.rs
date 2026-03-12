@@ -94,7 +94,7 @@ fn beta_decomposition_logistic_reconstructs() {
 fn beta_decomposition_with_different_ncomp() {
     let (data, y) = generate_regression_data(60, 30, 42);
     for ncomp in [2, 3, 4] {
-        if let Some(fit) = fdars_core::fregre_lm(&data, &y, None, ncomp) {
+        if let Ok(fit) = fdars_core::fregre_lm(&data, &y, None, ncomp) {
             let dec = fdars_core::beta_decomposition(&fit).unwrap();
             assert_eq!(dec.components.len(), ncomp);
             assert_eq!(dec.coefficients.len(), ncomp);
@@ -365,12 +365,12 @@ fn h_statistic_symmetry_property() {
 fn h_statistic_rejects_same_component() {
     let (data, y) = generate_regression_data(40, 30, 42);
     let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 0, 10).is_none());
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 0, 10).is_err());
 }
 
 #[test]
 fn h_statistic_rejects_invalid_component() {
     let (data, y) = generate_regression_data(40, 30, 42);
     let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_none());
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_err());
 }

@@ -10,6 +10,7 @@
 //! - [`fmm_predict`] — Predict curves for new subjects
 //! - [`fmm_test_fixed`] — Hypothesis test on fixed effects
 
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 
@@ -70,11 +71,28 @@ pub fn fmm(
     subject_ids: &[usize],
     covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<FmmResult> {
+) -> Result<FmmResult, FdarError> {
     let n_total = data.nrows();
     let m = data.ncols();
-    if n_total == 0 || m == 0 || subject_ids.len() != n_total || ncomp == 0 {
-        return None;
+    if n_total == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{} x {}", n_total, m),
+        });
+    }
+    if subject_ids.len() != n_total {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_ids",
+            expected: format!("length {}", n_total),
+            actual: format!("length {}", subject_ids.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be >= 1".to_string(),
+        });
     }
 
     // Determine unique subjects
@@ -142,7 +160,7 @@ pub fn fmm(
         .map(|&sv| sv * sv / n_total as f64)
         .collect();
 
-    Some(FmmResult {
+    Ok(FmmResult {
         mean_function: fpca.mean,
         beta_functions,
         random_effects,
@@ -749,12 +767,23 @@ pub fn fmm_test_fixed(
     ncomp: usize,
     n_perm: usize,
     seed: u64,
-) -> Option<FmmTestResult> {
+) -> Result<FmmTestResult, FdarError> {
     let n_total = data.nrows();
     let m = data.ncols();
     let p = covariates.ncols();
-    if n_total == 0 || p == 0 {
-        return None;
+    if n_total == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{} rows", n_total),
+        });
+    }
+    if p == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "covariates",
+            expected: "at least 1 column".to_string(),
+            actual: "0 columns".to_string(),
+        });
     }
 
     // Fit observed model
@@ -776,7 +805,7 @@ pub fn fmm_test_fixed(
         m,
     );
 
-    Some(FmmTestResult {
+    Ok(FmmTestResult {
         f_statistics,
         p_values,
     })
@@ -816,7 +845,7 @@ fn permutation_test(
         perm_indices.shuffle(&mut rng);
         let perm_cov = permute_rows(covariates, &perm_indices);
 
-        if let Some(perm_result) = fmm(data, subject_ids, Some(&perm_cov), ncomp) {
+        if let Ok(perm_result) = fmm(data, subject_ids, Some(&perm_cov), ncomp) {
             let perm_stats = compute_integrated_beta_sq(&perm_result.beta_functions, p, m);
             for j in 0..p {
                 if perm_stats[j] >= observed_stats[j] {
@@ -1034,11 +1063,11 @@ mod tests {
     #[test]
     fn test_fmm_invalid_input() {
         let data = FdMatrix::zeros(0, 0);
-        assert!(fmm(&data, &[], None, 1).is_none());
+        assert!(fmm(&data, &[], None, 1).is_err());
 
         let data = FdMatrix::zeros(10, 50);
         let ids = vec![0; 5]; // wrong length
-        assert!(fmm(&data, &ids, None, 1).is_none());
+        assert!(fmm(&data, &ids, None, 1).is_err());
     }
 
     #[test]

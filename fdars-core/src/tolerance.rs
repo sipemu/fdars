@@ -11,6 +11,7 @@
 //! - [`scb_mean_degras`] — Simultaneous confidence band for the mean (Degras method)
 //! - [`exponential_family_tolerance_band`] — Tolerance band for exponential family data
 
+use crate::error::FdarError;
 use crate::fdata::mean_1d;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -313,7 +314,7 @@ fn fpca_simultaneous_boot(
 /// * `seed` — Random seed for reproducibility
 ///
 /// # Returns
-/// `Some(ToleranceBand)` on success, `None` if inputs are invalid or FPCA fails.
+/// `Ok(ToleranceBand)` on success, or `Err(FdarError)` if inputs are invalid or FPCA fails.
 ///
 /// # Examples
 ///
@@ -335,16 +336,38 @@ pub fn fpca_tolerance_band(
     coverage: f64,
     band_type: BandType,
     seed: u64,
-) -> Option<ToleranceBand> {
+) -> Result<ToleranceBand, FdarError> {
     let (n, m) = data.shape();
-    if !valid_band_params(n, m, ncomp, nb, coverage) {
-        return None;
+    if n < 3 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows and 1 column".to_string(),
+            actual: format!("{} x {}", n, m),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if nb == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nb",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if coverage <= 0.0 || coverage >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "coverage",
+            message: format!("must be in (0, 1), got {}", coverage),
+        });
     }
 
     let fpca = fdata_to_pc_1d(data, ncomp)?;
     let stats = compute_score_stats(&fpca.scores, n);
 
-    Some(match band_type {
+    Ok(match band_type {
         BandType::Pointwise => fpca_pointwise_boot(&fpca, &stats, n, m, nb, coverage, seed),
         BandType::Simultaneous => {
             fpca_simultaneous_boot(data, &fpca, &stats, n, m, nb, coverage, seed)
@@ -708,7 +731,8 @@ pub fn exponential_family_tolerance_band(
         coverage,
         BandType::Simultaneous,
         seed,
-    )?;
+    )
+    .ok()?;
     Some(inverse_link_band(band, family))
 }
 
@@ -732,7 +756,7 @@ pub fn exponential_family_tolerance_band(
 /// * `seed` — Random seed for reproducibility
 ///
 /// # Returns
-/// `Some(ToleranceBand)` in the aligned space, `None` if inputs are invalid.
+/// `Some(ToleranceBand)` in the aligned space, or `None` if inputs are invalid.
 ///
 /// # Examples
 ///
@@ -765,7 +789,7 @@ pub fn elastic_tolerance_band(
     let karcher = crate::alignment::karcher_mean(data, argvals, max_iter, 1e-4, 0.0);
 
     // Step 2: FPCA tolerance band on aligned data
-    fpca_tolerance_band(&karcher.aligned_data, ncomp, nb, coverage, band_type, seed)
+    fpca_tolerance_band(&karcher.aligned_data, ncomp, nb, coverage, band_type, seed).ok()
 }
 
 // ─── Equivalence Test (TOST) ────────────────────────────────────────────────
@@ -1185,13 +1209,13 @@ mod tests {
     #[test]
     fn test_fpca_band_invalid_input() {
         let data = make_test_data();
-        assert!(fpca_tolerance_band(&data, 0, 100, 0.95, BandType::Pointwise, 42).is_none());
-        assert!(fpca_tolerance_band(&data, 3, 0, 0.95, BandType::Pointwise, 42).is_none());
-        assert!(fpca_tolerance_band(&data, 3, 100, 0.0, BandType::Pointwise, 42).is_none());
-        assert!(fpca_tolerance_band(&data, 3, 100, 1.0, BandType::Pointwise, 42).is_none());
+        assert!(fpca_tolerance_band(&data, 0, 100, 0.95, BandType::Pointwise, 42).is_err());
+        assert!(fpca_tolerance_band(&data, 3, 0, 0.95, BandType::Pointwise, 42).is_err());
+        assert!(fpca_tolerance_band(&data, 3, 100, 0.0, BandType::Pointwise, 42).is_err());
+        assert!(fpca_tolerance_band(&data, 3, 100, 1.0, BandType::Pointwise, 42).is_err());
 
         let tiny = FdMatrix::zeros(2, 5);
-        assert!(fpca_tolerance_band(&tiny, 1, 10, 0.95, BandType::Pointwise, 42).is_none());
+        assert!(fpca_tolerance_band(&tiny, 1, 10, 0.95, BandType::Pointwise, 42).is_err());
     }
 
     // ── Conformal prediction band tests ──
@@ -1986,7 +2010,7 @@ mod tests {
         // Constant data: FPCA tolerance band should be tight around 5.0
         let band = fpca_tolerance_band(&data, 2, 200, 0.95, BandType::Pointwise, 42);
         // Constant data may cause FPCA to fail (zero variance), so handle both cases
-        if let Some(band) = band {
+        if let Ok(band) = band {
             assert_eq!(band.lower.len(), m);
             assert_eq!(band.upper.len(), m);
             for j in 0..m {
@@ -2004,7 +2028,7 @@ mod tests {
         let data_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
         let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
         let band = fpca_tolerance_band(&data, 2, 100, 0.90, BandType::Pointwise, 42);
-        if let Some(band) = band {
+        if let Ok(band) = band {
             assert_eq!(band.lower.len(), m);
             assert_eq!(band.upper.len(), m);
         }

@@ -218,8 +218,8 @@ mod tests {
     fn test_functional_pdp_invalid_component() {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(functional_pdp(&fit, &data, None, 3, 10).is_none());
-        assert!(functional_pdp(&fit, &data, None, 0, 1).is_none());
+        assert!(functional_pdp(&fit, &data, None, 3, 10).is_err());
+        assert!(functional_pdp(&fit, &data, None, 0, 1).is_err());
     }
 
     #[test]
@@ -228,7 +228,7 @@ mod tests {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
         let wrong_data = FdMatrix::zeros(30, 40);
-        assert!(functional_pdp(&fit, &wrong_data, None, 0, 10).is_none());
+        assert!(functional_pdp(&fit, &wrong_data, None, 0, 10).is_err());
     }
 
     #[test]
@@ -237,7 +237,7 @@ mod tests {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
         let empty_data = FdMatrix::zeros(0, 50);
-        assert!(functional_pdp(&fit, &empty_data, None, 0, 10).is_none());
+        assert!(functional_pdp(&fit, &empty_data, None, 0, 10).is_err());
     }
 
     #[test]
@@ -255,7 +255,7 @@ mod tests {
             .collect();
         let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
         let wrong_data = FdMatrix::zeros(30, 40);
-        assert!(functional_pdp_logistic(&fit, &wrong_data, None, 0, 10).is_none());
+        assert!(functional_pdp_logistic(&fit, &wrong_data, None, 0, 10).is_err());
     }
 
     #[test]
@@ -273,7 +273,7 @@ mod tests {
             .collect();
         let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
         let empty_data = FdMatrix::zeros(0, 50);
-        assert!(functional_pdp_logistic(&fit, &empty_data, None, 0, 10).is_none());
+        assert!(functional_pdp_logistic(&fit, &empty_data, None, 0, 10).is_err());
     }
 
     // Beta decomposition tests
@@ -555,7 +555,7 @@ mod tests {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
         let wrong_data = FdMatrix::zeros(30, 40);
-        assert!(influence_diagnostics(&fit, &wrong_data, None).is_none());
+        assert!(influence_diagnostics(&fit, &wrong_data, None).is_err());
     }
 
     // Friedman H-statistic tests
@@ -642,7 +642,7 @@ mod tests {
     fn test_h_statistic_same_component_none() {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(friedman_h_statistic(&fit, &data, 1, 1, 10).is_none());
+        assert!(friedman_h_statistic(&fit, &data, 1, 1, 10).is_err());
     }
 
     // Pointwise importance tests
@@ -931,7 +931,7 @@ mod tests {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
         let empty = FdMatrix::zeros(0, 50);
-        assert!(fpc_shap_values(&fit, &empty, None).is_none());
+        assert!(fpc_shap_values(&fit, &empty, None).is_err());
     }
 
     // DFBETAS / DFFITS tests
@@ -1003,7 +1003,7 @@ mod tests {
     fn test_dfbetas_underdetermined_returns_none() {
         let (data, y) = generate_test_data(3, 50, 42);
         let fit = fregre_lm(&data, &y, None, 2).unwrap();
-        assert!(dfbetas_dffits(&fit, &data, None).is_none());
+        assert!(dfbetas_dffits(&fit, &data, None).is_err());
     }
 
     #[test]
@@ -1120,9 +1120,9 @@ mod tests {
     fn test_prediction_interval_invalid_confidence_returns_none() {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(prediction_intervals(&fit, &data, None, &data, None, 0.0).is_none());
-        assert!(prediction_intervals(&fit, &data, None, &data, None, 1.0).is_none());
-        assert!(prediction_intervals(&fit, &data, None, &data, None, -0.5).is_none());
+        assert!(prediction_intervals(&fit, &data, None, &data, None, 0.0).is_err());
+        assert!(prediction_intervals(&fit, &data, None, &data, None, 1.0).is_err());
+        assert!(prediction_intervals(&fit, &data, None, &data, None, -0.5).is_err());
     }
 
     // ALE tests
@@ -1223,8 +1223,8 @@ mod tests {
     fn test_ale_invalid_returns_none() {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(fpc_ale(&fit, &data, None, 5, 10).is_none());
-        assert!(fpc_ale(&fit, &data, None, 0, 0).is_none());
+        assert!(fpc_ale(&fit, &data, None, 5, 10).is_err());
+        assert!(fpc_ale(&fit, &data, None, 0, 0).is_err());
     }
 
     // LOO-CV / PRESS tests
@@ -1567,7 +1567,7 @@ mod tests {
     fn test_counterfactual_invalid_obs_none() {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(counterfactual_regression(&fit, &data, None, 100, 0.0).is_none());
+        assert!(counterfactual_regression(&fit, &data, None, 100, 0.0).is_err());
     }
 
     // Prototype/criticism tests
@@ -1660,9 +1660,9 @@ mod tests {
     fn test_lime_invalid_none() {
         let (data, y) = generate_test_data(30, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(lime_explanation(&fit, &data, None, 100, 100, 1.0, 42).is_none());
-        assert!(lime_explanation(&fit, &data, None, 0, 0, 1.0, 42).is_none());
-        assert!(lime_explanation(&fit, &data, None, 0, 100, 0.0, 42).is_none());
+        assert!(lime_explanation(&fit, &data, None, 100, 100, 1.0, 42).is_err());
+        assert!(lime_explanation(&fit, &data, None, 0, 0, 1.0, 42).is_err());
+        assert!(lime_explanation(&fit, &data, None, 0, 100, 0.0, 42).is_err());
     }
 
     // ECE tests
@@ -1841,7 +1841,7 @@ mod tests {
             DepthType::FunctionalSpatial,
         ] {
             let rd = regression_depth(&fit, &data, &y, None, 10, dt, 42);
-            assert!(rd.is_some(), "Depth type {:?} should work", dt);
+            assert!(rd.is_ok(), "Depth type {:?} should work", dt);
         }
     }
 
@@ -1920,6 +1920,6 @@ mod tests {
     fn test_anchor_invalid_obs_none() {
         let (data, y) = generate_test_data(40, 50, 42);
         let fit = fregre_lm(&data, &y, None, 3).unwrap();
-        assert!(anchor_explanation(&fit, &data, None, 100, 0.8, 5).is_none());
+        assert!(anchor_explanation(&fit, &data, None, 100, 0.8, 5).is_err());
     }
 }

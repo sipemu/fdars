@@ -297,14 +297,14 @@ fn significant_regions_all_zero_beta_no_regions() {
 
 #[test]
 fn significant_regions_empty_inputs() {
-    assert!(fdars_core::significant_regions(&[], &[]).is_none());
-    assert!(fdars_core::significant_regions_from_se(&[], &[], 1.96).is_none());
+    assert!(fdars_core::significant_regions(&[], &[]).is_err());
+    assert!(fdars_core::significant_regions_from_se(&[], &[], 1.96).is_err());
 }
 
 #[test]
 fn significant_regions_mismatched_lengths() {
-    assert!(fdars_core::significant_regions(&[1.0, 2.0], &[3.0]).is_none());
-    assert!(fdars_core::significant_regions_from_se(&[1.0], &[1.0, 2.0], 1.96).is_none());
+    assert!(fdars_core::significant_regions(&[1.0, 2.0], &[3.0]).is_err());
+    assert!(fdars_core::significant_regions_from_se(&[1.0], &[1.0, 2.0], 1.96).is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -404,7 +404,7 @@ fn perm_importance_logistic_accuracy_in_range() {
 fn perm_importance_with_many_components() {
     // Use 4 components with sufficient data
     let (data, y) = regression_data(100, 30, 42);
-    if let Some(fit) = fregre_lm(&data, &y, None, 4) {
+    if let Ok(fit) = fregre_lm(&data, &y, None, 4) {
         let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 30, 42).unwrap();
         assert_eq!(imp.importance.len(), 4);
         assert_eq!(imp.permuted_metric.len(), 4);
@@ -557,8 +557,8 @@ fn influence_returns_none_for_underdetermined_system() {
     let fit = fregre_lm(&data, &y, None, 2).unwrap();
     // p = 1 + 2 = 3, n = 3, so n <= p
     assert!(
-        fdars_core::influence_diagnostics(&fit, &data, None).is_none(),
-        "Should return None when n <= p"
+        fdars_core::influence_diagnostics(&fit, &data, None).is_err(),
+        "Should return Err when n <= p"
     );
 }
 
@@ -695,15 +695,15 @@ fn h_statistic_grid_resolution_effect() {
 fn h_statistic_rejects_out_of_range_component() {
     let (data, y) = regression_data(40, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_none());
-    assert!(fdars_core::friedman_h_statistic(&fit, &data, 3, 0, 10).is_none());
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_err());
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 3, 0, 10).is_err());
 }
 
 #[test]
 fn h_statistic_rejects_small_grid() {
     let (data, y) = regression_data(40, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 1, 1).is_none());
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 1, 1).is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

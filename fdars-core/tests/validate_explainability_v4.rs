@@ -422,7 +422,7 @@ fn test_counterfactual_logistic_flips_class() {
 fn test_counterfactual_invalid_obs_none() {
     let (data, y) = generate_test_data(40, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(counterfactual_regression(&fit, &data, None, 100, 0.0).is_none());
+    assert!(counterfactual_regression(&fit, &data, None, 100, 0.0).is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -534,10 +534,10 @@ fn test_lime_logistic_shape() {
 fn test_lime_invalid_none() {
     let (data, y) = generate_test_data(40, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(lime_explanation(&fit, &data, None, 100, 100, 1.0, 42).is_none());
-    assert!(lime_explanation(&fit, &data, None, 0, 0, 1.0, 42).is_none());
-    assert!(lime_explanation(&fit, &data, None, 0, 100, 0.0, 42).is_none());
-    assert!(lime_explanation(&fit, &data, None, 0, 100, -1.0, 42).is_none());
+    assert!(lime_explanation(&fit, &data, None, 100, 100, 1.0, 42).is_err());
+    assert!(lime_explanation(&fit, &data, None, 0, 0, 1.0, 42).is_err());
+    assert!(lime_explanation(&fit, &data, None, 0, 100, 0.0, 42).is_err());
+    assert!(lime_explanation(&fit, &data, None, 0, 100, -1.0, 42).is_err());
 }
 
 #[test]

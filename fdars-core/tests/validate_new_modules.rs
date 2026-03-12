@@ -966,7 +966,7 @@ mod classification {
     #[test]
     fn test_kernel_classifier_valid() {
         let (data, labels, argvals) = generate_classification_data(20, 3, 51, 509);
-        let result = fclassif_kernel(&data, &argvals, &labels, None, 0.5, 0.5).unwrap();
+        let result = fclassif_kernel(&data, &labels, &argvals, None, 0.5, 0.5).unwrap();
 
         assert!(
             result.accuracy > 1.0 / 3.0,

@@ -6,6 +6,7 @@
 //!
 //! The generic functions delegate to internal helpers from [`crate::explain`].
 
+use crate::error::FdarError;
 use crate::explain::{
     accumulate_kernel_shap_sample, anchor_beam_search, build_coalition_scores,
     build_stability_result, clone_scores_matrix, compute_ale, compute_column_means,
@@ -20,6 +21,7 @@ use crate::explain::{
     FunctionalSaliencyResult, LimeResult, PrototypeCriticismResult, SobolIndicesResult,
     StabilityAnalysisResult, VifResult,
 };
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{
     fregre_lm, functional_logistic, sigmoid, FregreLmResult, FunctionalLogisticResult,
@@ -42,7 +44,7 @@ pub enum TaskType {
 ///
 /// Implement this for a model that projects functional data onto FPC scores
 /// and produces a scalar prediction (value, probability, or class label).
-pub trait FpcPredictor {
+pub trait FpcPredictor: Send + Sync {
     /// Mean function from FPCA (length m).
     fn fpca_mean(&self) -> &[f64];
 
@@ -262,10 +264,33 @@ pub fn generic_pdp(
     scalar_covariates: Option<&FdMatrix>,
     component: usize,
     n_grid: usize,
-) -> Option<FunctionalPdpResult> {
+) -> Result<FunctionalPdpResult, FdarError> {
     let (n, m) = data.shape();
-    if component >= model.ncomp() || n_grid < 2 || n == 0 || m != model.fpca_mean().len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if component >= model.ncomp() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!("component {} >= ncomp {}", component, model.ncomp()),
+        });
+    }
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: format!("n_grid must be >= 2, got {}", n_grid),
+        });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
@@ -288,7 +313,7 @@ pub fn generic_pdp(
 
     let pdp_curve = ice_to_pdp(&ice_curves, n, n_grid);
 
-    Some(FunctionalPdpResult {
+    Ok(FunctionalPdpResult {
         grid_values,
         pdp_curve,
         ice_curves,
@@ -309,36 +334,64 @@ pub fn generic_permutation_importance(
     y: &[f64],
     n_perm: usize,
     seed: u64,
-) -> Option<FpcPermutationImportance> {
+) -> Result<FpcPermutationImportance, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != model.fpca_mean().len() || n_perm == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: n.to_string(),
+            actual: y.len().to_string(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "n_perm must be > 0".into(),
+        });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
     let baseline = compute_baseline_metric(model, &scores, y, n);
 
-    let mut rng = StdRng::seed_from_u64(seed);
-    let mut importance = vec![0.0; ncomp];
-    let mut permuted_metric = vec![0.0; ncomp];
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
 
-    for k in 0..ncomp {
-        let mut sum_metric = 0.0;
-        for _ in 0..n_perm {
-            let mut perm_scores = clone_scores_matrix(&scores, n, ncomp);
-            let mut idx: Vec<usize> = (0..n).collect();
-            idx.shuffle(&mut rng);
-            for i in 0..n {
-                perm_scores[(i, k)] = scores[(idx[i], k)];
+    let results: Vec<(f64, f64)> = iter_maybe_parallel!(0..ncomp)
+        .map(|k| {
+            let mut rng_k = StdRng::seed_from_u64(seed.wrapping_add(k as u64));
+            let mut sum_metric = 0.0;
+            for _ in 0..n_perm {
+                let mut perm_scores = clone_scores_matrix(&scores, n, ncomp);
+                let mut idx: Vec<usize> = (0..n).collect();
+                idx.shuffle(&mut rng_k);
+                for i in 0..n {
+                    perm_scores[(i, k)] = scores[(idx[i], k)];
+                }
+                sum_metric += compute_metric_from_score_matrix(model, &perm_scores, y, n);
             }
-            sum_metric += compute_metric_from_score_matrix(model, &perm_scores, y, n);
-        }
-        let mean_perm = sum_metric / n_perm as f64;
-        permuted_metric[k] = mean_perm;
-        importance[k] = baseline - mean_perm;
-    }
+            let mean_perm = sum_metric / n_perm as f64;
+            (baseline - mean_perm, mean_perm)
+        })
+        .collect();
 
-    Some(FpcPermutationImportance {
+    let importance: Vec<f64> = results.iter().map(|&(imp, _)| imp).collect();
+    let permuted_metric: Vec<f64> = results.iter().map(|&(_, pm)| pm).collect();
+
+    Ok(FpcPermutationImportance {
         importance,
         baseline_metric: baseline,
         permuted_metric,
@@ -357,17 +410,43 @@ pub fn generic_friedman_h(
     component_j: usize,
     component_k: usize,
     n_grid: usize,
-) -> Option<FriedmanHResult> {
+) -> Result<FriedmanHResult, FdarError> {
     if component_j == component_k {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "component_j/component_k",
+            message: "component_j and component_k must differ".into(),
+        });
     }
     let (n, m) = data.shape();
     let ncomp = model.ncomp();
-    if n == 0 || m != model.fpca_mean().len() || n_grid < 2 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: format!("n_grid must be >= 2, got {}", n_grid),
+        });
     }
     if component_j >= ncomp || component_k >= ncomp {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!(
+                "component_j={} or component_k={} >= ncomp={}",
+                component_j, component_k, ncomp
+            ),
+        });
     }
 
     let scores = model.project(data);
@@ -448,7 +527,7 @@ pub fn generic_friedman_h(
 
     let h_squared = crate::explain::compute_h_squared(&pdp_2d, &pdp_j, &pdp_k, f_bar, n_grid);
 
-    Some(FriedmanHResult {
+    Ok(FriedmanHResult {
         component_j,
         component_k,
         h_squared,
@@ -472,14 +551,34 @@ pub fn generic_shap_values(
     scalar_covariates: Option<&FdMatrix>,
     n_samples: usize,
     seed: u64,
-) -> Option<FpcShapValues> {
+) -> Result<FpcShapValues, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != model.fpca_mean().len() || n_samples == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "n_samples must be > 0".into(),
+        });
     }
     let ncomp = model.ncomp();
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
     }
     let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
     let scores = model.project(data);
@@ -495,38 +594,51 @@ pub fn generic_shap_values(
         },
     );
 
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
+    let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let mut rng_i = StdRng::seed_from_u64(seed.wrapping_add(i as u64));
+            let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
+            let obs_z = get_obs_scalar(scalar_covariates, i, p_scalar, &mean_z);
+
+            let mut ata = vec![0.0; ncomp * ncomp];
+            let mut atb = vec![0.0; ncomp];
+
+            for _ in 0..n_samples {
+                let (coalition, s_size) = sample_random_coalition(&mut rng_i, ncomp);
+                let weight = shapley_kernel_weight(ncomp, s_size);
+                let coal_scores = build_coalition_scores(&coalition, &obs_scores, &mean_scores);
+
+                let f_coal = model.predict_from_scores(
+                    &coal_scores,
+                    if obs_z.is_empty() { None } else { Some(&obs_z) },
+                );
+                let f_base = model.predict_from_scores(
+                    &mean_scores,
+                    if obs_z.is_empty() { None } else { Some(&obs_z) },
+                );
+                let y_val = f_coal - f_base;
+
+                accumulate_kernel_shap_sample(&mut ata, &mut atb, &coalition, weight, y_val, ncomp);
+            }
+
+            // Solve locally and return row
+            let mut local_values = FdMatrix::zeros(1, ncomp);
+            solve_kernel_shap_obs(&mut ata, &atb, ncomp, &mut local_values, 0);
+            (0..ncomp).map(|k| local_values[(0, k)]).collect()
+        })
+        .collect();
+
     let mut values = FdMatrix::zeros(n, ncomp);
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    for i in 0..n {
-        let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
-        let obs_z = get_obs_scalar(scalar_covariates, i, p_scalar, &mean_z);
-
-        let mut ata = vec![0.0; ncomp * ncomp];
-        let mut atb = vec![0.0; ncomp];
-
-        for _ in 0..n_samples {
-            let (coalition, s_size) = sample_random_coalition(&mut rng, ncomp);
-            let weight = shapley_kernel_weight(ncomp, s_size);
-            let coal_scores = build_coalition_scores(&coalition, &obs_scores, &mean_scores);
-
-            let f_coal = model.predict_from_scores(
-                &coal_scores,
-                if obs_z.is_empty() { None } else { Some(&obs_z) },
-            );
-            let f_base = model.predict_from_scores(
-                &mean_scores,
-                if obs_z.is_empty() { None } else { Some(&obs_z) },
-            );
-            let y_val = f_coal - f_base;
-
-            accumulate_kernel_shap_sample(&mut ata, &mut atb, &coalition, weight, y_val, ncomp);
+    for (i, row) in rows.iter().enumerate() {
+        for (k, &v) in row.iter().enumerate() {
+            values[(i, k)] = v;
         }
-
-        solve_kernel_shap_obs(&mut ata, &atb, ncomp, &mut values, i);
     }
 
-    Some(FpcShapValues {
+    Ok(FpcShapValues {
         values,
         base_value,
         mean_scores,
@@ -544,10 +656,33 @@ pub fn generic_ale(
     scalar_covariates: Option<&FdMatrix>,
     component: usize,
     n_bins: usize,
-) -> Option<AleResult> {
+) -> Result<AleResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 2 || m != model.fpca_mean().len() || n_bins == 0 || component >= model.ncomp() {
-        return None;
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n >= 2".into(),
+            actual: format!("{} rows", n),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "n_bins must be > 0".into(),
+        });
+    }
+    if component >= model.ncomp() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!("component {} >= ncomp {}", component, model.ncomp()),
+        });
     }
     let ncomp = model.ncomp();
     let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
@@ -567,6 +702,10 @@ pub fn generic_ale(
         n_bins,
         &predict,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "generic_ale",
+        detail: "compute_ale returned None".into(),
+    })
 }
 
 // ===========================================================================
@@ -580,14 +719,34 @@ pub fn generic_sobol_indices(
     scalar_covariates: Option<&FdMatrix>,
     n_samples: usize,
     seed: u64,
-) -> Option<SobolIndicesResult> {
+) -> Result<SobolIndicesResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 2 || m != model.fpca_mean().len() || n_samples == 0 {
-        return None;
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n >= 2".into(),
+            actual: format!("{} rows", n),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "n_samples must be > 0".into(),
+        });
     }
     let ncomp = model.ncomp();
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
     }
     let p_scalar = scalar_covariates.map_or(0, |sc| sc.ncols());
     let scores = model.project(data);
@@ -613,7 +772,10 @@ pub fn generic_sobol_indices(
     let var_fa = f_a.iter().map(|&v| (v - mean_fa).powi(2)).sum::<f64>() / n_samples as f64;
 
     if var_fa < 1e-15 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "generic_sobol_indices",
+            detail: "variance of model output is near zero".into(),
+        });
     }
 
     let mut first_order = vec![0.0; ncomp];
@@ -636,7 +798,7 @@ pub fn generic_sobol_indices(
         component_variance[k] = s_k * var_fa;
     }
 
-    Some(SobolIndicesResult {
+    Ok(SobolIndicesResult {
         first_order,
         total_order,
         var_y: var_fa,
@@ -657,10 +819,40 @@ pub fn generic_conditional_permutation_importance(
     n_bins: usize,
     n_perm: usize,
     seed: u64,
-) -> Option<ConditionalPermutationImportanceResult> {
+) -> Result<ConditionalPermutationImportanceResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || n != y.len() || m != model.fpca_mean().len() || n_perm == 0 || n_bins == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: n.to_string(),
+            actual: y.len().to_string(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "n_perm must be > 0".into(),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "n_bins must be > 0".into(),
+        });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
@@ -684,7 +876,7 @@ pub fn generic_conditional_permutation_importance(
         unconditional_importance[k] = baseline - mean_uncond;
     }
 
-    Some(ConditionalPermutationImportanceResult {
+    Ok(ConditionalPermutationImportanceResult {
         importance,
         baseline_metric: baseline,
         permuted_metric,
@@ -695,6 +887,84 @@ pub fn generic_conditional_permutation_importance(
 // ===========================================================================
 // 8. Generic Counterfactual
 // ===========================================================================
+
+/// Compute gradient of model prediction w.r.t. FPC scores via finite differences.
+fn compute_gradient_finite_diff(
+    model: &dyn FpcPredictor,
+    scores: &[f64],
+    ncomp: usize,
+) -> Vec<f64> {
+    let eps = 1e-5;
+    let base = model.predict_from_scores(scores, None);
+    let mut grad = vec![0.0; ncomp];
+    for k in 0..ncomp {
+        let mut s_plus = scores.to_vec();
+        s_plus[k] += eps;
+        grad[k] = (model.predict_from_scores(&s_plus, None) - base) / eps;
+    }
+    grad
+}
+
+/// Build a CounterfactualResult from original/final scores.
+fn build_counterfactual_result(
+    model: &dyn FpcPredictor,
+    observation: usize,
+    original_scores: Vec<f64>,
+    final_scores: Vec<f64>,
+    original_prediction: f64,
+    ncomp: usize,
+    m: usize,
+    found: bool,
+) -> CounterfactualResult {
+    let delta_scores: Vec<f64> = final_scores
+        .iter()
+        .zip(&original_scores)
+        .map(|(&c, &o)| c - o)
+        .collect();
+    let delta_function = reconstruct_delta_function(&delta_scores, model.fpca_rotation(), ncomp, m);
+    let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
+    let counterfactual_prediction = model.predict_from_scores(&final_scores, None);
+
+    CounterfactualResult {
+        observation,
+        original_scores,
+        counterfactual_scores: final_scores,
+        delta_scores,
+        delta_function,
+        distance,
+        original_prediction,
+        counterfactual_prediction,
+        found,
+    }
+}
+
+/// Gradient descent search for a counterfactual in classification models.
+fn counterfactual_gd_search(
+    model: &dyn FpcPredictor,
+    original_scores: &[f64],
+    max_iter: usize,
+    ncomp: usize,
+    converged: impl Fn(f64) -> bool,
+    update: impl Fn(&mut [f64], &[f64], f64),
+) -> (Vec<f64>, f64, bool) {
+    let mut current_scores = original_scores.to_vec();
+    let mut current_pred = model.predict_from_scores(&current_scores, None);
+    let mut found = false;
+    for _ in 0..max_iter {
+        current_pred = model.predict_from_scores(&current_scores, None);
+        if converged(current_pred) {
+            found = true;
+            break;
+        }
+        let grads = compute_gradient_finite_diff(model, &current_scores, ncomp);
+        update(&mut current_scores, &grads, current_pred);
+    }
+    if !found {
+        current_pred = model.predict_from_scores(&current_scores, None);
+        found = converged(current_pred);
+    }
+    (current_scores, current_pred, found)
+}
 
 /// Generic counterfactual explanation for any FPC-based model.
 ///
@@ -708,14 +978,27 @@ pub fn generic_counterfactual(
     target_value: f64,
     max_iter: usize,
     step_size: f64,
-) -> Option<CounterfactualResult> {
+) -> Result<CounterfactualResult, FdarError> {
     let (n, m) = data.shape();
-    if observation >= n || m != model.fpca_mean().len() {
-        return None;
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
     }
     let ncomp = model.ncomp();
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
     }
     let scores = model.project(data);
     let original_scores: Vec<f64> = (0..ncomp).map(|k| scores[(observation, k)]).collect();
@@ -723,151 +1006,86 @@ pub fn generic_counterfactual(
 
     match model.task_type() {
         TaskType::Regression => {
-            // Analytical: find nearest score change along gradient direction
-            // Gradient of predict w.r.t. scores estimated by finite differences
-            let eps = 1e-5;
-            let mut grad = vec![0.0; ncomp];
-            for k in 0..ncomp {
-                let mut s_plus = original_scores.clone();
-                s_plus[k] += eps;
-                let f_plus = model.predict_from_scores(&s_plus, None);
-                grad[k] = (f_plus - original_prediction) / eps;
-            }
+            let grad = compute_gradient_finite_diff(model, &original_scores, ncomp);
             let grad_norm_sq: f64 = grad.iter().map(|g| g * g).sum();
             if grad_norm_sq < 1e-30 {
-                return None;
+                return Err(FdarError::ComputationFailed {
+                    operation: "generic_counterfactual",
+                    detail: "gradient norm is near zero".into(),
+                });
             }
-
             let gap = target_value - original_prediction;
             let delta_scores: Vec<f64> = grad.iter().map(|&gk| gap * gk / grad_norm_sq).collect();
-            let counterfactual_scores: Vec<f64> = original_scores
+            let final_scores: Vec<f64> = original_scores
                 .iter()
                 .zip(&delta_scores)
                 .map(|(&o, &d)| o + d)
                 .collect();
-            let delta_function =
-                reconstruct_delta_function(&delta_scores, model.fpca_rotation(), ncomp, m);
-            let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
-            let counterfactual_prediction = model.predict_from_scores(&counterfactual_scores, None);
-
-            Some(CounterfactualResult {
+            Ok(build_counterfactual_result(
+                model,
                 observation,
                 original_scores,
-                counterfactual_scores,
-                delta_scores,
-                delta_function,
-                distance,
+                final_scores,
                 original_prediction,
-                counterfactual_prediction,
-                found: true,
-            })
+                ncomp,
+                m,
+                true,
+            ))
         }
         TaskType::BinaryClassification => {
-            // Gradient descent toward opposite class (binary: P(Y=1) threshold 0.5)
-            let mut current_scores = original_scores.clone();
-            let mut current_pred = original_prediction;
             let original_class = if original_prediction >= 0.5 { 1.0 } else { 0.0 };
             let target_class = 1.0 - original_class;
-
-            let mut found = false;
-            let eps = 1e-5;
-            for _ in 0..max_iter {
-                current_pred = model.predict_from_scores(&current_scores, None);
-                let pred_class: f64 = if current_pred >= 0.5 { 1.0 } else { 0.0 };
-                if (pred_class - target_class).abs() < 1e-10 {
-                    found = true;
-                    break;
-                }
-                let mut grads = vec![0.0; ncomp];
-                for k in 0..ncomp {
-                    let mut s_plus = current_scores.clone();
-                    s_plus[k] += eps;
-                    let f_plus = model.predict_from_scores(&s_plus, None);
-                    grads[k] = (f_plus - current_pred) / eps;
-                }
-                for k in 0..ncomp {
-                    current_scores[k] -= step_size * (current_pred - target_class) * grads[k];
-                }
-            }
-            if !found {
-                current_pred = model.predict_from_scores(&current_scores, None);
-                let pred_class = if current_pred >= 0.5 { 1.0 } else { 0.0 };
-                found = (pred_class - target_class).abs() < 1e-10;
-            }
-
-            let delta_scores: Vec<f64> = current_scores
-                .iter()
-                .zip(&original_scores)
-                .map(|(&c, &o)| c - o)
-                .collect();
-            let delta_function =
-                reconstruct_delta_function(&delta_scores, model.fpca_rotation(), ncomp, m);
-            let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
-
-            Some(CounterfactualResult {
+            let (final_scores, _pred, found) = counterfactual_gd_search(
+                model,
+                &original_scores,
+                max_iter,
+                ncomp,
+                |pred: f64| {
+                    let pc: f64 = if pred >= 0.5 { 1.0 } else { 0.0 };
+                    (pc - target_class).abs() < 1e-10
+                },
+                |scores, grads, pred| {
+                    for k in 0..ncomp {
+                        scores[k] -= step_size * (pred - target_class) * grads[k];
+                    }
+                },
+            );
+            Ok(build_counterfactual_result(
+                model,
                 observation,
                 original_scores,
-                counterfactual_scores: current_scores,
-                delta_scores,
-                delta_function,
-                distance,
+                final_scores,
                 original_prediction,
-                counterfactual_prediction: current_pred,
+                ncomp,
+                m,
                 found,
-            })
+            ))
         }
         TaskType::MulticlassClassification(_) => {
-            // Gradient descent toward nearest different class (multiclass: pred is class label)
-            let mut current_scores = original_scores.clone();
-            let mut current_pred = original_prediction;
             let original_class = original_prediction.round();
-
-            let mut found = false;
-            let eps = 1e-5;
-            for _ in 0..max_iter {
-                current_pred = model.predict_from_scores(&current_scores, None);
-                let pred_class = current_pred.round();
-                if (pred_class - original_class).abs() > 0.5 {
-                    found = true;
-                    break;
-                }
-                let mut grads = vec![0.0; ncomp];
-                for k in 0..ncomp {
-                    let mut s_plus = current_scores.clone();
-                    s_plus[k] += eps;
-                    let f_plus = model.predict_from_scores(&s_plus, None);
-                    grads[k] = (f_plus - current_pred) / eps;
-                }
-                let grad_norm: f64 = grads.iter().map(|g| g * g).sum::<f64>().sqrt().max(1e-12);
-                for k in 0..ncomp {
-                    current_scores[k] += step_size * grads[k] / grad_norm;
-                }
-            }
-            if !found {
-                current_pred = model.predict_from_scores(&current_scores, None);
-                found = (current_pred.round() - original_class).abs() > 0.5;
-            }
-
-            let delta_scores: Vec<f64> = current_scores
-                .iter()
-                .zip(&original_scores)
-                .map(|(&c, &o)| c - o)
-                .collect();
-            let delta_function =
-                reconstruct_delta_function(&delta_scores, model.fpca_rotation(), ncomp, m);
-            let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
-
-            Some(CounterfactualResult {
+            let (final_scores, _pred, found) = counterfactual_gd_search(
+                model,
+                &original_scores,
+                max_iter,
+                ncomp,
+                |pred| (pred.round() - original_class).abs() > 0.5,
+                |scores, grads, _pred| {
+                    let grad_norm: f64 = grads.iter().map(|g| g * g).sum::<f64>().sqrt().max(1e-12);
+                    for k in 0..ncomp {
+                        scores[k] += step_size * grads[k] / grad_norm;
+                    }
+                },
+            );
+            Ok(build_counterfactual_result(
+                model,
                 observation,
                 original_scores,
-                counterfactual_scores: current_scores,
-                delta_scores,
-                delta_function,
-                distance,
+                final_scores,
                 original_prediction,
-                counterfactual_prediction: current_pred,
+                ncomp,
+                m,
                 found,
-            })
+            ))
         }
     }
 }
@@ -885,14 +1103,39 @@ pub fn generic_lime(
     n_samples: usize,
     kernel_width: f64,
     seed: u64,
-) -> Option<LimeResult> {
+) -> Result<LimeResult, FdarError> {
     let (n, m) = data.shape();
-    if observation >= n || m != model.fpca_mean().len() || n_samples == 0 || kernel_width <= 0.0 {
-        return None;
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "n_samples must be > 0".into(),
+        });
+    }
+    if kernel_width <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "kernel_width",
+            message: format!("kernel_width must be > 0, got {}", kernel_width),
+        });
     }
     let ncomp = model.ncomp();
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
     }
     let scores = model.project(data);
     let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(observation, k)]).collect();
@@ -919,6 +1162,10 @@ pub fn generic_lime(
         observation,
         &predict,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "generic_lime",
+        detail: "compute_lime returned None".into(),
+    })
 }
 
 // ===========================================================================
@@ -934,14 +1181,28 @@ pub fn generic_saliency(
     scalar_covariates: Option<&FdMatrix>,
     n_samples: usize,
     seed: u64,
-) -> Option<FunctionalSaliencyResult> {
+) -> Result<FunctionalSaliencyResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != model.fpca_mean().len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
     }
     let ncomp = model.ncomp();
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
     }
 
     // Get SHAP values first
@@ -978,7 +1239,7 @@ pub fn generic_saliency(
     );
     let mean_absolute_saliency = mean_absolute_column(&saliency_map, n, m);
 
-    Some(FunctionalSaliencyResult {
+    Ok(FunctionalSaliencyResult {
         saliency_map,
         mean_absolute_saliency,
     })
@@ -1000,14 +1261,28 @@ pub fn generic_domain_selection(
     threshold: f64,
     n_samples: usize,
     seed: u64,
-) -> Option<DomainSelectionResult> {
+) -> Result<DomainSelectionResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != model.fpca_mean().len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
     }
     let ncomp = model.ncomp();
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
     }
 
     // Reconstruct effective β(t) = Σ_k w_k × φ_k(t) using SHAP-derived weights
@@ -1039,7 +1314,12 @@ pub fn generic_domain_selection(
         }
     }
 
-    compute_domain_selection(&beta_t, window_width, threshold)
+    compute_domain_selection(&beta_t, window_width, threshold).ok_or_else(|| {
+        FdarError::ComputationFailed {
+            operation: "generic_domain_selection",
+            detail: "compute_domain_selection returned None".into(),
+        }
+    })
 }
 
 // ===========================================================================
@@ -1054,10 +1334,33 @@ pub fn generic_anchor(
     observation: usize,
     precision_threshold: f64,
     n_bins: usize,
-) -> Option<AnchorResult> {
+) -> Result<AnchorResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != model.fpca_mean().len() || observation >= n || n_bins < 2 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
+    }
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if n_bins < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: format!("n_bins must be >= 2, got {}", n_bins),
+        });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
@@ -1119,7 +1422,7 @@ pub fn generic_anchor(
         &*same_pred,
     );
 
-    Some(AnchorResult {
+    Ok(AnchorResult {
         rule,
         observation,
         predicted_value: obs_pred,
@@ -1145,10 +1448,40 @@ pub fn generic_stability(
     n_boot: usize,
     seed: u64,
     task_type: TaskType,
-) -> Option<StabilityAnalysisResult> {
+) -> Result<StabilityAnalysisResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 4 || m == 0 || n != y.len() || n_boot < 2 || ncomp == 0 {
-        return None;
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n >= 4".into(),
+            actual: format!("{} rows", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "m > 0".into(),
+            actual: "0 columns".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: n.to_string(),
+            actual: y.len().to_string(),
+        });
+    }
+    if n_boot < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: format!("n_boot must be >= 2, got {}", n_boot),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be > 0".into(),
+        });
     }
 
     let mut rng = StdRng::seed_from_u64(seed);
@@ -1164,7 +1497,7 @@ pub fn generic_stability(
                 let boot_data = subsample_rows(data, &idx);
                 let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
                 let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
-                if let Some(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
+                if let Ok(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
                     all_beta_t.push(refit.beta_t.clone());
                     let coefs: Vec<f64> = (0..ncomp).map(|k| refit.coefficients[1 + k]).collect();
                     all_abs_coefs.push(coefs.iter().map(|c| c.abs()).collect());
@@ -1183,7 +1516,7 @@ pub fn generic_stability(
                 if !has_both {
                     continue;
                 }
-                if let Some(refit) =
+                if let Ok(refit) =
                     functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, 25, 1e-6)
                 {
                     all_beta_t.push(refit.beta_t.clone());
@@ -1195,7 +1528,10 @@ pub fn generic_stability(
             }
         }
         TaskType::MulticlassClassification(_) => {
-            return None; // not supported for multiclass yet
+            return Err(FdarError::InvalidParameter {
+                parameter: "task_type",
+                message: "stability analysis not supported for multiclass".into(),
+            });
         }
     }
 
@@ -1207,6 +1543,10 @@ pub fn generic_stability(
         m,
         ncomp,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "generic_stability",
+        detail: "not enough successful bootstrap refits".into(),
+    })
 }
 
 // ===========================================================================
@@ -1218,14 +1558,30 @@ pub fn generic_vif(
     model: &dyn FpcPredictor,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<VifResult> {
+) -> Result<VifResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != model.fpca_mean().len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
     }
     let ncomp = model.ncomp();
     let scores = model.project(data);
-    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n)
+    compute_vif_from_scores(&scores, ncomp, scalar_covariates, n).ok_or_else(|| {
+        FdarError::ComputationFailed {
+            operation: "generic_vif",
+            detail: "compute_vif_from_scores returned None".into(),
+        }
+    })
 }
 
 // ===========================================================================
@@ -1238,14 +1594,40 @@ pub fn generic_prototype_criticism(
     data: &FdMatrix,
     n_prototypes: usize,
     n_criticisms: usize,
-) -> Option<PrototypeCriticismResult> {
+) -> Result<PrototypeCriticismResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != model.fpca_mean().len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "n > 0".into(),
+            actual: "0 rows".into(),
+        });
+    }
+    if m != model.fpca_mean().len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data columns",
+            expected: model.fpca_mean().len().to_string(),
+            actual: m.to_string(),
+        });
     }
     let ncomp = model.ncomp();
-    if ncomp == 0 || n_prototypes == 0 || n_prototypes > n {
-        return None;
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "model has 0 components".into(),
+        });
+    }
+    if n_prototypes == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_prototypes",
+            message: "n_prototypes must be > 0".into(),
+        });
+    }
+    if n_prototypes > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_prototypes",
+            message: format!("n_prototypes {} > n {}", n_prototypes, n),
+        });
     }
     let n_crit = n_criticisms.min(n.saturating_sub(n_prototypes));
 
@@ -1271,11 +1653,223 @@ pub fn generic_prototype_criticism(
         .collect();
     let criticism_witness: Vec<f64> = criticism_indices.iter().map(|&i| witness[i]).collect();
 
-    Some(PrototypeCriticismResult {
+    Ok(PrototypeCriticismResult {
         prototype_indices: selected,
         prototype_witness,
         criticism_indices,
         criticism_witness,
         bandwidth,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::PI;
+
+    /// Generate deterministic synthetic curves and a continuous response.
+    fn generate_test_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(n, m);
+        let mut y = vec![0.0; n];
+        for i in 0..n {
+            let phase =
+                (seed.wrapping_mul(17).wrapping_add(i as u64 * 31) % 1000) as f64 / 1000.0 * PI;
+            let amplitude =
+                ((seed.wrapping_mul(13).wrapping_add(i as u64 * 7) % 100) as f64 / 100.0) - 0.5;
+            for j in 0..m {
+                data[(i, j)] =
+                    (2.0 * PI * t[j] + phase).sin() + amplitude * (4.0 * PI * t[j]).cos();
+            }
+            y[i] = 2.0 * phase + 3.0 * amplitude;
+        }
+        (data, y)
+    }
+
+    /// Median-split continuous y into binary {0, 1}.
+    fn make_binary_y(y: &[f64]) -> Vec<f64> {
+        let mut sorted = y.to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = sorted[sorted.len() / 2];
+        y.iter()
+            .map(|&v| if v >= median { 1.0 } else { 0.0 })
+            .collect()
+    }
+
+    const N: usize = 30;
+    const M: usize = 50;
+    const NCOMP: usize = 3;
+    const SEED: u64 = 42;
+
+    #[test]
+    fn test_generic_pdp() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let n_grid = 20;
+        let res = generic_pdp(&fit, &data, None, 0, n_grid).unwrap();
+        assert_eq!(res.grid_values.len(), n_grid);
+        assert_eq!(res.pdp_curve.len(), n_grid);
+        let (nr, nc) = res.ice_curves.shape();
+        assert_eq!(nr, N);
+        assert_eq!(nc, n_grid);
+        // Out-of-range component should return Err
+        assert!(generic_pdp(&fit, &data, None, NCOMP, n_grid).is_err());
+    }
+
+    #[test]
+    fn test_generic_permutation_importance() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_permutation_importance(&fit, &data, &y, 20, SEED).unwrap();
+        assert_eq!(res.importance.len(), NCOMP);
+        assert_eq!(res.permuted_metric.len(), NCOMP);
+    }
+
+    #[test]
+    fn test_generic_friedman_h() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_friedman_h(&fit, &data, None, 0, 1, 10).unwrap();
+        assert!(res.h_squared >= 0.0);
+        assert!(!res.h_squared.is_nan());
+    }
+
+    #[test]
+    fn test_generic_shap_values() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_shap_values(&fit, &data, None, 100, SEED).unwrap();
+        let (nr, nc) = res.values.shape();
+        assert_eq!(nr, N);
+        assert_eq!(nc, NCOMP);
+        assert!(!res.base_value.is_nan());
+    }
+
+    #[test]
+    fn test_generic_ale() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_ale(&fit, &data, None, 0, 10).unwrap();
+        assert!(!res.bin_midpoints.is_empty());
+        assert_eq!(res.ale_values.len(), res.bin_midpoints.len());
+    }
+
+    #[test]
+    fn test_generic_sobol_indices() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_sobol_indices(&fit, &data, None, 100, SEED).unwrap();
+        assert_eq!(res.first_order.len(), NCOMP);
+        assert_eq!(res.total_order.len(), NCOMP);
+    }
+
+    #[test]
+    fn test_generic_conditional_perm() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res =
+            generic_conditional_permutation_importance(&fit, &data, &y, None, 5, 20, SEED).unwrap();
+        assert_eq!(res.importance.len(), NCOMP);
+    }
+
+    #[test]
+    fn test_generic_counterfactual_reg() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        // Target = mean of y (should be reachable)
+        let target = y.iter().sum::<f64>() / y.len() as f64;
+        let res = generic_counterfactual(&fit, &data, None, 0, target, 200, 0.01).unwrap();
+        assert!(res.found);
+        assert!((res.counterfactual_prediction - target).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_generic_counterfactual_logistic() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let y_bin = make_binary_y(&y);
+        let fit = functional_logistic(&data, &y_bin, None, NCOMP, 25, 1e-6).unwrap();
+        // Pick an observation predicted as class 0, try flipping to 1
+        let scores = fit.project(&data);
+        let obs = (0..N)
+            .find(|&i| {
+                let s: Vec<f64> = (0..NCOMP).map(|k| scores[(i, k)]).collect();
+                fit.predict_from_scores(&s, None) < 0.5
+            })
+            .unwrap_or(0);
+        let res = generic_counterfactual(&fit, &data, None, obs, 1.0, 500, 0.05).unwrap();
+        assert_eq!(res.observation, obs);
+        // Should either find a counterfactual or at least produce a result
+        assert_eq!(res.delta_function.len(), M);
+    }
+
+    #[test]
+    fn test_generic_lime() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_lime(&fit, &data, None, 0, 100, 1.0, SEED).unwrap();
+        assert_eq!(res.attributions.len(), NCOMP);
+        assert_eq!(res.observation, 0);
+    }
+
+    #[test]
+    fn test_generic_saliency() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_saliency(&fit, &data, None, 100, SEED).unwrap();
+        let (nr, nc) = res.saliency_map.shape();
+        assert_eq!(nr, N);
+        assert_eq!(nc, M);
+        assert_eq!(res.mean_absolute_saliency.len(), M);
+    }
+
+    #[test]
+    fn test_generic_domain_selection() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_domain_selection(&fit, &data, None, 5, 0.5, 100, SEED).unwrap();
+        assert_eq!(res.pointwise_importance.len(), M);
+    }
+
+    #[test]
+    fn test_generic_anchor() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_anchor(&fit, &data, None, 0, 0.9, 5).unwrap();
+        assert_eq!(res.observation, 0);
+    }
+
+    #[test]
+    fn test_generic_stability() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let res =
+            generic_stability(&data, &y, None, NCOMP, 10, SEED, TaskType::Regression).unwrap();
+        assert_eq!(res.beta_t_std.len(), M);
+        assert_eq!(res.coefficient_std.len(), NCOMP);
+        assert!(res.n_boot_success > 0);
+    }
+
+    #[test]
+    fn test_generic_vif() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let res = generic_vif(&fit, &data, None).unwrap();
+        assert_eq!(res.vif.len(), NCOMP);
+        // VIF should be >= 1.0 for all components (allow small FP tolerance)
+        for &v in &res.vif {
+            assert!(v >= 1.0 - 1e-10, "VIF should be >= 1.0, got {}", v);
+        }
+    }
+
+    #[test]
+    fn test_generic_prototype_criticism() {
+        let (data, y) = generate_test_data(N, M, SEED);
+        let fit = fregre_lm(&data, &y, None, NCOMP).unwrap();
+        let n_proto = 3;
+        let n_crit = 3;
+        let res = generic_prototype_criticism(&fit, &data, n_proto, n_crit).unwrap();
+        assert_eq!(res.prototype_indices.len(), n_proto);
+        assert_eq!(res.prototype_witness.len(), n_proto);
+        assert!(res.criticism_indices.len() <= n_crit);
+        assert!(res.bandwidth > 0.0);
+    }
 }

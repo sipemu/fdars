@@ -10,6 +10,8 @@
 //! - [`predict_gmm`] — Assign new observations to clusters
 
 use crate::basis::fdata_to_basis_1d;
+use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 use std::f64::consts::PI;
@@ -518,16 +520,33 @@ fn e_step(
     d: usize,
     cov_type: CovType,
 ) -> (Vec<f64>, f64) {
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
     let n = features.len();
+    let per_obs: Vec<(Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let log_probs = compute_log_component_probs(
+                &features[i],
+                means,
+                covariances,
+                weights,
+                k,
+                d,
+                cov_type,
+            );
+            let mut r = vec![0.0; k];
+            let ll_i = normalize_responsibilities(&log_probs, &mut r);
+            (r, ll_i)
+        })
+        .collect();
+
     let mut resp = vec![0.0; n * k];
     let mut ll = 0.0;
-
-    for i in 0..n {
-        let log_probs =
-            compute_log_component_probs(&features[i], means, covariances, weights, k, d, cov_type);
-        ll += normalize_responsibilities(&log_probs, &mut resp[i * k..(i + 1) * k]);
+    for (i, (r, ll_i)) in per_obs.into_iter().enumerate() {
+        resp[i * k..(i + 1) * k].copy_from_slice(&r);
+        ll += ll_i;
     }
-
     (resp, ll)
 }
 
@@ -652,14 +671,34 @@ pub fn gmm_em(
     max_iter: usize,
     tol: f64,
     seed: u64,
-) -> Option<GmmResult> {
+) -> Result<GmmResult, FdarError> {
     let n = features.len();
-    if n == 0 || k == 0 || k > n {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "features",
+            expected: "non-empty slice".to_string(),
+            actual: "0 rows".to_string(),
+        });
+    }
+    if k == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if k > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: format!("must be <= n ({}), got {}", n, k),
+        });
     }
     let d = features[0].len();
     if d == 0 {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "features",
+            expected: "non-zero feature dimension".to_string(),
+            actual: "0".to_string(),
+        });
     }
 
     let mut rng = StdRng::seed_from_u64(seed);
@@ -694,7 +733,7 @@ pub fn gmm_em(
     }
 
     // Final E-step and model selection
-    Some(finalize_gmm(
+    Ok(finalize_gmm(
         features,
         means,
         covariances,
@@ -768,8 +807,12 @@ pub fn gmm_cluster(
     n_init: usize,
     seed: u64,
     use_icl: bool,
-) -> Option<GmmClusterResult> {
-    let (features, _d) = build_features(data, argvals, covariates, nbasis, basis_type, cov_weight)?;
+) -> Result<GmmClusterResult, FdarError> {
+    let (features, _d) = build_features(data, argvals, covariates, nbasis, basis_type, cov_weight)
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "build_features",
+            detail: "basis projection failed".to_string(),
+        })?;
 
     let mut bic_values = Vec::new();
     let mut icl_values = Vec::new();
@@ -793,11 +836,16 @@ pub fn gmm_cluster(
         }
     }
 
-    best_result.map(|best| GmmClusterResult {
-        best,
-        bic_values,
-        icl_values,
-    })
+    best_result
+        .map(|best| GmmClusterResult {
+            best,
+            bic_values,
+            icl_values,
+        })
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "gmm_cluster",
+            detail: "no valid GMM fit found for any K in range".to_string(),
+        })
 }
 
 /// Run multiple initializations for a single K and return the best by log-likelihood.
@@ -813,7 +861,7 @@ fn run_multiple_inits(
     let mut best: Option<GmmResult> = None;
     for init in 0..n_init.max(1) {
         let seed = base_seed.wrapping_add(init as u64 * 1000 + k as u64);
-        if let Some(result) = gmm_em(features, k, cov_type, max_iter, tol, seed) {
+        if let Ok(result) = gmm_em(features, k, cov_type, max_iter, tol, seed) {
             let is_better = best
                 .as_ref()
                 .map_or(true, |b| result.log_likelihood > b.log_likelihood);
@@ -845,7 +893,7 @@ pub fn predict_gmm(
     basis_type: i32,
     cov_weight: f64,
     cov_type: CovType,
-) -> Option<(Vec<usize>, FdMatrix)> {
+) -> Result<(Vec<usize>, FdMatrix), FdarError> {
     let (features, _d) = build_features(
         new_data,
         argvals,
@@ -853,7 +901,11 @@ pub fn predict_gmm(
         nbasis,
         basis_type,
         cov_weight,
-    )?;
+    )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "build_features",
+        detail: "basis projection failed for new data".to_string(),
+    })?;
 
     let k = result.k;
     let d = result.d;
@@ -872,7 +924,7 @@ pub fn predict_gmm(
     let cluster = hard_assignments(&resp, n, k);
     let membership = resp_to_membership(&resp, n, k);
 
-    Some((cluster, membership))
+    Ok((cluster, membership))
 }
 
 // ---------------------------------------------------------------------------
@@ -1180,13 +1232,13 @@ mod tests {
     #[test]
     fn test_gmm_em_invalid_input() {
         let empty: Vec<Vec<f64>> = Vec::new();
-        assert!(gmm_em(&empty, 2, CovType::Full, 100, 1e-6, 42).is_none());
+        assert!(gmm_em(&empty, 2, CovType::Full, 100, 1e-6, 42).is_err());
 
         let features = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
         // k > n
-        assert!(gmm_em(&features, 5, CovType::Full, 100, 1e-6, 42).is_none());
+        assert!(gmm_em(&features, 5, CovType::Full, 100, 1e-6, 42).is_err());
         // k = 0
-        assert!(gmm_em(&features, 0, CovType::Full, 100, 1e-6, 42).is_none());
+        assert!(gmm_em(&features, 0, CovType::Full, 100, 1e-6, 42).is_err());
     }
 
     #[test]

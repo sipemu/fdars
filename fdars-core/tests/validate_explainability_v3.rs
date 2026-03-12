@@ -292,7 +292,7 @@ fn test_shap_invalid_returns_none() {
     let (data, y) = generate_test_data(30, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let empty = FdMatrix::zeros(0, 50);
-    assert!(fpc_shap_values(&fit, &empty, None).is_none());
+    assert!(fpc_shap_values(&fit, &empty, None).is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -366,7 +366,7 @@ fn test_dfbetas_cutoff_value() {
 fn test_dfbetas_underdetermined_returns_none() {
     let (data, y) = generate_test_data(3, 50, 42);
     let fit = fregre_lm(&data, &y, None, 2).unwrap();
-    assert!(dfbetas_dffits(&fit, &data, None).is_none());
+    assert!(dfbetas_dffits(&fit, &data, None).is_err());
 }
 
 #[test]
@@ -471,8 +471,8 @@ fn test_prediction_interval_shape() {
 fn test_prediction_interval_invalid_confidence_returns_none() {
     let (data, y) = generate_test_data(40, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(prediction_intervals(&fit, &data, None, &data, None, 0.0).is_none());
-    assert!(prediction_intervals(&fit, &data, None, &data, None, 1.0).is_none());
+    assert!(prediction_intervals(&fit, &data, None, &data, None, 0.0).is_err());
+    assert!(prediction_intervals(&fit, &data, None, &data, None, 1.0).is_err());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -568,6 +568,6 @@ fn test_ale_logistic_bounded() {
 fn test_ale_invalid_returns_none() {
     let (data, y) = generate_test_data(40, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fpc_ale(&fit, &data, None, 5, 10).is_none());
-    assert!(fpc_ale(&fit, &data, None, 0, 0).is_none());
+    assert!(fpc_ale(&fit, &data, None, 5, 10).is_err());
+    assert!(fpc_ale(&fit, &data, None, 0, 0).is_err());
 }

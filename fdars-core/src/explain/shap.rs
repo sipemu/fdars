@@ -1,6 +1,7 @@
 //! SHAP values and Friedman H-statistic.
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
 use rand::prelude::*;
@@ -28,14 +29,28 @@ pub fn fpc_shap_values(
     fit: &FregreLmResult,
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<FpcShapValues> {
+) -> Result<FpcShapValues, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let ncomp = fit.ncomp;
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
     let mean_scores = compute_column_means(&scores, ncomp);
@@ -57,7 +72,7 @@ pub fn fpc_shap_values(
         }
     }
 
-    Some(FpcShapValues {
+    Ok(FpcShapValues {
         values,
         base_value,
         mean_scores,
@@ -73,14 +88,34 @@ pub fn fpc_shap_values_logistic(
     scalar_covariates: Option<&FdMatrix>,
     n_samples: usize,
     seed: u64,
-) -> Option<FpcShapValues> {
+) -> Result<FpcShapValues, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() || n_samples == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "must be > 0".into(),
+        });
     }
     let ncomp = fit.ncomp;
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
     let p_scalar = fit.gamma.len();
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -124,7 +159,7 @@ pub fn fpc_shap_values_logistic(
         solve_kernel_shap_obs(&mut ata, &atb, ncomp, &mut values, i);
     }
 
-    Some(FpcShapValues {
+    Ok(FpcShapValues {
         values,
         base_value,
         mean_scores,
@@ -158,16 +193,42 @@ pub fn friedman_h_statistic(
     component_j: usize,
     component_k: usize,
     n_grid: usize,
-) -> Option<FriedmanHResult> {
+) -> Result<FriedmanHResult, FdarError> {
     if component_j == component_k {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "component_j/component_k",
+            message: "must be different".into(),
+        });
     }
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() || n_grid < 2 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: "must be >= 2".into(),
+        });
     }
     if component_j >= fit.ncomp || component_k >= fit.ncomp {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!(
+                "component_j={} or component_k={} >= ncomp={}",
+                component_j, component_k, fit.ncomp
+            ),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -193,7 +254,7 @@ pub fn friedman_h_statistic(
     let f_bar: f64 = fit.fitted_values.iter().sum::<f64>() / n as f64;
     let h_squared = compute_h_squared(&pdp_2d, &pdp_j, &pdp_k, f_bar, n_grid);
 
-    Some(FriedmanHResult {
+    Ok(FriedmanHResult {
         component_j,
         component_k,
         h_squared,
@@ -211,19 +272,50 @@ pub fn friedman_h_statistic_logistic(
     component_j: usize,
     component_k: usize,
     n_grid: usize,
-) -> Option<FriedmanHResult> {
+) -> Result<FriedmanHResult, FdarError> {
     let (n, m) = data.shape();
     let ncomp = fit.ncomp;
     let p_scalar = fit.gamma.len();
-    if component_j == component_k
-        || n == 0
-        || m != fit.fpca.mean.len()
-        || n_grid < 2
-        || component_j >= ncomp
-        || component_k >= ncomp
-        || (p_scalar > 0 && scalar_covariates.is_none())
-    {
-        return None;
+    if component_j == component_k {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component_j/component_k",
+            message: "must be different".into(),
+        });
+    }
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: "must be >= 2".into(),
+        });
+    }
+    if component_j >= ncomp || component_k >= ncomp {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!(
+                "component_j={} or component_k={} >= ncomp={}",
+                component_j, component_k, ncomp
+            ),
+        });
+    }
+    if p_scalar > 0 && scalar_covariates.is_none() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "scalar_covariates",
+            message: "required when model has scalar covariates".into(),
+        });
     }
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
 
@@ -264,7 +356,7 @@ pub fn friedman_h_statistic_logistic(
     let f_bar: f64 = fit.probabilities.iter().sum::<f64>() / n as f64;
     let h_squared = compute_h_squared(&pdp_2d, &pdp_j, &pdp_k, f_bar, n_grid);
 
-    Some(FriedmanHResult {
+    Ok(FriedmanHResult {
         component_j,
         component_k,
         h_squared,

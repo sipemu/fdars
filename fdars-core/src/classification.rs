@@ -6,9 +6,14 @@
 //! - [`fclassif_kernel`] — Nonparametric kernel classifier with mixed predictors
 //! - [`fclassif_dd`] — Depth-based DD-classifier
 //! - [`fclassif_cv`] — Cross-validated error rate
+//!
+//! ## Parameter ordering convention
+//! All classifiers: `(data, y, [argvals,] [scalar_covariates,] method-params)`
 
 use crate::depth::fraiman_muniz_1d;
+use crate::error::FdarError;
 use crate::helpers::{l2_distance, simpsons_weights};
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 
@@ -85,7 +90,7 @@ pub(crate) fn build_feature_matrix(
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<(FdMatrix, Vec<f64>, FdMatrix)> {
+) -> Result<(FdMatrix, Vec<f64>, FdMatrix), FdarError> {
     let fpca = fdata_to_pc_1d(data, ncomp)?;
     let n = data.nrows();
     let d_pc = fpca.scores.ncols();
@@ -104,7 +109,7 @@ pub(crate) fn build_feature_matrix(
         }
     }
 
-    Some((features, fpca.mean, fpca.rotation))
+    Ok((features, fpca.mean, fpca.rotation))
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +189,7 @@ pub(crate) fn lda_params(
 }
 
 /// Cholesky factorization of d×d row-major matrix.
-pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Option<Vec<f64>> {
+pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Result<Vec<f64>, FdarError> {
     let mut l = vec![0.0; d * d];
     for j in 0..d {
         let mut sum = 0.0;
@@ -193,7 +198,10 @@ pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Option<Vec<f64>> {
         }
         let diag = mat[j * d + j] - sum;
         if diag <= 0.0 {
-            return None;
+            return Err(FdarError::ComputationFailed {
+                operation: "cholesky_d",
+                detail: format!("non-positive diagonal at index {}", j),
+            });
         }
         l[j * d + j] = diag.sqrt();
         for i in (j + 1)..d {
@@ -204,7 +212,7 @@ pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Option<Vec<f64>> {
             l[i * d + j] = (mat[i * d + j] - s) / l[j * d + j];
         }
     }
-    Some(l)
+    Ok(l)
 }
 
 /// Forward solve L * x = b.
@@ -268,15 +276,28 @@ pub fn fclassif_lda(
     y: &[usize],
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<ClassifResult> {
+) -> Result<ClassifResult, FdarError> {
     let n = data.nrows();
-    if n == 0 || y.len() != n || ncomp == 0 {
-        return None;
+    if n == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".to_string(),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
@@ -288,7 +309,7 @@ pub fn fclassif_lda(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifResult {
+    Ok(ClassifResult {
         predicted,
         probabilities: None,
         accuracy,
@@ -357,7 +378,7 @@ pub(crate) fn build_qda_params(
     features: &FdMatrix,
     labels: &[usize],
     g: usize,
-) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<f64>, Vec<f64>)> {
+) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<f64>, Vec<f64>), FdarError> {
     let d = features.ncols();
     let (class_means, _counts, priors) = class_means_and_priors(features, labels, g);
     let class_covs = qda_class_covariances(features, labels, &class_means, g);
@@ -368,7 +389,7 @@ pub(crate) fn build_qda_params(
         class_log_dets.push(log_det_cholesky(&chol, d));
         class_chols.push(chol);
     }
-    Some((class_means, class_chols, class_log_dets, priors))
+    Ok((class_means, class_chols, class_log_dets, priors))
 }
 
 /// Log-determinant from Cholesky factor.
@@ -416,15 +437,28 @@ pub fn fclassif_qda(
     y: &[usize],
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<ClassifResult> {
+) -> Result<ClassifResult, FdarError> {
     let n = data.nrows();
-    if n == 0 || y.len() != n || ncomp == 0 {
-        return None;
+    if n == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".to_string(),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
@@ -443,7 +477,7 @@ pub fn fclassif_qda(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifResult {
+    Ok(ClassifResult {
         predicted,
         probabilities: None,
         accuracy,
@@ -471,15 +505,34 @@ pub fn fclassif_knn(
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
     k_nn: usize,
-) -> Option<ClassifResult> {
+) -> Result<ClassifResult, FdarError> {
     let n = data.nrows();
-    if n == 0 || y.len() != n || ncomp == 0 || k_nn == 0 {
-        return None;
+    if n == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".to_string(),
+        });
+    }
+    if k_nn == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k_nn",
+            message: "must be > 0".to_string(),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
@@ -489,7 +542,7 @@ pub fn fclassif_knn(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifResult {
+    Ok(ClassifResult {
         predicted,
         probabilities: None,
         accuracy,
@@ -592,18 +645,20 @@ fn bandwidth_candidates(dists: &[f64], n: usize) -> Vec<f64> {
 
 /// LOO classification accuracy for a single bandwidth.
 fn loo_accuracy_for_bandwidth(dists: &[f64], labels: &[usize], g: usize, n: usize, h: f64) -> f64 {
-    let mut correct = 0;
-    for i in 0..n {
-        let mut votes = vec![0.0; g];
-        for j in 0..n {
-            if j != i {
-                votes[labels[j]] += gaussian_kernel(dists[i * n + j], h);
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
+    let correct = iter_maybe_parallel!(0..n)
+        .filter(|&i| {
+            let mut votes = vec![0.0; g];
+            for j in 0..n {
+                if j != i {
+                    votes[labels[j]] += gaussian_kernel(dists[i * n + j], h);
+                }
             }
-        }
-        if argmax_class(&votes) == labels[i] {
-            correct += 1;
-        }
-    }
+            argmax_class(&votes) == labels[i]
+        })
+        .count();
     correct as f64 / n as f64
 }
 
@@ -621,28 +676,41 @@ fn gaussian_kernel(dist: f64, h: f64) -> f64 {
 ///
 /// # Arguments
 /// * `data` — Functional data (n × m)
-/// * `argvals` — Evaluation points
 /// * `y` — Class labels
+/// * `argvals` — Evaluation points
 /// * `scalar_covariates` — Optional scalar covariates (n × p)
 /// * `h_func` — Functional bandwidth (0 = auto via LOO-CV)
 /// * `h_scalar` — Scalar bandwidth (0 = auto)
 pub fn fclassif_kernel(
     data: &FdMatrix,
-    argvals: &[f64],
     y: &[usize],
+    argvals: &[f64],
     scalar_covariates: Option<&FdMatrix>,
     h_func: f64,
     h_scalar: f64,
-) -> Option<ClassifResult> {
+) -> Result<ClassifResult, FdarError> {
     let n = data.nrows();
     let m = data.ncols();
     if n == 0 || y.len() != n || argvals.len() != m {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y/argvals",
+            expected: "n > 0, y.len() == n, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, y.len()={}, m={}, argvals.len()={}",
+                n,
+                y.len(),
+                m,
+                argvals.len()
+            ),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     let weights = simpsons_weights(argvals);
@@ -676,7 +744,7 @@ pub fn fclassif_kernel(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifResult {
+    Ok(ClassifResult {
         predicted,
         probabilities: None,
         accuracy,
@@ -688,16 +756,25 @@ pub fn fclassif_kernel(
 
 /// Compute pairwise L2 distances between curves.
 fn compute_pairwise_l2(data: &FdMatrix, weights: &[f64]) -> Vec<f64> {
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
     let n = data.nrows();
-    let mut dists = vec![0.0; n * n];
-    for i in 0..n {
-        let ri = data.row(i);
-        for j in (i + 1)..n {
+    // Build upper-triangle pair list, compute distances in parallel, then scatter.
+    let pairs: Vec<(usize, usize)> = (0..n)
+        .flat_map(|i| ((i + 1)..n).map(move |j| (i, j)))
+        .collect();
+    let pair_dists: Vec<(usize, usize, f64)> = iter_maybe_parallel!(pairs)
+        .map(|(i, j)| {
+            let ri = data.row(i);
             let rj = data.row(j);
-            let d = l2_distance(&ri, &rj, weights);
-            dists[i * n + j] = d;
-            dists[j * n + i] = d;
-        }
+            (i, j, l2_distance(&ri, &rj, weights))
+        })
+        .collect();
+    let mut dists = vec![0.0; n * n];
+    for (i, j, d) in pair_dists {
+        dists[i * n + j] = d;
+        dists[j * n + i] = d;
     }
     dists
 }
@@ -815,15 +892,22 @@ pub fn fclassif_dd(
     data: &FdMatrix,
     y: &[usize],
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<ClassifResult> {
+) -> Result<ClassifResult, FdarError> {
     let n = data.nrows();
     if n == 0 || y.len() != n {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     let class_indices: Vec<Vec<usize>> = (0..g)
@@ -846,7 +930,7 @@ pub fn fclassif_dd(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifResult {
+    Ok(ClassifResult {
         predicted,
         probabilities: Some(depth_scores),
         accuracy,
@@ -893,15 +977,21 @@ pub fn fclassif_cv(
     ncomp: usize,
     nfold: usize,
     seed: u64,
-) -> Option<ClassifCvResult> {
+) -> Result<ClassifCvResult, FdarError> {
     let n = data.nrows();
     if n < nfold || nfold < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "nfold",
+            message: format!("need 2 <= nfold <= n, got nfold={}, n={}", nfold, n),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     // Assign folds
@@ -948,7 +1038,7 @@ pub fn fclassif_cv(
 
     let error_rate = fold_errors.iter().sum::<f64>() / nfold as f64;
 
-    Some(ClassifCvResult {
+    Ok(ClassifCvResult {
         error_rate,
         fold_errors,
         best_ncomp: ncomp,
@@ -988,7 +1078,7 @@ fn cv_fold_predict(
     method: &str,
     ncomp: usize,
 ) -> Option<Vec<usize>> {
-    let fpca = fdata_to_pc_1d(train_data, ncomp)?;
+    let fpca = fdata_to_pc_1d(train_data, ncomp).ok()?;
     match method {
         "lda" => {
             let predictions =
@@ -1067,8 +1157,8 @@ fn project_and_classify_lda(
     let (class_means, cov, priors) = lda_params(&train_features, train_labels, g);
     let d = train_features.ncols();
     match cholesky_d(&cov, d) {
-        Some(chol) => lda_predict(&test_features, &class_means, &chol, &priors, g),
-        None => vec![0; test_data.nrows()],
+        Ok(chol) => lda_predict(&test_features, &class_means, &chol, &priors, g),
+        Err(_) => vec![0; test_data.nrows()],
     }
 }
 
@@ -1088,7 +1178,7 @@ fn project_and_classify_qda(
     let train_features = append_scalar_covariates(&fpca.scores, train_cov);
 
     match build_qda_params(&train_features, train_labels, g) {
-        Some((class_means, class_chols, class_log_dets, priors)) => qda_predict(
+        Ok((class_means, class_chols, class_log_dets, priors)) => qda_predict(
             &test_features,
             &class_means,
             &class_chols,
@@ -1096,7 +1186,7 @@ fn project_and_classify_qda(
             &priors,
             g,
         ),
-        None => vec![0; n_test],
+        Err(_) => vec![0; n_test],
     }
 }
 
@@ -1199,15 +1289,28 @@ pub fn fclassif_lda_fit(
     y: &[usize],
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<ClassifFit> {
+) -> Result<ClassifFit, FdarError> {
     let n = data.nrows();
-    if n == 0 || y.len() != n || ncomp == 0 {
-        return None;
+    if n == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".to_string(),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     // _fit variants use FPCA-only features (no scalar_covariates) so that stored
@@ -1222,7 +1325,7 @@ pub fn fclassif_lda_fit(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifFit {
+    Ok(ClassifFit {
         result: ClassifResult {
             predicted,
             probabilities: None,
@@ -1250,15 +1353,28 @@ pub fn fclassif_qda_fit(
     y: &[usize],
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<ClassifFit> {
+) -> Result<ClassifFit, FdarError> {
     let n = data.nrows();
-    if n == 0 || y.len() != n || ncomp == 0 {
-        return None;
+    if n == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".to_string(),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
@@ -1279,7 +1395,7 @@ pub fn fclassif_qda_fit(
     let confusion = confusion_matrix(&labels, &predicted, g);
     let d = features.ncols();
 
-    Some(ClassifFit {
+    Ok(ClassifFit {
         result: ClassifResult {
             predicted,
             probabilities: None,
@@ -1309,15 +1425,34 @@ pub fn fclassif_knn_fit(
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
     k_nn: usize,
-) -> Option<ClassifFit> {
+) -> Result<ClassifFit, FdarError> {
     let n = data.nrows();
-    if n == 0 || y.len() != n || ncomp == 0 || k_nn == 0 {
-        return None;
+    if n == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: "n > 0 and y.len() == n".to_string(),
+            actual: format!("n={}, y.len()={}", n, y.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".to_string(),
+        });
+    }
+    if k_nn == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k_nn",
+            message: "must be > 0".to_string(),
+        });
     }
 
     let (labels, g) = remap_labels(y);
     if g < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {}", g),
+        });
     }
 
     // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
@@ -1329,7 +1464,7 @@ pub fn fclassif_knn_fit(
     let accuracy = compute_accuracy(&labels, &predicted);
     let confusion = confusion_matrix(&labels, &predicted, g);
 
-    Some(ClassifFit {
+    Ok(ClassifFit {
         result: ClassifResult {
             predicted,
             probabilities: None,
@@ -1683,7 +1818,7 @@ mod tests {
     #[test]
     fn test_fclassif_kernel_basic() {
         let (data, labels, t) = generate_two_class_data(20, 50);
-        let result = fclassif_kernel(&data, &t, &labels, None, 0.0, 0.0).unwrap();
+        let result = fclassif_kernel(&data, &labels, &t, None, 0.0, 0.0).unwrap();
 
         assert_eq!(result.predicted.len(), 40);
         assert!(
@@ -1739,11 +1874,11 @@ mod tests {
     #[test]
     fn test_fclassif_invalid_input() {
         let data = FdMatrix::zeros(0, 0);
-        assert!(fclassif_lda(&data, &[], None, 1).is_none());
+        assert!(fclassif_lda(&data, &[], None, 1).is_err());
 
         let data = FdMatrix::zeros(10, 50);
         let labels = vec![0; 10]; // single class
-        assert!(fclassif_lda(&data, &labels, None, 1).is_none());
+        assert!(fclassif_lda(&data, &labels, None, 1).is_err());
     }
 
     #[test]
@@ -1870,17 +2005,17 @@ mod tests {
     #[test]
     fn test_fclassif_cv_too_few_folds() {
         let (data, labels, t) = generate_two_class_data(10, 50);
-        // nfold < 2 → None
-        assert!(fclassif_cv(&data, &t, &labels, None, "lda", 3, 1, 42).is_none());
-        // n < nfold → None
-        assert!(fclassif_cv(&data, &t, &labels, None, "lda", 3, 100, 42).is_none());
+        // nfold < 2 → Err
+        assert!(fclassif_cv(&data, &t, &labels, None, "lda", 3, 1, 42).is_err());
+        // n < nfold → Err
+        assert!(fclassif_cv(&data, &t, &labels, None, "lda", 3, 100, 42).is_err());
     }
 
     #[test]
     fn test_fclassif_cv_single_class() {
         let (data, _labels, t) = generate_two_class_data(10, 50);
         let single = vec![0usize; 20]; // only one class
-        assert!(fclassif_cv(&data, &t, &single, None, "lda", 3, 5, 42).is_none());
+        assert!(fclassif_cv(&data, &t, &single, None, "lda", 3, 5, 42).is_err());
     }
 
     #[test]
@@ -1888,7 +2023,7 @@ mod tests {
         let (data, labels, t, scalar_covariates) =
             generate_two_class_with_scalar_covariates(20, 50, 2);
         let result =
-            fclassif_kernel(&data, &t, &labels, Some(&scalar_covariates), 0.0, 0.0).unwrap();
+            fclassif_kernel(&data, &labels, &t, Some(&scalar_covariates), 0.0, 0.0).unwrap();
 
         assert_eq!(result.predicted.len(), 40);
         assert!(
@@ -1905,7 +2040,7 @@ mod tests {
             generate_two_class_with_scalar_covariates(15, 50, 1);
         // Provide explicit bandwidths (>0 skips LOO selection)
         let result =
-            fclassif_kernel(&data, &t, &labels, Some(&scalar_covariates), 1.0, 1.0).unwrap();
+            fclassif_kernel(&data, &labels, &t, Some(&scalar_covariates), 1.0, 1.0).unwrap();
 
         assert_eq!(result.predicted.len(), 30);
         assert!(result.accuracy >= 0.0 && result.accuracy <= 1.0);
@@ -2142,27 +2277,27 @@ mod tests {
     #[test]
     fn test_fclassif_kernel_invalid_inputs() {
         let data = FdMatrix::zeros(0, 0);
-        assert!(fclassif_kernel(&data, &[], &[], None, 0.0, 0.0).is_none());
+        assert!(fclassif_kernel(&data, &[], &[], None, 0.0, 0.0).is_err());
 
         let data = FdMatrix::zeros(5, 10);
         let t = uniform_grid(10);
         let labels = vec![0; 5]; // single class
-        assert!(fclassif_kernel(&data, &t, &labels, None, 0.0, 0.0).is_none());
+        assert!(fclassif_kernel(&data, &labels, &t, None, 0.0, 0.0).is_err());
 
         // Mismatched argvals length
         let labels2 = vec![0, 0, 0, 1, 1];
         let wrong_t = vec![0.0, 1.0]; // wrong length
-        assert!(fclassif_kernel(&data, &wrong_t, &labels2, None, 0.0, 0.0).is_none());
+        assert!(fclassif_kernel(&data, &labels2, &wrong_t, None, 0.0, 0.0).is_err());
     }
 
     #[test]
     fn test_fclassif_dd_invalid_inputs() {
         let data = FdMatrix::zeros(0, 0);
-        assert!(fclassif_dd(&data, &[], None).is_none());
+        assert!(fclassif_dd(&data, &[], None).is_err());
 
         let data = FdMatrix::zeros(5, 10);
         let labels = vec![0; 5]; // single class
-        assert!(fclassif_dd(&data, &labels, None).is_none());
+        assert!(fclassif_dd(&data, &labels, None).is_err());
     }
 
     #[test]
@@ -2215,8 +2350,8 @@ mod tests {
     #[test]
     fn test_fclassif_knn_invalid_k() {
         let (data, labels, _t) = generate_two_class_data(10, 50);
-        // k_nn == 0 → None
-        assert!(fclassif_knn(&data, &labels, None, 3, 0).is_none());
+        // k_nn == 0 → Err
+        assert!(fclassif_knn(&data, &labels, None, 3, 0).is_err());
     }
 
     #[test]

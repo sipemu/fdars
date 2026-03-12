@@ -11,6 +11,7 @@ use crate::elastic_fpca::{
     warps_to_normalized_psi,
 };
 use crate::elastic_regression::{ElasticPcrResult, PcaMethod};
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 
@@ -47,10 +48,26 @@ pub fn elastic_pcr_attribution(
     ncomp: usize,
     n_perm: usize,
     seed: u64,
-) -> Option<ElasticAttributionResult> {
+) -> Result<ElasticAttributionResult, FdarError> {
     let n = result.fitted_values.len();
-    if y.len() != n || ncomp == 0 || n < 2 {
-        return None;
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: n.to_string(),
+            actual: y.len().to_string(),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be >= 1".into(),
+        });
+    }
+    if n < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n",
+            message: "need at least 2 observations".into(),
+        });
     }
     let actual_ncomp = ncomp.min(result.coefficients.len());
 
@@ -73,7 +90,7 @@ pub fn elastic_pcr_attribution(
                 n_perm,
                 seed,
             );
-            Some(ElasticAttributionResult {
+            Ok(ElasticAttributionResult {
                 amplitude_contribution: amp,
                 phase_contribution: phase,
                 amplitude_importance: amp_imp,
@@ -97,7 +114,7 @@ pub fn elastic_pcr_attribution(
                 n_perm,
                 seed,
             );
-            Some(ElasticAttributionResult {
+            Ok(ElasticAttributionResult {
                 amplitude_contribution: amp,
                 phase_contribution: phase,
                 amplitude_importance: 0.0,
@@ -114,8 +131,14 @@ fn attribution_joint(
     ncomp: usize,
     n_perm: usize,
     seed: u64,
-) -> Option<ElasticAttributionResult> {
-    let joint = result.joint_fpca.as_ref()?;
+) -> Result<ElasticAttributionResult, FdarError> {
+    let joint = result
+        .joint_fpca
+        .as_ref()
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "elastic_pcr_attribution",
+            detail: "joint_fpca result missing from ElasticPcrResult".into(),
+        })?;
     let km = &result.karcher;
     let (n, m) = km.aligned_data.shape();
     let m_aug = m + 1;
@@ -180,7 +203,7 @@ fn attribution_joint(
         false,
     );
 
-    Some(ElasticAttributionResult {
+    Ok(ElasticAttributionResult {
         amplitude_contribution,
         phase_contribution,
         amplitude_importance: (r2_orig - amplitude_importance).max(0.0),

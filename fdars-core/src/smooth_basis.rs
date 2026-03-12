@@ -456,23 +456,127 @@ pub struct BasisNbasisCvResult {
     pub criterion: BasisCriterion,
 }
 
+/// Evaluate information criterion (GCV/AIC/BIC) for a range of nbasis values.
+fn evaluate_nbasis_info_criterion(
+    data: &FdMatrix,
+    argvals: &[f64],
+    nbasis_range: &[usize],
+    basis_type: &BasisType,
+    criterion: BasisCriterion,
+    lambda: f64,
+) -> Vec<f64> {
+    let mut scores = Vec::with_capacity(nbasis_range.len());
+    for &nb in nbasis_range {
+        if nb < 2 {
+            scores.push(f64::INFINITY);
+            continue;
+        }
+        let penalty = match basis_type {
+            BasisType::Bspline { order } => bspline_penalty_matrix(argvals, nb, *order, 2),
+            BasisType::Fourier { period } => fourier_penalty_matrix(nb, *period, 2),
+        };
+        let fdpar = FdPar {
+            basis_type: basis_type.clone(),
+            nbasis: nb,
+            lambda,
+            lfd_order: 2,
+            penalty_matrix: penalty,
+        };
+        match smooth_basis(data, argvals, &fdpar) {
+            Ok(result) => {
+                let score = match criterion {
+                    BasisCriterion::Gcv => result.gcv,
+                    BasisCriterion::Aic => result.aic,
+                    BasisCriterion::Bic => result.bic,
+                    _ => unreachable!(),
+                };
+                scores.push(score);
+            }
+            Err(_) => scores.push(f64::INFINITY),
+        }
+    }
+    scores
+}
+
+/// Evaluate nbasis via k-fold cross-validation of reconstruction error.
+fn evaluate_nbasis_cv(
+    data: &FdMatrix,
+    argvals: &[f64],
+    nbasis_range: &[usize],
+    basis_type: &BasisType,
+    lambda: f64,
+    n_folds: usize,
+) -> Vec<f64> {
+    let (n, m) = data.shape();
+    let n_folds = n_folds.max(2);
+    let folds = crate::cv::create_folds(n, n_folds, 42);
+    let mut scores = Vec::with_capacity(nbasis_range.len());
+
+    for &nb in nbasis_range {
+        if nb < 2 {
+            scores.push(f64::INFINITY);
+            continue;
+        }
+        let penalty = match basis_type {
+            BasisType::Bspline { order } => bspline_penalty_matrix(argvals, nb, *order, 2),
+            BasisType::Fourier { period } => fourier_penalty_matrix(nb, *period, 2),
+        };
+
+        let mut total_mse = 0.0;
+        let mut total_count = 0;
+
+        for fold in 0..n_folds {
+            let (train_idx, test_idx) = crate::cv::fold_indices(&folds, fold);
+            if train_idx.is_empty() || test_idx.is_empty() {
+                continue;
+            }
+            let train_data = crate::cv::subset_rows(data, &train_idx);
+            let fdpar = FdPar {
+                basis_type: basis_type.clone(),
+                nbasis: nb,
+                lambda,
+                lfd_order: 2,
+                penalty_matrix: penalty.clone(),
+            };
+
+            if let Ok(train_result) = smooth_basis(&train_data, argvals, &fdpar) {
+                let (basis_flat, actual_k) = evaluate_basis(argvals, basis_type, nb);
+                let b_mat = DMatrix::from_column_slice(m, actual_k, &basis_flat);
+                let r_mat =
+                    DMatrix::from_column_slice(actual_k, actual_k, &train_result.penalty_matrix);
+                let btb = b_mat.transpose() * &b_mat;
+                let ridge_eps = 1e-10;
+                let system: DMatrix<f64> = &btb
+                    + lambda * &r_mat
+                    + ridge_eps * DMatrix::<f64>::identity(actual_k, actual_k);
+
+                if let Some(system_inv) = invert_penalized_system(&system, actual_k) {
+                    let proj = &system_inv * b_mat.transpose();
+                    for &ti in &test_idx {
+                        let curve: Vec<f64> = (0..m).map(|j| data[(ti, j)]).collect();
+                        let y_vec = nalgebra::DVector::from_vec(curve.clone());
+                        let coefs = &proj * &y_vec;
+                        let fitted = &b_mat * &coefs;
+                        let mse: f64 =
+                            (0..m).map(|j| (curve[j] - fitted[j]).powi(2)).sum::<f64>() / m as f64;
+                        total_mse += mse;
+                        total_count += 1;
+                    }
+                }
+            }
+        }
+
+        if total_count > 0 {
+            scores.push(total_mse / total_count as f64);
+        } else {
+            scores.push(f64::INFINITY);
+        }
+    }
+    scores
+}
+
 /// Select the optimal number of basis functions using multiple criteria
 /// (R's `fdata2basis_cv`).
-///
-/// For `Gcv`, `Aic`, `Bic`: loops over nbasis values, calling `smooth_basis`
-/// and extracting the corresponding score.
-///
-/// For `Cv`: k-fold cross-validation. For each nbasis, for each fold,
-/// projects training curves to basis and measures reconstruction error on test curves.
-///
-/// # Arguments
-/// * `data` — Functional data matrix (n × m)
-/// * `argvals` — Evaluation points (length m)
-/// * `nbasis_range` — Candidate nbasis values to test (e.g., `&[4, 6, 8, ..., 20]`)
-/// * `basis_type` — Basis type
-/// * `criterion` — Selection criterion
-/// * `n_folds` — Number of folds (only used when criterion = Cv)
-/// * `lambda` — Smoothing parameter (default 0)
 pub fn basis_nbasis_cv(
     data: &FdMatrix,
     argvals: &[f64],
@@ -487,123 +591,22 @@ pub fn basis_nbasis_cv(
         return None;
     }
 
-    let mut scores = Vec::with_capacity(nbasis_range.len());
-
-    match criterion {
+    let scores = match criterion {
         BasisCriterion::Gcv | BasisCriterion::Aic | BasisCriterion::Bic => {
-            for &nb in nbasis_range {
-                if nb < 2 {
-                    scores.push(f64::INFINITY);
-                    continue;
-                }
-
-                let penalty = match basis_type {
-                    BasisType::Bspline { order } => bspline_penalty_matrix(argvals, nb, *order, 2),
-                    BasisType::Fourier { period } => fourier_penalty_matrix(nb, *period, 2),
-                };
-
-                let fdpar = FdPar {
-                    basis_type: basis_type.clone(),
-                    nbasis: nb,
-                    lambda,
-                    lfd_order: 2,
-                    penalty_matrix: penalty,
-                };
-
-                match smooth_basis(data, argvals, &fdpar) {
-                    Ok(result) => {
-                        let score = match criterion {
-                            BasisCriterion::Gcv => result.gcv,
-                            BasisCriterion::Aic => result.aic,
-                            BasisCriterion::Bic => result.bic,
-                            _ => unreachable!(),
-                        };
-                        scores.push(score);
-                    }
-                    Err(_) => scores.push(f64::INFINITY),
-                }
-            }
+            evaluate_nbasis_info_criterion(
+                data,
+                argvals,
+                nbasis_range,
+                basis_type,
+                criterion,
+                lambda,
+            )
         }
         BasisCriterion::Cv => {
-            let folds = crate::cv::create_folds(n, n_folds.max(2), 42);
-
-            for &nb in nbasis_range {
-                if nb < 2 {
-                    scores.push(f64::INFINITY);
-                    continue;
-                }
-
-                let penalty = match basis_type {
-                    BasisType::Bspline { order } => bspline_penalty_matrix(argvals, nb, *order, 2),
-                    BasisType::Fourier { period } => fourier_penalty_matrix(nb, *period, 2),
-                };
-
-                let mut total_mse = 0.0;
-                let mut total_count = 0;
-
-                for fold in 0..n_folds.max(2) {
-                    let (train_idx, test_idx) = crate::cv::fold_indices(&folds, fold);
-                    if train_idx.is_empty() || test_idx.is_empty() {
-                        continue;
-                    }
-
-                    let train_data = crate::cv::subset_rows(data, &train_idx);
-
-                    let fdpar = FdPar {
-                        basis_type: basis_type.clone(),
-                        nbasis: nb,
-                        lambda,
-                        lfd_order: 2,
-                        penalty_matrix: penalty.clone(),
-                    };
-
-                    if let Ok(train_result) = smooth_basis(&train_data, argvals, &fdpar) {
-                        // Evaluate basis
-                        let (basis_flat, actual_k) = evaluate_basis(argvals, basis_type, nb);
-                        let b_mat = DMatrix::from_column_slice(m, actual_k, &basis_flat);
-
-                        // For each test curve, project to basis using training coefficients
-                        // and measure reconstruction error
-                        let r_mat = DMatrix::from_column_slice(
-                            actual_k,
-                            actual_k,
-                            &train_result.penalty_matrix,
-                        );
-                        let btb = b_mat.transpose() * &b_mat;
-                        let ridge_eps = 1e-10;
-                        let system: DMatrix<f64> = &btb
-                            + lambda * &r_mat
-                            + ridge_eps * DMatrix::<f64>::identity(actual_k, actual_k);
-
-                        if let Some(system_inv) = invert_penalized_system(&system, actual_k) {
-                            let proj = &system_inv * b_mat.transpose();
-
-                            for &ti in &test_idx {
-                                let curve: Vec<f64> = (0..m).map(|j| data[(ti, j)]).collect();
-                                let y_vec = nalgebra::DVector::from_vec(curve.clone());
-                                let coefs = &proj * &y_vec;
-                                let fitted = &b_mat * &coefs;
-
-                                let mse: f64 =
-                                    (0..m).map(|j| (curve[j] - fitted[j]).powi(2)).sum::<f64>()
-                                        / m as f64;
-                                total_mse += mse;
-                                total_count += 1;
-                            }
-                        }
-                    }
-                }
-
-                if total_count > 0 {
-                    scores.push(total_mse / total_count as f64);
-                } else {
-                    scores.push(f64::INFINITY);
-                }
-            }
+            evaluate_nbasis_cv(data, argvals, nbasis_range, basis_type, lambda, n_folds)
         }
-    }
+    };
 
-    // Find optimal
     let (best_idx, _) = scores
         .iter()
         .enumerate()

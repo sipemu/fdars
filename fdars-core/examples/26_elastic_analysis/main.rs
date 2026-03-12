@@ -94,7 +94,7 @@ fn demo_regression(data: &FdMatrix, y: &[f64], y_class: &[i8], t: &[f64], n: usi
             println!("  beta_{} = {:+.4}", k, c);
         }
         println!("\n=== 4. Elastic PCR Attribution ===");
-        if let Some(attr) = fdars_core::elastic_pcr_attribution(&epcr, y, 3, 100, 42) {
+        if let Ok(attr) = fdars_core::elastic_pcr_attribution(&epcr, y, 3, 100, 42) {
             println!("  Amplitude importance: {:.4}", attr.amplitude_importance);
             println!("  Phase importance:     {:.4}", attr.phase_importance);
         }

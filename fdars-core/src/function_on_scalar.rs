@@ -11,6 +11,7 @@
 //! - [`fanova`]: Functional ANOVA with permutation-based global test
 //! - [`predict_fosr`]: Predict new curves from fitted model
 
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 
@@ -169,7 +170,12 @@ fn penalty_matrix(m: usize) -> Vec<f64> {
 /// Solve (A + λP)x = b for each column of B (pointwise regression at each t).
 /// A is X'X (p×p), B is X'Y (p×m), P is penalty matrix (p×p).
 /// Returns coefficient matrix (p×m).
-fn penalized_solve(xtx: &[f64], xty: &FdMatrix, penalty: &[f64], lambda: f64) -> Option<FdMatrix> {
+fn penalized_solve(
+    xtx: &[f64],
+    xty: &FdMatrix,
+    penalty: &[f64],
+    lambda: f64,
+) -> Result<FdMatrix, FdarError> {
     let p = xty.nrows();
     let m = xty.ncols();
 
@@ -180,7 +186,13 @@ fn penalized_solve(xtx: &[f64], xty: &FdMatrix, penalty: &[f64], lambda: f64) ->
     }
 
     // Cholesky factor
-    let l = cholesky_factor(&a, p)?;
+    let l = cholesky_factor(&a, p).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "penalized_solve",
+        detail: format!(
+            "Cholesky factorization of (X'X + {:.4}*P) failed; matrix is singular or near-singular",
+            lambda
+        ),
+    })?;
 
     // Solve for each grid point
     let mut beta = FdMatrix::zeros(p, m);
@@ -191,7 +203,7 @@ fn penalized_solve(xtx: &[f64], xty: &FdMatrix, penalty: &[f64], lambda: f64) ->
             beta[(j, t)] = x[j];
         }
     }
-    Some(beta)
+    Ok(beta)
 }
 
 /// Compute pointwise R² at each grid point.
@@ -281,11 +293,29 @@ fn drop_intercept_rows(full: &FdMatrix, p: usize, m: usize) -> FdMatrix {
     out
 }
 
-pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Option<FosrResult> {
+pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Result<FosrResult, FdarError> {
     let (n, m) = data.shape();
     let p = predictors.ncols();
-    if n < p + 2 || m == 0 || predictors.nrows() != n {
-        return None;
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column (grid points)".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    if predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: format!("{} rows (matching data)", n),
+            actual: format!("{} rows", predictors.nrows()),
+        });
+    }
+    if n < p + 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} observations (p + 2)", p + 2),
+            actual: format!("{} observations", n),
+        });
     }
 
     let design = build_fosr_design(predictors, n);
@@ -311,7 +341,7 @@ pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Option<FosrR
 
     let intercept: Vec<f64> = (0..m).map(|t| beta[(0, t)]).collect();
 
-    Some(FosrResult {
+    Ok(FosrResult {
         intercept,
         beta: drop_intercept_rows(&beta, p, m),
         fitted,
@@ -364,8 +394,8 @@ fn select_lambda_gcv(
 
     for &lam in &lambdas {
         let beta = match penalized_solve(xtx, xty, penalty, lam) {
-            Some(b) => b,
-            None => continue,
+            Ok(b) => b,
+            Err(_) => continue,
         };
         let (_, residuals) = compute_fosr_fitted(design, &beta, data);
         let trace_h = compute_trace_hat(xtx, penalty, lam, p_total, n);
@@ -454,9 +484,12 @@ fn regress_scores_on_design(
     n: usize,
     k: usize,
     p_total: usize,
-) -> Option<Vec<Vec<f64>>> {
+) -> Result<Vec<Vec<f64>>, FdarError> {
     let xtx = compute_xtx(design);
-    let l = cholesky_factor(&xtx, p_total)?;
+    let l = cholesky_factor(&xtx, p_total).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "regress_scores_on_design",
+        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient".to_string(),
+    })?;
 
     let gamma_all: Vec<Vec<f64>> = (0..k)
         .map(|comp| {
@@ -469,7 +502,7 @@ fn regress_scores_on_design(
             cholesky_forward_back(&l, &xts, p_total)
         })
         .collect();
-    Some(gamma_all)
+    Ok(gamma_all)
 }
 
 /// Reconstruct β_j(t) = Σ_k gamma\[comp\]\[1+j\] · φ_k(t) for each predictor j.
@@ -533,11 +566,39 @@ fn extract_beta_scores(gamma_all: &[Vec<f64>], p: usize, k: usize, m: usize) -> 
 /// * `data` - Functional response matrix (n × m)
 /// * `predictors` - Scalar predictor matrix (n × p)
 /// * `ncomp` - Number of FPC components to use
-pub fn fosr_fpc(data: &FdMatrix, predictors: &FdMatrix, ncomp: usize) -> Option<FosrFpcResult> {
+pub fn fosr_fpc(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    ncomp: usize,
+) -> Result<FosrFpcResult, FdarError> {
     let (n, m) = data.shape();
     let p = predictors.ncols();
-    if n < p + 2 || m == 0 || predictors.nrows() != n || ncomp == 0 {
-        return None;
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column (grid points)".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    if predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: format!("{} rows (matching data)", n),
+            actual: format!("{} rows", predictors.nrows()),
+        });
+    }
+    if n < p + 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} observations (p + 2)", p + 2),
+            actual: format!("{} observations", n),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "number of FPC components must be at least 1".to_string(),
+        });
     }
 
     let fpca = fdata_to_pc_1d(data, ncomp)?;
@@ -554,7 +615,7 @@ pub fn fosr_fpc(data: &FdMatrix, predictors: &FdMatrix, ncomp: usize) -> Option<
     let r_squared = r_squared_t.iter().sum::<f64>() / m as f64;
     let beta_scores = extract_beta_scores(&gamma_all, p, k, m);
 
-    Some(FosrFpcResult {
+    Ok(FosrFpcResult {
         intercept,
         beta,
         fitted,
@@ -704,10 +765,28 @@ fn global_f_statistic(f_t: &[f64]) -> f64 {
 ///
 /// # Returns
 /// [`FanovaResult`] with group means, F-statistics, and permutation p-value
-pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Option<FanovaResult> {
+pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<FanovaResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 3 || m == 0 || groups.len() != n {
-        return None;
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column (grid points)".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    if groups.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "groups",
+            expected: format!("{} elements (matching data rows)", n),
+            actual: format!("{} elements", groups.len()),
+        });
+    }
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 observations".to_string(),
+            actual: format!("{} observations", n),
+        });
     }
 
     let mut labels: Vec<usize> = groups.to_vec();
@@ -715,7 +794,13 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Option<Fanova
     labels.dedup();
     let n_groups = labels.len();
     if n_groups < 2 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "groups",
+            message: format!(
+                "at least 2 distinct groups required, but only {} found",
+                n_groups
+            ),
+        });
     }
 
     let (group_means, overall_mean) = compute_group_means(data, groups, &labels);
@@ -747,7 +832,7 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Option<Fanova
 
     let p_value = (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0);
 
-    Some(FanovaResult {
+    Ok(FanovaResult {
         group_means,
         overall_mean,
         f_statistic_t: f_t,
@@ -809,7 +894,7 @@ mod tests {
     fn test_fosr_basic() {
         let (y, z) = generate_fosr_data(30, 50);
         let result = fosr(&y, &z, 0.0);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.intercept.len(), 50);
         assert_eq!(fit.beta.shape(), (2, 50));
@@ -883,7 +968,7 @@ mod tests {
     fn test_fosr_invalid_input() {
         let y = FdMatrix::zeros(2, 50);
         let z = FdMatrix::zeros(2, 1);
-        assert!(fosr(&y, &z, 0.0).is_none());
+        assert!(fosr(&y, &z, 0.0).is_err());
     }
 
     // ----- predict_fosr tests -----
@@ -924,7 +1009,7 @@ mod tests {
         }
 
         let result = fanova(&data, &groups, 200);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.n_groups, 2);
         assert_eq!(res.group_means.shape(), (2, m));
@@ -956,7 +1041,7 @@ mod tests {
         }
 
         let result = fanova(&data, &groups, 200);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let res = result.unwrap();
         // Without group effect, p should be large
         assert!(
@@ -987,7 +1072,7 @@ mod tests {
         }
 
         let result = fanova(&data, &groups, 200);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.n_groups, 3);
     }
@@ -996,9 +1081,9 @@ mod tests {
     fn test_fanova_invalid_input() {
         let data = FdMatrix::zeros(10, 50);
         let groups = vec![0; 10]; // Only one group
-        assert!(fanova(&data, &groups, 100).is_none());
+        assert!(fanova(&data, &groups, 100).is_err());
 
         let groups = vec![0; 5]; // Wrong length
-        assert!(fanova(&data, &groups, 100).is_none());
+        assert!(fanova(&data, &groups, 100).is_err());
     }
 }

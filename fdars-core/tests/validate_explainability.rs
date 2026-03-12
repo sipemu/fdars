@@ -470,7 +470,7 @@ fn pdp_logistic_rejects_missing_scalar_covariates() {
     // Should return None when scalar_covariates is missing but gamma is non-empty
     let result = fdars_core::functional_pdp_logistic(&fit, &data, None, 0, 10);
     assert!(
-        result.is_none(),
+        result.is_err(),
         "Should reject None scalar_covariates when model has gamma"
     );
 }

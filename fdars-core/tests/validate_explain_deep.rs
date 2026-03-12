@@ -114,7 +114,7 @@ fn bootstrap_ci_logistic_degenerate_resamples_handled() {
     let result =
         fdars_core::bootstrap_ci_functional_logistic(&data, &y, None, 2, 100, 0.05, 42, 25, 1e-6);
     // Should either succeed (with some failures) or return None if too few succeed
-    if let Some(ci) = result {
+    if let Ok(ci) = result {
         assert!(ci.n_boot_success > 0, "Some replicates should succeed");
         assert!(
             ci.n_boot_success <= 100,
@@ -433,35 +433,35 @@ fn elastic_attribution_joint_scores_decompose_correctly() {
 #[test]
 fn bootstrap_ci_rejects_invalid_alpha() {
     let (data, y) = regression_data(30, 20, 42);
-    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 0.0, 42).is_none());
-    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 1.0, 42).is_none());
-    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, -0.1, 42).is_none());
+    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 0.0, 42).is_err());
+    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 1.0, 42).is_err());
+    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, -0.1, 42).is_err());
 }
 
 #[test]
 fn bootstrap_ci_rejects_zero_n_boot() {
     let (data, y) = regression_data(30, 20, 42);
-    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 0, 0.05, 42).is_none());
+    assert!(fdars_core::bootstrap_ci_fregre_lm(&data, &y, None, 2, 0, 0.05, 42).is_err());
 }
 
 #[test]
 fn pdp_rejects_n_grid_one() {
     let (data, y) = regression_data(30, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    assert!(fdars_core::functional_pdp(&fit, &data, None, 0, 0).is_none());
-    assert!(fdars_core::functional_pdp(&fit, &data, None, 0, 1).is_none());
+    assert!(fdars_core::functional_pdp(&fit, &data, None, 0, 0).is_err());
+    assert!(fdars_core::functional_pdp(&fit, &data, None, 0, 1).is_err());
 }
 
 #[test]
 fn elastic_attribution_rejects_empty_y() {
     let (data, y, t) = elastic_data(15, 51);
     let result = elastic_pcr(&data, &y, &t, 3, PcaMethod::Vertical, 0.0, 5, 1e-3).unwrap();
-    assert!(fdars_core::elastic_pcr_attribution(&result, &[], 3, 10, 42).is_none());
+    assert!(fdars_core::elastic_pcr_attribution(&result, &[], 3, 10, 42).is_err());
 }
 
 #[test]
 fn elastic_attribution_rejects_zero_ncomp() {
     let (data, y, t) = elastic_data(15, 51);
     let result = elastic_pcr(&data, &y, &t, 3, PcaMethod::Vertical, 0.0, 5, 1e-3).unwrap();
-    assert!(fdars_core::elastic_pcr_attribution(&result, &y, 0, 10, 42).is_none());
+    assert!(fdars_core::elastic_pcr_attribution(&result, &y, 0, 10, 42).is_err());
 }

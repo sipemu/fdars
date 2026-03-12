@@ -1,6 +1,7 @@
 //! Counterfactual explanations and prototype/criticism selection.
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::FpcaResult;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
@@ -38,15 +39,28 @@ pub fn counterfactual_regression(
     scalar_covariates: Option<&FdMatrix>,
     observation: usize,
     target_value: f64,
-) -> Option<CounterfactualResult> {
+) -> Result<CounterfactualResult, FdarError> {
     let (n, m) = data.shape();
-    if observation >= n || m != fit.fpca.mean.len() {
-        return None;
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
 
@@ -58,7 +72,10 @@ pub fn counterfactual_regression(
     let gamma_norm_sq: f64 = gamma.iter().map(|g| g * g).sum();
 
     if gamma_norm_sq < 1e-30 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "counterfactual_regression",
+            detail: "coefficient norm is near zero".into(),
+        });
     }
 
     let original_scores: Vec<f64> = (0..ncomp).map(|k| scores[(observation, k)]).collect();
@@ -73,7 +90,7 @@ pub fn counterfactual_regression(
     let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
     let counterfactual_prediction = original_prediction + gap;
 
-    Some(CounterfactualResult {
+    Ok(CounterfactualResult {
         observation,
         original_scores,
         counterfactual_scores,
@@ -94,15 +111,28 @@ pub fn counterfactual_logistic(
     observation: usize,
     max_iter: usize,
     step_size: f64,
-) -> Option<CounterfactualResult> {
+) -> Result<CounterfactualResult, FdarError> {
     let (n, m) = data.shape();
-    if observation >= n || m != fit.fpca.mean.len() {
-        return None;
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
 
@@ -130,7 +160,7 @@ pub fn counterfactual_logistic(
     let delta_function = reconstruct_delta_function(&delta_scores, &fit.fpca.rotation, ncomp, m);
     let distance: f64 = delta_scores.iter().map(|d| d * d).sum::<f64>().sqrt();
 
-    Some(CounterfactualResult {
+    Ok(CounterfactualResult {
         observation,
         original_scores,
         counterfactual_scores: current_scores,
@@ -214,11 +244,33 @@ pub fn prototype_criticism(
     ncomp: usize,
     n_prototypes: usize,
     n_criticisms: usize,
-) -> Option<PrototypeCriticismResult> {
+) -> Result<PrototypeCriticismResult, FdarError> {
     let n = fpca.scores.nrows();
     let actual_ncomp = ncomp.min(fpca.scores.ncols());
-    if n == 0 || actual_ncomp == 0 || n_prototypes == 0 || n_prototypes > n {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "fpca.scores",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if actual_ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
+    }
+    if n_prototypes == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_prototypes",
+            message: "must be > 0".into(),
+        });
+    }
+    if n_prototypes > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_prototypes",
+            message: format!("n_prototypes {} > n {}", n_prototypes, n),
+        });
     }
     let n_crit = n_criticisms.min(n.saturating_sub(n_prototypes));
 
@@ -243,7 +295,7 @@ pub fn prototype_criticism(
         .collect();
     let criticism_witness: Vec<f64> = criticism_indices.iter().map(|&i| witness[i]).collect();
 
-    Some(PrototypeCriticismResult {
+    Ok(PrototypeCriticismResult {
         prototype_indices: selected,
         prototype_witness,
         criticism_indices,

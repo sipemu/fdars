@@ -15,6 +15,7 @@
 //! - [`fregre_cv`]: Cross-validation for number of FPC components
 
 use crate::cv::create_folds;
+use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc_1d, FpcaResult};
@@ -271,16 +272,38 @@ fn validate_fregre_inputs(
     m: usize,
     y: &[f64],
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<()> {
-    if n < 3 || m == 0 || y.len() != n {
-        return None;
+) -> Result<(), FdarError> {
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows".to_string(),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{}", n),
+            actual: format!("{}", y.len()),
+        });
     }
     if let Some(sc) = scalar_covariates {
         if sc.nrows() != n {
-            return None;
+            return Err(FdarError::InvalidDimension {
+                parameter: "scalar_covariates",
+                expected: format!("{} rows", n),
+                actual: format!("{} rows", sc.nrows()),
+            });
         }
     }
-    Some(())
+    Ok(())
 }
 
 /// Resolve ncomp: auto-select via CV if 0, otherwise clamp.
@@ -291,12 +314,12 @@ fn resolve_ncomp(
     scalar_covariates: Option<&FdMatrix>,
     n: usize,
     m: usize,
-) -> Option<usize> {
+) -> Result<usize, FdarError> {
     if ncomp == 0 {
         let cv = fregre_cv(data, y, scalar_covariates, 1, m.min(n - 1).min(20), 5)?;
-        Some(cv.optimal_k)
+        Ok(cv.optimal_k)
     } else {
-        Some(ncomp.min(n - 1).min(m))
+        Ok(ncomp.min(n - 1).min(m))
     }
 }
 
@@ -390,18 +413,25 @@ fn compute_r_squared(y: &[f64], residuals: &[f64], p_total: usize) -> (f64, f64)
 // ---------------------------------------------------------------------------
 
 /// Solve ordinary least squares: min ||Xb - y||² via normal equations with Cholesky.
-/// Returns (coefficients, hat_matrix_diagonal) or None if singular.
-fn ols_solve(x: &FdMatrix, y: &[f64]) -> Option<(Vec<f64>, Vec<f64>)> {
+/// Returns (coefficients, hat_matrix_diagonal) or error if singular.
+fn ols_solve(x: &FdMatrix, y: &[f64]) -> Result<(Vec<f64>, Vec<f64>), FdarError> {
     let (n, p) = x.shape();
     if n < p || p == 0 {
-        return None;
+        return Err(FdarError::InvalidDimension {
+            parameter: "design matrix",
+            expected: format!("n >= p and p > 0 (p={})", p),
+            actual: format!("n={}, p={}", n, p),
+        });
     }
     let xtx = compute_xtx(x);
     let xty = compute_xty(x, y);
-    let l = cholesky_factor(&xtx, p)?;
+    let l = cholesky_factor(&xtx, p).ok_or_else(|| FdarError::ComputationFailed {
+        operation: "OLS Cholesky factorization",
+        detail: "X'X is singular or near-singular".to_string(),
+    })?;
     let b = cholesky_forward_back(&l, &xty, p);
     let hat_diag = compute_hat_diagonal(x, &l);
-    Some((b, hat_diag))
+    Ok((b, hat_diag))
 }
 
 // ---------------------------------------------------------------------------
@@ -427,7 +457,7 @@ pub fn fregre_lm(
     y: &[f64],
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Option<FregreLmResult> {
+) -> Result<FregreLmResult, FdarError> {
     let (n, m) = data.shape();
     validate_fregre_inputs(n, m, y, scalar_covariates)?;
 
@@ -471,7 +501,7 @@ pub fn fregre_lm(
     let aic = nf * (rss / nf).ln() + 2.0 * p_total as f64;
     let bic = nf * (rss / nf).ln() + (nf).ln() * p_total as f64;
 
-    Some(FregreLmResult {
+    Ok(FregreLmResult {
         intercept: coeffs[0],
         beta_t,
         beta_se,
@@ -513,7 +543,7 @@ fn cv_error_for_k(
     k: usize,
     n_folds: usize,
     folds: &[usize],
-) -> Option<f64> {
+) -> Result<f64, FdarError> {
     let n = data.nrows();
     let ncols = data.ncols();
     let mut total_error = 0.0;
@@ -547,8 +577,8 @@ fn cv_error_for_k(
         });
 
         let fit = match fregre_lm(&train_data, &train_y, train_sc.as_ref(), k) {
-            Some(f) => f,
-            None => continue,
+            Ok(f) => f,
+            Err(_) => continue,
         };
 
         let predictions = predict_fregre_lm(&fit, &test_data, test_sc.as_ref());
@@ -564,9 +594,12 @@ fn cv_error_for_k(
     }
 
     if count > 0 {
-        Some(total_error / count as f64)
+        Ok(total_error / count as f64)
     } else {
-        None
+        Err(FdarError::ComputationFailed {
+            operation: "CV error computation",
+            detail: "no valid folds produced predictions".to_string(),
+        })
     }
 }
 
@@ -586,10 +619,20 @@ pub fn fregre_cv(
     k_min: usize,
     k_max: usize,
     n_folds: usize,
-) -> Option<FregreCvResult> {
+) -> Result<FregreCvResult, FdarError> {
     let n = data.nrows();
-    if n < n_folds || k_min < 1 || k_min > k_max {
-        return None;
+    if n < n_folds {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} rows (n_folds)", n_folds),
+            actual: format!("{}", n),
+        });
+    }
+    if k_min < 1 || k_min > k_max {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k_min/k_max",
+            message: format!("k_min={} must be >= 1 and <= k_max={}", k_min, k_max),
+        });
     }
 
     let k_max = k_max.min(n - 2).min(data.ncols());
@@ -601,14 +644,17 @@ pub fn fregre_cv(
     let mut cv_errors = Vec::new();
 
     for k in k_min..=k_max {
-        if let Some(err) = cv_error_for_k(data, y, scalar_covariates, k, n_folds, &folds) {
+        if let Ok(err) = cv_error_for_k(data, y, scalar_covariates, k, n_folds, &folds) {
             k_values.push(k);
             cv_errors.push(err);
         }
     }
 
     if k_values.is_empty() {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "fregre_cv",
+            detail: "no valid K values produced CV errors".to_string(),
+        });
     }
 
     let (optimal_idx, &min_cv_error) = cv_errors
@@ -617,7 +663,7 @@ pub fn fregre_cv(
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap();
 
-    Some(FregreCvResult {
+    Ok(FregreCvResult {
         k_values: k_values.clone(),
         cv_errors,
         optimal_k: k_values[optimal_idx],
@@ -646,21 +692,27 @@ pub fn model_selection_ncomp(
     scalar_covariates: Option<&FdMatrix>,
     max_ncomp: usize,
     criterion: SelectionCriterion,
-) -> Option<ModelSelectionResult> {
+) -> Result<ModelSelectionResult, FdarError> {
     if max_ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_ncomp",
+            message: "must be >= 1".to_string(),
+        });
     }
 
     let mut criteria = Vec::with_capacity(max_ncomp);
 
     for k in 1..=max_ncomp {
-        if let Some(fit) = fregre_lm(data, y, scalar_covariates, k) {
+        if let Ok(fit) = fregre_lm(data, y, scalar_covariates, k) {
             criteria.push((k, fit.aic, fit.bic, fit.gcv));
         }
     }
 
     if criteria.is_empty() {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "model_selection_ncomp",
+            detail: "no valid models could be fitted".to_string(),
+        });
     }
 
     let best_idx = match criterion {
@@ -684,7 +736,7 @@ pub fn model_selection_ncomp(
             .unwrap_or(0),
     };
 
-    Some(ModelSelectionResult {
+    Ok(ModelSelectionResult {
         best_ncomp: criteria[best_idx].0,
         criteria,
     })
@@ -876,10 +928,35 @@ pub fn fregre_np_mixed(
     scalar_covariates: Option<&FdMatrix>,
     h_func: f64,
     h_scalar: f64,
-) -> Option<FregreNpResult> {
+) -> Result<FregreNpResult, FdarError> {
     let n = data.nrows();
-    if n < 3 || data.ncols() == 0 || y.len() != n || argvals.len() != data.ncols() {
-        return None;
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows".to_string(),
+            actual: format!("{}", n),
+        });
+    }
+    if data.ncols() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{}", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if argvals.len() != data.ncols() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{}", data.ncols()),
+            actual: format!("{}", argvals.len()),
+        });
     }
 
     let func_dists = compute_pairwise_distances(data, argvals);
@@ -924,7 +1001,7 @@ pub fn fregre_np_mixed(
         .collect();
     let (r_squared, _) = compute_r_squared(y, &residuals, 1);
 
-    Some(FregreNpResult {
+    Ok(FregreNpResult {
         fitted_values,
         residuals,
         r_squared,
@@ -1158,13 +1235,34 @@ pub fn functional_logistic(
     ncomp: usize,
     max_iter: usize,
     tol: f64,
-) -> Option<FunctionalLogisticResult> {
+) -> Result<FunctionalLogisticResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 3 || m == 0 || y.len() != n {
-        return None;
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows".to_string(),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{}", n),
+            actual: format!("{}", y.len()),
+        });
     }
     if y.iter().any(|&yi| yi != 0.0 && yi != 1.0) {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: "all values must be 0.0 or 1.0 for binary classification".to_string(),
+        });
     }
 
     let ncomp = ncomp.min(n - 1).min(m);
@@ -1175,7 +1273,7 @@ pub fn functional_logistic(
     let tol = if tol <= 0.0 { 1e-6 } else { tol };
 
     let (beta, iterations) = irls_loop(&design, y, max_iter, tol);
-    Some(build_logistic_result(
+    Ok(build_logistic_result(
         &design, beta, y, fpca, ncomp, m, iterations,
     ))
 }
@@ -1253,10 +1351,26 @@ pub fn bootstrap_ci_fregre_lm(
     n_boot: usize,
     alpha: f64,
     seed: u64,
-) -> Option<BootstrapCiResult> {
+) -> Result<BootstrapCiResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 3 || m == 0 || y.len() != n || n_boot == 0 || alpha <= 0.0 || alpha >= 1.0 {
-        return None;
+    if n < 3 || m == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: format!("n >= 3, m > 0, y.len() == n (n={}, m={})", n, m),
+            actual: format!("n={}, m={}, y.len()={}", n, m, y.len()),
+        });
+    }
+    if n_boot == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if alpha <= 0.0 || alpha >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("must be in (0, 1), got {}", alpha),
+        });
     }
 
     // Fit original model
@@ -1273,13 +1387,21 @@ pub fn bootstrap_ci_fregre_lm(
             let boot_y: Vec<f64> = indices.iter().map(|&i| y[i]).collect();
             let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &indices));
 
-            fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp).map(|fit| fit.beta_t)
+            fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp)
+                .ok()
+                .map(|fit| fit.beta_t)
         })
         .collect();
 
     let n_boot_success = boot_betas.len();
     if n_boot_success < 3 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "bootstrap_ci_fregre_lm",
+            detail: format!(
+                "only {} of {} bootstrap replicates converged (need >= 3)",
+                n_boot_success, n_boot
+            ),
+        });
     }
 
     // Pointwise bands: sort each grid point across replicates
@@ -1317,7 +1439,7 @@ pub fn bootstrap_ci_fregre_lm(
     let sim_lower: Vec<f64> = (0..m).map(|j| center[j] - c_alpha * boot_se[j]).collect();
     let sim_upper: Vec<f64> = (0..m).map(|j| center[j] + c_alpha * boot_se[j]).collect();
 
-    Some(BootstrapCiResult {
+    Ok(BootstrapCiResult {
         lower,
         upper,
         center,
@@ -1352,10 +1474,26 @@ pub fn bootstrap_ci_functional_logistic(
     seed: u64,
     max_iter: usize,
     tol: f64,
-) -> Option<BootstrapCiResult> {
+) -> Result<BootstrapCiResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 3 || m == 0 || y.len() != n || n_boot == 0 || alpha <= 0.0 || alpha >= 1.0 {
-        return None;
+    if n < 3 || m == 0 || y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y",
+            expected: format!("n >= 3, m > 0, y.len() == n (n={}, m={})", n, m),
+            actual: format!("n={}, m={}, y.len()={}", n, m, y.len()),
+        });
+    }
+    if n_boot == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if alpha <= 0.0 || alpha >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("must be in (0, 1), got {}", alpha),
+        });
     }
 
     // Fit original model
@@ -1373,13 +1511,20 @@ pub fn bootstrap_ci_functional_logistic(
             let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &indices));
 
             functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, max_iter, tol)
+                .ok()
                 .map(|fit| fit.beta_t)
         })
         .collect();
 
     let n_boot_success = boot_betas.len();
     if n_boot_success < 3 {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "bootstrap_ci_functional_logistic",
+            detail: format!(
+                "only {} of {} bootstrap replicates converged (need >= 3)",
+                n_boot_success, n_boot
+            ),
+        });
     }
 
     let lo_q = alpha / 2.0;
@@ -1414,7 +1559,7 @@ pub fn bootstrap_ci_functional_logistic(
     let sim_lower: Vec<f64> = (0..m).map(|j| center[j] - c_alpha * boot_se[j]).collect();
     let sim_upper: Vec<f64> = (0..m).map(|j| center[j] + c_alpha * boot_se[j]).collect();
 
-    Some(BootstrapCiResult {
+    Ok(BootstrapCiResult {
         lower,
         upper,
         center,
@@ -1442,22 +1587,78 @@ pub struct FregreBasisCvResult {
     pub min_cv_error: f64,
 }
 
+/// Compute penalized OLS coefficients: (X'X + lam*P) \ X'y.
+fn compute_penalized_ols(
+    train_coefs: &FdMatrix,
+    train_y: &[f64],
+    penalty: &[f64],
+    lam: f64,
+    k: usize,
+) -> Vec<f64> {
+    let n_train = train_y.len();
+    let mut xtx = vec![0.0; k * k];
+    let mut xty_vec = vec![0.0; k];
+    for i in 0..n_train {
+        for j in 0..k {
+            xty_vec[j] += train_coefs[(i, j)] * train_y[i];
+            for l in 0..k {
+                xtx[j * k + l] += train_coefs[(i, j)] * train_coefs[(i, l)];
+            }
+        }
+    }
+    for j in 0..k {
+        for l in 0..k {
+            xtx[j * k + l] += lam * penalty[j * k + l];
+        }
+    }
+    crate::smoothing::solve_gaussian_pub(&mut xtx, &mut xty_vec, k)
+}
+
+/// Evaluate test-set MSE given OLS coefficients and test data.
+fn evaluate_fold_error(beta: &[f64], test_coefs: &FdMatrix, test_y: &[f64], k: usize) -> f64 {
+    let n_test = test_y.len();
+    let mut mse = 0.0;
+    for i in 0..n_test {
+        let mut yhat = 0.0;
+        for j in 0..k {
+            yhat += test_coefs[(i, j)] * beta[j];
+        }
+        mse += (test_y[i] - yhat).powi(2);
+    }
+    mse / n_test as f64
+}
+
+/// Compute CV mean, SE, and best index from per-fold error vectors.
+fn compute_cv_statistics(
+    cv_fold_errors: &[Vec<f64>],
+) -> (Vec<f64>, Vec<f64>, Option<(usize, f64)>) {
+    let n_params = cv_fold_errors.len();
+    let mut cv_errors = vec![0.0; n_params];
+    let mut cv_se = vec![0.0; n_params];
+    for li in 0..n_params {
+        let errs = &cv_fold_errors[li];
+        if errs.is_empty() {
+            cv_errors[li] = f64::INFINITY;
+            continue;
+        }
+        let mean = errs.iter().sum::<f64>() / errs.len() as f64;
+        cv_errors[li] = mean;
+        if errs.len() > 1 {
+            let var =
+                errs.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / (errs.len() - 1) as f64;
+            cv_se[li] = (var / errs.len() as f64).sqrt();
+        }
+    }
+    let best = cv_errors
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(idx, &val)| (idx, val));
+    (cv_errors, cv_se, best)
+}
+
 /// K-fold CV for selecting the regularization parameter lambda
 /// in basis-regression (R's `fregre.basis.cv`).
-///
-/// Projects functional predictors onto a B-spline or Fourier basis,
-/// fits a ridge regression on the resulting coefficients for each lambda,
-/// and selects the lambda minimizing mean CV error.
-///
-/// # Arguments
-/// * `data` — Functional predictor matrix (n × m)
-/// * `y` — Scalar response vector (length n)
-/// * `argvals` — Evaluation grid (length m)
-/// * `n_folds` — Number of CV folds
-/// * `lambda_range` — Lambda values to test. If `None`, uses 20 log-spaced
-///   values from 1e-4 to 1e4.
-/// * `nbasis` — Number of basis functions
-/// * `basis_type` — Basis type (B-spline or Fourier)
 pub fn fregre_basis_cv(
     data: &FdMatrix,
     y: &[f64],
@@ -1466,15 +1667,36 @@ pub fn fregre_basis_cv(
     lambda_range: Option<&[f64]>,
     nbasis: usize,
     basis_type: &crate::smooth_basis::BasisType,
-) -> Option<FregreBasisCvResult> {
+) -> Result<FregreBasisCvResult, FdarError> {
     use crate::smooth_basis::{smooth_basis, BasisType, FdPar};
 
     let (n, m) = data.shape();
-    if n < n_folds || m == 0 || y.len() != n || argvals.len() != m || nbasis < 2 {
-        return None;
+    if n < n_folds {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} rows (n_folds)", n_folds),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 || y.len() != n || argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y/argvals",
+            expected: format!("m > 0, y.len() == n={}, argvals.len() == m={}", n, m),
+            actual: format!(
+                "m={}, y.len()={}, argvals.len()={}",
+                m,
+                y.len(),
+                argvals.len()
+            ),
+        });
+    }
+    if nbasis < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("must be >= 2, got {}", nbasis),
+        });
     }
 
-    // Default lambda grid
     let default_lambdas: Vec<f64> = if lambda_range.is_none() {
         (0..20)
             .map(|i| {
@@ -1486,12 +1708,13 @@ pub fn fregre_basis_cv(
         Vec::new()
     };
     let lambdas = lambda_range.unwrap_or(&default_lambdas);
-
     if lambdas.is_empty() {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda_range",
+            message: "must not be empty".to_string(),
+        });
     }
 
-    // Compute penalty matrix once
     let penalty = match basis_type {
         BasisType::Bspline { order } => {
             crate::smooth_basis::bspline_penalty_matrix(argvals, nbasis, *order, 2)
@@ -1501,10 +1724,7 @@ pub fn fregre_basis_cv(
         }
     };
 
-    // Create folds
     let folds = crate::cv::create_folds(n, n_folds, 42);
-
-    let mut cv_errors = vec![0.0; lambdas.len()];
     let mut cv_fold_errors: Vec<Vec<f64>> = vec![Vec::with_capacity(n_folds); lambdas.len()];
 
     for fold in 0..n_folds {
@@ -1527,7 +1747,6 @@ pub fn fregre_basis_cv(
                 penalty_matrix: penalty.clone(),
             };
 
-            // Project training curves to basis coefficients
             let train_result = match smooth_basis(&train_data, argvals, &fdpar) {
                 Ok(r) => r,
                 Err(_) => {
@@ -1535,8 +1754,6 @@ pub fn fregre_basis_cv(
                     continue;
                 }
             };
-
-            // Project test curves to basis coefficients
             let test_result = match smooth_basis(&test_data, argvals, &fdpar) {
                 Ok(r) => r,
                 Err(_) => {
@@ -1545,75 +1762,21 @@ pub fn fregre_basis_cv(
                 }
             };
 
-            // Fit linear model on training coefficients -> y
-            let train_coefs = &train_result.coefficients;
-            let test_coefs = &test_result.coefficients;
-            let n_train = train_idx.len();
-            let n_test = test_idx.len();
-            let k = train_coefs.ncols();
-
-            // Penalized OLS: (X'X + lam*P) \ X'y
-            let mut xtx = vec![0.0; k * k];
-            let mut xty_vec = vec![0.0; k];
-            for i in 0..n_train {
-                for j in 0..k {
-                    xty_vec[j] += train_coefs[(i, j)] * train_y[i];
-                    for l in 0..k {
-                        xtx[j * k + l] += train_coefs[(i, j)] * train_coefs[(i, l)];
-                    }
-                }
-            }
-            // Add roughness penalty: lam * P (not ridge lam * I)
-            for j in 0..k {
-                for l in 0..k {
-                    xtx[j * k + l] += lam * penalty[j * k + l];
-                }
-            }
-
-            // Solve via Gaussian elimination
-            let beta = {
-                let mut a = xtx;
-                let mut b = xty_vec;
-                crate::smoothing::solve_gaussian_pub(&mut a, &mut b, k)
-            };
-
-            // Predict on test set
-            let mut fold_mse = 0.0;
-            for i in 0..n_test {
-                let mut yhat = 0.0;
-                for j in 0..k {
-                    yhat += test_coefs[(i, j)] * beta[j];
-                }
-                fold_mse += (test_y[i] - yhat).powi(2);
-            }
-            fold_mse /= n_test as f64;
+            let k = train_result.coefficients.ncols();
+            let beta =
+                compute_penalized_ols(&train_result.coefficients, &train_y, &penalty, lam, k);
+            let fold_mse = evaluate_fold_error(&beta, &test_result.coefficients, &test_y, k);
             cv_fold_errors[li].push(fold_mse);
         }
     }
 
-    // Compute mean and SE across folds
-    let mut cv_se = vec![0.0; lambdas.len()];
-    for li in 0..lambdas.len() {
-        let errs = &cv_fold_errors[li];
-        if errs.is_empty() {
-            cv_errors[li] = f64::INFINITY;
-            continue;
-        }
-        let mean = errs.iter().sum::<f64>() / errs.len() as f64;
-        cv_errors[li] = mean;
-        if errs.len() > 1 {
-            let var =
-                errs.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / (errs.len() - 1) as f64;
-            cv_se[li] = (var / errs.len() as f64).sqrt();
-        }
-    }
+    let (cv_errors, cv_se, best) = compute_cv_statistics(&cv_fold_errors);
+    let (best_idx, min_cv_error) = best.ok_or_else(|| FdarError::ComputationFailed {
+        operation: "fregre_basis_cv",
+        detail: "no valid lambda values produced CV errors".to_string(),
+    })?;
 
-    let (best_idx, &min_cv_error) = cv_errors
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
-
-    Some(FregreBasisCvResult {
+    Ok(FregreBasisCvResult {
         optimal_lambda: lambdas[best_idx],
         cv_errors,
         cv_se,
@@ -1640,20 +1803,68 @@ pub struct FregreNpCvResult {
     pub min_cv_error: f64,
 }
 
+/// Build default bandwidth grid from 20 quantiles of pairwise distances.
+fn select_default_bandwidth_grid(func_dists: &[f64], n: usize) -> Result<Vec<f64>, FdarError> {
+    let mut nonzero: Vec<f64> = Vec::new();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let d = func_dists[i * n + j];
+            if d > 0.0 {
+                nonzero.push(d);
+            }
+        }
+    }
+    nonzero.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    if nonzero.is_empty() {
+        return Err(FdarError::ComputationFailed {
+            operation: "select_default_bandwidth_grid",
+            detail: "all pairwise distances are zero".to_string(),
+        });
+    }
+    Ok((1..=20)
+        .map(|qi| {
+            let q = 0.05 + 0.90 * (qi - 1) as f64 / 19.0;
+            let idx = ((nonzero.len() as f64 * q) as usize).min(nonzero.len() - 1);
+            nonzero[idx].max(1e-10)
+        })
+        .collect())
+}
+
+/// Nadaraya-Watson prediction for a single test observation.
+fn compute_nw_prediction(
+    train_idx: &[usize],
+    ti: usize,
+    func_dists: &[f64],
+    scalar_dists: &[f64],
+    train_y: &[f64],
+    n: usize,
+    h: f64,
+    h_scalar: f64,
+    has_scalar: bool,
+    fallback_y: f64,
+) -> f64 {
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for (local_j, &tj) in train_idx.iter().enumerate() {
+        let kf = gaussian_kernel(func_dists[ti * n + tj], h);
+        let ks = if has_scalar {
+            gaussian_kernel(scalar_dists[ti * n + tj], h_scalar)
+        } else {
+            1.0
+        };
+        let w = kf * ks;
+        num += w * train_y[local_j];
+        den += w;
+    }
+    if den > 1e-15 {
+        num / den
+    } else {
+        fallback_y
+    }
+}
+
 /// K-fold CV for selecting the bandwidth in functional nonparametric
 /// regression (R's `fregre.np.cv`).
-///
-/// Computes a full n×n L2 distance matrix once, then for each candidate
-/// bandwidth and each fold, does Nadaraya-Watson prediction.
-///
-/// # Arguments
-/// * `data` — Functional predictor matrix (n × m)
-/// * `y` — Scalar response vector (length n)
-/// * `argvals` — Evaluation grid (length m)
-/// * `n_folds` — Number of CV folds
-/// * `h_range` — Bandwidth values to test. If `None`, uses 20 quantiles
-///   (5th to 95th percentile) of the pairwise L2 distances.
-/// * `scalar_covariates` — Optional scalar covariates (n × p)
 pub fn fregre_np_cv(
     data: &FdMatrix,
     y: &[f64],
@@ -1661,56 +1872,50 @@ pub fn fregre_np_cv(
     n_folds: usize,
     h_range: Option<&[f64]>,
     scalar_covariates: Option<&FdMatrix>,
-) -> Option<FregreNpCvResult> {
+) -> Result<FregreNpCvResult, FdarError> {
     let (n, m) = data.shape();
-    if n < n_folds || m == 0 || y.len() != n || argvals.len() != m || n < 3 {
-        return None;
+    if n < n_folds || n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} rows (max(n_folds, 3))", n_folds.max(3)),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 || y.len() != n || argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/y/argvals",
+            expected: format!("m > 0, y.len() == n={}, argvals.len() == m={}", n, m),
+            actual: format!(
+                "m={}, y.len()={}, argvals.len()={}",
+                m,
+                y.len(),
+                argvals.len()
+            ),
+        });
     }
 
-    // Compute full distance matrix
     let func_dists = compute_pairwise_distances(data, argvals);
     let has_scalar = scalar_covariates.is_some();
     let scalar_dists = scalar_covariates
         .map(compute_scalar_distances)
         .unwrap_or_default();
 
-    // Default h grid: 20 quantiles of pairwise distances
     let default_h: Vec<f64> = if h_range.is_none() {
-        let mut nonzero: Vec<f64> = Vec::new();
-        for i in 0..n {
-            for j in (i + 1)..n {
-                let d = func_dists[i * n + j];
-                if d > 0.0 {
-                    nonzero.push(d);
-                }
-            }
-        }
-        nonzero.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        if nonzero.is_empty() {
-            return None;
-        }
-        (1..=20)
-            .map(|qi| {
-                let q = 0.05 + 0.90 * (qi - 1) as f64 / 19.0;
-                let idx = ((nonzero.len() as f64 * q) as usize).min(nonzero.len() - 1);
-                nonzero[idx].max(1e-10)
-            })
-            .collect()
+        select_default_bandwidth_grid(&func_dists, n)?
     } else {
         Vec::new()
     };
     let h_values = h_range.unwrap_or(&default_h);
-
     if h_values.is_empty() {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "h_range",
+            message: "must not be empty".to_string(),
+        });
     }
 
     let folds = crate::cv::create_folds(n, n_folds, 42);
-
-    let mut cv_errors = vec![0.0; h_values.len()];
     let mut cv_fold_errors: Vec<Vec<f64>> = vec![Vec::with_capacity(n_folds); h_values.len()];
 
-    // Select scalar bandwidth once (from full data)
     let h_scalar = if has_scalar {
         select_bandwidth_loo(&scalar_dists, y, n, Some(&func_dists))
     } else {
@@ -1722,27 +1927,23 @@ pub fn fregre_np_cv(
         if train_idx.is_empty() || test_idx.is_empty() {
             continue;
         }
-
         let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
 
         for (hi, &h) in h_values.iter().enumerate() {
             let mut fold_mse = 0.0;
             for &ti in &test_idx {
-                // NW prediction using only training data
-                let mut num = 0.0;
-                let mut den = 0.0;
-                for (local_j, &tj) in train_idx.iter().enumerate() {
-                    let kf = gaussian_kernel(func_dists[ti * n + tj], h);
-                    let ks = if has_scalar {
-                        gaussian_kernel(scalar_dists[ti * n + tj], h_scalar)
-                    } else {
-                        1.0
-                    };
-                    let w = kf * ks;
-                    num += w * train_y[local_j];
-                    den += w;
-                }
-                let y_hat = if den > 1e-15 { num / den } else { y[ti] };
+                let y_hat = compute_nw_prediction(
+                    &train_idx,
+                    ti,
+                    &func_dists,
+                    &scalar_dists,
+                    &train_y,
+                    n,
+                    h,
+                    h_scalar,
+                    has_scalar,
+                    y[ti],
+                );
                 fold_mse += (y[ti] - y_hat).powi(2);
             }
             fold_mse /= test_idx.len() as f64;
@@ -1750,29 +1951,13 @@ pub fn fregre_np_cv(
         }
     }
 
-    // Compute mean and SE
-    let mut cv_se = vec![0.0; h_values.len()];
-    for hi in 0..h_values.len() {
-        let errs = &cv_fold_errors[hi];
-        if errs.is_empty() {
-            cv_errors[hi] = f64::INFINITY;
-            continue;
-        }
-        let mean = errs.iter().sum::<f64>() / errs.len() as f64;
-        cv_errors[hi] = mean;
-        if errs.len() > 1 {
-            let var =
-                errs.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / (errs.len() - 1) as f64;
-            cv_se[hi] = (var / errs.len() as f64).sqrt();
-        }
-    }
+    let (cv_errors, cv_se, best) = compute_cv_statistics(&cv_fold_errors);
+    let (best_idx, min_cv_error) = best.ok_or_else(|| FdarError::ComputationFailed {
+        operation: "fregre_np_cv",
+        detail: "no valid bandwidth values produced CV errors".to_string(),
+    })?;
 
-    let (best_idx, &min_cv_error) = cv_errors
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
-
-    Some(FregreNpCvResult {
+    Ok(FregreNpCvResult {
         optimal_h: h_values[best_idx],
         cv_errors,
         cv_se,
@@ -1871,7 +2056,7 @@ mod tests {
     fn test_fregre_lm_basic() {
         let (data, y, _t) = generate_test_data(30, 50, 42);
         let result = fregre_lm(&data, &y, None, 3);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.fitted_values.len(), 30);
         assert_eq!(fit.residuals.len(), 30);
@@ -1889,7 +2074,7 @@ mod tests {
             sc[(i, 1)] = (i as f64 * 0.7).sin();
         }
         let result = fregre_lm(&data, &y, Some(&sc), 3);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.gamma.len(), 2);
     }
@@ -1937,11 +2122,11 @@ mod tests {
     fn test_fregre_lm_invalid_input() {
         let data = FdMatrix::zeros(2, 50);
         let y = vec![1.0, 2.0];
-        assert!(fregre_lm(&data, &y, None, 1).is_none());
+        assert!(fregre_lm(&data, &y, None, 1).is_err());
 
         let data = FdMatrix::zeros(10, 50);
         let y = vec![1.0; 5];
-        assert!(fregre_lm(&data, &y, None, 2).is_none());
+        assert!(fregre_lm(&data, &y, None, 2).is_err());
     }
 
     #[test]
@@ -1979,7 +2164,7 @@ mod tests {
     fn test_fregre_cv_returns_result() {
         let (data, y, _t) = generate_test_data(30, 50, 42);
         let result = fregre_cv(&data, &y, None, 1, 8, 5);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let cv = result.unwrap();
         assert!(cv.optimal_k >= 1 && cv.optimal_k <= 8);
         assert!(cv.min_cv_error >= 0.0);
@@ -1993,7 +2178,7 @@ mod tests {
             sc[(i, 0)] = i as f64;
         }
         let result = fregre_cv(&data, &y, Some(&sc), 1, 5, 3);
-        assert!(result.is_some());
+        assert!(result.is_ok());
     }
 
     // ----- fregre_np_mixed tests -----
@@ -2002,7 +2187,7 @@ mod tests {
     fn test_fregre_np_mixed_basic() {
         let (data, y, t) = generate_test_data(30, 50, 42);
         let result = fregre_np_mixed(&data, &y, &t, None, 0.0, 0.0);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.fitted_values.len(), 30);
         assert!(fit.h_func > 0.0);
@@ -2017,7 +2202,7 @@ mod tests {
             sc[(i, 0)] = i as f64 / 30.0;
         }
         let result = fregre_np_mixed(&data, &y, &t, Some(&sc), 0.0, 0.0);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert!(fit.h_scalar > 0.0);
     }
@@ -2026,7 +2211,7 @@ mod tests {
     fn test_fregre_np_mixed_manual_bandwidth() {
         let (data, y, t) = generate_test_data(30, 50, 42);
         let result = fregre_np_mixed(&data, &y, &t, None, 0.5, 0.0);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert!(
             (fit.h_func - 0.5).abs() < 1e-10,
@@ -2050,7 +2235,7 @@ mod tests {
             .collect();
 
         let result = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.probabilities.len(), 30);
         assert_eq!(fit.predicted_classes.len(), 30);
@@ -2078,7 +2263,7 @@ mod tests {
             sc[(i, 0)] = i as f64 / 30.0;
         }
         let result = functional_logistic(&data, &y_bin, Some(&sc), 3, 25, 1e-6);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.gamma.len(), 1);
     }
@@ -2087,7 +2272,7 @@ mod tests {
     fn test_functional_logistic_invalid_response() {
         let (data, _, _) = generate_test_data(30, 50, 42);
         let y: Vec<f64> = (0..30).map(|i| i as f64).collect();
-        assert!(functional_logistic(&data, &y, None, 3, 25, 1e-6).is_none());
+        assert!(functional_logistic(&data, &y, None, 3, 25, 1e-6).is_err());
     }
 
     #[test]
@@ -2113,7 +2298,7 @@ mod tests {
     fn test_fregre_lm_single_component() {
         let (data, y, _t) = generate_test_data(20, 50, 42);
         let result = fregre_lm(&data, &y, None, 1);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert_eq!(fit.ncomp, 1);
     }
@@ -2122,7 +2307,7 @@ mod tests {
     fn test_fregre_lm_auto_k_selection() {
         let (data, y, _t) = generate_test_data(30, 50, 42);
         let result = fregre_lm(&data, &y, None, 0);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let fit = result.unwrap();
         assert!(fit.ncomp >= 1);
     }
@@ -2254,7 +2439,7 @@ mod tests {
     fn test_bootstrap_ci_fregre_lm_shape() {
         let (data, y, _t) = generate_test_data(30, 20, 42);
         let result = bootstrap_ci_fregre_lm(&data, &y, None, 2, 50, 0.05, 123);
-        assert!(result.is_some(), "bootstrap_ci_fregre_lm should succeed");
+        assert!(result.is_ok(), "bootstrap_ci_fregre_lm should succeed");
         let ci = result.unwrap();
         assert_eq!(ci.lower.len(), 20);
         assert_eq!(ci.upper.len(), 20);
@@ -2344,7 +2529,7 @@ mod tests {
         let result =
             bootstrap_ci_functional_logistic(&data, &y_bin, None, 2, 50, 0.05, 123, 25, 1e-6);
         assert!(
-            result.is_some(),
+            result.is_ok(),
             "bootstrap_ci_functional_logistic should succeed"
         );
         let ci = result.unwrap();
@@ -2392,7 +2577,7 @@ mod tests {
             7,
             &crate::smooth_basis::BasisType::Bspline { order: 4 },
         );
-        assert!(result.is_some(), "fregre_basis_cv should succeed");
+        assert!(result.is_ok(), "fregre_basis_cv should succeed");
         let res = result.unwrap();
         assert!(res.optimal_lambda > 0.0);
         assert_eq!(res.cv_errors.len(), 20); // default 20 lambdas
@@ -2412,7 +2597,7 @@ mod tests {
             7,
             &crate::smooth_basis::BasisType::Bspline { order: 4 },
         );
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.lambda_values.len(), 5);
         assert!(lambdas.contains(&res.optimal_lambda));
@@ -2424,7 +2609,7 @@ mod tests {
     fn test_fregre_np_cv_returns_result() {
         let (data, y, t) = generate_test_data(25, 15, 42);
         let result = fregre_np_cv(&data, &y, &t, 5, None, None);
-        assert!(result.is_some(), "fregre_np_cv should succeed");
+        assert!(result.is_ok(), "fregre_np_cv should succeed");
         let res = result.unwrap();
         assert!(res.optimal_h > 0.0);
         assert_eq!(res.cv_errors.len(), 20); // default 20 quantiles
@@ -2436,7 +2621,7 @@ mod tests {
         let (data, y, t) = generate_test_data(20, 10, 42);
         let h_vals = vec![0.1, 0.5, 1.0, 2.0];
         let result = fregre_np_cv(&data, &y, &t, 3, Some(&h_vals), None);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.h_values.len(), 4);
         assert!(h_vals.contains(&res.optimal_h));

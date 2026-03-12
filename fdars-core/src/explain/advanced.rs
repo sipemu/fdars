@@ -1,6 +1,7 @@
 //! Calibration, conformal prediction, regression depth, stability, and anchors.
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{
     fregre_lm, functional_logistic, sigmoid, FregreLmResult, FunctionalLogisticResult,
@@ -34,10 +35,27 @@ pub fn calibration_diagnostics(
     fit: &FunctionalLogisticResult,
     y: &[f64],
     n_groups: usize,
-) -> Option<CalibrationDiagnosticsResult> {
+) -> Result<CalibrationDiagnosticsResult, FdarError> {
     let n = fit.probabilities.len();
-    if n == 0 || n != y.len() || n_groups < 2 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "probabilities",
+            expected: ">0 length".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching probabilities)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if n_groups < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_groups",
+            message: "must be >= 2".into(),
+        });
     }
 
     // Brier score
@@ -71,7 +89,7 @@ pub fn calibration_diagnostics(
         1
     };
 
-    Some(CalibrationDiagnosticsResult {
+    Ok(CalibrationDiagnosticsResult {
         brier_score,
         log_loss,
         hosmer_lemeshow_chi2,
@@ -110,10 +128,27 @@ pub fn expected_calibration_error(
     fit: &FunctionalLogisticResult,
     y: &[f64],
     n_bins: usize,
-) -> Option<EceResult> {
+) -> Result<EceResult, FdarError> {
     let n = fit.probabilities.len();
-    if n == 0 || n != y.len() || n_bins == 0 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "probabilities",
+            expected: ">0 length".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching probabilities)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be > 0".into(),
+        });
     }
 
     let (ece, mce, bin_ece_contributions) =
@@ -142,7 +177,7 @@ pub fn expected_calibration_error(
         start = end;
     }
 
-    Some(EceResult {
+    Ok(EceResult {
         ece,
         mce,
         ace,
@@ -196,7 +231,7 @@ pub fn conformal_prediction_residuals(
     cal_fraction: f64,
     alpha: f64,
     seed: u64,
-) -> Option<ConformalPredictionResult> {
+) -> Result<ConformalPredictionResult, FdarError> {
     let (n, m) = train_data.shape();
     let (n_test, m_test) = test_data.shape();
     let ncomp = fit.ncomp;
@@ -209,7 +244,11 @@ pub fn conformal_prediction_residuals(
         ncomp,
         cal_fraction,
         alpha,
-    )?;
+    )
+    .ok_or_else(|| FdarError::InvalidParameter {
+        parameter: "conformal_prediction_residuals",
+        message: "invalid input dimensions or parameters".into(),
+    })?;
 
     // Random split
     let mut rng = StdRng::seed_from_u64(seed);
@@ -261,7 +300,7 @@ pub fn conformal_prediction_residuals(
     let lower: Vec<f64> = predictions.iter().map(|&p| p - residual_quantile).collect();
     let upper: Vec<f64> = predictions.iter().map(|&p| p + residual_quantile).collect();
 
-    Some(ConformalPredictionResult {
+    Ok(ConformalPredictionResult {
         predictions,
         lower,
         upper,
@@ -318,16 +357,43 @@ pub fn regression_depth(
     n_boot: usize,
     depth_type: DepthType,
     seed: u64,
-) -> Option<RegressionDepthResult> {
+) -> Result<RegressionDepthResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 4 || m == 0 || n != y.len() || n_boot == 0 {
-        return None;
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">=4 rows".into(),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 columns".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if n_boot == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: "must be > 0".into(),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
     let score_depths = compute_score_depths(&scores, depth_type);
     if score_depths.is_empty() {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "regression_depth",
+            detail: "score depth computation returned empty".into(),
+        });
     }
     let mean_score_depth = score_depths.iter().sum::<f64>() / score_depths.len() as f64;
 
@@ -339,14 +405,14 @@ pub fn regression_depth(
         let boot_data = subsample_rows(data, &idx);
         let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
         let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
-        if let Some(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
+        if let Ok(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
             boot_coefs.push((0..ncomp).map(|k| refit.coefficients[1 + k]).collect());
         }
     }
 
     let beta_depth = beta_depth_from_bootstrap(&boot_coefs, &orig_coefs, ncomp, depth_type);
 
-    Some(RegressionDepthResult {
+    Ok(RegressionDepthResult {
         beta_depth,
         score_depths,
         mean_score_depth,
@@ -364,16 +430,43 @@ pub fn regression_depth_logistic(
     n_boot: usize,
     depth_type: DepthType,
     seed: u64,
-) -> Option<RegressionDepthResult> {
+) -> Result<RegressionDepthResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 4 || m == 0 || n != y.len() || n_boot == 0 {
-        return None;
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">=4 rows".into(),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 columns".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if n_boot == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: "must be > 0".into(),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
     let score_depths = compute_score_depths(&scores, depth_type);
     if score_depths.is_empty() {
-        return None;
+        return Err(FdarError::ComputationFailed {
+            operation: "regression_depth_logistic",
+            detail: "score depth computation returned empty".into(),
+        });
     }
     let mean_score_depth = score_depths.iter().sum::<f64>() / score_depths.len() as f64;
 
@@ -384,7 +477,7 @@ pub fn regression_depth_logistic(
 
     let beta_depth = beta_depth_from_bootstrap(&boot_coefs, &orig_coefs, ncomp, depth_type);
 
-    Some(RegressionDepthResult {
+    Ok(RegressionDepthResult {
         beta_depth,
         score_depths,
         mean_score_depth,
@@ -424,10 +517,40 @@ pub fn explanation_stability(
     ncomp: usize,
     n_boot: usize,
     seed: u64,
-) -> Option<StabilityAnalysisResult> {
+) -> Result<StabilityAnalysisResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 4 || m == 0 || n != y.len() || n_boot < 2 || ncomp == 0 {
-        return None;
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">=4 rows".into(),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 columns".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if n_boot < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: "must be >= 2".into(),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
 
     let mut rng = StdRng::seed_from_u64(seed);
@@ -441,7 +564,7 @@ pub fn explanation_stability(
         let boot_data = subsample_rows(data, &idx);
         let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
         let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
-        if let Some(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
+        if let Ok(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
             all_beta_t.push(refit.beta_t.clone());
             let coefs: Vec<f64> = (0..ncomp).map(|k| refit.coefficients[1 + k]).collect();
             all_abs_coefs.push(coefs.iter().map(|c| c.abs()).collect());
@@ -458,6 +581,10 @@ pub fn explanation_stability(
         m,
         ncomp,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "explanation_stability",
+        detail: "insufficient successful bootstrap refits".into(),
+    })
 }
 
 /// Bootstrap stability analysis of a functional logistic regression.
@@ -468,10 +595,40 @@ pub fn explanation_stability_logistic(
     ncomp: usize,
     n_boot: usize,
     seed: u64,
-) -> Option<StabilityAnalysisResult> {
+) -> Result<StabilityAnalysisResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 4 || m == 0 || n != y.len() || n_boot < 2 || ncomp == 0 {
-        return None;
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">=4 rows".into(),
+            actual: format!("{}", n),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 columns".into(),
+            actual: "0".into(),
+        });
+    }
+    if n != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{} (matching data rows)", n),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if n_boot < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_boot",
+            message: "must be >= 2".into(),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
 
     let mut rng = StdRng::seed_from_u64(seed);
@@ -486,6 +643,10 @@ pub fn explanation_stability_logistic(
         m,
         ncomp,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "explanation_stability_logistic",
+        detail: "insufficient successful bootstrap refits".into(),
+    })
 }
 
 // ===========================================================================
@@ -543,10 +704,33 @@ pub fn anchor_explanation(
     observation: usize,
     precision_threshold: f64,
     n_bins: usize,
-) -> Option<AnchorResult> {
+) -> Result<AnchorResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() || observation >= n || n_bins < 2 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if n_bins < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be >= 2".into(),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -577,7 +761,7 @@ pub fn anchor_explanation(
         &same_pred,
     );
 
-    Some(AnchorResult {
+    Ok(AnchorResult {
         rule,
         observation,
         predicted_value: obs_pred,
@@ -594,10 +778,33 @@ pub fn anchor_explanation_logistic(
     observation: usize,
     precision_threshold: f64,
     n_bins: usize,
-) -> Option<AnchorResult> {
+) -> Result<AnchorResult, FdarError> {
     let (n, m) = data.shape();
-    if n == 0 || m != fit.fpca.mean.len() || observation >= n || n_bins < 2 {
-        return None;
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">0 rows".into(),
+            actual: "0".into(),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if n_bins < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be >= 2".into(),
+        });
     }
     let ncomp = fit.ncomp;
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
@@ -630,7 +837,7 @@ pub fn anchor_explanation_logistic(
         &same_pred,
     );
 
-    Some(AnchorResult {
+    Ok(AnchorResult {
         rule,
         observation,
         predicted_value: obs_prob,
@@ -751,7 +958,7 @@ fn bootstrap_logistic_stability(
         if !has_both {
             continue;
         }
-        if let Some(refit) =
+        if let Ok(refit) =
             functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, 25, 1e-6)
         {
             all_beta_t.push(refit.beta_t.clone());
@@ -785,7 +992,7 @@ fn bootstrap_logistic_coefs(
         if !has_both {
             continue;
         }
-        if let Some(refit) =
+        if let Ok(refit) =
             functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, 25, 1e-6)
         {
             boot_coefs.push((0..ncomp).map(|k| refit.coefficients[1 + k]).collect());

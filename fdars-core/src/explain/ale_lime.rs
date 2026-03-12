@@ -1,6 +1,7 @@
 //! ALE (Accumulated Local Effects) and LIME (Local Surrogate).
 
 use super::helpers::*;
+use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
 
@@ -32,10 +33,33 @@ pub fn fpc_ale(
     scalar_covariates: Option<&FdMatrix>,
     component: usize,
     n_bins: usize,
-) -> Option<AleResult> {
+) -> Result<AleResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 2 || m != fit.fpca.mean.len() || n_bins == 0 || component >= fit.ncomp {
-        return None;
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">=2 rows".into(),
+            actual: format!("{}", n),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be > 0".into(),
+        });
+    }
+    if component >= fit.ncomp {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!("component {} >= ncomp {}", component, fit.ncomp),
+        });
     }
     let ncomp = fit.ncomp;
     let p_scalar = fit.gamma.len();
@@ -65,6 +89,10 @@ pub fn fpc_ale(
         n_bins,
         &predict,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "fpc_ale",
+        detail: "ALE computation failed".into(),
+    })
 }
 
 /// ALE plot for an FPC component in a functional logistic regression model.
@@ -74,10 +102,33 @@ pub fn fpc_ale_logistic(
     scalar_covariates: Option<&FdMatrix>,
     component: usize,
     n_bins: usize,
-) -> Option<AleResult> {
+) -> Result<AleResult, FdarError> {
     let (n, m) = data.shape();
-    if n < 2 || m != fit.fpca.mean.len() || n_bins == 0 || component >= fit.ncomp {
-        return None;
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">=2 rows".into(),
+            actual: format!("{}", n),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_bins == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_bins",
+            message: "must be > 0".into(),
+        });
+    }
+    if component >= fit.ncomp {
+        return Err(FdarError::InvalidParameter {
+            parameter: "component",
+            message: format!("component {} >= ncomp {}", component, fit.ncomp),
+        });
     }
     let ncomp = fit.ncomp;
     let p_scalar = fit.gamma.len();
@@ -107,6 +158,10 @@ pub fn fpc_ale_logistic(
         n_bins,
         &predict,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "fpc_ale_logistic",
+        detail: "ALE computation failed".into(),
+    })
 }
 
 // ===========================================================================
@@ -136,15 +191,40 @@ pub fn lime_explanation(
     n_samples: usize,
     kernel_width: f64,
     seed: u64,
-) -> Option<LimeResult> {
+) -> Result<LimeResult, FdarError> {
     let (n, m) = data.shape();
-    if observation >= n || m != fit.fpca.mean.len() || n_samples == 0 || kernel_width <= 0.0 {
-        return None;
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "must be > 0".into(),
+        });
+    }
+    if kernel_width <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "kernel_width",
+            message: "must be > 0".into(),
+        });
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
 
@@ -180,6 +260,10 @@ pub fn lime_explanation(
         observation,
         &predict,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "lime_explanation",
+        detail: "LIME computation failed".into(),
+    })
 }
 
 /// LIME explanation for a functional logistic regression model.
@@ -191,15 +275,40 @@ pub fn lime_explanation_logistic(
     n_samples: usize,
     kernel_width: f64,
     seed: u64,
-) -> Option<LimeResult> {
+) -> Result<LimeResult, FdarError> {
     let (n, m) = data.shape();
-    if observation >= n || m != fit.fpca.mean.len() || n_samples == 0 || kernel_width <= 0.0 {
-        return None;
+    if observation >= n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observation",
+            message: format!("observation {} >= n {}", observation, n),
+        });
+    }
+    if m != fit.fpca.mean.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{} columns", fit.fpca.mean.len()),
+            actual: format!("{}", m),
+        });
+    }
+    if n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "must be > 0".into(),
+        });
+    }
+    if kernel_width <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "kernel_width",
+            message: "must be > 0".into(),
+        });
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
     if ncomp == 0 {
-        return None;
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be > 0".into(),
+        });
     }
     let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
 
@@ -233,4 +342,8 @@ pub fn lime_explanation_logistic(
         observation,
         &predict,
     )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "lime_explanation_logistic",
+        detail: "LIME computation failed".into(),
+    })
 }

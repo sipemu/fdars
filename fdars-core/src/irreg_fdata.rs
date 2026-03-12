@@ -146,7 +146,7 @@ impl IrregFdata {
         })
     }
 
-    /// Number of observations.
+    /// Number of observations stored in this irregular functional data object.
     #[inline]
     pub fn n_obs(&self) -> usize {
         self.offsets.len().saturating_sub(1)

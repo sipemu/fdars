@@ -92,14 +92,14 @@ fn test_conformal_invalid_params() {
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     // cal_fraction out of range
     assert!(
-        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.0, 0.1, 42).is_none()
+        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.0, 0.1, 42).is_err()
     );
     assert!(
-        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 1.0, 0.1, 42).is_none()
+        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 1.0, 0.1, 42).is_err()
     );
     // alpha out of range
     assert!(
-        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.0, 42).is_none()
+        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.0, 42).is_err()
     );
 }
 
