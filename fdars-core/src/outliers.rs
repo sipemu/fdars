@@ -76,6 +76,7 @@ fn normalized_distance(
 ///
 /// # Returns
 /// Threshold at specified percentile for outlier detection
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn outliers_threshold_lrt(
     data: &FdMatrix,
     nb: usize,
@@ -104,6 +105,7 @@ pub fn outliers_threshold_lrt(
 /// # Returns
 /// `(threshold, sorted_distribution)` — threshold at specified percentile and the
 /// full sorted bootstrap null distribution of max-distances (length `nb`).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn outliers_threshold_lrt_with_dist(
     data: &FdMatrix,
     nb: usize,
@@ -191,6 +193,7 @@ pub fn outliers_threshold_lrt_with_dist(
 ///
 /// # Returns
 /// Vector of booleans indicating outliers
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn detect_outliers_lrt(data: &FdMatrix, threshold: f64, trim: f64) -> Vec<bool> {
     let n = data.nrows();
     let m = data.ncols();

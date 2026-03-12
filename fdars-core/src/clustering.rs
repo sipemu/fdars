@@ -455,6 +455,7 @@ fn kmeans_iterate(
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
 /// * `seed` - Random seed
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn kmeans_fd(
     data: &FdMatrix,
     argvals: &[f64],
@@ -526,6 +527,7 @@ pub struct FuzzyCmeansResult {
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
 /// * `seed` - Random seed
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fuzzy_cmeans_fd(
     data: &FdMatrix,
     argvals: &[f64],
@@ -595,6 +597,7 @@ pub fn fuzzy_cmeans_fd(
 }
 
 /// Compute silhouette score for clustering result.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> Vec<f64> {
     let n = data.nrows();
     let m = data.ncols();
@@ -649,6 +652,7 @@ pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> 
 }
 
 /// Compute Calinski-Harabasz index for clustering result.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> f64 {
     let n = data.nrows();
     let m = data.ncols();

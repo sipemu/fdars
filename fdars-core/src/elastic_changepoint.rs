@@ -81,6 +81,7 @@ pub enum CovKernel {
 /// * `_cov_kernel` — Unused (kept for backward compatibility)
 /// * `_cov_bandwidth` — Unused (kept for backward compatibility)
 /// * `seed` — Random seed for reproducibility
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_amp_changepoint(
     data: &FdMatrix,
     argvals: &[f64],
@@ -125,6 +126,7 @@ pub fn elastic_amp_changepoint(
 /// Detect a changepoint in the phase (warping) of functional data.
 ///
 /// Same as amplitude changepoint but on shooting vectors from the warping functions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_ph_changepoint(
     data: &FdMatrix,
     argvals: &[f64],
@@ -185,6 +187,7 @@ pub fn elastic_ph_changepoint(
 /// * `max_iter` — Karcher mean iterations
 /// * `n_mc` — Monte Carlo simulations
 /// * `seed` — Random seed
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_fpca_changepoint(
     data: &FdMatrix,
     argvals: &[f64],

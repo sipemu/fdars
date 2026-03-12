@@ -23,6 +23,7 @@ impl SortedReferenceState {
     /// * `data_ori` -- reference matrix of shape `nori x n_points`
     ///
     /// Complexity: O(T x N log N)  (parallelised over time points).
+#[must_use = "expensive computation whose result should not be discarded"]
     pub fn from_reference(data_ori: &FdMatrix) -> Self {
         let nori = data_ori.nrows();
         let n_points = data_ori.ncols();

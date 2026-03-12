@@ -34,6 +34,7 @@ pub struct SobolIndicesResult {
 /// row count.
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
 /// Returns [`FdarError::ComputationFailed`] if the variance of `y` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn sobol_indices(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -107,6 +108,7 @@ pub fn sobol_indices(
 /// is zero.
 /// Returns [`FdarError::ComputationFailed`] if the variance of predictions is
 /// near zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn sobol_indices_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -223,6 +225,7 @@ pub struct FunctionalSaliencyResult {
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_saliency(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -278,6 +281,7 @@ pub fn functional_saliency(
 ///
 /// Returns [`FdarError::InvalidDimension`] if `fit.probabilities` is empty or
 /// `fit.beta_t` has zero length.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_saliency_logistic(
     fit: &FunctionalLogisticResult,
 ) -> Result<FunctionalSaliencyResult, FdarError> {
@@ -357,6 +361,7 @@ pub struct DomainSelectionResult {
 /// Returns [`FdarError::InvalidParameter`] if `beta_t`, `window_width`, or
 /// `threshold` are invalid (e.g., empty `beta_t`, zero `window_width`, or
 /// `window_width` exceeding `beta_t` length).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn domain_selection(
     fit: &FregreLmResult,
     window_width: usize,
@@ -377,6 +382,7 @@ pub fn domain_selection(
 /// Returns [`FdarError::InvalidParameter`] if `beta_t`, `window_width`, or
 /// `threshold` are invalid (e.g., empty `beta_t`, zero `window_width`, or
 /// `window_width` exceeding `beta_t` length).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn domain_selection_logistic(
     fit: &FunctionalLogisticResult,
     window_width: usize,

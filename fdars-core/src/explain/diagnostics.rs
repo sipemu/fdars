@@ -34,6 +34,7 @@ pub struct VifResult {
 /// # Errors
 ///
 /// See [`crate::explain_generic::generic_vif`] for error conditions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_vif(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -47,6 +48,7 @@ pub fn fpc_vif(
 /// # Errors
 ///
 /// See [`crate::explain_generic::generic_vif`] for error conditions.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_vif_logistic(
     fit: &FunctionalLogisticResult,
     data: &FdMatrix,
@@ -148,6 +150,7 @@ pub struct InfluenceDiagnostics {
 /// count does not match `fit.fpca.mean`, or the number of rows is not greater
 /// than the number of model parameters.
 /// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn influence_diagnostics(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -240,6 +243,7 @@ pub struct DfbetasDffitsResult {
 /// than the number of model parameters.
 /// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails or
 /// the residual standard error is near zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn dfbetas_dffits(
     fit: &FregreLmResult,
     data: &FdMatrix,
@@ -397,6 +401,7 @@ pub struct PredictionIntervalResult {
 /// rows, column counts do not match `fit.fpca.mean` or each other, or the number
 /// of training rows is not greater than the number of model parameters.
 /// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails.
+#[must_use = "prediction result should not be discarded"]
 pub fn prediction_intervals(
     fit: &FregreLmResult,
     train_data: &FdMatrix,
@@ -607,6 +612,7 @@ pub struct LooCvResult {
 /// or the number of rows is not greater than the number of model parameters.
 /// Returns [`FdarError::ComputationFailed`] if Cholesky factorization fails or
 /// the total sum of squares is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn loo_cv_press(
     fit: &FregreLmResult,
     data: &FdMatrix,

@@ -14,6 +14,7 @@ use rayon::iter::ParallelIterator;
 /// * `data_obj` - Data to compute depth for (nobj x n_points)
 /// * `data_ori` - Reference data (nori x n_points)
 /// * `argvals` - Optional evaluation grid; if None, uses uniform \[0,1\] grid
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_spatial_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
@@ -72,6 +73,7 @@ pub fn functional_spatial_1d(
 }
 
 /// Compute Functional Spatial Depth for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     functional_spatial_1d(data_obj, data_ori, None)
 }
@@ -193,6 +195,7 @@ fn kfsd_weighted(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, weights: &[f6
 /// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
 ///
 /// Implements the RKHS-based formulation.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn kernel_functional_spatial_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
@@ -212,6 +215,7 @@ pub fn kernel_functional_spatial_1d(
 }
 
 /// Compute Kernel Functional Spatial Depth (KFSD) for 2D functional data.
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn kernel_functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();

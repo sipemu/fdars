@@ -12,6 +12,7 @@ use crate::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFrai
 /// * `data_obj` - Data to compute depth for (nobj x n_points)
 /// * `data_ori` - Reference data (nori x n_points)
 /// * `scale` - Whether to scale the depth values
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() == 0 || data_obj.ncols() == 0 {
         return Vec::new();
@@ -22,6 +23,7 @@ pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -
 }
 
 /// Compute Fraiman-Muniz depth for 2D functional data (surfaces).
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn fraiman_muniz_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
     // Same implementation as 1D - iterate over all grid points
     fraiman_muniz_1d(data_obj, data_ori, scale)

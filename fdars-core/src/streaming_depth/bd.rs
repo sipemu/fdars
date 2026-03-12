@@ -22,6 +22,7 @@ pub struct FullReferenceState {
 
 impl FullReferenceState {
     /// Build from a column-major reference matrix.
+#[must_use = "expensive computation whose result should not be discarded"]
     pub fn from_reference(data_ori: &FdMatrix) -> Self {
         let nori = data_ori.nrows();
         let n_points = data_ori.ncols();

@@ -107,6 +107,7 @@ impl RollingReference {
     ///
     /// This clones the sorted columns. For repeated queries, prefer
     /// [`mbd_one`](Self::mbd_one) which queries the window directly.
+    #[must_use = "expensive computation whose result should not be discarded"]
     pub fn snapshot(&self) -> SortedReferenceState {
         SortedReferenceState {
             sorted_columns: self.sorted_columns.clone(),
