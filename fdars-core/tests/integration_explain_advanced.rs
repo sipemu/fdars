@@ -1,16 +1,31 @@
-//! Integration tests for Explainability Round 5:
-//! ECE, Conformal Prediction, Regression Depth, Stability, Anchors
+//! Integration tests for ECE, conformal prediction, regression depth,
+//! explanation stability, and anchor explanations.
+//!
+//! Covers:
+//! - Expected Calibration Error (ECE / ACE)
+//! - Conformal prediction intervals
+//! - Regression depth (Fraiman-Muniz)
+//! - Explanation stability (bootstrap)
+//! - Anchor explanations
 
 use fdars_core::matrix::FdMatrix;
-use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
-use fdars_core::{
-    anchor_explanation, anchor_explanation_logistic, conformal_prediction_residuals,
-    expected_calibration_error, explanation_stability, explanation_stability_logistic,
-    regression_depth, regression_depth_logistic, DepthType,
-};
 use std::f64::consts::PI;
+use fdars_core::{
+    DepthType,
+    anchor_explanation,
+    anchor_explanation_logistic,
+    conformal_prediction_residuals,
+    expected_calibration_error,
+    explanation_stability,
+    explanation_stability_logistic,
+    regression_depth,
+    regression_depth_logistic,
+};
+use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
 
-fn generate_test_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
+// ─── Test data generators ────────────────────────────────────────────────────
+
+fn regression_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
     let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
     let mut data = FdMatrix::zeros(n, m);
     let mut y = vec![0.0; n];
@@ -35,13 +50,13 @@ fn make_binary(y: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ECE
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// ECE, Conformal, Depth, Stability, Anchors
+// ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
 fn test_ece_ace_range() {
-    let (data, y) = generate_test_data(40, 50, 42);
+    let (data, y) = regression_data(40, 50, 42);
     let y_bin = make_binary(&y);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let ece = expected_calibration_error(&fit, &y_bin, 10).unwrap();
@@ -54,7 +69,7 @@ fn test_ece_ace_range() {
 
 #[test]
 fn test_ece_different_bins() {
-    let (data, y) = generate_test_data(40, 50, 42);
+    let (data, y) = regression_data(40, 50, 42);
     let y_bin = make_binary(&y);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let ece5 = expected_calibration_error(&fit, &y_bin, 5).unwrap();
@@ -71,7 +86,7 @@ fn test_ece_different_bins() {
 
 #[test]
 fn test_conformal_different_alpha() {
-    let (data, y) = generate_test_data(60, 50, 42);
+    let (data, y) = regression_data(60, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let cp_wide =
         conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.05, 42).unwrap();
@@ -88,7 +103,7 @@ fn test_conformal_different_alpha() {
 
 #[test]
 fn test_conformal_invalid_params() {
-    let (data, y) = generate_test_data(60, 50, 42);
+    let (data, y) = regression_data(60, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     // cal_fraction out of range
     assert!(
@@ -109,7 +124,7 @@ fn test_conformal_invalid_params() {
 
 #[test]
 fn test_regression_depth_logistic_works() {
-    let (data, y) = generate_test_data(30, 50, 42);
+    let (data, y) = regression_data(30, 50, 42);
     let y_bin = make_binary(&y);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let rd = regression_depth_logistic(&fit, &data, &y_bin, None, 15, DepthType::FraimanMuniz, 42)
@@ -121,7 +136,7 @@ fn test_regression_depth_logistic_works() {
 
 #[test]
 fn test_regression_depth_mean_in_range() {
-    let (data, y) = generate_test_data(30, 50, 42);
+    let (data, y) = regression_data(30, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let rd = regression_depth(&fit, &data, &y, None, 20, DepthType::FraimanMuniz, 42).unwrap();
     assert!(
@@ -137,7 +152,7 @@ fn test_regression_depth_mean_in_range() {
 
 #[test]
 fn test_stability_logistic_works() {
-    let (data, y) = generate_test_data(40, 50, 42);
+    let (data, y) = regression_data(40, 50, 42);
     let y_bin = make_binary(&y);
     let sa = explanation_stability_logistic(&data, &y_bin, None, 3, 15, 42).unwrap();
     assert_eq!(sa.beta_t_std.len(), 50);
@@ -147,7 +162,7 @@ fn test_stability_logistic_works() {
 
 #[test]
 fn test_stability_metric_std_nonneg() {
-    let (data, y) = generate_test_data(30, 50, 42);
+    let (data, y) = regression_data(30, 50, 42);
     let sa = explanation_stability(&data, &y, None, 3, 20, 42).unwrap();
     assert!(
         sa.metric_std >= 0.0,
@@ -158,7 +173,7 @@ fn test_stability_metric_std_nonneg() {
 
 #[test]
 fn test_stability_cv_length() {
-    let (data, y) = generate_test_data(30, 50, 42);
+    let (data, y) = regression_data(30, 50, 42);
     let sa = explanation_stability(&data, &y, None, 3, 20, 42).unwrap();
     assert_eq!(sa.beta_t_cv.len(), 50);
 }
@@ -169,7 +184,7 @@ fn test_stability_cv_length() {
 
 #[test]
 fn test_anchor_logistic_works() {
-    let (data, y) = generate_test_data(40, 50, 42);
+    let (data, y) = regression_data(40, 50, 42);
     let y_bin = make_binary(&y);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let ar = anchor_explanation_logistic(&fit, &data, None, 0, 0.8, 5).unwrap();
@@ -180,7 +195,7 @@ fn test_anchor_logistic_works() {
 
 #[test]
 fn test_anchor_conditions_valid() {
-    let (data, y) = generate_test_data(40, 50, 42);
+    let (data, y) = regression_data(40, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let ar = anchor_explanation(&fit, &data, None, 0, 0.8, 5).unwrap();
     for cond in &ar.rule.conditions {
@@ -200,9 +215,10 @@ fn test_anchor_conditions_valid() {
 
 #[test]
 fn test_anchor_high_precision_threshold() {
-    let (data, y) = generate_test_data(40, 50, 42);
+    let (data, y) = regression_data(40, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let ar = anchor_explanation(&fit, &data, None, 0, 0.99, 10).unwrap();
     // With enough bins, should still produce a valid rule
     assert!(!ar.rule.conditions.is_empty());
 }
+

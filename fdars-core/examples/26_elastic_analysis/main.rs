@@ -9,7 +9,6 @@
 //! - Elastic attribution — amplitude vs phase decomposition (`elastic_pcr_attribution`)
 
 use fdars_core::alignment::karcher_mean;
-use fdars_core::elastic_changepoint::CovKernel;
 use fdars_core::elastic_regression::PcaMethod;
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
@@ -127,8 +126,6 @@ fn demo_changepoint(t: &[f64], n: usize, m: usize) {
         0.01,
         15,
         200,
-        CovKernel::Bartlett,
-        None,
         42,
     ) {
         println!("  Amplitude changepoint at index {}", cp.changepoint);
@@ -143,8 +140,6 @@ fn demo_changepoint(t: &[f64], n: usize, m: usize) {
         0.01,
         15,
         200,
-        CovKernel::Bartlett,
-        None,
         42,
     ) {
         println!("  Phase changepoint at index {}", cp.changepoint);

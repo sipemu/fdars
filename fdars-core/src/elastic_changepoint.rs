@@ -54,15 +54,6 @@ pub enum FpcaChangepointMethod {
     Joint,
 }
 
-/// Kernel for long-run covariance estimation.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CovKernel {
-    Bartlett,
-    Parzen,
-    FlatTop,
-    Simple,
-}
-
 // ─── Amplitude Changepoint ──────────────────────────────────────────────────
 
 /// Detect a changepoint in the amplitude of functional data.
@@ -78,8 +69,6 @@ pub enum CovKernel {
 /// * `lambda` — Alignment penalty
 /// * `max_iter` — Karcher mean iterations
 /// * `n_mc` — Number of Monte Carlo simulations for p-value
-/// * `_cov_kernel` — Unused (kept for backward compatibility)
-/// * `_cov_bandwidth` — Unused (kept for backward compatibility)
 /// * `seed` — Random seed for reproducibility
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_amp_changepoint(
@@ -88,8 +77,6 @@ pub fn elastic_amp_changepoint(
     lambda: f64,
     max_iter: usize,
     n_mc: usize,
-    _cov_kernel: CovKernel,
-    _cov_bandwidth: Option<usize>,
     seed: u64,
 ) -> Result<ChangepointResult, crate::FdarError> {
     let (n, m) = data.shape();
@@ -133,8 +120,6 @@ pub fn elastic_ph_changepoint(
     lambda: f64,
     max_iter: usize,
     n_mc: usize,
-    _cov_kernel: CovKernel,
-    _cov_bandwidth: Option<usize>,
     seed: u64,
 ) -> Result<ChangepointResult, crate::FdarError> {
     let (n, m) = data.shape();
@@ -459,7 +444,7 @@ mod tests {
         let cp = 15;
         let (data, t) = generate_changepoint_data(n, m, cp);
 
-        let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 42);
+        let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42);
         assert!(result.is_ok(), "amp changepoint should succeed");
 
         let res = result.unwrap();
@@ -494,7 +479,7 @@ mod tests {
             }
         }
 
-        let result = elastic_ph_changepoint(&data, &t, 0.0, 5, 100, CovKernel::Bartlett, None, 42);
+        let result = elastic_ph_changepoint(&data, &t, 0.0, 5, 100, 42);
         assert!(result.is_ok());
     }
 
@@ -531,7 +516,7 @@ mod tests {
             }
         }
 
-        let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 200, CovKernel::Bartlett, None, 42);
+        let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 200, 42);
         if let Ok(res) = result {
             assert!(
                 res.p_value > 0.1,
@@ -549,7 +534,7 @@ mod tests {
         // Strong signal: amplitude doubles at midpoint
         let (data_signal, _) = generate_changepoint_data(30, m, 15);
         let res_signal =
-            elastic_amp_changepoint(&data_signal, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 99)
+            elastic_amp_changepoint(&data_signal, &t, 0.0, 5, 199, 99)
                 .expect("should succeed");
         assert!(
             res_signal.p_value < 0.05,
@@ -565,7 +550,7 @@ mod tests {
             }
         }
         let res_null =
-            elastic_amp_changepoint(&data_null, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 99)
+            elastic_amp_changepoint(&data_null, &t, 0.0, 5, 199, 99)
                 .expect("should succeed");
         assert!(
             res_null.p_value > 0.1,
@@ -580,7 +565,7 @@ mod tests {
         let t: Vec<f64> = (0..5).map(|i| i as f64 / 4.0).collect();
         // n=2 < 4 → should return None
         assert!(
-            elastic_amp_changepoint(&data, &t, 0.0, 5, 100, CovKernel::Simple, None, 42).is_err()
+            elastic_amp_changepoint(&data, &t, 0.0, 5, 100, 42).is_err()
         );
     }
 
@@ -632,9 +617,9 @@ mod tests {
         let cp = 15;
         let (data, t) = generate_changepoint_data(n, m, cp);
 
-        let res1 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 42)
+        let res1 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42)
             .expect("should succeed");
-        let res2 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, CovKernel::Bartlett, None, 42)
+        let res2 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42)
             .expect("should succeed");
 
         assert_eq!(res1.changepoint, res2.changepoint);

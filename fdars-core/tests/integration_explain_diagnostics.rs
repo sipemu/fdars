@@ -1,53 +1,394 @@
-//! Deep validation for explainability round 2.
+//! Integration tests for beta decomposition, significant regions,
+//! permutation importance, influence diagnostics, and Friedman H-statistic.
 //!
-//! Property-based, cross-validation, and numerical consistency tests for:
-//! - Beta decomposition
-//! - Significant regions
-//! - FPC permutation importance
-//! - Influence diagnostics
-//! - Friedman H-statistic
+//! Covers:
+//! - Beta(t) effect decomposition
+//! - Significant regions detection
+//! - FPC permutation importance (linear and logistic)
+//! - Influence diagnostics (Cook's D, leverage)
+//! - Friedman H-statistic (FPC interaction)
+//! - Cross-feature consistency checks
 
 use fdars_core::matrix::FdMatrix;
-use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
 use std::f64::consts::PI;
+use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
 
-// ─── Data generators ─────────────────────────────────────────────────────────
+// ─── Test data generators ────────────────────────────────────────────────────
 
-fn regression_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
+fn generate_regression_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
+    let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
     let mut data = FdMatrix::zeros(n, m);
     let mut y = vec![0.0; n];
     for i in 0..n {
         let phase = (seed.wrapping_mul(17).wrapping_add(i as u64 * 31) % 1000) as f64 / 1000.0 * PI;
-        let amp = ((seed.wrapping_mul(13).wrapping_add(i as u64 * 7) % 100) as f64 / 100.0) - 0.5;
+        let amplitude =
+            ((seed.wrapping_mul(13).wrapping_add(i as u64 * 7) % 100) as f64 / 100.0) - 0.5;
         for j in 0..m {
-            let t = j as f64 / (m - 1) as f64;
-            data[(i, j)] = (2.0 * PI * t + phase).sin() + amp * (4.0 * PI * t).cos();
+            data[(i, j)] = (2.0 * PI * t[j] + phase).sin() + amplitude * (4.0 * PI * t[j]).cos();
         }
-        y[i] = 2.0 * phase + 3.0 * amp;
+        y[i] = 2.0 * phase + 3.0 * amplitude;
     }
     (data, y)
 }
 
-fn binary_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
-    let (data, y_cont) = regression_data(n, m, seed);
-    let mut sorted = y_cont.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let med = sorted[sorted.len() / 2];
+fn generate_binary_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64>) {
+    let (data, y_cont) = generate_regression_data(n, m, seed);
+    let y_median = {
+        let mut sorted = y_cont.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted[sorted.len() / 2]
+    };
     let y_bin: Vec<f64> = y_cont
         .iter()
-        .map(|&v| if v >= med { 1.0 } else { 0.0 })
+        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
         .collect();
     (data, y_bin)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Beta decomposition — deep validation
+// Basic validation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn beta_decomposition_reconstructs_beta_t() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let dec = fdars_core::beta_decomposition(&fit).unwrap();
+
+    assert_eq!(dec.components.len(), 3);
+    for j in 0..30 {
+        let sum: f64 = dec.components.iter().map(|c| c[j]).sum();
+        assert!(
+            (sum - fit.beta_t[j]).abs() < 1e-10,
+            "Sum of components should equal beta_t at j={}",
+            j
+        );
+    }
+}
+
+#[test]
+fn beta_decomposition_variance_proportions_valid() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let dec = fdars_core::beta_decomposition(&fit).unwrap();
+
+    let total: f64 = dec.variance_proportion.iter().sum();
+    assert!((total - 1.0).abs() < 1e-10, "Proportions should sum to 1");
+    for &p in &dec.variance_proportion {
+        assert!(p >= 0.0, "Each proportion should be non-negative");
+    }
+}
+
+#[test]
+fn beta_decomposition_logistic_reconstructs() {
+    let (data, y_bin) = generate_binary_data(50, 30, 42);
+    let fit = fdars_core::functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
+    let dec = fdars_core::beta_decomposition_logistic(&fit).unwrap();
+
+    for j in 0..30 {
+        let sum: f64 = dec.components.iter().map(|c| c[j]).sum();
+        assert!(
+            (sum - fit.beta_t[j]).abs() < 1e-10,
+            "Logistic decomposition should reconstruct beta_t at j={}",
+            j
+        );
+    }
+}
+
+#[test]
+fn beta_decomposition_with_different_ncomp() {
+    let (data, y) = generate_regression_data(60, 30, 42);
+    for ncomp in [2, 3, 4] {
+        if let Ok(fit) = fdars_core::fregre_lm(&data, &y, None, ncomp) {
+            let dec = fdars_core::beta_decomposition(&fit).unwrap();
+            assert_eq!(dec.components.len(), ncomp);
+            assert_eq!(dec.coefficients.len(), ncomp);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Feature 2: Significant regions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn significant_regions_from_model_fit() {
+    let (data, y) = generate_regression_data(50, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+
+    let regions = fdars_core::significant_regions_from_se(&fit.beta_t, &fit.beta_se, 1.96).unwrap();
+
+    // Regions should be well-formed
+    for r in &regions {
+        assert!(r.start_idx <= r.end_idx);
+        assert!(r.end_idx < 30);
+    }
+}
+
+#[test]
+fn significant_regions_consistency_with_ci() {
+    // Build explicit CI and check consistency
+    let (data, y) = generate_regression_data(50, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+
+    let z = 1.96;
+    let lower: Vec<f64> = fit
+        .beta_t
+        .iter()
+        .zip(&fit.beta_se)
+        .map(|(b, s)| b - z * s)
+        .collect();
+    let upper: Vec<f64> = fit
+        .beta_t
+        .iter()
+        .zip(&fit.beta_se)
+        .map(|(b, s)| b + z * s)
+        .collect();
+
+    let regions_direct = fdars_core::significant_regions(&lower, &upper).unwrap();
+    let regions_se = fdars_core::significant_regions_from_se(&fit.beta_t, &fit.beta_se, z).unwrap();
+
+    assert_eq!(regions_direct.len(), regions_se.len());
+    for (a, b) in regions_direct.iter().zip(regions_se.iter()) {
+        assert_eq!(a.start_idx, b.start_idx);
+        assert_eq!(a.end_idx, b.end_idx);
+        assert_eq!(a.direction, b.direction);
+    }
+}
+
+#[test]
+fn significant_regions_wider_ci_finds_fewer_regions() {
+    let (data, y) = generate_regression_data(50, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+
+    let regions_95 =
+        fdars_core::significant_regions_from_se(&fit.beta_t, &fit.beta_se, 1.96).unwrap();
+    let regions_99 =
+        fdars_core::significant_regions_from_se(&fit.beta_t, &fit.beta_se, 2.576).unwrap();
+
+    // Wider CI (99%) should find no more significant indices than narrower (95%)
+    let sig_count_95: usize = regions_95.iter().map(|r| r.end_idx - r.start_idx + 1).sum();
+    let sig_count_99: usize = regions_99.iter().map(|r| r.end_idx - r.start_idx + 1).sum();
+    assert!(
+        sig_count_99 <= sig_count_95,
+        "99% CI should have ≤ significant indices than 95%: {} vs {}",
+        sig_count_99,
+        sig_count_95
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Feature 3: FPC permutation importance
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn permutation_importance_baseline_matches_r2() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 20, 42).unwrap();
+
+    assert!(
+        (imp.baseline_metric - fit.r_squared).abs() < 1e-6,
+        "Baseline should match model R²: {} vs {}",
+        imp.baseline_metric,
+        fit.r_squared
+    );
+}
+
+#[test]
+fn permutation_importance_sum_bounded() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 50, 42).unwrap();
+
+    let total_imp: f64 = imp.importance.iter().sum();
+    // Total importance can exceed R² due to correlated components, but should be reasonable
+    assert!(
+        total_imp <= fit.r_squared * 3.0 + 0.5,
+        "Total importance ({}) should not greatly exceed R² ({})",
+        total_imp,
+        fit.r_squared
+    );
+}
+
+#[test]
+fn permutation_importance_logistic_valid() {
+    let (data, y_bin) = generate_binary_data(50, 30, 42);
+    let fit = fdars_core::functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
+    let imp = fdars_core::fpc_permutation_importance_logistic(&fit, &data, &y_bin, 20, 42).unwrap();
+
+    assert_eq!(imp.importance.len(), 3);
+    assert!(imp.baseline_metric >= 0.0 && imp.baseline_metric <= 1.0);
+    for &pm in &imp.permuted_metric {
+        assert!((0.0..=1.0).contains(&pm));
+    }
+}
+
+#[test]
+fn permutation_importance_different_seeds_differ() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let imp1 = fdars_core::fpc_permutation_importance(&fit, &data, &y, 20, 42).unwrap();
+    let imp2 = fdars_core::fpc_permutation_importance(&fit, &data, &y, 20, 99).unwrap();
+
+    // Different seeds should (almost certainly) produce different results
+    let any_differ = imp1
+        .importance
+        .iter()
+        .zip(&imp2.importance)
+        .any(|(a, b)| (a - b).abs() > 1e-15);
+    assert!(
+        any_differ,
+        "Different seeds should produce different results"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Feature 4: Influence diagnostics
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn influence_diagnostics_basic_properties() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
+
+    assert_eq!(diag.leverage.len(), 40);
+    assert_eq!(diag.cooks_distance.len(), 40);
+    assert_eq!(diag.p, 4); // 1 intercept + 3 FPCs
+    assert!(diag.mse > 0.0);
+}
+
+#[test]
+fn influence_leverage_hat_matrix_trace() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
+
+    let h_sum: f64 = diag.leverage.iter().sum();
+    assert!(
+        (h_sum - diag.p as f64).abs() < 1e-6,
+        "tr(H) should equal p={}: got {}",
+        diag.p,
+        h_sum
+    );
+}
+
+#[test]
+fn influence_outlier_detection() {
+    let (mut data, mut y) = generate_regression_data(40, 30, 42);
+    // Inject extreme outlier at index 5
+    for j in 0..30 {
+        data[(5, j)] = 50.0;
+    }
+    y[5] = 200.0;
+
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
+
+    // The outlier should have the highest Cook's distance
+    let max_cd = diag
+        .cooks_distance
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        (diag.cooks_distance[5] - max_cd).abs() < 1e-10,
+        "Outlier at index 5 should have max Cook's D"
+    );
+}
+
+#[test]
+fn influence_with_scalar_covariates() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let mut sc = FdMatrix::zeros(40, 2);
+    for i in 0..40 {
+        sc[(i, 0)] = i as f64 / 40.0;
+        sc[(i, 1)] = (i as f64 * 0.3).sin();
+    }
+    let fit = fdars_core::fregre_lm(&data, &y, Some(&sc), 3).unwrap();
+    let diag = fdars_core::influence_diagnostics(&fit, &data, Some(&sc)).unwrap();
+
+    assert_eq!(diag.p, 6); // 1 + 3 + 2
+    let h_sum: f64 = diag.leverage.iter().sum();
+    assert!(
+        (h_sum - 6.0).abs() < 1e-5,
+        "tr(H) should equal 6: got {}",
+        h_sum
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Feature 5: Friedman H-statistic
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn h_statistic_linear_no_interaction() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+
+    for j in 0..3 {
+        for k in (j + 1)..3 {
+            let h = fdars_core::friedman_h_statistic(&fit, &data, j, k, 10).unwrap();
+            assert!(
+                h.h_squared.abs() < 1e-6,
+                "Linear model H²({},{}) should be ~0: {}",
+                j,
+                k,
+                h.h_squared
+            );
+        }
+    }
+}
+
+#[test]
+fn h_statistic_logistic_produces_result() {
+    let (data, y_bin) = generate_binary_data(50, 30, 42);
+    let fit = fdars_core::functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
+    let h = fdars_core::friedman_h_statistic_logistic(&fit, &data, None, 0, 1, 10).unwrap();
+
+    assert_eq!(h.component_j, 0);
+    assert_eq!(h.component_k, 1);
+    assert!(h.h_squared >= 0.0);
+    assert_eq!(h.pdp_2d.shape(), (10, 10));
+}
+
+#[test]
+fn h_statistic_symmetry_property() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+
+    let h01 = fdars_core::friedman_h_statistic(&fit, &data, 0, 1, 10).unwrap();
+    let h10 = fdars_core::friedman_h_statistic(&fit, &data, 1, 0, 10).unwrap();
+    assert!(
+        (h01.h_squared - h10.h_squared).abs() < 1e-10,
+        "H(0,1) should equal H(1,0)"
+    );
+}
+
+#[test]
+fn h_statistic_rejects_same_component() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 0, 10).is_err());
+}
+
+#[test]
+fn h_statistic_rejects_invalid_component() {
+    let (data, y) = generate_regression_data(40, 30, 42);
+    let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
+    assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_err());
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Deep validation — mathematical invariants and cross-method consistency
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
 fn beta_decomp_reconstruction_error_is_machine_epsilon() {
     // The reconstruction Σ_k components[k] should equal beta_t to near machine epsilon
-    let (data, y) = regression_data(80, 40, 77);
+    let (data, y) = generate_regression_data(80, 40, 77);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let dec = fdars_core::beta_decomposition(&fit).unwrap();
 
@@ -70,7 +411,7 @@ fn beta_decomp_component_orthogonality() {
     // FPCA eigenfunctions are orthonormal, so inner product of distinct components
     // should equal coef_j * coef_k * δ(j,k) — i.e. cross-products should be zero
     // when using orthogonal eigenfunctions.
-    let (data, y) = regression_data(80, 50, 42);
+    let (data, y) = generate_regression_data(80, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let dec = fdars_core::beta_decomposition(&fit).unwrap();
 
@@ -97,7 +438,7 @@ fn beta_decomp_component_orthogonality() {
 fn beta_decomp_variance_proportions_monotonic_with_eigenvalues() {
     // For data where FPC1 dominates, its variance proportion should be largest
     // (when the coefficients are comparable)
-    let (data, y) = regression_data(100, 40, 42);
+    let (data, y) = generate_regression_data(100, 40, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let dec = fdars_core::beta_decomposition(&fit).unwrap();
 
@@ -115,7 +456,7 @@ fn beta_decomp_variance_proportions_monotonic_with_eigenvalues() {
 
 #[test]
 fn beta_decomp_with_scalar_covariates_still_sums() {
-    let (data, y) = regression_data(60, 30, 42);
+    let (data, y) = generate_regression_data(60, 30, 42);
     let mut sc = FdMatrix::zeros(60, 2);
     for i in 0..60 {
         sc[(i, 0)] = i as f64 / 60.0;
@@ -136,7 +477,7 @@ fn beta_decomp_with_scalar_covariates_still_sums() {
 
 #[test]
 fn beta_decomp_logistic_variance_proportions_valid() {
-    let (data, y_bin) = binary_data(60, 30, 42);
+    let (data, y_bin) = generate_binary_data(60, 30, 42);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let dec = fdars_core::beta_decomposition_logistic(&fit).unwrap();
 
@@ -151,8 +492,8 @@ fn beta_decomp_logistic_variance_proportions_valid() {
 #[test]
 fn beta_decomp_stable_across_sample_sizes() {
     // Decomposition with n=60 and n=120 should produce similar proportions
-    let (data60, y60) = regression_data(60, 30, 42);
-    let (data120, y120) = regression_data(120, 30, 42);
+    let (data60, y60) = generate_regression_data(60, 30, 42);
+    let (data120, y120) = generate_regression_data(120, 30, 42);
     let fit60 = fregre_lm(&data60, &y60, None, 3).unwrap();
     let fit120 = fregre_lm(&data120, &y120, None, 3).unwrap();
     let dec60 = fdars_core::beta_decomposition(&fit60).unwrap();
@@ -175,7 +516,7 @@ fn beta_decomp_stable_across_sample_sizes() {
 #[test]
 fn significant_regions_verified_against_manual_ci() {
     // Manually construct a known CI pattern and verify regions
-    let (data, y) = regression_data(80, 30, 42);
+    let (data, y) = generate_regression_data(80, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
 
     let z = 1.96;
@@ -236,7 +577,7 @@ fn significant_regions_verified_against_manual_ci() {
 #[test]
 fn significant_regions_contiguity_invariant() {
     // Adjacent indices within a region must share the same direction
-    let (data, y) = regression_data(80, 50, 99);
+    let (data, y) = generate_regression_data(80, 50, 99);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let regions = fdars_core::significant_regions_from_se(&fit.beta_t, &fit.beta_se, 1.96).unwrap();
 
@@ -258,7 +599,7 @@ fn significant_regions_contiguity_invariant() {
 #[test]
 fn significant_regions_narrower_ci_expands_regions() {
     // z=1.0 (68% CI) should yield at least as many significant indices as z=2.576 (99%)
-    let (data, y) = regression_data(100, 40, 42);
+    let (data, y) = generate_regression_data(100, 40, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
 
     let regions_narrow =
@@ -314,7 +655,7 @@ fn significant_regions_mismatched_lengths() {
 #[test]
 fn perm_importance_converges_with_more_permutations() {
     // With many perms, the result should stabilize
-    let (data, y) = regression_data(50, 30, 42);
+    let (data, y) = generate_regression_data(50, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
 
     let imp_10 = fdars_core::fpc_permutation_importance(&fit, &data, &y, 10, 42).unwrap();
@@ -348,7 +689,7 @@ fn perm_importance_converges_with_more_permutations() {
 #[test]
 fn perm_importance_zero_r2_data() {
     // If y is pure noise (no relation to X), all importances should be ~0
-    let (data, _) = regression_data(50, 30, 42);
+    let (data, _) = generate_regression_data(50, 30, 42);
     // Generate unrelated y
     let y_noise: Vec<f64> = (0..50)
         .map(|i| ((i as u64 * 7919 + 13) % 1000) as f64 / 1000.0)
@@ -370,7 +711,7 @@ fn perm_importance_zero_r2_data() {
 #[test]
 fn perm_importance_permuted_metric_less_than_baseline() {
     // For well-fitted data, permuting should generally decrease R²
-    let (data, y) = regression_data(60, 30, 42);
+    let (data, y) = generate_regression_data(60, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 100, 42).unwrap();
 
@@ -386,7 +727,7 @@ fn perm_importance_permuted_metric_less_than_baseline() {
 
 #[test]
 fn perm_importance_logistic_accuracy_in_range() {
-    let (data, y_bin) = binary_data(60, 30, 42);
+    let (data, y_bin) = generate_binary_data(60, 30, 42);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let imp = fdars_core::fpc_permutation_importance_logistic(&fit, &data, &y_bin, 50, 42).unwrap();
 
@@ -403,7 +744,7 @@ fn perm_importance_logistic_accuracy_in_range() {
 #[test]
 fn perm_importance_with_many_components() {
     // Use 4 components with sufficient data
-    let (data, y) = regression_data(100, 30, 42);
+    let (data, y) = generate_regression_data(100, 30, 42);
     if let Ok(fit) = fregre_lm(&data, &y, None, 4) {
         let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 30, 42).unwrap();
         assert_eq!(imp.importance.len(), 4);
@@ -423,7 +764,7 @@ fn perm_importance_with_many_components() {
 #[test]
 fn influence_leverage_bounded_by_one_over_n() {
     // Each h_ii >= 1/n (since design matrix includes intercept)
-    let (data, y) = regression_data(50, 30, 42);
+    let (data, y) = generate_regression_data(50, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
 
@@ -441,7 +782,7 @@ fn influence_leverage_bounded_by_one_over_n() {
 
 #[test]
 fn influence_mse_matches_residuals() {
-    let (data, y) = regression_data(50, 30, 42);
+    let (data, y) = generate_regression_data(50, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
 
@@ -458,7 +799,7 @@ fn influence_mse_matches_residuals() {
 #[test]
 fn influence_cooks_d_formula_verification() {
     // Manually verify Cook's D for a few observations
-    let (data, y) = regression_data(40, 30, 42);
+    let (data, y) = generate_regression_data(40, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
 
@@ -479,7 +820,7 @@ fn influence_cooks_d_formula_verification() {
 
 #[test]
 fn influence_with_scalar_covariates_increases_p() {
-    let (data, y) = regression_data(80, 30, 42);
+    let (data, y) = generate_regression_data(80, 30, 42);
     let mut sc = FdMatrix::zeros(80, 2);
     for i in 0..80 {
         sc[(i, 0)] = (i as f64 * 0.5).sin();
@@ -500,7 +841,7 @@ fn influence_with_scalar_covariates_increases_p() {
 #[test]
 fn influence_outlier_has_high_leverage_and_cooks() {
     // Create data with one extreme observation
-    let (mut data, mut y) = regression_data(50, 30, 42);
+    let (mut data, mut y) = generate_regression_data(50, 30, 42);
 
     // Make obs 0 very extreme
     for j in 0..30 {
@@ -531,7 +872,7 @@ fn influence_outlier_has_high_leverage_and_cooks() {
 
 #[test]
 fn influence_no_nans_or_infinities() {
-    let (data, y) = regression_data(50, 30, 42);
+    let (data, y) = generate_regression_data(50, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
 
@@ -553,7 +894,7 @@ fn influence_no_nans_or_infinities() {
 #[test]
 fn influence_returns_none_for_underdetermined_system() {
     // n <= p should return None
-    let (data, y) = regression_data(3, 30, 42);
+    let (data, y) = generate_regression_data(3, 30, 42);
     let fit = fregre_lm(&data, &y, None, 2).unwrap();
     // p = 1 + 2 = 3, n = 3, so n <= p
     assert!(
@@ -570,7 +911,7 @@ fn influence_returns_none_for_underdetermined_system() {
 fn h_statistic_linear_algebraically_zero() {
     // For a purely additive linear model, H² must be exactly zero
     // This is a mathematical property, not approximate
-    let (data, y) = regression_data(60, 30, 42);
+    let (data, y) = generate_regression_data(60, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
 
     for j in 0..3 {
@@ -590,7 +931,7 @@ fn h_statistic_linear_algebraically_zero() {
 #[test]
 fn h_statistic_logistic_all_pairs() {
     // Compute H² for all pairs and verify all are in [0, 1]
-    let (data, y_bin) = binary_data(60, 30, 42);
+    let (data, y_bin) = generate_binary_data(60, 30, 42);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
 
     for j in 0..3 {
@@ -610,7 +951,7 @@ fn h_statistic_logistic_all_pairs() {
 #[test]
 fn h_statistic_symmetry_exact() {
     // H(j,k) must exactly equal H(k,j) — numerical values should be identical
-    let (data, y_bin) = binary_data(50, 30, 42);
+    let (data, y_bin) = generate_binary_data(50, 30, 42);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
 
     let h01 = fdars_core::friedman_h_statistic_logistic(&fit, &data, None, 0, 1, 10).unwrap();
@@ -626,7 +967,7 @@ fn h_statistic_symmetry_exact() {
 
 #[test]
 fn h_statistic_2d_pdp_surface_finite() {
-    let (data, y) = regression_data(40, 30, 42);
+    let (data, y) = generate_regression_data(40, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let h = fdars_core::friedman_h_statistic(&fit, &data, 0, 2, 12).unwrap();
 
@@ -647,7 +988,7 @@ fn h_statistic_2d_pdp_surface_finite() {
 fn h_statistic_2d_pdp_linear_is_additive() {
     // For linear model, pdp_2d(gj,gk) = pdp_j(gj) + pdp_k(gk) - f_bar
     // This is what makes H² = 0
-    let (data, y) = regression_data(50, 30, 42);
+    let (data, y) = generate_regression_data(50, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let h = fdars_core::friedman_h_statistic(&fit, &data, 0, 1, 10).unwrap();
 
@@ -676,7 +1017,7 @@ fn h_statistic_2d_pdp_linear_is_additive() {
 #[test]
 fn h_statistic_grid_resolution_effect() {
     // H² should be consistent across different grid resolutions
-    let (data, y_bin) = binary_data(50, 30, 42);
+    let (data, y_bin) = generate_binary_data(50, 30, 42);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
 
     let h_5 = fdars_core::friedman_h_statistic_logistic(&fit, &data, None, 0, 1, 5).unwrap();
@@ -693,7 +1034,7 @@ fn h_statistic_grid_resolution_effect() {
 
 #[test]
 fn h_statistic_rejects_out_of_range_component() {
-    let (data, y) = regression_data(40, 30, 42);
+    let (data, y) = generate_regression_data(40, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_err());
     assert!(fdars_core::friedman_h_statistic(&fit, &data, 3, 0, 10).is_err());
@@ -701,7 +1042,7 @@ fn h_statistic_rejects_out_of_range_component() {
 
 #[test]
 fn h_statistic_rejects_small_grid() {
-    let (data, y) = regression_data(40, 30, 42);
+    let (data, y) = generate_regression_data(40, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 1, 1).is_err());
 }
@@ -714,7 +1055,7 @@ fn h_statistic_rejects_small_grid() {
 fn decomposition_and_significant_regions_consistent() {
     // If a component dominates beta_t, its significant regions should overlap
     // with the overall significant regions
-    let (data, y) = regression_data(80, 40, 42);
+    let (data, y) = generate_regression_data(80, 40, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let dec = fdars_core::beta_decomposition(&fit).unwrap();
     let regions = fdars_core::significant_regions_from_se(&fit.beta_t, &fit.beta_se, 1.96).unwrap();
@@ -745,7 +1086,7 @@ fn decomposition_and_significant_regions_consistent() {
 fn importance_and_decomposition_rank_agreement() {
     // The component with highest permutation importance should tend to have
     // high variance proportion (though not guaranteed for all data)
-    let (data, y) = regression_data(80, 30, 42);
+    let (data, y) = generate_regression_data(80, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
 
     let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 100, 42).unwrap();
@@ -784,7 +1125,7 @@ fn importance_and_decomposition_rank_agreement() {
 #[test]
 fn influence_and_importance_high_leverage_effect() {
     // Removing a high-leverage point should change importance values
-    let (data, y) = regression_data(50, 30, 42);
+    let (data, y) = generate_regression_data(50, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let diag = fdars_core::influence_diagnostics(&fit, &data, None).unwrap();
     let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y, 50, 42).unwrap();
@@ -800,3 +1141,4 @@ fn influence_and_importance_high_leverage_effect() {
     let total_imp: f64 = imp.importance.iter().map(|v| v.abs()).sum();
     assert!(total_imp > 0.0, "Total importance magnitude should be > 0");
 }
+

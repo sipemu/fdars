@@ -63,12 +63,14 @@ pub mod warping;
 
 // Elastic analysis modules
 pub mod conformal;
+pub mod elastic;
 pub mod elastic_changepoint;
 pub mod elastic_explain;
 pub mod elastic_fpca;
 pub mod elastic_regression;
 pub mod explain;
 pub mod explain_generic;
+pub mod prelude;
 pub mod smooth_basis;
 
 // Re-export matrix types
@@ -236,7 +238,7 @@ pub use elastic_regression::{
 // Re-export elastic changepoint types
 pub use elastic_changepoint::{
     elastic_amp_changepoint, elastic_fpca_changepoint, elastic_ph_changepoint, ChangepointResult,
-    ChangepointType, CovKernel, FpcaChangepointMethod,
+    ChangepointType, FpcaChangepointMethod,
 };
 
 // Re-export cross-validation utilities

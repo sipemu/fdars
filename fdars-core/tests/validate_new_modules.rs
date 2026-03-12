@@ -1524,7 +1524,7 @@ fn generate_regression_data(n: usize, m: usize, seed: u64) -> (FdMatrix, Vec<f64
 
 #[test]
 fn amp_changepoint_detects_known_shift() {
-    use fdars_core::elastic_changepoint::{elastic_amp_changepoint, CovKernel};
+    use fdars_core::elastic_changepoint::elastic_amp_changepoint;
 
     let n = 30;
     let m = 51;
@@ -1540,7 +1540,7 @@ fn amp_changepoint_detects_known_shift() {
     }
 
     let result =
-        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, CovKernel::Bartlett, None, 42)
+        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, 42)
             .unwrap();
 
     assert!(
@@ -1556,7 +1556,7 @@ fn amp_changepoint_detects_known_shift() {
 
 #[test]
 fn changepoint_no_change_weak_signal() {
-    use fdars_core::elastic_changepoint::{elastic_amp_changepoint, CovKernel};
+    use fdars_core::elastic_changepoint::elastic_amp_changepoint;
 
     let n = 20;
     let m = 51;
@@ -1571,7 +1571,7 @@ fn changepoint_no_change_weak_signal() {
     }
 
     let result =
-        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, CovKernel::Bartlett, None, 42);
+        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, 42);
 
     if let Ok(res) = result {
         // p-value should be higher (less significant) when there's no change

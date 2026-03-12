@@ -6011,7 +6011,7 @@ struct AmpChangepointExpected {
 
 #[test]
 fn validate_elastic_amp_changepoint() {
-    use fdars_core::elastic_changepoint::{elastic_amp_changepoint, CovKernel};
+    use fdars_core::elastic_changepoint::elastic_amp_changepoint;
 
     let exp: ElasticChangepointExpected = load_json("expected", "elastic_changepoint");
     let acp = exp
@@ -6027,8 +6027,6 @@ fn validate_elastic_amp_changepoint() {
         0.0,
         5,   // max_iter for alignment
         200, // n_mc
-        CovKernel::Simple,
-        None,
         42,
     )
     .expect("elastic_amp_changepoint should succeed");
@@ -6439,8 +6437,6 @@ fn validate_elastic_phase_changepoint() {
         0.0,
         10,
         100,
-        fdars_core::elastic_changepoint::CovKernel::Bartlett,
-        None,
         42,
     )
     .expect("elastic_ph_changepoint should succeed");
