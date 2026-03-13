@@ -198,7 +198,7 @@ fn penalized_solve(
     let l = cholesky_factor(&a, p).ok_or_else(|| FdarError::ComputationFailed {
         operation: "penalized_solve",
         detail: format!(
-            "Cholesky factorization of (X'X + {lambda:.4}*P) failed; matrix is singular or near-singular"
+            "Cholesky factorization of (X'X + {lambda:.4}*P) failed; matrix is singular — try increasing lambda or removing collinear basis columns"
         ),
     })?;
 
@@ -541,7 +541,7 @@ fn regress_scores_on_design(
     let xtx = compute_xtx(design);
     let l = cholesky_factor(&xtx, p_total).ok_or_else(|| FdarError::ComputationFailed {
         operation: "regress_scores_on_design",
-        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient".to_string(),
+        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient — remove constant or collinear predictors, or add regularization".to_string(),
     })?;
 
     let gamma_all: Vec<Vec<f64>> = (0..k)

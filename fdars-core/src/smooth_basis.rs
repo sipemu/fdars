@@ -207,7 +207,7 @@ pub fn smooth_basis(
     let system_inv =
         invert_penalized_system(&system, k).ok_or_else(|| crate::FdarError::ComputationFailed {
             operation: "matrix inversion",
-            detail: "failed to invert penalized system (Φ'Φ + λR)".to_string(),
+            detail: "failed to invert penalized system (Φ'Φ + λR); try increasing lambda or reducing the number of basis functions".to_string(),
         })?;
 
     // Hat matrix: H = Φ (Φ'Φ + λR)^{-1} Φ'  →  EDF = tr(H)

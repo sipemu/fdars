@@ -131,7 +131,7 @@ pub fn generic_stability(
     )
     .ok_or_else(|| FdarError::ComputationFailed {
         operation: "generic_stability",
-        detail: "not enough successful bootstrap refits".into(),
+        detail: "not enough successful bootstrap refits; try increasing n_boot or check that the model fits reliably on subsampled data".into(),
     })
 }
 

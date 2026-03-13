@@ -261,7 +261,7 @@ pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarE
     let (singular_values, rotation, scores) =
         extract_pc_components(&svd, n, m, ncomp).ok_or_else(|| FdarError::ComputationFailed {
             operation: "SVD",
-            detail: "failed to extract U or V_t from SVD decomposition".to_string(),
+            detail: "failed to extract U or V_t from SVD decomposition; try reducing ncomp or check for zero-variance columns in the data".to_string(),
         })?;
 
     Ok(FpcaResult {

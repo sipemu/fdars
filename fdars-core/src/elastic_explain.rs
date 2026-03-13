@@ -149,7 +149,7 @@ fn attribution_joint(
         .as_ref()
         .ok_or_else(|| FdarError::ComputationFailed {
             operation: "elastic_pcr_attribution",
-            detail: "joint_fpca result missing from ElasticPcrResult".into(),
+            detail: "joint_fpca result missing from ElasticPcrResult; ensure elastic_pcr was called with PcaMethod::Combined".into(),
         })?;
     let km = &result.karcher;
     let (n, m) = km.aligned_data.shape();

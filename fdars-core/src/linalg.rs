@@ -22,7 +22,7 @@ pub(crate) fn cholesky_d(mat: &[f64], d: usize) -> Result<Vec<f64>, FdarError> {
         if diag <= 0.0 {
             return Err(FdarError::ComputationFailed {
                 operation: "cholesky_d",
-                detail: format!("non-positive diagonal at index {j}"),
+                detail: format!("non-positive diagonal at index {j}; matrix may not be positive-definite — check for collinear inputs or add regularization"),
             });
         }
         l[j * d + j] = diag.sqrt();

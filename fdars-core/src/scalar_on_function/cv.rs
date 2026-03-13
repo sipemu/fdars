@@ -206,7 +206,7 @@ pub fn fregre_basis_cv(
     let (cv_errors, cv_se, best) = compute_cv_statistics(&cv_fold_errors);
     let (best_idx, min_cv_error) = best.ok_or_else(|| FdarError::ComputationFailed {
         operation: "fregre_basis_cv",
-        detail: "no valid lambda values produced CV errors".to_string(),
+        detail: "no valid lambda values produced CV errors; try widening the lambda range or check data quality".to_string(),
     })?;
 
     Ok(FregreBasisCvResult {
@@ -237,7 +237,8 @@ fn select_default_bandwidth_grid(func_dists: &[f64], n: usize) -> Result<Vec<f64
     if nonzero.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "select_default_bandwidth_grid",
-            detail: "all pairwise distances are zero".to_string(),
+            detail: "all pairwise distances are zero; curves may be identical — check input data"
+                .to_string(),
         });
     }
     Ok((1..=20)
@@ -390,7 +391,9 @@ pub fn fregre_np_cv(
     let (cv_errors, cv_se, best) = compute_cv_statistics(&cv_fold_errors);
     let (best_idx, min_cv_error) = best.ok_or_else(|| FdarError::ComputationFailed {
         operation: "fregre_np_cv",
-        detail: "no valid bandwidth values produced CV errors".to_string(),
+        detail:
+            "no valid bandwidth values produced CV errors; try providing a wider bandwidth grid"
+                .to_string(),
     })?;
 
     Ok(FregreNpCvResult {

@@ -291,7 +291,7 @@ pub fn dfbetas_dffits(
     if s < 1e-15 {
         return Err(FdarError::ComputationFailed {
             operation: "dfbetas_dffits",
-            detail: "residual standard error is near zero".into(),
+            detail: "residual standard error is near zero; the model may be overfitting (perfect fit) — try reducing ncomp".into(),
         });
     }
 
@@ -661,7 +661,7 @@ pub fn loo_cv_press(
     if tss == 0.0 {
         return Err(FdarError::ComputationFailed {
             operation: "loo_cv_press",
-            detail: "total sum of squares is zero".into(),
+            detail: "total sum of squares is zero; all response values may be identical — check your data".into(),
         });
     }
 

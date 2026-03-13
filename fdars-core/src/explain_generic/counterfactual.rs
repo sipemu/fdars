@@ -137,7 +137,7 @@ pub fn generic_counterfactual(
             if grad_norm_sq < 1e-30 {
                 return Err(FdarError::ComputationFailed {
                     operation: "generic_counterfactual",
-                    detail: "gradient norm is near zero".into(),
+                    detail: "gradient norm is near zero; the model is locally flat at this observation — try a different observation or increase ncomp".into(),
                 });
             }
             let gap = target_value - original_prediction;

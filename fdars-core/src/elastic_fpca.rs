@@ -125,7 +125,7 @@ pub fn vert_fpca(
         .as_ref()
         .ok_or_else(|| crate::FdarError::ComputationFailed {
             operation: "SVD",
-            detail: "SVD failed to compute U matrix".to_string(),
+            detail: "SVD failed to compute U matrix; check for constant or zero-variance aligned functions".to_string(),
         })?;
 
     let eigenvalues: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
@@ -217,12 +217,14 @@ pub fn horiz_fpca(
         .as_ref()
         .ok_or_else(|| crate::FdarError::ComputationFailed {
             operation: "SVD",
-            detail: "SVD failed to compute V^T matrix".to_string(),
+            detail:
+                "SVD failed to compute V^T matrix; check for constant or zero-variance functions"
+                    .to_string(),
         })?;
     let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n).ok_or_else(|| {
         crate::FdarError::ComputationFailed {
             operation: "SVD",
-            detail: "SVD failed to compute scores".to_string(),
+            detail: "SVD failed to compute scores; try reducing ncomp or check for degenerate input data".to_string(),
         }
     })?;
     let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
@@ -318,12 +320,14 @@ pub fn joint_fpca(
         .as_ref()
         .ok_or_else(|| crate::FdarError::ComputationFailed {
             operation: "SVD",
-            detail: "SVD failed to compute V^T matrix".to_string(),
+            detail:
+                "SVD failed to compute V^T matrix; check for constant or zero-variance functions"
+                    .to_string(),
         })?;
     let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n).ok_or_else(|| {
         crate::FdarError::ComputationFailed {
             operation: "SVD",
-            detail: "SVD failed to compute scores".to_string(),
+            detail: "SVD failed to compute scores; try reducing ncomp or check for degenerate input data".to_string(),
         }
     })?;
     let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);

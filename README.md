@@ -32,7 +32,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ### Regression
 
-- **Scalar-on-Function Regression**: FPC linear model, nonparametric kernel, functional logistic, CV component selection
+- **Scalar-on-Function Regression**: FPC linear model, nonparametric kernel, functional logistic, robust (L1/Huber), CV component selection
 - **Function-on-Scalar Regression**: Penalized pointwise OLS, FPC-based FOSR, 2D FOSR for surface-valued responses Y(s,t) with tensor-product penalty, functional ANOVA with permutation test
 - **Regression**: Functional PCA, PLS, ridge regression
 - **Mixed Effects Models**: Functional mixed model via FPCA + iterative GLS/REML, prediction, permutation hypothesis tests

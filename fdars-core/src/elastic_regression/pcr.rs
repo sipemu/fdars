@@ -110,7 +110,9 @@ pub fn elastic_pcr(
         ols_on_scores(&scores_mat, y, n, actual_ncomp).ok_or_else(|| {
             crate::FdarError::ComputationFailed {
                 operation: "OLS",
-                detail: "OLS on PC scores failed".to_string(),
+                detail: "OLS on PC scores failed; score matrix may be rank-deficient \
+                    — try reducing ncomp"
+                    .to_string(),
             }
         })?;
 

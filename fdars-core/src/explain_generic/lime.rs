@@ -85,6 +85,6 @@ pub fn generic_lime(
     )
     .ok_or_else(|| FdarError::ComputationFailed {
         operation: "generic_lime",
-        detail: "compute_lime returned None".into(),
+        detail: "LIME computation failed; the perturbation neighborhood may be too narrow — try increasing kernel_width or n_samples".into(),
     })
 }

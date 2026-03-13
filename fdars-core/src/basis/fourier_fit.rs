@@ -70,7 +70,7 @@ pub fn fourier_fit_1d(
     let btb = &b_mat.transpose() * &b_mat;
     let btb_inv = svd_pseudoinverse(&btb).ok_or_else(|| crate::FdarError::ComputationFailed {
         operation: "SVD pseudoinverse",
-        detail: "failed to compute pseudoinverse of B^T B in fourier_fit_1d".to_string(),
+        detail: "failed to compute pseudoinverse of B^T B in fourier_fit_1d; try reducing nbasis or check that argvals are sufficiently spread".to_string(),
     })?;
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;

@@ -88,7 +88,7 @@ pub fn counterfactual_regression(
     if gamma_norm_sq < 1e-30 {
         return Err(FdarError::ComputationFailed {
             operation: "counterfactual_regression",
-            detail: "coefficient norm is near zero".into(),
+            detail: "coefficient norm is near zero; the model has no predictive signal — try increasing ncomp or check data quality".into(),
         });
     }
 

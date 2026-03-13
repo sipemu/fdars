@@ -88,7 +88,8 @@ pub fn sobol_indices(
     if var_y == 0.0 {
         return Err(FdarError::ComputationFailed {
             operation: "sobol_indices",
-            detail: "variance of y is zero".into(),
+            detail: "variance of y is zero; all response values may be identical — check your data"
+                .into(),
         });
     }
 
@@ -176,7 +177,7 @@ pub fn sobol_indices_logistic(
     if var_fa < 1e-15 {
         return Err(FdarError::ComputationFailed {
             operation: "sobol_indices_logistic",
-            detail: "variance of predictions is near zero".into(),
+            detail: "variance of predictions is near zero; the model may be constant — check that FPC scores vary across observations".into(),
         });
     }
 

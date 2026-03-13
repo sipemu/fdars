@@ -167,7 +167,7 @@ pub fn generic_domain_selection(
     compute_domain_selection(&beta_t, window_width, threshold).ok_or_else(|| {
         FdarError::ComputationFailed {
             operation: "generic_domain_selection",
-            detail: "compute_domain_selection returned None".into(),
+            detail: "domain selection failed; the effective beta curve may be near-zero — check that the model has predictive signal".into(),
         }
     })
 }

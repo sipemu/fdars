@@ -5,6 +5,26 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Robust regression** (`scalar_on_function/robust.rs`): L1 (LAD) regression via IRLS (`fregre_l1`), Huber M-estimation (`fregre_huber`), prediction (`predict_fregre_robust`), and `FregreRobustResult` struct
+- **Predict/project methods on result types**: `FpcaResult::project()`/`reconstruct()`, `PlsResult::project()`, `KmeansResult::predict()`, `FuzzyCmeansResult::predict()`
+- **`FdMatrix::iter_rows()`/`iter_columns()`**: row iterator (yields `Vec<f64>`), column iterator (zero-copy `&[f64]`)
+- **Builder configs for smooth_basis**: `SmoothBasisGcvConfig`, `BasisNbasisCvConfig` with `Default` impls and `_with_config()` entry points
+- **3 new benchmark files**: `smoothing_benchmarks.rs` (33 cases), `basis_benchmarks.rs` (22 cases), `matrix_benchmarks.rs` (45 cases)
+- 119 new `explain_generic` tests, 72 new `smooth_basis` tests, 14 new `famm` tests, and more across regression, clustering, matrix modules
+
+### Changed
+
+- **Smoothing API Result migration**: `nadaraya_watson`, `local_linear`, `local_polynomial`, `knn_smoother`, `smoothing_matrix_nw` now return `Result<Vec<f64>, FdarError>` with input validation
+- **`famm.rs` parallelism**: per-component scalar mixed model fitting now uses `iter_maybe_parallel!`
+- **`#[non_exhaustive]`** on 33 public enums and 102 public structs for forward-compatible API evolution
+- **Actionable error diagnostics**: 30 `ComputationFailed` error messages across 20 files now include "what to try" hints (e.g., SVD → "try reducing ncomp", Cholesky → "try increasing lambda", zero variance → "check your data")
+- Replaced last `.unwrap()` in library code (`seasonal/mod.rs`) with graceful fallback
+- Clippy pedantic cleanup (82 warnings fixed across 41 files)
+
 ## [0.8.4] - 2026-03-13
 
 ### Added

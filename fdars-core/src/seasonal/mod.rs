@@ -836,7 +836,10 @@ pub(super) fn compute_cycle_strengths(
         let cycle_data: Vec<f64> = (start_idx..end_idx)
             .flat_map(|j| (0..n).map(move |i| data[(i, j)]))
             .collect();
-        let cycle_mat = FdMatrix::from_column_major(cycle_data, n, cycle_m).unwrap();
+        let Ok(cycle_mat) = FdMatrix::from_column_major(cycle_data, n, cycle_m) else {
+            cycle_strengths.push(f64::NAN);
+            continue;
+        };
         let cycle_argvals: Vec<f64> = argvals[start_idx..end_idx].to_vec();
 
         let strength_val =

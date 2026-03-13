@@ -101,7 +101,7 @@ pub fn fpc_permutation_importance(
     if ss_tot == 0.0 {
         return Err(FdarError::ComputationFailed {
             operation: "fpc_permutation_importance",
-            detail: "total sum of squares is zero".into(),
+            detail: "total sum of squares is zero; all response values may be identical — check your data".into(),
         });
     }
     let identity_idx: Vec<usize> = (0..n).collect();
@@ -493,7 +493,7 @@ pub fn conditional_permutation_importance(
     if ss_tot == 0.0 {
         return Err(FdarError::ComputationFailed {
             operation: "conditional_permutation_importance",
-            detail: "total sum of squares is zero".into(),
+            detail: "total sum of squares is zero; all response values may be identical — check your data".into(),
         });
     }
     let ss_res_base: f64 = fit.residuals.iter().map(|r| r * r).sum();

@@ -284,7 +284,7 @@ pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Result<Vec<f64>, FdarError
         if diag <= 1e-12 {
             return Err(FdarError::ComputationFailed {
                 operation: "Cholesky factorization",
-                detail: "matrix is singular or near-singular".into(),
+                detail: "matrix is singular or near-singular; try reducing ncomp or check for collinear FPC scores".into(),
             });
         }
         l[j * p + j] = diag.sqrt();

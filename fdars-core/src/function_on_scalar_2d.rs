@@ -316,7 +316,7 @@ fn smooth_coefficient_surface(
     }
     let l = cholesky_factor(&a, m_total).ok_or_else(|| FdarError::ComputationFailed {
         operation: "smooth_coefficient_surface",
-        detail: "Cholesky factorization of (I + P_2d) failed".to_string(),
+        detail: "Cholesky factorization of (I + P_2d) failed; try increasing the smoothing parameter (lambda)".to_string(),
     })?;
     Ok(cholesky_forward_back(&l, beta_raw, m_total))
 }
@@ -571,7 +571,7 @@ pub fn fosr_2d(
 
     let l_xtx = cholesky_factor(&xtx, p_total).ok_or_else(|| FdarError::ComputationFailed {
         operation: "fosr_2d",
-        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient".to_string(),
+        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient — remove constant or collinear predictors, or add regularization".to_string(),
     })?;
 
     // Pointwise OLS: beta_ols[:,g] = (X'X)^{-1} X' y[:,g]

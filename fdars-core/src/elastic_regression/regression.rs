@@ -118,7 +118,10 @@ pub fn elastic_regression(
         )
         .ok_or_else(|| crate::FdarError::ComputationFailed {
             operation: "regression_iteration",
-            detail: format!("iteration {} failed", iter + 1),
+            detail: format!(
+                "iteration {} failed; try increasing lambda or reducing nbasis",
+                iter + 1
+            ),
         })?;
 
         if beta_converged(&beta_new, &beta, tol) && iter > 0 {

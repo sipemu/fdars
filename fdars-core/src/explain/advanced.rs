@@ -437,7 +437,7 @@ pub fn regression_depth(
     if score_depths.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "regression_depth",
-            detail: "score depth computation returned empty".into(),
+            detail: "score depth computation returned empty; try increasing ncomp or check that the score matrix has sufficient variability".into(),
         });
     }
     let mean_score_depth = score_depths.iter().sum::<f64>() / score_depths.len() as f64;
@@ -519,7 +519,7 @@ pub fn regression_depth_logistic(
     if score_depths.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "regression_depth_logistic",
-            detail: "score depth computation returned empty".into(),
+            detail: "score depth computation returned empty; try increasing ncomp or check that the score matrix has sufficient variability".into(),
         });
     }
     let mean_score_depth = score_depths.iter().sum::<f64>() / score_depths.len() as f64;
@@ -648,7 +648,7 @@ pub fn explanation_stability(
     )
     .ok_or_else(|| FdarError::ComputationFailed {
         operation: "explanation_stability",
-        detail: "insufficient successful bootstrap refits".into(),
+        detail: "insufficient successful bootstrap refits; try increasing n_boot or check that the model fits reliably on subsampled data".into(),
     })
 }
 
@@ -719,7 +719,7 @@ pub fn explanation_stability_logistic(
     )
     .ok_or_else(|| FdarError::ComputationFailed {
         operation: "explanation_stability_logistic",
-        detail: "insufficient successful bootstrap refits".into(),
+        detail: "insufficient successful bootstrap refits; try increasing n_boot or check that the model fits reliably on subsampled data".into(),
     })
 }
 

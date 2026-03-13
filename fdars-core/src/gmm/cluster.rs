@@ -169,7 +169,7 @@ pub fn gmm_cluster(
     let (features, _d) = build_features(data, argvals, covariates, nbasis, basis_type, cov_weight)
         .ok_or_else(|| FdarError::ComputationFailed {
             operation: "build_features",
-            detail: "basis projection failed".to_string(),
+            detail: "basis projection failed; check that nbasis <= number of evaluation points and data is non-degenerate".to_string(),
         })?;
 
     let mut bic_values = Vec::new();
@@ -201,7 +201,7 @@ pub fn gmm_cluster(
         })
         .ok_or_else(|| FdarError::ComputationFailed {
             operation: "gmm_cluster",
-            detail: "no valid GMM fit found for any K in range".to_string(),
+            detail: "no valid GMM fit found for any K in range; try widening k_range, increasing n_init, or reducing nbasis".to_string(),
         })
 }
 
@@ -242,7 +242,7 @@ pub fn predict_gmm(
     )
     .ok_or_else(|| FdarError::ComputationFailed {
         operation: "build_features",
-        detail: "basis projection failed for new data".to_string(),
+        detail: "basis projection failed for new data; ensure new_data has the same number of evaluation points as the training data".to_string(),
     })?;
 
     let k = result.k;

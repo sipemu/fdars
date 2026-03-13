@@ -79,7 +79,7 @@ pub fn generic_sobol_indices(
     if var_fa < 1e-15 {
         return Err(FdarError::ComputationFailed {
             operation: "generic_sobol_indices",
-            detail: "variance of model output is near zero".into(),
+            detail: "variance of model output is near zero; the model may be constant — check that FPC scores vary across observations".into(),
         });
     }
 

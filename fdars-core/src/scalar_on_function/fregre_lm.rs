@@ -205,7 +205,7 @@ fn cv_error_for_k(
     } else {
         Err(FdarError::ComputationFailed {
             operation: "CV error computation",
-            detail: "no valid folds produced predictions".to_string(),
+            detail: "no valid folds produced predictions; try reducing ncomp or increasing the number of observations".to_string(),
         })
     }
 }
@@ -268,7 +268,7 @@ pub fn fregre_cv(
     if k_values.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "fregre_cv",
-            detail: "no valid K values produced CV errors".to_string(),
+            detail: "no valid K values produced CV errors; all candidate ncomp values failed — check data for zero-variance columns or increase n".to_string(),
         });
     }
 
@@ -333,7 +333,7 @@ pub fn model_selection_ncomp(
     if criteria.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "model_selection_ncomp",
-            detail: "no valid models could be fitted".to_string(),
+            detail: "no valid models could be fitted; all candidate ncomp values failed — check data for degeneracy or reduce the range".to_string(),
         });
     }
 

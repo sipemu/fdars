@@ -140,7 +140,7 @@ pub fn elastic_ph_changepoint(
     let shooting = compute_shooting_vectors(&km, argvals).ok_or_else(|| {
         crate::FdarError::ComputationFailed {
             operation: "compute_shooting_vectors",
-            detail: "failed to compute shooting vectors from warps".to_string(),
+            detail: "failed to compute shooting vectors from warps; alignment may have produced degenerate warping functions".to_string(),
         }
     })?;
 
