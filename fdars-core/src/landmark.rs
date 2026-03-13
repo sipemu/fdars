@@ -14,6 +14,7 @@ use crate::seasonal::{compute_prominence, find_peaks_1d};
 
 /// Kind of landmark feature to detect.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum LandmarkKind {
     /// Local maximum.
     Peak,
@@ -42,6 +43,7 @@ pub struct Landmark {
 
 /// Result of landmark registration.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct LandmarkResult {
     /// Registered (aligned) curves (n × m).
     pub registered: FdMatrix,

@@ -64,6 +64,7 @@ impl Grid2d {
 
 /// Result of 2D function-on-scalar regression.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FosrResult2d {
     /// Intercept surface beta_0(s,t), flattened column-major (length m1*m2).
     pub intercept: Vec<f64>,

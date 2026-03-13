@@ -4,6 +4,7 @@ use super::compute_mean_curve;
 
 /// Result of Singular Spectrum Analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct SsaResult {
     /// Reconstructed trend component
     pub trend: Vec<f64>,

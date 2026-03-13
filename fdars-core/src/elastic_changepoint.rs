@@ -24,6 +24,7 @@ use rand::SeedableRng;
 
 /// Result of changepoint detection.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ChangepointResult {
     /// Estimated changepoint location (index in 1..n-1).
     pub changepoint: usize,
@@ -37,6 +38,7 @@ pub struct ChangepointResult {
 
 /// Type of changepoint to detect.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum ChangepointType {
     /// Amplitude changepoint (on aligned curves).
     Amplitude,
@@ -48,6 +50,7 @@ pub enum ChangepointType {
 
 /// FPCA method for changepoint detection.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum FpcaChangepointMethod {
     Vertical,
     Horizontal,

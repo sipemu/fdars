@@ -2,6 +2,7 @@ use std::fmt;
 
 /// Error type for fdars operations.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum FdarError {
     /// Input dimensions invalid (empty matrix, length mismatch).
     InvalidDimension {

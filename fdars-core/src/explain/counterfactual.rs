@@ -15,6 +15,7 @@ use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResul
 
 /// Result of a counterfactual explanation.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct CounterfactualResult {
     /// Index of the observation.
     pub observation: usize,
@@ -244,6 +245,7 @@ fn logistic_predict_from_scores(
 
 /// Result of prototype/criticism selection.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct PrototypeCriticismResult {
     /// Indices of selected prototypes.
     pub prototype_indices: Vec<usize>,

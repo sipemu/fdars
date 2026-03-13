@@ -17,6 +17,7 @@ use super::cv::fclassif_cv;
 
 /// Classification method with stored parameters for prediction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ClassifMethod {
     /// Linear Discriminant Analysis.
     Lda {
@@ -44,6 +45,7 @@ pub enum ClassifMethod {
 
 /// A fitted classification model that retains FPCA components for explainability.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ClassifFit {
     /// Classification result (predicted labels, accuracy, confusion matrix).
     pub result: ClassifResult,

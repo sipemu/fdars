@@ -262,6 +262,7 @@ fn permuted_ss_res_linear(
 
 /// Result of pointwise variable importance analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct PointwiseImportanceResult {
     /// Importance at each grid point (length m).
     pub importance: Vec<f64>,
@@ -418,6 +419,7 @@ fn compute_pointwise_importance_core(
 
 /// Result of conditional permutation importance.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ConditionalPermutationImportanceResult {
     /// Conditional importance per FPC component, length ncomp.
     pub importance: Vec<f64>,

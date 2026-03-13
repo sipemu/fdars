@@ -4,6 +4,7 @@ use super::compute_mean_curve;
 
 /// Result of Matrix Profile computation.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct MatrixProfileResult {
     /// The matrix profile (minimum z-normalized distance for each position)
     pub profile: Vec<f64>,

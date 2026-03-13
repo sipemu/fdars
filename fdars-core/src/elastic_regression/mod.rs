@@ -85,6 +85,7 @@ impl Default for ElasticPcrConfig {
 
 /// PCA method for elastic PCR.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum PcaMethod {
     Vertical,
     Horizontal,

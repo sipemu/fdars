@@ -7,6 +7,7 @@ use nalgebra::{DMatrix, DVector};
 
 /// Result of Fourier basis fitting.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FourierFitResult {
     /// Coefficient matrix (n x nbasis)
     pub coefficients: FdMatrix,

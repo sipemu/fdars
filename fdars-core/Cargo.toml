@@ -70,6 +70,18 @@ harness = false
 name = "explain_benchmarks"
 harness = false
 
+[[bench]]
+name = "smoothing_benchmarks"
+harness = false
+
+[[bench]]
+name = "basis_benchmarks"
+harness = false
+
+[[bench]]
+name = "matrix_benchmarks"
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"

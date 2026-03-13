@@ -12,6 +12,7 @@ use super::{cross_distance_matrix, self_distance_matrix};
 
 /// Result of the Soft-DTW barycenter computation.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SoftDtwBarycenterResult {
     /// The barycenter time series.
     pub barycenter: Vec<f64>,

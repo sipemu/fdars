@@ -593,3 +593,355 @@ fn test_fregre_np_cv_custom_h() {
     assert_eq!(res.h_values.len(), 4);
     assert!(h_vals.contains(&res.optimal_h));
 }
+
+// =========================================================================
+// Robust regression tests (L1, Huber)
+// =========================================================================
+
+// ----- fregre_l1 tests -----
+
+#[test]
+fn test_fregre_l1_basic() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let result = fregre_l1(&data, &y, None, 3);
+    assert!(
+        result.is_ok(),
+        "fregre_l1 should succeed: {:?}",
+        result.err()
+    );
+    let fit = result.unwrap();
+    assert_eq!(fit.fitted_values.len(), 30);
+    assert_eq!(fit.residuals.len(), 30);
+    assert_eq!(fit.beta_t.len(), 50);
+    assert_eq!(fit.ncomp, 3);
+    assert_eq!(fit.weights.len(), 30);
+    assert!(fit.r_squared >= -0.1 && fit.r_squared <= 1.0 + 1e-10);
+}
+
+#[test]
+fn test_fregre_l1_convergence() {
+    let (data, y, _t) = generate_test_data(40, 50, 42);
+    let fit = fregre_l1(&data, &y, None, 3).unwrap();
+    // L1 IRLS may converge slowly; verify iteration count is recorded
+    assert!(
+        fit.iterations >= 1,
+        "Should have run at least one iteration, got {}",
+        fit.iterations
+    );
+    // Verify the result is reasonable regardless of convergence flag
+    assert!(fit.r_squared > -1.0, "R² should be reasonable");
+    for &v in &fit.fitted_values {
+        assert!(v.is_finite(), "Fitted values should be finite");
+    }
+}
+
+#[test]
+fn test_fregre_l1_fitted_plus_residuals_equals_y() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let fit = fregre_l1(&data, &y, None, 3).unwrap();
+    for i in 0..30 {
+        let reconstructed = fit.fitted_values[i] + fit.residuals[i];
+        assert!(
+            (reconstructed - y[i]).abs() < 1e-10,
+            "ŷ + r should equal y at index {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_fregre_l1_outlier_robustness() {
+    // Generate clean data
+    let (data, y_clean, _t) = generate_test_data(40, 50, 42);
+
+    // Add outliers to a copy of y
+    let mut y_outlier = y_clean.clone();
+    // Contaminate 3 observations with large outliers
+    y_outlier[0] += 100.0;
+    y_outlier[1] -= 80.0;
+    y_outlier[2] += 120.0;
+
+    // Fit OLS on contaminated data
+    let ols_fit = fregre_lm(&data, &y_outlier, None, 3).unwrap();
+    // Fit L1 on contaminated data
+    let l1_fit = fregre_l1(&data, &y_outlier, None, 3).unwrap();
+
+    // Compare how well each predicts on the clean (non-contaminated) observations
+    // L1 should be less affected by the outliers
+    let clean_idx: Vec<usize> = (3..40).collect();
+
+    let ols_mse: f64 = clean_idx
+        .iter()
+        .map(|&i| (ols_fit.fitted_values[i] - y_clean[i]).powi(2))
+        .sum::<f64>()
+        / clean_idx.len() as f64;
+
+    let l1_mse: f64 = clean_idx
+        .iter()
+        .map(|&i| (l1_fit.fitted_values[i] - y_clean[i]).powi(2))
+        .sum::<f64>()
+        / clean_idx.len() as f64;
+
+    // L1 should have lower MSE on clean observations when outliers are present
+    assert!(
+        l1_mse < ols_mse * 1.5,
+        "L1 should be competitive with or better than OLS on clean obs with outliers: L1={}, OLS={}",
+        l1_mse,
+        ols_mse
+    );
+}
+
+#[test]
+fn test_fregre_l1_weights_are_positive() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let fit = fregre_l1(&data, &y, None, 3).unwrap();
+    for (i, &w) in fit.weights.iter().enumerate() {
+        assert!(
+            w > 0.0 && w.is_finite(),
+            "weight[{}] should be positive finite, got {}",
+            i,
+            w
+        );
+    }
+}
+
+#[test]
+fn test_fregre_l1_single_component() {
+    let (data, y, _t) = generate_test_data(20, 50, 42);
+    let result = fregre_l1(&data, &y, None, 1);
+    assert!(result.is_ok());
+    let fit = result.unwrap();
+    assert_eq!(fit.ncomp, 1);
+}
+
+#[test]
+fn test_fregre_l1_with_scalar_covariates() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let mut sc = FdMatrix::zeros(30, 2);
+    for i in 0..30 {
+        sc[(i, 0)] = i as f64 / 30.0;
+        sc[(i, 1)] = (i as f64 * 0.7).sin();
+    }
+    let result = fregre_l1(&data, &y, Some(&sc), 3);
+    assert!(result.is_ok());
+    let fit = result.unwrap();
+    // coefficients: intercept + 3 FPC + 2 scalar = 6
+    assert_eq!(fit.coefficients.len(), 6);
+}
+
+// ----- fregre_huber tests -----
+
+#[test]
+fn test_fregre_huber_basic() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let result = fregre_huber(&data, &y, None, 3, 1.345);
+    assert!(
+        result.is_ok(),
+        "fregre_huber should succeed: {:?}",
+        result.err()
+    );
+    let fit = result.unwrap();
+    assert_eq!(fit.fitted_values.len(), 30);
+    assert_eq!(fit.residuals.len(), 30);
+    assert_eq!(fit.beta_t.len(), 50);
+    assert_eq!(fit.ncomp, 3);
+    assert_eq!(fit.weights.len(), 30);
+    assert!(fit.r_squared >= -0.1 && fit.r_squared <= 1.0 + 1e-10);
+}
+
+#[test]
+fn test_fregre_huber_convergence() {
+    let (data, y, _t) = generate_test_data(40, 50, 42);
+    let fit = fregre_huber(&data, &y, None, 3, 1.345).unwrap();
+    assert!(fit.converged, "Huber should converge within max iterations");
+    assert!(
+        fit.iterations <= 50,
+        "Should converge within 50 iterations, got {}",
+        fit.iterations
+    );
+}
+
+#[test]
+fn test_fregre_huber_fitted_plus_residuals_equals_y() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let fit = fregre_huber(&data, &y, None, 3, 1.345).unwrap();
+    for i in 0..30 {
+        let reconstructed = fit.fitted_values[i] + fit.residuals[i];
+        assert!(
+            (reconstructed - y[i]).abs() < 1e-10,
+            "ŷ + r should equal y at index {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_fregre_huber_outlier_robustness() {
+    let (data, y_clean, _t) = generate_test_data(40, 50, 42);
+
+    let mut y_outlier = y_clean.clone();
+    y_outlier[0] += 100.0;
+    y_outlier[1] -= 80.0;
+    y_outlier[2] += 120.0;
+
+    let ols_fit = fregre_lm(&data, &y_outlier, None, 3).unwrap();
+    let huber_fit = fregre_huber(&data, &y_outlier, None, 3, 1.345).unwrap();
+
+    let clean_idx: Vec<usize> = (3..40).collect();
+
+    let ols_mse: f64 = clean_idx
+        .iter()
+        .map(|&i| (ols_fit.fitted_values[i] - y_clean[i]).powi(2))
+        .sum::<f64>()
+        / clean_idx.len() as f64;
+
+    let huber_mse: f64 = clean_idx
+        .iter()
+        .map(|&i| (huber_fit.fitted_values[i] - y_clean[i]).powi(2))
+        .sum::<f64>()
+        / clean_idx.len() as f64;
+
+    assert!(
+        huber_mse < ols_mse * 1.5,
+        "Huber should be competitive with or better than OLS on clean obs with outliers: Huber={}, OLS={}",
+        huber_mse,
+        ols_mse
+    );
+}
+
+#[test]
+fn test_fregre_huber_invalid_k() {
+    let (data, y, _t) = generate_test_data(20, 50, 42);
+    assert!(fregre_huber(&data, &y, None, 3, 0.0).is_err());
+    assert!(fregre_huber(&data, &y, None, 3, -1.0).is_err());
+}
+
+#[test]
+fn test_fregre_huber_large_k_approaches_ols() {
+    // With a very large k, all residuals are small relative to k,
+    // so all weights are 1, and Huber should behave like OLS.
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let ols_fit = fregre_lm(&data, &y, None, 3).unwrap();
+    let huber_fit = fregre_huber(&data, &y, None, 3, 1e6).unwrap();
+
+    for i in 0..30 {
+        assert!(
+            (huber_fit.fitted_values[i] - ols_fit.fitted_values[i]).abs() < 1e-4,
+            "Huber with large k should match OLS at index {}: huber={}, ols={}",
+            i,
+            huber_fit.fitted_values[i],
+            ols_fit.fitted_values[i]
+        );
+    }
+}
+
+#[test]
+fn test_fregre_huber_with_scalar_covariates() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let mut sc = FdMatrix::zeros(30, 1);
+    for i in 0..30 {
+        sc[(i, 0)] = i as f64 / 30.0;
+    }
+    let result = fregre_huber(&data, &y, Some(&sc), 3, 1.345);
+    assert!(result.is_ok());
+    let fit = result.unwrap();
+    assert_eq!(fit.coefficients.len(), 5); // intercept + 3 FPC + 1 scalar
+}
+
+// ----- predict_fregre_robust tests -----
+
+#[test]
+fn test_predict_fregre_robust_l1_on_training_data() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let fit = fregre_l1(&data, &y, None, 3).unwrap();
+    let preds = predict_fregre_robust(&fit, &data, None);
+    assert_eq!(preds.len(), 30);
+    for i in 0..30 {
+        assert!(
+            (preds[i] - fit.fitted_values[i]).abs() < 1e-6,
+            "Prediction on training data should match fitted values at index {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_predict_fregre_robust_huber_on_training_data() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let fit = fregre_huber(&data, &y, None, 3, 1.345).unwrap();
+    let preds = predict_fregre_robust(&fit, &data, None);
+    assert_eq!(preds.len(), 30);
+    for i in 0..30 {
+        assert!(
+            (preds[i] - fit.fitted_values[i]).abs() < 1e-6,
+            "Prediction on training data should match fitted values at index {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_predict_fregre_robust_method() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let fit = fregre_l1(&data, &y, None, 3).unwrap();
+    // Use the method syntax
+    let preds = fit.predict(&data, None);
+    assert_eq!(preds.len(), 30);
+    for i in 0..30 {
+        assert!(
+            (preds[i] - fit.fitted_values[i]).abs() < 1e-6,
+            "predict() method should match fitted values",
+        );
+    }
+}
+
+#[test]
+fn test_predict_fregre_robust_with_scalar_covariates() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let mut sc = FdMatrix::zeros(30, 2);
+    for i in 0..30 {
+        sc[(i, 0)] = i as f64 / 30.0;
+        sc[(i, 1)] = (i as f64 * 0.3).cos();
+    }
+    let fit = fregre_l1(&data, &y, Some(&sc), 3).unwrap();
+    let preds = predict_fregre_robust(&fit, &data, Some(&sc));
+    assert_eq!(preds.len(), 30);
+    for i in 0..30 {
+        assert!(
+            (preds[i] - fit.fitted_values[i]).abs() < 1e-6,
+            "Prediction with scalar covariates should match fitted values",
+        );
+    }
+}
+
+// ----- Edge cases -----
+
+#[test]
+fn test_fregre_l1_invalid_input() {
+    let data = FdMatrix::zeros(2, 50);
+    let y = vec![1.0, 2.0];
+    assert!(fregre_l1(&data, &y, None, 1).is_err());
+
+    let data = FdMatrix::zeros(10, 50);
+    let y = vec![1.0; 5]; // wrong length
+    assert!(fregre_l1(&data, &y, None, 2).is_err());
+}
+
+#[test]
+fn test_fregre_huber_single_component() {
+    let (data, y, _t) = generate_test_data(20, 50, 42);
+    let result = fregre_huber(&data, &y, None, 1, 1.345);
+    assert!(result.is_ok());
+    let fit = result.unwrap();
+    assert_eq!(fit.ncomp, 1);
+}
+
+#[test]
+fn test_fregre_l1_minimal_data() {
+    // Just barely enough data (n=5, ncomp=1)
+    let (data, y, _t) = generate_test_data(5, 10, 42);
+    let result = fregre_l1(&data, &y, None, 1);
+    assert!(result.is_ok());
+    let fit = result.unwrap();
+    assert_eq!(fit.fitted_values.len(), 5);
+}

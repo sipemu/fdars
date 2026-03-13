@@ -149,10 +149,11 @@ pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
     bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_basis_cv, fregre_cv,
-    fregre_lm, fregre_np_cv, fregre_np_mixed, functional_logistic, model_selection_ncomp,
-    predict_fregre_lm, predict_fregre_np, predict_functional_logistic, BootstrapCiResult,
-    FregreBasisCvResult, FregreCvResult, FregreLmResult, FregreNpCvResult, FregreNpResult,
-    FunctionalLogisticResult, ModelSelectionResult, SelectionCriterion,
+    fregre_huber, fregre_l1, fregre_lm, fregre_np_cv, fregre_np_mixed, functional_logistic,
+    model_selection_ncomp, predict_fregre_lm, predict_fregre_np, predict_fregre_robust,
+    predict_functional_logistic, BootstrapCiResult, FregreBasisCvResult, FregreCvResult,
+    FregreLmResult, FregreNpCvResult, FregreNpResult, FregreRobustResult, FunctionalLogisticResult,
+    ModelSelectionResult, SelectionCriterion,
 };
 
 // Re-export generic explainability types
@@ -221,8 +222,10 @@ pub use streaming_depth::{
 
 // Re-export smooth basis types
 pub use smooth_basis::{
-    basis_nbasis_cv, bspline_penalty_matrix, fourier_penalty_matrix, smooth_basis,
-    smooth_basis_gcv, BasisCriterion, BasisNbasisCvResult, BasisType, FdPar, SmoothBasisResult,
+    basis_nbasis_cv, basis_nbasis_cv_with_config, bspline_penalty_matrix, fourier_penalty_matrix,
+    smooth_basis, smooth_basis_gcv, smooth_basis_gcv_with_config, BasisCriterion,
+    BasisNbasisCvConfig, BasisNbasisCvResult, BasisType, FdPar, SmoothBasisGcvConfig,
+    SmoothBasisResult,
 };
 
 // Re-export elastic FPCA types

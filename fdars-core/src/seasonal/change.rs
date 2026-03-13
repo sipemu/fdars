@@ -14,6 +14,7 @@ use super::{
 
 /// Method for automatic threshold selection.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum ThresholdMethod {
     /// Fixed user-specified threshold
     Fixed(f64),
@@ -25,6 +26,7 @@ pub enum ThresholdMethod {
 
 /// Type of amplitude modulation pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ModulationType {
     /// Constant amplitude (no modulation)
     Stable,
@@ -40,6 +42,7 @@ pub enum ModulationType {
 
 /// Result of amplitude modulation detection.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct AmplitudeModulationResult {
     /// Whether seasonality is present (using robust spectral method)
     pub is_seasonal: bool,
@@ -65,6 +68,7 @@ pub struct AmplitudeModulationResult {
 
 /// Result of wavelet-based amplitude modulation detection.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct WaveletAmplitudeResult {
     /// Whether seasonality is present
     pub is_seasonal: bool,
@@ -88,6 +92,7 @@ pub struct WaveletAmplitudeResult {
 
 /// Type of seasonality pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SeasonalType {
     /// Regular peaks with consistent timing
     StableSeasonal,
@@ -101,6 +106,7 @@ pub enum SeasonalType {
 
 /// Result of seasonality classification.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct SeasonalityClassification {
     /// Whether the series is seasonal overall
     pub is_seasonal: bool,

@@ -554,6 +554,7 @@ fn significant_regions_verified_against_manual_ci() {
                         upper[idx]
                     );
                 }
+                _ => panic!("unexpected SignificanceDirection variant"),
             }
         }
     }

@@ -9,6 +9,7 @@ use crate::warping::normalize_warp;
 
 /// Result of landmark-constrained elastic alignment.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ConstrainedAlignmentResult {
     /// Optimal warping function (length m).
     pub gamma: Vec<f64>,

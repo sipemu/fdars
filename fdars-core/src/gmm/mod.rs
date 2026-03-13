@@ -24,6 +24,7 @@ mod tests;
 
 /// Covariance structure for GMM components.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CovType {
     /// Full covariance matrix (d² parameters per component)
     Full,
@@ -33,6 +34,7 @@ pub enum CovType {
 
 /// Result from a single GMM fit with fixed K.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct GmmResult {
     /// Hard cluster assignments (length n)
     pub cluster: Vec<usize>,
@@ -62,6 +64,7 @@ pub struct GmmResult {
 
 /// Result from automatic K selection.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct GmmClusterResult {
     /// Best GMM result (by BIC or ICL)
     pub best: GmmResult,

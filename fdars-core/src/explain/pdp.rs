@@ -7,6 +7,7 @@ use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResul
 
 /// Result of a functional partial dependence plot.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FunctionalPdpResult {
     /// FPC score grid values (length n_grid).
     pub grid_values: Vec<f64>,
@@ -340,6 +341,7 @@ fn decompose_beta(
 
 /// Direction of a significant region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SignificanceDirection {
     Positive,
     Negative,
@@ -347,6 +349,7 @@ pub enum SignificanceDirection {
 
 /// A contiguous interval where the confidence band excludes zero.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct SignificantRegion {
     /// Start index (inclusive).
     pub start_idx: usize,

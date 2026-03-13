@@ -11,6 +11,7 @@ use super::{ElasticPcrConfig, PcaMethod};
 
 /// Result of elastic principal component regression.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ElasticPcrResult {
     /// Intercept.
     pub alpha: f64,

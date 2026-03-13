@@ -29,6 +29,7 @@ mod tests;
 
 /// Result of detrending operation.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TrendResult {
     /// Estimated trend values (n x m)
     pub trend: FdMatrix,
@@ -68,6 +69,7 @@ impl TrendResult {
 
 /// Result of seasonal decomposition.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct DecomposeResult {
     /// Trend component (n x m)
     pub trend: FdMatrix,

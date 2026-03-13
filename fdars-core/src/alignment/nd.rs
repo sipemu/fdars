@@ -9,6 +9,7 @@ use crate::matrix::{FdCurveSet, FdMatrix};
 
 /// Result of aligning multidimensional (R^d) curves.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct AlignmentResultNd {
     /// Optimal warping function (length m), same for all dimensions.
     pub gamma: Vec<f64>,

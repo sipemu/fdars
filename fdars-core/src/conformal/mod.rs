@@ -37,6 +37,7 @@ mod tests;
 
 /// Split-conformal method variant.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum ConformalMethod {
     /// Random split into proper-training and calibration.
     Split,
@@ -48,6 +49,7 @@ pub enum ConformalMethod {
 
 /// Non-conformity score type for classification.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum ClassificationScore {
     /// Least Ambiguous set-valued Classifier: `s = 1 - P(true class)`.
     Lac,
@@ -57,6 +59,7 @@ pub enum ClassificationScore {
 
 /// Conformal prediction intervals for regression.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ConformalRegressionResult {
     /// Point predictions on test data.
     pub predictions: Vec<f64>,
@@ -76,6 +79,7 @@ pub struct ConformalRegressionResult {
 
 /// Conformal prediction sets for classification.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ConformalClassificationResult {
     /// Argmax predictions for each test observation.
     pub predicted_classes: Vec<usize>,

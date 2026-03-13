@@ -10,6 +10,8 @@
 //! # Methods
 //!
 //! - [`fregre_lm`]: FPC-based functional linear model with optional scalar covariates
+//! - [`fregre_l1`]: L1 (median) robust functional regression via IRLS
+//! - [`fregre_huber`]: Huber M-estimation robust functional regression via IRLS
 //! - [`fregre_np_mixed`]: Nonparametric kernel regression with product kernels
 //! - [`functional_logistic`]: Logistic regression for binary outcomes
 //! - [`fregre_cv`]: Cross-validation for number of FPC components
@@ -23,6 +25,7 @@ mod cv;
 mod fregre_lm;
 mod logistic;
 mod nonparametric;
+mod robust;
 #[cfg(test)]
 mod tests;
 
@@ -32,6 +35,7 @@ pub use cv::{fregre_basis_cv, fregre_np_cv};
 pub use fregre_lm::{fregre_cv, fregre_lm, model_selection_ncomp, predict_fregre_lm};
 pub use logistic::{functional_logistic, predict_functional_logistic};
 pub use nonparametric::{fregre_np_mixed, predict_fregre_np};
+pub use robust::{fregre_huber, fregre_l1, predict_fregre_robust};
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -89,6 +93,34 @@ pub struct FregreNpResult {
     pub h_scalar: f64,
     /// Leave-one-out CV error
     pub cv_error: f64,
+}
+
+/// Result of robust (L1 or Huber) functional regression.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct FregreRobustResult {
+    /// Intercept
+    pub intercept: f64,
+    /// Functional coefficient β(t), evaluated on the original grid (length m)
+    pub beta_t: Vec<f64>,
+    /// Fitted values ŷ (length n)
+    pub fitted_values: Vec<f64>,
+    /// Residuals y - ŷ (length n)
+    pub residuals: Vec<f64>,
+    /// Regression coefficients (intercept, FPC scores, scalar covariates)
+    pub coefficients: Vec<f64>,
+    /// Number of FPC components used
+    pub ncomp: usize,
+    /// FPCA result (for projecting new data)
+    pub fpca: FpcaResult,
+    /// Number of IRLS iterations performed
+    pub iterations: usize,
+    /// Whether the IRLS algorithm converged
+    pub converged: bool,
+    /// Final IRLS weights (length n)
+    pub weights: Vec<f64>,
+    /// R² statistic
+    pub r_squared: f64,
 }
 
 /// Result of functional logistic regression.
@@ -286,7 +318,7 @@ pub(crate) fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> 
 }
 
 /// Solve Ax = b via Cholesky decomposition (A must be symmetric positive definite).
-fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
+pub(super) fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
     let l = cholesky_factor(a, p)?;
     Ok(cholesky_forward_back(&l, b, p))
 }
@@ -514,6 +546,13 @@ impl FregreLmResult {
     /// Predict new responses. Delegates to [`predict_fregre_lm`].
     pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
         predict_fregre_lm(self, new_data, new_scalar)
+    }
+}
+
+impl FregreRobustResult {
+    /// Predict new responses. Delegates to [`predict_fregre_robust`].
+    pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
+        predict_fregre_robust(self, new_data, new_scalar)
     }
 }
 

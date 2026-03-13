@@ -87,6 +87,7 @@ pub fn subset_vec(v: &[f64], indices: &[usize]) -> Vec<f64> {
 
 /// Type of cross-validation task.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum CvType {
     Regression,
     Classification,
@@ -94,6 +95,7 @@ pub enum CvType {
 
 /// Cross-validation metrics.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum CvMetrics {
     /// Regression metrics.
     Regression { rmse: f64, mae: f64, r_squared: f64 },
@@ -106,6 +108,7 @@ pub enum CvMetrics {
 
 /// Result of unified cross-validation.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct CvFdataResult {
     /// Out-of-fold predictions (length n); for repeated CV, averaged across reps.
     pub oof_predictions: Vec<f64>,

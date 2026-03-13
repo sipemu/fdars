@@ -58,6 +58,7 @@ use crate::warping::normalize_warp;
 
 /// Result of aligning one curve to another.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct AlignmentResult {
     /// Warping function γ mapping the domain to itself.
     pub gamma: Vec<f64>,
@@ -69,6 +70,7 @@ pub struct AlignmentResult {
 
 /// Result of aligning a set of curves to a common target.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct AlignmentSetResult {
     /// Warping functions (n × m).
     pub gammas: FdMatrix,
@@ -80,6 +82,7 @@ pub struct AlignmentSetResult {
 
 /// Result of the Karcher mean computation.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct KarcherMeanResult {
     /// Karcher mean curve.
     pub mean: Vec<f64>,
@@ -96,6 +99,29 @@ pub struct KarcherMeanResult {
     /// Pre-computed SRSFs of aligned curves (n × m), if available.
     /// When set, FPCA functions use these instead of recomputing from `aligned_data`.
     pub aligned_srsfs: Option<FdMatrix>,
+}
+
+impl KarcherMeanResult {
+    /// Create a new `KarcherMeanResult`.
+    pub fn new(
+        mean: Vec<f64>,
+        mean_srsf: Vec<f64>,
+        gammas: FdMatrix,
+        aligned_data: FdMatrix,
+        n_iter: usize,
+        converged: bool,
+        aligned_srsfs: Option<FdMatrix>,
+    ) -> Self {
+        Self {
+            mean,
+            mean_srsf,
+            gammas,
+            aligned_data,
+            n_iter,
+            converged,
+            aligned_srsfs,
+        }
+    }
 }
 
 // ─── Dynamic Programming Alignment ──────────────────────────────────────────

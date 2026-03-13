@@ -19,6 +19,7 @@ use nalgebra::SVD;
 
 /// Result of vertical (amplitude) FPCA.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct VertFpcaResult {
     /// PC scores (n × ncomp).
     pub scores: FdMatrix,
@@ -36,6 +37,7 @@ pub struct VertFpcaResult {
 
 /// Result of horizontal (phase) FPCA.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct HorizFpcaResult {
     /// PC scores (n × ncomp).
     pub scores: FdMatrix,
@@ -55,6 +57,7 @@ pub struct HorizFpcaResult {
 
 /// Result of joint (amplitude + phase) FPCA.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct JointFpcaResult {
     /// PC scores (n × ncomp).
     pub scores: FdMatrix,

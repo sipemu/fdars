@@ -6,6 +6,7 @@ use super::compute_mean_curve;
 
 /// Result of Lomb-Scargle periodogram analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct LombScargleResult {
     /// Test frequencies
     pub frequencies: Vec<f64>,

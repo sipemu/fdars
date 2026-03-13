@@ -9,6 +9,7 @@ use rayon::iter::ParallelIterator;
 
 /// Result of STL decomposition including robustness weights.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct StlResult {
     /// Trend component (n x m)
     pub trend: FdMatrix,

@@ -25,6 +25,137 @@ pub struct FpcaResult {
     pub centered: FdMatrix,
 }
 
+impl FpcaResult {
+    /// Project new functional data onto the FPC score space.
+    ///
+    /// Centers the input data by subtracting the mean function estimated
+    /// during FPCA, then multiplies by the rotation (loadings) matrix to
+    /// obtain FPC scores for the new observations.
+    ///
+    /// # Arguments
+    /// * `data` - Matrix (n_new x m) of new observations
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FdarError::InvalidDimension`] if the number of columns in
+    /// `data` does not match the length of the mean vector (i.e. the number
+    /// of evaluation points used during FPCA).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    /// use fdars_core::regression::fdata_to_pc_1d;
+    ///
+    /// let data = FdMatrix::from_column_major(
+    ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
+    ///     5, 10,
+    /// ).unwrap();
+    /// let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+    ///
+    /// // Project the original data (scores should match)
+    /// let scores = fpca.project(&data).unwrap();
+    /// assert_eq!(scores.shape(), (5, 3));
+    ///
+    /// // Project new data
+    /// let new_data = FdMatrix::from_column_major(
+    ///     (0..20).map(|i| (i as f64 * 0.2).cos()).collect(),
+    ///     2, 10,
+    /// ).unwrap();
+    /// let new_scores = fpca.project(&new_data).unwrap();
+    /// assert_eq!(new_scores.shape(), (2, 3));
+    /// ```
+    pub fn project(&self, data: &FdMatrix) -> Result<FdMatrix, FdarError> {
+        let (n, m) = data.shape();
+        let ncomp = self.rotation.ncols();
+        if m != self.mean.len() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("{} columns", self.mean.len()),
+                actual: format!("{m} columns"),
+            });
+        }
+
+        let mut scores = FdMatrix::zeros(n, ncomp);
+        for i in 0..n {
+            for k in 0..ncomp {
+                let mut sum = 0.0;
+                for j in 0..m {
+                    sum += (data[(i, j)] - self.mean[j]) * self.rotation[(j, k)];
+                }
+                scores[(i, k)] = sum;
+            }
+        }
+        Ok(scores)
+    }
+
+    /// Reconstruct functional data from FPC scores.
+    ///
+    /// Computes the approximation of functional data using the first
+    /// `ncomp` principal components:
+    /// `data[i, j] = mean[j] + sum_k scores[i, k] * rotation[j, k]`
+    ///
+    /// # Arguments
+    /// * `scores` - Score matrix (n x p) where p >= `ncomp`
+    /// * `ncomp` - Number of components to use for reconstruction
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero or exceeds
+    /// the number of columns in `scores` or the number of available components
+    /// in the rotation matrix.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    /// use fdars_core::regression::fdata_to_pc_1d;
+    ///
+    /// let data = FdMatrix::from_column_major(
+    ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
+    ///     10, 10,
+    /// ).unwrap();
+    /// let fpca = fdata_to_pc_1d(&data, 5).unwrap();
+    ///
+    /// // Reconstruct using all 5 components
+    /// let recon = fpca.reconstruct(&fpca.scores, 5).unwrap();
+    /// assert_eq!(recon.shape(), (10, 10));
+    ///
+    /// // Reconstruct using fewer components
+    /// let recon2 = fpca.reconstruct(&fpca.scores, 2).unwrap();
+    /// assert_eq!(recon2.shape(), (10, 10));
+    /// ```
+    pub fn reconstruct(&self, scores: &FdMatrix, ncomp: usize) -> Result<FdMatrix, FdarError> {
+        let (n, p) = scores.shape();
+        let m = self.mean.len();
+        let max_comp = self.rotation.ncols().min(p);
+        if ncomp == 0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "ncomp",
+                message: "ncomp must be >= 1".to_string(),
+            });
+        }
+        if ncomp > max_comp {
+            return Err(FdarError::InvalidParameter {
+                parameter: "ncomp",
+                message: format!("ncomp={ncomp} exceeds available components ({max_comp})"),
+            });
+        }
+
+        let mut recon = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                let mut val = self.mean[j];
+                for k in 0..ncomp {
+                    val += scores[(i, k)] * self.rotation[(j, k)];
+                }
+                recon[(i, j)] = val;
+            }
+        }
+        Ok(recon)
+    }
+}
+
 /// Center columns of a matrix and return (centered_matrix, column_means).
 fn center_columns(data: &FdMatrix) -> (FdMatrix, Vec<f64>) {
     let (n, m) = data.shape();
@@ -151,6 +282,93 @@ pub struct PlsResult {
     pub scores: FdMatrix,
     /// Loading vectors, m x ncomp
     pub loadings: FdMatrix,
+    /// Column means of the training data, length m
+    pub x_means: Vec<f64>,
+}
+
+impl PlsResult {
+    /// Project new functional data onto the PLS score space.
+    ///
+    /// Centers the input data by subtracting the column means estimated
+    /// during PLS fitting, then iteratively projects and deflates through
+    /// each PLS component using the stored weight and loading vectors.
+    ///
+    /// # Arguments
+    /// * `data` - Matrix (n_new x m) of new observations
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FdarError::InvalidDimension`] if the number of columns in
+    /// `data` does not match the number of predictor variables used during
+    /// PLS fitting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    /// use fdars_core::regression::fdata_to_pls_1d;
+    ///
+    /// let x = FdMatrix::from_column_major(
+    ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
+    ///     10, 10,
+    /// ).unwrap();
+    /// let y: Vec<f64> = (0..10).map(|i| i as f64 * 0.5).collect();
+    /// let pls = fdata_to_pls_1d(&x, &y, 3).unwrap();
+    ///
+    /// // Project the original data
+    /// let scores = pls.project(&x).unwrap();
+    /// assert_eq!(scores.shape(), (10, 3));
+    ///
+    /// // Project new data
+    /// let new_x = FdMatrix::from_column_major(
+    ///     (0..20).map(|i| (i as f64 * 0.2).cos()).collect(),
+    ///     2, 10,
+    /// ).unwrap();
+    /// let new_scores = pls.project(&new_x).unwrap();
+    /// assert_eq!(new_scores.shape(), (2, 3));
+    /// ```
+    pub fn project(&self, data: &FdMatrix) -> Result<FdMatrix, FdarError> {
+        let (n, m) = data.shape();
+        let ncomp = self.weights.ncols();
+        if m != self.x_means.len() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("{} columns", self.x_means.len()),
+                actual: format!("{m} columns"),
+            });
+        }
+
+        // Center data
+        let mut x_cen = FdMatrix::zeros(n, m);
+        for j in 0..m {
+            for i in 0..n {
+                x_cen[(i, j)] = data[(i, j)] - self.x_means[j];
+            }
+        }
+
+        // Iteratively project and deflate through each component
+        let mut scores = FdMatrix::zeros(n, ncomp);
+        for k in 0..ncomp {
+            // Compute scores: t = X_cen * w_k
+            for i in 0..n {
+                let mut sum = 0.0;
+                for j in 0..m {
+                    sum += x_cen[(i, j)] * self.weights[(j, k)];
+                }
+                scores[(i, k)] = sum;
+            }
+
+            // Deflate: X_cen -= t * p_k'
+            for j in 0..m {
+                let p_jk = self.loadings[(j, k)];
+                for i in 0..n {
+                    x_cen[(i, j)] -= scores[(i, k)] * p_jk;
+                }
+            }
+        }
+
+        Ok(scores)
+    }
 }
 
 /// Compute PLS weight vector: w = X'y / ||X'y||
@@ -331,6 +549,7 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsRe
         weights,
         scores,
         loadings,
+        x_means,
     })
 }
 
@@ -847,5 +1066,179 @@ mod tests {
         // Constant y → centering makes y all zeros, PLS may fail
         // Just ensure no panic
         let _ = result;
+    }
+
+    // ============== FpcaResult::project tests ==============
+
+    #[test]
+    fn test_fpca_project_shape() {
+        let n = 20;
+        let m = 30;
+        let ncomp = 3;
+        let (data, _) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+
+        let new_data = FdMatrix::zeros(5, m);
+        let scores = fpca.project(&new_data).unwrap();
+        assert_eq!(scores.shape(), (5, ncomp));
+    }
+
+    #[test]
+    fn test_fpca_project_reproduces_training_scores() {
+        let n = 20;
+        let m = 30;
+        let ncomp = 3;
+        let (data, _) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+
+        // Projecting the training data should reproduce the original scores
+        let scores = fpca.project(&data).unwrap();
+        for i in 0..n {
+            for k in 0..ncomp {
+                assert!(
+                    (scores[(i, k)] - fpca.scores[(i, k)]).abs() < 1e-8,
+                    "Score mismatch at ({}, {}): {} vs {}",
+                    i,
+                    k,
+                    scores[(i, k)],
+                    fpca.scores[(i, k)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fpca_project_dimension_mismatch() {
+        let (data, _) = generate_test_fdata(20, 30);
+        let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+
+        let wrong_m = FdMatrix::zeros(5, 20); // wrong number of columns
+        assert!(fpca.project(&wrong_m).is_err());
+    }
+
+    // ============== FpcaResult::reconstruct tests ==============
+
+    #[test]
+    fn test_fpca_reconstruct_shape() {
+        let n = 10;
+        let m = 30;
+        let ncomp = 5;
+        let (data, _) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+
+        let recon = fpca.reconstruct(&fpca.scores, 3).unwrap();
+        assert_eq!(recon.shape(), (n, m));
+    }
+
+    #[test]
+    fn test_fpca_reconstruct_full_matches_original() {
+        let n = 10;
+        let m = 30;
+        let ncomp = n.min(m);
+        let (data, _) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+
+        // Full reconstruction should recover original data
+        let recon = fpca.reconstruct(&fpca.scores, ncomp).unwrap();
+        for i in 0..n {
+            for j in 0..m {
+                assert!(
+                    (recon[(i, j)] - data[(i, j)]).abs() < 0.1,
+                    "Reconstruction error at ({}, {}): {} vs {}",
+                    i,
+                    j,
+                    recon[(i, j)],
+                    data[(i, j)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fpca_reconstruct_fewer_components() {
+        let n = 20;
+        let m = 30;
+        let ncomp = 5;
+        let (data, _) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+
+        let recon2 = fpca.reconstruct(&fpca.scores, 2).unwrap();
+        let recon5 = fpca.reconstruct(&fpca.scores, 5).unwrap();
+        assert_eq!(recon2.shape(), (n, m));
+        assert_eq!(recon5.shape(), (n, m));
+    }
+
+    #[test]
+    fn test_fpca_reconstruct_invalid_ncomp() {
+        let (data, _) = generate_test_fdata(10, 30);
+        let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+
+        // Zero components
+        assert!(fpca.reconstruct(&fpca.scores, 0).is_err());
+        // More components than available
+        assert!(fpca.reconstruct(&fpca.scores, 10).is_err());
+    }
+
+    // ============== PlsResult::project tests ==============
+
+    #[test]
+    fn test_pls_project_shape() {
+        let n = 20;
+        let m = 30;
+        let ncomp = 3;
+        let (x, _) = generate_test_fdata(n, m);
+        let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let pls = fdata_to_pls_1d(&x, &y, ncomp).unwrap();
+
+        let new_x = FdMatrix::zeros(5, m);
+        let scores = pls.project(&new_x).unwrap();
+        assert_eq!(scores.shape(), (5, ncomp));
+    }
+
+    #[test]
+    fn test_pls_project_reproduces_training_scores() {
+        let n = 20;
+        let m = 30;
+        let ncomp = 3;
+        let (x, _) = generate_test_fdata(n, m);
+        let y: Vec<f64> = (0..n).map(|i| (i as f64 / n as f64) + 0.1).collect();
+        let pls = fdata_to_pls_1d(&x, &y, ncomp).unwrap();
+
+        // Projecting the training data should reproduce the original scores
+        let scores = pls.project(&x).unwrap();
+        for i in 0..n {
+            for k in 0..ncomp {
+                assert!(
+                    (scores[(i, k)] - pls.scores[(i, k)]).abs() < 1e-8,
+                    "Score mismatch at ({}, {}): {} vs {}",
+                    i,
+                    k,
+                    scores[(i, k)],
+                    pls.scores[(i, k)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_pls_project_dimension_mismatch() {
+        let (x, _) = generate_test_fdata(20, 30);
+        let y: Vec<f64> = (0..20).map(|i| i as f64).collect();
+        let pls = fdata_to_pls_1d(&x, &y, 3).unwrap();
+
+        let wrong_m = FdMatrix::zeros(5, 20); // wrong number of columns
+        assert!(pls.project(&wrong_m).is_err());
+    }
+
+    #[test]
+    fn test_pls_x_means_stored() {
+        let n = 20;
+        let m = 30;
+        let (x, _) = generate_test_fdata(n, m);
+        let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let pls = fdata_to_pls_1d(&x, &y, 3).unwrap();
+
+        // x_means should be stored and have correct length
+        assert_eq!(pls.x_means.len(), m);
     }
 }

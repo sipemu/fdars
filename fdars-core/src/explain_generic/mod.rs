@@ -46,6 +46,7 @@ pub use stability::{generic_stability, generic_vif};
 
 /// The type of prediction task a model solves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TaskType {
     Regression,
     BinaryClassification,

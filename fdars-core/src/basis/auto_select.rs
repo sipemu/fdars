@@ -13,6 +13,7 @@ use rayon::iter::ParallelIterator;
 
 /// Result of automatic basis selection for a single curve.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SingleCurveSelection {
     /// Selected basis type.
     pub basis_type: ProjectionBasisType,
@@ -34,6 +35,7 @@ pub struct SingleCurveSelection {
 
 /// Result of automatic basis selection for all curves.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct BasisAutoSelectionResult {
     /// Per-curve selection results
     pub selections: Vec<SingleCurveSelection>,

@@ -28,6 +28,7 @@ use std::f64::consts::PI;
 
 /// Eigenfunction type enum for simulation
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum EFunType {
     /// Fourier basis: 1, sqrt(2)*cos(2πkt), sqrt(2)*sin(2πkt)
     Fourier = 0,
@@ -57,6 +58,7 @@ impl EFunType {
 
 /// Eigenvalue decay type for simulation
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum EValType {
     /// Linear decay: λ_k = 1/k
     Linear = 0,

@@ -214,6 +214,7 @@ pub fn fpc_shap_values_logistic(
 
 /// Result of the Friedman H-statistic for interaction between two FPC components.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FriedmanHResult {
     /// First component index.
     pub component_j: usize,

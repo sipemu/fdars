@@ -10,6 +10,7 @@ use rayon::iter::ParallelIterator;
 
 /// Result of elastic phase-amplitude decomposition.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct DecompositionResult {
     /// Full alignment result.
     pub alignment: AlignmentResult,

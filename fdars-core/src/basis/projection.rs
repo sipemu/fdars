@@ -15,6 +15,7 @@ use rayon::iter::ParallelIterator;
 /// B-spline and Fourier basis systems. For penalized smoothing with additional
 /// parameters (order, period), see [`BasisType`](crate::smooth_basis::BasisType).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum ProjectionBasisType {
     /// B-spline basis (order 4 / cubic).
     Bspline,
@@ -48,6 +49,7 @@ impl ProjectionBasisType {
 
 /// Result of basis projection.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct BasisProjectionResult {
     /// Coefficient matrix (n_samples x n_basis)
     pub coefficients: FdMatrix,

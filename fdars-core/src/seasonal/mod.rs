@@ -64,6 +64,7 @@ pub use self::types::*;
 mod types {
     /// Result of period estimation.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct PeriodEstimate {
         /// Estimated period
         pub period: f64,
@@ -77,6 +78,7 @@ mod types {
 
     /// A detected peak in functional data.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct Peak {
         /// Time at which the peak occurs
         pub time: f64,
@@ -88,6 +90,7 @@ mod types {
 
     /// Result of peak detection.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct PeakDetectionResult {
         /// Peaks for each sample: `peaks[sample_idx]` contains peaks for that sample
         pub peaks: Vec<Vec<Peak>>,
@@ -99,6 +102,7 @@ mod types {
 
     /// A detected period from multiple period detection.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct DetectedPeriod {
         /// Estimated period
         pub period: f64,
@@ -116,6 +120,7 @@ mod types {
 
     /// Method for computing seasonal strength.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[non_exhaustive]
     pub enum StrengthMethod {
         /// Variance decomposition: Var(seasonal) / Var(total)
         Variance,
@@ -125,6 +130,7 @@ mod types {
 
     /// A detected change point in seasonality.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct ChangePoint {
         /// Time at which the change occurs
         pub time: f64,
@@ -138,6 +144,7 @@ mod types {
 
     /// Type of seasonality change.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[non_exhaustive]
     pub enum ChangeType {
         /// Series becomes seasonal
         Onset,
@@ -147,6 +154,7 @@ mod types {
 
     /// Result of seasonality change detection.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct ChangeDetectionResult {
         /// Detected change points
         pub change_points: Vec<ChangePoint>,
@@ -156,6 +164,7 @@ mod types {
 
     /// Result of instantaneous period estimation.
     #[derive(Debug, Clone)]
+    #[non_exhaustive]
     pub struct InstantaneousPeriod {
         /// Instantaneous period at each time point
         pub period: Vec<f64>,
@@ -167,6 +176,7 @@ mod types {
 
     /// Result of peak timing variability analysis.
     #[derive(Debug, Clone, PartialEq)]
+    #[non_exhaustive]
     pub struct PeakTimingResult {
         /// Peak times for each cycle
         pub peak_times: Vec<f64>,

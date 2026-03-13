@@ -1,5 +1,6 @@
 /// Result of a tolerance band computation.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ToleranceBand {
     /// Lower bound at each evaluation point
     pub lower: Vec<f64>,
@@ -13,6 +14,7 @@ pub struct ToleranceBand {
 
 /// Type of tolerance band.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BandType {
     /// Independent interval at each evaluation point
     Pointwise,
@@ -22,6 +24,7 @@ pub enum BandType {
 
 /// Non-conformity score for conformal prediction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NonConformityScore {
     /// Supremum norm: max_t |y(t) - center(t)|
     SupNorm,
@@ -31,6 +34,7 @@ pub enum NonConformityScore {
 
 /// Multiplier distribution for Degras SCB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MultiplierDistribution {
     /// Standard normal multipliers
     Gaussian,
@@ -40,6 +44,7 @@ pub enum MultiplierDistribution {
 
 /// Bootstrap method for the equivalence test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EquivalenceBootstrap {
     /// Multiplier bootstrap (Gaussian or Rademacher weights)
     Multiplier(MultiplierDistribution),
@@ -49,6 +54,7 @@ pub enum EquivalenceBootstrap {
 
 /// Result of a functional equivalence test (TOST).
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct EquivalenceTestResult {
     /// Test statistic: sup_t |d_hat(t)|
     pub test_statistic: f64,
@@ -68,6 +74,7 @@ pub struct EquivalenceTestResult {
 
 /// Exponential family for generalized FPCA tolerance bands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ExponentialFamily {
     /// Gaussian (identity link)
     Gaussian,

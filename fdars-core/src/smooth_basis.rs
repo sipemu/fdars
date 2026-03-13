@@ -297,6 +297,167 @@ pub fn smooth_basis_gcv(
     best_result
 }
 
+// ─── Config Structs ─────────────────────────────────────────────────────────
+
+/// Configuration for GCV-based smoothing parameter selection.
+///
+/// Collects all tuning parameters for [`smooth_basis_gcv_with_config`], with
+/// sensible defaults obtained via [`SmoothBasisGcvConfig::default()`].
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::smooth_basis::{SmoothBasisGcvConfig, BasisType};
+///
+/// let config = SmoothBasisGcvConfig {
+///     nbasis: 20,
+///     n_grid: 100,
+///     ..SmoothBasisGcvConfig::default()
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct SmoothBasisGcvConfig {
+    /// Basis type (BSpline or Fourier).
+    pub basis_type: BasisType,
+    /// Number of basis functions (default: 15).
+    pub nbasis: usize,
+    /// Order of the roughness penalty differential operator (default: 2).
+    pub lfd_order: usize,
+    /// Range of log10(lambda) values to search (default: (-10.0, 2.0)).
+    pub log_lambda_range: (f64, f64),
+    /// Number of grid points in the lambda search (default: 50).
+    pub n_grid: usize,
+}
+
+impl Default for SmoothBasisGcvConfig {
+    fn default() -> Self {
+        Self {
+            basis_type: BasisType::Bspline { order: 4 },
+            nbasis: 15,
+            lfd_order: 2,
+            log_lambda_range: (-10.0, 2.0),
+            n_grid: 50,
+        }
+    }
+}
+
+/// Perform basis-penalized smoothing with GCV-optimal lambda using a config struct.
+///
+/// This is the config-based alternative to [`smooth_basis_gcv`]. It takes data
+/// parameters directly and reads all tuning parameters from the config.
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n × m)
+/// * `argvals` — Evaluation points (length m)
+/// * `config` — Tuning parameters
+///
+/// # Errors
+///
+/// Returns [`crate::FdarError::ComputationFailed`] if no valid smoothing result
+/// is found for any lambda in the search grid.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn smooth_basis_gcv_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &SmoothBasisGcvConfig,
+) -> Result<SmoothBasisResult, crate::FdarError> {
+    smooth_basis_gcv(
+        data,
+        argvals,
+        &config.basis_type,
+        config.nbasis,
+        config.lfd_order,
+        config.log_lambda_range,
+        config.n_grid,
+    )
+    .ok_or_else(|| crate::FdarError::ComputationFailed {
+        operation: "smooth_basis_gcv_with_config",
+        detail: "no valid smoothing result found in GCV lambda search".to_string(),
+    })
+}
+
+/// Configuration for cross-validation-based basis selection.
+///
+/// Collects all tuning parameters for [`basis_nbasis_cv_with_config`], with
+/// sensible defaults obtained via [`BasisNbasisCvConfig::default()`].
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::smooth_basis::{BasisNbasisCvConfig, BasisType, BasisCriterion};
+///
+/// let config = BasisNbasisCvConfig {
+///     nbasis_range: (5, 25),
+///     criterion: BasisCriterion::Aic,
+///     ..BasisNbasisCvConfig::default()
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct BasisNbasisCvConfig {
+    /// Basis type (default: BSpline with order 4).
+    pub basis_type: BasisType,
+    /// Range of nbasis values to try, inclusive (default: (5, 30)).
+    pub nbasis_range: (usize, usize),
+    /// Roughness penalty lambda (default: 1e-4).
+    pub lambda: f64,
+    /// Penalty order (default: 2).
+    pub lfd_order: usize,
+    /// Number of CV folds (default: 5). Only used when `criterion` is `Cv`.
+    pub n_folds: usize,
+    /// Selection criterion (default: `Gcv`).
+    pub criterion: BasisCriterion,
+}
+
+impl Default for BasisNbasisCvConfig {
+    fn default() -> Self {
+        Self {
+            basis_type: BasisType::Bspline { order: 4 },
+            nbasis_range: (5, 30),
+            lambda: 1e-4,
+            lfd_order: 2,
+            n_folds: 5,
+            criterion: BasisCriterion::Gcv,
+        }
+    }
+}
+
+/// Select the optimal number of basis functions using a config struct.
+///
+/// This is the config-based alternative to [`basis_nbasis_cv`]. It takes data
+/// parameters directly and reads all tuning parameters from the config.
+///
+/// The `nbasis_range` tuple `(lo, hi)` is expanded to `lo..=hi` to form the
+/// candidate set.
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n × m)
+/// * `argvals` — Evaluation points (length m)
+/// * `config` — Tuning parameters
+///
+/// # Errors
+///
+/// Returns [`crate::FdarError::ComputationFailed`] if no valid result is found
+/// for any nbasis in the search range.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn basis_nbasis_cv_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &BasisNbasisCvConfig,
+) -> Result<BasisNbasisCvResult, crate::FdarError> {
+    let nbasis_range: Vec<usize> = (config.nbasis_range.0..=config.nbasis_range.1).collect();
+    basis_nbasis_cv(
+        data,
+        argvals,
+        &nbasis_range,
+        &config.basis_type,
+        config.criterion,
+        config.n_folds,
+        config.lambda,
+    )
+    .ok_or_else(|| crate::FdarError::ComputationFailed {
+        operation: "basis_nbasis_cv_with_config",
+        detail: "no valid result found in nbasis CV search".to_string(),
+    })
+}
+
 // ─── Internal Helpers ───────────────────────────────────────────────────────
 
 /// Differentiate column-major basis matrix `lfd_order` times using gradient_uniform.
@@ -2350,5 +2511,249 @@ mod tests {
                 criterion
             );
         }
+    }
+
+    // ─── SmoothBasisGcvConfig tests ────────────────────────────────────────
+
+    #[test]
+    fn test_smooth_basis_gcv_config_default() {
+        let config = SmoothBasisGcvConfig::default();
+        assert_eq!(config.basis_type, BasisType::Bspline { order: 4 });
+        assert_eq!(config.nbasis, 15);
+        assert_eq!(config.lfd_order, 2);
+        assert_eq!(config.log_lambda_range, (-10.0, 2.0));
+        assert_eq!(config.n_grid, 50);
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_config_clone_eq() {
+        let config = SmoothBasisGcvConfig {
+            nbasis: 20,
+            ..SmoothBasisGcvConfig::default()
+        };
+        let cloned = config.clone();
+        assert_eq!(config, cloned);
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_config_debug() {
+        let config = SmoothBasisGcvConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("SmoothBasisGcvConfig"));
+        assert!(debug_str.contains("nbasis"));
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_config_partial_override() {
+        let config = SmoothBasisGcvConfig {
+            basis_type: BasisType::Fourier { period: 2.0 },
+            n_grid: 100,
+            ..SmoothBasisGcvConfig::default()
+        };
+        assert_eq!(config.basis_type, BasisType::Fourier { period: 2.0 });
+        assert_eq!(config.n_grid, 100);
+        // defaults preserved
+        assert_eq!(config.nbasis, 15);
+        assert_eq!(config.lfd_order, 2);
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_with_config_default() {
+        let (data, t) = make_test_data(5, 101);
+        let config = SmoothBasisGcvConfig::default();
+        let result = smooth_basis_gcv_with_config(&data, &t, &config);
+        assert!(result.is_ok(), "GCV with default config should succeed");
+        let res = result.unwrap();
+        assert_eq!(res.fitted.shape(), (5, 101));
+        assert!(res.edf > 0.0);
+        assert!(res.gcv.is_finite());
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_with_config_custom() {
+        let (data, t) = make_test_data(3, 50);
+        let config = SmoothBasisGcvConfig {
+            nbasis: 10,
+            log_lambda_range: (-6.0, 0.0),
+            n_grid: 15,
+            ..SmoothBasisGcvConfig::default()
+        };
+        let result = smooth_basis_gcv_with_config(&data, &t, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_with_config_matches_direct() {
+        let (data, t) = make_test_data(3, 50);
+        let config = SmoothBasisGcvConfig {
+            nbasis: 10,
+            log_lambda_range: (-6.0, 0.0),
+            n_grid: 20,
+            ..SmoothBasisGcvConfig::default()
+        };
+        let with_config = smooth_basis_gcv_with_config(&data, &t, &config).unwrap();
+        let direct = smooth_basis_gcv(
+            &data,
+            &t,
+            &config.basis_type,
+            config.nbasis,
+            config.lfd_order,
+            config.log_lambda_range,
+            config.n_grid,
+        )
+        .unwrap();
+        assert_eq!(with_config.gcv, direct.gcv);
+        assert_eq!(with_config.edf, direct.edf);
+        assert_eq!(with_config.nbasis, direct.nbasis);
+    }
+
+    #[test]
+    fn test_smooth_basis_gcv_with_config_fourier() {
+        let m = 100;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(2, m);
+        for i in 0..2 {
+            for j in 0..m {
+                data[(i, j)] = (2.0 * PI * t[j]).sin() + (4.0 * PI * t[j]).cos();
+            }
+        }
+        let config = SmoothBasisGcvConfig {
+            basis_type: BasisType::Fourier { period: 1.0 },
+            nbasis: 7,
+            n_grid: 20,
+            ..SmoothBasisGcvConfig::default()
+        };
+        let result = smooth_basis_gcv_with_config(&data, &t, &config);
+        assert!(result.is_ok());
+    }
+
+    // ─── BasisNbasisCvConfig tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_basis_nbasis_cv_config_default() {
+        let config = BasisNbasisCvConfig::default();
+        assert_eq!(config.basis_type, BasisType::Bspline { order: 4 });
+        assert_eq!(config.nbasis_range, (5, 30));
+        assert!((config.lambda - 1e-4).abs() < 1e-15);
+        assert_eq!(config.lfd_order, 2);
+        assert_eq!(config.n_folds, 5);
+        assert_eq!(config.criterion, BasisCriterion::Gcv);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_config_clone_eq() {
+        let config = BasisNbasisCvConfig {
+            nbasis_range: (4, 15),
+            ..BasisNbasisCvConfig::default()
+        };
+        let cloned = config.clone();
+        assert_eq!(config, cloned);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_config_debug() {
+        let config = BasisNbasisCvConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("BasisNbasisCvConfig"));
+        assert!(debug_str.contains("nbasis_range"));
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_config_partial_override() {
+        let config = BasisNbasisCvConfig {
+            criterion: BasisCriterion::Aic,
+            lambda: 1e-2,
+            ..BasisNbasisCvConfig::default()
+        };
+        assert_eq!(config.criterion, BasisCriterion::Aic);
+        assert!((config.lambda - 1e-2).abs() < 1e-15);
+        // defaults preserved
+        assert_eq!(config.nbasis_range, (5, 30));
+        assert_eq!(config.n_folds, 5);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_with_config_default() {
+        let (data, t) = make_test_data(5, 51);
+        let config = BasisNbasisCvConfig {
+            nbasis_range: (5, 12),
+            ..BasisNbasisCvConfig::default()
+        };
+        let result = basis_nbasis_cv_with_config(&data, &t, &config);
+        assert!(
+            result.is_ok(),
+            "nbasis CV with default config should succeed"
+        );
+        let res = result.unwrap();
+        assert!(res.optimal_nbasis >= 5 && res.optimal_nbasis <= 12);
+        assert_eq!(res.scores.len(), 8); // 5..=12 = 8 values
+        assert_eq!(res.criterion, BasisCriterion::Gcv);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_with_config_aic() {
+        let (data, t) = make_test_data(5, 51);
+        let config = BasisNbasisCvConfig {
+            nbasis_range: (5, 10),
+            criterion: BasisCriterion::Aic,
+            ..BasisNbasisCvConfig::default()
+        };
+        let result = basis_nbasis_cv_with_config(&data, &t, &config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().criterion, BasisCriterion::Aic);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_with_config_cv_folds() {
+        let (data, t) = make_test_data(10, 51);
+        let config = BasisNbasisCvConfig {
+            nbasis_range: (5, 9),
+            criterion: BasisCriterion::Cv,
+            n_folds: 3,
+            ..BasisNbasisCvConfig::default()
+        };
+        let result = basis_nbasis_cv_with_config(&data, &t, &config);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().criterion, BasisCriterion::Cv);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_with_config_matches_direct() {
+        let (data, t) = make_test_data(5, 51);
+        let config = BasisNbasisCvConfig {
+            nbasis_range: (5, 10),
+            criterion: BasisCriterion::Bic,
+            lambda: 1e-3,
+            ..BasisNbasisCvConfig::default()
+        };
+        let with_config = basis_nbasis_cv_with_config(&data, &t, &config).unwrap();
+        let nbasis_range: Vec<usize> = (5..=10).collect();
+        let direct = basis_nbasis_cv(
+            &data,
+            &t,
+            &nbasis_range,
+            &config.basis_type,
+            config.criterion,
+            config.n_folds,
+            config.lambda,
+        )
+        .unwrap();
+        assert_eq!(with_config.optimal_nbasis, direct.optimal_nbasis);
+        assert_eq!(with_config.scores, direct.scores);
+        assert_eq!(with_config.nbasis_range, direct.nbasis_range);
+    }
+
+    #[test]
+    fn test_basis_nbasis_cv_with_config_nbasis_range_expansion() {
+        let (data, t) = make_test_data(5, 51);
+        let config = BasisNbasisCvConfig {
+            nbasis_range: (7, 7), // single value
+            ..BasisNbasisCvConfig::default()
+        };
+        let result = basis_nbasis_cv_with_config(&data, &t, &config);
+        assert!(result.is_ok());
+        let res = result.unwrap();
+        assert_eq!(res.optimal_nbasis, 7);
+        assert_eq!(res.scores.len(), 1);
     }
 }

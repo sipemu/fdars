@@ -8,6 +8,7 @@ use super::IrregFdata;
 
 /// Kernel function type for smoothing operations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KernelType {
     /// Epanechnikov kernel: K(u) = 0.75(1 - u^2) for |u| <= 1
     Epanechnikov,

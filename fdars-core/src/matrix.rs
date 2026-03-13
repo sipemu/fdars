@@ -211,6 +211,58 @@ impl FdMatrix {
         sum
     }
 
+    /// Iterate over rows, yielding each row as a `Vec<f64>`.
+    ///
+    /// More efficient than [`to_row_major()`](Self::to_row_major) when only a
+    /// subset of rows are needed or when processing rows one at a time, because
+    /// it materializes only one row at a time instead of allocating the entire
+    /// transposed matrix up front.
+    ///
+    /// Because `FdMatrix` uses column-major storage, row elements are not
+    /// contiguous and a zero-copy row slice is not possible. Each yielded
+    /// `Vec<f64>` is an O(ncols) allocation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    ///
+    /// let mat = FdMatrix::from_column_major(vec![
+    ///     1.0, 2.0,   // col 0
+    ///     3.0, 4.0,   // col 1
+    ///     5.0, 6.0,   // col 2
+    /// ], 2, 3).unwrap();
+    ///
+    /// let rows: Vec<Vec<f64>> = mat.iter_rows().collect();
+    /// assert_eq!(rows, vec![vec![1.0, 3.0, 5.0], vec![2.0, 4.0, 6.0]]);
+    /// ```
+    pub fn iter_rows(&self) -> impl Iterator<Item = Vec<f64>> + '_ {
+        (0..self.nrows).map(move |i| self.row(i))
+    }
+
+    /// Iterate over columns, yielding each column as a slice `&[f64]`.
+    ///
+    /// Zero-copy because `FdMatrix` uses column-major storage and each column
+    /// is a contiguous block in memory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    ///
+    /// let mat = FdMatrix::from_column_major(vec![
+    ///     1.0, 2.0,   // col 0
+    ///     3.0, 4.0,   // col 1
+    ///     5.0, 6.0,   // col 2
+    /// ], 2, 3).unwrap();
+    ///
+    /// let cols: Vec<&[f64]> = mat.iter_columns().collect();
+    /// assert_eq!(cols, vec![&[1.0, 2.0], &[3.0, 4.0], &[5.0, 6.0]]);
+    /// ```
+    pub fn iter_columns(&self) -> impl Iterator<Item = &[f64]> {
+        (0..self.ncols).map(move |j| self.column(j))
+    }
+
     /// Extract all rows as `Vec<Vec<f64>>`.
     ///
     /// Equivalent to the former `extract_curves` function.
@@ -736,6 +788,112 @@ mod tests {
             for i in 0..n {
                 assert_eq!(mat[(i, j)], data[i + j * n]);
             }
+        }
+    }
+
+    #[test]
+    fn test_iter_rows() {
+        let mat = sample_3x4();
+        let rows: Vec<Vec<f64>> = mat.iter_rows().collect();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0], vec![1.0, 4.0, 7.0, 10.0]);
+        assert_eq!(rows[1], vec![2.0, 5.0, 8.0, 11.0]);
+        assert_eq!(rows[2], vec![3.0, 6.0, 9.0, 12.0]);
+    }
+
+    #[test]
+    fn test_iter_rows_matches_rows() {
+        let mat = sample_3x4();
+        let from_iter: Vec<Vec<f64>> = mat.iter_rows().collect();
+        let from_rows = mat.rows();
+        assert_eq!(from_iter, from_rows);
+    }
+
+    #[test]
+    fn test_iter_rows_partial() {
+        // Verify that taking only a subset avoids full materialization
+        let mat = sample_3x4();
+        let first_two: Vec<Vec<f64>> = mat.iter_rows().take(2).collect();
+        assert_eq!(first_two.len(), 2);
+        assert_eq!(first_two[0], vec![1.0, 4.0, 7.0, 10.0]);
+        assert_eq!(first_two[1], vec![2.0, 5.0, 8.0, 11.0]);
+    }
+
+    #[test]
+    fn test_iter_rows_empty() {
+        let mat = FdMatrix::zeros(0, 0);
+        let rows: Vec<Vec<f64>> = mat.iter_rows().collect();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_iter_rows_single_row() {
+        let mat = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        let rows: Vec<Vec<f64>> = mat.iter_rows().collect();
+        assert_eq!(rows, vec![vec![1.0, 2.0, 3.0]]);
+    }
+
+    #[test]
+    fn test_iter_rows_single_column() {
+        let mat = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
+        let rows: Vec<Vec<f64>> = mat.iter_rows().collect();
+        assert_eq!(rows, vec![vec![1.0], vec![2.0], vec![3.0]]);
+    }
+
+    #[test]
+    fn test_iter_columns() {
+        let mat = sample_3x4();
+        let cols: Vec<&[f64]> = mat.iter_columns().collect();
+        assert_eq!(cols.len(), 4);
+        assert_eq!(cols[0], &[1.0, 2.0, 3.0]);
+        assert_eq!(cols[1], &[4.0, 5.0, 6.0]);
+        assert_eq!(cols[2], &[7.0, 8.0, 9.0]);
+        assert_eq!(cols[3], &[10.0, 11.0, 12.0]);
+    }
+
+    #[test]
+    fn test_iter_columns_partial() {
+        let mat = sample_3x4();
+        let first_two: Vec<&[f64]> = mat.iter_columns().take(2).collect();
+        assert_eq!(first_two.len(), 2);
+        assert_eq!(first_two[0], &[1.0, 2.0, 3.0]);
+        assert_eq!(first_two[1], &[4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_iter_columns_empty() {
+        let mat = FdMatrix::zeros(0, 0);
+        let cols: Vec<&[f64]> = mat.iter_columns().collect();
+        assert!(cols.is_empty());
+    }
+
+    #[test]
+    fn test_iter_columns_single_column() {
+        let mat = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
+        let cols: Vec<&[f64]> = mat.iter_columns().collect();
+        assert_eq!(cols, vec![&[1.0, 2.0, 3.0]]);
+    }
+
+    #[test]
+    fn test_iter_columns_single_row() {
+        let mat = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        let cols: Vec<&[f64]> = mat.iter_columns().collect();
+        assert_eq!(cols, vec![&[1.0_f64] as &[f64], &[2.0], &[3.0]]);
+    }
+
+    #[test]
+    fn test_iter_rows_enumerate() {
+        let mat = sample_3x4();
+        for (i, row) in mat.iter_rows().enumerate() {
+            assert_eq!(row, mat.row(i));
+        }
+    }
+
+    #[test]
+    fn test_iter_columns_enumerate() {
+        let mat = sample_3x4();
+        for (j, col) in mat.iter_columns().enumerate() {
+            assert_eq!(col, mat.column(j));
         }
     }
 }

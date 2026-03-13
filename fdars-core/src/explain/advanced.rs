@@ -18,6 +18,7 @@ use rand::prelude::*;
 
 /// Calibration diagnostics for a functional logistic regression model.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct CalibrationDiagnosticsResult {
     /// Brier score: (1/n) Σ (p_i - y_i)².
     pub brier_score: f64,
@@ -118,6 +119,7 @@ pub fn calibration_diagnostics(
 
 /// Result of expected calibration error analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct EceResult {
     /// Expected calibration error: Σ (n_b/n) |acc_b - conf_b|.
     pub ece: f64,
@@ -212,6 +214,7 @@ pub fn expected_calibration_error(
 
 /// Result of split-conformal prediction.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ConformalPredictionResult {
     /// Predictions on test data (length n_test).
     pub predictions: Vec<f64>,
@@ -346,6 +349,7 @@ pub fn conformal_prediction_residuals(
 
 /// Type of functional depth measure for regression diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DepthType {
     FraimanMuniz,
     ModifiedBand,
@@ -354,6 +358,7 @@ pub enum DepthType {
 
 /// Result of regression depth analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct RegressionDepthResult {
     /// Depth of β̂ in bootstrap distribution.
     pub beta_depth: f64,
@@ -541,6 +546,7 @@ pub fn regression_depth_logistic(
 
 /// Result of bootstrap stability analysis.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct StabilityAnalysisResult {
     /// Pointwise std of β(t) across bootstraps (length m).
     pub beta_t_std: Vec<f64>,
@@ -747,6 +753,7 @@ pub struct AnchorRule {
 
 /// Result of anchor explanation for one observation.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct AnchorResult {
     /// The anchor rule.
     pub rule: AnchorRule,

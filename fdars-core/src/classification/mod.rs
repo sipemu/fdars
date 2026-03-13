@@ -31,6 +31,7 @@ mod tests;
 
 /// Classification result.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ClassifResult {
     /// Predicted class labels (length n)
     pub predicted: Vec<usize>,
@@ -48,6 +49,7 @@ pub struct ClassifResult {
 
 /// Cross-validation result.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ClassifCvResult {
     /// Mean error rate across folds
     pub error_rate: f64,

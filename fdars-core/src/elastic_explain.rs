@@ -17,6 +17,7 @@ use rand::prelude::*;
 
 /// Result of elastic amplitude/phase attribution.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ElasticAttributionResult {
     /// Per-observation amplitude contribution (length n).
     pub amplitude_contribution: Vec<f64>,

@@ -18,6 +18,7 @@ use rayon::iter::ParallelIterator;
 
 /// Result of the TSRVF transform.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct TsrvfResult {
     /// Tangent vectors in Euclidean space (n × m).
     pub tangent_vectors: FdMatrix,
@@ -39,6 +40,7 @@ pub struct TsrvfResult {
 
 /// Method for transporting tangent vectors on the Hilbert sphere.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum TransportMethod {
     /// Inverse exponential map (log map) — default, matches existing TSRVF behavior.
     #[default]

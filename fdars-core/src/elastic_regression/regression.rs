@@ -15,6 +15,7 @@ use crate::alignment::srsf_transform;
 
 /// Result of elastic scalar-on-function regression.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ElasticRegressionResult {
     /// Intercept.
     pub alpha: f64,
