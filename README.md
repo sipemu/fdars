@@ -80,12 +80,24 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Anchor Explanations**: Beam-search rule extraction in FPC score space
 - **Generic Explainability**: `FpcPredictor` trait unifying regression, binary, and multiclass models with 15 model-agnostic functions (PDP, SHAP, ALE, LIME, permutation importance, Sobol, Friedman H, etc.)
 
+### Statistical Process Monitoring
+
+- **Hotelling T² / SPE**: Control statistics for detecting shifts in FPCA score space and residual space
+- **Phase I / Phase II Framework**: Build control charts from in-control training data, then monitor new observations (`spm_phase1`, `spm_monitor`)
+- **Multivariate FPCA**: Joint FPCA across multiple functional variables with standardization (`mfpca`)
+- **Multivariate SPM**: Phase I/II monitoring for multi-response functional data (`mf_spm_phase1`, `mf_spm_monitor`)
+- **EWMA Monitoring**: Exponentially weighted moving average smoothing on FPCA scores for enhanced sensitivity to small persistent shifts
+- **Functional Regression Control Chart (FRCC)**: Covariate-adjusted monitoring via FOSR residuals
+- **Contribution Diagnostics**: Per-variable T² and SPE decomposition for fault identification
+- **Control Limits**: Chi-squared quantiles for T², moment-matched chi-squared for SPE
+
 ### Elastic Analysis
 
 - **Elastic FPCA**: Vertical, horizontal, and joint functional PCA after alignment
 - **Elastic Regression**: Alignment-integrated scalar-on-function regression
 - **Elastic PCR**: Principal component regression with elastic alignment
 - **Elastic Logistic**: Binary classification with elastic alignment
+- **Scalar-on-Shape Regression**: Phase-invariant regression using Fisher-Rao inner product with DP alignment; identity, polynomial, and Nadaraya-Watson index functions (ScoSh / SI-ScoSh)
 - **Elastic Changepoint Detection**: Amplitude and phase changepoint tests with permutation
 - **Elastic Attribution**: Amplitude vs phase importance decomposition
 
