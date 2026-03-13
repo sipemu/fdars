@@ -1127,11 +1127,7 @@ mod tests {
         assert!(y_tri.iter().all(|v| v.is_finite()));
 
         // They should be different
-        let diff: f64 = y_gauss
-            .iter()
-            .zip(&y_tri)
-            .map(|(a, b)| (a - b).abs())
-            .sum();
+        let diff: f64 = y_gauss.iter().zip(&y_tri).map(|(a, b)| (a - b).abs()).sum();
         assert!(
             diff > 0.0,
             "Gaussian and tricube kernels should give different results"
@@ -1154,11 +1150,7 @@ mod tests {
         assert!(y_tri.iter().all(|v| v.is_finite()));
 
         // Should differ since kernel shapes are different
-        let diff: f64 = y_epan
-            .iter()
-            .zip(&y_tri)
-            .map(|(a, b)| (a - b).abs())
-            .sum();
+        let diff: f64 = y_epan.iter().zip(&y_tri).map(|(a, b)| (a - b).abs()).sum();
         assert!(
             diff > 0.0,
             "Epanechnikov and tricube should give different results"
@@ -1208,11 +1200,7 @@ mod tests {
         assert_eq!(y_gauss.len(), y_tri.len());
         assert!(y_tri.iter().all(|v| v.is_finite()));
 
-        let diff: f64 = y_gauss
-            .iter()
-            .zip(&y_tri)
-            .map(|(a, b)| (a - b).abs())
-            .sum();
+        let diff: f64 = y_gauss.iter().zip(&y_tri).map(|(a, b)| (a - b).abs()).sum();
         assert!(
             diff > 0.0,
             "Gaussian and tricube local linear should differ"

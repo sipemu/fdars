@@ -1539,9 +1539,7 @@ fn amp_changepoint_detects_known_shift() {
         }
     }
 
-    let result =
-        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, 42)
-            .unwrap();
+    let result = elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, 42).unwrap();
 
     assert!(
         (result.changepoint as i64 - cp as i64).abs() <= 5,
@@ -1570,8 +1568,7 @@ fn changepoint_no_change_weak_signal() {
         }
     }
 
-    let result =
-        elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, 42);
+    let result = elastic_amp_changepoint(&data, &argvals, 0.0, 5, 200, 42);
 
     if let Ok(res) = result {
         // p-value should be higher (less significant) when there's no change

@@ -90,9 +90,7 @@ pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
         return FdMatrix::zeros(0, 0);
     }
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
-    let mut dist = self_distance_matrix(n, |i, j| {
-        soft_dtw_distance(&rows[i], &rows[j], gamma)
-    });
+    let mut dist = self_distance_matrix(n, |i, j| soft_dtw_distance(&rows[i], &rows[j], gamma));
     // Fill diagonal: sdtw(x, x) is typically negative for finite gamma
     for i in 0..n {
         dist[(i, i)] = soft_dtw_distance(&rows[i], &rows[i], gamma);

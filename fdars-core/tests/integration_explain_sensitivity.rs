@@ -15,26 +15,15 @@
 //! - Cross-method consistency checks
 
 use fdars_core::matrix::FdMatrix;
-use std::f64::consts::PI;
 use fdars_core::{
-    calibration_diagnostics,
-    conditional_permutation_importance,
-    conditional_permutation_importance_logistic,
-    counterfactual_logistic,
-    counterfactual_regression,
-    domain_selection,
-    domain_selection_logistic,
-    fregre_lm,
-    functional_logistic,
-    functional_saliency,
-    functional_saliency_logistic,
-    lime_explanation,
-    lime_explanation_logistic,
-    loo_cv_press,
-    prototype_criticism,
-    sobol_indices,
+    calibration_diagnostics, conditional_permutation_importance,
+    conditional_permutation_importance_logistic, counterfactual_logistic,
+    counterfactual_regression, domain_selection, domain_selection_logistic, fregre_lm,
+    functional_logistic, functional_saliency, functional_saliency_logistic, lime_explanation,
+    lime_explanation_logistic, loo_cv_press, prototype_criticism, sobol_indices,
     sobol_indices_logistic,
 };
+use std::f64::consts::PI;
 
 // ─── Test data generators ────────────────────────────────────────────────────
 
@@ -101,8 +90,6 @@ fn regression_data_with_scalars(
 // ═══════════════════════════════════════════════════════════════════════════════
 // LOO-CV / PRESS — deep validation
 // ═══════════════════════════════════════════════════════════════════════════════
-
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Basic validation
@@ -617,7 +604,6 @@ fn test_lime_different_observations() {
     assert_eq!(lime0.observation, 0);
     assert_eq!(lime1.observation, 1);
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Deep validation — mathematical invariants and cross-method consistency
@@ -1973,4 +1959,3 @@ fn domain_selection_and_pointwise_importance_consistent() {
         top5_pi
     );
 }
-

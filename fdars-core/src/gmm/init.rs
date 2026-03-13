@@ -2,8 +2,8 @@
 
 use super::covariance::compute_covariances;
 use super::CovType;
-use crate::basis::projection::ProjectionBasisType;
 use crate::basis::fdata_to_basis;
+use crate::basis::projection::ProjectionBasisType;
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 

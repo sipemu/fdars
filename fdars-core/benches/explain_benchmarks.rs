@@ -8,7 +8,9 @@
 //! All methods operate on a fitted fregre_lm model via the FpcPredictor trait.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use fdars_core::explain_generic::{generic_pdp, generic_permutation_importance, generic_shap_values};
+use fdars_core::explain_generic::{
+    generic_pdp, generic_permutation_importance, generic_shap_values,
+};
 use fdars_core::matrix::FdMatrix;
 use fdars_core::scalar_on_function::fregre_lm;
 use std::f64::consts::PI;
@@ -23,9 +25,8 @@ fn generate_regression_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
         let c3 = ((i as f64 * 7.9 + 0.7).sin()) * 1.0;
         for j in 0..m {
             let t = j as f64 / (m - 1) as f64;
-            data[i + j * n] = c1 * (2.0 * PI * t).sin()
-                + c2 * (4.0 * PI * t).sin()
-                + c3 * (6.0 * PI * t).sin();
+            data[i + j * n] =
+                c1 * (2.0 * PI * t).sin() + c2 * (4.0 * PI * t).sin() + c3 * (6.0 * PI * t).sin();
         }
     }
 

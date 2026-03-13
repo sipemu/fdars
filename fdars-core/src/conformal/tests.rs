@@ -341,8 +341,7 @@ fn make_elastic_test_data(
         let amp = 1.0 + 0.5 * (i as f64 / n as f64);
         let shift = 0.1 * rng.gen::<f64>();
         for j in 0..m {
-            data[(i, j)] = amp * (2.0 * PI * (argvals[j] + shift)).sin()
-                + 0.05 * rng.gen::<f64>();
+            data[(i, j)] = amp * (2.0 * PI * (argvals[j] + shift)).sin() + 0.05 * rng.gen::<f64>();
         }
         y[i] = amp + 0.1 * rng.gen::<f64>();
     }
@@ -352,8 +351,8 @@ fn make_elastic_test_data(
         let amp = 1.0 + 0.3 * rng.gen::<f64>();
         let shift = 0.1 * rng.gen::<f64>();
         for j in 0..m {
-            test_data[(i, j)] = amp * (2.0 * PI * (argvals[j] + shift)).sin()
-                + 0.05 * rng.gen::<f64>();
+            test_data[(i, j)] =
+                amp * (2.0 * PI * (argvals[j] + shift)).sin() + 0.05 * rng.gen::<f64>();
         }
     }
     (data, y, test_data, argvals)
@@ -390,10 +389,8 @@ fn make_elastic_classif_data(
 #[test]
 fn test_conformal_elastic_regression_basic() {
     let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
-    let r = conformal_elastic_regression(
-        &data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 0.1, 42,
-    )
-    .unwrap();
+    let r = conformal_elastic_regression(&data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 0.1, 42)
+        .unwrap();
     assert_eq!(r.predictions.len(), 5);
     assert_eq!(r.lower.len(), 5);
     assert_eq!(r.upper.len(), 5);
@@ -422,9 +419,8 @@ fn test_conformal_elastic_regression_dimension_mismatch_y() {
 fn test_conformal_elastic_regression_dimension_mismatch_cols() {
     let (data, y, _test_data, argvals) = make_elastic_test_data(20, 51, 42);
     let bad_test = FdMatrix::zeros(3, 30); // different ncols
-    let result = conformal_elastic_regression(
-        &data, &y, &bad_test, &argvals, 10, 1e-3, 0.3, 0.1, 42,
-    );
+    let result =
+        conformal_elastic_regression(&data, &y, &bad_test, &argvals, 10, 1e-3, 0.3, 0.1, 42);
     assert!(result.is_err());
 }
 
@@ -434,36 +430,34 @@ fn test_conformal_elastic_regression_too_few_obs() {
     let y = vec![1.0; 3];
     let test = FdMatrix::zeros(2, 10);
     let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-    let result = conformal_elastic_regression(
-        &data, &y, &test, &argvals, 5, 1e-3, 0.3, 0.1, 42,
-    );
+    let result = conformal_elastic_regression(&data, &y, &test, &argvals, 5, 1e-3, 0.3, 0.1, 42);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_conformal_elastic_regression_invalid_alpha() {
     let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
-    assert!(conformal_elastic_regression(
-        &data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 0.0, 42
-    )
-    .is_err());
-    assert!(conformal_elastic_regression(
-        &data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 1.0, 42
-    )
-    .is_err());
+    assert!(
+        conformal_elastic_regression(&data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 0.0, 42)
+            .is_err()
+    );
+    assert!(
+        conformal_elastic_regression(&data, &y, &test_data, &argvals, 10, 1e-3, 0.3, 1.0, 42)
+            .is_err()
+    );
 }
 
 #[test]
 fn test_conformal_elastic_regression_invalid_cal_fraction() {
     let (data, y, test_data, argvals) = make_elastic_test_data(20, 51, 42);
-    assert!(conformal_elastic_regression(
-        &data, &y, &test_data, &argvals, 10, 1e-3, 0.0, 0.1, 42
-    )
-    .is_err());
-    assert!(conformal_elastic_regression(
-        &data, &y, &test_data, &argvals, 10, 1e-3, 1.0, 0.1, 42
-    )
-    .is_err());
+    assert!(
+        conformal_elastic_regression(&data, &y, &test_data, &argvals, 10, 1e-3, 0.0, 0.1, 42)
+            .is_err()
+    );
+    assert!(
+        conformal_elastic_regression(&data, &y, &test_data, &argvals, 10, 1e-3, 1.0, 0.1, 42)
+            .is_err()
+    );
 }
 
 #[test]

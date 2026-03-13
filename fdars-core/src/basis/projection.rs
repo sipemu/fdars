@@ -133,7 +133,12 @@ pub fn fdata_to_basis_1d(
     nbasis: usize,
     basis_type: i32,
 ) -> Option<BasisProjectionResult> {
-    fdata_to_basis(data, argvals, nbasis, ProjectionBasisType::from_i32(basis_type))
+    fdata_to_basis(
+        data,
+        argvals,
+        nbasis,
+        ProjectionBasisType::from_i32(basis_type),
+    )
 }
 
 /// Reconstruct functional data from basis coefficients.
@@ -184,5 +189,10 @@ pub fn basis_to_fdata_1d(
     nbasis: usize,
     basis_type: i32,
 ) -> FdMatrix {
-    basis_to_fdata(coefs, argvals, nbasis, ProjectionBasisType::from_i32(basis_type))
+    basis_to_fdata(
+        coefs,
+        argvals,
+        nbasis,
+        ProjectionBasisType::from_i32(basis_type),
+    )
 }

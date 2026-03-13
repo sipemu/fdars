@@ -120,28 +120,14 @@ fn demo_changepoint(t: &[f64], n: usize, m: usize) {
     }
     let cp_data = FdMatrix::from_column_major(cp_col, n, m).unwrap();
 
-    if let Ok(cp) = fdars_core::elastic_amp_changepoint(
-        &cp_data,
-        t,
-        0.01,
-        15,
-        200,
-        42,
-    ) {
+    if let Ok(cp) = fdars_core::elastic_amp_changepoint(&cp_data, t, 0.01, 15, 200, 42) {
         println!("  Amplitude changepoint at index {}", cp.changepoint);
         println!(
             "  Test statistic: {:.4}, p-value: {:.4}",
             cp.test_statistic, cp.p_value
         );
     }
-    if let Ok(cp) = fdars_core::elastic_ph_changepoint(
-        &cp_data,
-        t,
-        0.01,
-        15,
-        200,
-        42,
-    ) {
+    if let Ok(cp) = fdars_core::elastic_ph_changepoint(&cp_data, t, 0.01, 15, 200, 42) {
         println!("  Phase changepoint at index {}", cp.changepoint);
         println!("  Test statistic: {:.4}", cp.test_statistic);
     }

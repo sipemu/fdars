@@ -2184,7 +2184,8 @@ fn test_fuzzy_cmeans_membership_sums() {
     let d: StandardData = load_json("data", "clusters_60x51");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42).unwrap();
+    let result =
+        fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42).unwrap();
     let k = 3;
 
     // Each observation's membership should sum to 1
@@ -2202,7 +2203,8 @@ fn test_fuzzy_cmeans_center_separation() {
     let d: StandardData = load_json("data", "clusters_60x51");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42).unwrap();
+    let result =
+        fdars_core::clustering::fuzzy_cmeans_fd(&mat, &d.argvals, 3, 2.0, 100, 1e-6, 42).unwrap();
 
     // Centers should be distinct
     for c1 in 0..3 {
@@ -6431,15 +6433,9 @@ fn validate_elastic_phase_changepoint() {
     }
 
     let data = FdMatrix::from_column_major(col_major_data, n, m).unwrap();
-    let result = fdars_core::elastic_changepoint::elastic_ph_changepoint(
-        &data,
-        &argvals,
-        0.0,
-        10,
-        100,
-        42,
-    )
-    .expect("elastic_ph_changepoint should succeed");
+    let result =
+        fdars_core::elastic_changepoint::elastic_ph_changepoint(&data, &argvals, 0.0, 10, 100, 42)
+            .expect("elastic_ph_changepoint should succeed");
 
     // Detected changepoint should be near the midpoint (n/2 = 15)
     let cp = result.changepoint;

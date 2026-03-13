@@ -96,8 +96,8 @@ fn test_from_flat() {
     let values = vec![1.0, 2.0, 3.0, 1.0, 3.0, 0.0, 1.0, 2.0, 3.0, 4.0];
     let rangeval = [0.0, 1.0];
 
-    let ifd = IrregFdata::from_flat(offsets.clone(), argvals.clone(), values.clone(), rangeval)
-        .unwrap();
+    let ifd =
+        IrregFdata::from_flat(offsets.clone(), argvals.clone(), values.clone(), rangeval).unwrap();
 
     assert_eq!(ifd.n_obs(), 3);
     assert_eq!(ifd.offsets, offsets);
@@ -113,9 +113,7 @@ fn test_from_flat_invalid() {
     // Mismatched argvals/values lengths
     assert!(IrregFdata::from_flat(vec![0, 2], vec![0.0, 1.0], vec![1.0], [0.0, 1.0]).is_err());
     // Last offset doesn't match argvals length
-    assert!(
-        IrregFdata::from_flat(vec![0, 5], vec![0.0, 1.0], vec![1.0, 2.0], [0.0, 1.0]).is_err()
-    );
+    assert!(IrregFdata::from_flat(vec![0, 5], vec![0.0, 1.0], vec![1.0, 2.0], [0.0, 1.0]).is_err());
     // Non-monotonic offsets
     assert!(IrregFdata::from_flat(
         vec![0, 3, 1],

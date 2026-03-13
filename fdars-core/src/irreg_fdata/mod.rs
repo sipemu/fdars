@@ -28,9 +28,7 @@ mod tests;
 
 // Re-export all public items
 pub use kernels::{mean_irreg, KernelType};
-pub use smoothing::{
-    cov_irreg, integrate_irreg, metric_lp_irreg, norm_lp_irreg, to_regular_grid,
-};
+pub use smoothing::{cov_irreg, integrate_irreg, metric_lp_irreg, norm_lp_irreg, to_regular_grid};
 
 /// Compressed storage for irregular functional data.
 ///

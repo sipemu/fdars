@@ -4,10 +4,10 @@ use super::covariance::{
     accumulate_diag_cov_weighted, accumulate_full_cov_weighted, identity_cov, regularize_cov,
 };
 use super::init::{init_params_from_assignments, kmeans_init_assignments};
-use crate::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
 use super::{CovType, GmmResult};
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
+use crate::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 use std::f64::consts::PI;

@@ -22,7 +22,9 @@ mod tests;
 pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
 pub use fraiman_muniz::{fraiman_muniz_1d, fraiman_muniz_2d};
 pub use modal::{modal_1d, modal_2d};
-pub use random_projection::{random_projection_1d, random_projection_1d_seeded, random_projection_2d};
+pub use random_projection::{
+    random_projection_1d, random_projection_1d_seeded, random_projection_2d,
+};
 pub use random_tukey::{random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d};
 pub use spatial::{
     functional_spatial_1d, functional_spatial_2d, kernel_functional_spatial_1d,

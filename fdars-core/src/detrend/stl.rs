@@ -70,11 +70,7 @@ pub struct StlConfig {
 /// * `data` — Functional data matrix (n x m)
 /// * `period` — Seasonal period length
 /// * `config` — Tuning parameters
-pub fn stl_decompose_with_config(
-    data: &FdMatrix,
-    period: usize,
-    config: &StlConfig,
-) -> StlResult {
+pub fn stl_decompose_with_config(data: &FdMatrix, period: usize, config: &StlConfig) -> StlResult {
     stl_decompose(
         data,
         period,

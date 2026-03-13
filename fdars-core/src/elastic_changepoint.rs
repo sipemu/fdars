@@ -534,8 +534,7 @@ mod tests {
         // Strong signal: amplitude doubles at midpoint
         let (data_signal, _) = generate_changepoint_data(30, m, 15);
         let res_signal =
-            elastic_amp_changepoint(&data_signal, &t, 0.0, 5, 199, 99)
-                .expect("should succeed");
+            elastic_amp_changepoint(&data_signal, &t, 0.0, 5, 199, 99).expect("should succeed");
         assert!(
             res_signal.p_value < 0.05,
             "Strong signal should give small p, got {}",
@@ -550,8 +549,7 @@ mod tests {
             }
         }
         let res_null =
-            elastic_amp_changepoint(&data_null, &t, 0.0, 5, 199, 99)
-                .expect("should succeed");
+            elastic_amp_changepoint(&data_null, &t, 0.0, 5, 199, 99).expect("should succeed");
         assert!(
             res_null.p_value > 0.1,
             "No signal should give large p, got {}",
@@ -564,9 +562,7 @@ mod tests {
         let data = FdMatrix::zeros(2, 5);
         let t: Vec<f64> = (0..5).map(|i| i as f64 / 4.0).collect();
         // n=2 < 4 → should return None
-        assert!(
-            elastic_amp_changepoint(&data, &t, 0.0, 5, 100, 42).is_err()
-        );
+        assert!(elastic_amp_changepoint(&data, &t, 0.0, 5, 100, 42).is_err());
     }
 
     #[test]
@@ -617,10 +613,8 @@ mod tests {
         let cp = 15;
         let (data, t) = generate_changepoint_data(n, m, cp);
 
-        let res1 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42)
-            .expect("should succeed");
-        let res2 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42)
-            .expect("should succeed");
+        let res1 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42).expect("should succeed");
+        let res2 = elastic_amp_changepoint(&data, &t, 0.0, 5, 199, 42).expect("should succeed");
 
         assert_eq!(res1.changepoint, res2.changepoint);
         assert!((res1.p_value - res2.p_value).abs() < 1e-10);

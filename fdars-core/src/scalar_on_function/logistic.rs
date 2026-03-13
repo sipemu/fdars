@@ -119,8 +119,10 @@ fn build_logistic_result(
             xtwx[j * p + k] = s;
         }
     }
-    let std_errors = cholesky_factor(&xtwx, p)
-        .map_or_else(|_| vec![f64::NAN; p], |l| compute_ols_std_errors(&l, p, 1.0));
+    let std_errors = cholesky_factor(&xtwx, p).map_or_else(
+        |_| vec![f64::NAN; p],
+        |l| compute_ols_std_errors(&l, p, 1.0),
+    );
     let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
 
     let ll = logistic_log_likelihood(&probabilities, y);

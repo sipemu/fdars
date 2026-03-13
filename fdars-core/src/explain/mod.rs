@@ -103,14 +103,14 @@ pub use advanced::{
 // ===========================================================================
 
 pub(crate) use helpers::{
-    accumulate_kernel_shap_sample, anchor_beam_search,
-    build_stability_result, clone_scores_matrix, compute_ale, compute_column_means,
-    compute_conditioning_bins, compute_domain_selection, compute_h_squared, compute_kernel_mean,
-    compute_lime, compute_mean_scalar, compute_saliency_map, compute_sobol_component,
-    compute_witness, gaussian_kernel_matrix, generate_sobol_matrices, get_obs_scalar,
-    greedy_prototype_selection, ice_to_pdp, make_grid, mean_absolute_column, median_bandwidth,
-    permute_component, project_scores, reconstruct_delta_function, sample_random_coalition,
-    shapley_kernel_weight, solve_kernel_shap_obs, subsample_rows,
+    accumulate_kernel_shap_sample, anchor_beam_search, build_stability_result, clone_scores_matrix,
+    compute_ale, compute_column_means, compute_conditioning_bins, compute_domain_selection,
+    compute_h_squared, compute_kernel_mean, compute_lime, compute_mean_scalar,
+    compute_saliency_map, compute_sobol_component, compute_witness, gaussian_kernel_matrix,
+    generate_sobol_matrices, get_obs_scalar, greedy_prototype_selection, ice_to_pdp, make_grid,
+    mean_absolute_column, median_bandwidth, permute_component, project_scores,
+    reconstruct_delta_function, sample_random_coalition, shapley_kernel_weight,
+    solve_kernel_shap_obs, subsample_rows,
 };
 
 // pub(crate) re-export from diagnostics (used by explain_generic.rs)
@@ -118,4 +118,3 @@ pub(crate) use diagnostics::compute_vif_from_scores;
 
 #[cfg(test)]
 mod tests;
-

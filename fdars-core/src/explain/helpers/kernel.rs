@@ -128,9 +128,7 @@ pub(crate) fn compute_score_depths(
         super::super::advanced::DepthType::FraimanMuniz => {
             depth::fraiman_muniz_1d(scores, scores, false)
         }
-        super::super::advanced::DepthType::ModifiedBand => {
-            depth::modified_band_1d(scores, scores)
-        }
+        super::super::advanced::DepthType::ModifiedBand => depth::modified_band_1d(scores, scores),
         super::super::advanced::DepthType::FunctionalSpatial => {
             depth::functional_spatial_1d(scores, scores, None)
         }
@@ -170,9 +168,7 @@ fn compute_single_depth(
         super::super::advanced::DepthType::FraimanMuniz => {
             depth::fraiman_muniz_1d(row, reference, false)
         }
-        super::super::advanced::DepthType::ModifiedBand => {
-            depth::modified_band_1d(row, reference)
-        }
+        super::super::advanced::DepthType::ModifiedBand => depth::modified_band_1d(row, reference),
         super::super::advanced::DepthType::FunctionalSpatial => {
             depth::functional_spatial_1d(row, reference, None)
         }

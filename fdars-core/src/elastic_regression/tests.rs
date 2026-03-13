@@ -177,7 +177,10 @@ fn test_elastic_regression_with_default_config() {
     let (data, y, t) = generate_test_data(15, 51);
     let config = ElasticConfig::default();
     let result = elastic_regression_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_regression_with_config (default) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_regression_with_config (default) should succeed"
+    );
 
     let res = result.unwrap();
     assert_eq!(res.fitted_values.len(), 15);
@@ -195,7 +198,10 @@ fn test_elastic_regression_with_custom_config() {
         tol: 1e-3,
     };
     let result = elastic_regression_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_regression_with_config (custom) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_regression_with_config (custom) should succeed"
+    );
 
     let res = result.unwrap();
     assert_eq!(res.fitted_values.len(), 15);
@@ -216,8 +222,15 @@ fn test_elastic_regression_config_matches_direct() {
     let res_direct = elastic_regression(&data, &y, &t, 10, 1e-3, 5, 1e-3).unwrap();
 
     // Both should produce identical results
-    assert_eq!(res_config.fitted_values.len(), res_direct.fitted_values.len());
-    for (a, b) in res_config.fitted_values.iter().zip(&res_direct.fitted_values) {
+    assert_eq!(
+        res_config.fitted_values.len(),
+        res_direct.fitted_values.len()
+    );
+    for (a, b) in res_config
+        .fitted_values
+        .iter()
+        .zip(&res_direct.fitted_values)
+    {
         assert!(
             (a - b).abs() < 1e-10,
             "Config and direct calls should produce identical results"
@@ -244,7 +257,10 @@ fn test_elastic_logistic_with_default_config() {
 
     let config = ElasticConfig::default();
     let result = elastic_logistic_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_logistic_with_config (default) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_logistic_with_config (default) should succeed"
+    );
 
     let res = result.unwrap();
     assert_eq!(res.probabilities.len(), n);
@@ -275,7 +291,10 @@ fn test_elastic_logistic_with_custom_config() {
         tol: 1e-3,
     };
     let result = elastic_logistic_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_logistic_with_config (custom) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_logistic_with_config (custom) should succeed"
+    );
 
     let res = result.unwrap();
     assert_eq!(res.probabilities.len(), n);
@@ -307,8 +326,15 @@ fn test_elastic_logistic_config_matches_direct() {
     let res_config = elastic_logistic_with_config(&data, &y, &t, &config).unwrap();
     let res_direct = elastic_logistic(&data, &y, &t, 10, 1e-2, 5, 1e-3).unwrap();
 
-    assert_eq!(res_config.probabilities.len(), res_direct.probabilities.len());
-    for (a, b) in res_config.probabilities.iter().zip(&res_direct.probabilities) {
+    assert_eq!(
+        res_config.probabilities.len(),
+        res_direct.probabilities.len()
+    );
+    for (a, b) in res_config
+        .probabilities
+        .iter()
+        .zip(&res_direct.probabilities)
+    {
         assert!(
             (a - b).abs() < 1e-10,
             "Config and direct calls should produce identical results"
@@ -321,7 +347,10 @@ fn test_elastic_pcr_with_default_config() {
     let (data, y, t) = generate_test_data(15, 51);
     let config = ElasticPcrConfig::default();
     let result = elastic_pcr_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_pcr_with_config (default) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_pcr_with_config (default) should succeed"
+    );
 
     let res = result.unwrap();
     assert_eq!(res.fitted_values.len(), 15);
@@ -340,7 +369,10 @@ fn test_elastic_pcr_with_custom_config() {
         tol: 1e-3,
     };
     let result = elastic_pcr_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_pcr_with_config (custom horizontal) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_pcr_with_config (custom horizontal) should succeed"
+    );
 
     let res = result.unwrap();
     assert_eq!(res.fitted_values.len(), 15);
@@ -360,8 +392,15 @@ fn test_elastic_pcr_config_matches_direct() {
     let res_config = elastic_pcr_with_config(&data, &y, &t, &config).unwrap();
     let res_direct = elastic_pcr(&data, &y, &t, 3, PcaMethod::Vertical, 0.0, 5, 1e-3).unwrap();
 
-    assert_eq!(res_config.fitted_values.len(), res_direct.fitted_values.len());
-    for (a, b) in res_config.fitted_values.iter().zip(&res_direct.fitted_values) {
+    assert_eq!(
+        res_config.fitted_values.len(),
+        res_direct.fitted_values.len()
+    );
+    for (a, b) in res_config
+        .fitted_values
+        .iter()
+        .zip(&res_direct.fitted_values)
+    {
         assert!(
             (a - b).abs() < 1e-10,
             "Config and direct calls should produce identical results"
@@ -381,7 +420,10 @@ fn test_elastic_pcr_with_joint_config() {
         tol: 1e-3,
     };
     let result = elastic_pcr_with_config(&data, &y, &t, &config);
-    assert!(result.is_ok(), "elastic_pcr_with_config (joint) should succeed");
+    assert!(
+        result.is_ok(),
+        "elastic_pcr_with_config (joint) should succeed"
+    );
 
     let res = result.unwrap();
     assert!(res.joint_fpca.is_some());

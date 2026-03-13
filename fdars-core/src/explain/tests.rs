@@ -8,13 +8,11 @@ fn generate_test_data(n: usize, m: usize, seed: u64) -> (crate::matrix::FdMatrix
     let mut data = FdMatrix::zeros(n, m);
     let mut y = vec![0.0; n];
     for i in 0..n {
-        let phase =
-            (seed.wrapping_mul(17).wrapping_add(i as u64 * 31) % 1000) as f64 / 1000.0 * PI;
+        let phase = (seed.wrapping_mul(17).wrapping_add(i as u64 * 31) % 1000) as f64 / 1000.0 * PI;
         let amplitude =
             ((seed.wrapping_mul(13).wrapping_add(i as u64 * 7) % 100) as f64 / 100.0) - 0.5;
         for j in 0..m {
-            data[(i, j)] =
-                (2.0 * PI * t[j] + phase).sin() + amplitude * (4.0 * PI * t[j]).cos();
+            data[(i, j)] = (2.0 * PI * t[j] + phase).sin() + amplitude * (4.0 * PI * t[j]).cos();
         }
         y[i] = 2.0 * phase + 3.0 * amplitude;
     }
@@ -1617,8 +1615,8 @@ fn test_ece_n_bins_match() {
 fn test_conformal_coverage_near_target() {
     let (data, y) = generate_test_data(60, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    let cp = conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.1, 42)
-        .unwrap();
+    let cp =
+        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.1, 42).unwrap();
     assert!(
         cp.coverage >= 0.8,
         "Coverage {} should be >= 0.8 for alpha=0.1",
@@ -1630,8 +1628,8 @@ fn test_conformal_coverage_near_target() {
 fn test_conformal_interval_width_positive() {
     let (data, y) = generate_test_data(60, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    let cp = conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.1, 42)
-        .unwrap();
+    let cp =
+        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.1, 42).unwrap();
     for i in 0..cp.predictions.len() {
         assert!(
             cp.upper[i] > cp.lower[i],
@@ -1647,8 +1645,8 @@ fn test_conformal_interval_width_positive() {
 fn test_conformal_quantile_positive() {
     let (data, y) = generate_test_data(60, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
-    let cp = conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.1, 42)
-        .unwrap();
+    let cp =
+        conformal_prediction_residuals(&fit, &data, &y, &data, None, None, 0.3, 0.1, 42).unwrap();
     assert!(
         cp.residual_quantile >= 0.0,
         "Quantile should be >= 0: {}",
@@ -1662,9 +1660,8 @@ fn test_conformal_lengths_match() {
     let (data, y) = generate_test_data(60, 50, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let test_data = FdMatrix::zeros(10, 50);
-    let cp =
-        conformal_prediction_residuals(&fit, &data, &y, &test_data, None, None, 0.3, 0.1, 42)
-            .unwrap();
+    let cp = conformal_prediction_residuals(&fit, &data, &y, &test_data, None, None, 0.3, 0.1, 42)
+        .unwrap();
     assert_eq!(cp.predictions.len(), 10);
     assert_eq!(cp.lower.len(), 10);
     assert_eq!(cp.upper.len(), 10);

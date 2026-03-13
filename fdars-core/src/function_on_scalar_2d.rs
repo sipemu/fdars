@@ -346,8 +346,7 @@ fn compute_beta_se_2d(
     let p = p_total - 1;
     let mut se = FdMatrix::zeros(p, m_total);
     for g in 0..m_total {
-        let sigma2: f64 =
-            (0..n).map(|i| residuals[(i, g)].powi(2)).sum::<f64>() / df;
+        let sigma2: f64 = (0..n).map(|i| residuals[(i, g)].powi(2)).sum::<f64>() / df;
         for j in 0..p {
             // j+1 to skip intercept row in a_inv_diag
             se[(j, g)] = (sigma2 * a_inv_diag[j + 1]).max(0.0).sqrt();
@@ -542,8 +541,7 @@ pub fn fosr_2d(
 
     let l_xtx = cholesky_factor(&xtx, p_total).ok_or_else(|| FdarError::ComputationFailed {
         operation: "fosr_2d",
-        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient"
-            .to_string(),
+        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient".to_string(),
     })?;
 
     // Pointwise OLS: beta_ols[:,g] = (X'X)^{-1} X' y[:,g]
@@ -717,9 +715,7 @@ mod tests {
                     let intercept = s + t;
                     let beta1 = s * t;
                     let beta2 = s - t;
-                    let noise = noise_scale
-                        * ((i * 13 + si * 7 + ti * 3) % 100) as f64
-                        / 100.0;
+                    let noise = noise_scale * ((i * 13 + si * 7 + ti * 3) % 100) as f64 / 100.0;
 
                     y[(i, g)] = intercept + z1 * beta1 + z2 * beta2 + noise;
                 }

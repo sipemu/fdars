@@ -56,9 +56,7 @@ fn bench_lda(c: &mut Criterion) {
             let (data, y, _argvals) = generate_two_class_data(n, m);
             let label = format!("n{}_nc{}", n, ncomp);
             group.bench_with_input(BenchmarkId::new("params", &label), &label, |b, _| {
-                b.iter(|| {
-                    fclassif_lda(black_box(&data), black_box(&y), None, black_box(ncomp))
-                });
+                b.iter(|| fclassif_lda(black_box(&data), black_box(&y), None, black_box(ncomp)));
             });
         }
     }
@@ -78,9 +76,7 @@ fn bench_qda(c: &mut Criterion) {
             let (data, y, _argvals) = generate_two_class_data(n, m);
             let label = format!("n{}_nc{}", n, ncomp);
             group.bench_with_input(BenchmarkId::new("params", &label), &label, |b, _| {
-                b.iter(|| {
-                    fclassif_qda(black_box(&data), black_box(&y), None, black_box(ncomp))
-                });
+                b.iter(|| fclassif_qda(black_box(&data), black_box(&y), None, black_box(ncomp)));
             });
         }
     }

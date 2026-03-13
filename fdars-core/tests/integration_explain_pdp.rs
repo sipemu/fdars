@@ -6,10 +6,10 @@
 //! - Elastic amplitude/phase attribution
 //! - Cross-checks, API surface validation, numerical stability
 
+use fdars_core::elastic_regression::{elastic_pcr, PcaMethod};
 use fdars_core::matrix::FdMatrix;
-use std::f64::consts::PI;
-use fdars_core::elastic_regression::{PcaMethod, elastic_pcr};
 use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
+use std::f64::consts::PI;
 
 // ─── Test data generators ────────────────────────────────────────────────────
 
@@ -519,7 +519,6 @@ fn pdp_at_observed_score_matches_fitted() {
     );
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Deep algorithmic validation — bootstrap CI, PDP, elastic attribution
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -946,7 +945,6 @@ fn elastic_attribution_rejects_zero_ncomp() {
     assert!(fdars_core::elastic_pcr_attribution(&result, &y, 0, 10, 42).is_err());
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Cross-checks, API surface, numerical stability
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1271,4 +1269,3 @@ fn integration_elastic_features() {
         }
     }
 }
-

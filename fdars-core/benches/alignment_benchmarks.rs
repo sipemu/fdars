@@ -74,11 +74,7 @@ fn bench_self_distance_matrix(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("n", n), &n, |b, _| {
             b.iter(|| {
-                elastic_self_distance_matrix(
-                    black_box(&mat),
-                    black_box(&argvals),
-                    black_box(0.0),
-                )
+                elastic_self_distance_matrix(black_box(&mat), black_box(&argvals), black_box(0.0))
             });
         });
     }

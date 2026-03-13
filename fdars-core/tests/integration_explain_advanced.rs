@@ -9,19 +9,13 @@
 //! - Anchor explanations
 
 use fdars_core::matrix::FdMatrix;
-use std::f64::consts::PI;
-use fdars_core::{
-    DepthType,
-    anchor_explanation,
-    anchor_explanation_logistic,
-    conformal_prediction_residuals,
-    expected_calibration_error,
-    explanation_stability,
-    explanation_stability_logistic,
-    regression_depth,
-    regression_depth_logistic,
-};
 use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
+use fdars_core::{
+    anchor_explanation, anchor_explanation_logistic, conformal_prediction_residuals,
+    expected_calibration_error, explanation_stability, explanation_stability_logistic,
+    regression_depth, regression_depth_logistic, DepthType,
+};
+use std::f64::consts::PI;
 
 // ─── Test data generators ────────────────────────────────────────────────────
 
@@ -221,4 +215,3 @@ fn test_anchor_high_precision_threshold() {
     // With enough bins, should still produce a valid rule
     assert!(!ar.rule.conditions.is_empty());
 }
-

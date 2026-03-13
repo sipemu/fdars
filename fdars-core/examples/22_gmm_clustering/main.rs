@@ -90,8 +90,17 @@ fn main() {
     println!("\n=== Predict Cluster for New Curve ===");
     let new_col = t.iter().map(|&tj| (2.0 * PI * tj).sin()).collect();
     let new_data = FdMatrix::from_column_major(new_col, 1, m).unwrap();
-    let (labels, probs) =
-        predict_gmm(&new_data, &t, None, &result.best, 5, ProjectionBasisType::Bspline, 1.0, CovType::Full).unwrap();
+    let (labels, probs) = predict_gmm(
+        &new_data,
+        &t,
+        None,
+        &result.best,
+        5,
+        ProjectionBasisType::Bspline,
+        1.0,
+        CovType::Full,
+    )
+    .unwrap();
     println!("  Assigned cluster: {}", labels[0]);
     println!(
         "  Membership: [{}]",

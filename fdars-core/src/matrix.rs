@@ -154,8 +154,17 @@ impl FdMatrix {
     /// Panics if `buf.len() < ncols` or `row >= nrows`.
     #[inline]
     pub fn row_to_buf(&self, row: usize, buf: &mut [f64]) {
-        debug_assert!(row < self.nrows, "row {row} out of bounds for {} rows", self.nrows);
-        debug_assert!(buf.len() >= self.ncols, "buffer len {} < ncols {}", buf.len(), self.ncols);
+        debug_assert!(
+            row < self.nrows,
+            "row {row} out of bounds for {} rows",
+            self.nrows
+        );
+        debug_assert!(
+            buf.len() >= self.ncols,
+            "buffer len {} < ncols {}",
+            buf.len(),
+            self.ncols
+        );
         let n = self.nrows;
         for j in 0..self.ncols {
             buf[j] = self.data[row + j * n];

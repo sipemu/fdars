@@ -10,8 +10,8 @@
 //! - Cross-feature consistency checks
 
 use fdars_core::matrix::FdMatrix;
-use std::f64::consts::PI;
 use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
+use std::f64::consts::PI;
 
 // ─── Test data generators ────────────────────────────────────────────────────
 
@@ -379,7 +379,6 @@ fn h_statistic_rejects_invalid_component() {
     let fit = fdars_core::fregre_lm(&data, &y, None, 3).unwrap();
     assert!(fdars_core::friedman_h_statistic(&fit, &data, 0, 5, 10).is_err());
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Deep validation — mathematical invariants and cross-method consistency
@@ -1141,4 +1140,3 @@ fn influence_and_importance_high_leverage_effect() {
     let total_imp: f64 = imp.importance.iter().map(|v| v.abs()).sum();
     assert!(total_imp > 0.0, "Total importance magnitude should be > 0");
 }
-

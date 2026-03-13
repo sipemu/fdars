@@ -5,8 +5,8 @@ use crate::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
 use crate::matrix::FdMatrix;
 
 use super::{
-    build_feature_matrix, class_means_and_priors, compute_accuracy, confusion_matrix,
-    remap_labels, ClassifResult,
+    build_feature_matrix, class_means_and_priors, compute_accuracy, confusion_matrix, remap_labels,
+    ClassifResult,
 };
 
 /// Accumulate symmetric covariance from feature rows.

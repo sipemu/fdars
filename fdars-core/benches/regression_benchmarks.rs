@@ -25,9 +25,8 @@ fn generate_regression_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<f64>
         let c3 = ((i as f64 * 7.9 + 0.7).sin()) * 1.0;
         for j in 0..m {
             let t = argvals[j];
-            data[i + j * n] = c1 * (2.0 * PI * t).sin()
-                + c2 * (4.0 * PI * t).sin()
-                + c3 * (6.0 * PI * t).sin();
+            data[i + j * n] =
+                c1 * (2.0 * PI * t).sin() + c2 * (4.0 * PI * t).sin() + c3 * (6.0 * PI * t).sin();
         }
     }
 
@@ -140,5 +139,10 @@ fn bench_functional_logistic(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_fpca, bench_fregre_lm, bench_functional_logistic);
+criterion_group!(
+    benches,
+    bench_fpca,
+    bench_fregre_lm,
+    bench_functional_logistic
+);
 criterion_main!(benches);

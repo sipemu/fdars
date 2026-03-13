@@ -10,11 +10,11 @@ pub use crate::error::FdarError;
 pub use crate::matrix::{FdCurveSet, FdMatrix};
 
 // Regression results
-pub use crate::regression::{FpcaResult, PlsResult};
+pub use crate::function_on_scalar::FosrResult;
 #[cfg(feature = "linalg")]
 pub use crate::regression::RidgeResult;
+pub use crate::regression::{FpcaResult, PlsResult};
 pub use crate::scalar_on_function::{FregreLmResult, FunctionalLogisticResult};
-pub use crate::function_on_scalar::FosrResult;
 
 // Classification
 pub use crate::classification::{ClassifCvResult, ClassifFit, ClassifMethod, ClassifResult};
@@ -40,7 +40,9 @@ pub use crate::smooth_basis::{BasisType, SmoothBasisResult};
 
 // Elastic analysis
 pub use crate::elastic_fpca::{HorizFpcaResult, JointFpcaResult, VertFpcaResult};
-pub use crate::elastic_regression::{ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult};
+pub use crate::elastic_regression::{
+    ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult,
+};
 
 // Cross-validation
 pub use crate::cv::{CvMetrics, CvType};

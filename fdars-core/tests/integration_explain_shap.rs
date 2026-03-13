@@ -11,21 +11,12 @@
 //! - Cross-method consistency checks
 
 use fdars_core::matrix::FdMatrix;
-use std::f64::consts::PI;
 use fdars_core::{
-    dfbetas_dffits,
-    fpc_ale,
-    fpc_ale_logistic,
-    fpc_shap_values,
-    fpc_shap_values_logistic,
-    fpc_vif,
-    fpc_vif_logistic,
-    fregre_lm,
-    functional_logistic,
-    pointwise_importance,
-    pointwise_importance_logistic,
-    prediction_intervals,
+    dfbetas_dffits, fpc_ale, fpc_ale_logistic, fpc_shap_values, fpc_shap_values_logistic, fpc_vif,
+    fpc_vif_logistic, fregre_lm, functional_logistic, pointwise_importance,
+    pointwise_importance_logistic, prediction_intervals,
 };
+use std::f64::consts::PI;
 
 // ─── Test data generators ────────────────────────────────────────────────────
 
@@ -92,8 +83,6 @@ fn regression_data_with_scalars(
 // ═══════════════════════════════════════════════════════════════════════════════
 // Pointwise importance — deep validation
 // ═══════════════════════════════════════════════════════════════════════════════
-
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Basic validation
@@ -632,7 +621,6 @@ fn test_ale_invalid_returns_none() {
     assert!(fpc_ale(&fit, &data, None, 5, 10).is_err());
     assert!(fpc_ale(&fit, &data, None, 0, 0).is_err());
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Deep validation — mathematical invariants and cross-method consistency
@@ -1821,4 +1809,3 @@ fn prediction_interval_consistent_with_influence_leverage() {
         high_lev_above_median
     );
 }
-

@@ -95,7 +95,11 @@ pub fn generic_shap_values(
                 let weight = shapley_kernel_weight(ncomp, s_size);
                 // Reuse pre-allocated buffer instead of allocating a new Vec each iteration
                 for (k, &in_coal) in coalition.iter().enumerate() {
-                    coal_scores[k] = if in_coal { obs_scores[k] } else { mean_scores[k] };
+                    coal_scores[k] = if in_coal {
+                        obs_scores[k]
+                    } else {
+                        mean_scores[k]
+                    };
                 }
 
                 let f_coal = model.predict_from_scores(
