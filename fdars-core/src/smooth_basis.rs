@@ -1958,7 +1958,7 @@ mod tests {
         let mut data = FdMatrix::zeros(n, m);
         for i in 0..n {
             for j in 0..m {
-                data[(i, j)] = 3.14;
+                data[(i, j)] = 3.15;
             }
         }
         let fdpar = make_bspline_fdpar(&t, 10, 1e-4);
@@ -1966,7 +1966,7 @@ mod tests {
         for i in 0..n {
             for j in 0..m {
                 assert!(
-                    (res.fitted[(i, j)] - 3.14).abs() < 0.01,
+                    (res.fitted[(i, j)] - 3.15).abs() < 0.01,
                     "Constant data should be fit well at ({},{}): got {}",
                     i,
                     j,

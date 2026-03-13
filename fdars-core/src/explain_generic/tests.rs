@@ -1430,7 +1430,7 @@ fn test_pdp_with_logistic_model() {
     for &v in &res.pdp_curve {
         assert!(v.is_finite());
         assert!(
-            v >= -0.1 && v <= 1.1,
+            (-0.1..=1.1).contains(&v),
             "logistic PDP should be near [0,1], got {v}"
         );
     }
@@ -1591,7 +1591,7 @@ fn test_baseline_metric_classification_accuracy() {
     let baseline = compute_baseline_metric(&fit, &scores, &y_bin, N);
     // Should be between 0 and 1
     assert!(
-        baseline >= 0.0 && baseline <= 1.0,
+        (0.0..=1.0).contains(&baseline),
         "classification baseline should be in [0,1], got {baseline}"
     );
 }
