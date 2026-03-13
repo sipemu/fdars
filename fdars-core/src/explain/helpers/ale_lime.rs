@@ -14,7 +14,7 @@ pub(crate) fn compute_ale(
     component: usize,
     n_bins: usize,
     predict: &dyn Fn(&[f64], Option<&[f64]>) -> f64,
-) -> Option<super::super::ale_lime::AleResult> {
+) -> super::super::ale_lime::AleResult {
     use super::super::ale_lime::AleResult;
 
     let mut col: Vec<(f64, usize)> = (0..n).map(|i| (scores[(i, component)], i)).collect();
@@ -76,13 +76,13 @@ pub(crate) fn compute_ale(
         .map(|b| (bin_edges[b] + bin_edges[b + 1]) / 2.0)
         .collect();
 
-    Some(AleResult {
+    AleResult {
         bin_midpoints,
         ale_values,
         bin_edges,
         bin_counts,
         component,
-    })
+    }
 }
 
 /// Compute quantile-based ALE bin edges from sorted component values.

@@ -26,6 +26,9 @@ pub fn generic_permutation_importance(
     n_perm: usize,
     seed: u64,
 ) -> Result<FpcPermutationImportance, FdarError> {
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
     let (n, m) = data.shape();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
@@ -57,9 +60,6 @@ pub fn generic_permutation_importance(
     let ncomp = model.ncomp();
     let scores = model.project(data);
     let baseline = compute_baseline_metric(model, &scores, y, n);
-
-    #[cfg(feature = "parallel")]
-    use rayon::iter::ParallelIterator;
 
     let results: Vec<(f64, f64)> = iter_maybe_parallel!(0..ncomp)
         .map(|k| {

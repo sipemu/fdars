@@ -14,12 +14,9 @@
 //! - [`functional_logistic`]: Logistic regression for binary outcomes
 //! - [`fregre_cv`]: Cross-validation for number of FPC components
 
-use crate::cv::create_folds;
 use crate::error::FdarError;
-use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
-use rand::prelude::*;
+use crate::regression::FpcaResult;
 
 mod bootstrap;
 mod cv;

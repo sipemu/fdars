@@ -33,14 +33,14 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 ### Regression
 
 - **Scalar-on-Function Regression**: FPC linear model, nonparametric kernel, functional logistic, CV component selection
-- **Function-on-Scalar Regression**: Penalized pointwise OLS, FPC-based FOSR, functional ANOVA with permutation test
+- **Function-on-Scalar Regression**: Penalized pointwise OLS, FPC-based FOSR, 2D FOSR for surface-valued responses Y(s,t) with tensor-product penalty, functional ANOVA with permutation test
 - **Regression**: Functional PCA, PLS, ridge regression
 - **Mixed Effects Models**: Functional mixed model via FPCA + iterative GLS/REML, prediction, permutation hypothesis tests
 
 ### Classification & Clustering
 
 - **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation; GMM with BIC/ICL model selection
-- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation
+- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation; conformal prediction sets for classification
 
 ### Time Series & Alignment
 
@@ -76,6 +76,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Regression Depth**: Depth-based diagnostics for coefficients and observations
 - **Stability Analysis**: Bootstrap robustness of β(t), coefficients, and importance rankings
 - **Anchor Explanations**: Beam-search rule extraction in FPC score space
+- **Generic Explainability**: `FpcPredictor` trait unifying regression, binary, and multiclass models with 15 model-agnostic functions (PDP, SHAP, ALE, LIME, permutation importance, Sobol, Friedman H, etc.)
 
 ### Elastic Analysis
 
@@ -89,6 +90,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 ### Inference
 
 - **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands
+- **Conformal Prediction**: Split-conformal regression intervals (`conformal_fregre_lm`, `conformal_fregre_np`, `conformal_elastic_regression`), Jackknife+ intervals, and CV+ intervals
 - **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
 
 ### Specialized

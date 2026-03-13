@@ -170,7 +170,6 @@ fn cv_fold_predict(
             Some(predictions)
         }
         // kernel and dd classifiers don't support out-of-sample prediction on new data
-        "kernel" | "dd" => None,
         _ => None,
     }
 }

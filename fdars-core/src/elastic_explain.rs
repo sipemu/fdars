@@ -349,10 +349,10 @@ fn fitted_with_permuted_scores(
             } else {
                 amp_scores[(i, k)]
             };
-            let phase_i = if !permute_amplitude {
-                phase_scores[(perm_idx[i], k)]
-            } else {
+            let phase_i = if permute_amplitude {
                 phase_scores[(i, k)]
+            } else {
+                phase_scores[(perm_idx[i], k)]
             };
             fitted[i] += coefficients[k] * (amp_i + phase_i);
         }

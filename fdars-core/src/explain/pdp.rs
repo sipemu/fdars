@@ -1,6 +1,6 @@
 //! PDP/ICE and beta decomposition.
 
-use super::helpers::*;
+use super::helpers::{ice_to_pdp, logistic_eta_base, make_grid, project_scores};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};
@@ -260,7 +260,12 @@ pub fn beta_decomposition(fit: &FregreLmResult) -> Result<BetaDecomposition, Fda
             actual: "0".into(),
         });
     }
-    decompose_beta(&fit.coefficients, &fit.fpca.rotation, ncomp, m)
+    Ok(decompose_beta(
+        &fit.coefficients,
+        &fit.fpca.rotation,
+        ncomp,
+        m,
+    ))
 }
 
 /// Decompose beta(t) for a functional logistic regression.
@@ -288,7 +293,12 @@ pub fn beta_decomposition_logistic(
             actual: "0".into(),
         });
     }
-    decompose_beta(&fit.coefficients, &fit.fpca.rotation, ncomp, m)
+    Ok(decompose_beta(
+        &fit.coefficients,
+        &fit.fpca.rotation,
+        ncomp,
+        m,
+    ))
 }
 
 fn decompose_beta(
@@ -296,7 +306,7 @@ fn decompose_beta(
     rotation: &FdMatrix,
     ncomp: usize,
     m: usize,
-) -> Result<BetaDecomposition, FdarError> {
+) -> BetaDecomposition {
     let mut components = Vec::with_capacity(ncomp);
     let mut coefs = Vec::with_capacity(ncomp);
     let mut norms_sq = Vec::with_capacity(ncomp);
@@ -317,11 +327,11 @@ fn decompose_beta(
         vec![0.0; ncomp]
     };
 
-    Ok(BetaDecomposition {
+    BetaDecomposition {
         components,
         coefficients: coefs,
         variance_proportion,
-    })
+    }
 }
 
 // ---------------------------------------------------------------------------

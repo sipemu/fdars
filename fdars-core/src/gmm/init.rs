@@ -127,7 +127,7 @@ fn update_centers(
                 new_centers[c][j] /= counts[c] as f64;
             }
         } else {
-            new_centers[c] = old_centers[c].clone();
+            new_centers[c].clone_from(&old_centers[c]);
         }
     }
     new_centers

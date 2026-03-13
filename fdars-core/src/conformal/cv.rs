@@ -215,7 +215,7 @@ fn conformal_classif_fold(
 /// builds the final [`ConformalClassificationResult`].
 fn aggregate_conformal_results(
     all_cal_scores: Vec<f64>,
-    test_probs_sum: Vec<Vec<f64>>,
+    test_probs_sum: &[Vec<f64>],
     n_models: usize,
     n_folds: usize,
     alpha: f64,
@@ -355,7 +355,7 @@ pub fn cv_conformal_classification(
 
     aggregate_conformal_results(
         all_cal_scores,
-        test_probs_sum,
+        &test_probs_sum,
         n_models,
         n_folds,
         alpha,

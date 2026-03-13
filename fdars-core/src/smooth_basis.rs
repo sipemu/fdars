@@ -488,7 +488,7 @@ fn evaluate_nbasis_info_criterion(
                     BasisCriterion::Gcv => result.gcv,
                     BasisCriterion::Aic => result.aic,
                     BasisCriterion::Bic => result.bic,
-                    _ => unreachable!(),
+                    BasisCriterion::Cv => unreachable!(),
                 };
                 scores.push(score);
             }

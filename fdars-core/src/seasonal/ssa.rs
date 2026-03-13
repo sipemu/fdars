@@ -181,13 +181,11 @@ pub(super) fn svd_decompose(
 
     // Extract components (SVD::new with compute_u/v=true always produces both,
     // but handle gracefully in case of degenerate input)
-    let u_mat = match svd.u {
-        Some(u) => u,
-        None => return (vec![], vec![], vec![]),
+    let Some(u_mat) = svd.u else {
+        return (vec![], vec![], vec![]);
     };
-    let vt_mat = match svd.v_t {
-        Some(vt) => vt,
-        None => return (vec![], vec![], vec![]),
+    let Some(vt_mat) = svd.v_t else {
+        return (vec![], vec![], vec![]);
     };
     let sigma = svd.singular_values;
 

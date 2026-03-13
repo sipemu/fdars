@@ -264,10 +264,7 @@ pub fn conformal_elastic_logistic(
     // Calibration probabilities
     let cal_data = subsample_rows(data, &cal_idx);
     let cal_probs = predict_elastic_logistic_probs(&refit, &cal_data, argvals);
-    let cal_true: Vec<usize> = cal_idx
-        .iter()
-        .map(|&i| if y[i] == 1 { 1 } else { 0 })
-        .collect();
+    let cal_true: Vec<usize> = cal_idx.iter().map(|&i| usize::from(y[i] == 1)).collect();
     let cal_scores = compute_cal_scores(&cal_probs, &cal_true, score_type);
 
     // Test probabilities

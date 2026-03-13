@@ -1,4 +1,13 @@
-use super::*;
+use super::{
+    build_design_matrix, cholesky_factor, compute_beta_se, compute_fitted, compute_ols_std_errors,
+    compute_r_squared, compute_xtx, ols_solve, recover_beta_t, resolve_ncomp,
+    validate_fregre_inputs, FregreCvResult, FregreLmResult, ModelSelectionResult,
+    SelectionCriterion,
+};
+use crate::cv::create_folds;
+use crate::error::FdarError;
+use crate::matrix::FdMatrix;
+use crate::regression::fdata_to_pc_1d;
 
 // ---------------------------------------------------------------------------
 // fregre_lm: FPC-based functional linear model
@@ -91,8 +100,8 @@ pub fn fregre_lm(
         .sum::<f64>()
         / n as f64;
 
-    let beta_t = recover_beta_t(&coeffs[1..1 + ncomp], &fpca.rotation, m);
-    let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
+    let beta_t = recover_beta_t(&coeffs[1..=ncomp], &fpca.rotation, m);
+    let beta_se = compute_beta_se(&std_errors[1..=ncomp], &fpca.rotation, m);
     let gamma: Vec<f64> = coeffs[1 + ncomp..].to_vec();
 
     let nf = n as f64;
@@ -175,9 +184,8 @@ fn cv_error_for_k(
             m
         });
 
-        let fit = match fregre_lm(&train_data, &train_y, train_sc.as_ref(), k) {
-            Ok(f) => f,
-            Err(_) => continue,
+        let Ok(fit) = fregre_lm(&train_data, &train_y, train_sc.as_ref(), k) else {
+            continue;
         };
 
         let predictions = predict_fregre_lm(&fit, &test_data, test_sc.as_ref());

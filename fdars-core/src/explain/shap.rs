@@ -1,6 +1,10 @@
 //! SHAP values and Friedman H-statistic.
 
-use super::helpers::*;
+use super::helpers::{
+    accumulate_kernel_shap_sample, build_coalition_scores, compute_column_means, compute_h_squared,
+    compute_mean_scalar, get_obs_scalar, logistic_pdp_mean, make_grid, project_scores,
+    sample_random_coalition, shapley_kernel_weight, solve_kernel_shap_obs,
+};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};

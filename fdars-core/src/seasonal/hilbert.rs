@@ -51,7 +51,7 @@ pub fn hilbert_transform(signal: &[f64]) -> Vec<Complex<f64>> {
     fft_inverse.process(&mut buffer);
 
     // Normalize
-    for c in buffer.iter_mut() {
+    for c in &mut buffer {
         *c /= n as f64;
     }
 

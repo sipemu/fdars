@@ -20,6 +20,14 @@ pub(super) fn pointwise_mean_std(data: &FdMatrix) -> (Vec<f64>, Vec<f64>) {
 
 /// Inverse normal CDF (probit) via rational approximation (Abramowitz & Stegun 26.2.23).
 pub(super) fn normal_quantile(p: f64) -> f64 {
+    // Rational approximation coefficients (Abramowitz & Stegun 26.2.23)
+    const C0: f64 = 2.515_517;
+    const C1: f64 = 0.802_853;
+    const C2: f64 = 0.010_328;
+    const D1: f64 = 1.432_788;
+    const D2: f64 = 0.189_269;
+    const D3: f64 = 0.001_308;
+
     if p <= 0.0 || p >= 1.0 {
         return f64::NAN;
     }
@@ -31,14 +39,6 @@ pub(super) fn normal_quantile(p: f64) -> f64 {
     let (sign, q) = if p < 0.5 { (-1.0, 1.0 - p) } else { (1.0, p) };
 
     let t = (-2.0 * (1.0 - q).ln()).sqrt();
-
-    // Rational approximation coefficients
-    const C0: f64 = 2.515517;
-    const C1: f64 = 0.802853;
-    const C2: f64 = 0.010328;
-    const D1: f64 = 1.432788;
-    const D2: f64 = 0.189269;
-    const D3: f64 = 0.001308;
 
     let numerator = C0 + C1 * t + C2 * t * t;
     let denominator = 1.0 + D1 * t + D2 * t * t + D3 * t * t * t;

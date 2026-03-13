@@ -117,7 +117,7 @@ pub fn detect_peaks(
     let data_range: f64 = {
         let mut min_val = f64::INFINITY;
         let mut max_val = f64::NEG_INFINITY;
-        for &v in work_data.iter() {
+        for &v in &work_data {
             min_val = min_val.min(v);
             max_val = max_val.max(v);
         }

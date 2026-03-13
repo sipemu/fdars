@@ -198,7 +198,7 @@ fn stl_single_series(
     let mut trend = vec![0.0; m];
     let mut seasonal = vec![0.0; m];
     let mut weights = vec![1.0; m];
-    for _outer in 0..n_outer {
+    for outer in 0..n_outer {
         for _inner in 0..n_inner {
             let detrended: Vec<f64> = data
                 .iter()
@@ -219,7 +219,7 @@ fn stl_single_series(
                 .collect();
             trend = weighted_loess(&deseasonalized, t_window, &weights);
         }
-        if robust && _outer < n_outer - 1 {
+        if robust && outer < n_outer - 1 {
             let remainder: Vec<f64> = data
                 .iter()
                 .zip(trend.iter())

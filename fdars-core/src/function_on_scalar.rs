@@ -446,9 +446,8 @@ fn select_lambda_gcv(
     let mut best_gcv = f64::INFINITY;
 
     for &lam in &lambdas {
-        let beta = match penalized_solve(xtx, xty, penalty, lam) {
-            Ok(b) => b,
-            Err(_) => continue,
+        let Ok(beta) = penalized_solve(xtx, xty, penalty, lam) else {
+            continue;
         };
         let (_, residuals) = compute_fosr_fitted(design, &beta, data);
         let trace_h = compute_trace_hat(xtx, penalty, lam, p_total, n);
@@ -469,9 +468,8 @@ fn compute_trace_hat(xtx: &[f64], penalty: &[f64], lambda: f64, p: usize, n: usi
     }
     // tr(H) = tr(X A^{-1} X') = Σ_{j=0..p} a^{-1}_{jj} * xtx_{jj}
     // More precisely: tr(X (X'X+λP)^{-1} X') = tr((X'X+λP)^{-1} X'X)
-    let l = match cholesky_factor(&a, p) {
-        Some(l) => l,
-        None => return p as f64, // fallback
+    let Some(l) = cholesky_factor(&a, p) else {
+        return p as f64; // fallback
     };
 
     // Compute A^{-1} X'X via solving A Z = X'X column by column, then trace
@@ -498,9 +496,8 @@ fn compute_beta_se(
     for i in 0..p * p {
         a[i] = xtx[i] + lambda * penalty[i];
     }
-    let l = match cholesky_factor(&a, p) {
-        Some(l) => l,
-        None => return FdMatrix::zeros(p, m),
+    let Some(l) = cholesky_factor(&a, p) else {
+        return FdMatrix::zeros(p, m);
     };
 
     // Diagonal of A^{-1}
@@ -861,7 +858,7 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
     }
 
     let mut labels: Vec<usize> = groups.to_vec();
-    labels.sort();
+    labels.sort_unstable();
     labels.dedup();
     let n_groups = labels.len();
     if n_groups < 2 {
@@ -885,7 +882,9 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
     for _ in 0..n_perm {
         // Fisher-Yates shuffle with LCG
         for i in (1..n).rev() {
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            rng_state = rng_state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
             let j = (rng_state >> 33) as usize % (i + 1);
             perm_groups.swap(i, j);
         }

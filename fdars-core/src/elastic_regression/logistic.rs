@@ -307,12 +307,12 @@ fn compute_logistic_predictions(
     let probabilities: Vec<f64> = eta.iter().map(|&e| 1.0 / (1.0 + (-e).exp())).collect();
     let predicted_classes: Vec<usize> = probabilities
         .iter()
-        .map(|&p| if p >= 0.5 { 1 } else { 0 })
+        .map(|&p| usize::from(p >= 0.5))
         .collect();
     let accuracy = predicted_classes
         .iter()
         .zip(y.iter())
-        .filter(|(&p, &t)| p == (if t == 1 { 1usize } else { 0usize }))
+        .filter(|(&p, &t)| p == usize::from(t == 1))
         .count() as f64
         / n as f64;
     let loss = logistic_loss(&probabilities, y, beta, lambda);

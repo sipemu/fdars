@@ -1,6 +1,9 @@
 //! Counterfactual explanations and prototype/criticism selection.
 
-use super::helpers::*;
+use super::helpers::{
+    compute_kernel_mean, compute_witness, gaussian_kernel_matrix, greedy_prototype_selection,
+    median_bandwidth, project_scores, reconstruct_delta_function,
+};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::FpcaResult;
@@ -156,7 +159,7 @@ pub fn counterfactual_logistic(
 
     let original_scores: Vec<f64> = (0..ncomp).map(|k| scores[(observation, k)]).collect();
     let original_prediction = fit.probabilities[observation];
-    let original_class = if original_prediction >= 0.5 { 1 } else { 0 };
+    let original_class = usize::from(original_prediction >= 0.5);
     let target_class = 1 - original_class;
 
     let (current_scores, current_pred, found) = logistic_counterfactual_descent(
@@ -196,7 +199,7 @@ fn logistic_counterfactual_descent(
     intercept: f64,
     coefficients: &[f64],
     initial_scores: &[f64],
-    target_class: i32,
+    target_class: usize,
     ncomp: usize,
     max_iter: usize,
     step_size: f64,
@@ -208,13 +211,13 @@ fn logistic_counterfactual_descent(
     for _ in 0..max_iter {
         current_pred =
             logistic_predict_from_scores(intercept, coefficients, &current_scores, ncomp);
-        let current_class = if current_pred >= 0.5 { 1 } else { 0 };
+        let current_class = usize::from(current_pred >= 0.5);
         if current_class == target_class {
             return (current_scores, current_pred, true);
         }
         for k in 0..ncomp {
             // Cross-entropy gradient: dL/ds_k = (p - target) * coef_k
-            let grad = (current_pred - f64::from(target_class)) * coefficients[1 + k];
+            let grad = (current_pred - target_class as f64) * coefficients[1 + k];
             current_scores[k] -= step_size * grad;
         }
     }

@@ -50,7 +50,7 @@ fn transform_data(data: &FdMatrix, family: ExponentialFamily) -> FdMatrix {
 }
 
 /// Apply the inverse link to a band, recomputing half-widths on the response scale.
-fn inverse_link_band(band: ToleranceBand, family: ExponentialFamily) -> ToleranceBand {
+fn inverse_link_band(band: &ToleranceBand, family: ExponentialFamily) -> ToleranceBand {
     let lower: Vec<f64> = band
         .lower
         .iter()
@@ -159,5 +159,5 @@ pub fn exponential_family_tolerance_band(
         BandType::Simultaneous,
         seed,
     )?;
-    Ok(inverse_link_band(band, family))
+    Ok(inverse_link_band(&band, family))
 }

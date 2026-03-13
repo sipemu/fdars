@@ -1,6 +1,10 @@
 //! Calibration, conformal prediction, regression depth, stability, and anchors.
 
-use super::helpers::*;
+use super::helpers::{
+    anchor_beam_search, beta_depth_from_bootstrap, build_stability_result,
+    calibration_gap_weighted, compute_score_depths, conformal_quantile_and_coverage,
+    predict_from_scores, project_scores, subsample_rows, validate_conformal_inputs,
+};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{
@@ -904,7 +908,7 @@ pub fn anchor_explanation_logistic(
                 eta += fit.gamma[j] * sc[(i, j)];
             }
         }
-        let pred_class = if sigmoid(eta) >= 0.5 { 1usize } else { 0usize };
+        let pred_class = usize::from(sigmoid(eta) >= 0.5);
         pred_class == obs_class
     };
 
@@ -952,7 +956,7 @@ fn hosmer_lemeshow_computation(
     let mut bin_counts = Vec::with_capacity(n_groups);
 
     for g in 0..n_groups {
-        let sz = group_size + if g < remainder { 1 } else { 0 };
+        let sz = group_size + usize::from(g < remainder);
         let group = &sorted_idx[start..start + sz];
         start += sz;
 

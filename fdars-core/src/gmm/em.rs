@@ -18,9 +18,8 @@ fn log_component_density(z: &[f64], mean: &[f64], cov: &[f64], d: usize, cov_typ
 
     match cov_type {
         CovType::Full => {
-            let chol = match cholesky_d(cov, d) {
-                Ok(l) => l,
-                Err(_) => return f64::NEG_INFINITY,
+            let Ok(chol) = cholesky_d(cov, d) else {
+                return f64::NEG_INFINITY;
             };
             let log_det = log_det_from_cholesky(&chol, d);
             let maha = mahalanobis_sq(z, mean, &chol, d);
@@ -62,7 +61,7 @@ fn compute_log_component_probs(
 }
 
 /// Normalize log-probabilities to responsibilities via log-sum-exp. Returns log-likelihood contribution.
-fn normalize_responsibilities(log_probs: &[f64], resp: &mut [f64]) -> f64 {
+fn normalizeresponsibilities(log_probs: &[f64], resp: &mut [f64]) -> f64 {
     let k = log_probs.len();
     let max_lp = log_probs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     if max_lp == f64::NEG_INFINITY {
@@ -110,7 +109,7 @@ pub(super) fn e_step(
                 cov_type,
             );
             let mut r = vec![0.0; k];
-            let ll_i = normalize_responsibilities(&log_probs, &mut r);
+            let ll_i = normalizeresponsibilities(&log_probs, &mut r);
             (r, ll_i)
         })
         .collect();
@@ -358,13 +357,13 @@ pub fn gmm_em(
     let mut prev_ll = f64::NEG_INFINITY;
     let mut converged = false;
     let mut iterations = 0;
-    let mut _resp = vec![0.0; n * k];
+    let mut resp = vec![0.0; n * k];
 
     for iter in 0..max_iter {
         iterations = iter + 1;
 
-        let (new_resp, ll) = e_step(features, &means, &covariances, &weights, k, d, cov_type);
-        _resp = new_resp;
+        let (newresp, ll) = e_step(features, &means, &covariances, &weights, k, d, cov_type);
+        resp = newresp;
 
         if (ll - prev_ll).abs() < tol && iter > 0 {
             converged = true;
@@ -372,7 +371,7 @@ pub fn gmm_em(
         }
         prev_ll = ll;
 
-        let (new_means, new_covs, new_weights) = m_step(features, &_resp, k, d, cov_type, reg);
+        let (new_means, new_covs, new_weights) = m_step(features, &resp, k, d, cov_type, reg);
         means = new_means;
         covariances = new_covs;
         weights = new_weights;

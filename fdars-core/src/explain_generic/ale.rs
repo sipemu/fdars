@@ -57,7 +57,7 @@ pub fn generic_ale(
         model.predict_from_scores(obs_scores, obs_scalar)
     };
 
-    compute_ale(
+    Ok(compute_ale(
         &scores,
         scalar_covariates,
         n,
@@ -66,9 +66,5 @@ pub fn generic_ale(
         component,
         n_bins,
         &predict,
-    )
-    .ok_or_else(|| FdarError::ComputationFailed {
-        operation: "generic_ale",
-        detail: "compute_ale returned None".into(),
-    })
+    ))
 }

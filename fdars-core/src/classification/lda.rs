@@ -33,7 +33,7 @@ fn pooled_within_cov(
         }
     }
     let scale = (n - g).max(1) as f64;
-    for v in cov.iter_mut() {
+    for v in &mut cov {
         *v /= scale;
     }
     for j in 0..d {

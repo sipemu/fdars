@@ -48,7 +48,7 @@ fn qda_class_covariances(
             let nc = members.len();
             let divisor = (nc.saturating_sub(1)).max(1) as f64;
             let mut cov = accumulate_class_cov(features, &members, &class_means[c], d);
-            for v in cov.iter_mut() {
+            for v in &mut cov {
                 *v /= divisor;
             }
             for j in 0..d {

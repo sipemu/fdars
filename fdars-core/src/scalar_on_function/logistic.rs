@@ -1,4 +1,10 @@
-use super::*;
+use super::{
+    build_design_matrix, cholesky_factor, cholesky_solve, compute_beta_se, compute_fitted,
+    compute_ols_std_errors, recover_beta_t, sigmoid, FunctionalLogisticResult,
+};
+use crate::error::FdarError;
+use crate::matrix::FdMatrix;
+use crate::regression::{fdata_to_pc_1d, FpcaResult};
 
 // ---------------------------------------------------------------------------
 // Functional logistic regression
@@ -61,9 +67,8 @@ fn irls_loop(design: &FdMatrix, y: &[f64], max_iter: usize, tol: f64) -> (Vec<f6
     let mut iterations = 0;
     for iter in 0..max_iter {
         iterations = iter + 1;
-        let beta_new = match irls_step(design, y, &beta) {
-            Some(b) => b,
-            None => break,
+        let Some(beta_new) = irls_step(design, y, &beta) else {
+            break;
         };
         let change: f64 = beta_new
             .iter()
@@ -93,14 +98,14 @@ fn build_logistic_result(
     let probabilities: Vec<f64> = eta.iter().map(|&e| sigmoid(e)).collect();
     let predicted_classes: Vec<usize> = probabilities
         .iter()
-        .map(|&p| if p >= 0.5 { 1 } else { 0 })
+        .map(|&p| usize::from(p >= 0.5))
         .collect();
     let correct: usize = predicted_classes
         .iter()
         .zip(y)
         .filter(|(&pred, &actual)| pred as f64 == actual)
         .count();
-    let beta_t = recover_beta_t(&beta[1..1 + ncomp], &fpca.rotation, m);
+    let beta_t = recover_beta_t(&beta[1..=ncomp], &fpca.rotation, m);
     let gamma: Vec<f64> = beta[1 + ncomp..].to_vec();
 
     // Compute coefficient SEs from Fisher information matrix (X'WX)^{-1}
@@ -123,7 +128,7 @@ fn build_logistic_result(
         |_| vec![f64::NAN; p],
         |l| compute_ols_std_errors(&l, p, 1.0),
     );
-    let beta_se = compute_beta_se(&std_errors[1..1 + ncomp], &fpca.rotation, m);
+    let beta_se = compute_beta_se(&std_errors[1..=ncomp], &fpca.rotation, m);
 
     let ll = logistic_log_likelihood(&probabilities, y);
     let deviance = -2.0 * ll;

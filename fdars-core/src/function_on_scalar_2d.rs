@@ -386,9 +386,8 @@ fn select_lambdas_gcv(
     };
 
     // Pre-compute OLS inverse and raw beta
-    let l_xtx = match cholesky_factor(xtx, p_total) {
-        Some(l) => l,
-        None => return (0.0, 0.0),
+    let Some(l_xtx) = cholesky_factor(xtx, p_total) else {
+        return (0.0, 0.0);
     };
 
     // beta_ols: p_total x m_total
@@ -425,16 +424,13 @@ fn select_lambdas_gcv(
             let mut ok = true;
             for j in 0..p_total {
                 let raw: Vec<f64> = (0..m_total).map(|g| beta_ols[(j, g)]).collect();
-                match smooth_coefficient_surface(&raw, &p2d, m_total) {
-                    Ok(smoothed) => {
-                        for g in 0..m_total {
-                            beta_smooth[(j, g)] = smoothed[g];
-                        }
+                if let Ok(smoothed) = smooth_coefficient_surface(&raw, &p2d, m_total) {
+                    for g in 0..m_total {
+                        beta_smooth[(j, g)] = smoothed[g];
                     }
-                    Err(_) => {
-                        ok = false;
-                        break;
-                    }
+                } else {
+                    ok = false;
+                    break;
                 }
             }
             if !ok {

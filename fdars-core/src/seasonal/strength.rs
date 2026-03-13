@@ -162,9 +162,8 @@ pub fn seasonal_strength_wavelet(data: &FdMatrix, argvals: &[f64], period: f64) 
     }
 
     // Compute wavelet power, skipping edges (10% on each side)
-    let (interior_start, interior_end) = match interior_bounds(m) {
-        Some(bounds) => bounds,
-        None => return f64::NAN,
+    let Some((interior_start, interior_end)) = interior_bounds(m) else {
+        return f64::NAN;
     };
 
     let wavelet_power: f64 = wavelet_coeffs[interior_start..interior_end]

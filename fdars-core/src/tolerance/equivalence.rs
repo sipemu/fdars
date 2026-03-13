@@ -128,7 +128,7 @@ fn valid_equivalence_params(delta: f64, alpha: f64, nb: usize) -> bool {
 /// otherwise a constant half-width is used (percentile bootstrap).
 fn build_equivalence_result(
     mut sup_stats: Vec<f64>,
-    d_hat: Vec<f64>,
+    d_hat: &[f64],
     se: &[f64],
     delta: f64,
     alpha: f64,
@@ -144,7 +144,7 @@ fn build_equivalence_result(
     } else {
         vec![c_alpha; m]
     };
-    let scb = build_band(d_hat.clone(), half_width);
+    let scb = build_band(d_hat.to_vec(), half_width);
 
     let equivalent = scb.upper.iter().all(|&u| u < delta) && scb.lower.iter().all(|&l| l > -delta);
 
@@ -232,7 +232,7 @@ pub fn equivalence_test(
     };
 
     Some(build_equivalence_result(
-        sup_stats, d_hat, &se, delta, alpha, nb,
+        sup_stats, &d_hat, &se, delta, alpha, nb,
     ))
 }
 
@@ -288,6 +288,6 @@ pub fn equivalence_test_one_sample(
     };
 
     Some(build_equivalence_result(
-        sup_stats, d_hat, &se, delta, alpha, nb,
+        sup_stats, &d_hat, &se, delta, alpha, nb,
     ))
 }

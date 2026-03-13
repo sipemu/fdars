@@ -1,4 +1,6 @@
-use super::*;
+use super::{compute_r_squared, FregreNpResult};
+use crate::error::FdarError;
+use crate::matrix::FdMatrix;
 
 // ---------------------------------------------------------------------------
 // Nonparametric kernel regression

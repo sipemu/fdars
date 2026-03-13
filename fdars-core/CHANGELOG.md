@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`lib.rs` re-exports** for 8 modules (regression, clustering, metric, depth, outliers, utility, fdata, basis)
 - **`#[must_use]`** on 74 expensive public functions
 - **`Debug + Clone`** on 65 public result types; `PartialEq` on 97 public types
+- **Doc examples**: 37 new `# Examples` doc tests on public functions (alignment, basis, classification, conformal, depth, explain, metric, regression, scalar_on_function, smoothing, tolerance, etc.)
+- Shared `test_helpers` module with `uniform_grid` replacing 17 duplicated definitions
 - 37 new tests (conformal elastic, elastic regression configs, tricube kernel) and 12 new 2D FOSR tests
 
 ### Changed
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Complete `Result<T, FdarError>` migration: all public functions now return `Result`, including tolerance module
 - NaN-safe sorting: replaced 46 inline patterns with `helpers::sort_nan_safe`
 - Applied rustfmt to all source, bench, test, and example files
+- **Clippy pedantic cleanup** (82 warnings fixed across 41 files): `let...else` patterns, explicit imports replacing wildcard `use super::*`, digit-separated numeric literals, `usize::from(bool)`, `sort_unstable`, `for x in &mut container`, inclusive ranges, `needless_pass_by_value` (Vec → &[T])
 
 ### Fixed
 

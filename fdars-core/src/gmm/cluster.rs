@@ -179,9 +179,8 @@ pub fn gmm_cluster(
 
     for &k in k_range {
         let best_for_k = run_multiple_inits(&features, k, cov_type, max_iter, tol, n_init, seed);
-        let result = match best_for_k {
-            Some(r) => r,
-            None => continue,
+        let Some(result) = best_for_k else {
+            continue;
         };
 
         bic_values.push((k, result.bic));

@@ -1,6 +1,10 @@
 //! Sobol sensitivity indices, functional saliency, and domain selection.
 
-use super::helpers::*;
+use super::helpers::{
+    compute_column_means, compute_domain_selection, compute_mean_scalar, compute_saliency_map,
+    compute_score_variance, compute_sobol_component, generate_sobol_matrices, mean_absolute_column,
+    project_scores,
+};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};

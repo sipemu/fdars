@@ -1,6 +1,9 @@
 //! Permutation importance, pointwise importance, and conditional permutation importance.
 
-use super::helpers::*;
+use super::helpers::{
+    clone_scores_matrix, compute_conditioning_bins, compute_score_variance,
+    logistic_accuracy_from_scores, permute_component, project_scores, shuffle_global,
+};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{sigmoid, FregreLmResult, FunctionalLogisticResult};

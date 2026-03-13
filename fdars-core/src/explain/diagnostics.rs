@@ -1,6 +1,6 @@
 //! VIF, influence diagnostics, DFBETAS/DFFITS, prediction intervals, and LOO-CV.
 
-use super::helpers::*;
+use super::helpers::project_scores;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::scalar_on_function::{
@@ -505,12 +505,12 @@ fn normal_quantile(p: f64) -> f64 {
     } else {
         (-2.0 * (1.0 - p).ln()).sqrt()
     };
-    let c0 = 2.515517;
-    let c1 = 0.802853;
-    let c2 = 0.010328;
-    let d1 = 1.432788;
-    let d2 = 0.189269;
-    let d3 = 0.001308;
+    let c0 = 2.515_517;
+    let c1 = 0.802_853;
+    let c2 = 0.010_328;
+    let d1 = 1.432_788;
+    let d2 = 0.189_269;
+    let d3 = 0.001_308;
     let val = t - (c0 + c1 * t + c2 * t * t) / (1.0 + d1 * t + d2 * t * t + d3 * t * t * t);
     if p < 0.5 {
         -val

@@ -354,7 +354,7 @@ pub(super) fn autocorrelation(data: &[f64], max_lag: usize) -> Vec<f64> {
     fft_forward.process(&mut buffer);
 
     // Power spectral density: |F(k)|^2
-    for c in buffer.iter_mut() {
+    for c in &mut buffer {
         *c = Complex::new(c.norm_sqr(), 0.0);
     }
 
@@ -565,7 +565,7 @@ pub(super) fn cwt_morlet_fft(
     fft_inverse.process(&mut result);
 
     // Normalize and scale by dt
-    for c in result.iter_mut() {
+    for c in &mut result {
         *c *= dt / n as f64;
     }
 

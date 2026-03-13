@@ -1,4 +1,8 @@
-use super::*;
+use super::{fregre_lm, functional_logistic, BootstrapCiResult};
+use crate::error::FdarError;
+use crate::iter_maybe_parallel;
+use crate::matrix::FdMatrix;
+use rand::prelude::*;
 
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;

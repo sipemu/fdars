@@ -109,7 +109,7 @@ fn segmented_dp_gamma(
         let (sc, sr) = waypoints[seg];
         let (ec, er) = waypoints[seg + 1];
         let segment_path = dp_segment(q1n, q2n, argvals, sc, ec, sr, er, lambda);
-        let start = if seg > 0 { 1 } else { 0 };
+        let start = usize::from(seg > 0);
         for &(tc, tr) in &segment_path[start..] {
             full_path_tc.push(argvals[tc]);
             full_path_tr.push(argvals[tr]);

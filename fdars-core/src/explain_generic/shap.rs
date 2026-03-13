@@ -28,6 +28,9 @@ pub fn generic_shap_values(
     n_samples: usize,
     seed: u64,
 ) -> Result<FpcShapValues, FdarError> {
+    #[cfg(feature = "parallel")]
+    use rayon::iter::ParallelIterator;
+
     let (n, m) = data.shape();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
@@ -69,9 +72,6 @@ pub fn generic_shap_values(
             Some(&mean_z)
         },
     );
-
-    #[cfg(feature = "parallel")]
-    use rayon::iter::ParallelIterator;
 
     let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
         .map(|i| {
