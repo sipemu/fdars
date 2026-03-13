@@ -7,6 +7,9 @@
 //! # Methods
 //!
 //! - [`fpca_tolerance_band`] — FPCA + bootstrap tolerance band (pointwise or simultaneous)
+//! - [`elastic_tolerance_band`] — Amplitude-only band after elastic alignment
+//! - [`phase_tolerance_band`] — Phase band on warping functions via tangent-space FPCA
+//! - [`elastic_tolerance_band_joint`] — Joint amplitude + phase bands (single alignment)
 //! - [`conformal_prediction_band`] — Distribution-free conformal prediction band
 //! - [`scb_mean_degras`] — Simultaneous confidence band for the mean (Degras method)
 //! - [`exponential_family_tolerance_band`] — Tolerance band for exponential family data
@@ -26,11 +29,12 @@ mod tests;
 // Re-export all public items so lib.rs doesn't change
 pub use conformal::conformal_prediction_band;
 pub use degras::scb_mean_degras;
-pub use elastic::elastic_tolerance_band;
+pub use elastic::{elastic_tolerance_band, elastic_tolerance_band_joint, phase_tolerance_band};
 pub use equivalence::{equivalence_test, equivalence_test_one_sample};
 pub use exponential::exponential_family_tolerance_band;
 pub use fpca::fpca_tolerance_band;
 pub use types::{
-    BandType, EquivalenceBootstrap, EquivalenceTestResult, ExponentialFamily,
-    MultiplierDistribution, NonConformityScore, ToleranceBand,
+    BandType, ElasticToleranceBandResult, ElasticToleranceConfig, EquivalenceBootstrap,
+    EquivalenceTestResult, ExponentialFamily, MultiplierDistribution, NonConformityScore,
+    PhaseToleranceBand, ToleranceBand,
 };

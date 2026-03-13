@@ -146,10 +146,12 @@ pub use irreg_fdata::{IrregFdata, KernelType};
 
 // Re-export tolerance band types
 pub use tolerance::{
-    conformal_prediction_band, elastic_tolerance_band, equivalence_test,
-    equivalence_test_one_sample, exponential_family_tolerance_band, fpca_tolerance_band,
-    scb_mean_degras, BandType, EquivalenceBootstrap, EquivalenceTestResult, ExponentialFamily,
-    MultiplierDistribution, NonConformityScore, ToleranceBand,
+    conformal_prediction_band, elastic_tolerance_band, elastic_tolerance_band_joint,
+    equivalence_test, equivalence_test_one_sample, exponential_family_tolerance_band,
+    fpca_tolerance_band, phase_tolerance_band, scb_mean_degras, BandType,
+    ElasticToleranceBandResult, ElasticToleranceConfig, EquivalenceBootstrap,
+    EquivalenceTestResult, ExponentialFamily, MultiplierDistribution, NonConformityScore,
+    PhaseToleranceBand, ToleranceBand,
 };
 
 // Re-export FAMM types

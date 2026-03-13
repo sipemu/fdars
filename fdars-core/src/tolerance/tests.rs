@@ -593,6 +593,280 @@ fn test_elastic_band_invalid_input() {
     assert!(elastic_tolerance_band(&tiny, &t, 1, 10, 0.95, BandType::Pointwise, 5, 42).is_err());
 }
 
+// ── Phase tolerance band tests ──
+
+#[test]
+fn test_phase_band_valid_output() {
+    let (data, t) = make_elastic_test_data();
+    let m = t.len();
+
+    let phase = phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 42);
+    let phase = phase.expect("Phase band should succeed");
+
+    assert_eq!(phase.gamma_lower.len(), m);
+    assert_eq!(phase.gamma_upper.len(), m);
+    assert_eq!(phase.gamma_center.len(), m);
+    assert_eq!(phase.tangent_band.lower.len(), m);
+    assert_eq!(phase.tangent_band.upper.len(), m);
+}
+
+#[test]
+fn test_phase_band_boundary_conditions() {
+    let (data, t) = make_elastic_test_data();
+
+    let phase = phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 42).unwrap();
+    let m = t.len();
+
+    // Warping functions must fix the domain endpoints
+    assert!(
+        (phase.gamma_lower[0] - t[0]).abs() < 1e-10,
+        "gamma_lower must start at t[0], got {}",
+        phase.gamma_lower[0]
+    );
+    assert!(
+        (phase.gamma_upper[0] - t[0]).abs() < 1e-10,
+        "gamma_upper must start at t[0], got {}",
+        phase.gamma_upper[0]
+    );
+    assert!(
+        (phase.gamma_lower[m - 1] - t[m - 1]).abs() < 1e-10,
+        "gamma_lower must end at t[m-1], got {}",
+        phase.gamma_lower[m - 1]
+    );
+    assert!(
+        (phase.gamma_upper[m - 1] - t[m - 1]).abs() < 1e-10,
+        "gamma_upper must end at t[m-1], got {}",
+        phase.gamma_upper[m - 1]
+    );
+}
+
+#[test]
+fn test_phase_band_monotonicity() {
+    let (data, t) = make_elastic_test_data();
+
+    let phase = phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 42).unwrap();
+
+    // Both gamma bounds should be non-decreasing (valid warps)
+    for j in 1..t.len() {
+        assert!(
+            phase.gamma_lower[j] >= phase.gamma_lower[j - 1] - 1e-10,
+            "gamma_lower not monotone at j={j}: {} < {}",
+            phase.gamma_lower[j],
+            phase.gamma_lower[j - 1]
+        );
+        assert!(
+            phase.gamma_upper[j] >= phase.gamma_upper[j - 1] - 1e-10,
+            "gamma_upper not monotone at j={j}: {} < {}",
+            phase.gamma_upper[j],
+            phase.gamma_upper[j - 1]
+        );
+    }
+}
+
+#[test]
+fn test_phase_band_center_is_identity() {
+    let (data, t) = make_elastic_test_data();
+
+    let phase = phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 42).unwrap();
+
+    // Center gamma should be the identity warp
+    for (j, &tj) in t.iter().enumerate() {
+        assert!(
+            (phase.gamma_center[j] - tj).abs() < 1e-10,
+            "gamma_center[{j}] = {}, expected {}",
+            phase.gamma_center[j],
+            tj
+        );
+    }
+}
+
+#[test]
+fn test_phase_band_deterministic() {
+    let (data, t) = make_elastic_test_data();
+
+    let p1 = phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 123).unwrap();
+    let p2 = phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 123).unwrap();
+
+    for j in 0..t.len() {
+        assert_eq!(p1.gamma_lower[j], p2.gamma_lower[j]);
+        assert_eq!(p1.gamma_upper[j], p2.gamma_upper[j]);
+    }
+}
+
+#[test]
+fn test_phase_band_higher_coverage_wider() {
+    let (data, t) = make_elastic_test_data();
+
+    let p90 = phase_tolerance_band(&data, &t, 3, 100, 0.90, BandType::Pointwise, 5, 42).unwrap();
+    let p99 = phase_tolerance_band(&data, &t, 3, 100, 0.99, BandType::Pointwise, 5, 42).unwrap();
+
+    let hw90: f64 = p90.tangent_band.half_width.iter().sum();
+    let hw99: f64 = p99.tangent_band.half_width.iter().sum();
+
+    assert!(
+        hw99 > hw90,
+        "99% phase band should be wider than 90%: hw99={hw99:.4}, hw90={hw90:.4}"
+    );
+}
+
+#[test]
+fn test_phase_band_invalid_input() {
+    let (data, t) = make_elastic_test_data();
+
+    // Wrong argvals length
+    let wrong_t = uniform_grid(t.len() + 1);
+    assert!(
+        phase_tolerance_band(&data, &wrong_t, 3, 50, 0.95, BandType::Pointwise, 5, 42).is_err()
+    );
+
+    // max_iter = 0
+    assert!(phase_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 0, 42).is_err());
+
+    // ncomp = 0
+    assert!(phase_tolerance_band(&data, &t, 0, 50, 0.95, BandType::Pointwise, 5, 42).is_err());
+
+    // nb = 0
+    assert!(phase_tolerance_band(&data, &t, 3, 0, 0.95, BandType::Pointwise, 5, 42).is_err());
+
+    // coverage out of range
+    assert!(phase_tolerance_band(&data, &t, 3, 50, 0.0, BandType::Pointwise, 5, 42).is_err());
+    assert!(phase_tolerance_band(&data, &t, 3, 50, 1.0, BandType::Pointwise, 5, 42).is_err());
+
+    // Too few observations
+    let tiny = FdMatrix::zeros(2, t.len());
+    assert!(phase_tolerance_band(&tiny, &t, 1, 10, 0.95, BandType::Pointwise, 5, 42).is_err());
+}
+
+// ── Joint elastic tolerance band tests ──
+
+#[test]
+fn test_joint_band_valid_output() {
+    let (data, t) = make_elastic_test_data();
+    let m = t.len();
+
+    let config = ElasticToleranceConfig {
+        max_iter: 5,
+        nb: 50,
+        ..ElasticToleranceConfig::default()
+    };
+    let result = elastic_tolerance_band_joint(&data, &t, &config);
+    let result = result.expect("Joint band should succeed");
+
+    // Amplitude band
+    assert_eq!(result.amplitude.lower.len(), m);
+    assert_eq!(result.amplitude.upper.len(), m);
+
+    // Phase band
+    assert_eq!(result.phase.gamma_lower.len(), m);
+    assert_eq!(result.phase.gamma_upper.len(), m);
+    assert_eq!(result.phase.gamma_center.len(), m);
+}
+
+#[test]
+fn test_joint_band_amplitude_matches_standalone() {
+    let (data, t) = make_elastic_test_data();
+
+    let standalone =
+        elastic_tolerance_band(&data, &t, 3, 50, 0.95, BandType::Pointwise, 5, 42).unwrap();
+
+    let config = ElasticToleranceConfig {
+        ncomp_amplitude: 3,
+        ncomp_phase: 3,
+        nb: 50,
+        coverage: 0.95,
+        band_type: BandType::Pointwise,
+        max_iter: 5,
+        tol: 1e-4,
+        seed: 42,
+    };
+    let joint = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+
+    // Same Karcher mean parameters and seed → same amplitude band
+    for j in 0..t.len() {
+        assert!(
+            (joint.amplitude.lower[j] - standalone.lower[j]).abs() < 1e-10,
+            "amplitude lower[{j}] mismatch: joint={}, standalone={}",
+            joint.amplitude.lower[j],
+            standalone.lower[j]
+        );
+        assert!(
+            (joint.amplitude.upper[j] - standalone.upper[j]).abs() < 1e-10,
+            "amplitude upper[{j}] mismatch: joint={}, standalone={}",
+            joint.amplitude.upper[j],
+            standalone.upper[j]
+        );
+    }
+}
+
+#[test]
+fn test_joint_band_deterministic() {
+    let (data, t) = make_elastic_test_data();
+
+    let config = ElasticToleranceConfig {
+        max_iter: 5,
+        nb: 50,
+        seed: 123,
+        ..ElasticToleranceConfig::default()
+    };
+    let r1 = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+    let r2 = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+
+    for j in 0..t.len() {
+        assert_eq!(r1.amplitude.lower[j], r2.amplitude.lower[j]);
+        assert_eq!(r1.phase.gamma_lower[j], r2.phase.gamma_lower[j]);
+    }
+}
+
+#[test]
+fn test_joint_band_invalid_config() {
+    let (data, t) = make_elastic_test_data();
+
+    // ncomp_phase = 0
+    let config = ElasticToleranceConfig {
+        ncomp_phase: 0,
+        max_iter: 5,
+        nb: 50,
+        ..ElasticToleranceConfig::default()
+    };
+    assert!(elastic_tolerance_band_joint(&data, &t, &config).is_err());
+
+    // ncomp_amplitude = 0
+    let config = ElasticToleranceConfig {
+        ncomp_amplitude: 0,
+        max_iter: 5,
+        nb: 50,
+        ..ElasticToleranceConfig::default()
+    };
+    assert!(elastic_tolerance_band_joint(&data, &t, &config).is_err());
+
+    // coverage out of range
+    let config = ElasticToleranceConfig {
+        coverage: 0.0,
+        max_iter: 5,
+        nb: 50,
+        ..ElasticToleranceConfig::default()
+    };
+    assert!(elastic_tolerance_band_joint(&data, &t, &config).is_err());
+}
+
+#[test]
+fn test_joint_band_default_config() {
+    let (data, t) = make_elastic_test_data();
+
+    let config = ElasticToleranceConfig {
+        max_iter: 5,
+        nb: 50,
+        ..ElasticToleranceConfig::default()
+    };
+    let result = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+
+    // Both bands should have valid structure
+    for j in 0..t.len() {
+        assert!(result.amplitude.lower[j] < result.amplitude.upper[j]);
+    }
+    assert!((result.phase.gamma_lower[0] - t[0]).abs() < 1e-10);
+}
+
 // ── Equivalence test (TOST) tests ──
 
 fn make_equivalent_groups() -> (FdMatrix, FdMatrix) {

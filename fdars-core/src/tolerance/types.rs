@@ -72,6 +72,72 @@ pub struct EquivalenceTestResult {
     pub alpha: f64,
 }
 
+/// Configuration for [`elastic_tolerance_band_joint`](super::elastic_tolerance_band_joint).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ElasticToleranceConfig {
+    /// Number of FPCA components for amplitude band.
+    pub ncomp_amplitude: usize,
+    /// Number of FPCA components for phase band.
+    pub ncomp_phase: usize,
+    /// Number of bootstrap replicates.
+    pub nb: usize,
+    /// Target coverage probability (e.g., 0.95).
+    pub coverage: f64,
+    /// Band type.
+    pub band_type: BandType,
+    /// Maximum iterations for Karcher mean convergence.
+    pub max_iter: usize,
+    /// Convergence tolerance for Karcher mean.
+    pub tol: f64,
+    /// Random seed for reproducibility.
+    pub seed: u64,
+}
+
+impl Default for ElasticToleranceConfig {
+    fn default() -> Self {
+        Self {
+            ncomp_amplitude: 3,
+            ncomp_phase: 3,
+            nb: 200,
+            coverage: 0.95,
+            band_type: BandType::Pointwise,
+            max_iter: 20,
+            tol: 1e-4,
+            seed: 42,
+        }
+    }
+}
+
+/// Phase tolerance band on warping functions.
+///
+/// Provides bounds on acceptable timing variation by mapping FPCA tolerance
+/// bands from the tangent space of the Hilbert sphere back to warping functions.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct PhaseToleranceBand {
+    /// Lower bound warping function (length m).
+    pub gamma_lower: Vec<f64>,
+    /// Upper bound warping function (length m).
+    pub gamma_upper: Vec<f64>,
+    /// Center (identity) warping function (length m).
+    pub gamma_center: Vec<f64>,
+    /// Tolerance band in tangent (shooting vector) space.
+    pub tangent_band: ToleranceBand,
+}
+
+/// Joint amplitude and phase elastic tolerance bands.
+///
+/// Returned by [`elastic_tolerance_band_joint`](super::elastic_tolerance_band_joint).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ElasticToleranceBandResult {
+    /// Amplitude tolerance band (on aligned curves).
+    pub amplitude: ToleranceBand,
+    /// Phase tolerance band (on warping functions).
+    pub phase: PhaseToleranceBand,
+}
+
 /// Exponential family for generalized FPCA tolerance bands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

@@ -51,6 +51,11 @@ pub use crate::spm::{
     ControlLimit, EwmaMonitorResult, FrccChart, MfSpmChart, MfpcaResult, SpmChart, SpmMonitorResult,
 };
 
+// Tolerance bands
+pub use crate::tolerance::{
+    ElasticToleranceBandResult, ElasticToleranceConfig, PhaseToleranceBand, ToleranceBand,
+};
+
 // Cross-validation
 pub use crate::cv::{CvMetrics, CvType};
 

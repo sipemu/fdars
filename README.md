@@ -103,7 +103,7 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ### Inference
 
-- **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands
+- **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands, elastic amplitude bands, phase tolerance bands on warping functions, joint amplitude + phase bands
 - **Conformal Prediction**: Split-conformal regression intervals (`conformal_fregre_lm`, `conformal_fregre_np`, `conformal_elastic_regression`), Jackknife+ intervals, and CV+ intervals
 - **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
 
