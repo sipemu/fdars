@@ -38,6 +38,7 @@ pub use error::FdarError;
 pub(crate) mod test_helpers;
 
 pub mod alignment;
+pub mod andrews;
 pub mod basis;
 pub mod classification;
 pub mod clustering;
@@ -64,6 +65,9 @@ pub mod tolerance;
 pub mod utility;
 pub mod warping;
 
+// Covariance kernels and Gaussian processes
+pub mod covariance;
+
 // Elastic analysis modules
 pub mod conformal;
 pub mod elastic;
@@ -78,6 +82,14 @@ pub mod smooth_basis;
 
 // Re-export matrix types
 pub use matrix::{FdCurveSet, FdMatrix};
+
+// Re-export Andrews curves types
+pub use andrews::{andrews_loadings, andrews_transform, AndrewsLoadings, AndrewsResult};
+
+// Re-export covariance kernel types
+pub use covariance::{
+    covariance_matrix, generate_gaussian_process, CovKernel, GaussianProcessResult,
+};
 
 // Re-export alignment types and functions
 pub use alignment::{

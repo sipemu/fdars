@@ -7,6 +7,9 @@
 //! - Fourier-based semimetric
 //! - Horizontal shift semimetric
 //! - Soft-DTW (differentiable DTW relaxation)
+//! - PCA-based semimetric
+//! - Derivative-based semimetric
+//! - Basis coefficient semimetric
 //! - Kullback-Leibler divergence
 
 use crate::iter_maybe_parallel;
@@ -14,11 +17,15 @@ use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
+pub mod basis_coef;
+pub mod deriv;
 pub mod dtw;
 pub mod fourier;
 pub mod hausdorff;
 pub mod hshift;
+pub mod kl;
 pub mod lp;
+pub mod pca;
 pub mod soft_dtw;
 
 #[cfg(test)]
@@ -126,13 +133,17 @@ pub(super) fn cross_distance_matrix(
 // Re-exports — preserves the external API
 // ---------------------------------------------------------------------------
 
+pub use basis_coef::{basis_coef_cross_1d, basis_coef_self_1d};
+pub use deriv::{deriv_cross_1d, deriv_self_1d};
 pub use dtw::{dtw_cross_1d, dtw_distance, dtw_self_1d};
 pub use fourier::{fourier_cross_1d, fourier_self_1d};
 pub use hausdorff::{
     hausdorff_3d, hausdorff_cross_1d, hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d,
 };
 pub use hshift::{hshift_cross_1d, hshift_self_1d};
+pub use kl::{kl_cross_1d, kl_self_1d};
 pub use lp::{lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d};
+pub use pca::{pca_cross_1d, pca_self_1d};
 pub use soft_dtw::{
     soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d,
     soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d, SoftDtwBarycenterResult,

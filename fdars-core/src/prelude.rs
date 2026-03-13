@@ -6,6 +6,8 @@
 //! ```
 
 // Core types
+pub use crate::andrews::{AndrewsLoadings, AndrewsResult};
+pub use crate::covariance::{CovKernel, GaussianProcessResult};
 pub use crate::error::FdarError;
 pub use crate::matrix::{FdCurveSet, FdMatrix};
 
@@ -25,7 +27,7 @@ pub use crate::explain_generic::{FpcPredictor, TaskType};
 // Depth functions
 pub use crate::depth::{
     band_1d, fraiman_muniz_1d, fraiman_muniz_2d, functional_spatial_1d, functional_spatial_2d,
-    modal_1d, modal_2d, modified_band_1d, random_projection_1d, random_tukey_1d,
+    modal_1d, modal_2d, modified_band_1d, random_projection_1d, random_tukey_1d, rpd_depth_1d,
 };
 
 // Metric functions

@@ -940,3 +940,522 @@ fn test_soft_dtw_divergence_reference_tslearn() {
         "divergence(x,x) should be ~0, got {div_xx}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// KL divergence tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_kl_identical_curves_zero() {
+    let m = 20;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let n = 4;
+    let mut col_major = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            col_major[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin().abs() + 0.1;
+        }
+    }
+    let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+    let dist = kl_self_1d(&data, &argvals, 1e-10);
+    for i in 0..n {
+        assert!(
+            dist[(i, i)].abs() < 1e-10,
+            "KL self-distance should be zero on diagonal, got {} at ({i},{i})",
+            dist[(i, i)]
+        );
+    }
+}
+
+#[test]
+fn test_kl_symmetric() {
+    let m = 20;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let n = 4;
+    let mut col_major = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            col_major[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin().abs() + 0.1;
+        }
+    }
+    let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+    let dist = kl_self_1d(&data, &argvals, 1e-10);
+    for i in 0..n {
+        for j in 0..n {
+            assert!(
+                (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
+                "KL distance should be symmetric at ({i},{j})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_kl_nonnegative() {
+    let m = 20;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let n = 5;
+    let mut col_major = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            col_major[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).cos().abs() + 0.05;
+        }
+    }
+    let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+    let dist = kl_self_1d(&data, &argvals, 1e-10);
+    for i in 0..n {
+        for j in 0..n {
+            assert!(
+                dist[(i, j)] >= -1e-12,
+                "KL divergence should be non-negative, got {} at ({i},{j})",
+                dist[(i, j)]
+            );
+        }
+    }
+}
+
+#[test]
+fn test_kl_epsilon_handles_zeros() {
+    let m = 10;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let n = 3;
+    let mut col_major = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            col_major[i + j * n] = if j % (i + 2) == 0 { 0.0 } else { 1.0 };
+        }
+    }
+    let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+    let dist = kl_self_1d(&data, &argvals, 1e-10);
+    for i in 0..n {
+        for j in 0..n {
+            assert!(
+                dist[(i, j)].is_finite(),
+                "KL with epsilon should produce finite values at ({i},{j})"
+            );
+            assert!(
+                dist[(i, j)] >= -1e-12,
+                "KL with epsilon should be non-negative at ({i},{j})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_kl_cross_dimensions() {
+    let m = 15;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let n1 = 3;
+    let n2 = 5;
+    let data1 = FdMatrix::from_column_major(
+        (0..(n1 * m))
+            .map(|i| (i as f64 * 0.1).sin().abs() + 0.01)
+            .collect(),
+        n1,
+        m,
+    )
+    .unwrap();
+    let data2 = FdMatrix::from_column_major(
+        (0..(n2 * m))
+            .map(|i| (i as f64 * 0.2).cos().abs() + 0.01)
+            .collect(),
+        n2,
+        m,
+    )
+    .unwrap();
+    let dist = kl_cross_1d(&data1, &data2, &argvals, 1e-10);
+    assert_eq!(dist.nrows(), n1);
+    assert_eq!(dist.ncols(), n2);
+    for i in 0..n1 {
+        for j in 0..n2 {
+            assert!(
+                dist[(i, j)].is_finite(),
+                "KL cross distance should be finite at ({i},{j})"
+            );
+            assert!(
+                dist[(i, j)] >= -1e-12,
+                "KL cross distance should be non-negative at ({i},{j})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_kl_known_distributions() {
+    let m = 101;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let mut col_major = vec![0.0; 2 * m];
+    for j in 0..m {
+        let t = argvals[j];
+        col_major[0 + j * 2] = 0.5 + t;
+        col_major[1 + j * 2] = 1.5 - t;
+    }
+    let data = FdMatrix::from_column_major(col_major, 2, m).unwrap();
+    let dist = kl_self_1d(&data, &argvals, 1e-12);
+    assert!(
+        dist[(0, 1)] > 0.0,
+        "KL between different distributions should be positive, got {}",
+        dist[(0, 1)]
+    );
+    assert!(dist[(0, 1)].is_finite());
+    assert!(dist[(0, 0)].abs() < 1e-10);
+    assert!((dist[(0, 1)] - dist[(1, 0)]).abs() < 1e-10);
+}
+
+#[test]
+fn test_kl_empty_input() {
+    let empty = FdMatrix::zeros(0, 0);
+    assert!(kl_self_1d(&empty, &[], 1e-10).is_empty());
+    assert!(kl_cross_1d(&empty, &empty, &[], 1e-10).is_empty());
+}
+
+#[test]
+fn test_kl_cross_self_consistent() {
+    let m = 20;
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let n = 4;
+    let mut col_major = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            col_major[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin().abs() + 0.1;
+        }
+    }
+    let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+    let cross = kl_cross_1d(&data, &data, &argvals, 1e-10);
+    for i in 0..n {
+        assert!(
+            cross[(i, i)].abs() < 1e-10,
+            "Cross-self diagonal should be ~0, got {} at ({i},{i})",
+            cross[(i, i)]
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PCA-based semimetric tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_pca_self_identical_zero() {
+    let n = 5;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let mut flat = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            flat[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin();
+        }
+    }
+    let data = FdMatrix::from_column_major(flat, n, m).unwrap();
+    let dist = pca_self_1d(&data, 2).unwrap();
+    assert_eq!(dist.shape(), (n, n));
+    for i in 0..n {
+        assert!(
+            dist[(i, i)].abs() < 1e-10,
+            "PCA self-distance should be zero on diagonal, got {}",
+            dist[(i, i)]
+        );
+    }
+}
+
+#[test]
+fn test_pca_self_symmetric() {
+    let n = 4;
+    let m = 15;
+    let data =
+        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
+            .unwrap();
+    let dist = pca_self_1d(&data, 2).unwrap();
+    for i in 0..n {
+        for j in 0..n {
+            assert!(
+                (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
+                "PCA distance should be symmetric"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_pca_self_ncomp_zero_error() {
+    let data = FdMatrix::from_column_major(vec![1.0; 20], 2, 10).unwrap();
+    assert!(pca_self_1d(&data, 0).is_err());
+}
+
+#[test]
+fn test_pca_self_ncomp_too_large_error() {
+    let data = FdMatrix::from_column_major(vec![1.0; 20], 2, 10).unwrap();
+    assert!(pca_self_1d(&data, 3).is_err());
+}
+
+#[test]
+fn test_pca_self_too_few_rows_error() {
+    let data = FdMatrix::from_column_major(vec![1.0; 10], 1, 10).unwrap();
+    assert!(pca_self_1d(&data, 1).is_err());
+}
+
+#[test]
+fn test_pca_cross_dimensions() {
+    let n1 = 3;
+    let n2 = 4;
+    let m = 20;
+    let data1 = FdMatrix::from_column_major(
+        (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+        n1,
+        m,
+    )
+    .unwrap();
+    let data2 = FdMatrix::from_column_major(
+        (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+        n2,
+        m,
+    )
+    .unwrap();
+    let dist = pca_cross_1d(&data1, &data2, 2).unwrap();
+    assert_eq!(dist.nrows(), n1);
+    assert_eq!(dist.ncols(), n2);
+}
+
+#[test]
+fn test_pca_cross_self_consistent() {
+    let n = 5;
+    let m = 20;
+    let data =
+        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
+            .unwrap();
+    let self_dist = pca_self_1d(&data, 2).unwrap();
+    let cross_dist = pca_cross_1d(&data, &data, 2).unwrap();
+    for i in 0..n {
+        assert!(
+            cross_dist[(i, i)].abs() < 1e-8,
+            "PCA cross-self diagonal should be ~0, got {}",
+            cross_dist[(i, i)]
+        );
+    }
+    for i in 0..n {
+        for j in (i + 1)..n {
+            assert!(
+                (self_dist[(i, j)] - cross_dist[(i, j)]).abs() < 1e-8,
+                "PCA cross(data,data) should match self at ({i},{j})"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Derivative-based semimetric tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_deriv_self_identical_zero() {
+    let n = 4;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let mut flat = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            flat[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin();
+        }
+    }
+    let data = FdMatrix::from_column_major(flat, n, m).unwrap();
+    let dist = deriv_self_1d(&data, &argvals, 1, &[]);
+    assert_eq!(dist.shape(), (n, n));
+    for i in 0..n {
+        assert!(
+            dist[(i, i)].abs() < 1e-10,
+            "Derivative self-distance should be zero on diagonal, got {}",
+            dist[(i, i)]
+        );
+    }
+}
+
+#[test]
+fn test_deriv_self_symmetric() {
+    let n = 4;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let data =
+        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
+            .unwrap();
+    let dist = deriv_self_1d(&data, &argvals, 1, &[]);
+    for i in 0..n {
+        for j in 0..n {
+            assert!(
+                (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
+                "Derivative distance should be symmetric"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_deriv_self_second_derivative() {
+    let n = 3;
+    let m = 30;
+    let argvals = uniform_grid(m);
+    let data =
+        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
+            .unwrap();
+    let dist = deriv_self_1d(&data, &argvals, 2, &[]);
+    assert_eq!(dist.shape(), (n, n));
+    for i in 0..n {
+        assert!(
+            dist[(i, i)].abs() < 1e-10,
+            "Second derivative self-distance should be zero"
+        );
+    }
+}
+
+#[test]
+fn test_deriv_cross_dimensions() {
+    let n1 = 3;
+    let n2 = 4;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let data1 = FdMatrix::from_column_major(
+        (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+        n1,
+        m,
+    )
+    .unwrap();
+    let data2 = FdMatrix::from_column_major(
+        (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+        n2,
+        m,
+    )
+    .unwrap();
+    let dist = deriv_cross_1d(&data1, &data2, &argvals, 1, &[]);
+    assert_eq!(dist.nrows(), n1);
+    assert_eq!(dist.ncols(), n2);
+}
+
+#[test]
+fn test_deriv_empty() {
+    let empty = FdMatrix::zeros(0, 0);
+    assert!(deriv_self_1d(&empty, &[], 1, &[]).is_empty());
+    assert!(deriv_cross_1d(&empty, &empty, &[], 1, &[]).is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Basis coefficient semimetric tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_basis_coef_self_identical_zero() {
+    let n = 4;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let mut flat = vec![0.0; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            flat[i + j * n] = (2.0 * PI * argvals[j] * (i as f64 + 1.0)).sin();
+        }
+    }
+    let data = FdMatrix::from_column_major(flat, n, m).unwrap();
+    let dist = basis_coef_self_1d(
+        &data,
+        &argvals,
+        7,
+        crate::basis::ProjectionBasisType::Fourier,
+    );
+    assert_eq!(dist.shape(), (n, n));
+    for i in 0..n {
+        assert!(
+            dist[(i, i)].abs() < 1e-10,
+            "Basis coef self-distance should be zero on diagonal, got {}",
+            dist[(i, i)]
+        );
+    }
+}
+
+#[test]
+fn test_basis_coef_self_symmetric() {
+    let n = 4;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let data =
+        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
+            .unwrap();
+    let dist = basis_coef_self_1d(
+        &data,
+        &argvals,
+        7,
+        crate::basis::ProjectionBasisType::Fourier,
+    );
+    for i in 0..n {
+        for j in 0..n {
+            assert!(
+                (dist[(i, j)] - dist[(j, i)]).abs() < 1e-10,
+                "Basis coef distance should be symmetric"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_basis_coef_cross_dimensions() {
+    let n1 = 3;
+    let n2 = 4;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let data1 = FdMatrix::from_column_major(
+        (0..(n1 * m)).map(|i| (i as f64 * 0.1).sin()).collect(),
+        n1,
+        m,
+    )
+    .unwrap();
+    let data2 = FdMatrix::from_column_major(
+        (0..(n2 * m)).map(|i| (i as f64 * 0.2).cos()).collect(),
+        n2,
+        m,
+    )
+    .unwrap();
+    let dist = basis_coef_cross_1d(
+        &data1,
+        &data2,
+        &argvals,
+        7,
+        crate::basis::ProjectionBasisType::Fourier,
+    );
+    assert_eq!(dist.nrows(), n1);
+    assert_eq!(dist.ncols(), n2);
+}
+
+#[test]
+fn test_basis_coef_bspline() {
+    let n = 3;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let data =
+        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
+            .unwrap();
+    let dist = basis_coef_self_1d(
+        &data,
+        &argvals,
+        7,
+        crate::basis::ProjectionBasisType::Bspline,
+    );
+    assert_eq!(dist.shape(), (n, n));
+    for i in 0..n {
+        assert!(
+            dist[(i, i)].abs() < 1e-10,
+            "Bspline basis coef self-distance should be zero"
+        );
+    }
+}
+
+#[test]
+fn test_basis_coef_empty() {
+    let empty = FdMatrix::zeros(0, 0);
+    assert!(
+        basis_coef_self_1d(&empty, &[], 7, crate::basis::ProjectionBasisType::Fourier).is_empty()
+    );
+    assert!(basis_coef_cross_1d(
+        &empty,
+        &empty,
+        &[],
+        7,
+        crate::basis::ProjectionBasisType::Fourier
+    )
+    .is_empty());
+}

@@ -13,6 +13,7 @@ pub mod fraiman_muniz;
 pub mod modal;
 pub mod random_projection;
 pub mod random_tukey;
+pub mod rpd;
 pub mod spatial;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ pub use random_projection::{
     random_projection_1d, random_projection_1d_seeded, random_projection_2d,
 };
 pub use random_tukey::{random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d};
+pub use rpd::{rpd_depth_1d, rpd_depth_1d_seeded};
 pub use spatial::{
     functional_spatial_1d, functional_spatial_2d, kernel_functional_spatial_1d,
     kernel_functional_spatial_2d,

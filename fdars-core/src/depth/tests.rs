@@ -479,3 +479,135 @@ fn test_inf_spatial_depth() {
     assert_eq!(depths.len(), n);
     // Should not panic
 }
+
+// ============== RPD depth tests ==============
+
+#[test]
+fn test_rpd_nderiv0_matches_rp() {
+    let n = 10;
+    let m = 20;
+    let data = generate_centered_data(n, m);
+    let argvals = uniform_grid(m);
+    let seed = Some(42u64);
+
+    let rp = random_projection_1d_seeded(&data, &data, 50, seed);
+    let rpd = rpd_depth_1d_seeded(&data, &data, &argvals, 50, 0, seed);
+
+    assert_eq!(rp.len(), rpd.len());
+    for (r, d) in rp.iter().zip(rpd.iter()) {
+        assert!(
+            (r - d).abs() < 1e-12,
+            "RPD(nderiv=0) should match RP depth: {} vs {}",
+            r,
+            d
+        );
+    }
+}
+
+#[test]
+fn test_rpd_range() {
+    let n = 15;
+    let m = 20;
+    let data = generate_centered_data(n, m);
+    let argvals = uniform_grid(m);
+
+    for nderiv in 0..=3 {
+        let depths = rpd_depth_1d(&data, &data, &argvals, 100, nderiv);
+        assert_eq!(depths.len(), n);
+        for d in &depths {
+            assert!(
+                *d >= 0.0 && *d <= 1.0,
+                "RPD depth should be in [0, 1], got {} (nderiv={})",
+                d,
+                nderiv
+            );
+        }
+    }
+}
+
+#[test]
+fn test_rpd_nderiv1_differs_from_nderiv0() {
+    let n = 10;
+    let m = 20;
+    let argvals = uniform_grid(m);
+    let mut data_vec = vec![0.0; n * m];
+    for i in 0..n {
+        let freq = 1.0 + i as f64 * 0.5;
+        for j in 0..m {
+            data_vec[i + j * n] = (freq * PI * argvals[j]).sin();
+        }
+    }
+    let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+    let seed = Some(42u64);
+
+    let d0 = rpd_depth_1d_seeded(&data, &data, &argvals, 200, 0, seed);
+    let d1 = rpd_depth_1d_seeded(&data, &data, &argvals, 200, 1, seed);
+
+    let any_differ = d0.iter().zip(d1.iter()).any(|(a, b)| (a - b).abs() > 1e-10);
+    assert!(
+        any_differ,
+        "RPD(nderiv=1) should produce different values than RPD(nderiv=0)"
+    );
+}
+
+#[test]
+fn test_rpd_central_deeper() {
+    let n = 20;
+    let m = 30;
+    let data = generate_centered_data(n, m);
+    let argvals = uniform_grid(m);
+
+    let depths = rpd_depth_1d_seeded(&data, &data, &argvals, 200, 1, Some(123));
+
+    let central_depth = depths[n / 2];
+    let edge_depth = depths[0];
+    assert!(
+        central_depth > edge_depth,
+        "Central curve should have higher RPD depth: {} > {}",
+        central_depth,
+        edge_depth
+    );
+}
+
+#[test]
+fn test_rpd_seeded_deterministic() {
+    let n = 10;
+    let m = 20;
+    let data = generate_centered_data(n, m);
+    let argvals = uniform_grid(m);
+    let seed = Some(99u64);
+
+    let d1 = rpd_depth_1d_seeded(&data, &data, &argvals, 50, 2, seed);
+    let d2 = rpd_depth_1d_seeded(&data, &data, &argvals, 50, 2, seed);
+
+    assert_eq!(d1.len(), d2.len());
+    for (a, b) in d1.iter().zip(d2.iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "Seeded RPD should be deterministic: {} vs {}",
+            a,
+            b
+        );
+    }
+}
+
+#[test]
+fn test_rpd_empty_data() {
+    let empty = FdMatrix::zeros(0, 0);
+    let argvals: Vec<f64> = Vec::new();
+    assert!(rpd_depth_1d(&empty, &empty, &argvals, 10, 1).is_empty());
+}
+
+#[test]
+fn test_rpd_m_leq_nderiv() {
+    let data = FdMatrix::from_column_major(vec![1.0, 2.0], 2, 1).unwrap();
+    let argvals = vec![0.0];
+    let depths = rpd_depth_1d(&data, &data, &argvals, 10, 2);
+    assert_eq!(depths.len(), 2);
+    for d in &depths {
+        assert!(
+            (*d - 0.0).abs() < 1e-15,
+            "Should return zeros when m <= nderiv"
+        );
+    }
+}

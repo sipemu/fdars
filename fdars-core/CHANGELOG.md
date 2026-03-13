@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Andrews curves** (`andrews.rs`): `andrews_transform` maps p-dimensional observations to Fourier curves on [-π,π]; `andrews_loadings` visualizes FPCA loading vectors as Andrews curves; `AndrewsResult`, `AndrewsLoadings` types
+- **Covariance kernels & GP** (`covariance.rs`): `CovKernel` enum with 8 kernel types (Gaussian, Exponential, Matérn, Brownian, Periodic, Linear, Polynomial, White Noise) and Sum/Product kernel algebra; `covariance_matrix` builds m×m kernel matrices; `generate_gaussian_process` produces n GP sample paths via Cholesky decomposition; `GaussianProcessResult` type
+- **RPD depth** (`depth/rpd.rs`): Random Projection with Derivatives depth — enriches random projections with finite-difference derivative information for shape-sensitive depth ordering; `rpd_depth_1d`, `rpd_depth_1d_seeded`
+- **Three distance semimetrics**: PCA-based (`metric/pca.rs`, L2 in PC score space via SVD), derivative-based (`metric/deriv.rs`, L2 between k-th finite differences), basis coefficient (`metric/basis_coef.rs`, Euclidean distance in B-spline/Fourier coefficient space); each with `_self_1d` and `_cross_1d` variants
+- **KL divergence** (`metric/kl.rs`): symmetrized Kullback-Leibler divergence treating curves as probability densities with epsilon regularization; `kl_self_1d`, `kl_cross_1d`
 - **Robust regression** (`scalar_on_function/robust.rs`): L1 (LAD) regression via IRLS (`fregre_l1`), Huber M-estimation (`fregre_huber`), prediction (`predict_fregre_robust`), and `FregreRobustResult` struct
 - **Predict/project methods on result types**: `FpcaResult::project()`/`reconstruct()`, `PlsResult::project()`, `KmeansResult::predict()`, `FuzzyCmeansResult::predict()`
 - **`FdMatrix::iter_rows()`/`iter_columns()`**: row iterator (yields `Vec<f64>`), column iterator (zero-copy `&[f64]`)
 - **Builder configs for smooth_basis**: `SmoothBasisGcvConfig`, `BasisNbasisCvConfig` with `Default` impls and `_with_config()` entry points
 - **3 new benchmark files**: `smoothing_benchmarks.rs` (33 cases), `basis_benchmarks.rs` (22 cases), `matrix_benchmarks.rs` (45 cases)
+- 89 new tests for Andrews curves (17), covariance/GP (35), RPD depth (7), semimetrics (22), KL divergence (8)
 - 119 new `explain_generic` tests, 72 new `smooth_basis` tests, 14 new `famm` tests, and more across regression, clustering, matrix modules
 
 ### Changed

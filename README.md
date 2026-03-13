@@ -19,15 +19,17 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ### Core Operations
 
-- **Simulation**: Karhunen-Loève expansion with Fourier/Legendre/Wiener eigenfunctions, pointwise and curve-level noise
+- **Simulation**: Karhunen-Loève expansion with Fourier/Legendre/Wiener eigenfunctions, pointwise and curve-level noise; Gaussian process generation with 8 covariance kernels and kernel algebra
 - **Functional Data Operations**: Mean, centering, derivatives, Lp norms, geometric median
+- **Andrews Curves**: Fourier-based bijection mapping multivariate observations to functional curves; FPCA loading visualization
+- **Covariance Kernels**: Gaussian, Exponential, Matérn, Brownian, Periodic, Linear, Polynomial, White Noise with Sum/Product kernel algebra
 - **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
 - **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
 
 ### Descriptive Analysis
 
-- **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, functional spatial, kernel functional spatial, modified epigraph index
-- **Distance Metrics**: Lp distances, Hausdorff, DTW, Soft-DTW (with barycenter averaging), elastic (Fisher-Rao), amplitude/phase distances, Fourier-based semimetric, horizontal shift semimetric
+- **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, RPD (random projection with derivatives), functional spatial, kernel functional spatial, modified epigraph index
+- **Distance Metrics**: Lp distances, Hausdorff, DTW, Soft-DTW (with barycenter averaging), elastic (Fisher-Rao), amplitude/phase distances, Fourier-based semimetric, horizontal shift semimetric, PCA-based semimetric, derivative-based semimetric, basis coefficient semimetric, KL divergence
 - **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
 
 ### Regression
