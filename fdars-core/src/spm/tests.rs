@@ -1,7 +1,7 @@
 //! Comprehensive tests for the SPM module.
 
 #[cfg(test)]
-mod tests {
+mod spm_tests {
     use crate::matrix::FdMatrix;
     use crate::spm::chi_squared::{chi2_cdf, chi2_quantile};
     use crate::spm::contrib::{spe_contributions, t2_contributions};
@@ -261,7 +261,7 @@ mod tests {
         };
 
         let chart = spm_phase1(&data, &argvals, &config).unwrap();
-        assert_eq!(chart.t2_phase1.len() + 0, chart.spe_phase1.len()); // same length
+        assert_eq!(chart.t2_phase1.len(), chart.spe_phase1.len()); // same length
         assert!(chart.t2_limit.ucl > 0.0);
         assert!(chart.spe_limit.ucl > 0.0);
 

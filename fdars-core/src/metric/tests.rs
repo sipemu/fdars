@@ -1087,7 +1087,7 @@ fn test_kl_known_distributions() {
     let mut col_major = vec![0.0; 2 * m];
     for j in 0..m {
         let t = argvals[j];
-        col_major[0 + j * 2] = 0.5 + t;
+        col_major[j * 2] = 0.5 + t;
         col_major[1 + j * 2] = 1.5 - t;
     }
     let data = FdMatrix::from_column_major(col_major, 2, m).unwrap();

@@ -537,8 +537,8 @@ fn scosh_predict_on_training_data_matches_fitted() {
     // may differ slightly from the iterative alignment in fitting.
     // Use a generous tolerance.
     let mut max_diff = 0.0_f64;
-    for i in 0..n {
-        let diff = (preds[i] - fit.fitted_values[i]).abs();
+    for (pred, fitted) in preds.iter().zip(fit.fitted_values.iter()) {
+        let diff = (pred - fitted).abs();
         max_diff = max_diff.max(diff);
     }
 

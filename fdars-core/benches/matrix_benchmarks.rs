@@ -143,7 +143,7 @@ fn bench_row_dot(c: &mut Criterion) {
         // Benchmark all-pairs dot product for first 50 rows
         let n_pairs = nrows.min(50);
         group.bench_with_input(
-            BenchmarkId::new(&format!("pairs_{}", n_pairs), &label),
+            BenchmarkId::new(format!("pairs_{}", n_pairs), &label),
             &label,
             |b, _| {
                 b.iter(|| {
@@ -178,7 +178,7 @@ fn bench_row_l2_sq(c: &mut Criterion) {
 
         let n_pairs = nrows.min(50);
         group.bench_with_input(
-            BenchmarkId::new(&format!("pairs_{}", n_pairs), &label),
+            BenchmarkId::new(format!("pairs_{}", n_pairs), &label),
             &label,
             |b, _| {
                 b.iter(|| {
