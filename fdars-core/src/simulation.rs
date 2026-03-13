@@ -358,6 +358,17 @@ pub fn sim_kl(
 ///
 /// # Returns
 /// Data `FdMatrix` of size `n × len(t)`
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::simulation::{sim_fundata, EFunType, EValType};
+///
+/// let t: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let data = sim_fundata(5, &t, 4, EFunType::Fourier, EValType::Linear, Some(42));
+/// assert_eq!(data.shape(), (5, 20));
+/// assert!(data.as_slice().iter().all(|v| v.is_finite()));
+/// ```
 pub fn sim_fundata(
     n: usize,
     t: &[f64],

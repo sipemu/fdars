@@ -32,6 +32,28 @@ pub struct FpcShapValues {
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or its column
 /// count does not match `fit.fpca.mean`.
 /// Returns [`FdarError::InvalidParameter`] if `fit.ncomp` is zero.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::scalar_on_function::fregre_lm;
+/// use fdars_core::explain::fpc_shap_values;
+///
+/// let (n, m) = (20, 30);
+/// let data = FdMatrix::from_column_major(
+///     (0..n * m).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * j * 0.2).sin()
+///     }).collect(),
+///     n, m,
+/// ).unwrap();
+/// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
+/// let fit = fregre_lm(&data, &y, None, 3).unwrap();
+/// let shap = fpc_shap_values(&fit, &data, None).unwrap();
+/// assert_eq!(shap.values.shape(), (20, 3));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_shap_values(
     fit: &FregreLmResult,

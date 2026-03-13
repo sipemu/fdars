@@ -305,6 +305,35 @@ fn drop_intercept_rows(full: &FdMatrix, p: usize, m: usize) -> FdMatrix {
     out
 }
 
+/// Penalized function-on-scalar regression.
+///
+/// Fits the model `X_i(t) = mu(t) + sum_j beta_j(t) * z_ij + epsilon_i(t)`
+/// using pointwise OLS with second-order roughness penalty smoothing.
+///
+/// # Arguments
+/// * `data` - Functional response matrix (n x m)
+/// * `predictors` - Scalar predictor matrix (n x p)
+/// * `lambda` - Roughness penalty (negative for automatic GCV selection)
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::function_on_scalar::fosr;
+///
+/// // 10 curves at 15 grid points, 2 scalar predictors
+/// let data = FdMatrix::from_column_major(
+///     (0..150).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     10, 15,
+/// ).unwrap();
+/// let predictors = FdMatrix::from_column_major(
+///     (0..20).map(|i| i as f64 / 19.0).collect(),
+///     10, 2,
+/// ).unwrap();
+/// let result = fosr(&data, &predictors, 0.1).unwrap();
+/// assert_eq!(result.fitted.shape(), (10, 15));
+/// assert_eq!(result.intercept.len(), 15);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fosr(data: &FdMatrix, predictors: &FdMatrix, lambda: f64) -> Result<FosrResult, FdarError> {
     let (n, m) = data.shape();
@@ -897,11 +926,8 @@ impl FosrResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::uniform_grid;
     use std::f64::consts::PI;
-
-    fn uniform_grid(m: usize) -> Vec<f64> {
-        (0..m).map(|j| j as f64 / (m - 1) as f64).collect()
-    }
 
     fn generate_fosr_data(n: usize, m: usize) -> (FdMatrix, FdMatrix) {
         let t = uniform_grid(m);

@@ -16,6 +16,21 @@ use crate::matrix::FdMatrix;
 ///
 /// # Returns
 /// FdMatrix of SRSFs with the same shape as input.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::alignment::srsf_transform;
+///
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let data = FdMatrix::from_column_major(
+///     argvals.iter().map(|&t| (t * 6.0).sin()).collect(),
+///     1, 20,
+/// ).unwrap();
+/// let srsf = srsf_transform(&data, &argvals);
+/// assert_eq!(srsf.shape(), (1, 20));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn srsf_transform(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
     let (n, m) = data.shape();

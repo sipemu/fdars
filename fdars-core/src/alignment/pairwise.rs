@@ -23,6 +23,19 @@ use rayon::iter::ParallelIterator;
 ///
 /// # Returns
 /// [`AlignmentResult`] with warping function, aligned curve, and elastic distance.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::elastic_align_pair;
+///
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let f1: Vec<f64> = argvals.iter().map(|&t| (t * 6.0).sin()).collect();
+/// let f2: Vec<f64> = argvals.iter().map(|&t| ((t + 0.1) * 6.0).sin()).collect();
+/// let result = elastic_align_pair(&f1, &f2, &argvals, 0.0);
+/// assert_eq!(result.f_aligned.len(), 20);
+/// assert!(result.distance >= 0.0);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> AlignmentResult {
     let q1 = srsf_single(f1, argvals);
@@ -39,6 +52,18 @@ pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) 
 /// * `f2` — Second curve (length m)
 /// * `argvals` — Evaluation points (length m)
 /// * `lambda` — Penalty weight on warp deviation from identity (0.0 = no penalty)
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::elastic_distance;
+///
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let f1: Vec<f64> = argvals.iter().map(|&t| (t * 6.0).sin()).collect();
+/// let f2: Vec<f64> = argvals.iter().map(|&t| ((t + 0.1) * 6.0).sin()).collect();
+/// let d = elastic_distance(&f1, &f2, &argvals, 0.0);
+/// assert!(d >= 0.0);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_distance(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> f64 {
     elastic_align_pair(f1, f2, argvals, lambda).distance

@@ -51,6 +51,18 @@ fn get_kernel(kernel_type: &str) -> fn(f64) -> f64 {
 ///
 /// # Returns
 /// Smoothed values at x_new
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::smoothing::nadaraya_watson;
+///
+/// let x: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let y: Vec<f64> = x.iter().map(|&xi| (xi * 6.0).sin()).collect();
+/// let smoothed = nadaraya_watson(&x, &y, &x, 0.1, "gaussian");
+/// assert_eq!(smoothed.len(), 20);
+/// assert!(smoothed.iter().all(|v| v.is_finite()));
+/// ```
 pub fn nadaraya_watson(
     x: &[f64],
     y: &[f64],
@@ -97,6 +109,19 @@ pub fn nadaraya_watson(
 ///
 /// # Returns
 /// Smoothed values at x_new
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::smoothing::local_linear;
+///
+/// let x: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
+/// let y: Vec<f64> = x.iter().map(|&xi| 2.0 * xi + 1.0).collect();
+/// let smoothed = local_linear(&x, &y, &x, 0.2, "gaussian");
+/// assert_eq!(smoothed.len(), 30);
+/// // Local linear should fit linear data well in the interior
+/// assert!((smoothed[15] - (2.0 * x[15] + 1.0)).abs() < 0.1);
+/// ```
 pub fn local_linear(x: &[f64], y: &[f64], x_new: &[f64], bandwidth: f64, kernel: &str) -> Vec<f64> {
     let n = x.len();
     if n == 0 || y.len() != n || x_new.is_empty() || bandwidth <= 0.0 {
@@ -485,6 +510,18 @@ pub fn gcv_smoother(x: &[f64], y: &[f64], bandwidth: f64, kernel: &str) -> f64 {
 /// * `criterion` — CV or GCV
 /// * `kernel` — Kernel type
 /// * `n_grid` — Number of grid points (default: 50)
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::smoothing::{optim_bandwidth, CvCriterion};
+///
+/// let x: Vec<f64> = (0..25).map(|i| i as f64 / 24.0).collect();
+/// let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+/// let result = optim_bandwidth(&x, &y, None, CvCriterion::Gcv, "gaussian", 20);
+/// assert!(result.h_opt > 0.0);
+/// assert!(result.value.is_finite());
+/// ```
 pub fn optim_bandwidth(
     x: &[f64],
     y: &[f64],
@@ -662,10 +699,7 @@ pub fn knn_lcv(x: &[f64], y: &[f64], max_k: usize) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn uniform_grid(n: usize) -> Vec<f64> {
-        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
-    }
+    use crate::test_helpers::uniform_grid;
 
     // ============== Nadaraya-Watson tests ==============
 

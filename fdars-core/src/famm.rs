@@ -902,11 +902,8 @@ fn permute_rows(mat: &FdMatrix, indices: &[usize]) -> FdMatrix {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::uniform_grid;
     use std::f64::consts::PI;
-
-    fn uniform_grid(m: usize) -> Vec<f64> {
-        (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-    }
 
     /// Generate repeated measurements: n_subjects × n_visits curves.
     /// Subject-level covariate z affects the curve amplitude.

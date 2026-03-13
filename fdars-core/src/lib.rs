@@ -34,6 +34,9 @@ pub mod parallel;
 
 pub use error::FdarError;
 
+#[cfg(test)]
+pub(crate) mod test_helpers;
+
 pub mod alignment;
 pub mod basis;
 pub mod classification;

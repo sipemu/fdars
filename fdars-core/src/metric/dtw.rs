@@ -52,6 +52,22 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
 }
 
 /// Compute DTW distance matrix for self-distances (symmetric).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::metric::dtw_self_1d;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..40).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     4, 10,
+/// ).unwrap();
+/// let dist = dtw_self_1d(&data, 2.0, 10);
+/// assert_eq!(dist.shape(), (4, 4));
+/// assert!((dist[(0, 0)]).abs() < 1e-10);
+/// assert!((dist[(0, 1)] - dist[(1, 0)]).abs() < 1e-10);
+/// ```
 pub fn dtw_self_1d(data: &FdMatrix, p: f64, w: usize) -> FdMatrix {
     let n = data.nrows();
     if n == 0 || data.ncols() == 0 {

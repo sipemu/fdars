@@ -199,6 +199,29 @@ pub fn outliers_threshold_lrt_with_dist(
 /// # Returns
 /// Vector of booleans indicating outliers
 #[must_use = "expensive computation whose result should not be discarded"]
+/// Detect outliers in functional data using the Likelihood Ratio Test.
+///
+/// Compares each observation's normalized distance against a threshold.
+/// Observations exceeding the threshold are flagged as outliers.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `threshold` - Decision threshold (from [`outliers_threshold_lrt`])
+/// * `trim` - Trimming proportion for robust estimation
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::outliers::detect_outliers_lrt;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     5, 10,
+/// ).unwrap();
+/// let outliers = detect_outliers_lrt(&data, 3.0, 0.1);
+/// assert_eq!(outliers.len(), 5);
+/// ```
 pub fn detect_outliers_lrt(data: &FdMatrix, threshold: f64, trim: f64) -> Vec<bool> {
     let n = data.nrows();
     let m = data.ncols();

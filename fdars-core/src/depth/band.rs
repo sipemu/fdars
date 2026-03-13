@@ -11,6 +11,21 @@ use rayon::iter::ParallelIterator;
 /// Compute Band Depth (BD) for 1D functional data.
 ///
 /// BD(x) = proportion of pairs (i,j) where x lies within the band formed by curves i and j.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::depth::band_1d;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     5, 10,
+/// ).unwrap();
+/// let depths = band_1d(&data, &data);
+/// assert_eq!(depths.len(), 5);
+/// assert!(depths.iter().all(|&d| d >= 0.0 && d <= 1.0 + 1e-10));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {

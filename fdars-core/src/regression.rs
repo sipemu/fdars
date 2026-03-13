@@ -83,6 +83,23 @@ fn extract_pc_components(
 /// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
 /// Returns [`FdarError::ComputationFailed`] if the SVD decomposition fails to
 /// produce U or V_t matrices.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::regression::fdata_to_pc_1d;
+///
+/// // 5 curves, each evaluated at 10 points
+/// let data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     5, 10,
+/// ).unwrap();
+/// let result = fdata_to_pc_1d(&data, 3).unwrap();
+/// assert_eq!(result.scores.shape(), (5, 3));
+/// assert_eq!(result.rotation.shape(), (10, 3));
+/// assert_eq!(result.mean.len(), 10);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarError> {
     let (n, m) = data.shape();

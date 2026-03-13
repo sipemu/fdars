@@ -1,11 +1,8 @@
 use super::*;
 use crate::depth::{band_1d, fraiman_muniz_1d, modified_band_1d};
 use crate::matrix::FdMatrix;
+use crate::test_helpers::uniform_grid;
 use std::f64::consts::PI;
-
-fn uniform_grid(n: usize) -> Vec<f64> {
-    (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
-}
 
 fn generate_centered_data(n: usize, m: usize) -> Vec<f64> {
     let argvals = uniform_grid(m);

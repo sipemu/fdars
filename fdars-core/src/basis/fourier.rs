@@ -6,6 +6,19 @@ use std::f64::consts::PI;
 ///
 /// The period is automatically set to the range of evaluation points (t_max - t_min).
 /// For explicit period control, use `fourier_basis_with_period`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::basis::fourier::fourier_basis;
+///
+/// let t: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let basis = fourier_basis(&t, 5);
+/// // Column-major: n_points x nbasis
+/// assert_eq!(basis.len(), 20 * 5);
+/// // First basis function is constant 1
+/// assert!((basis[0] - 1.0).abs() < 1e-10);
+/// ```
 pub fn fourier_basis(t: &[f64], nbasis: usize) -> Vec<f64> {
     let t_min = t.iter().copied().fold(f64::INFINITY, f64::min);
     let t_max = t.iter().copied().fold(f64::NEG_INFINITY, f64::max);

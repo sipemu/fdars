@@ -63,6 +63,17 @@ pub(super) fn bspline_recurrence_step(b: &[f64], knots: &[f64], t_val: f64, k: u
 ///
 /// Creates a B-spline basis with uniformly spaced knots extended beyond the data range.
 /// For order k and nknots interior knots, produces nknots + order basis functions.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::basis::bspline::bspline_basis;
+///
+/// let t: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let basis = bspline_basis(&t, 5, 4);
+/// // nbasis = nknots + order = 5 + 4 = 9
+/// assert_eq!(basis.len(), 20 * 9);
+/// ```
 pub fn bspline_basis(t: &[f64], nknots: usize, order: usize) -> Vec<f64> {
     let n = t.len();
     let nbasis = nknots + order;

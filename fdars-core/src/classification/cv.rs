@@ -25,6 +25,22 @@ use crate::linalg::cholesky_d;
 ///
 /// Returns [`FdarError::InvalidParameter`] if `nfold < 2` or `nfold > n`.
 /// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::classification::cv::fclassif_cv;
+///
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let data = FdMatrix::from_column_major(
+///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     10, 10,
+/// ).unwrap();
+/// let y = vec![0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
+/// let result = fclassif_cv(&data, &argvals, &y, None, "lda", 2, 3, 42).unwrap();
+/// assert!(result.error_rate >= 0.0 && result.error_rate <= 1.0);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_cv(
     data: &FdMatrix,

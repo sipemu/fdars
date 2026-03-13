@@ -30,6 +30,28 @@ pub struct FpcPermutationImportance {
 /// count.
 /// Returns [`FdarError::InvalidParameter`] if `n_perm` is zero.
 /// Returns [`FdarError::ComputationFailed`] if the total sum of squares is zero.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::scalar_on_function::fregre_lm;
+/// use fdars_core::explain::fpc_permutation_importance;
+///
+/// let (n, m) = (20, 30);
+/// let data = FdMatrix::from_column_major(
+///     (0..n * m).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * j * 0.2).sin()
+///     }).collect(),
+///     n, m,
+/// ).unwrap();
+/// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
+/// let fit = fregre_lm(&data, &y, None, 3).unwrap();
+/// let imp = fpc_permutation_importance(&fit, &data, &y, 10, 42).unwrap();
+/// assert_eq!(imp.importance.len(), 3);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fpc_permutation_importance(
     fit: &FregreLmResult,

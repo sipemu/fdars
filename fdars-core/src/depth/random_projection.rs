@@ -13,6 +13,21 @@ use super::random_depth_core;
 /// * `data_obj` - Data to compute depth for
 /// * `data_ori` - Reference data
 /// * `nproj` - Number of random projections
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::depth::random_projection_1d;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     5, 10,
+/// ).unwrap();
+/// let depths = random_projection_1d(&data, &data, 50);
+/// assert_eq!(depths.len(), 5);
+/// assert!(depths.iter().all(|&d| d >= 0.0));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_projection_1d_seeded(data_obj, data_ori, nproj, None)

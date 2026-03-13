@@ -2,10 +2,7 @@ use super::*;
 use crate::fdata::mean_1d;
 use crate::matrix::FdMatrix;
 use crate::simulation::{sim_fundata, EFunType, EValType};
-
-fn uniform_grid(m: usize) -> Vec<f64> {
-    (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-}
+use crate::test_helpers::uniform_grid;
 
 fn make_test_data() -> FdMatrix {
     let m = 50;

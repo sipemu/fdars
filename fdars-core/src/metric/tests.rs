@@ -1,9 +1,6 @@
 use super::*;
+use crate::test_helpers::uniform_grid;
 use std::f64::consts::PI;
-
-fn uniform_grid(n: usize) -> Vec<f64> {
-    (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
-}
 
 #[test]
 fn test_lp_self_distance() {

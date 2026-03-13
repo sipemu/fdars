@@ -3,11 +3,8 @@
 use super::*;
 use crate::helpers::{cumulative_trapz, l2_distance, linear_interp, simpsons_weights, trapz};
 use crate::simulation::{sim_fundata, EFunType, EValType};
+use crate::test_helpers::uniform_grid;
 use crate::warping::{inner_product_l2, normalize_warp};
-
-fn uniform_grid(m: usize) -> Vec<f64> {
-    (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-}
 
 fn make_test_data(n: usize, m: usize, seed: u64) -> FdMatrix {
     let t = uniform_grid(m);

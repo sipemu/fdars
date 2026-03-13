@@ -456,6 +456,24 @@ fn kmeans_iterate(
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
 /// * `seed` - Random seed
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::clustering::kmeans_fd;
+///
+/// // 10 curves at 20 evaluation points
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     10, 20,
+/// ).unwrap();
+/// let result = kmeans_fd(&data, &argvals, 2, 100, 1e-6, 42).unwrap();
+/// assert_eq!(result.cluster.len(), 10);
+/// assert_eq!(result.centers.nrows(), 2);
+/// assert!(result.converged);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn kmeans_fd(
     data: &FdMatrix,
@@ -638,6 +656,24 @@ pub fn fuzzy_cmeans_fd(
 }
 
 /// Compute silhouette score for clustering result.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::clustering::silhouette_score;
+///
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let data = FdMatrix::from_column_major(
+///     (0..60).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     6, 10,
+/// ).unwrap();
+/// let cluster = vec![0, 0, 0, 1, 1, 1];
+/// let scores = silhouette_score(&data, &argvals, &cluster);
+/// assert_eq!(scores.len(), 6);
+/// // Silhouette scores are in [-1, 1]
+/// assert!(scores.iter().all(|&s| s >= -1.0 - 1e-10 && s <= 1.0 + 1e-10));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> Vec<f64> {
     let n = data.nrows();
@@ -731,12 +767,8 @@ pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::uniform_grid;
     use std::f64::consts::PI;
-
-    /// Generate a uniform grid of points
-    fn uniform_grid(n: usize) -> Vec<f64> {
-        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
-    }
 
     /// Generate two clearly separated clusters of curves as an FdMatrix
     fn generate_two_clusters(n_per_cluster: usize, m: usize) -> (FdMatrix, Vec<f64>) {

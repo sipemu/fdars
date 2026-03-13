@@ -1,9 +1,6 @@
 use super::*;
+use crate::test_helpers::uniform_grid;
 use std::f64::consts::PI;
-
-fn uniform_grid(m: usize) -> Vec<f64> {
-    (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-}
 
 /// Generate two well-separated classes of curves.
 fn generate_two_class_data(n_per: usize, m: usize) -> (FdMatrix, Vec<usize>, Vec<f64>) {

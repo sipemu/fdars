@@ -2,13 +2,9 @@
 
 use super::*;
 use crate::matrix::FdMatrix;
+use crate::test_helpers::uniform_grid;
 use nalgebra::DVector;
 use std::f64::consts::PI;
-
-/// Generate a uniform grid of points
-fn uniform_grid(n: usize) -> Vec<f64> {
-    (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
-}
 
 /// Generate sine wave data
 fn sine_wave(t: &[f64], freq: f64) -> Vec<f64> {

@@ -147,6 +147,22 @@ fn weiszfeld_iteration(data: &FdMatrix, weights: &[f64], max_iter: usize, tol: f
 ///
 /// # Returns
 /// Mean function values at each evaluation point
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::mean_1d;
+///
+/// // 3 curves at 4 evaluation points
+/// let data = FdMatrix::from_column_major(
+///     vec![1.0, 2.0, 3.0,  4.0, 5.0, 6.0,  7.0, 8.0, 9.0,  10.0, 11.0, 12.0],
+///     3, 4,
+/// ).unwrap();
+/// let mean = mean_1d(&data);
+/// assert_eq!(mean.len(), 4);
+/// assert!((mean[0] - 2.0).abs() < 1e-10); // mean of [1, 2, 3]
+/// ```
 pub fn mean_1d(data: &FdMatrix) -> Vec<f64> {
     let (n, m) = data.shape();
     if n == 0 || m == 0 {
@@ -176,6 +192,22 @@ pub fn mean_2d(data: &FdMatrix) -> Vec<f64> {
 ///
 /// # Returns
 /// Centered data matrix
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{center_1d, mean_1d};
+///
+/// let data = FdMatrix::from_column_major(
+///     vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0], 2, 3,
+/// ).unwrap();
+/// let centered = center_1d(&data);
+/// assert_eq!(centered.shape(), (2, 3));
+/// // Column means of centered data should be zero
+/// let means = mean_1d(&centered);
+/// assert!(means.iter().all(|m| m.abs() < 1e-10));
+/// ```
 pub fn center_1d(data: &FdMatrix) -> FdMatrix {
     let (n, m) = data.shape();
     if n == 0 || m == 0 {
@@ -263,6 +295,21 @@ pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
 ///
 /// # Returns
 /// Derivative data matrix
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::deriv_1d;
+///
+/// // Linear function f(t) = t on [0, 1], derivative should be ~1
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let data = FdMatrix::from_column_major(argvals.clone(), 1, 20).unwrap();
+/// let deriv = deriv_1d(&data, &argvals, 1);
+/// assert_eq!(deriv.shape(), (1, 20));
+/// // Interior points should have derivative close to 1.0
+/// assert!((deriv[(0, 10)] - 1.0).abs() < 0.1);
+/// ```
 /// Compute one derivative step: forward/central/backward differences written column-wise.
 fn deriv_1d_step(
     current: &FdMatrix,
@@ -492,11 +539,8 @@ pub fn geometric_median_2d(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::uniform_grid;
     use std::f64::consts::PI;
-
-    fn uniform_grid(n: usize) -> Vec<f64> {
-        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
-    }
 
     // ============== Mean tests ==============
 

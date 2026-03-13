@@ -97,6 +97,22 @@ pub(crate) fn lda_predict(
 /// Returns [`FdarError::InvalidParameter`] if `y` contains fewer than 2 distinct classes.
 /// Returns [`FdarError::ComputationFailed`] if the SVD decomposition in FPCA fails.
 /// Returns [`FdarError::ComputationFailed`] if the pooled covariance Cholesky factorization fails.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::classification::lda::fclassif_lda;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     10, 10,
+/// ).unwrap();
+/// let y = vec![0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
+/// let result = fclassif_lda(&data, &y, None, 3).unwrap();
+/// assert_eq!(result.predicted.len(), 10);
+/// assert_eq!(result.n_classes, 2);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fclassif_lda(
     data: &FdMatrix,

@@ -4,12 +4,9 @@ use super::init::build_features;
 use super::*;
 use crate::basis::projection::ProjectionBasisType;
 use crate::matrix::FdMatrix;
+use crate::test_helpers::uniform_grid;
 use rand::prelude::*;
 use std::f64::consts::PI;
-
-fn uniform_grid(m: usize) -> Vec<f64> {
-    (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-}
 
 /// Generate two clearly separated clusters of curves.
 fn generate_two_clusters(n_per: usize, m: usize) -> (FdMatrix, Vec<f64>) {

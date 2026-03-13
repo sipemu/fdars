@@ -623,11 +623,8 @@ pub fn basis_nbasis_cv(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::uniform_grid;
     use std::f64::consts::PI;
-
-    fn uniform_grid(m: usize) -> Vec<f64> {
-        (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-    }
 
     #[test]
     fn test_bspline_penalty_matrix_symmetric() {

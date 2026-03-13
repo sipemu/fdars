@@ -27,6 +27,29 @@ use super::*;
 ///
 /// # Returns
 /// [`FregreLmResult`] with estimated coefficients, fitted values, and diagnostics
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::scalar_on_function::fregre_lm;
+///
+/// // 20 curves at 30 evaluation points (each curve has a different frequency)
+/// let (n, m) = (20, 30);
+/// let data = FdMatrix::from_column_major(
+///     (0..n * m).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * j * 0.2).sin()
+///     }).collect(),
+///     n, m,
+/// ).unwrap();
+/// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
+/// let fit = fregre_lm(&data, &y, None, 3).unwrap();
+/// assert_eq!(fit.fitted_values.len(), 20);
+/// assert_eq!(fit.beta_t.len(), 30);
+/// assert!(fit.r_squared >= 0.0 && fit.r_squared <= 1.0);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fregre_lm(
     data: &FdMatrix,
@@ -336,6 +359,29 @@ pub fn model_selection_ncomp(
 /// * `fit` - A fitted [`FregreLmResult`]
 /// * `new_data` - New functional predictor matrix (n_new × m)
 /// * `new_scalar` - Optional new scalar covariates (n_new × p)
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::scalar_on_function::{fregre_lm, predict_fregre_lm};
+///
+/// let (n, m) = (20, 30);
+/// let data = FdMatrix::from_column_major(
+///     (0..n * m).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * j * 0.2).sin()
+///     }).collect(),
+///     n, m,
+/// ).unwrap();
+/// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
+/// let fit = fregre_lm(&data, &y, None, 3).unwrap();
+///
+/// // Predict on same data
+/// let predictions = predict_fregre_lm(&fit, &data, None);
+/// assert_eq!(predictions.len(), 20);
+/// ```
 pub fn predict_fregre_lm(
     fit: &FregreLmResult,
     new_data: &FdMatrix,

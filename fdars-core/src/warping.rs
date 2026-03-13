@@ -179,10 +179,7 @@ pub fn phase_distance(gamma: &[f64], argvals: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn uniform_grid(m: usize) -> Vec<f64> {
-        (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
-    }
+    use crate::test_helpers::uniform_grid;
 
     #[test]
     fn test_gam_psi_round_trip() {

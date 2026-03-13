@@ -35,6 +35,27 @@ use super::{
 /// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
 /// or the proper training set is too small for the requested `ncomp`.
 /// Returns [`FdarError::ComputationFailed`] if the internal `fregre_lm` model fitting fails.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::conformal::conformal_fregre_lm;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..400).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     20, 20,
+/// ).unwrap();
+/// let y: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let test = FdMatrix::from_column_major(
+///     (0..60).map(|i| (i as f64 * 0.15).sin()).collect(),
+///     3, 20,
+/// ).unwrap();
+/// let result = conformal_fregre_lm(&data, &y, &test, None, None, 2, 0.5, 0.1, 42).unwrap();
+/// assert_eq!(result.lower.len(), 3);
+/// assert_eq!(result.upper.len(), 3);
+/// assert_eq!(result.predictions.len(), 3);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_fregre_lm(
     data: &FdMatrix,

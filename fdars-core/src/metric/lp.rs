@@ -19,6 +19,24 @@ use super::{lp_weighted_distance, merge_weights};
 ///
 /// # Returns
 /// Distance matrix (n1 rows x n2 columns)
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::metric::lp_cross_1d;
+///
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let data1 = FdMatrix::from_column_major(
+///     (0..30).map(|i| (i as f64 * 0.1).sin()).collect(), 3, 10,
+/// ).unwrap();
+/// let data2 = FdMatrix::from_column_major(
+///     (0..20).map(|i| (i as f64 * 0.2).cos()).collect(), 2, 10,
+/// ).unwrap();
+/// let dist = lp_cross_1d(&data1, &data2, &argvals, 2.0, &[]);
+/// assert_eq!(dist.shape(), (3, 2));
+/// assert!(dist[(0, 0)] >= 0.0);
+/// ```
 pub fn lp_cross_1d(
     data1: &FdMatrix,
     data2: &FdMatrix,
@@ -55,6 +73,24 @@ pub fn lp_cross_1d(
 /// Compute Lp distance matrix for self-distances (symmetric).
 ///
 /// Returns symmetric distance matrix (n rows x n columns).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::metric::lp_self_1d;
+///
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     5, 10,
+/// ).unwrap();
+/// let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
+/// assert_eq!(dist.shape(), (5, 5));
+/// // Diagonal should be zero, matrix should be symmetric
+/// assert!((dist[(0, 0)]).abs() < 1e-10);
+/// assert!((dist[(0, 1)] - dist[(1, 0)]).abs() < 1e-10);
+/// ```
 pub fn lp_self_1d(data: &FdMatrix, argvals: &[f64], p: f64, user_weights: &[f64]) -> FdMatrix {
     let n = data.nrows();
     let n_points = data.ncols();

@@ -29,6 +29,23 @@ pub struct DecompositionResult {
 ///
 /// # Returns
 /// [`AlignmentSetResult`] with all warping functions, aligned curves, and distances.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::alignment::align_to_target;
+///
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let target: Vec<f64> = argvals.iter().map(|&t| (t * 6.0).sin()).collect();
+/// let data = FdMatrix::from_column_major(
+///     (0..60).map(|i| ((i as f64 * 0.05) + 0.1).sin()).collect(),
+///     3, 20,
+/// ).unwrap();
+/// let result = align_to_target(&data, &target, &argvals, 0.0);
+/// assert_eq!(result.aligned_data.shape(), (3, 20));
+/// assert_eq!(result.distances.len(), 3);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn align_to_target(
     data: &FdMatrix,

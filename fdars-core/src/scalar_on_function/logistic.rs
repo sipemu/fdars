@@ -172,6 +172,22 @@ fn build_logistic_result(
 /// or `1.0`.
 /// Returns [`FdarError::ComputationFailed`] if the SVD inside FPCA fails to
 /// extract components.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::scalar_on_function::functional_logistic;
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(),
+///     10, 20,
+/// ).unwrap();
+/// let y = vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+/// let fit = functional_logistic(&data, &y, None, 3, 25, 1e-6).unwrap();
+/// assert_eq!(fit.probabilities.len(), 10);
+/// assert!(fit.probabilities.iter().all(|&p| p >= 0.0 && p <= 1.0));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn functional_logistic(
     data: &FdMatrix,

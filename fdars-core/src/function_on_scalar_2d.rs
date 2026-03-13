@@ -482,6 +482,39 @@ fn select_lambdas_gcv(
 /// either dimension.
 /// Returns [`FdarError::ComputationFailed`] if the Cholesky factorization
 /// fails during OLS or smoothing.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::function_on_scalar_2d::{fosr_2d, Grid2d};
+///
+/// let m1 = 5;
+/// let m2 = 4;
+/// let n = 20;
+/// let grid = Grid2d::new(
+///     (0..m1).map(|i| i as f64 / (m1 - 1) as f64).collect(),
+///     (0..m2).map(|i| i as f64 / (m2 - 1) as f64).collect(),
+/// );
+/// let data = FdMatrix::from_column_major(
+///     (0..n * m1 * m2).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * 0.3 + j * 0.7).sin()
+///     }).collect(),
+///     n, m1 * m2,
+/// ).unwrap();
+/// let predictors = FdMatrix::from_column_major(
+///     (0..n * 2).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         (i * 0.4 + j * 1.5).cos()
+///     }).collect(),
+///     n, 2,
+/// ).unwrap();
+/// let result = fosr_2d(&data, &predictors, &grid, 0.1, 0.1).unwrap();
+/// assert_eq!(result.fitted.shape(), (n, m1 * m2));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fosr_2d(
     data: &FdMatrix,
