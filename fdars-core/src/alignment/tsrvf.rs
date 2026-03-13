@@ -64,7 +64,9 @@ fn smooth_aligned_srsfs(srsf: &FdMatrix, m: usize) -> FdMatrix {
     let mut smoothed = FdMatrix::zeros(n, m);
     for i in 0..n {
         let qi = srsf.row(i);
-        let qi_smooth = nadaraya_watson(&time, &qi, &time, bandwidth, "gaussian");
+        // nadaraya_watson cannot fail here: time/qi are non-empty (m > 0) and bandwidth > 0.
+        let qi_smooth = nadaraya_watson(&time, &qi, &time, bandwidth, "gaussian")
+            .expect("smoothing valid SRSF data should not fail");
         for j in 0..m {
             smoothed[(i, j)] = qi_smooth[j];
         }
@@ -187,7 +189,8 @@ pub fn tsrvf_from_alignment(karcher: &KarcherMeanResult, argvals: &[f64]) -> Tsr
     // so that a single curve (which IS the mean) produces a zero tangent vector.
     let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
     let bandwidth = 2.0 / (m - 1) as f64;
-    let mean_srsf_smooth = nadaraya_watson(&time, &karcher.mean_srsf, &time, bandwidth, "gaussian");
+    let mean_srsf_smooth = nadaraya_watson(&time, &karcher.mean_srsf, &time, bandwidth, "gaussian")
+        .expect("smoothing valid mean SRSF should not fail");
     let mean_norm = l2_norm_l2(&mean_srsf_smooth, &time);
 
     let mu_unit: Vec<f64> = if mean_norm > 1e-10 {
@@ -331,7 +334,8 @@ pub fn tsrvf_from_alignment_with_method(
     let aligned_srsf = smooth_aligned_srsfs(&aligned_srsf, m);
     let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
     let bandwidth = 2.0 / (m - 1) as f64;
-    let mean_srsf_smooth = nadaraya_watson(&time, &karcher.mean_srsf, &time, bandwidth, "gaussian");
+    let mean_srsf_smooth = nadaraya_watson(&time, &karcher.mean_srsf, &time, bandwidth, "gaussian")
+        .expect("smoothing valid mean SRSF should not fail");
     let mean_norm = l2_norm_l2(&mean_srsf_smooth, &time);
 
     let mu_unit: Vec<f64> = if mean_norm > 1e-10 {

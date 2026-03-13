@@ -11,8 +11,11 @@
 //! - [`fmm_test_fixed`] — Hypothesis test on fixed effects
 
 use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 /// Result of a functional mixed model fit.
 #[derive(Debug, Clone, PartialEq)]
@@ -112,37 +115,23 @@ pub fn fmm(
     let fpca = fdata_to_pc_1d(data, ncomp)?;
     let k = fpca.scores.ncols(); // actual number of components
 
-    // Step 2: For each FPC score, fit scalar mixed model
-    // Normalize scores by sqrt(h) to match R's L²-weighted FPCA convention.
-    // This ensures variance components are on the same scale as R's lmer().
-    let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
-    let score_scale = h.sqrt();
-
+    // Step 2: For each FPC score, fit scalar mixed model (parallelized)
     let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);
-    let mut gamma = vec![vec![0.0; k]; p]; // gamma[j][k] = fixed effect coeff j for component k
-    let mut u_hat = vec![vec![0.0; k]; n_subjects]; // u_hat[i][k] = random effect for subject i, component k
-    let mut sigma2_u = vec![0.0; k];
-    let mut sigma2_eps_total = 0.0;
-
-    for comp in 0..k {
-        // Scale scores to L²-normalized space
-        let scores: Vec<f64> = (0..n_total)
-            .map(|i| fpca.scores[(i, comp)] * score_scale)
-            .collect();
-        let result = fit_scalar_mixed_model(&scores, &subject_map, n_subjects, covariates, p);
-        // Scale gamma back to original score space for beta reconstruction
-        for j in 0..p {
-            gamma[j][comp] = result.gamma[j] / score_scale;
-        }
-        for s in 0..n_subjects {
-            // Scale u_hat back for random effect reconstruction
-            u_hat[s][comp] = result.u_hat[s] / score_scale;
-        }
-        // Keep variance components in L²-normalized space (matching R)
-        sigma2_u[comp] = result.sigma2_u;
-        sigma2_eps_total += result.sigma2_eps;
-    }
-    let sigma2_eps = sigma2_eps_total / k as f64;
+    let ComponentResults {
+        gamma,
+        u_hat,
+        sigma2_u,
+        sigma2_eps,
+    } = fit_all_components(
+        &fpca.scores,
+        &subject_map,
+        n_subjects,
+        covariates,
+        p,
+        k,
+        n_total,
+        m,
+    );
 
     // Step 3: Recover functional coefficients (using gamma in original scale)
     let beta_functions = recover_beta_functions(&gamma, &fpca.rotation, p, m, k);
@@ -198,6 +187,70 @@ fn build_subject_map(subject_ids: &[usize]) -> (Vec<usize>, usize) {
         .collect();
 
     (map, n_subjects)
+}
+
+/// Aggregated results from fitting all FPC components.
+struct ComponentResults {
+    gamma: Vec<Vec<f64>>, // gamma[j][k] = fixed effect coeff j for component k
+    u_hat: Vec<Vec<f64>>, // u_hat[i][k] = random effect for subject i, component k
+    sigma2_u: Vec<f64>,   // per-component random effect variance
+    sigma2_eps: f64,      // average residual variance across components
+}
+
+/// Fit scalar mixed models for all FPC components (parallelized across components).
+///
+/// For each component k, scales FPC scores to L²-normalized space, fits a scalar
+/// mixed model, then scales coefficients back to the original score space.
+#[allow(clippy::too_many_arguments)]
+fn fit_all_components(
+    scores: &FdMatrix,
+    subject_map: &[usize],
+    n_subjects: usize,
+    covariates: Option<&FdMatrix>,
+    p: usize,
+    k: usize,
+    n_total: usize,
+    m: usize,
+) -> ComponentResults {
+    // Normalize scores by sqrt(h) to match R's L²-weighted FPCA convention.
+    // This ensures variance components are on the same scale as R's lmer().
+    let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
+    let score_scale = h.sqrt();
+
+    // Fit each component independently — parallelized when the feature is enabled
+    let per_comp: Vec<ScalarMixedResult> = iter_maybe_parallel!(0..k)
+        .map(|comp| {
+            let comp_scores: Vec<f64> = (0..n_total)
+                .map(|i| scores[(i, comp)] * score_scale)
+                .collect();
+            fit_scalar_mixed_model(&comp_scores, subject_map, n_subjects, covariates, p)
+        })
+        .collect();
+
+    // Unpack per-component results into the aggregate structure
+    let mut gamma = vec![vec![0.0; k]; p];
+    let mut u_hat = vec![vec![0.0; k]; n_subjects];
+    let mut sigma2_u = vec![0.0; k];
+    let mut sigma2_eps_total = 0.0;
+
+    for (comp, result) in per_comp.iter().enumerate() {
+        for j in 0..p {
+            gamma[j][comp] = result.gamma[j] / score_scale;
+        }
+        for s in 0..n_subjects {
+            u_hat[s][comp] = result.u_hat[s] / score_scale;
+        }
+        sigma2_u[comp] = result.sigma2_u;
+        sigma2_eps_total += result.sigma2_eps;
+    }
+    let sigma2_eps = sigma2_eps_total / k as f64;
+
+    ComponentResults {
+        gamma,
+        u_hat,
+        sigma2_u,
+        sigma2_eps,
+    }
 }
 
 /// Scalar mixed model result for one FPC component.
@@ -1122,5 +1175,256 @@ mod tests {
         for &s in &result.sigma2_u {
             assert!(s >= 0.0);
         }
+    }
+
+    // -------------------------------------------------------------------
+    // Additional tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_fmm_ncomp_zero_returns_error() {
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(5, 2, 20);
+        let err = fmm(&data, &subject_ids, None, 0).unwrap_err();
+        match err {
+            FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "ncomp");
+            }
+            other => panic!("Expected InvalidParameter, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fmm_single_component() {
+        // Fit with only 1 FPC component
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(8, 3, 30);
+        let result = fmm(&data, &subject_ids, Some(&covariates), 1).unwrap();
+
+        assert_eq!(result.ncomp, 1);
+        assert_eq!(result.sigma2_u.len(), 1);
+        assert_eq!(result.eigenvalues.len(), 1);
+        assert_eq!(result.mean_function.len(), 30);
+        // Fitted + residuals = data
+        for i in 0..data.nrows() {
+            for t in 0..data.ncols() {
+                let diff = (result.fitted[(i, t)] + result.residuals[(i, t)] - data[(i, t)]).abs();
+                assert!(diff < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn test_fmm_two_subjects() {
+        // Minimal number of subjects (2) with multiple visits
+        let n_subjects = 2;
+        let n_visits = 5;
+        let m = 20;
+        let t = uniform_grid(m);
+        let n_total = n_subjects * n_visits;
+        let mut col_major = vec![0.0; n_total * m];
+        let mut subject_ids = vec![0usize; n_total];
+
+        for s in 0..n_subjects {
+            for v in 0..n_visits {
+                let obs = s * n_visits + v;
+                subject_ids[obs] = s;
+                for (j, &tj) in t.iter().enumerate() {
+                    col_major[obs + j * n_total] =
+                        (2.0 * PI * tj).sin() + (s as f64) * 0.5 + 0.01 * v as f64;
+                }
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n_total, m).unwrap();
+        let result = fmm(&data, &subject_ids, None, 2).unwrap();
+
+        assert_eq!(result.n_subjects, 2);
+        assert_eq!(result.random_effects.nrows(), 2);
+        assert_eq!(result.fitted.nrows(), n_total);
+    }
+
+    #[test]
+    fn test_fmm_predict_no_covariates() {
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(6, 3, 30);
+        let result = fmm(&data, &subject_ids, None, 2).unwrap();
+
+        // Predict without covariates — should return mean function
+        let predicted = fmm_predict(&result, None);
+        assert_eq!(predicted.nrows(), 1);
+        assert_eq!(predicted.ncols(), 30);
+        for t in 0..30 {
+            let diff = (predicted[(0, t)] - result.mean_function[t]).abs();
+            assert!(
+                diff < 1e-12,
+                "Without covariates, prediction should equal mean"
+            );
+        }
+    }
+
+    #[test]
+    fn test_fmm_predict_multiple_new_subjects() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 40);
+        let result = fmm(&data, &subject_ids, Some(&covariates), 3).unwrap();
+
+        // Predict for 3 new subjects with different covariate values
+        let new_cov = FdMatrix::from_column_major(vec![0.1, 0.5, 0.9], 3, 1).unwrap();
+        let predicted = fmm_predict(&result, Some(&new_cov));
+
+        assert_eq!(predicted.nrows(), 3);
+        assert_eq!(predicted.ncols(), 40);
+
+        // All predictions should be finite
+        for i in 0..3 {
+            for t in 0..40 {
+                assert!(predicted[(i, t)].is_finite());
+            }
+        }
+
+        // Predictions for different covariates should differ
+        let diff_01: f64 = (0..40)
+            .map(|t| (predicted[(0, t)] - predicted[(1, t)]).powi(2))
+            .sum();
+        assert!(
+            diff_01 > 1e-10,
+            "Different covariates should yield different predictions"
+        );
+    }
+
+    #[test]
+    fn test_fmm_eigenvalues_decreasing() {
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(10, 3, 50);
+        let result = fmm(&data, &subject_ids, None, 5).unwrap();
+
+        // Eigenvalues should be in decreasing order (from FPCA)
+        for i in 1..result.eigenvalues.len() {
+            assert!(
+                result.eigenvalues[i] <= result.eigenvalues[i - 1] + 1e-10,
+                "Eigenvalues should be non-increasing: {} > {}",
+                result.eigenvalues[i],
+                result.eigenvalues[i - 1]
+            );
+        }
+    }
+
+    #[test]
+    fn test_fmm_random_effects_sum_near_zero() {
+        // Random effects should approximately sum to zero across subjects
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(20, 3, 40);
+        let result = fmm(&data, &subject_ids, Some(&covariates), 3).unwrap();
+
+        let m = result.mean_function.len();
+        for t in 0..m {
+            let sum: f64 = (0..result.n_subjects)
+                .map(|s| result.random_effects[(s, t)])
+                .sum();
+            let mean_abs: f64 = (0..result.n_subjects)
+                .map(|s| result.random_effects[(s, t)].abs())
+                .sum::<f64>()
+                / result.n_subjects as f64;
+            // Relative to the scale of random effects, the sum should be small
+            if mean_abs > 1e-10 {
+                assert!(
+                    (sum / result.n_subjects as f64).abs() < mean_abs * 2.0,
+                    "Random effects should roughly center around zero at t={}: sum={}, mean_abs={}",
+                    t,
+                    sum,
+                    mean_abs
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fmm_subject_ids_mismatch_error() {
+        let data = FdMatrix::zeros(10, 20);
+        let ids = vec![0; 7]; // wrong length
+        let err = fmm(&data, &ids, None, 1).unwrap_err();
+        match err {
+            FdarError::InvalidDimension { parameter, .. } => {
+                assert_eq!(parameter, "subject_ids");
+            }
+            other => panic!("Expected InvalidDimension, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fmm_test_fixed_empty_data_error() {
+        let data = FdMatrix::zeros(0, 0);
+        let covariates = FdMatrix::zeros(0, 1);
+        let err = fmm_test_fixed(&data, &[], &covariates, 1, 10, 42).unwrap_err();
+        match err {
+            FdarError::InvalidDimension { parameter, .. } => {
+                assert_eq!(parameter, "data");
+            }
+            other => panic!("Expected InvalidDimension for data, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fmm_test_fixed_zero_covariates_error() {
+        let data = FdMatrix::zeros(10, 20);
+        let ids = vec![0; 10];
+        let covariates = FdMatrix::zeros(10, 0);
+        let err = fmm_test_fixed(&data, &ids, &covariates, 1, 10, 42).unwrap_err();
+        match err {
+            FdarError::InvalidDimension { parameter, .. } => {
+                assert_eq!(parameter, "covariates");
+            }
+            other => panic!("Expected InvalidDimension for covariates, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_subject_map_single_subject() {
+        let (map, n) = build_subject_map(&[42, 42, 42]);
+        assert_eq!(n, 1);
+        assert_eq!(map, vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn test_build_subject_map_non_contiguous_ids() {
+        let (map, n) = build_subject_map(&[100, 200, 100, 300, 200]);
+        assert_eq!(n, 3);
+        // sorted unique: [100, 200, 300] -> indices [0, 1, 2]
+        assert_eq!(map, vec![0, 1, 0, 2, 1]);
+    }
+
+    #[test]
+    fn test_fmm_many_components_clamped() {
+        // Request more components than available; FPCA should clamp
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(5, 3, 20);
+        let n_total = data.nrows();
+        // Request 100 components — should be clamped to min(n_total, m) - 1
+        let result = fmm(&data, &subject_ids, None, 100).unwrap();
+        assert!(
+            result.ncomp <= n_total.min(20),
+            "ncomp should be clamped: got {}",
+            result.ncomp
+        );
+        assert!(result.ncomp >= 1);
+    }
+
+    #[test]
+    fn test_fmm_residuals_small_with_enough_components() {
+        // With enough components, residuals should be small relative to data
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 30);
+        let result = fmm(&data, &subject_ids, Some(&covariates), 5).unwrap();
+
+        let n = data.nrows();
+        let m = data.ncols();
+        let mut data_ss = 0.0_f64;
+        let mut resid_ss = 0.0_f64;
+        for i in 0..n {
+            for t in 0..m {
+                data_ss += data[(i, t)].powi(2);
+                resid_ss += result.residuals[(i, t)].powi(2);
+            }
+        }
+
+        // R-squared should be reasonably high for structured data
+        let r_squared = 1.0 - resid_ss / data_ss;
+        assert!(
+            r_squared > 0.5,
+            "R-squared should be high with enough components: {}",
+            r_squared
+        );
     }
 }

@@ -30,8 +30,10 @@ pub fn detrend_loess(
     let results: Vec<(Vec<f64>, Vec<f64>, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+            // local_polynomial cannot fail here: argvals is non-empty (m >= 3) and bandwidth > 0.
             let trend =
-                local_polynomial(argvals, &curve, argvals, abs_bandwidth, degree, "tricube");
+                local_polynomial(argvals, &curve, argvals, abs_bandwidth, degree, "tricube")
+                    .expect("smoothing valid loess data should not fail");
             let mut detrended = vec![0.0; m];
             let mut rss = 0.0;
             for j in 0..m {

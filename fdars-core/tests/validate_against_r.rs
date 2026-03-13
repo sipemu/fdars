@@ -1288,7 +1288,8 @@ fn test_nadaraya_watson() {
     let sine: NoisySineData = load_json("data", "noisy_sine_201");
 
     let actual =
-        fdars_core::smoothing::nadaraya_watson(&sine.x, &sine.y_noisy, &sine.x, 0.05, "gauss");
+        fdars_core::smoothing::nadaraya_watson(&sine.x, &sine.y_noisy, &sine.x, 0.05, "gauss")
+            .unwrap();
     // R now uses exact NW (not locpoly binning) — should match closely
     assert_vec_close(&actual, &exp.nadaraya_watson, 1e-6, "nadaraya_watson");
 }
@@ -1299,7 +1300,8 @@ fn test_local_linear() {
     let sine: NoisySineData = load_json("data", "noisy_sine_201");
 
     let actual =
-        fdars_core::smoothing::local_linear(&sine.x, &sine.y_noisy, &sine.x, 0.05, "gauss");
+        fdars_core::smoothing::local_linear(&sine.x, &sine.y_noisy, &sine.x, 0.05, "gauss")
+            .unwrap();
     // R now uses exact local linear (not locpoly binning) — should match closely
     assert_vec_close(&actual, &exp.local_linear, 1e-6, "local_linear");
 }
@@ -1309,7 +1311,7 @@ fn test_knn_smoother() {
     let exp: SmoothingExpected = load_json("expected", "smoothing_expected");
     let sine: NoisySineData = load_json("data", "noisy_sine_201");
 
-    let actual = fdars_core::smoothing::knn_smoother(&sine.x, &sine.y_noisy, &sine.x, 5);
+    let actual = fdars_core::smoothing::knn_smoother(&sine.x, &sine.y_noisy, &sine.x, 5).unwrap();
     assert_vec_close(&actual, &exp.knn_k5, 1e-4, "knn_k5");
 }
 
@@ -4810,7 +4812,8 @@ fn test_local_polynomial_vs_r() {
             0.05,
             2,
             "gaussian",
-        );
+        )
+        .unwrap();
 
         // Local polynomial with degree=2 should be close to R's locpoly degree=2
         // R uses FFT-based binning, Rust uses direct computation
@@ -4825,7 +4828,7 @@ fn test_smoothing_matrix_nw_vs_r() {
     let dat: NoisySineData = load_json("data", "noisy_sine_201");
 
     if let Some(ref nw_exp) = exp.smoothing_matrix_nw {
-        let sm = fdars_core::smoothing::smoothing_matrix_nw(&dat.x, 0.05, "gaussian");
+        let sm = fdars_core::smoothing::smoothing_matrix_nw(&dat.x, 0.05, "gaussian").unwrap();
         let m = dat.x.len();
 
         // Total elements should be m*m

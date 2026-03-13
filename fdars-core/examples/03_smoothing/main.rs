@@ -48,7 +48,7 @@ fn main() {
     // --- Section 1: Nadaraya-Watson with different bandwidths ---
     println!("\n--- Nadaraya-Watson Smoother ---");
     for bw in [0.02, 0.05, 0.10, 0.20] {
-        let smoothed = nadaraya_watson(&t, &noisy, &t, bw, "gaussian");
+        let smoothed = nadaraya_watson(&t, &noisy, &t, bw, "gaussian").unwrap();
         let err = mse(&smoothed, &truth);
         println!("  bandwidth={bw:.2}: MSE={err:.6}");
     }
@@ -56,7 +56,7 @@ fn main() {
     // --- Section 2: Local linear regression ---
     println!("\n--- Local Linear Smoother ---");
     for bw in [0.02, 0.05, 0.10, 0.20] {
-        let smoothed = local_linear(&t, &noisy, &t, bw, "gaussian");
+        let smoothed = local_linear(&t, &noisy, &t, bw, "gaussian").unwrap();
         let err = mse(&smoothed, &truth);
         println!("  bandwidth={bw:.2}: MSE={err:.6}");
     }
@@ -64,7 +64,7 @@ fn main() {
     // --- Section 3: Local polynomial (degree 2) ---
     println!("\n--- Local Polynomial Smoother (degree=2) ---");
     for bw in [0.02, 0.05, 0.10, 0.20] {
-        let smoothed = local_polynomial(&t, &noisy, &t, bw, 2, "gaussian");
+        let smoothed = local_polynomial(&t, &noisy, &t, bw, 2, "gaussian").unwrap();
         let err = mse(&smoothed, &truth);
         println!("  bandwidth={bw:.2}: MSE={err:.6}");
     }
@@ -72,17 +72,17 @@ fn main() {
     // --- Section 4: k-NN smoother ---
     println!("\n--- k-NN Smoother ---");
     for k in [3, 5, 10, 20] {
-        let smoothed = knn_smoother(&t, &noisy, &t, k);
+        let smoothed = knn_smoother(&t, &noisy, &t, k).unwrap();
         let err = mse(&smoothed, &truth);
         println!("  k={k:2}: MSE={err:.6}");
     }
 
     // --- Section 5: Best from each method ---
     println!("\n--- Method Comparison (best bandwidth/k for each) ---");
-    let nw = nadaraya_watson(&t, &noisy, &t, 0.05, "gaussian");
-    let ll = local_linear(&t, &noisy, &t, 0.05, "gaussian");
-    let lp = local_polynomial(&t, &noisy, &t, 0.05, 2, "gaussian");
-    let kn = knn_smoother(&t, &noisy, &t, 5);
+    let nw = nadaraya_watson(&t, &noisy, &t, 0.05, "gaussian").unwrap();
+    let ll = local_linear(&t, &noisy, &t, 0.05, "gaussian").unwrap();
+    let lp = local_polynomial(&t, &noisy, &t, 0.05, 2, "gaussian").unwrap();
+    let kn = knn_smoother(&t, &noisy, &t, 5).unwrap();
 
     println!("  Nadaraya-Watson (bw=0.05): MSE={:.6}", mse(&nw, &truth));
     println!("  Local linear    (bw=0.05): MSE={:.6}", mse(&ll, &truth));

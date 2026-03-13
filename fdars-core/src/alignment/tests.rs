@@ -2516,7 +2516,7 @@ fn test_smooth_aligned_srsfs_preserves_shape() {
         .map(|&t| (2.0 * std::f64::consts::PI * t).sin())
         .collect();
     let bandwidth = 2.0 / (m - 1) as f64;
-    let qi_smooth = nadaraya_watson(&time, &qi, &time, bandwidth, "gaussian");
+    let qi_smooth = nadaraya_watson(&time, &qi, &time, bandwidth, "gaussian").unwrap();
     // Correlation between original and smoothed should be very high
     let mean_orig: f64 = qi.iter().sum::<f64>() / m as f64;
     let mean_smooth: f64 = qi_smooth.iter().sum::<f64>() / m as f64;

@@ -28,11 +28,7 @@ pub fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
             let mut depth = 0.0;
 
             for j in 0..nori {
-                let mut dist_sq = 0.0;
-                for t in 0..n_points {
-                    let diff = data_obj[(i, t)] - data_ori[(j, t)];
-                    dist_sq += diff * diff;
-                }
+                let dist_sq = data_obj.row_l2_sq(i, data_ori, j);
                 let dist = (dist_sq / n_points as f64).sqrt();
                 let kernel_val = (-0.5 * (dist / h).powi(2)).exp();
                 depth += kernel_val;

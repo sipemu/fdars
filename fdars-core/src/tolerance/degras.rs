@@ -122,7 +122,7 @@ pub fn scb_mean_degras(
     }
 
     let raw_mean = mean_1d(data);
-    let center = local_polynomial(argvals, &raw_mean, argvals, bandwidth, 1, "epanechnikov");
+    let center = local_polynomial(argvals, &raw_mean, argvals, bandwidth, 1, "epanechnikov")?;
     let sigma_hat = residual_sigma(data, &center, n, m);
 
     let sqrt_n = (n as f64).sqrt();
