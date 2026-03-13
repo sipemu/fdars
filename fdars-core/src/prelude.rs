@@ -43,7 +43,12 @@ pub use crate::smooth_basis::{BasisType, SmoothBasisResult};
 // Elastic analysis
 pub use crate::elastic_fpca::{HorizFpcaResult, JointFpcaResult, VertFpcaResult};
 pub use crate::elastic_regression::{
-    ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult,
+    ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult, ScalarOnShapeResult,
+};
+
+// Statistical Process Monitoring
+pub use crate::spm::{
+    ControlLimit, EwmaMonitorResult, FrccChart, MfSpmChart, MfpcaResult, SpmChart, SpmMonitorResult,
 };
 
 // Cross-validation

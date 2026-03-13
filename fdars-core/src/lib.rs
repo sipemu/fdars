@@ -68,6 +68,9 @@ pub mod warping;
 // Covariance kernels and Gaussian processes
 pub mod covariance;
 
+// Statistical Process Monitoring
+pub mod spm;
+
 // Elastic analysis modules
 pub mod conformal;
 pub mod elastic;
@@ -249,8 +252,18 @@ pub use elastic_fpca::{
 pub use elastic_regression::{
     elastic_logistic, elastic_logistic_with_config, elastic_pcr, elastic_pcr_with_config,
     elastic_regression, elastic_regression_with_config, predict_elastic_logistic,
-    predict_elastic_regression, ElasticConfig, ElasticLogisticResult, ElasticPcrConfig,
-    ElasticPcrResult, ElasticRegressionResult, PcaMethod,
+    predict_elastic_regression, predict_scalar_on_shape, scalar_on_shape, ElasticConfig,
+    ElasticLogisticResult, ElasticPcrConfig, ElasticPcrResult, ElasticRegressionResult,
+    IndexMethod, PcaMethod, ScalarOnShapeConfig, ScalarOnShapeResult,
+};
+
+// Re-export SPM types
+pub use spm::{
+    ewma_scores, frcc_monitor, frcc_phase1, hotelling_t2, mf_spm_monitor, mf_spm_phase1, mfpca,
+    spe_contributions, spe_control_limit, spe_multivariate, spe_univariate, spm_ewma_monitor,
+    spm_monitor, spm_phase1, t2_contributions, t2_control_limit, ControlLimit, EwmaConfig,
+    EwmaMonitorResult, FrccChart, FrccConfig, FrccMonitorResult, MfSpmChart, MfpcaConfig,
+    MfpcaResult, SpmChart, SpmConfig, SpmMonitorResult,
 };
 
 // Re-export elastic changepoint types

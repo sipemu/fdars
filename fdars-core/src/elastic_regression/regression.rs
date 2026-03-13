@@ -326,7 +326,7 @@ fn build_phi_matrix(
 }
 
 /// Solve penalized OLS: (Φ'Φ + λR)c = Φ'y.
-fn solve_penalized_ols(
+pub(super) fn solve_penalized_ols(
     phi: &DMatrix<f64>,
     r_trimmed: &DMatrix<f64>,
     y_centered: &[f64],

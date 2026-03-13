@@ -7,10 +7,12 @@
 //! - [`elastic_regression`] — Scalar-on-function regression with elastic alignment
 //! - [`elastic_logistic`] — Binary classification with elastic alignment
 //! - [`elastic_pcr`] — Principal component regression after elastic alignment
+//! - [`scalar_on_shape()`] — Scalar-on-shape regression with optional single-index link
 
 pub mod logistic;
 pub mod pcr;
 pub mod regression;
+pub mod scalar_on_shape;
 
 #[cfg(test)]
 mod tests;
@@ -24,6 +26,7 @@ pub use regression::{
     elastic_regression, elastic_regression_with_config, predict_elastic_regression,
     ElasticRegressionResult,
 };
+pub use scalar_on_shape::{predict_scalar_on_shape, scalar_on_shape, ScalarOnShapeResult};
 
 use crate::alignment::reparameterize_curve;
 use crate::matrix::FdMatrix;
@@ -81,6 +84,45 @@ impl Default for ElasticPcrConfig {
     }
 }
 
+/// Configuration for [`scalar_on_shape()`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScalarOnShapeConfig {
+    /// Number of Fourier basis functions for the beta representation.
+    pub nbasis: usize,
+    /// Roughness penalty weight for beta.
+    pub lambda: f64,
+    /// Penalty derivative order.
+    pub lfd_order: usize,
+    /// Index function method.
+    pub index_method: IndexMethod,
+    /// Polynomial degree for g (intercept link function).
+    pub g_degree: usize,
+    /// Maximum outer iterations (alternating beta, h, g).
+    pub max_iter_outer: usize,
+    /// Maximum inner iterations (beta estimation with alignment).
+    pub max_iter_inner: usize,
+    /// Convergence tolerance.
+    pub tol: f64,
+    /// DP alignment penalty.
+    pub dp_lambda: f64,
+}
+
+impl Default for ScalarOnShapeConfig {
+    fn default() -> Self {
+        Self {
+            nbasis: 11,
+            lambda: 1e-3,
+            lfd_order: 2,
+            index_method: IndexMethod::Identity,
+            g_degree: 2,
+            max_iter_outer: 10,
+            max_iter_inner: 15,
+            tol: 1e-4,
+            dp_lambda: 0.0,
+        }
+    }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// PCA method for elastic PCR.
@@ -90,6 +132,20 @@ pub enum PcaMethod {
     Vertical,
     Horizontal,
     Joint,
+}
+
+/// Index function method for scalar-on-shape regression.
+///
+/// Controls the link between the shape score and the response variable.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum IndexMethod {
+    /// Identity: h(z) = z (standard ScoSh).
+    Identity,
+    /// Polynomial single-index: h(z) = sum of a_k z^k (SI-ScoSh).
+    Polynomial(usize),
+    /// Nadaraya-Watson kernel estimate with the given bandwidth.
+    NadarayaWatson(f64),
 }
 
 // ─── Shared Helpers ────────────────────────────────────────────────────────
