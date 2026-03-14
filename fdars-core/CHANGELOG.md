@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-03-14
+
 ### Added
 
 - **Statistical Process Monitoring module** (`spm/`): complete FPCA-based control chart framework for functional data — Hotelling T² and SPE statistics (`stats.rs`), chi-squared and moment-matched control limits (`control.rs`), Phase I/II univariate and multivariate monitoring (`phase.rs`), EWMA smoothing with adjusted eigenvalues (`ewma.rs`), Functional Regression Control Chart via FOSR residuals (`frcc.rs`), per-variable T²/SPE contribution diagnostics (`contrib.rs`), self-contained chi-squared CDF/quantile implementation (`chi_squared.rs`). New types: `SpmChart`, `MfSpmChart`, `SpmMonitorResult`, `ControlLimit`, `EwmaConfig`, `EwmaMonitorResult`, `FrccChart`, `FrccConfig`, `FrccMonitorResult`, `MfpcaConfig`, `MfpcaResult`, `SpmConfig`
 - **Multivariate FPCA** (`spm/mfpca.rs`): standardize p functional variables, stack, joint SVD with `project()` and `reconstruct()` methods on `MfpcaResult`
 - **Scalar-on-Shape regression** (`elastic_regression/scalar_on_shape.rs`): phase-invariant scalar-on-function regression using Fisher-Rao inner product and DP alignment; three index function methods via `IndexMethod` enum (`Identity`, `Polynomial`, `NadarayaWatson`); alternating estimation of β, h, g with Fourier basis representation and roughness penalty. New types: `ScalarOnShapeConfig`, `ScalarOnShapeResult`, `IndexMethod`
 - **Phase tolerance bands** (`tolerance/elastic.rs`): `phase_tolerance_band` maps warping functions to tangent space of the Hilbert sphere via shooting vectors, computes FPCA tolerance bands, and maps bounds back to warping functions (γ). `elastic_tolerance_band_with_config` computes both amplitude and phase bands in a single Karcher mean pass. New types: `PhaseToleranceBand`, `ElasticToleranceBandResult`, `ElasticToleranceConfig`
-- 149 new tests: 55 SPM unit, 32 scalar-on-shape unit, 34 SPM integration/validation, 12 phase tolerance band unit, 16 phase band integration/validation
+- 159 new tests: 55 SPM unit, 32 scalar-on-shape unit, 34 SPM integration/validation, 12 phase tolerance band unit, 16 phase band integration/validation, 7 conformal generic, 3 elastic changepoint
 - SPM, scalar-on-shape, and tolerance band re-exports in `lib.rs` and `prelude.rs`
 - `#[must_use]` on `elastic_tolerance_band`
 - **Andrews curves** (`andrews.rs`): `andrews_transform` maps p-dimensional observations to Fourier curves on [-π,π]; `andrews_loadings` visualizes FPCA loading vectors as Andrews curves; `AndrewsResult`, `AndrewsLoadings` types
@@ -36,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`#[non_exhaustive]`** on 33 public enums and 102 public structs for forward-compatible API evolution
 - **Actionable error diagnostics**: 30 `ComputationFailed` error messages across 20 files now include "what to try" hints (e.g., SVD → "try reducing ncomp", Cholesky → "try increasing lambda", zero variance → "check your data")
 - Replaced last `.unwrap()` in library code (`seasonal/mod.rs`) with graceful fallback
+- **Breaking**: `conformal_generic_regression` and `conformal_generic_classification` gain `calibration_indices: Option<&[usize]>` parameter for held-out calibration (pass `None` for previous random-split behavior)
+- **Breaking**: `conformal_generic_classification` now rejects multiclass models with an error (previously produced degenerate one-hot conformal sets silently)
+- **Breaking**: `elastic_amp_changepoint` and `elastic_ph_changepoint` remove unused `_cov_kernel` and `_cov_bandwidth` parameters
 - Clippy pedantic cleanup (82 warnings fixed across 41 files)
 
 ## [0.8.4] - 2026-03-13
@@ -68,7 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Changepoint p-values: removed dead `CovKernel` enum and unused parameters; permutation-based p-values now correctly calibrated
+- Changepoint p-values: removed dead `CovKernel` enum and unused parameters; replaced Brownian bridge with permutation testing (#18)
+- Generic conformal data leakage: `calibration_indices` parameter allows held-out calibration to preserve finite-sample coverage guarantee (#20)
+- Generic conformal multiclass: reject multiclass models whose `predict_from_scores` returns class labels instead of probabilities (#20)
 - Replaced `.unwrap()` calls with `Result<T, FdarError>` in clustering, `cholesky_factor`, and VIF diagnostics
 
 ### Performance

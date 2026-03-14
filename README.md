@@ -98,13 +98,13 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Elastic PCR**: Principal component regression with elastic alignment
 - **Elastic Logistic**: Binary classification with elastic alignment
 - **Scalar-on-Shape Regression**: Phase-invariant regression using Fisher-Rao inner product with DP alignment; identity, polynomial, and Nadaraya-Watson index functions (ScoSh / SI-ScoSh)
-- **Elastic Changepoint Detection**: Amplitude and phase changepoint tests with permutation
+- **Elastic Changepoint Detection**: Amplitude and phase changepoint tests with permutation p-values
 - **Elastic Attribution**: Amplitude vs phase importance decomposition
 
 ### Inference
 
 - **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands, elastic amplitude bands, phase tolerance bands on warping functions, joint amplitude + phase bands
-- **Conformal Prediction**: Split-conformal regression intervals (`conformal_fregre_lm`, `conformal_fregre_np`, `conformal_elastic_regression`), Jackknife+ intervals, and CV+ intervals
+- **Conformal Prediction**: Split-conformal regression intervals (`conformal_fregre_lm`, `conformal_fregre_np`, `conformal_elastic_regression`), Jackknife+ intervals, CV+ intervals, and generic conformal with held-out calibration support
 - **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
 
 ### Specialized
