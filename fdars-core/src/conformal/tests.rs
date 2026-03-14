@@ -242,7 +242,7 @@ fn test_conformal_generic_regression() {
     let (data, y, test_data) = make_test_data(40, 20, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let result =
-        conformal_generic_regression(&fit, &data, &y, &test_data, None, None, 0.3, 0.1, 42);
+        conformal_generic_regression(&fit, &data, &y, &test_data, None, None, None, 0.3, 0.1, 42);
     let r = result.unwrap();
     assert_eq!(r.predictions.len(), 5);
     for i in 0..5 {
@@ -262,6 +262,7 @@ fn test_conformal_generic_classification() {
         None,
         None,
         ClassificationScore::Lac,
+        None,
         0.3,
         0.1,
         42,
@@ -626,4 +627,204 @@ fn test_conformal_elastic_logistic_too_few_obs() {
         42,
     );
     assert!(result.is_err());
+}
+
+// -- Generic conformal: calibration_indices & multiclass rejection ─────
+
+#[test]
+fn test_generic_regression_with_calibration_indices() {
+    let (data, y, test_data) = make_test_data(40, 20, 42);
+    let fit = fregre_lm(&data, &y, None, 3).unwrap();
+
+    // Use the last 10 observations as calibration (held-out).
+    let cal_indices: Vec<usize> = (30..40).collect();
+    let result = conformal_generic_regression(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        Some(&cal_indices),
+        0.3,
+        0.1,
+        42,
+    );
+    let r = result.unwrap();
+    assert_eq!(r.predictions.len(), 5);
+    for i in 0..5 {
+        assert!(r.upper[i] > r.lower[i]);
+    }
+    // Calibration scores should have length == calibration_indices length
+    assert_eq!(r.calibration_scores.len(), 10);
+}
+
+#[test]
+fn test_generic_classification_with_calibration_indices() {
+    let (data, y, test_data) = make_classif_data(40, 20, 42);
+    let fit = fclassif_lda_fit(&data, &y, None, 3).unwrap();
+
+    let cal_indices: Vec<usize> = (30..40).collect();
+    let result = conformal_generic_classification(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        ClassificationScore::Lac,
+        Some(&cal_indices),
+        0.3,
+        0.1,
+        42,
+    );
+    let r = result.unwrap();
+    assert_eq!(r.prediction_sets.len(), 4);
+    for set in &r.prediction_sets {
+        assert!(!set.is_empty());
+    }
+    assert_eq!(r.calibration_scores.len(), 10);
+}
+
+#[test]
+fn test_generic_regression_none_matches_random_split() {
+    // When calibration_indices is None, behaviour should match the random-split path.
+    let (data, y, test_data) = make_test_data(40, 20, 99);
+    let fit = fregre_lm(&data, &y, None, 3).unwrap();
+    let r =
+        conformal_generic_regression(&fit, &data, &y, &test_data, None, None, None, 0.3, 0.1, 99)
+            .unwrap();
+    assert_eq!(r.predictions.len(), 5);
+    for i in 0..5 {
+        assert!(r.upper[i] > r.lower[i]);
+    }
+}
+
+#[test]
+fn test_generic_classification_multiclass_rejected() {
+    // Build a 3-class dataset so LDA reports MulticlassClassification.
+    let m = 20;
+    let n = 60;
+    let mut rng = StdRng::seed_from_u64(77);
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = FdMatrix::zeros(n, m);
+    let mut y = vec![0usize; n];
+    for i in 0..n {
+        let class = i % 3;
+        y[i] = class;
+        let offset = class as f64;
+        for j in 0..m {
+            data[(i, j)] = offset * (2.0 * PI * argvals[j]).sin() + 0.3 * rng.gen::<f64>();
+        }
+    }
+    let test_data = FdMatrix::zeros(4, m);
+
+    let fit = fclassif_lda_fit(&data, &y, None, 3).unwrap();
+    let result = conformal_generic_classification(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        ClassificationScore::Lac,
+        None,
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+    let msg = format!("{}", result.unwrap_err());
+    assert!(
+        msg.contains("multiclass"),
+        "error message should mention multiclass: {msg}"
+    );
+}
+
+#[test]
+fn test_generic_calibration_indices_out_of_bounds() {
+    let (data, y, test_data) = make_test_data(40, 20, 42);
+    let fit = fregre_lm(&data, &y, None, 3).unwrap();
+    let bad_indices = vec![0, 1, 50]; // 50 >= n=40
+    let result = conformal_generic_regression(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        Some(&bad_indices),
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_generic_calibration_indices_too_few() {
+    let (data, y, test_data) = make_test_data(40, 20, 42);
+    let fit = fregre_lm(&data, &y, None, 3).unwrap();
+    let one_index = vec![5]; // fewer than 2
+    let result = conformal_generic_regression(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        Some(&one_index),
+        0.3,
+        0.1,
+        42,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_generic_classification_binary_still_works() {
+    // Ensure binary classification continues to work exactly as before.
+    let (data, y, test_data) = make_classif_data(40, 20, 42);
+    let fit = fclassif_lda_fit(&data, &y, None, 3).unwrap();
+
+    // LAC
+    let r_lac = conformal_generic_classification(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        ClassificationScore::Lac,
+        None,
+        0.3,
+        0.1,
+        42,
+    )
+    .unwrap();
+    assert_eq!(r_lac.prediction_sets.len(), 4);
+    for set in &r_lac.prediction_sets {
+        assert!(!set.is_empty());
+        assert!(set.len() <= 2, "binary: set size at most 2");
+    }
+
+    // APS
+    let r_aps = conformal_generic_classification(
+        &fit,
+        &data,
+        &y,
+        &test_data,
+        None,
+        None,
+        ClassificationScore::Aps,
+        None,
+        0.3,
+        0.1,
+        42,
+    )
+    .unwrap();
+    assert_eq!(r_aps.prediction_sets.len(), 4);
+    for set in &r_aps.prediction_sets {
+        assert!(!set.is_empty());
+    }
 }

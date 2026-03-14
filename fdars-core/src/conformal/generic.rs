@@ -16,17 +16,31 @@ use super::{
 /// Does **not** refit — uses the full model's predictions and calibrates on a
 /// held-out portion of the training data.
 ///
-/// **Warning**: The model was trained on all data including the calibration set,
-/// so calibration residuals are in-sample and systematically too small. This
-/// breaks the distribution-free coverage guarantee and produces intervals that
-/// are too narrow (optimistic). For valid coverage, use the refit-based or CV+
-/// variants instead. This function is provided as a fast heuristic only.
+/// # Calibration indices
+///
+/// When `calibration_indices` is `Some(indices)`, only those rows of `data`/`y`
+/// are used for calibration. The caller is responsible for ensuring the model was
+/// **not** trained on these rows (e.g., they are a held-out validation set). This
+/// avoids the data-leakage problem and preserves the finite-sample coverage
+/// guarantee.
+///
+/// When `calibration_indices` is `None`, a random split is performed using
+/// `cal_fraction` and `seed`.
+///
+/// **Warning (data leakage)**: When `calibration_indices` is `None`, the model
+/// was typically trained on all data including the calibration set, so calibration
+/// residuals are in-sample and systematically too small. This breaks the
+/// distribution-free coverage guarantee and produces intervals that are too
+/// narrow (optimistic). For valid coverage, either supply held-out
+/// `calibration_indices` or use the refit-based / CV+ variants instead.
 ///
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
-/// `test_data` is empty, or `y` length differs from the number of rows in `data`.
-/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1).
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or any index in `calibration_indices` is out of bounds.
+/// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
+/// or if `calibration_indices` contains fewer than 2 elements.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_generic_regression(
     model: &dyn FpcPredictor,
@@ -35,6 +49,7 @@ pub fn conformal_generic_regression(
     test_data: &FdMatrix,
     scalar_train: Option<&FdMatrix>,
     scalar_test: Option<&FdMatrix>,
+    calibration_indices: Option<&[usize]>,
     cal_fraction: f64,
     alpha: f64,
     seed: u64,
@@ -49,7 +64,7 @@ pub fn conformal_generic_regression(
         });
     }
 
-    let (_proper_idx, cal_idx) = conformal_split(n, cal_fraction, seed);
+    let cal_idx = resolve_calibration_indices(calibration_indices, n, cal_fraction, seed)?;
 
     // Predict on calibration using full model
     let cal_data = subsample_rows(data, &cal_idx);
@@ -94,20 +109,38 @@ pub fn conformal_generic_regression(
 
 /// Generic split-conformal prediction sets for any [`FpcPredictor`] classification model.
 ///
-/// Does **not** refit — uses the full model's predictions. For binary classification,
-/// uses `predict_from_scores` which returns P(Y=1); for multiclass, returns class
-/// label as f64 (so prediction sets may be less informative).
+/// Works with **binary classification** models only. For binary models,
+/// `predict_from_scores` returns P(Y=1), which is converted to proper
+/// probabilities `[1-p, p]` for conformal scoring.
 ///
-/// **Warning**: Same data leakage caveat as [`conformal_generic_regression`] —
-/// the model was trained on all data including the calibration set. Coverage
-/// guarantee is broken. Use refit-based variants for valid coverage.
+/// # Calibration indices
+///
+/// When `calibration_indices` is `Some(indices)`, only those rows of `data`/`y`
+/// are used for calibration. The caller is responsible for ensuring the model was
+/// **not** trained on these rows (e.g., they are a held-out validation set). This
+/// avoids the data-leakage problem and preserves the finite-sample coverage
+/// guarantee.
+///
+/// When `calibration_indices` is `None`, a random split is performed using
+/// `cal_fraction` and `seed`.
+///
+/// **Warning (data leakage)**: When `calibration_indices` is `None`, the model
+/// was typically trained on all data including the calibration set, so calibration
+/// scores are in-sample and systematically too small. This breaks the
+/// distribution-free coverage guarantee and produces prediction sets that are
+/// too small (optimistic). For valid coverage, either supply held-out
+/// `calibration_indices` or use the refit-based / CV+ variants instead.
 ///
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
-/// `test_data` is empty, or `y` length differs from the number of rows in `data`.
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or any index in `calibration_indices` is out of bounds.
 /// Returns [`FdarError::InvalidParameter`] if `cal_fraction` or `alpha` is not in (0, 1),
-/// or the model's task type is `Regression` instead of a classification type.
+/// the model's task type is `Regression`, the model's task type is
+/// `MulticlassClassification` (not supported — `predict_from_scores` returns a
+/// class label, not probabilities, producing degenerate one-hot conformal sets),
+/// or `calibration_indices` contains fewer than 2 elements.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn conformal_generic_classification(
     model: &dyn FpcPredictor,
@@ -117,6 +150,7 @@ pub fn conformal_generic_classification(
     scalar_train: Option<&FdMatrix>,
     scalar_test: Option<&FdMatrix>,
     score_type: ClassificationScore,
+    calibration_indices: Option<&[usize]>,
     cal_fraction: f64,
     alpha: f64,
     seed: u64,
@@ -131,9 +165,20 @@ pub fn conformal_generic_classification(
         });
     }
 
-    let n_classes = match model.task_type() {
-        TaskType::BinaryClassification => 2,
-        TaskType::MulticlassClassification(g) => g,
+    match model.task_type() {
+        TaskType::BinaryClassification => {}
+        TaskType::MulticlassClassification(g) => {
+            return Err(FdarError::InvalidParameter {
+                parameter: "model",
+                message: format!(
+                    "conformal_generic_classification does not support multiclass models \
+                     ({g} classes): FpcPredictor::predict_from_scores returns a class label, \
+                     not probabilities, which produces degenerate one-hot conformal sets. \
+                     Use cv_conformal_classification with a closure that returns proper \
+                     probabilities instead."
+                ),
+            })
+        }
         TaskType::Regression => {
             return Err(FdarError::InvalidParameter {
                 parameter: "model",
@@ -142,10 +187,10 @@ pub fn conformal_generic_classification(
         }
     };
 
-    let (_proper_idx, cal_idx) = conformal_split(n, cal_fraction, seed);
+    let cal_idx = resolve_calibration_indices(calibration_indices, n, cal_fraction, seed)?;
     let ncomp = model.ncomp();
 
-    // Calibration probabilities
+    // Calibration probabilities (binary: [1-p, p])
     let cal_data = subsample_rows(data, &cal_idx);
     let cal_sc = scalar_train.map(|sc| subsample_rows(sc, &cal_idx));
     let cal_scores_mat = model.project(&cal_data);
@@ -156,25 +201,14 @@ pub fn conformal_generic_classification(
                 .as_ref()
                 .map(|sc| (0..sc.ncols()).map(|j| sc[(i, j)]).collect());
             let pred = model.predict_from_scores(&s, sc_row.as_deref());
-            if n_classes == 2 {
-                vec![1.0 - pred, pred]
-            } else {
-                // For multiclass FpcPredictor, pred is the class label.
-                // Build a one-hot-like probability (hard assignment).
-                let c = pred.round() as usize;
-                let mut probs = vec![0.0; n_classes];
-                if c < n_classes {
-                    probs[c] = 1.0;
-                }
-                probs
-            }
+            vec![1.0 - pred, pred]
         })
         .collect();
 
     let cal_true = subset_vec_usize(y, &cal_idx);
     let cal_scores = compute_cal_scores(&cal_probs, &cal_true, score_type);
 
-    // Test probabilities
+    // Test probabilities (binary: [1-p, p])
     let test_scores_mat = model.project(test_data);
     let test_probs: Vec<Vec<f64>> = (0..test_data.nrows())
         .map(|i| {
@@ -182,16 +216,7 @@ pub fn conformal_generic_classification(
             let sc_row: Option<Vec<f64>> =
                 scalar_test.map(|sc| (0..sc.ncols()).map(|j| sc[(i, j)]).collect());
             let pred = model.predict_from_scores(&s, sc_row.as_deref());
-            if n_classes == 2 {
-                vec![1.0 - pred, pred]
-            } else {
-                let c = pred.round() as usize;
-                let mut probs = vec![0.0; n_classes];
-                if c < n_classes {
-                    probs[c] = 1.0;
-                }
-                probs
-            }
+            vec![1.0 - pred, pred]
         })
         .collect();
 
@@ -205,4 +230,46 @@ pub fn conformal_generic_classification(
         ConformalMethod::Split,
         score_type,
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper
+// ---------------------------------------------------------------------------
+
+/// Resolve calibration indices from explicit indices or a random split.
+///
+/// Returns the calibration index vector. Validates bounds and minimum size.
+fn resolve_calibration_indices(
+    calibration_indices: Option<&[usize]>,
+    n: usize,
+    cal_fraction: f64,
+    seed: u64,
+) -> Result<Vec<usize>, FdarError> {
+    match calibration_indices {
+        Some(indices) => {
+            if indices.len() < 2 {
+                return Err(FdarError::InvalidParameter {
+                    parameter: "calibration_indices",
+                    message: format!(
+                        "need at least 2 calibration observations, got {}",
+                        indices.len()
+                    ),
+                });
+            }
+            for (pos, &idx) in indices.iter().enumerate() {
+                if idx >= n {
+                    return Err(FdarError::InvalidDimension {
+                        parameter: "calibration_indices",
+                        expected: format!("indices in 0..{n}"),
+                        actual: format!("index {idx} at position {pos}"),
+                    });
+                }
+            }
+            Ok(indices.to_vec())
+        }
+        None => {
+            let (_proper_idx, cal_idx) = conformal_split(n, cal_fraction, seed);
+            Ok(cal_idx)
+        }
+    }
 }

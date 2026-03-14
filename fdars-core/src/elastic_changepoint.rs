@@ -519,14 +519,13 @@ mod tests {
             }
         }
 
-        let result = elastic_amp_changepoint(&data, &t, 0.0, 5, 200, 42);
-        if let Ok(res) = result {
-            assert!(
-                res.p_value > 0.1,
-                "No change should not be significant, got p={}",
-                res.p_value
-            );
-        }
+        let res = elastic_amp_changepoint(&data, &t, 0.0, 5, 200, 42)
+            .expect("should succeed for identical curves");
+        assert!(
+            res.p_value > 0.1,
+            "No change should not be significant, got p={}",
+            res.p_value
+        );
     }
 
     #[test]
@@ -564,7 +563,7 @@ mod tests {
     fn test_invalid_input() {
         let data = FdMatrix::zeros(2, 5);
         let t: Vec<f64> = (0..5).map(|i| i as f64 / 4.0).collect();
-        // n=2 < 4 → should return None
+        // n=2 < 4 → should return Err
         assert!(elastic_amp_changepoint(&data, &t, 0.0, 5, 100, 42).is_err());
     }
 
@@ -621,5 +620,135 @@ mod tests {
 
         assert_eq!(res1.changepoint, res2.changepoint);
         assert!((res1.p_value - res2.p_value).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_pvalue_in_unit_interval() {
+        let n = 30;
+        let m = 51;
+        let cp = 15;
+        let (data, t) = generate_changepoint_data(n, m, cp);
+
+        // Amplitude
+        let res_amp =
+            elastic_amp_changepoint(&data, &t, 0.0, 5, 100, 42).expect("amp should succeed");
+        assert!(
+            (0.0..=1.0).contains(&res_amp.p_value),
+            "amp p-value {} should be in [0, 1]",
+            res_amp.p_value
+        );
+
+        // Phase
+        let res_ph =
+            elastic_ph_changepoint(&data, &t, 0.0, 5, 100, 42).expect("phase should succeed");
+        assert!(
+            (0.0..=1.0).contains(&res_ph.p_value),
+            "phase p-value {} should be in [0, 1]",
+            res_ph.p_value
+        );
+
+        // FPCA (vertical)
+        let res_fpca = elastic_fpca_changepoint(
+            &data,
+            &t,
+            FpcaChangepointMethod::Vertical,
+            3,
+            0.0,
+            5,
+            100,
+            42,
+        )
+        .expect("fpca should succeed");
+        assert!(
+            (0.0..=1.0).contains(&res_fpca.p_value),
+            "fpca p-value {} should be in [0, 1]",
+            res_fpca.p_value
+        );
+    }
+
+    #[test]
+    fn test_fpca_changepoint_discriminates_signal() {
+        let m = 51;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+
+        // Strong signal: amplitude doubles at midpoint
+        let (data_signal, _) = generate_changepoint_data(30, m, 15);
+        let res_signal = elastic_fpca_changepoint(
+            &data_signal,
+            &t,
+            FpcaChangepointMethod::Vertical,
+            3,
+            0.0,
+            5,
+            199,
+            99,
+        )
+        .expect("fpca signal should succeed");
+        assert!(
+            res_signal.p_value < 0.1,
+            "Strong FPCA signal should give small p, got {}",
+            res_signal.p_value
+        );
+
+        // No signal: all curves identical
+        let mut data_null = FdMatrix::zeros(30, m);
+        for i in 0..30 {
+            for j in 0..m {
+                data_null[(i, j)] = (2.0 * PI * t[j]).sin();
+            }
+        }
+        let res_null = elastic_fpca_changepoint(
+            &data_null,
+            &t,
+            FpcaChangepointMethod::Vertical,
+            3,
+            0.0,
+            5,
+            199,
+            99,
+        )
+        .expect("fpca null should succeed");
+        assert!(
+            res_null.p_value > 0.1,
+            "No FPCA signal should give large p, got {}",
+            res_null.p_value
+        );
+    }
+
+    #[test]
+    fn test_fpca_changepoint_seed_determinism() {
+        let n = 30;
+        let m = 51;
+        let cp = 15;
+        let (data, t) = generate_changepoint_data(n, m, cp);
+
+        let res1 = elastic_fpca_changepoint(
+            &data,
+            &t,
+            FpcaChangepointMethod::Vertical,
+            3,
+            0.0,
+            5,
+            100,
+            42,
+        )
+        .expect("should succeed");
+        let res2 = elastic_fpca_changepoint(
+            &data,
+            &t,
+            FpcaChangepointMethod::Vertical,
+            3,
+            0.0,
+            5,
+            100,
+            42,
+        )
+        .expect("should succeed");
+
+        assert_eq!(res1.changepoint, res2.changepoint);
+        assert!(
+            (res1.p_value - res2.p_value).abs() < 1e-10,
+            "FPCA p-values should be deterministic with same seed"
+        );
     }
 }

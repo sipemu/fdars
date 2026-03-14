@@ -184,26 +184,26 @@ mod tests {
 
     #[test]
     fn test_maybe_par_chunks_mut() {
-        let mut vec = vec![0.0_f64; 12];
-        maybe_par_chunks_mut!(vec, 4, |chunk: &mut [f64]| {
+        let mut arr = [0.0_f64; 12];
+        maybe_par_chunks_mut!(arr, 4, |chunk: &mut [f64]| {
             for x in chunk.iter_mut() {
                 *x = 1.0;
             }
         });
-        assert!(vec.iter().all(|&x| x == 1.0));
+        assert!(arr.iter().all(|&x| x == 1.0));
     }
 
     #[test]
     fn test_maybe_par_chunks_mut_enumerate() {
-        let mut vec = vec![0.0_f64; 12];
-        maybe_par_chunks_mut_enumerate!(vec, 4, |(idx, chunk): (usize, &mut [f64])| {
+        let mut arr = [0.0_f64; 12];
+        maybe_par_chunks_mut_enumerate!(arr, 4, |(idx, chunk): (usize, &mut [f64])| {
             for x in chunk.iter_mut() {
                 *x = idx as f64;
             }
         });
         assert_eq!(
-            vec,
-            vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
+            arr,
+            [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
         );
     }
 }
