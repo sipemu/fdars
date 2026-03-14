@@ -261,11 +261,18 @@ pub use elastic_regression::{
 
 // Re-export SPM types
 pub use spm::{
-    ewma_scores, frcc_monitor, frcc_phase1, hotelling_t2, mf_spm_monitor, mf_spm_phase1, mfpca,
-    spe_contributions, spe_control_limit, spe_multivariate, spe_univariate, spm_ewma_monitor,
-    spm_monitor, spm_phase1, t2_contributions, t2_control_limit, ControlLimit, EwmaConfig,
-    EwmaMonitorResult, FrccChart, FrccConfig, FrccMonitorResult, MfSpmChart, MfpcaConfig,
-    MfpcaResult, SpmChart, SpmConfig, SpmMonitorResult,
+    arl0_ewma_t2, arl0_spe, arl0_t2, arl1_t2, elastic_spm_monitor, elastic_spm_phase1,
+    evaluate_rules, ewma_scores, frcc_monitor, frcc_phase1, hotelling_t2, mf_spm_monitor,
+    mf_spm_phase1, mfpca, nelson_rules, profile_monitor, profile_phase1, select_ncomp,
+    spe_contributions, spe_control_limit, spe_limit_robust, spe_multivariate, spe_univariate,
+    spm_ewma_monitor, spm_mewma_monitor, spm_monitor, spm_monitor_partial,
+    spm_monitor_partial_batch, spm_phase1, t2_contributions, t2_control_limit, t2_limit_robust,
+    t2_pc_contributions, western_electric_rules, ArlConfig, ArlResult, ChartRule, ControlLimit,
+    ControlLimitMethod, DomainCompletion, ElasticSpmChart, ElasticSpmConfig,
+    ElasticSpmMonitorResult, EwmaConfig, EwmaMonitorResult, FrccChart, FrccConfig,
+    FrccMonitorResult, MewmaConfig, MewmaMonitorResult, MfSpmChart, MfpcaConfig, MfpcaResult,
+    NcompMethod, PartialDomainConfig, PartialMonitorResult, ProfileChart, ProfileMonitorConfig,
+    ProfileMonitorResult, RuleViolation, SpmChart, SpmConfig, SpmMonitorResult,
 };
 
 // Re-export elastic changepoint types

@@ -1188,4 +1188,905 @@ mod spm_tests {
             }
         }
     }
+
+    // ── ncomp selection tests ─────────────────────────────────────────────
+
+    use crate::spm::ncomp::{select_ncomp, NcompMethod};
+
+    #[test]
+    fn test_ncomp_cumvar_known_spectrum() {
+        let eigenvalues = [10.0, 5.0, 1.0, 0.1, 0.01];
+        // Total = 16.11; cumvar at 2 = 15/16.11 = 0.931; at 3 = 16/16.11 = 0.993
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::CumulativeVariance(0.95)).unwrap();
+        assert_eq!(ncomp, 3, "Should need 3 PCs for 95% variance");
+    }
+
+    #[test]
+    fn test_ncomp_elbow_known_spectrum() {
+        let eigenvalues = [10.0, 5.0, 1.0, 0.1, 0.01];
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::Elbow).unwrap();
+        // Second finite diffs: d2[1]=10-10+1=1, d2[2]=5-2+0.1=3.1, d2[3]=1-0.2+0.01=0.81
+        // Wait: d2[k] = λ[k-1] - 2λ[k] + λ[k+1]
+        // d2[1] = 10 - 2*5 + 1 = 1
+        // d2[2] = 5 - 2*1 + 0.1 = 3.1
+        // d2[3] = 1 - 2*0.1 + 0.01 = 0.81
+        // max at k=2 → ncomp = 3
+        assert!(
+            (2..=4).contains(&ncomp),
+            "Elbow should be around 3, got {ncomp}"
+        );
+    }
+
+    #[test]
+    fn test_ncomp_fixed_clamp() {
+        let eigenvalues = [10.0, 5.0, 1.0];
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::Fixed(10)).unwrap();
+        assert_eq!(ncomp, 3, "Fixed(10) should be clamped to 3");
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::Fixed(0)).unwrap();
+        assert_eq!(ncomp, 1, "Fixed(0) should be clamped to 1");
+    }
+
+    #[test]
+    fn test_ncomp_flat_spectrum() {
+        let eigenvalues = [1.0, 1.0, 1.0, 1.0, 1.0];
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::CumulativeVariance(0.80)).unwrap();
+        assert_eq!(ncomp, 4, "Flat spectrum: need 4/5 for 80%");
+    }
+
+    #[test]
+    fn test_ncomp_single_eigenvalue() {
+        let eigenvalues = [5.0];
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::CumulativeVariance(0.95)).unwrap();
+        assert_eq!(ncomp, 1);
+        // Elbow fallback to CV(0.95) for < 3 values
+        let ncomp = select_ncomp(&eigenvalues, &NcompMethod::Elbow).unwrap();
+        assert_eq!(ncomp, 1);
+    }
+
+    #[test]
+    fn test_ncomp_integration_with_phase1() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 10,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+        // Use eigenvalues from chart to select ncomp
+        let ncomp =
+            select_ncomp(&chart.eigenvalues, &NcompMethod::CumulativeVariance(0.95)).unwrap();
+        assert!(ncomp >= 1 && ncomp <= chart.eigenvalues.len());
+    }
+
+    // ── t2_pc_contributions tests ─────────────────────────────────────────
+
+    use crate::spm::contrib::t2_pc_contributions;
+
+    #[test]
+    fn test_t2_pc_contributions_sum_matches_t2() {
+        let data = generate_ic_data(20, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+        let new_data = generate_ic_data(10, 30, 100);
+        let result = spm_monitor(&chart, &new_data, &argvals).unwrap();
+
+        let contrib = t2_pc_contributions(&result.scores, &chart.eigenvalues).unwrap();
+        let (n, ncomp) = contrib.shape();
+        assert_eq!(n, 10);
+        assert_eq!(ncomp, chart.eigenvalues.len());
+
+        // Row sums should match T² values
+        for i in 0..n {
+            let row_sum: f64 = (0..ncomp).map(|l| contrib[(i, l)]).sum();
+            assert!(
+                (row_sum - result.t2[i]).abs() < 1e-8,
+                "Row {i} sum {row_sum} != T2 {}",
+                result.t2[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_t2_pc_contributions_manual_3x2() {
+        // Manual test: 3 obs, 2 components
+        let scores = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, 2).unwrap();
+        let eigenvalues = [2.0, 3.0];
+        let contrib = t2_pc_contributions(&scores, &eigenvalues).unwrap();
+
+        // contrib[(0,0)] = 1²/2 = 0.5, contrib[(0,1)] = 4²/3 = 5.333
+        assert!((contrib[(0, 0)] - 0.5).abs() < 1e-10);
+        assert!((contrib[(0, 1)] - 16.0 / 3.0).abs() < 1e-10);
+        // contrib[(1,0)] = 2²/2 = 2.0, contrib[(1,1)] = 5²/3 = 8.333
+        assert!((contrib[(1, 0)] - 2.0).abs() < 1e-10);
+        assert!((contrib[(1, 1)] - 25.0 / 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_t2_pc_contributions_shifted_attribution() {
+        // Large shift should make overall T² large, and some PC should dominate
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let oc_data = generate_oc_data(5, 30, 5.0, 42);
+        let result = spm_monitor(&chart, &oc_data, &argvals).unwrap();
+        let contrib = t2_pc_contributions(&result.scores, &chart.eigenvalues).unwrap();
+
+        // For shifted data, total T² should be large and at least one PC
+        // should dominate the contribution
+        for i in 0..5 {
+            let total: f64 = (0..chart.eigenvalues.len()).map(|l| contrib[(i, l)]).sum();
+            let max_frac = (0..chart.eigenvalues.len())
+                .map(|l| contrib[(i, l)] / total)
+                .fold(0.0_f64, f64::max);
+            // At least one PC should contribute > 30% of the total
+            assert!(
+                max_frac > 0.3,
+                "Shifted obs {i}: dominant PC should contribute > 30%, got {max_frac}"
+            );
+        }
+    }
+
+    // ── rules tests ───────────────────────────────────────────────────────
+
+    use crate::spm::rules::{evaluate_rules, western_electric_rules, ChartRule};
+
+    #[test]
+    fn test_we1_single_outlier() {
+        let mut values = vec![0.0; 20];
+        values[10] = 4.0; // Beyond 3σ
+        let violations = western_electric_rules(&values, 0.0, 1.0).unwrap();
+        let we1_violations: Vec<_> = violations
+            .iter()
+            .filter(|v| v.rule == ChartRule::WE1)
+            .collect();
+        assert!(
+            !we1_violations.is_empty(),
+            "Should detect WE1 violation at index 10"
+        );
+        assert!(we1_violations.iter().any(|v| v.indices.contains(&10)));
+    }
+
+    #[test]
+    fn test_we4_eight_in_a_row() {
+        // 8 points all above center
+        let values: Vec<f64> = (0..15)
+            .map(|i| if (3..11).contains(&i) { 0.5 } else { -0.5 })
+            .collect();
+        let violations = evaluate_rules(&values, 0.0, 1.0, &[ChartRule::WE4]).unwrap();
+        assert!(
+            !violations.is_empty(),
+            "Should detect WE4: 8 consecutive same side"
+        );
+    }
+
+    #[test]
+    fn test_nelson5_monotone() {
+        // 6 strictly increasing points
+        let values: Vec<f64> = (0..10).map(|i| i as f64 * 0.1).collect();
+        let violations = evaluate_rules(&values, 0.0, 1.0, &[ChartRule::Nelson5]).unwrap();
+        assert!(
+            !violations.is_empty(),
+            "Should detect Nelson5: 6 monotone increasing"
+        );
+    }
+
+    #[test]
+    fn test_no_false_positives_centered() {
+        // Data centered at 0 with small variation (within 1σ range, but not 15 consecutive)
+        let values: Vec<f64> = (0..10)
+            .map(|i| if i % 2 == 0 { 0.5 } else { -0.5 })
+            .collect();
+        let violations = western_electric_rules(&values, 0.0, 1.0).unwrap();
+        // WE1 should not fire (all within 3σ)
+        let we1: Vec<_> = violations
+            .iter()
+            .filter(|v| v.rule == ChartRule::WE1)
+            .collect();
+        assert!(we1.is_empty(), "No WE1 violations expected");
+    }
+
+    #[test]
+    fn test_rules_empty_input() {
+        let violations = evaluate_rules(&[], 0.0, 1.0, &[ChartRule::WE1, ChartRule::WE4]).unwrap();
+        assert!(
+            violations.is_empty(),
+            "Empty input should yield no violations"
+        );
+    }
+
+    // ── bootstrap tests ───────────────────────────────────────────────────
+
+    use crate::spm::bootstrap::{spe_limit_robust, t2_limit_robust, ControlLimitMethod};
+
+    #[test]
+    fn test_bootstrap_parametric_matches_existing() {
+        let limit_param =
+            t2_limit_robust(&[1.0; 50], 3, 0.05, &ControlLimitMethod::Parametric).unwrap();
+        let limit_orig = t2_control_limit(3, 0.05).unwrap();
+        assert!(
+            (limit_param.ucl - limit_orig.ucl).abs() < 1e-10,
+            "Parametric should match: {} vs {}",
+            limit_param.ucl,
+            limit_orig.ucl
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_empirical_on_sequence() {
+        // Values 1..100, empirical 95th percentile ≈ 95
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let limit = t2_limit_robust(&values, 5, 0.05, &ControlLimitMethod::Empirical).unwrap();
+        assert!(
+            (limit.ucl - 95.0).abs() < 1.5,
+            "Empirical 95th percentile of 1..100 should be ~95, got {}",
+            limit.ucl
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_convergence() {
+        // Bootstrap on uniform data should give stable result
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let limit = t2_limit_robust(
+            &values,
+            5,
+            0.05,
+            &ControlLimitMethod::Bootstrap {
+                n_bootstrap: 1000,
+                seed: 42,
+            },
+        )
+        .unwrap();
+        // Should be close to the empirical quantile
+        assert!(
+            limit.ucl > 85.0 && limit.ucl < 100.0,
+            "Bootstrap UCL should be near 95, got {}",
+            limit.ucl
+        );
+    }
+
+    #[test]
+    fn test_kde_convergence() {
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let limit = t2_limit_robust(
+            &values,
+            5,
+            0.05,
+            &ControlLimitMethod::KernelDensity { bandwidth: None },
+        )
+        .unwrap();
+        assert!(
+            limit.ucl > 80.0 && limit.ucl < 105.0,
+            "KDE UCL should be near 95, got {}",
+            limit.ucl
+        );
+    }
+
+    #[test]
+    fn test_spe_limit_robust_empirical() {
+        let values: Vec<f64> = (1..=50).map(|i| i as f64).collect();
+        let limit = spe_limit_robust(&values, 0.05, &ControlLimitMethod::Empirical).unwrap();
+        assert!(limit.ucl > 45.0 && limit.ucl <= 50.0);
+    }
+
+    // ── ARL tests ─────────────────────────────────────────────────────────
+
+    use crate::spm::arl::{arl0_ewma_t2, arl0_spe, arl0_t2, arl1_t2, ArlConfig};
+
+    #[test]
+    fn test_arl0_approximately_1_over_alpha() {
+        // ARL0 ≈ 1/α for T² chart
+        let eigenvalues = [1.0, 0.5, 0.25];
+        let ucl = chi2_quantile(0.95, 3); // α = 0.05
+        let config = ArlConfig {
+            n_simulations: 5000,
+            max_run_length: 2000,
+            seed: 42,
+        };
+        let result = arl0_t2(&eigenvalues, ucl, &config).unwrap();
+        // Theory: ARL0 = 1/0.05 = 20
+        assert!(
+            result.arl > 10.0 && result.arl < 40.0,
+            "ARL0 should be near 20, got {}",
+            result.arl
+        );
+    }
+
+    #[test]
+    fn test_arl1_less_than_arl0() {
+        let eigenvalues = [1.0, 0.5];
+        let ucl = chi2_quantile(0.95, 2);
+        let config = ArlConfig {
+            n_simulations: 2000,
+            max_run_length: 1000,
+            seed: 42,
+        };
+        let arl0 = arl0_t2(&eigenvalues, ucl, &config).unwrap();
+        let shift = [2.0, 0.0]; // Shift in PC1
+        let arl1 = arl1_t2(&eigenvalues, ucl, &shift, &config).unwrap();
+        assert!(
+            arl1.arl < arl0.arl,
+            "ARL1 ({}) should be less than ARL0 ({})",
+            arl1.arl,
+            arl0.arl
+        );
+    }
+
+    #[test]
+    fn test_ewma_lambda1_matches_raw() {
+        // EWMA with lambda=1 should match raw T²
+        let eigenvalues = [1.0, 0.5];
+        let ucl = chi2_quantile(0.95, 2);
+        let config = ArlConfig {
+            n_simulations: 1000,
+            max_run_length: 500,
+            seed: 42,
+        };
+        let raw = arl0_t2(&eigenvalues, ucl, &config).unwrap();
+        let ewma = arl0_ewma_t2(&eigenvalues, ucl, 1.0, &config).unwrap();
+        // With lambda=1, EWMA reduces to raw scores, adjusted eigenvalues = eigenvalues
+        assert!(
+            (ewma.arl - raw.arl).abs() / raw.arl < 0.3,
+            "EWMA(lambda=1) ARL {} should be close to raw ARL {}",
+            ewma.arl,
+            raw.arl
+        );
+    }
+
+    #[test]
+    fn test_arl_monotonicity_shift() {
+        let eigenvalues = [1.0];
+        let ucl = chi2_quantile(0.95, 1);
+        let config = ArlConfig {
+            n_simulations: 1000,
+            max_run_length: 500,
+            seed: 42,
+        };
+        let arl_small = arl1_t2(&eigenvalues, ucl, &[1.0], &config).unwrap();
+        let arl_large = arl1_t2(&eigenvalues, ucl, &[3.0], &config).unwrap();
+        assert!(
+            arl_large.arl < arl_small.arl,
+            "Larger shift should give smaller ARL1: {} vs {}",
+            arl_large.arl,
+            arl_small.arl
+        );
+    }
+
+    #[test]
+    fn test_arl0_spe_basic() {
+        let config = ArlConfig {
+            n_simulations: 1000,
+            max_run_length: 500,
+            seed: 42,
+        };
+        // df=10, scale=1.0, ucl at 95th percentile ≈ 18.31
+        let ucl = chi2_quantile(0.95, 10);
+        let result = arl0_spe(10.0, 1.0, ucl, &config).unwrap();
+        // ARL0 should be roughly 1/0.05 = 20
+        assert!(
+            result.arl > 8.0 && result.arl < 50.0,
+            "SPE ARL0 should be near 20, got {}",
+            result.arl
+        );
+    }
+
+    // ── MEWMA tests ───────────────────────────────────────────────────────
+
+    use crate::spm::mewma::{spm_mewma_monitor, MewmaConfig};
+
+    #[test]
+    fn test_mewma_asymptotic_ic_data() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(20, 30, 100);
+        let mewma_config = MewmaConfig {
+            lambda: 0.2,
+            ncomp: 3,
+            alpha: 0.05,
+            asymptotic: true,
+        };
+        let result = spm_mewma_monitor(&chart, &new_data, &argvals, &mewma_config).unwrap();
+        assert_eq!(result.mewma_statistic.len(), 20);
+        assert_eq!(result.alarm.len(), 20);
+        assert!(result.ucl > 0.0);
+    }
+
+    #[test]
+    fn test_mewma_exact_converges_to_asymptotic() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Generate enough data that exact should converge
+        let new_data = generate_ic_data(100, 30, 100);
+        let mewma_asym = spm_mewma_monitor(
+            &chart,
+            &new_data,
+            &argvals,
+            &MewmaConfig {
+                asymptotic: true,
+                ..MewmaConfig::default()
+            },
+        )
+        .unwrap();
+        let mewma_exact = spm_mewma_monitor(
+            &chart,
+            &new_data,
+            &argvals,
+            &MewmaConfig {
+                asymptotic: false,
+                ..MewmaConfig::default()
+            },
+        )
+        .unwrap();
+
+        // At the end of the sequence, exact should be close to asymptotic
+        let last = mewma_asym.mewma_statistic.len() - 1;
+        let ratio = mewma_exact.mewma_statistic[last] / mewma_asym.mewma_statistic[last];
+        assert!(
+            (ratio - 1.0).abs() < 0.15,
+            "Exact and asymptotic should converge, ratio = {ratio}"
+        );
+    }
+
+    #[test]
+    fn test_mewma_lambda1_matches_raw_t2() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(10, 30, 100);
+        let mewma_result = spm_mewma_monitor(
+            &chart,
+            &new_data,
+            &argvals,
+            &MewmaConfig {
+                lambda: 1.0,
+                ncomp: 3,
+                alpha: 0.05,
+                asymptotic: true,
+            },
+        )
+        .unwrap();
+        let raw_result = spm_monitor(&chart, &new_data, &argvals).unwrap();
+
+        // With lambda=1, MEWMA T² should equal raw T²
+        for i in 0..10 {
+            assert!(
+                (mewma_result.mewma_statistic[i] - raw_result.t2[i]).abs() < 1e-6,
+                "Lambda=1 MEWMA[{i}]={} should equal T2[{i}]={}",
+                mewma_result.mewma_statistic[i],
+                raw_result.t2[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_mewma_sensitive_to_small_shifts() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Small shift (0.5) - MEWMA should accumulate it
+        let oc_data = generate_oc_data(30, 30, 0.5, 42);
+        let mewma_config = MewmaConfig {
+            lambda: 0.1,
+            ncomp: 3,
+            alpha: 0.05,
+            asymptotic: true,
+        };
+        let result = spm_mewma_monitor(&chart, &oc_data, &argvals, &mewma_config).unwrap();
+        // MEWMA statistic should generally increase over time due to accumulation
+        let first_half_mean: f64 = result.mewma_statistic[..15].iter().sum::<f64>() / 15.0;
+        let second_half_mean: f64 = result.mewma_statistic[15..].iter().sum::<f64>() / 15.0;
+        assert!(
+            second_half_mean >= first_half_mean * 0.5,
+            "MEWMA should accumulate shift: first_half={first_half_mean}, second_half={second_half_mean}"
+        );
+    }
+
+    // ── Profile monitoring tests ──────────────────────────────────────────
+
+    use crate::spm::profile::{profile_monitor, profile_phase1, ProfileMonitorConfig};
+
+    /// Generate y_curves and predictors for profile testing.
+    fn generate_profile_data(n: usize, m: usize, p: usize, seed: u64) -> (FdMatrix, FdMatrix) {
+        let t = uniform_grid(m);
+        let mut y = FdMatrix::zeros(n, m);
+        let mut pred = FdMatrix::zeros(n, p);
+        for i in 0..n {
+            // Deterministic pseudo-random predictor values
+            for k in 0..p {
+                pred[(i, k)] = ((seed
+                    .wrapping_add(i as u64 * 3 + k as u64)
+                    .wrapping_mul(48271)) as f64)
+                    / (u32::MAX as f64)
+                    * 2.0
+                    - 1.0;
+            }
+            for j in 0..m {
+                // y = beta0(t) + x * beta1(t) + noise
+                let beta0 = (2.0 * PI * t[j]).sin();
+                let beta1 = t[j] * (1.0 - t[j]);
+                let noise = 0.05
+                    * ((seed
+                        .wrapping_add(i as u64 * 13 + j as u64 * 7)
+                        .wrapping_mul(48271)) as f64)
+                    / (u32::MAX as f64);
+                y[(i, j)] = beta0 + pred[(i, 0)] * beta1 + noise;
+            }
+        }
+        (y, pred)
+    }
+
+    #[test]
+    fn test_profile_phase1_basic() {
+        let (y, pred) = generate_profile_data(60, 20, 1, 42);
+        let argvals = uniform_grid(20);
+        let config = ProfileMonitorConfig {
+            window_size: 15,
+            ncomp: 2,
+            ..ProfileMonitorConfig::default()
+        };
+        let chart = profile_phase1(&y, &pred, &argvals, &config).unwrap();
+        assert!(chart.t2_limit.ucl > 0.0);
+        assert!(!chart.eigenvalues.is_empty());
+    }
+
+    #[test]
+    fn test_profile_monitor_stable() {
+        let (y_train, pred_train) = generate_profile_data(60, 20, 1, 42);
+        let (y_test, pred_test) = generate_profile_data(40, 20, 1, 100);
+        let argvals = uniform_grid(20);
+        let config = ProfileMonitorConfig {
+            window_size: 15,
+            ncomp: 2,
+            ..ProfileMonitorConfig::default()
+        };
+        let chart = profile_phase1(&y_train, &pred_train, &argvals, &config).unwrap();
+        let result = profile_monitor(&chart, &y_test, &pred_test, &argvals, &config).unwrap();
+        assert!(!result.t2.is_empty());
+        // Stable profile should have few alarms
+        let alarm_rate =
+            result.t2_alarm.iter().filter(|&&a| a).count() as f64 / result.t2_alarm.len() as f64;
+        assert!(
+            alarm_rate < 0.5,
+            "Stable profile alarm rate should be low, got {alarm_rate}"
+        );
+    }
+
+    #[test]
+    fn test_profile_shifted_triggers_alarms() {
+        let (y_train, pred_train) = generate_profile_data(60, 20, 1, 42);
+        let argvals = uniform_grid(20);
+        let config = ProfileMonitorConfig {
+            window_size: 15,
+            ncomp: 2,
+            ..ProfileMonitorConfig::default()
+        };
+        let chart = profile_phase1(&y_train, &pred_train, &argvals, &config).unwrap();
+
+        // Shifted data
+        let (mut y_test, pred_test) = generate_profile_data(40, 20, 1, 200);
+        for i in 0..y_test.nrows() {
+            for j in 0..y_test.ncols() {
+                y_test[(i, j)] += 3.0; // Large shift
+            }
+        }
+        let result = profile_monitor(&chart, &y_test, &pred_test, &argvals, &config).unwrap();
+        let alarm_count = result.t2_alarm.iter().filter(|&&a| a).count();
+        assert!(
+            alarm_count > 0,
+            "Shifted profile should trigger some alarms"
+        );
+    }
+
+    #[test]
+    fn test_profile_small_window() {
+        let (y, pred) = generate_profile_data(30, 15, 1, 42);
+        let argvals = uniform_grid(15);
+        let config = ProfileMonitorConfig {
+            window_size: 5,
+            step_size: 2,
+            ncomp: 2,
+            ..ProfileMonitorConfig::default()
+        };
+        let chart = profile_phase1(&y, &pred, &argvals, &config).unwrap();
+        assert!(chart.eigenvalues.len() <= 2);
+    }
+
+    // ── Partial-domain monitoring tests ───────────────────────────────────
+
+    use crate::spm::partial::{
+        spm_monitor_partial, spm_monitor_partial_batch, DomainCompletion, PartialDomainConfig,
+    };
+
+    #[test]
+    fn test_partial_full_domain_matches_monitor() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(1, 30, 200);
+        let full_values: Vec<f64> = (0..30).map(|j| new_data[(0, j)]).collect();
+
+        // Full domain with ZeroPad should match spm_monitor
+        let partial_config = PartialDomainConfig {
+            ncomp: 3,
+            completion: DomainCompletion::ZeroPad,
+            ..PartialDomainConfig::default()
+        };
+        let partial_result =
+            spm_monitor_partial(&chart, &full_values, &argvals, 30, &partial_config).unwrap();
+        let full_result = spm_monitor(&chart, &new_data, &argvals).unwrap();
+
+        assert!(
+            (partial_result.t2 - full_result.t2[0]).abs() < 1e-4,
+            "Full domain partial T2 ({}) should match full T2 ({})",
+            partial_result.t2,
+            full_result.t2[0]
+        );
+    }
+
+    #[test]
+    fn test_partial_decreasing_domain_noisier() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(1, 30, 300);
+        let values: Vec<f64> = (0..30).map(|j| new_data[(0, j)]).collect();
+
+        let partial_config = PartialDomainConfig {
+            ncomp: 3,
+            completion: DomainCompletion::PartialProjection,
+            ..PartialDomainConfig::default()
+        };
+
+        // More observed points → scores should stabilize
+        let result_10 =
+            spm_monitor_partial(&chart, &values, &argvals, 10, &partial_config).unwrap();
+        let result_30 =
+            spm_monitor_partial(&chart, &values, &argvals, 30, &partial_config).unwrap();
+
+        assert!(
+            result_10.domain_fraction < result_30.domain_fraction,
+            "10 points should have smaller domain fraction"
+        );
+    }
+
+    #[test]
+    fn test_partial_ce_accuracy() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 2,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(1, 30, 400);
+        let values: Vec<f64> = (0..30).map(|j| new_data[(0, j)]).collect();
+
+        let partial_config = PartialDomainConfig {
+            ncomp: 2,
+            completion: DomainCompletion::ConditionalExpectation,
+            ..PartialDomainConfig::default()
+        };
+        let result = spm_monitor_partial(&chart, &values, &argvals, 20, &partial_config).unwrap();
+        assert!(result.completed_curve.is_some());
+        assert_eq!(result.scores.len(), 2);
+        assert!(result.domain_fraction > 0.0 && result.domain_fraction <= 1.0);
+    }
+
+    #[test]
+    fn test_partial_zeropad_baseline() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(1, 30, 500);
+        let values: Vec<f64> = (0..30).map(|j| new_data[(0, j)]).collect();
+
+        let partial_config = PartialDomainConfig {
+            ncomp: 3,
+            completion: DomainCompletion::ZeroPad,
+            ..PartialDomainConfig::default()
+        };
+        let result = spm_monitor_partial(&chart, &values, &argvals, 15, &partial_config).unwrap();
+        assert!(result.completed_curve.is_some());
+        let curve = result.completed_curve.unwrap();
+        // Unobserved portion should equal the mean
+        for j in 15..30 {
+            assert!(
+                (curve[j] - chart.fpca.mean[j]).abs() < 1e-10,
+                "ZeroPad: unobserved point {j} should equal mean"
+            );
+        }
+    }
+
+    #[test]
+    fn test_partial_n_observed_1() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 2,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let values = vec![1.0; 30];
+        let partial_config = PartialDomainConfig {
+            ncomp: 2,
+            completion: DomainCompletion::ConditionalExpectation,
+            ..PartialDomainConfig::default()
+        };
+        let result = spm_monitor_partial(&chart, &values, &argvals, 1, &partial_config).unwrap();
+        assert_eq!(result.scores.len(), 2);
+    }
+
+    #[test]
+    fn test_partial_n_observed_0_error() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 2,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let values = vec![1.0; 30];
+        let partial_config = PartialDomainConfig::default();
+        let result = spm_monitor_partial(&chart, &values, &argvals, 0, &partial_config);
+        assert!(result.is_err(), "n_observed=0 should return error");
+    }
+
+    #[test]
+    fn test_partial_batch() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 2,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let values1 = vec![0.5; 30];
+        let values2 = vec![1.0; 30];
+        let batch: Vec<(&[f64], usize)> = vec![(&values1, 15), (&values2, 20)];
+        let partial_config = PartialDomainConfig::default();
+        let results = spm_monitor_partial_batch(&chart, &batch, &argvals, &partial_config).unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    // ── Elastic SPM tests ─────────────────────────────────────────────────
+
+    use crate::spm::elastic_spm::{elastic_spm_monitor, elastic_spm_phase1, ElasticSpmConfig};
+
+    #[test]
+    fn test_elastic_spm_amplitude_only() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = ElasticSpmConfig {
+            spm: SpmConfig {
+                ncomp: 3,
+                ..SpmConfig::default()
+            },
+            monitor_phase: false,
+            ..ElasticSpmConfig::default()
+        };
+        let chart = elastic_spm_phase1(&data, &argvals, &config).unwrap();
+        assert!(chart.phase_chart.is_none());
+
+        let new_data = generate_ic_data(10, 30, 100);
+        let result = elastic_spm_monitor(&chart, &new_data, &argvals).unwrap();
+        assert!(result.phase.is_none());
+        assert_eq!(result.amplitude.t2.len(), 10);
+    }
+
+    #[test]
+    fn test_elastic_spm_with_phase() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = ElasticSpmConfig {
+            spm: SpmConfig {
+                ncomp: 3,
+                ..SpmConfig::default()
+            },
+            monitor_phase: true,
+            warp_ncomp: 2,
+            ..ElasticSpmConfig::default()
+        };
+        let chart = elastic_spm_phase1(&data, &argvals, &config).unwrap();
+        assert!(chart.phase_chart.is_some());
+
+        let new_data = generate_ic_data(10, 30, 100);
+        let result = elastic_spm_monitor(&chart, &new_data, &argvals).unwrap();
+        assert!(result.phase.is_some());
+        let phase = result.phase.unwrap();
+        assert_eq!(phase.t2.len(), 10);
+    }
+
+    #[test]
+    fn test_elastic_spm_roundtrip() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = ElasticSpmConfig {
+            spm: SpmConfig {
+                ncomp: 3,
+                ..SpmConfig::default()
+            },
+            ..ElasticSpmConfig::default()
+        };
+        let chart = elastic_spm_phase1(&data, &argvals, &config).unwrap();
+        assert!(!chart.karcher_mean.is_empty());
+        assert_eq!(chart.karcher_mean.len(), 30);
+
+        // Monitor same data — should have few alarms
+        let result = elastic_spm_monitor(&chart, &data, &argvals).unwrap();
+        assert_eq!(result.aligned_data.nrows(), 40);
+        assert_eq!(result.warping_functions.nrows(), 40);
+    }
+
+    #[test]
+    fn test_elastic_spm_shifted_detection() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = ElasticSpmConfig {
+            spm: SpmConfig {
+                ncomp: 3,
+                ..SpmConfig::default()
+            },
+            ..ElasticSpmConfig::default()
+        };
+        let chart = elastic_spm_phase1(&data, &argvals, &config).unwrap();
+
+        let oc_data = generate_oc_data(10, 30, 5.0, 42);
+        let result = elastic_spm_monitor(&chart, &oc_data, &argvals).unwrap();
+        let amp_alarms = result.amplitude.t2_alarm.iter().filter(|&&a| a).count();
+        // Large shift should trigger alarms
+        assert!(
+            amp_alarms > 0,
+            "Amplitude shift should trigger alarms, got {amp_alarms}"
+        );
+    }
 }

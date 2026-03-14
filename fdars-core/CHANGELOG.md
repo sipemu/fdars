@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic ncomp selection** (`spm/ncomp.rs`): `select_ncomp` with cumulative variance, elbow detection, and fixed methods. New type: `NcompMethod`
+- **Per-PC T² contributions** (`spm/contrib.rs`): `t2_pc_contributions` returns an n × ncomp matrix whose rows sum to the Hotelling T² value, enabling per-component fault attribution
+- **Runs/zone rules** (`spm/rules.rs`): Western Electric (WE1–WE4) and Nelson (5–7) pattern detection rules for control charts; custom run rules. New types: `ChartRule`, `RuleViolation`. Functions: `evaluate_rules`, `western_electric_rules`, `nelson_rules`
+- **Bootstrap/robust control limits** (`spm/bootstrap.rs`): empirical quantile, bootstrap resampling, and Gaussian KDE alternatives to parametric chi-squared limits. New type: `ControlLimitMethod`. Functions: `t2_limit_robust`, `spe_limit_robust`
+- **ARL computation** (`spm/arl.rs`): Monte Carlo average run length simulation for T², EWMA-T², and SPE charts with parallelized replicates. New types: `ArlConfig`, `ArlResult`. Functions: `arl0_t2`, `arl1_t2`, `arl0_ewma_t2`, `arl0_spe`
+- **MEWMA monitoring** (`spm/mewma.rs`): multivariate EWMA with asymptotic or exact time-dependent covariance and chi-squared UCL. New types: `MewmaConfig`, `MewmaMonitorResult`. Function: `spm_mewma_monitor`
+- **Profile monitoring** (`spm/profile.rs`): rolling-window FOSR coefficient monitoring via FPCA and T² for detecting changes in predictor–response relationships. New types: `ProfileMonitorConfig`, `ProfileChart`, `ProfileMonitorResult`. Functions: `profile_phase1`, `profile_monitor`
+- **Partial-domain monitoring** (`spm/partial.rs`): monitor incomplete functional observations using conditional expectation (BLUP), partial projection, or zero-padding. New types: `DomainCompletion`, `PartialDomainConfig`, `PartialMonitorResult`. Functions: `spm_monitor_partial`, `spm_monitor_partial_batch`
+- **Phase-aware (elastic) SPM** (`spm/elastic_spm.rs`): separates amplitude and phase variation via Karcher mean alignment, then monitors each component independently. New types: `ElasticSpmConfig`, `ElasticSpmChart`, `ElasticSpmMonitorResult`. Functions: `elastic_spm_phase1`, `elastic_spm_monitor`
+- 40 new SPM tests (ncomp: 6, per-PC contributions: 3, rules: 5, bootstrap: 5, ARL: 5, MEWMA: 4, profile: 4, partial: 7, elastic SPM: 4); total SPM tests: 90
+- All new types and functions re-exported in `lib.rs` and `prelude.rs`
+
 ## [0.8.5] - 2026-03-14
 
 ### Added

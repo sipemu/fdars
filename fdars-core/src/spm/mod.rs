@@ -32,6 +32,7 @@
 //! - [`stats`]: T-squared and SPE computation
 //! - [`control`]: Control limit estimation
 //! - [`contrib`]: Contribution diagnostics for fault identification
+//! - [`partial`]: Partial-domain monitoring (incomplete observations)
 //!
 //! # Example
 //!
@@ -51,26 +52,50 @@
 //! // Check result.t2_alarm and result.spe_alarm for out-of-control signals
 //! ```
 
+pub mod arl;
+pub mod bootstrap;
 pub(super) mod chi_squared;
 pub mod contrib;
 pub mod control;
+pub mod elastic_spm;
 pub mod ewma;
 pub mod frcc;
+pub mod mewma;
 pub mod mfpca;
+pub mod ncomp;
+pub mod partial;
 pub mod phase;
+pub mod profile;
+pub mod rules;
 pub mod stats;
 
 #[cfg(test)]
 mod tests;
 
 // Re-export primary types and functions for convenience
-pub use contrib::{spe_contributions, t2_contributions};
+pub use arl::{arl0_ewma_t2, arl0_spe, arl0_t2, arl1_t2, ArlConfig, ArlResult};
+pub use bootstrap::{spe_limit_robust, t2_limit_robust, ControlLimitMethod};
+pub use contrib::{spe_contributions, t2_contributions, t2_pc_contributions};
 pub use control::{spe_control_limit, t2_control_limit, ControlLimit};
+pub use elastic_spm::{
+    elastic_spm_monitor, elastic_spm_phase1, ElasticSpmChart, ElasticSpmConfig,
+    ElasticSpmMonitorResult,
+};
 pub use ewma::{ewma_scores, spm_ewma_monitor, EwmaConfig, EwmaMonitorResult};
 pub use frcc::{frcc_monitor, frcc_phase1, FrccChart, FrccConfig, FrccMonitorResult};
+pub use mewma::{spm_mewma_monitor, MewmaConfig, MewmaMonitorResult};
 pub use mfpca::{mfpca, MfpcaConfig, MfpcaResult};
+pub use ncomp::{select_ncomp, NcompMethod};
+pub use partial::{
+    spm_monitor_partial, spm_monitor_partial_batch, DomainCompletion, PartialDomainConfig,
+    PartialMonitorResult,
+};
 pub use phase::{
     mf_spm_monitor, mf_spm_phase1, spm_monitor, spm_phase1, MfSpmChart, SpmChart, SpmConfig,
     SpmMonitorResult,
 };
+pub use profile::{
+    profile_monitor, profile_phase1, ProfileChart, ProfileMonitorConfig, ProfileMonitorResult,
+};
+pub use rules::{evaluate_rules, nelson_rules, western_electric_rules, ChartRule, RuleViolation};
 pub use stats::{hotelling_t2, spe_multivariate, spe_univariate};

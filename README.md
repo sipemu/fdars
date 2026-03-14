@@ -87,9 +87,16 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Multivariate FPCA**: Joint FPCA across multiple functional variables with standardization (`mfpca`)
 - **Multivariate SPM**: Phase I/II monitoring for multi-response functional data (`mf_spm_phase1`, `mf_spm_monitor`)
 - **EWMA Monitoring**: Exponentially weighted moving average smoothing on FPCA scores for enhanced sensitivity to small persistent shifts
+- **MEWMA Monitoring**: Multivariate EWMA with asymptotic or exact time-dependent covariance (`spm_mewma_monitor`)
 - **Functional Regression Control Chart (FRCC)**: Covariate-adjusted monitoring via FOSR residuals
-- **Contribution Diagnostics**: Per-variable T² and SPE decomposition for fault identification
-- **Control Limits**: Chi-squared quantiles for T², moment-matched chi-squared for SPE
+- **Profile Monitoring**: Rolling-window FOSR coefficient monitoring via FPCA and T² (`profile_phase1`, `profile_monitor`)
+- **Contribution Diagnostics**: Per-variable T²/SPE decomposition and per-PC T² contributions for fault identification
+- **Control Limits**: Chi-squared quantiles for T², moment-matched chi-squared for SPE; empirical, bootstrap, and KDE robust alternatives
+- **ARL Computation**: Monte Carlo average run length for T², EWMA-T², and SPE charts (`arl0_t2`, `arl1_t2`, `arl0_ewma_t2`, `arl0_spe`)
+- **Automatic ncomp Selection**: Cumulative variance, elbow detection, and fixed methods (`select_ncomp`)
+- **Runs/Zone Rules**: Western Electric (WE1–WE4) and Nelson (5–7) rules for pattern detection (`evaluate_rules`, `western_electric_rules`, `nelson_rules`)
+- **Partial-Domain Monitoring**: Monitor incomplete observations via conditional expectation (BLUP), partial projection, or zero-padding (`spm_monitor_partial`)
+- **Phase-Aware Monitoring**: Elastic alignment separates amplitude and phase variation for independent monitoring (`elastic_spm_phase1`, `elastic_spm_monitor`)
 
 ### Elastic Analysis
 

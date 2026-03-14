@@ -166,3 +166,45 @@ pub fn spe_contributions(
 
     Ok(contrib)
 }
+
+/// Compute per-PC T-squared contributions.
+///
+/// Returns an n × ncomp matrix where element (i, l) is the contribution
+/// of principal component l to the T-squared statistic for observation i.
+/// Rows sum to the Hotelling T-squared value for each observation.
+///
+/// # Arguments
+/// * `scores` - Score matrix (n × ncomp)
+/// * `eigenvalues` - Eigenvalues (length ncomp)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if shapes are inconsistent.
+/// Returns [`FdarError::InvalidParameter`] if any eigenvalue is non-positive.
+pub fn t2_pc_contributions(scores: &FdMatrix, eigenvalues: &[f64]) -> Result<FdMatrix, FdarError> {
+    let (n, ncomp) = scores.shape();
+    if ncomp != eigenvalues.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "eigenvalues",
+            expected: format!("{ncomp}"),
+            actual: format!("{}", eigenvalues.len()),
+        });
+    }
+    for (l, &ev) in eigenvalues.iter().enumerate() {
+        if ev <= 0.0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "eigenvalues",
+                message: format!("eigenvalue[{l}] = {ev} must be positive"),
+            });
+        }
+    }
+
+    let mut contrib = FdMatrix::zeros(n, ncomp);
+    for i in 0..n {
+        for l in 0..ncomp {
+            contrib[(i, l)] = scores[(i, l)] * scores[(i, l)] / eigenvalues[l];
+        }
+    }
+
+    Ok(contrib)
+}
