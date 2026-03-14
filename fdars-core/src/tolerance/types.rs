@@ -72,7 +72,7 @@ pub struct EquivalenceTestResult {
     pub alpha: f64,
 }
 
-/// Configuration for [`elastic_tolerance_band_joint`](super::elastic_tolerance_band_joint).
+/// Configuration for [`elastic_tolerance_band_with_config`](super::elastic_tolerance_band_with_config).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ElasticToleranceConfig {
@@ -128,7 +128,7 @@ pub struct PhaseToleranceBand {
 
 /// Joint amplitude and phase elastic tolerance bands.
 ///
-/// Returned by [`elastic_tolerance_band_joint`](super::elastic_tolerance_band_joint).
+/// Returned by [`elastic_tolerance_band_with_config`](super::elastic_tolerance_band_with_config).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ElasticToleranceBandResult {

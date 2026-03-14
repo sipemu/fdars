@@ -96,6 +96,7 @@ fn validate_elastic_inputs(
 /// let band = elastic_tolerance_band(&data, &t, 3, 100, 0.95, BandType::Pointwise, 10, 42).unwrap();
 /// assert!(band.lower.iter().zip(band.upper.iter()).all(|(l, u)| l < u));
 /// ```
+#[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_tolerance_band(
     data: &FdMatrix,
     argvals: &[f64],
@@ -278,17 +279,17 @@ pub fn phase_tolerance_band(
 ///
 /// ```
 /// use fdars_core::simulation::{sim_fundata, EFunType, EValType};
-/// use fdars_core::tolerance::{elastic_tolerance_band_joint, ElasticToleranceConfig};
+/// use fdars_core::tolerance::{elastic_tolerance_band_with_config, ElasticToleranceConfig};
 ///
 /// let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
 /// let data = sim_fundata(30, &t, 5, EFunType::Fourier, EValType::Exponential, Some(42));
 ///
-/// let result = elastic_tolerance_band_joint(&data, &t, &ElasticToleranceConfig::default()).unwrap();
+/// let result = elastic_tolerance_band_with_config(&data, &t, &ElasticToleranceConfig::default()).unwrap();
 /// assert_eq!(result.amplitude.lower.len(), 50);
 /// assert_eq!(result.phase.gamma_lower.len(), 50);
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn elastic_tolerance_band_joint(
+pub fn elastic_tolerance_band_with_config(
     data: &FdMatrix,
     argvals: &[f64],
     config: &ElasticToleranceConfig,

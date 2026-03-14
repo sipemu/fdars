@@ -749,7 +749,7 @@ fn test_joint_band_valid_output() {
         nb: 50,
         ..ElasticToleranceConfig::default()
     };
-    let result = elastic_tolerance_band_joint(&data, &t, &config);
+    let result = elastic_tolerance_band_with_config(&data, &t, &config);
     let result = result.expect("Joint band should succeed");
 
     // Amplitude band
@@ -779,7 +779,7 @@ fn test_joint_band_amplitude_matches_standalone() {
         tol: 1e-4,
         seed: 42,
     };
-    let joint = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+    let joint = elastic_tolerance_band_with_config(&data, &t, &config).unwrap();
 
     // Same Karcher mean parameters and seed → same amplitude band
     for j in 0..t.len() {
@@ -808,8 +808,8 @@ fn test_joint_band_deterministic() {
         seed: 123,
         ..ElasticToleranceConfig::default()
     };
-    let r1 = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
-    let r2 = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+    let r1 = elastic_tolerance_band_with_config(&data, &t, &config).unwrap();
+    let r2 = elastic_tolerance_band_with_config(&data, &t, &config).unwrap();
 
     for j in 0..t.len() {
         assert_eq!(r1.amplitude.lower[j], r2.amplitude.lower[j]);
@@ -828,7 +828,7 @@ fn test_joint_band_invalid_config() {
         nb: 50,
         ..ElasticToleranceConfig::default()
     };
-    assert!(elastic_tolerance_band_joint(&data, &t, &config).is_err());
+    assert!(elastic_tolerance_band_with_config(&data, &t, &config).is_err());
 
     // ncomp_amplitude = 0
     let config = ElasticToleranceConfig {
@@ -837,7 +837,7 @@ fn test_joint_band_invalid_config() {
         nb: 50,
         ..ElasticToleranceConfig::default()
     };
-    assert!(elastic_tolerance_band_joint(&data, &t, &config).is_err());
+    assert!(elastic_tolerance_band_with_config(&data, &t, &config).is_err());
 
     // coverage out of range
     let config = ElasticToleranceConfig {
@@ -846,7 +846,7 @@ fn test_joint_band_invalid_config() {
         nb: 50,
         ..ElasticToleranceConfig::default()
     };
-    assert!(elastic_tolerance_band_joint(&data, &t, &config).is_err());
+    assert!(elastic_tolerance_band_with_config(&data, &t, &config).is_err());
 }
 
 #[test]
@@ -858,7 +858,7 @@ fn test_joint_band_default_config() {
         nb: 50,
         ..ElasticToleranceConfig::default()
     };
-    let result = elastic_tolerance_band_joint(&data, &t, &config).unwrap();
+    let result = elastic_tolerance_band_with_config(&data, &t, &config).unwrap();
 
     // Both bands should have valid structure
     for j in 0..t.len() {
