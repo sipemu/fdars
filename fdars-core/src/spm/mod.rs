@@ -52,14 +52,17 @@
 //! // Check result.t2_alarm and result.spe_alarm for out-of-control signals
 //! ```
 
+pub mod amewma;
 pub mod arl;
 pub mod bootstrap;
 pub(super) mod chi_squared;
 pub mod contrib;
 pub mod control;
+pub mod cusum;
 pub mod elastic_spm;
 pub mod ewma;
 pub mod frcc;
+pub mod iterative;
 pub mod mewma;
 pub mod mfpca;
 pub mod ncomp;
@@ -73,16 +76,21 @@ pub mod stats;
 mod tests;
 
 // Re-export primary types and functions for convenience
+pub use amewma::{spm_amewma_monitor, AmewmaConfig, AmewmaMonitorResult};
 pub use arl::{arl0_ewma_t2, arl0_spe, arl0_t2, arl1_t2, ArlConfig, ArlResult};
 pub use bootstrap::{spe_limit_robust, t2_limit_robust, ControlLimitMethod};
 pub use contrib::{spe_contributions, t2_contributions, t2_pc_contributions};
 pub use control::{spe_control_limit, t2_control_limit, ControlLimit};
+pub use cusum::{
+    spm_cusum_monitor, spm_cusum_monitor_with_restart, CusumConfig, CusumMonitorResult,
+};
 pub use elastic_spm::{
     elastic_spm_monitor, elastic_spm_phase1, ElasticSpmChart, ElasticSpmConfig,
     ElasticSpmMonitorResult,
 };
 pub use ewma::{ewma_scores, spm_ewma_monitor, EwmaConfig, EwmaMonitorResult};
 pub use frcc::{frcc_monitor, frcc_phase1, FrccChart, FrccConfig, FrccMonitorResult};
+pub use iterative::{spm_phase1_iterative, IterativePhase1Config, IterativePhase1Result};
 pub use mewma::{spm_mewma_monitor, MewmaConfig, MewmaMonitorResult};
 pub use mfpca::{mfpca, MfpcaConfig, MfpcaResult};
 pub use ncomp::{select_ncomp, NcompMethod};

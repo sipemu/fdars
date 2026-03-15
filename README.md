@@ -97,6 +97,9 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 - **Runs/Zone Rules**: Western Electric (WE1–WE4) and Nelson (5–7) rules for pattern detection (`evaluate_rules`, `western_electric_rules`, `nelson_rules`)
 - **Partial-Domain Monitoring**: Monitor incomplete observations via conditional expectation (BLUP), partial projection, or zero-padding (`spm_monitor_partial`)
 - **Phase-Aware Monitoring**: Elastic alignment separates amplitude and phase variation for independent monitoring (`elastic_spm_phase1`, `elastic_spm_monitor`)
+- **CUSUM Monitoring**: Multivariate (Crosier's MCUSUM) and per-component univariate CUSUM charts for detecting small sustained shifts (`spm_cusum_monitor`, `spm_cusum_monitor_with_restart`)
+- **Adaptive EWMA (AMFEWMA)**: Dynamically adjusts smoothing parameter based on deviation magnitude for robustness across unknown shift sizes (`spm_amewma_monitor`)
+- **Iterative Phase I**: Repeated outlier removal and chart re-estimation for robust Phase I construction from contaminated data (`spm_phase1_iterative`)
 
 ### Elastic Analysis
 

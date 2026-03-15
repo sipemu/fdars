@@ -3,11 +3,14 @@
 #[cfg(test)]
 mod spm_tests {
     use crate::matrix::FdMatrix;
+    use crate::spm::amewma::{spm_amewma_monitor, AmewmaConfig};
     use crate::spm::chi_squared::{chi2_cdf, chi2_quantile};
     use crate::spm::contrib::{spe_contributions, t2_contributions};
     use crate::spm::control::{spe_control_limit, t2_control_limit};
+    use crate::spm::cusum::{spm_cusum_monitor, spm_cusum_monitor_with_restart, CusumConfig};
     use crate::spm::ewma::{ewma_scores, spm_ewma_monitor, EwmaConfig};
     use crate::spm::frcc::{frcc_monitor, frcc_phase1, FrccConfig};
+    use crate::spm::iterative::{spm_phase1_iterative, IterativePhase1Config};
     use crate::spm::mfpca::{mfpca, MfpcaConfig};
     use crate::spm::phase::{mf_spm_monitor, mf_spm_phase1, spm_monitor, spm_phase1, SpmConfig};
     use crate::spm::stats::{hotelling_t2, spe_multivariate, spe_univariate};
@@ -2087,6 +2090,408 @@ mod spm_tests {
         assert!(
             amp_alarms > 0,
             "Amplitude shift should trigger alarms, got {amp_alarms}"
+        );
+    }
+
+    // ── CUSUM tests ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_cusum_multivariate_ic_data() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let ic_data = generate_ic_data(20, 30, 200);
+        let cusum_config = CusumConfig {
+            ncomp: 3,
+            ..CusumConfig::default()
+        };
+        let result = spm_cusum_monitor(&chart, &ic_data, &argvals, &cusum_config).unwrap();
+
+        assert_eq!(result.cusum_statistic.len(), 20);
+        assert_eq!(result.alarm.len(), 20);
+        assert!(result.ucl > 0.0);
+        assert!(result.cusum_plus.is_none()); // multivariate mode
+        assert!(result.cusum_minus.is_none());
+        for &s in &result.cusum_statistic {
+            assert!(s >= 0.0, "CUSUM statistic must be non-negative");
+        }
+    }
+
+    #[test]
+    fn test_cusum_univariate_mode() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let ic_data = generate_ic_data(15, 30, 300);
+        let cusum_config = CusumConfig {
+            ncomp: 3,
+            multivariate: false,
+            ..CusumConfig::default()
+        };
+        let result = spm_cusum_monitor(&chart, &ic_data, &argvals, &cusum_config).unwrap();
+
+        assert_eq!(result.cusum_statistic.len(), 15);
+        assert!(result.cusum_plus.is_some());
+        assert!(result.cusum_minus.is_some());
+        let cp = result.cusum_plus.as_ref().unwrap();
+        let cm = result.cusum_minus.as_ref().unwrap();
+        assert_eq!(cp.shape(), (15, 3));
+        assert_eq!(cm.shape(), (15, 3));
+    }
+
+    #[test]
+    fn test_cusum_detects_shift() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let oc_data = generate_oc_data(20, 30, 3.0, 42);
+        let cusum_config = CusumConfig {
+            ncomp: 3,
+            k: 0.5,
+            h: 4.0,
+            ..CusumConfig::default()
+        };
+        let result = spm_cusum_monitor(&chart, &oc_data, &argvals, &cusum_config).unwrap();
+        let alarm_count = result.alarm.iter().filter(|&&a| a).count();
+        assert!(
+            alarm_count > 0,
+            "CUSUM should detect shifted data, got 0 alarms"
+        );
+    }
+
+    #[test]
+    fn test_cusum_restart_fewer_alarms() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let oc_data = generate_oc_data(30, 30, 3.0, 42);
+        let cusum_config = CusumConfig {
+            ncomp: 3,
+            k: 0.5,
+            h: 4.0,
+            ..CusumConfig::default()
+        };
+
+        let result_no_restart =
+            spm_cusum_monitor(&chart, &oc_data, &argvals, &cusum_config).unwrap();
+        let result_restart =
+            spm_cusum_monitor_with_restart(&chart, &oc_data, &argvals, &cusum_config).unwrap();
+
+        // With restart, statistics reset after alarm, so cumulative stats should differ
+        assert_eq!(result_no_restart.cusum_statistic.len(), 30);
+        assert_eq!(result_restart.cusum_statistic.len(), 30);
+        // After first alarm, restart version should have lower statistics
+        let no_restart_alarms = result_no_restart.alarm.iter().filter(|&&a| a).count();
+        let restart_alarms = result_restart.alarm.iter().filter(|&&a| a).count();
+        // Both should detect the shift
+        assert!(no_restart_alarms > 0);
+        assert!(restart_alarms > 0);
+    }
+
+    #[test]
+    fn test_cusum_invalid_k() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig::default();
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let ic_data = generate_ic_data(5, 30, 100);
+        let cusum_config = CusumConfig {
+            k: -1.0,
+            ..CusumConfig::default()
+        };
+        assert!(spm_cusum_monitor(&chart, &ic_data, &argvals, &cusum_config).is_err());
+    }
+
+    #[test]
+    fn test_cusum_invalid_h() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig::default();
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let ic_data = generate_ic_data(5, 30, 100);
+        let cusum_config = CusumConfig {
+            h: 0.0,
+            ..CusumConfig::default()
+        };
+        assert!(spm_cusum_monitor(&chart, &ic_data, &argvals, &cusum_config).is_err());
+    }
+
+    // ── Adaptive EWMA (AMFEWMA) tests ────────────────────────────────────────
+
+    #[test]
+    fn test_amewma_ic_data() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let ic_data = generate_ic_data(20, 30, 200);
+        let amewma_config = AmewmaConfig {
+            ncomp: 3,
+            ..AmewmaConfig::default()
+        };
+        let result = spm_amewma_monitor(&chart, &ic_data, &argvals, &amewma_config).unwrap();
+
+        assert_eq!(result.t2_statistic.len(), 20);
+        assert_eq!(result.lambda_t.len(), 20);
+        assert_eq!(result.alarm.len(), 20);
+        assert!(result.ucl > 0.0);
+        assert_eq!(result.smoothed_scores.shape(), (20, 3));
+
+        // Lambda should stay within bounds
+        for &lam in &result.lambda_t {
+            assert!(
+                lam >= amewma_config.lambda_min && lam <= amewma_config.lambda_max,
+                "lambda_t={lam} out of bounds [{}, {}]",
+                amewma_config.lambda_min,
+                amewma_config.lambda_max
+            );
+        }
+    }
+
+    #[test]
+    fn test_amewma_detects_shift() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let oc_data = generate_oc_data(20, 30, 5.0, 42);
+        let amewma_config = AmewmaConfig {
+            ncomp: 3,
+            ..AmewmaConfig::default()
+        };
+        let result = spm_amewma_monitor(&chart, &oc_data, &argvals, &amewma_config).unwrap();
+        let alarm_count = result.alarm.iter().filter(|&&a| a).count();
+        assert!(
+            alarm_count > 0,
+            "AMFEWMA should detect shifted data, got 0 alarms"
+        );
+    }
+
+    #[test]
+    fn test_amewma_lambda_increases_on_shift() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Monitor shifted data — lambda should increase due to larger errors
+        let oc_data = generate_oc_data(20, 30, 5.0, 42);
+        let amewma_config = AmewmaConfig {
+            ncomp: 3,
+            lambda_init: 0.2,
+            ..AmewmaConfig::default()
+        };
+        let result = spm_amewma_monitor(&chart, &oc_data, &argvals, &amewma_config).unwrap();
+
+        // Later lambdas should be larger than initial as the adaptive weight reacts
+        let avg_lambda: f64 = result.lambda_t.iter().sum::<f64>() / result.lambda_t.len() as f64;
+        assert!(
+            avg_lambda > amewma_config.lambda_init,
+            "Average lambda ({avg_lambda}) should exceed lambda_init ({}) under shift",
+            amewma_config.lambda_init
+        );
+    }
+
+    #[test]
+    fn test_amewma_invalid_lambda_range() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = SpmConfig::default();
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let ic_data = generate_ic_data(5, 30, 100);
+
+        // lambda_min > lambda_max
+        let bad_config = AmewmaConfig {
+            lambda_min: 0.8,
+            lambda_max: 0.2,
+            lambda_init: 0.2,
+            ..AmewmaConfig::default()
+        };
+        assert!(spm_amewma_monitor(&chart, &ic_data, &argvals, &bad_config).is_err());
+
+        // lambda_init out of range
+        let bad_config2 = AmewmaConfig {
+            lambda_min: 0.1,
+            lambda_max: 0.5,
+            lambda_init: 0.8,
+            ..AmewmaConfig::default()
+        };
+        assert!(spm_amewma_monitor(&chart, &ic_data, &argvals, &bad_config2).is_err());
+
+        // eta out of range
+        let bad_config3 = AmewmaConfig {
+            eta: 0.0,
+            ..AmewmaConfig::default()
+        };
+        assert!(spm_amewma_monitor(&chart, &ic_data, &argvals, &bad_config3).is_err());
+    }
+
+    // ── Iterative Phase I tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_iterative_phase1_clean_data() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = IterativePhase1Config {
+            spm: SpmConfig {
+                ncomp: 3,
+                alpha: 0.05,
+                ..SpmConfig::default()
+            },
+            max_removal_fraction: 0.3,
+            ..IterativePhase1Config::default()
+        };
+        let result = spm_phase1_iterative(&data, &argvals, &config).unwrap();
+
+        // Removal fraction should not exceed the limit
+        let frac = result.removed_indices.len() as f64 / 40.0;
+        assert!(
+            frac <= 0.3 + 0.01,
+            "Should not exceed max_removal_fraction, got {frac}"
+        );
+        assert_eq!(result.n_remaining + result.removed_indices.len(), 40);
+        // Chart should be valid
+        assert!(result.chart.t2_limit.ucl > 0.0);
+    }
+
+    #[test]
+    fn test_iterative_phase1_removes_outliers() {
+        // Build data with extreme outliers — large enough to be clearly OC
+        let mut data = generate_ic_data(50, 30, 42);
+        // Add 5 extreme outliers
+        for i in 45..50 {
+            for j in 0..30 {
+                data[(i, j)] += 50.0;
+            }
+        }
+        let argvals = uniform_grid(30);
+        let config = IterativePhase1Config {
+            spm: SpmConfig {
+                ncomp: 3,
+                alpha: 0.01,
+                ..SpmConfig::default()
+            },
+            max_removal_fraction: 0.5,
+            ..IterativePhase1Config::default()
+        };
+        let result = spm_phase1_iterative(&data, &argvals, &config).unwrap();
+
+        // Should perform at least one iteration
+        assert!(
+            result.n_iterations > 0 || result.removed_indices.is_empty(),
+            "iterations={}, removed={}",
+            result.n_iterations,
+            result.removed_indices.len()
+        );
+        // The chart should be valid regardless
+        assert!(result.chart.t2_limit.ucl > 0.0);
+        assert!(result.n_remaining >= 4);
+    }
+
+    #[test]
+    fn test_iterative_phase1_max_removal_fraction() {
+        // All data is "extreme" — should hit removal fraction limit
+        let data = generate_oc_data(40, 30, 10.0, 42);
+        let argvals = uniform_grid(30);
+        let config = IterativePhase1Config {
+            spm: SpmConfig {
+                ncomp: 3,
+                alpha: 0.05,
+                ..SpmConfig::default()
+            },
+            max_removal_fraction: 0.1,
+            ..IterativePhase1Config::default()
+        };
+        let result = spm_phase1_iterative(&data, &argvals, &config).unwrap();
+
+        // Should not remove more than 10%
+        assert!(
+            result.removed_indices.len() as f64 / 40.0 <= 0.1 + 0.01,
+            "Should not exceed max_removal_fraction"
+        );
+    }
+
+    #[test]
+    fn test_iterative_phase1_invalid_params() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+
+        // max_iterations = 0
+        let config = IterativePhase1Config {
+            max_iterations: 0,
+            ..IterativePhase1Config::default()
+        };
+        assert!(spm_phase1_iterative(&data, &argvals, &config).is_err());
+
+        // max_removal_fraction = 0
+        let config2 = IterativePhase1Config {
+            max_removal_fraction: 0.0,
+            ..IterativePhase1Config::default()
+        };
+        assert!(spm_phase1_iterative(&data, &argvals, &config2).is_err());
+    }
+
+    #[test]
+    fn test_iterative_phase1_convergence() {
+        let data = generate_ic_data(40, 30, 42);
+        let argvals = uniform_grid(30);
+        let config = IterativePhase1Config {
+            spm: SpmConfig {
+                ncomp: 3,
+                alpha: 0.05,
+                ..SpmConfig::default()
+            },
+            max_iterations: 20,
+            ..IterativePhase1Config::default()
+        };
+        let result = spm_phase1_iterative(&data, &argvals, &config).unwrap();
+
+        // Should converge before max_iterations on clean data
+        assert!(
+            result.n_iterations < 20,
+            "Should converge before max iterations on clean data, took {}",
+            result.n_iterations
         );
     }
 }

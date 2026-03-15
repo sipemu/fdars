@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Profile monitoring** (`spm/profile.rs`): rolling-window FOSR coefficient monitoring via FPCA and T² for detecting changes in predictor–response relationships. New types: `ProfileMonitorConfig`, `ProfileChart`, `ProfileMonitorResult`. Functions: `profile_phase1`, `profile_monitor`
 - **Partial-domain monitoring** (`spm/partial.rs`): monitor incomplete functional observations using conditional expectation (BLUP), partial projection, or zero-padding. New types: `DomainCompletion`, `PartialDomainConfig`, `PartialMonitorResult`. Functions: `spm_monitor_partial`, `spm_monitor_partial_batch`
 - **Phase-aware (elastic) SPM** (`spm/elastic_spm.rs`): separates amplitude and phase variation via Karcher mean alignment, then monitors each component independently. New types: `ElasticSpmConfig`, `ElasticSpmChart`, `ElasticSpmMonitorResult`. Functions: `elastic_spm_phase1`, `elastic_spm_monitor`
-- 40 new SPM tests (ncomp: 6, per-PC contributions: 3, rules: 5, bootstrap: 5, ARL: 5, MEWMA: 4, profile: 4, partial: 7, elastic SPM: 4); total SPM tests: 90
+- **CUSUM monitoring** (`spm/cusum.rs`): multivariate (Crosier's MCUSUM) and per-component univariate CUSUM charts for detecting small sustained shifts; optional automatic restart after alarms. New types: `CusumConfig`, `CusumMonitorResult`. Functions: `spm_cusum_monitor`, `spm_cusum_monitor_with_restart`
+- **Adaptive EWMA (AMFEWMA)** (`spm/amewma.rs`): dynamically adjusts smoothing parameter λ_t based on prediction error magnitude — small λ for persistent shifts, large λ for sudden shifts. New types: `AmewmaConfig`, `AmewmaMonitorResult`. Function: `spm_amewma_monitor`
+- **Iterative Phase I** (`spm/iterative.rs`): repeatedly builds charts, removes out-of-control observations, and re-estimates until convergence for robust chart construction from contaminated data. New types: `IterativePhase1Config`, `IterativePhase1Result`. Function: `spm_phase1_iterative`
+- 55 new SPM tests (ncomp: 6, per-PC contributions: 3, rules: 5, bootstrap: 5, ARL: 5, MEWMA: 4, profile: 4, partial: 7, elastic SPM: 4, CUSUM: 6, AMFEWMA: 4, iterative Phase I: 5); total SPM tests: 105
 - All new types and functions re-exported in `lib.rs` and `prelude.rs`
 
 ## [0.8.5] - 2026-03-14

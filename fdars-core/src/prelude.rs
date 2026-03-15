@@ -48,8 +48,9 @@ pub use crate::elastic_regression::{
 
 // Statistical Process Monitoring
 pub use crate::spm::{
-    ArlResult, ControlLimit, ElasticSpmChart, EwmaMonitorResult, FrccChart, MewmaMonitorResult,
-    MfSpmChart, MfpcaResult, ProfileChart, SpmChart, SpmMonitorResult,
+    AmewmaMonitorResult, ArlResult, ControlLimit, CusumMonitorResult, ElasticSpmChart,
+    EwmaMonitorResult, FrccChart, IterativePhase1Result, MewmaMonitorResult, MfSpmChart,
+    MfpcaResult, ProfileChart, SpmChart, SpmMonitorResult,
 };
 
 // Tolerance bands
