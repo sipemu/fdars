@@ -26,13 +26,13 @@
 //! # References
 //!
 //! - Roberts, S.W. (1959). Control chart tests based on geometric moving
-//!   averages. *Technometrics*, 1(3), 239-250.
+//!   averages, §2, pp. 241--243. *Technometrics*, 1(3), 239--250.
 //! - Lucas, J.M. & Saccucci, M.S. (1990). Exponentially weighted moving
 //!   average control schemes: properties and enhancements. *Technometrics*,
-//!   32(1), 1-12.
+//!   32(1), 1--12.
 //! - Lowry, C.A., Woodall, W.H., Champ, C.W. & Rigdon, S.E. (1992). A
-//!   multivariate exponentially weighted moving average control chart.
-//!   *Technometrics*, 34(1), 46-53.
+//!   multivariate exponentially weighted moving average control chart,
+//!   Eq. 4, p. 48. *Technometrics*, 34(1), 46--53.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -110,7 +110,14 @@ pub struct EwmaMonitorResult {
 
 /// Apply EWMA smoothing to a sequence of score vectors.
 ///
-/// Z_t = lambda * xi_t + (1 - lambda) * Z_{t-1}, with Z_0 = 0.
+/// `Z_t = lambda * xi_t + (1 - lambda) * Z_{t-1}`, with `Z_0 = lambda * xi_0`.
+///
+/// The EWMA recursion is the impulse response form of a first-order IIR filter
+/// with transfer function `H(z) = lambda / (1 - (1-lambda) * z^{-1})`. The
+/// asymptotic covariance `lambda/(2-lambda) * Lambda` over-estimates the true
+/// variance for the first ~`ceil(1/lambda)` observations. For `lambda = 0.2`,
+/// the asymptotic approximation reaches 95% of its steady-state accuracy
+/// after t ~ 15 observations.
 ///
 /// # Arguments
 /// * `scores` - Score matrix (n x ncomp), rows are sequential observations

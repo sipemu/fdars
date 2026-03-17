@@ -9,12 +9,35 @@
 //! (n < 30), bias-corrected and accelerated (BCa) intervals may give better
 //! coverage, but are not yet implemented.
 //!
+//! # Convergence properties
+//!
+//! The bootstrap percentile method has convergence rate O(n^{-1/2}) for
+//! quantile estimation. The BCa method (not yet implemented) achieves
+//! O(n^{-1}) via bias and skewness corrections (Efron & Tibshirani, 1993,
+//! Section 14.3).
+//!
+//! The KDE estimator with Silverman bandwidth converges at rate O(n^{-4/5})
+//! for smooth densities (the minimax-optimal rate for twice-differentiable
+//! densities). The bisection root-finding achieves machine-precision
+//! (~1e-10 relative) within 200 iterations.
+//!
+//! # Method selection guide
+//!
+//! 1. **Parametric**: use when SPE/T² is well-approximated by chi-squared
+//!    (check via `spe_moment_match_diagnostic`).
+//! 2. **Empirical**: use for n > 50 when no distributional assumption is
+//!    desired.
+//! 3. **Bootstrap**: use for n = 10–50 when parametric may be inaccurate.
+//! 4. **KDE**: use for smooth unimodal distributions with n > 30.
+//!
 //! # References
 //!
 //! - Efron, B. & Tibshirani, R.J. (1993). *An Introduction to the Bootstrap*.
-//!   Chapman & Hall/CRC. (Bootstrap methodology)
+//!   Chapman & Hall/CRC. Section 13.3, pp. 178–182 (bootstrap methodology);
+//!   Section 14.3 (BCa convergence).
 //! - Silverman, B.W. (1986). *Density Estimation for Statistics and Data
-//!   Analysis*. Chapman & Hall. (Kernel density estimation)
+//!   Analysis*. Chapman & Hall. Section 3.4.1, pp. 47–48 (kernel density
+//!   estimation bandwidth selection).
 
 use crate::error::FdarError;
 use crate::helpers::sort_nan_safe;

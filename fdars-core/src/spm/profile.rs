@@ -2,22 +2,40 @@
 //!
 //! Monitors the relationship between scalar predictors and functional
 //! responses over time using Function-on-Scalar Regression (FOSR).
-//! Detects changes in the coefficient functions β(t) via FPCA and T².
+//! Detects changes in the coefficient functions beta(t) via FPCA and T-squared.
+//!
+//! # Mathematical framework
+//!
+//! The functional response model is y_i(t) = x_i^T beta(t) + epsilon_i(t),
+//! where beta(t) = [beta_1(t), ..., beta_p(t)]^T are coefficient functions.
+//! Rolling FOSR estimates beta(t) within each window, producing a sequence
+//! of vectorized coefficient functions. FPCA extracts the dominant modes of
+//! variation in the beta(t) sequence, and T-squared monitors for shifts
+//! in the score distribution.
+//!
+//! Beta coefficients from rolling windows are vectorized column-major:
+//! [beta_1(t_1), ..., beta_1(t_m), beta_2(t_1), ..., beta_2(t_m), ...]
+//! to form the FPCA input matrix. This preserves the functional structure
+//! within each predictor.
 //!
 //! **Note on overlapping windows:** When `step_size < window_size`, consecutive
-//! windows share observations, inducing serial correlation in the β(t) estimates.
+//! windows share observations, inducing serial correlation in the beta(t) estimates.
 //! The `effective_n_windows` field in [`ProfileChart`] provides a Bartlett-style
-//! correction for the effective degrees of freedom. Users should consider this
-//! when interpreting control limits.
+//! correction for the effective degrees of freedom. Specifically, for overlapping
+//! windows with step_size < window_size, the effective number of independent
+//! windows is reduced. The Bartlett correction n_eff = n_windows / (1 + 2|rho_1|)
+//! accounts for AR(1) autocorrelation rho_1 in the windowed statistics, where
+//! rho_1 is estimated from the lag-1 autocorrelation of the T-squared sequence
+//! (Bartlett, 1946, section 3, pp. 31--33).
 //!
 //! # References
 //!
 //! - Bartlett, M.S. (1946). On the theoretical specification of sampling
 //!   properties of autocorrelated time series. *Journal of the Royal
-//!   Statistical Society B*, 8(1), 27-41.
+//!   Statistical Society B*, 8(1), 27--41, section 3, pp. 31--33.
 //! - Ledolter, J. & Swersey, A.J. (2007). *Testing 1-2-3: Experimental
 //!   design with applications in marketing and service operations*.
-//!   Stanford University Press.
+//!   Stanford University Press, Ch. 6 (profile monitoring).
 
 use crate::error::FdarError;
 use crate::function_on_scalar::{fosr, FosrResult};
@@ -31,14 +49,14 @@ use crate::spm::stats::hotelling_t2;
 /// # Parameter guidance
 ///
 /// - `window_size`: Must be >= p + 2 where p is the number of predictors.
-///   Larger windows give more stable β(t) estimates but reduce temporal resolution.
-///   Typical: 20-50 for slowly varying processes.
+///   Larger windows give more stable beta(t) estimates but reduce temporal resolution.
+///   Typical: 20--50 for slowly varying processes. Recommended `window_size` is
+///   5p to 10p where p is the number of predictors, to ensure stable FOSR
+///   estimation within each window (the design matrix X^T X has condition number
+///   roughly proportional to window_size / p).
 /// - `step_size`: Controls window overlap. step_size = window_size gives no overlap
 ///   (independent windows); step_size = 1 gives maximum overlap (smoothest tracking
 ///   but highest autocorrelation). Typical: window_size/2 or window_size/4.
-///
-/// A rule of thumb: `window_size` ≈ 5p to 10p provides a good balance between
-/// regression stability and temporal resolution.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProfileMonitorConfig {
     /// FOSR smoothing parameter (default 1e-4).
@@ -85,16 +103,23 @@ pub struct ProfileChart {
     pub eigenvalues: Vec<f64>,
     /// T-squared control limit for beta monitoring.
     pub t2_limit: ControlLimit,
-    /// Lag-1 autocorrelation of the Phase I T² statistics from rolling windows.
+    /// Lag-1 autocorrelation of the Phase I T-squared statistics from rolling windows.
     /// High values (> 0.5) indicate serial correlation from window overlap.
     ///
-    /// Computed from the Phase I T² statistic sequence. Values |ρ₁| > 0.3
+    /// Computed from the Phase I T-squared statistic sequence. Values |rho_1| > 0.3
     /// indicate substantial serial correlation; `effective_n_windows` will be
-    /// notably reduced.
+    /// notably reduced. The estimator uses the unbiased sample variance (n-1
+    /// denominator) for both variance and covariance terms.
     pub lag1_autocorrelation: f64,
     /// Effective number of independent windows (Bartlett correction for overlap).
     /// When step_size < window_size, consecutive windows overlap and are
     /// correlated, reducing the effective degrees of freedom.
+    ///
+    /// Computed as n_eff = n_windows / (1 + 2|rho_1|), which is the Bartlett
+    /// (1946, section 3) formula for AR(1) processes. For overlap fraction
+    /// f = 1 - step_size/window_size, the lag-1 autocorrelation is approximately
+    /// f, so n_eff ~ n_windows / (1 + 2f). This is conservative (underestimates
+    /// n_eff) for non-AR(1) dependence structures.
     ///
     /// Use this to assess whether the chi-squared UCL is reliable. When
     /// `effective_n_windows` < 20, consider widening the control limit or

@@ -13,9 +13,10 @@
 //! # References
 //!
 //! - Page, E.S. (1954). Continuous inspection schemes. *Biometrika*,
-//!   41(1-2), 100-115.
+//!   41(1--2), 100--115 (original univariate CUSUM).
 //! - Crosier, R.B. (1988). Multivariate generalizations of cumulative sum
-//!   quality-control schemes. *Technometrics*, 30(3), 291-303.
+//!   quality-control schemes. *Technometrics*, 30(3), 291--303,
+//!   section 2, Eq. 2.1 (MCUSUM shrinkage update), Table 1 (ARL values).
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -40,7 +41,12 @@ pub struct CusumConfig {
     pub multivariate: bool,
     /// Whether to restart the CUSUM accumulator after each alarm (default false).
     /// When true, the accumulator resets to zero after crossing the threshold,
-    /// which can improve sensitivity for detecting subsequent shifts.
+    /// making the chart memoryless post-alarm. This improves sensitivity for
+    /// detecting subsequent shifts but loses information about the magnitude
+    /// of the current shift. When false (default), the accumulator remains
+    /// elevated after an alarm; all subsequent observations will also alarm
+    /// until the process returns to the in-control state and the accumulator
+    /// decays back below h.
     pub restart: bool,
 }
 
@@ -137,8 +143,17 @@ fn project_and_standardize(
 
 /// Compute multivariate CUSUM (Crosier's MCUSUM) statistics.
 ///
+/// Implements the MCUSUM update from Crosier (1988, section 2, Eq. 2.1):
+///   S_new = S + z_i
+///   if ||S_new|| > k: S = (1 - k/||S_new||) · S_new  (shrink toward origin)
+///   else: S = 0  (reset)
+///   C_i = ||S||
+///
 /// Returns `(cusum_statistic, alarm)`. When `restart` is true, the
-/// cumulative sum vector is reset to zero after each alarm.
+/// cumulative sum vector S is reset to zero after each alarm, making
+/// the chart sensitive to subsequent shifts. Without restart, S remains
+/// elevated after the first alarm, and subsequent observations continue
+/// to accumulate.
 fn mcusum_core(z: &FdMatrix, ncomp: usize, k: f64, h: f64, restart: bool) -> (Vec<f64>, Vec<bool>) {
     let n = z.nrows();
     let mut s = vec![0.0; ncomp];
@@ -178,11 +193,17 @@ fn mcusum_core(z: &FdMatrix, ncomp: usize, k: f64, h: f64, restart: bool) -> (Ve
     (cusum_statistic, alarm)
 }
 
-/// Compute per-component univariate CUSUM statistics.
+/// Compute per-component univariate CUSUM statistics (Page, 1954, pp. 102--103).
+///
+/// For each component l and observation i:
+///   C+_{i,l} = max(0, C+_{i-1,l} + z_{i,l} - k)   (upward shift)
+///   C-_{i,l} = max(0, C-_{i-1,l} - z_{i,l} - k)   (downward shift)
+///
+/// The overall statistic is max over all components and directions.
 ///
 /// Returns `(cusum_statistic, alarm, cusum_plus_mat, cusum_minus_mat)`.
-/// When `restart` is true, the per-component accumulators are reset to zero
-/// after each alarm.
+/// When `restart` is true, the per-component accumulators C+ and C- are
+/// reset to zero after each alarm.
 fn univariate_cusum_core(
     z: &FdMatrix,
     ncomp: usize,
@@ -236,11 +257,11 @@ fn univariate_cusum_core(
 ///
 /// # Parameter guidance
 ///
-/// Common (k, h) pairs for Hotelling T² monitoring and their approximate
-/// ARL₀ (Crosier, 1988):
-/// - k=0.5, h=5.0: ARL₀ ≈ 370 (standard choice for detecting 1σ shifts)
-/// - k=0.25, h=8.0: ARL₀ ≈ 370 (better for smaller shifts)
-/// - k=1.0, h=4.0: ARL₀ ≈ 370 (faster response to larger shifts)
+/// Common (k, h) pairs for MCUSUM monitoring and their approximate
+/// ARL_0 (Crosier, 1988, Table 1, p. 296):
+/// - k=0.5, h=5.0: ARL_0 ~ 370 (standard choice for detecting 1-sigma shifts)
+/// - k=0.25, h=8.0: ARL_0 ~ 370 (better for smaller shifts, ~0.5 sigma)
+/// - k=1.0, h=4.0: ARL_0 ~ 370 (faster response to larger shifts, ~2 sigma)
 ///
 /// Edge cases: k = 0 makes the CUSUM equivalent to a cumulative sum (high
 /// sensitivity but high false alarm rate). Very large h reduces false

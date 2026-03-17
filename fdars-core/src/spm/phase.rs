@@ -10,10 +10,10 @@
 //! # References
 //!
 //! - Horváth, L. & Kokoszka, P. (2012). *Inference for Functional Data
-//!   with Applications*. Springer.
+//!   with Applications*, Chapter 13, pp. 323--352. Springer.
 //! - Flores, M., Naya, S., Fernández-Casal, R. & Zaragoza, S. (2022).
-//!   Constructing a control chart using functional data. *Mathematics*,
-//!   8(1), 58.
+//!   Constructing a control chart using functional data, §2, Algorithm 1.
+//!   *Mathematics*, 8(1), 58.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -40,6 +40,13 @@ pub struct SpmConfig {
     /// balances FPCA estimation quality against control limit precision. With
     /// small datasets (n < 50), consider 0.6--0.7 to ensure adequate FPCA
     /// estimation.
+    ///
+    /// The tuning/calibration split induces a bias-variance trade-off: a larger
+    /// tuning fraction yields better FPCA eigenfunction estimates but less
+    /// precise control limits. The optimal split depends on the eigenvalue
+    /// decay rate — fast decay (smooth processes) favors allocating more data
+    /// to calibration, while slow decay (rough processes) favors more tuning
+    /// data for stable FPCA estimation.
     pub tuning_fraction: f64,
     /// Random seed for data splitting (default 42).
     pub seed: u64,
@@ -62,12 +69,21 @@ impl Default for SpmConfig {
 /// For non-Gaussian functional data, the chi-squared control limits are
 /// approximate. Use `t2_limit_robust()` with bootstrap method for
 /// distribution-free limits.
+///
+/// For finite calibration samples, the exact Hotelling T^2 distribution is
+/// `(n_cal * ncomp / (n_cal - ncomp)) * F(ncomp, n_cal - ncomp)`. The
+/// chi-squared limit `chi2(ncomp)` is asymptotically exact as `n_cal -> inf`,
+/// but can be anti-conservative for small calibration sets (n_cal < 10 *
+/// ncomp). When the calibration set is small, prefer bootstrap-based limits.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct SpmChart {
     /// FPCA result from the tuning set.
     pub fpca: FpcaResult,
-    /// Eigenvalues: sv^2 / (n_tune - 1).
+    /// Eigenvalues lambda_l = s_l^2 / (n_tune - 1), where s_l are singular
+    /// values from the SVD of the centered data matrix X = U Sigma V^T. This
+    /// gives the sample covariance eigenvalues since Cov = X^T X / (n-1) has
+    /// eigenvalues s_l^2 / (n-1).
     ///
     /// The actual number of components may be fewer than `config.ncomp` if
     /// limited by sample size or grid resolution.
@@ -124,8 +140,9 @@ pub struct SpmMonitorResult {
 /// Split indices into tuning and calibration sets.
 ///
 /// Uses a deterministic Fisher-Yates shuffle with PCG-XSH-RR output function
-/// (O'Neill, 2014) for high-quality uniform sampling. The same seed always
-/// produces the same split, ensuring reproducibility.
+/// (O'Neill, 2014, §4.1, p. 14) for high-quality uniform sampling. PCG-XSH-RR
+/// has period 2^64 and passes the full TestU01 BigCrush battery. The same seed
+/// always produces the same split, ensuring reproducibility.
 pub(super) fn split_indices(n: usize, tuning_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
     let n_tune = ((n as f64 * tuning_fraction).round() as usize)
         .max(2)

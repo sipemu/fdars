@@ -1,8 +1,30 @@
 //! Multivariate EWMA (MEWMA) monitoring for functional data.
 //!
-//! Extends the standard EWMA by computing a multivariate T²-type statistic
+//! Extends the standard EWMA by computing a multivariate T^2-type statistic
 //! on the EWMA-smoothed score vector, using either the asymptotic or
 //! exact time-dependent covariance matrix.
+//!
+//! The exact time-dependent covariance is
+//! `Sigma_Z(t) = (lambda / (2 - lambda)) [1 - (1 - lambda)^{2t}] * Lambda`,
+//! where `Lambda = diag(eigenvalues)`, following Lowry et al. (1992), Eq. 4,
+//! p. 48. The chi-squared UCL is approximate for MEWMA; Lowry et al. (1992,
+//! §4) recommend Markov-chain-based ARL computation for exact UCL calibration.
+//! For practical purposes, the chi-squared UCL is adequate when n > 50 and
+//! ncomp <= 10.
+//!
+//! # Lambda selection guidance
+//!
+//! For MEWMA, `lambda = 0.1--0.2` is optimal for detecting shifts of
+//! 0.5--1.5 sigma in the mean vector. For larger shifts (> 2 sigma), increase
+//! lambda toward 0.5 or use standard T^2 monitoring. Very small lambda
+//! (< 0.05) maximizes sensitivity to tiny persistent shifts but increases
+//! detection delay for large abrupt shifts.
+//!
+//! # References
+//!
+//! - Lowry, C.A., Woodall, W.H., Champ, C.W. & Rigdon, S.E. (1992). A
+//!   multivariate exponentially weighted moving average control chart.
+//!   *Technometrics*, 34(1), 46--53.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -16,6 +38,11 @@ use super::stats::{hotelling_t2, spe_univariate};
 #[derive(Debug, Clone, PartialEq)]
 pub struct MewmaConfig {
     /// EWMA smoothing parameter in (0, 1] (default 0.2).
+    ///
+    /// Smoothing parameter. `lambda = 0.2` is recommended for detecting shifts
+    /// of ~1 sigma in the mean vector. Smaller values (0.05--0.1) detect
+    /// smaller persistent shifts but increase detection delay for large shifts.
+    /// `lambda = 1.0` recovers the standard (non-smoothed) T^2 chart.
     pub lambda: f64,
     /// Number of principal components (default 5).
     pub ncomp: usize,
@@ -23,6 +50,12 @@ pub struct MewmaConfig {
     pub alpha: f64,
     /// Use asymptotic covariance (true) or exact time-dependent (false).
     /// Default: true.
+    ///
+    /// The asymptotic covariance `Sigma_Z = (lambda/(2-lambda)) * Lambda`
+    /// over-estimates the true variance for the first ~ceil(1/lambda)
+    /// observations. Setting this to `false` uses the exact time-dependent
+    /// form `Sigma_Z(t) = (lambda/(2-lambda))[1-(1-lambda)^{2t}] * Lambda`
+    /// (Lowry et al., 1992, Eq. 4, p. 48), which avoids early false alarms.
     pub asymptotic: bool,
 }
 

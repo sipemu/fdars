@@ -1,16 +1,31 @@
 //! Control limits for SPM monitoring statistics.
 //!
 //! Provides upper control limits (UCL) for T-squared and SPE statistics:
-//! - T-squared: chi-squared distribution quantile
-//! - SPE: moment-matched chi-squared approximation (Box, 1954)
+//! - **T-squared**: chi-squared distribution quantile. For finite calibration
+//!   samples of size *n*, T² follows `(n·ncomp/(n−ncomp))·F(ncomp, n−ncomp)`
+//!   rather than `χ²(ncomp)`. The chi-squared limit is the large-sample
+//!   (*n* → ∞) limit.
+//! - **SPE**: moment-matched chi-squared approximation (Box, 1954, Theorem 1,
+//!   pp. 292–295). The derivation matches the first two moments of the SPE
+//!   distribution to a scaled chi-squared: `E[a·χ²(b)] = a·b = mean`,
+//!   `Var[a·χ²(b)] = 2a²·b = var`, giving `a = var/(2·mean)`,
+//!   `b = 2·mean²/var`.
+//!
+//! # Accuracy
+//!
+//! The moment-matching approximation is exact when SPE follows a scaled
+//! chi-squared distribution (holds under Gaussian scores). For non-Gaussian
+//! data, the approximation error is O(κ₄) where κ₄ is the excess kurtosis
+//! of the SPE distribution. Use [`spe_moment_match_diagnostic`] to assess
+//! adequacy.
 //!
 //! # References
 //!
 //! - Box, G.E.P. (1954). Some theorems on quadratic forms applied in the
 //!   study of analysis of variance problems, I. *Annals of Mathematical
-//!   Statistics*, 25(2), 290-302.
+//!   Statistics*, 25(2), 290–302. Theorem 1, pp. 292–295.
 //! - Woodall, W.H. & Ncube, M.M. (1985). Multivariate CUSUM quality-control
-//!   procedures. *Technometrics*, 27(3), 285-292.
+//!   procedures. *Technometrics*, 27(3), 285–292. §2, pp. 286–288.
 
 use super::chi_squared::chi2_quantile;
 use crate::error::FdarError;
@@ -35,6 +50,14 @@ pub struct ControlLimit {
 /// For small calibration samples (n < 30), this may be anti-conservative;
 /// consider `t2_limit_robust()` with bootstrap method.
 ///
+/// # Finite-sample correction
+///
+/// For finite calibration samples of size *n*, T² follows
+/// `(n·ncomp/(n−ncomp))·F(ncomp, n−ncomp)` rather than `χ²(ncomp)`. The
+/// chi-squared limit used here is the large-sample (*n* → ∞) limit. For
+/// *n* < 30, the F-based limit should be preferred (Woodall & Ncube, 1985,
+/// §2, pp. 286–288).
+///
 /// # Arguments
 /// * `ncomp` - Number of principal components (degrees of freedom)
 /// * `alpha` - Significance level (e.g. 0.05)
@@ -51,6 +74,7 @@ pub struct ControlLimit {
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidParameter`] if `ncomp` is 0 or `alpha` is not in (0, 1).
+#[must_use = "control limit should not be discarded"]
 pub fn t2_control_limit(ncomp: usize, alpha: f64) -> Result<ControlLimit, FdarError> {
     if ncomp == 0 {
         return Err(FdarError::InvalidParameter {
@@ -76,16 +100,29 @@ pub fn t2_control_limit(ncomp: usize, alpha: f64) -> Result<ControlLimit, FdarEr
 
 /// Compute the SPE control limit using moment-matched chi-squared approximation.
 ///
-/// Uses the Box (1954) moment-matching approximation: SPE ~ a * chi²(b)
-/// where a = var/(2*mean), b = ceil(2*mean²/var). This is accurate when SPE
-/// values are approximately chi-squared distributed, which holds when the
-/// number of retained components is moderate (5-20) and sample size is
-/// adequate (n > 30).
+/// Uses the Box (1954, Theorem 1, pp. 292–295) moment-matching approximation:
+/// SPE ~ a * chi²(b) where `a = var/(2·mean)`, `b = ceil(2·mean²/var)`. This
+/// is accurate when SPE values are approximately chi-squared distributed,
+/// which holds when the number of retained components is moderate (5–20)
+/// and sample size is adequate (n > 30).
 ///
 /// Estimates parameters a and b such that SPE ~ a * chi2(b):
 ///   a = var(spe) / (2 * mean(spe))
 ///   b = 2 * mean(spe)^2 / var(spe)
-///   UCL = a * chi2_quantile(1 - alpha, round(b))
+///   UCL = a * chi2_quantile(1 - alpha, ceil(b))
+///
+/// # Accuracy
+///
+/// The moment-matching approximation is exact when SPE follows a scaled
+/// chi-squared distribution (holds under Gaussian scores). For non-Gaussian
+/// data, the approximation error is O(κ₄) where κ₄ is the excess kurtosis
+/// of the SPE distribution. Use [`spe_moment_match_diagnostic`] to check.
+///
+/// # Rounding choice
+///
+/// Using `ceil()` rather than `round()` for the degrees-of-freedom parameter
+/// *b* gives a conservative (wider) control limit, ensuring the nominal
+/// false-alarm rate is not exceeded.
 ///
 /// # Arguments
 /// * `spe_values` - In-control SPE values from calibration data
@@ -105,6 +142,7 @@ pub fn t2_control_limit(ncomp: usize, alpha: f64) -> Result<ControlLimit, FdarEr
 /// Returns [`FdarError::InvalidDimension`] if `spe_values` has fewer than 2 elements.
 /// Returns [`FdarError::InvalidParameter`] if `alpha` is not in (0, 1).
 /// Returns [`FdarError::ComputationFailed`] if the estimated variance is zero or negative.
+#[must_use = "control limit should not be discarded"]
 pub fn spe_control_limit(spe_values: &[f64], alpha: f64) -> Result<ControlLimit, FdarError> {
     let n = spe_values.len();
     if n < 2 {
@@ -135,7 +173,9 @@ pub fn spe_control_limit(spe_values: &[f64], alpha: f64) -> Result<ControlLimit,
 
     let a = var / (2.0 * mean);
     let b = 2.0 * mean * mean / var;
-    let b_int = b.ceil().max(1.0) as usize; // ceil for conservative control limit (Box, 1954)
+    // Using ceil() rather than round() gives a conservative (wider) control
+    // limit, ensuring the nominal false-alarm rate is not exceeded.
+    let b_int = b.ceil().max(1.0) as usize;
 
     let ucl = a * chi2_quantile(1.0 - alpha, b_int);
 
@@ -166,6 +206,7 @@ pub fn spe_control_limit(spe_values: &[f64], alpha: f64) -> Result<ControlLimit,
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if fewer than 4 values are provided.
+#[must_use = "diagnostic result should not be discarded"]
 pub fn spe_moment_match_diagnostic(spe_values: &[f64]) -> Result<(f64, f64, bool), FdarError> {
     let n = spe_values.len();
     if n < 4 {

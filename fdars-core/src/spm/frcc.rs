@@ -8,26 +8,40 @@
 //! (scalar predictors), and we want to detect deviations beyond what the inputs
 //! explain.
 //!
-//! FRCC is most beneficial when predictors explain a substantial portion of the
-//! functional variance (R² > 0.3). Below this threshold, covariate adjustment
-//! adds estimation noise with little benefit. In such cases, standard
-//! `spm_phase1` is preferred.
+//! # Model assessment
+//!
+//! R-squared = 1 - SSR/SST measures the proportion of response variance explained
+//! by the FRCC model (computed pointwise across grid points and summed). For
+//! monitoring, R-squared > 0.7 indicates excellent model fit; R-squared 0.5--0.7
+//! is adequate; R-squared 0.3--0.5 is marginal (covariate adjustment helps but
+//! residual variation is large); R-squared < 0.3 suggests the functional
+//! predictors have weak predictive power and monitoring may be ineffective
+//! compared to standard `spm_phase1`.
 //!
 //! After building the FRCC chart, verify `fosr_r_squared` to assess model
-//! quality. R² values: > 0.5 (strong adjustment), 0.3–0.5 (moderate),
-//! 0.1–0.3 (weak), < 0.1 (rejected by default threshold).
+//! quality. R-squared values: > 0.5 (strong adjustment), 0.3--0.5 (moderate),
+//! 0.1--0.3 (weak), < 0.1 (rejected by default threshold).
+//!
+//! # Residual assumptions
+//!
+//! The monitoring assumes regression residuals are independent across observations.
+//! Autocorrelated residuals (e.g., from time-series data or batch-to-batch effects)
+//! inflate SPE alarm rates because the empirical SPE distribution underestimates the
+//! true variability. Check residual autocorrelation using the lag-1 sample
+//! autocorrelation of the SPE sequence and consider pre-whitening (e.g., fitting an
+//! AR(1) model to the residual scores) if significant.
 //!
 //! The SPE control limit assumes residuals are approximately independent across
-//! observations. If the residuals exhibit temporal autocorrelation (e.g., from
-//! batch-to-batch effects), consider using bootstrap control limits via
-//! `spe_limit_robust()`.
+//! observations. If the residuals exhibit temporal autocorrelation, consider using
+//! bootstrap control limits via `spe_limit_robust()`.
 //!
 //! # References
 //!
 //! - Capezza, C., Lepore, A., Menafoglio, A., Palumbo, B. & Vantini, S.
 //!   (2020). Control charts for monitoring ship operating conditions and
 //!   CO2 emissions based on scalar-on-function regression. *Applied
-//!   Stochastic Models in Business and Industry*, 36(3), 477-500.
+//!   Stochastic Models in Business and Industry*, 36(3), 477--500,
+//!   section 3.1 (FRCC construction), section 4 (monitoring procedure).
 
 use crate::error::FdarError;
 use crate::function_on_scalar::{fosr, predict_fosr, FosrResult};
@@ -50,6 +64,13 @@ pub struct FrccConfig {
     /// Significance level (default 0.05).
     pub alpha: f64,
     /// Fraction of data for tuning (default 0.5).
+    ///
+    /// Must be in (0, 1). The tuning set is used for FOSR fitting and R-squared
+    /// assessment; the calibration set (1 - tuning_fraction) is used for FPCA
+    /// and control limit estimation. Larger tuning fractions give more stable
+    /// FOSR estimates but fewer calibration observations for control limits.
+    /// For n < 50, consider tuning_fraction = 0.4 to ensure adequate calibration.
+    /// For n > 200, tuning_fraction = 0.6 may improve FOSR stability.
     pub tuning_fraction: f64,
     /// Random seed (default 42).
     pub seed: u64,

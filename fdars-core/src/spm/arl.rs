@@ -3,6 +3,30 @@
 //! Provides Monte Carlo simulation of in-control (ARL0) and
 //! out-of-control (ARL1) average run lengths for T-squared, SPE,
 //! and EWMA-T-squared charts.
+//!
+//! # ARL computation
+//!
+//! The ARL is defined as E\[RL\] where RL = inf{t : S_t > UCL} is the run
+//! length (first time the monitoring statistic exceeds the upper control
+//! limit). For a Shewhart T² chart with i.i.d. N(0, Lambda) scores and
+//! chi-squared UCL at significance level alpha, ARL₀ = 1/alpha exactly
+//! (e.g., 20 for alpha = 0.05, 100 for alpha = 0.01). The Monte Carlo
+//! estimate should agree within 2–3 standard errors.
+//!
+//! # Monte Carlo convergence
+//!
+//! The standard error of the ARL estimate is sigma(RL) / sqrt(n_sim).
+//! For ARL₀ ~ 370 (geometrically distributed RL), sigma(RL) ~ ARL₀, so
+//! using n_sim = 10000 gives SE ~ 370 / sqrt(10000) ~ 3.7 (relative
+//! SE ~ 1%). For tighter precision, increase `n_simulations` in
+//! [`ArlConfig`].
+//!
+//! # Non-independence note
+//!
+//! For EWMA and CUSUM charts, the ARL cannot be computed from the marginal
+//! alarm rate 1/alpha because successive statistics are dependent. The
+//! Monte Carlo approach in [`arl0_ewma_t2`] handles this correctly by
+//! simulating the full sequential process.
 
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;

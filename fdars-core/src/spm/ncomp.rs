@@ -4,14 +4,23 @@
 //! FPCA-based monitoring: cumulative variance, elbow detection, or
 //! a fixed count.
 //!
+//! For functional linear regression, the optimal ncomp grows as
+//! O(n^{1/5}) (Hall & Horowitz, 2007, Theorem 1, p. 73). In practice,
+//! retaining 95% cumulative variance (Jackson, 1991, Chapter 4) is a
+//! widely used default that adapts to the eigenvalue decay rate.
+//!
 //! # References
 //!
 //! - Cattell, R.B. (1966). The scree test for the number of factors.
-//!   *Multivariate Behavioral Research*, 1(2), 245-276.
+//!   *Multivariate Behavioral Research*, 1(2), 245–276. p. 252.
 //! - Hall, P. & Horowitz, J.L. (2007). Methodology and convergence rates
-//!   for functional linear regression. *Annals of Statistics*, 35(1), 70-91.
+//!   for functional linear regression. *Annals of Statistics*, 35(1), 70–91.
+//!   Theorem 1, p. 73.
+//! - Jackson, J.E. (1991). *A User's Guide to Principal Components*. Wiley,
+//!   Chapter 4.
 //! - Kaiser, H.F. (1960). The application of electronic computers to factor
-//!   analysis. *Educational and Psychological Measurement*, 20, 141-151.
+//!   analysis. *Educational and Psychological Measurement*, 20, 141–151.
+//!   pp. 145–146.
 
 use crate::error::FdarError;
 
@@ -25,16 +34,24 @@ pub enum NcompMethod {
     /// (Jackson, 1991). For monitoring applications, 0.90 may suffice as the
     /// remaining variance contributes to SPE rather than T-squared.
     CumulativeVariance(f64),
-    /// Detect the elbow (max second finite difference) in the scree plot.
+    /// Detect the elbow (max second finite difference) in the scree plot
+    /// (Cattell, 1966, p. 252).
     ///
-    /// The elbow method is sensitive to noise in the eigenvalue spectrum. The
-    /// internal 3-point moving average smoothing reduces this sensitivity.
+    /// The elbow method is sensitive to noise in the eigenvalue spectrum.
+    /// Second finite differences amplify noise by a factor of ~3 (condition
+    /// number of the differencing operator). The 3-point moving average
+    /// pre-smoothing reduces the effective amplification to ~1.5.
     /// Falls back to `CumulativeVariance(0.95)` when fewer than 3 eigenvalues
     /// are available.
     Elbow,
     /// Use a fixed number of components.
     Fixed(usize),
-    /// Retain eigenvalues above the mean (Kaiser criterion variant).
+    /// Retain eigenvalues above the mean (Kaiser criterion variant;
+    /// Kaiser, 1960, pp. 145–146).
+    ///
+    /// The Kaiser criterion tends to over-extract when variables are many
+    /// and under-extract when few. It is equivalent to retaining components
+    /// with above-average explanatory power.
     Kaiser,
 }
 
@@ -136,6 +153,10 @@ fn cumulative_variance_ncomp(eigenvalues: &[f64], threshold: f64) -> Result<usiz
 }
 
 /// Kaiser criterion: retain components with eigenvalue > mean(eigenvalues).
+///
+/// Equivalent to retaining components with above-average explanatory power
+/// (Kaiser, 1960, pp. 145–146). Tends to over-extract when the number of
+/// variables is large and under-extract when small.
 fn kaiser_ncomp(eigenvalues: &[f64]) -> usize {
     let mean = eigenvalues.iter().sum::<f64>() / eigenvalues.len() as f64;
     let k = eigenvalues.iter().filter(|&&ev| ev > mean).count();
@@ -145,7 +166,10 @@ fn kaiser_ncomp(eigenvalues: &[f64]) -> usize {
 /// Elbow method: argmax of second finite difference d2[k] = λ[k-1] - 2λ[k] + λ[k+1].
 ///
 /// Applies a 3-point moving average to reduce noise sensitivity before
-/// computing the second differences (Cattell, 1966).
+/// computing the second differences (Cattell, 1966, p. 252). Second finite
+/// differences amplify noise by a factor of ~3 (condition number of the
+/// differencing operator); the 3-point moving average pre-smoothing reduces
+/// the effective amplification to ~1.5.
 fn elbow_ncomp(eigenvalues: &[f64]) -> usize {
     let n = eigenvalues.len();
     // 3-point moving average smoothing (edges use 2-point)

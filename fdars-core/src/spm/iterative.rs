@@ -5,14 +5,35 @@
 //! This addresses the common problem of Phase I data contamination
 //! where outliers distort the FPCA and control limits.
 //!
+//! # Convergence properties
+//!
+//! The iterative Phase I procedure converges when no new outliers are removed
+//! between iterations. Convergence is guaranteed in at most n iterations (each
+//! iteration removes at least one outlier or terminates). In practice, 3--5
+//! iterations suffice for typical contamination levels (5--15% outliers).
+//! Non-convergence (oscillation) can occur when the contamination fraction
+//! is near the breakdown point of the underlying T-squared / SPE statistics.
+//!
+//! # Breakdown point
+//!
+//! The procedure's breakdown point depends on the initial T-squared threshold.
+//! With alpha = 0.05 and chi-squared limits, the expected breakdown is roughly
+//! 50% for the T-squared statistic (Rousseeuw & Leroy, 1987, section 1.3,
+//! pp. 10--12). For contamination above the breakdown point, consider robust
+//! initialization via projection pursuit or minimum covariance determinant
+//! (MCD) before applying the iterative procedure.
+//!
 //! # References
 //!
 //! - Sullivan, J.H. & Woodall, W.H. (1996). A comparison of multivariate
 //!   control charts for individual observations. *Journal of Quality
-//!   Technology*, 28(4), 398-408.
+//!   Technology*, 28(4), 398--408, section 3 (iterative Phase I procedure).
 //! - Chenouri, S., Steiner, S.H. & Variyath, A.M. (2009). A multivariate
 //!   robust control chart for individual observations. *Journal of Quality
-//!   Technology*, 41(3), 259-271.
+//!   Technology*, 41(3), 259--271, section 2 (robust alternatives).
+//! - Rousseeuw, P.J. & Leroy, A.M. (1987). *Robust Regression and Outlier
+//!   Detection*. Wiley, section 1.3, pp. 10--12 (breakdown point),
+//!   section 4.1, pp. 116--119 (iterative reweighting).
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -38,6 +59,10 @@ pub struct IterativePhase1Config {
     /// Maximum cumulative fraction of original data that can be removed (default 0.3).
     /// Iteration stops if the next removal batch would push the total removed
     /// count above this fraction of the original dataset size.
+    ///
+    /// This acts as a safeguard against breakdown: if more than 30% of the data
+    /// is flagged, the in-control model is likely misspecified rather than there
+    /// being isolated outliers (Rousseeuw & Leroy, 1987, section 4.1, pp. 116--119).
     ///
     /// If removal rates don't decrease across iterations (e.g., oscillating
     /// around 0.3--0.5), the process likely has sustained non-stationarity
@@ -124,7 +149,13 @@ pub fn spm_phase1_iterative(
     argvals: &[f64],
     config: &IterativePhase1Config,
 ) -> Result<IterativePhase1Result, FdarError> {
-    // Validate iterative-specific parameters
+    // Validate iterative-specific parameters.
+    // alpha must be in (0, 1). Smaller alpha values (e.g., 0.01) produce wider
+    // control limits and remove fewer observations per iteration, yielding a more
+    // conservative procedure. Larger alpha (e.g., 0.10) is more aggressive and
+    // converges faster but risks removing in-control observations (masking).
+    // The default alpha = 0.05 balances sensitivity and specificity for typical
+    // contamination levels (5--15%).
     if config.spm.alpha <= 0.0 || config.spm.alpha >= 1.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "alpha",

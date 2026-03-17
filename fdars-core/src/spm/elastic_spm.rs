@@ -4,10 +4,18 @@
 //! then monitors each component independently. This prevents phase
 //! variation from masking amplitude shifts and vice versa.
 //!
-//! The amplitude and phase decomposition assumes the SRSF (Square Root
-//! Slope Function) representation. This requires the input functions to
-//! be absolutely continuous. Highly discontinuous or noisy data should be
-//! smoothed before elastic alignment.
+//! # Mathematical framework
+//!
+//! The SRSF (Square Root Slope Function) of f is q(t) = sign(f'(t))·sqrt(|f'(t)|).
+//! The Fisher-Rao distance d_FR(f_1, f_2) = inf_gamma ||q_1 - (q_2 o gamma)·sqrt(gamma')||
+//! is a proper metric on the quotient space of functions modulo reparametrization
+//! (Srivastava et al., 2011, Theorem 3.1). This distance decomposes into amplitude
+//! (||q_1 - q_2 o gamma* · sqrt(gamma*')||) and phase (||gamma* - id||) components,
+//! where gamma* is the optimal warping (Tucker et al., 2013, section 2.1, Eqs. 3--5, pp. 52--54).
+//!
+//! The amplitude and phase decomposition assumes the SRSF representation. This
+//! requires the input functions to be absolutely continuous. Highly discontinuous
+//! or noisy data should be smoothed before elastic alignment.
 //!
 //! Elastic SPM is most beneficial when significant phase variation exists
 //! (e.g., time-warped peaks, shifted features). If phase variation is
@@ -18,13 +26,24 @@
 //! between `elastic_spm_phase1` and standard `spm_phase1` on the same data.
 //! If phase variation is negligible, both will perform similarly.
 //!
+//! # Numerical considerations
+//!
+//! The SRSF transform involves computing f'(t) via finite differences and
+//! taking the square root of |f'(t)|. Near-zero derivatives produce q(t)
+//! values close to zero, which is numerically stable. However, large
+//! derivatives (sharp peaks or jumps) amplify through the square root,
+//! so pre-smoothing is recommended for noisy data. The alignment step
+//! uses dynamic programming (O(m^2) per pair), so computational cost
+//! scales quadratically with grid resolution m.
+//!
 //! # References
 //!
 //! - Srivastava, A., Wu, W., Kurtek, S., Klassen, E. & Marron, J.S. (2011).
-//!   Registration of functional data using Fisher-Rao metric. arXiv:1103.3817.
+//!   Registration of functional data using Fisher-Rao metric. arXiv:1103.3817,
+//!   Theorem 3.1 (metric properties), section 3 (convergence of Karcher mean).
 //! - Tucker, J.D., Wu, W. & Srivastava, A. (2013). Generative models for
 //!   functional data using phase and amplitude separation. *Computational
-//!   Statistics & Data Analysis*, 61, 50-66.
+//!   Statistics & Data Analysis*, 61, 50--66, section 2.1, Eqs. 3--5, pp. 52--54.
 //!
 //! # Design notes
 //!
@@ -47,6 +66,13 @@ pub struct ElasticSpmConfig {
     /// Base SPM configuration.
     pub spm: SpmConfig,
     /// Alignment regularization parameter (default 0.0).
+    ///
+    /// Mathematically, lambda controls the penalty on warping distance:
+    /// d(f_1, f_2; lambda) = ||q_1 - q_2 o gamma · sqrt(gamma')||^2 + lambda · ||gamma - id||^2.
+    /// At lambda = 0, pure elastic alignment (no penalty on warping complexity).
+    /// At lambda -> infinity, no alignment (identity warping only).
+    /// Values in [0.01, 0.1] provide moderate regularization suitable for
+    /// most applications.
     pub align_lambda: f64,
     /// Whether to also monitor phase variation (default true).
     pub monitor_phase: bool,
@@ -81,10 +107,17 @@ impl Default for ElasticSpmConfig {
 }
 
 /// Phase I elastic SPM chart.
+///
+/// The Karcher mean minimizes E[d_FR(f, mu)^2] over the quotient space of
+/// functions modulo reparametrization. Convergence is guaranteed when the
+/// data lies in a geodesically convex neighborhood of the Frechet mean
+/// (Srivastava et al., 2011, section 3). In practice, convergence is assessed
+/// by monitoring the relative change in the SRSF of the mean between
+/// iterations (controlled by `karcher_tolerance`).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ElasticSpmChart {
-    /// Karcher mean of the training data.
+    /// Karcher mean of the training data (Frechet mean under the Fisher-Rao metric).
     pub karcher_mean: Vec<f64>,
     /// SPM chart for amplitude (aligned data).
     pub amplitude_chart: SpmChart,
@@ -134,9 +167,16 @@ pub struct ElasticSpmMonitorResult {
 ///
 /// Returns errors from alignment or SPM chart construction. Alignment failures
 /// (e.g., non-convergence of Karcher mean) propagate as errors. If alignment
-/// fails, common remedies: (a) increase `max_karcher_iterations`, (b) pre-smooth
-/// the data, (c) increase `align_lambda` toward 1.0 to regularize warping, or
-/// (d) fall back to standard `spm_phase1` which monitors without alignment.
+/// fails, common remedies:
+/// - (a) Increase `max_karcher_iterations` -- the Karcher mean algorithm
+///   converges geometrically, but the rate depends on the curvature of the
+///   quotient space. Highly variable data may need 50+ iterations.
+/// - (b) Pre-smooth the data -- discontinuities in f'(t) produce SRSF
+///   artifacts that slow or prevent convergence.
+/// - (c) Increase `align_lambda` toward 1.0 to regularize warping. This
+///   constrains gamma closer to the identity, reducing the search space and
+///   improving convergence at the cost of incomplete alignment.
+/// - (d) Fall back to standard `spm_phase1` which monitors without alignment.
 ///
 /// Returns `InvalidParameter` if `align_lambda` is outside [0, 1].
 ///

@@ -8,10 +8,10 @@
 //!
 //! - Kourti, T. & MacGregor, J.F. (1996). Multivariate SPC methods for
 //!   process and product monitoring. *Journal of Quality Technology*, 28(4),
-//!   409-428.
+//!   409-428, Section 3, pp. 413–416.
 //! - Westerhuis, J.A., Gurden, S.P. & Smilde, A.K. (2000). Generalized
 //!   contribution plots in multivariate statistical process monitoring.
-//!   *Chemometrics and Intelligent Laboratory Systems*, 51(1), 95-114.
+//!   *Chemometrics and Intelligent Laboratory Systems*, 51(1), 95-114, Eq. 8, p. 100.
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
@@ -27,6 +27,14 @@ use super::mfpca::MfpcaResult;
 ///
 /// Returns an n x p matrix where element (i, v) is the T-squared
 /// contribution of variable v for observation i.
+///
+/// # Decomposition property
+///
+/// For `t2_contributions_mfpca`: T²_total = sum_v T²_v when using
+/// MFPCA-weighted contributions. For the grid-proportional contributions
+/// computed here, this holds approximately: the error is bounded by
+/// |T²_total - sum_v T²_v| <= T²_total * max_l |w_l^{approx} - w_l^{exact}|
+/// where w_l are the per-PC variable weights (Westerhuis et al., 2000, Eq. 8).
 ///
 /// # Arguments
 /// * `scores` - Score matrix (n x ncomp)
@@ -50,6 +58,7 @@ use super::mfpca::MfpcaResult;
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if shapes are inconsistent.
+#[must_use = "contributions should not be discarded"]
 pub fn t2_contributions(
     scores: &FdMatrix,
     eigenvalues: &[f64],
@@ -119,6 +128,7 @@ pub fn t2_contributions(
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if array lengths are inconsistent.
+#[must_use = "contributions should not be discarded"]
 pub fn spe_contributions(
     standardized_vars: &[&FdMatrix],
     reconstructed_vars: &[&FdMatrix],
@@ -191,7 +201,10 @@ pub fn spe_contributions(
 ///
 /// Returns an n × ncomp matrix where element (i, l) is the contribution
 /// of principal component l to the T-squared statistic for observation i.
-/// Rows sum to the Hotelling T-squared value for each observation.
+///
+/// This is the exact decomposition: sum_l contrib(i, l) = T²(i) with
+/// equality. Each component follows a chi²(1) distribution under
+/// in-control conditions (Kourti & MacGregor, 1996, Section 3, p. 414).
 ///
 /// # Arguments
 /// * `scores` - Score matrix (n × ncomp)
@@ -214,6 +227,7 @@ pub fn spe_contributions(
 ///
 /// Returns [`FdarError::InvalidDimension`] if shapes are inconsistent.
 /// Returns [`FdarError::InvalidParameter`] if any eigenvalue is non-positive.
+#[must_use = "contributions should not be discarded"]
 pub fn t2_pc_contributions(scores: &FdMatrix, eigenvalues: &[f64]) -> Result<FdMatrix, FdarError> {
     let (n, ncomp) = scores.shape();
     if ncomp != eigenvalues.len() {
@@ -262,6 +276,7 @@ pub fn t2_pc_contributions(scores: &FdMatrix, eigenvalues: &[f64]) -> Result<FdM
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if shapes are inconsistent.
+#[must_use = "contributions should not be discarded"]
 pub fn t2_contributions_mfpca(
     scores: &FdMatrix,
     mfpca: &MfpcaResult,
@@ -329,8 +344,13 @@ pub fn t2_contributions_mfpca(
 ///
 /// Returns an n × ncomp matrix of booleans (as 0.0/1.0) indicating whether
 /// each PC's contribution exceeds the Bonferroni-corrected threshold
-/// `χ²(1, 1 - α/ncomp)`. This helps identify which principal components
+/// `chi²(1, 1 - alpha/ncomp)`. This helps identify which principal components
 /// drive an overall T² alarm without inflating the family-wise error rate.
+///
+/// The Bonferroni correction ensures P(any false positive) <= alpha across
+/// all ncomp tests. For ncomp > 10, consider Holm-Bonferroni (step-down)
+/// which has identical family-wise error control but higher power: reject
+/// if sorted p-values satisfy p_(k) <= alpha/(ncomp - k + 1).
 ///
 /// This is conservative: with many PCs, the per-component threshold increases
 /// and individual effects may be missed. For ncomp > 10, consider using
@@ -357,6 +377,7 @@ pub fn t2_contributions_mfpca(
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidParameter`] if alpha is not in (0, 1).
+#[must_use = "significance result should not be discarded"]
 pub fn t2_pc_significance(contributions: &FdMatrix, alpha: f64) -> Result<FdMatrix, FdarError> {
     if alpha <= 0.0 || alpha >= 1.0 {
         return Err(FdarError::InvalidParameter {

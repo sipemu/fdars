@@ -4,11 +4,39 @@
 //! observed on potentially different grids. Variables are optionally
 //! weighted by their inverse standard deviation before joint SVD.
 //!
+//! # Algorithm
+//!
+//! 1. Center each variable by its column means.
+//! 2. Standardize each variable by its scale (sqrt of mean column variance)
+//!    when `weighted = true`. This ensures variables on different scales
+//!    contribute equally to the joint decomposition.
+//! 3. Horizontally concatenate the centered/scaled variables into an
+//!    n × (sum m_p) matrix and perform truncated SVD.
+//! 4. Extract scores as U * S and eigenfunctions from V. Eigenfunctions
+//!    are back-scaled by the per-variable scale factor when reconstructing,
+//!    so that reconstruction returns values on the original measurement scale.
+//!
+//! # Projection accuracy
+//!
+//! The projection error ||X - X_hat||² is bounded by sum_{l > ncomp} lambda_l
+//! (the sum of discarded eigenvalues). This provides an a priori error bound
+//! for choosing ncomp: retain enough components so that the discarded
+//! eigenvalue tail is acceptably small relative to the total variance.
+//!
+//! # Scale threshold
+//!
+//! Variables with scale < 1e-12 (relative to the maximum scale across all
+//! variables) are treated as constant and receive unit weight (scale = 1.0).
+//! This prevents numerical issues from near-zero denominators in the
+//! standardization step.
+//!
 //! # References
 //!
 //! - Happ, C. & Greven, S. (2018). Multivariate functional principal component
 //!   analysis for data observed on different (dimensional) domains. *Journal of
-//!   the American Statistical Association*, 113(522), 649--659.
+//!   the American Statistical Association*, 113(522), 649-659. The weighting
+//!   scheme follows Section 2.2 (standardization by variable-specific scale)
+//!   and the eigendecomposition is described in Section 2.3, Eq. 3-5.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;

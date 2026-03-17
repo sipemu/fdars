@@ -6,20 +6,45 @@
 //! stratification) that may indicate process shifts even when individual
 //! points remain within control limits.
 //!
+//! # Theoretical ARL₀ (independent normal data)
+//!
+//! | Rule | ARL₀ |
+//! |------|------|
+//! | WE1 (3σ) | 370.4 |
+//! | WE2 (2/3 beyond 2σ) | 122.0 |
+//! | WE3 (4/5 beyond 1σ) | 90.7 |
+//! | WE4 (8 same side) | 119.7 |
+//! | Nelson5 (6 monotone) | 360.0 |
+//! | Nelson6 (14 alternating) | 182.0 |
+//! | Nelson7 (15 within 1σ) | 44.1 |
+//! | All WE combined | ~46 |
+//!
 //! # Assumptions
 //!
 //! These rules assume observations are independent and identically distributed
 //! under in-control conditions. When applied to autocorrelated data (e.g.,
 //! EWMA-smoothed statistics), false alarm rates may be inflated.
 //!
+//! # Computational complexity
+//!
+//! All rules evaluate in O(n·W) time where W is the maximum window size
+//! (1 for WE1, 15 for Nelson7). Memory usage is O(W) per rule.
+//!
+//! # NaN handling
+//!
+//! NaN values in the input are not handled specially; comparisons involving
+//! NaN return false, so NaN points will not trigger WE1–WE3 or Nelson5–Nelson6
+//! violations but may affect WE4/Nelson7 (which check all-same-side or
+//! all-within conditions).
+//!
 //! # References
 //!
 //! - Western Electric Company (1956). *Statistical Quality Control Handbook*.
-//!   Western Electric Co., Indianapolis.
+//!   Western Electric Co., Indianapolis. Chapter 4, pp. 25–28.
 //! - Nelson, L.S. (1984). The Shewhart control chart — tests for special
-//!   causes. *Journal of Quality Technology*, 16(4), 237-239.
+//!   causes. *Journal of Quality Technology*, 16(4), 237-239, p. 238.
 //! - Nelson, L.S. (1985). Interpreting Shewhart X̄ control charts. *Journal
-//!   of Quality Technology*, 17(2), 114-116.
+//!   of Quality Technology*, 17(2), 114-116, p. 115.
 //!
 //! # False Alarm Rates
 //!
@@ -101,6 +126,7 @@ pub struct RuleViolation {
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidParameter`] if `sigma` is not positive.
+#[must_use = "violations should not be discarded"]
 pub fn evaluate_rules(
     values: &[f64],
     center: f64,
@@ -136,6 +162,7 @@ pub fn evaluate_rules(
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidParameter`] if `sigma` is not positive.
+#[must_use = "violations should not be discarded"]
 pub fn western_electric_rules(
     values: &[f64],
     center: f64,
@@ -159,6 +186,7 @@ pub fn western_electric_rules(
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidParameter`] if `sigma` is not positive.
+#[must_use = "violations should not be discarded"]
 pub fn nelson_rules(
     values: &[f64],
     center: f64,

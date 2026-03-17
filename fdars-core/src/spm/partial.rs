@@ -7,11 +7,41 @@
 //! - Partial projection (scaled inner products)
 //! - Zero padding
 //!
+//! # Mathematical framework
+//!
+//! The BLUP (Best Linear Unbiased Predictor) conditional expectation formula is:
+//!
+//! xi_hat = Lambda · Phi_obs^T · (Phi_obs · Lambda · Phi_obs^T + sigma^2 I)^{-1} · y_obs
+//!
+//! where Lambda = diag(eigenvalues) is the ncomp x ncomp prior covariance of
+//! the FPC scores, Phi_obs is the eigenfunction matrix restricted to observed
+//! grid points (n_obs x ncomp), sigma^2 is estimated from the median SPE
+//! (robust to outliers), and y_obs is the centered partial observation. Under
+//! Gaussian assumptions, this is the BLUP (Yao et al., 2005, section 3,
+//! pp. 580--583, Eq. 6).
+//!
+//! The domain fraction is computed as (argvals\[n_obs-1\] - argvals\[0\]) /
+//! (argvals\[m-1\] - argvals\[0\]), representing the proportion of the domain
+//! range covered by observed points. For a single observed point (range = 0),
+//! the point-count fraction n_obs/m is used as a fallback, consistent with
+//! the PACE framework where prediction from a single observation reduces to
+//! the marginal BLUP.
+//!
+//! # Numerical stability
+//!
+//! The ncomp x ncomp system matrix Phi_obs · Lambda · Phi_obs^T + sigma^2 I
+//! (equivalently, Lambda^{-1} + sigma^{-2} Phi_obs^T Phi_obs via the Woodbury
+//! identity) is solved via Cholesky factorization. If the matrix is near-singular
+//! (condition number proxy diag_max/diag_min > 10^12), progressive Tikhonov
+//! regularization is applied: the diagonal loading is increased by factors of 10
+//! until the factorization succeeds (up to 5 retries).
+//!
 //! # References
 //!
-//! - Yao, F., Müller, H.G. & Wang, J.L. (2005). Functional data analysis
+//! - Yao, F., Muller, H.-G. & Wang, J.-L. (2005). Functional data analysis
 //!   for sparse longitudinal data. *Journal of the American Statistical
-//!   Association*, 100(470), 577-590.
+//!   Association*, 100(470), 577--590, section 3, pp. 580--583 (PACE framework
+//!   and BLUP derivation).
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
@@ -246,14 +276,21 @@ pub fn spm_monitor_partial_batch(
 
 // -- Completion strategies ------------------------------------------------
 
-/// Conditional Expectation (BLUP):
-/// scores = (Lambda^{-1} + sigma^{-2} Phi_obs^T Phi_obs)^{-1} sigma^{-2} Phi_obs^T y_obs
+/// Conditional Expectation (BLUP) following Yao et al. (2005, section 3, Eq. 6):
 ///
-/// Where:
-/// - Lambda = diag(eigenvalues) (ncomp x ncomp)
-/// - Phi_obs = rotation[0..n_observed, :] (n_observed x ncomp)
-/// - y_obs = partial_values[0..n_observed] - mean[0..n_observed]
-/// - sigma^2 estimated from SPE
+/// The posterior score estimate under Gaussian assumptions is:
+///   xi_hat = Lambda · Phi_obs^T · (Phi_obs · Lambda · Phi_obs^T + sigma^2 I)^{-1} · y_obs
+///
+/// Implemented via the Woodbury identity as the equivalent small system:
+///   M · xi_hat = sigma^{-2} Phi_obs^T y_obs
+/// where M = Lambda^{-1} + sigma^{-2} Phi_obs^T Phi_obs (ncomp x ncomp).
+///
+/// Components:
+/// - Lambda = diag(eigenvalues) (ncomp x ncomp): prior score covariance
+/// - Phi_obs = rotation[0..n_observed, :] (n_observed x ncomp): eigenfunctions at observed points
+/// - y_obs = partial_values[0..n_observed] - mean[0..n_observed]: centered observations
+/// - sigma^2: measurement noise, estimated from the median Phase I SPE divided by m
+///   (robust to outliers; Yao et al. recommend median-based estimation)
 fn conditional_expectation(
     chart: &SpmChart,
     partial_values: &[f64],

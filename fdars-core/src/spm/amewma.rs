@@ -15,9 +15,11 @@
 //! # References
 //!
 //! - Sparks, R.S. (2000). CUSUM charts for signalling varying location
-//!   shifts. *Journal of Quality Technology*, 32(2), 157-171.
+//!   shifts, Eqs. 3--5, pp. 162--164. *Journal of Quality Technology*,
+//!   32(2), 157--171.
 //! - Capizzi, G. & Masarotto, G. (2003). An adaptive exponentially weighted
-//!   moving average control chart. *Technometrics*, 45(3), 199-207.
+//!   moving average control chart, §2, pp. 200--202. *Technometrics*,
+//!   45(3), 199--207.
 //!
 //! # Parameter guidance
 //!
@@ -44,7 +46,11 @@ pub struct AmewmaConfig {
     /// Initial smoothing parameter (default 0.2).
     pub lambda_init: f64,
     /// Smoothing parameter for the adaptive weight estimator (default 0.1).
-    /// Controls how quickly the adaptive weight reacts to changes.
+    ///
+    /// Controls adaptation speed. Small eta (0.05--0.1) provides gradual
+    /// adaptation suitable for slowly drifting processes; large eta (0.3--0.5)
+    /// reacts quickly to abrupt shifts but may over-adapt to noise. Default
+    /// 0.1 balances responsiveness and stability.
     pub eta: f64,
     /// Number of principal components (default 5).
     pub ncomp: usize,
@@ -219,7 +225,12 @@ pub fn spm_amewma_monitor(
     }
 
     // --- Adaptive EWMA loop ---
-    // Sparks (2000) variant: adaptive λ with time-dependent covariance.
+    // Sparks (2000) variant: adaptive lambda with time-dependent covariance.
+    //
+    // The adaptive weight estimator Q_t = eta * e^2_avg + (1 - eta) * Q_{t-1}
+    // tracks the second moment of the standardized prediction error.
+    // lambda_t = clamp(Q_t, lambda_min, lambda_max) maps this to a smoothing
+    // parameter: large Q -> large lambda -> fast response to large shifts.
     let mut smoothed = FdMatrix::zeros(n, actual_ncomp);
     let mut t2_statistic = Vec::with_capacity(n);
     let mut lambda_vals = Vec::with_capacity(n);
@@ -229,6 +240,8 @@ pub fn spm_amewma_monitor(
     let mut lambda_prev = config.lambda_init;
     // Cumulative variance factor for time-dependent covariance:
     // Var(S_t) = sum_{j=1}^{t} lambda_j^2 * prod_{k=j+1}^{t} (1-lambda_k)^2
+    // This generalizes the constant-lambda EWMA variance
+    // lambda/(2-lambda)[1-(1-lambda)^{2t}] to the time-varying case.
     let mut sum_lambda_sq_prod = 0.0_f64;
 
     for i in 0..n {
@@ -274,6 +287,11 @@ pub fn spm_amewma_monitor(
         // Update adaptive weight estimator
         let q_t = config.eta * e_sq_avg + (1.0 - config.eta) * q_prev;
         lambda_prev = config.lambda_min.max(config.lambda_max.min(q_t));
+        // Clamp Q_t to [0, 2 * lambda_max] to prevent unbounded growth from
+        // outlier sequences. The factor of 2 allows Q to exceed lambda_max
+        // temporarily (since the clamping to [lambda_min, lambda_max] happens
+        // at the lambda mapping step), providing a form of memory for recent
+        // large deviations.
         q_prev = q_t.clamp(0.0, config.lambda_max * 2.0);
     }
 
