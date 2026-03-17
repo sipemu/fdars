@@ -97,15 +97,22 @@ pub use covariance::{
 // Re-export alignment types and functions
 pub use alignment::{
     align_to_target, alignment_quality, amplitude_distance, amplitude_self_distance_matrix,
-    compose_warps, elastic_align_pair, elastic_align_pair_constrained, elastic_align_pair_nd,
+    compose_warps, cut_dendrogram, diagnose_alignment, diagnose_pairwise, elastic_align_pair,
+    elastic_align_pair_constrained, elastic_align_pair_nd, elastic_align_pair_penalized,
     elastic_align_pair_with_landmarks, elastic_cross_distance_matrix, elastic_decomposition,
-    elastic_distance, elastic_distance_nd, elastic_self_distance_matrix, karcher_mean,
-    pairwise_consistency, phase_distance_pair, phase_self_distance_matrix, reparameterize_curve,
-    srsf_inverse, srsf_inverse_nd, srsf_transform, srsf_transform_nd, tsrvf_from_alignment,
+    elastic_distance, elastic_distance_nd, elastic_hierarchical, elastic_kmeans,
+    elastic_self_distance_matrix, invert_warp, karcher_mean, lambda_cv, orbit_representative,
+    pairwise_consistency, phase_boxplot, phase_distance_pair, phase_self_distance_matrix,
+    reparameterize_curve, shape_distance, shape_mean, shape_self_distance_matrix, srsf_inverse,
+    srsf_inverse_nd, srsf_transform, srsf_transform_nd, tsrvf_from_alignment,
     tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform, tsrvf_transform_with_method,
-    warp_complexity, warp_smoothness, AlignmentQuality, AlignmentResult, AlignmentResultNd,
-    AlignmentSetResult, ConstrainedAlignmentResult, DecompositionResult, KarcherMeanResult,
-    TransportMethod, TsrvfResult,
+    warp_complexity, warp_inverse_error, warp_smoothness, warp_statistics, AlignmentDiagnostic,
+    AlignmentDiagnosticSummary, AlignmentQuality, AlignmentResult, AlignmentResultNd,
+    AlignmentSetResult, ConstrainedAlignmentResult, DecompositionResult, DiagnosticConfig,
+    ElasticClusterConfig, ElasticClusterMethod, ElasticClusterResult, ElasticDendrogram,
+    KarcherMeanResult, LambdaCvConfig, LambdaCvResult, OrbitRepresentative, PhaseBoxplot,
+    ShapeDistanceResult, ShapeMeanResult, ShapeQuotient, TransportMethod, TsrvfResult,
+    WarpPenaltyType, WarpStatistics,
 };
 
 // Re-export commonly used items

@@ -11,41 +11,65 @@
 //! - [`elastic_self_distance_matrix`] / [`elastic_cross_distance_matrix`] — Distance matrices
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
 
+mod clustering;
 mod constrained;
+mod diagnostics;
 mod karcher;
+mod lambda_cv;
 mod nd;
 mod pairwise;
+mod phase_boxplot;
 mod quality;
 mod set;
+mod shape;
 mod srsf;
 mod tsrvf;
+mod warp_stats;
 
 #[cfg(test)]
 mod tests;
 
 // Re-export all public items so that `crate::alignment::X` continues to work.
+pub use clustering::{
+    cut_dendrogram, elastic_hierarchical, elastic_kmeans, ElasticClusterConfig,
+    ElasticClusterMethod, ElasticClusterResult, ElasticDendrogram,
+};
 pub use constrained::{
     elastic_align_pair_constrained, elastic_align_pair_with_landmarks, ConstrainedAlignmentResult,
 };
+pub use diagnostics::{
+    diagnose_alignment, diagnose_pairwise, AlignmentDiagnostic, AlignmentDiagnosticSummary,
+    DiagnosticConfig,
+};
 pub use karcher::karcher_mean;
+pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use nd::{
     elastic_align_pair_nd, elastic_distance_nd, srsf_inverse_nd, srsf_transform_nd,
     AlignmentResultNd,
 };
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
-    elastic_cross_distance_matrix, elastic_distance, elastic_self_distance_matrix,
-    phase_distance_pair, phase_self_distance_matrix,
+    elastic_align_pair_penalized, elastic_cross_distance_matrix, elastic_distance,
+    elastic_self_distance_matrix, phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
 };
+pub use phase_boxplot::{phase_boxplot, PhaseBoxplot};
 pub use quality::{
     alignment_quality, pairwise_consistency, warp_complexity, warp_smoothness, AlignmentQuality,
 };
 pub use set::{align_to_target, elastic_decomposition, DecompositionResult};
-pub use srsf::{compose_warps, reparameterize_curve, srsf_inverse, srsf_transform};
+pub use shape::{
+    orbit_representative, shape_distance, shape_mean, shape_self_distance_matrix,
+    OrbitRepresentative, ShapeDistanceResult, ShapeMeanResult, ShapeQuotient,
+};
+pub use srsf::{
+    compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,
+    warp_inverse_error,
+};
 pub use tsrvf::{
     tsrvf_from_alignment, tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform,
     tsrvf_transform_with_method, TransportMethod, TsrvfResult,
 };
+pub use warp_stats::{warp_statistics, WarpStatistics};
 
 // Re-export pub(crate) items so other crate modules can use them.
 pub(crate) use karcher::sqrt_mean_inverse;

@@ -63,7 +63,10 @@ pub use crate::tolerance::{
 pub use crate::cv::{CvMetrics, CvType};
 
 // Alignment
-pub use crate::alignment::{AlignmentResult, KarcherMeanResult};
+pub use crate::alignment::{
+    AlignmentResult, ElasticClusterResult, KarcherMeanResult, LambdaCvResult, PhaseBoxplot,
+    ShapeMeanResult, WarpStatistics,
+};
 
 // Irregular functional data
 pub use crate::irreg_fdata::IrregFdata;
