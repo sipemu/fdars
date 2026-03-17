@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Alignment Module — 6 new advanced features
+
+- **Multivariate curve Karcher mean** (`alignment/nd.rs`): iterative Karcher mean, covariance estimation, and PCA for R^d curves with shared warping. New types: `KarcherMeanResultNd`, `PcaNdResult`. Functions: `karcher_mean_nd`, `karcher_covariance_nd`, `pca_nd`
+- **Gaussian generative model** (`alignment/generative.rs`): sample synthetic curves from fitted amplitude (vertical FPCA) and phase (horizontal FPCA) Gaussian models; joint model preserves amplitude-phase correlation. New type: `GenerativeModelResult`. Functions: `gauss_model`, `joint_gauss_model`
+- **Bayesian alignment** (`alignment/bayesian.rs`): pairwise alignment via preconditioned Crank-Nicolson (pCN) MCMC on the Hilbert sphere with posterior warping function samples, credible bands, and acceptance diagnostics. New types: `BayesianAlignConfig`, `BayesianAlignmentResult`. Function: `bayesian_align_pair`
+- **Curve geodesic interpolation** (`alignment/geodesic.rs`): geodesic paths between curves in elastic space — amplitude interpolation in SRSF space, phase interpolation on the Hilbert sphere; 1-D and N-D variants. New types: `GeodesicPath`, `GeodesicPathNd`. Functions: `curve_geodesic`, `curve_geodesic_nd`
+- **Peak persistence diagram** (`alignment/persistence.rs`): topology-based automatic lambda selection by tracking peak birth/death across a lambda sweep of Karcher means. New type: `PersistenceDiagramResult`. Function: `peak_persistence`
+- **Horizontal FPNS** (`alignment/fpns.rs`): Functional Principal Nested Spheres for warping functions — nonlinear PCA on the Hilbert sphere via iterative geodesic principal direction extraction. New type: `FpnsResult`. Function: `horiz_fpns`
+- 25 new alignment tests; total: 2,444 tests (1,760 unit + 684 integration/doc)
+- All new types and functions re-exported in `lib.rs` and `prelude.rs`
+
 ## [0.9.0] - 2026-03-17
 
 ### Added

@@ -47,7 +47,14 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 ### Time Series & Alignment
 
 - **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; Lomb-Scargle periodogram; matrix profile; SSA; peak detection; seasonal strength metrics; amplitude modulation detection; seasonality change detection
-- **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean, elastic distance matrices, amplitude/phase decomposition, landmark registration, transported SRVF (TSRVF)
+- **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean (1-D and N-D), elastic distance matrices, amplitude/phase decomposition, landmark registration, transported SRVF (TSRVF), penalized alignment (first/second-order curvature), lambda cross-validation, peak persistence diagram for automatic lambda selection
+- **Alignment Diagnostics**: Registration failure detection, warp statistics with confidence bands, phase box plots, pairwise consistency checks, warp inversion with error bounds
+- **Elastic Clustering**: K-means++ and hierarchical clustering (single/complete/average linkage) with Karcher mean centers in the elastic metric
+- **Elastic Shape Analysis**: Quotient space operations under reparameterization, translation, and scale invariance; orbit representatives, shape distances, shape means
+- **Bayesian Alignment**: pCN MCMC on the Hilbert sphere with posterior warping function samples and credible bands
+- **Generative Models**: Gaussian amplitude/phase sampling from fitted FPCA; joint model preserving amplitude-phase correlation
+- **Curve Geodesics**: Geodesic interpolation between curves in elastic space (1-D and N-D)
+- **Horizontal FPNS**: Functional Principal Nested Spheres for nonlinear PCA of warping functions on the Hilbert sphere
 - **Detrending**: Linear, polynomial, LOESS, differencing; classical, additive/multiplicative, and STL decomposition
 
 ### Explainability & Diagnostics
@@ -138,7 +145,7 @@ devtools::install_github("sipemu/fdars-r")
 
 ```toml
 [dependencies]
-fdars-core = "0.8"
+fdars-core = "0.9"
 ```
 
 Or install from the repository:
@@ -158,7 +165,7 @@ For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.8", default-features = false }
+fdars-core = { version = "0.9", default-features = false }
 ```
 
 ## Data Layout

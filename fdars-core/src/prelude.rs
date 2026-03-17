@@ -64,8 +64,9 @@ pub use crate::cv::{CvMetrics, CvType};
 
 // Alignment
 pub use crate::alignment::{
-    AlignmentResult, ElasticClusterResult, KarcherMeanResult, LambdaCvResult, PhaseBoxplot,
-    ShapeMeanResult, WarpStatistics,
+    AlignmentResult, BayesianAlignmentResult, ElasticClusterResult, FpnsResult,
+    GenerativeModelResult, GeodesicPath, KarcherMeanResult, KarcherMeanResultNd, LambdaCvResult,
+    PcaNdResult, PersistenceDiagramResult, PhaseBoxplot, ShapeMeanResult, WarpStatistics,
 };
 
 // Irregular functional data
