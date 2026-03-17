@@ -4,6 +4,21 @@
 //! statistical process control: T-squared captures systematic variation
 //! in the principal component subspace, while SPE captures residual
 //! variation outside it.
+//!
+//! # References
+//!
+//! - Hotelling, H. (1947). Multivariate quality control. *Techniques of
+//!   Statistical Analysis*, 111-184.
+//! - Bersimis, S., Psarakis, S. & Panaretos, J. (2007). Multivariate
+//!   statistical process control charts: an overview. *Quality and
+//!   Reliability Engineering International*, 23(5), 517-543.
+//!
+//! # Assumptions
+//!
+//! The statistics in this module assume the FPCA scores are approximately
+//! uncorrelated (diagonal covariance). This holds by construction when
+//! eigenvalues come from PCA/SVD. For non-PCA score vectors, use the full
+//! covariance Mahalanobis distance instead.
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
@@ -13,9 +28,26 @@ use crate::matrix::FdMatrix;
 ///
 /// T-squared_i = sum_{l=1}^{L} scores_{i,l}^2 / eigenvalues_l
 ///
+/// Under in-control conditions with Gaussian scores, T² follows
+/// approximately a chi²(ncomp) distribution. Use
+/// [`t2_control_limit`](super::control::t2_control_limit) to obtain the
+/// corresponding upper control limit.
+///
 /// # Arguments
 /// * `scores` - FPC score matrix (n x ncomp)
 /// * `eigenvalues` - Eigenvalues (length ncomp): sv_l^2 / (n-1)
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::stats::hotelling_t2;
+/// let scores = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 0.5, 1.0, 1.5], 3, 2).unwrap();
+/// let eigenvalues = vec![2.0, 1.0];
+/// let t2 = hotelling_t2(&scores, &eigenvalues).unwrap();
+/// assert_eq!(t2.len(), 3);
+/// assert!((t2[0] - 0.75).abs() < 1e-10); // 1²/2 + 0.5²/1
+/// ```
 ///
 /// # Errors
 ///
@@ -53,14 +85,84 @@ pub fn hotelling_t2(scores: &FdMatrix, eigenvalues: &[f64]) -> Result<Vec<f64>, 
     Ok(t2)
 }
 
+/// Compute Hotelling T-squared with eigenvalue regularization.
+///
+/// Like [`hotelling_t2`], but applies a floor to eigenvalues to prevent
+/// numerical instability from near-zero values. Useful when some
+/// eigenvalues are very small (< 1e-8) which would cause numerical
+/// instability in standard T². The epsilon floor prevents division by
+/// near-zero eigenvalues.
+///
+/// Choosing epsilon: set epsilon approximately 1e-2 times the minimum
+/// eigenvalue to regularize without substantially altering the statistic.
+/// The default regularization in `spm_monitor` uses this approach. For
+/// manual use, epsilon = 1e-6 is a safe general-purpose default that
+/// handles eigenvalue ratios up to 1e6.
+///
+/// # Arguments
+/// * `scores` - Score matrix (n × ncomp)
+/// * `eigenvalues` - Eigenvalues (length ncomp)
+/// * `epsilon` - Minimum eigenvalue floor (values below this are set to epsilon)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if shapes are inconsistent.
+/// Returns [`FdarError::InvalidParameter`] if epsilon is non-positive.
+pub fn hotelling_t2_regularized(
+    scores: &FdMatrix,
+    eigenvalues: &[f64],
+    epsilon: f64,
+) -> Result<Vec<f64>, FdarError> {
+    if epsilon <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "epsilon",
+            message: format!("epsilon must be positive, got {epsilon}"),
+        });
+    }
+    let (n, ncomp) = scores.shape();
+    if ncomp != eigenvalues.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "eigenvalues",
+            expected: format!("{ncomp}"),
+            actual: format!("{}", eigenvalues.len()),
+        });
+    }
+
+    let mut t2 = vec![0.0; n];
+    for i in 0..n {
+        for l in 0..ncomp {
+            let ev = eigenvalues[l].max(epsilon);
+            t2[i] += scores[(i, l)] * scores[(i, l)] / ev;
+        }
+    }
+    Ok(t2)
+}
+
 /// Compute SPE (Squared Prediction Error) for univariate functional data.
 ///
 /// SPE_i = integral (x_centered_i(t) - x_reconstructed_i(t))^2 w(t) dt
+///
+/// Requires `argvals` to be sorted in ascending order with at least 3
+/// points for Simpson's rule integration. Non-uniform spacing is handled
+/// correctly by the quadrature weights.
 ///
 /// # Arguments
 /// * `centered` - Centered functional data (n x m)
 /// * `reconstructed` - Reconstructed data from FPCA (n x m), already centered (mean subtracted)
 /// * `argvals` - Grid points (length m)
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::stats::spe_univariate;
+/// let centered = FdMatrix::from_column_major(vec![1.0, 0.0, 0.0, 1.0], 2, 2).unwrap();
+/// let reconstructed = FdMatrix::from_column_major(vec![0.0; 4], 2, 2).unwrap();
+/// let argvals = vec![0.0, 1.0];
+/// let spe = spe_univariate(&centered, &reconstructed, &argvals).unwrap();
+/// assert_eq!(spe.len(), 2);
+/// assert!(spe[0] > 0.0);
+/// ```
 ///
 /// # Errors
 ///
@@ -105,7 +207,10 @@ pub fn spe_univariate(
 /// Compute SPE for multivariate functional data.
 ///
 /// Sum of per-variable integrated squared differences, each variable using
-/// its own grid-specific integration weights.
+/// its own grid-specific integration weights. Each entry in `argvals_list`
+/// must be sorted in ascending order with at least 3 points for Simpson's
+/// rule integration. Non-uniform spacing is handled correctly by the
+/// quadrature weights.
 ///
 /// # Arguments
 /// * `standardized_vars` - Per-variable standardized centered data (each n x m_p)

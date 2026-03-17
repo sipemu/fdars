@@ -79,8 +79,11 @@ mod tests;
 pub use amewma::{spm_amewma_monitor, AmewmaConfig, AmewmaMonitorResult};
 pub use arl::{arl0_ewma_t2, arl0_spe, arl0_t2, arl1_t2, ArlConfig, ArlResult};
 pub use bootstrap::{spe_limit_robust, t2_limit_robust, ControlLimitMethod};
-pub use contrib::{spe_contributions, t2_contributions, t2_pc_contributions};
-pub use control::{spe_control_limit, t2_control_limit, ControlLimit};
+pub use contrib::{
+    spe_contributions, t2_contributions, t2_contributions_mfpca, t2_pc_contributions,
+    t2_pc_significance,
+};
+pub use control::{spe_control_limit, spe_moment_match_diagnostic, t2_control_limit, ControlLimit};
 pub use cusum::{
     spm_cusum_monitor, spm_cusum_monitor_with_restart, CusumConfig, CusumMonitorResult,
 };
@@ -106,4 +109,4 @@ pub use profile::{
     profile_monitor, profile_phase1, ProfileChart, ProfileMonitorConfig, ProfileMonitorResult,
 };
 pub use rules::{evaluate_rules, nelson_rules, western_electric_rules, ChartRule, RuleViolation};
-pub use stats::{hotelling_t2, spe_multivariate, spe_univariate};
+pub use stats::{hotelling_t2, hotelling_t2_regularized, spe_multivariate, spe_univariate};

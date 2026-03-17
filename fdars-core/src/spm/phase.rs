@@ -6,6 +6,14 @@
 //! Phase II: Monitors new observations against the established chart.
 //!
 //! Both univariate and multivariate variants are provided.
+//!
+//! # References
+//!
+//! - Horváth, L. & Kokoszka, P. (2012). *Inference for Functional Data
+//!   with Applications*. Springer.
+//! - Flores, M., Naya, S., Fernández-Casal, R. & Zaragoza, S. (2022).
+//!   Constructing a control chart using functional data. *Mathematics*,
+//!   8(1), 58.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -18,11 +26,20 @@ use super::stats::{hotelling_t2, spe_multivariate, spe_univariate};
 /// Configuration for SPM chart construction.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpmConfig {
-    /// Number of principal components (default 5).
+    /// Number of principal components to retain (default 5).
+    ///
+    /// Typical range: 3--10. Use [`select_ncomp()`](super::ncomp::select_ncomp)
+    /// for data-driven selection. More components capture finer structure but
+    /// increase dimensionality of the monitoring statistic.
     pub ncomp: usize,
     /// Significance level for control limits (default 0.05).
     pub alpha: f64,
     /// Fraction of data used for tuning/FPCA (default 0.5).
+    ///
+    /// The remainder forms the calibration set for control limits. Default 0.5
+    /// balances FPCA estimation quality against control limit precision. With
+    /// small datasets (n < 50), consider 0.6--0.7 to ensure adequate FPCA
+    /// estimation.
     pub tuning_fraction: f64,
     /// Random seed for data splitting (default 42).
     pub seed: u64,
@@ -40,12 +57,20 @@ impl Default for SpmConfig {
 }
 
 /// Univariate SPM chart from Phase I.
+///
+/// The chart assumes approximate multivariate normality in the score space.
+/// For non-Gaussian functional data, the chi-squared control limits are
+/// approximate. Use `t2_limit_robust()` with bootstrap method for
+/// distribution-free limits.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct SpmChart {
     /// FPCA result from the tuning set.
     pub fpca: FpcaResult,
     /// Eigenvalues: sv^2 / (n_tune - 1).
+    ///
+    /// The actual number of components may be fewer than `config.ncomp` if
+    /// limited by sample size or grid resolution.
     pub eigenvalues: Vec<f64>,
     /// T-squared values for the calibration set.
     pub t2_phase1: Vec<f64>,
@@ -57,6 +82,9 @@ pub struct SpmChart {
     pub spe_limit: ControlLimit,
     /// Configuration used to build the chart.
     pub config: SpmConfig,
+    /// Whether the sample size meets the recommended minimum (10 × ncomp).
+    /// False indicates results may be unstable.
+    pub sample_size_adequate: bool,
 }
 
 /// Multivariate SPM chart from Phase I.
@@ -94,20 +122,20 @@ pub struct SpmMonitorResult {
 }
 
 /// Split indices into tuning and calibration sets.
-fn split_indices(n: usize, tuning_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
+///
+/// Uses a deterministic Fisher-Yates shuffle with PCG-XSH-RR output function
+/// (O'Neill, 2014) for high-quality uniform sampling. The same seed always
+/// produces the same split, ensuring reproducibility.
+pub(super) fn split_indices(n: usize, tuning_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
     let n_tune = ((n as f64 * tuning_fraction).round() as usize)
         .max(2)
         .min(n - 1);
 
-    // Generate a deterministic permutation
+    // Generate a deterministic permutation using PCG-XSH-RR
     let mut indices: Vec<usize> = (0..n).collect();
-    // Simple LCG-based shuffle
     let mut rng_state: u64 = seed;
     for i in (1..n).rev() {
-        rng_state = rng_state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1);
-        let j = (rng_state >> 33) as usize % (i + 1);
+        let j = pcg_next(&mut rng_state) as usize % (i + 1);
         indices.swap(i, j);
     }
 
@@ -116,10 +144,24 @@ fn split_indices(n: usize, tuning_fraction: f64, seed: u64) -> (Vec<usize>, Vec<
     (tune_indices, cal_indices)
 }
 
+/// PCG-XSH-RR 64→32 output function (O'Neill, 2014).
+///
+/// PCG-XSH-RR (O'Neill, 2014) produces uniformly distributed 32-bit outputs
+/// from a 64-bit LCG state. The XSH-RR output function (xor-shift, random
+/// rotation) provides excellent statistical quality (passes TestU01 BigCrush).
+/// Used here for Fisher-Yates shuffle in `split_indices`.
+fn pcg_next(state: &mut u64) -> u32 {
+    let old = *state;
+    *state = old.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+    let xorshifted = (((old >> 18) ^ old) >> 27) as u32;
+    let rot = (old >> 59) as u32;
+    xorshifted.rotate_right(rot)
+}
+
 /// Compute centered reconstruction (without adding back mean) for SPE.
 ///
 /// Returns the centered reconstruction: scores * rotation^T (no mean added).
-fn centered_reconstruct(fpca: &FpcaResult, scores: &FdMatrix, ncomp: usize) -> FdMatrix {
+pub(super) fn centered_reconstruct(fpca: &FpcaResult, scores: &FdMatrix, ncomp: usize) -> FdMatrix {
     let n = scores.nrows();
     let m = fpca.mean.len();
     let ncomp = ncomp.min(fpca.rotation.ncols()).min(scores.ncols());
@@ -138,7 +180,7 @@ fn centered_reconstruct(fpca: &FpcaResult, scores: &FdMatrix, ncomp: usize) -> F
 }
 
 /// Compute centered data for new observations (data - mean).
-fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
+pub(super) fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
     let (n, m) = data.shape();
     let mut centered = FdMatrix::zeros(n, m);
     for i in 0..n {
@@ -159,6 +201,29 @@ fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
 /// # Errors
 ///
 /// Returns errors from FPCA, T-squared computation, or control limit estimation.
+///
+/// # Assumptions
+///
+/// - The in-control data should be approximately normally distributed in the
+///   score space. Departures from normality may inflate false alarm rates.
+/// - Recommended minimum sample size: at least 10 × ncomp observations to
+///   ensure stable FPCA estimation (Horváth & Kokoszka, 2012).
+/// - The tuning/calibration split means the effective sample for each step
+///   is smaller than `n`. Ensure each subset has at least 2 × ncomp rows.
+///
+/// # Example
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::phase::{spm_phase1, SpmConfig};
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let config = SpmConfig { ncomp: 2, ..SpmConfig::default() };
+/// let chart = spm_phase1(&data, &argvals, &config).unwrap();
+/// assert!(chart.eigenvalues.len() <= 2);
+/// assert!(chart.t2_limit.ucl > 0.0);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn spm_phase1(
     data: &FdMatrix,
@@ -173,6 +238,7 @@ pub fn spm_phase1(
             actual: format!("{n} observations"),
         });
     }
+    let sample_size_adequate = n >= 10 * config.ncomp;
     if argvals.len() != m {
         return Err(FdarError::InvalidDimension {
             parameter: "argvals",
@@ -187,13 +253,28 @@ pub fn spm_phase1(
     let tune_data = crate::cv::subset_rows(data, &tune_idx);
     let cal_data = crate::cv::subset_rows(data, &cal_idx);
     let n_tune = tune_data.nrows();
+    if n_tune < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "tuning set with at least 3 observations".to_string(),
+            actual: format!(
+                "{n_tune} observations in tuning set (increase data size or tuning_fraction)"
+            ),
+        });
+    }
 
-    // FPCA on tuning set
+    // FPCA on tuning set.
+    // Clamp ncomp to at most (n_tune - 1) and m to avoid rank-deficient SVD.
+    // The actual number of retained components may therefore be fewer than
+    // config.ncomp; this is reflected in the chart's eigenvalues length.
     let ncomp = config.ncomp.min(n_tune - 1).min(m);
     let fpca = fdata_to_pc_1d(&tune_data, ncomp)?;
     let actual_ncomp = fpca.scores.ncols();
 
-    // Eigenvalues
+    // Eigenvalues are computed as λ_l = s_l² / (n-1) where s_l is the l-th
+    // singular value from SVD of the centered data. This gives the sample
+    // variance explained by each PC, consistent with the covariance-based PCA
+    // formulation (cov = X'X / (n-1), whose eigenvalues are s_l² / (n-1)).
     let eigenvalues: Vec<f64> = fpca
         .singular_values
         .iter()
@@ -224,6 +305,7 @@ pub fn spm_phase1(
         t2_limit,
         spe_limit,
         config: config.clone(),
+        sample_size_adequate,
     })
 }
 
@@ -237,6 +319,23 @@ pub fn spm_phase1(
 /// # Errors
 ///
 /// Returns errors from projection or statistic computation.
+///
+/// # Example
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::phase::{spm_phase1, spm_monitor, SpmConfig};
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let config = SpmConfig { ncomp: 2, ..SpmConfig::default() };
+/// let chart = spm_phase1(&data, &argvals, &config).unwrap();
+/// let new_data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 10
+/// ).unwrap();
+/// let result = spm_monitor(&chart, &new_data, &argvals).unwrap();
+/// assert_eq!(result.t2.len(), 5);
+/// ```
 #[must_use = "monitoring result should not be discarded"]
 pub fn spm_monitor(
     chart: &SpmChart,

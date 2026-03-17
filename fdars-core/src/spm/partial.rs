@@ -6,6 +6,12 @@
 //! - Conditional expectation (BLUP)
 //! - Partial projection (scaled inner products)
 //! - Zero padding
+//!
+//! # References
+//!
+//! - Yao, F., Müller, H.G. & Wang, J.L. (2005). Functional data analysis
+//!   for sparse longitudinal data. *Journal of the American Statistical
+//!   Association*, 100(470), 577-590.
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
@@ -15,6 +21,16 @@ use super::phase::SpmChart;
 use super::stats::hotelling_t2;
 
 /// Strategy for handling unobserved domain.
+///
+/// # Strategy comparison
+///
+/// - **ConditionalExpectation** (recommended): Best accuracy when the FPCA model
+///   is well-specified. Uses BLUP to predict scores from partial observations.
+///   Degrades gracefully as domain fraction decreases.
+/// - **PartialProjection**: Computationally cheapest. Scales inner products by
+///   domain fraction. Acceptable when domain fraction > 0.7.
+/// - **ZeroPad**: Simplest baseline. Fills unobserved region with the mean
+///   function. Biases scores toward zero for small domain fractions.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum DomainCompletion {
@@ -27,6 +43,10 @@ pub enum DomainCompletion {
 }
 
 /// Configuration for partial-domain monitoring.
+///
+/// For domain fractions below 0.3, all strategies produce increasingly
+/// uncertain estimates. The conditional expectation (BLUP) degrades most
+/// gracefully due to its optimal shrinkage properties.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialDomainConfig {
     /// Number of principal components (default 5).
@@ -35,6 +55,12 @@ pub struct PartialDomainConfig {
     pub alpha: f64,
     /// Domain completion strategy (default: ConditionalExpectation).
     pub completion: DomainCompletion,
+    /// Tikhonov regularization strength for ill-conditioned systems (default 1e-10).
+    ///
+    /// Applied as Tikhonov regularization (diagonal loading) when the M matrix
+    /// condition number proxy exceeds 1e12. Increase to 1e-6 if you observe
+    /// numerical warnings or NaN in scores.
+    pub regularization_eps: f64,
 }
 
 impl Default for PartialDomainConfig {
@@ -43,6 +69,7 @@ impl Default for PartialDomainConfig {
             ncomp: 5,
             alpha: 0.05,
             completion: DomainCompletion::ConditionalExpectation,
+            regularization_eps: 1e-10,
         }
     }
 }
@@ -72,10 +99,32 @@ pub struct PartialMonitorResult {
 /// * `n_observed` - Number of observed grid points (from the start of the domain)
 /// * `config` - Partial domain configuration
 ///
+/// For domain fractions below 0.3, conditional expectation accuracy degrades
+/// significantly. Consider collecting more of the domain or using a dedicated
+/// early-detection method.
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::phase::{spm_phase1, SpmConfig};
+/// use fdars_core::spm::partial::{spm_monitor_partial, PartialDomainConfig, DomainCompletion};
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let chart = spm_phase1(&data, &argvals, &SpmConfig { ncomp: 2, ..SpmConfig::default() }).unwrap();
+/// let partial_values = vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0];
+/// let config = PartialDomainConfig { ncomp: 2, completion: DomainCompletion::ZeroPad, ..PartialDomainConfig::default() };
+/// let result = spm_monitor_partial(&chart, &partial_values, &argvals, 5, &config).unwrap();
+/// assert!(result.domain_fraction > 0.0);
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if dimensions are inconsistent.
-/// Returns [`FdarError::InvalidParameter`] if `n_observed` is 0.
+/// Returns [`FdarError::InvalidParameter`] if `n_observed` is 0, if `argvals`
+/// is not sorted, or if the computed domain fraction is out of range.
 #[must_use = "monitoring result should not be discarded"]
 pub fn spm_monitor_partial(
     chart: &SpmChart,
@@ -105,18 +154,49 @@ pub fn spm_monitor_partial(
             message: "n_observed must be at least 1".to_string(),
         });
     }
+    // Ensure argvals is sorted (strictly increasing endpoints)
+    if m > 1 && argvals[0] >= argvals[m - 1] {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals must be sorted (first element must be less than last)".to_string(),
+        });
+    }
 
     let ncomp = config.ncomp.min(chart.eigenvalues.len());
-    let domain_fraction = if m > 1 {
-        (argvals[n_observed.min(m) - 1] - argvals[0]) / (argvals[m - 1] - argvals[0])
-    } else {
+    // Domain fraction: ratio of observed domain range to full range.
+    // For n_observed=1, the range is zero so we fall back to point-count fraction.
+    let domain_fraction = if m <= 1 {
         1.0
+    } else {
+        let range_fraction =
+            (argvals[n_observed.min(m) - 1] - argvals[0]) / (argvals[m - 1] - argvals[0]);
+        if range_fraction > 0.0 {
+            range_fraction
+        } else {
+            // Single observed point: use point-count fraction as fallback.
+            // The point-count fraction n_obs/m is used when the range-based
+            // fraction is zero (single observed point). This is consistent
+            // with the PACE framework (Yao et al., 2005) where prediction
+            // from a single observation reduces to the marginal BLUP.
+            n_observed as f64 / m as f64
+        }
     };
+    if !(0.0..=1.0).contains(&domain_fraction) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "domain_fraction",
+            message: format!("computed domain_fraction must be in [0, 1], got {domain_fraction}"),
+        });
+    }
 
     let (scores, completed_curve) = match &config.completion {
-        DomainCompletion::ConditionalExpectation => {
-            conditional_expectation(chart, partial_values, argvals, n_observed, ncomp)?
-        }
+        DomainCompletion::ConditionalExpectation => conditional_expectation(
+            chart,
+            partial_values,
+            argvals,
+            n_observed,
+            ncomp,
+            config.regularization_eps,
+        )?,
         DomainCompletion::PartialProjection => {
             let scores = partial_projection(chart, partial_values, argvals, n_observed, ncomp)?;
             (scores, None)
@@ -180,6 +260,7 @@ fn conditional_expectation(
     _argvals: &[f64],
     n_observed: usize,
     ncomp: usize,
+    reg_eps: f64,
 ) -> Result<(Vec<f64>, Option<Vec<f64>>), FdarError> {
     let m = chart.fpca.mean.len();
     let n_obs = n_observed.min(m);
@@ -189,11 +270,18 @@ fn conditional_expectation(
         .map(|j| partial_values[j] - chart.fpca.mean[j])
         .collect();
 
-    // Estimate sigma^2 from mean SPE (use a small floor)
+    // Estimate sigma^2 from median SPE (robust to outliers, Yao et al. 2005)
     let sigma2 = if !chart.spe_phase1.is_empty() {
-        let mean_spe: f64 = chart.spe_phase1.iter().sum::<f64>() / chart.spe_phase1.len() as f64;
+        let mut sorted_spe = chart.spe_phase1.clone();
+        sorted_spe.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mid = sorted_spe.len() / 2;
+        let median_spe = if sorted_spe.len() % 2 == 0 {
+            (sorted_spe[mid - 1] + sorted_spe[mid]) / 2.0
+        } else {
+            sorted_spe[mid]
+        };
         // Normalize by grid size to get per-point variance
-        (mean_spe / m as f64).max(1e-10)
+        (median_spe / m as f64).max(1e-10)
     } else {
         1e-6
     };
@@ -223,11 +311,52 @@ fn conditional_expectation(
         }
     }
 
+    // Check condition number via diagonal ratio (cheap proxy)
+    let mut diag_min = f64::INFINITY;
+    let mut diag_max = 0.0_f64;
+    for l in 0..ncomp {
+        let d = m_matrix[l * ncomp + l];
+        if d > 0.0 {
+            diag_min = diag_min.min(d);
+            diag_max = diag_max.max(d);
+        }
+    }
+    if diag_max > 0.0 && diag_max / diag_min > 1e12 {
+        // Ill-conditioned: add Tikhonov regularization
+        let reg = diag_max * reg_eps;
+        for l in 0..ncomp {
+            m_matrix[l * ncomp + l] += reg;
+        }
+    }
+
     // Right-hand side: sigma^{-2} Phi^T y
     let rhs: Vec<f64> = phi_t_y.iter().map(|&v| v / sigma2).collect();
 
-    // Solve M * scores = rhs using Cholesky (M is SPD)
-    let scores = solve_spd(&m_matrix, &rhs, ncomp)?;
+    // Solve M * scores = rhs using Cholesky (M is SPD).
+    // If Cholesky fails (near-indefinite), retry with progressively stronger regularization.
+    let scores = match solve_spd(&m_matrix, &rhs, ncomp) {
+        Ok(s) => s,
+        Err(_) => {
+            // Retry with stronger Tikhonov regularization
+            let mut m_reg = m_matrix.clone();
+            let mut reg_strength = diag_max * 1e-8;
+            let mut result = None;
+            for _ in 0..5 {
+                for l in 0..ncomp {
+                    m_reg[l * ncomp + l] = m_matrix[l * ncomp + l] + reg_strength;
+                }
+                if let Ok(s) = solve_spd(&m_reg, &rhs, ncomp) {
+                    result = Some(s);
+                    break;
+                }
+                reg_strength *= 10.0;
+            }
+            result.ok_or(FdarError::ComputationFailed {
+                operation: "conditional_expectation",
+                detail: "Cholesky failed even with strong regularization".to_string(),
+            })?
+        }
+    };
 
     // Reconstruct the full curve: mean + Phi * scores
     let mut completed = chart.fpca.mean.clone();
@@ -241,6 +370,11 @@ fn conditional_expectation(
 }
 
 /// Partial projection: scale inner products by domain fraction.
+///
+/// The scaling factor (full_total / partial_total) compensates for the reduced
+/// integration domain, assuming the eigenfunction structure is approximately
+/// uniform across the domain. This is a first-order correction that degrades
+/// when eigenfunctions have localized support outside the observed region.
 fn partial_projection(
     chart: &SpmChart,
     partial_values: &[f64],
@@ -257,8 +391,8 @@ fn partial_projection(
         .collect();
 
     // Integration weights for partial domain
-    let partial_argvals = &argvals[..n_obs];
-    let weights = simpsons_weights(partial_argvals);
+    let partialargvals = &argvals[..n_obs];
+    let weights = simpsons_weights(partialargvals);
 
     // Full domain weights (for normalization)
     let full_weights = simpsons_weights(argvals);
@@ -330,7 +464,7 @@ fn solve_spd(a: &[f64], b: &[f64], n: usize) -> Result<Vec<f64>, FdarError> {
             sum += l[j * n + k] * l[j * n + k];
         }
         let diag = a[j * n + j] - sum;
-        if diag <= 0.0 {
+        if diag <= 0.0 || diag.is_nan() {
             return Err(FdarError::ComputationFailed {
                 operation: "cholesky",
                 detail: "matrix is not positive definite".to_string(),

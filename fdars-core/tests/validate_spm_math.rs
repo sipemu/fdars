@@ -825,6 +825,7 @@ fn frcc_noise_vs_signal_residuals() {
         alpha: 0.05,
         tuning_fraction: 0.5,
         seed: 42,
+        ..FrccConfig::default()
     };
 
     // Build charts from each dataset
@@ -893,6 +894,7 @@ fn frcc_monitor_signal_vs_noise_t2() {
         alpha: 0.05,
         tuning_fraction: 0.5,
         seed: 42,
+        ..FrccConfig::default()
     };
 
     let chart = frcc_phase1(&y_signal, &predictors, &argvals, &config).unwrap();

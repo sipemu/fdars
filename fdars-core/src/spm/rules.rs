@@ -1,8 +1,33 @@
 //! Runs and zone rules for control chart analysis.
 //!
 //! Implements Western Electric (WE) and Nelson rules for detecting
-//! non-random patterns in control chart data. These supplement the
-//! standard T²/SPE alarm logic with pattern-based detection.
+//! non-random patterns in control chart data. These rules supplement
+//! T²/SPE alarm logic by detecting non-random patterns (trends, runs,
+//! stratification) that may indicate process shifts even when individual
+//! points remain within control limits.
+//!
+//! # Assumptions
+//!
+//! These rules assume observations are independent and identically distributed
+//! under in-control conditions. When applied to autocorrelated data (e.g.,
+//! EWMA-smoothed statistics), false alarm rates may be inflated.
+//!
+//! # References
+//!
+//! - Western Electric Company (1956). *Statistical Quality Control Handbook*.
+//!   Western Electric Co., Indianapolis.
+//! - Nelson, L.S. (1984). The Shewhart control chart — tests for special
+//!   causes. *Journal of Quality Technology*, 16(4), 237-239.
+//! - Nelson, L.S. (1985). Interpreting Shewhart X̄ control charts. *Journal
+//!   of Quality Technology*, 17(2), 114-116.
+//!
+//! # False Alarm Rates
+//!
+//! For false alarm rate estimation under these rules with independent data,
+//! the theoretical ARL₀ for WE1 alone is ~370 (at 3σ). Combining multiple
+//! rules increases sensitivity but reduces ARL₀; empirical calibration via
+//! `arl0_t2` or simulation is recommended when using multiple rules
+//! simultaneously.
 
 use crate::error::FdarError;
 
@@ -13,8 +38,14 @@ pub enum ChartRule {
     /// WE1: Any single point beyond 3σ.
     WE1,
     /// WE2: 2 of 3 consecutive points beyond 2σ on the same side.
+    ///
+    /// Multiple overlapping windows may detect the same event; deduplicate
+    /// by index if needed.
     WE2,
     /// WE3: 4 of 5 consecutive points beyond 1σ on the same side.
+    ///
+    /// Multiple overlapping windows may detect the same event; deduplicate
+    /// by index if needed.
     WE3,
     /// WE4: 8 consecutive points on the same side of center.
     WE4,
@@ -45,11 +76,27 @@ pub struct RuleViolation {
 
 /// Evaluate a set of chart rules against a sequence of values.
 ///
+/// Each [`RuleViolation`] in the returned vector contains the triggering
+/// rule and the indices of the observations involved. Multiple violations
+/// from different rules may overlap. For multi-rule evaluation, consider
+/// using [`western_electric_rules`] or [`nelson_rules`] convenience
+/// functions.
+///
 /// # Arguments
 /// * `values` - Monitoring statistic values (in time order)
 /// * `center` - Center line (e.g. process mean)
 /// * `sigma` - Standard deviation estimate
 /// * `rules` - Rules to evaluate
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::spm::rules::{evaluate_rules, ChartRule};
+/// let values = vec![0.0, 0.1, 0.0, -0.1, 0.0, 0.0, 0.1, 10.0]; // outlier at index 7
+/// let violations = evaluate_rules(&values, 0.0, 1.0, &[ChartRule::WE1]).unwrap();
+/// assert!(!violations.is_empty());
+/// assert_eq!(violations[0].indices, vec![7]);
+/// ```
 ///
 /// # Errors
 ///
@@ -76,6 +123,15 @@ pub fn evaluate_rules(
 }
 
 /// Apply all four Western Electric rules.
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::spm::rules::western_electric_rules;
+/// let values = vec![0.1, -0.2, 0.3, -0.1, 0.2, -0.3, 0.1, -0.2]; // in-control
+/// let violations = western_electric_rules(&values, 0.0, 1.0).unwrap();
+/// assert!(violations.is_empty()); // no violations for mild fluctuations
+/// ```
 ///
 /// # Errors
 ///
@@ -303,7 +359,7 @@ fn eval_nelson7(values: &[f64], center: f64, sigma: f64) -> Vec<RuleViolation> {
     }
     for start in 0..values.len() - 14 {
         let window = &values[start..start + 15];
-        let all_within = window.iter().all(|&v| (v - center).abs() < sigma);
+        let all_within = window.iter().all(|&v| (v - center).abs() <= sigma);
         if all_within {
             violations.push(RuleViolation {
                 rule: ChartRule::Nelson7,
@@ -323,6 +379,11 @@ fn eval_custom_run(
     k_sigma: f64,
 ) -> Vec<RuleViolation> {
     let mut violations = Vec::new();
+    // A negative sigma threshold is meaningless — no point can be beyond
+    // a negative multiple of sigma, so return early with no violations.
+    if k_sigma < 0.0 {
+        return violations;
+    }
     if n_points == 0 || values.len() < n_points {
         return violations;
     }

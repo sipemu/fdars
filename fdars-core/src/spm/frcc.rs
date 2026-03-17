@@ -7,6 +7,27 @@
 //! This is useful when the process output (functional) depends on known inputs
 //! (scalar predictors), and we want to detect deviations beyond what the inputs
 //! explain.
+//!
+//! FRCC is most beneficial when predictors explain a substantial portion of the
+//! functional variance (R² > 0.3). Below this threshold, covariate adjustment
+//! adds estimation noise with little benefit. In such cases, standard
+//! `spm_phase1` is preferred.
+//!
+//! After building the FRCC chart, verify `fosr_r_squared` to assess model
+//! quality. R² values: > 0.5 (strong adjustment), 0.3–0.5 (moderate),
+//! 0.1–0.3 (weak), < 0.1 (rejected by default threshold).
+//!
+//! The SPE control limit assumes residuals are approximately independent across
+//! observations. If the residuals exhibit temporal autocorrelation (e.g., from
+//! batch-to-batch effects), consider using bootstrap control limits via
+//! `spe_limit_robust()`.
+//!
+//! # References
+//!
+//! - Capezza, C., Lepore, A., Menafoglio, A., Palumbo, B. & Vantini, S.
+//!   (2020). Control charts for monitoring ship operating conditions and
+//!   CO2 emissions based on scalar-on-function regression. *Applied
+//!   Stochastic Models in Business and Industry*, 36(3), 477-500.
 
 use crate::error::FdarError;
 use crate::function_on_scalar::{fosr, predict_fosr, FosrResult};
@@ -14,6 +35,7 @@ use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc_1d, FpcaResult};
 
 use super::control::{spe_control_limit, t2_control_limit, ControlLimit};
+use super::phase::{center_data, centered_reconstruct, split_indices};
 use super::stats::{hotelling_t2, spe_univariate};
 
 /// Configuration for FRCC chart construction.
@@ -21,7 +43,9 @@ use super::stats::{hotelling_t2, spe_univariate};
 pub struct FrccConfig {
     /// Number of principal components for residual FPCA (default 5).
     pub ncomp: usize,
-    /// FOSR smoothing parameter; use small positive value (default 1e-4).
+    /// FOSR smoothing parameter; controls roughness penalty on β(t) (default 1e-4).
+    /// Larger values produce smoother coefficient functions. Typical range: [1e-6, 1e-2].
+    /// Use cross-validation if unsure.
     pub fosr_lambda: f64,
     /// Significance level (default 0.05).
     pub alpha: f64,
@@ -29,6 +53,15 @@ pub struct FrccConfig {
     pub tuning_fraction: f64,
     /// Random seed (default 42).
     pub seed: u64,
+    /// Minimum FOSR R² required to proceed (default 0.1).
+    /// If the FOSR model explains less than this fraction of variance,
+    /// frcc_phase1 returns an error suggesting standard SPM instead.
+    ///
+    /// Default 0.1 is a lenient threshold that catches only clearly useless
+    /// models. For production use, consider 0.2--0.3. An R² of 0.3 means
+    /// predictors explain 30% of functional variance --- enough for
+    /// meaningful covariate adjustment.
+    pub min_r_squared: f64,
 }
 
 impl Default for FrccConfig {
@@ -39,6 +72,7 @@ impl Default for FrccConfig {
             alpha: 0.05,
             tuning_fraction: 0.5,
             seed: 42,
+            min_r_squared: 0.1,
         }
     }
 }
@@ -57,6 +91,10 @@ pub struct FrccChart {
     pub t2_limit: ControlLimit,
     /// SPE control limit.
     pub spe_limit: ControlLimit,
+    /// Coefficient of determination (R²) for the FOSR model on the tuning set.
+    /// Values near 0 suggest the predictors explain little variance, and
+    /// the FRCC may not add value over a standard SPM chart.
+    pub fosr_r_squared: f64,
     /// Configuration used.
     pub config: FrccConfig,
 }
@@ -77,27 +115,6 @@ pub struct FrccMonitorResult {
     pub residual_scores: FdMatrix,
 }
 
-/// Split indices into tuning and calibration sets (same logic as phase.rs).
-fn split_indices(n: usize, tuning_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
-    let n_tune = ((n as f64 * tuning_fraction).round() as usize)
-        .max(2)
-        .min(n - 1);
-
-    let mut indices: Vec<usize> = (0..n).collect();
-    let mut rng_state: u64 = seed;
-    for i in (1..n).rev() {
-        rng_state = rng_state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1);
-        let j = (rng_state >> 33) as usize % (i + 1);
-        indices.swap(i, j);
-    }
-
-    let tune_indices: Vec<usize> = indices[..n_tune].to_vec();
-    let cal_indices: Vec<usize> = indices[n_tune..].to_vec();
-    (tune_indices, cal_indices)
-}
-
 /// Compute residuals: observed - predicted.
 fn compute_residuals(observed: &FdMatrix, predicted: &FdMatrix) -> FdMatrix {
     let (n, m) = observed.shape();
@@ -110,37 +127,6 @@ fn compute_residuals(observed: &FdMatrix, predicted: &FdMatrix) -> FdMatrix {
     residuals
 }
 
-/// Compute centered reconstruction (without adding back mean) for SPE.
-fn centered_reconstruct(fpca: &FpcaResult, scores: &FdMatrix, ncomp: usize) -> FdMatrix {
-    let n = scores.nrows();
-    let m = fpca.mean.len();
-    let ncomp = ncomp.min(fpca.rotation.ncols()).min(scores.ncols());
-
-    let mut recon = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        for j in 0..m {
-            let mut val = 0.0;
-            for k in 0..ncomp {
-                val += scores[(i, k)] * fpca.rotation[(j, k)];
-            }
-            recon[(i, j)] = val;
-        }
-    }
-    recon
-}
-
-/// Center data by subtracting mean.
-fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
-    let (n, m) = data.shape();
-    let mut centered = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        for j in 0..m {
-            centered[(i, j)] = data[(i, j)] - mean[j];
-        }
-    }
-    centered
-}
-
 /// Build a Functional Regression Control Chart from Phase I data.
 ///
 /// 1. Splits data into tuning and calibration sets
@@ -148,6 +134,14 @@ fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
 /// 3. Computes residuals on calibration set
 /// 4. Runs FPCA on calibration residuals
 /// 5. Computes T-squared and SPE control limits
+///
+/// The R² is computed on the tuning set, not the calibration set, to avoid
+/// optimistic bias. The tuning set is used for both FOSR fitting and R²
+/// assessment.
+///
+/// The SPE control limit assumes approximately independent residuals. For
+/// processes with temporal structure in the residuals, use `spe_limit_robust()`
+/// with bootstrap method.
 ///
 /// # Arguments
 /// * `y_curves` - Functional response (n x m)
@@ -158,6 +152,24 @@ fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
 /// # Errors
 ///
 /// Returns errors from FOSR fitting, FPCA, or control limit estimation.
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::frcc::{frcc_phase1, FrccConfig};
+/// let n = 60;
+/// let m = 10;
+/// let y = FdMatrix::from_column_major(
+///     (0..n*m).map(|i| (i as f64 * 0.1).sin()).collect(), n, m
+/// ).unwrap();
+/// let pred = FdMatrix::from_column_major(
+///     (0..n).map(|i| i as f64 / n as f64).collect(), n, 1
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m-1) as f64).collect();
+/// let config = FrccConfig { min_r_squared: 0.0, ..FrccConfig::default() };
+/// let chart = frcc_phase1(&y, &pred, &argvals, &config).unwrap();
+/// assert!(chart.fosr_r_squared >= 0.0);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn frcc_phase1(
     y_curves: &FdMatrix,
@@ -189,6 +201,15 @@ pub fn frcc_phase1(
             actual: format!("{}", argvals.len()),
         });
     }
+    if config.tuning_fraction <= 0.0 || config.tuning_fraction >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "tuning_fraction",
+            message: format!(
+                "tuning_fraction must be in (0, 1), got {}",
+                config.tuning_fraction
+            ),
+        });
+    }
 
     // Split
     let (tune_idx, cal_idx) = split_indices(n, config.tuning_fraction, config.seed);
@@ -201,6 +222,14 @@ pub fn frcc_phase1(
     let n_tune = tune_y.nrows();
     let n_cal = cal_y.nrows();
 
+    if n_cal < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_curves",
+            expected: "calibration set with at least 2 observations".to_string(),
+            actual: format!("{n_cal} observations in calibration set"),
+        });
+    }
+
     // Ensure enough observations for FOSR (needs n >= p + 2)
     if n_tune < p + 2 {
         return Err(FdarError::InvalidDimension {
@@ -211,12 +240,65 @@ pub fn frcc_phase1(
     }
 
     // FOSR on tuning set
-    let fosr_lambda = if config.fosr_lambda < 0.0 {
-        1e-4
-    } else {
-        config.fosr_lambda
-    };
+    if config.fosr_lambda < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "fosr_lambda",
+            message: format!(
+                "fosr_lambda must be non-negative, got {}",
+                config.fosr_lambda
+            ),
+        });
+    }
+    let fosr_lambda = config.fosr_lambda;
     let fosr_result = fosr(&tune_y, &tune_x, fosr_lambda)?;
+
+    // Compute R² on tuning set.
+    // R² is computed pointwise across all grid points, implicitly assuming a
+    // uniform grid. For non-uniform grids, this gives equal weight to each
+    // discrete point rather than integrating over the domain. For grids with
+    // > 3x variation in spacing, consider computing a weighted R² using
+    // Simpson's weights on argvals. The pointwise R² here is adequate for
+    // uniform or near-uniform grids.
+    //
+    // The pointwise R² treats each grid point equally, which is appropriate
+    // for uniform or near-uniform grids. For strongly non-uniform grids, the
+    // functional R² (integrating with quadrature weights) would be more
+    // appropriate but is not currently implemented. In practice, the
+    // difference is small when the grid has < 3x variation in spacing.
+    let tune_predicted = predict_fosr(&fosr_result, &tune_x);
+    let fosr_r_squared = {
+        let (n_t, m_t) = tune_y.shape();
+        let mut ss_res = 0.0;
+        let mut ss_tot = 0.0;
+        // Per-point mean for total SS
+        for j in 0..m_t {
+            let col_mean: f64 = (0..n_t).map(|i| tune_y[(i, j)]).sum::<f64>() / n_t as f64;
+            for i in 0..n_t {
+                ss_res += (tune_y[(i, j)] - tune_predicted[(i, j)]).powi(2);
+                ss_tot += (tune_y[(i, j)] - col_mean).powi(2);
+            }
+        }
+        if ss_tot > 0.0 {
+            1.0 - ss_res / ss_tot
+        } else {
+            0.0
+        }
+    };
+
+    if fosr_r_squared < config.min_r_squared {
+        return Err(FdarError::ComputationFailed {
+            operation: "frcc_phase1",
+            detail: format!(
+                "FOSR R² = {fosr_r_squared:.4}; below threshold {:.4}. \
+                 Consider: (a) adding more predictors, (b) increasing the training \
+                 set size, (c) reducing fosr_lambda for a less smooth fit, or \
+                 (d) using standard `spm_phase1` instead. Low R² means the \
+                 predictors explain little variance, so covariate adjustment \
+                 provides minimal benefit and may introduce estimation noise.",
+                config.min_r_squared
+            ),
+        });
+    }
 
     // Predict on calibration set and compute residuals
     let cal_predicted = predict_fosr(&fosr_result, &cal_x);
@@ -235,7 +317,8 @@ pub fn frcc_phase1(
         .map(|&sv| sv * sv / (n_cal as f64 - 1.0))
         .collect();
 
-    // T-squared on calibration residual scores
+    // T² on calibration scores: computed to verify FPCA but not used for
+    // control limits (which use chi² quantiles instead of empirical limits).
     let _t2_cal = hotelling_t2(&residual_fpca.scores, &eigenvalues)?;
 
     // SPE on calibration residuals
@@ -253,6 +336,7 @@ pub fn frcc_phase1(
         eigenvalues,
         t2_limit,
         spe_limit,
+        fosr_r_squared,
         config: config.clone(),
     })
 }
@@ -293,6 +377,15 @@ pub fn frcc_monitor(
             parameter: "new_predictors",
             expected: format!("{} rows", new_y.nrows()),
             actual: format!("{} rows", new_predictors.nrows()),
+        });
+    }
+    // Verify predictor count matches the FOSR model (beta has p rows, one per predictor).
+    let expected_p = chart.fosr.beta.nrows();
+    if new_predictors.ncols() != expected_p {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_predictors",
+            expected: format!("{expected_p} columns (predictors)"),
+            actual: format!("{} columns", new_predictors.ncols()),
         });
     }
 

@@ -3,6 +3,21 @@
 //! Monitors the relationship between scalar predictors and functional
 //! responses over time using Function-on-Scalar Regression (FOSR).
 //! Detects changes in the coefficient functions β(t) via FPCA and T².
+//!
+//! **Note on overlapping windows:** When `step_size < window_size`, consecutive
+//! windows share observations, inducing serial correlation in the β(t) estimates.
+//! The `effective_n_windows` field in [`ProfileChart`] provides a Bartlett-style
+//! correction for the effective degrees of freedom. Users should consider this
+//! when interpreting control limits.
+//!
+//! # References
+//!
+//! - Bartlett, M.S. (1946). On the theoretical specification of sampling
+//!   properties of autocorrelated time series. *Journal of the Royal
+//!   Statistical Society B*, 8(1), 27-41.
+//! - Ledolter, J. & Swersey, A.J. (2007). *Testing 1-2-3: Experimental
+//!   design with applications in marketing and service operations*.
+//!   Stanford University Press.
 
 use crate::error::FdarError;
 use crate::function_on_scalar::{fosr, FosrResult};
@@ -12,11 +27,26 @@ use crate::spm::control::{t2_control_limit, ControlLimit};
 use crate::spm::stats::hotelling_t2;
 
 /// Configuration for profile monitoring.
+///
+/// # Parameter guidance
+///
+/// - `window_size`: Must be >= p + 2 where p is the number of predictors.
+///   Larger windows give more stable β(t) estimates but reduce temporal resolution.
+///   Typical: 20-50 for slowly varying processes.
+/// - `step_size`: Controls window overlap. step_size = window_size gives no overlap
+///   (independent windows); step_size = 1 gives maximum overlap (smoothest tracking
+///   but highest autocorrelation). Typical: window_size/2 or window_size/4.
+///
+/// A rule of thumb: `window_size` ≈ 5p to 10p provides a good balance between
+/// regression stability and temporal resolution.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProfileMonitorConfig {
     /// FOSR smoothing parameter (default 1e-4).
     pub fosr_lambda: f64,
-    /// Number of principal components for beta FPCA (default 3).
+    /// Number of principal components for beta-function FPCA (default 3).
+    /// Typically 2--5 suffices since coefficient functions are smoother than
+    /// raw data. Use `select_ncomp()` on the beta eigenvalues for data-driven
+    /// selection.
     pub ncomp: usize,
     /// Significance level (default 0.05).
     pub alpha: f64,
@@ -39,6 +69,11 @@ impl Default for ProfileMonitorConfig {
 }
 
 /// Phase I profile monitoring chart.
+///
+/// When `effective_n_windows` is much smaller than the actual number of
+/// windows, the chi-squared UCL may need adjustment. A practical approach:
+/// multiply the UCL by `effective_n_windows / n_windows` to approximate a
+/// Bonferroni-like correction.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct ProfileChart {
@@ -50,6 +85,21 @@ pub struct ProfileChart {
     pub eigenvalues: Vec<f64>,
     /// T-squared control limit for beta monitoring.
     pub t2_limit: ControlLimit,
+    /// Lag-1 autocorrelation of the Phase I T² statistics from rolling windows.
+    /// High values (> 0.5) indicate serial correlation from window overlap.
+    ///
+    /// Computed from the Phase I T² statistic sequence. Values |ρ₁| > 0.3
+    /// indicate substantial serial correlation; `effective_n_windows` will be
+    /// notably reduced.
+    pub lag1_autocorrelation: f64,
+    /// Effective number of independent windows (Bartlett correction for overlap).
+    /// When step_size < window_size, consecutive windows overlap and are
+    /// correlated, reducing the effective degrees of freedom.
+    ///
+    /// Use this to assess whether the chi-squared UCL is reliable. When
+    /// `effective_n_windows` < 20, consider widening the control limit or
+    /// using bootstrap limits instead.
+    pub effective_n_windows: f64,
     /// Configuration used.
     pub config: ProfileMonitorConfig,
 }
@@ -76,6 +126,9 @@ pub struct ProfileMonitorResult {
 /// 4. Runs FPCA on the vectorized betas
 /// 5. Computes T-squared control limits
 ///
+/// When `step_size > window_size`, windows do not overlap and some observations
+/// fall between windows (not monitored).
+///
 /// # Arguments
 /// * `y_curves` - Response functional data (n × m)
 /// * `predictors` - Scalar predictors (n × p)
@@ -85,6 +138,24 @@ pub struct ProfileMonitorResult {
 /// # Errors
 ///
 /// Returns errors from FOSR or FPCA computation.
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::profile::{profile_phase1, ProfileMonitorConfig};
+/// let n = 50;
+/// let m = 10;
+/// let y = FdMatrix::from_column_major(
+///     (0..n*m).map(|i| (i as f64 * 0.1).sin()).collect(), n, m
+/// ).unwrap();
+/// let pred = FdMatrix::from_column_major(
+///     (0..n).map(|i| i as f64 / n as f64).collect(), n, 1
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m-1) as f64).collect();
+/// let config = ProfileMonitorConfig { window_size: 10, step_size: 5, ncomp: 2, ..ProfileMonitorConfig::default() };
+/// let chart = profile_phase1(&y, &pred, &argvals, &config).unwrap();
+/// assert!(chart.eigenvalues.len() >= 1);
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn profile_phase1(
     y_curves: &FdMatrix,
@@ -107,6 +178,12 @@ pub fn profile_phase1(
             actual: format!("{}", argvals.len()),
         });
     }
+    if config.step_size == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "step_size",
+            message: "step_size must be at least 1".to_string(),
+        });
+    }
     if config.window_size < 3 {
         return Err(FdarError::InvalidParameter {
             parameter: "window_size",
@@ -119,6 +196,23 @@ pub fn profile_phase1(
             message: format!(
                 "window_size ({}) exceeds data size ({n})",
                 config.window_size
+            ),
+        });
+    }
+
+    // Early check: ensure enough windows before expensive FOSR fitting.
+    let expected_n_windows = if n >= config.window_size {
+        (n - config.window_size) / config.step_size + 1
+    } else {
+        0
+    };
+    if expected_n_windows < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "enough data for at least 4 windows".to_string(),
+            actual: format!(
+                "{expected_n_windows} windows (n={n}, window_size={}, step_size={})",
+                config.window_size, config.step_size
             ),
         });
     }
@@ -151,6 +245,50 @@ pub fn profile_phase1(
         .map(|&sv| sv * sv / (n_windows as f64 - 1.0))
         .collect();
 
+    // Compute Phase I T² for autocorrelation diagnostic
+    let phase1_t2 = hotelling_t2(&beta_fpca.scores, &eigenvalues)?;
+    // Lag-1 autocorrelation using unbiased sample variance (n-1 denominator).
+    // Both variance and covariance use the (n-1) denominator. The ratio
+    // ρ₁ = cov/var is invariant to this choice, but (n-1) gives the unbiased
+    // sample variance.
+    let lag1_autocorrelation = if phase1_t2.len() > 2 {
+        let n_t2 = phase1_t2.len();
+        let mean_t2 = phase1_t2.iter().sum::<f64>() / n_t2 as f64;
+        let var_t2: f64 = phase1_t2
+            .iter()
+            .map(|&v| (v - mean_t2).powi(2))
+            .sum::<f64>()
+            / (n_t2 - 1) as f64;
+        if var_t2 > 0.0 {
+            let cov1: f64 = (0..n_t2 - 1)
+                .map(|i| (phase1_t2[i] - mean_t2) * (phase1_t2[i + 1] - mean_t2))
+                .sum::<f64>()
+                / (n_t2 - 1) as f64;
+            (cov1 / var_t2).clamp(-1.0, 1.0)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    // Bartlett (1946) effective sample size: n_eff = n / (1 + 2|ρ₁|).
+    // See Bartlett, M.S. (1946), Section 3.
+    // The Bartlett (1946) formula n_eff = n/(1 + 2ρ₁) is derived for
+    // AR(1) processes and provides a first-order correction for general
+    // stationary processes. For rolling-window statistics with overlap
+    // fraction f = 1 - step_size/window_size, the lag-1 autocorrelation
+    // is approximately f, so n_eff ≈ n/(1 + 2f). This is conservative
+    // (underestimates n_eff) for non-AR(1) dependence structures.
+    let effective_n_windows = if lag1_autocorrelation.abs() > 0.01 {
+        // Use absolute value: both positive (overlapping windows) and negative
+        // (anti-correlated) autocorrelation reduce the effective degrees of freedom.
+        let bartlett_factor = (1.0 + 2.0 * lag1_autocorrelation.abs()).max(1.0);
+        (n_windows as f64 / bartlett_factor).max(2.0)
+    } else {
+        n_windows as f64
+    };
+
     // Control limit
     let t2_limit = t2_control_limit(actual_ncomp, config.alpha)?;
 
@@ -159,6 +297,8 @@ pub fn profile_phase1(
         beta_fpca,
         eigenvalues,
         t2_limit,
+        lag1_autocorrelation,
+        effective_n_windows,
         config: config.clone(),
     })
 }
@@ -187,12 +327,27 @@ pub fn profile_monitor(
     _argvals: &[f64],
     config: &ProfileMonitorConfig,
 ) -> Result<ProfileMonitorResult, FdarError> {
+    if config.step_size == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "step_size",
+            message: "step_size must be at least 1".to_string(),
+        });
+    }
     let n = new_y.nrows();
     if new_predictors.nrows() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "new_predictors",
             expected: format!("{n} rows"),
             actual: format!("{} rows", new_predictors.nrows()),
+        });
+    }
+    // Validate that new_y grid size matches the reference FOSR grid (m)
+    let expected_m = chart.reference_fosr.beta.ncols();
+    if new_y.ncols() != expected_m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_y",
+            expected: format!("{expected_m} columns (grid points)"),
+            actual: format!("{} columns", new_y.ncols()),
         });
     }
 
@@ -217,6 +372,10 @@ pub fn profile_monitor(
 }
 
 /// Extract vectorized FOSR betas from rolling windows.
+///
+/// Each window must have sufficient rank for FOSR fitting. If a window fails
+/// (e.g., due to collinear predictors), the function returns an error.
+/// Ensure `window_size` is large enough relative to `p` (number of predictors).
 fn rolling_betas(
     y_curves: &FdMatrix,
     predictors: &FdMatrix,
@@ -225,6 +384,17 @@ fn rolling_betas(
     let n = y_curves.nrows();
     let m = y_curves.ncols();
     let p = predictors.ncols();
+
+    if config.window_size < p + 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "window_size",
+            message: format!(
+                "window_size ({}) must be >= p + 2 = {} for FOSR fitting",
+                config.window_size,
+                p + 2
+            ),
+        });
+    }
 
     let mut windows = Vec::new();
     let mut start = 0;
@@ -244,7 +414,9 @@ fn rolling_betas(
         });
     }
 
-    // Each beta is p × m, vectorized to length p*m
+    // Beta coefficients are vectorized in row-major order:
+    // β₁(t₁),...,β₁(t_m),β₂(t₁),...,β₂(t_m).
+    // Each row of beta_mat represents one window's complete coefficient function.
     let beta_len = p * m;
     let n_windows = windows.len();
     let mut beta_mat = FdMatrix::zeros(n_windows, beta_len);

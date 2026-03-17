@@ -3,6 +3,12 @@
 //! Extends univariate FPCA to handle multiple functional variables
 //! observed on potentially different grids. Variables are optionally
 //! weighted by their inverse standard deviation before joint SVD.
+//!
+//! # References
+//!
+//! - Happ, C. & Greven, S. (2018). Multivariate functional principal component
+//!   analysis for data observed on different (dimensional) domains. *Journal of
+//!   the American Statistical Association*, 113(522), 649--659.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -44,6 +50,8 @@ pub struct MfpcaResult {
     pub grid_sizes: Vec<usize>,
     /// Combined rotation matrix (sum(m_p) x ncomp) — internal use for projection.
     pub(super) combined_rotation: FdMatrix,
+    /// Threshold below which a variable's scale is treated as 1.0 (avoids division by near-zero).
+    pub(super) scale_threshold: f64,
 }
 
 impl MfpcaResult {
@@ -61,6 +69,18 @@ impl MfpcaResult {
                 parameter: "new_data",
                 expected: format!("{} variables", self.means.len()),
                 actual: format!("{} variables", new_data.len()),
+            });
+        }
+
+        // Early check: total columns across all variables must match the
+        // combined rotation matrix rows (i.e., the sum of training grid sizes).
+        let total_input_cols: usize = new_data.iter().map(|v| v.ncols()).sum();
+        let expected_total: usize = self.grid_sizes.iter().sum();
+        if total_input_cols != expected_total {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new_data",
+                expected: format!("{expected_total} total columns across all variables"),
+                actual: format!("{total_input_cols} total columns"),
             });
         }
 
@@ -87,7 +107,7 @@ impl MfpcaResult {
                     actual: format!("{} rows for variable {p}", var.nrows()),
                 });
             }
-            let scale = if self.scales[p] > 1e-15 {
+            let scale = if self.scales[p] >= self.scale_threshold {
                 self.scales[p]
             } else {
                 1.0
@@ -150,7 +170,7 @@ impl MfpcaResult {
         let mut result = Vec::with_capacity(self.means.len());
         let mut col_offset = 0;
         for (p, m_p) in self.grid_sizes.iter().enumerate() {
-            let scale = if self.scales[p] > 1e-15 {
+            let scale = if self.scales[p] >= self.scale_threshold {
                 self.scales[p]
             } else {
                 1.0
@@ -173,6 +193,19 @@ impl MfpcaResult {
 /// # Arguments
 /// * `variables` - Slice of n x m_p matrices, one per functional variable
 /// * `config` - MFPCA configuration
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::mfpca::{mfpca, MfpcaConfig};
+/// let var1 = FdMatrix::from_column_major(vec![1.0,2.0,3.0,4.0,5.0,6.0], 3, 2).unwrap();
+/// let var2 = FdMatrix::from_column_major(vec![0.5,1.5,2.5,3.5,4.5,5.5], 3, 2).unwrap();
+/// let config = MfpcaConfig { ncomp: 2, weighted: true };
+/// let result = mfpca(&[&var1, &var2], &config).unwrap();
+/// assert_eq!(result.eigenvalues.len(), 2);
+/// assert!(result.eigenvalues[0] >= result.eigenvalues[1]);
+/// ```
 ///
 /// # Errors
 ///
@@ -239,12 +272,19 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         scales.push(scale);
     }
 
+    // Use relative threshold for scale: 1e-12 * max(scales).
+    // Variables with scale below this threshold contribute negligible variance
+    // and are effectively constant. Treating them as unscaled avoids division
+    // by near-zero values.
+    let max_scale = scales.iter().cloned().fold(0.0_f64, f64::max);
+    let scale_threshold = 1e-12 * max_scale.max(1e-15); // floor to avoid 0
+
     // Step 2: Build stacked matrix (n x total_cols)
     let mut stacked = FdMatrix::zeros(n, total_cols);
     let mut col_offset = 0;
     for (p, var) in variables.iter().enumerate() {
         let m_p = grid_sizes[p];
-        let scale = if config.weighted && scales[p] > 1e-15 {
+        let scale = if config.weighted && scales[p] > scale_threshold {
             scales[p]
         } else {
             1.0
@@ -326,5 +366,6 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         scales,
         grid_sizes,
         combined_rotation,
+        scale_threshold,
     })
 }

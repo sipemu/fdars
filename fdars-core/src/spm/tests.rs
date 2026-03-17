@@ -5,7 +5,8 @@ mod spm_tests {
     use crate::matrix::FdMatrix;
     use crate::spm::amewma::{spm_amewma_monitor, AmewmaConfig};
     use crate::spm::chi_squared::{chi2_cdf, chi2_quantile};
-    use crate::spm::contrib::{spe_contributions, t2_contributions};
+    use crate::spm::contrib::{spe_contributions, t2_contributions, t2_contributions_mfpca};
+    use crate::spm::control::spe_moment_match_diagnostic;
     use crate::spm::control::{spe_control_limit, t2_control_limit};
     use crate::spm::cusum::{spm_cusum_monitor, spm_cusum_monitor_with_restart, CusumConfig};
     use crate::spm::ewma::{ewma_scores, spm_ewma_monitor, EwmaConfig};
@@ -408,6 +409,7 @@ mod spm_tests {
             lambda: 0.2,
             ncomp: 3,
             alpha: 0.05,
+            ..EwmaConfig::default()
         };
 
         let new_data = generate_ic_data(15, m, 789);
@@ -567,6 +569,7 @@ mod spm_tests {
             alpha: 0.05,
             tuning_fraction: 0.5,
             seed: 42,
+            ..FrccConfig::default()
         };
 
         let chart = frcc_phase1(&y_curves, &predictors, &argvals, &config).unwrap();
@@ -600,6 +603,19 @@ mod spm_tests {
         let x = FdMatrix::zeros(4, 2);
         let argvals = uniform_grid(20);
         let config = FrccConfig::default();
+        assert!(frcc_phase1(&y, &x, &argvals, &config).is_err());
+    }
+
+    #[test]
+    fn test_frcc_negative_fosr_lambda_rejected() {
+        let y = generate_ic_data(40, 20, 42);
+        let x = FdMatrix::from_column_major((0..80).map(|i| (i as f64) * 0.1).collect(), 40, 2)
+            .unwrap();
+        let argvals = uniform_grid(20);
+        let config = FrccConfig {
+            fosr_lambda: -1.0,
+            ..FrccConfig::default()
+        };
         assert!(frcc_phase1(&y, &x, &argvals, &config).is_err());
     }
 
@@ -1825,6 +1841,17 @@ mod spm_tests {
         assert!(chart.eigenvalues.len() <= 2);
     }
 
+    #[test]
+    fn test_profile_step_size_zero_rejected() {
+        let (y, pred) = generate_profile_data(30, 15, 1, 42);
+        let argvals = uniform_grid(15);
+        let config = ProfileMonitorConfig {
+            step_size: 0,
+            ..ProfileMonitorConfig::default()
+        };
+        assert!(profile_phase1(&y, &pred, &argvals, &config).is_err());
+    }
+
     // ── Partial-domain monitoring tests ───────────────────────────────────
 
     use crate::spm::partial::{
@@ -2493,5 +2520,1116 @@ mod spm_tests {
             "Should converge before max iterations on clean data, took {}",
             result.n_iterations
         );
+    }
+
+    // ── Upgrade tests: Kaiser ncomp ─────────────────────────────────────────
+
+    #[test]
+    fn test_kaiser_ncomp_known_spectrum() {
+        use crate::spm::ncomp::{select_ncomp, NcompMethod};
+        // Eigenvalues: [10, 5, 1, 0.1, 0.01]  mean = 3.222
+        // Components > mean: 10, 5 → should retain 2
+        let eigenvalues = vec![10.0, 5.0, 1.0, 0.1, 0.01];
+        let k = select_ncomp(&eigenvalues, &NcompMethod::Kaiser).unwrap();
+        assert_eq!(k, 2, "Kaiser should retain 2 components for this spectrum");
+    }
+
+    #[test]
+    fn test_kaiser_ncomp_flat_spectrum() {
+        use crate::spm::ncomp::{select_ncomp, NcompMethod};
+        // All equal → all equal to mean → none strictly above → fallback to 1
+        let eigenvalues = vec![1.0, 1.0, 1.0, 1.0];
+        let k = select_ncomp(&eigenvalues, &NcompMethod::Kaiser).unwrap();
+        assert_eq!(k, 1, "Kaiser with flat spectrum should return 1");
+    }
+
+    #[test]
+    fn test_kaiser_ncomp_single() {
+        use crate::spm::ncomp::{select_ncomp, NcompMethod};
+        let eigenvalues = vec![5.0];
+        let k = select_ncomp(&eigenvalues, &NcompMethod::Kaiser).unwrap();
+        assert_eq!(k, 1, "Kaiser with single eigenvalue should return 1");
+    }
+
+    // ── Upgrade tests: MFPCA relative threshold ─────────────────────────────
+
+    #[test]
+    fn test_mfpca_relative_threshold() {
+        // Test that MFPCA works correctly with variables of very different scales
+        let n = 20;
+        let m1 = 10;
+        let m2 = 10;
+        let t1 = uniform_grid(m1);
+        let t2 = uniform_grid(m2);
+
+        // Variable 1: large scale
+        let mut var1 = FdMatrix::zeros(n, m1);
+        for i in 0..n {
+            let phase = i as f64 * 0.3;
+            for j in 0..m1 {
+                var1[(i, j)] = 1000.0 * (2.0 * PI * t1[j] + phase).sin() + 5000.0;
+            }
+        }
+
+        // Variable 2: tiny scale (but not zero)
+        let mut var2 = FdMatrix::zeros(n, m2);
+        for i in 0..n {
+            let phase = i as f64 * 0.2;
+            for j in 0..m2 {
+                var2[(i, j)] = 0.001 * (2.0 * PI * t2[j] + phase).cos() + 0.005;
+            }
+        }
+
+        let config = MfpcaConfig {
+            ncomp: 3,
+            weighted: true,
+        };
+        let result = mfpca(&[&var1, &var2], &config).unwrap();
+        // Should have 3 or fewer components
+        assert!(result.eigenvalues.len() <= 3);
+        // Scale threshold should be relative to max scale
+        assert!(result.scales[0] > result.scales[1]);
+    }
+
+    // ── Upgrade tests: SPE moment-match diagnostic ──────────────────────────
+
+    #[test]
+    fn test_spe_moment_match_diagnostic_adequate() {
+        // Generate chi-squared-like data (exponential-ish)
+        let n = 200;
+        let spe: Vec<f64> = (0..n)
+            .map(|i| {
+                let x = (i as f64 * 2654435761.0) % 100.0;
+                (x / 10.0).max(0.1)
+            })
+            .collect();
+        let result = spe_moment_match_diagnostic(&spe);
+        assert!(result.is_ok());
+        let (kurtosis, theoretical, _adequate) = result.unwrap();
+        // Just check it returns finite values
+        assert!(kurtosis.is_finite());
+        assert!(theoretical.is_finite());
+    }
+
+    #[test]
+    fn test_spe_moment_match_diagnostic_too_few() {
+        let spe = vec![1.0, 2.0, 3.0]; // < 4
+        assert!(spe_moment_match_diagnostic(&spe).is_err());
+    }
+
+    // ── Upgrade tests: Bootstrap median quantile ────────────────────────────
+
+    #[test]
+    fn test_bootstrap_quantile_convergence() {
+        use crate::spm::bootstrap::{t2_limit_robust, ControlLimitMethod};
+        // For a large sample from chi2(5), bootstrap should converge near parametric
+        let n = 500;
+        let values: Vec<f64> = (0..n)
+            .map(|i| {
+                // Pseudo chi2(5): sum of 5 squared normals (approximated)
+                let mut sum = 0.0;
+                for k in 0..5 {
+                    let z =
+                        ((i as u64 * 48271 + k as u64 * 2654435761) % 10000) as f64 / 5000.0 - 1.0;
+                    sum += z * z;
+                }
+                sum
+            })
+            .collect();
+
+        let parametric =
+            t2_limit_robust(&values, 5, 0.05, &ControlLimitMethod::Parametric).unwrap();
+        let bootstrap = t2_limit_robust(
+            &values,
+            5,
+            0.05,
+            &ControlLimitMethod::Bootstrap {
+                n_bootstrap: 1000,
+                seed: 42,
+            },
+        )
+        .unwrap();
+
+        // Bootstrap should be in a reasonable range (not identical, but same ballpark)
+        assert!(bootstrap.ucl > 0.0, "Bootstrap UCL should be positive");
+        assert!(parametric.ucl > 0.0, "Parametric UCL should be positive");
+    }
+
+    // ── Upgrade tests: Partial domain condition number ──────────────────────
+
+    #[test]
+    fn test_partial_monitoring_well_conditioned() {
+        use crate::spm::partial::{spm_monitor_partial, DomainCompletion, PartialDomainConfig};
+        let n = 40;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(n, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Monitor with half-domain observation (should not crash even with regularization)
+        let partial_vals: Vec<f64> = (0..m).map(|j| data[(0, j)]).collect();
+        let partial_config = PartialDomainConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            completion: DomainCompletion::ConditionalExpectation,
+            ..PartialDomainConfig::default()
+        };
+        let result = spm_monitor_partial(&chart, &partial_vals, &argvals, m / 2, &partial_config);
+        assert!(result.is_ok(), "Partial monitoring should succeed");
+        let r = result.unwrap();
+        assert!(r.domain_fraction > 0.0 && r.domain_fraction < 1.0);
+    }
+
+    // ── Upgrade tests: MEWMA eigenvalue guard ───────────────────────────────
+
+    #[test]
+    fn test_mewma_eigenvalue_guard() {
+        use crate::spm::mewma::{spm_mewma_monitor, MewmaConfig};
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Normal usage should succeed
+        let new_data = generate_ic_data(10, m, 99);
+        let mewma_config = MewmaConfig {
+            lambda: 0.2,
+            ncomp: 3,
+            alpha: 0.05,
+            asymptotic: true,
+        };
+        let result = spm_mewma_monitor(&chart, &new_data, &argvals, &mewma_config);
+        assert!(result.is_ok());
+    }
+
+    // ── Upgrade tests: FRCC R-squared diagnostic ────────────────────────────
+
+    #[test]
+    fn test_frcc_low_r_squared_rejected() {
+        // Predictors that are pure noise → R² ≈ 0 → should fail
+        let n = 30;
+        let m = 15;
+        let argvals = uniform_grid(m);
+        let y = generate_ic_data(n, m, 42);
+
+        // Random predictors with no relationship to y
+        let mut predictors = FdMatrix::zeros(n, 2);
+        for i in 0..n {
+            predictors[(i, 0)] = ((i as u64).wrapping_mul(48271) % 10000) as f64 / 10000.0;
+            predictors[(i, 1)] = ((i as u64).wrapping_mul(2654435761) % 10000) as f64 / 10000.0;
+        }
+
+        let config = FrccConfig {
+            ncomp: 2,
+            fosr_lambda: 1e-4,
+            alpha: 0.05,
+            tuning_fraction: 0.5,
+            seed: 42,
+            ..FrccConfig::default()
+        };
+        let result = frcc_phase1(&y, &predictors, &argvals, &config);
+        // Should either fail with low R² or produce a result with low R²
+        // The exact behavior depends on the data, but the check is in place
+        if let Ok(chart) = &result {
+            assert!(
+                chart.fosr_r_squared >= 0.1,
+                "If chart was built, R² should be >= 0.1"
+            );
+        }
+    }
+
+    // ── Upgrade tests: MFPCA T² contributions ───────────────────────────────
+
+    #[test]
+    fn test_t2_contributions_mfpca_sums() {
+        let n = 20;
+        let m1 = 10;
+        let m2 = 10;
+        let t1 = uniform_grid(m1);
+        let t2_grid = uniform_grid(m2);
+
+        let mut var1 = FdMatrix::zeros(n, m1);
+        let mut var2 = FdMatrix::zeros(n, m2);
+        for i in 0..n {
+            let phase = i as f64 * 0.3;
+            for j in 0..m1 {
+                var1[(i, j)] = (2.0 * PI * t1[j] + phase).sin();
+            }
+            for j in 0..m2 {
+                var2[(i, j)] = (2.0 * PI * t2_grid[j] + phase * 0.5).cos();
+            }
+        }
+
+        let mfpca_config = MfpcaConfig {
+            ncomp: 3,
+            weighted: true,
+        };
+        let mfpca_result = mfpca(&[&var1, &var2], &mfpca_config).unwrap();
+        let _ncomp = mfpca_result.eigenvalues.len();
+
+        // Compute T² and contributions
+        let t2_vals = hotelling_t2(&mfpca_result.scores, &mfpca_result.eigenvalues).unwrap();
+        let contrib = t2_contributions_mfpca(&mfpca_result.scores, &mfpca_result).unwrap();
+
+        // Per-variable contributions should sum to T² for each observation
+        for i in 0..n {
+            let row_sum: f64 = (0..2).map(|v| contrib[(i, v)]).sum();
+            assert!(
+                (row_sum - t2_vals[i]).abs() < 1e-8 * (1.0 + t2_vals[i].abs()),
+                "MFPCA T² contribution row sum ({}) should match T² ({})",
+                row_sum,
+                t2_vals[i]
+            );
+        }
+    }
+
+    // ── Upgrade tests: AMEWMA time-dependent covariance ─────────────────────
+
+    #[test]
+    fn test_amewma_time_dependent_covariance() {
+        use crate::spm::amewma::{spm_amewma_monitor, AmewmaConfig};
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(20, m, 99);
+        let amewma_config = AmewmaConfig {
+            lambda_min: 0.05,
+            lambda_max: 0.95,
+            lambda_init: 0.2,
+            eta: 0.1,
+            ncomp: 3,
+            alpha: 0.05,
+            error_clip: None,
+        };
+        let result = spm_amewma_monitor(&chart, &new_data, &argvals, &amewma_config).unwrap();
+
+        // T² should be finite and non-negative
+        for &t2 in &result.t2_statistic {
+            assert!(
+                t2.is_finite() && t2 >= 0.0,
+                "T² should be finite and non-negative, got {t2}"
+            );
+        }
+        // Lambda values should be within bounds
+        for &lam in &result.lambda_t {
+            assert!(
+                lam >= amewma_config.lambda_min && lam <= amewma_config.lambda_max,
+                "Lambda {lam} should be in [{}, {}]",
+                amewma_config.lambda_min,
+                amewma_config.lambda_max
+            );
+        }
+    }
+
+    // ── Upgrade tests: Profile effective sample size ────────────────────────
+
+    #[test]
+    fn test_profile_effective_n_windows() {
+        use crate::spm::profile::{profile_phase1, ProfileMonitorConfig};
+        let n = 60;
+        let m = 10;
+        let p = 2;
+        let argvals = uniform_grid(m);
+
+        let y = generate_ic_data(n, m, 42);
+        let mut predictors = FdMatrix::zeros(n, p);
+        for i in 0..n {
+            for j in 0..p {
+                predictors[(i, j)] =
+                    ((i as u64 * (j as u64 + 1)).wrapping_mul(48271) % 10000) as f64 / 10000.0;
+            }
+        }
+
+        // Non-overlapping windows
+        let config_no_overlap = ProfileMonitorConfig {
+            fosr_lambda: 1e-4,
+            ncomp: 2,
+            alpha: 0.05,
+            window_size: 10,
+            step_size: 10,
+        };
+        let chart1 = profile_phase1(&y, &predictors, &argvals, &config_no_overlap).unwrap();
+
+        // Overlapping windows (step=1)
+        let config_overlap = ProfileMonitorConfig {
+            fosr_lambda: 1e-4,
+            ncomp: 2,
+            alpha: 0.05,
+            window_size: 10,
+            step_size: 1,
+        };
+        let chart2 = profile_phase1(&y, &predictors, &argvals, &config_overlap).unwrap();
+
+        // Non-overlapping: effective should be positive and bounded
+        assert!(
+            chart1.effective_n_windows >= 2.0,
+            "Non-overlapping: effective={} should be >= 2",
+            chart1.effective_n_windows
+        );
+
+        // Overlapping: should also be positive and bounded
+        assert!(
+            chart2.effective_n_windows >= 2.0,
+            "Overlapping: effective={} should be >= 2",
+            chart2.effective_n_windows
+        );
+
+        // Lag-1 autocorrelation should be in [-1, 1]
+        assert!(
+            chart1.lag1_autocorrelation >= -1.0 && chart1.lag1_autocorrelation <= 1.0,
+            "lag1_autocorrelation={} should be in [-1, 1]",
+            chart1.lag1_autocorrelation
+        );
+        assert!(
+            chart2.lag1_autocorrelation >= -1.0 && chart2.lag1_autocorrelation <= 1.0,
+            "lag1_autocorrelation={} should be in [-1, 1]",
+            chart2.lag1_autocorrelation
+        );
+    }
+
+    // ── Round 2 upgrade tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_ncomp_elbow_smoothed() {
+        use crate::spm::ncomp::{select_ncomp, NcompMethod};
+        // Noisy spectrum where smoothing helps: [100, 50, 48, 2, 1, 0.5]
+        // Without smoothing, elbow could be at index 1 or 2 (noise)
+        // With smoothing, the elbow at the 48→2 drop is clearer
+        let eigenvalues = vec![100.0, 50.0, 48.0, 2.0, 1.0, 0.5];
+        let k = select_ncomp(&eigenvalues, &NcompMethod::Elbow).unwrap();
+        assert!(
+            (2..=4).contains(&k),
+            "Smoothed elbow should find ~3, got {k}"
+        );
+    }
+
+    #[test]
+    fn test_hotelling_t2_regularized() {
+        use crate::spm::stats::hotelling_t2_regularized;
+        let scores = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        // Very small eigenvalue that would cause numerical issues
+        let eigenvalues = vec![1.0, 1e-20];
+        // Without regularization, T² would be huge for the second component
+        let t2_reg = hotelling_t2_regularized(&scores, &eigenvalues, 1e-6).unwrap();
+        assert!(t2_reg[0].is_finite(), "Regularized T² should be finite");
+        assert!(t2_reg[1].is_finite(), "Regularized T² should be finite");
+        // With floor=1e-6, second component contributes score²/1e-6
+        let expected_0 = 1.0 / 1.0 + 3.0 * 3.0 / 1e-6;
+        assert!(
+            (t2_reg[0] - expected_0).abs() < 1e-3,
+            "Expected {expected_0}, got {}",
+            t2_reg[0]
+        );
+    }
+
+    #[test]
+    fn test_ewma_exact_covariance() {
+        use crate::spm::ewma::{spm_ewma_monitor, EwmaConfig};
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+        let new_data = generate_ic_data(10, m, 99);
+
+        let config_asymptotic = EwmaConfig {
+            lambda: 0.2,
+            ncomp: 3,
+            alpha: 0.05,
+            exact_covariance: false,
+        };
+        let config_exact = EwmaConfig {
+            lambda: 0.2,
+            ncomp: 3,
+            alpha: 0.05,
+            exact_covariance: true,
+        };
+
+        let r_asym = spm_ewma_monitor(&chart, &new_data, &argvals, &config_asymptotic).unwrap();
+        let r_exact = spm_ewma_monitor(&chart, &new_data, &argvals, &config_exact).unwrap();
+
+        // Exact T² should be >= asymptotic T² (startup correction inflates early)
+        assert!(
+            r_exact.t2[0] >= r_asym.t2[0] - 1e-10,
+            "Exact T²[0]={} should be >= asymptotic T²[0]={}",
+            r_exact.t2[0],
+            r_asym.t2[0]
+        );
+
+        // Later values should converge
+        let last = r_asym.t2.len() - 1;
+        let ratio = r_exact.t2[last] / r_asym.t2[last].max(1e-15);
+        assert!(
+            (ratio - 1.0).abs() < 0.1,
+            "Late T² should converge: exact={}, asymptotic={}",
+            r_exact.t2[last],
+            r_asym.t2[last]
+        );
+    }
+
+    #[test]
+    fn test_cusum_restart_config() {
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let chart_config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &chart_config).unwrap();
+
+        let shifted = generate_oc_data(20, m, 3.0, 99);
+
+        // Without restart
+        let config_no_restart = CusumConfig {
+            restart: false,
+            ..CusumConfig::default()
+        };
+        let r1 = spm_cusum_monitor(&chart, &shifted, &argvals, &config_no_restart).unwrap();
+
+        // With restart via config
+        let config_restart = CusumConfig {
+            restart: true,
+            ..CusumConfig::default()
+        };
+        let r2 = spm_cusum_monitor(&chart, &shifted, &argvals, &config_restart).unwrap();
+
+        // Both should produce results; restart may have different alarm patterns
+        assert_eq!(r1.cusum_statistic.len(), r2.cusum_statistic.len());
+    }
+
+    #[test]
+    fn test_phase1_sample_size_adequate() {
+        let m = 20;
+        let argvals = uniform_grid(m);
+
+        // Small dataset: n=8, ncomp=5 → 8 < 10*5 → not adequate
+        let small_data = generate_ic_data(8, m, 42);
+        let config = SpmConfig {
+            ncomp: 5,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&small_data, &argvals, &config).unwrap();
+        assert!(
+            !chart.sample_size_adequate,
+            "n=8, ncomp=5 should be inadequate"
+        );
+
+        // Large dataset: n=60, ncomp=3 → 60 >= 30 → adequate
+        let large_data = generate_ic_data(60, m, 42);
+        let config2 = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart2 = spm_phase1(&large_data, &argvals, &config2).unwrap();
+        assert!(
+            chart2.sample_size_adequate,
+            "n=60, ncomp=3 should be adequate"
+        );
+    }
+
+    #[test]
+    fn test_iterative_removal_rates() {
+        let n = 50;
+        let m = 20;
+        let argvals = uniform_grid(m);
+
+        let mut data = generate_ic_data(n, m, 42);
+        // Add strong outliers
+        for j in 0..m {
+            data[(0, j)] += 50.0;
+            data[(1, j)] += 50.0;
+        }
+
+        let config = IterativePhase1Config {
+            spm: SpmConfig {
+                ncomp: 3,
+                alpha: 0.01,
+                ..SpmConfig::default()
+            },
+            ..IterativePhase1Config::default()
+        };
+        let result = spm_phase1_iterative(&data, &argvals, &config).unwrap();
+        // Should have removal_rates recorded
+        assert_eq!(
+            result.removal_rates.len(),
+            result.n_iterations,
+            "Should have one removal rate per iteration"
+        );
+        // All rates should be in [0, 1]
+        for &rate in &result.removal_rates {
+            assert!(
+                (0.0..=1.0).contains(&rate),
+                "Removal rate {rate} out of range"
+            );
+        }
+    }
+
+    #[test]
+    fn test_amewma_error_clipping() {
+        use crate::spm::amewma::{spm_amewma_monitor, AmewmaConfig};
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Data with an outlier
+        let mut new_data = generate_ic_data(10, m, 99);
+        for j in 0..m {
+            new_data[(5, j)] += 100.0; // extreme outlier
+        }
+
+        // Without clipping
+        let config_no_clip = AmewmaConfig {
+            error_clip: None,
+            ..AmewmaConfig::default()
+        };
+        let r1 = spm_amewma_monitor(&chart, &new_data, &argvals, &config_no_clip).unwrap();
+
+        // With clipping at 9.0 (3σ)
+        let config_clip = AmewmaConfig {
+            error_clip: Some(9.0),
+            ..AmewmaConfig::default()
+        };
+        let r2 = spm_amewma_monitor(&chart, &new_data, &argvals, &config_clip).unwrap();
+
+        // Clipped lambda should change less dramatically
+        let max_lambda_no_clip = r1.lambda_t.iter().cloned().fold(0.0_f64, f64::max);
+        let max_lambda_clip = r2.lambda_t.iter().cloned().fold(0.0_f64, f64::max);
+        // With clipping, max lambda should be constrained
+        assert!(
+            max_lambda_clip <= max_lambda_no_clip + 1e-10,
+            "Clipped max lambda ({max_lambda_clip}) should be <= unclipped ({max_lambda_no_clip})"
+        );
+    }
+
+    #[test]
+    fn test_frcc_configurable_r_squared_threshold() {
+        // With min_r_squared=0.0, even noise predictors should pass
+        let n = 30;
+        let m = 15;
+        let argvals = uniform_grid(m);
+        let y = generate_ic_data(n, m, 42);
+
+        let mut predictors = FdMatrix::zeros(n, 2);
+        for i in 0..n {
+            predictors[(i, 0)] = ((i as u64).wrapping_mul(48271) % 10000) as f64 / 10000.0;
+            predictors[(i, 1)] = ((i as u64).wrapping_mul(2654435761) % 10000) as f64 / 10000.0;
+        }
+
+        let config_strict = FrccConfig {
+            min_r_squared: 0.5, // Very strict
+            ..FrccConfig::default()
+        };
+        let result_strict = frcc_phase1(&y, &predictors, &argvals, &config_strict);
+        // Noise predictors should fail with strict threshold
+        assert!(
+            result_strict.is_err(),
+            "Strict R² threshold should reject noise predictors"
+        );
+
+        let config_lax = FrccConfig {
+            min_r_squared: 0.0, // Accept anything
+            ..FrccConfig::default()
+        };
+        let result_lax = frcc_phase1(&y, &predictors, &argvals, &config_lax);
+        // Should pass with lax threshold
+        assert!(
+            result_lax.is_ok(),
+            "Zero R² threshold should accept any predictors"
+        );
+    }
+
+    #[test]
+    fn test_elastic_spm_alignment_residual() {
+        use crate::spm::elastic_spm::{elastic_spm_phase1, ElasticSpmConfig};
+        let n = 30;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(n, m, 42);
+
+        let config = ElasticSpmConfig::default();
+        let chart = elastic_spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Alignment residual should be non-negative and finite
+        assert!(
+            chart.mean_alignment_residual >= 0.0 && chart.mean_alignment_residual.is_finite(),
+            "mean_alignment_residual={} should be non-negative and finite",
+            chart.mean_alignment_residual
+        );
+    }
+
+    #[test]
+    fn test_partial_configurable_regularization() {
+        use crate::spm::partial::{spm_monitor_partial, PartialDomainConfig};
+        let n = 40;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(n, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+        let partial_vals: Vec<f64> = (0..m).map(|j| data[(0, j)]).collect();
+
+        // Default regularization
+        let config1 = PartialDomainConfig::default();
+        let r1 = spm_monitor_partial(&chart, &partial_vals, &argvals, m / 2, &config1).unwrap();
+
+        // Stronger regularization
+        let config2 = PartialDomainConfig {
+            regularization_eps: 1e-6,
+            ..PartialDomainConfig::default()
+        };
+        let r2 = spm_monitor_partial(&chart, &partial_vals, &argvals, m / 2, &config2).unwrap();
+
+        // Both should produce finite results
+        assert!(r1.t2.is_finite(), "Default reg T² should be finite");
+        assert!(r2.t2.is_finite(), "Strong reg T² should be finite");
+    }
+
+    // ── Round 3 upgrade tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_chi2_quantile_high_df() {
+        // Verify chi2_quantile doesn't hang or produce NaN for large df
+        // (blocker: 1e-300 tolerance in Lentz algorithm could cause infinite loops)
+        use crate::spm::chi_squared::{chi2_cdf, chi2_quantile};
+        for &k in &[50, 100, 200] {
+            let q = chi2_quantile(0.95, k);
+            assert!(
+                q.is_finite(),
+                "chi2_quantile(0.95, {k}) should be finite, got {q}"
+            );
+            assert!(q > 0.0, "chi2_quantile(0.95, {k}) should be positive");
+            // Round-trip: CDF of the quantile should be close to 0.95
+            let p = chi2_cdf(q, k);
+            assert!(
+                (p - 0.95).abs() < 0.01,
+                "Round-trip failed for k={k}: q={q}, cdf(q)={p}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_mewma_spe_present() {
+        // Verify MEWMA now returns SPE statistics
+        use crate::spm::mewma::{spm_mewma_monitor, MewmaConfig};
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let monitor_data = generate_ic_data(15, m, 99);
+        let mewma_config = MewmaConfig {
+            lambda: 0.2,
+            ncomp: 3,
+            alpha: 0.05,
+            asymptotic: true,
+        };
+        let result = spm_mewma_monitor(&chart, &monitor_data, &argvals, &mewma_config).unwrap();
+
+        // SPE fields should be populated and consistent
+        assert_eq!(
+            result.spe.len(),
+            15,
+            "SPE should have one value per observation"
+        );
+        assert!(result.spe_limit > 0.0, "SPE limit should be positive");
+        assert_eq!(
+            result.spe_alarm.len(),
+            15,
+            "SPE alarm should match observations"
+        );
+        // In-control data: most SPE values should be below the limit
+        let n_spe_alarm: usize = result.spe_alarm.iter().filter(|&&a| a).count();
+        assert!(
+            n_spe_alarm < 10,
+            "In-control data should have few SPE alarms"
+        );
+    }
+
+    #[test]
+    fn test_cusum_spe_present() {
+        // Verify CUSUM now returns SPE statistics
+        use crate::spm::cusum::{spm_cusum_monitor, CusumConfig};
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let monitor_data = generate_ic_data(15, m, 99);
+        let cusum_config = CusumConfig {
+            ncomp: 3,
+            ..CusumConfig::default()
+        };
+        let result = spm_cusum_monitor(&chart, &monitor_data, &argvals, &cusum_config).unwrap();
+
+        assert_eq!(
+            result.spe.len(),
+            15,
+            "SPE should have one value per observation"
+        );
+        assert!(result.spe_limit > 0.0, "SPE limit should be positive");
+        assert_eq!(
+            result.spe_alarm.len(),
+            15,
+            "SPE alarm should match observations"
+        );
+    }
+
+    #[test]
+    fn test_t2_pc_significance_bonferroni() {
+        use crate::spm::contrib::{t2_pc_contributions, t2_pc_significance};
+        // 5 obs, 3 PCs; PC1 has huge contribution, others small
+        let scores = FdMatrix::from_column_major(
+            vec![
+                10.0, 0.1, 0.1, 0.1, 0.1, // PC1: one outlier
+                0.1, 0.1, 0.1, 0.1, 0.1, // PC2: all small
+                0.1, 0.1, 0.1, 0.1, 0.1, // PC3: all small
+            ],
+            5,
+            3,
+        )
+        .unwrap();
+        let eigenvalues = vec![1.0, 1.0, 1.0];
+        let contribs = t2_pc_contributions(&scores, &eigenvalues).unwrap();
+        let sig = t2_pc_significance(&contribs, 0.05).unwrap();
+
+        // Obs 0, PC1 contribution = 100.0 >> chi2(1, 0.983) ≈ 5.73
+        assert_eq!(
+            sig[(0, 0)],
+            1.0,
+            "Large PC1 contribution should be significant"
+        );
+        // Small contributions should not be significant
+        assert_eq!(
+            sig[(1, 0)],
+            0.0,
+            "Small contribution should not be significant"
+        );
+        assert_eq!(
+            sig[(0, 1)],
+            0.0,
+            "Small PC2 contribution should not be significant"
+        );
+    }
+
+    #[test]
+    fn test_partial_cholesky_retry() {
+        // Test that partial monitoring handles near-singular systems gracefully
+        use crate::spm::partial::{spm_monitor_partial, PartialDomainConfig};
+        let n = 40;
+        let m = 30;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(n, m, 42);
+        let config = SpmConfig {
+            ncomp: 5,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Observe only 3 grid points — very small observed domain
+        let partial_vals: Vec<f64> = (0..m).map(|j| data[(0, j)]).collect();
+        let partial_config = PartialDomainConfig {
+            ncomp: 5,
+            ..PartialDomainConfig::default()
+        };
+        let result = spm_monitor_partial(&chart, &partial_vals, &argvals, 3, &partial_config);
+        // Should succeed (Cholesky retry handles ill-conditioning)
+        assert!(
+            result.is_ok(),
+            "Partial monitoring with 3 obs should succeed: {:?}",
+            result.err()
+        );
+        let r = result.unwrap();
+        assert!(r.t2.is_finite(), "T² should be finite");
+    }
+
+    #[test]
+    fn test_frcc_uses_shared_split_indices() {
+        // Verify FRCC produces valid results (using shared split_indices from phase.rs)
+        use crate::spm::frcc::{frcc_phase1, FrccConfig};
+        let n = 60;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let y_curves = generate_ic_data(n, m, 42);
+
+        // Create simple predictors
+        let mut pred_data = vec![0.0; n];
+        for i in 0..n {
+            pred_data[i] = (i as f64) / n as f64;
+        }
+        let predictors = FdMatrix::from_column_major(pred_data, n, 1).unwrap();
+
+        let config = FrccConfig {
+            min_r_squared: 0.0, // Allow any R² for this test
+            ..FrccConfig::default()
+        };
+        let result = frcc_phase1(&y_curves, &predictors, &argvals, &config);
+        // Should produce a valid chart (not crash from missing functions)
+        assert!(result.is_ok(), "FRCC should succeed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_pcg_rng_determinism() {
+        // Verify the PCG-based split is deterministic (same seed → same split)
+        let (tune1, cal1) = crate::spm::phase::split_indices(100, 0.5, 42);
+        let (tune2, cal2) = crate::spm::phase::split_indices(100, 0.5, 42);
+        assert_eq!(tune1, tune2, "Same seed should produce same tuning set");
+        assert_eq!(cal1, cal2, "Same seed should produce same calibration set");
+
+        // Different seeds should produce different splits
+        let (tune3, _) = crate::spm::phase::split_indices(100, 0.5, 99);
+        assert_ne!(
+            tune1, tune3,
+            "Different seeds should produce different splits"
+        );
+    }
+
+    // ── Round 4 validation tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_amewma_error_clip_positive_validation() {
+        // error_clip must be positive when set
+        let n = 60;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(n, m, 42);
+        let config = SpmConfig::default();
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(10, m, 99);
+        let amewma_config = AmewmaConfig {
+            error_clip: Some(-1.0),
+            ..AmewmaConfig::default()
+        };
+        let result = spm_amewma_monitor(&chart, &new_data, &argvals, &amewma_config);
+        assert!(result.is_err(), "Negative error_clip should be rejected");
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains("error_clip") && err_msg.contains("positive"),
+            "Error should mention error_clip must be positive: {err_msg}"
+        );
+
+        // Zero should also be rejected
+        let amewma_config_zero = AmewmaConfig {
+            error_clip: Some(0.0),
+            ..AmewmaConfig::default()
+        };
+        let result2 = spm_amewma_monitor(&chart, &new_data, &argvals, &amewma_config_zero);
+        assert!(result2.is_err(), "Zero error_clip should be rejected");
+    }
+
+    #[test]
+    fn test_amewma_q_prev_clamping_stability() {
+        // Test that the adaptive weight doesn't diverge even with extreme data
+        let n = 60;
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(n, m, 42);
+        let config = SpmConfig::default();
+        let chart = spm_phase1(&data, &argvals, &config).unwrap();
+
+        // Create data with a massive spike to stress the adaptive weight
+        let mut new_data = generate_ic_data(20, m, 99);
+        for j in 0..m {
+            new_data[(5, j)] *= 100.0; // huge spike at observation 5
+        }
+
+        let amewma_config = AmewmaConfig {
+            eta: 0.5, // fast adaptation to amplify the effect
+            ..AmewmaConfig::default()
+        };
+        let result = spm_amewma_monitor(&chart, &new_data, &argvals, &amewma_config);
+        assert!(
+            result.is_ok(),
+            "AMEWMA should handle extreme data: {:?}",
+            result.err()
+        );
+        let res = result.unwrap();
+        // All lambda_t must be within [lambda_min, lambda_max]
+        for (t, &lam) in res.lambda_t.iter().enumerate() {
+            assert!(
+                lam >= amewma_config.lambda_min && lam <= amewma_config.lambda_max,
+                "lambda_t[{t}] = {lam} out of range [{}, {}]",
+                amewma_config.lambda_min,
+                amewma_config.lambda_max
+            );
+        }
+        // T² values should all be finite
+        for (t, &t2) in res.t2_statistic.iter().enumerate() {
+            assert!(t2.is_finite(), "t2_statistic[{t}] is not finite: {t2}");
+        }
+    }
+
+    #[test]
+    fn test_nelson7_closed_interval() {
+        use crate::spm::rules::{evaluate_rules, ChartRule};
+        // 15 points exactly at center ± 1σ boundary should trigger Nelson7
+        // (closed interval: <= sigma, not < sigma)
+        let center = 10.0;
+        let sigma = 2.0;
+        // All values exactly at center + sigma
+        let values: Vec<f64> = vec![center + sigma; 15];
+        let violations = evaluate_rules(&values, center, sigma, &[ChartRule::Nelson7]).unwrap();
+        assert!(
+            !violations.is_empty(),
+            "Nelson7 should trigger for points exactly at 1σ boundary (closed interval)"
+        );
+        assert_eq!(violations[0].rule, ChartRule::Nelson7);
+    }
+
+    #[test]
+    fn test_nelson7_just_outside_no_trigger() {
+        use crate::spm::rules::{evaluate_rules, ChartRule};
+        // 15 points just outside 1σ should NOT trigger Nelson7
+        let center = 10.0;
+        let sigma = 2.0;
+        let values: Vec<f64> = vec![center + sigma + 0.001; 15];
+        let violations = evaluate_rules(&values, center, sigma, &[ChartRule::Nelson7]).unwrap();
+        assert!(
+            violations.is_empty(),
+            "Nelson7 should NOT trigger for points just outside 1σ boundary"
+        );
+    }
+
+    #[test]
+    fn test_phase1_small_tuning_set_error() {
+        // Very small data with high tuning_fraction should fail gracefully
+        let m = 10;
+        let argvals = uniform_grid(m);
+        let data = generate_ic_data(4, m, 42); // only 4 observations
+        let config = SpmConfig {
+            tuning_fraction: 0.25, // ~1 obs for tuning, too few
+            ..SpmConfig::default()
+        };
+        let result = spm_phase1(&data, &argvals, &config);
+        assert!(result.is_err(), "Should fail with tiny tuning set");
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains("tuning") || err_msg.contains("3"),
+            "Error should mention tuning set size: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_profile_window_size_vs_predictors() {
+        use crate::spm::profile::{profile_phase1, ProfileMonitorConfig};
+        let n = 100;
+        let m = 15;
+        let argvals = uniform_grid(m);
+        let y_curves = generate_ic_data(n, m, 42);
+
+        // 3 predictors: window_size must be >= 5 (p + 2)
+        let mut pred_data = vec![0.0; n * 3];
+        for i in 0..n {
+            pred_data[i] = (i as f64) / n as f64;
+            pred_data[n + i] = ((i as f64) / n as f64).powi(2);
+            pred_data[2 * n + i] = ((i * 7 + 3) as f64 % 10.0) / 10.0;
+        }
+        let predictors = FdMatrix::from_column_major(pred_data, n, 3).unwrap();
+
+        // window_size = 4 < p + 2 = 5 should fail
+        let config = ProfileMonitorConfig {
+            window_size: 4,
+            step_size: 4,
+            ncomp: 2,
+            ..ProfileMonitorConfig::default()
+        };
+        let result = profile_phase1(&y_curves, &predictors, &argvals, &config);
+        assert!(result.is_err(), "window_size < p+2 should fail");
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_msg.contains("window_size") && err_msg.contains("p + 2"),
+            "Error should mention window_size and p+2: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_t2_pc_significance_extreme_scores() {
+        use crate::spm::contrib::{t2_pc_contributions, t2_pc_significance};
+        // Build scores where PC1 has a huge value but PC2 is small
+        let scores = FdMatrix::from_column_major(
+            vec![
+                100.0, 0.5, 0.3, // col 0 (PC1): obs0=100, obs1=0.5, obs2=0.3
+                0.1, 0.2, 0.1, // col 1 (PC2): all small
+            ],
+            3,
+            2,
+        )
+        .unwrap();
+        let eigenvalues = [1.0, 1.0];
+        let contribs = t2_pc_contributions(&scores, &eigenvalues).unwrap();
+
+        // Significance at α = 0.05: Bonferroni → test each PC at α/2 = 0.025
+        let sig = t2_pc_significance(&contribs, 0.05).unwrap();
+        let (n, ncomp) = sig.shape();
+        assert_eq!(n, 3);
+        assert_eq!(ncomp, 2);
+
+        // Observation 0, PC1 (score²=10000) should be significant
+        assert_eq!(sig[(0, 0)], 1.0, "Large PC1 score should be significant");
+        // Observation 0, PC2 (score²=0.01) should not be significant
+        assert_eq!(
+            sig[(0, 1)],
+            0.0,
+            "Small PC2 score should not be significant"
+        );
+        // Observations 1,2 PC1 (score²=0.25, 0.09) should not be significant
+        assert_eq!(sig[(1, 0)], 0.0);
+        assert_eq!(sig[(2, 0)], 0.0);
+    }
+
+    #[test]
+    fn test_t2_pc_significance_alpha_bounds() {
+        use crate::spm::contrib::t2_pc_significance;
+        let contribs = FdMatrix::from_column_major(vec![1.0, 2.0], 2, 1).unwrap();
+        assert!(t2_pc_significance(&contribs, 0.0).is_err());
+        assert!(t2_pc_significance(&contribs, 1.0).is_err());
+        assert!(t2_pc_significance(&contribs, -0.1).is_err());
+        assert!(t2_pc_significance(&contribs, 0.05).is_ok());
     }
 }

@@ -4,11 +4,24 @@
 //! univariate CUSUM charts operating on FPCA scores from an SPM chart.
 //! CUSUM charts are designed to detect small sustained shifts quickly,
 //! complementing T² (large shifts) and EWMA (small persistent shifts).
+//!
+//! CUSUM is optimal for detecting sustained shifts of known magnitude
+//! delta (set k ~ delta/2). For unknown shift sizes, consider adaptive
+//! EWMA ([`super::amewma::spm_amewma_monitor`]) which automatically
+//! adjusts sensitivity.
+//!
+//! # References
+//!
+//! - Page, E.S. (1954). Continuous inspection schemes. *Biometrika*,
+//!   41(1-2), 100-115.
+//! - Crosier, R.B. (1988). Multivariate generalizations of cumulative sum
+//!   quality-control schemes. *Technometrics*, 30(3), 291-303.
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
-use super::phase::SpmChart;
+use super::phase::{center_data, centered_reconstruct, SpmChart};
+use super::stats::spe_univariate;
 
 /// Configuration for CUSUM monitoring.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,6 +38,10 @@ pub struct CusumConfig {
     /// Whether to use multivariate CUSUM (Crosier's MCUSUM) or
     /// per-component univariate CUSUM (default: true = multivariate).
     pub multivariate: bool,
+    /// Whether to restart the CUSUM accumulator after each alarm (default false).
+    /// When true, the accumulator resets to zero after crossing the threshold,
+    /// which can improve sensitivity for detecting subsequent shifts.
+    pub restart: bool,
 }
 
 impl Default for CusumConfig {
@@ -35,6 +52,7 @@ impl Default for CusumConfig {
             ncomp: 5,
             alpha: 0.05,
             multivariate: true,
+            restart: false,
         }
     }
 }
@@ -51,12 +69,18 @@ pub struct CusumMonitorResult {
     pub ucl: f64,
     /// Alarm flags.
     pub alarm: Vec<bool>,
-    /// Score matrix from FPCA projection (n × ncomp).
+    /// Score matrix from FPCA projection (n × ncomp, standardized).
     pub scores: FdMatrix,
     /// Per-component CUSUM+ values (n × ncomp), only for univariate mode.
     pub cusum_plus: Option<FdMatrix>,
     /// Per-component CUSUM- values (n × ncomp), only for univariate mode.
     pub cusum_minus: Option<FdMatrix>,
+    /// SPE values (reconstruction error).
+    pub spe: Vec<f64>,
+    /// SPE control limit.
+    pub spe_limit: f64,
+    /// SPE alarm flags.
+    pub spe_alarm: Vec<bool>,
 }
 
 /// Validate CUSUM configuration parameters.
@@ -210,11 +234,43 @@ fn univariate_cusum_core(
 ///    univariate CUSUM statistics
 /// 4. Flags alarms where the statistic exceeds the threshold `h`
 ///
+/// # Parameter guidance
+///
+/// Common (k, h) pairs for Hotelling T² monitoring and their approximate
+/// ARL₀ (Crosier, 1988):
+/// - k=0.5, h=5.0: ARL₀ ≈ 370 (standard choice for detecting 1σ shifts)
+/// - k=0.25, h=8.0: ARL₀ ≈ 370 (better for smaller shifts)
+/// - k=1.0, h=4.0: ARL₀ ≈ 370 (faster response to larger shifts)
+///
+/// Edge cases: k = 0 makes the CUSUM equivalent to a cumulative sum (high
+/// sensitivity but high false alarm rate). Very large h reduces false
+/// alarms but delays detection. Typical starting point: k = 0.5 (detects
+/// 1-sigma shifts), h = 4-5.
+///
 /// # Arguments
 /// * `chart` - Phase I SPM chart
 /// * `sequential_data` - Sequential functional data (n × m), rows in time order
-/// * `_argvals` - Grid points (length m), reserved for future use
+/// * `argvals` - Grid points (length m), reserved for future use
 /// * `config` - CUSUM configuration
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::phase::{spm_phase1, SpmConfig};
+/// use fdars_core::spm::cusum::{spm_cusum_monitor, CusumConfig};
+/// // Build tiny Phase I chart
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let chart = spm_phase1(&data, &argvals, &SpmConfig { ncomp: 2, ..SpmConfig::default() }).unwrap();
+/// let new_data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 10
+/// ).unwrap();
+/// let result = spm_cusum_monitor(&chart, &new_data, &argvals, &CusumConfig::default()).unwrap();
+/// assert_eq!(result.cusum_statistic.len(), 5);
+/// ```
 ///
 /// # Errors
 ///
@@ -224,7 +280,7 @@ fn univariate_cusum_core(
 pub fn spm_cusum_monitor(
     chart: &SpmChart,
     sequential_data: &FdMatrix,
-    _argvals: &[f64],
+    argvals: &[f64],
     config: &CusumConfig,
 ) -> Result<CusumMonitorResult, FdarError> {
     validate_config(config)?;
@@ -232,8 +288,22 @@ pub fn spm_cusum_monitor(
 
     let (z, ncomp) = project_and_standardize(chart, sequential_data, config.ncomp)?;
 
+    // SPE from reconstruction error (un-standardize scores for reconstruction)
+    let n = sequential_data.nrows();
+    let mut raw_scores = FdMatrix::zeros(n, ncomp);
+    for i in 0..n {
+        for l in 0..ncomp {
+            raw_scores[(i, l)] = z[(i, l)] * chart.eigenvalues[l].sqrt();
+        }
+    }
+    let centered = center_data(sequential_data, &chart.fpca.mean);
+    let recon_centered = centered_reconstruct(&chart.fpca, &raw_scores, ncomp);
+    let spe = spe_univariate(&centered, &recon_centered, argvals)?;
+    let spe_limit = chart.spe_limit.ucl;
+    let spe_alarm: Vec<bool> = spe.iter().map(|&v| v > spe_limit).collect();
+
     if config.multivariate {
-        let (cusum_statistic, alarm) = mcusum_core(&z, ncomp, config.k, config.h, false);
+        let (cusum_statistic, alarm) = mcusum_core(&z, ncomp, config.k, config.h, config.restart);
         Ok(CusumMonitorResult {
             cusum_statistic,
             ucl: config.h,
@@ -241,10 +311,13 @@ pub fn spm_cusum_monitor(
             scores: z,
             cusum_plus: None,
             cusum_minus: None,
+            spe,
+            spe_limit,
+            spe_alarm,
         })
     } else {
         let (cusum_statistic, alarm, cusum_plus_mat, cusum_minus_mat) =
-            univariate_cusum_core(&z, ncomp, config.k, config.h, false);
+            univariate_cusum_core(&z, ncomp, config.k, config.h, config.restart);
         Ok(CusumMonitorResult {
             cusum_statistic,
             ucl: config.h,
@@ -252,6 +325,9 @@ pub fn spm_cusum_monitor(
             scores: z,
             cusum_plus: Some(cusum_plus_mat),
             cusum_minus: Some(cusum_minus_mat),
+            spe,
+            spe_limit,
+            spe_alarm,
         })
     }
 }
@@ -262,10 +338,15 @@ pub fn spm_cusum_monitor(
 /// accumulators to zero after each alarm. This prevents a single large
 /// shift from producing a long streak of consecutive alarms.
 ///
+/// After an alarm, the CUSUM accumulator resets to zero, making the chart
+/// sensitive to subsequent shifts. Without restart, the accumulator remains
+/// elevated after the first alarm, potentially masking new events. Use
+/// restart when monitoring for intermittent faults.
+///
 /// # Arguments
 /// * `chart` - Phase I SPM chart
 /// * `sequential_data` - Sequential functional data (n × m), rows in time order
-/// * `_argvals` - Grid points (length m), reserved for future use
+/// * `argvals` - Grid points (length m), reserved for future use
 /// * `config` - CUSUM configuration
 ///
 /// # Errors
@@ -276,13 +357,27 @@ pub fn spm_cusum_monitor(
 pub fn spm_cusum_monitor_with_restart(
     chart: &SpmChart,
     sequential_data: &FdMatrix,
-    _argvals: &[f64],
+    argvals: &[f64],
     config: &CusumConfig,
 ) -> Result<CusumMonitorResult, FdarError> {
     validate_config(config)?;
     validate_dimensions(chart, sequential_data)?;
 
     let (z, ncomp) = project_and_standardize(chart, sequential_data, config.ncomp)?;
+
+    // SPE from reconstruction error
+    let n = sequential_data.nrows();
+    let mut raw_scores = FdMatrix::zeros(n, ncomp);
+    for i in 0..n {
+        for l in 0..ncomp {
+            raw_scores[(i, l)] = z[(i, l)] * chart.eigenvalues[l].sqrt();
+        }
+    }
+    let centered = center_data(sequential_data, &chart.fpca.mean);
+    let recon_centered = centered_reconstruct(&chart.fpca, &raw_scores, ncomp);
+    let spe = spe_univariate(&centered, &recon_centered, argvals)?;
+    let spe_limit = chart.spe_limit.ucl;
+    let spe_alarm: Vec<bool> = spe.iter().map(|&v| v > spe_limit).collect();
 
     if config.multivariate {
         let (cusum_statistic, alarm) = mcusum_core(&z, ncomp, config.k, config.h, true);
@@ -293,6 +388,9 @@ pub fn spm_cusum_monitor_with_restart(
             scores: z,
             cusum_plus: None,
             cusum_minus: None,
+            spe,
+            spe_limit,
+            spe_alarm,
         })
     } else {
         let (cusum_statistic, alarm, cusum_plus_mat, cusum_minus_mat) =
@@ -304,6 +402,9 @@ pub fn spm_cusum_monitor_with_restart(
             scores: z,
             cusum_plus: Some(cusum_plus_mat),
             cusum_minus: Some(cusum_minus_mat),
+            spe,
+            spe_limit,
+            spe_alarm,
         })
     }
 }

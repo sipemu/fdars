@@ -63,6 +63,17 @@ pub struct ArlResult {
 ///
 /// Returns [`FdarError::InvalidDimension`] if `eigenvalues` is empty.
 /// Returns [`FdarError::InvalidParameter`] if `ucl` is not positive.
+///
+/// # Example
+/// ```
+/// use fdars_core::spm::arl::{arl0_t2, ArlConfig};
+/// let eigenvalues = vec![2.0, 1.0];
+/// let ucl = 5.991; // chi2(0.95, 2)
+/// let config = ArlConfig { n_simulations: 1000, max_run_length: 500, seed: 42 };
+/// let result = arl0_t2(&eigenvalues, ucl, &config).unwrap();
+/// assert!(result.arl > 1.0);
+/// assert!(result.std_dev > 0.0);
+/// ```
 #[must_use = "ARL result should not be discarded"]
 pub fn arl0_t2(eigenvalues: &[f64], ucl: f64, config: &ArlConfig) -> Result<ArlResult, FdarError> {
     arl_t2_impl(eigenvalues, ucl, &vec![0.0; eigenvalues.len()], config)
@@ -312,7 +323,13 @@ fn build_result(run_lengths: Vec<usize>) -> ArlResult {
 }
 
 /// Sample from Gamma(shape, 1) using Marsaglia and Tsang's method.
-/// Returns Gamma(shape, 1); caller must multiply by scale.
+///
+/// Reference: Marsaglia, G. & Tsang, W.W. (2000). A simple method for
+/// generating gamma variables. *ACM Transactions on Mathematical Software*,
+/// 26(3), 363-372.
+///
+/// The squeeze test constant 0.0331 = (1/3) * (1/(3*(shape-1/3)))^2
+/// (Eq. 6 of Marsaglia & Tsang 2000) provides a fast rejection path.
 fn sample_gamma(rng: &mut StdRng, shape: f64) -> f64 {
     if shape < 1.0 {
         // Gamma(a, 1) = Gamma(a+1, 1) * U^(1/a)
