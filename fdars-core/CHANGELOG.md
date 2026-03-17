@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-03-17
+
 ### Added
+
+#### SPM Module — 12 new submodules
 
 - **Automatic ncomp selection** (`spm/ncomp.rs`): `select_ncomp` with cumulative variance, elbow detection, and fixed methods. New type: `NcompMethod`
 - **Per-PC T² contributions** (`spm/contrib.rs`): `t2_pc_contributions` returns an n × ncomp matrix whose rows sum to the Hotelling T² value, enabling per-component fault attribution
@@ -21,7 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CUSUM monitoring** (`spm/cusum.rs`): multivariate (Crosier's MCUSUM) and per-component univariate CUSUM charts for detecting small sustained shifts; optional automatic restart after alarms. New types: `CusumConfig`, `CusumMonitorResult`. Functions: `spm_cusum_monitor`, `spm_cusum_monitor_with_restart`
 - **Adaptive EWMA (AMFEWMA)** (`spm/amewma.rs`): dynamically adjusts smoothing parameter λ_t based on prediction error magnitude — small λ for persistent shifts, large λ for sudden shifts. New types: `AmewmaConfig`, `AmewmaMonitorResult`. Function: `spm_amewma_monitor`
 - **Iterative Phase I** (`spm/iterative.rs`): repeatedly builds charts, removes out-of-control observations, and re-estimates until convergence for robust chart construction from contaminated data. New types: `IterativePhase1Config`, `IterativePhase1Result`. Function: `spm_phase1_iterative`
-- 55 new SPM tests (ncomp: 6, per-PC contributions: 3, rules: 5, bootstrap: 5, ARL: 5, MEWMA: 4, profile: 4, partial: 7, elastic SPM: 4, CUSUM: 6, AMFEWMA: 4, iterative Phase I: 5); total SPM tests: 105
+
+#### Alignment Module — 8 new features
+
+- **Lambda cross-validation** (`alignment/lambda_cv.rs`): K-fold CV for optimal alignment regularization parameter selection. New types: `LambdaCvConfig`, `LambdaCvResult`. Function: `lambda_cv`
+- **Warp statistics** (`alignment/warp_stats.rs`): pointwise mean, standard deviation, confidence bands, and Karcher mean warp on the Hilbert sphere with geodesic distances. New type: `WarpStatistics`. Function: `warp_statistics`
+- **Phase box plots** (`alignment/phase_boxplot.rs`): functional box plots for warping functions using modified band depth, with central region, whiskers, and outlier detection. New type: `PhaseBoxplot`. Function: `phase_boxplot`
+- **Elastic clustering** (`alignment/clustering.rs`): k-means++ with Karcher mean centers and agglomerative hierarchical clustering (single/complete/average linkage) using elastic distances. New types: `ElasticClusterConfig`, `ElasticClusterMethod`, `ElasticClusterResult`, `ElasticDendrogram`. Functions: `elastic_kmeans`, `elastic_hierarchical`, `cut_dendrogram`
+- **Registration diagnostics** (`alignment/diagnostics.rs`): detect registration failures via warp complexity, smoothness, and amplitude improvement metrics with configurable thresholds. New types: `AlignmentDiagnostic`, `AlignmentDiagnosticSummary`, `DiagnosticConfig`. Functions: `diagnose_alignment`, `diagnose_pairwise`
+- **Elastic shape analysis** (`alignment/shape.rs`): quotient space operations under reparameterization, translation, and scale invariance — orbit representatives, shape distances, shape means, and distance matrices. New types: `ShapeQuotient`, `OrbitRepresentative`, `ShapeDistanceResult`, `ShapeMeanResult`. Functions: `orbit_representative`, `shape_distance`, `shape_mean`, `shape_self_distance_matrix`
+- **Warp inversion** (`alignment/srsf.rs`): `invert_warp` computes γ⁻¹ via monotone interpolation; `warp_inverse_error` measures ‖γ∘γ⁻¹ − id‖∞
+- **Penalized alignment** (`alignment/pairwise.rs`): `WarpPenaltyType` enum (first-order, second-order, combined) and `elastic_align_pair_penalized` for curvature-penalized registration
+
+#### Test & documentation
+
+- 98 new tests across SPM (55) and alignment (43); total: 2,436 tests (1,752 unit + 684 integration/doc)
+- A-grade documentation on all 19 SPM files: equation/page citations, error bounds, `#[must_use]` attributes
 - All new types and functions re-exported in `lib.rs` and `prelude.rs`
 
 ## [0.8.5] - 2026-03-14
