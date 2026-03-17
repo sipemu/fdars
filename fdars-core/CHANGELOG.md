@@ -17,7 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Curve geodesic interpolation** (`alignment/geodesic.rs`): geodesic paths between curves in elastic space — amplitude interpolation in SRSF space, phase interpolation on the Hilbert sphere; 1-D and N-D variants. New types: `GeodesicPath`, `GeodesicPathNd`. Functions: `curve_geodesic`, `curve_geodesic_nd`
 - **Peak persistence diagram** (`alignment/persistence.rs`): topology-based automatic lambda selection by tracking peak birth/death across a lambda sweep of Karcher means. New type: `PersistenceDiagramResult`. Function: `peak_persistence`
 - **Horizontal FPNS** (`alignment/fpns.rs`): Functional Principal Nested Spheres for warping functions — nonlinear PCA on the Hilbert sphere via iterative geodesic principal direction extraction. New type: `FpnsResult`. Function: `horiz_fpns`
-- 25 new alignment tests; total: 2,444 tests (1,760 unit + 684 integration/doc)
+- 25 new alignment tests
+
+#### Alignment Module — 9 additional gaps
+
+- **Elastic depth** (`alignment/elastic_depth.rs`): amplitude + phase decomposed functional depth via inverse-average-distance on elastic distance matrices. New type: `ElasticDepthResult`. Function: `elastic_depth`
+- **Robust Karcher mean** (`alignment/robust_karcher.rs`): Karcher median via iterative Weiszfeld algorithm on the elastic manifold, and trimmed Karcher mean that removes the most distant curves. New types: `RobustKarcherConfig`, `RobustKarcherResult`. Functions: `karcher_median`, `robust_karcher_mean`
+- **SRVF outlier detection** (`alignment/outlier.rs`): detect outlier curves via elastic distances from a reference (mean or median) with Tukey fence thresholding and amplitude/phase decomposition. New types: `ElasticOutlierConfig`, `ElasticOutlierResult`. Function: `elastic_outlier_detection`
+- **Closed curve alignment** (`alignment/closed.rs`): alignment for periodic/closed curves with coarse-to-fine rotation search over circular starting-point shifts, plus Karcher mean for closed curves. New types: `ClosedAlignmentResult`, `ClosedKarcherMeanResult`. Functions: `elastic_align_pair_closed`, `elastic_distance_closed`, `karcher_mean_closed`
+- **Elastic partial matching** (`alignment/partial_match.rs`): find the best-aligned subcurve of a longer target curve via sliding variable-length window search. New types: `PartialMatchConfig`, `PartialMatchResult`. Function: `elastic_partial_match`
+- **Multi-resolution alignment** (`alignment/multires.rs`): coarse DP on a subsampled grid + fine gradient refinement on the original resolution for faster alignment of long curves. New type: `MultiresConfig`. Function: `elastic_align_pair_multires`
+- **Shape confidence intervals** (`alignment/shape_ci.rs`): bootstrap confidence bands for the elastic Karcher mean via resampling and alignment of bootstrap means. New types: `ShapeCiConfig`, `ShapeCiResult`. Function: `shape_confidence_interval`
+- **Transfer alignment** (`alignment/transfer.rs`): align curves from a target population to a source population's coordinate system via bridging warps composed with within-population warps. New types: `TransferAlignConfig`, `TransferAlignResult`. Function: `transfer_alignment`
+- 31 new alignment tests; total: 2,492 tests (1,808 unit + 684 integration/doc)
 - All new types and functions re-exported in `lib.rs` and `prelude.rs`
 
 ## [0.9.0] - 2026-03-17

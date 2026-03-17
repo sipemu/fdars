@@ -12,22 +12,30 @@
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
 
 mod bayesian;
+mod closed;
 mod clustering;
 mod constrained;
 mod diagnostics;
+mod elastic_depth;
 mod fpns;
 mod generative;
 mod geodesic;
 mod karcher;
 mod lambda_cv;
+mod multires;
 mod nd;
+mod outlier;
 mod pairwise;
+mod partial_match;
 mod persistence;
 mod phase_boxplot;
 mod quality;
+mod robust_karcher;
 mod set;
 mod shape;
+mod shape_ci;
 mod srsf;
+mod transfer;
 mod tsrvf;
 mod warp_stats;
 
@@ -36,6 +44,10 @@ mod tests;
 
 // Re-export all public items so that `crate::alignment::X` continues to work.
 pub use bayesian::{bayesian_align_pair, BayesianAlignConfig, BayesianAlignmentResult};
+pub use closed::{
+    elastic_align_pair_closed, elastic_distance_closed, karcher_mean_closed, ClosedAlignmentResult,
+    ClosedKarcherMeanResult,
+};
 pub use clustering::{
     cut_dendrogram, elastic_hierarchical, elastic_kmeans, ElasticClusterConfig,
     ElasticClusterMethod, ElasticClusterResult, ElasticDendrogram,
@@ -47,35 +59,44 @@ pub use diagnostics::{
     diagnose_alignment, diagnose_pairwise, AlignmentDiagnostic, AlignmentDiagnosticSummary,
     DiagnosticConfig,
 };
+pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};
 pub use karcher::karcher_mean;
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
+pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
     elastic_align_pair_nd, elastic_distance_nd, srsf_inverse_nd, srsf_transform_nd,
     AlignmentResultNd,
 };
 pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd, PcaNdResult};
+pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult};
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
     elastic_align_pair_penalized, elastic_cross_distance_matrix, elastic_distance,
     elastic_self_distance_matrix, phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
 };
+pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
 pub use phase_boxplot::{phase_boxplot, PhaseBoxplot};
 pub use quality::{
     alignment_quality, pairwise_consistency, warp_complexity, warp_smoothness, AlignmentQuality,
+};
+pub use robust_karcher::{
+    karcher_median, robust_karcher_mean, RobustKarcherConfig, RobustKarcherResult,
 };
 pub use set::{align_to_target, elastic_decomposition, DecompositionResult};
 pub use shape::{
     orbit_representative, shape_distance, shape_mean, shape_self_distance_matrix,
     OrbitRepresentative, ShapeDistanceResult, ShapeMeanResult, ShapeQuotient,
 };
+pub use shape_ci::{shape_confidence_interval, ShapeCiConfig, ShapeCiResult};
 pub use srsf::{
     compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,
     warp_inverse_error,
 };
+pub use transfer::{transfer_alignment, TransferAlignConfig, TransferAlignResult};
 pub use tsrvf::{
     tsrvf_from_alignment, tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform,
     tsrvf_transform_with_method, TransportMethod, TsrvfResult,

@@ -17,118 +17,59 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ## Features
 
-### Core Operations
+### Core
 
-- **Simulation**: Karhunen-Loève expansion with Fourier/Legendre/Wiener eigenfunctions, pointwise and curve-level noise; Gaussian process generation with 8 covariance kernels and kernel algebra
-- **Functional Data Operations**: Mean, centering, derivatives, Lp norms, geometric median
-- **Andrews Curves**: Fourier-based bijection mapping multivariate observations to functional curves; FPCA loading visualization
-- **Covariance Kernels**: Gaussian, Exponential, Matérn, Brownian, Periodic, Linear, Polynomial, White Noise with Sum/Product kernel algebra
-- **Smoothing**: Nadaraya-Watson, local linear, local polynomial, k-NN
-- **Basis Representations**: B-splines, Fourier basis, P-splines with GCV/AIC/BIC selection
+- **Simulation**: Karhunen-Loève expansion (Fourier/Legendre/Wiener), Gaussian process generation with 8 covariance kernels and kernel algebra
+- **Functional Operations**: Mean, centering, derivatives, Lp norms, geometric median, Andrews curves
+- **Smoothing & Basis**: Nadaraya-Watson, local linear/polynomial, k-NN; B-splines, Fourier, P-splines with GCV/AIC/BIC
 
-### Descriptive Analysis
+### Descriptive
 
-- **Depth Measures**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, RPD (random projection with derivatives), functional spatial, kernel functional spatial, modified epigraph index
-- **Distance Metrics**: Lp distances, Hausdorff, DTW, Soft-DTW (with barycenter averaging), elastic (Fisher-Rao), amplitude/phase distances, Fourier-based semimetric, horizontal shift semimetric, PCA-based semimetric, derivative-based semimetric, basis coefficient semimetric, KL divergence
-- **Outlier Detection**: LRT-based outlier detection with bootstrap thresholding
+- **Depth**: Fraiman-Muniz, modal, band, modified band, random projection, random Tukey, RPD, functional spatial, kernel spatial, modified epigraph; streaming online depth
+- **Distances**: Lp, Hausdorff, DTW, Soft-DTW, elastic (Fisher-Rao), amplitude/phase, Fourier/h-shift/PCA/derivative/basis-coefficient semimetrics, KL divergence
+- **Outlier Detection**: LRT-based with bootstrap thresholding
 
-### Regression
+### Regression & Classification
 
-- **Scalar-on-Function Regression**: FPC linear model, nonparametric kernel, functional logistic, robust (L1/Huber), CV component selection
-- **Function-on-Scalar Regression**: Penalized pointwise OLS, FPC-based FOSR, 2D FOSR for surface-valued responses Y(s,t) with tensor-product penalty, functional ANOVA with permutation test
-- **Regression**: Functional PCA, PLS, ridge regression
-- **Mixed Effects Models**: Functional mixed model via FPCA + iterative GLS/REML, prediction, permutation hypothesis tests
-
-### Classification & Clustering
-
-- **Clustering**: K-means, fuzzy c-means with silhouette and Calinski-Harabasz validation; GMM with BIC/ICL model selection
-- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation; conformal prediction sets for classification
-
-### Time Series & Alignment
-
-- **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED period detection; Lomb-Scargle periodogram; matrix profile; SSA; peak detection; seasonal strength metrics; amplitude modulation detection; seasonality change detection
-- **Elastic Alignment**: SRSF transform, dynamic programming alignment, Karcher mean (1-D and N-D), elastic distance matrices, amplitude/phase decomposition, landmark registration, transported SRVF (TSRVF), penalized alignment (first/second-order curvature), lambda cross-validation, peak persistence diagram for automatic lambda selection
-- **Alignment Diagnostics**: Registration failure detection, warp statistics with confidence bands, phase box plots, pairwise consistency checks, warp inversion with error bounds
-- **Elastic Clustering**: K-means++ and hierarchical clustering (single/complete/average linkage) with Karcher mean centers in the elastic metric
-- **Elastic Shape Analysis**: Quotient space operations under reparameterization, translation, and scale invariance; orbit representatives, shape distances, shape means
-- **Bayesian Alignment**: pCN MCMC on the Hilbert sphere with posterior warping function samples and credible bands
-- **Generative Models**: Gaussian amplitude/phase sampling from fitted FPCA; joint model preserving amplitude-phase correlation
-- **Curve Geodesics**: Geodesic interpolation between curves in elastic space (1-D and N-D)
-- **Horizontal FPNS**: Functional Principal Nested Spheres for nonlinear PCA of warping functions on the Hilbert sphere
-- **Detrending**: Linear, polynomial, LOESS, differencing; classical, additive/multiplicative, and STL decomposition
-
-### Explainability & Diagnostics
-
-- **Bootstrap Confidence Intervals**: Pointwise and simultaneous CIs for β(t) via bootstrap
-- **Beta Decomposition**: FPC-level variance proportions and coefficient attribution
-- **PDP/ICE Curves**: Partial dependence and individual conditional expectation for FPC scores
-- **Permutation Importance**: FPC-level importance via R² drop (linear and logistic)
-- **Pointwise Variable Importance**: Per-grid-point contribution to prediction variance
-- **Influence Diagnostics**: Cook's distance, leverage, studentized residuals
-- **DFBETAS/DFFITS**: Leave-one-out influence measures with cutoff thresholds
-- **VIF**: Variance inflation factors for multicollinearity detection
-- **SHAP Values**: Exact linear SHAP and Kernel SHAP for logistic models
-- **Prediction Intervals**: Confidence and prediction intervals with Cornish-Fisher correction
-- **ALE Plots**: Accumulated local effects for FPC scores (linear and logistic)
-- **Friedman H-statistic**: Pairwise FPC interaction strength
-- **LOO-CV / PRESS**: Leave-one-out cross-validation diagnostics
-- **Sobol Indices**: Global sensitivity analysis for FPC contributions
-- **Calibration Diagnostics**: Brier score, log loss, Hosmer-Lemeshow test
-- **Functional Saliency Maps**: Pointwise gradient-based importance
-- **Domain Selection**: Interval importance for regression/classification
-- **Conditional Permutation Importance**: Correlation-adjusted permutation importance
-- **Counterfactual Explanations**: Minimal FPC score changes to reach a target prediction
-- **Prototype/Criticism Selection**: MMD-based representative and outlier observations
-- **LIME**: Local interpretable model-agnostic explanations in FPC score space
-- **Expected Calibration Error**: ECE, MCE, and adaptive calibration error
-- **Conformal Prediction**: Distribution-free split-conformal prediction intervals
-- **Regression Depth**: Depth-based diagnostics for coefficients and observations
-- **Stability Analysis**: Bootstrap robustness of β(t), coefficients, and importance rankings
-- **Anchor Explanations**: Beam-search rule extraction in FPC score space
-- **Generic Explainability**: `FpcPredictor` trait unifying regression, binary, and multiclass models with 15 model-agnostic functions (PDP, SHAP, ALE, LIME, permutation importance, Sobol, Friedman H, etc.)
-
-### Statistical Process Monitoring
-
-- **Hotelling T² / SPE**: Control statistics for detecting shifts in FPCA score space and residual space
-- **Phase I / Phase II Framework**: Build control charts from in-control training data, then monitor new observations (`spm_phase1`, `spm_monitor`)
-- **Multivariate FPCA**: Joint FPCA across multiple functional variables with standardization (`mfpca`)
-- **Multivariate SPM**: Phase I/II monitoring for multi-response functional data (`mf_spm_phase1`, `mf_spm_monitor`)
-- **EWMA Monitoring**: Exponentially weighted moving average smoothing on FPCA scores for enhanced sensitivity to small persistent shifts
-- **MEWMA Monitoring**: Multivariate EWMA with asymptotic or exact time-dependent covariance (`spm_mewma_monitor`)
-- **Functional Regression Control Chart (FRCC)**: Covariate-adjusted monitoring via FOSR residuals
-- **Profile Monitoring**: Rolling-window FOSR coefficient monitoring via FPCA and T² (`profile_phase1`, `profile_monitor`)
-- **Contribution Diagnostics**: Per-variable T²/SPE decomposition and per-PC T² contributions for fault identification
-- **Control Limits**: Chi-squared quantiles for T², moment-matched chi-squared for SPE; empirical, bootstrap, and KDE robust alternatives
-- **ARL Computation**: Monte Carlo average run length for T², EWMA-T², and SPE charts (`arl0_t2`, `arl1_t2`, `arl0_ewma_t2`, `arl0_spe`)
-- **Automatic ncomp Selection**: Cumulative variance, elbow detection, and fixed methods (`select_ncomp`)
-- **Runs/Zone Rules**: Western Electric (WE1–WE4) and Nelson (5–7) rules for pattern detection (`evaluate_rules`, `western_electric_rules`, `nelson_rules`)
-- **Partial-Domain Monitoring**: Monitor incomplete observations via conditional expectation (BLUP), partial projection, or zero-padding (`spm_monitor_partial`)
-- **Phase-Aware Monitoring**: Elastic alignment separates amplitude and phase variation for independent monitoring (`elastic_spm_phase1`, `elastic_spm_monitor`)
-- **CUSUM Monitoring**: Multivariate (Crosier's MCUSUM) and per-component univariate CUSUM charts for detecting small sustained shifts (`spm_cusum_monitor`, `spm_cusum_monitor_with_restart`)
-- **Adaptive EWMA (AMFEWMA)**: Dynamically adjusts smoothing parameter based on deviation magnitude for robustness across unknown shift sizes (`spm_amewma_monitor`)
-- **Iterative Phase I**: Repeated outlier removal and chart re-estimation for robust Phase I construction from contaminated data (`spm_phase1_iterative`)
+- **Scalar-on-Function**: FPC linear, nonparametric kernel, functional logistic, robust (L1/Huber), CV component selection
+- **Function-on-Scalar**: Penalized OLS, FPC-based FOSR, 2D tensor-product FOSR, FANOVA with permutation tests
+- **Other Regression**: FPCA, PLS, ridge; functional mixed model (FPCA + iterative GLS/REML)
+- **Classification**: LDA, QDA, k-NN, kernel, DD-classifier with cross-validation; conformal prediction sets
+- **Clustering**: K-means, fuzzy c-means, GMM (BIC/ICL); elastic k-means++ and hierarchical clustering
 
 ### Elastic Analysis
 
-- **Elastic FPCA**: Vertical, horizontal, and joint functional PCA after alignment
-- **Elastic Regression**: Alignment-integrated scalar-on-function regression
-- **Elastic PCR**: Principal component regression with elastic alignment
-- **Elastic Logistic**: Binary classification with elastic alignment
-- **Scalar-on-Shape Regression**: Phase-invariant regression using Fisher-Rao inner product with DP alignment; identity, polynomial, and Nadaraya-Watson index functions (ScoSh / SI-ScoSh)
-- **Elastic Changepoint Detection**: Amplitude and phase changepoint tests with permutation p-values
-- **Elastic Attribution**: Amplitude vs phase importance decomposition
+- **Alignment**: SRSF/DP alignment, Karcher mean (1-D/N-D), distance matrices, amplitude/phase decomposition, landmark registration, TSRVF, penalized alignment, lambda CV, peak persistence, multi-resolution, partial matching
+- **Advanced Alignment**: Bayesian (pCN MCMC), closed curve rotation search, transfer alignment across populations, generative models (Gaussian amplitude/phase sampling), curve geodesics, horizontal FPNS
+- **Robust & Diagnostic**: Karcher median (Weiszfeld), trimmed mean, SRVF outlier detection, elastic depth, shape confidence intervals, registration diagnostics, warp statistics, phase box plots
+- **Shape Analysis**: Quotient space operations, orbit representatives, shape distances, shape means
+- **Elastic Models**: Elastic FPCA (vertical/horizontal/joint), elastic regression/PCR/logistic, scalar-on-shape (ScoSh), changepoint detection, amplitude vs phase attribution
+
+### Statistical Process Monitoring
+
+- **Core Framework**: Hotelling T²/SPE, Phase I/II, multivariate FPCA, contribution diagnostics, automatic ncomp selection
+- **Chart Types**: EWMA, MEWMA, CUSUM (Crosier's MCUSUM), adaptive EWMA (AMFEWMA), FRCC (covariate-adjusted), profile monitoring
+- **Control Limits**: Parametric (chi-squared), empirical, bootstrap, KDE; ARL computation (Monte Carlo)
+- **Advanced**: Partial-domain monitoring (BLUP/projection/zero-pad), phase-aware elastic SPM, iterative Phase I, Western Electric and Nelson rules
+
+### Explainability
+
+- **Model-Agnostic**: PDP/ICE, SHAP (exact linear + Kernel), ALE, LIME, permutation importance, Sobol indices, Friedman H-statistic, anchor explanations, counterfactual explanations
+- **Diagnostics**: Bootstrap CIs for β(t), influence (Cook's, leverage, DFBETAS/DFFITS), VIF, LOO-CV/PRESS, regression depth, stability analysis
+- **Calibration**: Brier score, log loss, Hosmer-Lemeshow, ECE/MCE/ACE, conformal prediction intervals
+- **Other**: Functional saliency maps, domain selection, prototype/criticism (MMD), prediction intervals; unified `FpcPredictor` trait
 
 ### Inference
 
-- **Tolerance Bands**: FPCA, conformal prediction, Degras SCB, exponential family bands, elastic amplitude bands, phase tolerance bands on warping functions, joint amplitude + phase bands
-- **Conformal Prediction**: Split-conformal regression intervals (`conformal_fregre_lm`, `conformal_fregre_np`, `conformal_elastic_regression`), Jackknife+ intervals, CV+ intervals, and generic conformal with held-out calibration support
-- **Equivalence Testing**: Functional TOST with bootstrap, one-sample and two-sample tests
+- **Tolerance Bands**: FPCA, conformal, Degras SCB, exponential family, elastic amplitude/phase bands
+- **Conformal Prediction**: Split-conformal, Jackknife+, CV+, generic conformal with held-out calibration
+- **Equivalence Testing**: Functional TOST (bootstrap, one/two-sample)
 
-### Specialized
+### Other
 
-- **Streaming Depth**: Online FM, MBD, BD depth with sorted-reference O(log N) updates
+- **Seasonal Analysis**: FFT, ACF, Autoperiod, CFDAutoperiod, SAZED; Lomb-Scargle, matrix profile, SSA, peak detection, seasonal strength, amplitude modulation, change detection
+- **Detrending**: Linear, polynomial, LOESS, differencing; classical, STL decomposition
 - **Irregular Data**: CSR-compressed storage, kernel mean/covariance, Lp metric, grid regularization
-- **Smooth Basis**: B-spline basis representation with smoothing penalty
 
 ## Installation
 
