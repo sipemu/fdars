@@ -185,3 +185,7 @@ path = "examples/25_explainability/main.rs"
 [[example]]
 name = "elastic_analysis"
 path = "examples/26_elastic_analysis/main.rs"
+
+[[example]]
+name = "spm"
+path = "examples/27_spm/main.rs"
