@@ -601,13 +601,12 @@ pub fn mf_spm_monitor(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "serde"))]
 mod tests {
     use super::*;
     use crate::simulation::{sim_fundata, EFunType, EValType};
 
     #[test]
-    #[cfg(feature = "serde")]
     fn spm_chart_roundtrip_serde() {
         let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
         let data = sim_fundata(
