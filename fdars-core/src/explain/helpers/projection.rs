@@ -2,12 +2,13 @@
 
 use crate::matrix::FdMatrix;
 
-/// Project data → FPC scores.
+/// Project data → FPC scores (with integration weights).
 pub(crate) fn project_scores(
     data: &FdMatrix,
     mean: &[f64],
     rotation: &FdMatrix,
     ncomp: usize,
+    weights: &[f64],
 ) -> FdMatrix {
     let (n, m) = data.shape();
     let mut scores = FdMatrix::zeros(n, ncomp);
@@ -15,7 +16,7 @@ pub(crate) fn project_scores(
         for k in 0..ncomp {
             let mut s = 0.0;
             for j in 0..m {
-                s += (data[(i, j)] - mean[j]) * rotation[(j, k)];
+                s += (data[(i, j)] - mean[j]) * rotation[(j, k)] * weights[j];
             }
             scores[(i, k)] = s;
         }

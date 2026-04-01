@@ -227,7 +227,7 @@ fn main() {
     // Step 4: Functional PCA
     println!("\n--- Step 4: Functional PCA ---");
     let ncomp = 4;
-    if let Ok(fpca) = fdata_to_pc_1d(&clean_mat, ncomp) {
+    if let Ok(fpca) = fdata_to_pc_1d(&clean_mat, ncomp, &t) {
         let total_var: f64 = fpca.singular_values.iter().map(|s| s * s).sum();
         let mut cumvar = 0.0;
         for (k, sv) in fpca.singular_values.iter().enumerate() {

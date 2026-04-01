@@ -301,7 +301,13 @@ pub fn conformal_prediction_residuals(
     // Predict on calibration set
     let cal_data = subsample_rows(train_data, cal_idx);
     let cal_sc = scalar_covariates_train.map(|sc| subsample_rows(sc, cal_idx));
-    let cal_scores = project_scores(&cal_data, &refit.fpca.mean, &refit.fpca.rotation, ncomp);
+    let cal_scores = project_scores(
+        &cal_data,
+        &refit.fpca.mean,
+        &refit.fpca.rotation,
+        ncomp,
+        &refit.fpca.weights,
+    );
     let cal_preds = predict_from_scores(
         &cal_scores,
         &refit.coefficients,
@@ -321,7 +327,13 @@ pub fn conformal_prediction_residuals(
         conformal_quantile_and_coverage(&calibration_scores, cal_n, alpha);
 
     // Predict on test data
-    let test_scores = project_scores(test_data, &refit.fpca.mean, &refit.fpca.rotation, ncomp);
+    let test_scores = project_scores(
+        test_data,
+        &refit.fpca.mean,
+        &refit.fpca.rotation,
+        ncomp,
+        &refit.fpca.weights,
+    );
     let predictions = predict_from_scores(
         &test_scores,
         &refit.coefficients,
@@ -432,7 +444,13 @@ pub fn regression_depth(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let score_depths = compute_score_depths(&scores, depth_type);
     if score_depths.is_empty() {
         return Err(FdarError::ComputationFailed {
@@ -514,7 +532,13 @@ pub fn regression_depth_logistic(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let score_depths = compute_score_depths(&scores, depth_type);
     if score_depths.is_empty() {
         return Err(FdarError::ComputationFailed {
@@ -818,7 +842,13 @@ pub fn anchor_explanation(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let obs_pred = fit.fitted_values[observation];
     let tol = fit.residual_se;
 
@@ -899,7 +929,13 @@ pub fn anchor_explanation_logistic(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let obs_class = fit.predicted_classes[observation];
     let obs_prob = fit.probabilities[observation];
     let p_scalar = fit.gamma.len();

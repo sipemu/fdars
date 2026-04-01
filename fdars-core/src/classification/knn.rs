@@ -76,7 +76,8 @@ pub fn fclassif_knn(
         });
     }
 
-    let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
+    let (features, _mean, _rotation, _weights) =
+        build_feature_matrix(data, scalar_covariates, ncomp)?;
     let d = features.ncols();
 
     let predicted = knn_predict_loo(&features, &labels, g, d, k_nn);

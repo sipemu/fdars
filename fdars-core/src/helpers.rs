@@ -239,6 +239,119 @@ pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
     sum
 }
 
+/// Interpolation method for resampling functional data.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub enum InterpolationMethod {
+    /// Linear interpolation between adjacent points.
+    Linear,
+    /// Cubic Hermite interpolation (monotone, C1 continuous).
+    CubicHermite,
+}
+
+/// Interpolate functional data to a new grid.
+///
+/// Resamples each curve from `data` evaluated at `argvals` to the new
+/// evaluation points `new_argvals`.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `argvals` - Original evaluation points (length m, must be sorted)
+/// * `new_argvals` - New evaluation points (length m_new, must be sorted, within original domain)
+/// * `method` - Interpolation method
+///
+/// # Returns
+/// Interpolated matrix (n x m_new)
+#[must_use]
+pub fn fdata_interpolate(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    new_argvals: &[f64],
+    method: InterpolationMethod,
+) -> crate::matrix::FdMatrix {
+    let (n, m) = data.shape();
+    let m_new = new_argvals.len();
+    if n == 0 || m < 2 || m_new == 0 {
+        return crate::matrix::FdMatrix::zeros(n.max(1), m_new.max(1));
+    }
+
+    let mut result = crate::matrix::FdMatrix::zeros(n, m_new);
+
+    for i in 0..n {
+        let y: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        for (j, &t) in new_argvals.iter().enumerate() {
+            result[(i, j)] = match method {
+                InterpolationMethod::Linear => linear_interp(argvals, &y, t),
+                InterpolationMethod::CubicHermite => cubic_hermite_interp(argvals, &y, t),
+            };
+        }
+    }
+
+    result
+}
+
+/// Cubic Hermite interpolation at a single point.
+///
+/// Uses Fritsch-Carlson monotone slopes for C1 interpolation.
+fn cubic_hermite_interp(x: &[f64], y: &[f64], t: f64) -> f64 {
+    let n = x.len();
+    if n < 2 {
+        return if n == 1 { y[0] } else { 0.0 };
+    }
+
+    // Clamp to domain
+    if t <= x[0] {
+        return y[0];
+    }
+    if t >= x[n - 1] {
+        return y[n - 1];
+    }
+
+    // Find interval via binary search
+    let k = match x.binary_search_by(|v| v.partial_cmp(&t).unwrap_or(std::cmp::Ordering::Equal)) {
+        Ok(i) => return y[i],
+        Err(i) => {
+            if i == 0 {
+                0
+            } else {
+                i - 1
+            }
+        }
+    };
+
+    // Compute slopes (Fritsch-Carlson)
+    let slopes: Vec<f64> = x
+        .windows(2)
+        .zip(y.windows(2))
+        .map(|(xw, yw)| (yw[1] - yw[0]) / (xw[1] - xw[0]))
+        .collect();
+
+    // Tangents at each point
+    let mut tangents = vec![0.0; n];
+    tangents[0] = slopes[0];
+    tangents[n - 1] = slopes[n - 2];
+    for i in 1..n - 1 {
+        if slopes[i - 1].signum() != slopes[i].signum() {
+            tangents[i] = 0.0;
+        } else {
+            tangents[i] = (slopes[i - 1] + slopes[i]) / 2.0;
+        }
+    }
+
+    // Hermite basis
+    let h = x[k + 1] - x[k];
+    let s = (t - x[k]) / h;
+    let s2 = s * s;
+    let s3 = s2 * s;
+
+    let h00 = 2.0 * s3 - 3.0 * s2 + 1.0;
+    let h10 = s3 - 2.0 * s2 + s;
+    let h01 = -2.0 * s3 + 3.0 * s2;
+    let h11 = s3 - s2;
+
+    h00 * y[k] + h10 * h * tangents[k] + h01 * y[k + 1] + h11 * h * tangents[k + 1]
+}
+
 /// Numerical gradient with uniform spacing using 5-point stencil (O(h⁴)).
 ///
 /// Interior points use the 5-point central difference:
@@ -510,6 +623,64 @@ mod tests {
                 "gradient of 3x should be 3 at i={i}, got {}",
                 g[i]
             );
+        }
+    }
+
+    // ── fdata_interpolate ──
+
+    #[test]
+    fn fdata_interpolate_linear_identity() {
+        let t: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+        let vals: Vec<f64> = t.iter().map(|&x| x.sin()).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let result = fdata_interpolate(&data, &t, &t, InterpolationMethod::Linear);
+        for j in 0..20 {
+            assert!((result[(0, j)] - data[(0, j)]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn fdata_interpolate_cubic_hermite_smooth() {
+        let t: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+        let vals: Vec<f64> = t.iter().map(|&x| x.sin()).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+
+        let t_fine: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+        let result = fdata_interpolate(&data, &t, &t_fine, InterpolationMethod::CubicHermite);
+
+        // Values should approximate sin(t) well
+        for (j, &tj) in t_fine.iter().enumerate() {
+            assert!(
+                (result[(0, j)] - tj.sin()).abs() < 0.02,
+                "at t={tj:.2}: got {:.4}, expected {:.4}",
+                result[(0, j)],
+                tj.sin()
+            );
+        }
+    }
+
+    #[test]
+    fn fdata_interpolate_multiple_curves() {
+        let t: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
+        let n = 5;
+        let m = 30;
+        // Build column-major data: n curves, each sin((i+1)*x)
+        let mut col_major = vec![0.0; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                col_major[i + j * n] = ((i + 1) as f64 * t[j]).sin();
+            }
+        }
+        let data = crate::matrix::FdMatrix::from_column_major(col_major, n, m).unwrap();
+
+        let t_new: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
+        let result = fdata_interpolate(&data, &t, &t_new, InterpolationMethod::Linear);
+        assert_eq!(result.shape(), (n, 50));
+        // All values should be finite
+        for i in 0..n {
+            for j in 0..50 {
+                assert!(result[(i, j)].is_finite());
+            }
         }
     }
 }

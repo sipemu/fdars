@@ -121,7 +121,7 @@ fn main() {
     // --- Section 1: FPCA ---
     println!("--- Functional PCA ---");
     let ncomp = 4;
-    if let Ok(fpca) = fdata_to_pc_1d(&data_mat, ncomp) {
+    if let Ok(fpca) = fdata_to_pc_1d(&data_mat, ncomp, &t) {
         print_variance_explained(&fpca);
         print_loadings(&fpca, ncomp);
         print_scores(&fpca, ncomp);
@@ -140,7 +140,7 @@ fn main() {
     );
 
     let ncomp_pls = 3;
-    if let Ok(pls) = fdata_to_pls_1d(&data_mat, &y, ncomp_pls) {
+    if let Ok(pls) = fdata_to_pls_1d(&data_mat, &y, ncomp_pls, &t) {
         println!("\n  PLS weights (first 5 values of each component):");
         for k in 0..ncomp_pls {
             let w: Vec<f64> = (0..5).map(|j| pls.weights[(j, k)]).collect();

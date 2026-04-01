@@ -143,7 +143,8 @@ pub fn fclassif_lda(
         });
     }
 
-    let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
+    let (features, _mean, _rotation, _weights) =
+        build_feature_matrix(data, scalar_covariates, ncomp)?;
     let d = features.ncols();
     let (class_means, cov, priors) = lda_params(&features, &labels, g);
     let chol = cholesky_d(&cov, d)?;

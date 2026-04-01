@@ -3,6 +3,7 @@
 //! This module provides functional PCA, PLS, and ridge regression.
 
 use crate::error::FdarError;
+use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "linalg")]
 use anofox_regression::solvers::RidgeRegressor;
@@ -12,6 +13,7 @@ use nalgebra::SVD;
 
 /// Result of functional PCA.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FpcaResult {
     /// Singular values
     pub singular_values: Vec<f64>,
@@ -23,6 +25,8 @@ pub struct FpcaResult {
     pub mean: Vec<f64>,
     /// Centered data, n x m
     pub centered: FdMatrix,
+    /// Integration weights used for the functional inner product
+    pub weights: Vec<f64>,
 }
 
 impl FpcaResult {
@@ -51,7 +55,8 @@ impl FpcaResult {
     ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
     ///     5, 10,
     /// ).unwrap();
-    /// let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+    /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+    /// let fpca = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
     ///
     /// // Project the original data (scores should match)
     /// let scores = fpca.project(&data).unwrap();
@@ -81,7 +86,7 @@ impl FpcaResult {
             for k in 0..ncomp {
                 let mut sum = 0.0;
                 for j in 0..m {
-                    sum += (data[(i, j)] - self.mean[j]) * self.rotation[(j, k)];
+                    sum += (data[(i, j)] - self.mean[j]) * self.rotation[(j, k)] * self.weights[j];
                 }
                 scores[(i, k)] = sum;
             }
@@ -115,7 +120,8 @@ impl FpcaResult {
     ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
     ///     10, 10,
     /// ).unwrap();
-    /// let fpca = fdata_to_pc_1d(&data, 5).unwrap();
+    /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+    /// let fpca = fdata_to_pc_1d(&data, 5, &argvals).unwrap();
     ///
     /// // Reconstruct using all 5 components
     /// let recon = fpca.reconstruct(&fpca.scores, 5).unwrap();
@@ -202,15 +208,21 @@ fn extract_pc_components(
     Some((singular_values, rotation, scores))
 }
 
-/// Perform functional PCA via SVD on centered data.
+/// Perform functional PCA via SVD on centered data with integration weights.
+///
+/// Uses Simpson's-rule weights derived from `argvals` so that the resulting
+/// scores represent functional inner products and are invariant to grid
+/// density.
 ///
 /// # Arguments
 /// * `data` - Matrix (n x m): n observations, m evaluation points
 /// * `ncomp` - Number of components to extract
+/// * `argvals` - Evaluation grid points (length m)
 ///
 /// # Errors
 ///
-/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or zero columns.
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or zero
+/// columns, or if `argvals.len() != m`.
 /// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
 /// Returns [`FdarError::ComputationFailed`] if the SVD decomposition fails to
 /// produce U or V_t matrices.
@@ -226,13 +238,18 @@ fn extract_pc_components(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     5, 10,
 /// ).unwrap();
-/// let result = fdata_to_pc_1d(&data, 3).unwrap();
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let result = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
 /// assert_eq!(result.scores.shape(), (5, 3));
 /// assert_eq!(result.rotation.shape(), (10, 3));
 /// assert_eq!(result.mean.len(), 10);
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarError> {
+pub fn fdata_to_pc_1d(
+    data: &FdMatrix,
+    ncomp: usize,
+    argvals: &[f64],
+) -> Result<FpcaResult, FdarError> {
     let (n, m) = data.shape();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
@@ -248,6 +265,13 @@ pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarE
             actual: format!("m = {m}"),
         });
     }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m} elements"),
+            actual: format!("{} elements", argvals.len()),
+        });
+    }
     if ncomp < 1 {
         return Err(FdarError::InvalidParameter {
             parameter: "ncomp",
@@ -257,12 +281,34 @@ pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarE
 
     let ncomp = ncomp.min(n).min(m);
     let (centered, means) = center_columns(data);
-    let svd = SVD::new(centered.to_dmatrix(), true, true);
-    let (singular_values, rotation, scores) =
+
+    // Compute integration weights for functional inner product
+    let weights = simpsons_weights(argvals);
+    let sqrt_weights: Vec<f64> = weights.iter().map(|w| w.sqrt()).collect();
+
+    // Scale centered data by sqrt(weights) for weighted SVD
+    let mut weighted = centered.clone();
+    for i in 0..n {
+        for j in 0..m {
+            weighted[(i, j)] *= sqrt_weights[j];
+        }
+    }
+
+    let svd = SVD::new(weighted.to_dmatrix(), true, true);
+    let (singular_values, mut rotation, scores) =
         extract_pc_components(&svd, n, m, ncomp).ok_or_else(|| FdarError::ComputationFailed {
             operation: "SVD",
             detail: "failed to extract U or V_t from SVD decomposition; try reducing ncomp or check for zero-variance columns in the data".to_string(),
         })?;
+
+    // Unscale loadings: divide by sqrt(weights) to get actual eigenfunctions
+    for k in 0..ncomp {
+        for j in 0..m {
+            if sqrt_weights[j] > 1e-15 {
+                rotation[(j, k)] /= sqrt_weights[j];
+            }
+        }
+    }
 
     Ok(FpcaResult {
         singular_values,
@@ -270,11 +316,13 @@ pub fn fdata_to_pc_1d(data: &FdMatrix, ncomp: usize) -> Result<FpcaResult, FdarE
         scores,
         mean: means,
         centered,
+        weights,
     })
 }
 
 /// Result of PLS regression.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct PlsResult {
     /// Weight vectors, m x ncomp
     pub weights: FdMatrix,
@@ -284,6 +332,8 @@ pub struct PlsResult {
     pub loadings: FdMatrix,
     /// Column means of the training data, length m
     pub x_means: Vec<f64>,
+    /// Integration weights for the functional inner product
+    pub integration_weights: Vec<f64>,
 }
 
 impl PlsResult {
@@ -313,7 +363,8 @@ impl PlsResult {
     ///     10, 10,
     /// ).unwrap();
     /// let y: Vec<f64> = (0..10).map(|i| i as f64 * 0.5).collect();
-    /// let pls = fdata_to_pls_1d(&x, &y, 3).unwrap();
+    /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+    /// let pls = fdata_to_pls_1d(&x, &y, 3, &argvals).unwrap();
     ///
     /// // Project the original data
     /// let scores = pls.project(&x).unwrap();
@@ -349,11 +400,11 @@ impl PlsResult {
         // Iteratively project and deflate through each component
         let mut scores = FdMatrix::zeros(n, ncomp);
         for k in 0..ncomp {
-            // Compute scores: t = X_cen * w_k
+            // Compute scores: t = X_cen * W * w_k (weighted inner product)
             for i in 0..n {
                 let mut sum = 0.0;
                 for j in 0..m {
-                    sum += x_cen[(i, j)] * self.weights[(j, k)];
+                    sum += x_cen[(i, j)] * self.weights[(j, k)] * self.integration_weights[j];
                 }
                 scores[(i, k)] = sum;
             }
@@ -371,8 +422,8 @@ impl PlsResult {
     }
 }
 
-/// Compute PLS weight vector: w = X'y / ||X'y||
-fn pls_compute_weights(x_cen: &FdMatrix, y_cen: &[f64]) -> Vec<f64> {
+/// Compute PLS weight vector: w = X'y / ||X'y|| (with integration weights)
+fn pls_compute_weights(x_cen: &FdMatrix, y_cen: &[f64], int_w: &[f64]) -> Vec<f64> {
     let (n, m) = x_cen.shape();
     let mut w: Vec<f64> = (0..m)
         .map(|j| {
@@ -380,7 +431,7 @@ fn pls_compute_weights(x_cen: &FdMatrix, y_cen: &[f64]) -> Vec<f64> {
             for i in 0..n {
                 sum += x_cen[(i, j)] * y_cen[i];
             }
-            sum
+            sum * int_w[j]
         })
         .collect();
 
@@ -393,22 +444,22 @@ fn pls_compute_weights(x_cen: &FdMatrix, y_cen: &[f64]) -> Vec<f64> {
     w
 }
 
-/// Compute PLS scores: t = Xw
-fn pls_compute_scores(x_cen: &FdMatrix, w: &[f64]) -> Vec<f64> {
+/// Compute PLS scores: t = X * W * w (weighted inner product)
+fn pls_compute_scores(x_cen: &FdMatrix, w: &[f64], int_w: &[f64]) -> Vec<f64> {
     let (n, m) = x_cen.shape();
     (0..n)
         .map(|i| {
             let mut sum = 0.0;
             for j in 0..m {
-                sum += x_cen[(i, j)] * w[j];
+                sum += x_cen[(i, j)] * w[j] * int_w[j];
             }
             sum
         })
         .collect()
 }
 
-/// Compute PLS loadings: p = X't / (t't)
-fn pls_compute_loadings(x_cen: &FdMatrix, t: &[f64], t_norm_sq: f64) -> Vec<f64> {
+/// Compute PLS loadings: p = X't / (t't) (with integration weights)
+fn pls_compute_loadings(x_cen: &FdMatrix, t: &[f64], t_norm_sq: f64, int_w: &[f64]) -> Vec<f64> {
     let (n, m) = x_cen.shape();
     (0..m)
         .map(|j| {
@@ -416,7 +467,7 @@ fn pls_compute_loadings(x_cen: &FdMatrix, t: &[f64], t_norm_sq: f64) -> Vec<f64>
             for i in 0..n {
                 sum += x_cen[(i, j)] * t[i];
             }
-            sum / t_norm_sq.max(1e-10)
+            sum * int_w[j] / t_norm_sq.max(1e-10)
         })
         .collect()
 }
@@ -439,14 +490,15 @@ fn pls_nipals_step(
     weights: &mut FdMatrix,
     scores: &mut FdMatrix,
     loadings: &mut FdMatrix,
+    int_w: &[f64],
 ) {
     let n = x_cen.nrows();
     let m = x_cen.ncols();
 
-    let w = pls_compute_weights(x_cen, y_cen);
-    let t = pls_compute_scores(x_cen, &w);
+    let w = pls_compute_weights(x_cen, y_cen, int_w);
+    let t = pls_compute_scores(x_cen, &w, int_w);
     let t_norm_sq: f64 = t.iter().map(|&ti| ti * ti).sum();
-    let p = pls_compute_loadings(x_cen, &t, t_norm_sq);
+    let p = pls_compute_loadings(x_cen, &t, t_norm_sq, int_w);
 
     for j in 0..m {
         weights[(j, k)] = w[j];
@@ -464,20 +516,27 @@ fn pls_nipals_step(
     }
 }
 
-/// Perform PLS via NIPALS algorithm.
+/// Perform PLS via NIPALS algorithm with integration weights.
 ///
 /// # Arguments
 /// * `data` - Matrix (n x m): n observations, m evaluation points
 /// * `y` - Response vector (length n)
 /// * `ncomp` - Number of components to extract
+/// * `argvals` - Evaluation grid points (length m)
 ///
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidDimension`] if `data` has zero rows or zero
-/// columns, or if `y.len()` does not equal the number of rows in `data`.
+/// columns, if `y.len()` does not equal the number of rows in `data`,
+/// or if `argvals.len() != m`.
 /// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsResult, FdarError> {
+pub fn fdata_to_pls_1d(
+    data: &FdMatrix,
+    y: &[f64],
+    ncomp: usize,
+    argvals: &[f64],
+) -> Result<PlsResult, FdarError> {
     let (n, m) = data.shape();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
@@ -500,6 +559,13 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsRe
             actual: format!("length {}", y.len()),
         });
     }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m} elements"),
+            actual: format!("{} elements", argvals.len()),
+        });
+    }
     if ncomp < 1 {
         return Err(FdarError::InvalidParameter {
             parameter: "ncomp",
@@ -508,6 +574,9 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsRe
     }
 
     let ncomp = ncomp.min(n).min(m);
+
+    // Compute integration weights
+    let int_w = simpsons_weights(argvals);
 
     // Center X and y
     let x_means: Vec<f64> = (0..m)
@@ -542,6 +611,7 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsRe
             &mut weights,
             &mut scores,
             &mut loadings,
+            &int_w,
         );
     }
 
@@ -550,6 +620,7 @@ pub fn fdata_to_pls_1d(data: &FdMatrix, y: &[f64], ncomp: usize) -> Result<PlsRe
         scores,
         loadings,
         x_means,
+        integration_weights: int_w,
     })
 }
 
@@ -699,9 +770,9 @@ mod tests {
         let n = 20;
         let m = 50;
         let ncomp = 3;
-        let (data, _) = generate_test_fdata(n, m);
+        let (data, t) = generate_test_fdata(n, m);
 
-        let result = fdata_to_pc_1d(&data, ncomp);
+        let result = fdata_to_pc_1d(&data, ncomp, &t);
         assert!(result.is_ok());
 
         let fpca = result.unwrap();
@@ -717,9 +788,9 @@ mod tests {
         let n = 20;
         let m = 50;
         let ncomp = 5;
-        let (data, _) = generate_test_fdata(n, m);
+        let (data, t) = generate_test_fdata(n, m);
 
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         // Singular values should be in decreasing order
         for i in 1..fpca.singular_values.len() {
@@ -734,9 +805,9 @@ mod tests {
     fn test_fdata_to_pc_1d_centered_has_zero_mean() {
         let n = 20;
         let m = 50;
-        let (data, _) = generate_test_fdata(n, m);
+        let (data, t) = generate_test_fdata(n, m);
 
-        let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+        let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
 
         // Column means of centered data should be zero
         for j in 0..m {
@@ -752,10 +823,10 @@ mod tests {
     fn test_fdata_to_pc_1d_ncomp_limits() {
         let n = 10;
         let m = 50;
-        let (data, _) = generate_test_fdata(n, m);
+        let (data, t) = generate_test_fdata(n, m);
 
         // Request more components than n - should cap at n
-        let fpca = fdata_to_pc_1d(&data, 20).unwrap();
+        let fpca = fdata_to_pc_1d(&data, 20, &t).unwrap();
         assert!(fpca.singular_values.len() <= n);
     }
 
@@ -763,12 +834,13 @@ mod tests {
     fn test_fdata_to_pc_1d_invalid_input() {
         // Empty data
         let empty = FdMatrix::zeros(0, 50);
-        let result = fdata_to_pc_1d(&empty, 3);
+        let t50: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
+        let result = fdata_to_pc_1d(&empty, 3, &t50);
         assert!(result.is_err());
 
         // Zero components
-        let (data, _) = generate_test_fdata(10, 50);
-        let result = fdata_to_pc_1d(&data, 0);
+        let (data, t) = generate_test_fdata(10, 50);
+        let result = fdata_to_pc_1d(&data, 0, &t);
         assert!(result.is_err());
     }
 
@@ -776,11 +848,11 @@ mod tests {
     fn test_fdata_to_pc_1d_reconstruction() {
         let n = 10;
         let m = 30;
-        let (data, _) = generate_test_fdata(n, m);
+        let (data, t) = generate_test_fdata(n, m);
 
         // Use all components for perfect reconstruction
         let ncomp = n.min(m);
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         // Reconstruct: X_centered = scores * rotation^T
         for i in 0..n {
@@ -811,12 +883,12 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 3;
-        let (x, _) = generate_test_fdata(n, m);
+        let (x, t) = generate_test_fdata(n, m);
 
         // Create y with some relationship to x
         let y: Vec<f64> = (0..n).map(|i| (i as f64 / n as f64) + 0.1).collect();
 
-        let result = fdata_to_pls_1d(&x, &y, ncomp);
+        let result = fdata_to_pls_1d(&x, &y, ncomp, &t);
         assert!(result.is_ok());
 
         let pls = result.unwrap();
@@ -830,10 +902,10 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 2;
-        let (x, _) = generate_test_fdata(n, m);
+        let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
 
-        let pls = fdata_to_pls_1d(&x, &y, ncomp).unwrap();
+        let pls = fdata_to_pls_1d(&x, &y, ncomp, &t).unwrap();
 
         // Weight vectors should be approximately unit norm
         for k in 0..ncomp {
@@ -852,15 +924,15 @@ mod tests {
 
     #[test]
     fn test_fdata_to_pls_1d_invalid_input() {
-        let (x, _) = generate_test_fdata(10, 30);
+        let (x, t) = generate_test_fdata(10, 30);
 
         // Wrong y length
-        let result = fdata_to_pls_1d(&x, &[0.0; 5], 2);
+        let result = fdata_to_pls_1d(&x, &[0.0; 5], 2, &t);
         assert!(result.is_err());
 
         // Zero components
         let y = vec![0.0; 10];
-        let result = fdata_to_pls_1d(&x, &y, 0);
+        let result = fdata_to_pls_1d(&x, &y, 0, &t);
         assert!(result.is_err());
     }
 
@@ -1032,7 +1104,8 @@ mod tests {
         let n = 5;
         let m = 20;
         let data = FdMatrix::zeros(n, m);
-        let result = fdata_to_pc_1d(&data, 2);
+        let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let result = fdata_to_pc_1d(&data, 2, &t);
         // Should not panic; may return Ok with zero singular values
         if let Ok(res) = result {
             assert_eq!(res.scores.nrows(), n);
@@ -1049,7 +1122,8 @@ mod tests {
     fn test_n1_pca() {
         // Single observation: centering leaves all zeros, SVD may return trivial result
         let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
-        let result = fdata_to_pc_1d(&data, 1);
+        let t = vec![0.0, 0.5, 1.0];
+        let result = fdata_to_pc_1d(&data, 1, &t);
         // With n=1, centering leaves all zeros, so SVD may fail or return trivial result
         // Just ensure no panic
         let _ = result;
@@ -1061,8 +1135,9 @@ mod tests {
         let m = 20;
         let data_vec: Vec<f64> = (0..n * m).map(|i| (i as f64 * 0.1).sin()).collect();
         let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
         let y = vec![5.0; n]; // Constant response
-        let result = fdata_to_pls_1d(&data, &y, 2);
+        let result = fdata_to_pls_1d(&data, &y, 2, &t);
         // Constant y → centering makes y all zeros, PLS may fail
         // Just ensure no panic
         let _ = result;
@@ -1075,8 +1150,8 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 3;
-        let (data, _) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let (data, t) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         let new_data = FdMatrix::zeros(5, m);
         let scores = fpca.project(&new_data).unwrap();
@@ -1088,8 +1163,8 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 3;
-        let (data, _) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let (data, t) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         // Projecting the training data should reproduce the original scores
         let scores = fpca.project(&data).unwrap();
@@ -1109,8 +1184,8 @@ mod tests {
 
     #[test]
     fn test_fpca_project_dimension_mismatch() {
-        let (data, _) = generate_test_fdata(20, 30);
-        let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+        let (data, t) = generate_test_fdata(20, 30);
+        let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
 
         let wrong_m = FdMatrix::zeros(5, 20); // wrong number of columns
         assert!(fpca.project(&wrong_m).is_err());
@@ -1123,8 +1198,8 @@ mod tests {
         let n = 10;
         let m = 30;
         let ncomp = 5;
-        let (data, _) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let (data, t) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         let recon = fpca.reconstruct(&fpca.scores, 3).unwrap();
         assert_eq!(recon.shape(), (n, m));
@@ -1135,8 +1210,8 @@ mod tests {
         let n = 10;
         let m = 30;
         let ncomp = n.min(m);
-        let (data, _) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let (data, t) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         // Full reconstruction should recover original data
         let recon = fpca.reconstruct(&fpca.scores, ncomp).unwrap();
@@ -1159,8 +1234,8 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 5;
-        let (data, _) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp).unwrap();
+        let (data, t) = generate_test_fdata(n, m);
+        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
 
         let recon2 = fpca.reconstruct(&fpca.scores, 2).unwrap();
         let recon5 = fpca.reconstruct(&fpca.scores, 5).unwrap();
@@ -1170,8 +1245,8 @@ mod tests {
 
     #[test]
     fn test_fpca_reconstruct_invalid_ncomp() {
-        let (data, _) = generate_test_fdata(10, 30);
-        let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+        let (data, t) = generate_test_fdata(10, 30);
+        let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
 
         // Zero components
         assert!(fpca.reconstruct(&fpca.scores, 0).is_err());
@@ -1186,9 +1261,9 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 3;
-        let (x, _) = generate_test_fdata(n, m);
+        let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let pls = fdata_to_pls_1d(&x, &y, ncomp).unwrap();
+        let pls = fdata_to_pls_1d(&x, &y, ncomp, &t).unwrap();
 
         let new_x = FdMatrix::zeros(5, m);
         let scores = pls.project(&new_x).unwrap();
@@ -1200,9 +1275,9 @@ mod tests {
         let n = 20;
         let m = 30;
         let ncomp = 3;
-        let (x, _) = generate_test_fdata(n, m);
+        let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| (i as f64 / n as f64) + 0.1).collect();
-        let pls = fdata_to_pls_1d(&x, &y, ncomp).unwrap();
+        let pls = fdata_to_pls_1d(&x, &y, ncomp, &t).unwrap();
 
         // Projecting the training data should reproduce the original scores
         let scores = pls.project(&x).unwrap();
@@ -1222,9 +1297,9 @@ mod tests {
 
     #[test]
     fn test_pls_project_dimension_mismatch() {
-        let (x, _) = generate_test_fdata(20, 30);
+        let (x, t) = generate_test_fdata(20, 30);
         let y: Vec<f64> = (0..20).map(|i| i as f64).collect();
-        let pls = fdata_to_pls_1d(&x, &y, 3).unwrap();
+        let pls = fdata_to_pls_1d(&x, &y, 3, &t).unwrap();
 
         let wrong_m = FdMatrix::zeros(5, 20); // wrong number of columns
         assert!(pls.project(&wrong_m).is_err());
@@ -1234,11 +1309,161 @@ mod tests {
     fn test_pls_x_means_stored() {
         let n = 20;
         let m = 30;
-        let (x, _) = generate_test_fdata(n, m);
+        let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let pls = fdata_to_pls_1d(&x, &y, 3).unwrap();
+        let pls = fdata_to_pls_1d(&x, &y, 3, &t).unwrap();
 
         // x_means should be stored and have correct length
         assert_eq!(pls.x_means.len(), m);
+    }
+
+    // ============== Regression tests for issue #22 ==============
+
+    /// Regression test: projection of original data recovers original scores.
+    #[test]
+    fn fpca_project_recovers_original_scores() {
+        let n = 15;
+        let m = 40;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let vals: Vec<f64> = (0..n)
+            .flat_map(|i| {
+                argvals
+                    .iter()
+                    .map(move |&t| (2.0 * PI * t).sin() + 0.3 * i as f64 * t)
+            })
+            .collect();
+        let data = FdMatrix::from_column_major(vals, n, m).unwrap();
+        let fpca = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+
+        // project the training data — should match original scores
+        let projected = fpca.project(&data).unwrap();
+        for i in 0..n {
+            for k in 0..3 {
+                let diff = (fpca.scores[(i, k)] - projected[(i, k)]).abs();
+                assert!(
+                    diff < 1e-8,
+                    "project score [{i},{k}] mismatch: orig={:.6}, proj={:.6}",
+                    fpca.scores[(i, k)],
+                    projected[(i, k)]
+                );
+            }
+        }
+    }
+
+    /// Regression test: weights are stored and have correct properties.
+    #[test]
+    fn fpca_weights_are_stored() {
+        let m = 50;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let data =
+            FdMatrix::from_column_major((0..150).map(|i| (i as f64 * 0.1).sin()).collect(), 3, m)
+                .unwrap();
+        let fpca = fdata_to_pc_1d(&data, 2, &argvals).unwrap();
+
+        // Weights should exist and be positive
+        assert_eq!(fpca.weights.len(), m);
+        assert!(fpca.weights.iter().all(|&w| w > 0.0));
+
+        // Weights should sum to approximately the domain length (1.0 for [0,1])
+        let sum: f64 = fpca.weights.iter().sum();
+        assert!(
+            (sum - 1.0).abs() < 0.01,
+            "weight sum should ≈ 1.0, got {sum}"
+        );
+    }
+
+    /// Regression test: variance explained is consistent across grid densities.
+    #[test]
+    fn fpca_variance_explained_grid_invariant() {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let n = 20;
+        let mut rng = StdRng::seed_from_u64(99);
+        let coeffs: Vec<(f64, f64)> = (0..n)
+            .map(|_| (rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+            .collect();
+
+        let make_data = |m: usize| -> (FdMatrix, Vec<f64>) {
+            let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+            let mut vals = vec![0.0; n * m];
+            for (i, &(a, b)) in coeffs.iter().enumerate() {
+                for (j, &tj) in t.iter().enumerate() {
+                    vals[i + j * n] = a * (2.0 * PI * tj).sin() + b * (4.0 * PI * tj).cos();
+                }
+            }
+            (FdMatrix::from_column_major(vals, n, m).unwrap(), t)
+        };
+
+        let (d1, t1) = make_data(41);
+        let (d2, t2) = make_data(201);
+        let f1 = fdata_to_pc_1d(&d1, 2, &t1).unwrap();
+        let f2 = fdata_to_pc_1d(&d2, 2, &t2).unwrap();
+
+        let total1: f64 = f1.singular_values.iter().map(|s| s * s).sum();
+        let total2: f64 = f2.singular_values.iter().map(|s| s * s).sum();
+        let pve1 = f1.singular_values[0].powi(2) / total1;
+        let pve2 = f2.singular_values[0].powi(2) / total2;
+
+        assert!(
+            (pve1 - pve2).abs() < 0.05,
+            "variance explained differs: coarse={pve1:.4}, fine={pve2:.4}"
+        );
+    }
+
+    #[test]
+    fn fpca_scores_invariant_to_grid_density() {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let n = 20;
+
+        // Generate random coefficients once
+        let mut rng = StdRng::seed_from_u64(42);
+        let coeffs: Vec<(f64, f64)> = (0..n)
+            .map(|_| (rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+            .collect();
+
+        // Helper: generate data on a given grid from the same analytic expression
+        let make_data = |m: usize| -> (FdMatrix, Vec<f64>) {
+            let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+            let mut vals = vec![0.0; n * m];
+            for (i, &(a, b)) in coeffs.iter().enumerate() {
+                for (j, &tj) in t.iter().enumerate() {
+                    vals[i + j * n] = a * (2.0 * PI * tj).sin() + b * (4.0 * PI * tj).cos();
+                }
+            }
+            let data = FdMatrix::from_column_major(vals, n, m).unwrap();
+            (data, t)
+        };
+
+        let (data1, t1) = make_data(51);
+        let (data2, t2) = make_data(201);
+
+        let fpca1 = fdata_to_pc_1d(&data1, 2, &t1).unwrap();
+        let fpca2 = fdata_to_pc_1d(&data2, 2, &t2).unwrap();
+
+        // Scores should be approximately the same (allow sign flip per component)
+        for k in 0..2 {
+            // Determine sign: use the sign of the dot product between score vectors
+            let dot: f64 = (0..n)
+                .map(|i| fpca1.scores[(i, k)] * fpca2.scores[(i, k)])
+                .sum();
+            let sign = if dot >= 0.0 { 1.0 } else { -1.0 };
+
+            for i in 0..n {
+                let s1 = fpca1.scores[(i, k)];
+                let s2 = sign * fpca2.scores[(i, k)];
+                let rel_diff = if s1.abs() > 1e-6 {
+                    (s1 - s2).abs() / s1.abs()
+                } else {
+                    (s1 - s2).abs()
+                };
+                assert!(
+                    rel_diff < 0.10,
+                    "score [{i},{k}] differs: coarse={s1:.4}, fine={s2:.4}, rel_diff={rel_diff:.4}"
+                );
+            }
+        }
     }
 }

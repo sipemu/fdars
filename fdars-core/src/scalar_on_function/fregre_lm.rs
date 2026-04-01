@@ -71,7 +71,8 @@ pub fn fregre_lm(
 
     let ncomp = resolve_ncomp(ncomp, data, y, scalar_covariates, n, m)?;
 
-    let fpca = fdata_to_pc_1d(data, ncomp)?;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);
     let p_total = design.ncols();
     let (coeffs, hat_diag) = ols_solve(&design, y)?;
@@ -405,7 +406,9 @@ pub fn predict_fregre_lm(
         for k in 0..ncomp {
             let mut s = 0.0;
             for j in 0..m {
-                s += (new_data[(i, j)] - fit.fpca.mean[j]) * fit.fpca.rotation[(j, k)];
+                s += (new_data[(i, j)] - fit.fpca.mean[j])
+                    * fit.fpca.rotation[(j, k)]
+                    * fit.fpca.weights[j];
             }
             yhat += fit.coefficients[1 + k] * s;
         }

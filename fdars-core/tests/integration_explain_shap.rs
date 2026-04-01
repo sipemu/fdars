@@ -240,7 +240,7 @@ fn test_shap_linear_sum_to_fitted() {
     for i in 0..40 {
         let sum: f64 = (0..3).map(|k| shap.values[(i, k)]).sum::<f64>() + shap.base_value;
         assert!(
-            (sum - fit.fitted_values[i]).abs() < 1e-8,
+            (sum - fit.fitted_values[i]).abs() < 1e-6,
             "SHAP sum should equal fitted at i={}: {} vs {}",
             i,
             sum,

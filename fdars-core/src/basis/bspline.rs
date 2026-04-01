@@ -1,12 +1,7 @@
 //! B-spline basis functions.
 
 /// Construct B-spline knot vector with extended boundary knots.
-pub(super) fn construct_bspline_knots(
-    t_min: f64,
-    t_max: f64,
-    nknots: usize,
-    order: usize,
-) -> Vec<f64> {
+pub fn construct_bspline_knots(t_min: f64, t_max: f64, nknots: usize, order: usize) -> Vec<f64> {
     let dt = (t_max - t_min) / (nknots - 1) as f64;
     let mut knots = Vec::with_capacity(nknots + 2 * order);
     for i in 0..order {
@@ -57,6 +52,34 @@ pub(super) fn bspline_recurrence_step(b: &[f64], knots: &[f64], t_val: f64, k: u
             left + right
         })
         .collect()
+}
+
+/// Evaluate B-spline basis matrix using a pre-computed knot vector.
+///
+/// Unlike [`bspline_basis`], this function uses the provided knot vector
+/// directly, allowing evaluation on a different grid than the one used
+/// to construct the knots.
+pub fn bspline_basis_from_knots(t: &[f64], knots: &[f64], order: usize) -> Vec<f64> {
+    let n = t.len();
+    let nbasis = knots.len() - order;
+    // Find the index of the last interior knot for boundary handling
+    let t_max_knot_idx = knots.len() - order - 1;
+
+    let mut basis = vec![0.0; n * nbasis];
+
+    for (ti, &t_val) in t.iter().enumerate() {
+        let mut b = evaluate_order_zero(t_val, knots, t_max_knot_idx);
+
+        for k in 2..=order {
+            b = bspline_recurrence_step(&b, knots, t_val, k);
+        }
+
+        for j in 0..nbasis {
+            basis[ti + j * n] = b[j];
+        }
+    }
+
+    basis
 }
 
 /// Compute B-spline basis matrix for given knots and grid points.

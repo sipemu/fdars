@@ -127,9 +127,9 @@ pub use alignment::{
 
 // Re-export commonly used items
 pub use helpers::{
-    cumulative_trapz, extract_curves, gradient, gradient_nonuniform, gradient_uniform, l2_distance,
-    linear_interp, simpsons_weights, simpsons_weights_2d, trapz, DEFAULT_CONVERGENCE_TOL,
-    NUMERICAL_EPS,
+    cumulative_trapz, extract_curves, fdata_interpolate, gradient, gradient_nonuniform,
+    gradient_uniform, l2_distance, linear_interp, simpsons_weights, simpsons_weights_2d, trapz,
+    InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
 };
 
 // Re-export warping utilities
@@ -344,7 +344,10 @@ pub use depth::{
 };
 
 // Re-export outlier detection functions
-pub use outliers::{detect_outliers_lrt, outliers_threshold_lrt, outliers_threshold_lrt_with_dist};
+pub use outliers::{
+    detect_outliers_lrt, magnitude_shape_outlyingness, outliergram, outliers_threshold_lrt,
+    outliers_threshold_lrt_with_dist, MagnitudeShapeResult, OutligramResult,
+};
 
 // Re-export utility functions
 pub use utility::{
@@ -360,8 +363,9 @@ pub use fdata::{
 
 // Re-export basis representation types and functions
 pub use basis::{
-    basis_to_fdata, basis_to_fdata_1d, bspline_basis, difference_matrix, fdata_to_basis,
-    fdata_to_basis_1d, fourier_basis, fourier_basis_with_period, fourier_fit_1d, pspline_fit_1d,
+    basis_to_fdata, basis_to_fdata_1d, bspline_basis, bspline_basis_from_knots,
+    construct_bspline_knots, difference_matrix, fdata_to_basis, fdata_to_basis_1d, fourier_basis,
+    fourier_basis_with_period, fourier_fit_1d, pspline_evaluate, pspline_fit_1d, pspline_fit_gcv,
     select_basis_auto_1d, select_fourier_nbasis_gcv, BasisAutoSelectionResult,
     BasisProjectionResult, FourierFitResult, ProjectionBasisType, PsplineFitResult,
     SingleCurveSelection,

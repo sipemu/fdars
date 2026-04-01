@@ -147,7 +147,8 @@ pub fn fclassif_qda(
         });
     }
 
-    let (features, _mean, _rotation) = build_feature_matrix(data, scalar_covariates, ncomp)?;
+    let (features, _mean, _rotation, _weights) =
+        build_feature_matrix(data, scalar_covariates, ncomp)?;
 
     let (class_means, class_chols, class_log_dets, priors) =
         build_qda_params(&features, &labels, g)?;

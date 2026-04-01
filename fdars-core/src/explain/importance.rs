@@ -92,7 +92,13 @@ pub fn fpc_permutation_importance(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     // Baseline R^2 -- compute from same FPC-only prediction used in permuted path
     // to ensure consistent comparison (gamma terms are constant across permutations)
@@ -186,7 +192,13 @@ pub fn fpc_permutation_importance_logistic(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let baseline: f64 = (0..n)
         .filter(|&i| {
@@ -486,7 +498,13 @@ pub fn conditional_permutation_importance(
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let y_mean: f64 = y.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y.iter().map(|&yi| (yi - y_mean).powi(2)).sum();
@@ -588,7 +606,13 @@ pub fn conditional_permutation_importance_logistic(
     }
     let _ = scalar_covariates;
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let baseline: f64 = (0..n)
         .filter(|&i| {

@@ -60,12 +60,12 @@ fn bench_fpca(c: &mut Criterion) {
 
     for &n in &[50, 200] {
         for &m in &[50, 100] {
-            let (data, _y, _argvals) = generate_regression_data(n, m);
+            let (data, _y, argvals) = generate_regression_data(n, m);
             let ncomp = 5;
             let label = format!("n{}_m{}", n, m);
 
             group.bench_with_input(BenchmarkId::new("params", &label), &label, |b, _| {
-                b.iter(|| fdata_to_pc_1d(black_box(&data), black_box(ncomp)));
+                b.iter(|| fdata_to_pc_1d(black_box(&data), black_box(ncomp), black_box(&argvals)));
             });
         }
     }

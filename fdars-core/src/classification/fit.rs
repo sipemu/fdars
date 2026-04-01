@@ -59,6 +59,8 @@ pub struct ClassifFit {
     pub ncomp: usize,
     /// The classification method with stored parameters.
     pub method: ClassifMethod,
+    /// Integration weights from FPCA (length m).
+    pub fpca_int_weights: Vec<f64>,
 }
 
 /// FPC + LDA classification, retaining FPCA and LDA parameters for explainability.
@@ -102,7 +104,7 @@ pub fn fclassif_lda_fit(
 
     // _fit variants use FPCA-only features (no scalar_covariates) so that stored
     // dimensions are consistent with FpcPredictor::project() / predict_from_scores().
-    let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
+    let (features, mean, rotation, int_weights) = build_feature_matrix(data, None, ncomp)?;
     let _ = scalar_covariates; // acknowledged but not used — see docstring
     let d = features.ncols();
     let (class_means, cov, priors) = lda_params(&features, &labels, g);
@@ -131,6 +133,7 @@ pub fn fclassif_lda_fit(
             priors,
             n_classes: g,
         },
+        fpca_int_weights: int_weights,
     })
 }
 
@@ -174,7 +177,7 @@ pub fn fclassif_qda_fit(
     }
 
     // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
-    let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
+    let (features, mean, rotation, int_weights) = build_feature_matrix(data, None, ncomp)?;
     let _ = scalar_covariates;
     let (class_means, class_chols, class_log_dets, priors) =
         build_qda_params(&features, &labels, g)?;
@@ -211,6 +214,7 @@ pub fn fclassif_qda_fit(
             priors,
             n_classes: g,
         },
+        fpca_int_weights: int_weights,
     })
 }
 
@@ -261,7 +265,7 @@ pub fn fclassif_knn_fit(
     }
 
     // _fit variants use FPCA-only features — see fclassif_lda_fit comment.
-    let (features, mean, rotation) = build_feature_matrix(data, None, ncomp)?;
+    let (features, mean, rotation, int_weights) = build_feature_matrix(data, None, ncomp)?;
     let _ = scalar_covariates;
     let d = features.ncols();
 
@@ -288,6 +292,7 @@ pub fn fclassif_knn_fit(
             k: k_nn,
             n_classes: g,
         },
+        fpca_int_weights: int_weights,
     })
 }
 
@@ -310,6 +315,10 @@ impl FpcPredictor for ClassifFit {
 
     fn training_scores(&self) -> &FdMatrix {
         &self.fpca_scores
+    }
+
+    fn fpca_weights(&self) -> &[f64] {
+        &self.fpca_int_weights
     }
 
     fn task_type(&self) -> TaskType {

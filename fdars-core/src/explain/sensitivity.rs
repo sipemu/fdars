@@ -151,7 +151,13 @@ pub fn sobol_indices_logistic(
         });
     }
     let p_scalar = fit.gamma.len();
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let mean_z = compute_mean_scalar(scalar_covariates, p_scalar, n);
 
     let eval_model = |s: &[f64]| -> f64 {
@@ -261,7 +267,13 @@ pub fn functional_saliency(
             message: "must be > 0".into(),
         });
     }
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let mean_scores = compute_column_means(&scores, ncomp);
 
     let weights: Vec<f64> = (0..ncomp).map(|k| fit.coefficients[1 + k]).collect();

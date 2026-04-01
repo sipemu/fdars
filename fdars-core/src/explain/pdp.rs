@@ -107,7 +107,13 @@ pub fn functional_pdp(
     }
 
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let grid_values = make_grid(&scores, component, n_grid);
 
     let coef_c = fit.coefficients[1 + component];
@@ -192,7 +198,13 @@ pub fn functional_pdp_logistic(
         });
     }
 
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let grid_values = make_grid(&scores, component, n_grid);
 
     let mut ice_curves = FdMatrix::zeros(n, n_grid);

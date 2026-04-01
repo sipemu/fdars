@@ -663,7 +663,8 @@ pub fn fosr_fpc(
         });
     }
 
-    let fpca = fdata_to_pc_1d(data, ncomp)?;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
     let k = fpca.scores.ncols();
     let p_total = p + 1;
     let design = build_fosr_design(predictors, n);

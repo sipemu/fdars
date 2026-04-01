@@ -416,12 +416,12 @@ fn beta_decomp_component_orthogonality() {
 
     for j in 0..3 {
         for k in (j + 1)..3 {
+            // Eigenfunctions are orthogonal w.r.t. the weighted inner product,
+            // so use the FPCA integration weights when computing the inner product.
             let inner: f64 = (0..50)
-                .map(|t| dec.components[j][t] * dec.components[k][t])
+                .map(|t| dec.components[j][t] * dec.components[k][t] * fit.fpca.weights[t])
                 .sum();
-            // coef_j * coef_k * <φ_j, φ_k> ≈ 0 since φ's are orthogonal
-            // But note: rotation columns are orthonormal w.r.t. discrete inner product
-            // so inner ≈ coef_j * coef_k * 0 = 0
+            // coef_j * coef_k * <φ_j, φ_k>_w ≈ 0 since φ's are orthogonal
             assert!(
                 inner.abs() < 1e-6,
                 "Cross-product of components ({},{}) should be ~0: {}",

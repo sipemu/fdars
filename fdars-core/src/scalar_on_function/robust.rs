@@ -238,7 +238,8 @@ fn fregre_robust_irls(
     let ncomp = resolve_ncomp(ncomp, data, y, scalar_covariates, n, m)?;
 
     // Step 1: FPCA
-    let fpca = fdata_to_pc_1d(data, ncomp)?;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
 
     // Step 2: Build design matrix [1, scores, scalar_covariates]
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);
@@ -351,11 +352,13 @@ pub fn predict_fregre_robust(
     let mut predictions = vec![0.0; n_new];
     for i in 0..n_new {
         let mut yhat = fit.intercept;
-        // Project onto FPC basis: ξ_k = Σ_j (x(t_j) - μ(t_j)) · φ_k(t_j)
+        // Project onto FPC basis: ξ_k = Σ_j (x(t_j) - μ(t_j)) · φ_k(t_j) · w_j
         for k in 0..ncomp {
             let mut s = 0.0;
             for j in 0..m {
-                s += (new_data[(i, j)] - fit.fpca.mean[j]) * fit.fpca.rotation[(j, k)];
+                s += (new_data[(i, j)] - fit.fpca.mean[j])
+                    * fit.fpca.rotation[(j, k)]
+                    * fit.fpca.weights[j];
             }
             yhat += fit.coefficients[1 + k] * s;
         }

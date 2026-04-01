@@ -3,6 +3,8 @@
 //! This module provides methods for detecting outliers in functional data
 //! based on depth measures and likelihood ratio tests.
 
+use crate::depth::band::{modified_band_1d, modified_epigraph_index_1d};
+use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFraimanMuniz};
@@ -241,6 +243,206 @@ pub fn detect_outliers_lrt(data: &FdMatrix, threshold: f64, trim: f64) -> Vec<bo
     iter_maybe_parallel!(0..n)
         .map(|i| normalized_distance(data, i, &trimmed_mean, &trimmed_var) > threshold)
         .collect()
+}
+
+/// Result of the outliergram analysis.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct OutligramResult {
+    /// Modified Epigraph Index for each curve
+    pub mei: Vec<f64>,
+    /// Modified Band Depth for each curve
+    pub mbd: Vec<f64>,
+    /// Parabola coefficients: MBD = a0 + a1*MEI + a2*MEI²
+    pub a0: f64,
+    pub a1: f64,
+    pub a2: f64,
+    /// Outlier threshold (IQR-based)
+    pub threshold: f64,
+    /// Outlier flags (true = outlier)
+    pub outlier_flags: Vec<bool>,
+}
+
+/// Compute outliergram with parabolic outlier boundary.
+///
+/// Combines modified band depth and modified epigraph index to detect
+/// shape outliers. Fits a parabolic upper bound `MBD = a0 + a1*MEI + a2*MEI²`
+/// and flags curves whose residuals fall below an IQR-based threshold.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `factor` - IQR multiplier for the outlier threshold (typically 1.5)
+///
+/// # Returns
+/// Outliergram result with depths, parabola coefficients, and outlier flags.
+pub fn outliergram(data: &FdMatrix, factor: f64) -> Result<OutligramResult, FdarError> {
+    let n = data.nrows();
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+
+    let mei = modified_epigraph_index_1d(data, data);
+    let mbd = modified_band_1d(data, data);
+
+    // Fit parabola: MBD = a0 + a1*MEI + a2*MEI²
+    // Using normal equations: X = [1, mei, mei²], y = mbd
+    let mut xtx = [[0.0; 3]; 3];
+    let mut xty = [0.0; 3];
+    for i in 0..n {
+        let x = [1.0, mei[i], mei[i] * mei[i]];
+        for r in 0..3 {
+            for c in 0..3 {
+                xtx[r][c] += x[r] * x[c];
+            }
+            xty[r] += x[r] * mbd[i];
+        }
+    }
+
+    // Solve 3x3 system via Cramer's rule
+    let (a0, a1, a2) = solve_3x3(xtx, xty);
+
+    // Compute residuals below the parabola
+    let residuals: Vec<f64> = (0..n)
+        .map(|i| mbd[i] - (a0 + a1 * mei[i] + a2 * mei[i] * mei[i]))
+        .collect();
+
+    // IQR-based threshold on residuals
+    let mut sorted_resid = residuals.clone();
+    sorted_resid.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let q1 = sorted_resid[n / 4];
+    let q3 = sorted_resid[3 * n / 4];
+    let iqr = q3 - q1;
+    let threshold = q1 - factor * iqr;
+
+    let outlier_flags: Vec<bool> = residuals.iter().map(|&r| r < threshold).collect();
+
+    Ok(OutligramResult {
+        mei,
+        mbd,
+        a0,
+        a1,
+        a2,
+        threshold,
+        outlier_flags,
+    })
+}
+
+/// Result of magnitude-shape outlyingness decomposition.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct MagnitudeShapeResult {
+    /// Magnitude outlyingness: 1 - MBD (how far from the center)
+    pub magnitude: Vec<f64>,
+    /// Shape outlyingness: L2 distance of normalized curve direction from mean direction
+    pub shape: Vec<f64>,
+}
+
+/// Decompose outlyingness into magnitude and shape components.
+///
+/// Magnitude measures how far a curve is from the center (1 - modified band depth).
+/// Shape measures how different the curve's direction is from the mean direction
+/// (L2 distance of normalized centered curves).
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+pub fn magnitude_shape_outlyingness(data: &FdMatrix) -> Result<MagnitudeShapeResult, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 rows and 1 column".to_string(),
+            actual: format!("{n} rows, {m} columns"),
+        });
+    }
+
+    // Magnitude: 1 - modified band depth
+    let mbd = modified_band_1d(data, data);
+    let magnitude: Vec<f64> = mbd.iter().map(|&d| 1.0 - d).collect();
+
+    // Shape: compute centered curves, normalize directions, compare to mean direction
+    // Step 1: compute column means
+    let mut col_means = vec![0.0; m];
+    for j in 0..m {
+        for i in 0..n {
+            col_means[j] += data[(i, j)];
+        }
+        col_means[j] /= n as f64;
+    }
+
+    // Step 2: center and normalize each curve (direction)
+    let mut directions = vec![vec![0.0; m]; n];
+    for i in 0..n {
+        let mut norm_sq = 0.0;
+        for j in 0..m {
+            let c = data[(i, j)] - col_means[j];
+            directions[i][j] = c;
+            norm_sq += c * c;
+        }
+        let norm = norm_sq.sqrt().max(1e-15);
+        for j in 0..m {
+            directions[i][j] /= norm;
+        }
+    }
+
+    // Step 3: mean direction
+    let mut mean_dir = vec![0.0; m];
+    for i in 0..n {
+        for j in 0..m {
+            mean_dir[j] += directions[i][j];
+        }
+    }
+    let mut mean_norm_sq = 0.0;
+    for j in 0..m {
+        mean_dir[j] /= n as f64;
+        mean_norm_sq += mean_dir[j] * mean_dir[j];
+    }
+    let mean_norm = mean_norm_sq.sqrt().max(1e-15);
+    for j in 0..m {
+        mean_dir[j] /= mean_norm;
+    }
+
+    // Step 4: shape = L2 distance from mean direction
+    let shape: Vec<f64> = (0..n)
+        .map(|i| {
+            let dist_sq: f64 = (0..m)
+                .map(|j| {
+                    let d = directions[i][j] - mean_dir[j];
+                    d * d
+                })
+                .sum();
+            dist_sq.sqrt()
+        })
+        .collect();
+
+    Ok(MagnitudeShapeResult { magnitude, shape })
+}
+
+/// Solve a 3x3 linear system via Cramer's rule.
+fn solve_3x3(a: [[f64; 3]; 3], b: [f64; 3]) -> (f64, f64, f64) {
+    let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+        - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+        + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+    if det.abs() < 1e-15 {
+        return (0.0, 0.0, 0.0);
+    }
+
+    let det_x = b[0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+        - a[0][1] * (b[1] * a[2][2] - a[1][2] * b[2])
+        + a[0][2] * (b[1] * a[2][1] - a[1][1] * b[2]);
+
+    let det_y = a[0][0] * (b[1] * a[2][2] - a[1][2] * b[2])
+        - b[0] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+        + a[0][2] * (a[1][0] * b[2] - b[1] * a[2][0]);
+
+    let det_z = a[0][0] * (a[1][1] * b[2] - b[1] * a[2][1])
+        - a[0][1] * (a[1][0] * b[2] - b[1] * a[2][0])
+        + b[0] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+
+    (det_x / det, det_y / det, det_z / det)
 }
 
 #[cfg(test)]
@@ -718,5 +920,76 @@ mod tests {
                 pvalues[i]
             );
         }
+    }
+
+    // ============== Outliergram tests ==============
+
+    fn outliergram_test_data() -> FdMatrix {
+        // 20 curves on 30 grid points, with 2 outliers
+        let n = 20;
+        let m = 30;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut vals = vec![0.0; n * m];
+        for i in 0..n {
+            for (j, &tj) in t.iter().enumerate() {
+                let base = tj.sin();
+                vals[i + j * n] = if i < 18 {
+                    base + 0.1 * (i as f64 * 0.5).sin()
+                } else {
+                    // Outliers: large deviation
+                    base + 2.0 * (if i == 18 { 1.0 } else { -1.0 })
+                };
+            }
+        }
+        FdMatrix::from_column_major(vals, n, m).unwrap()
+    }
+
+    #[test]
+    fn outliergram_runs() {
+        let data = outliergram_test_data();
+        let result = outliergram(&data, 1.5).unwrap();
+        assert_eq!(result.mei.len(), 20);
+        assert_eq!(result.mbd.len(), 20);
+        assert_eq!(result.outlier_flags.len(), 20);
+        // The two outlier curves should have lower MBD
+        let central_mbd: f64 = result.mbd[..18].iter().sum::<f64>() / 18.0;
+        assert!(result.mbd[18] < central_mbd || result.mbd[19] < central_mbd);
+    }
+
+    #[test]
+    fn outliergram_parabola_coefficients() {
+        let data = outliergram_test_data();
+        let result = outliergram(&data, 1.5).unwrap();
+        // Parabola should have a2 <= 0 (concave) for the theoretical relationship
+        // (this is typical but not strictly required)
+        assert!(result.a0.is_finite());
+        assert!(result.a1.is_finite());
+        assert!(result.a2.is_finite());
+    }
+
+    #[test]
+    fn magnitude_shape_dimensions() {
+        let data = outliergram_test_data();
+        let result = magnitude_shape_outlyingness(&data).unwrap();
+        assert_eq!(result.magnitude.len(), 20);
+        assert_eq!(result.shape.len(), 20);
+        // All values should be non-negative
+        assert!(result.magnitude.iter().all(|&v| v >= 0.0));
+        assert!(result.shape.iter().all(|&v| v >= 0.0));
+    }
+
+    #[test]
+    fn magnitude_outliers_have_high_magnitude() {
+        let data = outliergram_test_data();
+        let result = magnitude_shape_outlyingness(&data).unwrap();
+        let central_mag: f64 = result.magnitude[..18].iter().sum::<f64>() / 18.0;
+        // At least one outlier should have higher magnitude
+        assert!(result.magnitude[18] > central_mag || result.magnitude[19] > central_mag);
+    }
+
+    #[test]
+    fn outliergram_too_few_curves() {
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        assert!(outliergram(&data, 1.5).is_err());
     }
 }

@@ -1067,7 +1067,9 @@ fn saliency_linear_algebraic_identity() {
         for k in 0..ncomp {
             let mut s = 0.0;
             for j in 0..m {
-                s += (data[(i, j)] - fit.fpca.mean[j]) * fit.fpca.rotation[(j, k)];
+                s += (data[(i, j)] - fit.fpca.mean[j])
+                    * fit.fpca.rotation[(j, k)]
+                    * fit.fpca.weights[j];
             }
             scores[(i, k)] = s;
         }
@@ -1114,15 +1116,17 @@ fn saliency_linear_row_sum_equals_shap_sum() {
     assert_eq!(sal.saliency_map.shape(), (60, 30));
     assert_eq!(shap.values.shape(), (60, 3));
 
-    // For each observation, saliency summed over j should relate to SHAP
-    // This is not a direct equality, but L2 norm of saliency row ≈ L2 norm of SHAP row
+    // For each observation, the weighted L2 norm of saliency should equal
+    // the L2 norm of SHAP values, since eigenfunctions are orthonormal
+    // w.r.t. the weighted inner product: sum_j w_j * phi_l(j) * phi_k(j) = delta_{l,k}
     for i in 0..60 {
-        let sal_norm_sq: f64 = (0..30).map(|j| sal.saliency_map[(i, j)].powi(2)).sum();
+        let sal_norm_sq: f64 = (0..30)
+            .map(|j| sal.saliency_map[(i, j)].powi(2) * fit.fpca.weights[j])
+            .sum();
         let shap_norm_sq: f64 = (0..3).map(|k| shap.values[(i, k)].powi(2)).sum();
-        // Due to orthonormality of rotation, these should be equal
         assert!(
             (sal_norm_sq - shap_norm_sq).abs() < 1e-6,
-            "Saliency L2 norm should equal SHAP L2 norm at i={}: {} vs {}",
+            "Weighted saliency L2 norm should equal SHAP L2 norm at i={}: {} vs {}",
             i,
             sal_norm_sq.sqrt(),
             shap_norm_sq.sqrt()
@@ -1857,14 +1861,16 @@ fn loo_cv_and_influence_leverage_agree() {
 
 #[test]
 fn saliency_and_shap_norms_agree() {
-    // ||saliency_row||² = ||SHAP_row||² (due to orthonormal rotation)
+    // ||saliency_row||²_w = ||SHAP_row||² (due to weighted orthonormal rotation)
     let (data, y) = regression_data(80, 30, 42);
     let fit = fregre_lm(&data, &y, None, 3).unwrap();
     let sal = fdars_core::functional_saliency(&fit, &data, None).unwrap();
     let shap = fdars_core::fpc_shap_values(&fit, &data, None).unwrap();
 
     for i in 0..80 {
-        let sal_norm_sq: f64 = (0..30).map(|j| sal.saliency_map[(i, j)].powi(2)).sum();
+        let sal_norm_sq: f64 = (0..30)
+            .map(|j| sal.saliency_map[(i, j)].powi(2) * fit.fpca.weights[j])
+            .sum();
         let shap_norm_sq: f64 = (0..3).map(|k| shap.values[(i, k)].powi(2)).sum();
         assert!(
             (sal_norm_sq - shap_norm_sq).abs() < 1e-6,

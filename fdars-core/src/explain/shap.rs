@@ -86,7 +86,13 @@ pub fn fpc_shap_values(
             message: "must be > 0".into(),
         });
     }
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let mean_scores = compute_column_means(&scores, ncomp);
 
     let mut base_value = fit.intercept;
@@ -160,7 +166,13 @@ pub fn fpc_shap_values_logistic(
         });
     }
     let p_scalar = fit.gamma.len();
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let mean_scores = compute_column_means(&scores, ncomp);
     let mean_z = compute_mean_scalar(scalar_covariates, p_scalar, n);
 
@@ -283,7 +295,13 @@ pub fn friedman_h_statistic(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let grid_j = make_grid(&scores, component_j, n_grid);
     let grid_k = make_grid(&scores, component_k, n_grid);
@@ -377,7 +395,13 @@ pub fn friedman_h_statistic_logistic(
             message: "required when model has scalar covariates".into(),
         });
     }
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let grid_j = make_grid(&scores, component_j, n_grid);
     let grid_k = make_grid(&scores, component_k, n_grid);

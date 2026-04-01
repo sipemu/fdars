@@ -201,7 +201,8 @@ pub fn fpca_tolerance_band(
         });
     }
 
-    let fpca = fdata_to_pc_1d(data, ncomp)?;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
     let stats = compute_score_stats(&fpca.scores, n);
 
     Ok(match band_type {

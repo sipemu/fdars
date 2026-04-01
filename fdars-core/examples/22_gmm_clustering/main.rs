@@ -40,7 +40,7 @@ fn main() {
 
     // ── 1. GMM on FPC scores ──────────────────────────────────────────────
     println!("=== GMM on FPC Scores ===");
-    let fpca = fdata_to_pc_1d(&data, 3).unwrap();
+    let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
     let scores: Vec<Vec<f64>> = (0..n)
         .map(|i| (0..3).map(|k| fpca.scores[(i, k)]).collect())
         .collect();

@@ -394,7 +394,8 @@ fn pdp_grid_spans_score_range() {
     for i in 0..30 {
         let mut s = 0.0;
         for j in 0..m {
-            s += (data[(i, j)] - fit.fpca.mean[j]) * fit.fpca.rotation[(j, 1)];
+            s +=
+                (data[(i, j)] - fit.fpca.mean[j]) * fit.fpca.rotation[(j, 1)] * fit.fpca.weights[j];
         }
         scores[i] = s;
     }

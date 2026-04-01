@@ -327,7 +327,7 @@ pub fn frcc_phase1(
 
     // FPCA on calibration residuals
     let ncomp = config.ncomp.min(n_cal - 1).min(m);
-    let residual_fpca = fdata_to_pc_1d(&cal_residuals, ncomp)?;
+    let residual_fpca = fdata_to_pc_1d(&cal_residuals, ncomp, argvals)?;
     let actual_ncomp = residual_fpca.scores.ncols();
 
     // Eigenvalues

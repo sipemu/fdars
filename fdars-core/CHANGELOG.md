@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **B-spline cross-grid evaluation** (issue #21): `pspline_fit_1d` now stores the knot vector and order in `PsplineFitResult`. New `pspline_evaluate` function evaluates fitted P-splines on arbitrary grids using stored knots. New `bspline_basis_from_knots` evaluates B-spline basis from pre-computed knots. `construct_bspline_knots` is now public. (4 regression tests)
+- **FPCA grid-density invariance** (issue #22): `fdata_to_pc_1d` now accepts `argvals` and uses Simpson's-rule integration weights in the SVD, making scores invariant to grid resolution. `FpcaResult` stores weights; `project()` uses weighted inner products. `fdata_to_pls_1d` similarly updated. All 13 callers, 3 examples, and `FpcPredictor` trait updated. (6 regression tests)
+
+### Added (issue #23 features)
+
+- **`pspline_fit_gcv`** (`basis/pspline.rs`): Automatic lambda selection via GCV minimization over a 25-point log-spaced grid. (2 tests)
+- **`fdata_interpolate`** (`helpers.rs`): Resample functional data to a new grid with `InterpolationMethod::Linear` or `CubicHermite` (Fritsch-Carlson monotone C1). (3 tests)
+- **`outliergram`** (`outliers.rs`): Outliergram combining MEI and MBD with parabolic threshold and IQR-based outlier detection. New type `OutligramResult`. (3 tests)
+- **`magnitude_shape_outlyingness`** (`outliers.rs`): Magnitude-shape decomposition of outlyingness (1 - MBD for magnitude, normalized direction distance for shape). New type `MagnitudeShapeResult`. (2 tests)
+
 ### Added
 
 #### Alignment Module — 6 new advanced features

@@ -259,7 +259,11 @@ pub fn profile_phase1(
 
     // FPCA on vectorized betas
     let ncomp = config.ncomp.min(n_windows - 1).min(beta_vecs.ncols());
-    let beta_fpca = fdata_to_pc_1d(&beta_vecs, ncomp)?;
+    let beta_m = beta_vecs.ncols();
+    let beta_argvals: Vec<f64> = (0..beta_m)
+        .map(|j| j as f64 / (beta_m - 1).max(1) as f64)
+        .collect();
+    let beta_fpca = fdata_to_pc_1d(&beta_vecs, ncomp, &beta_argvals)?;
     let actual_ncomp = beta_fpca.scores.ncols();
 
     // Eigenvalues

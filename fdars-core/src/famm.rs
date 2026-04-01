@@ -112,7 +112,8 @@ pub fn fmm(
     let (subject_map, n_subjects) = build_subject_map(subject_ids);
 
     // Step 1: FPCA on pooled data
-    let fpca = fdata_to_pc_1d(data, ncomp)?;
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
     let k = fpca.scores.ncols(); // actual number of components
 
     // Step 2: For each FPC score, fit scalar mixed model (parallelized)

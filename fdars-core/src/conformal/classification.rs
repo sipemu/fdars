@@ -189,6 +189,7 @@ pub fn conformal_logistic(
         &refit.fpca.mean,
         &refit.fpca.rotation,
         refit.ncomp,
+        &refit.fpca.weights,
     );
     let cal_probs = logistic_probs_from_scores(&refit, &cal_scores_mat, cal_sc.as_ref());
     let cal_true: Vec<usize> = cal_idx.iter().map(|&i| y[i] as usize).collect();
@@ -200,6 +201,7 @@ pub fn conformal_logistic(
         &refit.fpca.mean,
         &refit.fpca.rotation,
         refit.ncomp,
+        &refit.fpca.weights,
     );
     let test_probs = logistic_probs_from_scores(&refit, &test_scores_mat, scalar_test);
     let test_pred_classes: Vec<usize> = test_probs.iter().map(|p| argmax(p)).collect();

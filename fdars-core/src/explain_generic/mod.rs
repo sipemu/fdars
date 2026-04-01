@@ -73,6 +73,9 @@ pub trait FpcPredictor: Send + Sync {
     /// What kind of prediction task this model solves.
     fn task_type(&self) -> TaskType;
 
+    /// Integration weights from FPCA (length m).
+    fn fpca_weights(&self) -> &[f64];
+
     /// Predict from FPC scores + optional scalar covariates → single f64.
     ///
     /// - **Regression**: predicted value
@@ -82,7 +85,13 @@ pub trait FpcPredictor: Send + Sync {
 
     /// Project functional data to FPC scores.
     fn project(&self, data: &FdMatrix) -> FdMatrix {
-        project_scores(data, self.fpca_mean(), self.fpca_rotation(), self.ncomp())
+        project_scores(
+            data,
+            self.fpca_mean(),
+            self.fpca_rotation(),
+            self.ncomp(),
+            self.fpca_weights(),
+        )
     }
 }
 
@@ -109,6 +118,10 @@ impl FpcPredictor for FregreLmResult {
 
     fn task_type(&self) -> TaskType {
         TaskType::Regression
+    }
+
+    fn fpca_weights(&self) -> &[f64] {
+        &self.fpca.weights
     }
 
     fn predict_from_scores(&self, scores: &[f64], scalar_covariates: Option<&[f64]>) -> f64 {
@@ -149,6 +162,10 @@ impl FpcPredictor for FunctionalLogisticResult {
 
     fn task_type(&self) -> TaskType {
         TaskType::BinaryClassification
+    }
+
+    fn fpca_weights(&self) -> &[f64] {
+        &self.fpca.weights
     }
 
     fn predict_from_scores(&self, scores: &[f64], scalar_covariates: Option<&[f64]>) -> f64 {

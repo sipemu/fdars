@@ -480,7 +480,7 @@ fn zero_pad(
     let scores: Vec<f64> = (0..ncomp)
         .map(|l| {
             (0..m)
-                .map(|j| centered[j] * chart.fpca.rotation[(j, l)])
+                .map(|j| centered[j] * chart.fpca.rotation[(j, l)] * chart.fpca.weights[j])
                 .sum()
         })
         .collect();

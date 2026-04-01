@@ -177,7 +177,13 @@ pub fn influence_diagnostics(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let design = build_design_matrix(&scores, ncomp, scalar_covariates, n);
     let p = design.ncols();
 
@@ -268,7 +274,13 @@ pub fn dfbetas_dffits(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let design = build_design_matrix(&scores, ncomp, scalar_covariates, n);
     let p = design.ncols();
 
@@ -449,7 +461,13 @@ pub fn prediction_intervals(
     }
     let ncomp = fit.ncomp;
 
-    let train_scores = project_scores(train_data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let train_scores = project_scores(
+        train_data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let train_design = build_design_matrix(&train_scores, ncomp, train_scalar, n_train);
     let p = train_design.ncols();
     if n_train <= p {
@@ -468,7 +486,13 @@ pub fn prediction_intervals(
     let t_crit = t_critical_value(confidence_level, df);
 
     // Project new data
-    let new_scores = project_scores(new_data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let new_scores = project_scores(
+        new_data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let mut predictions = vec![0.0; n_new];
     let mut lower = vec![0.0; n_new];
@@ -641,7 +665,13 @@ pub fn loo_cv_press(
         });
     }
     let ncomp = fit.ncomp;
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
     let design = build_design_matrix(&scores, ncomp, scalar_covariates, n);
     let p = design.ncols();
     if n <= p {

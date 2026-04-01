@@ -134,8 +134,10 @@ pub(crate) fn build_feature_matrix(
     data: &FdMatrix,
     scalar_covariates: Option<&FdMatrix>,
     ncomp: usize,
-) -> Result<(FdMatrix, Vec<f64>, FdMatrix), FdarError> {
-    let fpca = fdata_to_pc_1d(data, ncomp)?;
+) -> Result<(FdMatrix, Vec<f64>, FdMatrix, Vec<f64>), FdarError> {
+    let m = data.ncols();
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
     let n = data.nrows();
     let d_pc = fpca.scores.ncols();
     let d_cov = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);
@@ -153,7 +155,7 @@ pub(crate) fn build_feature_matrix(
         }
     }
 
-    Ok((features, fpca.mean, fpca.rotation))
+    Ok((features, fpca.mean, fpca.rotation, fpca.weights))
 }
 
 // ---------------------------------------------------------------------------

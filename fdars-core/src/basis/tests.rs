@@ -553,3 +553,43 @@ fn test_single_point_basis() {
         "constant basis should be 1.0"
     );
 }
+
+// ============== P-spline GCV selection tests ==============
+
+/// Create sine data matrix (n=3 curves) for GCV tests.
+fn sine_data(t: &[f64]) -> FdMatrix {
+    let n = 3;
+    let m = t.len();
+    let flat: Vec<f64> = (0..n)
+        .flat_map(|i| {
+            t.iter()
+                .map(move |&ti| (2.0 * PI * (1.0 + i as f64) * ti).sin())
+        })
+        .collect();
+    make_matrix(&flat, n, m)
+}
+
+#[test]
+fn pspline_fit_gcv_selects_lambda() {
+    let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+    let data = sine_data(&t);
+    let result = pspline_fit_gcv(&data, &t, 15, 2).unwrap();
+    // Should produce a valid fit with finite GCV
+    assert!(result.gcv.is_finite());
+    assert!(result.gcv > 0.0);
+    assert_eq!(result.fitted.shape(), (3, 100));
+}
+
+#[test]
+fn pspline_fit_gcv_beats_extremes() {
+    let t: Vec<f64> = (0..60).map(|i| i as f64 / 59.0).collect();
+    let data = sine_data(&t);
+    let gcv_result = pspline_fit_gcv(&data, &t, 12, 2).unwrap();
+
+    // GCV-selected lambda should produce lower or equal GCV than extremes
+    let low_lambda = pspline_fit_1d(&data, &t, 12, 1e-8, 2).unwrap();
+    let high_lambda = pspline_fit_1d(&data, &t, 12, 1e8, 2).unwrap();
+
+    assert!(gcv_result.gcv <= low_lambda.gcv + 1e-10);
+    assert!(gcv_result.gcv <= high_lambda.gcv + 1e-10);
+}

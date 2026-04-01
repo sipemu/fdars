@@ -76,7 +76,13 @@ pub fn counterfactual_regression(
             message: "must be > 0".into(),
         });
     }
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let original_prediction = fit.fitted_values[observation];
     let gap = target_value - original_prediction;
@@ -156,7 +162,13 @@ pub fn counterfactual_logistic(
             message: "must be > 0".into(),
         });
     }
-    let scores = project_scores(data, &fit.fpca.mean, &fit.fpca.rotation, ncomp);
+    let scores = project_scores(
+        data,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        ncomp,
+        &fit.fpca.weights,
+    );
 
     let original_scores: Vec<f64> = (0..ncomp).map(|k| scores[(observation, k)]).collect();
     let original_prediction = fit.probabilities[observation];

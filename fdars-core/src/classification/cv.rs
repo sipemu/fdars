@@ -152,7 +152,9 @@ fn cv_fold_predict(
     method: &str,
     ncomp: usize,
 ) -> Option<Vec<usize>> {
-    let fpca = fdata_to_pc_1d(train_data, ncomp).ok()?;
+    let m = train_data.ncols();
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(train_data, ncomp, &argvals).ok()?;
     match method {
         "lda" => {
             let predictions =
@@ -174,7 +176,7 @@ fn cv_fold_predict(
     }
 }
 
-/// Project test data onto FPCA basis (mean-center, multiply by rotation).
+/// Project test data onto FPCA basis (mean-center, multiply by rotation with weights).
 pub(super) fn project_test_onto_fpca(
     test_data: &FdMatrix,
     fpca: &crate::regression::FpcaResult,
@@ -187,7 +189,8 @@ pub(super) fn project_test_onto_fpca(
         for k in 0..d_pc {
             let mut score = 0.0;
             for j in 0..m {
-                score += (test_data[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)];
+                score +=
+                    (test_data[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)] * fpca.weights[j];
             }
             test_features[(i, k)] = score;
         }
