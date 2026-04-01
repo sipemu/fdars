@@ -53,6 +53,7 @@ use rayon::iter::ParallelIterator;
 
 /// Method for computing control limits.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum ControlLimitMethod {
     /// Standard parametric (chi-squared) limits.

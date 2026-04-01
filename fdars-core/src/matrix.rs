@@ -36,6 +36,7 @@ use nalgebra::DMatrix;
 /// assert_eq!(mat.column(0), &[1.0, 2.0, 3.0]);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FdMatrix {
     data: Vec<f64>,
     nrows: usize,

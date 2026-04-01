@@ -32,6 +32,7 @@ use crate::error::FdarError;
 
 /// A control limit for a monitoring statistic.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct ControlLimit {
     /// Upper control limit value.

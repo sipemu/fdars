@@ -22,6 +22,8 @@ default = ["parallel"]
 parallel = ["rayon"]
 # Linear algebra features (requires Rust 1.84+, not WASM-compatible)
 linalg = ["faer", "anofox-regression"]
+# Serde serialization support for persistent workflows
+serde = ["dep:serde"]
 # Enable JS features for WASM builds
 js = ["getrandom/js"]
 
@@ -36,6 +38,7 @@ anofox-regression = { version = "0.4", optional = true }
 # faer 0.23+ requires Rust 1.84.0 (linalg feature is not enabled by default)
 faer = { version = "0.23", optional = true }
 getrandom = { version = "0.2", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 # WASM target configuration
 [target.'cfg(target_arch = "wasm32")'.dependencies]

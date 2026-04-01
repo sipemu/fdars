@@ -44,6 +44,7 @@ use nalgebra::SVD;
 
 /// Configuration for multivariate FPCA.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MfpcaConfig {
     /// Number of principal components to extract (default 5).
     pub ncomp: usize,
@@ -62,6 +63,7 @@ impl Default for MfpcaConfig {
 
 /// Result of multivariate FPCA.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct MfpcaResult {
     /// Score matrix (n x ncomp).

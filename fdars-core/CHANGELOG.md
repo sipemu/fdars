@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`fdata_interpolate`** (`helpers.rs`): Resample functional data to a new grid with `InterpolationMethod::Linear` or `CubicHermite` (Fritsch-Carlson monotone C1). (3 tests)
 - **`outliergram`** (`outliers.rs`): Outliergram combining MEI and MBD with parabolic threshold and IQR-based outlier detection. New type `OutligramResult`. (3 tests)
 - **`magnitude_shape_outlyingness`** (`outliers.rs`): Magnitude-shape decomposition of outlyingness (1 - MBD for magnitude, normalized direction distance for shape). New type `MagnitudeShapeResult`. (2 tests)
+- **Serde support** (issue #24): Optional `serde` feature flag adds `Serialize`/`Deserialize` derives to `FdMatrix`, `FpcaResult`, `PlsResult`, `SpmChart`, `SpmConfig`, `ControlLimit`, `ControlLimitMethod`, `MfSpmChart`, `MfpcaResult`, `MfpcaConfig`, `SpmMonitorResult`. Enables persistent Phase I/II monitoring workflows. (1 roundtrip test)
 
 ### Added
 

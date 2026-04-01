@@ -13,6 +13,7 @@ use nalgebra::SVD;
 
 /// Result of functional PCA.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct FpcaResult {
     /// Singular values
@@ -322,6 +323,7 @@ pub fn fdata_to_pc_1d(
 
 /// Result of PLS regression.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct PlsResult {
     /// Weight vectors, m x ncomp
