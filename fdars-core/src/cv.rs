@@ -713,7 +713,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_custom_metrics() {
         let n = 20;
         let m = 3;
