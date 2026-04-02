@@ -279,11 +279,61 @@ pub fn fregre_cv(
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .expect("checked: cv_errors is non-empty");
 
+    let optimal_k = k_values[optimal_idx];
+
+    // Collect OOF predictions at optimal K
+    let ncols = data.ncols();
+    let mut oof_predictions = vec![f64::NAN; n];
+    let mut fold_errors = Vec::with_capacity(n_folds);
+
+    for fold in 0..n_folds {
+        let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
+        let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
+        let n_test = test_idx.len();
+        if n_test == 0 || train_idx.len() < optimal_k + 2 {
+            fold_errors.push(f64::NAN);
+            continue;
+        }
+
+        let mut train_data = FdMatrix::zeros(train_idx.len(), ncols);
+        let mut test_data = FdMatrix::zeros(n_test, ncols);
+        copy_rows(&mut train_data, data, &train_idx);
+        copy_rows(&mut test_data, data, &test_idx);
+
+        let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+
+        let train_sc = scalar_covariates.map(|sc| {
+            let mut m = FdMatrix::zeros(train_idx.len(), sc.ncols());
+            copy_rows(&mut m, sc, &train_idx);
+            m
+        });
+        let test_sc = scalar_covariates.map(|sc| {
+            let mut m = FdMatrix::zeros(n_test, sc.ncols());
+            copy_rows(&mut m, sc, &test_idx);
+            m
+        });
+
+        if let Ok(fit) = fregre_lm(&train_data, &train_y, train_sc.as_ref(), optimal_k) {
+            let preds = predict_fregre_lm(&fit, &test_data, test_sc.as_ref());
+            let mut fold_mse = 0.0;
+            for (ti, &i) in test_idx.iter().enumerate() {
+                oof_predictions[i] = preds[ti];
+                fold_mse += (preds[ti] - y[i]).powi(2);
+            }
+            fold_errors.push(fold_mse / n_test as f64);
+        } else {
+            fold_errors.push(f64::NAN);
+        }
+    }
+
     Ok(FregreCvResult {
         k_values: k_values.clone(),
         cv_errors,
-        optimal_k: k_values[optimal_idx],
+        optimal_k,
         min_cv_error,
+        oof_predictions,
+        fold_assignments: folds,
+        fold_errors,
     })
 }
 

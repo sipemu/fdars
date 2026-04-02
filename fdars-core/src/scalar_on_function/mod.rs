@@ -162,6 +162,7 @@ pub struct FunctionalLogisticResult {
 
 /// Result of cross-validation for K selection.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FregreCvResult {
     /// Candidate K values tested
     pub k_values: Vec<usize>,
@@ -171,6 +172,12 @@ pub struct FregreCvResult {
     pub optimal_k: usize,
     /// Minimum CV error
     pub min_cv_error: f64,
+    /// Out-of-fold predictions at optimal K (length n, each predicted when held out)
+    pub oof_predictions: Vec<f64>,
+    /// Fold assignment for each observation (0..n_folds)
+    pub fold_assignments: Vec<usize>,
+    /// Per-fold MSE at optimal K
+    pub fold_errors: Vec<f64>,
 }
 
 /// Result of PLS-based scalar-on-function regression.
