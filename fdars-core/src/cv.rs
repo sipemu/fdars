@@ -7,6 +7,7 @@
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
 use std::any::Any;
+use std::collections::HashMap;
 
 // ─── Fold Utilities ─────────────────────────────────────────────────────────
 
@@ -106,15 +107,157 @@ pub enum CvMetrics {
     },
 }
 
+/// A named metric function: `(name, fn(y_true, y_pred) -> f64)`.
+pub type MetricFn = (&'static str, fn(&[f64], &[f64]) -> f64);
+
+// ─── Built-in Regression Metrics ────────────────────────────────────────────
+
+/// Root Mean Squared Error.
+pub fn metric_rmse(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let n = y_true.len().min(y_pred.len());
+    if n == 0 {
+        return f64::NAN;
+    }
+    let mse: f64 = (0..n).map(|i| (y_true[i] - y_pred[i]).powi(2)).sum::<f64>() / n as f64;
+    mse.sqrt()
+}
+
+/// Mean Absolute Error.
+pub fn metric_mae(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let n = y_true.len().min(y_pred.len());
+    if n == 0 {
+        return f64::NAN;
+    }
+    (0..n).map(|i| (y_true[i] - y_pred[i]).abs()).sum::<f64>() / n as f64
+}
+
+/// Coefficient of determination (R-squared).
+pub fn metric_r_squared(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let n = y_true.len().min(y_pred.len());
+    if n == 0 {
+        return f64::NAN;
+    }
+    let mean = y_true.iter().sum::<f64>() / n as f64;
+    let ss_res: f64 = (0..n).map(|i| (y_true[i] - y_pred[i]).powi(2)).sum();
+    let ss_tot: f64 = (0..n).map(|i| (y_true[i] - mean).powi(2)).sum();
+    if ss_tot > 1e-15 {
+        1.0 - ss_res / ss_tot
+    } else {
+        0.0
+    }
+}
+
+/// Default regression metric set: RMSE, MAE, R-squared.
+pub fn regression_metrics() -> Vec<MetricFn> {
+    vec![
+        ("rmse", metric_rmse as fn(&[f64], &[f64]) -> f64),
+        ("mae", metric_mae),
+        ("r_squared", metric_r_squared),
+    ]
+}
+
+// ─── Built-in Classification Metrics ────────────────────────────────────────
+
+/// Classification accuracy.
+pub fn metric_accuracy(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let n = y_true.len().min(y_pred.len());
+    if n == 0 {
+        return f64::NAN;
+    }
+    let correct = (0..n)
+        .filter(|&i| (y_true[i] as usize) == (y_pred[i].round() as usize))
+        .count();
+    correct as f64 / n as f64
+}
+
+/// Macro (binary) precision: TP / (TP + FP).
+pub fn metric_precision(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let n = y_true.len().min(y_pred.len());
+    let mut tp = 0usize;
+    let mut fp = 0usize;
+    for i in 0..n {
+        let pred = y_pred[i].round() as usize;
+        let true_c = y_true[i] as usize;
+        if pred == 1 {
+            if true_c == 1 {
+                tp += 1;
+            } else {
+                fp += 1;
+            }
+        }
+    }
+    if tp + fp > 0 {
+        tp as f64 / (tp + fp) as f64
+    } else {
+        0.0
+    }
+}
+
+/// Macro (binary) recall: TP / (TP + FN).
+pub fn metric_recall(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let n = y_true.len().min(y_pred.len());
+    let mut tp = 0usize;
+    let mut fn_ = 0usize;
+    for i in 0..n {
+        let pred = y_pred[i].round() as usize;
+        let true_c = y_true[i] as usize;
+        if true_c == 1 {
+            if pred == 1 {
+                tp += 1;
+            } else {
+                fn_ += 1;
+            }
+        }
+    }
+    if tp + fn_ > 0 {
+        tp as f64 / (tp + fn_) as f64
+    } else {
+        0.0
+    }
+}
+
+/// F1 score (harmonic mean of precision and recall).
+pub fn metric_f1(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    let p = metric_precision(y_true, y_pred);
+    let r = metric_recall(y_true, y_pred);
+    if p + r > 0.0 {
+        2.0 * p * r / (p + r)
+    } else {
+        0.0
+    }
+}
+
+/// Default classification metric set: accuracy, precision, recall, F1.
+pub fn classification_metrics() -> Vec<MetricFn> {
+    vec![
+        ("accuracy", metric_accuracy as fn(&[f64], &[f64]) -> f64),
+        ("precision", metric_precision),
+        ("recall", metric_recall),
+        ("f1", metric_f1),
+    ]
+}
+
+/// Evaluate a set of metric functions on (y_true, y_pred).
+fn evaluate_metrics(
+    y_true: &[f64],
+    y_pred: &[f64],
+    metric_fns: &[MetricFn],
+) -> HashMap<String, f64> {
+    metric_fns
+        .iter()
+        .map(|(name, f)| ((*name).to_string(), f(y_true, y_pred)))
+        .collect()
+}
+
 /// Result of unified cross-validation.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct CvFdataResult {
     /// Out-of-fold predictions (length n); for repeated CV, averaged across reps.
     pub oof_predictions: Vec<f64>,
-    /// Overall metrics.
+    /// Overall metrics (built-in).
     pub metrics: CvMetrics,
-    /// Per-fold metrics.
+    /// Per-fold metrics (built-in).
     pub fold_metrics: Vec<CvMetrics>,
     /// Fold assignments from the last (or only) repetition.
     pub folds: Vec<usize>,
@@ -126,6 +269,10 @@ pub struct CvFdataResult {
     pub oof_sd: Option<Vec<f64>>,
     /// Per-repetition overall metrics (only when nrep > 1).
     pub rep_metrics: Option<Vec<CvMetrics>>,
+    /// Custom metrics evaluated on OOF predictions (name -> value).
+    pub custom_metrics: HashMap<String, f64>,
+    /// Per-fold custom metrics.
+    pub fold_custom_metrics: Vec<HashMap<String, f64>>,
 }
 
 // ─── Unified CV Framework ────────────────────────────────────────────────────
@@ -201,6 +348,9 @@ fn aggregate_oof_predictions(all_oof: Vec<Vec<f64>>, n: usize) -> (Vec<f64>, Opt
 }
 
 /// Generic k-fold + repeated cross-validation framework (R's `cv.fdata`).
+///
+/// Uses built-in metrics (RMSE/MAE/R² for regression, accuracy/confusion for
+/// classification). For custom metrics, use [`cv_fdata_with_metrics`].
 pub fn cv_fdata<F, P>(
     data: &FdMatrix,
     y: &[f64],
@@ -216,6 +366,72 @@ where
     F: Fn(&FdMatrix, &[f64]) -> Box<dyn Any>,
     P: Fn(&dyn Any, &FdMatrix) -> Vec<f64>,
 {
+    cv_fdata_with_metrics(
+        data,
+        y,
+        fit_fn,
+        predict_fn,
+        n_folds,
+        nrep,
+        cv_type,
+        stratified,
+        seed,
+        &[],
+    )
+}
+
+/// Generic k-fold + repeated CV with user-defined metrics.
+///
+/// Same as [`cv_fdata`] but accepts a slice of [`MetricFn`] that are evaluated
+/// on each fold's (y_true, y_pred) and on the overall OOF predictions.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::cv::*;
+/// use fdars_core::matrix::FdMatrix;
+/// use std::any::Any;
+///
+/// let data = FdMatrix::zeros(20, 5);
+/// let y: Vec<f64> = (0..20).map(|i| i as f64).collect();
+///
+/// // Custom metric: median absolute error
+/// fn median_ae(y_true: &[f64], y_pred: &[f64]) -> f64 {
+///     let mut errs: Vec<f64> = y_true.iter().zip(y_pred)
+///         .map(|(&a, &b)| (a - b).abs()).collect();
+///     errs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+///     errs[errs.len() / 2]
+/// }
+///
+/// let mut metrics = regression_metrics();
+/// metrics.push(("median_ae", median_ae));
+///
+/// let result = cv_fdata_with_metrics(
+///     &data, &y,
+///     |_d, y| Box::new(y.iter().sum::<f64>() / y.len() as f64),
+///     |m, td| { let v = *m.downcast_ref::<f64>().unwrap(); vec![v; td.nrows()] },
+///     5, 1, CvType::Regression, false, 42,
+///     &metrics,
+/// );
+/// assert!(result.custom_metrics.contains_key("rmse"));
+/// assert!(result.custom_metrics.contains_key("median_ae"));
+/// ```
+pub fn cv_fdata_with_metrics<F, P>(
+    data: &FdMatrix,
+    y: &[f64],
+    fit_fn: F,
+    predict_fn: P,
+    n_folds: usize,
+    nrep: usize,
+    cv_type: CvType,
+    stratified: bool,
+    seed: u64,
+    metric_fns: &[MetricFn],
+) -> CvFdataResult
+where
+    F: Fn(&FdMatrix, &[f64]) -> Box<dyn Any>,
+    P: Fn(&dyn Any, &FdMatrix) -> Vec<f64>,
+{
     let n = data.nrows();
     let nrep = nrep.max(1);
     let n_folds = n_folds.max(2).min(n);
@@ -224,6 +440,7 @@ where
     let mut all_rep_metrics: Vec<CvMetrics> = Vec::with_capacity(nrep);
     let mut last_folds = vec![0usize; n];
     let mut last_fold_metrics = Vec::new();
+    let mut last_fold_custom = Vec::new();
 
     for r in 0..nrep {
         let rep_seed = seed.wrapping_add(r as u64);
@@ -231,6 +448,7 @@ where
 
         let mut oof_preds = vec![0.0; n];
         let mut fold_metrics = Vec::with_capacity(n_folds);
+        let mut fold_custom = Vec::with_capacity(n_folds);
 
         for fold in 0..n_folds {
             let (train_idx, test_idx) = fold_indices(&folds, fold);
@@ -253,6 +471,9 @@ where
             }
 
             fold_metrics.push(compute_metrics(&test_y, &preds, cv_type));
+            if !metric_fns.is_empty() {
+                fold_custom.push(evaluate_metrics(&test_y, &preds, metric_fns));
+            }
         }
 
         let rep_metric = compute_metrics(y, &oof_preds, cv_type);
@@ -260,10 +481,16 @@ where
         all_rep_metrics.push(rep_metric);
         last_folds = folds;
         last_fold_metrics = fold_metrics;
+        last_fold_custom = fold_custom;
     }
 
     let (final_oof, oof_sd) = aggregate_oof_predictions(all_oof, n);
     let overall_metrics = compute_metrics(y, &final_oof, cv_type);
+    let custom_metrics = if metric_fns.is_empty() {
+        HashMap::new()
+    } else {
+        evaluate_metrics(y, &final_oof, metric_fns)
+    };
 
     CvFdataResult {
         oof_predictions: final_oof,
@@ -278,6 +505,8 @@ where
         } else {
             None
         },
+        custom_metrics,
+        fold_custom_metrics: last_fold_custom,
     }
 }
 
@@ -481,6 +710,52 @@ mod tests {
         assert!(result.oof_sd.is_some());
         assert!(result.rep_metrics.is_some());
         assert_eq!(result.rep_metrics.as_ref().unwrap().len(), 3);
+    }
+
+    #[test]
+    #[test]
+    fn test_custom_metrics() {
+        let n = 20;
+        let m = 3;
+        let data = FdMatrix::zeros(n, m);
+        let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
+
+        let metrics = regression_metrics();
+        let result = cv_fdata_with_metrics(
+            &data,
+            &y,
+            |_d, train_y| {
+                let mean = train_y.iter().sum::<f64>() / train_y.len() as f64;
+                Box::new(mean)
+            },
+            |model, test_data| {
+                let mean = model.downcast_ref::<f64>().unwrap();
+                vec![*mean; test_data.nrows()]
+            },
+            5,
+            1,
+            CvType::Regression,
+            false,
+            42,
+            &metrics,
+        );
+
+        assert!(result.custom_metrics.contains_key("rmse"));
+        assert!(result.custom_metrics.contains_key("mae"));
+        assert!(result.custom_metrics.contains_key("r_squared"));
+        assert!(*result.custom_metrics.get("rmse").unwrap() > 0.0);
+        assert_eq!(result.fold_custom_metrics.len(), 5);
+    }
+
+    #[test]
+    fn test_classification_metrics_standalone() {
+        let y_true = vec![0.0, 0.0, 1.0, 1.0, 1.0];
+        let y_pred = vec![0.0, 1.0, 1.0, 1.0, 0.0];
+        assert!((metric_accuracy(&y_true, &y_pred) - 0.6).abs() < 1e-10);
+        assert!((metric_precision(&y_true, &y_pred) - 2.0 / 3.0).abs() < 1e-10); // TP=2, FP=1
+        assert!((metric_recall(&y_true, &y_pred) - 2.0 / 3.0).abs() < 1e-10); // TP=2, FN=1
+        let f1 = metric_f1(&y_true, &y_pred);
+        assert!((f1 - 2.0 / 3.0).abs() < 1e-10); // P=R => F1=P=R
     }
 
     #[test]

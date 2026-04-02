@@ -305,8 +305,10 @@ pub use elastic_changepoint::{
 
 // Re-export cross-validation utilities
 pub use cv::{
-    create_folds, create_stratified_folds, cv_fdata, fold_indices, subset_rows, subset_vec,
-    CvFdataResult, CvMetrics, CvType,
+    classification_metrics, create_folds, create_stratified_folds, cv_fdata, cv_fdata_with_metrics,
+    fold_indices, metric_accuracy, metric_f1, metric_mae, metric_precision, metric_r_squared,
+    metric_recall, metric_rmse, regression_metrics, subset_rows, subset_vec, CvFdataResult,
+    CvMetrics, CvType, MetricFn,
 };
 
 // Re-export smoothing CV types
