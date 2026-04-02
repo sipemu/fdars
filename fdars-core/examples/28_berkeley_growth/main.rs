@@ -176,6 +176,8 @@ fn main() {
 
     let mut cv_errors_lm = vec![f64::NAN; n];
     let mut cv_errors_pls = vec![f64::NAN; n];
+    let mut oof_preds_lm = vec![f64::NAN; n];
+    let mut oof_preds_pls = vec![f64::NAN; n];
 
     for fold in 0..n_folds {
         // Split
@@ -206,6 +208,7 @@ fn main() {
         if let Ok(fold_fit) = fregre_lm(&train_data, &train_y, None, best_k) {
             let preds = predict_fregre_lm(&fold_fit, &test_data, None);
             for (ti, &i) in test_idx.iter().enumerate() {
+                oof_preds_lm[i] = preds[ti];
                 cv_errors_lm[i] = (y_final[i] - preds[ti]).powi(2);
             }
         }
@@ -214,6 +217,7 @@ fn main() {
         if let Ok(fold_pls) = fregre_pls(&train_data, &train_y, &t_norm, best_k, None) {
             let preds = predict_fregre_pls(&fold_pls, &test_data, None).unwrap();
             for (ti, &i) in test_idx.iter().enumerate() {
+                oof_preds_pls[i] = preds[ti];
                 cv_errors_pls[i] = (y_final[i] - preds[ti]).powi(2);
             }
         }
@@ -262,6 +266,34 @@ fn main() {
         cv_mse_pls,
         r2_cv_pls
     );
+
+    // ── Out-of-fold predictions table ────────────────────────────────────
+    println!("\n--- Out-of-Fold Predictions (first 20 observations) ---");
+    println!(
+        "  {:>4}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}",
+        "Obs", "y_true", "LM_pred", "LM_err", "PLS_pred", "PLS_err"
+    );
+    for i in 0..20.min(n) {
+        let lm_p = if oof_preds_lm[i].is_finite() {
+            oof_preds_lm[i]
+        } else {
+            f64::NAN
+        };
+        let pls_p = if oof_preds_pls[i].is_finite() {
+            oof_preds_pls[i]
+        } else {
+            f64::NAN
+        };
+        println!(
+            "  {:>4}  {:>10.2}  {:>10.2}  {:>10.2}  {:>10.2}  {:>10.2}",
+            i + 1,
+            y_final[i],
+            lm_p,
+            y_final[i] - lm_p,
+            pls_p,
+            y_final[i] - pls_p,
+        );
+    }
 
     println!("\n=== Summary ===");
     println!(
