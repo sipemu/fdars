@@ -192,3 +192,7 @@ path = "examples/26_elastic_analysis/main.rs"
 [[example]]
 name = "spm"
 path = "examples/27_spm/main.rs"
+
+[[example]]
+name = "berkeley_growth"
+path = "examples/28_berkeley_growth/main.rs"
