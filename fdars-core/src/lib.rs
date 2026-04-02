@@ -183,11 +183,12 @@ pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
     bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_basis_cv, fregre_cv,
-    fregre_huber, fregre_l1, fregre_lm, fregre_np_cv, fregre_np_mixed, functional_logistic,
-    model_selection_ncomp, predict_fregre_lm, predict_fregre_np, predict_fregre_robust,
-    predict_functional_logistic, BootstrapCiResult, FregreBasisCvResult, FregreCvResult,
-    FregreLmResult, FregreNpCvResult, FregreNpResult, FregreRobustResult, FunctionalLogisticResult,
-    ModelSelectionResult, SelectionCriterion,
+    fregre_huber, fregre_l1, fregre_lm, fregre_np_cv, fregre_np_mixed, fregre_pls,
+    functional_logistic, model_selection_ncomp, predict_fregre_lm, predict_fregre_np,
+    predict_fregre_pls, predict_fregre_robust, predict_functional_logistic, BootstrapCiResult,
+    FregreBasisCvResult, FregreCvResult, FregreLmResult, FregreNpCvResult, FregreNpResult,
+    FregreRobustResult, FunctionalLogisticResult, ModelSelectionResult, PlsRegressionResult,
+    SelectionCriterion,
 };
 
 // Re-export generic explainability types

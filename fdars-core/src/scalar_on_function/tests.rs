@@ -945,3 +945,65 @@ fn test_fregre_l1_minimal_data() {
     let fit = result.unwrap();
     assert_eq!(fit.fitted_values.len(), 5);
 }
+
+// ----- fregre_pls tests -----
+
+#[test]
+fn test_fregre_pls_basic() {
+    let (data, y, t) = generate_test_data(30, 50, 42);
+    let fit = fregre_pls(&data, &y, &t, 3, None).unwrap();
+    assert_eq!(fit.fitted_values.len(), 30);
+    assert_eq!(fit.residuals.len(), 30);
+    assert_eq!(fit.beta_t.len(), 50);
+    assert_eq!(fit.ncomp, 3);
+    assert!(fit.r_squared >= 0.0 && fit.r_squared <= 1.0);
+    assert!(fit.residual_se >= 0.0);
+    assert!(fit.aic.is_finite());
+    assert!(fit.bic.is_finite());
+}
+
+#[test]
+fn test_fregre_pls_predict() {
+    let (data, y, t) = generate_test_data(30, 50, 42);
+    let fit = fregre_pls(&data, &y, &t, 3, None).unwrap();
+
+    // Predict on training data — should match fitted values closely
+    let preds = predict_fregre_pls(&fit, &data, None).unwrap();
+    assert_eq!(preds.len(), 30);
+    for (p, f) in preds.iter().zip(&fit.fitted_values) {
+        assert!((p - f).abs() < 1e-8, "pred={p}, fitted={f}");
+    }
+}
+
+#[test]
+fn test_fregre_pls_predict_new_data() {
+    let (data, y, t) = generate_test_data(30, 50, 42);
+    let fit = fregre_pls(&data, &y, &t, 3, None).unwrap();
+
+    let (new_data, _, _) = generate_test_data(10, 50, 99);
+    let preds = predict_fregre_pls(&fit, &new_data, None).unwrap();
+    assert_eq!(preds.len(), 10);
+    assert!(preds.iter().all(|p| p.is_finite()));
+}
+
+#[test]
+fn test_fregre_pls_with_scalar_covariates() {
+    let (data, y, t) = generate_test_data(30, 50, 42);
+    let sc_vals: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
+    let sc = FdMatrix::from_column_major(sc_vals, 30, 1).unwrap();
+    let fit = fregre_pls(&data, &y, &t, 2, Some(&sc)).unwrap();
+    assert_eq!(fit.gamma.len(), 1);
+    assert_eq!(fit.coefficients.len(), 4); // intercept + 2 PLS + 1 scalar
+}
+
+#[test]
+fn test_fregre_pls_dimension_errors() {
+    let (data, y, t) = generate_test_data(30, 50, 42);
+    // Wrong argvals length
+    let bad_t: Vec<f64> = (0..10).map(|i| i as f64).collect();
+    assert!(fregre_pls(&data, &y, &bad_t, 3, None).is_err());
+    // Wrong y length
+    assert!(fregre_pls(&data, &y[..10], &t, 3, None).is_err());
+    // ncomp = 0
+    assert!(fregre_pls(&data, &y, &t, 0, None).is_err());
+}

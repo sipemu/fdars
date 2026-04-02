@@ -18,13 +18,14 @@
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::FpcaResult;
+use crate::regression::{FpcaResult, PlsResult};
 
 mod bootstrap;
 mod cv;
 mod fregre_lm;
 mod logistic;
 mod nonparametric;
+mod pls;
 mod robust;
 #[cfg(test)]
 mod tests;
@@ -35,6 +36,7 @@ pub use cv::{fregre_basis_cv, fregre_np_cv};
 pub use fregre_lm::{fregre_cv, fregre_lm, model_selection_ncomp, predict_fregre_lm};
 pub use logistic::{functional_logistic, predict_functional_logistic};
 pub use nonparametric::{fregre_np_mixed, predict_fregre_np};
+pub use pls::{fregre_pls, predict_fregre_pls};
 pub use robust::{fregre_huber, fregre_l1, predict_fregre_robust};
 
 // ---------------------------------------------------------------------------
@@ -169,6 +171,38 @@ pub struct FregreCvResult {
     pub optimal_k: usize,
     /// Minimum CV error
     pub min_cv_error: f64,
+}
+
+/// Result of PLS-based scalar-on-function regression.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct PlsRegressionResult {
+    /// Intercept α
+    pub intercept: f64,
+    /// Functional coefficient β(t), evaluated on the original grid (length m)
+    pub beta_t: Vec<f64>,
+    /// Scalar coefficients γ (one per scalar covariate)
+    pub gamma: Vec<f64>,
+    /// Fitted values ŷ (length n)
+    pub fitted_values: Vec<f64>,
+    /// Residuals y - ŷ (length n)
+    pub residuals: Vec<f64>,
+    /// R² statistic
+    pub r_squared: f64,
+    /// Adjusted R²
+    pub r_squared_adj: f64,
+    /// Number of PLS components used
+    pub ncomp: usize,
+    /// PLS result (for projecting new data)
+    pub pls: PlsResult,
+    /// Regression coefficients on (intercept, PLS scores, scalar covariates)
+    pub coefficients: Vec<f64>,
+    /// Residual standard error
+    pub residual_se: f64,
+    /// Akaike Information Criterion
+    pub aic: f64,
+    /// Bayesian Information Criterion
+    pub bic: f64,
 }
 
 /// Criterion used for model selection.
