@@ -131,38 +131,38 @@ This document maps each public function in the `spm` module to the paper(s) that
 
 ## Bibliography
 
-- Bartlett, M. S. (1946). The statistical analysis of series of events. *Journal of the Royal Statistical Society, Series B*, 8(1), 27--41.
-- Bersimis, S., Psarakis, S., & Panaretos, J. (2007). Multivariate statistical process control charts: an overview. *Quality and Reliability Engineering International*, 23(5), 517--543.
-- Box, G. E. P. (1954). Some theorems on quadratic forms applied in the study of analysis of variance problems, I. Effect of inequality of variance in the one-way classification. *Annals of Mathematical Statistics*, 25(2), 290--302.
-- Capezza, C., Lepore, A., Menafoglio, A., Palumbo, B., & Vantini, S. (2020). Control charts for monitoring ship operating conditions and CO2 emissions based on scalar-on-function regression. *Applied Stochastic Models in Business and Industry*, 36(3), 477--500.
-- Capizzi, G. & Masarotto, G. (2003). An adaptive exponentially weighted moving average control chart. *Technometrics*, 45(3), 199--207.
-- Cattell, R. B. (1966). The scree test for the number of factors. *Multivariate Behavioral Research*, 1(2), 245--276.
-- Chenouri, S., Steiner, S. H., & Variyath, A. M. (2009). A multivariate robust control chart for individual observations. *Journal of Quality Technology*, 41(3), 259--271.
-- Crosier, R. B. (1988). Multivariate generalizations of cumulative sum quality-control schemes. *Technometrics*, 30(3), 291--303.
-- Efron, B. & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall/CRC.
-- Flores, M., Naya, S., Fernandez-Casal, R., Zaragoza, S., Raña, P., & Tarrío-Saavedra, J. (2022). Constructing a control chart using functional data. *Mathematics*, 8(1), 58.
-- Hall, P. & Horowitz, J. L. (2007). Methodology and convergence rates for functional linear regression. *Annals of Statistics*, 35(1), 70--91.
-- Happ, C. & Greven, S. (2018). Multivariate functional principal component analysis for data observed on different (dimensional) domains. *Journal of the American Statistical Association*, 113(522), 649--659.
-- Horvath, L. & Kokoszka, P. (2012). *Inference for Functional Data with Applications*. Springer.
+- Bartlett, M. S. (1946). The statistical analysis of series of events. *Journal of the Royal Statistical Society, Series B*, 8(1), 27--41. [doi:10.1111/j.2517-6161.1946.tb00105.x](https://doi.org/10.1111/j.2517-6161.1946.tb00105.x)
+- Bersimis, S., Psarakis, S., & Panaretos, J. (2007). Multivariate statistical process control charts: an overview. *Quality and Reliability Engineering International*, 23(5), 517--543. [doi:10.1002/qre.829](https://doi.org/10.1002/qre.829)
+- Box, G. E. P. (1954). Some theorems on quadratic forms applied in the study of analysis of variance problems, I. *Annals of Mathematical Statistics*, 25(2), 290--302. [doi:10.1214/aoms/1177728786](https://doi.org/10.1214/aoms/1177728786)
+- Capezza, C., Lepore, A., Menafoglio, A., Palumbo, B., & Vantini, S. (2020). Control charts for monitoring ship operating conditions and CO2 emissions based on scalar-on-function regression. *Applied Stochastic Models in Business and Industry*, 36(3), 477--500. [doi:10.1002/asmb.2513](https://doi.org/10.1002/asmb.2513)
+- Capizzi, G. & Masarotto, G. (2003). An adaptive exponentially weighted moving average control chart. *Technometrics*, 45(3), 199--207. [doi:10.1198/004017003000000023](https://doi.org/10.1198/004017003000000023)
+- Cattell, R. B. (1966). The scree test for the number of factors. *Multivariate Behavioral Research*, 1(2), 245--276. [doi:10.1207/s15327906mbr0102_10](https://doi.org/10.1207/s15327906mbr0102_10)
+- Chenouri, S., Steiner, S. H., & Variyath, A. M. (2009). A multivariate robust control chart for individual observations. *Journal of Quality Technology*, 41(3), 259--271. [doi:10.1080/00224065.2009.11917781](https://doi.org/10.1080/00224065.2009.11917781)
+- Crosier, R. B. (1988). Multivariate generalizations of cumulative sum quality-control schemes. *Technometrics*, 30(3), 291--303. [doi:10.1080/00401706.1988.10488402](https://doi.org/10.1080/00401706.1988.10488402)
+- Efron, B. & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall/CRC. [doi:10.1007/978-1-4899-4541-9](https://doi.org/10.1007/978-1-4899-4541-9)
+- Flores, M., Naya, S., Fernandez-Casal, R., Zaragoza, S., Rana, P., & Tarrio-Saavedra, J. (2020). Constructing a control chart using functional data. *Mathematics*, 8(1), 58. [doi:10.3390/math8010058](https://doi.org/10.3390/math8010058)
+- Hall, P. & Horowitz, J. L. (2007). Methodology and convergence rates for functional linear regression. *Annals of Statistics*, 35(1), 70--91. [doi:10.1214/009053606000001109](https://doi.org/10.1214/009053606000001109)
+- Happ, C. & Greven, S. (2018). Multivariate functional principal component analysis for data observed on different (dimensional) domains. *Journal of the American Statistical Association*, 113(522), 649--659. [doi:10.1080/01621459.2017.1305535](https://doi.org/10.1080/01621459.2017.1305535)
+- Horvath, L. & Kokoszka, P. (2012). *Inference for Functional Data with Applications*. Springer. [doi:10.1007/978-1-4614-3655-3](https://doi.org/10.1007/978-1-4614-3655-3)
 - Hotelling, H. (1947). Multivariate quality control, illustrated by the air testing of sample bombsights. In *Techniques of Statistical Analysis* (pp. 111--184). McGraw-Hill.
-- Jackson, J. E. (1991). *A User's Guide to Principal Components*. Wiley.
-- Kaiser, H. F. (1960). The application of electronic computers to factor analysis. *Educational and Psychological Measurement*, 20, 141--151.
-- Kourti, T. & MacGregor, J. F. (1996). Multivariate SPC methods for process and product monitoring. *Journal of Quality Technology*, 28(4), 409--428.
+- Jackson, J. E. (1991). *A User's Guide to Principal Components*. Wiley. [doi:10.1002/0471725331](https://doi.org/10.1002/0471725331)
+- Kaiser, H. F. (1960). The application of electronic computers to factor analysis. *Educational and Psychological Measurement*, 20, 141--151. [doi:10.1177/001316446002000116](https://doi.org/10.1177/001316446002000116)
+- Kourti, T. & MacGregor, J. F. (1996). Multivariate SPC methods for process and product monitoring. *Journal of Quality Technology*, 28(4), 409--428. [doi:10.1080/00224065.1996.11979699](https://doi.org/10.1080/00224065.1996.11979699)
 - Ledolter, J. & Swersey, A. (2007). *Testing 1-2-3: Experimental Design with Applications in Marketing and Service Operations*. Stanford University Press.
-- Lowry, C. A., Woodall, W. H., Champ, C. W., & Rigdon, S. E. (1992). A multivariate exponentially weighted moving average control chart. *Technometrics*, 34(1), 46--53.
-- Lucas, J. M. & Saccucci, M. S. (1990). Exponentially weighted moving average control schemes: properties and enhancements. *Technometrics*, 32(1), 1--12.
-- Nelson, L. S. (1984). The Shewhart control chart -- tests for special causes. *Journal of Quality Technology*, 16(4), 237--239.
-- Nelson, L. S. (1985). Interpreting Shewhart X-bar control charts. *Journal of Quality Technology*, 17(2), 114--116.
-- O'Neill, M. E. (2014). *PCG: A Family of Simple Fast Space-Efficient Statistically Good Algorithms for Random Number Generation*. Harvey Mudd College Technical Report HMC-CS-2014-0905.
-- Page, E. S. (1954). Continuous inspection schemes. *Biometrika*, 41(1--2), 100--115.
-- Roberts, S. W. (1959). Control chart tests based on geometric moving averages. *Technometrics*, 1(3), 239--250.
-- Rousseeuw, P. J. & Leroy, A. M. (1987). *Robust Regression and Outlier Detection*. Wiley.
-- Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall.
-- Sparks, R. S. (2000). CUSUM charts for signalling varying location shifts. *Journal of Quality Technology*, 32(2), 157--171.
-- Srivastava, A., Wu, W., Kurtek, S., Klassen, E., & Marron, J. S. (2011). Registration of functional data using Fisher-Rao metric. arXiv:1103.3817.
-- Sullivan, J. H. & Woodall, W. H. (1996). A comparison of multivariate control charts for individual observations. *Journal of Quality Technology*, 28(4), 398--408.
-- Tucker, J. D., Wu, W., & Srivastava, A. (2013). Generative models for functional data using phase and amplitude separation. *Computational Statistics & Data Analysis*, 61, 50--66.
+- Lowry, C. A., Woodall, W. H., Champ, C. W., & Rigdon, S. E. (1992). A multivariate exponentially weighted moving average control chart. *Technometrics*, 34(1), 46--53. [doi:10.2307/1269551](https://doi.org/10.2307/1269551)
+- Lucas, J. M. & Saccucci, M. S. (1990). Exponentially weighted moving average control schemes: properties and enhancements. *Technometrics*, 32(1), 1--12. [doi:10.2307/1269835](https://doi.org/10.2307/1269835)
+- Nelson, L. S. (1984). The Shewhart control chart -- tests for special causes. *Journal of Quality Technology*, 16(4), 237--239. [doi:10.1080/00224065.1984.11978921](https://doi.org/10.1080/00224065.1984.11978921)
+- Nelson, L. S. (1985). Interpreting Shewhart X-bar control charts. *Journal of Quality Technology*, 17(2), 114--116. [doi:10.1080/00224065.1985.11978943](https://doi.org/10.1080/00224065.1985.11978943)
+- O'Neill, M. E. (2014). *PCG: A Family of Simple Fast Space-Efficient Statistically Good Algorithms for Random Number Generation*. Harvey Mudd College Technical Report HMC-CS-2014-0905. [www.pcg-random.org](https://www.pcg-random.org/paper.html)
+- Page, E. S. (1954). Continuous inspection schemes. *Biometrika*, 41(1--2), 100--115. [doi:10.1093/biomet/41.1-2.100](https://doi.org/10.1093/biomet/41.1-2.100)
+- Roberts, S. W. (1959). Control chart tests based on geometric moving averages. *Technometrics*, 1(3), 239--250. [doi:10.1080/00401706.1959.10489860](https://doi.org/10.1080/00401706.1959.10489860)
+- Rousseeuw, P. J. & Leroy, A. M. (1987). *Robust Regression and Outlier Detection*. Wiley. [doi:10.1002/0471725382](https://doi.org/10.1002/0471725382)
+- Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall. [doi:10.1007/978-1-4899-3324-9](https://doi.org/10.1007/978-1-4899-3324-9)
+- Sparks, R. S. (2000). CUSUM charts for signalling varying location shifts. *Journal of Quality Technology*, 32(2), 157--171. [doi:10.1080/00224065.2000.11979988](https://doi.org/10.1080/00224065.2000.11979988)
+- Srivastava, A., Wu, W., Kurtek, S., Klassen, E., & Marron, J. S. (2011). Registration of functional data using Fisher-Rao metric. [arXiv:1103.3817](https://arxiv.org/abs/1103.3817)
+- Sullivan, J. H. & Woodall, W. H. (1996). A comparison of multivariate control charts for individual observations. *Journal of Quality Technology*, 28(4), 398--408. [doi:10.1080/00224065.1996.11979698](https://doi.org/10.1080/00224065.1996.11979698)
+- Tucker, J. D., Wu, W., & Srivastava, A. (2013). Generative models for functional data using phase and amplitude separation. *Computational Statistics & Data Analysis*, 61, 50--66. [doi:10.1016/j.csda.2012.11.015](https://doi.org/10.1016/j.csda.2012.11.015)
 - Western Electric Company (1956). *Statistical Quality Control Handbook*. Western Electric Co.
-- Westerhuis, J. A., Gurden, S. P., & Smilde, A. K. (2000). Generalized contribution plots in multivariate statistical process monitoring. *Chemometrics and Intelligent Laboratory Systems*, 51(1), 95--114.
-- Woodall, W. H. & Ncube, M. M. (1985). Multivariate CUSUM quality-control procedures. *Technometrics*, 27(3), 285--292.
-- Yao, F., Müller, H.-G., & Wang, J.-L. (2005). Functional data analysis for sparse longitudinal data. *Journal of the American Statistical Association*, 100(470), 577--590.
+- Westerhuis, J. A., Gurden, S. P., & Smilde, A. K. (2000). Generalized contribution plots in multivariate statistical process monitoring. *Chemometrics and Intelligent Laboratory Systems*, 51(1), 95--114. [doi:10.1016/S0169-7439(00)00062-9](https://doi.org/10.1016/S0169-7439(00)00062-9)
+- Woodall, W. H. & Ncube, M. M. (1985). Multivariate CUSUM quality-control procedures. *Technometrics*, 27(3), 285--292. [doi:10.1080/00401706.1985.10488049](https://doi.org/10.1080/00401706.1985.10488049)
+- Yao, F., Muller, H.-G., & Wang, J.-L. (2005). Functional data analysis for sparse longitudinal data. *Journal of the American Statistical Association*, 100(470), 577--590. [doi:10.1198/016214504000001745](https://doi.org/10.1198/016214504000001745)
