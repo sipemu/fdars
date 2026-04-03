@@ -49,8 +49,8 @@ pub use closed::{
     ClosedKarcherMeanResult,
 };
 pub use clustering::{
-    cut_dendrogram, elastic_hierarchical, elastic_kmeans, ElasticClusterConfig,
-    ElasticClusterMethod, ElasticClusterResult, ElasticDendrogram,
+    cut_dendrogram, hierarchical_from_distances, kmedoids_from_distances, Dendrogram,
+    KMedoidsConfig, KMedoidsResult, Linkage,
 };
 pub use constrained::{
     elastic_align_pair_constrained, elastic_align_pair_with_landmarks, ConstrainedAlignmentResult,
