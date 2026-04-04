@@ -54,10 +54,8 @@ pub struct FdaData {
     pub argvals: Option<Vec<f64>>,
 
     // ── Metadata ──
-    /// Group labels per observation (length n).
-    pub grouping: Option<Vec<usize>>,
-    /// Group names (index → label).
-    pub group_names: Option<Vec<String>>,
+    /// Named grouping variables (multiple allowed).
+    pub grouping: Vec<GroupVar>,
     /// Named scalar variables (each length n).
     pub scalar_vars: Vec<NamedVec>,
     /// Tabular data for non-functional variables (n × p).
@@ -76,6 +74,18 @@ pub struct FdaData {
 pub struct NamedVec {
     pub name: String,
     pub values: Vec<f64>,
+}
+
+/// Named grouping variable with string labels.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GroupVar {
+    /// Variable name (e.g., "treatment", "sex").
+    pub name: String,
+    /// Per-observation labels (length n).
+    pub labels: Vec<String>,
+    /// Unique labels in order of first appearance.
+    pub unique: Vec<String>,
 }
 
 // ─── Layer Keys & Types ─────────────────────────────────────────────────────
@@ -183,6 +193,10 @@ pub struct AlignmentLayer {
     pub mean: Vec<f64>,
     /// Mean SRSF (length m).
     pub mean_srsf: Vec<f64>,
+    /// Optional: number of alignment iterations performed.
+    pub n_iter: Option<usize>,
+    /// Optional: whether the alignment converged.
+    pub converged: Option<bool>,
 }
 
 /// Precomputed n×n distance matrix with method metadata.
@@ -223,6 +237,12 @@ pub struct OutlierLayer {
     pub magnitude: Option<Vec<f64>>,
     /// Optional: shape outlyingness.
     pub shape: Option<Vec<f64>>,
+    /// Optional: outliergram parabola intercept coefficient.
+    pub outliergram_a0: Option<f64>,
+    /// Optional: outliergram parabola linear coefficient.
+    pub outliergram_a1: Option<f64>,
+    /// Optional: outliergram parabola quadratic coefficient.
+    pub outliergram_a2: Option<f64>,
 }
 
 /// Cluster assignments.
@@ -269,6 +289,10 @@ pub struct RegressionLayer {
     pub argvals: Option<Vec<f64>>,
     /// Pointwise standard errors of β(t).
     pub beta_se: Option<Vec<f64>>,
+    /// Optional: human-readable model name.
+    pub model_name: Option<String>,
+    /// Optional: number of training observations.
+    pub n_obs: Option<usize>,
 }
 
 /// Function-on-scalar regression fit.
@@ -321,6 +345,12 @@ pub struct SpmChartLayer {
     pub ncomp: usize,
     /// Significance level.
     pub alpha: f64,
+    /// Optional: eigenvalues from FPCA (length ncomp).
+    pub eigenvalues: Option<Vec<f64>>,
+    /// Optional: FPCA mean function (length m).
+    pub fpca_mean: Option<Vec<f64>>,
+    /// Optional: FPCA integration weights (length m).
+    pub fpca_weights: Option<Vec<f64>>,
 }
 
 /// SPM Phase II monitoring result.
@@ -371,8 +401,7 @@ impl FdaData {
         Self {
             curves: Some(curves),
             argvals: Some(argvals),
-            grouping: None,
-            group_names: None,
+            grouping: Vec::new(),
             scalar_vars: Vec::new(),
             tabular: None,
             column_names: None,
@@ -385,8 +414,7 @@ impl FdaData {
         Self {
             curves: None,
             argvals: None,
-            grouping: None,
-            group_names: None,
+            grouping: Vec::new(),
             scalar_vars: Vec::new(),
             tabular: Some(tabular),
             column_names: Some(column_names),
@@ -399,8 +427,7 @@ impl FdaData {
         Self {
             curves: None,
             argvals: None,
-            grouping: None,
-            group_names: None,
+            grouping: Vec::new(),
             scalar_vars: Vec::new(),
             tabular: None,
             column_names: None,
@@ -543,6 +570,28 @@ impl FdaData {
             .find(|v| v.name == name)
             .map(|v| v.values.as_slice())
     }
+
+    /// Add a grouping variable with per-observation string labels.
+    ///
+    /// Unique labels are computed automatically in order of first appearance.
+    pub fn add_grouping(&mut self, name: impl Into<String>, labels: Vec<String>) {
+        let mut unique = Vec::new();
+        for lab in &labels {
+            if !unique.contains(lab) {
+                unique.push(lab.clone());
+            }
+        }
+        self.grouping.push(GroupVar {
+            name: name.into(),
+            labels,
+            unique,
+        });
+    }
+
+    /// Look up a grouping variable by name.
+    pub fn get_grouping(&self, name: &str) -> Option<&GroupVar> {
+        self.grouping.iter().find(|g| g.name == name)
+    }
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -621,6 +670,9 @@ mod tests {
                 mbd: None,
                 magnitude: None,
                 shape: None,
+                outliergram_a0: None,
+                outliergram_a1: None,
+                outliergram_a2: None,
             }),
         );
         fd.set_layer(

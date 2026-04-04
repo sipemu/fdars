@@ -2559,3 +2559,90 @@ fn test_tsrvf_tangent_vectors_no_spikes() {
         }
     }
 }
+
+// ── AlignmentOutput trait ──
+
+/// Helper: exercise all `AlignmentOutput` methods on any implementor.
+fn assert_alignment_output_valid(out: &dyn AlignmentOutput, n: usize, m: usize) {
+    assert_eq!(out.mean().len(), m);
+    assert_eq!(out.mean_srsf().len(), m);
+    assert_eq!(out.aligned_data().shape(), (n, m));
+    assert_eq!(out.gammas().shape(), (n, m));
+    // n_iter and converged are informational – just call them.
+    let _ = out.n_iter();
+    let _ = out.converged();
+}
+
+#[test]
+fn test_alignment_output_karcher() {
+    let m = 51;
+    let argvals = uniform_grid(m);
+    let data = make_test_data(6, m, 99);
+    let result = karcher_mean(&data, &argvals, 3, 1e-3, 0.0);
+    assert_alignment_output_valid(&result, 6, m);
+}
+
+#[test]
+fn test_alignment_output_robust_karcher() {
+    let m = 51;
+    let argvals = uniform_grid(m);
+    let data = make_test_data(6, m, 99);
+    let config = RobustKarcherConfig {
+        max_iter: 3,
+        ..Default::default()
+    };
+    let result = robust_karcher_mean(&data, &argvals, &config).unwrap();
+    assert_alignment_output_valid(&result, 6, m);
+}
+
+#[test]
+fn test_alignment_output_dyn_dispatch() {
+    // Verify that different result types can be used interchangeably
+    // through a trait-object reference.
+    let m = 51;
+    let argvals = uniform_grid(m);
+    let data = make_test_data(6, m, 99);
+
+    let karcher = karcher_mean(&data, &argvals, 3, 1e-3, 0.0);
+    let config = RobustKarcherConfig {
+        max_iter: 3,
+        ..Default::default()
+    };
+    let robust = robust_karcher_mean(&data, &argvals, &config).unwrap();
+
+    let outputs: Vec<&dyn AlignmentOutput> = vec![&karcher, &robust];
+    for out in &outputs {
+        assert_eq!(out.mean().len(), m);
+        assert_eq!(out.gammas().shape().0, 6);
+    }
+}
+
+#[test]
+fn test_robust_karcher_to_karcher_conversion() {
+    let m = 51;
+    let argvals = uniform_grid(m);
+    let data = make_test_data(6, m, 99);
+    let config = RobustKarcherConfig {
+        max_iter: 3,
+        ..Default::default()
+    };
+    let robust = robust_karcher_mean(&data, &argvals, &config).unwrap();
+
+    // Snapshot the values before the move.
+    let expected_mean = robust.mean.clone();
+    let expected_srsf = robust.mean_srsf.clone();
+    let expected_n_iter = robust.n_iter;
+    let expected_converged = robust.converged;
+    let expected_gammas_shape = robust.gammas.shape();
+    let expected_aligned_shape = robust.aligned_data.shape();
+
+    let converted: KarcherMeanResult = robust.into();
+
+    assert_eq!(converted.mean, expected_mean);
+    assert_eq!(converted.mean_srsf, expected_srsf);
+    assert_eq!(converted.n_iter, expected_n_iter);
+    assert_eq!(converted.converged, expected_converged);
+    assert_eq!(converted.gammas.shape(), expected_gammas_shape);
+    assert_eq!(converted.aligned_data.shape(), expected_aligned_shape);
+    assert!(converted.aligned_srsfs.is_none());
+}

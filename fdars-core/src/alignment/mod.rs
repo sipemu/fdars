@@ -180,6 +180,83 @@ impl KarcherMeanResult {
     }
 }
 
+// ─── Trait: AlignmentOutput ─────────────────────────────────────────────────
+
+/// Common interface for alignment results, enabling interchangeable
+/// alignment methods in downstream analysis (elastic FPCA, regression, etc.).
+pub trait AlignmentOutput {
+    /// The estimated mean/template curve (length m).
+    fn mean(&self) -> &[f64];
+    /// The mean SRSF (length m).
+    fn mean_srsf(&self) -> &[f64];
+    /// The aligned curves (n × m).
+    fn aligned_data(&self) -> &FdMatrix;
+    /// The warping functions (n × m).
+    fn gammas(&self) -> &FdMatrix;
+    /// Whether the algorithm converged.
+    fn converged(&self) -> bool;
+    /// Number of iterations performed.
+    fn n_iter(&self) -> usize;
+}
+
+impl AlignmentOutput for KarcherMeanResult {
+    fn mean(&self) -> &[f64] {
+        &self.mean
+    }
+    fn mean_srsf(&self) -> &[f64] {
+        &self.mean_srsf
+    }
+    fn aligned_data(&self) -> &FdMatrix {
+        &self.aligned_data
+    }
+    fn gammas(&self) -> &FdMatrix {
+        &self.gammas
+    }
+    fn converged(&self) -> bool {
+        self.converged
+    }
+    fn n_iter(&self) -> usize {
+        self.n_iter
+    }
+}
+
+impl AlignmentOutput for RobustKarcherResult {
+    fn mean(&self) -> &[f64] {
+        &self.mean
+    }
+    fn mean_srsf(&self) -> &[f64] {
+        &self.mean_srsf
+    }
+    fn aligned_data(&self) -> &FdMatrix {
+        &self.aligned_data
+    }
+    fn gammas(&self) -> &FdMatrix {
+        &self.gammas
+    }
+    fn converged(&self) -> bool {
+        self.converged
+    }
+    fn n_iter(&self) -> usize {
+        self.n_iter
+    }
+}
+
+// ─── Conversions ───────────────────────────────────────────────────────────
+
+impl From<RobustKarcherResult> for KarcherMeanResult {
+    fn from(r: RobustKarcherResult) -> Self {
+        Self {
+            mean: r.mean,
+            mean_srsf: r.mean_srsf,
+            gammas: r.gammas,
+            aligned_data: r.aligned_data,
+            n_iter: r.n_iter,
+            converged: r.converged,
+            aligned_srsfs: None,
+        }
+    }
+}
+
 // ─── Dynamic Programming Alignment ──────────────────────────────────────────
 // Faithful port of fdasrvf's DP algorithm (dp_grid.cpp / dp_nbhd.cpp).
 
