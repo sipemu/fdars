@@ -253,6 +253,12 @@ pub enum NormalizationMethod {
     CurveStandardize,
     /// Per-curve range normalization to [0, 1].
     CurveRange,
+    /// Per-curve Lp normalization: divide each curve by its Lp norm.
+    ///
+    /// Common choices: `p = 1.0` (L1), `p = 2.0` (L2 / unit sphere),
+    /// `p = f64::INFINITY` (L-inf / max-norm). Requires `argvals` for
+    /// integration — use [`normalize_with_argvals`] instead of [`normalize`].
+    CurveLp(f64),
 }
 
 /// Normalize functional data using the specified method.
@@ -267,6 +273,13 @@ pub enum NormalizationMethod {
 /// - `CurveCenter`: subtract each curve's own mean
 /// - `CurveStandardize`: subtract mean, divide by std dev per curve
 /// - `CurveRange`: scale each curve to [0, 1]
+/// - `CurveLp(p)`: divide each curve by its Lp norm — requires `argvals`,
+///   use [`normalize_with_argvals`] instead
+///
+/// # Panics
+///
+/// Panics if `CurveLp` is used without argvals. Use [`normalize_with_argvals`]
+/// for Lp normalization.
 ///
 /// # Examples
 ///
@@ -283,6 +296,42 @@ pub enum NormalizationMethod {
 /// assert_eq!(scaled.shape(), (2, 3));
 /// ```
 pub fn normalize(data: &FdMatrix, method: NormalizationMethod) -> FdMatrix {
+    match method {
+        NormalizationMethod::CurveLp(_) => {
+            panic!("CurveLp requires argvals — use normalize_with_argvals()")
+        }
+        _ => {
+            let argvals: Vec<f64> = (0..data.ncols())
+                .map(|j| j as f64 / (data.ncols() - 1).max(1) as f64)
+                .collect();
+            normalize_with_argvals(data, &argvals, method)
+        }
+    }
+}
+
+/// Normalize functional data with an evaluation grid.
+///
+/// Same as [`normalize`] but accepts `argvals` for integration-based methods
+/// (`CurveLp`). For non-Lp methods, `argvals` is ignored.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{normalize_with_argvals, NormalizationMethod};
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+/// let t = vec![0.0, 1.0];
+///
+/// // L2 normalization: each curve has unit L2 norm
+/// let l2 = normalize_with_argvals(&data, &t, NormalizationMethod::CurveLp(2.0));
+/// assert_eq!(l2.shape(), (2, 2));
+/// ```
+pub fn normalize_with_argvals(
+    data: &FdMatrix,
+    argvals: &[f64],
+    method: NormalizationMethod,
+) -> FdMatrix {
     let (n, m) = data.shape();
     if n == 0 || m == 0 {
         return FdMatrix::zeros(n, m);
@@ -296,6 +345,7 @@ pub fn normalize(data: &FdMatrix, method: NormalizationMethod) -> FdMatrix {
         NormalizationMethod::CurveCenter => row_normalize(data, n, m, RowNorm::Center),
         NormalizationMethod::CurveStandardize => row_normalize(data, n, m, RowNorm::Standardize),
         NormalizationMethod::CurveRange => row_normalize(data, n, m, RowNorm::Range),
+        NormalizationMethod::CurveLp(p) => curve_lp_normalize(data, argvals, n, m, p),
     }
 }
 
@@ -372,6 +422,30 @@ fn row_normalize(data: &FdMatrix, n: usize, m: usize, kind: RowNorm) -> FdMatrix
                 for j in 0..m {
                     result[(i, j)] = (row[j] - min) / denom;
                 }
+            }
+        }
+    }
+    result
+}
+
+/// Per-curve Lp normalization: divide each curve by its Lp norm.
+fn curve_lp_normalize(data: &FdMatrix, argvals: &[f64], n: usize, m: usize, p: f64) -> FdMatrix {
+    let mut result = FdMatrix::zeros(n, m);
+    if p.is_infinite() {
+        // L-infinity: divide by max|f(t)|
+        for i in 0..n {
+            let max_abs = (0..m).map(|j| data[(i, j)].abs()).fold(0.0f64, f64::max);
+            let denom = if max_abs > 1e-15 { max_abs } else { 1.0 };
+            for j in 0..m {
+                result[(i, j)] = data[(i, j)] / denom;
+            }
+        }
+    } else {
+        let norms = norm_lp_1d(data, argvals, p);
+        for i in 0..n {
+            let denom = if norms[i] > 1e-15 { norms[i] } else { 1.0 };
+            for j in 0..m {
+                result[(i, j)] = data[(i, j)] / denom;
             }
         }
     }
@@ -1231,5 +1305,65 @@ mod tests {
         let a = center_1d(&data);
         let b = normalize(&data, NormalizationMethod::Center);
         assert_eq!(a.as_slice(), b.as_slice());
+    }
+
+    #[test]
+    fn test_normalize_curve_lp_l2() {
+        // 2 curves on 3 points, uniform grid [0, 1]
+        let data = FdMatrix::from_column_major(vec![3.0, 0.0, 0.0, 4.0, 0.0, 0.0], 2, 3).unwrap();
+        let t = vec![0.0, 0.5, 1.0];
+        let result = normalize_with_argvals(&data, &t, NormalizationMethod::CurveLp(2.0));
+        // Curve 0: [3, 0, 0], L2 norm = sqrt(∫ 9 dt) on [0,1] with trapezoidal ≈ sqrt(9*0.5) ~ 2.12
+        // After normalization, L2 norm should be ≈ 1
+        let norms = norm_lp_1d(&result, &t, 2.0);
+        assert!(
+            (norms[0] - 1.0).abs() < 0.1,
+            "L2 norm after normalization should be ≈ 1, got {}",
+            norms[0]
+        );
+    }
+
+    #[test]
+    fn test_normalize_curve_lp_l1() {
+        let data = FdMatrix::from_column_major(vec![2.0, 4.0, 6.0, 8.0], 2, 2).unwrap();
+        let t = vec![0.0, 1.0];
+        let result = normalize_with_argvals(&data, &t, NormalizationMethod::CurveLp(1.0));
+        // After L1 normalization, L1 norm of each curve should be ≈ 1
+        let norms = norm_lp_1d(&result, &t, 1.0);
+        for (i, &norm) in norms.iter().enumerate() {
+            assert!(
+                (norm - 1.0).abs() < 0.1,
+                "curve {i} L1 norm after normalization should be ≈ 1, got {norm}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_curve_lp_linf() {
+        let data =
+            FdMatrix::from_column_major(vec![2.0, -5.0, 4.0, -10.0, 6.0, 15.0], 2, 3).unwrap();
+        let t = vec![0.0, 0.5, 1.0];
+        let result = normalize_with_argvals(&data, &t, NormalizationMethod::CurveLp(f64::INFINITY));
+        // L-inf norm = max |f(t)|; after normalization, max abs value should be ≈ 1
+        for i in 0..2 {
+            let max_abs: f64 = (0..3).map(|j| result[(i, j)].abs()).fold(0.0, f64::max);
+            assert!(
+                (max_abs - 1.0).abs() < 1e-10,
+                "curve {i} max abs after L-inf normalization should be 1, got {max_abs}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_curve_lp_zero_curve() {
+        // Zero curve should stay zero (not divide by zero)
+        let data = FdMatrix::from_column_major(vec![0.0, 1.0, 0.0, 2.0], 2, 2).unwrap();
+        let t = vec![0.0, 1.0];
+        let result = normalize_with_argvals(&data, &t, NormalizationMethod::CurveLp(2.0));
+        // Curve 0 is all zeros — should remain zero
+        assert!((result[(0, 0)]).abs() < 1e-15);
+        assert!((result[(0, 1)]).abs() < 1e-15);
+        // Curve 1 should be normalized
+        assert!(result[(1, 0)].abs() > 0.0);
     }
 }

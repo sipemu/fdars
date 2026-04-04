@@ -5,6 +5,12 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0]
+
+### Added
+
+- **`normalize()` / `normalize_with_argvals()`** (`fdata.rs`): Unified normalization with 8 methods via `NormalizationMethod` enum — column-wise: `Center`, `Autoscale` (unit variance), `Pareto` (sqrt-std), `Range` (min-max); row-wise: `CurveCenter`, `CurveStandardize`, `CurveRange`, `CurveLp(p)` (L1, L2, L-inf, any Lp via integration). (11 tests)
+
 ## [0.12.2]
 
 ### Added
