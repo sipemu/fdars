@@ -199,6 +199,25 @@ pub struct AlignmentLayer {
     pub converged: Option<bool>,
 }
 
+impl AlignmentLayer {
+    /// Reconstruct a [`crate::alignment::KarcherMeanResult`] from this layer's fields.
+    ///
+    /// This enables downstream functions that require `&KarcherMeanResult`
+    /// (e.g., `elastic_fpca`, `elastic_changepoint`) to work from a
+    /// serialized/restored `AlignmentLayer`.
+    pub fn to_karcher_mean_result(&self) -> crate::alignment::KarcherMeanResult {
+        crate::alignment::KarcherMeanResult {
+            mean: self.mean.clone(),
+            mean_srsf: self.mean_srsf.clone(),
+            gammas: self.warps.clone(),
+            aligned_data: self.aligned.clone(),
+            n_iter: self.n_iter.unwrap_or(0),
+            converged: self.converged.unwrap_or(true),
+            aligned_srsfs: None,
+        }
+    }
+}
+
 /// Precomputed n×n distance matrix with method metadata.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -295,6 +314,12 @@ pub struct RegressionLayer {
     pub n_obs: Option<usize>,
     /// Optional: FPCA decomposition used by the model (needed for explain functions).
     pub fpca: Option<Box<FpcaLayer>>,
+    /// Optional: model selection details (ncomp candidates, GCV/AIC/BIC scores).
+    #[cfg(feature = "serde")]
+    pub selection_extra: Option<serde_json::Value>,
+    /// Optional: model selection details.
+    #[cfg(not(feature = "serde"))]
+    pub selection_extra: Option<HashMap<String, Vec<f64>>>,
 }
 
 /// Function-on-scalar regression fit.
@@ -355,6 +380,32 @@ pub struct SpmChartLayer {
     pub fpca_rotation: Option<FdMatrix>,
     /// Optional: FPCA integration weights (length m).
     pub fpca_weights: Option<Vec<f64>>,
+}
+
+impl SpmChartLayer {
+    /// Create from an [`crate::spm::SpmChart`] (lossless — stores all fields needed for monitoring).
+    pub fn from_chart(chart: &crate::spm::SpmChart) -> Self {
+        Self {
+            t2_limit: chart.t2_limit.ucl,
+            spe_limit: chart.spe_limit.ucl,
+            t2_stats: chart.t2_phase1.clone(),
+            spe_stats: chart.spe_phase1.clone(),
+            ncomp: chart.eigenvalues.len(),
+            alpha: chart.config.alpha,
+            eigenvalues: Some(chart.eigenvalues.clone()),
+            fpca_mean: Some(chart.fpca.mean.clone()),
+            fpca_rotation: Some(chart.fpca.rotation.clone()),
+            fpca_weights: Some(chart.fpca.weights.clone()),
+        }
+    }
+
+    /// Check if this layer has enough state for field-based monitoring.
+    pub fn can_monitor(&self) -> bool {
+        self.eigenvalues.is_some()
+            && self.fpca_mean.is_some()
+            && self.fpca_rotation.is_some()
+            && self.fpca_weights.is_some()
+    }
 }
 
 /// SPM Phase II monitoring result.
@@ -662,6 +713,7 @@ impl From<&crate::scalar_on_function::FregreLmResult> for RegressionLayer {
             model_name: None,
             n_obs: Some(fit.fitted_values.len()),
             fpca: Some(Box::new(fpca_layer)),
+            selection_extra: None,
         }
     }
 }
@@ -683,6 +735,7 @@ impl From<&crate::scalar_on_function::PlsRegressionResult> for RegressionLayer {
             model_name: None,
             n_obs: Some(fit.fitted_values.len()),
             fpca: None, // PLS uses a different decomposition; no FPCA layer
+            selection_extra: None,
         }
     }
 }
