@@ -5,6 +5,25 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0]
+
+### Added
+
+- **`AlignmentOutput` trait** (#26): Common interface (`mean`, `mean_srsf`, `aligned_data`, `gammas`, `converged`, `n_iter`) implemented for `KarcherMeanResult` and `RobustKarcherResult`. `From<RobustKarcherResult> for KarcherMeanResult` conversion. Enables interchangeable alignment methods in downstream code.
+- **`FdaData` layer enhancements** (#28): Multiple grouping variables (`Vec<GroupVar>`), outliergram parabola coefficients, regression model metadata (`model_name`, `n_obs`), alignment convergence info, SPM FPCA state.
+- **Shared `linalg.rs` module**: Unified `cholesky_factor`, `cholesky_solve`, `cholesky_forward_back`, `compute_xtx` — eliminates 4x Cholesky duplication.
+- **Shared `distance.rs` module**: Generic `pairwise_distance_matrix` builder with closure-based distance + parallelism. Presets: `l2_distance_matrix`, `euclidean_distance_matrix`, `cross_distance_matrix`.
+- **Shared `validation.rs` module**: `validate_fdata`, `validate_response`, `validate_labels`, `validate_dist_mat`, `validate_ncomp`.
+- **Shared helpers**: `gaussian_kernel`, `bandwidth_candidates_from_dists`, `quantile_sorted`, `r_squared`, `r_squared_adj`, `aic`, `bic`.
+- **`CvSelectionResult<T>`**: Generic CV hyperparameter selection result type.
+
+### Fixed
+
+- **Deduplicated `quantile_sorted`** (4 implementations → 1 canonical in `helpers.rs`). Fixed unsafe `floor() as usize` without bounds check in `scalar_on_function/bootstrap.rs`.
+- **Deduplicated `subset_rows`** (3 implementations → 1 in `cv.rs`).
+- **Removed dead code**: `_srsf_single_wrapper` in generative.rs, dead `quantile_sorted` in conformal/mod.rs.
+- **Consistent conventions**: Added `#[non_exhaustive]` to 17 public structs, `PartialEq` to 6 structs missing it.
+
 ## [0.11.0]
 
 ### Breaking Changes
