@@ -64,6 +64,7 @@ pub mod streaming_depth;
 pub mod tolerance;
 pub mod utility;
 pub mod warping;
+pub mod wire;
 
 // Covariance kernels and Gaussian processes
 pub mod covariance;
