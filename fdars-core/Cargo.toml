@@ -20,7 +20,8 @@ rust-version = "1.81"
 # The R package (fdars-r) uses default-features = false
 default = ["parallel"]
 parallel = ["rayon"]
-# Linear algebra features (requires Rust 1.84+, not WASM-compatible)
+# Ridge regression via faer/anofox-regression (requires Rust 1.84+, not WASM-compatible).
+# Basic linear algebra (Cholesky, OLS) is always available in linalg.rs.
 linalg = ["faer", "anofox-regression"]
 # Serde serialization support for persistent workflows
 serde = ["dep:serde", "dep:serde_json"]

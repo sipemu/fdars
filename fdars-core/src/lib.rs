@@ -14,6 +14,40 @@
 //! - Seasonal analysis (period estimation, peak detection, seasonal strength)
 //! - Detrending and decomposition for non-stationary data
 //!
+//! ## Imports
+//!
+//! Items are organized into domain-specific submodules. Prefer importing from
+//! the submodule for clarity:
+//!
+//! ```rust,no_run
+//! use fdars_core::matrix::FdMatrix;
+//! use fdars_core::alignment::{karcher_mean, elastic_align_pair, AlignmentOutput};
+//! use fdars_core::spm::{spm_phase1, spm_monitor, SpmConfig};
+//! use fdars_core::regression::fdata_to_pc_1d;
+//! use fdars_core::scalar_on_function::{fregre_lm, fregre_pls};
+//! use fdars_core::cv::{cv_fdata_with_metrics, regression_metrics};
+//! use fdars_core::distance::pairwise_distance_matrix;
+//! ```
+//!
+//! All public items are also re-exported at the crate root for convenience:
+//! ```rust,no_run
+//! use fdars_core::{FdMatrix, karcher_mean, spm_phase1, fdata_to_pc_1d};
+//! ```
+//!
+//! The [`prelude`] module provides the most commonly used types:
+//! ```rust,no_run
+//! use fdars_core::prelude::*;
+//! ```
+//!
+//! ## Feature Flags
+//!
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `parallel` | **yes** | Enables rayon-based parallelism via `iter_maybe_parallel!` macro |
+//! | `linalg` | no | Enables `faer` and `anofox-regression` dependencies (requires Rust 1.84+). Gates `ridge_regression_fit`. Not WASM-compatible. |
+//! | `serde` | no | Adds `Serialize`/`Deserialize` to core types (`FdMatrix`, `FpcaResult`, `SpmChart`, etc.) and enables `serde_json::Value` in `ExplainLayer.extra`. |
+//! | `js` | no | Enables `getrandom/js` for WASM builds. |
+//!
 //! ## Data Layout
 //!
 //! Functional data is represented using the [`FdMatrix`] type, a column-major matrix

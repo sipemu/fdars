@@ -333,6 +333,80 @@ impl FdMatrix {
         }
     }
 
+    /// Extract a submatrix by row and column indices.
+    ///
+    /// Returns a new `FdMatrix` containing only the specified rows and columns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    ///
+    /// let mat = FdMatrix::from_column_major(
+    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+    ///     3, 3,
+    /// ).unwrap();
+    ///
+    /// // Extract rows [0, 2] and columns [1, 2]
+    /// let sub = mat.submatrix(&[0, 2], &[1, 2]);
+    /// assert_eq!(sub.shape(), (2, 2));
+    /// assert_eq!(sub[(0, 0)], 4.0); // row 0, col 1 of original
+    /// assert_eq!(sub[(1, 1)], 9.0); // row 2, col 2 of original
+    /// ```
+    pub fn submatrix(&self, rows: &[usize], cols: &[usize]) -> Self {
+        let nr = rows.len();
+        let nc = cols.len();
+        let mut data = vec![0.0; nr * nc];
+        for (jj, &col) in cols.iter().enumerate() {
+            for (ii, &row) in rows.iter().enumerate() {
+                data[ii + jj * nr] = self.data[row + col * self.nrows];
+            }
+        }
+        Self {
+            data,
+            nrows: nr,
+            ncols: nc,
+        }
+    }
+
+    /// Extract a submatrix selecting only specific rows (all columns kept).
+    ///
+    /// Equivalent to `submatrix(rows, &(0..ncols).collect::<Vec<_>>())` but
+    /// more efficient.
+    pub fn select_rows(&self, rows: &[usize]) -> Self {
+        let nr = rows.len();
+        let nc = self.ncols;
+        let mut data = vec![0.0; nr * nc];
+        for j in 0..nc {
+            for (ii, &row) in rows.iter().enumerate() {
+                data[ii + j * nr] = self.data[row + j * self.nrows];
+            }
+        }
+        Self {
+            data,
+            nrows: nr,
+            ncols: nc,
+        }
+    }
+
+    /// Extract a submatrix selecting only specific columns (all rows kept).
+    ///
+    /// Efficient for column-major layout — each column is a contiguous copy.
+    pub fn select_columns(&self, cols: &[usize]) -> Self {
+        let nr = self.nrows;
+        let nc = cols.len();
+        let mut data = vec![0.0; nr * nc];
+        for (jj, &col) in cols.iter().enumerate() {
+            let src = &self.data[col * nr..(col + 1) * nr];
+            data[jj * nr..(jj + 1) * nr].copy_from_slice(src);
+        }
+        Self {
+            data,
+            nrows: nr,
+            ncols: nc,
+        }
+    }
+
     /// Set element at (row, col) with bounds checking.
     #[inline]
     pub fn set(&mut self, row: usize, col: usize, value: f64) -> bool {
