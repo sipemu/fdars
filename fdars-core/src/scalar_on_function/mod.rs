@@ -17,6 +17,7 @@
 //! - [`fregre_cv`]: Cross-validation for number of FPC components
 
 use crate::error::FdarError;
+use crate::linalg::cholesky_solve as linalg_cholesky_solve;
 use crate::matrix::FdMatrix;
 use crate::regression::{FpcaResult, PlsResult};
 
@@ -282,25 +283,14 @@ pub struct FregreNpCvResult {
 }
 
 // ---------------------------------------------------------------------------
-// Shared linear algebra helpers
+// Shared linear algebra helpers (delegated to crate::linalg)
 // ---------------------------------------------------------------------------
 
-/// Compute X'X (symmetric, p×p stored flat row-major).
-pub(crate) fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
-    let (n, p) = x.shape();
-    let mut xtx = vec![0.0; p * p];
-    for k in 0..p {
-        for j in k..p {
-            let mut s = 0.0;
-            for i in 0..n {
-                s += x[(i, k)] * x[(i, j)];
-            }
-            xtx[k * p + j] = s;
-            xtx[j * p + k] = s;
-        }
-    }
-    xtx
-}
+// Re-export for use by submodules and explain/ modules that import from
+// `crate::scalar_on_function::{cholesky_factor, cholesky_forward_back, compute_xtx}`.
+pub(crate) use crate::linalg::cholesky_factor;
+pub(crate) use crate::linalg::cholesky_forward_back;
+pub(crate) use crate::linalg::compute_xtx;
 
 /// Compute X'y (length p).
 fn compute_xty(x: &FdMatrix, y: &[f64]) -> Vec<f64> {
@@ -316,54 +306,9 @@ fn compute_xty(x: &FdMatrix, y: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-/// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or error if singular.
-pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
-    let mut l = vec![0.0; p * p];
-    for j in 0..p {
-        let mut diag = a[j * p + j];
-        for k in 0..j {
-            diag -= l[j * p + k] * l[j * p + k];
-        }
-        if diag <= 1e-12 {
-            return Err(FdarError::ComputationFailed {
-                operation: "Cholesky factorization",
-                detail: "matrix is singular or near-singular; try reducing ncomp or check for collinear FPC scores".into(),
-            });
-        }
-        l[j * p + j] = diag.sqrt();
-        for i in (j + 1)..p {
-            let mut s = a[i * p + j];
-            for k in 0..j {
-                s -= l[i * p + k] * l[j * p + k];
-            }
-            l[i * p + j] = s / l[j * p + j];
-        }
-    }
-    Ok(l)
-}
-
-/// Solve Lz = b (forward) then L'x = z (back). L is p×p flat row-major.
-pub(crate) fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
-    let mut z = b.to_vec();
-    for j in 0..p {
-        for k in 0..j {
-            z[j] -= l[j * p + k] * z[k];
-        }
-        z[j] /= l[j * p + j];
-    }
-    for j in (0..p).rev() {
-        for k in (j + 1)..p {
-            z[j] -= l[k * p + j] * z[k];
-        }
-        z[j] /= l[j * p + j];
-    }
-    z
-}
-
 /// Solve Ax = b via Cholesky decomposition (A must be symmetric positive definite).
 pub(super) fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
-    let l = cholesky_factor(a, p)?;
-    Ok(cholesky_forward_back(&l, b, p))
+    linalg_cholesky_solve(a, b, p)
 }
 
 /// Compute hat matrix diagonal: H_ii = x_i' (X'X)^{-1} x_i, given Cholesky factor L of X'X.

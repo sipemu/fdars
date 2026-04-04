@@ -13,72 +13,11 @@
 
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
+use crate::linalg::{cholesky_factor, cholesky_forward_back, compute_xtx};
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
-
-// ---------------------------------------------------------------------------
-// Linear algebra helpers (self-contained)
-// ---------------------------------------------------------------------------
-
-/// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or None if singular.
-fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
-    let mut l = vec![0.0; p * p];
-    for j in 0..p {
-        let mut diag = a[j * p + j];
-        for k in 0..j {
-            diag -= l[j * p + k] * l[j * p + k];
-        }
-        if diag <= 1e-12 {
-            return None;
-        }
-        l[j * p + j] = diag.sqrt();
-        for i in (j + 1)..p {
-            let mut s = a[i * p + j];
-            for k in 0..j {
-                s -= l[i * p + k] * l[j * p + k];
-            }
-            l[i * p + j] = s / l[j * p + j];
-        }
-    }
-    Some(l)
-}
-
-/// Solve Lz = b (forward) then L'x = z (back).
-fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
-    let mut z = b.to_vec();
-    for j in 0..p {
-        for k in 0..j {
-            z[j] -= l[j * p + k] * z[k];
-        }
-        z[j] /= l[j * p + j];
-    }
-    for j in (0..p).rev() {
-        for k in (j + 1)..p {
-            z[j] -= l[k * p + j] * z[k];
-        }
-        z[j] /= l[j * p + j];
-    }
-    z
-}
-
-/// Compute X'X (symmetric, p×p stored flat row-major).
-pub(crate) fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
-    let (n, p) = x.shape();
-    let mut xtx = vec![0.0; p * p];
-    for k in 0..p {
-        for j in k..p {
-            let mut s = 0.0;
-            for i in 0..n {
-                s += x[(i, k)] * x[(i, j)];
-            }
-            xtx[k * p + j] = s;
-            xtx[j * p + k] = s;
-        }
-    }
-    xtx
-}
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -195,12 +134,7 @@ fn penalized_solve(
     }
 
     // Cholesky factor
-    let l = cholesky_factor(&a, p).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "penalized_solve",
-        detail: format!(
-            "Cholesky factorization of (X'X + {lambda:.4}*P) failed; matrix is singular — try increasing lambda or removing collinear basis columns"
-        ),
-    })?;
+    let l = cholesky_factor(&a, p)?;
 
     // Solve for each grid point
     let mut beta = FdMatrix::zeros(p, m);
@@ -471,7 +405,7 @@ fn compute_trace_hat(xtx: &[f64], penalty: &[f64], lambda: f64, p: usize, n: usi
     }
     // tr(H) = tr(X A^{-1} X') = Σ_{j=0..p} a^{-1}_{jj} * xtx_{jj}
     // More precisely: tr(X (X'X+λP)^{-1} X') = tr((X'X+λP)^{-1} X'X)
-    let Some(l) = cholesky_factor(&a, p) else {
+    let Ok(l) = cholesky_factor(&a, p) else {
         return p as f64; // fallback
     };
 
@@ -499,7 +433,7 @@ fn compute_beta_se(
     for i in 0..p * p {
         a[i] = xtx[i] + lambda * penalty[i];
     }
-    let Some(l) = cholesky_factor(&a, p) else {
+    let Ok(l) = cholesky_factor(&a, p) else {
         return FdMatrix::zeros(p, m);
     };
 
@@ -539,10 +473,7 @@ fn regress_scores_on_design(
     p_total: usize,
 ) -> Result<Vec<Vec<f64>>, FdarError> {
     let xtx = compute_xtx(design);
-    let l = cholesky_factor(&xtx, p_total).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "regress_scores_on_design",
-        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient — remove constant or collinear predictors, or add regularization".to_string(),
-    })?;
+    let l = cholesky_factor(&xtx, p_total)?;
 
     let gamma_all: Vec<Vec<f64>> = (0..k)
         .map(|comp| {

@@ -581,6 +581,61 @@ fn compute_metrics(y_true: &[f64], y_pred: &[f64], cv_type: CvType) -> CvMetrics
     }
 }
 
+// ─── Generic CV Selection Result ────────────────────────────────────────────
+
+/// Generic cross-validation result for hyperparameter selection.
+///
+/// Provides a type-safe way to represent the outcome of any CV-based parameter
+/// search. Existing specialised types ([`super::scalar_on_function::FregreCvResult`],
+/// etc.) remain unchanged; new code can use `CvSelectionResult<f64>` for lambda
+/// or bandwidth CV, `CvSelectionResult<usize>` for component-count CV, and so on.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::cv::CvSelectionResult;
+///
+/// let candidates: Vec<f64> = vec![0.01, 0.1, 1.0, 10.0];
+/// let cv_errors = vec![2.5, 1.2, 0.8, 1.5];
+/// let result = CvSelectionResult::from_search(candidates, cv_errors).unwrap();
+/// assert!((result.optimal - 1.0_f64).abs() < 1e-15);
+/// assert!((result.min_error - 0.8).abs() < 1e-15);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct CvSelectionResult<T: Clone> {
+    /// Candidate parameter values tested.
+    pub candidates: Vec<T>,
+    /// CV error (e.g., MSE) for each candidate.
+    pub cv_errors: Vec<f64>,
+    /// Optimal parameter value (minimising CV error).
+    pub optimal: T,
+    /// Minimum CV error.
+    pub min_error: f64,
+}
+
+impl<T: Clone + PartialOrd> CvSelectionResult<T> {
+    /// Create from candidates and errors, selecting the minimum.
+    ///
+    /// Returns `None` if `candidates` is empty or lengths differ.
+    #[must_use]
+    pub fn from_search(candidates: Vec<T>, cv_errors: Vec<f64>) -> Option<Self> {
+        if candidates.is_empty() || candidates.len() != cv_errors.len() {
+            return None;
+        }
+        let (idx, &min_error) = cv_errors
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.total_cmp(b))?;
+        Some(Self {
+            optimal: candidates[idx].clone(),
+            candidates,
+            cv_errors,
+            min_error,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,5 +835,49 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    // ── CvSelectionResult ───────────────────────────────────────────────
+
+    #[test]
+    fn cv_selection_basic() {
+        let candidates: Vec<f64> = vec![0.01, 0.1, 1.0, 10.0];
+        let cv_errors = vec![2.5, 1.2, 0.8, 1.5];
+        let result = CvSelectionResult::from_search(candidates, cv_errors).unwrap();
+        assert!((result.optimal - 1.0_f64).abs() < 1e-15);
+        assert!((result.min_error - 0.8).abs() < 1e-15);
+        assert_eq!(result.candidates.len(), 4);
+        assert_eq!(result.cv_errors.len(), 4);
+    }
+
+    #[test]
+    fn cv_selection_usize() {
+        let candidates = vec![1usize, 2, 3, 4, 5];
+        let cv_errors = vec![3.0, 2.0, 1.0, 1.5, 2.5];
+        let result = CvSelectionResult::from_search(candidates, cv_errors).unwrap();
+        assert_eq!(result.optimal, 3);
+        assert!((result.min_error - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn cv_selection_empty() {
+        let result = CvSelectionResult::<f64>::from_search(vec![], vec![]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn cv_selection_length_mismatch() {
+        let result = CvSelectionResult::<f64>::from_search(vec![1.0, 2.0], vec![1.0]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn cv_selection_nan_handling() {
+        // NaN errors should be ordered after finite values
+        let candidates: Vec<f64> = vec![1.0, 2.0, 3.0];
+        let cv_errors = vec![f64::NAN, 0.5, f64::NAN];
+        let result = CvSelectionResult::from_search(candidates, cv_errors).unwrap();
+        assert!((result.optimal - 2.0_f64).abs() < 1e-15);
+        assert!((result.min_error - 0.5).abs() < 1e-15);
     }
 }

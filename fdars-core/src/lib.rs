@@ -39,12 +39,15 @@ pub(crate) mod test_helpers;
 
 pub mod alignment;
 pub mod andrews;
+
+// Shared utility modules
 pub mod basis;
 pub mod classification;
 pub mod clustering;
 pub mod cv;
 pub mod depth;
 pub mod detrend;
+pub mod distance;
 pub mod famm;
 pub mod fdata;
 pub mod function_on_scalar;
@@ -63,6 +66,7 @@ pub mod smoothing;
 pub mod streaming_depth;
 pub mod tolerance;
 pub mod utility;
+pub mod validation;
 pub mod warping;
 pub mod wire;
 
@@ -311,7 +315,17 @@ pub use cv::{
     classification_metrics, create_folds, create_stratified_folds, cv_fdata, cv_fdata_with_metrics,
     fold_indices, metric_accuracy, metric_f1, metric_mae, metric_precision, metric_r_squared,
     metric_recall, metric_rmse, regression_metrics, subset_rows, subset_vec, CvFdataResult,
-    CvMetrics, CvType, MetricFn,
+    CvMetrics, CvSelectionResult, CvType, MetricFn,
+};
+
+// Re-export distance utilities
+pub use distance::{
+    cross_distance_matrix, euclidean_distance_matrix, l2_distance_matrix, pairwise_distance_matrix,
+};
+
+// Re-export validation utilities
+pub use validation::{
+    validate_dist_mat, validate_fdata, validate_labels, validate_ncomp, validate_response,
 };
 
 // Re-export smoothing CV types

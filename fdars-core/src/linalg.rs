@@ -1,6 +1,8 @@
-//! Shared linear algebra helpers: Cholesky, forward-solve, Mahalanobis distance.
+//! Shared linear algebra helpers: Cholesky, forward/backward substitution, OLS utilities,
+//! Mahalanobis distance.
 
 use crate::error::FdarError;
+use crate::matrix::FdMatrix;
 
 /// Cholesky factorization of a d×d row-major symmetric positive-definite matrix.
 ///
@@ -64,4 +66,86 @@ pub(crate) fn log_det_from_cholesky(l: &[f64], d: usize) -> f64 {
         s += l[i * d + i].ln();
     }
     2.0 * s
+}
+
+// ---------------------------------------------------------------------------
+// Unified Cholesky / OLS helpers (consolidation of duplicated code from
+// scalar_on_function, function_on_scalar, function_on_scalar_2d, famm)
+// ---------------------------------------------------------------------------
+
+/// Cholesky factorization: A = LL'.
+///
+/// Input: flat row-major p-by-p symmetric positive-definite matrix.
+/// Returns the lower-triangular factor L (p-by-p flat row-major).
+///
+/// # Errors
+///
+/// Returns [`FdarError::ComputationFailed`] if the matrix is singular or
+/// near-singular (diagonal element <= 1e-12 during factorization).
+pub(crate) fn cholesky_factor(a: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
+    let mut l = vec![0.0; p * p];
+    for j in 0..p {
+        let mut diag = a[j * p + j];
+        for k in 0..j {
+            diag -= l[j * p + k] * l[j * p + k];
+        }
+        if diag <= 1e-12 {
+            return Err(FdarError::ComputationFailed {
+                operation: "Cholesky factorization",
+                detail: "matrix is singular or near-singular; try reducing ncomp or check for collinear FPC scores".into(),
+            });
+        }
+        l[j * p + j] = diag.sqrt();
+        for i in (j + 1)..p {
+            let mut s = a[i * p + j];
+            for k in 0..j {
+                s -= l[i * p + k] * l[j * p + k];
+            }
+            l[i * p + j] = s / l[j * p + j];
+        }
+    }
+    Ok(l)
+}
+
+/// Solve Lz = b (forward substitution) then L'x = z (backward substitution).
+///
+/// L is a p-by-p lower-triangular matrix stored flat row-major.
+pub(crate) fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
+    let mut z = b.to_vec();
+    for j in 0..p {
+        for k in 0..j {
+            z[j] -= l[j * p + k] * z[k];
+        }
+        z[j] /= l[j * p + j];
+    }
+    for j in (0..p).rev() {
+        for k in (j + 1)..p {
+            z[j] -= l[k * p + j] * z[k];
+        }
+        z[j] /= l[j * p + j];
+    }
+    z
+}
+
+/// Solve Ax = b via Cholesky decomposition (A must be symmetric positive definite).
+pub(crate) fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Result<Vec<f64>, FdarError> {
+    let l = cholesky_factor(a, p)?;
+    Ok(cholesky_forward_back(&l, b, p))
+}
+
+/// Compute X'X (symmetric, p-by-p stored flat row-major).
+pub(crate) fn compute_xtx(x: &FdMatrix) -> Vec<f64> {
+    let (n, p) = x.shape();
+    let mut xtx = vec![0.0; p * p];
+    for k in 0..p {
+        for j in k..p {
+            let mut s = 0.0;
+            for i in 0..n {
+                s += x[(i, k)] * x[(i, j)];
+            }
+            xtx[k * p + j] = s;
+            xtx[j * p + k] = s;
+        }
+    }
+    xtx
 }

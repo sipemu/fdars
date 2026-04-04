@@ -17,8 +17,9 @@
 
 use crate::error::FdarError;
 use crate::function_on_scalar::{
-    build_fosr_design, compute_xtx, compute_xty_matrix, penalty_matrix, pointwise_r_squared,
+    build_fosr_design, compute_xty_matrix, penalty_matrix, pointwise_r_squared,
 };
+use crate::linalg::{cholesky_factor, cholesky_forward_back, compute_xtx};
 use crate::matrix::FdMatrix;
 
 // ---------------------------------------------------------------------------
@@ -151,52 +152,6 @@ impl FosrResult2d {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Linear algebra helpers
-// ---------------------------------------------------------------------------
-
-/// Cholesky factorization: A = LL'. Returns L (p x p flat row-major) or None
-/// if the matrix is not positive definite.
-fn cholesky_factor(a: &[f64], p: usize) -> Option<Vec<f64>> {
-    let mut l = vec![0.0; p * p];
-    for j in 0..p {
-        let mut diag = a[j * p + j];
-        for k in 0..j {
-            diag -= l[j * p + k] * l[j * p + k];
-        }
-        if diag <= 1e-12 {
-            return None;
-        }
-        l[j * p + j] = diag.sqrt();
-        for i in (j + 1)..p {
-            let mut s = a[i * p + j];
-            for k in 0..j {
-                s -= l[i * p + k] * l[j * p + k];
-            }
-            l[i * p + j] = s / l[j * p + j];
-        }
-    }
-    Some(l)
-}
-
-/// Solve Lz = b (forward) then L'x = z (back).
-fn cholesky_forward_back(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
-    let mut z = b.to_vec();
-    for j in 0..p {
-        for k in 0..j {
-            z[j] -= l[j * p + k] * z[k];
-        }
-        z[j] /= l[j * p + j];
-    }
-    for j in (0..p).rev() {
-        for k in (j + 1)..p {
-            z[j] -= l[k * p + j] * z[k];
-        }
-        z[j] /= l[j * p + j];
-    }
-    z
-}
-
 /// Kronecker product of two flat row-major matrices.
 ///
 /// Given A (rows_a x cols_a) and B (rows_b x cols_b), produces
@@ -314,10 +269,7 @@ fn smooth_coefficient_surface(
     for i in 0..m_total {
         a[i * m_total + i] += 1.0;
     }
-    let l = cholesky_factor(&a, m_total).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "smooth_coefficient_surface",
-        detail: "Cholesky factorization of (I + P_2d) failed; try increasing the smoothing parameter (lambda)".to_string(),
-    })?;
+    let l = cholesky_factor(&a, m_total)?;
     Ok(cholesky_forward_back(&l, beta_raw, m_total))
 }
 
@@ -330,7 +282,7 @@ fn compute_beta_se_2d(
     n: usize,
 ) -> Option<FdMatrix> {
     let m_total = residuals.ncols();
-    let l = cholesky_factor(xtx, p_total)?;
+    let l = cholesky_factor(xtx, p_total).ok()?;
 
     // Diagonal of (X'X)^{-1}
     let a_inv_diag: Vec<f64> = (0..p_total)
@@ -387,7 +339,7 @@ fn select_lambdas_gcv(
     };
 
     // Pre-compute OLS inverse and raw beta
-    let Some(l_xtx) = cholesky_factor(xtx, p_total) else {
+    let Ok(l_xtx) = cholesky_factor(xtx, p_total) else {
         return (0.0, 0.0);
     };
 
@@ -569,10 +521,7 @@ pub fn fosr_2d(
     let xtx = compute_xtx(&design);
     let xty = compute_xty_matrix(&design, data);
 
-    let l_xtx = cholesky_factor(&xtx, p_total).ok_or_else(|| FdarError::ComputationFailed {
-        operation: "fosr_2d",
-        detail: "Cholesky factorization of X'X failed; design matrix is rank-deficient — remove constant or collinear predictors, or add regularization".to_string(),
-    })?;
+    let l_xtx = cholesky_factor(&xtx, p_total)?;
 
     // Pointwise OLS: beta_ols[:,g] = (X'X)^{-1} X' y[:,g]
     let mut beta_ols = FdMatrix::zeros(p_total, m_total);

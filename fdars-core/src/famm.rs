@@ -12,6 +12,10 @@
 
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
+use crate::linalg::{
+    cholesky_factor as linalg_cholesky_factor,
+    cholesky_forward_back as linalg_cholesky_forward_back,
+};
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
 #[cfg(feature = "parallel")]
@@ -527,54 +531,11 @@ fn estimate_fixed_effects(
     cholesky_solve(&xtx, &xty, p).unwrap_or(vec![0.0; p])
 }
 
-/// Cholesky factorization: A = LL'. Returns L (p×p flat row-major) or None if singular.
-fn cholesky_factor_famm(a: &[f64], p: usize) -> Option<Vec<f64>> {
-    let mut l = vec![0.0; p * p];
-    for j in 0..p {
-        let mut sum = 0.0;
-        for k in 0..j {
-            sum += l[j * p + k] * l[j * p + k];
-        }
-        let diag = a[j * p + j] - sum;
-        if diag <= 0.0 {
-            return None;
-        }
-        l[j * p + j] = diag.sqrt();
-        for i in (j + 1)..p {
-            let mut s = 0.0;
-            for k in 0..j {
-                s += l[i * p + k] * l[j * p + k];
-            }
-            l[i * p + j] = (a[i * p + j] - s) / l[j * p + j];
-        }
-    }
-    Some(l)
-}
-
-/// Solve L z = b (forward) then L' x = z (back).
-fn cholesky_triangular_solve(l: &[f64], b: &[f64], p: usize) -> Vec<f64> {
-    let mut z = vec![0.0; p];
-    for i in 0..p {
-        let mut s = 0.0;
-        for j in 0..i {
-            s += l[i * p + j] * z[j];
-        }
-        z[i] = (b[i] - s) / l[i * p + i];
-    }
-    for i in (0..p).rev() {
-        let mut s = 0.0;
-        for j in (i + 1)..p {
-            s += l[j * p + i] * z[j];
-        }
-        z[i] = (z[i] - s) / l[i * p + i];
-    }
-    z
-}
-
-/// Cholesky solve: A x = b where A is p×p symmetric positive definite.
+/// Cholesky solve: A x = b where A is p-by-p symmetric positive definite.
+/// Returns `None` if the matrix is singular.
 fn cholesky_solve(a: &[f64], b: &[f64], p: usize) -> Option<Vec<f64>> {
-    let l = cholesky_factor_famm(a, p)?;
-    Some(cholesky_triangular_solve(&l, b, p))
+    let l = linalg_cholesky_factor(a, p).ok()?;
+    Some(linalg_cholesky_forward_back(&l, b, p))
 }
 
 /// Compute OLS residuals: r = y - X*gamma.
