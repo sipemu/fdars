@@ -5,6 +5,22 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0]
+
+### Breaking Changes
+
+- **Clustering refactored to distance-matrix-driven**: Removed `elastic_kmeans`, `elastic_hierarchical`, `ElasticClusterConfig`, `ElasticClusterMethod`, `ElasticClusterResult`, `ElasticDendrogram`. Replaced with generic `kmedoids_from_distances`, `hierarchical_from_distances`, `Dendrogram`, `KMedoidsConfig`, `KMedoidsResult`, `Linkage` — all work with any precomputed distance matrix.
+
+### Added
+
+- **PLS regression** (`scalar_on_function/pls.rs`): `fregre_pls` and `predict_fregre_pls` for scalar-on-function regression using PLS components with optional scalar covariates. New type `PlsRegressionResult`.
+- **Pluggable CV metrics** (`cv.rs`): Standalone metric functions (`metric_rmse`, `metric_mae`, `metric_r_squared`, `metric_accuracy`, `metric_precision`, `metric_recall`, `metric_f1`) and `cv_fdata_with_metrics` for user-defined scoring. Convenience sets `regression_metrics()`, `classification_metrics()`.
+- **OOF predictions in fregre_cv** (#25): `FregreCvResult` now includes `oof_predictions`, `fold_assignments`, and `fold_errors` at the optimal K.
+- **Distance-matrix variants**: `knn_classify_from_distances`, `kernel_classify_from_distances`, `fregre_np_from_distances`, `predict_fregre_np_from_distances`, `silhouette_score_from_distances`, `calinski_harabasz_from_distances` — all accept any precomputed distance matrix.
+- **FdaData wire module** (`wire.rs`): Unified layered data container for pipeline interchange with 15 layer types (Fpca, Pls, Alignment, Distances, Depth, Outliers, Clusters, Regression, Tolerance, Spm, Explain, etc.). Composable, serde-enabled, designed for visual pipeline apps.
+- **Berkeley growth example** (example 28): CV experiment predicting adult height from growth curves with P-spline smoothing, GCV model selection, and 10-fold CV comparing `fregre_lm` vs `fregre_pls`.
+- **Reference documentation**: `documentation/spm_references.md` and `documentation/alignment_references.md` mapping 100+ functions to source papers with DOI links.
+
 ## [0.10.0]
 
 ### Fixed
