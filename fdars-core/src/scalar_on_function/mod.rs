@@ -35,7 +35,9 @@ pub use bootstrap::{bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic};
 pub use cv::{fregre_basis_cv, fregre_np_cv};
 pub use fregre_lm::{fregre_cv, fregre_lm, model_selection_ncomp, predict_fregre_lm};
 pub use logistic::{functional_logistic, predict_functional_logistic};
-pub use nonparametric::{fregre_np_mixed, predict_fregre_np};
+pub use nonparametric::{
+    fregre_np_from_distances, fregre_np_mixed, predict_fregre_np, predict_fregre_np_from_distances,
+};
 pub use pls::{fregre_pls, predict_fregre_pls};
 pub use robust::{fregre_huber, fregre_l1, predict_fregre_robust};
 

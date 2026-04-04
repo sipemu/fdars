@@ -888,6 +888,59 @@ pub fn silhouette_score(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> 
         .collect()
 }
 
+/// Silhouette score from a precomputed distance matrix.
+///
+/// Works with any distance matrix (elastic, DTW, Lp, or custom).
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn silhouette_score_from_distances(dist_mat: &FdMatrix, cluster: &[usize]) -> Vec<f64> {
+    let n = dist_mat.nrows();
+    if n == 0 || dist_mat.ncols() != n || cluster.len() != n {
+        return Vec::new();
+    }
+
+    let k = cluster.iter().copied().max().unwrap_or(0) + 1;
+    let members = cluster_member_indices(cluster, k);
+
+    (0..n)
+        .map(|i| {
+            let my_cluster = cluster[i];
+
+            // a(i) = mean distance to same-cluster members
+            let same: Vec<usize> = members[my_cluster]
+                .iter()
+                .copied()
+                .filter(|&j| j != i)
+                .collect();
+            let a_i = if same.is_empty() {
+                0.0
+            } else {
+                same.iter().map(|&j| dist_mat[(i, j)]).sum::<f64>() / same.len() as f64
+            };
+
+            // b(i) = min over other clusters of mean distance
+            let mut b_i = f64::INFINITY;
+            for c in 0..k {
+                if c != my_cluster && !members[c].is_empty() {
+                    let mean_d = members[c].iter().map(|&j| dist_mat[(i, j)]).sum::<f64>()
+                        / members[c].len() as f64;
+                    b_i = b_i.min(mean_d);
+                }
+            }
+
+            if b_i.is_infinite() {
+                0.0
+            } else {
+                let max_ab = a_i.max(b_i);
+                if max_ab > 1e-15 {
+                    (b_i - a_i) / max_ab
+                } else {
+                    0.0
+                }
+            }
+        })
+        .collect()
+}
+
 /// Compute Calinski-Harabasz index for clustering result.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) -> f64 {
@@ -922,6 +975,54 @@ pub fn calinski_harabasz(data: &FdMatrix, argvals: &[f64], cluster: &[usize]) ->
     }
 
     (bgss / (k - 1) as f64) / (wgss / (n - k) as f64)
+}
+
+/// Calinski-Harabasz index from a precomputed distance matrix.
+///
+/// Uses the distance-based formulation: CH = [B/(k-1)] / [W/(n-k)]
+/// where B = total between-cluster distance, W = total within-cluster distance.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn calinski_harabasz_from_distances(dist_mat: &FdMatrix, cluster: &[usize]) -> f64 {
+    let n = dist_mat.nrows();
+    if n == 0 || dist_mat.ncols() != n || cluster.len() != n {
+        return 0.0;
+    }
+
+    let k = cluster.iter().copied().max().unwrap_or(0) + 1;
+    if k < 2 || n <= k {
+        return 0.0;
+    }
+
+    // Total dispersion: sum of all pairwise squared distances
+    let total_disp: f64 = (0..n)
+        .flat_map(|i| ((i + 1)..n).map(move |j| dist_mat[(i, j)].powi(2)))
+        .sum::<f64>();
+
+    // Within-cluster dispersion
+    let members = cluster_member_indices(cluster, k);
+    let mut within = 0.0;
+    for c in 0..k {
+        let nc = members[c].len();
+        if nc < 2 {
+            continue;
+        }
+        for ii in 0..nc {
+            for jj in (ii + 1)..nc {
+                within += dist_mat[(members[c][ii], members[c][jj])].powi(2);
+            }
+        }
+    }
+
+    let between = total_disp - within;
+    // Normalize: account for cluster sizes
+    let w_norm = within / (n - k) as f64;
+    let b_norm = between / (k - 1) as f64;
+
+    if w_norm > 1e-15 {
+        b_norm / w_norm
+    } else {
+        0.0
+    }
 }
 
 #[cfg(test)]

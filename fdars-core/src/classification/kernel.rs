@@ -177,6 +177,79 @@ pub fn fclassif_kernel(
     })
 }
 
+/// Kernel classifier from a precomputed functional distance matrix.
+///
+/// Works with **any** distance matrix (elastic, DTW, Lp, or custom).
+/// Bandwidth is selected via LOO-CV if `h_func <= 0`.
+///
+/// # Arguments
+/// * `func_dists` — Flat n × n functional distance matrix (row-major)
+/// * `y` — Class labels (length n, 0-indexed)
+/// * `scalar_covariates` — Optional scalar covariates (n × p), uses Euclidean distance internally
+/// * `h_func` — Functional bandwidth (0 = auto via LOO-CV)
+/// * `h_scalar` — Scalar bandwidth (0 = auto)
+///
+/// # Errors
+/// Returns errors if `y.len() != n` or fewer than 2 classes.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn kernel_classify_from_distances(
+    func_dists: &[f64],
+    y: &[usize],
+    scalar_covariates: Option<&FdMatrix>,
+    h_func: f64,
+    h_scalar: f64,
+) -> Result<ClassifResult, FdarError> {
+    let n = y.len();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: "n > 0".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if func_dists.len() != n * n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "func_dists",
+            expected: format!("{} elements (n*n)", n * n),
+            actual: format!("{} elements", func_dists.len()),
+        });
+    }
+
+    let (labels, g) = remap_labels(y);
+    if g < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("need at least 2 classes, got {g}"),
+        });
+    }
+
+    let scalar_dists = scalar_covariates.map(compute_pairwise_scalar);
+
+    let h_f = if h_func > 0.0 {
+        h_func
+    } else {
+        select_bandwidth_loo(func_dists, &labels, g, n, true)
+    };
+    let h_s = match &scalar_dists {
+        Some(sd) if h_scalar <= 0.0 => select_bandwidth_loo(sd, &labels, g, n, false),
+        _ => h_scalar,
+    };
+
+    let predicted =
+        kernel_classify_loo(func_dists, scalar_dists.as_deref(), &labels, g, n, h_f, h_s);
+    let accuracy = compute_accuracy(&labels, &predicted);
+    let confusion = confusion_matrix(&labels, &predicted, g);
+
+    Ok(ClassifResult {
+        predicted,
+        probabilities: None,
+        accuracy,
+        confusion,
+        n_classes: g,
+        ncomp: 0,
+    })
+}
+
 /// Compute pairwise L2 distances between curves.
 fn compute_pairwise_l2(data: &FdMatrix, weights: &[f64]) -> Vec<f64> {
     #[cfg(feature = "parallel")]
@@ -273,4 +346,42 @@ fn kernel_classify_loo(
             argmax_class(&votes)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kernel_from_distances_smoke() {
+        let n = 6;
+        let mut dists = vec![0.0; n * n];
+        // Within class 0: small distances
+        for i in 0..3 {
+            for j in 0..3 {
+                if i != j {
+                    dists[i * n + j] = 0.1;
+                }
+            }
+        }
+        // Within class 1: small distances
+        for i in 3..6 {
+            for j in 3..6 {
+                if i != j {
+                    dists[i * n + j] = 0.1;
+                }
+            }
+        }
+        // Between classes: large distances
+        for i in 0..3 {
+            for j in 3..6 {
+                dists[i * n + j] = 5.0;
+                dists[j * n + i] = 5.0;
+            }
+        }
+
+        let y = vec![0, 0, 0, 1, 1, 1];
+        let result = kernel_classify_from_distances(&dists, &y, None, 0.5, 0.0).unwrap();
+        assert_eq!(result.predicted, vec![0, 0, 0, 1, 1, 1]);
+    }
 }

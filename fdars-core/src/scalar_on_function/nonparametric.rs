@@ -247,6 +247,138 @@ pub fn fregre_np_mixed(
     })
 }
 
+/// Nonparametric kernel regression from a precomputed functional distance matrix.
+///
+/// Same as [`fregre_np_mixed`] but accepts a precomputed functional distance
+/// matrix, allowing any distance metric (elastic, DTW, Lp, or custom).
+///
+/// # Arguments
+/// * `func_dists` — Flat n × n functional distance matrix (row-major)
+/// * `y` — Scalar response vector (length n)
+/// * `scalar_covariates` — Optional scalar covariates (n × p)
+/// * `h_func` — Bandwidth for functional kernel (0 for automatic via LOO-CV)
+/// * `h_scalar` — Bandwidth for scalar kernel (0 for automatic)
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 3` or dimensions mismatch.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fregre_np_from_distances(
+    func_dists: &[f64],
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    h_func: f64,
+    h_scalar: f64,
+) -> Result<FregreNpResult, FdarError> {
+    let n = y.len();
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: "at least 3 elements".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    if func_dists.len() != n * n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "func_dists",
+            expected: format!("{} elements (n*n)", n * n),
+            actual: format!("{} elements", func_dists.len()),
+        });
+    }
+
+    let has_scalar = scalar_covariates.is_some();
+    let scalar_dists = scalar_covariates
+        .map(compute_scalar_distances)
+        .unwrap_or_default();
+
+    let h_func = if h_func <= 0.0 {
+        select_bandwidth_loo(func_dists, y, n, None)
+    } else {
+        h_func
+    };
+
+    let h_scalar = if has_scalar && h_scalar <= 0.0 {
+        select_bandwidth_loo(&scalar_dists, y, n, Some(func_dists))
+    } else {
+        h_scalar
+    };
+
+    let mut fitted_values = vec![0.0; n];
+    let mut cv_error = 0.0;
+    for i in 0..n {
+        fitted_values[i] = nw_loo_predict(
+            i,
+            n,
+            y,
+            func_dists,
+            &scalar_dists,
+            h_func,
+            h_scalar,
+            has_scalar,
+        );
+        cv_error += (y[i] - fitted_values[i]).powi(2);
+    }
+    cv_error /= n as f64;
+
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
+    let (r_squared, _) = compute_r_squared(y, &residuals, 1);
+
+    Ok(FregreNpResult {
+        fitted_values,
+        residuals,
+        r_squared,
+        h_func,
+        h_scalar,
+        cv_error,
+    })
+}
+
+/// Predict using Nadaraya-Watson from precomputed train-test functional distances.
+///
+/// # Arguments
+/// * `train_test_func_dists` — Flat n_new × n_train distance matrix (row-major):
+///   element `[i*n_train+j]` is distance from new observation i to training observation j
+/// * `y` — Training responses (length n_train)
+/// * `train_test_scalar_dists` — Optional flat n_new × n_train scalar distances
+/// * `n_new` — Number of new observations
+/// * `h_func` — Functional bandwidth
+/// * `h_scalar` — Scalar bandwidth
+pub fn predict_fregre_np_from_distances(
+    train_test_func_dists: &[f64],
+    y: &[f64],
+    train_test_scalar_dists: Option<&[f64]>,
+    n_new: usize,
+    h_func: f64,
+    h_scalar: f64,
+) -> Vec<f64> {
+    let n_train = y.len();
+
+    (0..n_new)
+        .map(|i| {
+            let mut num = 0.0;
+            let mut den = 0.0;
+            for j in 0..n_train {
+                let kf = gaussian_kernel(train_test_func_dists[i * n_train + j], h_func);
+                let ks = match train_test_scalar_dists {
+                    Some(sd) => gaussian_kernel(sd[i * n_train + j], h_scalar),
+                    None => 1.0,
+                };
+                let w = kf * ks;
+                num += w * y[j];
+                den += w;
+            }
+            if den > 1e-15 {
+                num / den
+            } else {
+                0.0
+            }
+        })
+        .collect()
+}
+
 /// Predict new responses using a fitted nonparametric model.
 pub fn predict_fregre_np(
     train_data: &FdMatrix,
@@ -290,4 +422,42 @@ pub fn predict_fregre_np(
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fregre_np_from_distances_smoke() {
+        let n = 10;
+        let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        // Simple distances: d(i,j) = |i-j|
+        let mut dists = vec![0.0; n * n];
+        for i in 0..n {
+            for j in 0..n {
+                dists[i * n + j] = (i as f64 - j as f64).abs();
+            }
+        }
+        let result = fregre_np_from_distances(&dists, &y, None, 0.0, 0.0).unwrap();
+        assert_eq!(result.fitted_values.len(), n);
+        assert!(result.r_squared > 0.0);
+    }
+
+    #[test]
+    fn predict_from_distances_smoke() {
+        let n_train = 10;
+        let y: Vec<f64> = (0..n_train).map(|i| i as f64).collect();
+        let n_new = 3;
+        // Train-test distances
+        let mut dists = vec![0.0; n_new * n_train];
+        for i in 0..n_new {
+            for j in 0..n_train {
+                dists[i * n_train + j] = ((i + 1) as f64 - j as f64).abs();
+            }
+        }
+        let preds = predict_fregre_np_from_distances(&dists, &y, None, n_new, 2.0, 0.0);
+        assert_eq!(preds.len(), n_new);
+        assert!(preds.iter().all(|p| p.is_finite()));
+    }
 }

@@ -169,7 +169,7 @@ pub use fit::{
     fclassif_cv_with_config, fclassif_knn_fit, fclassif_lda_fit, fclassif_qda_fit, ClassifCvConfig,
     ClassifFit, ClassifMethod,
 };
-pub use kernel::fclassif_kernel;
-pub use knn::fclassif_knn;
+pub use kernel::{fclassif_kernel, kernel_classify_from_distances};
+pub use knn::{fclassif_knn, knn_classify_from_distances};
 pub use lda::fclassif_lda;
 pub use qda::fclassif_qda;

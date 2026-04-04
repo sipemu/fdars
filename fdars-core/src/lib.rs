@@ -184,12 +184,12 @@ pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
     bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_basis_cv, fregre_cv,
-    fregre_huber, fregre_l1, fregre_lm, fregre_np_cv, fregre_np_mixed, fregre_pls,
-    functional_logistic, model_selection_ncomp, predict_fregre_lm, predict_fregre_np,
-    predict_fregre_pls, predict_fregre_robust, predict_functional_logistic, BootstrapCiResult,
-    FregreBasisCvResult, FregreCvResult, FregreLmResult, FregreNpCvResult, FregreNpResult,
-    FregreRobustResult, FunctionalLogisticResult, ModelSelectionResult, PlsRegressionResult,
-    SelectionCriterion,
+    fregre_huber, fregre_l1, fregre_lm, fregre_np_cv, fregre_np_from_distances, fregre_np_mixed,
+    fregre_pls, functional_logistic, model_selection_ncomp, predict_fregre_lm, predict_fregre_np,
+    predict_fregre_np_from_distances, predict_fregre_pls, predict_fregre_robust,
+    predict_functional_logistic, BootstrapCiResult, FregreBasisCvResult, FregreCvResult,
+    FregreLmResult, FregreNpCvResult, FregreNpResult, FregreRobustResult, FunctionalLogisticResult,
+    ModelSelectionResult, PlsRegressionResult, SelectionCriterion,
 };
 
 // Re-export generic explainability types
@@ -230,7 +230,8 @@ pub use explain::{
 pub use classification::{
     fclassif_cv, fclassif_cv_with_config, fclassif_dd, fclassif_kernel, fclassif_knn,
     fclassif_knn_fit, fclassif_lda, fclassif_lda_fit, fclassif_qda, fclassif_qda_fit,
-    ClassifCvConfig, ClassifCvResult, ClassifFit, ClassifMethod, ClassifResult,
+    kernel_classify_from_distances, knn_classify_from_distances, ClassifCvConfig, ClassifCvResult,
+    ClassifFit, ClassifMethod, ClassifResult,
 };
 
 // Re-export conformal prediction types
@@ -325,8 +326,8 @@ pub use regression::{ridge_regression_fit, RidgeResult};
 
 // Re-export clustering types
 pub use clustering::{
-    calinski_harabasz, fuzzy_cmeans_fd, kmeans_fd, silhouette_score, FuzzyCmeansResult,
-    KmeansResult,
+    calinski_harabasz, calinski_harabasz_from_distances, fuzzy_cmeans_fd, kmeans_fd,
+    silhouette_score, silhouette_score_from_distances, FuzzyCmeansResult, KmeansResult,
 };
 
 // Re-export distance metric types and functions
