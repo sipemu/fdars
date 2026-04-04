@@ -239,6 +239,106 @@ pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
     sum
 }
 
+/// Gaussian kernel: K(d, h) = exp(-d² / (2h²)).
+///
+/// This is the un-normalized version used by Nadaraya-Watson regression
+/// and kernel classification. For density estimation with normalization,
+/// see the smoothing module.
+pub fn gaussian_kernel(d: f64, h: f64) -> f64 {
+    if h < 1e-15 {
+        return 0.0;
+    }
+    (-d * d / (2.0 * h * h)).exp()
+}
+
+/// Extract bandwidth candidates from a flat n×n distance matrix.
+///
+/// Collects the upper-triangle nonzero distances, sorts them, and returns
+/// `n_quantiles` evenly-spaced quantile values. Used for LOO-CV bandwidth
+/// grid search in kernel regression and classification.
+pub fn bandwidth_candidates_from_dists(dists: &[f64], n: usize, n_quantiles: usize) -> Vec<f64> {
+    let mut nonzero: Vec<f64> = (0..n)
+        .flat_map(|i| ((i + 1)..n).map(move |j| dists[i * n + j]))
+        .filter(|&d| d > 0.0)
+        .collect();
+    sort_nan_safe(&mut nonzero);
+
+    if nonzero.is_empty() {
+        return Vec::new();
+    }
+
+    (1..=n_quantiles)
+        .map(|q| {
+            let p = q as f64 / (n_quantiles + 1) as f64;
+            let idx = ((nonzero.len() as f64 * p) as usize).min(nonzero.len() - 1);
+            nonzero[idx]
+        })
+        .filter(|&h| h > 1e-15)
+        .collect()
+}
+
+/// Compute a quantile from a sorted slice.
+///
+/// `p` should be in [0, 1]. Uses linear interpolation between adjacent values.
+pub fn quantile_sorted(sorted: &[f64], p: f64) -> f64 {
+    if sorted.is_empty() {
+        return f64::NAN;
+    }
+    if sorted.len() == 1 || p <= 0.0 {
+        return sorted[0];
+    }
+    if p >= 1.0 {
+        return sorted[sorted.len() - 1];
+    }
+    let pos = p * (sorted.len() - 1) as f64;
+    let lo = pos.floor() as usize;
+    let hi = (lo + 1).min(sorted.len() - 1);
+    let frac = pos - lo as f64;
+    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+}
+
+/// Compute R² (coefficient of determination).
+pub fn r_squared(y_true: &[f64], residuals: &[f64]) -> f64 {
+    let n = y_true.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+    let mean = y_true.iter().sum::<f64>() / n as f64;
+    let ss_tot: f64 = y_true.iter().map(|&y| (y - mean).powi(2)).sum();
+    let ss_res: f64 = residuals.iter().map(|r| r * r).sum();
+    if ss_tot > 1e-15 {
+        1.0 - ss_res / ss_tot
+    } else {
+        0.0
+    }
+}
+
+/// Compute adjusted R².
+pub fn r_squared_adj(y_true: &[f64], residuals: &[f64], p: usize) -> f64 {
+    let n = y_true.len();
+    let r2 = r_squared(y_true, residuals);
+    if n <= p + 1 {
+        return r2;
+    }
+    1.0 - (1.0 - r2) * (n - 1) as f64 / (n - p - 1) as f64
+}
+
+/// Compute AIC from residual sum of squares.
+///
+/// AIC = n * ln(RSS/n) + 2p
+pub fn aic(n: usize, rss: f64, p: usize) -> f64 {
+    let nf = n as f64;
+    nf * (rss / nf).ln() + 2.0 * p as f64
+}
+
+/// Compute BIC from residual sum of squares.
+///
+/// BIC = n * ln(RSS/n) + ln(n) * p
+pub fn bic(n: usize, rss: f64, p: usize) -> f64 {
+    let nf = n as f64;
+    nf * (rss / nf).ln() + nf.ln() * p as f64
+}
+
 /// Interpolation method for resampling functional data.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
@@ -627,6 +727,64 @@ mod tests {
     }
 
     // ── fdata_interpolate ──
+
+    #[test]
+    fn test_gaussian_kernel() {
+        assert!((gaussian_kernel(0.0, 1.0) - 1.0).abs() < 1e-12);
+        assert!(gaussian_kernel(3.0, 1.0) < 0.02); // far from center
+        assert!((gaussian_kernel(1.0, 0.0)).abs() < 1e-12); // zero bandwidth
+    }
+
+    #[test]
+    fn test_bandwidth_candidates() {
+        let n = 5;
+        let mut dists = vec![0.0; n * n];
+        for i in 0..n {
+            for j in 0..n {
+                dists[i * n + j] = (i as f64 - j as f64).abs();
+            }
+        }
+        let cands = bandwidth_candidates_from_dists(&dists, n, 10);
+        assert!(!cands.is_empty());
+        assert!(cands.iter().all(|&h| h > 0.0));
+        // Should be sorted
+        for w in cands.windows(2) {
+            assert!(w[1] >= w[0]);
+        }
+    }
+
+    #[test]
+    fn test_quantile_sorted() {
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        assert!((quantile_sorted(&data, 0.0) - 1.0).abs() < 1e-12);
+        assert!((quantile_sorted(&data, 1.0) - 5.0).abs() < 1e-12);
+        assert!((quantile_sorted(&data, 0.5) - 3.0).abs() < 1e-12);
+        assert!((quantile_sorted(&data, 0.25) - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_r_squared_perfect() {
+        let y = vec![1.0, 2.0, 3.0, 4.0];
+        let resid = vec![0.0, 0.0, 0.0, 0.0];
+        assert!((r_squared(&y, &resid) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_r_squared_mean_model() {
+        let y = vec![1.0, 2.0, 3.0, 4.0];
+        let mean = 2.5;
+        let resid: Vec<f64> = y.iter().map(|&yi| yi - mean).collect();
+        assert!(r_squared(&y, &resid).abs() < 1e-12); // R²=0 for mean model
+    }
+
+    #[test]
+    fn test_aic_bic() {
+        let a = aic(100, 50.0, 5);
+        let b = bic(100, 50.0, 5);
+        assert!(a.is_finite());
+        assert!(b.is_finite());
+        assert!(b > a); // BIC penalizes more for n > ~8
+    }
 
     #[test]
     fn fdata_interpolate_linear_identity() {
