@@ -235,6 +235,149 @@ pub fn center_1d(data: &FdMatrix) -> FdMatrix {
     centered
 }
 
+/// Normalization method for functional data.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub enum NormalizationMethod {
+    /// Center columns (subtract per-time-point mean across curves).
+    Center,
+    /// Autoscale columns (center + divide by per-time-point std dev). UV scaling.
+    Autoscale,
+    /// Pareto scaling (center + divide by sqrt of per-time-point std dev).
+    Pareto,
+    /// Range scaling (center + divide by per-time-point range).
+    Range,
+    /// Per-curve centering (subtract each curve's own mean).
+    CurveCenter,
+    /// Per-curve standardization (subtract mean, divide by std dev per curve).
+    CurveStandardize,
+    /// Per-curve range normalization to [0, 1].
+    CurveRange,
+}
+
+/// Normalize functional data using the specified method.
+///
+/// **Column-wise methods** (across curves at each time point):
+/// - `Center`: subtract column means (same as [`center_1d`])
+/// - `Autoscale`: center + divide by column std dev (unit variance per time point)
+/// - `Pareto`: center + divide by sqrt(column std dev)
+/// - `Range`: center + divide by column range (max - min)
+///
+/// **Row-wise methods** (per curve):
+/// - `CurveCenter`: subtract each curve's own mean
+/// - `CurveStandardize`: subtract mean, divide by std dev per curve
+/// - `CurveRange`: scale each curve to [0, 1]
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{normalize, NormalizationMethod};
+///
+/// let data = FdMatrix::from_column_major(
+///     vec![1.0, 3.0, 2.0, 6.0, 3.0, 9.0], 2, 3,
+/// ).unwrap();
+///
+/// // Autoscale: zero mean, unit variance per time point
+/// let scaled = normalize(&data, NormalizationMethod::Autoscale);
+/// assert_eq!(scaled.shape(), (2, 3));
+/// ```
+pub fn normalize(data: &FdMatrix, method: NormalizationMethod) -> FdMatrix {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 {
+        return FdMatrix::zeros(n, m);
+    }
+
+    match method {
+        NormalizationMethod::Center => center_1d(data),
+        NormalizationMethod::Autoscale => column_scale(data, n, m, ScaleKind::StdDev),
+        NormalizationMethod::Pareto => column_scale(data, n, m, ScaleKind::SqrtStdDev),
+        NormalizationMethod::Range => column_scale(data, n, m, ScaleKind::Range),
+        NormalizationMethod::CurveCenter => row_normalize(data, n, m, RowNorm::Center),
+        NormalizationMethod::CurveStandardize => row_normalize(data, n, m, RowNorm::Standardize),
+        NormalizationMethod::CurveRange => row_normalize(data, n, m, RowNorm::Range),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ScaleKind {
+    StdDev,
+    SqrtStdDev,
+    Range,
+}
+
+fn column_scale(data: &FdMatrix, n: usize, m: usize, kind: ScaleKind) -> FdMatrix {
+    let mut result = FdMatrix::zeros(n, m);
+    for j in 0..m {
+        let col = data.column(j);
+        let mean = col.iter().sum::<f64>() / n as f64;
+        let scale = match kind {
+            ScaleKind::StdDev => {
+                let var =
+                    col.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / (n - 1).max(1) as f64;
+                var.sqrt()
+            }
+            ScaleKind::SqrtStdDev => {
+                let var =
+                    col.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / (n - 1).max(1) as f64;
+                var.sqrt().sqrt()
+            }
+            ScaleKind::Range => {
+                let min = col.iter().copied().fold(f64::INFINITY, f64::min);
+                let max = col.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                max - min
+            }
+        };
+        let out = result.column_mut(j);
+        let denom = if scale > 1e-15 { scale } else { 1.0 };
+        for i in 0..n {
+            out[i] = (col[i] - mean) / denom;
+        }
+    }
+    result
+}
+
+#[derive(Clone, Copy)]
+enum RowNorm {
+    Center,
+    Standardize,
+    Range,
+}
+
+fn row_normalize(data: &FdMatrix, n: usize, m: usize, kind: RowNorm) -> FdMatrix {
+    let mut result = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let row: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        let mean = row.iter().sum::<f64>() / m as f64;
+        match kind {
+            RowNorm::Center => {
+                for j in 0..m {
+                    result[(i, j)] = row[j] - mean;
+                }
+            }
+            RowNorm::Standardize => {
+                let std = (row.iter().map(|&v| (v - mean).powi(2)).sum::<f64>()
+                    / (m - 1).max(1) as f64)
+                    .sqrt();
+                let denom = if std > 1e-15 { std } else { 1.0 };
+                for j in 0..m {
+                    result[(i, j)] = (row[j] - mean) / denom;
+                }
+            }
+            RowNorm::Range => {
+                let min = row.iter().copied().fold(f64::INFINITY, f64::min);
+                let max = row.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let range = max - min;
+                let denom = if range > 1e-15 { range } else { 1.0 };
+                for j in 0..m {
+                    result[(i, j)] = (row[j] - min) / denom;
+                }
+            }
+        }
+    }
+    result
+}
+
 /// Compute Lp norm for each sample.
 ///
 /// # Arguments
@@ -993,5 +1136,100 @@ mod tests {
                 assert!((result[(i, j)] - data[(i, j)]).abs() < 1e-12);
             }
         }
+    }
+
+    // ============== Normalize tests ==============
+
+    #[test]
+    fn test_normalize_autoscale() {
+        // 3 curves, 4 time points
+        let data = FdMatrix::from_column_major(
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            3,
+            4,
+        )
+        .unwrap();
+        let scaled = normalize(&data, NormalizationMethod::Autoscale);
+        // Each column should have mean ≈ 0 and std ≈ 1
+        for j in 0..4 {
+            let col = scaled.column(j);
+            let mean = col.iter().sum::<f64>() / 3.0;
+            assert!(
+                mean.abs() < 1e-10,
+                "column {j} mean should be 0, got {mean}"
+            );
+            let var = col.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / 2.0;
+            assert!(
+                (var - 1.0).abs() < 1e-10,
+                "column {j} variance should be 1, got {var}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_normalize_pareto() {
+        let data =
+            FdMatrix::from_column_major(vec![1.0, 5.0, 3.0, 10.0, 20.0, 30.0], 2, 3).unwrap();
+        let scaled = normalize(&data, NormalizationMethod::Pareto);
+        // Columns should be centered and scaled by sqrt(std)
+        for j in 0..3 {
+            let col = scaled.column(j);
+            let mean = col.iter().sum::<f64>() / 2.0;
+            assert!(mean.abs() < 1e-10, "column {j} mean should be 0");
+        }
+    }
+
+    #[test]
+    fn test_normalize_range() {
+        let data = FdMatrix::from_column_major(vec![0.0, 10.0, 2.0, 8.0], 2, 2).unwrap();
+        let scaled = normalize(&data, NormalizationMethod::Range);
+        // Column 0: values [0, 10], range 10, centered [-5, 5], scaled [-0.5, 0.5]
+        assert!((scaled[(0, 0)] - (-0.5)).abs() < 1e-10);
+        assert!((scaled[(1, 0)] - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_normalize_curve_center() {
+        let data = FdMatrix::from_column_major(vec![1.0, 4.0, 3.0, 6.0, 5.0, 8.0], 2, 3).unwrap();
+        let result = normalize(&data, NormalizationMethod::CurveCenter);
+        // Row 0: [1, 3, 5], mean=3, centered=[-2, 0, 2]
+        assert!((result[(0, 0)] - (-2.0)).abs() < 1e-10);
+        assert!((result[(0, 1)] - 0.0).abs() < 1e-10);
+        assert!((result[(0, 2)] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_normalize_curve_standardize() {
+        let data = FdMatrix::from_column_major(vec![1.0, 4.0, 3.0, 6.0, 5.0, 8.0], 2, 3).unwrap();
+        let result = normalize(&data, NormalizationMethod::CurveStandardize);
+        // Each row should have mean ≈ 0 and std ≈ 1
+        for i in 0..2 {
+            let row: Vec<f64> = (0..3).map(|j| result[(i, j)]).collect();
+            let mean = row.iter().sum::<f64>() / 3.0;
+            assert!(mean.abs() < 1e-10, "row {i} mean should be 0");
+            let var = row.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / 2.0;
+            assert!((var - 1.0).abs() < 1e-10, "row {i} variance should be 1");
+        }
+    }
+
+    #[test]
+    fn test_normalize_curve_range() {
+        let data =
+            FdMatrix::from_column_major(vec![2.0, 10.0, 4.0, 20.0, 6.0, 30.0], 2, 3).unwrap();
+        let result = normalize(&data, NormalizationMethod::CurveRange);
+        // Row 0: [2, 4, 6] -> [0.0, 0.5, 1.0]
+        assert!((result[(0, 0)] - 0.0).abs() < 1e-10);
+        assert!((result[(0, 1)] - 0.5).abs() < 1e-10);
+        assert!((result[(0, 2)] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_normalize_center_matches_center_1d() {
+        let data = FdMatrix::from_column_major(vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0], 2, 3).unwrap();
+        let a = center_1d(&data);
+        let b = normalize(&data, NormalizationMethod::Center);
+        assert_eq!(a.as_slice(), b.as_slice());
     }
 }
