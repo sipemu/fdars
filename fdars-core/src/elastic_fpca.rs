@@ -345,6 +345,272 @@ pub fn joint_fpca(
     })
 }
 
+// ─── From-alignment wrappers ───────────────────────────────────────────────
+//
+// These accept raw aligned-data fields instead of a full `KarcherMeanResult`,
+// making it possible to run elastic FPCA from an `AlignmentLayer` or any other
+// source that provides the same arrays.
+
+/// Vertical (amplitude) FPCA from pre-aligned curves and (optional) SRSFs.
+///
+/// This is equivalent to [`vert_fpca`] but does not require a
+/// [`KarcherMeanResult`].  Only the fields actually used by the algorithm are
+/// accepted as arguments.
+///
+/// # Arguments
+/// * `aligned_data` — Aligned curves (n × m).
+/// * `aligned_srsfs` — Pre-computed SRSFs of aligned curves (n × m).
+///   When `None`, SRSFs are recomputed from `aligned_data`.
+/// * `argvals` — Evaluation grid (length m).
+/// * `ncomp` — Number of principal components to extract.
+pub fn vert_fpca_from_alignment(
+    aligned_data: &FdMatrix,
+    aligned_srsfs: Option<&FdMatrix>,
+    argvals: &[f64],
+    ncomp: usize,
+) -> Result<VertFpcaResult, crate::FdarError> {
+    let (n, m) = aligned_data.shape();
+    if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "aligned_data/argvals",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, ncomp={}, argvals.len()={}",
+                n,
+                m,
+                ncomp,
+                argvals.len()
+            ),
+        });
+    }
+    let ncomp = ncomp.min(n - 1).min(m);
+    let m_aug = m + 1;
+
+    let qn = match aligned_srsfs {
+        Some(srsfs) => srsfs.clone(),
+        None => srsf_transform(aligned_data, argvals),
+    };
+
+    let q_aug = build_augmented_srsfs(&qn, aligned_data, n, m);
+
+    let (_, mean_q) = center_matrix(&q_aug, n, m_aug);
+    let k_mat = build_symmetric_covariance(&q_aug, &mean_q, n, m_aug);
+
+    let svd = SVD::new(k_mat, true, true);
+    let u_cov = svd
+        .u
+        .as_ref()
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute U matrix; check for constant or zero-variance aligned functions".to_string(),
+        })?;
+
+    let eigenvalues: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
+    let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
+
+    let mut eigenfunctions_q = FdMatrix::zeros(ncomp, m_aug);
+    for k in 0..ncomp {
+        for j in 0..m_aug {
+            eigenfunctions_q[(k, j)] = u_cov[(j, k)];
+        }
+    }
+
+    let scores = project_onto_eigenvectors(&q_aug, &mean_q, u_cov, n, m_aug, ncomp);
+
+    let mut eigenfunctions_f = FdMatrix::zeros(ncomp, m);
+    for k in 0..ncomp {
+        let q_k: Vec<f64> = (0..m)
+            .map(|j| mean_q[j] + eigenfunctions_q[(k, j)])
+            .collect();
+        let aug_val = mean_q[m] + eigenfunctions_q[(k, m)];
+        let f0 = aug_val.signum() * aug_val * aug_val;
+        let f_k = srsf_inverse(&q_k, argvals, f0);
+        for j in 0..m {
+            eigenfunctions_f[(k, j)] = f_k[j];
+        }
+    }
+
+    Ok(VertFpcaResult {
+        scores,
+        eigenfunctions_q,
+        eigenfunctions_f,
+        eigenvalues,
+        cumulative_variance,
+        mean_q,
+    })
+}
+
+/// Horizontal (phase) FPCA from warping functions.
+///
+/// This is equivalent to [`horiz_fpca`] but does not require a
+/// [`KarcherMeanResult`].  Only the warping functions are needed.
+///
+/// # Arguments
+/// * `gammas` — Warping functions (n × m).
+/// * `argvals` — Evaluation grid (length m).
+/// * `ncomp` — Number of principal components to extract.
+pub fn horiz_fpca_from_alignment(
+    gammas: &FdMatrix,
+    argvals: &[f64],
+    ncomp: usize,
+) -> Result<HorizFpcaResult, crate::FdarError> {
+    let (n, m) = gammas.shape();
+    if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "gammas/argvals",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, ncomp={}, argvals.len()={}",
+                n,
+                m,
+                ncomp,
+                argvals.len()
+            ),
+        });
+    }
+    let ncomp = ncomp.min(n - 1).min(m);
+
+    let t0 = argvals[0];
+    let domain = argvals[m - 1] - t0;
+    let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+
+    let psis = warps_to_normalized_psi(gammas, argvals);
+    let mu_psi = sphere_karcher_mean(&psis, &time, 50);
+    let shooting = shooting_vectors_from_psis(&psis, &mu_psi, &time);
+
+    let (centered, _mean_v) = center_matrix(&shooting, n, m);
+
+    let svd = SVD::new(centered.to_dmatrix(), true, true);
+    let v_t = svd
+        .v_t
+        .as_ref()
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail:
+                "SVD failed to compute V^T matrix; check for constant or zero-variance functions"
+                    .to_string(),
+        })?;
+    let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n).ok_or_else(|| {
+        crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute scores; try reducing ncomp or check for degenerate input data".to_string(),
+        }
+    })?;
+    let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
+
+    let mut eigenfunctions_psi = FdMatrix::zeros(ncomp, m);
+    for k in 0..ncomp {
+        for j in 0..m {
+            eigenfunctions_psi[(k, j)] = v_t[(k, j)];
+        }
+    }
+
+    let mut eigenfunctions_gam = FdMatrix::zeros(ncomp, m);
+    for k in 0..ncomp {
+        let v_k: Vec<f64> = (0..m).map(|j| eigenfunctions_psi[(k, j)]).collect();
+        let psi_k = exp_map_sphere(&mu_psi, &v_k, &time);
+        let gam_k = psi_to_gam(&psi_k, &time);
+        for j in 0..m {
+            eigenfunctions_gam[(k, j)] = t0 + gam_k[j] * domain;
+        }
+    }
+
+    Ok(HorizFpcaResult {
+        scores,
+        eigenfunctions_psi,
+        eigenfunctions_gam,
+        eigenvalues,
+        cumulative_variance,
+        mean_psi: mu_psi,
+        shooting_vectors: shooting,
+    })
+}
+
+/// Joint (amplitude + phase) FPCA from pre-aligned curves and warps.
+///
+/// This is equivalent to [`joint_fpca`] but does not require a
+/// [`KarcherMeanResult`].
+///
+/// # Arguments
+/// * `aligned_data` — Aligned curves (n × m).
+/// * `aligned_srsfs` — Pre-computed SRSFs of aligned curves (n × m), or `None`.
+/// * `gammas` — Warping functions (n × m).
+/// * `argvals` — Evaluation grid (length m).
+/// * `ncomp` — Number of principal components to extract.
+/// * `balance_c` — Weight for phase component (`None` ⇒ optimized automatically).
+pub fn joint_fpca_from_alignment(
+    aligned_data: &FdMatrix,
+    aligned_srsfs: Option<&FdMatrix>,
+    gammas: &FdMatrix,
+    argvals: &[f64],
+    ncomp: usize,
+    balance_c: Option<f64>,
+) -> Result<JointFpcaResult, crate::FdarError> {
+    let (n, m) = aligned_data.shape();
+    if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "aligned_data/argvals",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            actual: format!(
+                "n={}, m={}, ncomp={}, argvals.len()={}",
+                n,
+                m,
+                ncomp,
+                argvals.len()
+            ),
+        });
+    }
+
+    let horiz = horiz_fpca_from_alignment(gammas, argvals, ncomp)?;
+
+    let m_aug = m + 1;
+    let ncomp = ncomp.min(n - 1);
+
+    let qn = match aligned_srsfs {
+        Some(srsfs) => srsfs.clone(),
+        None => srsf_transform(aligned_data, argvals),
+    };
+    let q_aug = build_augmented_srsfs(&qn, aligned_data, n, m);
+    let (q_centered, _mean_q) = center_matrix(&q_aug, n, m_aug);
+
+    let shooting = &horiz.shooting_vectors;
+    let c = match balance_c {
+        Some(c) => c,
+        None => optimize_balance_c_raw(&q_centered, shooting, ncomp, m_aug, m),
+    };
+
+    let combined = build_combined_representation(&q_centered, shooting, c, n, m_aug, m);
+
+    let svd = SVD::new(combined.to_dmatrix(), true, true);
+    let v_t = svd
+        .v_t
+        .as_ref()
+        .ok_or_else(|| crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail:
+                "SVD failed to compute V^T matrix; check for constant or zero-variance functions"
+                    .to_string(),
+        })?;
+    let (scores, eigenvalues) = svd_scores_and_eigenvalues(&svd, ncomp, n).ok_or_else(|| {
+        crate::FdarError::ComputationFailed {
+            operation: "SVD",
+            detail: "SVD failed to compute scores; try reducing ncomp or check for degenerate input data".to_string(),
+        }
+    })?;
+    let cumulative_variance = cumulative_variance_from_eigenvalues(&eigenvalues);
+
+    let (vert_component, horiz_component) = split_joint_eigenvectors(v_t, ncomp, m_aug, m);
+
+    Ok(JointFpcaResult {
+        scores,
+        eigenvalues,
+        cumulative_variance,
+        balance_c: c,
+        vert_component,
+        horiz_component,
+    })
+}
+
 // ─── Shared Helpers ────────────────────────────────────────────────────────
 
 /// Compute cumulative proportion of variance explained from eigenvalues.
@@ -630,8 +896,20 @@ fn optimize_balance_c(
     shooting: &FdMatrix,
     ncomp: usize,
 ) -> f64 {
-    let (n, m) = shooting.shape();
     let m_aug = q_centered.ncols();
+    let m = shooting.ncols();
+    optimize_balance_c_raw(q_centered, shooting, ncomp, m_aug, m)
+}
+
+/// Core balance-C optimizer that does not depend on [`KarcherMeanResult`].
+fn optimize_balance_c_raw(
+    q_centered: &FdMatrix,
+    shooting: &FdMatrix,
+    ncomp: usize,
+    m_aug: usize,
+    m: usize,
+) -> f64 {
+    let n = shooting.nrows();
     let combined_dim = m_aug + m;
 
     let golden_ratio = (5.0_f64.sqrt() - 1.0) / 2.0;
@@ -875,5 +1153,100 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ── from_alignment wrapper tests ──
+
+    #[test]
+    fn test_vert_fpca_from_alignment_matches_original() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+
+        let original = vert_fpca(&km, &t, 3).expect("vert_fpca should succeed");
+        let from_aln = vert_fpca_from_alignment(&km.aligned_data, km.aligned_srsfs.as_ref(), &t, 3)
+            .expect("vert_fpca_from_alignment should succeed");
+
+        assert_eq!(original.scores.shape(), from_aln.scores.shape());
+        assert_eq!(original.eigenvalues.len(), from_aln.eigenvalues.len());
+        for (a, b) in original.eigenvalues.iter().zip(&from_aln.eigenvalues) {
+            assert!((a - b).abs() < 1e-10, "eigenvalues should match");
+        }
+    }
+
+    #[test]
+    fn test_vert_fpca_from_alignment_without_srsfs() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+
+        let res = vert_fpca_from_alignment(&km.aligned_data, None, &t, 3)
+            .expect("vert_fpca_from_alignment without srsfs should succeed");
+        assert_eq!(res.scores.shape(), (15, 3));
+    }
+
+    #[test]
+    fn test_horiz_fpca_from_alignment_matches_original() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+
+        let original = horiz_fpca(&km, &t, 3).expect("horiz_fpca should succeed");
+        let from_aln = horiz_fpca_from_alignment(&km.gammas, &t, 3)
+            .expect("horiz_fpca_from_alignment should succeed");
+
+        assert_eq!(original.scores.shape(), from_aln.scores.shape());
+        assert_eq!(original.eigenvalues.len(), from_aln.eigenvalues.len());
+        for (a, b) in original.eigenvalues.iter().zip(&from_aln.eigenvalues) {
+            assert!((a - b).abs() < 1e-10, "eigenvalues should match");
+        }
+    }
+
+    #[test]
+    fn test_joint_fpca_from_alignment_matches_original() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+
+        let original = joint_fpca(&km, &t, 3, Some(1.0)).expect("joint_fpca should succeed");
+        let from_aln = joint_fpca_from_alignment(
+            &km.aligned_data,
+            km.aligned_srsfs.as_ref(),
+            &km.gammas,
+            &t,
+            3,
+            Some(1.0),
+        )
+        .expect("joint_fpca_from_alignment should succeed");
+
+        assert_eq!(original.scores.shape(), from_aln.scores.shape());
+        assert_eq!(original.eigenvalues.len(), from_aln.eigenvalues.len());
+        for (a, b) in original.eigenvalues.iter().zip(&from_aln.eigenvalues) {
+            assert!((a - b).abs() < 1e-10, "eigenvalues should match");
+        }
+    }
+
+    #[test]
+    fn test_joint_fpca_from_alignment_optimize_c() {
+        let (data, t) = generate_test_data(15, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+
+        let res = joint_fpca_from_alignment(
+            &km.aligned_data,
+            km.aligned_srsfs.as_ref(),
+            &km.gammas,
+            &t,
+            3,
+            None,
+        )
+        .expect("joint_fpca_from_alignment with C optimization should succeed");
+        assert_eq!(res.scores.shape(), (15, 3));
+        assert!(res.balance_c >= 0.0);
+    }
+
+    #[test]
+    fn test_from_alignment_invalid_input() {
+        let data = FdMatrix::zeros(1, 10);
+        let t: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+
+        assert!(vert_fpca_from_alignment(&data, None, &t, 3).is_err());
+        assert!(horiz_fpca_from_alignment(&data, &t, 3).is_err());
+        assert!(joint_fpca_from_alignment(&data, None, &data, &t, 3, Some(1.0)).is_err());
     }
 }

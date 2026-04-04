@@ -3632,4 +3632,177 @@ mod spm_tests {
         assert!(t2_pc_significance(&contribs, -0.1).is_err());
         assert!(t2_pc_significance(&contribs, 0.05).is_ok());
     }
+
+    // ── spm_monitor_from_fields tests ───────────────────────────────────────
+
+    #[test]
+    fn test_monitor_from_fields_matches_spm_monitor() {
+        use crate::spm::phase::spm_monitor_from_fields;
+
+        let m = 30;
+        let argvals = uniform_grid(m);
+        let ic_data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&ic_data, &argvals, &config).unwrap();
+
+        let new_data = generate_ic_data(10, m, 99);
+
+        let r1 = spm_monitor(&chart, &new_data, &argvals).unwrap();
+        let r2 = spm_monitor_from_fields(
+            &chart.fpca.mean,
+            &chart.fpca.rotation,
+            &chart.fpca.weights,
+            &chart.eigenvalues,
+            chart.t2_limit.ucl,
+            chart.spe_limit.ucl,
+            &new_data,
+            &argvals,
+        )
+        .unwrap();
+
+        assert_eq!(r1.t2.len(), r2.t2.len());
+        assert_eq!(r1.spe.len(), r2.spe.len());
+        for (a, b) in r1.t2.iter().zip(&r2.t2) {
+            assert!((a - b).abs() < 1e-10, "T2 mismatch: {a} vs {b}");
+        }
+        for (a, b) in r1.spe.iter().zip(&r2.spe) {
+            assert!((a - b).abs() < 1e-10, "SPE mismatch: {a} vs {b}");
+        }
+        assert_eq!(r1.t2_alarm, r2.t2_alarm);
+        assert_eq!(r1.spe_alarm, r2.spe_alarm);
+        assert_eq!(r1.scores.shape(), r2.scores.shape());
+        let (n, nc) = r1.scores.shape();
+        for i in 0..n {
+            for k in 0..nc {
+                assert!(
+                    (r1.scores[(i, k)] - r2.scores[(i, k)]).abs() < 1e-10,
+                    "Scores mismatch at ({i},{k})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_monitor_from_fields_oc_data() {
+        use crate::spm::phase::spm_monitor_from_fields;
+
+        let m = 30;
+        let argvals = uniform_grid(m);
+        let ic_data = generate_ic_data(40, m, 42);
+        let config = SpmConfig {
+            ncomp: 3,
+            alpha: 0.05,
+            ..SpmConfig::default()
+        };
+        let chart = spm_phase1(&ic_data, &argvals, &config).unwrap();
+
+        // Out-of-control data with large mean shift should trigger alarms
+        let oc_data = generate_oc_data(5, m, 5.0, 123);
+        let r1 = spm_monitor(&chart, &oc_data, &argvals).unwrap();
+        let r2 = spm_monitor_from_fields(
+            &chart.fpca.mean,
+            &chart.fpca.rotation,
+            &chart.fpca.weights,
+            &chart.eigenvalues,
+            chart.t2_limit.ucl,
+            chart.spe_limit.ucl,
+            &oc_data,
+            &argvals,
+        )
+        .unwrap();
+
+        // Results should match exactly
+        assert_eq!(r1.t2_alarm, r2.t2_alarm);
+        assert_eq!(r1.spe_alarm, r2.spe_alarm);
+        // OC data should trigger at least one alarm
+        let any_alarm = r2.t2_alarm.iter().any(|&a| a) || r2.spe_alarm.iter().any(|&a| a);
+        assert!(any_alarm, "OC data with shift=5.0 should trigger alarms");
+    }
+
+    #[test]
+    fn test_monitor_from_fields_dimension_errors() {
+        use crate::spm::phase::spm_monitor_from_fields;
+
+        let m = 10;
+        let argvals = uniform_grid(m);
+        let mean = vec![0.0; m];
+        let rotation = FdMatrix::zeros(m, 2);
+        let weights = vec![1.0; m];
+        let eigenvalues = vec![1.0, 0.5];
+
+        // Wrong number of columns
+        let bad_data = FdMatrix::zeros(5, m + 1);
+        assert!(spm_monitor_from_fields(
+            &mean,
+            &rotation,
+            &weights,
+            &eigenvalues,
+            10.0,
+            5.0,
+            &bad_data,
+            &argvals,
+        )
+        .is_err());
+
+        // Wrong argvals length
+        let data = FdMatrix::zeros(5, m);
+        let bad_argvals = vec![0.0; m + 1];
+        assert!(spm_monitor_from_fields(
+            &mean,
+            &rotation,
+            &weights,
+            &eigenvalues,
+            10.0,
+            5.0,
+            &data,
+            &bad_argvals,
+        )
+        .is_err());
+
+        // Wrong rotation rows
+        let bad_rotation = FdMatrix::zeros(m + 1, 2);
+        assert!(spm_monitor_from_fields(
+            &mean,
+            &bad_rotation,
+            &weights,
+            &eigenvalues,
+            10.0,
+            5.0,
+            &data,
+            &argvals,
+        )
+        .is_err());
+
+        // Wrong rotation cols
+        let bad_rotation2 = FdMatrix::zeros(m, 3);
+        assert!(spm_monitor_from_fields(
+            &mean,
+            &bad_rotation2,
+            &weights,
+            &eigenvalues,
+            10.0,
+            5.0,
+            &data,
+            &argvals,
+        )
+        .is_err());
+
+        // Wrong weights length
+        let bad_weights = vec![1.0; m + 1];
+        assert!(spm_monitor_from_fields(
+            &mean,
+            &rotation,
+            &bad_weights,
+            &eigenvalues,
+            10.0,
+            5.0,
+            &data,
+            &argvals,
+        )
+        .is_err());
+    }
 }

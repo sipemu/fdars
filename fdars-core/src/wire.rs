@@ -293,6 +293,8 @@ pub struct RegressionLayer {
     pub model_name: Option<String>,
     /// Optional: number of training observations.
     pub n_obs: Option<usize>,
+    /// Optional: FPCA decomposition used by the model (needed for explain functions).
+    pub fpca: Option<Box<FpcaLayer>>,
 }
 
 /// Function-on-scalar regression fit.
@@ -349,6 +351,8 @@ pub struct SpmChartLayer {
     pub eigenvalues: Option<Vec<f64>>,
     /// Optional: FPCA mean function (length m).
     pub fpca_mean: Option<Vec<f64>>,
+    /// Optional: FPCA rotation/eigenfunctions (m × ncomp).
+    pub fpca_rotation: Option<FdMatrix>,
     /// Optional: FPCA integration weights (length m).
     pub fpca_weights: Option<Vec<f64>>,
 }
@@ -371,6 +375,16 @@ pub struct SpmMonitorLayer {
     pub spe_alarms: Vec<bool>,
 }
 
+/// Extra data for explain layers.
+///
+/// When the `serde` feature is enabled this is [`serde_json::Value`] (arbitrary
+/// JSON). Otherwise it is a flat `HashMap<String, Vec<f64>>`.
+#[cfg(feature = "serde")]
+pub type ExplainExtra = serde_json::Value;
+/// Extra data for explain layers (flat map when `serde` is disabled).
+#[cfg(not(feature = "serde"))]
+pub type ExplainExtra = HashMap<String, Vec<f64>>;
+
 /// Explainability result.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -381,16 +395,27 @@ pub struct ExplainLayer {
     pub values: Vec<f64>,
     /// Labels for the values.
     pub labels: Vec<String>,
-    /// Additional method-specific data.
-    pub extra: Option<HashMap<String, Vec<f64>>>,
+    /// Additional method-specific data (arbitrary JSON when `serde` feature is
+    /// enabled, flat `HashMap<String, Vec<f64>>` otherwise).
+    pub extra: Option<ExplainExtra>,
 }
+
+/// Custom layer data type.
+///
+/// When the `serde` feature is enabled this is [`serde_json::Value`] (arbitrary
+/// JSON). Otherwise it is a flat `HashMap<String, Vec<f64>>`.
+#[cfg(feature = "serde")]
+pub type CustomData = serde_json::Value;
+/// Custom layer data type (flat map when `serde` is disabled).
+#[cfg(not(feature = "serde"))]
+pub type CustomData = HashMap<String, Vec<f64>>;
 
 /// User-defined layer for extensions.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CustomLayer {
     pub name: String,
-    pub data: HashMap<String, Vec<f64>>,
+    pub data: CustomData,
 }
 
 // ─── FdaData Constructors ───────────────────────────────────────────────────
@@ -594,6 +619,74 @@ impl FdaData {
     }
 }
 
+// ─── From conversions ──────────────────────────────────────────────────────
+
+impl From<&crate::scalar_on_function::FregreLmResult> for RegressionLayer {
+    fn from(fit: &crate::scalar_on_function::FregreLmResult) -> Self {
+        let n_tune = fit.fpca.scores.nrows();
+        let eigenvalues: Vec<f64> = fit
+            .fpca
+            .singular_values
+            .iter()
+            .map(|s| s * s / (n_tune as f64 - 1.0).max(1.0))
+            .collect();
+        let total_var: f64 = eigenvalues.iter().sum();
+        let variance_explained = if total_var > 0.0 {
+            eigenvalues.iter().map(|&ev| ev / total_var).collect()
+        } else {
+            vec![0.0; eigenvalues.len()]
+        };
+
+        let fpca_layer = FpcaLayer {
+            eigenvalues,
+            variance_explained,
+            eigenfunctions: fit.fpca.rotation.clone(),
+            scores: fit.fpca.scores.clone(),
+            mean: fit.fpca.mean.clone(),
+            weights: fit.fpca.weights.clone(),
+            ncomp: fit.ncomp,
+        };
+
+        RegressionLayer {
+            method: "fregre_lm".into(),
+            beta_t: Some(fit.beta_t.clone()),
+            fitted_values: fit.fitted_values.clone(),
+            residuals: fit.residuals.clone(),
+            observed_y: Vec::new(),
+            r_squared: fit.r_squared,
+            adj_r_squared: Some(fit.r_squared_adj),
+            intercept: fit.intercept,
+            ncomp: fit.ncomp,
+            argvals: None,
+            beta_se: Some(fit.beta_se.clone()),
+            model_name: None,
+            n_obs: Some(fit.fitted_values.len()),
+            fpca: Some(Box::new(fpca_layer)),
+        }
+    }
+}
+
+impl From<&crate::scalar_on_function::PlsRegressionResult> for RegressionLayer {
+    fn from(fit: &crate::scalar_on_function::PlsRegressionResult) -> Self {
+        RegressionLayer {
+            method: "fregre_pls".into(),
+            beta_t: Some(fit.beta_t.clone()),
+            fitted_values: fit.fitted_values.clone(),
+            residuals: fit.residuals.clone(),
+            observed_y: Vec::new(),
+            r_squared: fit.r_squared,
+            adj_r_squared: Some(fit.r_squared_adj),
+            intercept: fit.intercept,
+            ncomp: fit.ncomp,
+            argvals: None,
+            beta_se: None,
+            model_name: None,
+            n_obs: Some(fit.fitted_values.len()),
+            fpca: None, // PLS uses a different decomposition; no FPCA layer
+        }
+    }
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -687,5 +780,75 @@ mod tests {
         assert!(fd.depth().is_some());
         assert!(fd.outliers().is_some());
         assert!(fd.distances().is_some());
+    }
+
+    #[test]
+    fn regression_layer_from_fregre_lm() {
+        let (n, m) = (20, 30);
+        let data = FdMatrix::from_column_major(
+            (0..n * m)
+                .map(|k| {
+                    let i = (k % n) as f64;
+                    let j = (k / n) as f64;
+                    ((i + 1.0) * j * 0.2).sin()
+                })
+                .collect(),
+            n,
+            m,
+        )
+        .unwrap();
+        let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
+        let fit = crate::scalar_on_function::fregre_lm(&data, &y, None, 3).unwrap();
+
+        let layer = RegressionLayer::from(&fit);
+        assert_eq!(layer.method, "fregre_lm");
+        assert_eq!(layer.ncomp, 3);
+        assert_eq!(layer.fitted_values.len(), n);
+        assert_eq!(layer.residuals.len(), n);
+        assert!(layer.fpca.is_some());
+        let fpca = layer.fpca.as_ref().unwrap();
+        assert_eq!(fpca.ncomp, 3);
+        assert_eq!(fpca.mean.len(), m);
+        assert_eq!(fpca.eigenfunctions.shape(), (m, 3));
+        assert_eq!(fpca.scores.shape(), (n, 3));
+        assert_eq!(fpca.weights.len(), m);
+        assert_eq!(fpca.eigenvalues.len(), 3);
+        // Variance explained should sum to ~1.0
+        let ve_sum: f64 = fpca.variance_explained.iter().sum();
+        assert!(
+            (ve_sum - 1.0).abs() < 1e-10,
+            "variance_explained sum = {ve_sum}"
+        );
+        assert!(layer.beta_t.is_some());
+        assert!(layer.beta_se.is_some());
+        assert_eq!(layer.n_obs, Some(n));
+        assert!((layer.r_squared - fit.r_squared).abs() < 1e-14);
+    }
+
+    #[test]
+    fn regression_layer_from_pls() {
+        let n = 30;
+        let m = 50;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let vals: Vec<f64> = (0..n)
+            .flat_map(|i| {
+                t.iter()
+                    .map(move |&tj| (2.0 * std::f64::consts::PI * tj).sin() + 0.1 * i as f64)
+            })
+            .collect();
+        let data = FdMatrix::from_column_major(vals, n, m).unwrap();
+        let y: Vec<f64> = (0..n).map(|i| 2.0 + 0.5 * i as f64).collect();
+
+        let fit = crate::scalar_on_function::fregre_pls(&data, &y, &t, 3, None).unwrap();
+
+        let layer = RegressionLayer::from(&fit);
+        assert_eq!(layer.method, "fregre_pls");
+        assert_eq!(layer.ncomp, 3);
+        assert_eq!(layer.fitted_values.len(), n);
+        assert!(layer.fpca.is_none()); // PLS has no FPCA decomposition
+        assert!(layer.beta_t.is_some());
+        assert!(layer.beta_se.is_none()); // PLS has no beta SE
+        assert_eq!(layer.n_obs, Some(n));
+        assert!((layer.r_squared - fit.r_squared).abs() < 1e-14);
     }
 }

@@ -398,6 +398,152 @@ pub fn spm_monitor(
     })
 }
 
+/// Phase II monitoring from decomposed fields (no [`SpmChart`] struct needed).
+///
+/// This enables monitoring from a serialized/restored `SpmChartLayer`
+/// without reconstructing the full `SpmChart` struct.  The caller provides
+/// the raw FPCA components and control limits directly.
+///
+/// # Arguments
+/// * `fpca_mean` -- Mean function from FPCA (length m)
+/// * `fpca_rotation` -- Eigenfunctions / rotation matrix (m x ncomp)
+/// * `fpca_weights` -- Integration weights (length m)
+/// * `eigenvalues` -- Eigenvalues (length ncomp)
+/// * `t2_ucl` -- Upper control limit for T²
+/// * `spe_ucl` -- Upper control limit for SPE
+/// * `new_data` -- New functional observations (n_new x m)
+/// * `argvals` -- Grid points (length m)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if any dimension is inconsistent.
+/// Returns [`FdarError::InvalidParameter`] if any eigenvalue is non-positive.
+///
+/// # Example
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::spm::phase::{spm_phase1, spm_monitor, spm_monitor_from_fields, SpmConfig};
+///
+/// let data = FdMatrix::from_column_major(
+///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
+/// ).unwrap();
+/// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
+/// let config = SpmConfig { ncomp: 2, ..SpmConfig::default() };
+/// let chart = spm_phase1(&data, &argvals, &config).unwrap();
+///
+/// let new_data = FdMatrix::from_column_major(
+///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 10
+/// ).unwrap();
+///
+/// // Equivalent to spm_monitor(&chart, &new_data, &argvals)
+/// let result = spm_monitor_from_fields(
+///     &chart.fpca.mean,
+///     &chart.fpca.rotation,
+///     &chart.fpca.weights,
+///     &chart.eigenvalues,
+///     chart.t2_limit.ucl,
+///     chart.spe_limit.ucl,
+///     &new_data,
+///     &argvals,
+/// ).unwrap();
+/// assert_eq!(result.t2.len(), 5);
+/// ```
+#[must_use = "monitoring result should not be discarded"]
+pub fn spm_monitor_from_fields(
+    fpca_mean: &[f64],
+    fpca_rotation: &FdMatrix,
+    fpca_weights: &[f64],
+    eigenvalues: &[f64],
+    t2_ucl: f64,
+    spe_ucl: f64,
+    new_data: &FdMatrix,
+    argvals: &[f64],
+) -> Result<SpmMonitorResult, FdarError> {
+    let m = fpca_mean.len();
+    let ncomp = eigenvalues.len();
+
+    if new_data.ncols() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data",
+            expected: format!("{m} columns"),
+            actual: format!("{} columns", new_data.ncols()),
+        });
+    }
+    if fpca_rotation.nrows() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "fpca_rotation",
+            expected: format!("{m} rows (matching fpca_mean)"),
+            actual: format!("{} rows", fpca_rotation.nrows()),
+        });
+    }
+    if fpca_rotation.ncols() != ncomp {
+        return Err(FdarError::InvalidDimension {
+            parameter: "fpca_rotation",
+            expected: format!("{ncomp} columns (matching eigenvalues)"),
+            actual: format!("{} columns", fpca_rotation.ncols()),
+        });
+    }
+    if fpca_weights.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "fpca_weights",
+            expected: format!("{m} (matching fpca_mean)"),
+            actual: format!("{}", fpca_weights.len()),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m} (matching fpca_mean)"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+
+    let n_new = new_data.nrows();
+
+    // 1. Project new data onto FPC scores (center + weight + rotate)
+    let mut scores = FdMatrix::zeros(n_new, ncomp);
+    for i in 0..n_new {
+        for k in 0..ncomp {
+            let mut sum = 0.0;
+            for j in 0..m {
+                sum += (new_data[(i, j)] - fpca_mean[j]) * fpca_rotation[(j, k)] * fpca_weights[j];
+            }
+            scores[(i, k)] = sum;
+        }
+    }
+
+    // 2. Compute T² from scores / eigenvalues
+    let t2 = hotelling_t2(&scores, eigenvalues)?;
+
+    // 3. Reconstruct (centered) and compute SPE
+    //    centered = new_data - mean
+    let centered = center_data(new_data, fpca_mean);
+    //    centered_reconstruction = scores * rotation^T
+    let mut recon_centered = FdMatrix::zeros(n_new, m);
+    for i in 0..n_new {
+        for j in 0..m {
+            let mut val = 0.0;
+            for k in 0..ncomp {
+                val += scores[(i, k)] * fpca_rotation[(j, k)];
+            }
+            recon_centered[(i, j)] = val;
+        }
+    }
+    let spe = spe_univariate(&centered, &recon_centered, argvals)?;
+
+    // 4. Flag alarms
+    let t2_alarm: Vec<bool> = t2.iter().map(|&v| v > t2_ucl).collect();
+    let spe_alarm: Vec<bool> = spe.iter().map(|&v| v > spe_ucl).collect();
+
+    Ok(SpmMonitorResult {
+        t2,
+        spe,
+        t2_alarm,
+        spe_alarm,
+        scores,
+    })
+}
+
 /// Build a multivariate SPM chart from Phase I data.
 ///
 /// # Arguments

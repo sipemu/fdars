@@ -102,8 +102,8 @@ pub use partial::{
     PartialMonitorResult,
 };
 pub use phase::{
-    mf_spm_monitor, mf_spm_phase1, spm_monitor, spm_phase1, MfSpmChart, SpmChart, SpmConfig,
-    SpmMonitorResult,
+    mf_spm_monitor, mf_spm_phase1, spm_monitor, spm_monitor_from_fields, spm_phase1, MfSpmChart,
+    SpmChart, SpmConfig, SpmMonitorResult,
 };
 pub use profile::{
     profile_monitor, profile_phase1, ProfileChart, ProfileMonitorConfig, ProfileMonitorResult,

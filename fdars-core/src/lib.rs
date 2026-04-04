@@ -273,7 +273,8 @@ pub use smooth_basis::{
 
 // Re-export elastic FPCA types
 pub use elastic_fpca::{
-    horiz_fpca, joint_fpca, vert_fpca, HorizFpcaResult, JointFpcaResult, VertFpcaResult,
+    horiz_fpca, horiz_fpca_from_alignment, joint_fpca, joint_fpca_from_alignment, vert_fpca,
+    vert_fpca_from_alignment, HorizFpcaResult, JointFpcaResult, VertFpcaResult,
 };
 
 // Re-export elastic regression types
@@ -293,9 +294,9 @@ pub use spm::{
     select_ncomp, spe_contributions, spe_control_limit, spe_limit_robust,
     spe_moment_match_diagnostic, spe_multivariate, spe_univariate, spm_amewma_monitor,
     spm_cusum_monitor, spm_cusum_monitor_with_restart, spm_ewma_monitor, spm_mewma_monitor,
-    spm_monitor, spm_monitor_partial, spm_monitor_partial_batch, spm_phase1, spm_phase1_iterative,
-    t2_contributions, t2_contributions_mfpca, t2_control_limit, t2_limit_robust,
-    t2_pc_contributions, t2_pc_significance, western_electric_rules, AmewmaConfig,
+    spm_monitor, spm_monitor_from_fields, spm_monitor_partial, spm_monitor_partial_batch,
+    spm_phase1, spm_phase1_iterative, t2_contributions, t2_contributions_mfpca, t2_control_limit,
+    t2_limit_robust, t2_pc_contributions, t2_pc_significance, western_electric_rules, AmewmaConfig,
     AmewmaMonitorResult, ArlConfig, ArlResult, ChartRule, ControlLimit, ControlLimitMethod,
     CusumConfig, CusumMonitorResult, DomainCompletion, ElasticSpmChart, ElasticSpmConfig,
     ElasticSpmMonitorResult, EwmaConfig, EwmaMonitorResult, FrccChart, FrccConfig,
