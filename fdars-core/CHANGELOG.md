@@ -5,6 +5,16 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1]
+
+### Added
+
+- **`ExplainLayer.extra` → `serde_json::Value`** (#29): Arbitrary JSON support behind `serde` feature, unblocking 8+ app node types. `serde_json` added as optional dependency.
+- **`RegressionLayer.fpca`** (#29): Stores FPCA decomposition. `From<&FregreLmResult>` and `From<&PlsRegressionResult>` conversions preserve internal state for explain functions.
+- **`vert/horiz/joint_fpca_from_alignment`** (#29): Accept raw fields (aligned_data, gammas, mean_srsf, argvals) instead of `KarcherMeanResult`.
+- **`spm_monitor_from_fields`** (#29): Phase II monitoring from raw FPCA fields (mean, rotation, weights, eigenvalues, UCLs) instead of `SpmChart`. Bitwise-identical to `spm_monitor`.
+- **`SpmChartLayer.fpca_rotation`**: Stores FPCA rotation matrix for field-based monitoring.
+
 ## [0.12.0]
 
 ### Added
