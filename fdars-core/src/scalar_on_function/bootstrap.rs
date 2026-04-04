@@ -23,24 +23,7 @@ fn subsample_rows(src: &FdMatrix, indices: &[usize]) -> FdMatrix {
     out
 }
 
-/// Compute the q-th quantile of a sorted slice (linear interpolation).
-fn quantile(sorted: &[f64], q: f64) -> f64 {
-    if sorted.is_empty() {
-        return f64::NAN;
-    }
-    if sorted.len() == 1 {
-        return sorted[0];
-    }
-    let pos = q * (sorted.len() - 1) as f64;
-    let lo = pos.floor() as usize;
-    let hi = lo + 1;
-    let frac = pos - lo as f64;
-    if hi >= sorted.len() {
-        sorted[sorted.len() - 1]
-    } else {
-        sorted[lo] * (1.0 - frac) + sorted[hi] * frac
-    }
-}
+use crate::helpers::quantile_sorted as quantile;
 
 /// Bootstrap confidence intervals for β(t) from a functional linear model.
 ///

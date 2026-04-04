@@ -1,26 +1,7 @@
 //! Stability analysis and statistical helpers.
 
-/// Quantile of a pre-sorted slice using linear interpolation.
-pub(crate) fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
-    let n = sorted.len();
-    if n == 0 {
-        return 0.0;
-    }
-    if n == 1 {
-        return sorted[0];
-    }
-    let idx = q * (n - 1) as f64;
-    let lo = crate::utility::f64_to_usize_clamped(idx.floor());
-    let hi = crate::utility::f64_to_usize_clamped(idx.ceil());
-    let lo = lo.min(n - 1);
-    let hi = hi.min(n - 1);
-    if lo == hi {
-        sorted[lo]
-    } else {
-        let frac = idx - lo as f64;
-        sorted[lo] * (1.0 - frac) + sorted[hi] * frac
-    }
-}
+// Re-export the canonical quantile from helpers for backward compatibility.
+pub(crate) use crate::helpers::quantile_sorted;
 
 /// Sample standard deviation of a slice.
 fn sample_std(values: &[f64]) -> f64 {

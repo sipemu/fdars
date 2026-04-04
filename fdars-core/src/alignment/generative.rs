@@ -1,6 +1,6 @@
 //! Gaussian generative model for random curve synthesis from aligned data.
 
-use super::srsf::{reparameterize_curve, srsf_inverse, srsf_single};
+use super::srsf::{reparameterize_curve, srsf_inverse};
 use super::KarcherMeanResult;
 use crate::elastic_fpca::{horiz_fpca, sphere_karcher_mean, vert_fpca, warps_to_normalized_psi};
 use crate::error::FdarError;
@@ -322,12 +322,6 @@ pub fn joint_gauss_model(
 }
 
 // ─── Helper ─────────────────────────────────────────────────────────────────
-
-/// Compute SRSF of a single curve (delegates to crate-internal helper).
-#[allow(dead_code)]
-fn _srsf_single_wrapper(f: &[f64], argvals: &[f64]) -> Vec<f64> {
-    srsf_single(f, argvals)
-}
 
 #[cfg(test)]
 mod tests {

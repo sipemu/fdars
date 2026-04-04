@@ -183,25 +183,7 @@ pub fn shape_confidence_interval(
     })
 }
 
-/// Compute a quantile from a sorted slice using linear interpolation.
-fn quantile_sorted(sorted: &[f64], p: f64) -> f64 {
-    let n = sorted.len();
-    if n == 0 {
-        return 0.0;
-    }
-    if n == 1 {
-        return sorted[0];
-    }
-    let idx = p * (n - 1) as f64;
-    let lo = idx.floor() as usize;
-    let hi = idx.ceil() as usize;
-    let frac = idx - lo as f64;
-    if lo == hi || hi >= n {
-        sorted[lo.min(n - 1)]
-    } else {
-        sorted[lo] * (1.0 - frac) + sorted[hi] * frac
-    }
-}
+use crate::helpers::quantile_sorted;
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 

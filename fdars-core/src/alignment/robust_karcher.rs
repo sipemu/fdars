@@ -277,18 +277,7 @@ fn relative_srsf_change(q_old: &[f64], q_new: &[f64]) -> f64 {
     diff_norm / old_norm
 }
 
-/// Extract a subset of rows from an FdMatrix by index.
-fn subset_rows_from_indices(data: &FdMatrix, indices: &[usize]) -> FdMatrix {
-    let m = data.ncols();
-    let n_new = indices.len();
-    let mut result = FdMatrix::zeros(n_new, m);
-    for (new_i, &old_i) in indices.iter().enumerate() {
-        for j in 0..m {
-            result[(new_i, j)] = data[(old_i, j)];
-        }
-    }
-    result
-}
+use crate::cv::subset_rows as subset_rows_from_indices;
 
 #[cfg(test)]
 mod tests {

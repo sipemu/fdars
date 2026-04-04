@@ -181,26 +181,9 @@ pub(super) fn empirical_coverage(scores: &[f64], quantile: f64) -> f64 {
     scores.iter().filter(|&&s| s <= quantile).count() as f64 / n as f64
 }
 
-/// Quantile of a pre-sorted slice using linear interpolation (for non-conformal uses).
-#[allow(dead_code)]
-pub(super) fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
-    let n = sorted.len();
-    if n == 0 {
-        return 0.0;
-    }
-    if n == 1 {
-        return sorted[0];
-    }
-    let idx = q * (n - 1) as f64;
-    let lo = (idx.floor() as usize).min(n - 1);
-    let hi = (idx.ceil() as usize).min(n - 1);
-    if lo == hi {
-        sorted[lo]
-    } else {
-        let frac = idx - lo as f64;
-        sorted[lo] * (1.0 - frac) + sorted[hi] * frac
-    }
-}
+// Re-export canonical quantile from helpers (removes dead code duplicate).
+#[allow(unused_imports)]
+pub(super) use crate::helpers::quantile_sorted;
 
 /// Build regression result from calibration residuals and test predictions.
 pub(super) fn build_regression_result(
