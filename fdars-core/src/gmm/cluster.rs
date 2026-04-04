@@ -41,15 +41,13 @@ pub(super) fn run_multiple_inits(
 /// ```no_run
 /// use fdars_core::gmm::cluster::GmmClusterConfig;
 /// use fdars_core::gmm::CovType;
-/// use fdars_core::basis::ProjectionBasisType;
 ///
-/// let config = GmmClusterConfig {
-///     nbasis: 10,
-///     cov_type: CovType::Full,
-///     ..GmmClusterConfig::default()
-/// };
+/// let mut config = GmmClusterConfig::default();
+/// config.nbasis = 10;
+/// config.cov_type = CovType::Full;
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct GmmClusterConfig {
     /// Number of basis functions for projection (default: 5).
     pub nbasis: usize,

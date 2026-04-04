@@ -110,12 +110,11 @@ pub struct ConformalClassificationResult {
 /// ```no_run
 /// use fdars_core::conformal::ConformalConfig;
 ///
-/// let config = ConformalConfig {
-///     alpha: 0.05,   // 95% coverage
-///     ..ConformalConfig::default()
-/// };
+/// let mut config = ConformalConfig::default();
+/// config.alpha = 0.05; // 95% coverage
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ConformalConfig {
     /// Fraction of data reserved for calibration (default: 0.25).
     pub cal_fraction: f64,

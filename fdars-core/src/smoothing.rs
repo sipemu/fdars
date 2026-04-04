@@ -532,7 +532,7 @@ pub enum CvCriterion {
 }
 
 /// Result of bandwidth optimization.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OptimBandwidthResult {
     /// Optimal bandwidth.
     pub h_opt: f64,
@@ -709,7 +709,7 @@ pub fn optim_bandwidth(
 // ─── kNN CV Functions ───────────────────────────────────────────────────────
 
 /// Result of kNN k-selection by cross-validation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KnnCvResult {
     /// Optimal k (number of neighbors).
     pub optimal_k: usize,

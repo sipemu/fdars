@@ -43,6 +43,7 @@ pub struct FdPar {
 
 /// Result of basis-penalized smoothing.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct SmoothBasisResult {
     /// Basis coefficients (n × K).
     pub coefficients: FdMatrix,
@@ -606,6 +607,7 @@ pub enum BasisCriterion {
 
 /// Result of nbasis selection.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct BasisNbasisCvResult {
     /// Optimal number of basis functions.
     pub optimal_nbasis: usize,

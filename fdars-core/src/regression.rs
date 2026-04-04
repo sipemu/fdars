@@ -627,7 +627,8 @@ pub fn fdata_to_pls_1d(
 }
 
 /// Result of ridge regression fit.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 #[cfg(feature = "linalg")]
 pub struct RidgeResult {
     /// Coefficients

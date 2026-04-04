@@ -13,6 +13,7 @@ use rayon::iter::ParallelIterator;
 
 /// Result of k-means clustering.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct KmeansResult {
     /// Cluster assignments for each observation
     pub cluster: Vec<usize>,
@@ -607,6 +608,7 @@ pub fn kmeans_fd(
 
 /// Result of fuzzy c-means clustering.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FuzzyCmeansResult {
     /// Membership matrix (n x k)
     pub membership: FdMatrix,

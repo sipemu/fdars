@@ -40,13 +40,12 @@ pub struct StlResult {
 /// ```no_run
 /// use fdars_core::detrend::stl::StlConfig;
 ///
-/// let config = StlConfig {
-///     robust: true,
-///     s_window: Some(13),
-///     ..StlConfig::default()
-/// };
+/// let mut config = StlConfig::default();
+/// config.robust = true;
+/// config.s_window = Some(13);
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
 pub struct StlConfig {
     /// Seasonal smoothing window (default: `None` for auto = 7).
     pub s_window: Option<usize>,

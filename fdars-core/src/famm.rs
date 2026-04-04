@@ -23,6 +23,7 @@ use rayon::iter::ParallelIterator;
 
 /// Result of a functional mixed model fit.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FmmResult {
     /// Overall mean function μ̂(t) (length m)
     pub mean_function: Vec<f64>,
@@ -50,6 +51,7 @@ pub struct FmmResult {
 
 /// Result of fixed effect hypothesis test.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct FmmTestResult {
     /// F-statistic per covariate (length p)
     pub f_statistics: Vec<f64>,
