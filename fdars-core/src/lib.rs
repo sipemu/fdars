@@ -84,6 +84,7 @@ pub mod detrend;
 pub mod distance;
 pub mod famm;
 pub mod fdata;
+pub mod fof_regression;
 pub mod function_on_scalar;
 pub mod function_on_scalar_2d;
 pub mod gmm;
@@ -215,6 +216,9 @@ pub use tolerance::{
 // Re-export FAMM types
 pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
 
+// Re-export function-on-function regression types
+pub use fof_regression::{fof_cv, fof_regression, predict_fof, FofCvResult, FofResult};
+
 // Re-export function-on-scalar regression types
 pub use function_on_scalar::{
     fanova, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
@@ -224,12 +228,14 @@ pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
     bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fregre_basis_cv, fregre_cv,
-    fregre_huber, fregre_l1, fregre_lm, fregre_np_cv, fregre_np_from_distances, fregre_np_mixed,
-    fregre_pls, functional_logistic, model_selection_ncomp, predict_fregre_lm, predict_fregre_np,
+    fregre_huber, fregre_l1, fregre_lm, fregre_lm_multi, fregre_lm_multi_cv, fregre_np_cv,
+    fregre_np_from_distances, fregre_np_mixed, fregre_pls, functional_logistic,
+    model_selection_ncomp, predict_fregre_lm, predict_fregre_lm_multi, predict_fregre_np,
     predict_fregre_np_from_distances, predict_fregre_pls, predict_fregre_robust,
     predict_functional_logistic, BootstrapCiResult, FregreBasisCvResult, FregreCvResult,
     FregreLmResult, FregreNpCvResult, FregreNpResult, FregreRobustResult, FunctionalLogisticResult,
-    ModelSelectionResult, PlsRegressionResult, SelectionCriterion,
+    ModelSelectionResult, MultiCvResult, MultiFregreLmResult, PlsRegressionResult,
+    SelectionCriterion,
 };
 
 // Re-export generic explainability types

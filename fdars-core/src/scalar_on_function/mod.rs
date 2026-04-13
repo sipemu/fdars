@@ -25,6 +25,7 @@ mod bootstrap;
 mod cv;
 mod fregre_lm;
 mod logistic;
+mod multi;
 mod nonparametric;
 mod pls;
 mod robust;
@@ -36,6 +37,7 @@ pub use bootstrap::{bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic};
 pub use cv::{fregre_basis_cv, fregre_np_cv};
 pub use fregre_lm::{fregre_cv, fregre_lm, model_selection_ncomp, predict_fregre_lm};
 pub use logistic::{functional_logistic, predict_functional_logistic};
+pub use multi::{fregre_lm_multi, fregre_lm_multi_cv, predict_fregre_lm_multi, MultiCvResult};
 pub use nonparametric::{
     fregre_np_from_distances, fregre_np_mixed, predict_fregre_np, predict_fregre_np_from_distances,
 };
@@ -215,6 +217,38 @@ pub struct PlsRegressionResult {
     /// Akaike Information Criterion
     pub aic: f64,
     /// Bayesian Information Criterion
+    pub bic: f64,
+}
+
+/// Result of multi-predictor functional linear regression.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct MultiFregreLmResult {
+    /// Intercept α
+    pub intercept: f64,
+    /// Functional coefficients beta_k(t) for each predictor, each length m_k.
+    pub beta_t: Vec<Vec<f64>>,
+    /// Scalar coefficients γ (one per scalar covariate)
+    pub gamma: Vec<f64>,
+    /// Fitted values ŷ (length n)
+    pub fitted_values: Vec<f64>,
+    /// Residuals y - ŷ (length n)
+    pub residuals: Vec<f64>,
+    /// R²
+    pub r_squared: f64,
+    /// Adjusted R²
+    pub r_squared_adj: f64,
+    /// Number of FPC components used per functional predictor
+    pub ncomp: Vec<usize>,
+    /// FPCA results for each functional predictor (for projection)
+    pub fpcas: Vec<FpcaResult>,
+    /// Regression coefficients [intercept, scores_1..., scores_2..., ..., scalars...]
+    pub coefficients: Vec<f64>,
+    /// Residual standard error
+    pub residual_se: f64,
+    /// AIC
+    pub aic: f64,
+    /// BIC
     pub bic: f64,
 }
 
@@ -555,5 +589,20 @@ impl FunctionalLogisticResult {
     /// Predict P(Y=1) for new data. Delegates to [`predict_functional_logistic`].
     pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
         predict_functional_logistic(self, new_data, new_scalar)
+    }
+}
+
+impl MultiFregreLmResult {
+    /// Predict new responses. Delegates to [`predict_fregre_lm_multi`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FdarError`] if prediction fails due to dimension mismatches.
+    pub fn predict(
+        &self,
+        new_predictors: &[&FdMatrix],
+        new_scalar: Option<&FdMatrix>,
+    ) -> Result<Vec<f64>, FdarError> {
+        predict_fregre_lm_multi(self, new_predictors, new_scalar)
     }
 }
