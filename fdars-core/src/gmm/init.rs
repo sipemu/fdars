@@ -175,7 +175,7 @@ pub(super) fn init_params_from_assignments(
         }
     }
 
-    let reg = 1e-6; // regularization
+    let reg = super::covariance::data_scaled_reg(features, d); // data-scaled regularization
     let covariances = compute_covariances(features, assignments, &means, k, d, cov_type, reg);
 
     let weights: Vec<f64> = counts.iter().map(|&c| c.max(1) as f64 / n as f64).collect();

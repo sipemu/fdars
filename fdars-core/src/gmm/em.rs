@@ -353,7 +353,7 @@ pub fn gmm_em(
     let (mut means, mut covariances, mut weights) =
         init_params_from_assignments(features, &assignments, k, d, cov_type);
 
-    let reg = 1e-6;
+    let reg = super::covariance::data_scaled_reg(features, d);
     let mut prev_ll = f64::NEG_INFINITY;
     let mut converged = false;
     let mut iterations = 0;

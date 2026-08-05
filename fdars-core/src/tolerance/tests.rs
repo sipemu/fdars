@@ -971,6 +971,65 @@ fn test_equivalence_identical_groups() {
     );
 }
 
+/// Documents the intended TOST semantics behind GH #2.
+///
+/// Two samples from the SAME distribution are NOT automatically declared
+/// equivalent: the decision requires the entire (1-alpha) simultaneous
+/// confidence band for the mean difference to fall inside (-delta, delta).
+/// Because the SCB half-width reflects sampling uncertainty (~ c_alpha * SE),
+/// a delta smaller than the band half-width yields `equivalent = false` even
+/// for identically-distributed data. This is correct TOST behavior, not an
+/// over-conservative bug: delta must be chosen relative to the band width.
+#[test]
+fn test_equivalence_same_distribution_requires_adequate_delta() {
+    // Two samples from the same generating distribution (only the seed differs).
+    let (data1, data2) = make_equivalent_groups();
+    let bs = EquivalenceBootstrap::Multiplier(MultiplierDistribution::Gaussian);
+
+    // With a delta SMALLER than the SCB half-width, the (correct) verdict is
+    // "not equivalent" — the confidence band pokes outside the corridor.
+    let r_small = equivalence_test(&data1, &data2, 0.1, 0.05, 500, bs, 42).unwrap();
+    let max_half_width = r_small
+        .scb
+        .half_width
+        .iter()
+        .cloned()
+        .fold(0.0_f64, f64::max);
+    assert!(
+        r_small.delta < max_half_width,
+        "precondition: chosen delta ({}) should be below the band half-width ({max_half_width})",
+        r_small.delta
+    );
+    assert!(
+        !r_small.equivalent,
+        "delta below the SCB half-width must (correctly) yield non-equivalence"
+    );
+
+    // With a delta comfortably ABOVE the band's reach (max |upper| / |lower|),
+    // the same same-distribution data IS declared equivalent.
+    let reach = r_small
+        .scb
+        .upper
+        .iter()
+        .chain(r_small.scb.lower.iter())
+        .fold(0.0_f64, |a, &v| a.max(v.abs()));
+    let big_delta = reach * 1.5 + 0.5;
+    let r_big = equivalence_test(&data1, &data2, big_delta, 0.05, 500, bs, 42).unwrap();
+    assert!(
+        r_big.equivalent,
+        "same-distribution data with delta ({big_delta}) above the band reach ({reach}) \
+         should be equivalent"
+    );
+
+    // Consistency: the `equivalent` flag agrees with the SCB containment check.
+    assert_eq!(
+        r_big.equivalent,
+        r_big.scb.upper.iter().all(|&u| u < r_big.delta)
+            && r_big.scb.lower.iter().all(|&l| l > -r_big.delta),
+        "equivalent flag must match SCB containment in (-delta, delta)"
+    );
+}
+
 #[test]
 fn test_equivalence_different_groups() {
     let (data1, data2) = make_shifted_groups();
