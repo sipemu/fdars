@@ -335,7 +335,7 @@ fn make_gaussian_feature_clusters(
     seed: u64,
 ) -> Vec<Vec<f64>> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut gaussian = |rng: &mut StdRng| -> f64 {
+    let gaussian = |rng: &mut StdRng| -> f64 {
         let u1: f64 = rng.gen::<f64>().max(1e-15);
         let u2: f64 = rng.gen::<f64>();
         (-2.0 * u1.ln()).sqrt() * (2.0 * PI * u2).cos()
