@@ -309,7 +309,7 @@ fn analyze_arcs(
     }
 
     // Sort by count descending
-    peaks.sort_by(|a, b| b.1.cmp(&a.1));
+    peaks.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     // Extract top periods
     let detected_periods: Vec<f64> = peaks.iter().take(5).map(|(p, _)| *p as f64).collect();

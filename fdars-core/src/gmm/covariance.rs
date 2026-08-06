@@ -2,6 +2,48 @@
 
 use super::CovType;
 
+/// Relative regularization factor: the covariance floor is this fraction of the
+/// mean per-dimension feature variance. Chosen small so it never distorts a
+/// well-estimated component, but large enough (relative to the data scale) to
+/// prevent variance-collapse singularities that would otherwise inflate the
+/// log-likelihood without bound as `K` grows.
+pub(super) const REG_REL: f64 = 1e-6;
+
+/// Compute a data-scaled covariance regularization floor.
+///
+/// Returns `REG_REL * mean_j Var(feature_j)`, i.e. a small fraction of the
+/// average marginal feature variance. Using an absolute constant (e.g. `1e-6`)
+/// is scale-dependent and useless when features have variance of order 100+;
+/// a relative floor keeps regularization meaningful across data scales.
+///
+/// Falls back to `REG_REL` if the data has (near-)zero total variance.
+pub(super) fn data_scaled_reg(features: &[Vec<f64>], d: usize) -> f64 {
+    let n = features.len();
+    if n == 0 || d == 0 {
+        return REG_REL;
+    }
+    let nf = n as f64;
+    let mut total_var = 0.0;
+    for j in 0..d {
+        let mut sum = 0.0;
+        for f in features {
+            sum += f[j];
+        }
+        let mean = sum / nf;
+        let mut ss = 0.0;
+        for f in features {
+            ss += (f[j] - mean).powi(2);
+        }
+        total_var += ss / nf;
+    }
+    let mean_var = total_var / d as f64;
+    if mean_var > 0.0 {
+        REG_REL * mean_var
+    } else {
+        REG_REL
+    }
+}
+
 /// Accumulate full covariance from unit-weighted observations.
 pub(super) fn accumulate_full_cov(
     features: &[Vec<f64>],

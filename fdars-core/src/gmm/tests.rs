@@ -322,3 +322,127 @@ fn test_gmm_weights_sum_to_one() {
         sum
     );
 }
+
+/// Build two Gaussian clusters directly in feature space with a controllable
+/// separation, feature scale, and within-cluster spread. Returns row-major
+/// feature vectors (n = 2 * n_per rows, `d` columns).
+fn make_gaussian_feature_clusters(
+    n_per: usize,
+    d: usize,
+    sep: f64,
+    scale: f64,
+    sd: f64,
+    seed: u64,
+) -> Vec<Vec<f64>> {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let gaussian = |rng: &mut StdRng| -> f64 {
+        let u1: f64 = rng.gen::<f64>().max(1e-15);
+        let u2: f64 = rng.gen::<f64>();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * PI * u2).cos()
+    };
+    let mut feats = Vec::with_capacity(2 * n_per);
+    for g in 0..2 {
+        let center = g as f64 * sep;
+        for _ in 0..n_per {
+            let row = (0..d)
+                .map(|_| scale * (center + sd * gaussian(&mut rng)))
+                .collect();
+            feats.push(row);
+        }
+    }
+    feats
+}
+
+/// Regression test for GH #3 (over-splitting / no BIC minimum).
+///
+/// Two well-separated Gaussian clusters with a LARGE feature scale (variance of
+/// order 400, matching real basis-coefficient magnitudes). Before the
+/// data-scaled covariance regularization fix, the fixed absolute `reg = 1e-6`
+/// floor was negligible at this scale, so components collapsed onto a few points
+/// (variance → 0), the log-likelihood exploded, and BIC kept decreasing past the
+/// true K. With a data-scaled floor, BIC must attain its minimum at the true K=2.
+#[test]
+fn test_gmm_bic_minimum_at_true_k_large_scale() {
+    // scale=20 => per-dimension variance ~ (20 * 1.0)^2 = 400.
+    let features = make_gaussian_feature_clusters(60, 5, 6.0, 20.0, 1.0, 7);
+
+    let mut bic_values = Vec::new();
+    let mut best_bic = f64::INFINITY;
+    let mut best_k = 0;
+    for k in 1..=6 {
+        let r = run_multiple_inits(&features, k, CovType::Diagonal, 200, 1e-6, 3, 42).unwrap();
+        bic_values.push((k, r.bic));
+        // No component covariance should collapse to the regularization floor and
+        // inflate the log-likelihood: a finite, sane LL is expected at every K.
+        assert!(
+            r.log_likelihood.is_finite(),
+            "LL must stay finite at K={k}, got {}",
+            r.log_likelihood
+        );
+        if r.bic < best_bic {
+            best_bic = r.bic;
+            best_k = k;
+        }
+    }
+
+    assert_eq!(
+        best_k, 2,
+        "BIC should minimize at true K=2 on large-scale data; got K={best_k}, BICs: {bic_values:?}"
+    );
+    // BIC must increase after the minimum (a real minimum, not monotone decrease).
+    let bic_k2 = bic_values[1].1;
+    let bic_k3 = bic_values[2].1;
+    assert!(
+        bic_k3 > bic_k2,
+        "BIC should rise past the true K (K3 > K2); BICs: {bic_values:?}"
+    );
+}
+
+/// Regression test for GH #3 (membership effectively hard).
+///
+/// For genuinely overlapping clusters the returned membership must contain
+/// GRADED posteriors (not a near one-hot of the hard assignment). We check that
+/// at least some observations near the boundary have a max responsibility well
+/// below 1, which is only possible if soft posteriors are exposed.
+#[test]
+fn test_gmm_membership_graded_on_overlap() {
+    // sep=2, sd=1 => substantial overlap between the two Gaussians.
+    let features = make_gaussian_feature_clusters(80, 4, 2.0, 1.0, 1.0, 11);
+    let result = gmm_em(&features, 2, CovType::Diagonal, 200, 1e-6, 42).unwrap();
+
+    let mem = &result.membership;
+    let (n, k) = mem.shape();
+    let mut min_max_resp = 1.0_f64;
+    for i in 0..n {
+        let mut mx = 0.0_f64;
+        for c in 0..k {
+            mx = mx.max(mem[(i, c)]);
+        }
+        min_max_resp = min_max_resp.min(mx);
+    }
+    assert!(
+        min_max_resp < 0.9,
+        "Overlapping clusters should yield graded posteriors (some max-resp < 0.9), \
+         got min max-resp = {min_max_resp:.4}"
+    );
+}
+
+/// Unit test for the data-scaled covariance regularization floor.
+#[test]
+fn test_data_scaled_reg_tracks_feature_scale() {
+    use super::covariance::{data_scaled_reg, REG_REL};
+
+    // Two features with variance ~100 each => mean variance ~100 => reg ~ 1e-4.
+    let features = make_gaussian_feature_clusters(200, 2, 0.0, 10.0, 1.0, 3);
+    let reg = data_scaled_reg(&features, 2);
+    // Should be orders of magnitude larger than the old fixed 1e-6 floor
+    // (feature variance ~100 => reg ~ 1e-4).
+    assert!(
+        reg > 10.0 * REG_REL,
+        "data-scaled reg should reflect feature variance, got {reg}"
+    );
+    // Degenerate (zero-variance) data falls back to REG_REL, never zero.
+    let flat = vec![vec![1.0, 1.0]; 10];
+    assert_eq!(data_scaled_reg(&flat, 2), REG_REL);
+    assert_eq!(data_scaled_reg(&[], 2), REG_REL);
+}
