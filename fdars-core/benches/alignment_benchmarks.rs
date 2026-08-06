@@ -6,7 +6,10 @@
 //! - Karcher mean computation
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use fdars_core::alignment::{elastic_align_pair, elastic_self_distance_matrix, karcher_mean};
+use fdars_core::alignment::{
+    elastic_align_pair, elastic_align_pair_banded, elastic_self_distance_matrix,
+    elastic_self_distance_matrix_banded, karcher_mean,
+};
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
 
@@ -45,6 +48,19 @@ fn bench_elastic_align_pair(c: &mut Criterion) {
                 )
             });
         });
+
+        // Sakoe–Chiba band at 10% of the domain.
+        group.bench_with_input(BenchmarkId::new("m_band0.1", m), &m, |b, _| {
+            b.iter(|| {
+                elastic_align_pair_banded(
+                    black_box(&f1),
+                    black_box(&f2),
+                    black_box(&argvals),
+                    black_box(0.0),
+                    black_box(0.1),
+                )
+            });
+        });
     }
 
     // Also benchmark with lambda > 0
@@ -75,6 +91,17 @@ fn bench_self_distance_matrix(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("n", n), &n, |b, _| {
             b.iter(|| {
                 elastic_self_distance_matrix(black_box(&mat), black_box(&argvals), black_box(0.0))
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("n_band0.1", n), &n, |b, _| {
+            b.iter(|| {
+                elastic_self_distance_matrix_banded(
+                    black_box(&mat),
+                    black_box(&argvals),
+                    black_box(0.0),
+                    black_box(0.1),
+                )
             });
         });
     }

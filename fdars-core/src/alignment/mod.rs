@@ -63,7 +63,7 @@ pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};
-pub use karcher::karcher_mean;
+pub use karcher::{karcher_mean, karcher_mean_banded};
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
@@ -74,8 +74,10 @@ pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd
 pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult};
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
-    elastic_align_pair_penalized, elastic_cross_distance_matrix, elastic_distance,
-    elastic_self_distance_matrix, phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
+    elastic_align_pair_banded, elastic_align_pair_penalized, elastic_cross_distance_matrix,
+    elastic_cross_distance_matrix_banded, elastic_distance, elastic_distance_banded,
+    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, phase_distance_pair,
+    phase_self_distance_matrix, WarpPenaltyType,
 };
 pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
@@ -472,6 +474,27 @@ pub(super) fn dp_grid_solve<F>(nrows: usize, ncols: usize, edge_cost: F) -> Vec<
 where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
+    dp_grid_solve_banded(nrows, ncols, None, edge_cost)
+}
+
+/// Shared DP grid fill + traceback, optionally restricted to a Sakoe–Chiba band.
+///
+/// When `band = Some(r)`, only cells with `|tr − tc| ≤ r` are filled; the rest
+/// stay at `+∞` and are skipped as predecessors, so the optimal warp is confined
+/// to a diagonal corridor of radius `r`. This turns the O(nrows·ncols) grid fill
+/// into O(min(nrows,ncols)·r), the main algorithmic speedup for near-diagonal
+/// warps. `band = None` reproduces the full unbanded search exactly. A feasible
+/// path always exists for any `r ≥ 0` because the `(1,1)` diagonal move keeps
+/// `tr = tc`.
+pub(super) fn dp_grid_solve_banded<F>(
+    nrows: usize,
+    ncols: usize,
+    band: Option<usize>,
+    edge_cost: F,
+) -> Vec<(usize, usize)>
+where
+    F: Fn(usize, usize, usize, usize) -> f64,
+{
     DP_SCRATCH.with(|cell| {
         let mut scratch = cell.borrow_mut();
         let (e, parent) = &mut *scratch;
@@ -487,12 +510,32 @@ where
                 if tr == 0 && tc == 0 {
                     continue;
                 }
+                if let Some(r) = band {
+                    if tr.abs_diff(tc) > r {
+                        continue;
+                    }
+                }
                 dp_relax_cell(e, parent, ncols, tr, tc, &edge_cost);
             }
         }
 
         dp_traceback(parent, nrows, ncols)
     })
+}
+
+/// Convert a band width expressed as a fraction of the domain into an index
+/// radius for [`dp_grid_solve_banded`].
+///
+/// `band_frac` is the largest allowed warp displacement `|γ(t) − t|` as a
+/// fraction of the number of grid points. Returns `None` (unbounded search)
+/// unless `0 < band_frac < 1`; a positive fraction yields a radius of at least
+/// 1 so that some warping is always permitted.
+pub(super) fn band_radius(band_frac: f64, m: usize) -> Option<usize> {
+    if band_frac > 0.0 && band_frac < 1.0 {
+        Some(((band_frac * m as f64).ceil() as usize).max(1))
+    } else {
+        None
+    }
 }
 
 /// Convert a DP path (local row,col indices) to an interpolated+normalized gamma warp.
@@ -513,6 +556,21 @@ pub(super) fn dp_path_to_gamma(path: &[(usize, usize)], argvals: &[f64]) -> Vec<
 /// Uses fdasrvf's coprime neighborhood (nbhd_dim=7 → 35 move directions).
 /// SRSFs are L2-normalized before alignment (matching fdasrvf's `optimum.reparam`).
 pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda: f64) -> Vec<f64> {
+    dp_alignment_core_banded(q1, q2, argvals, lambda, None)
+}
+
+/// Core DP alignment, optionally restricted to a Sakoe–Chiba band of `band`
+/// grid-index radius (see [`dp_grid_solve_banded`] / [`band_radius`]).
+///
+/// `band = None` is identical to [`dp_alignment_core`]. A finite band confines
+/// the warp to a diagonal corridor, trading unbounded warps for a large speedup.
+pub(crate) fn dp_alignment_core_banded(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+    band: Option<usize>,
+) -> Vec<f64> {
     let m = argvals.len();
     if m < 2 {
         return argvals.to_vec();
@@ -534,14 +592,22 @@ pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda:
                 *cell = (dr as f64 / dc as f64).sqrt();
             }
         }
-        dp_grid_solve(m, m, |sr, sc, tr, tc| {
+        dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
             let dr = tr - sr;
             let dc = tc - sc;
-            dp_edge_weight_core(&q1n, &q2n, sc, tc, sr, tr, rslope_tab[dr][dc], dc as f64 * h)
-                + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+            dp_edge_weight_core(
+                &q1n,
+                &q2n,
+                sc,
+                tc,
+                sr,
+                tr,
+                rslope_tab[dr][dc],
+                dc as f64 * h,
+            ) + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
         })
     } else {
-        dp_grid_solve(m, m, |sr, sc, tr, tc| {
+        dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
             dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
                 + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
         })
