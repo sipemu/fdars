@@ -165,20 +165,20 @@ fn select_template(srsf_mat: &FdMatrix, data: &FdMatrix, argvals: &[f64]) -> (Ve
 }
 
 /// Pre-centering: align all curves to template, compute inverse mean warp, re-center.
+///
+/// `data_srsfs` holds the pre-computed SRSF of each curve (invariant across the
+/// whole Karcher iteration), so no SRSF transform is recomputed here.
 fn pre_center_template(
-    data: &FdMatrix,
+    data_srsfs: &[Vec<f64>],
     mu_q: &[f64],
     mu: &[f64],
     argvals: &[f64],
     lambda: f64,
 ) -> (Vec<f64>, Vec<f64>) {
-    let (n, m) = data.shape();
+    let n = data_srsfs.len();
+    let m = argvals.len();
     let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-        .map(|i| {
-            let fi = data.row(i);
-            let qi = srsf_single(&fi, argvals);
-            align_srsf_pair(mu_q, &qi, argvals, lambda)
-        })
+        .map(|i| align_srsf_pair(mu_q, &data_srsfs[i], argvals, lambda))
         .collect();
 
     let mut init_gammas = FdMatrix::zeros(n, m);
@@ -295,8 +295,11 @@ pub fn karcher_mean(
     let (n, m) = data.shape();
 
     let srsf_mat = srsf_transform(data, argvals);
+    // SRSFs of the raw curves are invariant across all Karcher iterations, so
+    // compute them once and reuse instead of re-transforming every iteration.
+    let data_srsfs: Vec<Vec<f64>> = (0..n).map(|i| srsf_mat.row(i)).collect();
     let (mut mu_q, mu) = select_template(&srsf_mat, data, argvals);
-    let (mu_q_c, mu_c) = pre_center_template(data, &mu_q, &mu, argvals, lambda);
+    let (mu_q_c, mu_c) = pre_center_template(&data_srsfs, &mu_q, &mu, argvals, lambda);
     mu_q = mu_q_c;
     let mut mu = mu_c;
 
@@ -316,11 +319,13 @@ pub fn karcher_mean(
         let m_c = argvals_coarse.len();
         let mut mu_q_c = mu_q_coarse;
 
-        // Downsample all curves to coarse grid
-        let data_coarse: Vec<Vec<f64>> = (0..n)
+        // Downsample all curves to coarse grid, then take their SRSFs once:
+        // both are invariant across the coarse iterations.
+        let coarse_srsfs: Vec<Vec<f64>> = (0..n)
             .map(|i| {
                 let row = data.row(i);
-                downsample_uniform(&row, argvals, coarse_factor).0
+                let coarse = downsample_uniform(&row, argvals, coarse_factor).0;
+                srsf_single(&coarse, &argvals_coarse)
             })
             .collect();
 
@@ -330,10 +335,7 @@ pub fn karcher_mean(
             n_iter = iter + 1;
 
             let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-                .map(|i| {
-                    let qi = srsf_single(&data_coarse[i], &argvals_coarse);
-                    align_srsf_pair(&mu_q_c, &qi, &argvals_coarse, lambda)
-                })
+                .map(|i| align_srsf_pair(&mu_q_c, &coarse_srsfs[i], &argvals_coarse, lambda))
                 .collect();
 
             let mu_q_new = accumulate_alignments(&align_results, &mut coarse_gammas, m_c, n);
@@ -362,11 +364,7 @@ pub fn karcher_mean(
         n_iter = fine_start + iter + 1;
 
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| {
-                let fi = data.row(i);
-                let qi = srsf_single(&fi, argvals);
-                align_srsf_pair(&mu_q, &qi, argvals, lambda)
-            })
+            .map(|i| align_srsf_pair(&mu_q, &data_srsfs[i], argvals, lambda))
             .collect();
 
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
@@ -385,11 +383,7 @@ pub fn karcher_mean(
     // If coarse converged but no fine iterations ran, do one fine pass for final_gammas
     if converged && fine_start > 0 {
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| {
-                let fi = data.row(i);
-                let qi = srsf_single(&fi, argvals);
-                align_srsf_pair(&mu_q, &qi, argvals, lambda)
-            })
+            .map(|i| align_srsf_pair(&mu_q, &data_srsfs[i], argvals, lambda))
             .collect();
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
         mu_q = mu_q_new;

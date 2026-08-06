@@ -109,6 +109,7 @@ pub(crate) use karcher::sqrt_mean_inverse;
 use crate::helpers::linear_interp;
 use crate::matrix::FdMatrix;
 use crate::warping::normalize_warp;
+use std::cell::RefCell;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -300,25 +301,26 @@ pub(super) fn dp_edge_weight(
     let slope = (argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc]);
     let rslope = slope.sqrt();
 
-    // Walk through sub-intervals synchronized at breakpoints of both curves
-    let mut weight = 0.0;
+    // Walk the merged sub-interval breakpoints of both curves in integer units
+    // of 1/(n1·n2): q1's breakpoints land on multiples of n2, q2's on multiples
+    // of n1 (both n1, n2 ≤ 7 from the coprime neighborhood). Working in integers
+    // keeps the inner loop free of the four `i/n` float divisions the fractional
+    // formulation performed on every step, and hoists the single `/(n1·n2)`
+    // divisor out of the loop. Control flow (and tie handling) is exact.
+    let mut weight_scaled = 0.0;
     let mut i1 = 0usize; // sub-interval index in q1 direction
     let mut i2 = 0usize; // sub-interval index in q2 direction
 
     while i1 < n1 && i2 < n2 {
-        // Current sub-interval boundaries as fractions of the total span
-        let left1 = i1 as f64 / n1 as f64;
-        let right1 = (i1 + 1) as f64 / n1 as f64;
-        let left2 = i2 as f64 / n2 as f64;
-        let right2 = (i2 + 1) as f64 / n2 as f64;
-
-        let left = left1.max(left2);
+        let left = (i1 * n2).max(i2 * n1);
+        let right1 = (i1 + 1) * n2;
+        let right2 = (i2 + 1) * n1;
         let right = right1.min(right2);
         let dt = right - left;
 
-        if dt > 0.0 {
+        if dt > 0 {
             let diff = q1[sc + i1] - rslope * q2[sr + i2];
-            weight += diff * diff * dt;
+            weight_scaled += diff * diff * dt as f64;
         }
 
         // Advance whichever sub-interval ends first
@@ -332,8 +334,8 @@ pub(super) fn dp_edge_weight(
         }
     }
 
-    // Scale by the span in q1 direction
-    weight * (argvals[tc] - argvals[sc])
+    // Undo the 1/(n1·n2) integer scaling, then scale by the span in q1 direction.
+    weight_scaled / (n1 * n2) as f64 * (argvals[tc] - argvals[sc])
 }
 
 /// Compute the λ·(slope−1)²·dt penalty for a DP edge.
@@ -403,6 +405,18 @@ fn dp_relax_cell<F>(
     }
 }
 
+thread_local! {
+    /// Per-thread reusable DP scratch: `(cost grid, parent pointers)`.
+    ///
+    /// The grid fill in [`dp_grid_solve`] allocates two `nrows·ncols` buffers on
+    /// every alignment; in Karcher-mean / distance-matrix routines that is
+    /// `n·iters` (or `n²`) allocations of buffers that are cleared and rewritten
+    /// anyway. Keeping them in thread-local storage removes the allocator
+    /// round-trip while staying compatible with the `iter_maybe_parallel!` outer
+    /// loops (each rayon worker gets its own scratch).
+    static DP_SCRATCH: RefCell<(Vec<f64>, Vec<u32>)> = const { RefCell::new((Vec::new(), Vec::new())) };
+}
+
 /// Shared DP grid fill + traceback using the coprime neighborhood.
 ///
 /// `edge_cost(sr, sc, tr, tc)` returns the combined edge weight + penalty for
@@ -412,20 +426,27 @@ pub(super) fn dp_grid_solve<F>(nrows: usize, ncols: usize, edge_cost: F) -> Vec<
 where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
-    let mut e = vec![f64::INFINITY; nrows * ncols];
-    let mut parent = vec![u32::MAX; nrows * ncols];
-    e[0] = 0.0;
+    DP_SCRATCH.with(|cell| {
+        let mut scratch = cell.borrow_mut();
+        let (e, parent) = &mut *scratch;
+        let size = nrows * ncols;
+        e.clear();
+        e.resize(size, f64::INFINITY);
+        parent.clear();
+        parent.resize(size, u32::MAX);
+        e[0] = 0.0;
 
-    for tr in 0..nrows {
-        for tc in 0..ncols {
-            if tr == 0 && tc == 0 {
-                continue;
+        for tr in 0..nrows {
+            for tc in 0..ncols {
+                if tr == 0 && tc == 0 {
+                    continue;
+                }
+                dp_relax_cell(e, parent, ncols, tr, tc, &edge_cost);
             }
-            dp_relax_cell(&mut e, &mut parent, ncols, tr, tc, &edge_cost);
         }
-    }
 
-    dp_traceback(&parent, nrows, ncols)
+        dp_traceback(parent, nrows, ncols)
+    })
 }
 
 /// Convert a DP path (local row,col indices) to an interpolated+normalized gamma warp.
