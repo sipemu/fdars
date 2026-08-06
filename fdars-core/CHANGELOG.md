@@ -5,6 +5,20 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0]
+
+### Added
+
+- **Opt-in Sakoe–Chiba band for elastic alignment** (`alignment`): new `elastic_align_pair_banded`, `elastic_distance_banded`, `elastic_self_distance_matrix_banded`, `elastic_cross_distance_matrix_banded`, and `karcher_mean_banded`. A `band_frac` argument confines the dynamic-programming warp search to a diagonal corridor (`|γ(t) − t| ≤ band_frac` of the domain), turning the per-alignment cost from O(m²) into O(m·band) — ~4–5× faster at `band_frac = 0.1` — at the cost of disallowing warps wider than the band. Off by default; the existing unbanded functions are unchanged.
+
+### Improved
+
+- **Elastic DP alignment ~1.5–1.8× faster** (`alignment`, all callers: pairwise alignment, distance matrices, Karcher means): the `dp_edge_weight` inner loop now walks merged sub-interval breakpoints in integer units (exploiting the coprime neighborhood's `n ≤ 7`), eliminating four float divisions per step and hoisting the divisor out of the loop. Additional micro-opts: a precomputed `√(dr/dc)` table on uniform grids, hoisting `simpsons_weights` out of the O(n²) distance-matrix loops, thread-local reuse of the DP scratch buffers, and caching each curve's SRSF once per Karcher run. Results are unchanged within floating-point tolerance (R-validation suites pass).
+
+### Fixed
+
+- **`gmm_cluster` over-splitting** (#30): the covariance regularization floor was a fixed absolute `1e-6`, negligible on realistically-scaled features, so a collapsing component's log-likelihood could diverge and remove the BIC minimum (over-splitting) while saturating memberships. Replaced with a data-scaled floor `REG_REL · mean_j Var(feature_j)`, restoring the BIC minimum at the true K and graded posteriors for overlapping clusters.
+
 ## [0.13.0]
 
 ### Added
