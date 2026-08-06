@@ -82,21 +82,21 @@ fn main() {
     let linf_norms = norm_lp_1d(&mat, &t, f64::INFINITY);
     println!(
         "  L1 norms (first 5): {:?}",
-        &l1_norms[..5]
+        l1_norms[..5]
             .iter()
             .map(|x| format!("{x:.4}"))
             .collect::<Vec<_>>()
     );
     println!(
         "  L2 norms (first 5): {:?}",
-        &l2_norms[..5]
+        l2_norms[..5]
             .iter()
             .map(|x| format!("{x:.4}"))
             .collect::<Vec<_>>()
     );
     println!(
         "  L∞ norms (first 5): {:?}",
-        &linf_norms[..5]
+        linf_norms[..5]
             .iter()
             .map(|x| format!("{x:.4}"))
             .collect::<Vec<_>>()
