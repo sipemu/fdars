@@ -1,7 +1,7 @@
 //! Pairwise elastic alignment, distance computation, and distance matrices.
 
 use super::srsf::{reparameterize_curve, srsf_single, srsf_transform};
-use super::{dp_alignment_core, AlignmentResult};
+use super::{band_radius, dp_alignment_core_banded, AlignmentResult};
 use crate::helpers::{l2_distance, simpsons_weights};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -40,7 +40,42 @@ use rayon::iter::ParallelIterator;
 pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> AlignmentResult {
     let q1 = srsf_single(f1, argvals);
     let q2 = srsf_single(f2, argvals);
-    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, lambda)
+    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, None, lambda)
+}
+
+/// Align curve f2 to curve f1, confining the warp to a Sakoe–Chiba band.
+///
+/// Identical to [`elastic_align_pair`] but restricts the optimal warping to a
+/// diagonal corridor: `|γ(t) − t|` may not exceed `band_frac` of the domain.
+/// This bounds the dynamic-programming search to that corridor, giving a large
+/// speedup (≈ O(m·band) instead of O(m²)) when the true warp is near-diagonal —
+/// at the cost of disallowing warps larger than the band. `band_frac ≤ 0` or
+/// `≥ 1` falls back to the full unbanded search.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::elastic_align_pair_banded;
+///
+/// let argvals: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
+/// let f1: Vec<f64> = argvals.iter().map(|&t| (t * 6.0).sin()).collect();
+/// let f2: Vec<f64> = argvals.iter().map(|&t| ((t + 0.1) * 6.0).sin()).collect();
+/// // Allow warps up to 15% of the domain.
+/// let result = elastic_align_pair_banded(&f1, &f2, &argvals, 0.0, 0.15);
+/// assert_eq!(result.f_aligned.len(), 40);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_align_pair_banded(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+    band_frac: f64,
+) -> AlignmentResult {
+    let q1 = srsf_single(f1, argvals);
+    let q2 = srsf_single(f2, argvals);
+    let band = band_radius(band_frac, argvals.len());
+    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, band, lambda)
 }
 
 /// Compute the elastic distance between two curves.
@@ -69,6 +104,21 @@ pub fn elastic_distance(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) ->
     elastic_align_pair(f1, f2, argvals, lambda).distance
 }
 
+/// Elastic distance between two curves using a Sakoe–Chiba band.
+///
+/// Shorthand for [`elastic_align_pair_banded`] returning only the distance.
+/// See that function for the meaning of `band_frac`.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_distance_banded(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+    band_frac: f64,
+) -> f64 {
+    elastic_align_pair_banded(f1, f2, argvals, lambda, band_frac).distance
+}
+
 // ─── Internal Helpers with Pre-computed SRSFs ────────────────────────────────
 
 /// Align curve f2 to curve f1 given their pre-computed SRSFs.
@@ -81,10 +131,11 @@ fn elastic_align_pair_from_srsf(
     q1: &[f64],
     q2: &[f64],
     argvals: &[f64],
+    band: Option<usize>,
     lambda: f64,
 ) -> AlignmentResult {
     // Find optimal warping via DP
-    let gamma = dp_alignment_core(q1, q2, argvals, lambda);
+    let gamma = dp_alignment_core_banded(q1, q2, argvals, lambda, band);
 
     // Apply warping to f2
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
@@ -102,21 +153,25 @@ fn elastic_align_pair_from_srsf(
     }
 }
 
-/// Compute elastic distance given a raw curve f2, and pre-computed SRSFs q1, q2.
+/// Compute elastic distance given a raw curve f2, pre-computed SRSFs q1, q2, and
+/// pre-computed Simpson integration `weights`.
 ///
 /// The raw f2 is needed to reparameterize before computing the aligned SRSF.
+/// `weights` depends only on `argvals`, so the distance-matrix callers compute
+/// it once rather than on every one of the O(n²) pairs.
 fn elastic_distance_from_srsf(
     f2: &[f64],
     q1: &[f64],
     q2: &[f64],
     argvals: &[f64],
+    weights: &[f64],
+    band: Option<usize>,
     lambda: f64,
 ) -> f64 {
-    let gamma = dp_alignment_core(q1, q2, argvals, lambda);
+    let gamma = dp_alignment_core_banded(q1, q2, argvals, lambda, band);
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
     let q_aligned = srsf_single(&f_aligned, argvals);
-    let weights = simpsons_weights(argvals);
-    l2_distance(q1, &q_aligned, &weights)
+    l2_distance(q1, &q_aligned, weights)
 }
 
 // ─── Distance Matrices ──────────────────────────────────────────────────────
@@ -137,10 +192,37 @@ fn elastic_distance_from_srsf(
 /// # Returns
 /// Symmetric n × n distance matrix.
 pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f64) -> FdMatrix {
+    self_distance_matrix_impl(data, argvals, None, lambda)
+}
+
+/// Symmetric elastic distance matrix using a Sakoe–Chiba band (see
+/// [`elastic_align_pair_banded`] for `band_frac`).
+///
+/// Because the band bounds every pairwise alignment to a diagonal corridor,
+/// this is the fastest way to build an elastic distance matrix over many curves
+/// when warps are moderate — the O(n²) pairs each drop from O(m²) to O(m·band).
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_self_distance_matrix_banded(
+    data: &FdMatrix,
+    argvals: &[f64],
+    lambda: f64,
+    band_frac: f64,
+) -> FdMatrix {
+    let band = band_radius(band_frac, argvals.len());
+    self_distance_matrix_impl(data, argvals, band, lambda)
+}
+
+fn self_distance_matrix_impl(
+    data: &FdMatrix,
+    argvals: &[f64],
+    band: Option<usize>,
+    lambda: f64,
+) -> FdMatrix {
     let n = data.nrows();
 
-    // Pre-compute all SRSF transforms once
+    // Pre-compute all SRSF transforms and the integration weights once
     let srsfs = srsf_transform(data, argvals);
+    let weights = simpsons_weights(argvals);
 
     let upper_vals: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
@@ -149,7 +231,7 @@ pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f6
                 .map(|j| {
                     let fj = data.row(j);
                     let qj = srsfs.row(j);
-                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, lambda)
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, band, lambda)
                 })
                 .collect::<Vec<_>>()
         })
@@ -187,12 +269,37 @@ pub fn elastic_cross_distance_matrix(
     argvals: &[f64],
     lambda: f64,
 ) -> FdMatrix {
+    cross_distance_matrix_impl(data1, data2, argvals, None, lambda)
+}
+
+/// Elastic distance matrix between two datasets using a Sakoe–Chiba band (see
+/// [`elastic_align_pair_banded`] for `band_frac`).
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_cross_distance_matrix_banded(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    lambda: f64,
+    band_frac: f64,
+) -> FdMatrix {
+    let band = band_radius(band_frac, argvals.len());
+    cross_distance_matrix_impl(data1, data2, argvals, band, lambda)
+}
+
+fn cross_distance_matrix_impl(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    band: Option<usize>,
+    lambda: f64,
+) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
 
-    // Pre-compute all SRSF transforms once for both datasets
+    // Pre-compute all SRSF transforms and the integration weights once
     let srsfs1 = srsf_transform(data1, argvals);
     let srsfs2 = srsf_transform(data2, argvals);
+    let weights = simpsons_weights(argvals);
 
     let vals: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
@@ -201,7 +308,7 @@ pub fn elastic_cross_distance_matrix(
                 .map(|j| {
                     let fj = data2.row(j);
                     let qj = srsfs2.row(j);
-                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, lambda)
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, band, lambda)
                 })
                 .collect::<Vec<_>>()
         })

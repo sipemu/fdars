@@ -1010,7 +1010,7 @@ fn test_cross_distance_matrix_consistent_with_pairwise() {
 
 #[test]
 fn test_align_srsf_pair_identity() {
-    use super::karcher::align_srsf_pair;
+    use super::karcher::align_srsf_pair_banded;
     use super::srsf::srsf_single;
 
     let m = 50;
@@ -1021,7 +1021,7 @@ fn test_align_srsf_pair_identity() {
         .collect();
     let q = srsf_single(&f, &t);
 
-    let (gamma, q_aligned) = align_srsf_pair(&q, &q, &t, 0.0);
+    let (gamma, q_aligned) = align_srsf_pair_banded(&q, &q, &t, 0.0, None);
 
     // Warp should be near identity
     for j in 0..m {
@@ -2645,4 +2645,89 @@ fn test_robust_karcher_to_karcher_conversion() {
     assert_eq!(converted.gammas.shape(), expected_gammas_shape);
     assert_eq!(converted.aligned_data.shape(), expected_aligned_shape);
     assert!(converted.aligned_srsfs.is_none());
+}
+
+// ── Sakoe–Chiba band (opt-in) ────────────────────────────────────────────────
+
+#[test]
+fn test_band_radius_semantics() {
+    // Out-of-range fractions disable banding (full search).
+    assert_eq!(band_radius(0.0, 100), None);
+    assert_eq!(band_radius(1.0, 100), None);
+    assert_eq!(band_radius(-0.2, 100), None);
+    // In-range fractions give a ceil radius of at least 1.
+    assert_eq!(band_radius(0.1, 100), Some(10));
+    assert_eq!(band_radius(0.001, 100), Some(1));
+}
+
+#[test]
+fn test_banded_align_wide_matches_unbanded() {
+    let m = 40;
+    let t = uniform_grid(m);
+    let f1: Vec<f64> = t.iter().map(|&x| (x * 6.0).sin()).collect();
+    let f2: Vec<f64> = t.iter().map(|&x| ((x + 0.08) * 6.0).sin()).collect();
+
+    let base = elastic_align_pair(&f1, &f2, &t, 0.0);
+    // band_frac = 0.99 → radius ≥ m-1, so the band covers the whole grid and the
+    // result must be identical to the unbanded search.
+    let wide = elastic_align_pair_banded(&f1, &f2, &t, 0.0, 0.99);
+
+    assert!((base.distance - wide.distance).abs() < 1e-12);
+    for (a, b) in base.gamma.iter().zip(wide.gamma.iter()) {
+        assert!((a - b).abs() < 1e-12);
+    }
+}
+
+#[test]
+fn test_banded_align_is_constrained_valid_warp() {
+    let m = 60;
+    let t = uniform_grid(m);
+    let f1: Vec<f64> = t.iter().map(|&x| (x * 5.0).sin()).collect();
+    let f2: Vec<f64> = t.iter().map(|&x| ((x + 0.15) * 5.0).sin()).collect();
+
+    let unbanded = elastic_distance(&f1, &f2, &t, 0.0);
+    let narrow = elastic_align_pair_banded(&f1, &f2, &t, 0.0, 0.05);
+
+    // A band is a constrained optimum, so its distance cannot be below the
+    // unbounded optimum (allowing tiny numerical slack).
+    assert!(narrow.distance >= unbanded - 1e-9);
+
+    // The warp is still a valid monotone reparameterization with fixed endpoints.
+    assert!((narrow.gamma[0] - t[0]).abs() < 1e-9);
+    assert!((narrow.gamma[m - 1] - t[m - 1]).abs() < 1e-9);
+    for w in narrow.gamma.windows(2) {
+        assert!(w[1] >= w[0] - 1e-9, "gamma must be non-decreasing");
+    }
+}
+
+#[test]
+fn test_self_distance_matrix_banded_wide_matches() {
+    let data = make_test_data(6, 40, 7);
+    let t = uniform_grid(40);
+
+    let base = elastic_self_distance_matrix(&data, &t, 0.0);
+    let wide = elastic_self_distance_matrix_banded(&data, &t, 0.0, 0.99);
+
+    assert_eq!(base.shape(), wide.shape());
+    for (a, b) in base.as_slice().iter().zip(wide.as_slice().iter()) {
+        assert!((a - b).abs() < 1e-12);
+    }
+}
+
+#[test]
+fn test_karcher_mean_banded_runs() {
+    let data = make_test_data(12, 50, 3);
+    let t = uniform_grid(50);
+
+    let result = karcher_mean_banded(&data, &t, 20, 1e-4, 0.0, 0.2);
+    assert_eq!(result.mean.len(), 50);
+    assert!(result.n_iter <= 20);
+    assert!(result.mean.iter().all(|v| v.is_finite()));
+    // Every stored warp is a valid non-decreasing reparameterization.
+    let (n, m) = result.gammas.shape();
+    for i in 0..n {
+        for j in 1..m {
+            assert!(result.gammas[(i, j)] >= result.gammas[(i, j - 1)] - 1e-6);
+        }
+    }
 }

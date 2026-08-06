@@ -2,7 +2,7 @@
 
 use super::set::apply_stored_warps;
 use super::srsf::{reparameterize_curve, srsf_inverse, srsf_transform};
-use super::{dp_alignment_core, KarcherMeanResult};
+use super::{band_radius, dp_alignment_core_banded, KarcherMeanResult};
 use crate::fdata::mean_1d;
 use crate::helpers::{gradient_uniform, linear_interp};
 use crate::iter_maybe_parallel;
@@ -97,13 +97,17 @@ fn relative_change(q_old: &[f64], q_new: &[f64]) -> f64 {
 }
 
 /// Align a single SRSF q2 to q1 and return (gamma, aligned_q).
-pub(super) fn align_srsf_pair(
+///
+/// `band = None` performs the full DP search; a finite `band` confines the warp
+/// to a Sakoe–Chiba corridor of that grid-index radius.
+pub(super) fn align_srsf_pair_banded(
     q1: &[f64],
     q2: &[f64],
     argvals: &[f64],
     lambda: f64,
+    band: Option<usize>,
 ) -> (Vec<f64>, Vec<f64>) {
-    let gamma = dp_alignment_core(q1, q2, argvals, lambda);
+    let gamma = dp_alignment_core_banded(q1, q2, argvals, lambda, band);
 
     // Warp q2 by gamma and adjust by sqrt(gamma')
     let q2_warped = reparameterize_curve(q2, argvals, &gamma);
@@ -165,20 +169,21 @@ fn select_template(srsf_mat: &FdMatrix, data: &FdMatrix, argvals: &[f64]) -> (Ve
 }
 
 /// Pre-centering: align all curves to template, compute inverse mean warp, re-center.
+///
+/// `data_srsfs` holds the pre-computed SRSF of each curve (invariant across the
+/// whole Karcher iteration), so no SRSF transform is recomputed here.
 fn pre_center_template(
-    data: &FdMatrix,
+    data_srsfs: &[Vec<f64>],
     mu_q: &[f64],
     mu: &[f64],
     argvals: &[f64],
     lambda: f64,
+    band: Option<usize>,
 ) -> (Vec<f64>, Vec<f64>) {
-    let (n, m) = data.shape();
+    let n = data_srsfs.len();
+    let m = argvals.len();
     let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-        .map(|i| {
-            let fi = data.row(i);
-            let qi = srsf_single(&fi, argvals);
-            align_srsf_pair(mu_q, &qi, argvals, lambda)
-        })
+        .map(|i| align_srsf_pair_banded(mu_q, &data_srsfs[i], argvals, lambda, band))
         .collect();
 
     let mut init_gammas = FdMatrix::zeros(n, m);
@@ -292,11 +297,47 @@ pub fn karcher_mean(
     tol: f64,
     lambda: f64,
 ) -> KarcherMeanResult {
+    karcher_mean_impl(data, argvals, max_iter, tol, lambda, 0.0)
+}
+
+/// Karcher (Fréchet) mean in the elastic metric, confining every alignment to a
+/// Sakoe–Chiba band.
+///
+/// Identical to [`karcher_mean`] but each curve-to-mean alignment is restricted
+/// to a diagonal corridor of half-width `band_frac` (fraction of the domain),
+/// which bounds the per-alignment DP cost. The band is applied on every grid
+/// (including the internal coarse-to-fine downsampled grid). `band_frac ≤ 0` or
+/// `≥ 1` reproduces the unbanded [`karcher_mean`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn karcher_mean_banded(
+    data: &FdMatrix,
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    lambda: f64,
+    band_frac: f64,
+) -> KarcherMeanResult {
+    karcher_mean_impl(data, argvals, max_iter, tol, lambda, band_frac)
+}
+
+fn karcher_mean_impl(
+    data: &FdMatrix,
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    lambda: f64,
+    band_frac: f64,
+) -> KarcherMeanResult {
     let (n, m) = data.shape();
+    // Band radius on the full (fine) grid; the coarse phase derives its own.
+    let fine_band = band_radius(band_frac, m);
 
     let srsf_mat = srsf_transform(data, argvals);
+    // SRSFs of the raw curves are invariant across all Karcher iterations, so
+    // compute them once and reuse instead of re-transforming every iteration.
+    let data_srsfs: Vec<Vec<f64>> = (0..n).map(|i| srsf_mat.row(i)).collect();
     let (mut mu_q, mu) = select_template(&srsf_mat, data, argvals);
-    let (mu_q_c, mu_c) = pre_center_template(data, &mu_q, &mu, argvals, lambda);
+    let (mu_q_c, mu_c) = pre_center_template(&data_srsfs, &mu_q, &mu, argvals, lambda, fine_band);
     mu_q = mu_q_c;
     let mut mu = mu_c;
 
@@ -314,13 +355,16 @@ pub fn karcher_mean(
     if coarse_iters > 0 {
         let (mu_q_coarse, argvals_coarse) = downsample_uniform(&mu_q, argvals, coarse_factor);
         let m_c = argvals_coarse.len();
+        let coarse_band = band_radius(band_frac, m_c);
         let mut mu_q_c = mu_q_coarse;
 
-        // Downsample all curves to coarse grid
-        let data_coarse: Vec<Vec<f64>> = (0..n)
+        // Downsample all curves to coarse grid, then take their SRSFs once:
+        // both are invariant across the coarse iterations.
+        let coarse_srsfs: Vec<Vec<f64>> = (0..n)
             .map(|i| {
                 let row = data.row(i);
-                downsample_uniform(&row, argvals, coarse_factor).0
+                let coarse = downsample_uniform(&row, argvals, coarse_factor).0;
+                srsf_single(&coarse, &argvals_coarse)
             })
             .collect();
 
@@ -331,8 +375,13 @@ pub fn karcher_mean(
 
             let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
                 .map(|i| {
-                    let qi = srsf_single(&data_coarse[i], &argvals_coarse);
-                    align_srsf_pair(&mu_q_c, &qi, &argvals_coarse, lambda)
+                    align_srsf_pair_banded(
+                        &mu_q_c,
+                        &coarse_srsfs[i],
+                        &argvals_coarse,
+                        lambda,
+                        coarse_band,
+                    )
                 })
                 .collect();
 
@@ -362,11 +411,7 @@ pub fn karcher_mean(
         n_iter = fine_start + iter + 1;
 
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| {
-                let fi = data.row(i);
-                let qi = srsf_single(&fi, argvals);
-                align_srsf_pair(&mu_q, &qi, argvals, lambda)
-            })
+            .map(|i| align_srsf_pair_banded(&mu_q, &data_srsfs[i], argvals, lambda, fine_band))
             .collect();
 
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
@@ -385,11 +430,7 @@ pub fn karcher_mean(
     // If coarse converged but no fine iterations ran, do one fine pass for final_gammas
     if converged && fine_start > 0 {
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| {
-                let fi = data.row(i);
-                let qi = srsf_single(&fi, argvals);
-                align_srsf_pair(&mu_q, &qi, argvals, lambda)
-            })
+            .map(|i| align_srsf_pair_banded(&mu_q, &data_srsfs[i], argvals, lambda, fine_band))
             .collect();
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
         mu_q = mu_q_new;

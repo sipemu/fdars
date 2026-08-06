@@ -63,7 +63,7 @@ pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};
-pub use karcher::karcher_mean;
+pub use karcher::{karcher_mean, karcher_mean_banded};
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
@@ -74,8 +74,10 @@ pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd
 pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult};
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
-    elastic_align_pair_penalized, elastic_cross_distance_matrix, elastic_distance,
-    elastic_self_distance_matrix, phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
+    elastic_align_pair_banded, elastic_align_pair_penalized, elastic_cross_distance_matrix,
+    elastic_cross_distance_matrix_banded, elastic_distance, elastic_distance_banded,
+    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, phase_distance_pair,
+    phase_self_distance_matrix, WarpPenaltyType,
 };
 pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
@@ -109,6 +111,7 @@ pub(crate) use karcher::sqrt_mean_inverse;
 use crate::helpers::linear_interp;
 use crate::matrix::FdMatrix;
 use crate::warping::normalize_warp;
+use std::cell::RefCell;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -291,34 +294,58 @@ pub(super) fn dp_edge_weight(
     sr: usize,
     tr: usize,
 ) -> f64 {
+    if tc == sc || tr == sr {
+        return f64::INFINITY;
+    }
+    // General (possibly non-uniform grid) path: slope and span come from argvals.
+    let rslope = ((argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc])).sqrt();
+    let span = argvals[tc] - argvals[sc];
+    dp_edge_weight_core(q1, q2, sc, tc, sr, tr, rslope, span)
+}
+
+/// Core edge-weight integer walk, shared by the general and uniform-grid paths.
+///
+/// `rslope = √γ'` and `span` (the q1-direction interval length) are supplied by
+/// the caller so the uniform-grid path can look `rslope` up from a precomputed
+/// `√(dr/dc)` table (avoiding a `sqrt` + division on every one of the `m²·35`
+/// edge evaluations) and derive `span` as `dc·h`.
+///
+/// Walks the merged sub-interval breakpoints of both curves in integer units of
+/// `1/(n1·n2)`: q1's breakpoints land on multiples of n2, q2's on multiples of
+/// n1 (both n1, n2 ≤ 7 from the coprime neighborhood). Integer arithmetic keeps
+/// the loop free of per-step float divisions and hoists the single `/(n1·n2)`
+/// divisor out. Control flow (and tie handling) is exact.
+#[inline]
+pub(super) fn dp_edge_weight_core(
+    q1: &[f64],
+    q2: &[f64],
+    sc: usize,
+    tc: usize,
+    sr: usize,
+    tr: usize,
+    rslope: f64,
+    span: f64,
+) -> f64 {
     let n1 = tc - sc;
     let n2 = tr - sr;
     if n1 == 0 || n2 == 0 {
         return f64::INFINITY;
     }
 
-    let slope = (argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc]);
-    let rslope = slope.sqrt();
-
-    // Walk through sub-intervals synchronized at breakpoints of both curves
-    let mut weight = 0.0;
+    let mut weight_scaled = 0.0;
     let mut i1 = 0usize; // sub-interval index in q1 direction
     let mut i2 = 0usize; // sub-interval index in q2 direction
 
     while i1 < n1 && i2 < n2 {
-        // Current sub-interval boundaries as fractions of the total span
-        let left1 = i1 as f64 / n1 as f64;
-        let right1 = (i1 + 1) as f64 / n1 as f64;
-        let left2 = i2 as f64 / n2 as f64;
-        let right2 = (i2 + 1) as f64 / n2 as f64;
-
-        let left = left1.max(left2);
+        let left = (i1 * n2).max(i2 * n1);
+        let right1 = (i1 + 1) * n2;
+        let right2 = (i2 + 1) * n1;
         let right = right1.min(right2);
         let dt = right - left;
 
-        if dt > 0.0 {
+        if dt > 0 {
             let diff = q1[sc + i1] - rslope * q2[sr + i2];
-            weight += diff * diff * dt;
+            weight_scaled += diff * diff * dt as f64;
         }
 
         // Advance whichever sub-interval ends first
@@ -332,8 +359,31 @@ pub(super) fn dp_edge_weight(
         }
     }
 
-    // Scale by the span in q1 direction
-    weight * (argvals[tc] - argvals[sc])
+    // Undo the 1/(n1·n2) integer scaling, then scale by the span in q1 direction.
+    weight_scaled / (n1 * n2) as f64 * span
+}
+
+/// Return the uniform grid spacing `h` if `argvals` is (numerically) uniform.
+///
+/// Used to enable the fast edge-weight path in [`dp_alignment_core`]: on a
+/// uniform grid the DP slope is exactly `dr/dc` and the span is `dc·h`, so both
+/// become precomputable and independent of absolute position.
+fn uniform_spacing(argvals: &[f64]) -> Option<f64> {
+    let m = argvals.len();
+    if m < 2 {
+        return None;
+    }
+    let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    if h.is_nan() || h <= 0.0 {
+        return None;
+    }
+    let tol = h * 1e-9;
+    for k in 1..m {
+        if (argvals[k] - argvals[k - 1] - h).abs() > tol {
+            return None;
+        }
+    }
+    Some(h)
 }
 
 /// Compute the λ·(slope−1)²·dt penalty for a DP edge.
@@ -403,6 +453,18 @@ fn dp_relax_cell<F>(
     }
 }
 
+thread_local! {
+    /// Per-thread reusable DP scratch: `(cost grid, parent pointers)`.
+    ///
+    /// The grid fill in [`dp_grid_solve`] allocates two `nrows·ncols` buffers on
+    /// every alignment; in Karcher-mean / distance-matrix routines that is
+    /// `n·iters` (or `n²`) allocations of buffers that are cleared and rewritten
+    /// anyway. Keeping them in thread-local storage removes the allocator
+    /// round-trip while staying compatible with the `iter_maybe_parallel!` outer
+    /// loops (each rayon worker gets its own scratch).
+    static DP_SCRATCH: RefCell<(Vec<f64>, Vec<u32>)> = const { RefCell::new((Vec::new(), Vec::new())) };
+}
+
 /// Shared DP grid fill + traceback using the coprime neighborhood.
 ///
 /// `edge_cost(sr, sc, tr, tc)` returns the combined edge weight + penalty for
@@ -412,20 +474,68 @@ pub(super) fn dp_grid_solve<F>(nrows: usize, ncols: usize, edge_cost: F) -> Vec<
 where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
-    let mut e = vec![f64::INFINITY; nrows * ncols];
-    let mut parent = vec![u32::MAX; nrows * ncols];
-    e[0] = 0.0;
+    dp_grid_solve_banded(nrows, ncols, None, edge_cost)
+}
 
-    for tr in 0..nrows {
-        for tc in 0..ncols {
-            if tr == 0 && tc == 0 {
-                continue;
+/// Shared DP grid fill + traceback, optionally restricted to a Sakoe–Chiba band.
+///
+/// When `band = Some(r)`, only cells with `|tr − tc| ≤ r` are filled; the rest
+/// stay at `+∞` and are skipped as predecessors, so the optimal warp is confined
+/// to a diagonal corridor of radius `r`. This turns the O(nrows·ncols) grid fill
+/// into O(min(nrows,ncols)·r), the main algorithmic speedup for near-diagonal
+/// warps. `band = None` reproduces the full unbanded search exactly. A feasible
+/// path always exists for any `r ≥ 0` because the `(1,1)` diagonal move keeps
+/// `tr = tc`.
+pub(super) fn dp_grid_solve_banded<F>(
+    nrows: usize,
+    ncols: usize,
+    band: Option<usize>,
+    edge_cost: F,
+) -> Vec<(usize, usize)>
+where
+    F: Fn(usize, usize, usize, usize) -> f64,
+{
+    DP_SCRATCH.with(|cell| {
+        let mut scratch = cell.borrow_mut();
+        let (e, parent) = &mut *scratch;
+        let size = nrows * ncols;
+        e.clear();
+        e.resize(size, f64::INFINITY);
+        parent.clear();
+        parent.resize(size, u32::MAX);
+        e[0] = 0.0;
+
+        for tr in 0..nrows {
+            for tc in 0..ncols {
+                if tr == 0 && tc == 0 {
+                    continue;
+                }
+                if let Some(r) = band {
+                    if tr.abs_diff(tc) > r {
+                        continue;
+                    }
+                }
+                dp_relax_cell(e, parent, ncols, tr, tc, &edge_cost);
             }
-            dp_relax_cell(&mut e, &mut parent, ncols, tr, tc, &edge_cost);
         }
-    }
 
-    dp_traceback(&parent, nrows, ncols)
+        dp_traceback(parent, nrows, ncols)
+    })
+}
+
+/// Convert a band width expressed as a fraction of the domain into an index
+/// radius for [`dp_grid_solve_banded`].
+///
+/// `band_frac` is the largest allowed warp displacement `|γ(t) − t|` as a
+/// fraction of the number of grid points. Returns `None` (unbounded search)
+/// unless `0 < band_frac < 1`; a positive fraction yields a radius of at least
+/// 1 so that some warping is always permitted.
+pub(super) fn band_radius(band_frac: f64, m: usize) -> Option<usize> {
+    if band_frac > 0.0 && band_frac < 1.0 {
+        Some(((band_frac * m as f64).ceil() as usize).max(1))
+    } else {
+        None
+    }
 }
 
 /// Convert a DP path (local row,col indices) to an interpolated+normalized gamma warp.
@@ -446,6 +556,21 @@ pub(super) fn dp_path_to_gamma(path: &[(usize, usize)], argvals: &[f64]) -> Vec<
 /// Uses fdasrvf's coprime neighborhood (nbhd_dim=7 → 35 move directions).
 /// SRSFs are L2-normalized before alignment (matching fdasrvf's `optimum.reparam`).
 pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda: f64) -> Vec<f64> {
+    dp_alignment_core_banded(q1, q2, argvals, lambda, None)
+}
+
+/// Core DP alignment, optionally restricted to a Sakoe–Chiba band of `band`
+/// grid-index radius (see [`dp_grid_solve_banded`] / [`band_radius`]).
+///
+/// `band = None` is identical to [`dp_alignment_core`]. A finite band confines
+/// the warp to a diagonal corridor, trading unbounded warps for a large speedup.
+pub(crate) fn dp_alignment_core_banded(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+    band: Option<usize>,
+) -> Vec<f64> {
     let m = argvals.len();
     if m < 2 {
         return argvals.to_vec();
@@ -456,10 +581,37 @@ pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda:
     let q1n: Vec<f64> = q1.iter().map(|&v| v / norm1).collect();
     let q2n: Vec<f64> = q2.iter().map(|&v| v / norm2).collect();
 
-    let path = dp_grid_solve(m, m, |sr, sc, tr, tc| {
-        dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
-            + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
-    });
+    let path = if let Some(h) = uniform_spacing(argvals) {
+        // Uniform-grid fast path: the DP slope is exactly dr/dc, so precompute
+        // the 35 possible √(dr/dc) values (indices 1..=7) once instead of a
+        // sqrt + division on every one of the m²·35 edge evaluations. The span
+        // is dc·h. Both are independent of absolute position.
+        let mut rslope_tab = [[0.0f64; 8]; 8];
+        for (dr, row) in rslope_tab.iter_mut().enumerate().skip(1) {
+            for (dc, cell) in row.iter_mut().enumerate().skip(1) {
+                *cell = (dr as f64 / dc as f64).sqrt();
+            }
+        }
+        dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
+            let dr = tr - sr;
+            let dc = tc - sc;
+            dp_edge_weight_core(
+                &q1n,
+                &q2n,
+                sc,
+                tc,
+                sr,
+                tr,
+                rslope_tab[dr][dc],
+                dc as f64 * h,
+            ) + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+        })
+    } else {
+        dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
+            dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
+                + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+        })
+    };
 
     dp_path_to_gamma(&path, argvals)
 }
