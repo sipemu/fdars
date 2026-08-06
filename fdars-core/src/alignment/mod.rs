@@ -292,21 +292,44 @@ pub(super) fn dp_edge_weight(
     sr: usize,
     tr: usize,
 ) -> f64 {
+    if tc == sc || tr == sr {
+        return f64::INFINITY;
+    }
+    // General (possibly non-uniform grid) path: slope and span come from argvals.
+    let rslope = ((argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc])).sqrt();
+    let span = argvals[tc] - argvals[sc];
+    dp_edge_weight_core(q1, q2, sc, tc, sr, tr, rslope, span)
+}
+
+/// Core edge-weight integer walk, shared by the general and uniform-grid paths.
+///
+/// `rslope = √γ'` and `span` (the q1-direction interval length) are supplied by
+/// the caller so the uniform-grid path can look `rslope` up from a precomputed
+/// `√(dr/dc)` table (avoiding a `sqrt` + division on every one of the `m²·35`
+/// edge evaluations) and derive `span` as `dc·h`.
+///
+/// Walks the merged sub-interval breakpoints of both curves in integer units of
+/// `1/(n1·n2)`: q1's breakpoints land on multiples of n2, q2's on multiples of
+/// n1 (both n1, n2 ≤ 7 from the coprime neighborhood). Integer arithmetic keeps
+/// the loop free of per-step float divisions and hoists the single `/(n1·n2)`
+/// divisor out. Control flow (and tie handling) is exact.
+#[inline]
+pub(super) fn dp_edge_weight_core(
+    q1: &[f64],
+    q2: &[f64],
+    sc: usize,
+    tc: usize,
+    sr: usize,
+    tr: usize,
+    rslope: f64,
+    span: f64,
+) -> f64 {
     let n1 = tc - sc;
     let n2 = tr - sr;
     if n1 == 0 || n2 == 0 {
         return f64::INFINITY;
     }
 
-    let slope = (argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc]);
-    let rslope = slope.sqrt();
-
-    // Walk the merged sub-interval breakpoints of both curves in integer units
-    // of 1/(n1·n2): q1's breakpoints land on multiples of n2, q2's on multiples
-    // of n1 (both n1, n2 ≤ 7 from the coprime neighborhood). Working in integers
-    // keeps the inner loop free of the four `i/n` float divisions the fractional
-    // formulation performed on every step, and hoists the single `/(n1·n2)`
-    // divisor out of the loop. Control flow (and tie handling) is exact.
     let mut weight_scaled = 0.0;
     let mut i1 = 0usize; // sub-interval index in q1 direction
     let mut i2 = 0usize; // sub-interval index in q2 direction
@@ -335,7 +358,30 @@ pub(super) fn dp_edge_weight(
     }
 
     // Undo the 1/(n1·n2) integer scaling, then scale by the span in q1 direction.
-    weight_scaled / (n1 * n2) as f64 * (argvals[tc] - argvals[sc])
+    weight_scaled / (n1 * n2) as f64 * span
+}
+
+/// Return the uniform grid spacing `h` if `argvals` is (numerically) uniform.
+///
+/// Used to enable the fast edge-weight path in [`dp_alignment_core`]: on a
+/// uniform grid the DP slope is exactly `dr/dc` and the span is `dc·h`, so both
+/// become precomputable and independent of absolute position.
+fn uniform_spacing(argvals: &[f64]) -> Option<f64> {
+    let m = argvals.len();
+    if m < 2 {
+        return None;
+    }
+    let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    if h.is_nan() || h <= 0.0 {
+        return None;
+    }
+    let tol = h * 1e-9;
+    for k in 1..m {
+        if (argvals[k] - argvals[k - 1] - h).abs() > tol {
+            return None;
+        }
+    }
+    Some(h)
 }
 
 /// Compute the λ·(slope−1)²·dt penalty for a DP edge.
@@ -477,10 +523,29 @@ pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda:
     let q1n: Vec<f64> = q1.iter().map(|&v| v / norm1).collect();
     let q2n: Vec<f64> = q2.iter().map(|&v| v / norm2).collect();
 
-    let path = dp_grid_solve(m, m, |sr, sc, tr, tc| {
-        dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
-            + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
-    });
+    let path = if let Some(h) = uniform_spacing(argvals) {
+        // Uniform-grid fast path: the DP slope is exactly dr/dc, so precompute
+        // the 35 possible √(dr/dc) values (indices 1..=7) once instead of a
+        // sqrt + division on every one of the m²·35 edge evaluations. The span
+        // is dc·h. Both are independent of absolute position.
+        let mut rslope_tab = [[0.0f64; 8]; 8];
+        for (dr, row) in rslope_tab.iter_mut().enumerate().skip(1) {
+            for (dc, cell) in row.iter_mut().enumerate().skip(1) {
+                *cell = (dr as f64 / dc as f64).sqrt();
+            }
+        }
+        dp_grid_solve(m, m, |sr, sc, tr, tc| {
+            let dr = tr - sr;
+            let dc = tc - sc;
+            dp_edge_weight_core(&q1n, &q2n, sc, tc, sr, tr, rslope_tab[dr][dc], dc as f64 * h)
+                + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+        })
+    } else {
+        dp_grid_solve(m, m, |sr, sc, tr, tc| {
+            dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
+                + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+        })
+    };
 
     dp_path_to_gamma(&path, argvals)
 }

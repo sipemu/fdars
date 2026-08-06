@@ -102,21 +102,24 @@ fn elastic_align_pair_from_srsf(
     }
 }
 
-/// Compute elastic distance given a raw curve f2, and pre-computed SRSFs q1, q2.
+/// Compute elastic distance given a raw curve f2, pre-computed SRSFs q1, q2, and
+/// pre-computed Simpson integration `weights`.
 ///
 /// The raw f2 is needed to reparameterize before computing the aligned SRSF.
+/// `weights` depends only on `argvals`, so the distance-matrix callers compute
+/// it once rather than on every one of the O(n²) pairs.
 fn elastic_distance_from_srsf(
     f2: &[f64],
     q1: &[f64],
     q2: &[f64],
     argvals: &[f64],
+    weights: &[f64],
     lambda: f64,
 ) -> f64 {
     let gamma = dp_alignment_core(q1, q2, argvals, lambda);
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
     let q_aligned = srsf_single(&f_aligned, argvals);
-    let weights = simpsons_weights(argvals);
-    l2_distance(q1, &q_aligned, &weights)
+    l2_distance(q1, &q_aligned, weights)
 }
 
 // ─── Distance Matrices ──────────────────────────────────────────────────────
@@ -139,8 +142,9 @@ fn elastic_distance_from_srsf(
 pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f64) -> FdMatrix {
     let n = data.nrows();
 
-    // Pre-compute all SRSF transforms once
+    // Pre-compute all SRSF transforms and the integration weights once
     let srsfs = srsf_transform(data, argvals);
+    let weights = simpsons_weights(argvals);
 
     let upper_vals: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
@@ -149,7 +153,7 @@ pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f6
                 .map(|j| {
                     let fj = data.row(j);
                     let qj = srsfs.row(j);
-                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, lambda)
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, lambda)
                 })
                 .collect::<Vec<_>>()
         })
@@ -190,9 +194,10 @@ pub fn elastic_cross_distance_matrix(
     let n1 = data1.nrows();
     let n2 = data2.nrows();
 
-    // Pre-compute all SRSF transforms once for both datasets
+    // Pre-compute all SRSF transforms and the integration weights once
     let srsfs1 = srsf_transform(data1, argvals);
     let srsfs2 = srsf_transform(data2, argvals);
+    let weights = simpsons_weights(argvals);
 
     let vals: Vec<f64> = iter_maybe_parallel!(0..n1)
         .flat_map(|i| {
@@ -201,7 +206,7 @@ pub fn elastic_cross_distance_matrix(
                 .map(|j| {
                     let fj = data2.row(j);
                     let qj = srsfs2.row(j);
-                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, lambda)
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, lambda)
                 })
                 .collect::<Vec<_>>()
         })
