@@ -80,11 +80,11 @@
   3. Results are reproducible: raw criterion output is saved under `.planning/research/bench/` and each finding links to its artifact, with two-run variance within ±5% (results exceeding 10% variance marked LOW CONFIDENCE)
   4. This slice's backlog entries (elastic-alignment perf items) are drafted with function/current-cost/root-cause fields, ready for final ranking in Phase 9
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Tracer: prove the measure→artifact→report→backlog pipeline end-to-end on one karcher_mean cell (N=100×M=50, D-06 params)
+- [x] 03-01-PLAN.md — Tracer: prove the measure→artifact→report→backlog pipeline end-to-end on one karcher_mean cell (N=100×M=50, D-06 params)
 
 **Wave 2** *(blocked on Wave 1 — same append targets: audit_hotpaths.rs + AUDIT-REPORT.md)*
 
@@ -186,7 +186,7 @@
 |-------|----------------|--------|-----------|
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
-| 3. Elastic Alignment Hot Path | 0/2 | Planned | - |
+| 3. Elastic Alignment Hot Path | 1/2 | In Progress|  |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
