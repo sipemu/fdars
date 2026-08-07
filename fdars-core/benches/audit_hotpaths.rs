@@ -257,6 +257,45 @@ fn bench_smooth_sentinel(c: &mut Criterion) {
     group.finish();
 }
 
+/// Phase-3 karcher_mean tracer cell — unbanded full DP at D-06 params.
+///
+/// Benchmarks `karcher_mean` at N=100, M=50 with the Phase-3 locked parameters
+/// (D-06): `max_iter = 20`, `tol = 1e-4`, `lambda = 0.0`.  These differ from the
+/// Phase-1 sentinel (which uses `max_iter = 10`, `tol = 1e-3`) to match the
+/// cross-phase comparability contract for Phase 3.
+///
+/// **Key fact (D-05 / Anti-Pattern 2):** `karcher_mean()` calls
+/// `karcher_mean_impl(.., 0.0)` at `karcher.rs:300`, so `band_frac = 0.0` →
+/// full unbanded DP by default.  Banding is opt-in via `karcher_mean_banded()`.
+/// This cell measures the unbanded cost; Plan 02 adds the banded twin via
+/// `karcher_mean_banded(band_frac = 0.1)` for the banded-vs-unbanded comparison.
+///
+/// Sample-size / timing: N=100, M=50 is small — sentinel defaults
+/// (`sample_size(20)`, `measurement_time(20s)`, `warm_up_time(5s)`) are applied.
+fn bench_p3_karcher(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p3_karcher");
+    // N=100, M=50 is the D-06-locked tracer cell; sentinel defaults suffice
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+
+    // Build input OUTSIDE b.iter() to avoid measuring the allocator
+    let (data, argvals) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(karcher_mean(
+                black_box(&data),
+                black_box(&argvals),
+                black_box(20usize), // D-06 max_iter (NOT the sentinel 10)
+                black_box(1e-4),    // D-06 tol (NOT the sentinel 1e-3)
+                black_box(0.0),     // D-06 lambda = 0.0 (no warp penalty)
+            ))
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fpca_sentinel,
@@ -265,6 +304,7 @@ criterion_group!(
     bench_depth_sentinel,
     bench_cv_sentinel,
     bench_streaming_sentinel,
-    bench_smooth_sentinel
+    bench_smooth_sentinel,
+    bench_p3_karcher
 );
 criterion_main!(benches);
