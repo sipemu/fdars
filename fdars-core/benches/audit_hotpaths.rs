@@ -435,11 +435,16 @@ fn bench_p3_karcher_banded(c: &mut Criterion) {
 /// Square N×N self-distance matrix per D-01 (comparable to cross-distance).
 ///
 /// Phase-1 sentinel recorded N=100×M=50 ≈ 790 ms (comparable cell here).
-/// N=500×M=200 is the most expensive cell (O(n²·m²)); `measurement_time(60s)`.
+///
+/// Timing by cell (O(n²·m²) DP):
+///   - n100_m50:  ~760 ms/iter → sample_size(20), measurement_time(20s)
+///   - n100_m200: ~17.6 s/iter → sample_size(10), measurement_time(60s)
+///   - n500_m50:  ~27 s/iter  → sample_size(10), measurement_time(60s)
+///   - n500_m200: ~very slow  → sample_size(10), measurement_time(60s)
 fn bench_p3_elastic_self(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_elastic_self");
 
-    // --- n100_m50 ---
+    // --- n100_m50: ~760 ms/iter — sentinel defaults ---
     group.sample_size(20);
     group.measurement_time(std::time::Duration::from_secs(20));
     group.warm_up_time(std::time::Duration::from_secs(5));
@@ -454,7 +459,10 @@ fn bench_p3_elastic_self(c: &mut Criterion) {
         })
     });
 
-    // --- n100_m200 ---
+    // --- n100_m200: ~17.6 s/iter — reduce samples, extend time ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_200, argvals200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
@@ -466,7 +474,7 @@ fn bench_p3_elastic_self(c: &mut Criterion) {
         })
     });
 
-    // --- n500_m50 ---
+    // --- n500_m50: ~27 s/iter — reduce samples, extend time ---
     let (data500_50, argvals50b) = generate_curves(500, 50);
     group.bench_function("n500_m50", |b| {
         b.iter(|| {
@@ -478,10 +486,7 @@ fn bench_p3_elastic_self(c: &mut Criterion) {
         })
     });
 
-    // --- n500_m200: borderline cell (workload-matrix 60s cap) ---
-    group.sample_size(10);
-    group.measurement_time(std::time::Duration::from_secs(60));
-    group.warm_up_time(std::time::Duration::from_secs(5));
+    // --- n500_m200: borderline cell (workload-matrix 60s cap; very slow) ---
     let (data500_200, argvals200b) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
@@ -503,12 +508,12 @@ fn bench_p3_elastic_self(c: &mut Criterion) {
 /// `band_frac = 0.1` (D-03).  Pair with `bench_p3_elastic_self` to quantify the
 /// banded-vs-unbanded reduction (~7× expected at M=200 per D-03).
 ///
-/// Timing: small cells use sentinel defaults; N=500×M=200 uses
-/// `measurement_time(60s)` + `sample_size(10)`.
+/// Timing: n100_m50 uses sentinel defaults; all other cells use
+/// `sample_size(10)` + `measurement_time(60s)` due to observed iteration times.
 fn bench_p3_elastic_self_banded(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_elastic_self_banded");
 
-    // --- n100_m50 ---
+    // --- n100_m50: banding reduces cost significantly ---
     group.sample_size(20);
     group.measurement_time(std::time::Duration::from_secs(20));
     group.warm_up_time(std::time::Duration::from_secs(5));
@@ -524,7 +529,10 @@ fn bench_p3_elastic_self_banded(c: &mut Criterion) {
         })
     });
 
-    // --- n100_m200 ---
+    // --- n100_m200: reduce samples for extended iter time ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_200, argvals200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
@@ -551,9 +559,6 @@ fn bench_p3_elastic_self_banded(c: &mut Criterion) {
     });
 
     // --- n500_m200: borderline cell ---
-    group.sample_size(10);
-    group.measurement_time(std::time::Duration::from_secs(60));
-    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data500_200, argvals200b) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
@@ -578,13 +583,20 @@ fn bench_p3_elastic_self_banded(c: &mut Criterion) {
 /// This makes the cost directly comparable to `elastic_self_distance_matrix`
 /// (same pairs, same cell sizes). Both datasets are the same `FdMatrix` instance.
 ///
-/// N=500×M=200 is the most expensive cell; `measurement_time(60s)` applied.
+/// Cross-distance visits all N×N pairs (not just upper-triangular), so it is
+/// approximately 2× the cost of self-distance at the same N×M.
+///
+/// Timing by cell (O(n²·m²) DP, all pairs):
+///   - n100_m50:  ~2× self → sample_size(20), measurement_time(30s)
+///   - n100_m200: very slow → sample_size(10), measurement_time(60s)
+///   - n500_m50:  very slow → sample_size(10), measurement_time(60s)
+///   - n500_m200: extreme  → sample_size(10), measurement_time(60s)
 fn bench_p3_elastic_cross(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_elastic_cross");
 
     // --- n100_m50 (square: data1=data2) ---
     group.sample_size(20);
-    group.measurement_time(std::time::Duration::from_secs(20));
+    group.measurement_time(std::time::Duration::from_secs(30));
     group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_50, argvals50) = generate_curves(100, 50);
     group.bench_function("n100_m50", |b| {
@@ -598,7 +610,10 @@ fn bench_p3_elastic_cross(c: &mut Criterion) {
         })
     });
 
-    // --- n100_m200 ---
+    // --- n100_m200: reduce samples due to extended iter time ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_200, argvals200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
@@ -611,7 +626,7 @@ fn bench_p3_elastic_cross(c: &mut Criterion) {
         })
     });
 
-    // --- n500_m50 ---
+    // --- n500_m50: extended time, reduced samples ---
     let (data500_50, argvals50b) = generate_curves(500, 50);
     group.bench_function("n500_m50", |b| {
         b.iter(|| {
@@ -625,9 +640,6 @@ fn bench_p3_elastic_cross(c: &mut Criterion) {
     });
 
     // --- n500_m200: borderline cell ---
-    group.sample_size(10);
-    group.measurement_time(std::time::Duration::from_secs(60));
-    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data500_200, argvals200b) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
@@ -651,8 +663,8 @@ fn bench_p3_elastic_cross(c: &mut Criterion) {
 /// Pairs with `bench_p3_elastic_cross` to quantify the banded-vs-unbanded
 /// reduction (~7× expected at M=200, ~10× theoretical when m/band=200/20).
 ///
-/// Timing: small cells use sentinel defaults; N=500×M=200 uses
-/// `measurement_time(60s)` + `sample_size(10)`.
+/// Timing: n100_m50 uses sentinel defaults; all other cells use
+/// `sample_size(10)` + `measurement_time(60s)`.
 fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_elastic_cross_banded");
 
@@ -673,7 +685,10 @@ fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
         })
     });
 
-    // --- n100_m200 ---
+    // --- n100_m200: reduce samples ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_200, argvals200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
@@ -702,9 +717,6 @@ fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
     });
 
     // --- n500_m200: borderline cell ---
-    group.sample_size(10);
-    group.measurement_time(std::time::Duration::from_secs(60));
-    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data500_200, argvals200b) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
