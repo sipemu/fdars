@@ -24,12 +24,12 @@ Produce an evidence-backed picture of where fdars is slow and what it is missing
 - ✓ Model explainability (PDP, SHAP, LIME, ALE, importance) via generic `FpcPredictor` trait — existing
 - ✓ Clustering (GMM) and irregular functional data support — existing
 - ✓ Core infrastructure: column-major `FdMatrix`, `Result`-based error handling, feature-gated rayon parallelism, ~1,650 tests, 8 criterion benchmarks, 28 examples, WASM/JS + R bindings — existing
+- ✓ **Static hot-path analysis** — zero-cost per-module bottleneck-candidate map (complexity in N/M, allocation hotspots incl. 8 `to_dmatrix()` SVD copies + 14 `from_column_slice` basis sites, parallelism gaps, feature-gate annotations) in `.planning/research/AUDIT-REPORT.md` — Validated in Phase 2 (PERF-01)
 
 ### Active
 
 <!-- This milestone's scope. Analysis/audit only — no production code changes required. -->
 
-- [ ] **Performance audit** — static hot-path analysis across the crate (complexity, allocations, SVD copies, parallelism gaps) to surface bottleneck candidates
 - [ ] **Benchmark confirmation** — extend/run criterion benchmarks on representative inputs to measure and confirm the top performance suspects with real numbers
 - [ ] **scikit-fda gap analysis** — map fdars against scikit-fda's public API (start broad, deep-dive where findings warrant) into a parity matrix + gap findings
 - [ ] **Consolidated audit report** — a written report combining benchmark results and functionality-gap findings
@@ -86,4 +86,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-07 — Phase 1 (Measurement Discipline & Baselines) complete: benchmark apparatus + recorded baselines for 6 hot-path modules, workload matrix, and methodology established (PERF-02).*
+*Last updated: 2026-08-07 — Phase 2 (Static Hot-Path Analysis) complete: source-anchored zero-cost hot-path map across all 6 modules — complexity table, allocation-hotspot list (8 SVD copies + 14 basis sites), and parallelism-gap inventory in `.planning/research/AUDIT-REPORT.md`, all anchors verified against source (PERF-01). Prior: Phase 1 established benchmark apparatus + baselines (PERF-02).*
