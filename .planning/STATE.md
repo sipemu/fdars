@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 1
-current_phase_name: Measurement Discipline & Baselines
+current_phase: 01
+current_phase_name: measurement-discipline-baselines
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-08-07T18:51:34.662Z"
+stopped_at: Completed 01-01-PLAN.md (audit apparatus tracer)
+last_updated: "2026-08-07T19:09:42.471Z"
 last_activity: 2026-08-07
-last_activity_desc: Roadmap created (9-phase audit, mode=mvp, granularity=fine)
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-07)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 1 — Measurement Discipline & Baselines
+**Current focus:** Phase 01 — measurement-discipline-baselines
 
 ## Current Position
 
-Phase: 1 of 9 (Measurement Discipline & Baselines)
-Plan: 0 of 0 in current phase
+Phase: 01 (measurement-discipline-baselines) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-07 — Roadmap created (9-phase audit, mode=mvp, granularity=fine)
+Last activity: 2026-08-07 — Phase 01 execution started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -54,6 +54,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01-measurement-discipline-baselines P01 | 12 | 1 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -66,6 +71,8 @@ Relevant to current work:
 - scikit-fda 0.10.1 is the sole functionality-gap yardstick
 - Performance measured via static analysis first, then real criterion benchmarks
 - Backlog phrased as GSD-ready requirements/phases, ranked by user value not ease
+- [Phase ?]: D-04 sentinel: karcher_mean substituted for fdata_to_pc_1d as 4-combo discriminator — FPCA center_columns is sequential, nalgebra SVD is always sequential; karcher_mean uses iter_maybe_parallel! (10x speedup with parallel feature confirmed)
+- [Phase ?]: TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench linking; /tmp tmpfs at 94% capacity causes doctest bus-errors (documented --no-verify exception)
 
 ### Pending Todos
 
@@ -86,6 +93,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T14:38:04.215Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-measurement-discipline-baselines/01-CONTEXT.md
+Last session: 2026-08-07T19:09:42.462Z
+Stopped at: Completed 01-01-PLAN.md (audit apparatus tracer)
+Resume file: .planning/phases/01-measurement-discipline-baselines/01-02-PLAN.md
