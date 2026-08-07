@@ -309,5 +309,27 @@ Status values: **ALREADY PARALLEL** = the loop is wrapped in one of the five `it
 | `elastic_fpca.rs:720` (`build_augmented_srsfs` — `for i in 0..n` constructing augmented SRSF rows) | SEQUENTIAL | none | `[sequential]` | Yes — Phase 5 candidate |
 | `elastic_fpca.rs:764` (`svd_scores_and_eigenvalues` — inner `for i in 0..n` score extraction per component) | SEQUENTIAL | none | `[sequential]` | Yes — Phase 5 candidate |
 | Banding note: `karcher.rs:~300` (`karcher_mean()` passes `band_frac=0.0` → `None`) | BANDING OPT-IN | n/a — API design note | `[always]` | N/A — requires `karcher_mean_banded()` to enable O(m·band) DP |
+| `regression.rs:167` (`center_columns` — outer `for j in 0..m` loop, inner `for i in 0..n` at `:176`) | SEQUENTIAL | none — `grep -n "iter_maybe_parallel\|slice_maybe_parallel\|maybe_par_chunks" regression.rs` returns no hits | `[sequential]` | Yes — Phase 5 candidate. **Note:** this is the sequential `center_columns` called inside `fdata_to_pc_1d`. It is a different function from the parallel `fdata.rs:center_1d` (RESEARCH Pitfall 1). Wrapping the outer-M or inner-N loop with `iter_maybe_parallel!` is safe: no shared mutable state across columns. |
+| `classification/cv.rs:76` (`fclassif_cv` — outer `for fold in 0..nfold` at `:76`) | SEQUENTIAL | none — `grep -n "iter_maybe_parallel\|slice_maybe_parallel\|maybe_par_chunks" classification/cv.rs` returns no hits | `[sequential]` | Yes — Phase 5 candidate. Each fold is fully independent (disjoint train/test splits, no shared mutable state). Safe `iter_maybe_parallel!` candidate. No RNG seeding concern: the fold assignment RNG (`assign_folds`) is called once before the loop and produces a deterministic `Vec<usize>` fold map; the fold body itself contains no RNG calls. |
+| `streaming_depth/fraiman_muniz.rs:82` (`StreamingFraimanMuniz::depth_batch` — `iter_maybe_parallel!(0..nobj)`) | ALREADY PARALLEL | `iter_maybe_parallel!` | `[parallel-gated]` | No |
+| `streaming_depth/mbd.rs:76` (`StreamingMBD::depth_batch` — `iter_maybe_parallel!(0..nobj)`) | ALREADY PARALLEL | `iter_maybe_parallel!` | `[parallel-gated]` | No |
+| `smoothing.rs:110` (`nadaraya_watson` — outer `slice_maybe_parallel!(x_new)` over prediction points) | ALREADY PARALLEL (outer loop) | `slice_maybe_parallel!` | `[parallel-gated]` | No (outer). Inner `for i in 0..n` at `smoothing.rs:115` over training points is sequential; this inner loop is O(N_train) with a single kernel-eval body and has low parallelism value. |
+| `depth/fraiman_muniz.rs:32` (static `fraiman_muniz_1d`) | ALREADY PARALLEL | delegates to `StreamingFraimanMuniz::depth_batch` → `iter_maybe_parallel!(0..nobj)` at `streaming_depth/fraiman_muniz.rs:82` — Open Question 1 resolved by grep | `[parallel-gated]` | No — the static FM depth function immediately delegates to the streaming implementation which is already parallel-gated. No separate parallel path needed. |
+
+**Pre-write validation (Manual-Only Verification from 02-VALIDATION.md):** Before finalizing, each entry labeled SEQUENTIAL was confirmed by `grep -n "iter_maybe_parallel\|slice_maybe_parallel\|maybe_par_chunks"` on the cited file:
+- `classification/cv.rs`: zero macro hits — `cv.rs:76` plain `for` loop confirmed.
+- `regression.rs` (center_columns scope): zero macro hits — `regression.rs:167` double loop confirmed sequential.
+
+No macro-wrapped loop is labeled SEQUENTIAL. No false positives feeding Phase 5.
+
+**SC verification (final grep pass):**
+
+| Check | Command | Result | Threshold | Pass? |
+|-------|---------|--------|-----------|-------|
+| SC1 — complexity rows | `grep -c "O(n" AUDIT-REPORT.md` | 13 | ≥ 6 | Yes |
+| SC2 — SVD copy sites | `grep -c "to_dmatrix" AUDIT-REPORT.md` | 11 | ≥ 8 | Yes |
+| SC3 — parallelism labels | `grep -Eic "already parallel\|sequential" AUDIT-REPORT.md` | 18+ | ≥ expected | Yes |
+| SC4 — gate tag coverage | `grep -Eoc "\[parallel-gated\]\|\[sequential\]\|\[linalg-gated\]\|\[always\]" AUDIT-REPORT.md` | 38+ | ≥ 10 | Yes |
+| Provenance backstop | each cited `file:line` verified via `grep -n` in `fdars-core/src/` | all 6 module anchors confirmed | all present | Yes |
 
 *Full report sections (hot-path analysis, scikit-fda gap analysis, consolidated findings, prioritized backlog) to be written across Phases 2–9.*
