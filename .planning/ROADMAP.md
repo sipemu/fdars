@@ -57,11 +57,11 @@
   3. A parallelism-gap list flags sequential loops that are candidates for parallelization (classification CV folds, streaming-depth `depth_batch`, elastic-FPCA inner N-loops) and notes where banding is opt-in rather than automatic
   4. Every finding annotates which code paths are feature-gated (`linalg`-only, `parallel`-only) so no path is mislabeled "sequential" when its hot loop is wrapped in `iter_maybe_parallel!`
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Tracer: prove all 3 list formats + complexity-row format end-to-end on the elastic alignment module (worst case)
+- [x] 02-01-PLAN.md — Tracer: prove all 3 list formats + complexity-row format end-to-end on the elastic alignment module (worst case)
 
 **Wave 2** *(blocked on Wave 1 completion — same append target)*
 
@@ -177,7 +177,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
-| 2. Static Hot-Path Analysis | 0/2 | Not started | - |
+| 2. Static Hot-Path Analysis | 1/2 | In Progress|  |
 | 3. Elastic Alignment Hot Path | 0/0 | Not started | - |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |

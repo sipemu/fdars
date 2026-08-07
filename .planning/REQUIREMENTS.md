@@ -11,7 +11,7 @@ Requirements for this audit. Each maps to a roadmap phase.
 
 ### Performance Audit (PERF)
 
-- [ ] **PERF-01**: Static hot-path analysis documents bottleneck candidates per module with algorithmic complexity in N (curves) and M (grid points), covering at least elastic alignment, FPCA/SVD, depth & distance matrices, CV loops, streaming depth, and smoothing
+- [x] **PERF-01**: Static hot-path analysis documents bottleneck candidates per module with algorithmic complexity in N (curves) and M (grid points), covering at least elastic alignment, FPCA/SVD, depth & distance matrices, CV loops, streaming depth, and smoothing
 - [x] **PERF-02**: A representative workload matrix (N × M input sizes) is defined per hot-path module so benchmarks reflect realistic usage, not toy inputs
 - [ ] **PERF-03**: Criterion benchmarks measure the top hot-path suspects in **release** build with correct feature flags (`linalg`, `parallel`) and `black_box`, producing a results table tagged with feature set and toolchain version
 - [ ] **PERF-04**: An allocation audit (dhat) quantifies the documented `FdMatrix→DMatrix` SVD-copy overhead (and other allocation hotspots) with a reproducible baseline
@@ -58,7 +58,7 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERF-01 | Phase 2 | Pending |
+| PERF-01 | Phase 2 | Complete |
 | PERF-02 | Phase 1 | Complete |
 | PERF-03 | Phase 3, Phase 4 | Pending |
 | PERF-04 | Phase 4 | Pending |

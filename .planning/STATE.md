@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 2
-current_phase_name: Static Hot-Path Analysis
+current_phase: 02
+current_phase_name: static-hot-path-analysis
 status: executing
-stopped_at: Completed 01-02-PLAN.md (full phase baseline)
-last_updated: "2026-08-07T19:59:10.660Z"
+stopped_at: Completed 02-01-PLAN.md (elastic alignment tracer slice)
+last_updated: "2026-08-07T20:10:16.037Z"
 last_activity: 2026-08-07
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
+last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-07)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 01 — measurement-discipline-baselines
+**Current focus:** Phase 02 — static-hot-path-analysis
 
 ## Current Position
 
-Phase: 2 — Static Hot-Path Analysis
-Plan: Not started
+Phase: 02 (static-hot-path-analysis) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-07 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-08-07 — Phase 02 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100%
 |------|----------|-------|-------|
 | Phase 01-measurement-discipline-baselines P01 | 12 | 1 tasks | 9 files |
 | Phase 01 P02 | 35 | 3 tasks | 14 files |
+| Phase 02 P01 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,8 @@ Relevant to current work:
 - [Phase ?]: TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench linking; /tmp tmpfs at 94% capacity causes doctest bus-errors (documented --no-verify exception)
 - [Phase ?]: elastic_self_distance_matrix returns FdMatrix (not Result<Vec<f64>,_>); output wrapped in black_box directly — confirmed from src/alignment/pairwise.rs:194
 - [Phase ?]: streaming sentinel tagged LOW CONFIDENCE: 11.1% two-run variance due to OS scheduler jitter at sub-ms scale; re-measure under taskset/cpupower in later phases
+- [Phase ?]: elastic_fpca.rs:930 enclosing fn is optimize_balance_c_raw (inside eval_c closure) — source-verified, RESEARCH Open Question 2 resolved; site is called ≤20× per golden-section search
+- [Phase ?]: Phase 2 three-table format (Complexity Table + Allocation Hotspot + Parallelism Gap List) proven end-to-end on elastic alignment tracer slice; Plan 02 expands by adding rows
 
 ### Pending Todos
 
@@ -96,6 +99,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T19:24:23.968Z
-Stopped at: Completed 01-02-PLAN.md (full phase baseline)
+Last session: 2026-08-07T20:10:16.030Z
+Stopped at: Completed 02-01-PLAN.md (elastic alignment tracer slice)
 Resume file: None
