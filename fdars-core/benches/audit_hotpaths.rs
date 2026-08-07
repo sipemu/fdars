@@ -278,8 +278,8 @@ fn bench_smooth_sentinel(c: &mut Criterion) {
 fn bench_p3_karcher(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_karcher");
 
-    // --- n100_m50: small cell — sentinel defaults suffice ---
-    group.sample_size(20);
+    // --- n100_m50: small cell (~300-640ms/iter, high load variance) ---
+    group.sample_size(10);
     group.measurement_time(std::time::Duration::from_secs(20));
     group.warm_up_time(std::time::Duration::from_secs(5));
     // Build input OUTSIDE b.iter() to avoid measuring the allocator
@@ -296,7 +296,10 @@ fn bench_p3_karcher(c: &mut Criterion) {
         })
     });
 
-    // --- n100_m200: sentinel defaults suffice ---
+    // --- n100_m200: ~3-7s/iter depending on system load ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_200, argvals200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
@@ -310,7 +313,7 @@ fn bench_p3_karcher(c: &mut Criterion) {
         })
     });
 
-    // --- n500_m50: larger N, small M — sentinel defaults suffice ---
+    // --- n500_m50: ~1.6-4s/iter ---
     let (data500_50, argvals50b) = generate_curves(500, 50);
     group.bench_function("n500_m50", |b| {
         b.iter(|| {
@@ -325,9 +328,6 @@ fn bench_p3_karcher(c: &mut Criterion) {
     });
 
     // --- n500_m200: borderline cell (workload-matrix 60s) ---
-    group.sample_size(10);
-    group.measurement_time(std::time::Duration::from_secs(60));
-    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data500_200, argvals200b) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
@@ -359,8 +359,8 @@ fn bench_p3_karcher(c: &mut Criterion) {
 fn bench_p3_karcher_banded(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_karcher_banded");
 
-    // --- n100_m50 ---
-    group.sample_size(20);
+    // --- n100_m50: banding reduces cost ~4x vs unbanded ---
+    group.sample_size(10);
     group.measurement_time(std::time::Duration::from_secs(20));
     group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_50, argvals50) = generate_curves(100, 50);
@@ -377,7 +377,10 @@ fn bench_p3_karcher_banded(c: &mut Criterion) {
         })
     });
 
-    // --- n100_m200 ---
+    // --- n100_m200: ~1-1.3s/iter with banding ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data100_200, argvals200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
@@ -392,7 +395,7 @@ fn bench_p3_karcher_banded(c: &mut Criterion) {
         })
     });
 
-    // --- n500_m50 ---
+    // --- n500_m50: ~1.2-1.5s/iter with banding ---
     let (data500_50, argvals50b) = generate_curves(500, 50);
     group.bench_function("n500_m50", |b| {
         b.iter(|| {
@@ -408,9 +411,6 @@ fn bench_p3_karcher_banded(c: &mut Criterion) {
     });
 
     // --- n500_m200: borderline cell ---
-    group.sample_size(10);
-    group.measurement_time(std::time::Duration::from_secs(60));
-    group.warm_up_time(std::time::Duration::from_secs(5));
     let (data500_200, argvals200b) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
