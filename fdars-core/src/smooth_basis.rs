@@ -671,8 +671,15 @@ fn evaluate_nbasis_cv(
     n_folds: usize,
 ) -> Vec<f64> {
     let (n, m) = data.shape();
-    let n_folds = n_folds.max(2);
-    let folds = crate::cv::create_folds(n, n_folds, 42);
+    // Cross-validate over TIME POINTS, not curves. Leaving out curves is
+    // ill-posed for per-curve basis fitting — each curve has its own
+    // coefficients, so a held-out curve can only be scored against its own data,
+    // which is an in-sample residual that decreases monotonically in `nbasis`
+    // and always selects the largest candidate (GH #33). Holding out points and
+    // predicting them from a fit on the remaining points gives a genuine
+    // predictive score that penalizes overfitting and shows an interior minimum.
+    let n_folds = n_folds.max(2).min(m);
+    let point_folds = crate::cv::create_folds(m, n_folds, 42);
     let mut scores = Vec::with_capacity(nbasis_range.len());
 
     for &nb in nbasis_range {
@@ -684,53 +691,48 @@ fn evaluate_nbasis_cv(
             BasisType::Bspline { order } => bspline_penalty_matrix(argvals, nb, *order, 2),
             BasisType::Fourier { period } => fourier_penalty_matrix(nb, *period, 2),
         };
+        let (basis_flat, actual_k) = evaluate_basis(argvals, basis_type, nb);
+        let b_full = DMatrix::from_column_slice(m, actual_k, &basis_flat);
+        let r_mat = DMatrix::from_column_slice(actual_k, actual_k, &penalty);
 
-        let mut total_mse = 0.0;
-        let mut total_count = 0;
+        let mut total_se = 0.0;
+        let mut count = 0usize;
 
         for fold in 0..n_folds {
-            let (train_idx, test_idx) = crate::cv::fold_indices(&folds, fold);
-            if train_idx.is_empty() || test_idx.is_empty() {
+            let (train_pts, test_pts) = crate::cv::fold_indices(&point_folds, fold);
+            if train_pts.is_empty() || test_pts.is_empty() {
                 continue;
             }
-            let train_data = crate::cv::subset_rows(data, &train_idx);
-            let fdpar = FdPar {
-                basis_type: basis_type.clone(),
-                nbasis: nb,
-                lambda,
-                lfd_order: 2,
-                penalty_matrix: penalty.clone(),
+            // Basis rows at the train/test points, and the projection operator
+            // built from the training points only (independent of any curve).
+            let b_train = b_full.select_rows(train_pts.iter());
+            let b_test = b_full.select_rows(test_pts.iter());
+            let btb = b_train.transpose() * &b_train;
+            let ridge_eps = 1e-10;
+            let system: DMatrix<f64> =
+                &btb + lambda * &r_mat + ridge_eps * DMatrix::<f64>::identity(actual_k, actual_k);
+            let Some(system_inv) = invert_penalized_system(&system, actual_k) else {
+                continue;
             };
+            let proj = &system_inv * b_train.transpose(); // (k x |train|)
 
-            if let Ok(train_result) = smooth_basis(&train_data, argvals, &fdpar) {
-                let (basis_flat, actual_k) = evaluate_basis(argvals, basis_type, nb);
-                let b_mat = DMatrix::from_column_slice(m, actual_k, &basis_flat);
-                let r_mat =
-                    DMatrix::from_column_slice(actual_k, actual_k, &train_result.penalty_matrix);
-                let btb = b_mat.transpose() * &b_mat;
-                let ridge_eps = 1e-10;
-                let system: DMatrix<f64> = &btb
-                    + lambda * &r_mat
-                    + ridge_eps * DMatrix::<f64>::identity(actual_k, actual_k);
-
-                if let Some(system_inv) = invert_penalized_system(&system, actual_k) {
-                    let proj = &system_inv * b_mat.transpose();
-                    for &ti in &test_idx {
-                        let curve: Vec<f64> = (0..m).map(|j| data[(ti, j)]).collect();
-                        let y_vec = nalgebra::DVector::from_vec(curve.clone());
-                        let coefs = &proj * &y_vec;
-                        let fitted = &b_mat * &coefs;
-                        let mse: f64 =
-                            (0..m).map(|j| (curve[j] - fitted[j]).powi(2)).sum::<f64>() / m as f64;
-                        total_mse += mse;
-                        total_count += 1;
-                    }
+            for i in 0..n {
+                let y_train = nalgebra::DVector::from_iterator(
+                    train_pts.len(),
+                    train_pts.iter().map(|&j| data[(i, j)]),
+                );
+                let coefs = &proj * &y_train;
+                let pred = &b_test * &coefs; // predictions at held-out points
+                for (t_idx, &j) in test_pts.iter().enumerate() {
+                    let err = data[(i, j)] - pred[t_idx];
+                    total_se += err * err;
+                    count += 1;
                 }
             }
         }
 
-        if total_count > 0 {
-            scores.push(total_mse / f64::from(total_count));
+        if count > 0 {
+            scores.push(total_se / count as f64);
         } else {
             scores.push(f64::INFINITY);
         }
@@ -1080,6 +1082,49 @@ mod tests {
         let res = result.unwrap();
         assert!(nbasis_range.contains(&res.optimal_nbasis));
         assert_eq!(res.criterion, BasisCriterion::Cv);
+    }
+
+    /// Regression for GH #33: the CV path scored held-out curves against their
+    /// own data (no true hold-out), so scores fell monotonically in `n_basis`
+    /// and it always selected the maximum candidate. With point-wise CV,
+    /// overfitting the noise is penalized and the maximum is not chosen.
+    #[test]
+    fn test_basis_nbasis_cv_penalizes_overfitting() {
+        let m = 120;
+        let n = 6;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                // Smooth signal + deterministic pseudo-noise.
+                let noise = 0.2 * (((i * 31 + j * 17) % 13) as f64 / 13.0 - 0.5);
+                data[(i, j)] = (2.0 * PI * t[j]).sin() + noise;
+            }
+        }
+
+        let nbasis_range: Vec<usize> = vec![5, 8, 12, 20, 30];
+        let res = basis_nbasis_cv(
+            &data,
+            &t,
+            &nbasis_range,
+            &BasisType::Bspline { order: 4 },
+            BasisCriterion::Cv,
+            5,
+            1e-6,
+        )
+        .unwrap();
+
+        assert_ne!(
+            res.optimal_nbasis, 30,
+            "CV must not always select the maximum n_basis (GH #33); scores={:?}",
+            res.scores
+        );
+        let monotone_decreasing = res.scores.windows(2).all(|w| w[1] <= w[0] + 1e-12);
+        assert!(
+            !monotone_decreasing,
+            "CV scores must not be monotone-decreasing in n_basis; scores={:?}",
+            res.scores
+        );
     }
 
     // ============== Comprehensive additional tests ==============

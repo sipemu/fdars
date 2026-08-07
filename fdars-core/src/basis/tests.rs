@@ -299,6 +299,66 @@ fn test_basis_roundtrip() {
     assert!(max_error < 0.5, "Roundtrip error too large: {}", max_error);
 }
 
+/// Regression for GH #33: `fdata_to_basis` / `basis_to_fdata` transposed the
+/// result for `n > 1` curves (a curve-major buffer was fed to a column-major
+/// constructor), so multi-curve round-trips were worse than a constant fit,
+/// did not improve with `n_basis`, and left the data range. `n = 1` masked it.
+#[test]
+fn test_bspline_roundtrip_multi_curve_is_least_squares() {
+    let m = 80;
+    let n = 6;
+    let t = uniform_grid(m);
+    let mut data = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let phase = 0.4 * i as f64;
+        let slope = 0.3 * i as f64;
+        for j in 0..m {
+            data[(i, j)] = (2.0 * PI * t[j] + phase).sin() + slope * t[j];
+        }
+    }
+
+    // Per-curve constant fit — any least-squares basis fit must beat this.
+    let mut const_ss = 0.0;
+    let (mut dmin, mut dmax) = (f64::INFINITY, f64::NEG_INFINITY);
+    for i in 0..n {
+        let mean = (0..m).map(|j| data[(i, j)]).sum::<f64>() / m as f64;
+        for j in 0..m {
+            const_ss += (data[(i, j)] - mean).powi(2);
+            dmin = dmin.min(data[(i, j)]);
+            dmax = dmax.max(data[(i, j)]);
+        }
+    }
+    let const_rms = (const_ss / (n * m) as f64).sqrt();
+
+    let rms_at = |nb: usize| -> f64 {
+        let proj = fdata_to_basis_1d(&data, &t, nb, 0).unwrap();
+        let recon = basis_to_fdata_1d(&proj.coefficients, &t, proj.n_basis, 0);
+        let mut ss = 0.0;
+        for i in 0..n {
+            for j in 0..m {
+                let v = recon[(i, j)];
+                assert!(
+                    v > dmin - 1.0 && v < dmax + 1.0,
+                    "nb={nb}: reconstruction {v:.2} left data range [{dmin:.2}, {dmax:.2}]"
+                );
+                ss += (data[(i, j)] - v).powi(2);
+            }
+        }
+        (ss / (n * m) as f64).sqrt()
+    };
+
+    let rms_lo = rms_at(8);
+    let rms_hi = rms_at(25);
+    assert!(
+        rms_lo < const_rms,
+        "nb=8 LS residual {rms_lo:.4} must beat constant fit {const_rms:.4}"
+    );
+    assert!(
+        rms_hi < rms_lo,
+        "more basis functions must fit better: nb=25 {rms_hi:.4} !< nb=8 {rms_lo:.4}"
+    );
+}
+
 #[test]
 fn test_basis_to_fdata_empty_input() {
     let empty = FdMatrix::zeros(0, 0);
