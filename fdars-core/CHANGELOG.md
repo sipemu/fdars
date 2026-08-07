@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`gmm_cluster` over-splitting** (#30): the covariance regularization floor was a fixed absolute `1e-6`, negligible on realistically-scaled features, so a collapsing component's log-likelihood could diverge and remove the BIC minimum (over-splitting) while saturating memberships. Replaced with a data-scaled floor `REG_REL · mean_j Var(feature_j)`, restoring the BIC minimum at the true K and graded posteriors for overlapping clusters.
+- **B-spline basis path** (#33): (1) `fdata_to_basis` / `basis_to_fdata` transposed the result for `n > 1` curves — a curve-major buffer was passed to the column-major `FdMatrix::from_column_major`, so multi-curve projections/reconstructions were scrambled (worse than a constant fit, flat in `n_basis`, out of range); `n = 1` coincidentally worked. Now scattered into the matrix via `[(i, k)]` indexing. (2) `basis_nbasis_cv` (`Cv` criterion) always selected the maximum `n_basis` because it scored held-out curves against their own data (no true hold-out); now cross-validates over **time points** (fit on retained points, predict held-out), yielding a genuine complexity-penalizing criterion. GCV/AIC/BIC were already correct.
+- **`gauss_model` / `joint_gauss_model` constant mean offset** (#34): generated samples were shifted by a constant (~+1) from the data mean. The augmented SRSF coordinate encodes the curve level at the domain midpoint (`m/2`), but reconstruction passed it to `srsf_inverse` as the start value `f(argvals[0])`. Now reconstructs from a zero start and shifts so the midpoint matches, so samples reproduce the data mean.
 
 ## [0.13.0]
 
