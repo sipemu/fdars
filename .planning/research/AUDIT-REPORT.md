@@ -234,7 +234,7 @@ Artifacts: [karcher/none](bench/p1_karcher_none_run1.txt) [karcher/parallel](ben
 
 Phase 2 is a zero-runtime static analysis: no fdars-core source files are changed, no benchmarks are run, and no code is compiled. All findings are derived by reading source files under `fdars-core/src/` and recording file:line citations directly. The deliverable is the three sub-sections below, appended to this report (decision D-05: single growing report).
 
-**SVD-copy site count:** The ROADMAP entry claims "8 FdMatrix→DMatrix SVD-copy sites." The verified count across all production source is **8 production `SVD::new(x.to_dmatrix(), …)` call sites** — this is correct. A ninth `to_dmatrix()` call exists at `matrix.rs:682` but is wrapped in `#[cfg(test)]` and compiled only into the test binary; it is excluded from the allocation hotspot list below (RESEARCH §2 / Pitfall 2).
+**SVD-copy site count:** The ROADMAP entry claims "8 FdMatrix→DMatrix SVD-copy sites." The verified count across all production source is **8 production `SVD::new(x.to_dmatrix(), …)` call sites** — this is correct. One additional `to_dmatrix()` call exists in a `#[cfg(test)]` block (a round-trip test helper in `matrix.rs`) and is compiled only into the test binary; it is excluded from the allocation hotspot list below (RESEARCH §2 / Pitfall 2).
 
 ### Complexity Table
 
@@ -242,6 +242,7 @@ Each row gives the dominant Big-O in N (number of curves) and M (number of evalu
 
 | Module | Primary function (file:line) | N complexity | M complexity | Feature gate | Fragile flag |
 |--------|------------------------------|-------------|--------------|--------------|--------------|
+| Elastic alignment | `karcher_mean` → `karcher_mean_impl` (`alignment/karcher.rs:323`); secondary `elastic_self_distance_matrix` → `self_distance_matrix_impl` (`alignment/pairwise.rs:194`) | O(max_iter · N) — N loop uses `iter_maybe_parallel!`; N-scaling is **unchanged by banding** | Unbanded: O(m²) per pair (full DP table). Banded: O(m · band) per pair. Total: O(max_iter · N · m²) unbanded / O(max_iter · N · m · band) banded | `[parallel-gated]` — inner N-loop at `karcher.rs:185` uses `iter_maybe_parallel!`; M-loop (DP core) is always sequential | Banding is opt-in: default `karcher_mean()` passes `band_frac=0.0` → `None` (full DP). User must call `karcher_mean_banded()` to enable O(m · band) DP. |
 
 ### Allocation Hotspot List
 
@@ -249,6 +250,12 @@ All sites below allocate a new `DMatrix<f64>` of the stated size, pass it into `
 
 | Site (file:line) | Category | Enclosing fn | Alloc size | Feature gate | Phase target |
 |------------------|----------|--------------|------------|--------------|--------------|
+| `elastic_fpca.rs:214` | to_dmatrix() SVD copy | `horiz_fpca` | n × m `DMatrix<f64>` (shooting vectors matrix) | `[always]` | Phase 4 dhat |
+| `elastic_fpca.rs:317` | to_dmatrix() SVD copy | `joint_fpca` | n × (m+1+m) `DMatrix<f64>` (combined augmented+shooting matrix) | `[always]` | Phase 4 dhat |
+| `elastic_fpca.rs:483` | to_dmatrix() SVD copy | `horiz_fpca_from_alignment` | n × m `DMatrix<f64>` (shooting vectors matrix) | `[always]` | Phase 4 dhat |
+| `elastic_fpca.rs:584` | to_dmatrix() SVD copy | `joint_fpca_from_alignment` | n × (m+1+m) `DMatrix<f64>` (combined augmented+shooting matrix) | `[always]` | Phase 4 dhat |
+| `elastic_fpca.rs:930` | to_dmatrix() SVD copy | `optimize_balance_c_raw` (inside `eval_c` closure) | n × (m_aug+m) `DMatrix<f64>` — allocated on **every golden-section iteration** (up to 20×) | `[always]` | Phase 4 dhat |
+| `alignment/nd.rs:705` | to_dmatrix() SVD copy | ND elastic FPCA Gram matrix computation | m × m `DMatrix<f64>` (Gram matrix for ND phase FPCA) | `[always]` | Phase 4 dhat |
 
 ### Parallelism Gap List
 
@@ -256,5 +263,11 @@ Status values: **ALREADY PARALLEL** = the loop is wrapped in one of the five `it
 
 | Loop (file:line) | Status | Parallelism macro | Feature gate tag | Gap candidate? |
 |------------------|--------|-------------------|------------------|----------------|
+| `karcher.rs:185` (`pre_center_template` — per-curve alignment in Karcher iteration) | ALREADY PARALLEL | `iter_maybe_parallel!(0..n)` | `[parallel-gated]` | No |
+| `pairwise.rs:227` (`self_distance_matrix_impl` — upper-triangular pairwise distance loop) | ALREADY PARALLEL | `iter_maybe_parallel!(0..n)` | `[parallel-gated]` | No |
+| `elastic_fpca.rs:701` (`shooting_vectors_from_psis` — `for i in 0..n` computing per-curve `inv_exp_map_sphere`) | SEQUENTIAL | none | `[sequential]` | Yes — Phase 5 candidate |
+| `elastic_fpca.rs:720` (`build_augmented_srsfs` — `for i in 0..n` constructing augmented SRSF rows) | SEQUENTIAL | none | `[sequential]` | Yes — Phase 5 candidate |
+| `elastic_fpca.rs:764` (`svd_scores_and_eigenvalues` — inner `for i in 0..n` score extraction per component) | SEQUENTIAL | none | `[sequential]` | Yes — Phase 5 candidate |
+| Banding note: `karcher.rs:~300` (`karcher_mean()` passes `band_frac=0.0` → `None`) | BANDING OPT-IN | n/a — API design note | `[always]` | N/A — requires `karcher_mean_banded()` to enable O(m·band) DP |
 
 *Full report sections (hot-path analysis, scikit-fda gap analysis, consolidated findings, prioritized backlog) to be written across Phases 2–9.*
