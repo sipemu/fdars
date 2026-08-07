@@ -11,7 +11,7 @@
 ## Phases
 
 - [x] **Phase 1: Measurement Discipline & Baselines** - Lock in build-mode/feature-flag guardrails, define the N×M workload matrix, and record baseline benchmark numbers (completed 2026-08-07)
-- [ ] **Phase 2: Static Hot-Path Analysis** - Document per-module complexity, allocation hotspots, and parallelism gaps with zero runtime cost
+- [x] **Phase 2: Static Hot-Path Analysis** - Document per-module complexity, allocation hotspots, and parallelism gaps with zero runtime cost (completed 2026-08-07)
 - [ ] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path
 - [ ] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat
 - [ ] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops
@@ -57,7 +57,7 @@
   3. A parallelism-gap list flags sequential loops that are candidates for parallelization (classification CV folds, streaming-depth `depth_batch`, elastic-FPCA inner N-loops) and notes where banding is opt-in rather than automatic
   4. Every finding annotates which code paths are feature-gated (`linalg`-only, `parallel`-only) so no path is mislabeled "sequential" when its hot loop is wrapped in `iter_maybe_parallel!`
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Wave 1**
 
@@ -177,7 +177,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
-| 2. Static Hot-Path Analysis | 2/2 | In Progress|  |
+| 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 0/0 | Not started | - |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |
