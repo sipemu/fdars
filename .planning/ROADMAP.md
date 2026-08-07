@@ -12,7 +12,7 @@
 
 - [x] **Phase 1: Measurement Discipline & Baselines** - Lock in build-mode/feature-flag guardrails, define the N×M workload matrix, and record baseline benchmark numbers (completed 2026-08-07)
 - [x] **Phase 2: Static Hot-Path Analysis** - Document per-module complexity, allocation hotspots, and parallelism gaps with zero runtime cost (completed 2026-08-07)
-- [ ] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path
+- [x] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path (completed 2026-08-08)
 - [ ] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat
 - [ ] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops
 - [ ] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it
@@ -80,7 +80,7 @@
   3. Results are reproducible: raw criterion output is saved under `.planning/research/bench/` and each finding links to its artifact, with two-run variance within ±5% (results exceeding 10% variance marked LOW CONFIDENCE)
   4. This slice's backlog entries (elastic-alignment perf items) are drafted with function/current-cost/root-cause fields, ready for final ranking in Phase 9
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Wave 1**
 
@@ -186,7 +186,7 @@
 |-------|----------------|--------|-----------|
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
-| 3. Elastic Alignment Hot Path | 2/2 | In Progress|  |
+| 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
