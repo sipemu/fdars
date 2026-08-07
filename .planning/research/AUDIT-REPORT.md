@@ -281,13 +281,11 @@ These 14 sites construct `DMatrix<f64>` from flat basis-function buffers for lea
 | `basis/auto_select.rs:128` | from_column_slice basis | Basis matrix for second candidate basis in selection | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
 | `basis/fourier_fit.rs:68` | from_column_slice basis | Fourier basis matrix for least-squares smoothing | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
 | `basis/projection.rs:113` | from_column_slice basis | Projection basis matrix (generic functional projection) | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
-| `basis/projection.rs:117` | from_column_slice basis | Second basis matrix slot (companion or alternative basis) | m × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
-| `basis/projection.rs:119` | from_column_slice basis | Penalty matrix for projection basis | nbasis × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `basis/pspline.rs:87` | from_column_slice basis | P-spline B-spline basis matrix (`DMatrix::from_column_slice(m, actual_nbasis, &basis)`) | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
 | `elastic_regression/regression.rs:274` | from_column_slice basis | Basis matrix in elastic regression (shape-on-scalar predictor) | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
 | `elastic_regression/regression.rs:278` | from_column_slice basis | Penalty matrix for elastic regression basis (companion to :274) | penalty_k × penalty_k `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
 | `elastic_regression/scalar_on_shape.rs:117` | from_column_slice basis | Basis matrix for scalar-on-shape regression | m × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
-
-Note: `elastic_regression/scalar_on_shape.rs:119` constructs the companion penalty matrix (`DMatrix::from_column_slice(nbasis, nbasis, &penalty_flat)`); it is included in the count above as the 14th site alongside :117.
+| `elastic_regression/scalar_on_shape.rs:119` | from_column_slice basis | Companion penalty matrix for scalar-on-shape regression (`DMatrix::from_column_slice(nbasis, nbasis, &penalty_flat)`) | nbasis × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
 
 #### Redundant clone — double n×m allocation before SVD
 
