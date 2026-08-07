@@ -10,7 +10,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Measurement Discipline & Baselines** - Lock in build-mode/feature-flag guardrails, define the N×M workload matrix, and record baseline benchmark numbers
+- [x] **Phase 1: Measurement Discipline & Baselines** - Lock in build-mode/feature-flag guardrails, define the N×M workload matrix, and record baseline benchmark numbers (completed 2026-08-07)
 - [ ] **Phase 2: Static Hot-Path Analysis** - Document per-module complexity, allocation hotspots, and parallelism gaps with zero runtime cost
 - [ ] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path
 - [ ] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat
@@ -35,7 +35,7 @@
   3. A baseline benchmark run for at least one target per hot-path module is recorded (release + `linalg,parallel`), with binary-path `/release/` confirmed and results saved under `.planning/research/bench/`
   4. The methodology section explicitly documents the criterion/doctest linker-flakiness issue and the "infrastructure failure vs code failure" triage rule so later phases classify signals (bus errors) as infra, not defects
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/2 plans complete
 **Wave 1**
 
 - [x] 01-01-PLAN.md — Tracer: prove the audit apparatus end-to-end on the FPCA + 4-combo (karcher) sentinel (compile 4 combos, release run, raw artifact)
@@ -168,7 +168,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Measurement Discipline & Baselines | 2/2 | In Progress|  |
+| 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
 | 2. Static Hot-Path Analysis | 0/0 | Not started | - |
 | 3. Elastic Alignment Hot Path | 0/0 | Not started | - |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
