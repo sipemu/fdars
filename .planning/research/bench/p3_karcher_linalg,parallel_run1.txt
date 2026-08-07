@@ -1,0 +1,31 @@
+=== ENVIRONMENT ===
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
+Features: linalg,parallel
+Release binary confirmed: target/release/deps/audit_hotpaths-aea52eeb0c35d5bd
+
+=== RUN COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_karcher
+
+=== CRITERION OUTPUT ===
+   Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
+    Finished `bench` profile [optimized] target(s) in 1.51s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_karcher/n100_m50
+Benchmarking audit_p3_karcher/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher/n100_m50: Collecting 20 samples in estimated 23.991 s (80 iterations)
+Benchmarking audit_p3_karcher/n100_m50: Analyzing
+audit_p3_karcher/n100_m50
+                        time:   [315.35 ms 318.04 ms 321.12 ms]
+Found 3 outliers among 20 measurements (15.00%)
+  2 (10.00%) high mild
+  1 (5.00%) high severe
+
+=== NOTES ===
+- Parameters: max_iter=20, tol=1e-4, lambda=0.0 (D-06 locked)
+- N=100 curves, M=50 evaluation points (Phase-3 tracer cell)
+- karcher_mean() defaults band_frac=0.0 (unbanded full DP, Anti-Pattern 2 / D-05)
+- Mean time: ~318 ms at linalg,parallel
+- 3 outliers (15% of 20 samples): 2 high mild, 1 high severe
+- CONFIDENCE: PENDING (single run — Plan 02 adds run2 for ±5% variance check)
