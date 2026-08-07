@@ -120,10 +120,18 @@ pub fn gauss_model(
             }
         }
 
-        // Reconstruct curve from SRSF
+        // Reconstruct curve from SRSF. The augmented coordinate encodes the
+        // curve level at the domain MIDPOINT (see `build_augmented_srsfs`), not
+        // at `argvals[0]`. Reconstruct from a zero start and shift so the
+        // midpoint matches; passing the level as `srsf_inverse`'s `f0` (the
+        // value at the start) offsets the whole curve by a constant (GH #34).
         let aug_val = q_new[m];
-        let f0 = aug_val.signum() * aug_val * aug_val;
-        let f_new = srsf_inverse(&q_new[..m], argvals, f0);
+        let f_mid = aug_val.signum() * aug_val * aug_val;
+        let mut f_new = srsf_inverse(&q_new[..m], argvals, 0.0);
+        let shift = f_mid - f_new[m / 2];
+        for val in f_new.iter_mut() {
+            *val += shift;
+        }
 
         // Generate phase scores and reconstruct warping function
         let mut v = vec![0.0; m];
@@ -284,9 +292,16 @@ pub fn joint_gauss_model(
                 q_new[j] += score_k * vert.eigenfunctions_q[(k, j)];
             }
         }
+        // Anchor the reconstruction at the midpoint level (see `gauss_model`
+        // and GH #34): the augmented coordinate is the curve value at m/2, not
+        // at argvals[0], so shift rather than pass it as srsf_inverse's f0.
         let aug_val = q_new[m];
-        let f0 = aug_val.signum() * aug_val * aug_val;
-        let f_new = srsf_inverse(&q_new[..m], argvals, f0);
+        let f_mid = aug_val.signum() * aug_val * aug_val;
+        let mut f_new = srsf_inverse(&q_new[..m], argvals, 0.0);
+        let shift = f_mid - f_new[m / 2];
+        for val in f_new.iter_mut() {
+            *val += shift;
+        }
 
         // Reconstruct phase from shooting vector
         let mut v = vec![0.0; m];
@@ -405,6 +420,44 @@ mod tests {
                 t[m - 1]
             );
         }
+    }
+
+    /// Regression test for GH #34: generated samples must reproduce the data
+    /// mean, not sit a constant offset above it (previously ~+1 for curves whose
+    /// midpoint level was ~1 because the midpoint-anchored augmented level was
+    /// wrongly passed as `srsf_inverse`'s start value).
+    #[test]
+    fn gauss_model_sample_mean_no_constant_offset() {
+        // Single-bump curves on a zero baseline (the issue's repro shape).
+        let m = 60;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let n = 20;
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let amp = 0.8 + 0.02 * i as f64;
+            for j in 0..m {
+                let x = t[j] - 0.5;
+                data[(i, j)] = amp * (-(x * x) / 0.02).exp();
+            }
+        }
+        let km = karcher_mean(&data, &t, 15, 1e-4, 0.0);
+        let result = gauss_model(&km, &t, 3, 300, 42).unwrap();
+        let samples = &result.samples;
+        let ns = samples.nrows();
+
+        // Average pointwise offset between sample mean and data mean must be
+        // near zero (the bug produced a uniform shift of ~+1.0).
+        let mut offset = 0.0;
+        for j in 0..m {
+            let dm = (0..n).map(|i| data[(i, j)]).sum::<f64>() / n as f64;
+            let sm = (0..ns).map(|i| samples[(i, j)]).sum::<f64>() / ns as f64;
+            offset += sm - dm;
+        }
+        offset /= m as f64;
+        assert!(
+            offset.abs() < 0.3,
+            "sample mean has a constant offset of {offset:.3} from the data mean (GH #34)"
+        );
     }
 
     #[test]
