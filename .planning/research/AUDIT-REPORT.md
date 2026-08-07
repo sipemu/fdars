@@ -331,3 +331,47 @@ No macro-wrapped loop is labeled SEQUENTIAL. No false positives feeding Phase 5.
 | Provenance backstop | each cited `file:line` verified via `grep -n` in `fdars-core/src/` | all 6 module anchors confirmed | all present | Yes |
 
 *Full report sections (hot-path analysis, scikit-fda gap analysis, consolidated findings, prioritized backlog) to be written across Phases 2–9.*
+
+---
+
+## Phase 3: Elastic Alignment Hot Path — Benchmark Results
+
+Phase 3 runs the deep criterion sweep for the elastic-alignment hot path (karcher_mean, elastic_self_distance_matrix, elastic_cross_distance_matrix) at release + `linalg,parallel`, sweeping N∈{100,500} × M∈{50,200} with banded-vs-unbanded comparison (D-03: band_frac=0.1). Plan 01 (this tracer) benchmarks the single karcher_mean cell at N=100×M=50. Plan 02 completes the full grid and banded twins.
+
+**Features:** `linalg,parallel` (primary audit build, consistent with Phase 1 D-01). All benches use `black_box` on inputs and outputs (Phase-1 D-02). Raw artifacts under `.planning/research/bench/p3_*`.
+
+**Toolchain:** `rustc 1.97.0 (2d8144b78 2026-07-07)` — satisfies the linalg floor (≥ 1.84.0).
+
+### Phase 3 Results Table
+
+| Target | N | M | Features | band_frac | Mean time | Artifact | Confidence |
+|--------|---|---|----------|-----------|-----------|----------|------------|
+| `karcher_mean` | 100 | 50 | `linalg,parallel` | 0.0 (unbanded) | 318.04 ms | [p3_karcher_linalg,parallel_run1.txt](bench/p3_karcher_linalg,parallel_run1.txt) | PENDING (single run — Plan 02 adds run2 for ±5% variance) |
+
+*(Plan 02 will add all remaining rows: karcher N=100/M=200, N=500/M=50, N=500/M=200; banded twins for each; elastic_self_distance_matrix and elastic_cross_distance_matrix across the same grid.)*
+
+### D-05 Source Fact: karcher_mean defaults band_frac=0.0 (Anti-Pattern 2)
+
+**Source:** `fdars-core/src/alignment/karcher.rs:300`
+
+```rust
+pub fn karcher_mean(data, argvals, max_iter, tol, lambda) -> KarcherMeanResult {
+    karcher_mean_impl(data, argvals, max_iter, tol, lambda, 0.0)  // <-- band_frac = 0.0
+}
+```
+
+`karcher_mean()` hard-codes `band_frac = 0.0` in its call to `karcher_mean_impl` at `karcher.rs:300`. Inside `karcher_mean_impl`, `band_frac = 0.0` is passed to `band_radius(0.0, m)` which returns `None` (since `band_frac <= 0`), triggering the full unbanded DP path with cost O(m²) per alignment pair. **Banding is entirely opt-in:** users must explicitly call `karcher_mean_banded()` (`karcher.rs:312`) to enable the O(m·band) banded path.
+
+This is **Anti-Pattern 2** from Phase 2's Parallelism Gap List (AUDIT-REPORT §Parallelism Gap List, row: "BANDING OPT-IN", `karcher.rs:~300`). The Phase 3 tracer measurement (318 ms at N=100, M=50, unbanded, D-06 params) is the first criterion evidence of the unbanded cost. The banded comparison (expected ~7× reduction per D-03) will be quantified in Plan 02.
+
+#### Draft Backlog (elastic alignment) — Phase 3 slice
+
+**[STUB — Plan 02 finalizes with full banded-vs-unbanded numbers]**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `karcher_mean` / `elastic_self_distance_matrix` / `elastic_cross_distance_matrix` — all default to unbanded full DP |
+| **Current cost (tracer)** | `karcher_mean` N=100, M=50 unbanded: ~318 ms at `linalg,parallel`. Full grid and banded comparison numbers will be added by Plan 02. |
+| **Root cause** | Anti-Pattern 2 / banding opt-in: `karcher_mean()` passes `band_frac=0.0` → full unbanded DP (O(max_iter · N · m²) per AUDIT-REPORT §Complexity Table elastic row). Banding is opt-in via `_banded()` variants — not the default. The BANDING OPT-IN row in §Parallelism Gap List confirms this is `[always]`-gated (no feature flag controls it) and is the documented Phase-3 backlog root cause. |
+| **Candidate fix** | Default `karcher_mean` and the distance matrix functions to a banded path (e.g. a conservative default `band_frac`), or expose `band_frac` prominently on the high-level API so callers can easily opt in. The banded path already exists (`karcher_mean_banded`, `elastic_self_distance_matrix_banded`, `elastic_cross_distance_matrix_banded`) — this is an API default change, not a new algorithm. |
+| **Expected reduction** | ~7× at M=200 (D-03: band_frac=0.1 → band_radius=20 pts → m/band ≈ 10× theoretical, ~7× after overhead). Plan 02 will confirm with measured banded times. |
