@@ -35,14 +35,14 @@
   3. A baseline benchmark run for at least one target per hot-path module is recorded (release + `linalg,parallel`), with binary-path `/release/` confirmed and results saved under `.planning/research/bench/`
   4. The methodology section explicitly documents the criterion/doctest linker-flakiness issue and the "infrastructure failure vs code failure" triage rule so later phases classify signals (bus errors) as infra, not defects
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 **Wave 1**
 
 - [x] 01-01-PLAN.md — Tracer: prove the audit apparatus end-to-end on the FPCA + 4-combo (karcher) sentinel (compile 4 combos, release run, raw artifact)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Expansion: remaining 5 module sentinels, release baselines (2 runs each), methodology + workload-matrix sections
+- [x] 01-02-PLAN.md — Expansion: remaining 5 module sentinels, release baselines (2 runs each), methodology + workload-matrix sections
 
 ### Phase 2: Static Hot-Path Analysis
 
@@ -168,7 +168,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Measurement Discipline & Baselines | 1/2 | In Progress|  |
+| 1. Measurement Discipline & Baselines | 2/2 | In Progress|  |
 | 2. Static Hot-Path Analysis | 0/0 | Not started | - |
 | 3. Elastic Alignment Hot Path | 0/0 | Not started | - |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |

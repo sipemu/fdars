@@ -4,16 +4,16 @@ milestone: v0.14.0
 milestone_name: milestone
 current_phase: 01
 current_phase_name: measurement-discipline-baselines
-status: executing
-stopped_at: Completed 01-01-PLAN.md (audit apparatus tracer)
-last_updated: "2026-08-07T19:09:42.471Z"
+status: verifying
+stopped_at: Completed 01-02-PLAN.md (full phase baseline)
+last_updated: "2026-08-07T19:24:23.976Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 
 Phase: 01 (measurement-discipline-baselines) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-07 — Phase 01 execution started
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [█████░░░░░] 50%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01-measurement-discipline-baselines P01 | 12 | 1 tasks | 9 files |
+| Phase 01 P02 | 35 | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Relevant to current work:
 - Backlog phrased as GSD-ready requirements/phases, ranked by user value not ease
 - [Phase ?]: D-04 sentinel: karcher_mean substituted for fdata_to_pc_1d as 4-combo discriminator — FPCA center_columns is sequential, nalgebra SVD is always sequential; karcher_mean uses iter_maybe_parallel! (10x speedup with parallel feature confirmed)
 - [Phase ?]: TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench linking; /tmp tmpfs at 94% capacity causes doctest bus-errors (documented --no-verify exception)
+- [Phase ?]: elastic_self_distance_matrix returns FdMatrix (not Result<Vec<f64>,_>); output wrapped in black_box directly — confirmed from src/alignment/pairwise.rs:194
+- [Phase ?]: streaming sentinel tagged LOW CONFIDENCE: 11.1% two-run variance due to OS scheduler jitter at sub-ms scale; re-measure under taskset/cpupower in later phases
 
 ### Pending Todos
 
@@ -93,6 +96,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T19:09:42.462Z
-Stopped at: Completed 01-01-PLAN.md (audit apparatus tracer)
-Resume file: .planning/phases/01-measurement-discipline-baselines/01-02-PLAN.md
+Last session: 2026-08-07T19:24:23.968Z
+Stopped at: Completed 01-02-PLAN.md (full phase baseline)
+Resume file: None
