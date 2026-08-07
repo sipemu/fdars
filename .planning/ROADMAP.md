@@ -32,7 +32,9 @@
   2. A benchmark methodology section documents the mandatory `--release` build check, the feature-flag matrix (`""`, `parallel`, `linalg`, `linalg,parallel`), `black_box` requirement, rustc version capture, and ±5% two-run variance threshold
   3. A baseline benchmark run for at least one target per hot-path module is recorded (release + `linalg,parallel`), with binary-path `/release/` confirmed and results saved under `.planning/research/bench/`
   4. The methodology section explicitly documents the criterion/doctest linker-flakiness issue and the "infrastructure failure vs code failure" triage rule so later phases classify signals (bus errors) as infra, not defects
-**Plans**: TBD
+**Plans:** 2 plans
+- [ ] 01-01-PLAN.md — Tracer: prove the audit apparatus end-to-end on the FPCA + 4-combo (karcher) sentinel (compile 4 combos, release run, raw artifact)
+- [ ] 01-02-PLAN.md — Expansion: remaining 5 module sentinels, release baselines (2 runs each), methodology + workload-matrix sections
 
 ### Phase 2: Static Hot-Path Analysis
 **Goal**: Produce the zero-cost priority map of where fdars scales badly and why, before any expensive measurement
@@ -134,7 +136,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Measurement Discipline & Baselines | 0/0 | Not started | - |
+| 1. Measurement Discipline & Baselines | 0/2 | Not started | - |
 | 2. Static Hot-Path Analysis | 0/0 | Not started | - |
 | 3. Elastic Alignment Hot Path | 0/0 | Not started | - |
 | 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
