@@ -87,6 +87,10 @@ harness = false
 name = "matrix_benchmarks"
 harness = false
 
+[[bench]]
+name = "audit_hotpaths"
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"

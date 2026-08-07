@@ -1,0 +1,13 @@
+    Finished `bench` profile [optimized] target(s) in 0.08s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-5906b2f407a0cb43)
+Gnuplot not found, using plotters backend
+Benchmarking audit_karcher/n100_m50
+Benchmarking audit_karcher/n100_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 32.4s, enable flat sampling, or reduce sample count to 10.
+Benchmarking audit_karcher/n100_m50: Collecting 20 samples in estimated 32.415 s (210 iterations)
+Benchmarking audit_karcher/n100_m50: Analyzing
+audit_karcher/n100_m50  time:   [159.67 ms 162.45 ms 164.24 ms]
+                        change: [-89.979% -89.851% -89.673%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
