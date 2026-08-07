@@ -18,7 +18,11 @@
 //! - CV: N=100, M=50 baseline. Each fold runs FPCA O(m³) + fit + predict × K=5.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use fdars_core::alignment::{elastic_self_distance_matrix, karcher_mean};
+use fdars_core::alignment::{
+    elastic_cross_distance_matrix, elastic_cross_distance_matrix_banded,
+    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, karcher_mean,
+    karcher_mean_banded,
+};
 use fdars_core::classification::fclassif_cv;
 use fdars_core::depth::fraiman_muniz_1d;
 use fdars_core::matrix::FdMatrix;
@@ -257,38 +261,459 @@ fn bench_smooth_sentinel(c: &mut Criterion) {
     group.finish();
 }
 
-/// Phase-3 karcher_mean tracer cell — unbanded full DP at D-06 params.
+/// Phase-3 karcher_mean sweep — unbanded full DP at D-06 params, full grid.
 ///
-/// Benchmarks `karcher_mean` at N=100, M=50 with the Phase-3 locked parameters
-/// (D-06): `max_iter = 20`, `tol = 1e-4`, `lambda = 0.0`.  These differ from the
-/// Phase-1 sentinel (which uses `max_iter = 10`, `tol = 1e-3`) to match the
-/// cross-phase comparability contract for Phase 3.
+/// Benchmarks `karcher_mean` at all four Phase-3 grid cells:
+/// N∈{100,500} × M∈{50,200}, with the D-06-locked parameters:
+/// `max_iter = 20`, `tol = 1e-4`, `lambda = 0.0`.
 ///
 /// **Key fact (D-05 / Anti-Pattern 2):** `karcher_mean()` calls
 /// `karcher_mean_impl(.., 0.0)` at `karcher.rs:300`, so `band_frac = 0.0` →
-/// full unbanded DP by default.  Banding is opt-in via `karcher_mean_banded()`.
-/// This cell measures the unbanded cost; Plan 02 adds the banded twin via
-/// `karcher_mean_banded(band_frac = 0.1)` for the banded-vs-unbanded comparison.
+/// full unbanded DP by default (O(max_iter · N · m²)).  Banding is opt-in
+/// via `karcher_mean_banded()` — see `bench_p3_karcher_banded` for the twin.
 ///
-/// Sample-size / timing: N=100, M=50 is small — sentinel defaults
-/// (`sample_size(20)`, `measurement_time(20s)`, `warm_up_time(5s)`) are applied.
+/// Timing: N=100 cells use sentinel defaults (20s); N=500×M=200 (borderline
+/// workload-matrix cell) uses `measurement_time(60s)` + `sample_size(10)`.
+/// All four cells share the same criterion group for artifact clarity.
 fn bench_p3_karcher(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p3_karcher");
-    // N=100, M=50 is the D-06-locked tracer cell; sentinel defaults suffice
+
+    // --- n100_m50: small cell — sentinel defaults suffice ---
     group.sample_size(20);
     group.measurement_time(std::time::Duration::from_secs(20));
     group.warm_up_time(std::time::Duration::from_secs(5));
-
     // Build input OUTSIDE b.iter() to avoid measuring the allocator
-    let (data, argvals) = generate_curves(100, 50);
+    let (data100_50, argvals50) = generate_curves(100, 50);
     group.bench_function("n100_m50", |b| {
         b.iter(|| {
             black_box(karcher_mean(
-                black_box(&data),
-                black_box(&argvals),
-                black_box(20usize), // D-06 max_iter (NOT the sentinel 10)
-                black_box(1e-4),    // D-06 tol (NOT the sentinel 1e-3)
-                black_box(0.0),     // D-06 lambda = 0.0 (no warp penalty)
+                black_box(&data100_50),
+                black_box(&argvals50),
+                black_box(20usize), // D-06 max_iter
+                black_box(1e-4),    // D-06 tol
+                black_box(0.0),     // D-06 lambda = 0.0
+            ))
+        })
+    });
+
+    // --- n100_m200: sentinel defaults suffice ---
+    let (data100_200, argvals200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            black_box(karcher_mean(
+                black_box(&data100_200),
+                black_box(&argvals200),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n500_m50: larger N, small M — sentinel defaults suffice ---
+    let (data500_50, argvals50b) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            black_box(karcher_mean(
+                black_box(&data500_50),
+                black_box(&argvals50b),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n500_m200: borderline cell (workload-matrix 60s) ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data500_200, argvals200b) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            black_box(karcher_mean(
+                black_box(&data500_200),
+                black_box(&argvals200b),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase-3 karcher_mean_banded sweep — band_frac=0.1, full grid.
+///
+/// Benchmarks `karcher_mean_banded` at all four Phase-3 grid cells:
+/// N∈{100,500} × M∈{50,200}, with D-06 params + `band_frac = 0.1` (D-03).
+///
+/// At M=200: band_radius(0.1, 200) = ceil(0.1×200) = 20 points → ≈10× theoretical
+/// DP reduction (m/band = 200/20), ~7× expected after overhead (D-03).
+/// At M=50: band_radius(0.1, 50) = 5 points → 10× theoretical still, but smaller
+/// absolute DP so overhead dominates more.
+///
+/// Timing: small cells use sentinel defaults; N=500×M=200 uses
+/// `measurement_time(60s)` + `sample_size(10)`.
+fn bench_p3_karcher_banded(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p3_karcher_banded");
+
+    // --- n100_m50 ---
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data100_50, argvals50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(karcher_mean_banded(
+                black_box(&data100_50),
+                black_box(&argvals50),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+                black_box(0.1), // band_frac = 0.1 (D-03)
+            ))
+        })
+    });
+
+    // --- n100_m200 ---
+    let (data100_200, argvals200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            black_box(karcher_mean_banded(
+                black_box(&data100_200),
+                black_box(&argvals200),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    // --- n500_m50 ---
+    let (data500_50, argvals50b) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            black_box(karcher_mean_banded(
+                black_box(&data500_50),
+                black_box(&argvals50b),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    // --- n500_m200: borderline cell ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data500_200, argvals200b) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            black_box(karcher_mean_banded(
+                black_box(&data500_200),
+                black_box(&argvals200b),
+                black_box(20usize),
+                black_box(1e-4),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase-3 elastic_self_distance_matrix sweep — unbanded, full grid.
+///
+/// Benchmarks `elastic_self_distance_matrix` at all four Phase-3 grid cells:
+/// N∈{100,500} × M∈{50,200}, with `lambda = 0.0` (no warp penalty, D-06).
+/// Square N×N self-distance matrix per D-01 (comparable to cross-distance).
+///
+/// Phase-1 sentinel recorded N=100×M=50 ≈ 790 ms (comparable cell here).
+/// N=500×M=200 is the most expensive cell (O(n²·m²)); `measurement_time(60s)`.
+fn bench_p3_elastic_self(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p3_elastic_self");
+
+    // --- n100_m50 ---
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data100_50, argvals50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix(
+                black_box(&data100_50),
+                black_box(&argvals50),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n100_m200 ---
+    let (data100_200, argvals200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix(
+                black_box(&data100_200),
+                black_box(&argvals200),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n500_m50 ---
+    let (data500_50, argvals50b) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix(
+                black_box(&data500_50),
+                black_box(&argvals50b),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n500_m200: borderline cell (workload-matrix 60s cap) ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data500_200, argvals200b) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix(
+                black_box(&data500_200),
+                black_box(&argvals200b),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase-3 elastic_self_distance_matrix_banded sweep — band_frac=0.1, full grid.
+///
+/// Benchmarks `elastic_self_distance_matrix_banded` at all four Phase-3 grid cells.
+/// Each pairwise alignment is confined to a Sakoe–Chiba corridor of half-width
+/// `band_frac = 0.1` (D-03).  Pair with `bench_p3_elastic_self` to quantify the
+/// banded-vs-unbanded reduction (~7× expected at M=200 per D-03).
+///
+/// Timing: small cells use sentinel defaults; N=500×M=200 uses
+/// `measurement_time(60s)` + `sample_size(10)`.
+fn bench_p3_elastic_self_banded(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p3_elastic_self_banded");
+
+    // --- n100_m50 ---
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data100_50, argvals50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix_banded(
+                black_box(&data100_50),
+                black_box(&argvals50),
+                black_box(0.0),
+                black_box(0.1), // band_frac = 0.1 (D-03)
+            ))
+        })
+    });
+
+    // --- n100_m200 ---
+    let (data100_200, argvals200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix_banded(
+                black_box(&data100_200),
+                black_box(&argvals200),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    // --- n500_m50 ---
+    let (data500_50, argvals50b) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix_banded(
+                black_box(&data500_50),
+                black_box(&argvals50b),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    // --- n500_m200: borderline cell ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data500_200, argvals200b) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix_banded(
+                black_box(&data500_200),
+                black_box(&argvals200b),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase-3 elastic_cross_distance_matrix sweep — unbanded, square N×N, full grid.
+///
+/// Benchmarks `elastic_cross_distance_matrix` at all four Phase-3 grid cells:
+/// N∈{100,500} × M∈{50,200}, with `lambda = 0.0` (D-06).
+///
+/// **D-02:** Square N×N cross-distance — data1 = data2 = N curves from the grid.
+/// This makes the cost directly comparable to `elastic_self_distance_matrix`
+/// (same pairs, same cell sizes). Both datasets are the same `FdMatrix` instance.
+///
+/// N=500×M=200 is the most expensive cell; `measurement_time(60s)` applied.
+fn bench_p3_elastic_cross(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p3_elastic_cross");
+
+    // --- n100_m50 (square: data1=data2) ---
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data100_50, argvals50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix(
+                black_box(&data100_50), // data1
+                black_box(&data100_50), // data2 = data1 (square N×N, D-02)
+                black_box(&argvals50),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n100_m200 ---
+    let (data100_200, argvals200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix(
+                black_box(&data100_200),
+                black_box(&data100_200),
+                black_box(&argvals200),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n500_m50 ---
+    let (data500_50, argvals50b) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix(
+                black_box(&data500_50),
+                black_box(&data500_50),
+                black_box(&argvals50b),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    // --- n500_m200: borderline cell ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data500_200, argvals200b) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix(
+                black_box(&data500_200),
+                black_box(&data500_200),
+                black_box(&argvals200b),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase-3 elastic_cross_distance_matrix_banded sweep — band_frac=0.1, square N×N, full grid.
+///
+/// Benchmarks `elastic_cross_distance_matrix_banded` at all four Phase-3 grid cells.
+/// Square N×N (data1=data2) per D-02; `band_frac = 0.1` per D-03.
+///
+/// Pairs with `bench_p3_elastic_cross` to quantify the banded-vs-unbanded
+/// reduction (~7× expected at M=200, ~10× theoretical when m/band=200/20).
+///
+/// Timing: small cells use sentinel defaults; N=500×M=200 uses
+/// `measurement_time(60s)` + `sample_size(10)`.
+fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p3_elastic_cross_banded");
+
+    // --- n100_m50 (square: data1=data2) ---
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data100_50, argvals50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix_banded(
+                black_box(&data100_50),
+                black_box(&data100_50), // square N×N (D-02)
+                black_box(&argvals50),
+                black_box(0.0),
+                black_box(0.1), // band_frac = 0.1 (D-03)
+            ))
+        })
+    });
+
+    // --- n100_m200 ---
+    let (data100_200, argvals200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix_banded(
+                black_box(&data100_200),
+                black_box(&data100_200),
+                black_box(&argvals200),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    // --- n500_m50 ---
+    let (data500_50, argvals50b) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix_banded(
+                black_box(&data500_50),
+                black_box(&data500_50),
+                black_box(&argvals50b),
+                black_box(0.0),
+                black_box(0.1),
+            ))
+        })
+    });
+
+    // --- n500_m200: borderline cell ---
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(60));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data500_200, argvals200b) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            black_box(elastic_cross_distance_matrix_banded(
+                black_box(&data500_200),
+                black_box(&data500_200),
+                black_box(&argvals200b),
+                black_box(0.0),
+                black_box(0.1),
             ))
         })
     });
@@ -305,6 +730,11 @@ criterion_group!(
     bench_cv_sentinel,
     bench_streaming_sentinel,
     bench_smooth_sentinel,
-    bench_p3_karcher
+    bench_p3_karcher,
+    bench_p3_karcher_banded,
+    bench_p3_elastic_self,
+    bench_p3_elastic_self_banded,
+    bench_p3_elastic_cross,
+    bench_p3_elastic_cross_banded
 );
 criterion_main!(benches);
