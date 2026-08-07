@@ -228,4 +228,33 @@ Artifacts: [karcher/none](bench/p1_karcher_none_run1.txt) [karcher/parallel](ben
 
 ---
 
+---
+
+## Phase 2 — Static Hot-Path Analysis
+
+Phase 2 is a zero-runtime static analysis: no fdars-core source files are changed, no benchmarks are run, and no code is compiled. All findings are derived by reading source files under `fdars-core/src/` and recording file:line citations directly. The deliverable is the three sub-sections below, appended to this report (decision D-05: single growing report).
+
+**SVD-copy site count:** The ROADMAP entry claims "8 FdMatrix→DMatrix SVD-copy sites." The verified count across all production source is **8 production `SVD::new(x.to_dmatrix(), …)` call sites** — this is correct. A ninth `to_dmatrix()` call exists at `matrix.rs:682` but is wrapped in `#[cfg(test)]` and compiled only into the test binary; it is excluded from the allocation hotspot list below (RESEARCH §2 / Pitfall 2).
+
+### Complexity Table
+
+Each row gives the dominant Big-O in N (number of curves) and M (number of evaluation points) separately — per RESEARCH Pitfall 4, N-scaling and M-scaling must not be conflated. The feature-gate tag records whether the complexity applies at the `[always]` level or is reduced only when a feature flag is active.
+
+| Module | Primary function (file:line) | N complexity | M complexity | Feature gate | Fragile flag |
+|--------|------------------------------|-------------|--------------|--------------|--------------|
+
+### Allocation Hotspot List
+
+All sites below allocate a new `DMatrix<f64>` of the stated size, pass it into `SVD::new`, and discard the `DMatrix` after the SVD completes. None of these sites cache or reuse the intermediate `DMatrix`. The `[always]` tag means the allocation occurs regardless of which Cargo feature flags are active. Phase 4 (dhat heap profiling) will measure each site's contribution to total heap traffic.
+
+| Site (file:line) | Category | Enclosing fn | Alloc size | Feature gate | Phase target |
+|------------------|----------|--------------|------------|--------------|--------------|
+
+### Parallelism Gap List
+
+Status values: **ALREADY PARALLEL** = the loop is wrapped in one of the five `iter_maybe_parallel!` / `slice_maybe_parallel!` family macros defined in `parallel.rs` and is feature-gated on the `parallel` Cargo feature. **SEQUENTIAL** = plain `for` loop with no parallelism macro; a gap candidate for Phase 5 parallelism work. The banding note records the opt-in banding behaviour that affects M-scaling without changing N-scaling.
+
+| Loop (file:line) | Status | Parallelism macro | Feature gate tag | Gap candidate? |
+|------------------|--------|-------------------|------------------|----------------|
+
 *Full report sections (hot-path analysis, scikit-fda gap analysis, consolidated findings, prioritized backlog) to be written across Phases 2–9.*
