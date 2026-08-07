@@ -116,8 +116,13 @@ pub fn fdata_to_basis(
     let btb_inv = svd_pseudoinverse(&btb)?;
     let proj = btb_inv * b_mat.transpose();
 
-    let coefs: Vec<f64> = iter_maybe_parallel!(0..n)
-        .flat_map(|i| {
+    // Per-curve coefficient rows. Collect as `Vec<Vec<f64>>` (one row per curve)
+    // and scatter into the column-major FdMatrix via `[(i, k)]` indexing. The
+    // previous code built a curve-major flat buffer and passed it to
+    // `from_column_major`, which transposes/scrambles the result whenever
+    // `n > 1` (it round-trips only for a single curve) — GH #33.
+    let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
+        .map(|i| {
             let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
             (0..actual_nbasis)
                 .map(|k| {
@@ -131,9 +136,15 @@ pub fn fdata_to_basis(
         })
         .collect();
 
+    let mut coefficients = FdMatrix::zeros(n, actual_nbasis);
+    for (i, row) in rows.iter().enumerate() {
+        for (k, &c) in row.iter().enumerate() {
+            coefficients[(i, k)] = c;
+        }
+    }
+
     Some(BasisProjectionResult {
-        coefficients: FdMatrix::from_column_major(coefs, n, actual_nbasis)
-            .expect("dimension invariant: data.len() == n * m"),
+        coefficients,
         n_basis: actual_nbasis,
     })
 }
@@ -183,8 +194,12 @@ pub fn basis_to_fdata(
 
     let actual_nbasis = basis.len() / m;
 
-    let flat: Vec<f64> = iter_maybe_parallel!(0..n)
-        .flat_map(|i| {
+    // Per-curve reconstruction rows, scattered into the column-major FdMatrix
+    // via `[(i, j)]`. As in `fdata_to_basis`, building a curve-major flat buffer
+    // and passing it to `from_column_major` transposes the output for n > 1
+    // (GH #33).
+    let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
+        .map(|i| {
             (0..m)
                 .map(|j| {
                     let mut sum = 0.0;
@@ -197,7 +212,13 @@ pub fn basis_to_fdata(
         })
         .collect();
 
-    FdMatrix::from_column_major(flat, n, m).expect("dimension invariant: data.len() == n * m")
+    let mut out = FdMatrix::zeros(n, m);
+    for (i, row) in rows.iter().enumerate() {
+        for (j, &v) in row.iter().enumerate() {
+            out[(i, j)] = v;
+        }
+    }
+    out
 }
 
 /// Reconstruct functional data from basis coefficients (legacy i32 interface).
