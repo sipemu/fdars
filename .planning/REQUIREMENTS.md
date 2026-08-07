@@ -58,25 +58,27 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERF-01 | TBD | Pending |
-| PERF-02 | TBD | Pending |
-| PERF-03 | TBD | Pending |
-| PERF-04 | TBD | Pending |
-| PERF-05 | TBD | Pending |
-| PERF-06 | TBD | Pending |
-| GAP-01 | TBD | Pending |
-| GAP-02 | TBD | Pending |
-| GAP-03 | TBD | Pending |
-| GAP-04 | TBD | Pending |
-| RPT-01 | TBD | Pending |
-| RPT-02 | TBD | Pending |
-| RPT-03 | TBD | Pending |
+| PERF-01 | Phase 2 | Pending |
+| PERF-02 | Phase 1 | Pending |
+| PERF-03 | Phase 3, Phase 4 | Pending |
+| PERF-04 | Phase 4 | Pending |
+| PERF-05 | Phase 5 | Pending |
+| PERF-06 | Phase 6 | Pending |
+| GAP-01 | Phase 7 | Pending |
+| GAP-02 | Phase 8 | Pending |
+| GAP-03 | Phase 8 | Pending |
+| GAP-04 | Phase 8 | Pending |
+| RPT-01 | Phase 9 | Pending |
+| RPT-02 | Phase 9 | Pending |
+| RPT-03 | Phase 9 | Pending |
+
+> PERF-03 spans Phases 3 and 4 by hot path (Phase 3 = elastic alignment suspects, Phase 4 = FPCA/SVD suspects). It is the only requirement mapped to more than one phase, and the two phases own disjoint benchmark targets — no target is duplicated. All other requirements map to exactly one phase.
 
 **Coverage:**
 - v1 requirements: 13 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 13 ⚠️
+- Mapped to phases: 13 (100%) ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-07*
-*Last updated: 2026-08-07 after initial definition*
+*Last updated: 2026-08-07 after roadmap creation (traceability filled, coverage 100%)*
