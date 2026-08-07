@@ -1,0 +1,59 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_elastic_cross_banded (run1)
+=== CRITERION OUTPUT ===
+    Finished `bench` profile [optimized] target(s) in 0.08s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_cross_banded/n100_m50
+Benchmarking audit_p3_elastic_cross_banded/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_elastic_cross_banded/n100_m50: Collecting 20 samples in estimated 25.621 s (80 iterations)
+Benchmarking audit_p3_elastic_cross_banded/n100_m50: Analyzing
+audit_p3_elastic_cross_banded/n100_m50
+                        time:   [319.98 ms 322.73 ms 325.91 ms]
+Found 3 outliers among 20 measurements (15.00%)
+  1 (5.00%) low mild
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+Benchmarking audit_p3_elastic_cross_banded/n100_m200
+Benchmarking audit_p3_elastic_cross_banded/n100_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 60.8s.
+Benchmarking audit_p3_elastic_cross_banded/n100_m200: Collecting 10 samples in estimated 60.834 s (10 iterations)
+Benchmarking audit_p3_elastic_cross_banded/n100_m200: Analyzing
+audit_p3_elastic_cross_banded/n100_m200
+                        time:   [6.0861 s 6.1595 s 6.2578 s]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+
+    Finished `bench` profile [optimized] target(s) in 0.07s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_cross_banded/n500_m50
+Benchmarking audit_p3_elastic_cross_banded/n500_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 76.3s.
+Benchmarking audit_p3_elastic_cross_banded/n500_m50: Collecting 10 samples in estimated 76.285 s (10 iterations)
+Benchmarking audit_p3_elastic_cross_banded/n500_m50: Analyzing
+audit_p3_elastic_cross_banded/n500_m50
+                        time:   [7.9094 s 8.0140 s 8.1199 s]
+
+
+=== n500_m200 banded warmup timing test ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_cross_banded/n500_m200
+Benchmarking audit_p3_elastic_cross_banded/n500_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 1505.1s.
+Benchmarking audit_p3_elastic_cross_banded/n500_m200: Collecting 10 samples in estimated 1505.1 s (10 iterations)
+
+=== NOTE: n500_m200 banded ===
+INFEASIBLE: criterion estimated 1505s for 10 samples (~150s/iter).
+Even banded, N=500×M=200 cross-distance visits 250,000 pairs × 20 DP ops = 5B DP total.
+The banded cross at N=500,M=200 takes ~150s/iter — confirming the banded reduction at
+large N is real (~5×: n500_m50 banded=8s vs n500_m200 banded≈150s, but the M scaling
+is O(m·band)=O(200×20)=4000 vs O(50×5)=250 → 16× = consistent with 8s×16≈128s).

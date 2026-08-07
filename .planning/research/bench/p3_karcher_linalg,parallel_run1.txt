@@ -1,31 +1,66 @@
 === ENVIRONMENT ===
-rustc rustc 1.97.0 (2d8144b78 2026-07-07)
-cargo cargo 1.97.0 (c980f4866 2026-06-30)
-Features: linalg,parallel
-Release binary confirmed: target/release/deps/audit_hotpaths-aea52eeb0c35d5bd
-
-=== RUN COMMAND ===
-TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_karcher
-
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_karcher (full grid run1)
+=== NOTES ===
+N=100,M=50 previously measured in Plan 01 (~318ms). This run covers all 4 grid cells.
 === CRITERION OUTPUT ===
    Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
-    Finished `bench` profile [optimized] target(s) in 1.51s
+    Finished `bench` profile [optimized] target(s) in 4.84s
      Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
 Gnuplot not found, using plotters backend
 Benchmarking audit_p3_karcher/n100_m50
 Benchmarking audit_p3_karcher/n100_m50: Warming up for 5.0000 s
-Benchmarking audit_p3_karcher/n100_m50: Collecting 20 samples in estimated 23.991 s (80 iterations)
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 34.5s, or reduce sample count to 10.
+Benchmarking audit_p3_karcher/n100_m50: Collecting 20 samples in estimated 34.462 s (20 iterations)
 Benchmarking audit_p3_karcher/n100_m50: Analyzing
 audit_p3_karcher/n100_m50
-                        time:   [315.35 ms 318.04 ms 321.12 ms]
-Found 3 outliers among 20 measurements (15.00%)
-  2 (10.00%) high mild
-  1 (5.00%) high severe
+                        time:   [541.58 ms 644.77 ms 757.20 ms]
+                        change: [+80.123% +117.23% +160.97%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking audit_p3_karcher/n100_m200
+Benchmarking audit_p3_karcher/n100_m200: Warming up for 5.0000 s
 
-=== NOTES ===
-- Parameters: max_iter=20, tol=1e-4, lambda=0.0 (D-06 locked)
-- N=100 curves, M=50 evaluation points (Phase-3 tracer cell)
-- karcher_mean() defaults band_frac=0.0 (unbanded full DP, Anti-Pattern 2 / D-05)
-- Mean time: ~318 ms at linalg,parallel
-- 3 outliers (15% of 20 samples): 2 high mild, 1 high severe
-- CONFIDENCE: PENDING (single run — Plan 02 adds run2 for ±5% variance check)
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 131.2s, or reduce sample count to 10.
+Benchmarking audit_p3_karcher/n100_m200: Collecting 20 samples in estimated 131.18 s (20 iterations)
+Benchmarking audit_p3_karcher/n100_m200: Analyzing
+audit_p3_karcher/n100_m200
+                        time:   [5.4074 s 6.4834 s 7.7114 s]
+                        change: [+73.372% +106.67% +144.54%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking audit_p3_karcher/n500_m50
+Benchmarking audit_p3_karcher/n500_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 42.1s, or reduce sample count to 10.
+Benchmarking audit_p3_karcher/n500_m50: Collecting 20 samples in estimated 42.085 s (20 iterations)
+Benchmarking audit_p3_karcher/n500_m50: Analyzing
+audit_p3_karcher/n500_m50
+                        time:   [3.2102 s 3.9792 s 4.7696 s]
+                        change: [+91.955% +139.03% +190.50%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking audit_p3_karcher/n500_m200
+Benchmarking audit_p3_karcher/n500_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 393.5s.
+Benchmarking audit_p3_karcher/n500_m200: Collecting 10 samples in estimated 393.46 s (10 iterations)
+Benchmarking audit_p3_karcher/n500_m200: Analyzing
+audit_p3_karcher/n500_m200
+                        time:   [24.135 s 28.810 s 33.885 s]
+                        change: [+19.060% +52.447% +92.378%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+
+Benchmarking audit_p3_karcher_banded/n100_m50
+Benchmarking audit_p3_karcher_banded/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n100_m50: Collecting 20 samples in estimated 20.883 s (100 iterations)
+Benchmarking audit_p3_karcher_banded/n100_m50: Analyzing
+audit_p3_karcher_banded/n100_m50
+                        time:   [93.156 ms 100.95 ms 110.09 ms]
+                        change: [+14.187% +25.925% +39.475%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking audit_p3_karcher_banded/n100_m200
+Benchmarking audit_p3_karcher_banded/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n100_m200: Collecting 20 samples in estimated 29.919 s (40 iterations)

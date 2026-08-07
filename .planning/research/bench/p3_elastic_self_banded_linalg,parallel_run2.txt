@@ -1,0 +1,41 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_elastic_self_banded (run2)
+=== CRITERION OUTPUT ===
+    Finished `bench` profile [optimized] target(s) in 0.11s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_self_banded/n100_m50
+Benchmarking audit_p3_elastic_self_banded/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_elastic_self_banded/n100_m50: Collecting 20 samples in estimated 28.204 s (60 iterations)
+Benchmarking audit_p3_elastic_self_banded/n100_m50: Analyzing
+audit_p3_elastic_self_banded/n100_m50
+                        time:   [311.85 ms 406.67 ms 507.15 ms]
+                        change: [+76.293% +131.91% +176.87%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking audit_p3_elastic_self_banded/n100_m200
+Benchmarking audit_p3_elastic_self_banded/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p3_elastic_self_banded/n100_m200: Collecting 10 samples in estimated 65.851 s (20 iterations)
+Benchmarking audit_p3_elastic_self_banded/n100_m200: Analyzing
+audit_p3_elastic_self_banded/n100_m200
+                        time:   [3.2972 s 3.4234 s 3.5655 s]
+                        change: [-11.484% -4.7158% +2.2353%] (p = 0.24 > 0.05)
+                        No change in performance detected.
+
+    Finished `bench` profile [optimized] target(s) in 0.10s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_self_banded/n500_m50
+Benchmarking audit_p3_elastic_self_banded/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_elastic_self_banded/n500_m50: Collecting 10 samples in estimated 82.840 s (20 iterations)
+Benchmarking audit_p3_elastic_self_banded/n500_m50: Analyzing
+audit_p3_elastic_self_banded/n500_m50
+                        time:   [4.0519 s 4.2232 s 4.4161 s]
+                        change: [-4.8460% -0.1767% +5.0693%] (p = 0.95 > 0.05)
+                        No change in performance detected.
+
+
+=== NOTE: n500_m200 ===
+TIMEOUT. Estimated ~76s/iter. Same as run1 — infeasible in a routine pass.

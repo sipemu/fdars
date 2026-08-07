@@ -1,0 +1,89 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_karcher
+=== CRITERION OUTPUT ===
+   Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
+    Finished `bench` profile [optimized] target(s) in 1.94s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_karcher
+=== CRITERION OUTPUT ===
+    Finished `bench` profile [optimized] target(s) in 0.07s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_karcher/n100_m50
+Benchmarking audit_p3_karcher/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher/n100_m50: Collecting 20 samples in estimated 23.098 s (80 iterations)
+Benchmarking audit_p3_karcher/n100_m50: Analyzing
+audit_p3_karcher/n100_m50
+                        time:   [294.00 ms 296.81 ms 299.70 ms]
+                        change: [-7.8937% -6.6746% -5.4589%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking audit_p3_karcher/n100_m200
+Benchmarking audit_p3_karcher/n100_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 59.9s, or reduce sample count to 10.
+Benchmarking audit_p3_karcher/n100_m200: Collecting 20 samples in estimated 59.866 s (20 iterations)
+Benchmarking audit_p3_karcher/n100_m200: Analyzing
+audit_p3_karcher/n100_m200
+                        time:   [3.0977 s 3.1371 s 3.1764 s]
+Benchmarking audit_p3_karcher/n500_m50
+Benchmarking audit_p3_karcher/n500_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 31.0s, or reduce sample count to 10.
+Benchmarking audit_p3_karcher/n500_m50: Collecting 20 samples in estimated 30.983 s (20 iterations)
+Benchmarking audit_p3_karcher/n500_m50: Analyzing
+audit_p3_karcher/n500_m50
+                        time:   [1.6340 s 1.6647 s 1.6968 s]
+Benchmarking audit_p3_karcher/n500_m200
+Benchmarking audit_p3_karcher/n500_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 155.1s.
+Benchmarking audit_p3_karcher/n500_m200: Collecting 10 samples in estimated 155.09 s (10 iterations)
+Benchmarking audit_p3_karcher/n500_m200: Analyzing
+audit_p3_karcher/n500_m200
+                        time:   [16.457 s 18.898 s 22.760 s]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+Benchmarking audit_p3_karcher_banded/n100_m50
+Benchmarking audit_p3_karcher_banded/n100_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 32.7s, enable flat sampling, or reduce sample count to 10.
+Benchmarking audit_p3_karcher_banded/n100_m50: Collecting 20 samples in estimated 32.671 s (210 iterations)
+Benchmarking audit_p3_karcher_banded/n100_m50: Analyzing
+audit_p3_karcher_banded/n100_m50
+                        time:   [75.637 ms 82.241 ms 92.473 ms]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high severe
+Benchmarking audit_p3_karcher_banded/n100_m200
+Benchmarking audit_p3_karcher_banded/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n100_m200: Collecting 20 samples in estimated 39.074 s (40 iterations)
+Benchmarking audit_p3_karcher_banded/n100_m200: Analyzing
+audit_p3_karcher_banded/n100_m200
+                        time:   [1.0040 s 1.2801 s 1.6121 s]
+Found 3 outliers among 20 measurements (15.00%)
+  3 (15.00%) high severe
+Benchmarking audit_p3_karcher_banded/n500_m50
+Benchmarking audit_p3_karcher_banded/n500_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 49.3s, or reduce sample count to 10.
+Benchmarking audit_p3_karcher_banded/n500_m50: Collecting 20 samples in estimated 49.276 s (20 iterations)
+Benchmarking audit_p3_karcher_banded/n500_m50: Analyzing
+audit_p3_karcher_banded/n500_m50
+                        time:   [1.1800 s 1.4730 s 1.7758 s]
+Benchmarking audit_p3_karcher_banded/n500_m200
+Benchmarking audit_p3_karcher_banded/n500_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 64.6s.
+Benchmarking audit_p3_karcher_banded/n500_m200: Collecting 10 samples in estimated 64.644 s (10 iterations)
+Benchmarking audit_p3_karcher_banded/n500_m200: Analyzing
+audit_p3_karcher_banded/n500_m200
+                        time:   [4.3959 s 4.7809 s 5.1946 s]
+

@@ -1,0 +1,48 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_elastic_self
+=== RUN 1 ===
+=== CRITERION OUTPUT ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_self/n100_m50
+Benchmarking audit_p3_elastic_self/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_elastic_self/n100_m50: Collecting 20 samples in estimated 29.413 s (40 iterations)
+Benchmarking audit_p3_elastic_self/n100_m50: Analyzing
+audit_p3_elastic_self/n100_m50
+                        time:   [752.97 ms 760.14 ms 767.45 ms]
+Benchmarking audit_p3_elastic_self/n100_m200
+Benchmarking audit_p3_elastic_self/n100_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 283.3s, or reduce sample count to 10.
+Benchmarking audit_p3_elastic_self/n100_m200: Collecting 20 samples in estimated 283.33 s (20 iterations)
+Benchmarking audit_p3_elastic_self/n100_m200: Analyzing
+audit_p3_elastic_self/n100_m200
+                        time:   [16.413 s 17.560 s 18.861 s]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking audit_p3_elastic_self/n500_m50
+Benchmarking audit_p3_elastic_self/n500_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 549.2s, or reduce sample count to 10.
+Benchmarking audit_p3_elastic_self/n500_m50: Collecting 20 samples in estimated 549.20 s (20 iterations)
+
+=== APPENDED: n500_m50 result (separate run, same toolchain) ===
+audit_p3_elastic_self/n500_m50
+                        time:   [20.797 s 24.315 s 28.930 s]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+=== NOTE: n500_m200 ===
+INFEASIBLE: n500_m200 elastic_self estimated iteration time ~384s (16× n500_m50 due to O(m²) scaling).
+At 10 samples minimum criterion would require ~3,840s ≈ 64 minutes per run.
+The function EXISTS in the bench (bench_p3_elastic_self group has the cell) but cannot be
+measured in a routine pass. This is the documented bottleneck: elastic distance matrix is
+infeasible at N=500×M=200 (O(n²·m²) = O(5 billion) DP ops with full unwanded path).
+Per CONTEXT.md §Workload Matrix: cap is N≤500, M≤200 with measurement_time=60s — but the
+CONTEXT estimate of 3.8s/iter was for karcher_mean (O(max_iter·N·m²)), not for the distance
+matrix (O(N²·m²)). The elastic distance matrix is approximately 25× more expensive than
+karcher at the same N, M parameters.

@@ -1,0 +1,53 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_karcher_banded (run1)
+=== CRITERION OUTPUT ===
+   Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
+    Finished `bench` profile [optimized] target(s) in 1.90s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_karcher_banded/n100_m50
+Benchmarking audit_p3_karcher_banded/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n100_m50: Collecting 10 samples in estimated 22.543 s (330 iterations)
+Benchmarking audit_p3_karcher_banded/n100_m50: Analyzing
+audit_p3_karcher_banded/n100_m50
+                        time:   [69.442 ms 87.121 ms 109.09 ms]
+                        change: [-35.771% -25.258% -10.217%] (p = 0.01 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+Benchmarking audit_p3_karcher_banded/n100_m200
+Benchmarking audit_p3_karcher_banded/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n100_m200: Collecting 10 samples in estimated 101.98 s (110 iterations)
+Benchmarking audit_p3_karcher_banded/n100_m200: Analyzing
+audit_p3_karcher_banded/n100_m200
+                        time:   [740.10 ms 745.79 ms 749.69 ms]
+                        change: [-53.230% -41.030% -24.899%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+Benchmarking audit_p3_karcher_banded/n500_m50
+Benchmarking audit_p3_karcher_banded/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n500_m50: Collecting 10 samples in estimated 74.765 s (220 iterations)
+Benchmarking audit_p3_karcher_banded/n500_m50: Analyzing
+audit_p3_karcher_banded/n500_m50
+                        time:   [387.25 ms 485.42 ms 570.91 ms]
+                        change: [-77.328% -71.386% -63.023%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+Benchmarking audit_p3_karcher_banded/n500_m200
+Benchmarking audit_p3_karcher_banded/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p3_karcher_banded/n500_m200: Collecting 10 samples in estimated 102.31 s (20 iterations)
+Benchmarking audit_p3_karcher_banded/n500_m200: Analyzing
+audit_p3_karcher_banded/n500_m200
+                        time:   [4.2043 s 4.8726 s 5.8316 s]
+                        change: [-13.915% +1.9176% +23.774%] (p = 0.87 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+

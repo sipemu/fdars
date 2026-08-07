@@ -1,0 +1,50 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== COMMAND ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- audit_p3_elastic_self/n100
+=== RUN 2 ===
+=== CRITERION OUTPUT ===
+    Finished `bench` profile [optimized] target(s) in 0.26s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_self/n100_m50
+Benchmarking audit_p3_elastic_self/n100_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 20 samples in 20.0s. You may wish to increase target time to 30.8s, or reduce sample count to 10.
+Benchmarking audit_p3_elastic_self/n100_m50: Collecting 20 samples in estimated 30.770 s (20 iterations)
+Benchmarking audit_p3_elastic_self/n100_m50: Analyzing
+audit_p3_elastic_self/n100_m50
+                        time:   [1.3089 s 1.4795 s 1.6669 s]
+                        change: [+74.229% +94.630% +122.13%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking audit_p3_elastic_self/n100_m200
+Benchmarking audit_p3_elastic_self/n100_m200: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 226.5s.
+Benchmarking audit_p3_elastic_self/n100_m200: Collecting 10 samples in estimated 226.53 s (10 iterations)
+Benchmarking audit_p3_elastic_self/n100_m200: Analyzing
+audit_p3_elastic_self/n100_m200
+                        time:   [15.859 s 16.756 s 17.982 s]
+                        change: [-12.899% -4.5819% +4.8356%] (p = 0.43 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p3_elastic_self/n500_m50
+Benchmarking audit_p3_elastic_self/n500_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 60.0s. You may wish to increase target time to 219.3s.
+Benchmarking audit_p3_elastic_self/n500_m50: Collecting 10 samples in estimated 219.27 s (10 iterations)
+Benchmarking audit_p3_elastic_self/n500_m50: Analyzing
+audit_p3_elastic_self/n500_m50
+                        time:   [24.627 s 26.554 s 28.428 s]
+                        change: [-9.6317% +9.2117% +30.213%] (p = 0.37 > 0.05)
+                        No change in performance detected.
+
+
+=== NOTE: n500_m200 ===
+INFEASIBLE: Same reasoning as run1. Cell not run — ~384s/iter estimated.
