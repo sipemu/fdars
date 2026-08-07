@@ -12,11 +12,19 @@
 //! discriminator.  `karcher_mean` was substituted: its inner N-loop uses
 //! `iter_maybe_parallel!` (src/alignment/karcher.rs:185) and genuinely differs
 //! across the 4 combos.
+//!
+//! **Workload size caps (D-07):**
+//! - Elastic: N=100, M=50 baseline. O(n²·m²) makes N=1000×M=500 ≈ 60s/iter.
+//! - CV: N=100, M=50 baseline. Each fold runs FPCA O(m³) + fit + predict × K=5.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use fdars_core::alignment::karcher_mean;
+use fdars_core::alignment::{elastic_self_distance_matrix, karcher_mean};
+use fdars_core::classification::fclassif_cv;
+use fdars_core::depth::fraiman_muniz_1d;
 use fdars_core::matrix::FdMatrix;
 use fdars_core::regression::fdata_to_pc_1d;
+use fdars_core::smoothing::nadaraya_watson;
+use fdars_core::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFraimanMuniz};
 use std::f64::consts::PI;
 
 /// Generate synthetic functional data (n curves, m time points).
@@ -37,6 +45,28 @@ fn generate_curves(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
     }
     let mat = FdMatrix::from_column_major(data, n, m).unwrap();
     (mat, argvals)
+}
+
+/// Build alternating binary class labels for n curves (0 / 1).
+fn make_class_labels(n: usize) -> Vec<usize> {
+    (0..n).map(|i| i % 2).collect()
+}
+
+/// Generate noisy sine-curve data for smoothing sentinel.
+///
+/// Returns (x, y, x_new) where x has n training points and x_new has m prediction points.
+fn generate_smoothing_data(n: usize, m: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let x: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+    let y: Vec<f64> = x
+        .iter()
+        .enumerate()
+        .map(|(i, &xi)| {
+            let noise = ((i as f64 * 17.3 + 0.5).sin()) * 0.3;
+            (2.0 * PI * xi).sin() + 0.5 * (4.0 * PI * xi).cos() + noise
+        })
+        .collect();
+    let x_new: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    (x, y, x_new)
 }
 
 /// Sentinel D-03: FPCA / SVD module baseline.
@@ -94,5 +124,147 @@ fn bench_matrix_sentinel(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_fpca_sentinel, bench_matrix_sentinel);
+/// Sentinel: Elastic alignment module baseline.
+///
+/// Benchmarks `elastic_self_distance_matrix` at N=100, M=50 — CAPPED per D-07.
+/// O(n²·m²) DP: N=1000×M=500 ≈ 60s/iter (CONCERNS.md), so N=100, M=50 is used
+/// (O(100²×50²) = 25M ops, < 10s/iter).
+fn bench_elastic_sentinel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_elastic");
+    // Capped cell: O(n²·m²) at N=100,M=50 keeps each iter tractable
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+
+    // Build input OUTSIDE b.iter()
+    let (data, argvals) = generate_curves(100, 50);
+    group.bench_function("n100_m50_capped", |b| {
+        b.iter(|| {
+            black_box(elastic_self_distance_matrix(
+                black_box(&data),
+                black_box(&argvals),
+                black_box(0.0),
+            ))
+        })
+    });
+
+    group.finish();
+}
+
+/// Sentinel: Depth & distance module baseline.
+///
+/// Benchmarks `fraiman_muniz_1d` at N=500, M=200 — the representative audit cell.
+/// O(n²·m) — tractable at N=500 (existing bench goes to N=2300 at M=200).
+fn bench_depth_sentinel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_depth");
+    group.sample_size(30);
+    group.measurement_time(std::time::Duration::from_secs(15));
+    group.warm_up_time(std::time::Duration::from_secs(3));
+
+    // Build input OUTSIDE b.iter()
+    // fraiman_muniz_1d takes (&FdMatrix, &FdMatrix, bool) and returns Vec<f64>
+    let (data, _argvals) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| black_box(fraiman_muniz_1d(black_box(&data), black_box(&data), true)))
+    });
+
+    group.finish();
+}
+
+/// Sentinel: CV loops module baseline.
+///
+/// Benchmarks `fclassif_cv` at N=100, M=50 — CAPPED per D-07.
+/// Each fold runs FPCA O(m³) + classifier fit + predict × K=5 folds.
+/// N=100, M=50 chosen so 2-run variance check completes within budget.
+fn bench_cv_sentinel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_cv");
+    // Capped cell: N=100,M=50 — each fold runs FPCA+LDA (fast classifier)
+    group.sample_size(15);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+
+    // Build inputs OUTSIDE b.iter()
+    let (data, argvals) = generate_curves(100, 50);
+    let y = make_class_labels(100);
+    group.bench_function("n100_m50_capped", |b| {
+        b.iter(|| {
+            fclassif_cv(
+                black_box(&data),
+                black_box(argvals.as_slice()),
+                black_box(y.as_slice()),
+                black_box(None),
+                black_box("lda"),
+                black_box(5usize),
+                black_box(5usize),
+                black_box(42u64),
+            )
+        })
+    });
+
+    group.finish();
+}
+
+/// Sentinel: Streaming depth module baseline.
+///
+/// Benchmarks `StreamingFraimanMuniz::depth_batch` at N=500, M=200.
+/// Construct-then-query measured as a single unit (matching real incremental usage).
+/// O(n·m) build + O(n·m) query — very fast at all sizes.
+fn bench_streaming_sentinel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_streaming_depth");
+    group.sample_size(30);
+    group.measurement_time(std::time::Duration::from_secs(15));
+    group.warm_up_time(std::time::Duration::from_secs(3));
+
+    // Build input OUTSIDE b.iter() — only the construct+query goes inside
+    let (data, _argvals) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            let state = SortedReferenceState::from_reference(black_box(&data));
+            let fm = StreamingFraimanMuniz::new(state, true);
+            fm.depth_batch(black_box(&data))
+        })
+    });
+
+    group.finish();
+}
+
+/// Sentinel: Smoothing module baseline.
+///
+/// Benchmarks `nadaraya_watson` at N=500 training observations, M=200 prediction points.
+/// O(n·m) kernel evaluation — the base case for the smoothing module.
+fn bench_smooth_sentinel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_smooth");
+    group.sample_size(30);
+    group.measurement_time(std::time::Duration::from_secs(10));
+    group.warm_up_time(std::time::Duration::from_secs(3));
+
+    // Build input OUTSIDE b.iter()
+    let (x, y, x_new) = generate_smoothing_data(500, 200);
+    let bandwidth = 0.1;
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            nadaraya_watson(
+                black_box(&x),
+                black_box(&y),
+                black_box(&x_new),
+                black_box(bandwidth),
+                black_box("gaussian"),
+            )
+            .unwrap()
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_fpca_sentinel,
+    bench_matrix_sentinel,
+    bench_elastic_sentinel,
+    bench_depth_sentinel,
+    bench_cv_sentinel,
+    bench_streaming_sentinel,
+    bench_smooth_sentinel
+);
 criterion_main!(benches);
