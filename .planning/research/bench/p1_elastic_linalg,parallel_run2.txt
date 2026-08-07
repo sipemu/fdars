@@ -1,0 +1,19 @@
+=== ENVIRONMENT ===
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
+=== RUN ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_elastic/n100_m50_capped
+Benchmarking audit_elastic/n100_m50_capped: Warming up for 5.0000 s
+Benchmarking audit_elastic/n100_m50_capped: Collecting 20 samples in estimated 31.132 s (40 iterations)
+Benchmarking audit_elastic/n100_m50_capped: Analyzing
+audit_elastic/n100_m50_capped
+                        time:   [809.96 ms 816.80 ms 824.04 ms]
+                        change: [+2.0739% +3.4178% +4.7942%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 4 outliers among 20 measurements (20.00%)
+  1 (5.00%) low mild
+  3 (15.00%) high mild
+

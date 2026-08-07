@@ -1,0 +1,23 @@
+=== ENVIRONMENT ===
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
+=== RUN ===
+    Finished `bench` profile [optimized] target(s) in 0.07s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_streaming_depth/n500_m200
+Benchmarking audit_streaming_depth/n500_m200: Warming up for 3.0000 s
+Benchmarking audit_streaming_depth/n500_m200: Collecting 30 samples in estimated 15.036 s (33k iterations)
+Benchmarking audit_streaming_depth/n500_m200: Analyzing
+audit_streaming_depth/n500_m200
+                        time:   [485.14 µs 491.23 µs 495.82 µs]
+Found 3 outliers among 30 measurements (10.00%)
+  1 (3.33%) low mild
+  2 (6.67%) high mild
+
+
+=== VARIANCE CHECK (±5% two-run rule, Pitfall 7) ===
+Run 1 mean: 491.23 µs
+Run 2 mean: 545.90 µs
+Variance: 11.1% (run2 vs run1)
+CONFIDENCE: LOW (>10% two-run variance; likely OS/scheduler jitter at this sub-ms scale)

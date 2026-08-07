@@ -1,0 +1,13 @@
+=== ENVIRONMENT ===
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
+=== RUN ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-aea52eeb0c35d5bd)
+Gnuplot not found, using plotters backend
+Benchmarking audit_depth/n500_m200
+Benchmarking audit_depth/n500_m200: Warming up for 3.0000 s
+Benchmarking audit_depth/n500_m200: Collecting 30 samples in estimated 15.026 s (34k iterations)
+Benchmarking audit_depth/n500_m200: Analyzing
+audit_depth/n500_m200   time:   [466.82 µs 474.18 µs 482.13 µs]
+

@@ -1,0 +1,7 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== DATE ===
+vr  7 aug 2026 19:14:14 UTC
+=== TMPDIR ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp
