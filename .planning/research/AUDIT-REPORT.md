@@ -261,6 +261,41 @@ All sites below allocate a new `DMatrix<f64>` of the stated size, pass it into `
 | `elastic_fpca.rs:584` | to_dmatrix() SVD copy | `joint_fpca_from_alignment` | n × (m+1+m) `DMatrix<f64>` (combined augmented+shooting matrix) | `[always]` | Phase 4 dhat |
 | `elastic_fpca.rs:930` | to_dmatrix() SVD copy | `optimize_balance_c_raw` (inside `eval_c` closure) | n × (m_aug+m) `DMatrix<f64>` — allocated on **every golden-section iteration** (up to 20×) | `[always]` | Phase 4 dhat |
 | `alignment/nd.rs:705` | to_dmatrix() SVD copy | ND elastic FPCA Gram matrix computation | m × m `DMatrix<f64>` (Gram matrix for ND phase FPCA) | `[always]` | Phase 4 dhat |
+| `regression.rs:298` | to_dmatrix() SVD copy | `fdata_to_pc_1d` (core FPCA — always executed on every FPCA call) | n × m `DMatrix<f64>` (weighted centered data for SVD) | `[always]` | Phase 4 dhat |
+| `spm/mfpca.rs:336` | to_dmatrix() SVD copy | `mfpca` (multivariate FPCA — stacked multi-variable matrix) | n × (sum of m_p across variables) `DMatrix<f64>` (column-stacked centered variables) | `[always]` | Phase 4 dhat |
+
+**8 production `to_dmatrix()` SVD sites confirmed** (ROADMAP's "8" is correct). A 9th `to_dmatrix()` call exists at `matrix.rs` in a `#[cfg(test)]` block (round-trip test helper) and is compiled only into the test binary; it is excluded from this list (RESEARCH §2 / Pitfall 2).
+
+#### DMatrix::from_column_slice — basis construction (NOT SVD copies)
+
+These 14 sites construct `DMatrix<f64>` from flat basis-function buffers for least-squares fitting (B-spline, Fourier, P-spline, SSA trajectory matrix). They are a **distinct category** from the SVD-copy sites above: the optimization path here is solving a normal-equations or QR system, not a full SVD decomposition. Phase 4 dhat profiling should treat them separately (RESEARCH Pitfall 5 — do not conflate with the 8 to_dmatrix() SVD copies).
+
+| Site (file:line) | Category | Enclosing fn | Alloc size | Feature gate | Phase target |
+|------------------|----------|--------------|------------|--------------|--------------|
+| `smooth_basis.rs:198` | from_column_slice basis | B-spline basis matrix construction (`compute_bspline_basis` or equivalent) | m × k `DMatrix<f64>` (evaluation grid × basis functions) | `[always]` | Phase 4 (secondary) |
+| `smooth_basis.rs:199` | from_column_slice basis | Penalty matrix for B-spline roughness (companion to :198) | k × k `DMatrix<f64>` (basis × basis penalty) | `[always]` | Phase 4 (secondary) |
+| `smooth_basis.rs:695` | from_column_slice basis | Full-grid basis matrix (adaptive-k path) | m × actual_k `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `smooth_basis.rs:696` | from_column_slice basis | Penalty matrix (adaptive-k path, companion to :695) | actual_k × actual_k `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `seasonal/ssa.rs:178` | from_column_slice basis | SSA trajectory matrix construction | L × K `DMatrix<f64>` (window × number-of-windows) | `[always]` | Phase 4 (secondary) |
+| `basis/auto_select.rs:95` | from_column_slice basis | Basis matrix for automatic basis selection (candidate basis) | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `basis/auto_select.rs:128` | from_column_slice basis | Basis matrix for second candidate basis in selection | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `basis/fourier_fit.rs:68` | from_column_slice basis | Fourier basis matrix for least-squares smoothing | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `basis/projection.rs:113` | from_column_slice basis | Projection basis matrix (generic functional projection) | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `basis/projection.rs:117` | from_column_slice basis | Second basis matrix slot (companion or alternative basis) | m × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `basis/projection.rs:119` | from_column_slice basis | Penalty matrix for projection basis | nbasis × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `elastic_regression/regression.rs:274` | from_column_slice basis | Basis matrix in elastic regression (shape-on-scalar predictor) | m × actual_nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `elastic_regression/regression.rs:278` | from_column_slice basis | Penalty matrix for elastic regression basis (companion to :274) | penalty_k × penalty_k `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+| `elastic_regression/scalar_on_shape.rs:117` | from_column_slice basis | Basis matrix for scalar-on-shape regression | m × nbasis `DMatrix<f64>` | `[always]` | Phase 4 (secondary) |
+
+Note: `elastic_regression/scalar_on_shape.rs:119` constructs the companion penalty matrix (`DMatrix::from_column_slice(nbasis, nbasis, &penalty_flat)`); it is included in the count above as the 14th site alongside :117.
+
+#### Redundant clone — double n×m allocation before SVD
+
+| Site (file:line) | Category | Enclosing fn | Alloc size | Feature gate | Phase target |
+|------------------|----------|--------------|------------|--------------|--------------|
+| `regression.rs:291` | redundant clone | `fdata_to_pc_1d` — `weighted = centered.clone()` followed immediately by in-place scale then SVD | n × m `FdMatrix` (a second full copy of the centered data, scaled in-place to produce the weighted matrix) | `[always]` | Phase 4 / Phase 6 zero-copy candidate |
+
+At `regression.rs:284` the centering step produces `centered` (n×m). At `regression.rs:291` `weighted = centered.clone()` creates a second n×m allocation, which is then scaled in-place at lines 292–295 and passed to SVD at line 298. Both `centered` and `weighted` are live simultaneously. This is a double-size heap allocation: the `FpcaResult` retains `centered` for downstream use, so the clone cannot be trivially elided, but `weighted` could be stack-allocated or written into a pre-allocated buffer to avoid the heap copy.`
 
 ### Parallelism Gap List
 
