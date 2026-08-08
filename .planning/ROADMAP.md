@@ -157,7 +157,9 @@
   3. If performed, a faer adoption note assesses maintenance-burden / stability risk so the backlog item reflects integration ROI, not just raw speed
   4. This slice's outcome (a backlog item or an explicit "no action, with evidence" record) is drafted for Phase 9
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 06-01-PLAN.md — Measure nalgebra-vs-faer SVD at real FPCA sizes, prove numerical equivalence, record go/no-go + comparison table + faer adoption note + Phase 9 backlog item
 
 ### Phase 7: scikit-fda Capability Enumeration
 
