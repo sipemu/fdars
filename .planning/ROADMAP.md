@@ -14,7 +14,7 @@
 - [x] **Phase 2: Static Hot-Path Analysis** - Document per-module complexity, allocation hotspots, and parallelism gaps with zero runtime cost (completed 2026-08-07)
 - [x] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path (completed 2026-08-08)
 - [x] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat (completed 2026-08-08)
-- [ ] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops
+- [x] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops (completed 2026-08-08)
 - [ ] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it
 - [ ] **Phase 7: scikit-fda Capability Enumeration** - Enumerate scikit-fda's public capability surface by area, pinning the compared version
 - [ ] **Phase 8: Capability Parity Matrix & Categorization** - Map fdars vs scikit-fda by capability, categorize gaps, and document fdars strengths
@@ -130,7 +130,7 @@
   3. The assessment records where banding/parallelism is opt-in rather than automatic and the measured cost of the default (unaccelerated) path
   4. This slice's backlog entries (parallelization opportunities) are drafted with function/current-cost/root-cause fields
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 **Wave 1**
 
@@ -212,7 +212,7 @@
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
-| 5. Parallelism Gap Assessment | 3/3 | In Progress|  |
+| 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |
