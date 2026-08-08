@@ -15,7 +15,7 @@
 - [x] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path (completed 2026-08-08)
 - [x] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat (completed 2026-08-08)
 - [x] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops (completed 2026-08-08)
-- [ ] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it
+- [x] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it (completed 2026-08-09)
 - [ ] **Phase 7: scikit-fda Capability Enumeration** - Enumerate scikit-fda's public capability surface by area, pinning the compared version
 - [ ] **Phase 8: Capability Parity Matrix & Categorization** - Map fdars vs scikit-fda by capability, categorize gaps, and document fdars strengths
 - [ ] **Phase 9: Consolidated Report & Prioritized Backlog** - Combine all findings into a report with a value-ranked, GSD-ready backlog
@@ -215,7 +215,7 @@
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
 | 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
-| 6. Conditional SVD Library Comparison | 1/1 | In Progress|  |
+| 6. Conditional SVD Library Comparison | 1/1 | Complete    | 2026-08-09 |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |
 | 9. Consolidated Report & Prioritized Backlog | 0/0 | Not started | - |
