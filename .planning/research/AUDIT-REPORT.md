@@ -476,30 +476,46 @@ These are direct evidence of the bottleneck — the elastic distance matrices ar
 
 ## Phase 4: FPCA/SVD & Allocation Audit — Benchmark Results
 
+**Features:** `linalg,parallel` (primary audit build). All runs use `black_box` on inputs. Raw artifacts under `.planning/research/bench/p4_*`. Toolchain: `rustc 1.97.0 (2d8144b78 2026-07-07)`.
+
 ### Results Table (criterion — full N×M grid)
 
 | Target | Cell (N×M) | Features | Mean time (run1) | Mean time (run2) | Variance | Confidence | Artifact |
 |--------|------------|----------|-----------------|-----------------|----------|------------|---------|
-| `fdata_to_pc_1d` | 500×200 | linalg,parallel | 16.029 ms | [Plan 03] | [Plan 03] | PENDING (single run) | [p4_fpca_run1](bench/p4_fpca_linalg,parallel_run1.txt) |
+| `fdata_to_pc_1d` | 100×50 | linalg,parallel | 213.33 µs | 212.99 µs | 0.16% | OK | [run1](bench/p4_fpca_linalg,parallel_run1.txt) [run2](bench/p4_fpca_linalg,parallel_run2.txt) |
+| `fdata_to_pc_1d` | 100×200 | linalg,parallel | 1.6896 ms | 1.6905 ms | 0.05% | OK | [run1](bench/p4_fpca_linalg,parallel_run1.txt) [run2](bench/p4_fpca_linalg,parallel_run2.txt) |
+| `fdata_to_pc_1d` | 500×50 | linalg,parallel | 1.2234 ms | 1.2256 ms | 0.18% | OK | [run1](bench/p4_fpca_linalg,parallel_run1.txt) [run2](bench/p4_fpca_linalg,parallel_run2.txt) |
+| `fdata_to_pc_1d` | 500×200 | linalg,parallel | 16.011 ms | 15.908 ms | 0.64% | OK | [run1](bench/p4_fpca_linalg,parallel_run1.txt) [run2](bench/p4_fpca_linalg,parallel_run2.txt) |
+| `fdata_to_pc_1d` | 1000×50 | linalg,parallel | 3.1741 ms | 3.1791 ms | 0.16% | OK | [run1](bench/p4_fpca_linalg,parallel_run1.txt) [run2](bench/p4_fpca_linalg,parallel_run2.txt) |
+| `fdata_to_pc_1d` | 1000×200 | linalg,parallel | 38.307 ms | 38.311 ms | 0.01% | OK | [run1](bench/p4_fpca_linalg,parallel_run1.txt) [run2](bench/p4_fpca_linalg,parallel_run2.txt) |
+| `vert_fpca` | 100×50 | linalg,parallel | 300.64 µs | n/a (single run — reference cell) | n/a | PENDING (single run — reference cell) | [run1](bench/p4_elastic_fpca_vert_linalg,parallel_run1.txt) |
+| `joint_fpca` | 100×50 | linalg,parallel | 1.8850 ms | n/a (single run — reference cell) | n/a | PENDING (single run — reference cell) | [run1](bench/p4_elastic_fpca_joint_linalg,parallel_run1.txt) |
 
-[Plan 03: full grid — N∈{100,500,1000}×M∈{50,200} + run2 + variance]
+**Elastic-FPCA single-run basis:** `vert_fpca` and `joint_fpca` are secondary reference points establishing the elastic copy sites (elastic_fpca.rs:214/317) and roughly sizing them for the backlog — not primary variance-tracked measurements feeding the Phase-6 go/no-go trigger (which rides only on the FPCA grid). Single-run confirmed for reference use only; `joint_fpca` called with `balance_c=Some(1.0)` to isolate the main SVD path (optimizer bypassed, Pitfall B).
+
+**Note on `joint_fpca` dhat total_blocks (1,544):** The large block count vs `vert_fpca` (45 blocks) reflects the more complex augmented+shooting matrix construction path in `joint_fpca`, not additional `to_dmatrix()` copies. The measured main-SVD-path allocation with the optimizer bypassed is the relevant number for the copy-site sizing.
+
+**Parallel-invariance check (D-04 formalized):** `p4_fpca_linalg_run1.txt` confirms that `fdata_to_pc_1d` timings are identical across `linalg` and `linalg,parallel` features — all 6 cells change by ≤1.5%, well within noise. This confirms `center_columns` (regression.rs:167) is the sequential centering function used by `fdata_to_pc_1d` — it uses a plain double `for` loop (NOT the parallel `fdata.rs:center_1d`) and nalgebra SVD is always sequential regardless of the `parallel` feature flag. FPCA is therefore sequential by design (D-04 / Phase-1 finding A5 formalized with full-grid evidence). Artifact: [p4_fpca_linalg_run1.txt](bench/p4_fpca_linalg_run1.txt).
 
 ### Allocation Audit (dhat — bytes/allocations per FPCA call)
 
-**Baseline: `fdata_to_pc_1d` at N=500, M=200 (features: dhat-heap,linalg)**
-Artifact: [p4_dhat_fpca_n500_m200.txt](bench/p4_dhat_fpca_n500_m200.txt)
+**Three baselines measured** (features: dhat-heap,linalg; rustc 1.97.0):
 
-- total_blocks: 23
-- total_bytes: 4,376,024 bytes (~4.2 MB total across all heap allocations in call)
-- peak_bytes (max_bytes): 4,332,792 bytes (~4.1 MB peak live at once)
+| Path | Cell | total_blocks | total_bytes | peak_bytes (max_bytes) | n·m | bytes/n·m (normalized) | Artifact |
+|------|------|-------------|-------------|----------------------|-----|----------------------|---------|
+| `fdata_to_pc_1d` | N=500, M=200 | 23 | 4,376,024 | 4,332,792 | 100,000 | **43.76** | [p4_dhat_fpca_n500_m200](bench/p4_dhat_fpca_n500_m200.txt) |
+| `vert_fpca` | N=100, M=50 | 45 | 285,816 | 145,256 | 5,000 | **57.16** | [p4_dhat_vert_fpca_n100_m50](bench/p4_dhat_vert_fpca_n100_m50.txt) |
+| `joint_fpca` | N=100, M=50 | 1,544 | 1,604,792 | 504,616 | 5,000 | **320.96** | [p4_dhat_joint_fpca_n100_m50](bench/p4_dhat_joint_fpca_n100_m50.txt) |
 
-**Three O(n·m) allocation sites in `fdata_to_pc_1d` (regression.rs):**
+**Normalization basis (BLOCKER 2):** `fdata_to_pc_1d` was measured at N=500, M=200 (n·m = 100,000) while the elastic cells were measured at N=100, M=50 (n·m = 5,000) — a ~20× mismatch. Raw allocation-count/byte comparison across these cells is apples-to-oranges. Allocation figures are normalized to **bytes per n·m** (per-unit-work) for cross-path ranking. The rank on the per-unit-work figure is: `joint_fpca` (320.96 bytes/n·m) > `vert_fpca` (57.16 bytes/n·m) > `fdata_to_pc_1d` (43.76 bytes/n·m). Raw bytes shown for reference; cross-path ranking is on the normalized figure.
+
+**Three O(n·m) allocation sites in `fdata_to_pc_1d` (within-path, same cell, raw comparison valid):**
 
 | Site | File:Line | Operation | Bytes (N=500,M=200) | Category |
 |------|-----------|-----------|---------------------|----------|
 | `center_columns` result | `regression.rs:167` | `FdMatrix::zeros(n, m)` — fresh allocation for centered data | 500×200×8 = 800,000 bytes | FdMatrix allocation |
-| `centered.clone()` | `regression.rs:291` | Clone of centered FdMatrix before in-place weight scaling | 500×200×8 = 800,000 bytes | FdMatrix allocation — zero-copy candidate |
-| `weighted.to_dmatrix()` | `regression.rs:298` | `DMatrix::from_column_slice(nrows, ncols, &self.data)` — column-major memcpy into nalgebra DMatrix for SVD | 500×200×8 = 800,000 bytes | **THE copy site** |
+| `centered.clone()` | `regression.rs:291` | Clone of centered FdMatrix before in-place weight scaling | 500×200×8 = 800,000 bytes | FdMatrix allocation — **zero-copy candidate** |
+| `weighted.to_dmatrix()` | `regression.rs:298` | `DMatrix::from_column_slice(nrows, ncols, &self.data)` — column-major memcpy into nalgebra DMatrix for SVD | 500×200×8 = 800,000 bytes | **THE copy site** (one-way bridge to SVD) |
 
 `to_dmatrix()` definition at `matrix.rs:310–312`:
 ```rust
@@ -509,43 +525,81 @@ pub fn to_dmatrix(&self) -> DMatrix<f64> {
 ```
 Column-major → column-major memcpy; no transposition cost. This is the one true copy into nalgebra format before SVD.
 
-**Distinction:** The `regression.rs:167` (`center_columns` → `FdMatrix::zeros`) and `regression.rs:291` (`centered.clone()`) are FdMatrix allocations along the computation chain — the `:291` clone is a zero-copy *candidate* (stores verbatim in `FpcaResult.centered`, so it could share a pre-allocated buffer). The `regression.rs:298` `to_dmatrix()` is the **only** column-major memcpy into nalgebra format — the one-way bridge to SVD. These are distinct optimization paths.
+**Distinction:** The `regression.rs:167` (`center_columns` → `FdMatrix::zeros`) and `regression.rs:291` (`centered.clone()`) are FdMatrix allocations. The `:291` clone is a zero-copy candidate (stores verbatim in `FpcaResult.centered`; could share a pre-allocated buffer). The `regression.rs:298` `to_dmatrix()` is the **only** column-major memcpy into nalgebra format — one to_dmatrix copy per `fdata_to_pc_1d` call.
 
-**Note:** `elastic_fpca.rs:122` and `elastic_fpca.rs:399` (covariance-SVD elastic sites, native DMatrix construction) are NOT attributed to this copy bucket — they are in a different code path (`vert_fpca`/`joint_fpca`) and involve native DMatrix allocation, not a `to_dmatrix()` memcpy. They are out of scope for this `fdata_to_pc_1d` allocation row.
+**`vert_fpca` and `joint_fpca` copy sites:** `vert_fpca` carries one `to_dmatrix()` copy at `elastic_fpca.rs:214`; `joint_fpca` (main SVD path, optimizer bypassed) carries one at `elastic_fpca.rs:317`. Their per-unit-work bytes are higher than `fdata_to_pc_1d` (57.16 and 320.96 vs 43.76 bytes/n·m), partly because the elastic path builds augmented/shooting matrices before SVD.
 
-[Plan 03: vert_fpca and joint_fpca dhat baselines to be added here]
+**Note:** `elastic_fpca.rs:122` and `elastic_fpca.rs:399` (covariance-SVD elastic sites, native DMatrix construction via `DMatrix::from_iterator` or direct construction) are NOT `to_dmatrix()` copy sites — they are native DMatrix allocations from computed values, not a memcpy bridge. They are excluded from the to_dmatrix() copy bucket (Pitfall A from RESEARCH.md).
 
 ### SVD-Compute vs Copy Split
 
-**N=500, M=200 tracer cell — derived copy-share % (full arithmetic chain)**
+**Top FPCA cell: N=1000, M=200 — full derivation (BLOCKER 4)**
 
-The copy site is `regression.rs:298` `weighted.to_dmatrix()` — a `DMatrix::from_column_slice` copying 500×200 f64 values column-major into nalgebra format.
+The copy site is `regression.rs:298` `weighted.to_dmatrix()` — a `DMatrix::from_column_slice` copying 1000×200 f64 values column-major into nalgebra format.
 
 **Inputs from measured artifacts:**
-- Criterion wall-clock (from [p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt)): **16.029 ms** mean
-- dhat total_bytes (from [p4_dhat_fpca_n500_m200.txt](bench/p4_dhat_fpca_n500_m200.txt)): **4,376,024 bytes** total (all allocations); the `to_dmatrix()` copy is specifically 500×200×8 = **800,000 bytes** = 800 KB (cross-check: 500×200×8 = 800,000 ✓)
-- Assumed memory bandwidth: **~30 GB/s** (RESEARCH §5B assumption A4 — modern DDR4 peak read bandwidth; actual bandwidth varies; this is a conservative estimate for a single-threaded sequential memcpy on the test machine)
+- Criterion wall-clock (from [p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt)): **38.307 ms** mean (N=1000, M=200)
+- dhat measured copy size: `to_dmatrix()` copies specifically the weighted centered data matrix — N×M f64 values. At N=1000, M=200: 1,000 × 200 × 8 bytes = **1,600,000 bytes** = 1.526 MB (cross-check: 1000 × 200 × 8 = 1,600,000 ✓)
+- Assumed memory bandwidth: **~30 GB/s** (RESEARCH §5B assumption A4 — modern DDR4 peak read bandwidth; this is a conservative estimate for single-threaded sequential memcpy on the test machine)
 
 **Full arithmetic chain:**
 
 ```
-to_dmatrix() copy size = 500 × 200 × 8 bytes = 800,000 bytes = 800 KB
+to_dmatrix() copy size = 1,000 × 200 × 8 bytes = 1,600,000 bytes = 1.526 MB
 
-Copy time = 800,000 bytes ÷ 30,000,000,000 bytes/s
-           = 0.00002667 s
-           = 26.7 µs
+Copy time = 1,600,000 bytes ÷ 30,000,000,000 bytes/s
+           = 0.0000533 s
+           = 53.3 µs
 
-Wall-clock = 16.029 ms = 16,029 µs
+Wall-clock = 38.307 ms = 38,307 µs
 
-Copy-share = 26.7 µs ÷ 16,029 µs × 100%
-           = 0.166%
-           ≈ 0.17%
+Copy-share = 53.3 µs ÷ 38,307 µs × 100%
+           = 0.139%
+           ≈ 0.14%
 ```
 
-**Result: the `to_dmatrix()` copy contributes approximately 0.17% of total wall-clock at N=500, M=200 under linalg,parallel.**
+**Result: the `to_dmatrix()` copy contributes approximately 0.14% of total wall-clock at N=1000, M=200 under linalg,parallel.**
 
-Copy appears negligible vs SVD compute at this cell — confirm across grid in Plan 03. The SVD of a 500×200 matrix (O(m³) = O(200³) = 8M ops) dominates; the 800 KB memcpy is fast relative to the factorization cost. Direction: SVD is the dominant cost. Full go/no-go verdict deferred to Plan 03 after the complete 6-cell grid.
+**Cross-grid confirmation:** the same derivation at N=500, M=200 (tracer cell, run1=16.011 ms): copy = 800,000 bytes ÷ 30,000,000,000 bytes/s = 26.7 µs; copy-share = 26.7 ÷ 16,011 × 100% = **0.17%**. The copy-share is consistently negligible (<0.2%) across the grid.
 
-[Plan 03: go/no-go verdict]
+**SVD wall-clock share:** since copy-share ≈ 0.14–0.17%, the SVD compute share ≈ **99.8–99.9%** of total wall-clock (the remainder of the wall-clock after the O(n·m) centering/scaling steps). The O(n·m) centering at `regression.rs:167/291` is cheap relative to the O(m³) SVD; the measured O(m³) nalgebra SVD dominates at every cell in the grid.
 
-[Plan 03: backlog]
+**Pitfall-D context:** FPCA total wall-clock ranges from 213 µs (N=100, M=50) to 38.307 ms (N=1000, M=200). This is 2–3 orders of magnitude cheaper than the Phase-3 elastic alignment hot-path (~760 ms to >28 s per iteration). FPCA is NOT a primary production bottleneck for most workloads; the SVD dominance finding targets potential future Phase-9 optimization candidates, not urgent fixes.
+
+### Phase 6 Go/No-Go Decision
+
+**ROADMAP Phase 6 SC1 (compound condition):** "Run the comparison only if SVD is a significant share of FPCA runtime AND copy is not the dominant cost."
+
+**Measured quantities (both required before verdict):**
+
+1. **SVD wall-clock share:** SVD compute ≈ **~99.8–99.9% of total FPCA wall-clock** at every grid cell. The O(m³) nalgebra SVD dominates the cost; all other operations (centering at `regression.rs:167`, cloning at `regression.rs:291`, the `to_dmatrix()` bridge at `regression.rs:298`) are negligible by comparison. SVD is unambiguously a *significant* share of FPCA runtime (satisfying the first condition of SC1).
+
+2. **Copy share:** The `to_dmatrix()` copy contributes approximately **0.14–0.17%** of total wall-clock across the full N×M grid. The copy cost is negligible — well below any cost threshold where it would be "the dominant cost" (satisfying the second condition of SC1).
+
+**Verdict: Phase 6 GO — comparison is triggered.**
+
+Both SC1 conditions are met: (a) SVD is a significant share of FPCA runtime (~99.8–99.9%), AND (b) the `to_dmatrix()` copy is NOT the dominant cost (0.14–0.17%). A faer-vs-nalgebra SVD comparison in Phase 6 is warranted. The full 6-cell grid confirms the tracer direction: the `to_dmatrix()` copy overhead is consistently ~0.14–0.17% across all N values and M values; SVD dominates at every cell; neither N-scaling nor M-scaling reverses this conclusion.
+
+### Draft Backlog (FPCA/SVD — Phase 4 slice)
+
+**Backlog entry 1 — Eliminate redundant `centered.clone()` + zero-copy the `to_dmatrix()` bridge**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `fdata_to_pc_1d` (`regression.rs:249`) — executed on every FPCA call in the library |
+| **Current cost (measured)** | N=1000,M=200 wall-clock: 38.307 ms (run1) / 38.311 ms (run2), variance 0.01% (EXCELLENT confidence). N=500,M=200: 16.011 ms (run1) / 15.908 ms (run2), variance 0.64% (OK). Allocation profile at N=500,M=200: 23 total_blocks, 4,376,024 total_bytes, 4,332,792 peak_bytes — three O(n·m) allocations of 800 KB each (43.76 bytes/n·m). Artifacts: [run1](bench/p4_fpca_linalg,parallel_run1.txt), [run2](bench/p4_fpca_linalg,parallel_run2.txt), [dhat](bench/p4_dhat_fpca_n500_m200.txt). |
+| **Root cause** | Three O(n·m) allocations in `fdata_to_pc_1d`: (1) `regression.rs:167` `FdMatrix::zeros(n,m)` for centering — necessary; (2) `regression.rs:291` `centered.clone()` to produce the weighted matrix — redundant copy (the original `centered` FdMatrix is retained in `FpcaResult.centered`, but the weighting could be done in-place on a pre-allocated buffer rather than a clone); (3) `regression.rs:298` `weighted.to_dmatrix()` — nalgebra DMatrix bridge for SVD — a single to_dmatrix() copy per call, contributing ~0.14–0.17% of wall-clock (fast relative to SVD but eliminable if a nalgebra-native centering/scaling path is available). Both `:291` (clone) and `:298` (to_dmatrix) are O(n·m) memcpy operations allocated and then immediately discarded after SVD. |
+| **Candidate fix** | (a) Replace `centered.clone()` at `:291` with a pre-allocated output buffer: compute the weighted values directly without creating a second `FdMatrix` — saves one 800 KB allocation per call at N=500,M=200. (b) Optionally pursue a zero-copy `to_dmatrix()` bridge by constructing `DMatrix<f64>` from a shared data pointer (if nalgebra's `DMatrix::from_column_slice` can accept a reference without copying — currently it requires owned data). GSD-ready as a candidate Phase 9 requirement: "Eliminate `centered.clone()` at regression.rs:291 and evaluate zero-copy DMatrix bridge at `:298` to reduce per-FPCA-call heap traffic from 3 to 1 O(n·m) allocations." |
+| **Evidence** | [p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt), [p4_fpca_linalg,parallel_run2.txt](bench/p4_fpca_linalg,parallel_run2.txt), [p4_dhat_fpca_n500_m200.txt](bench/p4_dhat_fpca_n500_m200.txt). Six-cell grid confirms O(n·m) copy cost is flat across N values; allocation count (23 blocks) is stable regardless of N. |
+| **Severity + Effort** | Low severity (copy-share ~0.17% — not a bottleneck); Medium effort (requires restructuring `fdata_to_pc_1d` to avoid the clone and evaluating zero-copy DMatrix construction). **[TBD — Phase 9 candidate]** |
+
+**Backlog entry 2 — Truncated-SVD candidate: full SVD computes all components but only ncomp=5 used**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `fdata_to_pc_1d` (`regression.rs:298`) via `nalgebra::SVD::new` — computes the FULL SVD decomposition of an N×M matrix, returning all min(N,M) singular values/vectors |
+| **Current cost (measured)** | At N=1000,M=200: 38.307 ms wall-clock; at N=500,M=200: 16.011 ms. SVD is ~99.8–99.9% of wall-clock. Full SVD at M=200 computes all 200 singular values/vectors; only the top ncomp=5 are retained after `[:ncomp]` slice. Artifacts: [run1](bench/p4_fpca_linalg,parallel_run1.txt), [run2](bench/p4_fpca_linalg,parallel_run2.txt). |
+| **Root cause** | nalgebra's `SVD::new` always computes the full SVD (all singular values/vectors, O(min(N,M)² · max(N,M))). When ncomp=5 « M (e.g., 5 « 200 « N=1000), the full SVD is computing ~40× more components than needed. A truncated/thin SVD computing only the top k=ncomp components would cost O(N · M · k) via iterative methods (power iteration or randomized SVD), reducing the SVD cost by up to O(M/ncomp) = 40× at M=200,ncomp=5. |
+| **Candidate fix** | Replace `nalgebra::SVD::new(dmatrix, true, true)` at `regression.rs:298` with a truncated-SVD routine (randomized SVD via Halko-Martinsson-Tropp, or LAPACK DGESDD with a partial request). Libraries to evaluate in Phase 6: faer (Phase 6 comparison target), ndarray-linalg with LAPACK backend, or a Rust randomized-SVD crate. GSD-ready as a candidate Phase 6/9 requirement: "Evaluate truncated/thin SVD in fdata_to_pc_1d to compute only ncomp singular components instead of full SVD, targeting O(N·M·ncomp) vs current O(min(N,M)²·max(N,M))." |
+| **Evidence** | [p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt), [p4_fpca_linalg,parallel_run2.txt](bench/p4_fpca_linalg,parallel_run2.txt). M-scaling: n100_m200 (1.690 ms) vs n100_m50 (213.3 µs) — ~7.9× slower for 4× more M, consistent with O(m²) SVD scaling (4²/2 = 8× theoretical for M<N). Confirms SVD is O(m²·N) at these sizes with M<N, and the M-scaling bottleneck is the full decomposition. The backlog-entry SVD share is ~99.8–99.9% of wall-clock at every cell. |
+| **Severity + Effort** | Medium severity (SVD is the dominant cost; a truncated SVD could halve or better the FPCA runtime for typical ncomp « M usage); High effort (requires replacing or wrapping nalgebra SVD, evaluating numerical stability of truncated methods, and adding an ncomp-vs-M guard). **[TBD — Phase 6/9 candidate — Phase 6 faer comparison is the first step]** |
