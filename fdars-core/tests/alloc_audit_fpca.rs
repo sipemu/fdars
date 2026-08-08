@@ -1,8 +1,8 @@
 //! dhat allocation-profiling integration tests for Phase 4 FPCA/SVD audit.
 //!
-//! This file is the Wave 0 harness: it wires `dhat` as the global allocator and
-//! provides one test cell for `fdata_to_pc_1d` at N=500, M=200.  Wave 1 (Plans
-//! 02/03) will add the `vert_fpca` and `joint_fpca` cells and run them.
+//! Three measurement cells: `fdata_to_pc_1d` (N=500,M=200), `vert_fpca` (N=100,M=50),
+//! and `joint_fpca` (N=100,M=50 with balance_c=Some(1.0) to bypass the golden-section
+//! optimizer).  All cells are gated under `#[cfg(feature = "dhat-heap")]`.
 //!
 //! **Why integration test (not inline `#[cfg(test)]`)?**
 //! dhat requires a *separate process* to set the global allocator.  Placing it inside
@@ -26,9 +26,6 @@
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 #[cfg(feature = "dhat-heap")]
-use dhat;
-
-#[cfg(feature = "dhat-heap")]
 use fdars_core::alignment::karcher_mean;
 #[cfg(feature = "dhat-heap")]
 use fdars_core::elastic_fpca::{joint_fpca, vert_fpca};
@@ -43,6 +40,10 @@ use std::f64::consts::PI;
 ///
 /// Replicates `generate_curves` from `audit_hotpaths.rs` lines 38-52 verbatim.
 /// `data[i + j * n]` is column-major: observation `i` at evaluation point `j`.
+///
+/// NOTE: kept in sync with `benches/audit_hotpaths.rs:generate_curves`. Any change
+/// to the amplitude/phase formula must be mirrored there to keep allocation baselines
+/// and criterion numbers commensurable.
 #[cfg(feature = "dhat-heap")]
 fn generate_test_curves(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
@@ -72,15 +73,15 @@ fn generate_test_curves(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
 #[test]
 #[cfg(feature = "dhat-heap")]
 fn count_fpca_allocations_n500_m200() {
-    let _profiler = dhat::Profiler::builder().testing().build();
+    // Build test data OUTSIDE the profiler — setup, not the measurement target.
     let (data, argvals) = generate_test_curves(500, 200);
+    let _profiler = dhat::Profiler::builder().testing().build();
     let _ = fdata_to_pc_1d(&data, 5, &argvals);
     let stats = dhat::HeapStats::get();
     println!("Total heap blocks: {}", stats.total_blocks);
     println!("Total heap bytes: {}", stats.total_bytes);
     println!("Peak heap bytes: {}", stats.max_bytes);
     // Record — do not hard-assert a specific count (baseline, not regression gate).
-    // Plans 02/03 will add `vert_fpca` and `joint_fpca` cells and compare.
 }
 
 /// Count heap allocations for `vert_fpca` at N=100, M=50.
