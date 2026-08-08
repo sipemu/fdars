@@ -174,7 +174,15 @@
   3. Enumeration is capability-oriented, not raw API-name counting: fit/predict/transform families are grouped by user task to avoid the 2–3× gap inflation of Pitfall 9
   4. A one-page design-goal filter is written (in-scope numeric algorithms vs out-of-scope plotting/IO/sklearn-pipeline) to be applied in Phase 8
 
-**Plans**: TBD
+**Plans:** 2 plans
+
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — Tracer: D-01 version pin (0.10.1) + methodology + D-03/D-04 schema + the `representation` area fully worked, proving the enumeration schema end-to-end
+
+**Wave 2** *(blocked on Wave 1 — same append target: AUDIT-REPORT.md)*
+
+- [ ] 07-02-PLAN.md — Expansion: remaining five areas (preprocessing, exploratory, ML, inference, misc) into the schema + one-page design-goal-filter subsection with separated in/out-of-scope counts + final scope-fence pass
 
 ### Phase 8: Capability Parity Matrix & Categorization
 
@@ -216,7 +224,7 @@
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
 | 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
 | 6. Conditional SVD Library Comparison | 1/1 | Complete    | 2026-08-09 |
-| 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
+| 7. scikit-fda Capability Enumeration | 0/2 | Planned | - |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |
 | 9. Consolidated Report & Prioritized Backlog | 0/0 | Not started | - |
 
