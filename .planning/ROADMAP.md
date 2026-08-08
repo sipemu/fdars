@@ -103,7 +103,7 @@
   3. The report states allocation cost as a share of wall-clock for the top FPCA path, so the SVD-compute vs copy split is explicit (addresses Pitfall 5) and directly informs the Phase 6 go/no-go trigger
   4. This slice's backlog entries (SVD-copy elimination, truncated-SVD candidates) are drafted with function/current-cost/root-cause fields
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 **Wave 0**
 
@@ -115,7 +115,7 @@
 
 **Wave 2** *(depends on 04-02 — same append targets: audit_hotpaths.rs, alloc_audit_fpca.rs, AUDIT-REPORT.md)*
 
-- [ ] 04-03-PLAN.md — Expansion: full 6-cell N×M grid (2 runs + no-parallel invariance) + vert/joint elastic-FPCA cells + dhat baselines + completed report (hotspot ranking, SVD-vs-copy split, Phase-6 go/no-go verdict, GSD-ready backlog)
+- [x] 04-03-PLAN.md — Expansion: full 6-cell N×M grid (2 runs + no-parallel invariance) + vert/joint elastic-FPCA cells + dhat baselines + completed report (hotspot ranking, SVD-vs-copy split, Phase-6 go/no-go verdict, GSD-ready backlog)
 
 ### Phase 5: Parallelism Gap Assessment
 
@@ -199,7 +199,7 @@
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
-| 4. FPCA/SVD & Allocation Audit | 2/3 | In Progress|  |
+| 4. FPCA/SVD & Allocation Audit | 3/3 | In Progress|  |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |

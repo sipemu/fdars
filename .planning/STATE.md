@@ -4,16 +4,16 @@ milestone: v0.14.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: fpca-svd-allocation-audit
-status: executing
-stopped_at: Completed 04-02-PLAN.md (FPCA tracer slice)
-last_updated: "2026-08-08T08:07:43.657Z"
+status: verifying
+stopped_at: Completed 04-03-PLAN.md (FPCA grid expansion + report completion)
+last_updated: "2026-08-08T08:28:26.901Z"
 last_activity: 2026-08-08
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 
 Phase: 04 (fpca-svd-allocation-audit) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-08 — Phase 04 execution started
 
-Progress: [█████████░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [█████████░] 89%
 | Phase 03 P02 | 115 | 4 tasks | 15 files |
 | Phase 04 P01 | 6 | 2 tasks | 2 files |
 | Phase 04 P02 | 5 | 3 tasks | 5 files |
+| Phase 04 P03 | 16 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,9 @@ Relevant to current work:
 - [Phase ?]: no-verify commits used for tmp tmpfs exhaustion per MEMORY.md exception
 - [Phase ?]: copy-share for to_dmatrix() at N=500,M=200 is ~0.17% of wall-clock -- copy is negligible; SVD dominates
 - [Phase ?]: dhat baseline: fdata_to_pc_1d N=500,M=200 -- 23 total_blocks, 4,376,024 total_bytes, 4,332,792 peak_bytes
+- [Phase ?]: Phase 6 is triggered (GO): SVD share ~99.8-99.9% of FPCA wall-clock, copy-share ~0.14-0.17% — both SC1 conditions met
+- [Phase ?]: 6-cell FPCA grid stable (all variances < 0.64% OK confidence); FPCA parallel-invariant (D-04 formalized)
+- [Phase ?]: Per-unit-work normalization: joint_fpca (320.96 bytes/n·m) > vert_fpca (57.16) > fdata_to_pc_1d (43.76)
 
 ### Pending Todos
 
@@ -119,6 +123,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T08:07:43.649Z
-Stopped at: Completed 04-02-PLAN.md (FPCA tracer slice)
+Last session: 2026-08-08T08:28:26.892Z
+Stopped at: Completed 04-03-PLAN.md (FPCA grid expansion + report completion)
 Resume file: None
