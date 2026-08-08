@@ -930,6 +930,103 @@ fn bench_p5_karcher_threads(c: &mut Criterion) {
     group.finish();
 }
 
+/// Phase 5 (SC1) — light-sentinel thread-scaling cell (D-01).
+///
+/// Benchmarks `StreamingFraimanMuniz::depth_batch` at the FIXED light cell N=500, M=200 —
+/// the SAME size as `bench_streaming_sentinel` so the two remain cross-comparable — as the
+/// **light sentinel** (D-01) that brackets the overhead-dominated small-cost regime opposite
+/// the heavy `karcher_mean` sentinel. Construct-then-query measured as one unit (matching the
+/// existing streaming sentinel and real incremental usage). Streaming's inner
+/// `iter_maybe_parallel!(0..nobj)` (src/streaming_depth/fraiman_muniz.rs:82) is what the rayon
+/// pool size drives.
+///
+/// **Thread count is varied via the `RAYON_NUM_THREADS` environment variable, NOT in code** —
+/// the same compiled cell is re-run once per thread value ∈ {1,2,4,8} by the Phase-5 run
+/// script (no recompile between thread counts). Keeps the Phase-1 streaming group tuning
+/// (sample_size 30 / 15s measure / 3s warm-up) since the target is sub-millisecond.
+fn bench_p5_streaming_threads(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p5_streaming_threads");
+    group.sample_size(30);
+    group.measurement_time(std::time::Duration::from_secs(15));
+    group.warm_up_time(std::time::Duration::from_secs(3));
+
+    // Fixed light cell N=500, M=200 (matches bench_streaming_sentinel for comparability).
+    // Thread count is an env dimension (RAYON_NUM_THREADS), not a cell-name dimension.
+    let (data, _argvals) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            let state = SortedReferenceState::from_reference(black_box(&data));
+            let fm = StreamingFraimanMuniz::new(state, true);
+            black_box(fm.depth_batch(black_box(&data)))
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase 5 (SC1) — payback-threshold-N downward grid for the HEAVY karcher target (D-02).
+///
+/// Sweeps N ∈ {10, 25, 50, 100} at FIXED M=50, one cell per N, so the run script can find the
+/// smallest N at which the machine-default parallel path first beats the `RAYON_NUM_THREADS=1`
+/// single-thread run of the SAME build. The **payback baseline is `RAYON_NUM_THREADS=1`
+/// (single-thread rayon), NOT `--no-default-features`** (D-02) — the only variable is thread
+/// count (identical codegen/features). The `--no-default-features` rayon-off cost is reported
+/// separately under SC3 (Plan 03).
+///
+/// The grid straddles the CONCERNS.md "rayon overhead for n < ~100" note: a heavy target is
+/// expected to pay back at small N.
+fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p5_karcher_paybackN");
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(15));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+
+    for n in [10usize, 25, 50, 100] {
+        let (data, argvals) = generate_curves(n, 50);
+        group.bench_function(format!("n{n}_m50"), |b| {
+            b.iter(|| {
+                black_box(karcher_mean(
+                    black_box(&data),
+                    black_box(&argvals),
+                    black_box(10usize), // max_iter (matches p5 karcher threads cell)
+                    black_box(1e-3),    // tol
+                    black_box(0.0),     // band_frac = 0.0 (unbanded full DP)
+                ))
+            })
+        });
+    }
+
+    group.finish();
+}
+
+/// Phase 5 (SC1) — payback-threshold-N downward grid for the LIGHT streaming target (D-02).
+///
+/// Sweeps N_obj ∈ {1, 10, 50, 200, 500} at FIXED M=200, one cell per N_obj, comparing the
+/// machine-default parallel path against the `RAYON_NUM_THREADS=1` single-thread run of the
+/// SAME build (payback baseline = `RAYON_NUM_THREADS=1`, NOT `--no-default-features`, D-02).
+/// A light target's overhead-dominated regime is expected to pay back only at larger N_obj;
+/// the grid extends well past the CONCERNS.md n≈100 note to straddle (or expose the absence
+/// of) that crossover. `--no-default-features` rayon-off cost is reported under SC3 (Plan 03).
+fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p5_streaming_paybackN");
+    group.sample_size(30);
+    group.measurement_time(std::time::Duration::from_secs(10));
+    group.warm_up_time(std::time::Duration::from_secs(3));
+
+    for n in [1usize, 10, 50, 200, 500] {
+        let (data, _argvals) = generate_curves(n, 200);
+        group.bench_function(format!("n{n}_m200"), |b| {
+            b.iter(|| {
+                let state = SortedReferenceState::from_reference(black_box(&data));
+                let fm = StreamingFraimanMuniz::new(state, true);
+                black_box(fm.depth_batch(black_box(&data)))
+            })
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fpca_sentinel,
@@ -947,6 +1044,9 @@ criterion_group!(
     bench_p3_elastic_cross_banded,
     bench_p4_fpca,
     bench_p4_elastic_fpca,
-    bench_p5_karcher_threads
+    bench_p5_karcher_threads,
+    bench_p5_streaming_threads,
+    bench_p5_karcher_paybackN,
+    bench_p5_streaming_paybackN
 );
 criterion_main!(benches);
