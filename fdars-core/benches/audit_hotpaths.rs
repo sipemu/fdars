@@ -891,6 +891,45 @@ fn bench_p4_elastic_fpca(c: &mut Criterion) {
     group.finish();
 }
 
+/// Phase-5 karcher_mean thread-scaling sentinel (D-01 heavy sweep sentinel).
+///
+/// Benchmarks `karcher_mean` at a FIXED heavy cell N=100, M=50 — the same size as
+/// the Phase-1/3 karcher sentinels — so the numbers are cross-phase comparable.
+///
+/// **Thread count is varied via the `RAYON_NUM_THREADS` environment variable, NOT
+/// in code.** rayon's global pool reads `RAYON_NUM_THREADS` at first use, so this
+/// SAME compiled cell is re-run once per thread value ∈ {1,2,4,8} by the Phase-5
+/// run script (no recompile between thread counts). `karcher_mean`'s inner N-loop
+/// uses `iter_maybe_parallel!` (src/alignment/karcher.rs:185), so pool size directly
+/// controls the measured parallelism.
+///
+/// Long `measurement_time` + reduced `sample_size` because karcher is seconds-scale
+/// (Claude's-Discretion tuning allowance under the D-04 protocol).
+fn bench_p5_karcher_threads(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p5_karcher_threads");
+    group.sample_size(10);
+    group.measurement_time(std::time::Duration::from_secs(30));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+
+    // Fixed heavy cell N=100, M=50 (matches p1/p3 karcher sentinel for comparability).
+    // Thread count is an env dimension (RAYON_NUM_THREADS), not a cell-name dimension —
+    // the artifact filename `run<N>` disambiguates runs; the report row records threads.
+    let (data100_50, argvals50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            black_box(karcher_mean(
+                black_box(&data100_50),
+                black_box(&argvals50),
+                black_box(10usize), // max_iter (matches bench_p4 karcher setup)
+                black_box(1e-3),    // tol
+                black_box(0.0),     // band_frac = 0.0 (unbanded full DP)
+            ))
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fpca_sentinel,
@@ -907,6 +946,7 @@ criterion_group!(
     bench_p3_elastic_cross,
     bench_p3_elastic_cross_banded,
     bench_p4_fpca,
-    bench_p4_elastic_fpca
+    bench_p4_elastic_fpca,
+    bench_p5_karcher_threads
 );
 criterion_main!(benches);
