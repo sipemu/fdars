@@ -733,6 +733,35 @@ fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
     group.finish();
 }
 
+/// Phase-4 FPCA tracer cell — fdata_to_pc_1d at N=500, M=200.
+///
+/// Benchmarks `fdata_to_pc_1d` (regression.rs:249) at the Phase-4 primary cell
+/// N=500, M=200, ncomp=5 — the Phase-1 sentinel size with a known ~16 ms baseline.
+/// This is the tracer slice for the full Phase-4 audit pipeline: criterion bench
+/// → dhat allocation run → raw artifacts → AUDIT-REPORT row + derived copy-share %.
+///
+/// Note: Plan 03 expands this function to the full N∈{100,500,1000}×M∈{50,200}
+/// 6-cell grid. This tracer function covers only N=500,M=200.
+///
+/// The Phase-1 sentinel `bench_fpca_sentinel` (group "audit_fpca") is kept
+/// unchanged — this function introduces the distinct Phase-4 group "audit_p4_fpca"
+/// so Phase-4 artifacts are clearly identified separately from Phase-1.
+fn bench_p4_fpca(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p4_fpca");
+    // Sentinel defaults: SVD O(m^3) at m=200 costs ~16ms/iter
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+
+    // Build input OUTSIDE b.iter() to avoid measuring the allocator
+    let (data, argvals) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| fdata_to_pc_1d(black_box(&data), black_box(5usize), black_box(&argvals)))
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fpca_sentinel,
@@ -747,6 +776,7 @@ criterion_group!(
     bench_p3_elastic_self,
     bench_p3_elastic_self_banded,
     bench_p3_elastic_cross,
-    bench_p3_elastic_cross_banded
+    bench_p3_elastic_cross_banded,
+    bench_p4_fpca
 );
 criterion_main!(benches);

@@ -1,0 +1,35 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+Features: linalg,parallel
+===================
+   Compiling parking_lot_core v0.9.12
+   Compiling object v0.37.3
+   Compiling smallvec v1.15.1
+   Compiling adler2 v2.0.1
+   Compiling gimli v0.32.3
+   Compiling scopeguard v1.2.0
+   Compiling rustc-demangle v0.1.28
+   Compiling thousands v0.2.0
+   Compiling lazy_static v1.5.0
+   Compiling rustc-hash v1.1.0
+   Compiling mintex v0.1.4
+   Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
+   Compiling miniz_oxide v0.8.9
+   Compiling lock_api v0.4.14
+   Compiling parking_lot v0.12.5
+   Compiling addr2line v0.25.1
+   Compiling backtrace v0.3.76
+   Compiling dhat v0.3.3
+    Finished `bench` profile [optimized] target(s) in 18.33s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p4_fpca/n500_m200
+Benchmarking audit_p4_fpca/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p4_fpca/n500_m200: Collecting 20 samples in estimated 20.234 s (1260 iterations)
+Benchmarking audit_p4_fpca/n500_m200: Analyzing
+audit_p4_fpca/n500_m200 time:   [15.972 ms 16.029 ms 16.150 ms]
+Found 3 outliers among 20 measurements (15.00%)
+  1 (5.00%) high mild
+  2 (10.00%) high severe
+
