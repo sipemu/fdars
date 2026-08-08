@@ -730,3 +730,44 @@ Cited from the Phase-3 §"Banded-vs-Unbanded Analysis" and §"D-05 Source Fact".
 **LOW-CONFIDENCE caveat (D-08).** The raw Phase-3 karcher cells showed **34–204% two-run variance** (OS scheduler jitter under intermittent load; see §Phase-3 "LOW CONFIDENCE explanation"), so the karcher ~7× / ~4–6× figure is **directional, not precise**. It is corroborated by the **stable elastic_cross cells** (0–4% two-run variance) in the same §Banded-vs-Unbanded Analysis, which show a consistent **4.5–5.7× banding reduction** — confirming the banding win is real and in the ~4.5–5.7× range even though the karcher-specific multiplier is noisy. Phase 9 should re-run karcher under a pinned governor for a stable banding number.
 
 **Both are default-path costs.** Neither the rayon-off ~10× nor the banding ~4–6× is a pathological edge case: they are the costs borne by the *default* build/API surface. The rayon-off cost is opt-out (a build-time choice a user might make for a minimal dependency footprint); the banding cost is opt-in-to-avoid (the fast path exists but is never the default). Both feed the SC4 backlog as candidate default-changing work.
+
+### SC4: Parallelization Backlog (draft, GSD-ready)
+
+These entries summarize SC1–SC3 into GSD-ready candidate requirements/phases for **Phase-9 ranking**. Each reuses the Phase-3 §"Draft Backlog" field format (Function | Current cost | Root cause | Candidate direction | Projected/observed reduction | Evidence link). The SC2 loop candidates carry **projected** reductions (no implementation exists yet — D-06); the SC3 banding item is a **measured** reduction cross-referenced (not duplicated) from the Phase-3 elastic-alignment backlog.
+
+**Backlog entry P5-1 — Parallelize the classification CV fold loop (`classification/cv.rs:76`) — high priority**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `fclassif_cv` (`classification/cv.rs:45`); outer `for fold in 0..nfold` fold loop at `cv.rs:76`. |
+| **Current cost** | CV sentinel baseline (§Phase 1 Baseline Cells, CV loops row): `fclassif_cv` (lda, 5-fold) at N=100, M=50 = ~948–952 µs/iter (OK confidence). The fold loop runs `nfold` sequential FPCA+fit+predict passes; the per-fold FPCA SVD dominates. Artifact: [p1_cv](bench/p1_cv_linalg,parallel_run1.txt). |
+| **Root cause** | SEQUENTIAL (§Parallelism Gap List, `cv.rs:76`): plain `for fold in 0..nfold` with no parallelism macro. Folds are fully independent (disjoint train/test splits, no shared mutable state); the fold-assignment RNG (`assign_folds`) runs once before the loop, so the loop body has no RNG. |
+| **Candidate direction** | Wrap the fold loop in `iter_maybe_parallel!(0..nfold)` (per SC2). Each fold body is heavy (a full FPCA SVD + classifier fit), so it tracks the karcher heavy-body regime (payback N≤10 per SC1) — worth parallelizing at any realistic nfold. |
+| **Projected reduction** | **~4–5× projected** at machine-default threads (from SC1 karcher thread-scaling ceiling ~4.7× at N=100). Bounded by nfold, but heavy per-fold body pays back at small counts. Projection, not measured (D-06). |
+| **Evidence link** | SC1 §Thread-Scaling Table (karcher scaling) · SC2 `cv.rs:76` row · [p1_cv](bench/p1_cv_linalg,parallel_run1.txt). |
+
+**Backlog entry P5-2 — Parallelize the three elastic-FPCA inner N-loops (`elastic_fpca.rs:701/720/764`) — medium priority**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `shooting_vectors_from_psis` (`elastic_fpca.rs:701`), `build_augmented_srsfs` (`elastic_fpca.rs:720`), `svd_scores_and_eigenvalues` (`elastic_fpca.rs:764`) — three per-curve `for i in 0..n` inner loops on the elastic-FPCA path. |
+| **Current cost** | No dedicated p5 measurement (SC1 sentinels are karcher + streaming); projected only. These loops are on the elastic-FPCA critical path, each O(N) per-curve with a moderate-to-light body (sphere map, SRSF construction, score extraction). Related allocation sites recorded at §Allocation Hotspot List (`elastic_fpca.rs:214/317/483/584/930`). |
+| **Root cause** | SEQUENTIAL (§Parallelism Gap List, `elastic_fpca.rs:701/720/764`): plain `for i in 0..n` with no parallelism macro. Each iteration writes a disjoint per-curve row/score; no shared mutable state; no RNG in loop body. |
+| **Candidate direction** | Wrap each in `iter_maybe_parallel!(0..n)` (per SC2, per-curve row/score). `:701` and `:720` have moderately heavy bodies (pay back above N≈50); `:764` is light (score extraction — streaming regime, guard behind a size threshold or accept small-N regression). |
+| **Projected reduction** | **~4–5× projected** at machine-default threads for large N (elastic-FPCA typically N≥50–100), bounded by the payback-N threshold. Projection, not measured (D-06). |
+| **Evidence link** | SC1 §Thread-Scaling + §Payback-Threshold N · SC2 `elastic_fpca.rs:701/720/764` rows. |
+
+**Backlog entry P5-3 — Parallelize `center_columns` (`regression.rs:167`) inside `fdata_to_pc_1d` — low priority**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `center_columns` (`regression.rs:167`), the sequential outer `for j in 0..m` / inner `for i in 0..n` double loop called inside `fdata_to_pc_1d`. **Distinct from the already-parallel `fdata.rs:center_1d`** (RESEARCH Pitfall 1). |
+| **Current cost** | On the FPCA path (§Phase 1 Baseline, FPCA/SVD row: `fdata_to_pc_1d` N=500,M=200 = ~16 ms/iter), but centering is O(N·M) with a trivial per-element body and is *secondary* to the nalgebra SVD step that dominates the 16 ms (§Complexity Table FPCA row). |
+| **Root cause** | SEQUENTIAL (§Parallelism Gap List, `regression.rs:167`): plain double `for` loop, zero macro hits. Column-major layout makes each column independent (subtract that column's mean); no shared mutable state; no RNG. |
+| **Candidate direction** | Wrap the outer-M loop in `iter_maybe_parallel!(0..m)` (columns independent; per SC2). **Lowest priority:** the per-element body is very light (streaming regime, pays back only at large M and would need a size guard), and SVD — not centering — is the FPCA M-scaling bottleneck. |
+| **Projected reduction** | **~4–5× ceiling projected but unlikely reached** — light body, likely sub-crossover except at large M; net FPCA-call speedup is small because SVD dominates. Projection, not measured (D-06). |
+| **Evidence link** | SC1 §Payback-Threshold N (light-body rule) · SC2 `regression.rs:167` row · [p1_fpca](bench/p1_fpca_linalg,parallel_run1.txt). |
+
+**Backlog entry P5-4 — Change elastic-alignment API defaults to a banded path / expose `band_frac` (cross-reference)**
+
+This parallelism-adjacent opt-in-default cost is **not duplicated here** — it is the same default-path cost recorded at SC3(b) and fully specified in the Phase-3 §"Draft Backlog (elastic alignment)" **Backlog entry 1** ("Default elastic alignment to a banded path") and **Backlog entry 2** ("Expose band_frac on high-level distance matrix API"). It is linked from the parallelism backlog because it is an opt-in-default cost of the same family as the SC2 sequential-loop gaps: `karcher_mean()` defaults `band_frac=0.0` (§D-05 Source Fact, `karcher.rs:300`), imposing the measured ~4–6× SC3(b) penalty on every default caller. **Candidate direction:** change the high-level default to `band_frac≈0.1` or expose it as a parameter (the banded implementations already exist and are correct — an API default change, not a new algorithm). **Observed reduction:** measured 4–6× (karcher, LOW-CONFIDENCE) / 4.5–5.7× (stable elastic_cross). See Phase-3 backlog for the full field table and artifact links; Phase 9 should rank it alongside P5-1..P5-3.
