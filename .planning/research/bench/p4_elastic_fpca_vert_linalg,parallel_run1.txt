@@ -1,0 +1,15 @@
+=== ENVIRONMENT ===
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
+Features: linalg,parallel
+===================
+    Finished `bench` profile [optimized] target(s) in 0.08s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p4_elastic_fpca/vert_fpca_n100_m50
+Benchmarking audit_p4_elastic_fpca/vert_fpca_n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p4_elastic_fpca/vert_fpca_n100_m50: Collecting 20 samples in estimated 20.025 s (67k iterations)
+Benchmarking audit_p4_elastic_fpca/vert_fpca_n100_m50: Analyzing
+audit_p4_elastic_fpca/vert_fpca_n100_m50
+                        time:   [300.47 µs 300.64 µs 300.85 µs]
+

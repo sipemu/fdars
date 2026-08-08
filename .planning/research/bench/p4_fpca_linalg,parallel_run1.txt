@@ -1,35 +1,59 @@
 === ENVIRONMENT ===
-rustc 1.97.0 (2d8144b78 2026-07-07)
-cargo 1.97.0 (c980f4866 2026-06-30)
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
 Features: linalg,parallel
 ===================
-   Compiling parking_lot_core v0.9.12
-   Compiling object v0.37.3
-   Compiling smallvec v1.15.1
-   Compiling adler2 v2.0.1
-   Compiling gimli v0.32.3
-   Compiling scopeguard v1.2.0
-   Compiling rustc-demangle v0.1.28
-   Compiling thousands v0.2.0
-   Compiling lazy_static v1.5.0
-   Compiling rustc-hash v1.1.0
-   Compiling mintex v0.1.4
    Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
-   Compiling miniz_oxide v0.8.9
-   Compiling lock_api v0.4.14
-   Compiling parking_lot v0.12.5
-   Compiling addr2line v0.25.1
-   Compiling backtrace v0.3.76
-   Compiling dhat v0.3.3
-    Finished `bench` profile [optimized] target(s) in 18.33s
+    Finished `bench` profile [optimized] target(s) in 2.25s
      Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
 Gnuplot not found, using plotters backend
+Benchmarking audit_p4_fpca/n100_m50
+Benchmarking audit_p4_fpca/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p4_fpca/n100_m50: Collecting 20 samples in estimated 20.031 s (94k iterations)
+Benchmarking audit_p4_fpca/n100_m50: Analyzing
+audit_p4_fpca/n100_m50  time:   [212.63 µs 213.33 µs 214.41 µs]
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+Benchmarking audit_p4_fpca/n100_m200
+Benchmarking audit_p4_fpca/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p4_fpca/n100_m200: Collecting 20 samples in estimated 20.222 s (12k iterations)
+Benchmarking audit_p4_fpca/n100_m200: Analyzing
+audit_p4_fpca/n100_m200 time:   [1.6893 ms 1.6896 ms 1.6899 ms]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking audit_p4_fpca/n500_m50
+Benchmarking audit_p4_fpca/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p4_fpca/n500_m50: Collecting 20 samples in estimated 20.059 s (16k iterations)
+Benchmarking audit_p4_fpca/n500_m50: Analyzing
+audit_p4_fpca/n500_m50  time:   [1.2233 ms 1.2234 ms 1.2235 ms]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
 Benchmarking audit_p4_fpca/n500_m200
 Benchmarking audit_p4_fpca/n500_m200: Warming up for 5.0000 s
-Benchmarking audit_p4_fpca/n500_m200: Collecting 20 samples in estimated 20.234 s (1260 iterations)
+Benchmarking audit_p4_fpca/n500_m200: Collecting 20 samples in estimated 20.218 s (1260 iterations)
 Benchmarking audit_p4_fpca/n500_m200: Analyzing
-audit_p4_fpca/n500_m200 time:   [15.972 ms 16.029 ms 16.150 ms]
+audit_p4_fpca/n500_m200 time:   [16.006 ms 16.011 ms 16.016 ms]
+                        change: [-6.3004% -2.1343% +0.1885%] (p = 0.49 > 0.05)
+                        No change in performance detected.
 Found 3 outliers among 20 measurements (15.00%)
+  2 (10.00%) low mild
   1 (5.00%) high mild
-  2 (10.00%) high severe
+Benchmarking audit_p4_fpca/n1000_m50
+Benchmarking audit_p4_fpca/n1000_m50: Warming up for 5.0000 s
+Benchmarking audit_p4_fpca/n1000_m50: Collecting 20 samples in estimated 20.663 s (6510 iterations)
+Benchmarking audit_p4_fpca/n1000_m50: Analyzing
+audit_p4_fpca/n1000_m50 time:   [3.1732 ms 3.1741 ms 3.1752 ms]
+Found 4 outliers among 20 measurements (20.00%)
+  1 (5.00%) low severe
+  2 (10.00%) high mild
+  1 (5.00%) high severe
+Benchmarking audit_p4_fpca/n1000_m200
+Benchmarking audit_p4_fpca/n1000_m200: Warming up for 5.0000 s
+Benchmarking audit_p4_fpca/n1000_m200: Collecting 10 samples in estimated 21.071 s (550 iterations)
+Benchmarking audit_p4_fpca/n1000_m200: Analyzing
+audit_p4_fpca/n1000_m200
+                        time:   [38.295 ms 38.307 ms 38.323 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
 

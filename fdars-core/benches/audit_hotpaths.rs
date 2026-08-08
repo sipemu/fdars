@@ -25,6 +25,7 @@ use fdars_core::alignment::{
 };
 use fdars_core::classification::fclassif_cv;
 use fdars_core::depth::fraiman_muniz_1d;
+use fdars_core::elastic_fpca::{joint_fpca, vert_fpca};
 use fdars_core::matrix::FdMatrix;
 use fdars_core::regression::fdata_to_pc_1d;
 use fdars_core::smoothing::nadaraya_watson;
@@ -733,30 +734,154 @@ fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
     group.finish();
 }
 
-/// Phase-4 FPCA tracer cell — fdata_to_pc_1d at N=500, M=200.
+/// Phase-4 FPCA full 6-cell grid — fdata_to_pc_1d at N∈{100,500,1000}×M∈{50,200}.
 ///
-/// Benchmarks `fdata_to_pc_1d` (regression.rs:249) at the Phase-4 primary cell
-/// N=500, M=200, ncomp=5 — the Phase-1 sentinel size with a known ~16 ms baseline.
-/// This is the tracer slice for the full Phase-4 audit pipeline: criterion bench
-/// → dhat allocation run → raw artifacts → AUDIT-REPORT row + derived copy-share %.
+/// Expanded from the Plan-02 tracer (single N=500,M=200 cell) to the full 6-cell grid.
+/// All cells bench `fdata_to_pc_1d(data, ncomp=5, argvals)` with inputs built OUTSIDE
+/// `b.iter()` (cost of allocation not measured). `fdata_to_pc_1d` is sequential —
+/// `center_columns` (regression.rs:167) uses plain `for` loops and nalgebra SVD is
+/// always sequential — so timings are parallel-invariant across the `linalg` and
+/// `linalg,parallel` feature combos (Plan-03 run1 no-parallel invariance check).
 ///
-/// Note: Plan 03 expands this function to the full N∈{100,500,1000}×M∈{50,200}
-/// 6-cell grid. This tracer function covers only N=500,M=200.
+/// Timing tiers (from PATTERNS.md timing-tier map):
+///   - N=100, M=50:   <10 ms/iter  → sample_size(20), measurement_time(20s)
+///   - N=100, M=200:  ~1-2 ms/iter → sample_size(20), measurement_time(20s)
+///   - N=500, M=50:   ~2-4 ms/iter → sample_size(20), measurement_time(20s)
+///   - N=500, M=200:  ~16 ms/iter  → sample_size(20), measurement_time(20s)
+///   - N=1000, M=50:  ~8-16ms/iter → sample_size(20), measurement_time(20s)
+///   - N=1000, M=200: ~64-256ms    → sample_size(10)  (tier: reduced samples)
 ///
-/// The Phase-1 sentinel `bench_fpca_sentinel` (group "audit_fpca") is kept
-/// unchanged — this function introduces the distinct Phase-4 group "audit_p4_fpca"
-/// so Phase-4 artifacts are clearly identified separately from Phase-1.
+/// All 6 cells share group "audit_p4_fpca". Run twice for variance (run1+run2)
+/// plus once with linalg-only (no parallel) to confirm parallel-invariance (D-04).
 fn bench_p4_fpca(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p4_fpca");
-    // Sentinel defaults: SVD O(m^3) at m=200 costs ~16ms/iter
+
+    // --- n100_m50: <10 ms/iter ---
+    group.sample_size(20);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
+    let (data100_50, argvals100_50) = generate_curves(100, 50);
+    group.bench_function("n100_m50", |b| {
+        b.iter(|| {
+            fdata_to_pc_1d(
+                black_box(&data100_50),
+                black_box(5usize),
+                black_box(&argvals100_50),
+            )
+        })
+    });
+
+    // --- n100_m200: ~1-2 ms/iter ---
+    let (data100_200, argvals100_200) = generate_curves(100, 200);
+    group.bench_function("n100_m200", |b| {
+        b.iter(|| {
+            fdata_to_pc_1d(
+                black_box(&data100_200),
+                black_box(5usize),
+                black_box(&argvals100_200),
+            )
+        })
+    });
+
+    // --- n500_m50: ~2-4 ms/iter ---
+    let (data500_50, argvals500_50) = generate_curves(500, 50);
+    group.bench_function("n500_m50", |b| {
+        b.iter(|| {
+            fdata_to_pc_1d(
+                black_box(&data500_50),
+                black_box(5usize),
+                black_box(&argvals500_50),
+            )
+        })
+    });
+
+    // --- n500_m200: ~16 ms/iter (Phase-1 and tracer baseline) ---
+    let (data500_200, argvals500_200) = generate_curves(500, 200);
+    group.bench_function("n500_m200", |b| {
+        b.iter(|| {
+            fdata_to_pc_1d(
+                black_box(&data500_200),
+                black_box(5usize),
+                black_box(&argvals500_200),
+            )
+        })
+    });
+
+    // --- n1000_m50: ~8-16 ms/iter ---
+    let (data1000_50, argvals1000_50) = generate_curves(1000, 50);
+    group.bench_function("n1000_m50", |b| {
+        b.iter(|| {
+            fdata_to_pc_1d(
+                black_box(&data1000_50),
+                black_box(5usize),
+                black_box(&argvals1000_50),
+            )
+        })
+    });
+
+    // --- n1000_m200: ~64-256 ms/iter — reduced samples per timing-tier map ---
+    group.sample_size(10);
+    let (data1000_200, argvals1000_200) = generate_curves(1000, 200);
+    group.bench_function("n1000_m200", |b| {
+        b.iter(|| {
+            fdata_to_pc_1d(
+                black_box(&data1000_200),
+                black_box(5usize),
+                black_box(&argvals1000_200),
+            )
+        })
+    });
+
+    group.finish();
+}
+
+/// Phase-4 elastic-FPCA bench cells — vert_fpca and joint_fpca at N=100, M=50.
+///
+/// Benchmarks `vert_fpca` and `joint_fpca` (elastic_fpca.rs:214/317 copy sites) at a
+/// single representative cell N=100, M=50. The elastic cells are a smaller workload
+/// than the FPCA grid (n·m = 5,000 vs 100,000 for the primary cell) because the
+/// elastic path requires a Karcher-mean setup and the elastic sites are secondary
+/// hotspots; the smaller size is compensated by per-unit-work normalization in the
+/// AUDIT-REPORT (BLOCKER 2). These cells get ONE criterion run each (not the
+/// run1+run2+no-parallel discipline of the FPCA grid) — they are reference points
+/// for sizing, not primary variance-tracked measurements for the Phase-6 go/no-go
+/// trigger. Single-run basis is stated in AUDIT-REPORT with confidence
+/// `PENDING (single run — reference cell)`.
+///
+/// **Karcher setup is built OUTSIDE `b.iter()`** — karcher_mean itself is setup, not
+/// the measurement target; only vert_fpca/joint_fpca SVD is measured.
+///
+/// `joint_fpca` is called with `balance_c = Some(1.0)` to bypass
+/// `optimize_balance_c_raw` (Pitfall B from RESEARCH.md) — isolates the main SVD path
+/// rather than the golden-section optimizer loop.
+fn bench_p4_elastic_fpca(c: &mut Criterion) {
+    let mut group = c.benchmark_group("audit_p4_elastic_fpca");
     group.sample_size(20);
     group.measurement_time(std::time::Duration::from_secs(20));
     group.warm_up_time(std::time::Duration::from_secs(5));
 
-    // Build input OUTSIDE b.iter() to avoid measuring the allocator
-    let (data, argvals) = generate_curves(500, 200);
-    group.bench_function("n500_m200", |b| {
-        b.iter(|| fdata_to_pc_1d(black_box(&data), black_box(5usize), black_box(&argvals)))
+    let (data, argvals) = generate_curves(100, 50);
+
+    // Build KarcherMeanResult OUTSIDE b.iter() — setup, not the measurement target.
+    // karcher_mean returns KarcherMeanResult directly (not Result<>).
+    let karcher = karcher_mean(&data, &argvals, 10, 1e-3, 0.0);
+
+    // vert_fpca: elastic-FPCA via vertical (amplitude) component — elastic_fpca.rs:214 copy site
+    group.bench_function("vert_fpca_n100_m50", |b| {
+        b.iter(|| vert_fpca(black_box(&karcher), black_box(&argvals), black_box(5usize)))
+    });
+
+    // joint_fpca: joint amplitude+phase FPCA — elastic_fpca.rs:317 copy site.
+    // balance_c = Some(1.0) bypasses optimize_balance_c_raw (Pitfall B) for main SVD path.
+    group.bench_function("joint_fpca_n100_m50", |b| {
+        b.iter(|| {
+            joint_fpca(
+                black_box(&karcher),
+                black_box(&argvals),
+                black_box(5usize),
+                black_box(Some(1.0)),
+            )
+        })
     });
 
     group.finish();
@@ -777,6 +902,7 @@ criterion_group!(
     bench_p3_elastic_self_banded,
     bench_p3_elastic_cross,
     bench_p3_elastic_cross_banded,
-    bench_p4_fpca
+    bench_p4_fpca,
+    bench_p4_elastic_fpca
 );
 criterion_main!(benches);
