@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 5
-current_phase_name: Parallelism Gap Assessment
-status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-08-08T16:57:13.896Z"
+current_phase: 05
+current_phase_name: parallelism-gap-assessment
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-08-08T18:34:04.315Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 04 complete, transitioned to Phase 5
+last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 12
+  completed_plans: 10
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-07)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 04 — fpca-svd-allocation-audit
+**Current focus:** Phase 05 — parallelism-gap-assessment
 
 ## Current Position
 
-Phase: 5 — Parallelism Gap Assessment
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-08 — Phase 04 complete, transitioned to Phase 5
+Phase: 05 (parallelism-gap-assessment) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-08-08 — Phase 05 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [██████████] 100%
 | Phase 04 P01 | 6 | 2 tasks | 2 files |
 | Phase 04 P02 | 5 | 3 tasks | 5 files |
 | Phase 04 P03 | 16 | 3 tasks | 9 files |
+| Phase 05 P01 | 22 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,9 @@ Relevant to current work:
 - [Phase ?]: Phase 6 is triggered (GO): SVD share ~99.8-99.9% of FPCA wall-clock, copy-share ~0.14-0.17% — both SC1 conditions met
 - [Phase ?]: 6-cell FPCA grid stable (all variances < 0.64% OK confidence); FPCA parallel-invariant (D-04 formalized)
 - [Phase ?]: Per-unit-work normalization: joint_fpca (320.96 bytes/n·m) > vert_fpca (57.16) > fdata_to_pc_1d (43.76)
+- [Phase ?]: [Phase 5]: karcher_mean thread-scaling (N=100,M=50,linalg): 1t=1554ms, 2t=782ms(1.99x), 4t=405ms(3.84x LOW-CONF 11.4% spread), 8t=328ms(4.73x); curve flattens 4->8, not climbing at 8
+- [Phase ?]: [Phase 5]: D-04 governor pinning FAILED (cpupower needs root, non-interactive sudo denied); taskset -c 0-7 + 3-run median+spread applied as backstop; karcher table carries governor-not-pinned LOW CONFIDENCE
+- [Phase ?]: [Phase 5]: cargo bench rejects --release (bench profile already opt-3); release confirmed via /release/deps/ path instead
 
 ### Pending Todos
 
@@ -124,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T16:57:13.888Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-parallelism-gap-assessment/05-CONTEXT.md
+Last session: 2026-08-08T18:33:55.440Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None

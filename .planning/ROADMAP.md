@@ -130,11 +130,11 @@
   3. The assessment records where banding/parallelism is opt-in rather than automatic and the measured cost of the default (unaccelerated) path
   4. This slice's backlog entries (parallelization opportunities) are drafted with function/current-cost/root-cause fields
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Tracer: prove measure→capture→report end-to-end on one karcher_mean thread sweep {1,2,4,8} under the D-04 pinned protocol; seed the `## Phase 5` report section + methodology note
+- [x] 05-01-PLAN.md — Tracer: prove measure→capture→report end-to-end on one karcher_mean thread sweep {1,2,4,8} under the D-04 pinned protocol; seed the `## Phase 5` report section + methodology note
 
 **Wave 2** *(depends on 05-01 — same append targets: audit_hotpaths.rs + AUDIT-REPORT.md)*
 
@@ -212,7 +212,7 @@
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
-| 5. Parallelism Gap Assessment | 0/3 | Planned | - |
+| 5. Parallelism Gap Assessment | 1/3 | In Progress|  |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |

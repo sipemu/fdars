@@ -15,7 +15,7 @@ Requirements for this audit. Each maps to a roadmap phase.
 - [x] **PERF-02**: A representative workload matrix (N × M input sizes) is defined per hot-path module so benchmarks reflect realistic usage, not toy inputs
 - [x] **PERF-03**: Criterion benchmarks measure the top hot-path suspects in **release** build with correct feature flags (`linalg`, `parallel`) and `black_box`, producing a results table tagged with feature set and toolchain version
 - [x] **PERF-04**: An allocation audit (dhat) quantifies the documented `FdMatrix→DMatrix` SVD-copy overhead (and other allocation hotspots) with a reproducible baseline
-- [ ] **PERF-05**: A parallelism assessment measures rayon thread scaling (`RAYON_NUM_THREADS` sweep) and flags sequential loops that are safe to parallelize (e.g. classification CV folds, streaming-depth batch, elastic-FPCA inner loops) and where banding is opt-in rather than automatic
+- [x] **PERF-05**: A parallelism assessment measures rayon thread scaling (`RAYON_NUM_THREADS` sweep) and flags sequential loops that are safe to parallelize (e.g. classification CV folds, streaming-depth batch, elastic-FPCA inner loops) and where banding is opt-in rather than automatic
 - [ ] **PERF-06**: A conditional nalgebra-vs-faer SVD comparison at fdars' real problem sizes, performed only if benchmarks show SVD to be a significant share of FPCA runtime (else recorded as "not warranted, with evidence")
 
 ### Functionality Gap Analysis (GAP)
@@ -62,7 +62,7 @@ Populated during roadmap creation.
 | PERF-02 | Phase 1 | Complete |
 | PERF-03 | Phase 3, Phase 4 | Complete |
 | PERF-04 | Phase 4 | Complete |
-| PERF-05 | Phase 5 | Pending |
+| PERF-05 | Phase 5 | Complete |
 | PERF-06 | Phase 6 | Pending |
 | GAP-01 | Phase 7 | Pending |
 | GAP-02 | Phase 8 | Pending |
