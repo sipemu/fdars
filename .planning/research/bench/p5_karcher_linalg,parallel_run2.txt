@@ -1,0 +1,64 @@
+=== RAYON_NUM_THREADS=1 ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_karcher_threads/n100_m50
+Benchmarking audit_p5_karcher_threads/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_threads/n100_m50: Collecting 10 samples in estimated 31.092 s (20 iterations)
+Benchmarking audit_p5_karcher_threads/n100_m50: Analyzing
+audit_p5_karcher_threads/n100_m50
+                        time:   [1.5480 s 1.5496 s 1.5523 s]
+                        change: [+369.66% +372.56% +375.39%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+
+=== RAYON_NUM_THREADS=2 ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_karcher_threads/n100_m50
+Benchmarking audit_p5_karcher_threads/n100_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 30.0s. You may wish to increase target time to 43.2s or enable flat sampling.
+Benchmarking audit_p5_karcher_threads/n100_m50: Collecting 10 samples in estimated 43.157 s (55 iterations)
+Benchmarking audit_p5_karcher_threads/n100_m50: Analyzing
+audit_p5_karcher_threads/n100_m50
+                        time:   [781.40 ms 812.82 ms 866.42 ms]
+                        change: [-49.327% -47.428% -45.374%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+
+=== RAYON_NUM_THREADS=4 ===
+    Finished `bench` profile [optimized] target(s) in 0.07s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_karcher_threads/n100_m50
+Benchmarking audit_p5_karcher_threads/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_threads/n100_m50: Collecting 10 samples in estimated 44.040 s (110 iterations)
+Benchmarking audit_p5_karcher_threads/n100_m50: Analyzing
+audit_p5_karcher_threads/n100_m50
+                        time:   [402.26 ms 404.76 ms 406.84 ms]
+                        change: [-52.321% -50.122% -48.127%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+
+=== RAYON_NUM_THREADS=8 ===
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_karcher_threads/n100_m50
+Benchmarking audit_p5_karcher_threads/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_threads/n100_m50: Collecting 10 samples in estimated 35.601 s (110 iterations)
+Benchmarking audit_p5_karcher_threads/n100_m50: Analyzing
+audit_p5_karcher_threads/n100_m50
+                        time:   [327.40 ms 328.29 ms 329.15 ms]
+                        change: [-20.564% -19.440% -18.464%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+

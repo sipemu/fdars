@@ -607,3 +607,39 @@ Both SC1 conditions are met: (a) SVD is a significant share of FPCA runtime (~99
 | **Candidate fix** | Replace `nalgebra::SVD::new(dmatrix, true, true)` at `regression.rs:298` with a truncated-SVD routine (randomized SVD via Halko-Martinsson-Tropp, or LAPACK DGESDD with a partial request). Libraries to evaluate in Phase 6: faer (Phase 6 comparison target), ndarray-linalg with LAPACK backend, or a Rust randomized-SVD crate. GSD-ready as a candidate Phase 6/9 requirement: "Evaluate truncated/thin SVD in fdata_to_pc_1d to compute only ncomp singular components instead of full SVD, targeting O(N·M·ncomp) vs current O(min(N,M)²·max(N,M))." |
 | **Evidence** | [p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt), [p4_fpca_linalg,parallel_run2.txt](bench/p4_fpca_linalg,parallel_run2.txt). M-scaling: n100_m200 (1.690 ms) vs n100_m50 (213.3 µs) — ~7.9× slower for 4× more M, consistent with O(m²) SVD scaling (4²/2 = 8× theoretical for M<N). Confirms SVD is O(m²·N) at these sizes with M<N, and the M-scaling bottleneck is the full decomposition. The backlog-entry SVD share is ~99.8–99.9% of wall-clock at every cell. |
 | **Severity + Effort** | Medium severity (SVD is the dominant cost; a truncated SVD could halve or better the FPCA runtime for typical ncomp « M usage); High effort (requires replacing or wrapping nalgebra SVD, evaluating numerical stability of truncated methods, and adding an ncomp-vs-M guard). **[TBD — Phase 6/9 candidate — Phase 6 faer comparison is the first step]** |
+
+
+## Phase 5: Parallelism Gap Assessment
+
+This section is the Phase-5 deliverable slice: it proves the measure→capture→report pipeline end-to-end on the heavy already-parallel sentinel `karcher_mean` (D-01), and seeds the SC1 thread-scaling table that Plans 02/03 expand (second sentinel `StreamingFraimanMuniz::depth_batch`, the payback-threshold-N downward sweep, and the SC2/SC3/SC4 gap analysis).
+
+### Methodology (D-04 pinned-stability protocol)
+
+The Phase-5 thread sweep **escalates** the Phase-1 §Methodology "±5% Two-Run Variance Rule" (which used 2 runs and a ±5% acceptance band) to a stricter protocol, because Phase 3 measured **34–58% two-run variance on `karcher_mean`** — a thread-scaling curve is indistinguishable from scheduler noise at that variance. The escalated controls, and the exact state actually applied on this run:
+
+| Control | Prescribed (D-04) | Actually applied this run |
+|---------|-------------------|---------------------------|
+| **Core pinning** | `taskset` core-pin the bench process | **Applied** — `taskset -c 0-7` (8 logical CPUs pinned; machine has 20 total: 13th Gen Intel Core i9-13900H). |
+| **CPU frequency governor** | `cpupower frequency-set -g performance` | **NOT applied** — `cpupower` requires root; non-interactive `sudo` denied (interactive password required). Governor left at `powersave`. See LOW-CONFIDENCE caveat below. |
+| **Repetition** | 3 independent runs of the full thread grid, report **median + run-spread** | **Applied** — 3 runs of {1,2,4,8} threads; median-of-3 and run-spread reported per thread cell. |
+| **Release-mode discipline** | Phase-1 rule inherited | **Applied** — Criterion binary path confirmed `target/release/deps/audit_hotpaths-*` in every artifact. |
+| **black_box + build** | Phase-1 D-05 inherited | **Applied** — `black_box` on inputs + output; build `--features linalg` (linalg,parallel). |
+
+**LOW-CONFIDENCE caveat (governor):** because the `performance` governor could not be set (no root), CPU frequency was free to scale under `powersave` during the sweep. The 3-run median+spread protocol is the stability backstop, and taskset core-pinning is applied; but per D-04 the whole SC1 karcher table inherits a **governor-not-pinned LOW-CONFIDENCE** qualifier. This is recorded in [`p5_env_info.txt`](bench/p5_env_info.txt) `=== D-04 CONTROLS ===`. A re-run under a pinned `performance` governor (root available) would tighten confidence without changing the bench code.
+
+**Bench cell:** `karcher_mean` at N=100, M=50 (matches the Phase-1/3 karcher sentinel size for cross-phase comparability), `max_iter=10`, `tol=1e-3`, `band_frac=0.0` (unbanded full DP). Thread count is varied **via the `RAYON_NUM_THREADS` environment variable only** — the same compiled `audit_p5_karcher_threads/n100_m50` cell is re-run once per thread value; rayon's global pool reads `RAYON_NUM_THREADS` at first use, so no recompile occurs between thread counts. `karcher_mean`'s inner N-loop uses `iter_maybe_parallel!` (`src/alignment/karcher.rs:185`), the mechanism the pool size drives. Criterion tuning per the Claude's-Discretion allowance: `sample_size(10)`, `measurement_time=30s`, `warm_up_time=5s` (karcher is seconds-scale).
+
+### Thread-Scaling Table
+
+`karcher_mean`, N=100, M=50, build `linalg,parallel`, `taskset -c 0-7`, governor `powersave` (LOW CONFIDENCE — see caveat). Median and run-spread computed over 3 independent runs; each run's per-thread value is Criterion's central estimate. Speedup is vs the 1-thread median.
+
+| Target | N | M | RAYON_NUM_THREADS | median (of 3 runs) | run spread | speedup vs 1-thread | Confidence | Artifact |
+|--------|---|---|-------------------|--------------------|-----------|---------------------|-----------|----------|
+| `karcher_mean` | 100 | 50 | 1 | 1553.8 ms | 0.5% | 1.00× (baseline) | OK (spread <10%); governor LOW-CONF | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
+| `karcher_mean` | 100 | 50 | 2 | 781.5 ms | 4.3% | 1.99× | OK (spread <10%); governor LOW-CONF | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
+| `karcher_mean` | 100 | 50 | 4 | 404.8 ms | 11.4% | 3.84× | **LOW CONFIDENCE** (run-spread 11.4% > 10% Phase-1 rule; run3 cell noisy at 446 ms) | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
+| `karcher_mean` | 100 | 50 | 8 | 328.3 ms | 1.2% | 4.73× | OK (spread <10%); governor LOW-CONF | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
+
+**Reading of the curve:** near-ideal scaling 1→2 (1.99× on 2 threads) and 2→4 (3.84× on 4), then the curve **flattens sharply** from 4→8: doubling threads 4→8 buys only 3.84×→4.73× (a further 1.23× for 2× the threads). At 8 threads the karcher inner N-loop over N=100 curves is already near its parallel-efficiency ceiling for this cell — the curve is **NOT still climbing steeply at 8**, so the deferred ">8 threads / NUMA scaling" idea (05-CONTEXT deferred) is **not indicated** for this cell size; a larger-N cell would be the place to re-test that flag if pursued. The T=4 cell is flagged LOW CONFIDENCE (11.4% run-spread, exceeds the Phase-1 ±10% band), driven by a single noisy run3 measurement (446 ms vs ~400 ms in runs 1–2) — consistent with the governor-not-pinned caveat; a governor-pinned re-run should tighten it.
+
+**Pipeline proven:** env-driven thread sweep → taskset-pinned 3-run measurement → captured `p5_*` artifacts → report row. Plan 02 adds the light `StreamingFraimanMuniz::depth_batch` sentinel and the payback-threshold-N downward sweep to complete SC1.

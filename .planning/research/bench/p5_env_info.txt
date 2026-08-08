@@ -1,0 +1,17 @@
+=== ENVIRONMENT ===
+rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo 1.97.0 (c980f4866 2026-06-30)
+=== DATE ===
+za  8 aug 2026 17:23:19 UTC
+=== TMPDIR ===
+TMPDIR=/home/simonm/.cache/fdars-bench-tmp
+=== D-04 CONTROLS ===
+taskset core set: -c 0-7 (8 logical CPUs pinned; machine has 20 CPUs total)
+CPU model: 13th Gen Intel(R) Core(TM) i9-13900H
+governor requested: performance (D-04)
+governor actually applied: powersave
+governor pinning status: FAILED — 'cpupower frequency-set -g performance' requires root; non-interactive sudo denied (interactive password required). Governor left at 'powersave'.
+=> Thread-scaling numbers are LOW CONFIDENCE w.r.t. frequency-governor stability (D-04 governor control NOT applied). taskset core-pinning IS applied. 3-run median+spread protocol applied as the backstop stability control.
+runs per thread grid: 3 (median + spread reported)
+thread grid: RAYON_NUM_THREADS in {1,2,4,8}
+build: --release -p fdars-core --features linalg --bench audit_hotpaths (linalg,parallel)
