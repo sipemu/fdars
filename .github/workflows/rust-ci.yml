@@ -47,8 +47,12 @@ jobs:
             fdars-core/target/
           key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run tests (all features)
-        run: cargo test --all-features
+      - name: Run tests (all features except dhat-heap)
+        # Explicit list excludes dhat-heap: that feature activates a #[global_allocator]
+        # in tests/alloc_audit_fpca.rs which panics ("A profiler already exists") when
+        # multiple dhat tests run in parallel. The js feature is WASM-only (tested in
+        # the dedicated wasm job). Run dhat tests manually: cargo test --features dhat-heap
+        run: cargo test --features linalg,parallel,serde
 
       - name: Run tests (sequential mode)
         run: cargo test --no-default-features --features linalg
@@ -68,7 +72,9 @@ jobs:
           components: clippy
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings -A clippy::too_many_arguments -A clippy::useless_vec -A clippy::type_complexity -A clippy::manual_memcpy -A clippy::wildcard_in_or_patterns
+        # Explicit feature list excludes dhat-heap (parallel-profiler panic risk) and
+        # js (WASM-only; covered by the wasm job).
+        run: cargo clippy --all-targets --features linalg,parallel,serde -- -D warnings -A clippy::too_many_arguments -A clippy::useless_vec -A clippy::type_complexity -A clippy::manual_memcpy -A clippy::wildcard_in_or_patterns
 
   fmt:
     name: Format
@@ -100,7 +106,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build docs
-        run: cargo doc --no-deps --all-features
+        # Explicit feature list excludes dhat-heap and js (WASM-only).
+        run: cargo doc --no-deps --features linalg,parallel,serde
         env:
           RUSTDOCFLAGS: -Dwarnings
 
@@ -142,7 +149,9 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage
-        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+        # Explicit feature list excludes dhat-heap (parallel-profiler panic risk) and
+        # js (WASM-only). Run dhat profiling separately: cargo test --features dhat-heap
+        run: cargo llvm-cov --features linalg,parallel,serde --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
