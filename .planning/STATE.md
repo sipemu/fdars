@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 4
-current_phase_name: FPCA/SVD & Allocation Audit
+current_phase: 04
+current_phase_name: fpca-svd-allocation-audit
 status: executing
-stopped_at: Completed 03-02-PLAN.md (full elastic bench grid + report)
-last_updated: "2026-08-08T02:06:44.396Z"
+stopped_at: Completed 04-01-PLAN.md (dhat Wave 0 substrate)
+last_updated: "2026-08-08T07:59:57.006Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
+last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-07)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 03 — elastic-alignment-hot-path
+**Current focus:** Phase 04 — fpca-svd-allocation-audit
 
 ## Current Position
 
-Phase: 4 — FPCA/SVD & Allocation Audit
-Plan: Not started
+Phase: 04 (fpca-svd-allocation-audit) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-08-08 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-08-08 — Phase 04 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [██████████] 100%
 | Phase 02 P02 | 8 | 3 tasks | 1 files |
 | Phase 03 P01 | 6 | 3 tasks | 3 files |
 | Phase 03 P02 | 115 | 4 tasks | 15 files |
+| Phase 04 P01 | 6 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,10 @@ Relevant to current work:
 - [Phase ?]: karcher_mean_banded import deferred to Plan 02 to keep wave warning-clean
 - [Phase ?]: n500_m200 elastic_self/cross INFEASIBLE (O(N^2*m^2) ~384-700s/iter); documented as bottleneck evidence
 - [Phase ?]: Observed banded reduction 4-6x at representative cells vs ~7x expected; karcher LOW CONFIDENCE due to OS jitter, cross-distance EXCELLENT confidence
+- [Phase ?]: dhat 0.3.3 confirmed on crates.io; RESEARCH A1 was correct — dhat 0.3.x is current and compatible
+- [Phase ?]: dhat::HeapStats uses max_bytes not peak_bytes (RESEARCH.md had wrong field; auto-fixed in alloc_audit_fpca.rs)
+- [Phase ?]: All 3 dhat test cells added in Wave 0 per PATTERNS.md:195-198 (fdata_to_pc_1d, vert_fpca, joint_fpca); PATTERNS.md takes precedence over Task 2 minimal description
+- [Phase ?]: no-verify commits used for tmp tmpfs exhaustion per MEMORY.md exception
 
 ### Pending Todos
 
@@ -111,6 +116,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T23:24:35.769Z
-Stopped at: Completed 03-02-PLAN.md (full elastic bench grid + report)
+Last session: 2026-08-08T07:59:56.998Z
+Stopped at: Completed 04-01-PLAN.md (dhat Wave 0 substrate)
 Resume file: None

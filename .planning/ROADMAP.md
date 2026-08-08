@@ -103,11 +103,11 @@
   3. The report states allocation cost as a share of wall-clock for the top FPCA path, so the SVD-compute vs copy split is explicit (addresses Pitfall 5) and directly informs the Phase 6 go/no-go trigger
   4. This slice's backlog entries (SVD-copy elimination, truncated-SVD candidates) are drafted with function/current-cost/root-cause fields
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 **Wave 0**
 
-- [ ] 04-01-PLAN.md — dhat wiring: add feature-gated dhat dev-dep + dhat-heap feature to Cargo.toml and create the alloc_audit_fpca.rs integration-test harness (PERF-04 gap)
+- [x] 04-01-PLAN.md — dhat wiring: add feature-gated dhat dev-dep + dhat-heap feature to Cargo.toml and create the alloc_audit_fpca.rs integration-test harness (PERF-04 gap)
 
 **Wave 1** *(depends on 04-01)*
 
@@ -199,7 +199,7 @@
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
-| 4. FPCA/SVD & Allocation Audit | 0/0 | Not started | - |
+| 4. FPCA/SVD & Allocation Audit | 1/3 | In Progress|  |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
