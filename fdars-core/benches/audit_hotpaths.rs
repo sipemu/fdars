@@ -36,6 +36,10 @@ use std::f64::consts::PI;
 ///
 /// Uses deterministic phase/amplitude variation so no RNG dependency is needed.
 /// Column-major layout: element (i, j) at index `i + j * n`.
+///
+/// NOTE: kept in sync with `tests/alloc_audit_fpca.rs:generate_test_curves`. Any
+/// change to the amplitude/phase formula must be mirrored there to keep allocation
+/// baselines and criterion numbers commensurable.
 fn generate_curves(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
     let mut data = vec![0.0; n * m];
@@ -749,7 +753,7 @@ fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
 ///   - N=500, M=50:   ~2-4 ms/iter → sample_size(20), measurement_time(20s)
 ///   - N=500, M=200:  ~16 ms/iter  → sample_size(20), measurement_time(20s)
 ///   - N=1000, M=50:  ~8-16ms/iter → sample_size(20), measurement_time(20s)
-///   - N=1000, M=200: ~64-256ms    → sample_size(10)  (tier: reduced samples)
+///   - N=1000, M=200: ~38 ms/iter  → sample_size(10)  (measured; tier: reduced samples)
 ///
 /// All 6 cells share group "audit_p4_fpca". Run twice for variance (run1+run2)
 /// plus once with linalg-only (no parallel) to confirm parallel-invariance (D-04).
@@ -819,7 +823,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
         })
     });
 
-    // --- n1000_m200: ~64-256 ms/iter — reduced samples per timing-tier map ---
+    // --- n1000_m200: ~38 ms/iter — reduced samples per timing-tier map ---
     group.sample_size(10);
     let (data1000_200, argvals1000_200) = generate_curves(1000, 200);
     group.bench_function("n1000_m200", |b| {
