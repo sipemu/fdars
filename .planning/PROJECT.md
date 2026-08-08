@@ -26,6 +26,7 @@ Produce an evidence-backed picture of where fdars is slow and what it is missing
 - ✓ Core infrastructure: column-major `FdMatrix`, `Result`-based error handling, feature-gated rayon parallelism, ~1,650 tests, 8 criterion benchmarks, 28 examples, WASM/JS + R bindings — existing
 - ✓ **Static hot-path analysis** — zero-cost per-module bottleneck-candidate map (complexity in N/M, allocation hotspots incl. 8 `to_dmatrix()` SVD copies + 14 `from_column_slice` basis sites, parallelism gaps, feature-gate annotations) in `.planning/research/AUDIT-REPORT.md` — Validated in Phase 2 (PERF-01)
 - ✓ **FPCA/SVD & allocation audit** — criterion 6-cell N×M grid + elastic-FPCA cells and a dhat allocation baseline (feature-gated `dhat-heap`) quantify the `FdMatrix→DMatrix` SVD-copy as ~0.14–0.17% of wall-clock: SVD compute dominates (~99.8%). Report carries the SVD-vs-copy split, a **Phase-6 GO** verdict (faer-vs-nalgebra comparison warranted), and a GSD-ready backlog in `.planning/research/AUDIT-REPORT.md` — Validated in Phase 4 (PERF-03, PERF-04)
+- ✓ **Parallelism gap assessment** — criterion rayon thread-scaling (heavy `karcher_mean` + light `StreamingFraimanMuniz::depth_batch` sentinels, RAYON_NUM_THREADS ∈ {1,2,4,8}) plus payback-threshold N per target (karcher N≤10, streaming N≈50), a 5-candidate safe-to-parallelize list with source anchors, the default unaccelerated-path cost (rayon-off ~10×), and a GSD-ready backlog (P5-1..P5-4) in `.planning/research/AUDIT-REPORT.md` §Phase 5. Governor unpinned → multi-thread cells flagged LOW-CONFIDENCE. Zero `fdars-core/src/` edits (audit-only). — Validated in Phase 5 (PERF-05)
 
 ### Active
 
@@ -87,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-08 — Phase 4 (FPCA/SVD & Allocation Audit) complete: criterion N×M FPCA grid + elastic-FPCA cells and a dhat allocation baseline prove the SVD copy is negligible (~0.14–0.17% of wall-clock) and SVD compute dominates (~99.8%); report carries the SVD-vs-copy split, a Phase-6 GO verdict, and a GSD-ready backlog (PERF-03, PERF-04). Prior: Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
+*Last updated: 2026-08-08 — Phase 5 (Parallelism Gap Assessment) complete: rayon thread-scaling measured on heavy + light sentinels with payback-threshold N per target (karcher N≤10, streaming N≈50), a 5-candidate safe-to-parallelize list, the unaccelerated-path cost (~10× rayon-off), and a GSD-ready backlog (PERF-05) in AUDIT-REPORT.md §Phase 5; zero src edits. Prior: Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
