@@ -700,3 +700,33 @@ The thread-scaling table above answers "does adding threads help at a fixed cell
 | `regression.rs:167` (`center_columns` inside `fdata_to_pc_1d` — outer `for j in 0..m`, inner `for i in 0..n` at `:176`) | Column-major layout: each column `j` is centered independently (subtract that column's mean from its entries); columns share no mutable state. **Distinct from the already-parallel `fdata.rs:center_1d`** (RESEARCH Pitfall 1) — this is the sequential `center_columns` on the FPCA path. No shared mutable state across columns. | **No RNG in loop body.** Deterministic mean-subtraction; no randomness. | `iter_maybe_parallel!(0..m)` (outer-M columns) — could alternatively wrap the inner-N loop, but outer-M is the natural column-independent split | **~4–5× projected** *ceiling only, and unlikely to be reached.* Centering is O(N·M) with a trivial per-element body — a **very light** per-iteration cost that sits well below the streaming payback threshold; per SC1 this likely pays back only at large M (and would need a size guard, per the SC1 practical rule). Lowest-priority candidate. Projection, not measured. |
 
 **Summary.** All five Phase-2 SEQUENTIAL candidates are safe to parallelize under a static independence argument, and none carries an RNG-in-loop hazard (the only RNG, cv.rs's fold assignment, runs once outside its loop). The heavy-body candidates (`cv.rs:76` fold loop) pay back at any realistic iteration count (karcher regime, N≤10); the light-body candidates (`elastic_fpca.rs:764`, `regression.rs:167`) are streaming-regime and should be guarded behind a size threshold or accept a small-N regression. **No `fdars-core/src/` file was edited to produce this analysis** — it is static argument + projection only (D-06).
+
+### SC3: Cost of the Default Unaccelerated Path
+
+**Evidence standard (D-08): report BOTH opt-in dimensions by CITATION of existing artifacts — NO new benchmark was run.** fdars ships two independent "unaccelerated by default unless the user opts in" surfaces: (a) the **rayon-off build** (`--no-default-features`, parallel feature compiled out entirely), and (b) the **banding opt-in** (elastic alignment defaults `band_frac=0.0`). SC3 records the cost each imposes by citing the Phase-1 and Phase-3 measurements already in this report — it does **not** re-measure. Both are framed as *the cost every user of the default API path pays*.
+
+#### (a) rayon-off cost — `--no-default-features` (~10×)
+
+Cited from the Phase-1 karcher 4-combo baseline (§Phase 1 Baseline Cells, "Karcher mean 4-combo baseline"):
+
+| Feature combo | Time | Note |
+|---------------|------|------|
+| `""` (no `parallel`, rayon compiled out) | ~1555 ms | The `--no-default-features` default-off cost |
+| `parallel` (rayon active) | ~162 ms | ~**10×** faster with rayon on |
+
+→ **A user who builds fdars with `--no-default-features` pays a ~10× penalty** on the karcher hot path (1555 ms vs 162 ms), because the `iter_maybe_parallel!` macros fall back to sequential iterators when the `parallel` feature is absent. Artifacts: [karcher/none](bench/p1_karcher_none_run1.txt) · [karcher/parallel](bench/p1_karcher_parallel_run1.txt).
+
+**Distinct from the SC1 payback baseline.** This `--no-default-features` cost (rayon *compiled out entirely* — different codegen, no rayon dependency) is **not** the same as the SC1 §Payback-Threshold N baseline, which holds the `parallel` feature **on** and only sets `RAYON_NUM_THREADS=1` (single-thread rayon, identical codegen). SC1 answers "how many threads help?"; SC3(a) answers "what does turning rayon off entirely cost?". The two happen to land near the same order of magnitude at N=100 (SC1 1-thread karcher ≈ 1554 ms ≈ the rayon-off 1555 ms) because a single-thread rayon pool and a rayon-free build do essentially the same serial work here — but they are conceptually different questions and different builds.
+
+#### (b) banding opt-in cost — `band_frac=0.0` default (~7× nominal, measured ~4–6×)
+
+Cited from the Phase-3 §"Banded-vs-Unbanded Analysis" and §"D-05 Source Fact". `karcher_mean()` hard-codes `band_frac=0.0` in its call to `karcher_mean_impl` (`fdars-core/src/alignment/karcher.rs:300`) → `band_radius(0.0, m) = None` → full O(m²) unbanded DP per alignment pair (this is **Anti-Pattern 2** from the Phase-2 §Parallelism Gap List). The faster banded path is **opt-in only** — users must explicitly call `karcher_mean_banded()`.
+
+- **Nominal expectation:** ~7× (theoretical m/band = 200/20 = 10× at `band_frac=0.1`, M=200, minus per-iteration overhead).
+- **Measured (cited):** karcher `karcher_mean` vs `karcher_mean_banded` at N=500,M=200 ≈ **4× (run2) / ~5.9× (run1)**; at representative cells across the banded analysis the reduction lands **~4–6×** (§Banded-vs-Unbanded Analysis, karcher table). Artifacts: [p3_karcher](bench/p3_karcher_linalg,parallel_run1.txt).
+
+→ **Every user who calls `karcher_mean()` pays the full unbanded O(m²) cost** — a ~4–6× penalty vs the available-but-opt-in banded path — without any way to enable banding through the default API.
+
+**LOW-CONFIDENCE caveat (D-08).** The raw Phase-3 karcher cells showed **34–204% two-run variance** (OS scheduler jitter under intermittent load; see §Phase-3 "LOW CONFIDENCE explanation"), so the karcher ~7× / ~4–6× figure is **directional, not precise**. It is corroborated by the **stable elastic_cross cells** (0–4% two-run variance) in the same §Banded-vs-Unbanded Analysis, which show a consistent **4.5–5.7× banding reduction** — confirming the banding win is real and in the ~4.5–5.7× range even though the karcher-specific multiplier is noisy. Phase 9 should re-run karcher under a pinned governor for a stable banding number.
+
+**Both are default-path costs.** Neither the rayon-off ~10× nor the banding ~4–6× is a pathological edge case: they are the costs borne by the *default* build/API surface. The rayon-off cost is opt-out (a build-time choice a user might make for a minimal dependency footprint); the banding cost is opt-in-to-avoid (the fast path exists but is never the default). Both feed the SC4 backlog as candidate default-changing work.
