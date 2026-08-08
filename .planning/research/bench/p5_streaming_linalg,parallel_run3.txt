@@ -1,0 +1,116 @@
+=== RAYON_NUM_THREADS=1 ===
+warning: function `bench_p5_karcher_paybackN` should have a snake case name
+   --> fdars-core/benches/audit_hotpaths.rs:978:4
+    |
+978 | fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_karcher_payback_n`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: function `bench_p5_streaming_paybackN` should have a snake case name
+    --> fdars-core/benches/audit_hotpaths.rs:1010:4
+     |
+1010 | fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_streaming_payback_n`
+
+warning: `fdars-core` (bench "audit_hotpaths") generated 2 warnings
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_streaming_threads/n500_m200
+Benchmarking audit_p5_streaming_threads/n500_m200: Warming up for 3.0000 s
+Benchmarking audit_p5_streaming_threads/n500_m200: Collecting 30 samples in estimated 16.107 s (6510 iterations)
+Benchmarking audit_p5_streaming_threads/n500_m200: Analyzing
+audit_p5_streaming_threads/n500_m200
+                        time:   [2.3962 ms 2.4971 ms 2.5948 ms]
+                        change: [+351.87% +363.28% +375.18%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+
+=== RAYON_NUM_THREADS=2 ===
+warning: function `bench_p5_karcher_paybackN` should have a snake case name
+   --> fdars-core/benches/audit_hotpaths.rs:978:4
+    |
+978 | fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_karcher_payback_n`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: function `bench_p5_streaming_paybackN` should have a snake case name
+    --> fdars-core/benches/audit_hotpaths.rs:1010:4
+     |
+1010 | fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_streaming_payback_n`
+
+warning: `fdars-core` (bench "audit_hotpaths") generated 2 warnings
+    Finished `bench` profile [optimized] target(s) in 0.09s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_streaming_threads/n500_m200
+Benchmarking audit_p5_streaming_threads/n500_m200: Warming up for 3.0000 s
+Benchmarking audit_p5_streaming_threads/n500_m200: Collecting 30 samples in estimated 15.484 s (7905 iterations)
+Benchmarking audit_p5_streaming_threads/n500_m200: Analyzing
+audit_p5_streaming_threads/n500_m200
+                        time:   [1.7230 ms 1.9085 ms 2.0802 ms]
+                        change: [-32.792% -28.283% -23.255%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+=== RAYON_NUM_THREADS=4 ===
+warning: function `bench_p5_karcher_paybackN` should have a snake case name
+   --> fdars-core/benches/audit_hotpaths.rs:978:4
+    |
+978 | fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_karcher_payback_n`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: function `bench_p5_streaming_paybackN` should have a snake case name
+    --> fdars-core/benches/audit_hotpaths.rs:1010:4
+     |
+1010 | fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_streaming_payback_n`
+
+warning: `fdars-core` (bench "audit_hotpaths") generated 2 warnings
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_streaming_threads/n500_m200
+Benchmarking audit_p5_streaming_threads/n500_m200: Warming up for 3.0000 s
+Benchmarking audit_p5_streaming_threads/n500_m200: Collecting 30 samples in estimated 15.185 s (11k iterations)
+Benchmarking audit_p5_streaming_threads/n500_m200: Analyzing
+audit_p5_streaming_threads/n500_m200
+                        time:   [754.28 µs 831.76 µs 945.90 µs]
+                        change: [-48.468% -41.065% -31.718%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+=== RAYON_NUM_THREADS=8 ===
+warning: function `bench_p5_karcher_paybackN` should have a snake case name
+   --> fdars-core/benches/audit_hotpaths.rs:978:4
+    |
+978 | fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_karcher_payback_n`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: function `bench_p5_streaming_paybackN` should have a snake case name
+    --> fdars-core/benches/audit_hotpaths.rs:1010:4
+     |
+1010 | fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_streaming_payback_n`
+
+warning: `fdars-core` (bench "audit_hotpaths") generated 2 warnings
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_streaming_threads/n500_m200
+Benchmarking audit_p5_streaming_threads/n500_m200: Warming up for 3.0000 s
+Benchmarking audit_p5_streaming_threads/n500_m200: Collecting 30 samples in estimated 15.004 s (27k iterations)
+Benchmarking audit_p5_streaming_threads/n500_m200: Analyzing
+audit_p5_streaming_threads/n500_m200
+                        time:   [636.61 µs 655.05 µs 679.68 µs]
+                        change: [-48.348% -40.993% -32.079%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+

@@ -1,0 +1,113 @@
+=== RAYON_NUM_THREADS=1 ===
+warning: function `bench_p5_karcher_paybackN` should have a snake case name
+   --> fdars-core/benches/audit_hotpaths.rs:978:4
+    |
+978 | fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_karcher_payback_n`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: function `bench_p5_streaming_paybackN` should have a snake case name
+    --> fdars-core/benches/audit_hotpaths.rs:1010:4
+     |
+1010 | fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_streaming_payback_n`
+
+warning: `fdars-core` (bench "audit_hotpaths") generated 2 warnings
+    Finished `bench` profile [optimized] target(s) in 0.10s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_karcher_paybackN/n10_m50
+Benchmarking audit_p5_karcher_paybackN/n10_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_paybackN/n10_m50: Collecting 10 samples in estimated 23.366 s (110 iterations)
+Benchmarking audit_p5_karcher_paybackN/n10_m50: Analyzing
+audit_p5_karcher_paybackN/n10_m50
+                        time:   [209.05 ms 243.50 ms 266.92 ms]
+Benchmarking audit_p5_karcher_paybackN/n25_m50
+Benchmarking audit_p5_karcher_paybackN/n25_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 15.0s. You may wish to increase target time to 22.9s or enable flat sampling.
+Benchmarking audit_p5_karcher_paybackN/n25_m50: Collecting 10 samples in estimated 22.944 s (55 iterations)
+Benchmarking audit_p5_karcher_paybackN/n25_m50: Analyzing
+audit_p5_karcher_paybackN/n25_m50
+                        time:   [391.78 ms 426.85 ms 466.13 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+Benchmarking audit_p5_karcher_paybackN/n50_m50
+Benchmarking audit_p5_karcher_paybackN/n50_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_paybackN/n50_m50: Collecting 10 samples in estimated 25.451 s (20 iterations)
+Benchmarking audit_p5_karcher_paybackN/n50_m50: Analyzing
+audit_p5_karcher_paybackN/n50_m50
+                        time:   [1.1422 s 1.2642 s 1.3755 s]
+Benchmarking audit_p5_karcher_paybackN/n100_m50
+Benchmarking audit_p5_karcher_paybackN/n100_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 15.0s. You may wish to increase target time to 15.7s.
+Benchmarking audit_p5_karcher_paybackN/n100_m50: Collecting 10 samples in estimated 15.675 s (10 iterations)
+Benchmarking audit_p5_karcher_paybackN/n100_m50: Analyzing
+audit_p5_karcher_paybackN/n100_m50
+                        time:   [1.5522 s 1.5561 s 1.5604 s]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high mild
+
+=== RAYON default (all cores) ===
+warning: function `bench_p5_karcher_paybackN` should have a snake case name
+   --> fdars-core/benches/audit_hotpaths.rs:978:4
+    |
+978 | fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_karcher_payback_n`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: function `bench_p5_streaming_paybackN` should have a snake case name
+    --> fdars-core/benches/audit_hotpaths.rs:1010:4
+     |
+1010 | fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `bench_p5_streaming_payback_n`
+
+warning: `fdars-core` (bench "audit_hotpaths") generated 2 warnings
+    Finished `bench` profile [optimized] target(s) in 0.06s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p5_karcher_paybackN/n10_m50
+Benchmarking audit_p5_karcher_paybackN/n10_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_paybackN/n10_m50: Collecting 10 samples in estimated 17.098 s (330 iterations)
+Benchmarking audit_p5_karcher_paybackN/n10_m50: Analyzing
+audit_p5_karcher_paybackN/n10_m50
+                        time:   [52.519 ms 56.926 ms 65.639 ms]
+                        change: [-77.681% -74.448% -70.287%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+Benchmarking audit_p5_karcher_paybackN/n25_m50
+Benchmarking audit_p5_karcher_paybackN/n25_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_paybackN/n25_m50: Collecting 10 samples in estimated 19.588 s (165 iterations)
+Benchmarking audit_p5_karcher_paybackN/n25_m50: Analyzing
+audit_p5_karcher_paybackN/n25_m50
+                        time:   [117.26 ms 123.62 ms 132.41 ms]
+                        change: [-71.516% -69.269% -67.039%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking audit_p5_karcher_paybackN/n50_m50
+Benchmarking audit_p5_karcher_paybackN/n50_m50: Warming up for 5.0000 s
+Benchmarking audit_p5_karcher_paybackN/n50_m50: Collecting 10 samples in estimated 24.987 s (110 iterations)
+Benchmarking audit_p5_karcher_paybackN/n50_m50: Analyzing
+audit_p5_karcher_paybackN/n50_m50
+                        time:   [193.23 ms 193.93 ms 194.83 ms]
+                        change: [-85.773% -84.488% -82.780%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+Benchmarking audit_p5_karcher_paybackN/n100_m50
+Benchmarking audit_p5_karcher_paybackN/n100_m50: Warming up for 5.0000 s
+
+Warning: Unable to complete 10 samples in 15.0s. You may wish to increase target time to 19.6s or enable flat sampling.
+Benchmarking audit_p5_karcher_paybackN/n100_m50: Collecting 10 samples in estimated 19.584 s (55 iterations)
+Benchmarking audit_p5_karcher_paybackN/n100_m50: Analyzing
+audit_p5_karcher_paybackN/n100_m50
+                        time:   [342.94 ms 344.67 ms 346.35 ms]
+                        change: [-78.083% -77.908% -77.721%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
