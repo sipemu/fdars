@@ -922,7 +922,7 @@ fn bench_p5_karcher_threads(c: &mut Criterion) {
                 black_box(&argvals50),
                 black_box(10usize), // max_iter (matches bench_p4 karcher setup)
                 black_box(1e-3),    // tol
-                black_box(0.0),     // band_frac = 0.0 (unbanded full DP)
+                black_box(0.0),     // lambda = 0.0 (band_frac is hardcoded 0.0 inside karcher_mean)
             ))
         })
     });
@@ -975,7 +975,7 @@ fn bench_p5_streaming_threads(c: &mut Criterion) {
 ///
 /// The grid straddles the CONCERNS.md "rayon overhead for n < ~100" note: a heavy target is
 /// expected to pay back at small N.
-fn bench_p5_karcher_paybackN(c: &mut Criterion) {
+fn bench_p5_karcher_payback_n(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p5_karcher_paybackN");
     group.sample_size(10);
     group.measurement_time(std::time::Duration::from_secs(15));
@@ -990,7 +990,7 @@ fn bench_p5_karcher_paybackN(c: &mut Criterion) {
                     black_box(&argvals),
                     black_box(10usize), // max_iter (matches p5 karcher threads cell)
                     black_box(1e-3),    // tol
-                    black_box(0.0),     // band_frac = 0.0 (unbanded full DP)
+                    black_box(0.0),     // lambda = 0.0 (band_frac is hardcoded 0.0 inside karcher_mean)
                 ))
             })
         });
@@ -1007,7 +1007,7 @@ fn bench_p5_karcher_paybackN(c: &mut Criterion) {
 /// A light target's overhead-dominated regime is expected to pay back only at larger N_obj;
 /// the grid extends well past the CONCERNS.md n≈100 note to straddle (or expose the absence
 /// of) that crossover. `--no-default-features` rayon-off cost is reported under SC3 (Plan 03).
-fn bench_p5_streaming_paybackN(c: &mut Criterion) {
+fn bench_p5_streaming_payback_n(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_p5_streaming_paybackN");
     group.sample_size(30);
     group.measurement_time(std::time::Duration::from_secs(10));
@@ -1046,7 +1046,7 @@ criterion_group!(
     bench_p4_elastic_fpca,
     bench_p5_karcher_threads,
     bench_p5_streaming_threads,
-    bench_p5_karcher_paybackN,
-    bench_p5_streaming_paybackN
+    bench_p5_karcher_payback_n,
+    bench_p5_streaming_payback_n
 );
 criterion_main!(benches);
