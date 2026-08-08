@@ -130,7 +130,19 @@
   3. The assessment records where banding/parallelism is opt-in rather than automatic and the measured cost of the default (unaccelerated) path
   4. This slice's backlog entries (parallelization opportunities) are drafted with function/current-cost/root-cause fields
 
-**Plans**: TBD
+**Plans:** 3 plans
+
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Tracer: prove measure→capture→report end-to-end on one karcher_mean thread sweep {1,2,4,8} under the D-04 pinned protocol; seed the `## Phase 5` report section + methodology note
+
+**Wave 2** *(depends on 05-01 — same append targets: audit_hotpaths.rs + AUDIT-REPORT.md)*
+
+- [ ] 05-02-PLAN.md — Expansion (SC1): second sentinel (streaming depth_batch) thread sweep + payback-N downward sweep vs RAYON_NUM_THREADS=1; complete thread-scaling table + payback-threshold-N
+
+**Wave 3** *(depends on 05-02 — same append target: AUDIT-REPORT.md)*
+
+- [ ] 05-03-PLAN.md — Analysis (SC2/SC3/SC4): safe-to-parallelize list (5 D-07 candidates, static + projected), unaccelerated-cost record (rayon-off ~10× / banding ~7×, cited), GSD-ready parallelization backlog
 
 ### Phase 6: Conditional SVD Library Comparison
 
@@ -200,7 +212,7 @@
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
-| 5. Parallelism Gap Assessment | 0/0 | Not started | - |
+| 5. Parallelism Gap Assessment | 0/3 | Planned | - |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |
