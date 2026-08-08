@@ -25,6 +25,7 @@ Produce an evidence-backed picture of where fdars is slow and what it is missing
 - ✓ Clustering (GMM) and irregular functional data support — existing
 - ✓ Core infrastructure: column-major `FdMatrix`, `Result`-based error handling, feature-gated rayon parallelism, ~1,650 tests, 8 criterion benchmarks, 28 examples, WASM/JS + R bindings — existing
 - ✓ **Static hot-path analysis** — zero-cost per-module bottleneck-candidate map (complexity in N/M, allocation hotspots incl. 8 `to_dmatrix()` SVD copies + 14 `from_column_slice` basis sites, parallelism gaps, feature-gate annotations) in `.planning/research/AUDIT-REPORT.md` — Validated in Phase 2 (PERF-01)
+- ✓ **FPCA/SVD & allocation audit** — criterion 6-cell N×M grid + elastic-FPCA cells and a dhat allocation baseline (feature-gated `dhat-heap`) quantify the `FdMatrix→DMatrix` SVD-copy as ~0.14–0.17% of wall-clock: SVD compute dominates (~99.8%). Report carries the SVD-vs-copy split, a **Phase-6 GO** verdict (faer-vs-nalgebra comparison warranted), and a GSD-ready backlog in `.planning/research/AUDIT-REPORT.md` — Validated in Phase 4 (PERF-03, PERF-04)
 
 ### Active
 
@@ -86,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-07 — Phase 2 (Static Hot-Path Analysis) complete: source-anchored zero-cost hot-path map across all 6 modules — complexity table, allocation-hotspot list (8 SVD copies + 14 basis sites), and parallelism-gap inventory in `.planning/research/AUDIT-REPORT.md`, all anchors verified against source (PERF-01). Prior: Phase 1 established benchmark apparatus + baselines (PERF-02).*
+*Last updated: 2026-08-08 — Phase 4 (FPCA/SVD & Allocation Audit) complete: criterion N×M FPCA grid + elastic-FPCA cells and a dhat allocation baseline prove the SVD copy is negligible (~0.14–0.17% of wall-clock) and SVD compute dominates (~99.8%); report carries the SVD-vs-copy split, a Phase-6 GO verdict, and a GSD-ready backlog (PERF-03, PERF-04). Prior: Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
