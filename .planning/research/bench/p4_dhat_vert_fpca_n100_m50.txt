@@ -1,0 +1,21 @@
+=== ENVIRONMENT ===
+rustc rustc 1.97.0 (2d8144b78 2026-07-07)
+cargo cargo 1.97.0 (c980f4866 2026-06-30)
+Features: dhat-heap,linalg
+===================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running tests/alloc_audit_fpca.rs (target/debug/deps/alloc_audit_fpca-ed0d7b63b3f8c8e0)
+
+running 1 test
+Total heap blocks: 45
+Total heap bytes: 285816
+Peak heap bytes: 145256
+test count_vert_fpca_allocations_n100_m50 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.72s
+
+
+=== dhat field summary (grep-anchor) ===
+total_blocks: 45
+total_bytes: 285816
+peak_bytes (max_bytes): 145256
