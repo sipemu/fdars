@@ -157,9 +157,9 @@
   3. If performed, a faer adoption note assesses maintenance-burden / stability risk so the backlog item reflects integration ROI, not just raw speed
   4. This slice's outcome (a backlog item or an explicit "no action, with evidence" record) is drafted for Phase 9
 
-**Plans**: 1 plan
+**Plans**: 1/1 plans executed
 
-- [ ] 06-01-PLAN.md — Measure nalgebra-vs-faer SVD at real FPCA sizes, prove numerical equivalence, record go/no-go + comparison table + faer adoption note + Phase 9 backlog item
+- [x] 06-01-PLAN.md — Measure nalgebra-vs-faer SVD at real FPCA sizes, prove numerical equivalence, record go/no-go + comparison table + faer adoption note + Phase 9 backlog item
 
 ### Phase 7: scikit-fda Capability Enumeration
 
@@ -215,7 +215,7 @@
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
 | 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
-| 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
+| 6. Conditional SVD Library Comparison | 1/1 | In Progress|  |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |
 | 9. Consolidated Report & Prioritized Backlog | 0/0 | Not started | - |

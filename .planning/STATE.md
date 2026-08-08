@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 6
-current_phase_name: Conditional SVD Library Comparison
-status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-08-08T21:09:59.570Z"
+current_phase: 06
+current_phase_name: conditional-svd-library-comparison
+status: verifying
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-08-08T22:01:13.202Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 05 complete, transitioned to Phase 6
+last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-07)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 05 — parallelism-gap-assessment
+**Current focus:** Phase 06 — conditional-svd-library-comparison
 
 ## Current Position
 
-Phase: 6 — Conditional SVD Library Comparison
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-08 — Phase 05 complete, transitioned to Phase 6
+Phase: 06 (conditional-svd-library-comparison) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-08-08 — Phase 06 execution started
 
 Progress: [██████████] 100%
 
@@ -74,6 +74,7 @@ Progress: [██████████] 100%
 | Phase 05 P01 | 22 | 2 tasks | 6 files |
 | Phase 05 P02 | 16 | 3 tasks | 7 files |
 | Phase 05 P03 | 2 | 3 tasks | 1 files |
+| Phase 06 P01 | 180 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Relevant to current work:
 - [Phase ?]: [Phase 5]: cargo bench rejects --release (bench profile already opt-3); release confirmed via /release/deps/ path instead
 - [Phase ?]: SC1 payback-threshold N: karcher_mean ≤ 10 (heavy pays back at any N); StreamingFraimanMuniz::depth_batch ≈ 50 (light loses to single-thread below N_obj≈50) — the two sentinels bracket the crossover (D-01/D-02).
 - [Phase ?]: PERF-05 complete: SC2 safe-to-parallelize list, SC3 unaccelerated-path cost (rayon-off ~10x + banding ~4-6x cited), SC4 GSD-ready parallelization backlog (P5-1..P5-4) added to AUDIT-REPORT.md ## Phase 5 section — static-argument-only, zero fdars-core/src edits (D-06).
+- [Phase ?]: svd_equivalence moved to tests/ integration test (harness=false bench issue); pattern matches alloc_audit_fpca.rs
+- [Phase ?]: faer thin_svd measured 1.8-4.1x faster than nalgebra at fdars' real FPCA sizes; P6-1 backlog at P2/S-effort (borderline 1.8x at primary N=500,M=200)
+- [Phase ?]: significant-values filter (1e-8*sigma_1) required in SVD equivalence test — near-zero values are noise in both backends
 
 ### Pending Todos
 
@@ -133,6 +137,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T19:00:50.050Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-08-08T22:01:13.177Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
