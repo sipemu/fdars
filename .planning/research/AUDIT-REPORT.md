@@ -471,3 +471,81 @@ These are direct evidence of the bottleneck — the elastic distance matrices ar
 | **Root cause** | Anti-Pattern 2 (same root cause as entry 1): banded variants `elastic_self_distance_matrix_banded` and `elastic_cross_distance_matrix_banded` are public but secondary API. The primary documented functions take no `band_frac` parameter and always use the full O(N²·m²) unbanded path. Complexity reference: AUDIT-REPORT §Complexity Table elastic row; AUDIT-REPORT §Parallelism Gap List BANDING OPT-IN row, `karcher.rs:300`. |
 | **Candidate fix** | Add `band_frac: f64 = 0.0` to `elastic_self_distance_matrix` and `elastic_cross_distance_matrix`, or promote the `_banded` variants as the primary API with `band_frac = 0.1` as the default. GSD-ready as a candidate Phase 9 requirement: "Add band_frac parameter to primary elastic distance matrix API with a 0.1 default to make n500+ workloads tractable." |
 | **Observed reduction** | Banded cross at N=100,M=200: 6.2s vs unbanded 27.8s → 4.5× (EXCELLENT confidence). n500_m200 banded cross estimated ~150s/iter (still slow but potentially tractable for batch workflows) vs ~700s/iter unbanded → ~4.7× expected at that cell (extrapolated from trend). |
+
+---
+
+## Phase 4: FPCA/SVD & Allocation Audit — Benchmark Results
+
+### Results Table (criterion — full N×M grid)
+
+| Target | Cell (N×M) | Features | Mean time (run1) | Mean time (run2) | Variance | Confidence | Artifact |
+|--------|------------|----------|-----------------|-----------------|----------|------------|---------|
+| `fdata_to_pc_1d` | 500×200 | linalg,parallel | 16.029 ms | [Plan 03] | [Plan 03] | PENDING (single run) | [p4_fpca_run1](bench/p4_fpca_linalg,parallel_run1.txt) |
+
+[Plan 03: full grid — N∈{100,500,1000}×M∈{50,200} + run2 + variance]
+
+### Allocation Audit (dhat — bytes/allocations per FPCA call)
+
+**Baseline: `fdata_to_pc_1d` at N=500, M=200 (features: dhat-heap,linalg)**
+Artifact: [p4_dhat_fpca_n500_m200.txt](bench/p4_dhat_fpca_n500_m200.txt)
+
+- total_blocks: 23
+- total_bytes: 4,376,024 bytes (~4.2 MB total across all heap allocations in call)
+- peak_bytes (max_bytes): 4,332,792 bytes (~4.1 MB peak live at once)
+
+**Three O(n·m) allocation sites in `fdata_to_pc_1d` (regression.rs):**
+
+| Site | File:Line | Operation | Bytes (N=500,M=200) | Category |
+|------|-----------|-----------|---------------------|----------|
+| `center_columns` result | `regression.rs:167` | `FdMatrix::zeros(n, m)` — fresh allocation for centered data | 500×200×8 = 800,000 bytes | FdMatrix allocation |
+| `centered.clone()` | `regression.rs:291` | Clone of centered FdMatrix before in-place weight scaling | 500×200×8 = 800,000 bytes | FdMatrix allocation — zero-copy candidate |
+| `weighted.to_dmatrix()` | `regression.rs:298` | `DMatrix::from_column_slice(nrows, ncols, &self.data)` — column-major memcpy into nalgebra DMatrix for SVD | 500×200×8 = 800,000 bytes | **THE copy site** |
+
+`to_dmatrix()` definition at `matrix.rs:310–312`:
+```rust
+pub fn to_dmatrix(&self) -> DMatrix<f64> {
+    DMatrix::from_column_slice(self.nrows, self.ncols, &self.data)
+}
+```
+Column-major → column-major memcpy; no transposition cost. This is the one true copy into nalgebra format before SVD.
+
+**Distinction:** The `regression.rs:167` (`center_columns` → `FdMatrix::zeros`) and `regression.rs:291` (`centered.clone()`) are FdMatrix allocations along the computation chain — the `:291` clone is a zero-copy *candidate* (stores verbatim in `FpcaResult.centered`, so it could share a pre-allocated buffer). The `regression.rs:298` `to_dmatrix()` is the **only** column-major memcpy into nalgebra format — the one-way bridge to SVD. These are distinct optimization paths.
+
+**Note:** `elastic_fpca.rs:122` and `elastic_fpca.rs:399` (covariance-SVD elastic sites, native DMatrix construction) are NOT attributed to this copy bucket — they are in a different code path (`vert_fpca`/`joint_fpca`) and involve native DMatrix allocation, not a `to_dmatrix()` memcpy. They are out of scope for this `fdata_to_pc_1d` allocation row.
+
+[Plan 03: vert_fpca and joint_fpca dhat baselines to be added here]
+
+### SVD-Compute vs Copy Split
+
+**N=500, M=200 tracer cell — derived copy-share % (full arithmetic chain)**
+
+The copy site is `regression.rs:298` `weighted.to_dmatrix()` — a `DMatrix::from_column_slice` copying 500×200 f64 values column-major into nalgebra format.
+
+**Inputs from measured artifacts:**
+- Criterion wall-clock (from [p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt)): **16.029 ms** mean
+- dhat total_bytes (from [p4_dhat_fpca_n500_m200.txt](bench/p4_dhat_fpca_n500_m200.txt)): **4,376,024 bytes** total (all allocations); the `to_dmatrix()` copy is specifically 500×200×8 = **800,000 bytes** = 800 KB (cross-check: 500×200×8 = 800,000 ✓)
+- Assumed memory bandwidth: **~30 GB/s** (RESEARCH §5B assumption A4 — modern DDR4 peak read bandwidth; actual bandwidth varies; this is a conservative estimate for a single-threaded sequential memcpy on the test machine)
+
+**Full arithmetic chain:**
+
+```
+to_dmatrix() copy size = 500 × 200 × 8 bytes = 800,000 bytes = 800 KB
+
+Copy time = 800,000 bytes ÷ 30,000,000,000 bytes/s
+           = 0.00002667 s
+           = 26.7 µs
+
+Wall-clock = 16.029 ms = 16,029 µs
+
+Copy-share = 26.7 µs ÷ 16,029 µs × 100%
+           = 0.166%
+           ≈ 0.17%
+```
+
+**Result: the `to_dmatrix()` copy contributes approximately 0.17% of total wall-clock at N=500, M=200 under linalg,parallel.**
+
+Copy appears negligible vs SVD compute at this cell — confirm across grid in Plan 03. The SVD of a 500×200 matrix (O(m³) = O(200³) = 8M ops) dominates; the 800 KB memcpy is fast relative to the factorization cost. Direction: SVD is the dominant cost. Full go/no-go verdict deferred to Plan 03 after the complete 6-cell grid.
+
+[Plan 03: go/no-go verdict]
+
+[Plan 03: backlog]
