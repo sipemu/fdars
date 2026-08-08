@@ -13,7 +13,7 @@
 - [x] **Phase 1: Measurement Discipline & Baselines** - Lock in build-mode/feature-flag guardrails, define the N×M workload matrix, and record baseline benchmark numbers (completed 2026-08-07)
 - [x] **Phase 2: Static Hot-Path Analysis** - Document per-module complexity, allocation hotspots, and parallelism gaps with zero runtime cost (completed 2026-08-07)
 - [x] **Phase 3: Elastic Alignment Hot Path** - Benchmark and characterize the O(N²·M²) elastic alignment / Karcher / distance-matrix hot path (completed 2026-08-08)
-- [ ] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat
+- [x] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat (completed 2026-08-08)
 - [ ] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops
 - [ ] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it
 - [ ] **Phase 7: scikit-fda Capability Enumeration** - Enumerate scikit-fda's public capability surface by area, pinning the compared version
@@ -199,7 +199,7 @@
 | 1. Measurement Discipline & Baselines | 2/2 | Complete    | 2026-08-07 |
 | 2. Static Hot-Path Analysis | 2/2 | Complete    | 2026-08-07 |
 | 3. Elastic Alignment Hot Path | 2/2 | Complete    | 2026-08-08 |
-| 4. FPCA/SVD & Allocation Audit | 3/3 | In Progress|  |
+| 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
 | 5. Parallelism Gap Assessment | 0/0 | Not started | - |
 | 6. Conditional SVD Library Comparison | 0/0 | Not started | - |
 | 7. scikit-fda Capability Enumeration | 0/0 | Not started | - |
