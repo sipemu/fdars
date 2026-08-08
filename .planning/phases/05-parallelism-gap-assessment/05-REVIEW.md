@@ -10,7 +10,7 @@ findings:
   warning: 2
   info: 2
   total: 4
-status: issues_found
+status: resolved
 ---
 
 # Phase 5: Code Review Report
@@ -18,7 +18,17 @@ status: issues_found
 **Reviewed:** 2026-08-08
 **Depth:** standard
 **Files Reviewed:** 1
-**Status:** issues_found
+**Status:** resolved
+
+> **Resolution (2026-08-08):** Both Warnings fixed in commit `f9bd2e02`.
+> WR-01 — renamed `bench_p5_karcher_paybackN`/`bench_p5_streaming_paybackN`
+> to snake_case (`_payback_n`), updating the `criterion_group!` entries;
+> criterion group-name string literals left unchanged so artifact/report
+> naming stays stable. Build is now warning-clean (no `non_snake_case`).
+> WR-02 — corrected the misleading `// band_frac = 0.0` comment on both
+> karcher cells to `// lambda = 0.0 (band_frac is hardcoded 0.0 inside
+> karcher_mean)`; passed value `0.0` unchanged. IN-01/IN-02 were
+> no-change-required and left as-is (out of scope: Critical+Warning only).
 
 ## Summary
 
