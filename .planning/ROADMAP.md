@@ -103,7 +103,19 @@
   3. The report states allocation cost as a share of wall-clock for the top FPCA path, so the SVD-compute vs copy split is explicit (addresses Pitfall 5) and directly informs the Phase 6 go/no-go trigger
   4. This slice's backlog entries (SVD-copy elimination, truncated-SVD candidates) are drafted with function/current-cost/root-cause fields
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 0**
+
+- [ ] 04-01-PLAN.md — dhat wiring: add feature-gated dhat dev-dep + dhat-heap feature to Cargo.toml and create the alloc_audit_fpca.rs integration-test harness (PERF-04 gap)
+
+**Wave 1** *(depends on 04-01)*
+
+- [ ] 04-02-PLAN.md — Tracer: prove the measure→dhat→report→copy-share pipeline end-to-end on one FPCA cell (N=500×M=200) + 04-COVERAGE.md stub
+
+**Wave 2** *(depends on 04-02 — same append targets: audit_hotpaths.rs, alloc_audit_fpca.rs, AUDIT-REPORT.md)*
+
+- [ ] 04-03-PLAN.md — Expansion: full 6-cell N×M grid (2 runs + no-parallel invariance) + vert/joint elastic-FPCA cells + dhat baselines + completed report (hotspot ranking, SVD-vs-copy split, Phase-6 go/no-go verdict, GSD-ready backlog)
 
 ### Phase 5: Parallelism Gap Assessment
 
