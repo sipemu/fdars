@@ -990,7 +990,7 @@ fn bench_p5_karcher_payback_n(c: &mut Criterion) {
                     black_box(&argvals),
                     black_box(10usize), // max_iter (matches p5 karcher threads cell)
                     black_box(1e-3),    // tol
-                    black_box(0.0),     // lambda = 0.0 (band_frac is hardcoded 0.0 inside karcher_mean)
+                    black_box(0.0), // lambda = 0.0 (band_frac is hardcoded 0.0 inside karcher_mean)
                 ))
             })
         });
@@ -1027,6 +1027,161 @@ fn bench_p5_streaming_payback_n(c: &mut Criterion) {
     group.finish();
 }
 
+/// Build the Simpson-weighted, column-centered FdMatrix that `fdata_to_pc_1d` feeds to SVD.
+///
+/// Replicates the transformation at `regression.rs:284-296`:
+///   1. Call `generate_curves(n, m)` to get `(data, argvals)`.
+///   2. Center each column (subtract per-column mean) into a raw Vec in column-major order.
+///   3. Compute `simpsons_weights(&argvals)`, sqrt each weight.
+///   4. Multiply column j of the centered data by `sqrt_weights[j]`.
+///   5. Build the result via `FdMatrix::from_column_major(weighted_vec, n, m).unwrap()`.
+///
+/// Returns the weighted FdMatrix and argvals for use in the Phase-6 SVD comparison bench.
+/// Called OUTSIDE `b.iter()` so allocation cost is excluded from the measured window.
+fn generate_weighted_input(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
+    let (data, argvals) = generate_curves(n, m);
+    // Step 1: center each column (subtract per-column mean)
+    let mut centered = vec![0.0f64; n * m];
+    for j in 0..m {
+        let mut col_sum = 0.0f64;
+        for i in 0..n {
+            col_sum += data.as_slice()[i + j * n];
+        }
+        let col_mean = col_sum / n as f64;
+        for i in 0..n {
+            centered[i + j * n] = data.as_slice()[i + j * n] - col_mean;
+        }
+    }
+    // Step 2: compute Simpson weights and sqrt-scale each column
+    let weights = fdars_core::simpsons_weights(&argvals);
+    let sqrt_weights: Vec<f64> = weights.iter().map(|w| w.sqrt()).collect();
+    for j in 0..m {
+        for i in 0..n {
+            centered[i + j * n] *= sqrt_weights[j];
+        }
+    }
+    let weighted = FdMatrix::from_column_major(centered, n, m).unwrap();
+    (weighted, argvals)
+}
+
+/// Phase-6 SVD library comparison — nalgebra vs faer thin_svd at fdars' real FPCA sizes.
+///
+/// This is a TRACER function measuring the single cell N=500, M=200. Task 2 expands
+/// to the full 7-cell grid. Three sub-groups:
+///
+///   - `audit_p6_svd_nalgebra`:  pre-built DMatrix cloned inside iter + nalgebra SVD (baseline)
+///   - `audit_p6_svd_faer_seq`:  faer thin_svd sequential (Par::Seq set once OUTSIDE iter)
+///   - `audit_p6_svd_conversion`: MatRef::from_column_major_slice cost alone (attribution)
+///
+/// `set_global_parallelism(Par::Seq)` is called ONCE before the faer_seq group, outside
+/// `b.iter()`, so the sequential vs nalgebra comparison is apples-to-apples.
+///
+/// AUDIT-ONLY: no modification to `fdars-core/src/`. The shipped `fdata_to_pc_1d` SVD path
+/// (`regression.rs:298`) is NOT changed — this bench is throwaway comparison infrastructure.
+#[cfg(feature = "linalg")]
+fn bench_p6_svd_comparison(c: &mut Criterion) {
+    use faer::{set_global_parallelism, Par};
+    use nalgebra::linalg::SVD;
+
+    // Full 7-cell grid: (n, m, sample_size)
+    // The (500,500) cell is the crossover probe — uses sample_size(10) + measurement_time(30s)
+    let cells: &[(usize, usize, usize)] = &[
+        (100, 50, 20),
+        (100, 200, 20),
+        (500, 50, 20),
+        (500, 200, 20),
+        (1000, 50, 20),
+        (1000, 200, 10),
+        (500, 500, 10),
+    ];
+
+    // --- sub-group A: nalgebra SVD (baseline) ---
+    {
+        let mut group = c.benchmark_group("audit_p6_svd_nalgebra");
+        group.warm_up_time(std::time::Duration::from_secs(5));
+
+        for &(n, m, s_size) in cells {
+            group.sample_size(s_size);
+            if n == 500 && m == 500 {
+                group.measurement_time(std::time::Duration::from_secs(30));
+            } else {
+                group.measurement_time(std::time::Duration::from_secs(20));
+            }
+            let (weighted, _argvals) = generate_weighted_input(n, m);
+            // Pre-build DMatrix OUTSIDE b.iter() — clone inside to match real fdata_to_pc_1d
+            let dmatrix = weighted.to_dmatrix();
+            group.bench_function(format!("n{n}_m{m}"), |b| {
+                b.iter(|| {
+                    let dm = black_box(dmatrix.clone());
+                    black_box(SVD::new(dm, true, true))
+                })
+            });
+        }
+        group.finish();
+    }
+
+    // --- sub-group B: faer thin_svd SEQUENTIAL (fair comparison with nalgebra) ---
+    // set_global_parallelism called ONCE outside b.iter() — global atomic, persists per group
+    {
+        set_global_parallelism(Par::Seq);
+        let mut group = c.benchmark_group("audit_p6_svd_faer_seq");
+        group.warm_up_time(std::time::Duration::from_secs(5));
+
+        for &(n, m, s_size) in cells {
+            group.sample_size(s_size);
+            if n == 500 && m == 500 {
+                group.measurement_time(std::time::Duration::from_secs(30));
+            } else {
+                group.measurement_time(std::time::Duration::from_secs(20));
+            }
+            let (weighted, _argvals) = generate_weighted_input(n, m);
+            group.bench_function(format!("n{n}_m{m}"), |b| {
+                b.iter(|| {
+                    // Zero-copy view — MatRef borrows weighted's column-major slice
+                    let mat_ref = faer::MatRef::<f64>::from_column_major_slice(
+                        black_box(weighted.as_slice()),
+                        n,
+                        m,
+                    );
+                    black_box(mat_ref.thin_svd())
+                })
+            });
+        }
+        group.finish();
+    }
+
+    // --- sub-group C: FdMatrix->MatRef conversion cost alone (attribution) ---
+    {
+        let mut group = c.benchmark_group("audit_p6_svd_conversion");
+        group.warm_up_time(std::time::Duration::from_secs(5));
+
+        for &(n, m, s_size) in cells {
+            group.sample_size(s_size);
+            if n == 500 && m == 500 {
+                group.measurement_time(std::time::Duration::from_secs(30));
+            } else {
+                group.measurement_time(std::time::Duration::from_secs(20));
+            }
+            let (weighted, _argvals) = generate_weighted_input(n, m);
+            group.bench_function(format!("n{n}_m{m}"), |b| {
+                b.iter(|| {
+                    // Measure MatRef construction only — zero-copy pointer + dims
+                    black_box(faer::MatRef::<f64>::from_column_major_slice(
+                        black_box(weighted.as_slice()),
+                        n,
+                        m,
+                    ))
+                })
+            });
+        }
+        group.finish();
+    }
+}
+
+// When linalg feature is not enabled, provide an empty stub so criterion_group! always resolves.
+#[cfg(not(feature = "linalg"))]
+fn bench_p6_svd_comparison(_c: &mut Criterion) {}
+
 criterion_group!(
     benches,
     bench_fpca_sentinel,
@@ -1047,6 +1202,7 @@ criterion_group!(
     bench_p5_karcher_threads,
     bench_p5_streaming_threads,
     bench_p5_karcher_payback_n,
-    bench_p5_streaming_payback_n
+    bench_p5_streaming_payback_n,
+    bench_p6_svd_comparison
 );
 criterion_main!(benches);
