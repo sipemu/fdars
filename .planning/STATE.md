@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: fpca-svd-allocation-audit
 status: executing
-stopped_at: Completed 04-01-PLAN.md (dhat Wave 0 substrate)
-last_updated: "2026-08-08T07:59:57.006Z"
+stopped_at: Completed 04-02-PLAN.md (FPCA tracer slice)
+last_updated: "2026-08-08T08:07:43.657Z"
 last_activity: 2026-08-08
 last_activity_desc: Phase 04 execution started
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 04 (fpca-svd-allocation-audit) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-08 — Phase 04 execution started
 
-Progress: [████████░░] 78%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Progress: [████████░░] 78%
 | Phase 03 P01 | 6 | 3 tasks | 3 files |
 | Phase 03 P02 | 115 | 4 tasks | 15 files |
 | Phase 04 P01 | 6 | 2 tasks | 2 files |
+| Phase 04 P02 | 5 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Relevant to current work:
 - [Phase ?]: dhat::HeapStats uses max_bytes not peak_bytes (RESEARCH.md had wrong field; auto-fixed in alloc_audit_fpca.rs)
 - [Phase ?]: All 3 dhat test cells added in Wave 0 per PATTERNS.md:195-198 (fdata_to_pc_1d, vert_fpca, joint_fpca); PATTERNS.md takes precedence over Task 2 minimal description
 - [Phase ?]: no-verify commits used for tmp tmpfs exhaustion per MEMORY.md exception
+- [Phase ?]: copy-share for to_dmatrix() at N=500,M=200 is ~0.17% of wall-clock -- copy is negligible; SVD dominates
+- [Phase ?]: dhat baseline: fdata_to_pc_1d N=500,M=200 -- 23 total_blocks, 4,376,024 total_bytes, 4,332,792 peak_bytes
 
 ### Pending Todos
 
@@ -116,6 +119,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T07:59:56.998Z
-Stopped at: Completed 04-01-PLAN.md (dhat Wave 0 substrate)
+Last session: 2026-08-08T08:07:43.649Z
+Stopped at: Completed 04-02-PLAN.md (FPCA tracer slice)
 Resume file: None
