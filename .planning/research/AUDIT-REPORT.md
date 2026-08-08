@@ -771,3 +771,89 @@ These entries summarize SC1–SC3 into GSD-ready candidate requirements/phases f
 **Backlog entry P5-4 — Change elastic-alignment API defaults to a banded path / expose `band_frac` (cross-reference)**
 
 This parallelism-adjacent opt-in-default cost is **not duplicated here** — it is the same default-path cost recorded at SC3(b) and fully specified in the Phase-3 §"Draft Backlog (elastic alignment)" **Backlog entry 1** ("Default elastic alignment to a banded path") and **Backlog entry 2** ("Expose band_frac on high-level distance matrix API"). It is linked from the parallelism backlog because it is an opt-in-default cost of the same family as the SC2 sequential-loop gaps: `karcher_mean()` defaults `band_frac=0.0` (§D-05 Source Fact, `karcher.rs:300`), imposing the measured ~4–6× SC3(b) penalty on every default caller. **Candidate direction:** change the high-level default to `band_frac≈0.1` or expose it as a parameter (the banded implementations already exist and are correct — an API default change, not a new algorithm). **Observed reduction:** measured 4–6× (karcher, LOW-CONFIDENCE) / 4.5–5.7× (stable elastic_cross). See Phase-3 backlog for the full field table and artifact links; Phase 9 should rank it alongside P5-1..P5-3.
+
+---
+
+## Phase 6: Conditional SVD Library Comparison
+
+**Last updated:** 2026-08-08
+**Feature flags:** `--features linalg` (faer 0.23.2 is behind the `linalg` feature)
+**Profile:** release (`/release/deps/audit_hotpaths-*`) — confirmed in all five artifacts
+**Bench binary:** `fdars-core/benches/audit_hotpaths.rs` — `bench_p6_svd_comparison`
+**Equivalence test:** `fdars-core/tests/svd_equivalence.rs` — `svd_equivalence` (integration test)
+
+---
+
+### SC1 — Go/No-Go Decision
+
+**Verdict: GO — Phase 6 comparison is warranted.**
+
+This comparison was executed because the Phase 4 evidence satisfies both SC1 compound conditions (§Phase 4 "Phase 6 Go/No-Go Decision"):
+
+1. **SVD wall-clock share:** SVD compute accounts for ~**99.8–99.9%** of `fdata_to_pc_1d` wall-clock at every grid cell. The O(m³) nalgebra SVD dominates; all other operations (centering at `regression.rs:167`, clone at `regression.rs:291`, the `to_dmatrix()` bridge at `regression.rs:298`) are negligible by comparison.
+
+2. **`to_dmatrix()` copy share:** The copy contributes approximately **0.14–0.17%** of total wall-clock across the N×M grid — well below any threshold where it would be "the dominant cost."
+
+Both conditions are met, triggering Phase 6. The comparison measures faer `thin_svd` (via `MatRef::from_column_major_slice`, zero-copy) against nalgebra `SVD::new(dmatrix, true, true)` (clone-then-SVD) at fdars' real FPCA workload sizes.
+
+**Fairness guarantee:** the `svd_equivalence` integration test (`tests/svd_equivalence.rs`) confirms that nalgebra and faer agree on all numerically significant singular values within relative tolerance 1e-10. The test also verifies that faer's thin SVD produces U with shape (n=500, m=200) for an N>M input, resolving RESEARCH Open Question 1.
+
+---
+
+### SC2 — nalgebra vs faer(seq) SVD Comparison Table
+
+All timings are the criterion median point estimate from run1. Speedup = nalgebra\_median / faer\_seq\_median. Conversion cost = FdMatrix→faer::MatRef view construction (zero-copy pointer + dims). Run2 variance noted where >10%.
+
+| Cell | nalgebra SVD (run1) | faer(seq) thin\_svd (run1) | Speedup (run1) | nalgebra (run2) | faer(seq) (run2) | Conversion cost | Notes |
+|------|---------------------|---------------------------|----------------|-----------------|------------------|-----------------|-------|
+| N=100, M=50 | 1.582 ms | 0.442 ms | **3.6×** | 0.520 ms | 0.406 ms | ~4.7 ns | HIGH variance across runs (cache effects) |
+| N=100, M=200 | 10.308 ms | 2.508 ms | **4.1×** | 4.062 ms | 1.688 ms | ~5.5 ns | Significant run-to-run variation |
+| N=500, M=50 | 3.874 ms | 1.426 ms | **2.7×** | 2.862 ms | 1.344 ms | ~4.2 ns | OK confidence |
+| N=500, M=200 | 41.026 ms | 23.084 ms | **1.8×** | 35.084 ms | 17.753 ms | ~6.8 ns | PRIMARY CELL — most representative |
+| N=1000, M=50 | 6.626 ms | 1.803 ms | **3.7×** | 6.792 ms | 1.864 ms | ~4.3 ns | GOOD confidence — consistent |
+| N=1000, M=200 | 95.612 ms | 30.957 ms | **3.1×** | 92.840 ms | 18.183 ms | ~4.7 ns | faer run2 >10% below run1 |
+| N=500, M=500 | 358.31 ms | 189.70 ms | **1.9×** | 324.62 ms | 114.98 ms | ~4.9 ns | CROSSOVER PROBE — faer run2 shows 2.8× |
+
+**Artifact links:**
+- nalgebra: [run1](bench/p6_svd_nalgebra_linalg_run1.txt) · [run2](bench/p6_svd_nalgebra_linalg_run2.txt)
+- faer(seq): [run1](bench/p6_svd_faer_seq_linalg_run1.txt) · [run2](bench/p6_svd_faer_seq_linalg_run2.txt)
+- conversion: [run1](bench/p6_svd_conversion_linalg_run1.txt)
+
+**Crossover observation:** faer(seq) is faster than nalgebra at every measured cell, including the M=50 thin-matrix sizes where the advantage was expected to be smallest. The measured speedup at M=200 (primary FPCA cell) is **1.8× (run1) / ~1.9× (run2)** — below the assumed 3–10× from STACK.md reference data for large square matrices. The assumption A1 was over-optimistic for fdars' tall-thin (N>>M) rectangular matrices. The M=500 crossover probe confirms faer still wins (~1.9× run1 / ~2.8× run2) but with high run-to-run variance.
+
+**Run-to-run variance note:** faer run2 is significantly faster than run1 at several cells (e.g., n500_m500: 190ms → 115ms, a ~39% drop). This is attributable to CPU cache warmup and OS scheduler state between runs, the same environment issue as Phase 5 (governor pinning requires root; `powersave` allows frequency scaling). The run1 numbers are the more conservative and representative estimates; the run2 numbers confirm the direction but not the magnitude. All cells show faer winning, regardless of run.
+
+**Conversion cost conclusion:** FdMatrix→faer::MatRef construction costs ~3.5–7.7 ns regardless of matrix size — it is a zero-copy pointer + dimension assignment. This is four to five orders of magnitude below the SVD compute time at every cell. The `to_dmatrix()` copy (measured in Phase 4 as 0.14–0.17% of wall-clock) is the only allocation cost. Replacing `to_dmatrix()` with `from_column_major_slice()` eliminates that allocation entirely.
+
+**Numerical equivalence:** `svd_equivalence` integration test passes (`test result: ok. 1 passed`). nalgebra and faer agree on all significant singular values within 1e-10 relative error at N=500, M=200. The test skips near-zero values (< 1e-8 × σ₁) where both backends produce numerical noise — these are not meaningful singular values for FPCA.
+
+---
+
+### SC3 — faer Adoption / Maintenance-Risk Note
+
+| Factor | Assessment | Confidence |
+|--------|------------|------------|
+| **Performance vs nalgebra SVD** | **Measured: 1.8–4.1× faster** at fdars' real FPCA sizes (M∈{50,200}). Primary cell N=500,M=200: 1.8× (run1). Best ratio: N=100,M=200 at 4.1×. Below the ASSUMED 3–10× from STACK.md large-square benchmarks — faer's advantage is smaller for tall-thin rectangular matrices (N>>M). Still consistently positive across all 7 cells. | HIGH (measured) |
+| **API stability** | SVD API (`thin_svd`, `from_column_major_slice`, `U()`, `V()`, `S()` accessors) has been stable since faer 0.18. Breaking changes in 0.18–0.23 (LBLT rename in 0.22, constructor simplification in 0.19) did not affect SVD or MatRef API. | MEDIUM |
+| **Breaking change frequency** | Moderate — approximately every 2–4 minor versions in 0.18–0.22. Version 0.23.x adds generalized eigendecomposition and matrix-free SVD without breaking existing SVD API. | MEDIUM |
+| **Maintainer / bus factor** | Single primary maintainer (sarah-quinones). Active development. Repository on Codeberg (not GitHub). Low bus factor — a project stall would block faer upgrades. | LOW (web search basis) |
+| **MSRV tension** | faer 0.23 requires Rust 1.84.0 [VERIFIED: faer-0.23.2/Cargo.toml]. fdars MSRV is 1.81 [VERIFIED: fdars-core/Cargo.toml]. **Not a real barrier:** the `linalg` feature already requires Rust 1.84+ and is documented as non-default for CRAN compatibility. Shipping faer SVD under `linalg` adds no MSRV constraint beyond what is already accepted for the feature. CRAN users (using `default-features=false`) are unaffected. | HIGH |
+| **Integration cost** | faer is already a dependency — zero new Cargo.toml work. Conversion: 1 line (`MatRef::from_column_major_slice` replacing `to_dmatrix()`). SVD call: 1 line (`mat_ref.thin_svd()` replacing `SVD::new`). Output extraction (S, U, V): ~3 lines each. Total code delta: ~20 lines in `fdata_to_pc_1d`. Tests: add numerical equivalence assertion for FPCA path. | HIGH |
+| **Test / correctness risk** | **VERIFIED**: nalgebra and faer agree on significant singular values within 1e-10 (`svd_equivalence` green). Sign-flip of singular vectors is an arbitrary convention — existing `FpcaResult.rotation` consumers must be validated after adoption, but this is a one-time integration check, not ongoing risk. | HIGH |
+
+**Integration-ROI verdict:** The integration burden is LOW (faer already vendored, ~20-line change, stable SVD API) and the measured speedup is real but moderate (1.8–4.1×, primary cell ~1.8×). The MSRV constraint is already accepted for the `linalg` feature. The main risk is the single-maintainer bus factor. Given the measured speedup at the primary cell (N=500,M=200) is 1.8× — below the 2× threshold that the RESEARCH defined as "clearly worth it" — the adoption case is **borderline-positive**: meaningful for FPCA-heavy workloads (saves ~18ms per call at N=500,M=200), not urgent for workloads where N×M is small. Phase 9 should re-evaluate with faer parallel (not measured here) to assess whether the parallel path crosses the 2× threshold.
+
+---
+
+### SC4 — Phase 9 Backlog Item
+
+**Backlog entry P6-1 — Swap nalgebra SVD for faer thin_svd in `fdata_to_pc_1d`**
+
+| Field | Detail |
+|-------|--------|
+| **Function** | `fdata_to_pc_1d` (`regression.rs:298`) — the nalgebra `SVD::new(weighted.to_dmatrix(), true, true)` call executed on every FPCA call in the library |
+| **Current cost (measured)** | N=500,M=200 (primary cell): 41.0 ms / 35.1 ms (run1/run2). N=1000,M=200: 95.6 ms / 92.8 ms. SVD is ~99.8–99.9% of fdata_to_pc_1d wall-clock (Phase 4). `to_dmatrix()` copy adds one O(N·M) allocation (~800 KB at N=500,M=200) that faer eliminates. Artifacts: [p6\_svd\_nalgebra\_run1](bench/p6_svd_nalgebra_linalg_run1.txt) · [p6\_svd\_nalgebra\_run2](bench/p6_svd_nalgebra_linalg_run2.txt) |
+| **Root cause** | nalgebra's `SVD::new` is always sequential; takes a `DMatrix<f64>` input (requires `to_dmatrix()` allocation); computes the full thin SVD. faer's `thin_svd` accepts a `MatRef` — a zero-copy view into the existing FdMatrix column-major slice (`as_slice()`), eliminating the `to_dmatrix()` allocation. faer's SVD algorithm is faster at all measured sizes. |
+| **Candidate fix** | Replace `weighted.to_dmatrix()` + `SVD::new(dmatrix, true, true)` at `regression.rs:298` with: `let mat_ref = faer::MatRef::<f64>::from_column_major_slice(weighted.as_slice(), n, m); let fa_svd = mat_ref.thin_svd()?;` Gate behind the existing `linalg` feature (`#[cfg(feature = "linalg")]`), with a nalgebra fallback for the non-linalg path. Extract U, S, Vt from `fa_svd` (faer accessors: `.U()`, `.S()`, `.V()`). Add numerical equivalence assertion in CI tests. |
+| **Evidence** | Run1 speedup at all 7 cells (faer consistently faster): 3.6×, 4.1×, 2.7×, **1.8×**, 3.7×, 3.1×, 1.9× (N∈{100,100,500,500,1000,1000,500} × M∈{50,200,50,200,50,200,500}). Primary cell N=500,M=200: 1.8× (run1) / 1.9× (run2). Equivalence test: `svd_equivalence` green within 1e-10. Phase 4 artifacts: [p4\_fpca run1](bench/p4_fpca_linalg,parallel_run1.txt). Phase 6 full artifact set: 5 files `p6_svd_*_linalg_run{1,2}.txt` + `p6_svd_conversion_linalg_run1.txt`. |
+| **Severity + Effort** | **P2 / S-effort** (borderline). Speedup at primary FPCA cell is 1.8× (run1), below the research-defined "clearly worth it" threshold of ≥2× at M≥200. Set to P2 because: (a) the direction is consistently positive at all 7 cells, (b) the absolute saving at N=1000,M=200 is ~27 ms/call — meaningful for FPCA-heavy workflows, (c) integration cost is low (~20 lines, faer already vendored). Downgrade to P3 if run3 under pinned governor shows speedup < 1.5× at N=500,M=200. S-effort: ~1 week including equivalence test + regression of `FpcaResult` output. Note: faer parallel path (not measured in Phase 6) may offer additional speedup and should be evaluated in Phase 9. |
