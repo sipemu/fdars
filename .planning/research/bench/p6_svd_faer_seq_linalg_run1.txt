@@ -1,0 +1,57 @@
+    Finished `bench` profile [optimized] target(s) in 0.33s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p6_svd_faer_seq/n100_m50
+Benchmarking audit_p6_svd_faer_seq/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n100_m50: Collecting 20 samples in estimated 20.110 s (21k iterations)
+Benchmarking audit_p6_svd_faer_seq/n100_m50: Analyzing
+audit_p6_svd_faer_seq/n100_m50
+                        time:   [401.89 µs 441.94 µs 496.32 µs]
+Found 2 outliers among 20 measurements (10.00%)
+  2 (10.00%) high mild
+Benchmarking audit_p6_svd_faer_seq/n100_m200
+Benchmarking audit_p6_svd_faer_seq/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n100_m200: Collecting 20 samples in estimated 20.225 s (9240 iterations)
+Benchmarking audit_p6_svd_faer_seq/n100_m200: Analyzing
+audit_p6_svd_faer_seq/n100_m200
+                        time:   [2.2173 ms 2.5076 ms 2.8498 ms]
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+Benchmarking audit_p6_svd_faer_seq/n500_m50
+Benchmarking audit_p6_svd_faer_seq/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n500_m50: Collecting 20 samples in estimated 20.242 s (6300 iterations)
+Benchmarking audit_p6_svd_faer_seq/n500_m50: Analyzing
+audit_p6_svd_faer_seq/n500_m50
+                        time:   [1.1545 ms 1.4255 ms 1.8594 ms]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking audit_p6_svd_faer_seq/n500_m200
+Benchmarking audit_p6_svd_faer_seq/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n500_m200: Collecting 20 samples in estimated 22.885 s (1470 iterations)
+Benchmarking audit_p6_svd_faer_seq/n500_m200: Analyzing
+audit_p6_svd_faer_seq/n500_m200
+                        time:   [20.812 ms 23.084 ms 25.717 ms]
+                        change: [+77.036% +105.92% +139.85%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking audit_p6_svd_faer_seq/n1000_m50
+Benchmarking audit_p6_svd_faer_seq/n1000_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n1000_m50: Collecting 20 samples in estimated 20.349 s (8610 iterations)
+Benchmarking audit_p6_svd_faer_seq/n1000_m50: Analyzing
+audit_p6_svd_faer_seq/n1000_m50
+                        time:   [1.2995 ms 1.8026 ms 2.4533 ms]
+Benchmarking audit_p6_svd_faer_seq/n1000_m200
+Benchmarking audit_p6_svd_faer_seq/n1000_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n1000_m200: Collecting 10 samples in estimated 20.278 s (550 iterations)
+Benchmarking audit_p6_svd_faer_seq/n1000_m200: Analyzing
+audit_p6_svd_faer_seq/n1000_m200
+                        time:   [26.009 ms 30.957 ms 36.584 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+Benchmarking audit_p6_svd_faer_seq/n500_m500
+Benchmarking audit_p6_svd_faer_seq/n500_m500: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n500_m500: Collecting 10 samples in estimated 37.872 s (110 iterations)
+Benchmarking audit_p6_svd_faer_seq/n500_m500: Analyzing
+audit_p6_svd_faer_seq/n500_m500
+                        time:   [163.39 ms 189.70 ms 239.03 ms]
+

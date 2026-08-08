@@ -1,0 +1,53 @@
+   Compiling fdars-core v0.14.0 (/home/simonm/projects/rust/fdars/fdars-core)
+    Finished `bench` profile [optimized] target(s) in 18.36s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p6_svd_nalgebra/n100_m50
+Benchmarking audit_p6_svd_nalgebra/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n100_m50: Collecting 20 samples in estimated 20.215 s (13k iterations)
+Benchmarking audit_p6_svd_nalgebra/n100_m50: Analyzing
+audit_p6_svd_nalgebra/n100_m50
+                        time:   [1.3330 ms 1.5819 ms 1.9454 ms]
+Benchmarking audit_p6_svd_nalgebra/n100_m200
+Benchmarking audit_p6_svd_nalgebra/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n100_m200: Collecting 20 samples in estimated 22.727 s (1050 iterations)
+Benchmarking audit_p6_svd_nalgebra/n100_m200: Analyzing
+audit_p6_svd_nalgebra/n100_m200
+                        time:   [7.8399 ms 10.308 ms 13.916 ms]
+Benchmarking audit_p6_svd_nalgebra/n500_m50
+Benchmarking audit_p6_svd_nalgebra/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n500_m50: Collecting 20 samples in estimated 21.012 s (4200 iterations)
+Benchmarking audit_p6_svd_nalgebra/n500_m50: Analyzing
+audit_p6_svd_nalgebra/n500_m50
+                        time:   [3.3413 ms 3.8735 ms 4.7068 ms]
+Benchmarking audit_p6_svd_nalgebra/n500_m200
+Benchmarking audit_p6_svd_nalgebra/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n500_m200: Collecting 20 samples in estimated 25.923 s (630 iterations)
+Benchmarking audit_p6_svd_nalgebra/n500_m200: Analyzing
+audit_p6_svd_nalgebra/n500_m200
+                        time:   [38.210 ms 41.026 ms 44.839 ms]
+Found 2 outliers among 20 measurements (10.00%)
+  2 (10.00%) high mild
+Benchmarking audit_p6_svd_nalgebra/n1000_m50
+Benchmarking audit_p6_svd_nalgebra/n1000_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n1000_m50: Collecting 20 samples in estimated 20.847 s (2940 iterations)
+Benchmarking audit_p6_svd_nalgebra/n1000_m50: Analyzing
+audit_p6_svd_nalgebra/n1000_m50
+                        time:   [6.3145 ms 6.6255 ms 6.9583 ms]
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking audit_p6_svd_nalgebra/n1000_m200
+Benchmarking audit_p6_svd_nalgebra/n1000_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n1000_m200: Collecting 10 samples in estimated 20.382 s (220 iterations)
+Benchmarking audit_p6_svd_nalgebra/n1000_m200: Analyzing
+audit_p6_svd_nalgebra/n1000_m200
+                        time:   [84.876 ms 95.612 ms 107.63 ms]
+Benchmarking audit_p6_svd_nalgebra/n500_m500
+Benchmarking audit_p6_svd_nalgebra/n500_m500: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n500_m500: Collecting 10 samples in estimated 45.470 s (110 iterations)
+Benchmarking audit_p6_svd_nalgebra/n500_m500: Analyzing
+audit_p6_svd_nalgebra/n500_m500
+                        time:   [308.74 ms 358.31 ms 419.79 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+

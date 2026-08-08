@@ -1,0 +1,52 @@
+    Finished `bench` profile [optimized] target(s) in 0.19s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p6_svd_conversion/n100_m50
+Benchmarking audit_p6_svd_conversion/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n100_m50: Collecting 20 samples in estimated 20.000 s (3.0B iterations)
+Benchmarking audit_p6_svd_conversion/n100_m50: Analyzing
+audit_p6_svd_conversion/n100_m50
+                        time:   [4.0787 ns 4.6941 ns 5.4788 ns]
+Benchmarking audit_p6_svd_conversion/n100_m200
+Benchmarking audit_p6_svd_conversion/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n100_m200: Collecting 20 samples in estimated 20.000 s (2.9B iterations)
+Benchmarking audit_p6_svd_conversion/n100_m200: Analyzing
+audit_p6_svd_conversion/n100_m200
+                        time:   [4.8113 ns 5.4601 ns 5.9845 ns]
+Found 3 outliers among 20 measurements (15.00%)
+  3 (15.00%) low severe
+Benchmarking audit_p6_svd_conversion/n500_m50
+Benchmarking audit_p6_svd_conversion/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n500_m50: Collecting 20 samples in estimated 20.000 s (5.0B iterations)
+Benchmarking audit_p6_svd_conversion/n500_m50: Analyzing
+audit_p6_svd_conversion/n500_m50
+                        time:   [3.5040 ns 4.1983 ns 4.9254 ns]
+Found 3 outliers among 20 measurements (15.00%)
+  3 (15.00%) high severe
+Benchmarking audit_p6_svd_conversion/n500_m200
+Benchmarking audit_p6_svd_conversion/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n500_m200: Collecting 20 samples in estimated 20.000 s (4.0B iterations)
+Benchmarking audit_p6_svd_conversion/n500_m200: Analyzing
+audit_p6_svd_conversion/n500_m200
+                        time:   [5.5563 ns 6.7981 ns 7.6611 ns]
+Benchmarking audit_p6_svd_conversion/n1000_m50
+Benchmarking audit_p6_svd_conversion/n1000_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n1000_m50: Collecting 20 samples in estimated 20.000 s (3.1B iterations)
+Benchmarking audit_p6_svd_conversion/n1000_m50: Analyzing
+audit_p6_svd_conversion/n1000_m50
+                        time:   [3.2257 ns 4.2524 ns 5.0207 ns]
+Found 3 outliers among 20 measurements (15.00%)
+  3 (15.00%) high severe
+Benchmarking audit_p6_svd_conversion/n1000_m200
+Benchmarking audit_p6_svd_conversion/n1000_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n1000_m200: Collecting 10 samples in estimated 20.000 s (2.9B iterations)
+Benchmarking audit_p6_svd_conversion/n1000_m200: Analyzing
+audit_p6_svd_conversion/n1000_m200
+                        time:   [3.9089 ns 4.6914 ns 5.6229 ns]
+Benchmarking audit_p6_svd_conversion/n500_m500
+Benchmarking audit_p6_svd_conversion/n500_m500: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_conversion/n500_m500: Collecting 10 samples in estimated 30.000 s (7.7B iterations)
+Benchmarking audit_p6_svd_conversion/n500_m500: Analyzing
+audit_p6_svd_conversion/n500_m500
+                        time:   [3.5742 ns 4.9405 ns 5.7124 ns]
+

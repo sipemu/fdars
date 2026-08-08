@@ -1,0 +1,71 @@
+    Finished `bench` profile [optimized] target(s) in 0.22s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p6_svd_nalgebra/n100_m50
+Benchmarking audit_p6_svd_nalgebra/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n100_m50: Collecting 20 samples in estimated 20.050 s (40k iterations)
+Benchmarking audit_p6_svd_nalgebra/n100_m50: Analyzing
+audit_p6_svd_nalgebra/n100_m50
+                        time:   [502.26 µs 520.45 µs 544.14 µs]
+                        change: [-75.465% -71.831% -67.454%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 20 measurements (10.00%)
+  1 (5.00%) high mild
+  1 (5.00%) high severe
+Benchmarking audit_p6_svd_nalgebra/n100_m200
+Benchmarking audit_p6_svd_nalgebra/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n100_m200: Collecting 20 samples in estimated 20.555 s (4830 iterations)
+Benchmarking audit_p6_svd_nalgebra/n100_m200: Analyzing
+audit_p6_svd_nalgebra/n100_m200
+                        time:   [3.9692 ms 4.0624 ms 4.1878 ms]
+                        change: [-73.359% -68.691% -62.036%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 20 measurements (20.00%)
+  2 (10.00%) high mild
+  2 (10.00%) high severe
+Benchmarking audit_p6_svd_nalgebra/n500_m50
+Benchmarking audit_p6_svd_nalgebra/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n500_m50: Collecting 20 samples in estimated 20.128 s (7140 iterations)
+Benchmarking audit_p6_svd_nalgebra/n500_m50: Analyzing
+audit_p6_svd_nalgebra/n500_m50
+                        time:   [2.7585 ms 2.8620 ms 2.9693 ms]
+                        change: [-54.088% -46.052% -35.256%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking audit_p6_svd_nalgebra/n500_m200
+Benchmarking audit_p6_svd_nalgebra/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n500_m200: Collecting 20 samples in estimated 23.562 s (630 iterations)
+Benchmarking audit_p6_svd_nalgebra/n500_m200: Analyzing
+audit_p6_svd_nalgebra/n500_m200
+                        time:   [34.028 ms 35.084 ms 36.651 ms]
+                        change: [-18.900% -9.0941% +2.4960%] (p = 0.14 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 20 measurements (15.00%)
+  1 (5.00%) high mild
+  2 (10.00%) high severe
+Benchmarking audit_p6_svd_nalgebra/n1000_m50
+Benchmarking audit_p6_svd_nalgebra/n1000_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n1000_m50: Collecting 20 samples in estimated 20.107 s (2940 iterations)
+Benchmarking audit_p6_svd_nalgebra/n1000_m50: Analyzing
+audit_p6_svd_nalgebra/n1000_m50
+                        time:   [6.6076 ms 6.7917 ms 6.9989 ms]
+                        change: [-1.0214% +3.4578% +8.5333%] (p = 0.18 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high severe
+Benchmarking audit_p6_svd_nalgebra/n1000_m200
+Benchmarking audit_p6_svd_nalgebra/n1000_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n1000_m200: Collecting 10 samples in estimated 22.285 s (275 iterations)
+Benchmarking audit_p6_svd_nalgebra/n1000_m200: Analyzing
+audit_p6_svd_nalgebra/n1000_m200
+                        time:   [88.882 ms 92.840 ms 96.400 ms]
+                        change: [-12.290% -3.5635% +5.3971%] (p = 0.49 > 0.05)
+                        No change in performance detected.
+Benchmarking audit_p6_svd_nalgebra/n500_m500
+Benchmarking audit_p6_svd_nalgebra/n500_m500: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_nalgebra/n500_m500: Collecting 10 samples in estimated 31.315 s (110 iterations)
+Benchmarking audit_p6_svd_nalgebra/n500_m500: Analyzing
+audit_p6_svd_nalgebra/n500_m500
+                        time:   [315.97 ms 324.62 ms 330.25 ms]
+                        change: [-17.478% -8.4586% -0.2325%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+

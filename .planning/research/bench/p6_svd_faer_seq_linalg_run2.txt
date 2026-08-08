@@ -1,0 +1,66 @@
+    Finished `bench` profile [optimized] target(s) in 0.28s
+     Running benches/audit_hotpaths.rs (target/release/deps/audit_hotpaths-cf648298528e8bba)
+Gnuplot not found, using plotters backend
+Benchmarking audit_p6_svd_faer_seq/n100_m50
+Benchmarking audit_p6_svd_faer_seq/n100_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n100_m50: Collecting 20 samples in estimated 20.129 s (30k iterations)
+Benchmarking audit_p6_svd_faer_seq/n100_m50: Analyzing
+audit_p6_svd_faer_seq/n100_m50
+                        time:   [381.73 µs 406.44 µs 441.58 µs]
+                        change: [-29.992% -10.096% +16.526%] (p = 0.46 > 0.05)
+                        No change in performance detected.
+Benchmarking audit_p6_svd_faer_seq/n100_m200
+Benchmarking audit_p6_svd_faer_seq/n100_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n100_m200: Collecting 20 samples in estimated 20.050 s (5880 iterations)
+Benchmarking audit_p6_svd_faer_seq/n100_m200: Analyzing
+audit_p6_svd_faer_seq/n100_m200
+                        time:   [1.6099 ms 1.6882 ms 1.8081 ms]
+                        change: [-48.438% -31.475% -9.9657%] (p = 0.02 < 0.05)
+                        Performance has improved.
+Benchmarking audit_p6_svd_faer_seq/n500_m50
+Benchmarking audit_p6_svd_faer_seq/n500_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n500_m50: Collecting 20 samples in estimated 20.062 s (31k iterations)
+Benchmarking audit_p6_svd_faer_seq/n500_m50: Analyzing
+audit_p6_svd_faer_seq/n500_m50
+                        time:   [921.76 µs 1.3443 ms 1.8263 ms]
+                        change: [-69.255% -53.234% -31.354%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 20 measurements (20.00%)
+  4 (20.00%) high mild
+Benchmarking audit_p6_svd_faer_seq/n500_m200
+Benchmarking audit_p6_svd_faer_seq/n500_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n500_m200: Collecting 20 samples in estimated 20.306 s (1470 iterations)
+Benchmarking audit_p6_svd_faer_seq/n500_m200: Analyzing
+audit_p6_svd_faer_seq/n500_m200
+                        time:   [14.079 ms 17.753 ms 20.946 ms]
+                        change: [-39.350% -27.223% -12.630%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking audit_p6_svd_faer_seq/n1000_m50
+Benchmarking audit_p6_svd_faer_seq/n1000_m50: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n1000_m50: Collecting 20 samples in estimated 20.044 s (18k iterations)
+Benchmarking audit_p6_svd_faer_seq/n1000_m50: Analyzing
+audit_p6_svd_faer_seq/n1000_m50
+                        time:   [1.0815 ms 1.8643 ms 2.7792 ms]
+                        change: [-58.970% -40.832% -11.096%] (p = 0.02 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 20 measurements (15.00%)
+  3 (15.00%) high severe
+Benchmarking audit_p6_svd_faer_seq/n1000_m200
+Benchmarking audit_p6_svd_faer_seq/n1000_m200: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n1000_m200: Collecting 10 samples in estimated 20.771 s (990 iterations)
+Benchmarking audit_p6_svd_faer_seq/n1000_m200: Analyzing
+audit_p6_svd_faer_seq/n1000_m200
+                        time:   [15.580 ms 18.183 ms 24.411 ms]
+                        change: [-43.331% -21.459% +5.5762%] (p = 0.18 > 0.05)
+                        No change in performance detected.
+Benchmarking audit_p6_svd_faer_seq/n500_m500
+Benchmarking audit_p6_svd_faer_seq/n500_m500: Warming up for 5.0000 s
+Benchmarking audit_p6_svd_faer_seq/n500_m500: Collecting 10 samples in estimated 34.391 s (330 iterations)
+Benchmarking audit_p6_svd_faer_seq/n500_m500: Analyzing
+audit_p6_svd_faer_seq/n500_m500
+                        time:   [101.13 ms 114.98 ms 133.48 ms]
+                        change: [-65.629% -56.818% -44.033%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
