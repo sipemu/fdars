@@ -639,7 +639,46 @@ The Phase-5 thread sweep **escalates** the Phase-1 §Methodology "±5% Two-Run V
 | `karcher_mean` | 100 | 50 | 2 | 781.5 ms | 4.3% | 1.99× | OK (spread <10%); governor LOW-CONF | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
 | `karcher_mean` | 100 | 50 | 4 | 404.8 ms | 11.4% | 3.84× | **LOW CONFIDENCE** (run-spread 11.4% > 10% Phase-1 rule; run3 cell noisy at 446 ms) | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
 | `karcher_mean` | 100 | 50 | 8 | 328.3 ms | 1.2% | 4.73× | OK (spread <10%); governor LOW-CONF | [run1](bench/p5_karcher_linalg,parallel_run1.txt) · [run2](bench/p5_karcher_linalg,parallel_run2.txt) · [run3](bench/p5_karcher_linalg,parallel_run3.txt) |
+| `StreamingFraimanMuniz::depth_batch` | 500 | 200 | 1 | 2.4423 ms | 4.8% | 1.00× (baseline) | OK (spread <10%); governor LOW-CONF | [run1](bench/p5_streaming_linalg,parallel_run1.txt) · [run2](bench/p5_streaming_linalg,parallel_run2.txt) · [run3](bench/p5_streaming_linalg,parallel_run3.txt) |
+| `StreamingFraimanMuniz::depth_batch` | 500 | 200 | 2 | 1.3461 ms | 44.9% | 1.81× | **LOW CONFIDENCE** (run-spread 44.9% ≫ 10%; sub-ms target, run3 systematically slow) | [run1](bench/p5_streaming_linalg,parallel_run1.txt) · [run2](bench/p5_streaming_linalg,parallel_run2.txt) · [run3](bench/p5_streaming_linalg,parallel_run3.txt) |
+| `StreamingFraimanMuniz::depth_batch` | 500 | 200 | 4 | 668.7 µs | 28.2% | 3.65× | **LOW CONFIDENCE** (run-spread 28.2% ≫ 10%; sub-ms target) | [run1](bench/p5_streaming_linalg,parallel_run1.txt) · [run2](bench/p5_streaming_linalg,parallel_run2.txt) · [run3](bench/p5_streaming_linalg,parallel_run3.txt) |
+| `StreamingFraimanMuniz::depth_batch` | 500 | 200 | 8 | 543.5 µs | 21.2% | 4.49× | **LOW CONFIDENCE** (run-spread 21.2% ≫ 10%; sub-ms target) | [run1](bench/p5_streaming_linalg,parallel_run1.txt) · [run2](bench/p5_streaming_linalg,parallel_run2.txt) · [run3](bench/p5_streaming_linalg,parallel_run3.txt) |
 
 **Reading of the curve:** near-ideal scaling 1→2 (1.99× on 2 threads) and 2→4 (3.84× on 4), then the curve **flattens sharply** from 4→8: doubling threads 4→8 buys only 3.84×→4.73× (a further 1.23× for 2× the threads). At 8 threads the karcher inner N-loop over N=100 curves is already near its parallel-efficiency ceiling for this cell — the curve is **NOT still climbing steeply at 8**, so the deferred ">8 threads / NUMA scaling" idea (05-CONTEXT deferred) is **not indicated** for this cell size; a larger-N cell would be the place to re-test that flag if pursued. The T=4 cell is flagged LOW CONFIDENCE (11.4% run-spread, exceeds the Phase-1 ±10% band), driven by a single noisy run3 measurement (446 ms vs ~400 ms in runs 1–2) — consistent with the governor-not-pinned caveat; a governor-pinned re-run should tighten it.
 
-**Pipeline proven:** env-driven thread sweep → taskset-pinned 3-run measurement → captured `p5_*` artifacts → report row. Plan 02 adds the light `StreamingFraimanMuniz::depth_batch` sentinel and the payback-threshold-N downward sweep to complete SC1.
+**Reading of the light-sentinel curve (streaming):** the `StreamingFraimanMuniz::depth_batch` sentinel (N=500, M=200) scales in the same direction as karcher — 1.00×→1.81×→3.65×→4.49× across 1/2/4/8 threads — but **every multi-thread cell is flagged LOW CONFIDENCE**: the target runs in **sub-millisecond to low-millisecond** time (1-thread ≈ 2.44 ms, 8-thread ≈ 0.54 ms), so per-sample scheduler and frequency noise (governor unpinned) dominates. The 3-run spread is 21–45% for T ∈ {2,4,8}, driven by a systematically-slow run3 (e.g. T=2 run3 1.91 ms vs 1.30/1.35 ms in runs 1–2). This is **expected** for a light target under the governor-not-pinned protocol and is exactly why the payback-threshold analysis below (not the raw speedup magnitude) is the load-bearing SC1 result for the light sentinel. The **direction** of scaling is trustworthy; the **precise multipliers** are not, at this cell's cost scale.
+
+### Payback-Threshold N (D-02)
+
+The thread-scaling table above answers "does adding threads help at a fixed cell?"; the payback-threshold N answers the complementary SC1 question — **"below what problem size does rayon overhead stop paying off?"** — which is the information needed to decide whether a given loop is worth parallelizing at all.
+
+**Method (D-02).** For each target, the machine-default parallel path (rayon using all cores; `RAYON_NUM_THREADS` unset) is compared against a **`RAYON_NUM_THREADS=1` single-thread run of the *same build*** across a downward N grid, and the payback-threshold N is the smallest N at which the parallel path first beats the single-thread path. The baseline is **`RAYON_NUM_THREADS=1` (single-thread rayon), NOT `--no-default-features`** — this holds codegen and feature set identical so the *only* variable is thread count. (The separate `--no-default-features` "rayon compiled out entirely" cost — a different question — is reported under **SC3 (Plan 03)**, not here.) Same `taskset -c 0-7` pinning and `powersave` governor (LOW-CONFIDENCE) as the thread sweep. Point estimates are Criterion's central estimate from a single grid run per block (payback crossover is a coarse threshold, not a tight measurement).
+
+**Heavy target — `karcher_mean`, M=50, N ∈ {10,25,50,100}** ([artifact](bench/p5_karcher_paybackN_linalg,parallel_run1.txt)):
+
+| N | single-thread [`RAYON_NUM_THREADS=1`] | machine-default parallel | parallel wins? |
+|---|---------------------------------------|--------------------------|----------------|
+| 10 | 243.5 ms | 56.9 ms | ✅ yes (4.28×) |
+| 25 | 426.9 ms | 123.6 ms | ✅ yes (3.45×) |
+| 50 | 1264.2 ms | 193.9 ms | ✅ yes (6.52×) |
+| 100 | 1556.1 ms | 344.7 ms | ✅ yes (4.51×) |
+
+→ **Payback-threshold N ≤ 10 for `karcher_mean`.** The parallel path already wins at the *smallest* N in the grid (4.28× at N=10); the heavy per-iteration cost of an elastic karcher alignment dwarfs rayon's fork/join overhead even for a 10-curve set. The crossover is below the tested grid — a heavy loop like this is worth parallelizing at essentially any realistic N.
+
+**Light target — `StreamingFraimanMuniz::depth_batch`, M=200, N_obj ∈ {1,10,50,200,500}** ([artifact](bench/p5_streaming_paybackN_linalg,parallel_run1.txt)):
+
+| N_obj | single-thread [`RAYON_NUM_THREADS=1`] | machine-default parallel | parallel wins? |
+|-------|---------------------------------------|--------------------------|----------------|
+| 1 | 14.9 µs | 20.6 µs | ❌ no (0.72× — overhead loss) |
+| 10 | 31.0 µs | 38.3 µs | ❌ no (0.81× — overhead loss) |
+| 50 | 148.3 µs | 68.3 µs | ✅ yes (2.17×) |
+| 200 | 842.3 µs | 207.3 µs | ✅ yes (4.06×) |
+| 500 | 2348.6 µs | 552.8 µs | ✅ yes (4.25×) |
+
+→ **Payback-threshold N ≈ 50 for `StreamingFraimanMuniz::depth_batch`.** Below N_obj ≈ 50 the parallel path is *slower* than single-thread (rayon fork/join + per-object dispatch overhead exceeds the O(n·m) work), consistent with the CONCERNS.md "rayon overhead for n < ~100" note; between N_obj = 10 and 50 the crossover occurs, and by N_obj = 50 parallel is already 2.17× faster, rising toward the ~4× thread-scaling ceiling at N_obj = 500.
+
+**Interpretation (heavy vs light bracket).** The two sentinels **bracket the crossover** as intended (D-01): the heavy `karcher_mean` pays back at essentially any N (threshold ≤ 10, below-grid), while the light `StreamingFraimanMuniz::depth_batch` only pays back once N_obj reaches ≈ 50 — below that, parallelizing it *costs* time. The practical rule this yields for the SC2/SC4 gap analysis: a sequential loop is worth parallelizing when its per-iteration work is heavy (karcher-like — parallelize freely) or when the iteration count reliably exceeds ~50 for light per-iteration work (streaming-like — guard the parallel path behind a size threshold, or accept a small-N regression).
+
+**Not sweep targets (D-03).** `pairwise` / `nadaraya_watson` are **not** additional thread-sweep or payback-N targets — they are already covered by the Phase-2 §"Parallelism Gap List" **ALREADY-PARALLEL inventory** and are represented for SC1 purposes by the two chosen sentinels (heavy `karcher_mean` + light `StreamingFraimanMuniz::depth_batch`), which bracket the crossover and keep the sweep matrix small enough to run under the stricter D-04 stability controls.
+
+**Pipeline proven:** env-driven thread sweep → taskset-pinned 3-run measurement → captured `p5_*` artifacts → report row. Plan 01 seeded the pipeline on the heavy sentinel; Plan 02 (this slice) completed SC1 by adding the light `StreamingFraimanMuniz::depth_batch` sentinel to the thread-scaling table and the payback-threshold-N downward sweep for both targets. Plan 03 continues with the SC2 safe-to-parallelize list, the SC3 unaccelerated-path cost (including the `--no-default-features` rayon-off baseline deferred above), and the SC4 backlog.
