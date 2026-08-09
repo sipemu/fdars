@@ -897,8 +897,8 @@ This section promotes and refactors the existing `.planning/research/FEATURES.md
 Promotion steps:
 
 1. Extract the scikit-fda-only public API enumeration from each FEATURES.md area.
-2. Strip all fdars gap notes — every occurrence of "fdars has / partial / equivalent" is
-   Phase-8 material (GAP-02) and must not appear in this section.
+2. Strip all fdars gap notes — parity annotations ("present", "partial", "missing",
+   "equivalent") are Phase-8 material (GAP-02) and must not appear in this section.
 3. Re-verify entries against the 0.10.1 source per the RUNTIME path (dir() spot-checks
    confirm smoothing, classification, and depth module contents).
 4. Reorganize FEATURES.md's 12 sub-areas under the six SC1 report areas defined below.
@@ -968,3 +968,59 @@ Every capability table in this section uses these exact columns:
 | **Relevance** | One of the four D-04 taxonomy values |
 | **Confidence** | HIGH (RUNTIME-verified), MEDIUM (docs-verified), LOW (inferred) |
 | **Source** | Citation: FEATURES.md §Area N, readthedocs module path, or dir() output |
+
+---
+
+### Area: Representation
+
+This area covers scikit-fda's data representation layer — the core types, basis systems,
+interpolation/extrapolation mechanisms, irregular-data converters, and grid-to-basis
+conversion. Promoted from FEATURES.md §Area 1 (scikit-fda public API table), fdars notes
+stripped per D-02.
+
+**D-04 ruling for this area:** The representation *type-system* (`FDataGrid` /
+`FDataBasis` / `FDataIrregular` as a first-class Python object hierarchy with
+`__repr__`, `__getitem__`, arithmetic magic methods, etc.) is a type-system refactor
+that is **out of scope** for fdars (PROJECT.md). However, the specific *algorithmic
+capabilities* exposed through or alongside those types are `In-Scope Algorithm` — they
+represent concrete numeric operations (covariance estimation, spline interpolation math,
+basis-coefficient fitting, grid-to-basis conversion) that a Rust FDA library should offer
+regardless of how the data types are structured.
+
+**In-scope count (this area):** 12 rows   **Out-of-scope count:** 7 rows
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Data types — grid | `FDataGrid` — discretized representation on a common evaluation grid; supports arithmetic, finite-difference derivatives, integration, inner products | evaluate / arithmetic / derivative | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 1; `skfda.FDataGrid` dir()-verified |
+| Data types — basis | `FDataBasis` — parametric representation as linear combination of basis functions; analytical derivatives | evaluate / arithmetic / derivative | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 1; `skfda.FDataBasis` |
+| Data types — irregular | `FDataIrregular` — sparse/irregularly sampled observations per curve (added v0.10.0) | evaluate | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 1; v0.10.0 release notes |
+| Data types — abstract | `FData` — abstract base class with shared interface (evaluate, arithmetic, derivatives) | — (base class only) | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 1; readthedocs representation module |
+| Covariance estimation | `FDataIrregular` covariance estimation — empirical covariance from irregularly sampled observations | function call (`.cov()`) | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs FDataIrregular.cov |
+| Basis systems | `BSplineBasis` — B-spline basis (R→R) | instantiate / evaluate | In-Scope Algorithm | HIGH | FEATURES.md §Area 1; `skfda.representation.basis.BSplineBasis` |
+| Basis systems | `FourierBasis` — Fourier (trigonometric) basis (R→R) | instantiate / evaluate | In-Scope Algorithm | HIGH | FEATURES.md §Area 1; `skfda.representation.basis.FourierBasis` |
+| Basis systems | `MonomialBasis` — monomial/polynomial basis (R→R) | instantiate / evaluate | In-Scope Algorithm | HIGH | FEATURES.md §Area 1; `skfda.representation.basis.MonomialBasis` |
+| Basis systems | `ConstantBasis` — constant (intercept) basis (R→R) | instantiate / evaluate | In-Scope Algorithm | HIGH | FEATURES.md §Area 1; `skfda.representation.basis.ConstantBasis` |
+| Basis systems | `CustomBasis` — arbitrary user-supplied basis functions | instantiate / evaluate | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs |
+| Basis systems | `TensorBasis` — tensor product of 1D bases (Rⁿ→R, multivariate domain) | instantiate / evaluate | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs |
+| Basis systems | `FiniteElementBasis` — finite element basis (Rⁿ→R, irregular meshes) | instantiate / evaluate | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs |
+| Basis systems | `VectorValuedBasis` — stack of bases for vector-valued output (Rⁿ→Rᵐ) | instantiate / evaluate | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs |
+| Interpolation | `SplineInterpolation` — spline interpolation for evaluating `FDataGrid` at off-grid points | fit / evaluate (via `FDataGrid.__call__`) | In-Scope Algorithm | HIGH | FEATURES.md §Area 1; readthedocs FDataGrid interpolation |
+| Extrapolation | `BoundaryExtrapolation` — repeat boundary value for out-of-domain queries | set as extrapolator | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs extrapolation |
+| Extrapolation | `ExceptionExtrapolation` — raise exception on out-of-domain query | set as extrapolator | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 1; readthedocs extrapolation |
+| Extrapolation | `FillExtrapolation` — fill with a constant value for out-of-domain queries | set as extrapolator | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs extrapolation |
+| Extrapolation | `PeriodicExtrapolation` — wrap the domain periodically for out-of-domain queries | set as extrapolator | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs extrapolation |
+| Irregular→basis conversion | `MinimizeMixedEffectsConverter` — convert `FDataIrregular` → `FDataBasis` via mixed-effects optimization | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs preprocessing.conversion |
+| Irregular→basis conversion | `EMMixedEffectsConverter` — convert `FDataIrregular` → `FDataBasis` via EM algorithm | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 1; readthedocs preprocessing.conversion |
+| Grid-to-basis conversion | `FDataGrid.to_basis()` — convert a discretized grid representation to a basis representation (least-squares projection onto chosen basis) | method call | In-Scope Algorithm | HIGH | FEATURES.md §Area 1; readthedocs FDataGrid.to_basis |
+
+**Notes:**
+- The `FDataGrid`, `FDataBasis`, `FDataIrregular`, and `FData` rows are marked
+  `Out-of-Scope (plotting)` because the capability being noted is the Python *type-system
+  refactor* (a first-class OO type hierarchy with magic methods, arithmetic protocol,
+  `__call__` evaluate protocol) — not a numerical algorithm. The algorithmic capabilities
+  that ride on these types (covariance, interpolation, basis conversion) are enumerated
+  as separate `In-Scope Algorithm` rows.
+- The `ExceptionExtrapolation` is marked `In-Scope API-Ergonomics` (not Algorithm): it is
+  a validation/error-signalling policy, not a numeric computation.
+- Confidence HIGH for items confirmed by `skfda.__version__ = 0.10.1` RUNTIME verification
+  and dir() spot-checks; MEDIUM for items verified against readthedocs 0.10.1 docs only.
