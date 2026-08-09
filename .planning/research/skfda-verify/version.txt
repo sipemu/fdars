@@ -1,0 +1,48 @@
+# scikit-fda Version Verification Record
+
+## Pinned Version
+
+0.10.1
+
+## Verification Path Used
+
+RUNTIME
+
+## Reason
+
+Python 3.14.5 and `python3 -m venv` are available locally; PyPI network access is reachable.
+The runtime venv path succeeded without compat issues: `pip install "scikit-fda==0.10.1"` completed
+successfully, and `import skfda; print(skfda.__version__)` returned `0.10.1` directly.
+No fallback to docs was needed.
+
+## Runtime Evidence
+
+Command sequence:
+  python3 -m venv .planning/research/skfda-verify/venv
+  venv/bin/pip install --upgrade pip
+  venv/bin/pip install "scikit-fda==0.10.1"
+  venv/bin/python -c "import skfda; print(skfda.__version__)"
+
+Captured output:
+  skfda.__version__: 0.10.1
+
+Module spot-checks (dir() excerpts):
+  skfda.preprocessing.smoothing: ['BasisSmoother', 'KernelSmoother', 'validation']
+  skfda.ml.classification: ['DDClassifier', 'DDGClassifier', 'DTMClassifier',
+    'KNeighborsClassifier', 'LogisticRegression', 'MaximumDepthClassifier',
+    'NearestCentroid', 'QuadraticDiscriminantAnalysis', 'RadiusNeighborsClassifier']
+  skfda.exploratory.depth: ['BandDepth', 'Depth', 'DistanceBasedDepth',
+    'IntegratedDepth', 'ModifiedBandDepth', 'Outlyingness', 'OutlyingnessBasedDepth', 'multivariate']
+
+## D-01a: Baseline = Latest Coincidence
+
+0.10.1 is BOTH the agreed sole baseline (PROJECT.md Key Decisions) AND the current latest
+release on PyPI (confirmed during install — pip resolved scikit-fda==0.10.1 without
+upgrading to a newer version, confirming no newer release exists).
+This means the enumeration is not stale: the baseline and the current PyPI head are the same release.
+
+## Note
+
+This file is throwaway evidence for the D-01 verification step.
+The deliverable is the `## Phase 7 — scikit-fda Capability Enumeration` section in
+`.planning/research/AUDIT-REPORT.md`.

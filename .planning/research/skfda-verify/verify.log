@@ -1,0 +1,164 @@
+=== venv created ===
+=== pip upgrade ===
+Requirement already satisfied: pip in ./venv/lib/python3.14/site-packages (26.1.1)
+Collecting pip
+  Using cached pip-26.2.1-py3-none-any.whl.metadata (4.6 kB)
+Using cached pip-26.2.1-py3-none-any.whl (1.8 MB)
+Installing collected packages: pip
+  Attempting uninstall: pip
+    Found existing installation: pip 26.1.1
+    Uninstalling pip-26.1.1:
+      Successfully uninstalled pip-26.1.1
+Successfully installed pip-26.2.1
+=== pip upgrade done ===
+=== scikit-fda install attempt ===
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting scikit-fda==0.10.1
+  Downloading scikit_fda-0.10.1-py3-none-any.whl.metadata (10 kB)
+Collecting dcor (from scikit-fda==0.10.1)
+  Downloading dcor-0.7-py3-none-any.whl.metadata (8.1 kB)
+Collecting fdasrsf!=2.5.7,>=2.2.0 (from scikit-fda==0.10.1)
+  Downloading fdasrsf-2.6.10-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (8.1 kB)
+Collecting findiff (from scikit-fda==0.10.1)
+  Downloading findiff-0.13.1-py3-none-any.whl.metadata (13 kB)
+Collecting lazy_loader (from scikit-fda==0.10.1)
+  Downloading lazy_loader-0.5-py3-none-any.whl.metadata (5.9 kB)
+Collecting matplotlib (from scikit-fda==0.10.1)
+  Downloading matplotlib-3.11.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (80 kB)
+Collecting multimethod!=1.11,!=1.11.1,>=1.5 (from scikit-fda==0.10.1)
+  Downloading multimethod-2.1-py3-none-any.whl.metadata (8.3 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting numpy>=1.16 (from scikit-fda==0.10.1)
+  Using cached numpy-2.5.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting pandas>=1.0 (from scikit-fda==0.10.1)
+  Using cached pandas-3.0.5-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (79 kB)
+Collecting rdata (from scikit-fda==0.10.1)
+  Downloading rdata-1.1.0-py3-none-any.whl.metadata (11 kB)
+Collecting scikit-datasets>=0.2.2 (from scikit-datasets[cran]>=0.2.2->scikit-fda==0.10.1)
+  Downloading scikit_datasets-0.2.5-py3-none-any.whl.metadata (5.0 kB)
+Collecting scikit-learn>=0.20 (from scikit-fda==0.10.1)
+  Using cached scikit_learn-1.9.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (11 kB)
+Collecting scipy>=1.6.0 (from scikit-fda==0.10.1)
+  Using cached scipy-1.18.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting typing-extensions (from scikit-fda==0.10.1)
+  Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting Cython (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Downloading cython-3.2.9-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (4.6 kB)
+Collecting joblib (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Using cached joblib-1.5.3-py3-none-any.whl.metadata (5.5 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting patsy (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Using cached patsy-1.0.2-py2.py3-none-any.whl.metadata (3.6 kB)
+Collecting tqdm (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Downloading tqdm-4.70.0-py3-none-any.whl.metadata (57 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting six (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting numba (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Downloading numba-0.66.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.7 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting cffi>=1.0.0 (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Downloading cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+Collecting pyparsing (from fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Using cached pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting pycparser (from cffi>=1.0.0->fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Using cached pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting python-dateutil>=2.8.2 (from pandas>=1.0->scikit-fda==0.10.1)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting narwhals>=2.0.1 (from scikit-learn>=0.20->scikit-fda==0.10.1)
+  Using cached narwhals-2.24.0-py3-none-any.whl.metadata (15 kB)
+Collecting threadpoolctl>=3.5.0 (from scikit-learn>=0.20->scikit-fda==0.10.1)
+  Using cached threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
+Collecting array-api-compat (from dcor->scikit-fda==0.10.1)
+  Downloading array_api_compat-1.15.0-py3-none-any.whl.metadata (1.4 kB)
+Collecting llvmlite<0.49,>=0.48.0dev0 (from numba->fdasrsf!=2.5.7,>=2.2.0->scikit-fda==0.10.1)
+  Downloading llvmlite-0.48.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.0 kB)
+Collecting numpy>=1.16 (from scikit-fda==0.10.1)
+  Using cached numpy-2.4.6-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+Collecting sympy (from findiff->scikit-fda==0.10.1)
+  Using cached sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+Collecting packaging (from lazy_loader->scikit-fda==0.10.1)
+  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+Collecting contourpy>=1.0.1 (from matplotlib->scikit-fda==0.10.1)
+  Using cached contourpy-1.3.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (5.5 kB)
+Collecting cycler>=0.10 (from matplotlib->scikit-fda==0.10.1)
+  Using cached cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+Collecting fonttools>=4.28.2 (from matplotlib->scikit-fda==0.10.1)
+  Using cached fonttools-4.63.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (118 kB)
+Collecting kiwisolver>=1.3.1 (from matplotlib->scikit-fda==0.10.1)
+  Using cached kiwisolver-1.5.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.1 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting pillow>=9 (from matplotlib->scikit-fda==0.10.1)
+  Using cached pillow-12.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.1 kB)
+Collecting xarray (from rdata->scikit-fda==0.10.1)
+  Downloading xarray-2026.7.0-py3-none-any.whl.metadata (12 kB)
+Collecting mpmath<1.4,>=1.1.0 (from sympy->findiff->scikit-fda==0.10.1)
+  Using cached mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+Downloading scikit_fda-0.10.1-py3-none-any.whl (488 kB)
+Downloading fdasrsf-2.6.10-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (12.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.0/12.0 MB 4.6 MB/s  0:00:02
+Downloading cffi-2.1.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+Downloading multimethod-2.1-py3-none-any.whl (9.5 kB)
+Using cached pandas-3.0.5-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (11.0 MB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Downloading scikit_datasets-0.2.5-py3-none-any.whl (50 kB)
+Using cached scikit_learn-1.9.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (9.1 MB)
+Using cached joblib-1.5.3-py3-none-any.whl (309 kB)
+Using cached narwhals-2.24.0-py3-none-any.whl (461 kB)
+Using cached scipy-1.18.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.3 MB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Using cached threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
+Downloading cython-3.2.9-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.4/3.4 MB 26.6 MB/s  0:00:00
+Downloading dcor-0.7-py3-none-any.whl (44 kB)
+Downloading numba-0.66.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (3.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.8/3.8 MB 30.6 MB/s  0:00:00
+Downloading llvmlite-0.48.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (59.9 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 59.9/59.9 MB 65.9 MB/s  0:00:00
+Using cached numpy-2.4.6-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.6 MB)
+Downloading array_api_compat-1.15.0-py3-none-any.whl (79 kB)
+Downloading findiff-0.13.1-py3-none-any.whl (37 kB)
+Downloading lazy_loader-0.5-py3-none-any.whl (8.0 kB)
+Downloading matplotlib-3.11.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (11.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 11.1/11.1 MB 71.7 MB/s  0:00:00
+Using cached contourpy-1.3.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (363 kB)
+Using cached cycler-0.12.1-py3-none-any.whl (8.3 kB)
+Using cached fonttools-4.63.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.9 MB)
+Using cached kiwisolver-1.5.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (1.5 MB)
+Downloading packaging-26.3-py3-none-any.whl (129 kB)
+Using cached pillow-12.3.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (6.9 MB)
+Using cached pyparsing-3.3.2-py3-none-any.whl (122 kB)
+Using cached patsy-1.0.2-py2.py3-none-any.whl (233 kB)
+Using cached pycparser-3.0-py3-none-any.whl (48 kB)
+Downloading rdata-1.1.0-py3-none-any.whl (287 kB)
+Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Using cached sympy-1.14.0-py3-none-any.whl (6.3 MB)
+Using cached mpmath-1.3.0-py3-none-any.whl (536 kB)
+Downloading tqdm-4.70.0-py3-none-any.whl (80 kB)
+Downloading xarray-2026.7.0-py3-none-any.whl (1.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.4/1.4 MB 49.8 MB/s  0:00:00
+Installing collected packages: mpmath, typing-extensions, tqdm, threadpoolctl, sympy, six, pyparsing, pycparser, pillow, packaging, numpy, narwhals, multimethod, llvmlite, kiwisolver, joblib, fonttools, Cython, cycler, array-api-compat, scipy, python-dateutil, patsy, numba, lazy_loader, contourpy, cffi, scikit-learn, pandas, matplotlib, findiff, dcor, xarray, scikit-datasets, fdasrsf, rdata, scikit-fda
+
+Successfully installed Cython-3.2.9 array-api-compat-1.15.0 cffi-2.1.1 contourpy-1.3.3 cycler-0.12.1 dcor-0.7 fdasrsf-2.6.10 findiff-0.13.1 fonttools-4.63.0 joblib-1.5.3 kiwisolver-1.5.0 lazy_loader-0.5 llvmlite-0.48.0 matplotlib-3.11.1 mpmath-1.3.0 multimethod-2.1 narwhals-2.24.0 numba-0.66.0 numpy-2.4.6 packaging-26.3 pandas-3.0.5 patsy-1.0.2 pillow-12.3.0 pycparser-3.0 pyparsing-3.3.2 python-dateutil-2.9.0.post0 rdata-1.1.0 scikit-datasets-0.2.5 scikit-fda-0.10.1 scikit-learn-1.9.0 scipy-1.18.0 six-1.17.0 sympy-1.14.0 threadpoolctl-3.6.0 tqdm-4.70.0 typing-extensions-4.16.0 xarray-2026.7.0
+=== install exit code: 0 ===
+=== version capture ===
+skfda.__version__: 0.10.1
+smoothing: ['BasisSmoother', 'KernelSmoother', 'validation']
+classification: ['DDClassifier', 'DDGClassifier', 'DTMClassifier', 'KNeighborsClassifier', 'LogisticRegression', 'MaximumDepthClassifier', 'NearestCentroid', 'QuadraticDiscriminantAnalysis', 'RadiusNeighborsClassifier']
+depth: ['BandDepth', 'Depth', 'DistanceBasedDepth', 'IntegratedDepth', 'ModifiedBandDepth', 'Outlyingness', 'OutlyingnessBasedDepth', 'multivariate']
