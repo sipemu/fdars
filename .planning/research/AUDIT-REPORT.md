@@ -86,6 +86,85 @@ Full derivation and cross-grid confirmation: AUDIT-REPORT.md §Phase 4 → SVD-C
 
 ---
 
+#### PF-2 — Elastic alignment is fdars' top performance bottleneck; N=500,M=200 distance matrices are infeasible on the default unbanded path
+
+**Finding:** The elastic alignment functions (`karcher_mean`, `elastic_self_distance_matrix`, `elastic_cross_distance_matrix`) are **fdars' primary performance bottleneck** — 2–3 orders of magnitude slower per call than FPCA at comparable sizes. The default path uses the full O(N²·m²) / O(max_iter·N·m²) unbanded DP algorithm, making N=500,M=200 elastic distance matrices entirely infeasible (estimated ~384–700 s/iteration). The default API gives no way to enable the available banded fast-path.
+
+**Key measured numbers:**
+- `elastic_cross_distance_matrix` N=500, M=50 unbanded: **37.82 s** (run1), **37.97 s** (run2) — EXCELLENT confidence (0% variance).
+- `elastic_cross_distance_matrix` N=100, M=200 unbanded: **27.85 s** (run1), **28.85 s** (run2) — OK confidence (4% variance).
+- `elastic_cross_distance_matrix` N=500, M=200 unbanded: **INFEASIBLE** (~700 s/iter estimated from N=500,M=50 trend) — infeasibility is the finding.
+- `elastic_self_distance_matrix` N=500, M=200 unbanded: **INFEASIBLE** (~384 s/iter estimated) — same finding.
+
+Contrast with FPCA (PF-1): `fdata_to_pc_1d` N=1000,M=200 takes **38.307 ms** — elastic alignment at N=500,M=50 is already ~1,000× slower per call.
+
+**Why this matters:** Any real FDA workflow that computes pairwise elastic distances or a Karcher mean for a moderate dataset (N=200–500 curves, M=200 evaluation points) is effectively blocked by the default API. The banded fast-path (`karcher_mean_banded`, `elastic_*_distance_matrix_banded`) already exists and is correct, but it is opt-in only — users must explicitly call the `_banded` variants.
+
+**Evidence:** [bench/p3_elastic_cross_linalg,parallel_run1.txt](bench/p3_elastic_cross_linalg,parallel_run1.txt) (N=500,M=50: **37.82 s**; N=100,M=200: **27.85 s**; N=500,M=200: INFEASIBLE annotation) · [bench/p3_elastic_cross_linalg,parallel_run2.txt](bench/p3_elastic_cross_linalg,parallel_run2.txt) (N=500,M=50: **37.97 s** — 0% variance) · Phase 3 Results Table (§Phase 3 SC1, elastic_cross and elastic_self rows).
+
+**Backlog promotion:** [PERF-ELASTIC-BAND](../research/BACKLOG.md#perf-elastic-band----default-elastic-alignment-to-a-banded-path--expose-band_frac) — change elastic alignment API defaults to the banded path (band_frac ≈ 0.1). P1 severity.
+
+---
+
+#### PF-3 — The banded fast-path exists but is opt-in, imposing a measured 4–6× default-path penalty
+
+**Finding:** The banded elastic alignment path (`band_frac=0.1`) delivers a measured **4.5–5.7× speedup** at stable cells vs the default unbanded path. However, `karcher_mean()` at `karcher.rs:300` hard-codes `band_frac=0.0` — the unbanded default — and the primary elastic distance matrix functions expose no `band_frac` parameter. Every user who calls the default API pays the full O(m²) DP cost without any way to opt into the faster banded path.
+
+**Key measured numbers (stable cells — 0–4% two-run variance):**
+- `elastic_cross_distance_matrix_banded` N=100, M=50: **322.73 ms** vs unbanded 1.55 s → **4.8×** speedup.
+- `elastic_cross_distance_matrix_banded` N=100, M=200: **6.16 s** vs unbanded 27.85 s → **4.5×** speedup.
+- `elastic_cross_distance_matrix_banded` N=500, M=50: **8.01 s** vs unbanded 37.82 s → **4.7×** speedup.
+- Nominal expectation at M=200: **~7×** (theoretical m/band = 200/20 = 10× minus overhead).
+
+**Note on karcher cells:** karcher unbanded vs banded comparison showed 34–204% two-run variance due to OS scheduler jitter (LOW CONFIDENCE for karcher-specific speedup number). The elastic_cross banded cells are the stable measurement. Direction and order of magnitude are confirmed across all cells.
+
+**Why this matters:** This is an API-default issue — the optimization exists but is not the default. An API change (changing the default `band_frac` from 0.0 to 0.1 or adding a `band_frac` parameter) would make N=500+ elastic workloads tractable without any new algorithm work. It is also the SC3(b) default-unaccelerated-path cost identified in the Phase-5 parallelism audit (cross-referenced as P5-4).
+
+**Evidence:** [bench/p3_elastic_cross_linalg,parallel_run1.txt](bench/p3_elastic_cross_linalg,parallel_run1.txt) (unbanded cells: N=100,M=200 **27.85 s**; N=500,M=50 **37.82 s**) · [bench/p3_elastic_cross_banded_linalg,parallel_run1.txt](bench/p3_elastic_cross_banded_linalg,parallel_run1.txt) (banded cells: N=100,M=200 **6.16 s**; N=500,M=50 **8.01 s**) · Banded-vs-Unbanded Analysis: AUDIT-REPORT.md §Phase 3 → SC2, D-03/D-04. D-05 Source Fact (karcher hard-code): AUDIT-REPORT.md §Phase 3 → D-05.
+
+**Backlog promotion:** [PERF-ELASTIC-BAND](../research/BACKLOG.md#perf-elastic-band----default-elastic-alignment-to-a-banded-path--expose-band_frac) — same item as PF-2; this finding describes the measured cost of the default choice, PF-2 describes the infeasibility at production sizes. Both feed PERF-ELASTIC-BAND. P1 severity (P5-4 cross-reference).
+
+---
+
+#### PF-4 — Parallelism: heavy loops pay back at any N; three sequential loops are safe-to-parallelize gaps
+
+**Finding:** fdars' parallel-feature rayon loops scale well for heavy per-iteration work — `karcher_mean` achieves **~4.7× speedup at 8 threads** and pays back at any N down to N=10. Light per-iteration work (e.g., `StreamingFraimanMuniz::depth_batch`) only pays back above N≈50. Three loops on hot paths are currently sequential and safe to parallelize without data-dependency risk:
+- **`classification/cv.rs:76`** — outer CV fold loop (heavy per-fold body: full FPCA SVD + classifier fit; no RNG in body; folds are disjoint). Projected **~4–5×** speedup at machine-default threads.
+- **`elastic_fpca.rs:701/720/764`** — three per-curve inner N-loops on the elastic-FPCA path (no RNG; disjoint row/score writes). Projected **~4–5×** for `:701/720` at N≥50; `:764` (score extraction — light body) needs N≳50 guard.
+- **`regression.rs:167`** — `center_columns` outer-M loop (lowest priority; very light per-element body; SVD dominates FPCA wall-clock; would need size guard to pay back).
+
+**Key measured numbers (thread-scaling at `linalg,parallel`, N=100,M=50, machine-default 8 threads):**
+- `karcher_mean` 1-thread: **1,556 ms** → 2-thread: **807 ms** → 4-thread: **405 ms** → 8-thread (machine-default): **329 ms** → **4.73× speedup**.
+- Payback threshold — `karcher_mean` (heavy body): **≤10 curves** (already wins at N=10).
+- Payback threshold — `StreamingFraimanMuniz::depth_batch` (light body): **~50 objects** (crossover between N_obj=10 and N_obj=50).
+
+**Why this matters:** The CV fold loop is the highest-priority candidate — a sequential loop on a pattern (cross-validation) that users repeat many times during hyperparameter search. Wrapping it in `iter_maybe_parallel!` is a one-line change that delivers ~4–5× CV throughput improvement.
+
+**Evidence:** [bench/p5_karcher_linalg,parallel_run1.txt](bench/p5_karcher_linalg,parallel_run1.txt) (thread-scaling table: 1.556 s → 1-thread, 0.329 s → 8-thread, **4.73×**) · [bench/p1_cv_linalg,parallel_run1.txt](bench/p1_cv_linalg,parallel_run1.txt) (`fclassif_cv` N=100,M=50 5-fold: **947–952 µs** sequential baseline) · Phase 5 SC1 thread-scaling table, SC2 loop independence analysis, SC4 backlog: AUDIT-REPORT.md §Phase 5.
+
+**Backlog promotion:** [PERF-PAR-CV](../research/BACKLOG.md#perf-par-cv----parallelize-the-classification-cv-fold-loop) (P2/S, score=4.00) · [PERF-PAR-ELFPCA](../research/BACKLOG.md#perf-par-elfpca----parallelize-the-three-elastic-fpca-inner-n-loops) (P2/M, score=1.73) · [PERF-PAR-CENTER](../research/BACKLOG.md#perf-par-center----parallelize-center_columns-on-the-fpca-path) (P3/S, score=1.00).
+
+---
+
+#### PF-5 — faer thin_svd is 1.8–4.1× faster than nalgebra SVD at real FPCA sizes and eliminates the to_dmatrix() copy
+
+**Finding:** faer `thin_svd` (via `MatRef::from_column_major_slice`, zero-copy construction) is consistently **faster than nalgebra SVD at every measured fdars FPCA size**, with speedup ranging from **1.8× (N=500,M=200, primary cell)** to **4.1× (N=100,M=200)**. faer also eliminates the `to_dmatrix()` O(n·m) allocation (one memcopy per FPCA call) as a side effect. Numerical equivalence confirmed: nalgebra and faer agree on all significant singular values within 1e-10 relative tolerance.
+
+**Key measured numbers (run1, `linalg` feature, release build):**
+- N=500, M=200 (primary cell): nalgebra **41.026 ms** → faer **23.084 ms** → **1.8×** speedup.
+- N=1000, M=200: nalgebra **95.612 ms** → faer **30.957 ms** → **3.1×** speedup.
+- N=100, M=200: nalgebra **10.308 ms** → faer **2.508 ms** → **4.1×** speedup.
+- N=100, M=50: nalgebra **1.582 ms** → faer **0.442 ms** → **3.6×** speedup.
+- Conversion cost (FdMatrix→faer::MatRef): **~3.5–7.7 ns** (zero-copy pointer + dims; four to five orders of magnitude below SVD compute at every cell).
+
+**Note:** The measured 1.8× at the primary cell (N=500,M=200) is below the assumed 3–10× from published benchmarks for large square matrices — faer's advantage is smaller for fdars' tall-thin (N>>M) rectangular shape. The speedup is consistently positive across all 7 measured cells. Integration burden is low: faer is already a dependency (no new Cargo.toml work), code change is ~20 lines in `fdata_to_pc_1d`.
+
+**Evidence:** [bench/p6_svd_faer_seq_linalg_run1.txt](bench/p6_svd_faer_seq_linalg_run1.txt) (N=500,M=200: **23.084 ms**; N=1000,M=200: **30.957 ms**) · [bench/p6_svd_nalgebra_linalg_run1.txt](bench/p6_svd_nalgebra_linalg_run1.txt) (N=500,M=200: **41.026 ms**; N=1000,M=200: **95.612 ms**) · Full 7-cell comparison grid and SC3 maintenance-risk assessment: AUDIT-REPORT.md §Phase 6 SC2/SC3. Equivalence: `tests/svd_equivalence.rs` (`svd_equivalence` integration test — passes, 1e-10 relative tolerance).
+
+**Backlog promotion:** [P6-1](../research/BACKLOG.md#p6-1----swap-nalgebra-svd-for-faer-thin_svd-in-fdata_to_pc_1d) — swap nalgebra SVD for faer `thin_svd` in `fdata_to_pc_1d`. P2 severity, S effort, score=3.00. (Note: PF-1 feeds the same item from the allocation-analysis angle; PF-5 feeds it from the measured faer-vs-nalgebra comparison angle.)
+
+---
+
 ## Phase 1 — Measurement Discipline & Baselines
 
 Phase 1 establishes the benchmark measurement apparatus and records one sentinel per hot-path module.
