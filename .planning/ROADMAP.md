@@ -197,7 +197,7 @@
   3. fdars capabilities that exceed scikit-fda are documented (model explainability, SPM/control charts, seasonal decomposition, streaming depth) so the audit reflects strengths, not only gaps
   4. Fragile/known-bug areas from CONCERNS.md (e.g. B-spline CV GH #33, elastic alignment) carry an "accuracy verified?" note rather than a bare ✓, and gap backlog entries are drafted with area/current-gap/root-cause fields
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 **Wave 1**
 
@@ -205,7 +205,7 @@
 
 **Wave 2** *(blocked on Wave 1 — same append target: AUDIT-REPORT.md)*
 
-- [ ] 08-02-PLAN.md — Expansion: parity-map the remaining five areas (Representation, Exploratory, ML, Inference, Misc) → all 129 in-scope capabilities marked present/partial/absent
+- [x] 08-02-PLAN.md — Expansion: parity-map the remaining five areas (Representation, Exploratory, ML, Inference, Misc) → all 129 in-scope capabilities marked present/partial/absent
 
 **Wave 3** *(blocked on Wave 2 — same append target: AUDIT-REPORT.md)*
 
@@ -237,7 +237,7 @@
 | 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
 | 6. Conditional SVD Library Comparison | 1/1 | Complete    | 2026-08-09 |
 | 7. scikit-fda Capability Enumeration | 2/2 | Complete    | 2026-08-09 |
-| 8. Capability Parity Matrix & Categorization | 1/3 | In Progress|  |
+| 8. Capability Parity Matrix & Categorization | 2/3 | In Progress|  |
 | 9. Consolidated Report & Prioritized Backlog | 0/0 | Not started | - |
 
 ## Coverage

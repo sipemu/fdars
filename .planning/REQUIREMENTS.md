@@ -21,8 +21,8 @@ Requirements for this audit. Each maps to a roadmap phase.
 ### Functionality Gap Analysis (GAP)
 
 - [x] **GAP-01**: scikit-fda's public capability surface is enumerated by area (representation, preprocessing, exploratory, ML, inference, misc), with the exact compared scikit-fda version pinned and recorded
-- [ ] **GAP-02**: fdars capabilities are mapped against scikit-fda by **capability** (not API name), producing a parity matrix marking each capability present / partial / absent
-- [ ] **GAP-03**: Gaps are categorized as table-stakes vs differentiator vs out-of-scope, with a design-goal filter applied so plotting/IO features are excluded from the actionable gap count
+- [x] **GAP-02**: fdars capabilities are mapped against scikit-fda by **capability** (not API name), producing a parity matrix marking each capability present / partial / absent
+- [x] **GAP-03**: Gaps are categorized as table-stakes vs differentiator vs out-of-scope, with a design-goal filter applied so plotting/IO features are excluded from the actionable gap count
 - [ ] **GAP-04**: fdars capabilities that exceed scikit-fda are documented (e.g. model explainability, SPM/control charts, seasonal decomposition, streaming depth) so the audit reflects strengths, not only gaps
 
 ### Report & Backlog (RPT)
@@ -65,8 +65,8 @@ Populated during roadmap creation.
 | PERF-05 | Phase 5 | Complete |
 | PERF-06 | Phase 6 | Complete |
 | GAP-01 | Phase 7 | Complete |
-| GAP-02 | Phase 8 | Pending |
-| GAP-03 | Phase 8 | Pending |
+| GAP-02 | Phase 8 | Complete |
+| GAP-03 | Phase 8 | Complete |
 | GAP-04 | Phase 8 | Pending |
 | RPT-01 | Phase 9 | Pending |
 | RPT-02 | Phase 9 | Pending |
