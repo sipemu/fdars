@@ -16,7 +16,7 @@
 - [x] **Phase 4: FPCA/SVD & Allocation Audit** - Benchmark FPCA and quantify the FdMatrix→DMatrix SVD-copy overhead with dhat (completed 2026-08-08)
 - [x] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops (completed 2026-08-08)
 - [x] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it (completed 2026-08-09)
-- [ ] **Phase 7: scikit-fda Capability Enumeration** - Enumerate scikit-fda's public capability surface by area, pinning the compared version
+- [x] **Phase 7: scikit-fda Capability Enumeration** - Enumerate scikit-fda's public capability surface by area, pinning the compared version (completed 2026-08-09)
 - [ ] **Phase 8: Capability Parity Matrix & Categorization** - Map fdars vs scikit-fda by capability, categorize gaps, and document fdars strengths
 - [ ] **Phase 9: Consolidated Report & Prioritized Backlog** - Combine all findings into a report with a value-ranked, GSD-ready backlog
 
@@ -174,7 +174,7 @@
   3. Enumeration is capability-oriented, not raw API-name counting: fit/predict/transform families are grouped by user task to avoid the 2–3× gap inflation of Pitfall 9
   4. A one-page design-goal filter is written (in-scope numeric algorithms vs out-of-scope plotting/IO/sklearn-pipeline) to be applied in Phase 8
 
-**Plans:** 2/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Wave 1**
 
@@ -224,7 +224,7 @@
 | 4. FPCA/SVD & Allocation Audit | 3/3 | Complete    | 2026-08-08 |
 | 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
 | 6. Conditional SVD Library Comparison | 1/1 | Complete    | 2026-08-09 |
-| 7. scikit-fda Capability Enumeration | 2/2 | In Progress|  |
+| 7. scikit-fda Capability Enumeration | 2/2 | Complete    | 2026-08-09 |
 | 8. Capability Parity Matrix & Categorization | 0/0 | Not started | - |
 | 9. Consolidated Report & Prioritized Backlog | 0/0 | Not started | - |
 
