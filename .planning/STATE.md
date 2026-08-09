@@ -6,7 +6,7 @@ status: Awaiting next milestone
 stopped_at: Completed 09-03-PLAN.md
 last_updated: "2026-08-09T21:34:04.846Z"
 last_activity: 2026-08-09
-last_activity_desc: Phase 07 execution started
+last_activity_desc: Milestone v0.14.0 completed and archived
 progress:
   total_phases: 9
   completed_phases: 9
@@ -23,7 +23,7 @@ current_phase_name: consolidated-report-prioritized-backlog
 See: .planning/PROJECT.md (updated 2026-08-09)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 09 — consolidated-report-prioritized-backlog
+**Current focus:** Planning next milestone — promote the v0.14.0 ranked backlog via `/gsd-new-milestone`.
 
 ## Current Position
 
@@ -146,7 +146,7 @@ Relevant to current work:
 - [Phase ?]: PERF-ELASTIC-BAND assigned P1 — N=500,M=200 distance matrices INFEASIBLE on default unbanded path
 - [Phase ?]: PERF-PAR-CV highest-score new item (4.00) — one-line macro change for a commonly repeated workflow
 - [Phase ?]: 32-item Ranked Backlog — 8 performance items (Plans 01-02) + 24 gap items (Plan 03); top-3 all tied at score=4.00 (REPR-02/EXPL-02/PERF-PAR-CV)
-- [Phase ?]: 6 P1 items in final backlog: REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06 — all evidence-justified
+- [Phase ?]: 5 P1 items in final backlog: REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06 — all evidence-justified (miscount 6→5 corrected at milestone close)
 - [Phase ?]: Completeness Gate PASSED: P1-existence, no cosmetic top-10, strictly descending score order
 
 ### Pending Todos
@@ -160,11 +160,11 @@ None yet.
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged at v0.14.0 milestone close (2026-08-09):
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| uat | 07-UAT.md | passed, 0 open scenarios — flagged by artifact audit only for file presence; no action required | 2026-08-09 |
 
 ## Session Continuity
 
