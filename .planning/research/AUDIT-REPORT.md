@@ -3,7 +3,86 @@
 **Crate:** fdars-core v0.14.0
 **Audit milestone:** v0.14.0 — audit-only, no production code changes
 **Started:** 2026-08-07
-**Status:** In progress (Phase 1 of 9)
+**Status:** Consolidating — Phase 9 of 9
+
+---
+
+## Methodology (Consolidated)
+
+This section is the consolidated methodology summary for the full audit (Phases 1–9). It
+names the two criteria required by RPT-02 SC4. Full detail is in [§Methodology](#methodology)
+below.
+
+### Build-Mode / Feature-Flag Discipline
+
+All benchmarks run under `cargo bench` (bench profile: `opt-level = 3`, `debug = false` —
+equivalent to release). The binary path in criterion output must show `/release/deps/` to
+confirm release mode; any path showing `/debug/deps/` invalidates the numbers (Pitfall 1).
+
+Four feature combinations are required per phase (the Feature-Flag Matrix):
+
+| Feature set | Command flag | Purpose |
+|-------------|--------------|---------|
+| `""` | `--no-default-features` | Sequential, no linalg — WASM / minimal / CRAN baseline |
+| `parallel` | `--no-default-features --features parallel` | Default for most users; rayon active |
+| `linalg` | `--no-default-features --features linalg` | Ridge/faer paths, sequential |
+| `linalg,parallel` | `--features linalg,parallel` | Full capability; primary audit baseline |
+
+The primary audit baseline is `linalg,parallel`. A 4-combo sentinel (`karcher_mean`) is run
+each phase to confirm the matrix is exercised. See [§Methodology — Feature-Flag Matrix](#methodology)
+for the full rules.
+
+### Infrastructure vs. Code Failure Triage
+
+Bus errors, linker failures, and SIGBUS exits from `cargo bench` or `cargo test --doc` without
+a named `FAILED test_name` line are classified as **infrastructure failures** and do not count
+as fdars code defects. Only `FAILED test_name` lines are code failures.
+
+**Known environment cause on this machine:** `/tmp` is a small tmpfs that fills under high
+load. Criterion and doctest harnesses link their binaries in `/tmp`; a full tmpfs produces
+`LLVM ERROR: IO failure on output stream: No space left on device` (manifests as SIGBUS/SIGSEGV).
+Mitigation: set `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` before running bench or doctest.
+
+See [§Methodology — Infrastructure vs. Code Failure Triage (SC4)](#methodology) for the full
+triage decision tree and the audit classification policy.
+
+---
+
+## Consolidated Findings
+
+This section aggregates the audit's key findings across Phases 1–8. It is seeded by Plan 01
+(one performance finding) and expanded by Plans 02/03 (all performance findings + gap summary +
+strengths summary). Each finding carries reproducible evidence linked to a raw artifact under
+`.planning/research/bench/` or a report section.
+
+### Performance Findings
+
+---
+
+#### PF-1 — FPCA is dominated by SVD compute; the FdMatrix→DMatrix copy is negligible
+
+**Finding:** In `fdata_to_pc_1d`, the O(m³) nalgebra SVD step consumes approximately
+**99.8–99.9% of total wall-clock** at every grid cell. The `to_dmatrix()` copy at
+`regression.rs:298` (which allocates a DMatrix copy of the weighted data matrix before SVD)
+contributes only **0.14–0.17%** of wall-clock — well below any threshold where it would be
+"the dominant cost."
+
+**Why this matters:** Any optimization attempt targeting the `to_dmatrix()` copy would deliver
+at most ~0.17% wall-clock improvement. The actionable optimization target is the SVD algorithm
+itself, not the allocation.
+
+**Evidence:** Wall-clock measured by criterion at `linalg,parallel` build:
+- [bench/p4_fpca_linalg,parallel_run1.txt](bench/p4_fpca_linalg,parallel_run1.txt) —
+  N=1000, M=200: **38.307 ms** (median point estimate, criterion 0.5, 10 samples).
+- Copy-share derived from 38.307 ms wall-clock and ~53.3 µs copy time (1,000×200×8 bytes
+  at 30 GB/s assumed bandwidth): **copy-share ≈ 0.14%**.
+- Cross-grid confirmation at N=500, M=200 (run1=16.011 ms): copy = 800,000 bytes ÷ 30 GB/s
+  = 26.7 µs; **copy-share ≈ 0.17%**.
+- SVD share at both cells: **~99.8–99.9%** of total wall-clock.
+
+Full derivation and cross-grid confirmation: AUDIT-REPORT.md §Phase 4 → SVD-Compute vs Copy Split.
+
+**Backlog promotion:** This finding produces backlog item [P6-1](../research/BACKLOG.md#p6-1----swap-nalgebra-svd-for-faer-thin_svd-in-fdata_to_pc_1d) — swap nalgebra SVD for faer `thin_svd` to target the actual SVD compute cost. Phase 6 measured faer at **1.8× faster** than nalgebra at the primary cell (N=500, M=200): nalgebra 41.026 ms vs faer 23.084 ms (run1). See §Phase 6 SC2 for the full 7-cell comparison.
 
 ---
 
