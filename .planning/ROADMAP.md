@@ -224,7 +224,7 @@
   3. Every backlog item passes a completeness checklist: location/area, current cost or gap, root cause, proposed direction, severity (P1/P2/P3), effort estimate (S/M/L), and an evidence link
   4. At least one P1 item exists, no top-10 item is a cosmetic convenience-only entry, and the report's methodology section documents build-mode/feature-flag discipline and infra-vs-code failure triage
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 **Wave 1**
 
@@ -232,7 +232,7 @@
 
 **Wave 2** *(depends on 09-01 — same append targets: BACKLOG.md + AUDIT-REPORT.md)*
 
-- [ ] 09-02-PLAN.md — Expansion: all performance backlog items (elastic banding, FPCA clone/truncated-SVD, parallelism P5-1..P5-3, accuracy-validation ACC-01) + report performance findings, each 7-field + evidence-linked
+- [x] 09-02-PLAN.md — Expansion: all performance backlog items (elastic banding, FPCA clone/truncated-SVD, parallelism P5-1..P5-3, accuracy-validation ACC-01) + report performance findings, each 7-field + evidence-linked
 
 **Wave 3** *(depends on 09-02 — same append targets: BACKLOG.md + AUDIT-REPORT.md)*
 
@@ -250,7 +250,7 @@
 | 6. Conditional SVD Library Comparison | 1/1 | Complete    | 2026-08-09 |
 | 7. scikit-fda Capability Enumeration | 2/2 | Complete    | 2026-08-09 |
 | 8. Capability Parity Matrix & Categorization | 3/3 | Complete    | 2026-08-09 |
-| 9. Consolidated Report & Prioritized Backlog | 1/3 | In Progress|  |
+| 9. Consolidated Report & Prioritized Backlog | 2/3 | In Progress|  |
 
 ## Coverage
 
