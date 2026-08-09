@@ -1,22 +1,21 @@
 ---
 phase: 07-scikit-fda-capability-enumeration
 verified: 2026-08-09T00:00:00Z
-status: human_needed
+status: passed
 score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-human_verification:
-  - test: "Reconcile Representation area count discrepancy: the per-area header says '12 in-scope, 7 out-of-scope' (19 total), the Design-Goal Filter table says '13 in-scope, 7 out-of-scope' (20 total), but the actual Representation table has 17 In-Scope rows and 4 Out-of-Scope rows (21 total). All three figures disagree. Confirm whether the actual table (17+4=21) is authoritative and the filter summary (13+7=20) should be corrected, or whether there is a legitimate counting rule that yields 13 and 7."
-    expected: "The Design-Goal Filter's per-area Representation row (13 | 7 | 20) and the grand total (125 | 35 | 160) should be corrected to match the actual table, OR a documented counting rule explains the discrepancy."
-    why_human: "The actual table rows are unambiguous (17 In-Scope + 4 Out-of-Scope = 21), the report's own notes acknowledge a discrepancy but the explanation does not reconcile the numbers. This is a documentation accuracy issue that affects the filter's stated role as the authoritative count for Phase 8."
+human_verification_resolved:
+  - test: "Reconcile Representation area count discrepancy (per-area header 12/7, filter table 13/7, actual table rows 17/4)."
+    resolution: "RESOLVED 2026-08-09 during execute-phase per user decision: actual Representation table rows are authoritative (16 In-Scope Algorithm + 1 In-Scope API-Ergonomics = 17 in-scope; 4 Out-of-Scope plotting). Corrected in AUDIT-REPORT.md (commit f92466fe): filter row 13|7|20 -> 17|4|21; grand total 125|35|160 -> 129|32|161; per-area header note and reconciliation/breakdown notes updated. Column sums re-verified: in-scope 17+29+20+20+5+38=129, out-of-scope 4+2+11+0+0+15=32, total 161."
 ---
 
 # Phase 7: scikit-fda Capability Enumeration — Verification Report
 
 **Phase Goal:** Build the scikit-fda side of the comparison — a versioned, area-organized capability inventory.
 **Verified:** 2026-08-09
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Status:** passed (human item resolved inline — see re-verification note)
+**Re-verification:** Yes — count-discrepancy human item resolved 2026-08-09 (commit f92466fe); grand totals corrected to 129 in-scope / 32 out-of-scope / 161 total.
 
 ## Goal Achievement
 
