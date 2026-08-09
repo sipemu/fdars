@@ -799,7 +799,7 @@ assertions are confirmed below.
 
 #### Assertion 1: At least one P1 item exists — PASSED
 
-**P1 items in the backlog (6 total):**
+**P1 items in the backlog (5 total):**
 
 | Rank | ID | Title | Severity | Score |
 |------|----|-------|----------|-------|
@@ -816,7 +816,7 @@ assertions are confirmed below.
 - **PREP-04 (P1):** Shift-only registration is the entry-level alignment method (2–3 orders of magnitude faster than elastic). Its absence forces users who only need simple alignment to use the computationally expensive elastic path or implement it themselves.
 - **PREP-06 (P1):** LDO-regularized FPCA is table-stakes for noisy functional data. Unregularized FPCA overfits high-frequency noise; regularization is standard practice in FDA and a core feature of scikit-fda's FPCA.
 
-**Assertion 1 PASSED** — 6 P1 items present in the backlog.
+**Assertion 1 PASSED** — 5 P1 items present in the backlog.
 
 ---
 
@@ -866,7 +866,7 @@ Score verification: 4.00 → 4.00 → 4.00 → 3.00 → 3.00 → 3.00 → 3.00 �
 
 **Gate status: PASSED (Plan 03)**
 
-- [x] At least one P1 item exists — 6 P1 items: REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06
+- [x] At least one P1 item exists — 5 P1 items: REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06
 - [x] No top-10 item is cosmetic-only — all 10 confirmed non-cosmetic (real gaps or real perf wins)
 - [x] Ordering is strictly descending by score — 4.00 → … → 0.58, non-increasing confirmed
 

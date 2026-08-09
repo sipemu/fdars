@@ -35,7 +35,7 @@ key_files:
 decisions:
   - "32-item Ranked Backlog — 8 performance items (Plans 01-02) + 24 gap items (Plan 03)"
   - "Top-3 by score all tied at 4.00: REPR-02 (P1), EXPL-02 (P1), PERF-PAR-CV (P2) — gap items beat most performance items"
-  - "6 P1 items total: REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06 — all justified by evidence"
+  - "5 P1 items total: REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06 — all justified by evidence"
   - "32 out-of-scope rows explicitly excluded per Pitfall 14 (plotting/IO/type-system)"
   - "Gap Findings cites 82 in-scope / 36 table-stakes / 46 differentiator with per-area breakdown"
   - "fdars Strengths summarizes 30 capabilities (22 none + 8 partial advantage vs scikit-fda)"
@@ -102,7 +102,7 @@ items sorted by descending score:
 | 13-32 | remaining items | ≤ 2.00 | P2/P3 |
 
 **Completeness Gate: ALL THREE ASSERTIONS PASSED:**
-1. **P1-existence:** 6 P1 items — REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06
+1. **P1-existence:** 5 P1 items — REPR-02, EXPL-02, PERF-ELASTIC-BAND, PREP-04, PREP-06
 2. **No cosmetic top-10:** all 10 confirmed non-cosmetic (real gaps or real performance wins)
 3. **Descending order:** score sequence 4.00 → … → 0.58 strictly non-increasing
 
