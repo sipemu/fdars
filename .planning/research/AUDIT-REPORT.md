@@ -1996,3 +1996,389 @@ equivalent) and will carry an accuracy note in the reverse-parity sweep (Plan 03
 over-split fix (ec17d138) similarly applies to fdars' own GMM clustering (also fdars-exclusive
 and absent from the scikit-fda ML rows), and will be accuracy-flagged in the reverse-parity
 sweep.
+
+---
+
+### Gap Counts (in-scope vs out-of-scope)
+
+This subsection separates the actionable in-scope gap count from the out-of-scope count so the
+audit cannot be read as "fdars is far behind." Out-of-scope capabilities (plotting, IO, and
+type-system plumbing from Phase 7's Design-Goal Filter) are reported as a separate figure and
+explicitly excluded from the actionable total (Pitfall 14, D-03).
+
+#### Source data
+
+The six area parity tables above (Plans 01+02) map **141 literal rows** across the Phase-7
+in-scope capability axis. The authoritative aggregate from the All-129 Coverage Check is:
+
+| Verdict | Count | In-scope rows |
+|---------|-------|---------------|
+| present | 59 | — |
+| partial | 19 | — |
+| absent | 63 | — |
+| **Total** | **141** | **141** |
+
+**Total gap rows (partial + absent):** 82.
+
+#### Out-of-scope rows (excluded from actionable total)
+
+The Phase-7 Design-Goal Filter identified **32 out-of-scope capabilities** across six areas
+(plotting, IO, type-system / pipeline plumbing). These are carried forward here with no Phase-8
+parity verdict — the audit's scope is in-scope algorithms only (Pitfall 14).
+
+| Area | Out-of-scope (plotting / IO / type-system) | Excluded from actionable count |
+|------|--------------------------------------------|-------------------------------|
+| Representation | 4 (data-type rows: FDataGrid, FDataBasis, FDataIrregular, FData abstract base) | Yes |
+| Preprocessing | 2 (sklearn-pipeline plumbing wrappers) | Yes |
+| Exploratory | 11 (visualization: MagnitudeShapePlot, phase boxplot, boxplot, carpet plot, etc.) | Yes |
+| ML | 0 | — |
+| Inference | 0 | — |
+| Misc | 15 (dataset loaders: fetch_*, DataFrame IO round-trips) | Yes |
+| **Total** | **32** | **All excluded** |
+
+These 32 out-of-scope capabilities are **not gaps**. fdars' Rust architecture handles pipeline
+composition via trait objects and builder structs (not sklearn-style estimator inheritance), and
+visualization is intentionally out of scope (PROJECT.md §"Out of Scope").
+
+#### Actionable in-scope gap count
+
+The actionable gap count covers only the 82 in-scope gap rows (partial + absent), split by D-03
+category:
+
+| Area | Gaps (partial + absent) | table-stakes | differentiator |
+|------|-------------------------|--------------|----------------|
+| Preprocessing | 22 (8 partial + 14 absent) | 8 | 14 |
+| Representation | 13 (1 partial + 12 absent) | 6 | 7 |
+| Exploratory | 11 (4 partial + 7 absent) | 7 | 4 |
+| ML | 9 (2 partial + 7 absent) | 3 | 6 |
+| Inference | 5 (2 partial + 3 absent) | 5 | 0 |
+| Misc | 22 (4 partial + 18 absent) | 7 | 15 |
+| **Total** | **82** | **36** | **46** |
+
+**Actionable total: 82 in-scope gaps — 36 table-stakes, 46 differentiator.**
+
+The table-stakes gaps (36) are the competitive deficit: capabilities a general-purpose FDA
+library is expected to have and fdars currently lacks or only partially covers. The
+differentiator gaps (46) are advanced features whose absence is acceptable today but whose
+presence would set fdars apart. Phase 9 (RPT-02) value-ranks these 82 entries; Phase 8 only
+categorizes.
+
+The **out-of-scope 32** are excluded from this total and should not appear in any "how far
+behind is fdars" narrative. With the 32 excluded, the competition-relevant gap picture is 82
+in-scope rows, not the misleading raw "82 + 32 = 114 absent/partial" figure a naive read of
+the six tables might produce.
+
+---
+
+### Reverse-Parity Strengths Sweep (D-04)
+
+This subsection enumerates every fdars capability that has no scikit-fda 0.10.1 equivalent.
+The sweep walks the `STRUCTURE.md` module map (not just the four SC3 headline areas) and
+source-confirms each capability exists in `fdars-core/src/`. The scikit-fda-side absence is
+confirmed against the Phase-7 area tables (no scikit-fda in-scope row was mapped to any of
+these modules).
+
+| # | fdars Capability | fdars module / file | scikit-fda 0.10.1 equivalent | Confidence |
+|---|-----------------|---------------------|------------------------------|------------|
+| **Headliners (SC3)** | | | | |
+| 1 | **Model explainability** — PDP, SHAP, ALE, LIME, permutation importance, Friedman H-statistic, Sobol indices, DFbetas/DFFits influence diagnostics, counterfactual search, anchor explanations, prototype criticism, domain-selection saliency | `explain/` (44+ public functions across 9 submodule files + helpers/), `explain_generic/` (FpcPredictor trait, 15 generic functions; pdp, shap, lime, ale, importance, saliency, sensitivity, counterfactual, anchor) | **none** — scikit-fda has no explainability module; no PDP, SHAP, LIME, ALE, or importance functions appear in any Phase-7 area table. | HIGH |
+| 2 | **Statistical Process Monitoring (SPM) / control charts** — Phase 1 reference-set limits, Phase 2 online monitoring, EWMA, CUSUM, MEWMA, adaptive MEWMA, Hotelling T², SPE, Nelson/Western-Electric rules, contribution analysis, ARL estimation, elastic shape monitoring, multivariate functional PCA for SPM | `spm/` (20 submodule files: phase.rs, monitor.rs, ewma.rs, cusum.rs, mewma.rs, amewma.rs, control.rs, stats.rs, rules.rs, contrib.rs, arl.rs, elastic_spm.rs, mfpca.rs, …) | **none** — scikit-fda has no SPM or control-chart module; no EWMA, CUSUM, ARL, or control-limit functions appear in any Phase-7 area table. | HIGH |
+| 3 | **Seasonal decomposition and time-series analysis** — automatic period detection (SAZED/autoperiod), peak classification, seasonal strength, Lomb-Scargle periodogram, STL-based detrending, change point detection, Hilbert transform, matrix profile, Singular Spectrum Analysis (SSA) | `seasonal/` (12 submodule files: autoperiod.rs, period.rs, peak.rs, sazed.rs, strength.rs, change.rs, hilbert.rs, matrix_profile.rs, ssa.rs, lomb_scargle.rs), `detrend/` | **none** — scikit-fda has no seasonal analysis module; no period detection, STL, SSA, matrix profile, or Hilbert-transform functions appear in any Phase-7 area table. Note: seasonal/Lomb-Scargle NaN handling is a **fragile area** (CONCERNS.md §Fragile Areas) — present, accuracy NOT fully verified for extreme noise / large-gap inputs. | HIGH |
+| 4 | **Online / streaming functional depth** — incremental Fraiman-Muniz depth, streaming Band Depth, streaming Modified Band Depth, rolling reference set, sorted-reference-state accumulation | `streaming_depth/` (7 submodule files: fraiman_muniz.rs, bd.rs, mbd.rs, rolling.rs, sorted_ref.rs, …; `StreamingDepth` trait + `StreamingFraimanMuniz`, `StreamingBd`, `StreamingMbd`, `RollingReference`, `SortedReferenceState`) | **none** — scikit-fda has no streaming / online depth computation. All scikit-fda depth measures operate on a fixed reference set. | HIGH |
+| **D-04 Candidate List** | | | | |
+| 5 | **Conformal prediction** — split-conformal and full-conformal prediction intervals for regression and classification, multiple non-conformity scores, conformal tolerance bands, elastic conformal prediction | `conformal/` (7 files: regression.rs, classification.rs, cv.rs, elastic.rs, generic.rs, mod.rs, tests.rs; types: `ConformalMethod`, `ConformalConfig`, `ConformalRegressionResult`, `ConformalClassificationResult`, `ClassificationScore`) | **none** — scikit-fda has no conformal prediction module. No coverage-guaranteed prediction interval methods appear in any Phase-7 table. | HIGH |
+| 6 | **Tolerance bands** — simultaneous functional tolerance bands (FPCA-based, Degras bootstrap, conformal, equivalence-test, exponential-family, elastic), with multiple band types and multiplier distributions | `tolerance/` (10 files: types.rs, fpca.rs, degras.rs, conformal.rs, equivalence.rs, exponential.rs, elastic.rs, helpers.rs, mod.rs, tests.rs; types: `ToleranceBand`, `BandType`, `PhaseToleranceBand`, `ElasticToleranceBandResult`) | **none** — scikit-fda has no tolerance-band module. Simultaneous functional tolerance bands are not available in any Phase-7 area. | HIGH |
+| 7 | **Gaussian Mixture Model (GMM) clustering** — EM-fit GMM for functional data, covariance-floor-scaled component estimation, multiple covariance types (`CovType`), GMM-based curve clustering | `gmm/` (5 files: mod.rs, em.rs, cluster.rs, covariance.rs, init.rs, tests.rs; `GmmClusterConfig`, `gmm_em`, cluster result) | **none** — scikit-fda has no GMM clustering. Only k-means and agglomerative clustering appear in the Phase-7 ML table. Note: GMM over-split bug is **fixed** in commit `ec17d138` (v0.13.2) but present — accuracy NOT fully verified against independent benchmarks (ec17d138 CONCERNS.md §Known Bugs). | HIGH |
+| 8 | **Matrix profile** — exact and approximate subsequence distance profiling for functional data and time series, motif discovery, discord detection | `seasonal/matrix_profile.rs` (`matrix_profile`, `matrix_profile_fdata`, `matrix_profile_seasonality`) | **none** — scikit-fda has no matrix-profile or subsequence-search capability in any Phase-7 area table. | HIGH |
+| 9 | **Singular Spectrum Analysis (SSA)** — SSA decomposition, SSA-based forecasting, SSA seasonality extraction for functional data | `seasonal/ssa.rs` (`ssa`, `ssa_fdata`, `ssa_seasonality`) | **none** — scikit-fda has no SSA module; SSA does not appear in any Phase-7 area table. | HIGH |
+| 10 | **Hilbert transform** — analytical signal construction, instantaneous amplitude/frequency/period estimation for functional curves | `seasonal/hilbert.rs` (`hilbert_transform`, `instantaneous_period`) | **none** — scikit-fda has no Hilbert-transform capability in any Phase-7 table. | HIGH |
+| 11 | **WIRE (Workflow Intermediate Representation Engine)** — composable pipeline layer representation (`FdaData`, `Layer`, `LayerKey`) for capturing FPCA, alignment, depth, clustering, regression, FOSR, tolerance, SPM chart / monitor, and explain outputs in a unified serializable data structure | `wire.rs` (`FdaData`, `Layer` enum, layer types: `FpcaLayer`, `AlignmentLayer`, `DistancesLayer`, `DepthLayer`, `OutlierLayer`, `ClusterLayer`, `RegressionLayer`, `FosrLayer`, `ToleranceLayer`, `MeanLayer`, `SpmChartLayer`, `SpmMonitorLayer`, `ExplainLayer`, `CustomLayer`) | **none** — scikit-fda uses scikit-learn pipeline plumbing (sklearn estimator protocol). fdars' WIRE is a Rust-native serializable workflow-result container with no scikit-fda counterpart. | HIGH |
+| 12 | **Functional ANOVA Mixed Models (FAMM)** — functional mixed-effect models fitting (random curves + fixed effects), fixed-effect hypothesis tests, functional mixed-model prediction | `famm.rs` (`fmm`, `fmm_predict`, `fmm_test_fixed`; result types: `FmmResult`) | **none** — scikit-fda has no FAMM; the Phase-7 Inference area contains only the simple ANOVA test and Hotelling T² (no mixed models). | HIGH |
+| 13 | **Elastic changepoint detection** — SRSF-space amplitude-changepoint and phase-changepoint detection for functional data, elastic-FPCA-based changepoint testing | `elastic_changepoint.rs` (`elastic_amp_changepoint`, `elastic_ph_changepoint`, `elastic_fpca_changepoint`) | **none** — scikit-fda has no changepoint-detection module; changepoint detection does not appear in any Phase-7 area table. | HIGH |
+| 14 | **Robust scalar-on-function regression** — L1-norm functional regression (`fregre_l1`), Huber-loss functional regression (`fregre_huber`), robust prediction and cross-validation | `scalar_on_function/robust.rs` (`fregre_l1`, `fregre_huber`, `predict_fregre_robust`) | **none** — scikit-fda has no robust functional regression; the Phase-7 ML table covers only standard `FPLSRegression`, `FPCARegression`, and kNN/kernel regressors. | HIGH |
+| 15 | **Multi-response scalar-on-function regression** — vector-valued response functional linear model, multi-response prediction, multi-response CV | `scalar_on_function/multi.rs` (`fregre_lm_multi`, `predict_fregre_lm_multi`, `fregre_lm_multi_cv`) | **none** — scikit-fda has no multi-response functional regression in any Phase-7 area table. | HIGH |
+| 16 | **Andrews curves for functional data** — Andrews transform for dimensionality-reduction visualization, Andrews loadings for component interpretation | `andrews.rs` (`andrews_transform`, `andrews_loadings`; result types: `AndrewsResult`, `AndrewsLoadings`) | **partial** — scikit-fda has no Andrews-curves module for functional data; Andrews visualization is not present in any Phase-7 area table (the Phase-7 Exploratory out-of-scope rows cover generic visualization, not this specific transform). The transform itself is a numeric operation (not a plot), so it would be In-Scope were scikit-fda to implement it. | HIGH |
+| 17 | **Function-on-function regression (FOF)** — regression with functional predictors and functional responses (not just scalar-on-function), full end-to-end functional regression pipeline | `fof_regression.rs` (function-on-function regression with functional predictors and functional response) | **partial** — scikit-fda's Phase-7 ML table includes `HistoricalLinearRegression` (a specialized FOF model) as an fdars gap, indicating scikit-fda has it but fdars does not match it. However, fdars has a *general* FOF regression (`fof_regression.rs`) that scikit-fda's `HistoricalLinearRegression` is a special case of — fdars has the broader capability while scikit-fda has only the historical-integral subcase. | HIGH |
+| 18 | **Elastic regression and shape-based analysis** — elastic shape regression (SRSF-space regression), elastic logistic regression, elastic PCR (principal component regression in shape space), scalar-on-shape regression | `elastic_regression/` (mod.rs, regression.rs, logistic.rs, pcr.rs, scalar_on_shape.rs, tests.rs) | **none** — scikit-fda has no elastic regression module; elastic regression on shape-space (SRSF-based) does not appear in any Phase-7 ML area table. | HIGH |
+| 19 | **Elastic FPCA** — amplitude FPCA (vertical), phase FPCA (horizontal), joint amplitude+phase FPCA; all in SRSF shape space | `elastic_fpca.rs` (`vert_fpca`, `horiz_fpca`, `joint_fpca`; result types) | **none** — the Phase-7 Preprocessing FPCA row refers to scikit-fda's covariance-based FPCA; elastic (SRSF-space) FPCA is an fdars-exclusive approach with no scikit-fda counterpart. | HIGH |
+| 20 | **Elastic explain / attribution for elastic models** — feature attribution and explainability adapted to elastic-regression outputs | `elastic_explain.rs` | **none** — no elastic-model explainability appears in any Phase-7 table. | MEDIUM |
+| 21 | **Function-on-scalar regression (FOSR)** — functional response, scalar predictors: 1D FOSR with penalty matrix and CV, 2D FOSR with tensor-product penalty (functional surfaces as responses) | `function_on_scalar.rs`, `function_on_scalar_2d.rs` (`Grid2d`, `FosrResult2d`) | **partial** — scikit-fda's Phase-7 ML table does not enumerate a generic FOSR; the Phase-7 scope focused on scalar-response regression. scikit-fda's regression module is primarily scalar-on-function. fdars' FOSR (functional response, scalar predictors) including 2D surface-response regression is an fdars advantage. | HIGH |
+| 22 | **Bayesian alignment** — Bayesian elastic curve registration with posterior uncertainty on warping functions | `alignment/bayesian.rs` | **none** — scikit-fda has no Bayesian alignment; only deterministic elastic and landmark registration appear in Phase-7 Preprocessing. | HIGH |
+| 23 | **Constrained alignment with landmarks** — elastic alignment with landmark constraints (hard-pin specific time points during warping) | `alignment/constrained.rs` | **none** — scikit-fda's Phase-7 Preprocessing registration section has `LeastSquaresShiftRegistration` and landmark methods; constrained elastic alignment (landmark-pinned SRSF warping) is fdars-exclusive. | HIGH |
+| 24 | **Geodesic paths on shape space** — geodesic interpolation between functional curves in SRSF shape space | `alignment/geodesic.rs` | **none** — scikit-fda has no geodesic-path computation in any Phase-7 area table. | HIGH |
+| 25 | **Phase boxplot for alignment output** — phase-variation boxplot (visualization-adjacent but produces numeric amplitude/phase decomposition as output) | `alignment/phase_boxplot.rs` | **none** — the Phase-7 Exploratory out-of-scope rows cover generic visualization; the phase boxplot's numeric amplitude/phase decomposition output is an fdars-exclusive structural output. | MEDIUM |
+| 26 | **Outlier detection for shapes** — SRSF-space outlier detection (shape-based outlyingness) | `alignment/outlier.rs` | **partial** — scikit-fda's Phase-7 Exploratory area covers `MSPlotOutlierDetector` and `StahelDonohoOutlyingness`; shape-space (SRSF) outlier detection is fdars-exclusive (elastic outlyingness, not directional-vector outlyingness). | MEDIUM |
+| 27 | **Shape depth measures** — elastic depth in SRSF shape space (amplitude depth, phase depth) | `alignment/elastic_depth.rs` | **none** — scikit-fda's Phase-7 Exploratory depth rows (`IntegratedDepth`, `BandDepth`, `ModifiedBandDepth`, `ProjectionDepth`, `SimplicialDepth`, `DistanceBasedDepth`, `OutlyingnessBasedDepth`) are all Euclidean-function-space depths; SRSF-space shape depth is fdars-exclusive. | HIGH |
+| 28 | **Irregular functional data module** — kernel-smooth irregular / missing observations onto a regular grid, irregularly sampled curve representation and operations | `irreg_fdata/` | **partial** — scikit-fda's Phase-7 Representation area includes `FDataIrregular` and `EMMixedEffectsConverter` / `MinimizeMixedEffectsConverter` for irregular→basis conversion (both absent in fdars). The fdars `irreg_fdata` module (`to_regular_grid`) handles a different pathway (irregular→grid via kernel smooth) that scikit-fda does not enumerate as a standalone module. | MEDIUM |
+| 29 | **Regression FPCA backbone** — integrated FPCA-in-regression infrastructure (`FpcaResult.project`, `FpcaResult.reconstruct`) with the generic `FpcPredictor` trait enabling the same FPCA scores to power regression, classification, logistic, and all explainability — in one unified framework | `regression.rs` (`fdata_to_pc_1d`, `FpcaResult`), `explain_generic/` (`FpcPredictor` trait) | **partial** — scikit-fda's `FPCARegression` chains FPCA scores into a regression, but the depth of the integration (one trait driving regression + classification + logistic + all 15 explainability methods through one `FpcPredictor` implementation) has no scikit-fda counterpart. The breadth of integration is fdars-exclusive. | HIGH |
+| 30 | **Warping utilities** — warping function operations, warping inverse, composition, distance computation between warpings | `warping.rs` | **partial** — scikit-fda's elastic alignment section exposes warpings via the `ElasticRegistration` estimator output; standalone warping-function arithmetic utilities (`composition`, `inverse`, `warp_complexity`) are not enumerated in the Phase-7 tables. | MEDIUM |
+
+**Summary:** 30 fdars-exclusive or fdars-advantaged capabilities enumerated. Of these:
+- **none** (scikit-fda has no equivalent): 22 rows (# 1–4, 5–16, 18–20, 22–24, 27).
+- **partial** (fdars has coverage scikit-fda partially has or vice-versa, with fdars holding the advantage): 8 rows (# 16–17, 21, 25–26, 28–30).
+
+The four SC3 headliners (rows 1–4) and the twelve D-04 candidate list items (rows 5–16) are
+all present and source-confirmed. Additional fdars-exclusive capabilities beyond the initial
+candidate list (rows 17–30: elastic regression/FPCA/explain, FOSR 1D+2D, Bayesian alignment,
+constrained alignment, geodesic paths, shape depth, irregular data module, FPCA-in-regression
+backbone, warping utilities) were found by walking the module map.
+
+---
+
+### Drafted Gap Backlog (unranked)
+
+This subsection drafts the gap-backlog entries that Phase 9 (RPT-02) will value-rank. Each
+entry carries the three mandatory fields: **Area**, **Current gap**, **Root cause**. Entries
+are grouped into sensible clusters where the implementation work is shared (D-03 discretion).
+
+**This backlog is UNRANKED.** Value ranking, severity labels, effort estimates, and
+reproducible-evidence links are Phase 9 scope (RPT-02/RPT-03, Pitfalls 13/16/17). Phase 8
+drafts entries only.
+
+---
+
+#### Preprocessing gaps
+
+**PREP-01 — Smoothing bandwidth-selection criteria**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | fdars' `CvCriterion` enum offers only CV and GCV. scikit-fda provides AIC (`akaike_information_criterion`), FPE (`finite_prediction_error`), Shibata (`shibata`), and Rice (`rice`) as additional bandwidth criteria — all absent. Category: differentiator. |
+| **Root cause** | `smoothing.rs` implements the CV/GCV path only; the four additional analytical criteria require implementing the respective hat-matrix trace computations (each is O(n²) at most, no new algorithm, just new criterion formulas). |
+
+**PREP-02 — Generic smoothing strategy abstraction + parameter search**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | No single strategy-object abstraction that swaps smoothing hat-matrix strategies uniformly (`KernelSmoother` abstraction). No generic grid-search wrapper over arbitrary smoothing parameters (`SmoothingParameterSearch`). Category: table-stakes. |
+| **Root cause** | fdars uses free functions per smoother variant (NW, local-linear, local-poly, kNN); the abstraction layer that would let users swap strategies by config is absent. Implementing a `SmootherConfig` enum / trait object would unblock `SmoothingParameterSearch`. |
+
+**PREP-03 — Missing-value imputation for regular functional grids**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | No dedicated in-grid NaN-imputation transformer (`MissingValuesInterpolation`). fdars has `irreg_fdata::to_regular_grid` (irregular→regular kernel fill) and `helpers::linear_interp`, but not a named in-grid imputer that works on `FdMatrix` with NaN entries. Category: table-stakes. |
+| **Root cause** | The irregular-data and interpolation pieces exist; composing them into an `impute_missing_values(data: &mut FdMatrix)` entry point is the gap. |
+
+**PREP-04 — Shift-only and landmark registration**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | No shift-only LS registration (`LeastSquaresShiftRegistration`). `landmark_shift_deltas` not exposed as a standalone call (deltas computed inside `landmark_register` but not returned separately). Category: table-stakes. |
+| **Root cause** | fdars jumps from landmark shifts to full elastic SRSF warping. The intermediate rigid-shift estimator (minimize L2-to-mean by constant horizontal shift per curve) is unimplemented as a named function. It is simpler than elastic alignment and widely expected. |
+
+**PREP-05 — Registration quality / validation scores**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | No LS registration-validation score (`LeastSquares`), no Sobolev-penalized LS statistic (`SobolevLeastSquares`), no pairwise-correlation score (`PairwiseCorrelation`) matching the specific scikit-fda `validation` module statistics. Category: table-stakes (LS, PairwiseCorrelation) / differentiator (Sobolev). |
+| **Root cause** | `alignment::quality::alignment_quality` / `warp_complexity` / `warp_smoothness` exist but do not match the specific sum-of-squares-to-mean LS score; the Sobolev penalty variant is absent. New score functions could be added to `alignment/quality.rs` without structural change. |
+
+**PREP-06 — Regularized FPCA (LDO / derivative-penalty)**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | `fdata_to_pc_1d` uses Simpson-weighted FPCA without a derivative-penalty regularizer. scikit-fda's `FPCA` supports `LinearDifferentialOperator` regularization. Category: table-stakes. |
+| **Root cause** | Regularized FPCA requires solving a generalized eigenvalue problem (K·w = λ·(M + αP)·w, where P is the penalty matrix from `bspline_penalty_matrix`). The penalty matrix is already implemented in `smooth_basis.rs`; the generalized-eigenvalue path is the missing piece. The `linalg` feature adds `faer`; the Cholesky path could handle the symmetric-positive-definite form. |
+
+**PREP-07 — Variable selection methods**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | Four scikit-fda variable-selection methods absent: `MaximaHunting`, `RecursiveMaximaHunting`, `RKHSVariableSelection`, `MinimumRedundancyMaximumRelevance`. Category: all four are differentiator. |
+| **Root cause** | No functional variable-selection module in fdars. Each method is a distinct algorithm: maxima-hunting (iterative peak search on relevance curve), RKHS (kernel-based measure), mRMR (mutual-information optimization). No shared infrastructure to reuse; each is an independent implementation. |
+
+**PREP-08 — Feature construction transformers**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | Three feature-construction transformers absent as public APIs: `LocalAveragesTransformer` / `local_averages`, `OccupationMeasureTransformer` / `occupation_measure`, `NumberCrossingsTransformer` / `number_crossings` (crossing logic exists internally in `seasonal::detect_threshold_crossings` and `landmark::detect_zero_crossings` but is not a public feature API). Category: differentiator for all three. |
+| **Root cause** | Internal crossing logic is per-module private. Local averages and occupation measure are straightforward integral operations over fdars' `FdMatrix` (one pass each). Exposing them as public feature extractors requires wrapping in a new `feature_construction.rs` module (or adding to `helpers.rs`). |
+
+**PREP-09 — Diffusion maps / manifold learning**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Preprocessing |
+| **Current gap** | No diffusion-map or manifold-learning embedding for functional data (`DiffusionMap`). Category: differentiator. |
+| **Root cause** | Requires computing a pairwise kernel matrix (using fdars' `distance.rs` Lp distances, already present), normalizing to a Markov matrix, and applying truncated eigendecomposition (analogous to `fdata_to_pc_1d`). The building blocks exist; the diffusion-map step sequence is unimplemented. |
+
+---
+
+#### Representation gaps
+
+**REPR-01 — Additional basis systems**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Representation |
+| **Current gap** | Missing basis types: `MonomialBasis` (polynomial), `ConstantBasis` (intercept), `FiniteElementBasis` (irregular meshes), `VectorValuedBasis` (multivariate output), `TensorBasis` (multivariate domain, tensor product of 1D bases), `CustomBasis` (user-supplied function set). Only B-spline and Fourier are publicly exposed. Categories: MonomialBasis/ConstantBasis = table-stakes; TensorBasis/FiniteElementBasis/VectorValuedBasis/CustomBasis = differentiator. |
+| **Root cause** | `basis/` only exposes B-spline and Fourier constructors. The internal tensor-product logic exists in `function_on_scalar_2d.rs` (2D FOSR) but is not a public `TensorBasis` API. Adding `MonomialBasis` and `ConstantBasis` is low-cost (simple polynomial evaluation). `FiniteElementBasis` requires a mesh data structure and is high-cost. |
+
+**REPR-02 — Spline interpolation (cubic/order-k) at off-grid points**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Representation |
+| **Current gap** | `helpers::fdata_interpolate` and `helpers::linear_interp` provide only linear interpolation. scikit-fda's `SplineInterpolation` provides spline (cubic or order-k) interpolation at arbitrary off-grid evaluation points. Category: table-stakes. |
+| **Root cause** | B-spline evaluation at arbitrary query points requires computing the de Boor algorithm on the existing knot grid. The B-spline basis in `basis/` can already evaluate basis functions; composing this with stored coefficients for interpolation is the missing step. |
+
+**REPR-03 — Extrapolation policies**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Representation |
+| **Current gap** | No named extrapolation-policy objects: `BoundaryExtrapolation` (clamp), `ExceptionExtrapolation` (error), `FillExtrapolation` (constant fill), `PeriodicExtrapolation` (periodic wrap). Category: BoundaryExtrapolation/ExceptionExtrapolation/FillExtrapolation = table-stakes; PeriodicExtrapolation = differentiator. |
+| **Root cause** | `fdata_interpolate` silently clamps to the grid boundary; there is no composable extrapolation-policy type. Implementing these as a Rust enum (`ExtrapolationPolicy`) passed to the interpolation/evaluation functions is low-cost; the policy dispatch logic is a small addition to `helpers.rs`. |
+
+**REPR-04 — Mixed-effects irregular-to-basis converters**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Representation |
+| **Current gap** | Both scikit-fda mixed-effects converters absent: `MinimizeMixedEffectsConverter` and `EMMixedEffectsConverter` (FDataIrregular → FDataBasis via optimization or EM). A two-step workaround (irreg→grid→basis) is possible but not equivalent. Category: differentiator. |
+| **Root cause** | Requires a functional mixed-effects solver: each curve is modeled as a random effect plus a fixed-effect basis expansion; the EM variant alternates between E-step (posterior scores) and M-step (basis coefficient update). `famm.rs` handles a related but distinct model (ANOVA mixed models, not basis-conversion). No shared infrastructure. |
+
+---
+
+#### Exploratory gaps
+
+**EXPL-01 — Pluggable-metric depth and outlyingness combinators**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Exploratory |
+| **Current gap** | `depth::functional_spatial_1d` is hard-wired to L2 / kernel variants; it is not parameterizable by an arbitrary user-supplied metric (`DistanceBasedDepth` gap). No `OutlyingnessBasedDepth` combinator wrapping any outlyingness measure into depth = 1/(1+outlyingness). `SimplicialDepth` exact (combinatorial) is absent (fdars has random-Tukey approximation only). Category: DistanceBasedDepth = table-stakes; OutlyingnessBasedDepth/SimplicialDepth-exact = differentiator. |
+| **Root cause** | `depth/` uses concrete distance functions; adding a trait parameter (`DistanceFn: Fn(&[f64], &[f64]) -> f64`) to `functional_spatial_1d` would enable pluggable metrics without a new algorithm. The outlyingness combinator is a formula wrapper (no algorithm). Exact simplicial depth is combinatorially O(n^d) and impractical for d > 2; the approximation is already present. |
+
+**EXPL-02 — Summary statistics for functional data**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Exploratory |
+| **Current gap** | Missing functional descriptive statistics: `trim_mean` (trimmed mean), `depth_based_median` (depth-weighted median of functions), functional `cov` for regular-grid data (full covariance function estimation, not just a covariance kernel), `var` (functional variance), `std` (functional standard deviation). Category: all table-stakes. |
+| **Root cause** | `fdata.rs` has `functional_mean` and `geometric_median` but not trimmed-mean, depth-weighted-median, or pointwise variance/std functions. `covariance.rs` has kernel-based GP covariance but not the sample covariance matrix of a regular-grid dataset as a standalone function. These are straightforward numerical operations on `FdMatrix`; the missing piece is named public functions. |
+
+**EXPL-03 — Staehel-Donoho outlyingness**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Exploratory |
+| **Current gap** | `StahelDonohoOutlyingness` — projection-based outlyingness for functional data. Category: differentiator. |
+| **Root cause** | fdars has `outliers::magnitude_shape_outlyingness` (directional outlyingness for MS-plot) and LRT outlyingness; Stahel-Donoho outlyingness uses random projection directions and max absolute-deviation scoring. It is distinct from fdars' current methods and would require a new implementation. |
+
+---
+
+#### ML gaps
+
+**ML-01 — Missing classifier variants**
+
+| Field | Value |
+|-------|-------|
+| **Area** | ML |
+| **Current gap** | `MaximumDepthClassifier` (classify by maximum depth under each class's empirical depth measure) and `NearestCentroid` as a named nearest-centroid classifier are absent. `RadiusNeighborsClassifier` and `RadiusNeighborsRegressor` (classify/regress by all neighbors within radius ε) absent. `DTMClassifier` (distance-to-measure) and `DDGClassifier` (DD-plot generalized) absent. `NearestNeighbors` index (general structure for neighbor queries) absent. Category: MaximumDepthClassifier/NearestCentroid = table-stakes; Radius/DTM/DDG/NearestNeighbors = differentiator. |
+| **Root cause** | `MaximumDepthClassifier` is a thin wrapper over `depth/` (already present): fit computes per-class depth measures; predict returns argmax. `NearestCentroid` is also thin over `fdata.rs::functional_mean`. `RadiusNeighbors*` requires a threshold variant of fdars' existing kNN infrastructure. `DTMClassifier` / `DDGClassifier` are more advanced and require distance-to-measure computation and DD-plot projection respectively. |
+
+**ML-02 — Unified LDO-regularized linear regression + regression infrastructure gaps**
+
+| Field | Value |
+|-------|-------|
+| **Area** | ML |
+| **Current gap** | scikit-fda's `LinearRegression` with `LinearDifferentialOperator` regularization (unified LDO form) is partially matched by `fregre_lm` but the LDO-penalty variant is absent. `HistoricalLinearRegression` (function-on-function regression where future values predict past values via historical kernel integral) is absent. `RadiusNeighborsRegressor` absent. Category: LDO-LinearRegression/NearestCentroid = table-stakes; Historical/RadiusNeighbors = differentiator. |
+| **Root cause** | LDO-regularized regression requires the same penalty matrix from `smooth_basis.rs` (already present) folded into the regression normal equations — analogous to PREP-06 for FPCA. HistoricalLinearRegression requires implementing the historical-integral kernel and its numerical quadrature. |
+
+---
+
+#### Inference gaps
+
+**INF-01 — Asymptotic functional ANOVA (V-statistic)**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Inference |
+| **Current gap** | No asymptotic one-way functional ANOVA using the V-statistic (`oneway_anova` with asymptotic distribution). `v_sample_stat` and `v_asymptotic_stat` both absent. fdars has permutation-based `fanova` in `function_on_scalar.rs`. Category: all table-stakes. |
+| **Root cause** | fdars' `fanova` tests group-mean differences via permutation; the asymptotic V-statistic path requires computing V = ∑_{i<j} n_i·n_j·‖mean_i − mean_j‖² / (∑n_k)² and comparing to an asymptotic χ² or F-approximation. The mean and L2-norm infrastructure is present (`fdata.rs`, `distance.rs`); only the V-statistic formula and its asymptotic approximation are missing. |
+
+**INF-02 — Two-sample Hotelling T² as standalone inference function**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Inference |
+| **Current gap** | `hotelling_test_ind` (two-independent-sample functional Hotelling T²) absent. `spm::stats::hotelling_t2` exists but in the SPM module and is designed for single-sample control-chart use (scores vs. control limits), not as a two-sample hypothesis test. Category: table-stakes. |
+| **Root cause** | The Hotelling T² computation is present in `spm/stats.rs`; wrapping it into a two-sample test (pooled-covariance estimate from both groups, degrees-of-freedom correction, p-value via F-distribution) would require a thin `inference` module re-exporting the SPM statistic with two-sample semantics. |
+
+---
+
+#### Misc gaps
+
+**MISC-01 — Missing distance / metric types**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Misc |
+| **Current gap** | `MahalanobisDistance`, `NormInducedMetric`, `TransformationMetric`, `angular_distance`, `cosine_similarity`, `cosine_similarity_matrix` all absent. Category: differentiator. |
+| **Root cause** | `distance.rs` implements Lp, Hausdorff, DTW, Fisher-Rao, inner-product, amplitude, phase distances. Mahalanobis requires a covariance matrix (available from `covariance.rs` or `linalg.rs::mahalanobis`); `NormInducedMetric` and `TransformationMetric` are composable wrappers. Angular/cosine are derivable from inner products (present in `utility.rs`). |
+
+**MISC-02 — Composable operator/regularization objects**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Misc |
+| **Current gap** | `LinearDifferentialOperator` (LDO) composable object absent — the penalty matrix computation exists in `smooth_basis::bspline_penalty_matrix` / `fourier_penalty_matrix` but not as a composable `LinearDifferentialOperator` object that can be passed to smoothers and regression. `L2Regularization` (scalar-weight ridge regularization) composable object absent. `Identity` operator composable object absent. Category: LDO/L2Reg = table-stakes; Identity = table-stakes. |
+| **Root cause** | fdars implements penalty matrices as standalone functions. Making them composable objects (a `DifferentialOperator` trait with `penalty_matrix()` method) would enable the LDO-FPCA (PREP-06) and LDO-regression (ML-02) paths without code duplication. This is an API-ergonomics enhancement, not a new algorithm. |
+
+**MISC-03 — Data generation helpers**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Misc |
+| **Current gap** | `make_gaussian` (exact Gaussian-process functional-data generator matching scikit-fda interface) absent as a one-call wrapper. `make_sinusoidal_process` (sinusoidal functional data with amplitude/frequency/noise params) absent as a dedicated generator. `make_multimodal_samples` and `make_multimodal_landmarks` absent. `make_random_warping` (random diffeomorphism generator) absent. `make_sde_trajectories` (Euler-Maruyama / Milstein SDE simulator) absent. Category: make_gaussian/make_sinusoidal = table-stakes; multimodal/warping/SDE = differentiator. |
+| **Root cause** | `simulation.rs` generates Gaussian data via KL expansion (`sim_fundata`) and GP trajectories via `generate_gaussian_process`. The scikit-fda `make_gaussian` interface is a one-call wrapper with specific parameter semantics; adapting the existing GP generator to that interface is low-cost. Sinusoidal data is achievable via `sim_fundata` with Fourier eigenfunctions. Random warpings and SDE trajectories are new algorithms. |
+
+**MISC-04 — Scoring metrics for functional responses**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Misc |
+| **Current gap** | `mean_absolute_error`, `mean_squared_error` absent. `mean_absolute_percentage_error`, `mean_squared_log_error`, `explained_variance_score` absent. Category: MAE/MSE = table-stakes; MAPE/MSLE/explained-variance = differentiator. |
+| **Root cause** | `helpers.rs` has `r_squared` and `r_squared_adj`; MAE / MSE are equally straightforward (one-pass integral or pointwise average). Adding a `scoring.rs` module with `functional_mae`, `functional_mse`, `functional_mape`, `functional_msle`, `functional_explained_variance` is low algorithmic complexity. |
+
+---
+
+#### D-02a: Comparative Numerical-Accuracy Validation (deferred from this milestone)
+
+**ACC-01 — Numerical accuracy validation pass (fdars vs scikit-fda on shared datasets)**
+
+| Field | Value |
+|-------|-------|
+| **Area** | Cross-cutting (Preprocessing / Misc / ML) |
+| **Current gap** | This phase (Phase 8) flags accuracy concerns but does not run numeric comparisons (D-02 flag-only policy). The four fragile/known-bug areas listed below carry "present — accuracy NOT verified" flags in the parity tables, but no fdars-vs-scikit-fda numeric comparison has been executed. |
+| **Root cause** | Deferred by D-02 / D-02a decision: the working scikit-fda 0.10.1 venv is present at `.planning/research/skfda-verify/venv` but was not used this phase. A comparative validation pass is needed before the affected capabilities can be reported as fully correct. |
+
+**Fragile areas this item must cover:**
+
+1. **B-spline round-trip and CV selection (GH #33, commit `2fb6d3c9`)** — `fdata_to_basis()` / `basis_to_fdata()` transposition bug (FIXED in v0.14.0, but regression coverage is narrow: smooth+noise data only, no edge cases for n=1, near-singular covariance, or non-uniform `argvals`). Compare fdars `fdata_to_basis` → `basis_to_fdata` round-trip residuals against scikit-fda's `BasisSmoother` round-trip on the Berkeley growth, Aemet, and synthetic-step datasets.
+
+2. **Elastic-alignment level encoding (GH #34, commit `6ed62398`)** — `gauss_model()` / `joint_gauss_model()` midpoint-anchor shift (FIXED in v0.14.0). Compare fdars elastic-registration sample-mean vs. data-mean on the standard benchmark datasets (Growth, Aemet, synthetic bumps). Verify the midpoint-anchor fix is numerically stable across step functions, linear trends, and periodic signals.
+
+3. **Seasonal Lomb-Scargle NaN handling** — Lomb-Scargle NaN/Inf silently dropped via post-hoc `filter(|x| x.is_finite())` (CONCERNS.md §Fragile Areas). No scikit-fda equivalent exists to compare against, but a self-consistency check (constant signal → power spectrum is zero everywhere; white noise → no dominant period) and an edge-case sweep (period == 0, gap ratio > 50%, irregular spacing) should be run.
+
+4. **GMM over-split (commit `ec17d138`, v0.13.2)** — covariance-floor-scaling fix (FIXED). Compare fdars GMM cluster assignments against scikit-learn's `GaussianMixture` on standard synthetic datasets (n=200, k=3 true clusters, varying covariance types). Verify that the floor fix produces stable k-component solutions with small floating-point perturbations.
+
+**Recommended approach:** Use the existing scikit-fda 0.10.1 venv at `.planning/research/skfda-verify/venv`, add a Rust test binary that outputs CSV, and a Python script that imports both fdars output and scikit-fda output for numeric comparison. The validation harness can be added to `tests/` as a new `validate_against_skfda.rs` integration test. Value/effort is Phase 9 scope.
+
+---
+
+*This backlog (PREP-01 through MISC-04 + ACC-01) together with the separated gap counts and
+the reverse-parity strengths sweep above constitute the complete Phase 8 deliverable. Phase 9
+(RPT-02) will value-rank these entries using the Pitfall-13 score (user value /
+√implementation effort), add severity and effort estimates (RPT-03), and attach reproducible
+evidence links (Pitfalls 16/17). No ranking has been applied here.*
