@@ -4,16 +4,16 @@ milestone: v0.14.0
 milestone_name: milestone
 current_phase: 08
 current_phase_name: capability-parity-matrix-categorization
-status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-08-09T19:19:29.945Z"
+status: verifying
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-08-09T19:32:19.798Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 8
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 18
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-09)
 
 Phase: 08 (capability-parity-matrix-categorization) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-09 — Phase 08 execution started
 
-Progress: [█████████░] 94%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Progress: [█████████░] 94%
 | Phase 07 P02 | 5 | 3 tasks | 1 files |
 | Phase 08 P1 | 8 | 3 tasks | 1 files |
 | Phase 08-capability-parity-matrix-categorization P02 | 9 | 3 tasks | 1 files |
+| Phase 08 P03 | 7 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,9 @@ Relevant to current work:
 - [Phase ?]: Misc area recounted 38→40 literal rows (Phase-7 compression documented; recount-supersedes-header convention applied)
 - [Phase ?]: ec17d138 GMM accuracy flag cited in All-129 Coverage Check (GMM is fdars-exclusive, no scikit-fda ML row)
 - [Phase ?]: Five remaining areas parity-mapped; aggregate 59 present / 19 partial / 63 absent across 141 rows
+- [Phase ?]: Separated in-scope (82 gaps) from out-of-scope (32 plotting/IO/type-system) per Pitfall 14; 36 table-stakes + 46 differentiator actionable
+- [Phase ?]: Reverse sweep found 30 fdars-exclusive capabilities (22 none / 8 partial-fdars-advantage): 4 SC3 headliners + 12 D-04 candidates + 14 additional from module-map walk
+- [Phase ?]: Drafted 20 unranked backlog entries (PREP-01 through MISC-04) + ACC-01 D-02a comparative numerical-accuracy validation item for 4 fragile areas; ranking is Phase 9 (RPT-02)
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T19:19:29.935Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-08-09T19:32:19.788Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
