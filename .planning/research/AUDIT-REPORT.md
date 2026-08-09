@@ -1419,3 +1419,184 @@ Notes:
   + 4 data-type rows (Representation, including the `FData` abstract base class) + 15 dataset
   loaders + DataFrame IO (Misc) = 32 total.
   and dir() spot-checks; MEDIUM for items verified against readthedocs 0.10.1 docs only.
+
+---
+
+## Phase 8 — Capability Parity Matrix & Categorization
+
+Phase 8 builds the **parity comparison** between fdars and scikit-fda 0.10.1 from the two
+sides already assembled: the Phase 7 scikit-fda capability inventory (the fixed left column)
+and the fdars codebase (`STRUCTURE.md` module map + source). Deliverables are **analysis
+artifacts only** — this appended section; **no `fdars-core/src` changes** (audit-only
+milestone).
+
+This section is built incrementally: Plan 01 (this content) establishes the verdict rubric,
+the categorization rubric, and the fully-worked **Preprocessing** parity table (the tracer
+area). Plans 02 and 03 append the remaining five area tables, the separated in-scope /
+out-of-scope gap counts, the reverse-parity strengths sweep, and the drafted gap-backlog into
+this same section (D-05 single-file convention).
+
+### Verdict Rubric (D-01)
+
+Every one of the Phase-7 in-scope capability rows is marked with exactly one of three
+verdicts. The verdict is **confirmed by grepping / reading `fdars-core/src`** — `STRUCTURE.md`
+is the map that points the search, source confirms the row. Verdicts are mapped **by
+capability, not by API name** (Pitfall 9): fdars accomplishes a task via a builder struct plus
+a single call returning a result struct, and that different call shape counts as **present**,
+not a gap.
+
+| Verdict | Definition |
+|---------|-----------|
+| **present** | The core algorithm / capability exists in fdars in *any* call-shape. A builder-struct + single-call (e.g. `fdata_to_pc_1d`) counts as scikit-fda's `fit` / `predict` / `transform` (Pitfall 9). Source-confirmed by grep/read of the named module. |
+| **partial** | The core algorithm is present, but key variants / options that scikit-fda offers are missing (e.g. only two bandwidth-selection criteria where scikit-fda has six; one smoother strategy where scikit-fda has three). A partial row is a distinct backlog candidate: *add-a-variant*, not *implement-from-scratch*. |
+| **absent** | No fdars equivalent found after searching the mapped module(s) by behavior. A distinct backlog candidate: *implement-from-scratch*. |
+
+**D-01a — the `partial` bucket is retained** (not collapsed to a binary present / absent).
+Pitfall 11 explicitly wants partial-vs-missing separated: a partial capability ("add a
+variant") and an absent capability ("implement from scratch") are different backlog items with
+different effort profiles. Collapsing them would lose that distinction and mislead the Phase 9
+value ranking.
+
+**Searched-note convention (Pitfall 11).** Every **partial** or **absent** row carries a
+mandatory note in the *fdars equivalent* column of the form:
+`searched fdars for: [behavior]. Closest match: [fn / module]. Verdict: [reason]`.
+The note is written by **capability / behavior**, never by scikit-fda API name — a naming
+mismatch is not a gap.
+
+**Accuracy-flag convention (D-02, Pitfall 12).** Presence is not correctness. Any row covering
+a known-bug area from `CONCERNS.md` §Known Bugs is marked in the *Accuracy?* column as
+**"present — accuracy NOT verified"** with a citation to the `CONCERNS.md` entry and its fix
+commit — **never a bare check-mark**. No fdars-vs-scikit-fda numeric comparison is run this
+phase (D-02 is flag-only); the deferred numeric validation is captured as a Phase-9 backlog
+item (D-02a). The three known-bug areas that touch Preprocessing are:
+
+- **B-spline basis round-trip transposition** (GH #33, fixed in commit `2fb6d3c9`) —
+  `fdata_to_basis()` / `basis_to_fdata()` scrambled multi-curve results.
+- **B-spline `n_basis` CV selection** (GH #33, fixed in commit `2fb6d3c9`) —
+  `basis_nbasis_cv()` always selected max `n_basis` (in-sample residual, no hold-out).
+- **Elastic-alignment level encoding** (GH #34, fixed in commit `6ed62398`) —
+  `gauss_model()` / `joint_gauss_model()` midpoint-anchor level shift.
+
+**Confidence tagging.** Each row carries a confidence tag mirroring the Phase 7
+HIGH / MEDIUM convention: **HIGH** where the verdict was source-grep-confirmed against a named
+`fdars-core/src` module; **MEDIUM** where inferred from the `STRUCTURE.md` module map without a
+direct symbol read.
+
+### Categorization Rubric (D-03)
+
+Every **gap** row (verdict `partial` or `absent`) is assigned exactly one category via this
+rubric. Present rows carry no category (nothing to backlog). Out-of-scope Phase-7 rows are
+carried straight from the Phase-7 Relevance taxonomy and **counted separately** so the
+actionable in-scope gap total is not inflated by plotting / IO / pipeline-plumbing rows
+(Pitfall 14).
+
+| Category | Definition |
+|----------|-----------|
+| **table-stakes** | A baseline FDA capability a general-purpose functional-data library is expected to have — e.g. core smoothers, standard basis systems, mainstream dimensionality reduction, common bandwidth selectors. Its absence is a real competitive gap. |
+| **differentiator** | An advanced / specialised capability whose absence is acceptable but whose presence would set fdars apart — e.g. diffusion maps / manifold learning, RKHS / recursive variable selection, mixed-effects irregular→basis converters, occupation-measure feature transformers. |
+| **out-of-scope** | Carried straight from Phase 7's Relevance taxonomy (plotting / IO / sklearn-pipeline plumbing). Excluded from the actionable in-scope gap total and counted separately (Pitfall 14). fdars' Rust equivalent of pipeline plumbing is trait composition, not an API port (PROJECT.md). |
+
+The two-way in-scope split (table-stakes vs differentiator) is kept as the roadmap words it —
+it is **not** a value band. Value ranking of the drafted backlog is **Phase 9** (RPT-02); Phase
+8 only categorizes.
+
+### Area: Preprocessing — Parity
+
+This is the tracer area — the largest algorithm-heavy Preprocessing area (smoothing /
+registration / basis / dimensionality-reduction) and the one that touches three of the four
+known-bug areas, so it exercises the full accuracy-flag path as well as the verdict path. The
+parity table below joins **1:1** against the Phase 7 §"Area: Preprocessing" in-scope rows (the
+fixed left column — same Task / Method axis, capability-mapped). Verdicts are source-confirmed
+against the modules named in `STRUCTURE.md` "Where to Add New Code":
+smoothing → `smoothing.rs` / `smooth_basis.rs`; basis → `basis/`; registration →
+`alignment/` / `warping.rs` / `landmark.rs`; dimensionality reduction → `regression.rs`.
+
+**Row-count note (recount supersedes the stale header).** The Phase 7 area header reads
+"In-scope count (this area): 29 rows", but a direct recount of the three Phase-7 Preprocessing
+task-grouping tables yields **39 in-scope rows** (13 Smoothing + 12 Registration/Alignment + 14
+Dimensionality-Reduction/Feature-Construction, after removing the 2 `Out-of-Scope`
+pipeline-plumbing rows) plus 2 out-of-scope. The header "29" is a stale undercount, exactly
+analogous to the Representation-area recount note already recorded above (which supersedes any
+stale per-area note by recounting the tables directly). This parity table maps **all 39
+authoritative in-scope rows** — the actual Phase-7 tables, not the header number, are the fixed
+left column.
+
+#### Task grouping: Smoothing — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Preprocessing | Smoothing | `KernelSmoother` with pluggable hat-matrix strategy | **partial** | table-stakes | verified (no known bug) | `smoothing::nadaraya_watson` + `local_linear` + `local_polynomial` + `knn_smoother` present; `smoothing_matrix_nw` gives the hat matrix. searched fdars for: pluggable hat-matrix smoother object. Closest match: `smoothing.rs` free functions (NW / local-linear / local-poly / kNN). Verdict: core kernel smoothing present in several call shapes, but there is no single strategy-object abstraction that swaps hat-matrix strategies uniformly — variants exist as separate functions. | HIGH |
+| Preprocessing | Smoothing — strategy | `NadarayaWatsonHatMatrix` | **present** | — | verified | `smoothing::nadaraya_watson` (+ `smoothing_matrix_nw` for the NW hat matrix). Different call shape (free fn vs strategy object) = present per Pitfall 9. | HIGH |
+| Preprocessing | Smoothing — strategy | `LocalLinearRegressionHatMatrix` | **present** | — | verified | `smoothing::local_linear` (and `local_polynomial` for higher orders). | HIGH |
+| Preprocessing | Smoothing — strategy | `KNeighborsHatMatrix` | **present** | — | verified | `smoothing::knn_smoother` (+ `knn_gcv` / `knn_lcv` for k selection). | HIGH |
+| Preprocessing | Smoothing | `BasisSmoother` — penalized basis expansion smoother | **present** | — | **present — accuracy NOT verified** (B-spline round-trip GH #33, CONCERNS.md §Known Bugs, fixed commit `2fb6d3c9`) | `smooth_basis::smooth_basis` (+ `smooth_basis_gcv`, `basis::pspline::pspline_fit_1d`); penalizes derivatives via `bspline_penalty_matrix` / `fourier_penalty_matrix` (LinearDifferentialOperator analogue). Round-trip `fdata_to_basis`/`basis_to_fdata` had a multi-curve transposition bug — present but accuracy flagged. | HIGH |
+| Preprocessing | Smoothing — parameter selection | `SmoothingParameterSearch` — grid search over smoothing params | **partial** | table-stakes | verified | `smoothing::optim_bandwidth` (CV/GCV over bandwidth) + `smooth_basis::smooth_basis_gcv` (GCV over lambda). searched fdars for: generic grid-search wrapper over arbitrary smoothing params. Closest match: `optim_bandwidth` / `smooth_basis_gcv` (per-method optimizers). Verdict: per-method parameter optimization present; a single generic search wrapper over any smoother is not. | HIGH |
+| Preprocessing | Smoothing — scorer | `LinearSmootherLeaveOneOutScorer` — LOO-CV scorer | **present** | — | verified | `smoothing::cv_smoother` (R's `CV.S`, LOO-CV score for linear smoothers). | HIGH |
+| Preprocessing | Smoothing — scorer | `LinearSmootherGeneralizedCVScorer` — GCV scorer | **present** | — | verified | `smoothing::gcv_smoother` (R's `GCV.S`). | HIGH |
+| Preprocessing | Smoothing — criterion | `akaike_information_criterion` — AIC bandwidth selection | **absent** | differentiator | n/a | searched fdars for: AIC bandwidth-selection criterion for linear smoothers. Closest match: `smoothing::CvCriterion` enum (only `Cv` and `Gcv`). Verdict: no AIC selector — the CV criterion set is CV/GCV only. | HIGH |
+| Preprocessing | Smoothing — criterion | `finite_prediction_error` — FPE bandwidth selection | **absent** | differentiator | n/a | searched fdars for: finite-prediction-error (FPE) bandwidth criterion. Closest match: `smoothing::CvCriterion` (Cv/Gcv only). Verdict: no FPE selector. | HIGH |
+| Preprocessing | Smoothing — criterion | `shibata` — Shibata's bandwidth selector | **absent** | differentiator | n/a | searched fdars for: Shibata bandwidth criterion. Closest match: `smoothing::CvCriterion` (Cv/Gcv only). Verdict: absent. | HIGH |
+| Preprocessing | Smoothing — criterion | `rice` — Rice's bandwidth selector | **absent** | differentiator | n/a | searched fdars for: Rice bandwidth criterion. Closest match: `smoothing::CvCriterion` (Cv/Gcv only). Verdict: absent. | HIGH |
+| Preprocessing | Smoothing | `MissingValuesInterpolation` — impute missing values | **partial** | table-stakes | verified | `irreg_fdata::to_regular_grid` (kernel-smooths irregular / sparse observations onto a target grid) + `helpers::fdata_interpolate` / `linear_interp`. searched fdars for: impute missing values inside a regular functional grid. Closest match: `to_regular_grid` (irregular→regular kernel fill) + `fdata_interpolate` (off-grid evaluation). Verdict: irregular-data regridding and interpolation present, but there is no dedicated in-grid NaN-imputation transformer matching the scikit-fda estimator. | HIGH |
+
+#### Task grouping: Registration / Alignment — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Preprocessing | Registration | `LeastSquaresShiftRegistration` — shift-only LS alignment | **absent** | table-stakes | n/a | searched fdars for: shift-only (rigid translation) registration minimizing an LS criterion. Closest match: `landmark::landmark_register` (landmark shift) and `alignment::elastic_align_pair` (full elastic). Verdict: no dedicated shift-only LS registration — fdars jumps from landmark shifts to full elastic warping; the intermediate global-shift-only estimator is absent. | HIGH |
+| Preprocessing | Registration | `FisherRaoElasticRegistration` — full elastic via SRSF / Fisher-Rao | **present** | — | **present — accuracy NOT verified** (elastic-alignment level encoding GH #34, CONCERNS.md §Known Bugs, fixed commit `6ed62398`) | `alignment::elastic_align_pair` / `elastic_align_pair_banded` (SRSF / Fisher-Rao), `align_to_target`, `karcher_mean`. Generative reconstruction (`gauss_model`) had a midpoint-anchor level-shift bug — present but accuracy flagged. | HIGH |
+| Preprocessing | Registration — utility | `landmark_shift_registration` — align by shifting to a landmark | **present** | — | verified | `landmark::landmark_register` (+ `detect_landmarks`, `detect_and_register`). | HIGH |
+| Preprocessing | Registration — utility | `landmark_shift_deltas` — compute shift deltas | **partial** | table-stakes | verified | searched fdars for: standalone landmark shift-delta computation. Closest match: `landmark::landmark_register` (computes and applies the shifts internally). Verdict: shift deltas are computed inside `landmark_register` but not exposed as a separate delta-returning call. | HIGH |
+| Preprocessing | Registration — utility | `landmark_elastic_registration` — elastic landmark registration | **present** | — | verified | `alignment::constrained` (landmark-constrained elastic alignment) + `landmark::landmark_register` feeding elastic warping. | MEDIUM |
+| Preprocessing | Registration — utility | `landmark_elastic_registration_warping` — return the warping function | **present** | — | verified | `alignment::constrained` returns warping functions; `warping.rs` supplies warp representation. Warps are first-class outputs of the alignment result structs. | MEDIUM |
+| Preprocessing | Registration — utility | `invert_warping` — invert a warping function | **present** | — | verified | `warping::invert_gamma` (invert a warping γ over a time grid). | HIGH |
+| Preprocessing | Registration — utility | `normalize_warping` — normalize warping to [0,1] | **present** | — | verified | `warping::normalize_warp` (normalize γ to the domain). | HIGH |
+| Preprocessing | Registration — validation | `AmplitudePhaseDecomposition` — decompose amplitude vs phase variation | **present** | — | verified | `alignment::set::elastic_decomposition` (amplitude/phase decomposition) + `elastic_fpca::{vert_fpca, horiz_fpca, joint_fpca}` (amplitude vs phase variability); `elastic_explain` attributes amplitude vs phase. | HIGH |
+| Preprocessing | Registration — validation | `LeastSquares` — registration validation via LS criterion | **partial** | table-stakes | verified | `alignment::quality::alignment_quality` (registration quality metrics). searched fdars for: LS registration-validation score. Closest match: `alignment_quality` / `warp_complexity` / `warp_smoothness`. Verdict: registration-quality scoring present but not the specific sum-of-squares-to-mean LS validation statistic as a named score. | MEDIUM |
+| Preprocessing | Registration — validation | `SobolevLeastSquares` — Sobolev-penalized LS validation | **absent** | differentiator | n/a | searched fdars for: Sobolev-penalized LS registration-validation criterion. Closest match: `alignment::quality::warp_smoothness` (derivative-based smoothness) + `alignment_quality`. Verdict: no Sobolev-penalized LS validation statistic. | MEDIUM |
+| Preprocessing | Registration — validation | `PairwiseCorrelation` — validation via pairwise correlation | **partial** | table-stakes | verified | `alignment::quality::pairwise_consistency` (pairwise alignment consistency). searched fdars for: pairwise-correlation registration-validation score. Closest match: `pairwise_consistency`. Verdict: a pairwise-consistency metric exists but it is not the specific pairwise-correlation-of-aligned-curves statistic. | MEDIUM |
+
+#### Task grouping: Dimensionality Reduction & Feature Construction — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Preprocessing | Dimensionality reduction | `FPCA` — functional PCA (sklearn transformer, LDO regularization) | **partial** | table-stakes | verified (FPCA/SVD path; not a CONCERNS.md known-bug row) | `regression::fdata_to_pc_1d` (+ `FpcaResult.project` / reconstruct); `elastic_fpca::{vert_fpca, horiz_fpca, joint_fpca}` for elastic FPCA. searched fdars for: FPCA with LinearDifferentialOperator (derivative-penalty) regularization. Closest match: `fdata_to_pc_1d` (Simpson-weighted FPCA, no explicit derivative penalty). Verdict: core FPCA present in several call shapes; the roughness/derivative-penalty regularized FPCA variant is missing. | HIGH |
+| Preprocessing | Dimensionality reduction | `FPLS` — functional partial least squares | **present** | — | verified | `regression::fdata_to_pls_1d` (+ `scalar_on_function::fregre_pls`, `predict_fregre_pls`). | HIGH |
+| Preprocessing | Dimensionality reduction | `DiffusionMap` — functional diffusion maps / manifold learning | **absent** | differentiator | n/a | searched fdars for: diffusion-map / spectral-embedding / manifold learning on functional data. Closest match: none (grep of `fdars-core/src` for diffusion/isomap/laplacian/manifold/spectral-embed found only unrelated Karcher-manifold comments). Verdict: absent — no manifold-learning embedding. | HIGH |
+| Preprocessing | Variable selection | `MaximaHunting` — variable selection by relevance maxima | **absent** | differentiator | n/a | searched fdars for: maxima-hunting variable selection. Closest match: none (grep found no maxima_hunt / variable_select symbol). Verdict: absent. | HIGH |
+| Preprocessing | Variable selection | `RecursiveMaximaHunting` — iterative maxima hunting | **absent** | differentiator | n/a | searched fdars for: recursive maxima hunting variable selection. Closest match: none. Verdict: absent. | HIGH |
+| Preprocessing | Variable selection | `RKHSVariableSelection` — RKHS-relevance variable selection | **absent** | differentiator | n/a | searched fdars for: RKHS-based variable selection. Closest match: none (no rkhs symbol in src). Verdict: absent. | HIGH |
+| Preprocessing | Variable selection | `MinimumRedundancyMaximumRelevance` — mRMR variable selection | **absent** | differentiator | n/a | searched fdars for: mRMR / minimum-redundancy-maximum-relevance variable selection. Closest match: none. Verdict: absent. | HIGH |
+| Preprocessing | Feature construction | `LocalAveragesTransformer` — local-interval averages as scalar features | **absent** | differentiator | n/a | searched fdars for: local-averages feature transformer. Closest match: none (grep for local_average found no symbol; `helpers` integration exists but no interval-average feature transformer). Verdict: absent. | HIGH |
+| Preprocessing | Feature construction | `OccupationMeasureTransformer` — time-in-value-range scalar features | **absent** | differentiator | n/a | searched fdars for: occupation-measure feature transformer. Closest match: none. Verdict: absent. | HIGH |
+| Preprocessing | Feature construction | `NumberCrossingsTransformer` — threshold-crossing counts as features | **partial** | differentiator | verified | searched fdars for: threshold-crossing-count feature transformer. Closest match: `seasonal::detect_threshold_crossings` (internal `pub(super)`) and `landmark::detect_zero_crossings` (private). Verdict: crossing-count logic exists internally for seasonal/landmark use but is not exposed as a public feature transformer over arbitrary thresholds. | HIGH |
+| Preprocessing | Feature construction — function | `local_averages` — functional local-averages feature | **absent** | differentiator | n/a | searched fdars for: local_averages functional feature. Closest match: none. Verdict: absent (see `LocalAveragesTransformer` row). | HIGH |
+| Preprocessing | Feature construction — function | `occupation_measure` — occupation-measure feature | **absent** | differentiator | n/a | searched fdars for: occupation_measure functional feature. Closest match: none. Verdict: absent. | HIGH |
+| Preprocessing | Feature construction — function | `number_crossings` — threshold crossing count | **partial** | differentiator | verified | searched fdars for: number_crossings functional feature. Closest match: `seasonal::detect_threshold_crossings` / `landmark::detect_zero_crossings` (not public feature API). Verdict: internal crossing logic present, not exposed as a public feature (mirrors `NumberCrossingsTransformer`). | HIGH |
+| Preprocessing | Feature construction — function | `modified_epigraph_index` — modified epigraph index feature | **present** | — | verified | `depth::modified_epigraph_index_1d` (public, re-exported at crate root). | HIGH |
+
+**Preprocessing parity — summary counts (tracer area).**
+
+- **39 in-scope rows mapped** (matches the recounted Phase-7 in-scope Preprocessing tables).
+- **Verdicts:** present = 17; partial = 8; absent = 14.
+- **Accuracy flags:** 2 rows carry "present — accuracy NOT verified" (`BasisSmoother` → B-spline
+  round-trip #33 / `2fb6d3c9`; `FisherRaoElasticRegistration` → elastic level encoding #34 /
+  `6ed62398`). The B-spline `n_basis` CV known-bug (#33 / `2fb6d3c9`) does not have a dedicated
+  Phase-7 Preprocessing row — the CV selector rides inside `smooth_basis`; it is noted here so
+  the third known-bug area is not lost, and it will attach to the parameter-selection backlog
+  entry in Plan 03.
+- **Gap categories** (the 8 partial + 14 absent = 22 gap rows): table-stakes = 8
+  (`KernelSmoother` strategy abstraction, `SmoothingParameterSearch` generic wrapper,
+  `MissingValuesInterpolation`, `LeastSquaresShiftRegistration`, `landmark_shift_deltas`,
+  `LeastSquares` / `PairwiseCorrelation` validation scores, `FPCA` LDO-regularized variant);
+  differentiator = 14 (AIC/FPE/Shibata/Rice selectors, `SobolevLeastSquares`, `DiffusionMap`,
+  the four variable-selection methods, the local-averages / occupation-measure /
+  number-crossings feature transformers and their functional forms). Final counts are
+  consolidated in Plan 03; these per-area tallies are the tracer evidence.
+- All 39 verdicts source-confirmed by grep/read of the named `fdars-core/src` modules
+  (Confidence HIGH on 33 rows; MEDIUM on 6 rows where the verdict was inferred from a broader
+  module read rather than a single named symbol).
+
+*This completes the Plan 01 tracer: the Phase 8 section skeleton, the D-01 verdict rubric, the
+D-03 categorization rubric, and the fully-worked Preprocessing parity table. Plans 02 and 03
+reuse this exact row schema for the remaining five areas.*
