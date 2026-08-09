@@ -76,6 +76,31 @@ Items ordered by descending `score = value / sqrt(effort)`. Computed score shown
 | — | ACC-VALIDATE | Comparative fdars-vs-scikit-fda numerical-accuracy validation | P2 | 3 | M | 1.73 | Cross-cutting (Preprocessing / Misc / ML) |
 
 *Rows appended by Plan 02. Final global sort (by descending score) deferred to Plan 03.*
+*Rows appended by Plan 03 (gap items — PREP/REPR/EXPL/ML/INF/MISC):*
+| — | PREP-01 | Add AIC/FPE/Shibata/Rice bandwidth-selection criteria to smoothing | P3 | 2 | S | 2.00 | Preprocessing / `smoothing.rs` |
+| — | PREP-02 | Implement generic SmootherConfig abstraction + SmoothingParameterSearch | P2 | 3 | M | 1.73 | Preprocessing / `smoothing.rs`, kernel smoother variants |
+| — | PREP-03 | Implement missing-value imputation for regular FdMatrix grids | P2 | 3 | S | 3.00 | Preprocessing / `helpers.rs`, `irreg_fdata/` |
+| — | PREP-04 | Implement shift-only (LeastSquaresShift) registration | P1 | 4 | M | 2.31 | Preprocessing / `alignment/`, no current shift estimator |
+| — | PREP-05 | Add registration-quality validation scores (LS, PairwiseCorrelation, Sobolev) | P2 | 2 | S | 2.00 | Preprocessing / `alignment/quality.rs` |
+| — | PREP-06 | Implement derivative-penalty (LDO) regularized FPCA | P1 | 4 | M | 2.31 | Preprocessing / `regression.rs`, `smooth_basis.rs` |
+| — | PREP-07 | Implement functional variable-selection methods (MaximaHunting, RKHS, mRMR) | P3 | 2 | L | 0.67 | Preprocessing / no current module — new `variable_selection.rs` |
+| — | PREP-08 | Expose local_averages, occupation_measure, number_crossings as public APIs | P3 | 2 | S | 2.00 | Preprocessing / `helpers.rs` or new `feature_construction.rs` |
+| — | PREP-09 | Implement diffusion-map manifold embedding for functional data | P3 | 2 | M | 1.15 | Preprocessing / `distance.rs`, `regression.rs` (truncated eigen) |
+| — | REPR-01 | Add MonomialBasis/ConstantBasis (and advanced: TensorBasis/FEBasis) to basis/ | P2 | 3 | M | 1.73 | Representation / `basis/` |
+| — | REPR-02 | Implement spline (cubic/order-k) interpolation at off-grid points | P1 | 4 | S | 4.00 | Representation / `helpers.rs`, `basis/` |
+| — | REPR-03 | Add composable extrapolation-policy enum (Boundary/Exception/Fill/Periodic) | P2 | 3 | S | 3.00 | Representation / `helpers.rs` interpolation/evaluation paths |
+| — | REPR-04 | Implement EM and Minimize mixed-effects irregular-to-basis converters | P3 | 2 | L | 0.67 | Representation / `irreg_fdata/`, `famm.rs` |
+| — | EXPL-01 | Add pluggable-metric depth (DistanceBased) and OutlyingnessBased combinator | P2 | 3 | M | 1.73 | Exploratory / `depth/`, `distance.rs` |
+| — | EXPL-02 | Add functional summary statistics: trim_mean, depth_median, cov, var, std | P1 | 4 | S | 4.00 | Exploratory / `fdata.rs`, `covariance.rs` |
+| — | EXPL-03 | Implement Stahel-Donoho outlyingness for functional data | P3 | 2 | M | 1.15 | Exploratory / new in `depth/` or `outliers.rs` |
+| — | ML-01 | Add MaximumDepthClassifier, NearestCentroid, RadiusNeighbors variants | P2 | 3 | M | 1.73 | ML / `classification/` |
+| — | ML-02 | Implement LDO-regularized linear regression + HistoricalLinearRegression | P2 | 3 | M | 1.73 | ML / `scalar_on_function/`, `smooth_basis.rs` |
+| — | INF-01 | Add asymptotic functional ANOVA V-statistic (oneway_anova + v_sample_stat) | P2 | 3 | S | 3.00 | Inference / `function_on_scalar.rs`, new `inference.rs` |
+| — | INF-02 | Expose two-sample Hotelling T² as standalone inference function | P2 | 3 | S | 3.00 | Inference / `spm/stats.rs` → thin `inference` wrapper |
+| — | MISC-01 | Add Mahalanobis, NormInduced, Transformation metrics + angular/cosine functions | P3 | 2 | S | 2.00 | Misc / `distance.rs`, `utility.rs` |
+| — | MISC-02 | Implement composable LinearDifferentialOperator and L2Regularization objects | P2 | 3 | M | 1.73 | Misc / `smooth_basis.rs`, new `operator.rs` trait |
+| — | MISC-03 | Add make_gaussian wrapper and make_sinusoidal_process dedicated generator | P3 | 2 | M | 1.15 | Misc / `simulation.rs`, `covariance.rs` |
+| — | MISC-04 | Add functional MAE, MSE scoring metrics (+ MAPE, MSLE, explained_variance) | P2 | 3 | S | 3.00 | Misc / `helpers.rs` or new `scoring.rs` |
 
 ---
 
@@ -249,6 +274,486 @@ Items ordered by descending `score = value / sqrt(effort)`. Computed score shown
 - **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. The scikit-fda venv is already installed; the standard datasets (Berkeley growth, Aemet) are available via scikit-fda's built-in data loaders. Work involves: Python comparison harness (~200 lines), Rust test binary outputting CSV (~300 lines), integration of the comparison as a CI-optional test (Python required in CI environment). Main risk: scikit-fda 0.10.1 API surface — some functions may have moved since the milestone was planned.
 
 - **Evidence link:** AUDIT-REPORT.md §Phase 8 → D-02a: Comparative Numerical-Accuracy Validation (ACC-01) — complete description of the four fragile areas, recommended approach, and the deferred decision rationale. scikit-fda venv: `.planning/research/skfda-verify/venv` (present — confirmed during Phase 8 setup). Phase 8 parity table flags: AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table rows for `BasisSmoother` and the elastic-level-encoding area; §Phase 8 → ML Parity Table row for GMM; §Phase 8 → Seasonal Parity Table row for Lomb-Scargle.
+
+---
+
+### PREP-01 — Add AIC/FPE/Shibata/Rice bandwidth-selection criteria to smoothing
+
+**Candidate requirement / phase phrasing:** "Add AIC (`akaike_information_criterion`), FPE (`finite_prediction_error`), Shibata (`shibata`), and Rice (`rice`) bandwidth-selection criteria to `smoothing.rs`, alongside the existing CV/GCV `CvCriterion` variants."
+
+- **Location / area:** `fdars-core/src/smoothing.rs` — the `CvCriterion` enum and associated bandwidth-selection logic. scikit-fda area: `smoothing` module (`akaike_information_criterion`, `finite_prediction_error`, `shibata`, `rice` standalone functions).
+
+- **Current cost or gap:** fdars' `CvCriterion` enum offers only `Cv` and `Gcv`. scikit-fda provides four additional analytical bandwidth criteria — AIC, FPE, Shibata, and Rice — as named functions. All four are absent in fdars. Category: differentiator.
+
+- **Root cause:** `smoothing.rs` implements the CV/GCV path only. The four additional criteria are analytical (closed-form formulas over the hat matrix trace): AIC = log(RSS/n) + 2·tr(H)/n; FPE = RSS·(1 + tr(H)/n) / (n − tr(H)/n); Shibata and Rice are similar hat-matrix-based expressions. No new algorithm is required — each formula is O(n²) at most (hat matrix computation dominates).
+
+- **Proposed direction:** Add `AIC`, `FPE`, `Shibata`, and `Rice` variants to the `CvCriterion` enum in `smoothing.rs` and implement their corresponding criterion-value computations (using the same hat-matrix trace already computed for GCV). GSD-ready as candidate Phase: "Add AIC/FPE/Shibata/Rice bandwidth-selection criteria to smoothing.rs."
+
+- **Severity (P1/P2/P3):** **P3** — These are alternative bandwidth criteria; CV and GCV already cover the most common use cases. The additional criteria are useful for users who prefer information-theoretic bandwidth selection, but their absence does not block any common workflow. Category: differentiator.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. No new algorithm: each criterion is a formula over the hat-matrix trace already computed in the GCV path. Implementation involves adding four enum variants and their formula evaluations (~30–50 lines). Tests: verify criterion values against known analytical results on synthetic smooth data.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `akaike_information_criterion` / `finite_prediction_error` / `shibata` / `rice` rows (all verdict: absent, differentiator). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-02 — Implement generic SmootherConfig abstraction + SmoothingParameterSearch
+
+**Candidate requirement / phase phrasing:** "Implement a `SmootherConfig` enum (or trait object) that swaps smoothing hat-matrix strategies uniformly, and a `SmoothingParameterSearch` wrapper for grid-search over arbitrary smoothing parameters — matching scikit-fda's `KernelSmoother` abstraction pattern."
+
+- **Location / area:** `fdars-core/src/smoothing.rs` — the NW, local-linear, local-poly, and kNN smoother variants. scikit-fda area: `smoothing` module (`KernelSmoother` with pluggable `LinearSmootherLeaveOneOutScorer` and `SmoothingParameterSearch`).
+
+- **Current cost or gap:** No single strategy-object abstraction that swaps smoothing hat-matrix strategies uniformly. No generic grid-search wrapper over arbitrary smoothing parameters. fdars uses free functions per smoother variant; users must call each function separately with different bandwidth parameters and compare results manually. Category: table-stakes (the abstraction is expected in any FDA toolkit that users want to tune by bandwidth).
+
+- **Root cause:** fdars uses free functions per smoother variant (NW, local-linear, local-poly, kNN). The abstraction layer that would let users swap strategies by config is absent. Implementing a `SmootherConfig` enum or a `Smoother` trait with `hat_matrix()` method would unblock `SmoothingParameterSearch` (a grid search over bandwidths that evaluates a `CvCriterion` for each parameter value).
+
+- **Proposed direction:** (1) Define a `SmootherConfig` enum (`NadarayaWatson { bandwidth }`, `LocalLinear { bandwidth }`, `LocalPolynomial { bandwidth, degree }`, `KNearestNeighbors { k }`) or a `Smoother` trait with a `smooth(data, argvals)` method and a `hat_matrix()` method. (2) Implement `SmoothingParameterSearch` as a generic grid-search struct that accepts a `SmootherConfig` and a `CvCriterion`, runs leave-one-out scoring for each parameter value, and returns the optimal bandwidth. GSD-ready as candidate Phase: "Implement SmootherConfig abstraction and SmoothingParameterSearch for fdars."
+
+- **Severity (P1/P2/P3):** **P2** — The strategy abstraction is table-stakes for users who want to compare smoothing approaches or perform bandwidth tuning in a pipeline. Its absence requires manual looping over smoother variants — not blocking but meaningfully inconvenient for common FDA preprocessing workflows.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. Defining the trait/enum and implementing hat-matrix computation for each smoother variant (or adapting existing free functions). The `SmoothingParameterSearch` logic is straightforward (grid-search loop + criterion evaluation); the main work is API design and connecting existing smoother implementations.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `KernelSmoother` / `SmoothingParameterSearch` rows (verdict: absent, table-stakes). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-03 — Implement missing-value imputation for regular FdMatrix grids
+
+**Candidate requirement / phase phrasing:** "Add an `impute_missing_values(data: &mut FdMatrix, argvals: &[f64])` public function to `helpers.rs` (or a new `imputation.rs` module) that fills NaN entries in a regular-grid `FdMatrix` using linear or spline interpolation along each curve's evaluation axis."
+
+- **Location / area:** `fdars-core/src/helpers.rs` (candidate location for `impute_missing_values`) and `fdars-core/src/irreg_fdata/` (existing irregular→regular conversion infrastructure). scikit-fda area: `preprocessing` module (`MissingValuesInterpolation` transformer).
+
+- **Current cost or gap:** No dedicated in-grid NaN-imputation transformer. fdars has `irreg_fdata::to_regular_grid` (irregular→regular kernel fill) and `helpers::linear_interp` (point-to-point linear interpolation), but no named function that walks an `FdMatrix` detecting NaN entries and filling them in-place via interpolation between adjacent non-NaN observations. Category: table-stakes (users with missing or sensor-dropout data need imputation before any analysis).
+
+- **Root cause:** The irregular-data and interpolation pieces exist. `linear_interp` computes a linearly interpolated value between two `(x, y)` pairs. Composing these into `impute_missing_values(data: &mut FdMatrix)` — scan each row for NaN entries, find their bounding non-NaN neighbors, apply linear interpolation — is the missing step. No new algorithm is required.
+
+- **Proposed direction:** Add `impute_missing_values(data: &mut FdMatrix, argvals: &[f64], method: ImputationMethod)` where `ImputationMethod` is `Linear` (using `helpers::linear_interp`) or `Constant(f64)` (fill with a fixed value). For each row `i` in `data`, scan for NaN entries, find the nearest non-NaN neighbors in `argvals`, interpolate. GSD-ready as candidate Phase: "Add MissingValuesInterpolation (in-grid NaN imputation) to fdars helpers."
+
+- **Severity (P1/P2/P3):** **P2** — Missing-value imputation is table-stakes for real datasets (sensor dropouts, incomplete registrations). The absence requires users to pre-fill NaNs outside fdars before analysis. Not P1 because the `irreg_fdata` path provides a workaround for irregular data; the specific in-grid NaN case is the gap.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. The linear interpolation logic is already in `helpers::linear_interp`. The new function scans `FdMatrix` rows for NaN entries and calls the existing interpolator. Adding the constant-fill variant and the `ImputationMethod` enum adds minor complexity.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `MissingValuesInterpolation` row (verdict: absent, table-stakes). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-04 — Implement shift-only (LeastSquaresShift) registration
+
+**Candidate requirement / phase phrasing:** "Implement `least_squares_shift_registration(data: &FdMatrix, argvals: &[f64]) -> FregreResult` that aligns each curve to the sample mean by minimizing the L2-distance under a constant horizontal shift — scikit-fda's `LeastSquaresShiftRegistration`."
+
+- **Location / area:** `fdars-core/src/alignment/` — no current shift-only registration function. scikit-fda area: `preprocessing` module (`LeastSquaresShiftRegistration`).
+
+- **Current cost or gap:** No shift-only LS registration in fdars. fdars jumps from landmark shifts (full landmark warping) to full elastic SRSF warping — the simple rigid-shift estimator is absent. `landmark_shift_deltas` is computed internally inside `landmark_register` but not returned as a standalone output. Category: table-stakes (shift registration is the simplest registration method and is widely expected as a starting-point alternative to full elastic alignment).
+
+- **Root cause:** fdars has no `least_squares_shift_registration` function. The algorithm minimizes `‖curve_i(t − δ_i) − mean(t)‖²` over scalar shift `δ_i` per curve — a 1D optimization with a simple golden-section or ternary-search solver (per-curve, O(m) each evaluation). The mean function is `fdata::functional_mean`. The infrastructure for all components is present; the function itself is missing.
+
+- **Proposed direction:** Implement `least_squares_shift_registration(data: &FdMatrix, argvals: &[f64], max_shift: f64) -> Result<RegistrationResult, FdarError>` where `RegistrationResult` carries the registered curves and the per-curve shift values `δ_i`. The 1D optimization over `δ_i` uses golden-section search on `‖data_i(t − δ_i) − mean(t)‖²` evaluated via linear interpolation. GSD-ready as candidate Phase: "Implement LeastSquaresShiftRegistration for fdars alignment module."
+
+- **Severity (P1/P2/P3):** **P1** — Shift registration is the table-stakes entry-level registration method: it is faster than elastic alignment by 2–3 orders of magnitude, and many FDA workflows start with shift registration before graduating to full elastic alignment. Its absence forces users who only need simple alignment to use the computationally expensive elastic path or to implement shift registration themselves. This is a meaningful capability gap for the default (non-elastic) user.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. The golden-section optimizer (~50 lines), the L2-to-mean objective (using `fdata::functional_mean` and linear interpolation), and the result type. Integration tests against scikit-fda `LeastSquaresShiftRegistration` output on standard datasets (Berkeley growth, Aemet) are recommended but require the scikit-fda venv from ACC-VALIDATE.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `LeastSquaresShiftRegistration` row (verdict: absent, table-stakes). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-05 — Add registration-quality validation scores (LS, PairwiseCorrelation, Sobolev)
+
+**Candidate requirement / phase phrasing:** "Add `least_squares_score`, `pairwise_correlation_score`, and `sobolev_least_squares_score` functions to `alignment/quality.rs` — scikit-fda's `LeastSquares`, `PairwiseCorrelation`, and `SobolevLeastSquares` validation statistics."
+
+- **Location / area:** `fdars-core/src/alignment/quality.rs` — existing quality functions (`alignment_quality`, `warp_complexity`, `warp_smoothness`). scikit-fda area: `preprocessing.registration.validation` module (`LeastSquares`, `SobolevLeastSquares`, `PairwiseCorrelation`).
+
+- **Current cost or gap:** `alignment::quality::alignment_quality` / `warp_complexity` / `warp_smoothness` exist but do not match the specific sum-of-squares-to-mean LS score. `LeastSquares` computes `∑_i ‖registered_i − mean‖² / n`. `PairwiseCorrelation` computes the mean pairwise correlation between registered curves. `SobolevLeastSquares` adds a derivative-penalty term. Category: `LeastSquares` / `PairwiseCorrelation` = table-stakes; `SobolevLeastSquares` = differentiator.
+
+- **Root cause:** New score functions could be added to `alignment/quality.rs` without structural change. `LeastSquares` is a single O(n·m) formula over `fdata::functional_mean` output. `PairwiseCorrelation` is O(n²·m). `SobolevLeastSquares` requires derivative approximation (already in `helpers.rs`).
+
+- **Proposed direction:** Add three functions to `alignment/quality.rs`: `least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> f64`, `pairwise_correlation_score(registered: &FdMatrix, argvals: &[f64]) -> f64`, `sobolev_least_squares_score(registered: &FdMatrix, argvals: &[f64], lambda: f64) -> f64`. GSD-ready as candidate Phase: "Add LS, PairwiseCorrelation, SobolevLS registration-quality scores to alignment/quality.rs."
+
+- **Severity (P1/P2/P3):** **P2** — Registration quality scores are standard diagnostic tools for validating that registration improved curve alignment; their absence requires users to implement their own post-registration diagnostics. Table-stakes for the LS and PairwiseCorrelation variants (commonly reported in FDA papers); differentiator for SobolevLS.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. All three are formula implementations over existing `FdMatrix` operations. No new data structures. Tests: verify against scikit-fda output on standard datasets.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `LeastSquares` / `SobolevLeastSquares` / `PairwiseCorrelation` rows (verdict: absent, table-stakes / differentiator). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-06 — Implement derivative-penalty (LDO) regularized FPCA
+
+**Candidate requirement / phase phrasing:** "Add a `fdata_to_pc_1d_regularized(data: &FdMatrix, argvals: &[f64], ncomp: usize, basis_type: BasisType, lambda: f64) -> Result<FpcaResult, FdarError>` function that solves the LDO-penalized FPCA generalized eigenvalue problem (K·w = λ·(M + αP)·w), using the existing penalty matrix from `smooth_basis::bspline_penalty_matrix`."
+
+- **Location / area:** `fdars-core/src/regression.rs` (`fdata_to_pc_1d` — unregularized FPCA entry point) and `fdars-core/src/smooth_basis.rs` (`bspline_penalty_matrix` / `fourier_penalty_matrix` — penalty matrix infrastructure). scikit-fda area: `decomposition` module (`FPCA` with `LinearDifferentialOperator` regularization).
+
+- **Current cost or gap:** `fdata_to_pc_1d` uses Simpson-weighted FPCA without any derivative-penalty regularizer. scikit-fda's `FPCA` supports `LinearDifferentialOperator` regularization — the generalized eigenvalue problem (K·w = λ·(M + αP)·w, where P is the penalty matrix). This is important for noisy functional data where unregularized FPCA loadings overfit high-frequency noise. Category: table-stakes.
+
+- **Root cause:** Regularized FPCA requires solving a generalized eigenvalue problem instead of a standard eigenvalue problem. The penalty matrix (`bspline_penalty_matrix` in `smooth_basis.rs`) is already implemented; the generalized-eigenvalue solver path is the missing piece. The `linalg` feature adds `faer`; the Cholesky factorization of (M + αP) followed by a transformed standard eigenvalue problem is the standard approach.
+
+- **Proposed direction:** Add `fdata_to_pc_1d_regularized(data, argvals, ncomp, basis_type, lambda) -> Result<FpcaResult, FdarError>` that: (1) computes the B-spline or Fourier penalty matrix P via `smooth_basis::bspline_penalty_matrix`; (2) forms M + λP (adding penalty to the integration weight matrix); (3) solves the generalized eigenvalue problem K·w = λ·(M + λP)·w via Cholesky factorization of (M + λP) and transformation to a standard eigenvalue problem. GSD-ready as candidate Phase: "Implement LDO-penalized regularized FPCA in regression.rs."
+
+- **Severity (P1/P2/P3):** **P1** — Regularized FPCA is table-stakes for noisy functional data. Unregularized FPCA overfits high-frequency noise when the grid is dense; regularization via a smoothness penalty is standard practice in FDA and is a core feature of scikit-fda's FPCA. Its absence means fdars users working with noisy data have no direct regularization path for FPCA.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. The penalty matrix is already implemented. Work involves: implementing the generalized eigenvalue solution (Cholesky + transform, or direct `faer` generalized eigensolver), connecting to `FpcaResult`, and adding tests validating that increasing `lambda` produces smoother loadings on noisy data.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `FPCA` row (verdict: partial, table-stakes — LDO regularization absent). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md). Penalty matrix infrastructure: `fdars-core/src/smooth_basis.rs:82` (`bspline_penalty_matrix`).
+
+---
+
+### PREP-07 — Implement functional variable-selection methods (MaximaHunting, RKHS, mRMR)
+
+**Candidate requirement / phase phrasing:** "Implement a `variable_selection` module with `maxima_hunting`, `recursive_maxima_hunting`, `rkhs_variable_selection`, and `minimum_redundancy_maximum_relevance` functions — matching scikit-fda's `MaximaHunting`, `RecursiveMaximaHunting`, `RKHSVariableSelection`, and `MinimumRedundancyMaximumRelevance`."
+
+- **Location / area:** New `fdars-core/src/variable_selection.rs` module (no current functional variable-selection module). scikit-fda area: `preprocessing.dim_reduction.variable_selection` module (all four methods).
+
+- **Current cost or gap:** Four scikit-fda variable-selection methods are absent in fdars: `MaximaHunting` (iterative peak search on a relevance curve), `RecursiveMaximaHunting` (recursive variant with decorrelation), `RKHSVariableSelection` (kernel-based relevance measure), and `MinimumRedundancyMaximumRelevance` (mutual-information optimization). Category: all four are differentiator.
+
+- **Root cause:** No functional variable-selection module in fdars. Each method is a distinct algorithm: maxima-hunting uses peak detection on the marginal correlation curve (internal peak finder in `seasonal::detect_threshold_crossings` is a related tool); RKHS uses kernel-based relevance (related to `covariance::CovKernel`); mRMR uses mutual information (new computation). No shared infrastructure to reuse — each is an independent implementation.
+
+- **Proposed direction:** Add a `variable_selection.rs` module with: `maxima_hunting(data: &FdMatrix, y: &[f64], argvals: &[f64], max_features: usize) -> Result<Vec<usize>, FdarError>` (returns selected evaluation-point indices); similar signatures for the recursive, RKHS, and mRMR variants. GSD-ready as candidate Phase: "Implement MaximaHunting and RKHS functional variable-selection methods."
+
+- **Severity (P1/P2/P3):** **P3** — All four methods are differentiator-category: useful for researchers wanting to identify the most informative time points in functional data, but not required for basic FDA workflows. Their absence does not block any common use case.
+
+- **Effort estimate (S/M/L):** **L** — approximately 1–3 months. Four separate algorithms with no shared infrastructure to reuse. MaximaHunting is simplest (~100 lines including peak detection); mRMR requires mutual-information estimation which is a non-trivial standalone computation. Each method needs its own numerical stability analysis and test suite.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `MaximaHunting` / `RecursiveMaximaHunting` / `RKHSVariableSelection` / `MinimumRedundancyMaximumRelevance` rows (all verdict: absent, differentiator). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-08 — Expose local_averages, occupation_measure, number_crossings as public feature APIs
+
+**Candidate requirement / phase phrasing:** "Expose `local_averages`, `occupation_measure`, and `number_crossings` as public functions in a `feature_construction.rs` module (or `helpers.rs`), wrapping existing internal logic from `seasonal::detect_threshold_crossings` and `landmark::detect_zero_crossings`."
+
+- **Location / area:** `fdars-core/src/helpers.rs` or new `fdars-core/src/feature_construction.rs` — internal crossing logic in `seasonal::detect_threshold_crossings` and `landmark::detect_zero_crossings`. scikit-fda area: `representation.extrapolation` and `preprocessing` modules (`LocalAveragesTransformer`, `OccupationMeasureTransformer`, `NumberCrossingsTransformer`).
+
+- **Current cost or gap:** Three feature-construction transformers are absent as public APIs: `LocalAveragesTransformer` / `local_averages` (average curve value over specified intervals), `OccupationMeasureTransformer` / `occupation_measure` (proportion of time curve spends above a threshold), `NumberCrossingsTransformer` / `number_crossings` (count of threshold crossings). Crossing logic exists internally in `seasonal::detect_threshold_crossings` and `landmark::detect_zero_crossings` but is not a public feature API. Category: differentiator for all three.
+
+- **Root cause:** Internal crossing logic is per-module private. Local averages and occupation measure are straightforward integral operations over fdars' `FdMatrix` (one pass each). Exposing them as public feature extractors requires wrapping in a new module or adding to `helpers.rs`. No new algorithm is required.
+
+- **Proposed direction:** Add to `helpers.rs` or a new `feature_construction.rs`: `local_averages(data: &FdMatrix, argvals: &[f64], intervals: &[(f64, f64)]) -> FdMatrix` (returns per-curve averages over each interval); `occupation_measure(data: &FdMatrix, argvals: &[f64], level: f64) -> Vec<f64>` (fraction of argvals range where curve ≥ level); `number_crossings(data: &FdMatrix, argvals: &[f64], level: f64) -> Vec<usize>` (count level crossings per curve, wrapping the existing `detect_threshold_crossings`). GSD-ready as candidate Phase: "Expose local_averages, occupation_measure, number_crossings as public feature-extraction APIs."
+
+- **Severity (P1/P2/P3):** **P3** — These are differentiator-category feature constructors: useful for users building scalar feature sets from functional data (e.g., for classification or regression after feature extraction), but not required for any core FDA algorithm.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. All three are wrapper functions over existing operations. `local_averages` is a trapezoidal integral over an interval; `occupation_measure` is a count divided by interval length; `number_crossings` wraps `detect_threshold_crossings`. Minimal new code (~50–80 lines total).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `LocalAveragesTransformer` / `OccupationMeasureTransformer` / `NumberCrossingsTransformer` rows (all verdict: absent, differentiator). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### PREP-09 — Implement diffusion-map manifold embedding for functional data
+
+**Candidate requirement / phase phrasing:** "Implement `diffusion_map(data: &FdMatrix, argvals: &[f64], ncomp: usize, sigma: f64) -> Result<FdMatrix, FdarError>` in a new `manifold.rs` module, using fdars' existing L2/Lp distances (from `distance.rs`) as the pairwise kernel basis."
+
+- **Location / area:** New `fdars-core/src/manifold.rs` (no current manifold-learning module). Dependencies: `fdars-core/src/distance.rs` (L2 pairwise distances), `fdars-core/src/regression.rs` (truncated eigendecomposition via `fdata_to_pc_1d`). scikit-fda area: `preprocessing.dim_reduction` module (`DiffusionMap`).
+
+- **Current cost or gap:** No diffusion-map or manifold-learning embedding for functional data. Category: differentiator. The building blocks exist — pairwise distance computation (`distance.rs`), normalization via matrix ops, and truncated eigendecomposition (analogous to `fdata_to_pc_1d`) — but the diffusion-map step sequence is unimplemented.
+
+- **Root cause:** Diffusion maps require: (1) compute pairwise kernel matrix K_ij = exp(−d(i,j)² / σ²) using `distance::lp_distance` or `distance::l2_distance`; (2) normalize to a Markov matrix (row normalization + symmetric normalization); (3) apply truncated eigendecomposition (analogous to SVD in `fdata_to_pc_1d`). All building blocks exist; the composition is the gap.
+
+- **Proposed direction:** Add `diffusion_map(data, argvals, ncomp, sigma, n_steps) -> Result<DiffusionMapResult, FdarError>` where `DiffusionMapResult` carries the embedding coordinates (N×ncomp) and eigenvalues. GSD-ready as candidate Phase: "Implement DiffusionMap manifold embedding using fdars' existing distance infrastructure."
+
+- **Severity (P1/P2/P3):** **P3** — Diffusion maps are a differentiator-category capability: powerful for nonlinear dimensionality reduction of functional data, but not required for basic FDA workflows. Users who need manifold-learning for functional data currently have no fdars path; they must convert to a feature-vector representation first.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. Building the pairwise kernel matrix (O(N²·m) distance evaluations — feasible for N ≤ 500 with existing distance infrastructure) and the Markov normalization (~40 lines). Eigendecomposition reuses `fdata_to_pc_1d`'s SVD path but on the normalized kernel matrix (a symmetric dense matrix). Testing: verify on synthetic manifold data (e.g., Swiss roll projected into functional form).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Preprocessing Parity Table → `DiffusionMap` row (verdict: absent, differentiator). Phase 8 SUMMARY: [09-01-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-01-SUMMARY.md).
+
+---
+
+### REPR-01 — Add MonomialBasis/ConstantBasis (and advanced: TensorBasis/FEBasis)
+
+**Candidate requirement / phase phrasing:** "Add `MonomialBasis` (polynomial) and `ConstantBasis` (intercept) to `fdars-core/src/basis/`, and expose the internal tensor-product logic from `function_on_scalar_2d.rs` as a public `TensorBasis` API. `FiniteElementBasis` (irregular meshes) is a longer-term large-effort item."
+
+- **Location / area:** `fdars-core/src/basis/` — currently exposes B-spline and Fourier only. Internal tensor-product logic in `function_on_scalar_2d.rs`. scikit-fda area: `representation.basis` module (`MonomialBasis`, `ConstantBasis`, `FiniteElementBasis`, `VectorValuedBasis`, `TensorBasis`, `CustomBasis`).
+
+- **Current cost or gap:** Missing basis types: `MonomialBasis` (polynomial), `ConstantBasis` (intercept-only), `FiniteElementBasis` (irregular meshes), `VectorValuedBasis` (multivariate output), `TensorBasis` (multivariate domain, tensor product of 1D bases), `CustomBasis` (user-supplied function set). Only B-spline and Fourier are publicly exposed. Categories: MonomialBasis/ConstantBasis = table-stakes; TensorBasis/FiniteElementBasis/VectorValuedBasis/CustomBasis = differentiator.
+
+- **Root cause:** `basis/` only exposes B-spline and Fourier constructors. The internal tensor-product logic exists in `function_on_scalar_2d.rs` (2D FOSR) but is not a public `TensorBasis` API. Adding `MonomialBasis` and `ConstantBasis` is low-cost (simple polynomial evaluation). `FiniteElementBasis` requires a mesh data structure and is high-cost.
+
+- **Proposed direction:** (a) Add `MonomialBasis { n_basis: usize, domain_range: (f64, f64) }` and `ConstantBasis { domain_range: (f64, f64) }` to `basis/mod.rs` with polynomial evaluation kernels. (b) Extract the tensor-product logic from `function_on_scalar_2d.rs` into a public `TensorBasis { basis1, basis2 }` type. (c) Defer `FiniteElementBasis` (requires mesh data structure) to a separate large-effort item. GSD-ready as candidate Phase: "Add MonomialBasis, ConstantBasis, and TensorBasis to fdars basis module."
+
+- **Severity (P1/P2/P3):** **P2** — `MonomialBasis` and `ConstantBasis` are table-stakes (widely used in functional regression as the simplest basis systems); their absence forces users to approximate polynomial bases with B-splines. TensorBasis is needed for 2D domain functional data. FEBasis is differentiator.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks for MonomialBasis + ConstantBasis + TensorBasis extraction. `FiniteElementBasis` (mesh structure) is excluded from this estimate.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Representation Parity Table → `MonomialBasis` / `ConstantBasis` / `TensorBasis` rows (table-stakes/differentiator, absent/partial). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### REPR-02 — Implement spline (cubic/order-k) interpolation at off-grid points
+
+**Candidate requirement / phase phrasing:** "Implement `spline_interpolate(data: &FdMatrix, argvals: &[f64], query_points: &[f64], order: usize) -> Result<FdMatrix, FdarError>` in `helpers.rs`, using the B-spline basis already in `basis/` for de Boor evaluation of stored coefficients at arbitrary query points."
+
+- **Location / area:** `fdars-core/src/helpers.rs` (`fdata_interpolate`, `linear_interp` — currently linear-only interpolation). `fdars-core/src/basis/` — B-spline basis evaluation already implemented. scikit-fda area: `representation` module (`SplineInterpolation` — cubic or order-k spline interpolation at arbitrary off-grid evaluation points).
+
+- **Current cost or gap:** `helpers::fdata_interpolate` and `helpers::linear_interp` provide only linear interpolation. scikit-fda's `SplineInterpolation` provides spline (cubic or order-k) interpolation at arbitrary off-grid evaluation points — standard for functional data resampling and evaluation. Category: table-stakes (spline interpolation is the standard functional data evaluation method; linear interpolation produces visible artefacts for smooth curves).
+
+- **Root cause:** B-spline evaluation at arbitrary query points requires computing the de Boor algorithm on the existing knot grid. The B-spline basis in `basis/` can already evaluate basis functions; composing this with stored coefficients for interpolation is the missing step. The B-spline basis system is already present — the "interpolate at query points" wrapper is absent.
+
+- **Proposed direction:** Add `spline_interpolate(data: &FdMatrix, argvals: &[f64], query_points: &[f64], order: usize) -> Result<FdMatrix, FdarError>` that: (1) fits a B-spline of the given order to each curve's `(argvals, data_row)` pair (using `basis::bspline_fit` or equivalent); (2) evaluates at `query_points` using the de Boor algorithm. GSD-ready as candidate Phase: "Implement cubic/order-k spline interpolation at arbitrary off-grid query points."
+
+- **Severity (P1/P2/P3):** **P1** — Spline interpolation at off-grid points is table-stakes for functional data evaluation: resampling curves to a common grid, evaluating at query points for prediction, and numerical integration all require smooth interpolation. Linear interpolation produces visible kinks on smooth curves; spline interpolation is the standard method. Its absence is a meaningful workflow gap.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. The B-spline basis is already implemented in `basis/`. The new function fits a B-spline to each row and evaluates at query points using the existing B-spline evaluation kernel. Total new code ~80–120 lines.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Representation Parity Table → `SplineInterpolation` row (verdict: partial, table-stakes — only linear interpolation available). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### REPR-03 — Add composable extrapolation-policy enum (Boundary/Exception/Fill/Periodic)
+
+**Candidate requirement / phase phrasing:** "Add an `ExtrapolationPolicy` enum (`Boundary` / `Exception` / `Fill(f64)` / `Periodic`) to `helpers.rs` and thread it through `fdata_interpolate` and `fdata_to_basis` so users can control out-of-range evaluation behavior."
+
+- **Location / area:** `fdars-core/src/helpers.rs` — `fdata_interpolate` (currently silently clamps to grid boundary). scikit-fda area: `representation.extrapolation` module (`BoundaryExtrapolation`, `ExceptionExtrapolation`, `FillExtrapolation`, `PeriodicExtrapolation`).
+
+- **Current cost or gap:** No named extrapolation-policy objects. `fdata_interpolate` silently clamps to the grid boundary; there is no composable extrapolation-policy type. Named policy objects: `BoundaryExtrapolation` (clamp to boundary value), `ExceptionExtrapolation` (raise error on out-of-range query), `FillExtrapolation` (constant fill value), `PeriodicExtrapolation` (periodic wrap). Categories: BoundaryExtrapolation/ExceptionExtrapolation/FillExtrapolation = table-stakes; PeriodicExtrapolation = differentiator.
+
+- **Root cause:** `fdata_interpolate` silently clamps to the grid boundary; there is no composable extrapolation-policy type. Implementing these as a Rust enum (`ExtrapolationPolicy`) passed to the interpolation/evaluation functions is low-cost; the policy dispatch logic is a small addition to `helpers.rs`.
+
+- **Proposed direction:** Add `ExtrapolationPolicy` enum: `Boundary` (clamp to last known value), `Error` (return `Err(FdarError::InvalidParameter)` on out-of-range query), `Fill(f64)` (return constant fill value), `Periodic` (wrap query point modulo the domain range). Thread through `fdata_interpolate(data, argvals, query_points, policy: ExtrapolationPolicy)`. GSD-ready as candidate Phase: "Add ExtrapolationPolicy enum to fdars interpolation/evaluation path."
+
+- **Severity (P1/P2/P3):** **P2** — Extrapolation policies are table-stakes for users who evaluate functional curves outside the observation range (common in prediction and visualization). Silent boundary clamping is a correctness footgun: users may not notice they are receiving boundary values for out-of-range queries. Making the behavior explicit is a meaningful correctness improvement.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. Small enum + match dispatch at the boundary-check point in `fdata_interpolate`. No new algorithm.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Representation Parity Table → `BoundaryExtrapolation` / `ExceptionExtrapolation` / `FillExtrapolation` / `PeriodicExtrapolation` rows (table-stakes/differentiator, absent). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### REPR-04 — Implement EM and Minimize mixed-effects irregular-to-basis converters
+
+**Candidate requirement / phase phrasing:** "Implement `em_mixed_effects_converter` and `minimize_mixed_effects_converter` for converting `IrregFdata` to a basis representation via functional mixed-effects models — scikit-fda's `EMMixedEffectsConverter` and `MinimizeMixedEffectsConverter`."
+
+- **Location / area:** `fdars-core/src/irreg_fdata/` (existing irregular→regular conversion via kernel smooth) and `fdars-core/src/famm.rs` (ANOVA mixed models — related but distinct). scikit-fda area: `preprocessing.smoothing` module (`EMMixedEffectsConverter`, `MinimizeMixedEffectsConverter`).
+
+- **Current cost or gap:** Both scikit-fda mixed-effects converters are absent. `MinimizeMixedEffectsConverter` converts `FDataIrregular` to `FDataBasis` by minimizing a mixed-effects criterion (MAP estimate of basis coefficients given random-effects prior). `EMMixedEffectsConverter` uses the EM algorithm alternating between E-step (posterior scores) and M-step (basis coefficient update). A two-step workaround (irreg→grid→basis) is possible but not statistically equivalent. Category: differentiator.
+
+- **Root cause:** Requires a functional mixed-effects solver: each curve is modeled as a random effect plus a fixed-effect basis expansion. The EM variant alternates between E-step (posterior coefficient scores) and M-step (basis coefficient + variance update). `famm.rs` handles a related but distinct model (ANOVA mixed models with fixed effects, not basis-conversion EM). No shared infrastructure — this is a new solver.
+
+- **Proposed direction:** Implement `minimize_mixed_effects_converter(irreg_data: &IrregFdata, basis: &BsplineBasis, lambda: f64) -> Result<FdMatrix, FdarError>` using iterative optimization (argmin solver already in fdars' dependency tree). Implement `em_mixed_effects_converter(irreg_data: &IrregFdata, basis: &BsplineBasis, max_iter: usize) -> Result<EmConverterResult, FdarError>`. GSD-ready as candidate Phase: "Implement EM and Minimize irregular-to-basis converters for IrregFdata."
+
+- **Severity (P1/P2/P3):** **P3** — Differentiator category: these converters are statistically superior to the two-step workaround for irregularly sampled data, but the workaround is available. Users with highly irregular sampling patterns (e.g., clinical trial data with patient-specific observation times) would benefit most.
+
+- **Effort estimate (S/M/L):** **L** — approximately 1–3 months. The EM variant requires implementing the E-step (closed-form posterior given Gaussian assumptions) and M-step (basis coefficient update via ridge-regression structure). Requires careful numerical stability analysis (covariance estimation for the random-effects prior can be ill-conditioned with sparse data).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Representation Parity Table → `EMMixedEffectsConverter` / `MinimizeMixedEffectsConverter` rows (verdict: absent, differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### EXPL-01 — Add pluggable-metric depth (DistanceBased) and OutlyingnessBased combinator
+
+**Candidate requirement / phase phrasing:** "Add a `distance_based_depth(data: &FdMatrix, argvals: &[f64], distance_fn: &dyn Fn(&[f64], &[f64]) -> f64) -> Result<Vec<f64>, FdarError>` function to `depth/` enabling user-supplied distance metrics, and an `outlyingness_based_depth` wrapper computing depth = 1/(1 + outlyingness)."
+
+- **Location / area:** `fdars-core/src/depth/` — `functional_spatial_1d` (hard-wired to L2/kernel variants). scikit-fda area: `exploratory.depth` module (`DistanceBasedDepth`, `OutlyingnessBasedDepth`, `SimplicialDepth` exact).
+
+- **Current cost or gap:** `depth::functional_spatial_1d` is hard-wired to L2/kernel variants; it is not parameterizable by an arbitrary user-supplied metric (`DistanceBasedDepth` gap). No `OutlyingnessBasedDepth` combinator wrapping any outlyingness measure into depth = 1/(1+outlyingness). `SimplicialDepth` exact (combinatorial) is absent (fdars has random-Tukey approximation only). Category: DistanceBasedDepth = table-stakes; OutlyingnessBasedDepth/SimplicialDepth-exact = differentiator.
+
+- **Root cause:** `depth/` uses concrete distance functions. Adding a trait parameter (`DistanceFn: Fn(&[f64], &[f64]) -> f64`) to a new `distance_based_depth` function would enable pluggable metrics without a new algorithm. The outlyingness combinator is a formula wrapper (no algorithm). Exact simplicial depth is combinatorially O(n^d) and impractical for d > 2; the approximation is already present.
+
+- **Proposed direction:** Add two functions to `depth/`: (1) `distance_based_depth(data, argvals, distance_fn: impl Fn(&[f64], &[f64]) -> f64) -> Result<Vec<f64>, FdarError>` — computes per-curve depth using the supplied distance metric (L1, L∞, or any user function). (2) `outlyingness_based_depth(outlyingness: &[f64]) -> Vec<f64>` — applies depth = 1/(1+outlyingness) pointwise. GSD-ready as candidate Phase: "Add DistanceBased and OutlyingnessBased depth combinators to fdars depth module."
+
+- **Severity (P1/P2/P3):** **P2** — `DistanceBasedDepth` is table-stakes for users who want to compute depth under non-L2 metrics (e.g., DTW distance, elastic distance). The hard-wired L2 variant covers many use cases, but pluggable metrics are a meaningful extension. `OutlyingnessBasedDepth` is a differentiator combinator.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. `distance_based_depth` requires computing pairwise distances under a user-supplied metric (O(n²) calls to the closure) and summing per-curve depth scores. The generic closure parameter adds complexity to the function signature (lifetime + trait bound). Tests: verify against L2 baseline (should match `functional_spatial_1d` with L2 distance).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Exploratory Parity Table → `DistanceBasedDepth` / `OutlyingnessBasedDepth` rows (verdict: absent, table-stakes/differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### EXPL-02 — Add functional summary statistics: trim_mean, depth_median, cov, var, std
+
+**Candidate requirement / phase phrasing:** "Add `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, and `functional_std` to `fdata.rs` or a new `summary.rs` module — filling the table-stakes descriptive-statistics gap vs scikit-fda's `trim_mean`, `depth_based_median`, `cov`, `var`, `std`."
+
+- **Location / area:** `fdars-core/src/fdata.rs` — currently has `functional_mean` and `geometric_median`. `fdars-core/src/covariance.rs` — kernel-based GP covariance (not the sample covariance of a regular-grid dataset). scikit-fda area: `exploratory.stats` module (`trim_mean`, `depth_based_median`, `cov`, `var`, `std`).
+
+- **Current cost or gap:** Missing functional descriptive statistics: `trim_mean` (trimmed mean — exclude deepest-α or shallowest-α curves), `depth_based_median` (depth-weighted median — the curve maximizing depth in the reference set), functional `cov` (full sample covariance function — an N×N or M×M matrix from the observed curves, not a parametric kernel), `var` (functional variance — pointwise variance across curves), `std` (functional standard deviation — pointwise std). Category: all table-stakes (these are standard descriptive statistics for any data, elevated to FDA).
+
+- **Root cause:** `fdata.rs` has `functional_mean` and `geometric_median` but not trimmed-mean, depth-weighted-median, or pointwise variance/std. `covariance.rs` has kernel-based GP covariance but not the sample covariance matrix of a regular-grid dataset as a standalone function. These are straightforward numerical operations on `FdMatrix` — the missing piece is named public functions.
+
+- **Proposed direction:** Add to `fdata.rs`: `trim_mean(data: &FdMatrix, argvals: &[f64], alpha: f64, depth_fn: DepthFn) -> Result<Vec<f64>, FdarError>` (exclude lowest-depth fraction α); `depth_based_median(data: &FdMatrix, argvals: &[f64], depth_fn: DepthFn) -> Result<usize, FdarError>` (index of deepest curve). Add to `covariance.rs` or new `summary.rs`: `functional_covariance(data: &FdMatrix, argvals: &[f64]) -> FdMatrix` (M×M sample covariance); `functional_variance(data: &FdMatrix) -> Vec<f64>` (pointwise variance); `functional_std(data: &FdMatrix) -> Vec<f64>` (pointwise std). GSD-ready as candidate Phase: "Add trim_mean, depth_median, functional cov/var/std to fdars exploratory module."
+
+- **Severity (P1/P2/P3):** **P1** — These are table-stakes descriptive statistics for any FDA library. Variance, standard deviation, and sample covariance are the building blocks of functional data analysis; their absence means users must compute them outside fdars from the raw `FdMatrix`. Trimmed mean and depth-based median are standard robust statistics for functional data.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. `functional_variance` and `functional_std` are one-pass O(n·m) operations. `functional_covariance` is O(n·m²) — the outer product of centered curves. `depth_based_median` calls the existing depth functions and takes argmax. `trim_mean` calls depth functions and filters rows. No new algorithms.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Exploratory Parity Table → `trim_mean` / `depth_based_median` / `cov` / `var` / `std` rows (all verdict: absent, table-stakes). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### EXPL-03 — Implement Stahel-Donoho outlyingness for functional data
+
+**Candidate requirement / phase phrasing:** "Implement `stahel_donoho_outlyingness(data: &FdMatrix, argvals: &[f64], n_projections: usize, seed: u64) -> Result<Vec<f64>, FdarError>` in `depth/` or a new `outliers.rs` module — scikit-fda's `StahelDonohoOutlyingness`."
+
+- **Location / area:** New implementation in `fdars-core/src/depth/` or `fdars-core/src/outliers.rs`. Related existing: `outliers::magnitude_shape_outlyingness` (directional outlyingness for MS-plot, different method). scikit-fda area: `exploratory.outliers` module (`StahelDonohoOutlyingness`).
+
+- **Current cost or gap:** `StahelDonohoOutlyingness` — projection-based outlyingness for functional data. fdars has `outliers::magnitude_shape_outlyingness` (directional outlyingness for MS-plot) and LRT outlyingness; Stahel-Donoho outlyingness uses random projection directions and max absolute-deviation scoring (a distinct method). Category: differentiator.
+
+- **Root cause:** Stahel-Donoho outlyingness uses random projection directions and max absolute-deviation scoring. It is distinct from fdars' current methods and would require a new implementation: sample `n_projections` random unit directions in function space, project each curve onto each direction, compute per-curve outlyingness as the max normalized absolute deviation across all projections.
+
+- **Proposed direction:** Implement `stahel_donoho_outlyingness(data: &FdMatrix, argvals: &[f64], n_projections: usize, seed: u64) -> Result<Vec<f64>, FdarError>`. Steps: (1) sample `n_projections` random unit L2 directions in R^m (using existing RNG infrastructure); (2) project each curve onto each direction (`data_i · direction_j` — a dot product); (3) for each direction, compute median and MAD of the projections; (4) per-curve outlyingness = max over directions of `|proj_ij − median_j| / MAD_j`. GSD-ready as candidate Phase: "Implement Stahel-Donoho outlyingness for fdars."
+
+- **Severity (P1/P2/P3):** **P3** — Differentiator category: Stahel-Donoho outlyingness is a robust alternative to MS-plot outlyingness for users who want to detect outliers robust to the choice of projection direction. Its absence is acceptable for most workflows (fdars already has MS-plot and LRT outlyingness).
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. Random projection generation is straightforward (using existing `rand` infrastructure); the per-direction MAD computation is O(n·m) per direction. Integration tests: verify that the method detects synthetic outliers in simulated functional data.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Exploratory Parity Table → `StahelDonohoOutlyingness` row (verdict: absent, differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### ML-01 — Add MaximumDepthClassifier, NearestCentroid, RadiusNeighbors variants
+
+**Candidate requirement / phase phrasing:** "Add `maximum_depth_classifier` (argmax over per-class depth measures), `nearest_centroid_classifier` (assign to class with nearest functional mean), and `radius_neighbors_classifier` / `radius_neighbors_regressor` (kNN with distance threshold ε) to `fdars-core/src/classification/`."
+
+- **Location / area:** `fdars-core/src/classification/` — existing classifiers: LDA, QDA, kNN, kernel, DD. scikit-fda area: `ml.classification` module (`MaximumDepthClassifier`, `NearestCentroid`, `RadiusNeighborsClassifier`, `DTMClassifier`, `DDGClassifier`) and `ml.regression` (`RadiusNeighborsRegressor`).
+
+- **Current cost or gap:** `MaximumDepthClassifier` (classify by maximum depth under each class's empirical depth measure) and `NearestCentroid` as a named nearest-centroid classifier are absent. `RadiusNeighborsClassifier` and `RadiusNeighborsRegressor` (classify/regress by all neighbors within radius ε) absent. `DTMClassifier` (distance-to-measure) and `DDGClassifier` (DD-plot generalized) absent. `NearestNeighbors` index (general structure for neighbor queries) absent. Category: MaximumDepthClassifier/NearestCentroid = table-stakes; Radius/DTM/DDG/NearestNeighbors = differentiator.
+
+- **Root cause:** `MaximumDepthClassifier` is a thin wrapper over `depth/` (already present): fit computes per-class depth measures; predict returns argmax. `NearestCentroid` is also thin over `fdata.rs::functional_mean`. `RadiusNeighbors*` requires a threshold variant of fdars' existing kNN infrastructure. `DTMClassifier` / `DDGClassifier` are more advanced and require distance-to-measure computation and DD-plot projection respectively.
+
+- **Proposed direction:** (a) Add `maximum_depth_classifier_fit(data, labels, argvals, depth_method)` + `maximum_depth_classifier_predict(model, new_data)` to `classification/`. (b) Add `nearest_centroid_fit(data, labels, argvals)` + `nearest_centroid_predict(model, new_data)`. (c) Add `radius_neighbors_classifier_fit(data, labels, argvals, radius)` + `radius_neighbors_classifier_predict(model, new_data, radius)` (threshold variant of kNN). Defer DTM/DDG to a follow-on phase. GSD-ready as candidate Phase: "Add MaximumDepthClassifier, NearestCentroid, and RadiusNeighbors classifiers to fdars classification module."
+
+- **Severity (P1/P2/P3):** **P2** — MaximumDepthClassifier and NearestCentroid are table-stakes classifiers expected in any FDA toolkit; their thin-wrapper nature (over existing depth and mean infrastructure) makes them low-effort additions. RadiusNeighbors is a differentiator classifier.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks for MaximumDepthClassifier + NearestCentroid + RadiusNeighbors. DTM/DDG deferred to separate items.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → ML Parity Table → `MaximumDepthClassifier` / `NearestCentroid` / `RadiusNeighborsClassifier` / `RadiusNeighborsRegressor` rows (absent, table-stakes/differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### ML-02 — Implement LDO-regularized linear regression + HistoricalLinearRegression
+
+**Candidate requirement / phase phrasing:** "Add `fregre_lm_ldo(data, y, argvals, basis_type, lambda) -> Result<FregreLmResult, FdarError>` (LDO-penalized functional linear regression) and `historical_linear_regression(data, y, argvals) -> Result<HistoricalLmResult, FdarError>` — scikit-fda's LDO `LinearRegression` and `HistoricalLinearRegression`."
+
+- **Location / area:** `fdars-core/src/scalar_on_function/` — `fregre_lm.rs` (unregularized FPCA-based regression). `fdars-core/src/smooth_basis.rs` (`bspline_penalty_matrix` — penalty matrix infrastructure). scikit-fda area: `ml.regression` module (`LinearRegression` with `LinearDifferentialOperator` and `HistoricalLinearRegression`).
+
+- **Current cost or gap:** scikit-fda's `LinearRegression` with `LinearDifferentialOperator` regularization (unified LDO form) is partially matched by `fregre_lm` but the LDO-penalty variant is absent. `HistoricalLinearRegression` (function-on-function regression where future values predict past values via historical kernel integral) is absent. `RadiusNeighborsRegressor` also absent. Category: LDO-LinearRegression = table-stakes; HistoricalLinearRegression/RadiusNeighbors = differentiator.
+
+- **Root cause:** LDO-regularized regression requires the same penalty matrix from `smooth_basis.rs` (already present) folded into the regression normal equations — analogous to PREP-06 (LDO-FPCA). The penalty matrix P is available; adding it to the normal equations `(X'WX + λP)β = X'Wy` is the gap. `HistoricalLinearRegression` requires implementing the historical-integral kernel and its numerical quadrature (new algorithm).
+
+- **Proposed direction:** (a) Add `fregre_lm_ldo(data, y, argvals, basis_type, lambda) -> Result<FregreLmResult, FdarError>` to `scalar_on_function/` using the existing penalty matrix infrastructure. (b) Implement `historical_linear_regression(data, y, argvals) -> Result<HistoricalLmResult, FdarError>` with the historical-integral kernel `∫₀ᵗ β(s,t)·x(s)ds`. GSD-ready as candidate Phase: "Add LDO-regularized functional regression and HistoricalLinearRegression to fdars."
+
+- **Severity (P1/P2/P3):** **P2** — LDO-regularized regression is table-stakes for noisy functional data (same argument as PREP-06 LDO-FPCA — users need regularization). HistoricalLinearRegression is a differentiator (specialized model used in longitudinal FDA). Both are meaningful for common FDA regression workflows.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks for LDO-regression (penalty matrix folding into normal equations, same approach as PREP-06). HistoricalLinearRegression adds the historical-integral kernel (new algorithm, separate implementation) — could be a follow-on item.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → ML Parity Table → `LinearRegression` (LDO variant) row (verdict: partial, table-stakes — LDO regularization absent) and `HistoricalLinearRegression` row (verdict: absent, differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### INF-01 — Add asymptotic functional ANOVA V-statistic (oneway_anova + v_sample_stat)
+
+**Candidate requirement / phase phrasing:** "Add `oneway_anova_asymptotic(groups: &[&FdMatrix], argvals: &[f64]) -> Result<AnovaResult, FdarError>` implementing the V-statistic asymptotic test — scikit-fda's `oneway_anova` with `v_sample_stat` and `v_asymptotic_stat`."
+
+- **Location / area:** `fdars-core/src/function_on_scalar.rs` — `fanova` (permutation-based ANOVA already present, no asymptotic path). New module candidate: `fdars-core/src/inference.rs`. scikit-fda area: `inference` module (`oneway_anova`, `v_sample_stat`, `v_asymptotic_stat`).
+
+- **Current cost or gap:** No asymptotic one-way functional ANOVA using the V-statistic. fdars' `fanova` tests group-mean differences via permutation only; the asymptotic V-statistic path is absent. scikit-fda provides the asymptotic distribution (V compared to χ² or F-approximation) as a standalone alternative to permutation testing. Category: all table-stakes (asymptotic tests are faster than permutation for large n; both methods are expected in a complete inference module).
+
+- **Root cause:** fdars' `fanova` tests via permutation. The asymptotic V-statistic path requires: (1) compute V = ∑_{i<j} n_i·n_j·‖mean_i − mean_j‖²_L2 / (∑n_k)²; (2) compare to an asymptotic χ² approximation based on the covariance structure. The mean and L2-norm infrastructure is present (`fdata.rs`, `distance.rs`); only the V-statistic formula and its asymptotic approximation (using `statrs` for χ² distribution) are missing.
+
+- **Proposed direction:** Add `v_sample_stat(groups: &[&FdMatrix], argvals: &[f64]) -> Result<f64, FdarError>` (compute V statistic) and `oneway_anova_asymptotic(groups, argvals) -> Result<AnovaResult, FdarError>` (compute V, approximate p-value via χ² distribution from `statrs`). GSD-ready as candidate Phase: "Add asymptotic V-statistic functional ANOVA to fdars inference module."
+
+- **Severity (P1/P2/P3):** **P2** — Asymptotic tests are table-stakes for large datasets where permutation testing is computationally expensive. The permutation fallback (`fanova`) already exists; the asymptotic variant is a meaningful addition for practical scalability.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. V-statistic formula is O(k²·m) (k groups, m evaluation points — all in existing infrastructure). Asymptotic approximation requires the covariance eigenvalue estimation — the simplest version uses a χ² distribution with a moment-matched degree-of-freedom estimate (~30 lines using `statrs`).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Inference Parity Table → `oneway_anova` / `v_sample_stat` / `v_asymptotic_stat` rows (all verdict: absent, table-stakes). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### INF-02 — Expose two-sample Hotelling T² as standalone inference function
+
+**Candidate requirement / phase phrasing:** "Expose `hotelling_test_ind(group1: &FdMatrix, group2: &FdMatrix, argvals: &[f64]) -> Result<HotellingResult, FdarError>` as a standalone two-independent-sample inference function — scikit-fda's `hotelling_test_ind`."
+
+- **Location / area:** `fdars-core/src/spm/stats.rs` — `hotelling_t2` function (already computes Hotelling T² for SPM single-sample control-chart use). New thin wrapper candidate: `fdars-core/src/inference.rs`. scikit-fda area: `inference` module (`hotelling_test_ind`).
+
+- **Current cost or gap:** `hotelling_test_ind` (two-independent-sample functional Hotelling T²) is absent as a public inference function. `spm::stats::hotelling_t2` exists but is designed for single-sample control-chart use (scores vs. control limits), not as a two-sample hypothesis test. Category: table-stakes (two-sample Hotelling T² is a standard multivariate hypothesis test widely used in FDA to compare two groups).
+
+- **Root cause:** The Hotelling T² computation is already present in `spm/stats.rs`; wrapping it into a two-sample test requires: (1) pool covariance matrices from both groups; (2) apply degrees-of-freedom correction; (3) compute p-value via F-distribution (`statrs`). This is a thin `inference` module re-exporting the SPM statistic with two-sample semantics.
+
+- **Proposed direction:** Add `hotelling_test_ind(group1: &FdMatrix, group2: &FdMatrix, argvals: &[f64]) -> Result<HotellingResult, FdarError>` to a new `inference.rs` module (or `function_on_scalar.rs`). Internally: compute group means and pooled covariance, call `spm::stats::hotelling_t2`-equivalent formula, compute p-value via F-distribution from `statrs`. GSD-ready as candidate Phase: "Add two-sample Hotelling T² test to fdars inference module."
+
+- **Severity (P1/P2/P3):** **P2** — Two-sample Hotelling T² is table-stakes for comparing two groups of functional curves. It is the standard starting point for FDA group comparison (e.g., treated vs. control). Its absence forces users to reconstruct the test from SPM internals.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. The T² computation already exists in `spm/stats.rs`; the wrapper adds pooled-covariance pooling and F-distribution p-value via `statrs` (~40 lines). Tests: verify against scikit-fda `hotelling_test_ind` on synthetic two-group data.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Inference Parity Table → `hotelling_test_ind` row (verdict: absent, table-stakes). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### MISC-01 — Add Mahalanobis, NormInduced, Transformation metrics + angular/cosine functions
+
+**Candidate requirement / phase phrasing:** "Add `mahalanobis_distance`, `norm_induced_metric`, `transformation_metric`, `angular_distance`, `cosine_similarity`, and `cosine_similarity_matrix` to `fdars-core/src/distance.rs` — filling the scikit-fda `MahalanobisDistance`, `NormInducedMetric`, `TransformationMetric`, `angular_distance`, `cosine_similarity`, `cosine_similarity_matrix` gap."
+
+- **Location / area:** `fdars-core/src/distance.rs` — existing distance/metric functions (Lp, Hausdorff, DTW, Fisher-Rao, inner-product, amplitude, phase). `fdars-core/src/utility.rs` — related utilities. scikit-fda area: `misc.metrics` module (`MahalanobisDistance`, `NormInducedMetric`, `TransformationMetric`, `angular_distance`, `cosine_similarity`, `cosine_similarity_matrix`).
+
+- **Current cost or gap:** `MahalanobisDistance`, `NormInducedMetric`, `TransformationMetric`, `angular_distance`, `cosine_similarity`, `cosine_similarity_matrix` all absent in fdars. Category: differentiator (these are alternative distance/similarity measures useful for specific analysis scenarios but not required for core FDA workflows).
+
+- **Root cause:** `distance.rs` implements Lp, Hausdorff, DTW, Fisher-Rao, inner-product, amplitude, phase distances. Mahalanobis requires a covariance matrix (available from `covariance.rs` or `linalg.rs::mahalanobis`); `NormInducedMetric` and `TransformationMetric` are composable wrappers. Angular/cosine are derivable from inner products (present in `utility.rs`).
+
+- **Proposed direction:** Add to `distance.rs`: `mahalanobis_distance(x, y, cov_inv: &FdMatrix) -> f64` (using existing matrix inverse); `angular_distance(x, y, argvals) -> f64` (= arccos(cosine_similarity)); `cosine_similarity(x, y, argvals) -> f64` (= inner_product / (norm(x)·norm(y))); `cosine_similarity_matrix(data, argvals) -> FdMatrix` (n×n cosine similarity matrix). GSD-ready as candidate Phase: "Add Mahalanobis, angular, and cosine distance/similarity functions to fdars distance module."
+
+- **Severity (P1/P2/P3):** **P3** — All six are differentiator-category; Lp and Fisher-Rao distances (already present) cover the most common FDA distance use cases. These additions enable alternative similarity computations that some research applications require.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. All six are formula implementations over existing operations (inner products, norms already computed by existing distance functions). No new algorithms.
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Misc Parity Table → `MahalanobisDistance` / `NormInducedMetric` / `TransformationMetric` / `angular_distance` / `cosine_similarity` / `cosine_similarity_matrix` rows (all verdict: absent, differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### MISC-02 — Implement composable LinearDifferentialOperator and L2Regularization objects
+
+**Candidate requirement / phase phrasing:** "Define a `DifferentialOperator` trait with a `penalty_matrix(basis, argvals) -> FdMatrix` method in a new `operator.rs` module, and provide `LinearDifferentialOperator { order: usize }` and `L2Regularization { lambda: f64 }` implementations — unblocking PREP-06 and ML-02 without code duplication."
+
+- **Location / area:** New `fdars-core/src/operator.rs` module. `fdars-core/src/smooth_basis.rs` (`bspline_penalty_matrix` / `fourier_penalty_matrix` — existing penalty matrix implementations to wrap). scikit-fda area: `misc.operators` module (`LinearDifferentialOperator`, `L2Regularization`, `Identity`).
+
+- **Current cost or gap:** `LinearDifferentialOperator` (LDO) composable object absent — the penalty matrix computation exists in `smooth_basis::bspline_penalty_matrix` / `fourier_penalty_matrix` but not as a composable `LinearDifferentialOperator` object that can be passed to any smoother, FPCA, or regression estimator. `L2Regularization` (scalar-weight ridge regularization) composable object absent. `Identity` operator composable object absent. Category: LDO/L2Reg = table-stakes (required by PREP-06, ML-02, REPR-03 to avoid code duplication).
+
+- **Root cause:** fdars implements penalty matrices as standalone functions. Making them composable objects (a `DifferentialOperator` trait with `penalty_matrix()` method) would enable the LDO-FPCA (PREP-06) and LDO-regression (ML-02) paths to share the same operator abstraction without duplicating penalty-matrix logic. This is an API-ergonomics enhancement that also enables code reuse across three gap items.
+
+- **Proposed direction:** Define `pub trait DifferentialOperator: Send + Sync { fn penalty_matrix(&self, basis: &BasisType, argvals: &[f64], n: usize) -> Result<FdMatrix, FdarError>; }`. Implement: `LinearDifferentialOperator { pub order: usize }` (calls `bspline_penalty_matrix` or `fourier_penalty_matrix` with the given derivative order), `L2Regularization { pub lambda: f64 }` (returns lambda·I), `IdentityOperator` (returns I). GSD-ready as candidate Phase: "Implement composable DifferentialOperator trait and LDO/L2Reg/Identity implementations as shared regularization abstraction."
+
+- **Severity (P1/P2/P3):** **P2** — Table-stakes for code architecture: without this trait, PREP-06 (LDO-FPCA) and ML-02 (LDO-regression) would duplicate penalty-matrix logic. The trait is also required for scikit-fda-API-compatible LDO usage patterns. Meaningful architectural improvement that blocks two other gap items from being implemented cleanly.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks. Trait definition and three implementations are straightforward (~100 lines). The complexity is in threading the operator through PREP-06 and ML-02 function signatures (requires updating those APIs to accept `&dyn DifferentialOperator`).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Misc Parity Table → `LinearDifferentialOperator` / `L2Regularization` / `Identity` rows (verdict: partial/absent, table-stakes). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### MISC-03 — Add make_gaussian wrapper and make_sinusoidal_process dedicated generator
+
+**Candidate requirement / phase phrasing:** "Add `make_gaussian(n_samples, n_features, cov_kernel, mean, noise, seed) -> Result<FdMatrix, FdarError>` as a one-call GP generator wrapper and `make_sinusoidal_process(n_samples, n_features, amplitude_range, period, phase_std, noise, seed) -> Result<FdMatrix, FdarError>` as a dedicated sinusoidal functional-data generator."
+
+- **Location / area:** `fdars-core/src/simulation.rs` — `sim_fundata` (KL expansion generator), `generate_gaussian_process` (GP trajectory generator). scikit-fda area: `datasets` module (`make_gaussian`, `make_sinusoidal_process`, `make_multimodal_samples`, `make_multimodal_landmarks`, `make_random_warping`, `make_sde_trajectories`).
+
+- **Current cost or gap:** `make_gaussian` (exact Gaussian-process functional-data generator matching scikit-fda interface) is absent as a one-call wrapper. `make_sinusoidal_process` (sinusoidal functional data with amplitude/frequency/noise parameters) is absent as a dedicated generator — achievable via `sim_fundata` with Fourier eigenfunctions but not as a named function. `make_multimodal_samples`, `make_multimodal_landmarks`, `make_random_warping`, `make_sde_trajectories` also absent. Category: `make_gaussian` / `make_sinusoidal_process` = table-stakes (widely used for test data generation); multimodal/warping/SDE = differentiator.
+
+- **Root cause:** `simulation.rs` generates Gaussian data via KL expansion (`sim_fundata`) and GP trajectories via `generate_gaussian_process`. The scikit-fda `make_gaussian` interface is a one-call wrapper with specific parameter semantics (n_samples, n_features, cov_kernel, noise); adapting the existing `generate_gaussian_process` to that interface is low-cost. Sinusoidal data is achievable via `sim_fundata` with Fourier eigenfunctions but requires a dedicated wrapper for a clean interface. Random warpings and SDE trajectories are new algorithms.
+
+- **Proposed direction:** (a) Add `make_gaussian(n_samples, n_features, argvals, cov_kernel: &CovKernel, noise: f64, seed: u64) -> Result<FdMatrix, FdarError>` as a thin wrapper over `generate_gaussian_process`. (b) Add `make_sinusoidal_process(n_samples, n_features, argvals, amplitude_range: (f64, f64), period: f64, phase_std: f64, noise: f64, seed: u64) -> Result<FdMatrix, FdarError>`. Defer multimodal/warping/SDE generators to separate items. GSD-ready as candidate Phase: "Add make_gaussian and make_sinusoidal_process wrappers to fdars simulation module."
+
+- **Severity (P1/P2/P3):** **P3** — The underlying functionality exists; these are convenience wrappers. Not a capability gap — users can call `generate_gaussian_process` or `sim_fundata` directly. Useful for documentation examples and test data generation parity with scikit-fda tutorials.
+
+- **Effort estimate (S/M/L):** **M** — approximately 2–4 weeks including sinusoidal generator implementation (generating per-curve sinusoidal signals with random phase drawn from Normal(0, phase_std²) and optional Gaussian noise). `make_gaussian` itself is a one-day wrapper; `make_sinusoidal_process` requires the sinusoidal generation logic (~50 lines).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Misc Parity Table → `make_gaussian` / `make_sinusoidal_process` rows (verdict: partial/absent, table-stakes). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
+
+---
+
+### MISC-04 — Add functional MAE, MSE scoring metrics (+ MAPE, MSLE, explained_variance)
+
+**Candidate requirement / phase phrasing:** "Add `functional_mae`, `functional_mse`, `functional_mape`, `functional_msle`, and `functional_explained_variance` to `fdars-core/src/helpers.rs` or a new `scoring.rs` module — scikit-fda's `mean_absolute_error`, `mean_squared_error`, `mean_absolute_percentage_error`, `mean_squared_log_error`, `explained_variance_score`."
+
+- **Location / area:** `fdars-core/src/helpers.rs` — existing scoring functions `r_squared`, `r_squared_adj`, and `cv::metric_r_squared`. New module candidate: `fdars-core/src/scoring.rs`. scikit-fda area: `misc.metrics` module (`mean_absolute_error`, `mean_squared_error`, `mean_absolute_percentage_error`, `mean_squared_log_error`, `explained_variance_score`).
+
+- **Current cost or gap:** `mean_absolute_error` and `mean_squared_error` absent. `mean_absolute_percentage_error`, `mean_squared_log_error`, `explained_variance_score` absent. `helpers.rs` has `r_squared` and `r_squared_adj`; the standard regression scoring metrics (MAE, MSE) are not present as named functions. Category: MAE/MSE = table-stakes; MAPE/MSLE/explained-variance = differentiator.
+
+- **Root cause:** `helpers.rs` has `r_squared` and `r_squared_adj`; MAE and MSE are equally straightforward (one-pass integral or pointwise average over residuals). Adding a `scoring.rs` module with `functional_mae`, `functional_mse`, `functional_mape`, `functional_msle`, `functional_explained_variance` is low algorithmic complexity — each is a one-pass formula over the residual matrix.
+
+- **Proposed direction:** Add to `helpers.rs` or new `scoring.rs`: `functional_mae(y_true: &FdMatrix, y_pred: &FdMatrix, argvals: &[f64]) -> f64` (mean absolute error integrated over argvals); `functional_mse(y_true, y_pred, argvals) -> f64` (mean squared error); `functional_mape(y_true, y_pred, argvals) -> f64` (mean absolute percentage error); `functional_msle(y_true, y_pred, argvals) -> f64` (mean squared log error); `functional_explained_variance(y_true, y_pred, argvals) -> f64` (= 1 - Var(y_true - y_pred)/Var(y_true)). GSD-ready as candidate Phase: "Add MAE/MSE/MAPE/MSLE/explained_variance scoring metrics to fdars helpers or scoring module."
+
+- **Severity (P1/P2/P3):** **P2** — MAE and MSE are table-stakes regression metrics universally expected in any predictive modeling library. Their absence from fdars is a meaningful gap for users evaluating functional regression model quality. MAPE/MSLE/explained_variance are differentiator additions that extend the scoring vocabulary.
+
+- **Effort estimate (S/M/L):** **S** — approximately 1 week. Each metric is a one-pass formula over `FdMatrix` residuals (~5–10 lines per metric). Integration tests: verify MAE/MSE against manually computed values on synthetic data; verify R² consistency (MAE/MSE and R² should agree on relative model ranking).
+
+- **Evidence link:** AUDIT-REPORT.md §Phase 8 → Misc Parity Table → `mean_absolute_error` / `mean_squared_error` / `mean_absolute_percentage_error` / `mean_squared_log_error` / `explained_variance_score` rows (verdict: absent, table-stakes/differentiator). Phase 8 SUMMARY: [09-02-SUMMARY.md](../phases/09-consolidated-report-prioritized-backlog/09-02-SUMMARY.md).
 
 ---
 
