@@ -1023,4 +1023,195 @@ regardless of how the data types are structured.
 - The `ExceptionExtrapolation` is marked `In-Scope API-Ergonomics` (not Algorithm): it is
   a validation/error-signalling policy, not a numeric computation.
 - Confidence HIGH for items confirmed by `skfda.__version__ = 0.10.1` RUNTIME verification
+
+---
+
+### Area: Preprocessing
+
+This area covers scikit-fda's preprocessing layer — smoothing, registration/alignment,
+and dimensionality reduction / feature construction. Promoted from FEATURES.md §Areas 2, 3,
+and 4 (scikit-fda public API tables), fdars notes stripped per D-02.
+
+**D-04 ruling for this area:** All numeric smoothing, registration, and dimensionality
+reduction capabilities are `In-Scope Algorithm`. Bandwidth-selector criteria (AIC, GCV,
+etc.) are `In-Scope API-Ergonomics` (parameter-selection utilities that wrap an algorithm).
+`FDAFeatureUnion` and `PerClassTransformer` are sklearn pipeline-plumbing classes — the Rust
+equivalent is trait composition, not an API port (PROJECT.md) — ruled `Out-of-Scope`.
+
+**In-scope count (this area):** 29 rows   **Out-of-scope count:** 2 rows
+
+#### Task grouping: Smoothing
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Smoothing | `KernelSmoother` with pluggable hat-matrix strategy — non-parametric kernel smoothing | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 2; readthedocs preprocessing.smoothing |
+| Smoothing — strategy | `NadarayaWatsonHatMatrix` — Nadaraya-Watson smoother strategy for `KernelSmoother` | fit (strategy object) | In-Scope Algorithm | HIGH | FEATURES.md §Area 2; readthedocs |
+| Smoothing — strategy | `LocalLinearRegressionHatMatrix` — local linear regression smoother strategy | fit (strategy object) | In-Scope Algorithm | HIGH | FEATURES.md §Area 2; readthedocs |
+| Smoothing — strategy | `KNeighborsHatMatrix` — k-nearest-neighbor smoother strategy | fit (strategy object) | In-Scope Algorithm | HIGH | FEATURES.md §Area 2; readthedocs |
+| Smoothing | `BasisSmoother` — penalized basis expansion smoother (penalizes derivatives via `LinearDifferentialOperator`) | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 2; readthedocs |
+| Smoothing — parameter selection | `SmoothingParameterSearch` — grid search over smoothing parameters | fit | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing — scorer | `LinearSmootherLeaveOneOutScorer` — LOO-CV scorer for linear smoothers | score | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing — scorer | `LinearSmootherGeneralizedCVScorer` — GCV scorer for linear smoothers | score | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing — criterion | `akaike_information_criterion` — AIC bandwidth selection criterion | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing — criterion | `finite_prediction_error` — FPE bandwidth selection criterion | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing — criterion | `shibata` — Shibata's bandwidth selector | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing — criterion | `rice` — Rice's bandwidth selector | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 2; readthedocs |
+| Smoothing | `MissingValuesInterpolation` — impute missing values in functional data | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 2; readthedocs |
+
+#### Task grouping: Registration / Alignment
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Registration | `LeastSquaresShiftRegistration` — shift-only alignment minimizing LS criterion | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 3; readthedocs preprocessing.registration |
+| Registration | `FisherRaoElasticRegistration` — full elastic alignment via SRSF / Fisher-Rao metric | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 3; readthedocs |
+| Registration — utility | `landmark_shift_registration` — align curves by shifting to match a landmark | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — utility | `landmark_shift_deltas` — compute shift deltas for landmark registration | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — utility | `landmark_elastic_registration` — elastic landmark registration (non-linear warping) | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — utility | `landmark_elastic_registration_warping` — return the warping function for landmark elastic registration | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — utility | `invert_warping` — invert a warping function | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — utility | `normalize_warping` — normalize a warping function to [0, 1] | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — validation | `AmplitudePhaseDecomposition` — validate registration by decomposing amplitude vs. phase variation | fit | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — validation | `LeastSquares` — registration validation via LS criterion | score | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — validation | `SobolevLeastSquares` — registration validation via Sobolev-penalized LS | score | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 3; readthedocs |
+| Registration — validation | `PairwiseCorrelation` — registration validation via pairwise correlation | score | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 3; readthedocs |
+
+#### Task grouping: Dimensionality Reduction & Feature Construction
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Dimensionality reduction | `FPCA` — functional PCA; sklearn transformer interface; supports regularization via `LinearDifferentialOperator` | fit / transform / fit_transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 4; dir()-verified |
+| Dimensionality reduction | `FPLS` — functional partial least squares (added v0.9.1) | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 4; readthedocs |
+| Dimensionality reduction | `DiffusionMap` — functional diffusion maps; manifold learning (added v0.10.0) | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 4; readthedocs v0.10.0 |
+| Variable selection | `MaximaHunting` — variable selection by identifying maxima of a relevance measure | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Variable selection | `RecursiveMaximaHunting` — iterative maxima hunting with multiple correction strategies | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Variable selection | `RKHSVariableSelection` — variable selection via RKHS-based relevance | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Variable selection | `MinimumRedundancyMaximumRelevance` — mRMR variable selection for functional data | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Pipeline plumbing | `FDAFeatureUnion` — combine multiple FDA feature transformers (sklearn FeatureUnion equivalent) | fit / transform | Out-of-Scope | MEDIUM | FEATURES.md §Area 4; D-04 ruling |
+| Pipeline plumbing | `PerClassTransformer` — apply different transformers per class label | fit / transform | Out-of-Scope | MEDIUM | FEATURES.md §Area 4; D-04 ruling |
+| Feature construction | `LocalAveragesTransformer` — compute local averages on intervals as scalar features | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Feature construction | `OccupationMeasureTransformer` — measure time spent in value ranges as scalar features | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Feature construction | `NumberCrossingsTransformer` — count threshold crossings as scalar features | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Feature construction — function | `local_averages` — functional feature: local averages (functional form of `LocalAveragesTransformer`) | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Feature construction — function | `occupation_measure` — functional feature: occupation measure | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Feature construction — function | `number_crossings` — functional feature: threshold crossing count | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+| Feature construction — function | `modified_epigraph_index` — functional feature: modified epigraph index | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 4; readthedocs |
+
+---
+
+### Area: Exploratory
+
+This area covers scikit-fda's exploratory analysis capabilities — depth measures, outlier
+detection, summary statistics, and visualization. Promoted from FEATURES.md §Areas 5 and 6
+(scikit-fda public API tables), fdars notes stripped per D-02.
+
+**D-04 ruling for this area:** All depth measures, outlier *detectors* (algorithms that produce
+outlier labels), and summary statistics are `In-Scope Algorithm`. Visualization classes
+(`GraphPlot`, `ScatterPlot`, `Boxplot`, `MagnitudeShapePlot`, `FPCAPlot`, etc.) are
+`Out-of-Scope (plotting)` per D-04 / Pitfall 14 — fdars is a numeric library with no graphics
+runtime. Note: `MSPlotOutlierDetector` (an algorithm producing outlier labels) and
+`MagnitudeShapePlot` (a visualization) are **distinct capabilities** — the former is
+`In-Scope Algorithm`, the latter is `Out-of-Scope (plotting)`.
+
+**In-scope count (this area):** 20 rows   **Out-of-scope count:** 11 rows
+
+#### Task grouping: Depth Measures
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Depth measures | `IntegratedDepth` — Fraiman-Muniz integrated depth | fit / transform / __call__ | In-Scope Algorithm | HIGH | FEATURES.md §Area 5; dir()-verified |
+| Depth measures | `BandDepth` — band depth (López-Pintado & Romo) | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 5; readthedocs |
+| Depth measures | `ModifiedBandDepth` — modified band depth (faster approximation) | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 5; readthedocs |
+| Depth measures | `DistanceBasedDepth` — depth based on distance to center | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 5; readthedocs |
+| Depth measures | `OutlyingnessBasedDepth` — depth = 1 / (1 + outlyingness) | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 5; readthedocs |
+| Depth measures | `ProjectionDepth` — depth via random projections | fit / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 5; dir()-verified |
+| Depth measures | `SimplicialDepth` — simplicial depth (multivariate) | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 5; readthedocs |
+| Depth measures | `StahelDonohoOutlyingness` — Stahel-Donoho outlyingness measure (multivariate) | fit / transform | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 5; readthedocs |
+
+#### Task grouping: Outlier Detection
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Outlier detection | `BoxplotOutlierDetector` — detect outliers using the functional boxplot fence | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 5; dir()-verified |
+| Outlier detection | `MSPlotOutlierDetector` — magnitude-shape plot outlier detector (algorithm; produces labels) | fit / predict | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 5; readthedocs |
+| Outlier detection — statistic | `directional_outlyingness_stats` — compute directional outlyingness statistics | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 5; readthedocs |
+
+#### Task grouping: Summary Statistics
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Summary statistics | `mean` — functional mean (pointwise) | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 6; readthedocs stats |
+| Summary statistics | `gmean` — geometric mean of functional data | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `trim_mean` — depth-based trimmed mean | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `depth_based_median` — deepest function as the functional median | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `geometric_median` — geometric (Fréchet) median | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `fisher_rao_karcher_mean` — Fisher-Rao Riemannian (elastic) mean | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `cov` — functional covariance (bivariate function) | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `var` — functional variance | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 6; readthedocs |
+| Summary statistics | `std` — functional standard deviation | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 6; readthedocs |
+
+#### Task grouping: Visualization (Out-of-Scope)
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Visualization | `GraphPlot` — plot functional data as curves | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `ScatterPlot` — scatter plot of functional data | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `ParametricPlot` — parametric (phase-space) plot | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `Boxplot` — functional boxplot visualization | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `SurfaceBoxplot` — boxplot for surface (2D domain) functional data | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `Outliergram` — outliergram visualization | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `MagnitudeShapePlot` — MS-plot visualization (plotting counterpart to `MSPlotOutlierDetector`) | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `ClusterPlot` — visualize clustering results | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `ClusterMembershipLinesPlot` — soft membership visualization | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `ClusterMembershipPlot` — membership as color-coded plot | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+| Visualization | `FPCAPlot` — plot FPCA components | plot | Out-of-Scope (plotting) | HIGH | FEATURES.md §Area 6; Pitfall 14 |
+
+---
+
+### Area: ML
+
+This area covers scikit-fda's machine-learning capabilities — classification, regression, and
+clustering. Promoted from FEATURES.md §Areas 7, 8, and 9 (scikit-fda public API tables),
+fdars notes stripped per D-02. Each estimator's `fit` and `predict` / `transform` calls are
+collapsed into one capability row (D-03 collapse rule).
+
+**D-04 ruling for this area:** All classifiers, regressors, and clustering estimators are
+`In-Scope Algorithm`. The unsupervised `NearestNeighbors` index builder is `In-Scope
+Algorithm` (it produces a functional neighbor index for downstream use).
+
+**In-scope count (this area):** 20 rows   **Out-of-scope count:** 0 rows
+
+#### Task grouping: Classification
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Classification | `KNeighborsClassifier` — functional kNN classifier with any functional metric (Lp, Fisher-Rao, etc.) | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; dir()-verified |
+| Classification | `RadiusNeighborsClassifier` — fixed-radius neighbor classifier | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; readthedocs |
+| Classification | `NearestCentroid` — classify by closest class centroid (achieves LDA behavior with Mahalanobis distance) | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; readthedocs |
+| Classification | `DTMClassifier` — distance-to-trimmed-means; outlier-robust classifier | fit / predict | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 7; readthedocs |
+| Classification | `MaximumDepthClassifier` — assign to class with maximum functional depth | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; dir()-verified |
+| Classification | `DDClassifier` — depth-vs-depth plot classifier | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; dir()-verified |
+| Classification | `DDGClassifier` — generalized DD classifier (polynomial or any classifier in DD space) | fit / predict | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 7; readthedocs |
+| Classification | `LogisticRegression` — functional logistic regression | fit / predict / predict_proba | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; dir()-verified |
+| Classification | `QuadraticDiscriminantAnalysis` — functional QDA | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 7; dir()-verified |
+
+#### Task grouping: Regression
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Regression | `LinearRegression` — scalar-on-function and function-on-scalar in one unified class; accepts functional predictors and responses; supports `LinearDifferentialOperator` regularization | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+| Regression | `HistoricalLinearRegression` — function-on-function regression using only past values as predictors (causal) | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+| Regression | `KNeighborsRegressor` — functional kNN regression | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+| Regression | `RadiusNeighborsRegressor` — fixed-radius kNN regression | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+| Regression | `KernelRegression` — functional kernel regression (Nadaraya-Watson style, scalar response) | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+| Regression | `FPCARegression` — project to FPCA scores, then OLS | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+| Regression | `FPLSRegression` — project to FPLS scores, then OLS | fit / predict | In-Scope Algorithm | HIGH | FEATURES.md §Area 8; readthedocs |
+
+#### Task grouping: Clustering
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Clustering | `KMeans` — functional k-means with any functional metric | fit / predict / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 9; readthedocs |
+| Clustering | `FuzzyCMeans` — fuzzy c-means for functional data (soft assignments) | fit / predict / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 9; readthedocs |
+| Clustering | `NearestNeighbors` — unsupervised neighbor search / index building | fit / kneighbors | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 9; readthedocs |
+| Clustering | `AgglomerativeClustering` — hierarchical clustering using a functional distance matrix | fit | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 9; readthedocs |
   and dir() spot-checks; MEDIUM for items verified against readthedocs 0.10.1 docs only.
