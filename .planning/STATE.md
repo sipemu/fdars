@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 9
-current_phase_name: Consolidated Report & Prioritized Backlog
+current_phase: 09
+current_phase_name: consolidated-report-prioritized-backlog
 status: executing
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-08-09T19:57:55.507Z"
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-08-09T20:23:13.745Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 21
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-09)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 08 — capability-parity-matrix-categorization
+**Current focus:** Phase 09 — consolidated-report-prioritized-backlog
 
 ## Current Position
 
-Phase: 9 — Consolidated Report & Prioritized Backlog
-Plan: Not started
+Phase: 09 (consolidated-report-prioritized-backlog) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-08-09 — Phase 08 complete, transitioned to Phase 9
+Last activity: 2026-08-09 — Phase 09 execution started
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [██████████] 100%
 | Phase 08 P1 | 8 | 3 tasks | 1 files |
 | Phase 08-capability-parity-matrix-categorization P02 | 9 | 3 tasks | 1 files |
 | Phase 08 P03 | 7 | 3 tasks | 1 files |
+| Phase 09 P01 | 8 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,9 @@ Relevant to current work:
 - [Phase ?]: Separated in-scope (82 gaps) from out-of-scope (32 plotting/IO/type-system) per Pitfall 14; 36 table-stakes + 46 differentiator actionable
 - [Phase ?]: Reverse sweep found 30 fdars-exclusive capabilities (22 none / 8 partial-fdars-advantage): 4 SC3 headliners + 12 D-04 candidates + 14 additional from module-map walk
 - [Phase ?]: Drafted 20 unranked backlog entries (PREP-01 through MISC-04) + ACC-01 D-02a comparative numerical-accuracy validation item for 4 fragile areas; ranking is Phase 9 (RPT-02)
+- [Phase ?]: BACKLOG.md is standalone file separate from AUDIT-REPORT.md for direct /gsd-new-milestone consumption
+- [Phase ?]: Ranking formula: score = value / sqrt(effort); value 1-5, effort S=1/M=3/L=9 (sqrt 1/1.732/3)
+- [Phase ?]: P6-1 (faer SVD swap) scored as Value=3 / Effort=S => score=3.00 (P2 severity, 1.8x at primary cell)
 
 ### Pending Todos
 
@@ -158,6 +162,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T19:32:19.788Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-08-09T20:23:13.734Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None

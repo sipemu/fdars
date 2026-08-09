@@ -27,9 +27,9 @@ Requirements for this audit. Each maps to a roadmap phase.
 
 ### Report & Backlog (RPT)
 
-- [ ] **RPT-01**: A consolidated audit report combines the performance findings and the gap findings, with reproducible evidence attached to each finding (benchmark numbers, allocation counts, or doc references)
-- [ ] **RPT-02**: A prioritized, GSD-ready backlog phrases each item as a candidate requirement/phase, ranked by **user value** (not ease), ready to promote via `/gsd-new-milestone`
-- [ ] **RPT-03**: Each backlog item carries a completeness checklist — location/area, current cost or gap, root cause, proposed direction, severity, effort estimate, and evidence link
+- [x] **RPT-01**: A consolidated audit report combines the performance findings and the gap findings, with reproducible evidence attached to each finding (benchmark numbers, allocation counts, or doc references)
+- [x] **RPT-02**: A prioritized, GSD-ready backlog phrases each item as a candidate requirement/phase, ranked by **user value** (not ease), ready to promote via `/gsd-new-milestone`
+- [x] **RPT-03**: Each backlog item carries a completeness checklist — location/area, current cost or gap, root cause, proposed direction, severity, effort estimate, and evidence link
 
 ## v2 Requirements
 
@@ -68,9 +68,9 @@ Populated during roadmap creation.
 | GAP-02 | Phase 8 | Complete |
 | GAP-03 | Phase 8 | Complete |
 | GAP-04 | Phase 8 | Complete |
-| RPT-01 | Phase 9 | Pending |
-| RPT-02 | Phase 9 | Pending |
-| RPT-03 | Phase 9 | Pending |
+| RPT-01 | Phase 9 | Complete |
+| RPT-02 | Phase 9 | Complete |
+| RPT-03 | Phase 9 | Complete |
 
 > PERF-03 spans Phases 3 and 4 by hot path (Phase 3 = elastic alignment suspects, Phase 4 = FPCA/SVD suspects). It is the only requirement mapped to more than one phase, and the two phases own disjoint benchmark targets — no target is duplicated. All other requirements map to exactly one phase.
 
