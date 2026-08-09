@@ -17,7 +17,7 @@
 - [x] **Phase 5: Parallelism Gap Assessment** - Measure rayon thread scaling and flag safe-to-parallelize sequential loops (completed 2026-08-08)
 - [x] **Phase 6: Conditional SVD Library Comparison** - Compare nalgebra vs faer SVD at real sizes only if FPCA benchmarks warrant it (completed 2026-08-09)
 - [x] **Phase 7: scikit-fda Capability Enumeration** - Enumerate scikit-fda's public capability surface by area, pinning the compared version (completed 2026-08-09)
-- [ ] **Phase 8: Capability Parity Matrix & Categorization** - Map fdars vs scikit-fda by capability, categorize gaps, and document fdars strengths
+- [x] **Phase 8: Capability Parity Matrix & Categorization** - Map fdars vs scikit-fda by capability, categorize gaps, and document fdars strengths (completed 2026-08-09)
 - [ ] **Phase 9: Consolidated Report & Prioritized Backlog** - Combine all findings into a report with a value-ranked, GSD-ready backlog
 
 ## Phase Details
@@ -197,7 +197,7 @@
   3. fdars capabilities that exceed scikit-fda are documented (model explainability, SPM/control charts, seasonal decomposition, streaming depth) so the audit reflects strengths, not only gaps
   4. Fragile/known-bug areas from CONCERNS.md (e.g. B-spline CV GH #33, elastic alignment) carry an "accuracy verified?" note rather than a bare ✓, and gap backlog entries are drafted with area/current-gap/root-cause fields
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 **Wave 1**
 
@@ -237,7 +237,7 @@
 | 5. Parallelism Gap Assessment | 3/3 | Complete    | 2026-08-08 |
 | 6. Conditional SVD Library Comparison | 1/1 | Complete    | 2026-08-09 |
 | 7. scikit-fda Capability Enumeration | 2/2 | Complete    | 2026-08-09 |
-| 8. Capability Parity Matrix & Categorization | 3/3 | In Progress|  |
+| 8. Capability Parity Matrix & Categorization | 3/3 | Complete    | 2026-08-09 |
 | 9. Consolidated Report & Prioritized Backlog | 0/0 | Not started | - |
 
 ## Coverage
