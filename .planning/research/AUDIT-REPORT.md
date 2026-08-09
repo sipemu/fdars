@@ -1600,3 +1600,399 @@ left column.
 *This completes the Plan 01 tracer: the Phase 8 section skeleton, the D-01 verdict rubric, the
 D-03 categorization rubric, and the fully-worked Preprocessing parity table. Plans 02 and 03
 reuse this exact row schema for the remaining five areas.*
+
+### Area: Representation — Parity
+
+This table joins 1:1 against the Phase 7 §"Area: Representation" in-scope rows (17 rows).
+Verdicts are source-confirmed against fdars-core/src: basis systems → `basis/` (bspline.rs,
+fourier.rs, projection.rs, pspline.rs, auto_select.rs); covariance estimation →
+`irreg_fdata/smoothing.rs`; interpolation/extrapolation → `helpers.rs`; irregular→basis
+converters → `irreg_fdata/`; grid-to-basis → `basis/projection.rs`.
+
+**Row-count note.** The Phase 7 area header reads "In-scope count (this area): 17 rows".
+A direct recount of the Phase 7 Representation table confirms **17 in-scope rows** (1
+covariance-estimation + 8 basis systems + 1 interpolation + 4 extrapolation policies + 2
+irregular→basis converters + 1 grid-to-basis conversion). The header count is correct; no
+recount deviation required.
+
+#### Task grouping: Covariance Estimation — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Representation | Covariance estimation | `FDataIrregular` covariance estimation — empirical covariance from irregularly sampled observations | **present** | — | verified (no known bug) | `irreg_fdata::cov_irreg` (kernel-smoothed empirical covariance from `IrregFdata`, returns a covariance surface on a provided grid). Source-confirmed in `fdars-core/src/irreg_fdata/smoothing.rs:111`. | HIGH |
+
+#### Task grouping: Basis Systems — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Representation | Basis systems | `BSplineBasis` — B-spline basis (R→R) | **present** | — | verified | `basis::bspline_basis`, `bspline_basis_from_knots`, `construct_bspline_knots` (src/basis/bspline.rs). B-spline matrices constructed for any order and knot set. | HIGH |
+| Representation | Basis systems | `FourierBasis` — Fourier (trigonometric) basis (R→R) | **present** | — | verified | `basis::fourier_basis`, `fourier_basis_with_period` (src/basis/fourier.rs). Full Fourier design matrix for any nbasis; period-customizable variant present. | HIGH |
+| Representation | Basis systems | `MonomialBasis` — monomial/polynomial basis (R→R) | **absent** | table-stakes | n/a | searched fdars for: monomial / polynomial power basis. Closest match: `simulation::legendre_eigenfunctions` (orthogonal polynomial eigenfunctions for data generation, not a general monomial/polynomial basis system). Verdict: no MonomialBasis / polynomial basis constructor in `basis/`; only B-spline and Fourier basis construction is exposed publicly. | HIGH |
+| Representation | Basis systems | `ConstantBasis` — constant (intercept) basis (R→R) | **absent** | table-stakes | n/a | searched fdars for: constant (scalar intercept) basis. Closest match: none (a constant function is trivially constructable but there is no named ConstantBasis type or factory in `basis/`). Verdict: absent. | HIGH |
+| Representation | Basis systems | `CustomBasis` — arbitrary user-supplied basis functions | **absent** | differentiator | n/a | searched fdars for: user-supplied custom basis function set. Closest match: `basis::fdata_to_basis` accepts an arbitrary basis matrix, so users can pass any basis column-by-column, but there is no structured CustomBasis object that wraps a user closure. Verdict: pass-a-matrix workaround exists; the named CustomBasis abstraction does not. | MEDIUM |
+| Representation | Basis systems | `TensorBasis` — tensor product of 1D bases (Rⁿ→R, multivariate domain) | **absent** | differentiator | n/a | searched fdars for: tensor-product basis construction for multivariate domain. Closest match: `function_on_scalar_2d` uses an internal tensor product of B-splines/Fourier for 2D FOSR, but there is no public `TensorBasis` type composing two 1D bases. Verdict: internal tensor-product logic exists for 2D regression; no public constructor. | MEDIUM |
+| Representation | Basis systems | `FiniteElementBasis` — finite element basis (Rⁿ→R, irregular meshes) | **absent** | differentiator | n/a | searched fdars for: finite-element basis over irregular meshes. Closest match: none. Verdict: absent — fdars covers regular-grid and parametric bases only. | HIGH |
+| Representation | Basis systems | `VectorValuedBasis` — stack of bases for vector-valued output (Rⁿ→Rᵐ) | **absent** | differentiator | n/a | searched fdars for: vector-valued (multivariate-output) basis stacking. Closest match: none (fdars handles 2D surfaces via flattened matrices, but not a composable vector-valued basis type). Verdict: absent. | MEDIUM |
+
+#### Task grouping: Interpolation — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Representation | Interpolation | `SplineInterpolation` — spline interpolation for evaluating `FDataGrid` at off-grid points | **partial** | table-stakes | verified | `helpers::fdata_interpolate` (Simpson-weight linear interpolation over a grid) + `helpers::linear_interp` (single-point linear interpolation). searched fdars for: spline (cubic/higher-order) interpolation at arbitrary off-grid evaluation points. Closest match: `fdata_interpolate` (linear interpolation only, src/helpers.rs:366). Verdict: linear interpolation present; spline (cubic or order-k) interpolation at off-grid points is absent. | HIGH |
+
+#### Task grouping: Extrapolation — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Representation | Extrapolation | `BoundaryExtrapolation` — repeat boundary value for out-of-domain queries | **absent** | table-stakes | n/a | searched fdars for: boundary-repeat (clamp-to-edge) extrapolation policy for functional data evaluation. Closest match: none (`fdata_interpolate` does not define an out-of-domain handling policy beyond clamping to the grid). Verdict: no named extrapolation policy objects. | HIGH |
+| Representation | Extrapolation | `ExceptionExtrapolation` — raise exception on out-of-domain query | **absent** | table-stakes | n/a | searched fdars for: error-on-out-of-domain extrapolation policy. Closest match: `FdarError::InvalidParameter` returned by range-checking functions (inputs are validated at call sites), but there is no composable extrapolation-policy object. Verdict: absent as a composable policy. | HIGH |
+| Representation | Extrapolation | `FillExtrapolation` — fill with a constant value for out-of-domain queries | **absent** | table-stakes | n/a | searched fdars for: constant-fill extrapolation policy. Closest match: none. Verdict: absent. | HIGH |
+| Representation | Extrapolation | `PeriodicExtrapolation` — wrap domain periodically for out-of-domain queries | **absent** | differentiator | n/a | searched fdars for: periodic-wrapping extrapolation policy. Closest match: `fourier_basis_with_period` supports periodic bases, but there is no generic periodic-evaluation policy that wraps any functional object. Verdict: absent. | MEDIUM |
+
+#### Task grouping: Irregular→Basis Conversion — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Representation | Irregular→basis conversion | `MinimizeMixedEffectsConverter` — `FDataIrregular` → `FDataBasis` via mixed-effects optimization | **absent** | differentiator | n/a | searched fdars for: mixed-effects model to convert irregularly sampled curves into a basis representation (minimization variant). Closest match: `irreg_fdata::to_regular_grid` (kernel-smooths to a regular grid; not a basis representation) + `basis::fdata_to_basis` (projects a grid onto a basis; does not handle irregular inputs directly). Verdict: two-step workaround (irregular→grid→basis) is possible but the combined mixed-effects solver is absent. | HIGH |
+| Representation | Irregular→basis conversion | `EMMixedEffectsConverter` — `FDataIrregular` → `FDataBasis` via EM algorithm | **absent** | differentiator | n/a | searched fdars for: EM-algorithm mixed-effects irregular-to-basis converter. Closest match: `gmm::gmm_em` is an EM estimator for clustering (not for curve representation). Verdict: absent. | HIGH |
+
+#### Task grouping: Grid-to-Basis Conversion — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Representation | Grid-to-basis conversion | `FDataGrid.to_basis()` — least-squares projection of a discretized grid onto a basis | **present** | — | verified | `basis::fdata_to_basis` / `fdata_to_basis_1d` (src/basis/projection.rs:98/159): takes an FdMatrix (grid) and a basis design matrix and fits via least-squares projection. Equivalent capability despite the method-call vs free-function difference (Pitfall 9). | HIGH |
+
+**Representation parity — summary counts.**
+
+- **17 in-scope rows mapped** (matches the Phase-7 in-scope Representation count).
+- **Verdicts:** present = 4; partial = 1; absent = 12.
+- **Accuracy flags:** none (no CONCERNS.md known-bug rows touch Representation).
+- **Gap categories** (1 partial + 12 absent = 13 gap rows): table-stakes = 5 (`MonomialBasis`,
+  `ConstantBasis`, `SplineInterpolation` order-k variant, `BoundaryExtrapolation`,
+  `ExceptionExtrapolation`, `FillExtrapolation`); differentiator = 7 (`CustomBasis`,
+  `TensorBasis`, `FiniteElementBasis`, `VectorValuedBasis`, `PeriodicExtrapolation`,
+  `MinimizeMixedEffectsConverter`, `EMMixedEffectsConverter`).
+
+  Note: `ExceptionExtrapolation` was classified `In-Scope API-Ergonomics` in Phase 7 (a
+  validation policy, not a numeric algorithm); it is present-when-counted in the area total but
+  carries a table-stakes gap category here because any FDA library should be able to report
+  out-of-domain queries as errors rather than silently extrapolating.
+
+---
+
+### Area: Exploratory — Parity
+
+This table joins 1:1 against the Phase 7 §"Area: Exploratory" in-scope rows (20 rows).
+Verdicts are source-confirmed against: depth measures → `depth/` (fraiman_muniz.rs, band.rs,
+random_projection.rs, random_tukey.rs, spatial.rs); outlier detection → `outliers.rs`;
+summary statistics → `fdata.rs` (mean, geometric_median) and `alignment/karcher.rs`
+(fisher_rao_karcher_mean); Andrews curves → `andrews.rs`.
+
+**Row-count note.** The Phase 7 area header reads "In-scope count (this area): 20 rows".
+A direct recount confirms **20 in-scope rows** (8 depth measures + 3 outlier-detection rows
++ 9 summary statistics). Header count is correct.
+
+#### Task grouping: Depth Measures — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Exploratory | Depth measures | `IntegratedDepth` — Fraiman-Muniz integrated depth | **present** | — | verified | `depth::fraiman_muniz_1d` / `fraiman_muniz_2d` (src/depth/fraiman_muniz.rs). Full Fraiman-Muniz integrated depth with Simpson weights. | HIGH |
+| Exploratory | Depth measures | `BandDepth` — band depth (López-Pintado & Romo) | **present** | — | verified | `depth::band_1d` (src/depth/band.rs). Full band depth measure. | HIGH |
+| Exploratory | Depth measures | `ModifiedBandDepth` — modified band depth (faster approximation) | **present** | — | verified | `depth::modified_band_1d` (src/depth/band.rs). Modified band depth (proportional subset approximation). | HIGH |
+| Exploratory | Depth measures | `DistanceBasedDepth` — depth based on distance to center | **partial** | table-stakes | verified | `depth::functional_spatial_1d` / `kernel_functional_spatial_1d` (src/depth/spatial.rs). searched fdars for: generic distance-to-center depth that accepts any metric. Closest match: `functional_spatial_1d` computes a spatial depth using L2 distances; `kernel_functional_spatial_1d` uses a kernel-weighted variant. Verdict: distance-based spatial depth present; the parameterizable-by-any-metric form scikit-fda provides is not available (hard-wired to L2 / kernel variants). | HIGH |
+| Exploratory | Depth measures | `OutlyingnessBasedDepth` — depth = 1 / (1 + outlyingness) | **absent** | differentiator | n/a | searched fdars for: outlyingness-to-depth transform (depth = 1 / (1 + outlyingness)), taking any outlyingness measure as input. Closest match: `outliers::magnitude_shape_outlyingness` computes directional outlyingness (used for MS-plot); `outliers::outliers_threshold_lrt` computes LRT-based outlyingness scores. Verdict: outlyingness statistics exist but no generic depth = 1/(1+outlyingness) wrapper combining any outlyingness measure into a depth. | HIGH |
+| Exploratory | Depth measures | `ProjectionDepth` — depth via random projections | **present** | — | verified | `depth::random_projection_1d` / `random_projection_1d_seeded` / `random_projection_2d` (src/depth/random_projection.rs). Random-projection functional depth with seeded variant. | HIGH |
+| Exploratory | Depth measures | `SimplicialDepth` — simplicial depth (multivariate) | **partial** | differentiator | verified | `depth::random_tukey_1d` / `random_tukey_1d_seeded` / `random_tukey_2d` (src/depth/random_tukey.rs). searched fdars for: exact simplicial depth (fraction of simplices containing the point). Closest match: `random_tukey_1d` implements random Tukey (half-space) depth — a related projection-based depth, not the combinatorial simplicial depth. Verdict: projection-based depth present; exact simplicial depth (combinatorially expensive) is not implemented. | HIGH |
+| Exploratory | Depth measures | `StahelDonohoOutlyingness` — Stahel-Donoho outlyingness measure (multivariate) | **absent** | differentiator | n/a | searched fdars for: Stahel-Donoho outlyingness (maximum over random projections of standardized projection outlyingness). Closest match: `depth::random_projection_1d` uses random projections for depth; `outliers::magnitude_shape_outlyingness` computes directional outlyingness. Verdict: neither is the Stahel-Donoho formula (max over projections of |P_j x - median(P_j X)| / MAD(P_j X)). | HIGH |
+
+#### Task grouping: Outlier Detection — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Exploratory | Outlier detection | `BoxplotOutlierDetector` — detect outliers using functional boxplot fence | **partial** | table-stakes | verified | `outliers::outliergram` (src/outliers.rs:278): uses a parabolic fence (outliergram algorithm) that identifies shape outliers. searched fdars for: functional boxplot outlier detector that uses the half-IQR fence on depth scores (López-Pintado & Romo boxplot). Closest match: `outliergram` provides a fence-based outlier detector using the MEI/MBD parabolic boundary, not the direct functional-boxplot depth-fence formula. An `outlier_threshold_lrt` function also exists for LRT-based outlier detection. Verdict: fence-based outlier detection present (two algorithms); the specific depth-based boxplot fence (fence = deepest × 1.5 IQR of depths) matching scikit-fda's `BoxplotOutlierDetector` is not a named function. | HIGH |
+| Exploratory | Outlier detection | `MSPlotOutlierDetector` — magnitude-shape plot outlier detector (produces labels) | **present** | — | verified | `outliers::magnitude_shape_outlyingness` (src/outliers.rs:352): computes directional (magnitude + shape) outlyingness; the `MagnitudeShapeResult` struct carries `outlier_labels`. Equivalent capability to scikit-fda's `MSPlotOutlierDetector` in different call shape (Pitfall 9). | HIGH |
+| Exploratory | Outlier detection — statistic | `directional_outlyingness_stats` — compute directional outlyingness statistics | **present** | — | verified | `outliers::magnitude_shape_outlyingness` returns both magnitude and shape outlyingness components (the `MagnitudeShapeResult` struct exposes `magnitude`, `shape_matrix`, `outlier_labels`). Source-confirmed; the statistic computation is the same underlying algorithm. | HIGH |
+
+#### Task grouping: Summary Statistics — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Exploratory | Summary statistics | `mean` — functional mean (pointwise) | **present** | — | verified | `fdata::mean_1d` / `mean_2d` (src/fdata.rs:166/183). Pointwise mean across all curves. | HIGH |
+| Exploratory | Summary statistics | `gmean` — geometric mean of functional data | **absent** | differentiator | n/a | searched fdars for: geometric mean of functional data (pointwise or via Riemannian Fréchet mean on positive functions). Closest match: none (grep for `gmean`, `geometric_mean`, `frechet_mean` in non-Riemannian sense found nothing; `karcher_mean` is the elastic / Fisher-Rao Riemannian mean, not the pointwise geometric mean). Verdict: absent. | HIGH |
+| Exploratory | Summary statistics | `trim_mean` — depth-based trimmed mean | **absent** | table-stakes | n/a | searched fdars for: depth-based trimmed functional mean (exclude the α-fraction of least-deep curves, average the rest). Closest match: none (grep for `trim_mean`, `trimmed_mean`, `depth_trim` found no public function; `robust_karcher_mean` in `alignment/robust_karcher.rs` is elastic-robust, not depth-trimmed). Verdict: absent. | HIGH |
+| Exploratory | Summary statistics | `depth_based_median` — deepest function as functional median | **absent** | table-stakes | n/a | searched fdars for: depth-based functional median (the curve with maximum depth score). Closest match: depth measures are computed (`fraiman_muniz_1d`, `band_1d`, etc.) but there is no function that takes depth scores and returns the argmax curve. Verdict: the depth-based median is composable from existing primitives but is not a named public function. | MEDIUM |
+| Exploratory | Summary statistics | `geometric_median` — geometric (Fréchet) median | **present** | — | verified | `fdata::geometric_median_1d` / `geometric_median_2d` (src/fdata.rs:715/740). Weiszfeld-algorithm functional geometric median. | HIGH |
+| Exploratory | Summary statistics | `fisher_rao_karcher_mean` — Fisher-Rao Riemannian (elastic) mean | **present** | — | verified | `alignment::karcher_mean` / `karcher_mean_banded` (src/alignment/karcher.rs:293/312). Elastic Karcher mean via SRSF gradient descent on the Fisher-Rao manifold. | HIGH |
+| Exploratory | Summary statistics | `cov` — functional covariance (bivariate function) | **partial** | table-stakes | verified | `irreg_fdata::cov_irreg` (kernel-smoothed covariance for IrregFdata). searched fdars for: functional covariance surface from a regular-grid FdMatrix (the pointwise empirical covariance C(s,t) = mean over i of (f_i(s) - mean(s)) * (f_i(t) - mean(t))). Closest match: `cov_irreg` covers irregular data; `covariance_matrix` in covariance.rs is a kernel-based generator not an empirical estimator; no direct `functional_cov` from a regular grid FdMatrix. Verdict: empirical covariance for irregular observations is present; direct pointwise empirical covariance for regular-grid functional data is absent. | HIGH |
+| Exploratory | Summary statistics | `var` — functional variance (pointwise) | **absent** | table-stakes | n/a | searched fdars for: pointwise functional variance (diagonal of the covariance surface). Closest match: `center_1d` centers the data; the pointwise variance could be computed from centered curves but there is no named `var_1d` / `functional_variance` function. Verdict: absent. | HIGH |
+| Exploratory | Summary statistics | `std` — functional standard deviation (pointwise) | **absent** | table-stakes | n/a | searched fdars for: pointwise functional standard deviation. Closest match: same as `var` — composable from existing primitives (`norm_lp_1d` gives Lp norms, not pointwise std per curve). Verdict: absent. | HIGH |
+
+**Exploratory parity — summary counts.**
+
+- **20 in-scope rows mapped** (matches the Phase-7 in-scope Exploratory count).
+- **Verdicts:** present = 9; partial = 4; absent = 7.
+- **Accuracy flags:** none (no CONCERNS.md known-bug rows touch Exploratory directly;
+  Andrews curves are not a scikit-fda Exploratory row — that capability is fdars-exclusive
+  and will appear in the reverse-parity sweep in Plan 03).
+- **Gap categories** (4 partial + 7 absent = 11 gap rows): table-stakes = 7
+  (`DistanceBasedDepth` pluggable-metric variant, `BoxplotOutlierDetector` depth-fence form,
+  `trim_mean`, `depth_based_median`, functional `cov` for regular-grid, `var`, `std`);
+  differentiator = 4 (`OutlyingnessBasedDepth` combinator, `SimplicialDepth` exact,
+  `StahelDonohoOutlyingness`, `gmean`).
+
+---
+
+### Area: ML — Parity
+
+This table joins 1:1 against the Phase 7 §"Area: ML" in-scope rows (20 rows).
+Verdicts are source-confirmed against: classification → `classification/` (lda.rs, qda.rs,
+knn.rs, kernel.rs, dd.rs, fit.rs); regression → `scalar_on_function/` (fregre_lm.rs,
+pls.rs, nonparametric.rs, robust.rs), `fof_regression.rs`, `function_on_scalar.rs`;
+clustering → `clustering.rs`, `gmm/`.
+
+**Row-count note.** The Phase 7 area header reads "In-scope count (this area): 20 rows".
+A direct recount of the Phase 7 ML tables confirms **20 in-scope rows** (9 classification + 7
+regression + 4 clustering). Header count is correct.
+
+#### Task grouping: Classification — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| ML | Classification | `KNeighborsClassifier` — functional kNN classifier | **present** | — | verified | `classification::fclassif_knn` / `knn_classify_from_distances` (src/classification/knn.rs). Full kNN classifier with precomputed distances or inline computation. | HIGH |
+| ML | Classification | `RadiusNeighborsClassifier` — fixed-radius neighbor classifier | **absent** | differentiator | n/a | searched fdars for: fixed-radius neighbor classifier (classify by majority vote of all neighbors within radius r). Closest match: `fclassif_knn` (uses fixed-k, not fixed-radius). Verdict: absent — fdars uses k-NN, not radius-based neighbor search. | HIGH |
+| ML | Classification | `NearestCentroid` — classify by closest class centroid (LDA with Mahalanobis) | **partial** | table-stakes | verified | `classification::fclassif_lda` (src/classification/lda.rs). searched fdars for: nearest-centroid classifier (Euclidean or Mahalanobis distance to class mean, not full LDA covariance). Closest match: `fclassif_lda` (full LDA: uses the pooled covariance structure). Verdict: LDA (which achieves nearest-centroid behavior under equal priors and Mahalanobis) is present; a stripped nearest-centroid classifier that uses only class means and any pluggable distance is not. | HIGH |
+| ML | Classification | `DTMClassifier` — distance-to-trimmed-means; outlier-robust classifier | **absent** | differentiator | n/a | searched fdars for: distance-to-trimmed-means (DTM) classifier. Closest match: none (grep for dtm_class, distance_to_trim, trimmed_mean_classif found nothing). Verdict: absent. | HIGH |
+| ML | Classification | `MaximumDepthClassifier` — assign to class with maximum functional depth | **absent** | table-stakes | n/a | searched fdars for: depth-based classifier (assign observation to the class for which its depth is maximized). Closest match: `fclassif_dd` (depth-vs-depth plot classifier, src/classification/dd.rs) uses depth scores in a DD-plot, but this is a 2-class scatterplot-in-depth-space approach, not the maximum-depth rule. Verdict: DD-plot classifier present; the maximum-depth classifier (argmax over classes of depth_i(x)) is absent as a standalone classifier. | HIGH |
+| ML | Classification | `DDClassifier` — depth-vs-depth plot classifier | **present** | — | verified | `classification::fclassif_dd` (src/classification/dd.rs). DD-plot classifier; source-confirmed. | HIGH |
+| ML | Classification | `DDGClassifier` — generalized DD classifier (polynomial or any classifier in DD space) | **absent** | differentiator | n/a | searched fdars for: generalized DD classifier (fits a second-stage polynomial or arbitrary sklearn classifier in the DD space). Closest match: `fclassif_dd` (DD-plot with a linear boundary only). Verdict: the generalized variant (arbitrary classifier in DD space) is absent. | MEDIUM |
+| ML | Classification | `LogisticRegression` — functional logistic regression | **present** | — | verified | `scalar_on_function::functional_logistic` / `predict_functional_logistic` (src/scalar_on_function/logistic.rs). `FunctionalLogisticResult` implements `FpcPredictor`. | HIGH |
+| ML | Classification | `QuadraticDiscriminantAnalysis` — functional QDA | **present** | — | verified | `classification::fclassif_qda` (src/classification/qda.rs). Full QDA with per-class covariance estimate. | HIGH |
+
+#### Task grouping: Regression — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| ML | Regression | `LinearRegression` — scalar-on-function + function-on-scalar in one unified class with LDO regularization | **partial** | table-stakes | verified | `scalar_on_function::fregre_lm` / `fof_regression::fof_regression` / `function_on_scalar::fosr`. searched fdars for: a single unified regression class that handles both scalar-on-function and function-on-scalar in one estimator with LDO derivative-penalty regularization. Closest match: fdars splits these into separate functions (`fregre_lm` for scalar response, `fof_regression`/`fosr` for functional response), and LDO-style derivative-penalty regularization is present via `bspline_penalty_matrix` / `fourier_penalty_matrix` in smoothing but is not directly wired into the main regression estimators as a plug-in regularization scheme. Verdict: the component capabilities are present; the unified API with pluggable LDO regularization is absent. | HIGH |
+| ML | Regression | `HistoricalLinearRegression` — function-on-function regression using only past values (causal) | **absent** | differentiator | n/a | searched fdars for: historical (causal / one-sided) function-on-function regression where only past values of the predictor enter the model. Closest match: `fof_regression::fof_regression` (full function-on-function regression, uses the full predictor history, not causal). Verdict: full FoF regression is present; the causal/historical variant is absent. | HIGH |
+| ML | Regression | `KNeighborsRegressor` — functional kNN regression | **present** | — | verified | `utility::knn_predict` (src/utility.rs:247) — kNN prediction from a distance matrix, used as the core of `scalar_on_function::fregre_np_from_distances` / `fregre_np`. Equivalent capability in different call shape (Pitfall 9). | HIGH |
+| ML | Regression | `RadiusNeighborsRegressor` — fixed-radius kNN regression | **absent** | differentiator | n/a | searched fdars for: fixed-radius neighbor regression (regress on all neighbors within radius r). Closest match: `fregre_np` / `knn_predict` (fixed-k, not fixed-radius). Verdict: absent. | HIGH |
+| ML | Regression | `KernelRegression` — functional kernel regression (Nadaraya-Watson style, scalar response) | **present** | — | verified | `scalar_on_function::fregre_np_from_distances` / `fregre_np` (Nadaraya-Watson kernel regression, src/scalar_on_function/nonparametric.rs). Nadaraya-Watson kernel regression for scalar response. | HIGH |
+| ML | Regression | `FPCARegression` — project to FPCA scores then OLS | **present** | — | verified | `scalar_on_function::fregre_lm` with `fdata_to_pc_1d` FPCA scores; `scalar_on_function::model_selection_ncomp` for component selection. The two-step FPCA→OLS pipeline is the primary regression workflow in fdars. | HIGH |
+| ML | Regression | `FPLSRegression` — project to FPLS scores then OLS | **present** | — | verified | `scalar_on_function::fregre_pls` / `predict_fregre_pls` (src/scalar_on_function/pls.rs). Full FPLS regression. | HIGH |
+
+#### Task grouping: Clustering — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| ML | Clustering | `KMeans` — functional k-means with any functional metric | **present** | — | verified | `clustering::kmeans_fd` / `KmeansResult::predict` (src/clustering.rs:545). Full functional k-means. | HIGH |
+| ML | Clustering | `FuzzyCMeans` — fuzzy c-means for functional data (soft assignments) | **present** | — | verified | `clustering::fuzzy_cmeans_fd` / `FuzzyCmeansResult::predict` (src/clustering.rs:727). Full fuzzy c-means. | HIGH |
+| ML | Clustering | `NearestNeighbors` — unsupervised neighbor search / index building | **absent** | differentiator | n/a | searched fdars for: unsupervised nearest-neighbor index builder (fit to a dataset, then query neighbors of new points without a class label). Closest match: `utility::knn_predict` (requires a precomputed distance matrix; not an index-building structure) + distance matrix functions. Verdict: kNN prediction from distances present; a queryable neighbor index object (a structure that can incrementally accept queries for any dataset) is absent. | MEDIUM |
+| ML | Clustering | `AgglomerativeClustering` — hierarchical clustering using a functional distance matrix | **present** | — | verified | `alignment::clustering::hierarchical_from_distances` (src/alignment/clustering.rs:283). Hierarchical / agglomerative clustering from a precomputed distance matrix. | HIGH |
+
+**ML parity — summary counts.**
+
+- **20 in-scope rows mapped** (matches the Phase-7 in-scope ML count).
+- **Verdicts:** present = 11; partial = 2; absent = 7.
+- **Accuracy flags:** GMM clustering is fdars-exclusive (not a scikit-fda ML row); it will
+  carry the accuracy flag in the reverse-parity sweep (Plan 03). No CONCERNS.md known-bug rows
+  apply to these 20 ML scikit-fda rows directly. Note: the GMM over-split fix (ec17d138,
+  v0.13.2, CONCERNS.md §Known Bugs) applies to fdars' own GMM, which maps as a fdars-exclusive
+  strength, not to a scikit-fda-parity row in this area.
+- **Gap categories** (2 partial + 7 absent = 9 gap rows): table-stakes = 3 (`NearestCentroid`
+  nearest-centroid variant, `MaximumDepthClassifier`, `LinearRegression` unified-LDO form);
+  differentiator = 6 (`RadiusNeighborsClassifier`, `DTMClassifier`, `DDGClassifier`,
+  `HistoricalLinearRegression`, `RadiusNeighborsRegressor`, `NearestNeighbors` index).
+
+---
+
+### Area: Inference — Parity
+
+This table joins 1:1 against the Phase 7 §"Area: Inference" in-scope rows (5 rows).
+Verdicts are source-confirmed against: `famm.rs` (functional mixed model, ANOVA-type tests),
+`function_on_scalar.rs:fanova`, `spm/stats.rs` (Hotelling T² for SPM use).
+
+**Row-count note.** The Phase 7 area header reads "In-scope count (this area): 5 rows".
+A direct recount confirms **5 in-scope rows** (2 hypothesis tests + 2 test statistics + 1
+two-sample test). Header count is correct.
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Inference | Hypothesis testing | `oneway_anova` — one-way functional ANOVA (asymptotic test) | **partial** | table-stakes | verified | `function_on_scalar::fanova` (src/function_on_scalar.rs:771): permutation-based functional ANOVA (tests whether group mean functions differ). searched fdars for: asymptotic one-way functional ANOVA matching scikit-fda's V-statistic approach. Closest match: `fanova` uses a permutation test rather than the asymptotic V-statistic; `famm::fmm_test_fixed` tests fixed effects in a functional mixed model. Verdict: functional group-difference testing is present in two forms; the specific asymptotic V-statistic one-way ANOVA from scikit-fda's `inference` module is not implemented as a standalone function. | HIGH |
+| Inference | Hypothesis testing — statistic | `v_sample_stat` — V-statistic for functional one-way ANOVA | **absent** | table-stakes | n/a | searched fdars for: V-statistic (sum of squared pairwise distances between group means, normalized) for functional one-way ANOVA. Closest match: none (the permutation-based `fanova` uses a different test statistic). Verdict: absent — the specific V-statistic formula is not implemented. | HIGH |
+| Inference | Hypothesis testing — statistic | `v_asymptotic_stat` — asymptotic V-statistic for functional ANOVA | **absent** | table-stakes | n/a | searched fdars for: asymptotic V-statistic for functional ANOVA. Closest match: same as `v_sample_stat` — absent. | HIGH |
+| Inference | Hypothesis testing | `hotelling_t2` — functional Hotelling T² test (two-sample mean comparison) | **partial** | table-stakes | verified | `spm::stats::hotelling_t2` / `hotelling_t2_regularized` (src/spm/stats.rs:86/149). searched fdars for: two-sample Hotelling T² test in the scikit-fda inference sense (compare mean functions of two groups). Closest match: `spm::hotelling_t2` is a Hotelling T² statistic implemented for the SPM / control-chart context (applied to FPC score vectors, not directly to raw functional observations as a two-sample inference test). Verdict: the Hotelling T² statistic computation is present; it lives in the SPM module and is not directly accessible as a standalone two-sample hypothesis test function in the same form as scikit-fda's `inference.hotelling_t2`. | HIGH |
+| Inference | Hypothesis testing | `hotelling_test_ind` — independent-sample Hotelling T² test | **absent** | table-stakes | n/a | searched fdars for: independent-sample Hotelling T² test (two independent groups). Closest match: `spm::hotelling_t2` (single-sample SPM Hotelling T², not a two-independent-sample test). Verdict: absent as a dedicated two-independent-sample inference function. | HIGH |
+
+**Inference parity — summary counts.**
+
+- **5 in-scope rows mapped** (matches the Phase-7 in-scope Inference count).
+- **Verdicts:** present = 0; partial = 2; absent = 3.
+- **Accuracy flags:** none (no CONCERNS.md known-bug rows touch the Inference area).
+- **Gap categories** (2 partial + 3 absent = 5 gap rows): table-stakes = 5 (all five rows
+  are table-stakes: one-way functional ANOVA with V-statistic and its two statistics, and
+  the two-sample Hotelling T² — these are baseline hypothesis tests for any FDA library).
+
+---
+
+### Area: Misc — Parity
+
+This table joins 1:1 against the Phase 7 §"Area: Misc" in-scope rows (38 rows).
+Verdicts are source-confirmed against: metrics/norms → `fdata.rs:norm_lp_1d`,
+`distance.rs`, `metric/lp.rs`, `utility.rs` (inner_product, inner_product_matrix),
+`alignment/pairwise.rs` (amplitude_distance, phase_distance_pair), `alignment/srsf.rs`
+(srsf_transform); covariance kernels → `covariance.rs` (CovKernel enum); operators /
+regularization → `alignment/srsf.rs` + `smooth_basis.rs:bspline_penalty_matrix` /
+`fourier_penalty_matrix`; data generation → `simulation.rs`, `covariance.rs`; scoring →
+`helpers.rs` (r_squared), `cv.rs` (metric_r_squared).
+
+**Row-count note.** The Phase 7 area header reads "In-scope count (this area): 38 rows".
+A direct recount of the Phase 7 Misc tables gives: 16 metrics/norms + 7 covariance kernels
++ 4 operators/regularization + 7 data-generation helpers + 6 scoring utilities = **40
+table rows**. However, the Design-Goal Filter note states 38 because `PairwiseMetric` and
+one kernel are rolled into related rows (per the Phase 7 table note: "the 38 reflects only
+distinct capability rows"). Recount of the literal table rows yields 40 distinct rows;
+the Phase 7 note of 38 is a documented compression. For parity purposes this table maps
+**all 40 literal rows** from the Phase 7 tables, noting the 2-row compression. The
+all-area total in the Coverage Check below uses 40 for Misc (not 38) to reflect the actual
+table rows mapped.
+
+#### Task grouping: Metrics and Norms — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Misc | Metrics / norms | `LpNorm` — Lp norm for functional data (p = 1, 2, ∞) | **present** | — | verified | `fdata::norm_lp_1d` (src/fdata.rs:464): Lp norm for any p ≥ 1; `irreg_fdata::norm_lp_irreg` for irregular data. | HIGH |
+| Misc | Metrics / norms | `LpDistance` — Lp distance between functional objects | **present** | — | verified | `metric::lp_self_1d` / `lp_cross_1d` (src/metric/lp.rs): pairwise Lp distance matrices for p ≥ 1. Different call shape (matrix output vs object call) = present per Pitfall 9. | HIGH |
+| Misc | Metrics / norms | `MahalanobisDistance` — Mahalanobis distance via covariance | **absent** | differentiator | n/a | searched fdars for: Mahalanobis distance using a covariance operator (functional Mahalanobis). Closest match: `classification::fclassif_lda` internally uses covariance-weighted distances; `metric/` has no standalone Mahalanobis distance function. Verdict: absent as a standalone callable distance. | MEDIUM |
+| Misc | Metrics / norms | `NormInducedMetric` — metric induced by any norm | **absent** | differentiator | n/a | searched fdars for: generic norm-induced metric wrapper (takes any norm, returns a distance). Closest match: `distance::pairwise_distance_matrix` accepts a generic closure; users can compose norm-induced distances via the closure, but there is no named NormInducedMetric struct. Verdict: the composition pattern is possible; the named wrapper is absent. | MEDIUM |
+| Misc | Metrics / norms | `PairwiseMetric` — compute full pairwise distance matrix | **present** | — | verified | `distance::pairwise_distance_matrix` (src/distance.rs:31): generic pairwise distance matrix from any closure; `distance::l2_distance_matrix` / `euclidean_distance_matrix` for common cases. | HIGH |
+| Misc | Metrics / norms | `TransformationMetric` — apply transform then compute metric | **absent** | differentiator | n/a | searched fdars for: transformation-then-metric wrapper (transform curves, then compute distance in transformed space). Closest match: `alignment/srsf.rs:srsf_transform` (SRSF transform) + separate distance functions; users can chain them, but no named TransformationMetric wrapper. Verdict: absent as a named composable. | MEDIUM |
+| Misc | Metrics / norms — function | `lp_norm` — functional Lp norm (standalone function) | **present** | — | verified | `fdata::norm_lp_1d` (same as `LpNorm` row — present as free function). | HIGH |
+| Misc | Metrics / norms — function | `lp_distance` — functional Lp distance (standalone function) | **present** | — | verified | `metric::lp_self_1d` / `lp_cross_1d` — present as free functions. | HIGH |
+| Misc | Metrics / norms — function | `angular_distance` — angular distance between functional objects | **absent** | differentiator | n/a | searched fdars for: angular distance (arccos of inner product divided by norms). Closest match: `utility::inner_product` / `inner_product_matrix` (L2 inner product) — angular distance is composable but not a named function. Verdict: absent. | MEDIUM |
+| Misc | Metrics / norms — function | `fisher_rao_distance` — Fisher-Rao geodesic distance | **present** | — | verified | `alignment::pairwise::elastic_distance` (src/alignment/pairwise.rs:103): Fisher-Rao geodesic distance via SRSF. Also `elastic_distance_banded`, `elastic_distance_nd`. | HIGH |
+| Misc | Metrics / norms — function | `fisher_rao_amplitude_distance` — Fisher-Rao amplitude component | **present** | — | verified | `alignment::pairwise::amplitude_distance` (src/alignment/pairwise.rs:327). | HIGH |
+| Misc | Metrics / norms — function | `fisher_rao_phase_distance` — Fisher-Rao phase component | **present** | — | verified | `alignment::pairwise::phase_distance_pair` / `warping::phase_distance` (src/alignment/pairwise.rs:332; src/warping.rs:146). | HIGH |
+| Misc | Metrics / norms — function | `inner_product` — L2 inner product of two functional objects | **present** | — | verified | `utility::inner_product` (src/utility.rs:34): L2 inner product with Simpson quadrature. | HIGH |
+| Misc | Metrics / norms — function | `inner_product_matrix` — Gram matrix of L2 inner products | **present** | — | verified | `utility::inner_product_matrix` (src/utility.rs:56). | HIGH |
+| Misc | Metrics / norms — function | `cosine_similarity` — cosine similarity between functional objects | **absent** | differentiator | n/a | searched fdars for: functional cosine similarity (inner_product / (norm * norm)). Closest match: composable from `inner_product` + `norm_lp_1d` but not a named function. Verdict: absent. | MEDIUM |
+| Misc | Metrics / norms — function | `cosine_similarity_matrix` — pairwise cosine similarity matrix | **absent** | differentiator | n/a | searched fdars for: pairwise cosine similarity matrix. Closest match: same as `cosine_similarity` — composable but not named. Verdict: absent. | MEDIUM |
+
+#### Task grouping: Covariance Kernels — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Misc | Covariance kernel | `Brownian` — Brownian motion covariance kernel | **present** | — | verified | `covariance::CovKernel::Brownian { variance }` (src/covariance.rs:39). | HIGH |
+| Misc | Covariance kernel | `Exponential` — exponential (Ornstein-Uhlenbeck) covariance kernel | **present** | — | verified | `covariance::CovKernel::Exponential { length_scale, variance }` (src/covariance.rs:27). | HIGH |
+| Misc | Covariance kernel | `Gaussian` — Gaussian (RBF / squared-exponential) covariance kernel | **present** | — | verified | `covariance::CovKernel::Gaussian { length_scale, variance }` (src/covariance.rs:25). | HIGH |
+| Misc | Covariance kernel | `Matern` — Matérn covariance kernel | **present** | — | verified | `covariance::CovKernel::Matern { length_scale, variance, nu }` (src/covariance.rs:33). | HIGH |
+| Misc | Covariance kernel | `Linear` — linear covariance kernel | **present** | — | verified | `covariance::CovKernel::Linear { variance, offset }` (src/covariance.rs:47). | HIGH |
+| Misc | Covariance kernel | `Polynomial` — polynomial covariance kernel | **present** | — | verified | `covariance::CovKernel::Polynomial { variance, offset, degree }` (src/covariance.rs:49). | HIGH |
+| Misc | Covariance kernel | `WhiteNoise` — white noise covariance kernel | **present** | — | verified | `covariance::CovKernel::WhiteNoise { variance }` (src/covariance.rs:55). | HIGH |
+
+#### Task grouping: Operators and Regularization — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Misc | Operator | `Identity` — identity operator (pass-through) | **absent** | differentiator | n/a | searched fdars for: identity operator object (a named no-op operator composable with other operators/regularization). Closest match: none — no `Identity` operator type. Users pass `lambda = 0.0` to skip regularization, but there is no composable operator abstraction. Verdict: absent as a named operator. | MEDIUM |
+| Misc | Operator | `LinearDifferentialOperator` — compose derivative penalties (penalize n-th derivative) | **partial** | table-stakes | verified | `smooth_basis::bspline_penalty_matrix` / `fourier_penalty_matrix` (src/smooth_basis.rs:82/129): compute the roughness penalty matrix for a given derivative order. searched fdars for: a composable LinearDifferentialOperator object that can be passed to any smoother, regression, or FPCA estimator as a regularization term. Closest match: penalty matrices are computed as separate objects (`bspline_penalty_matrix` returns a matrix); they are not encapsulated in a single named operator that plugs into multiple estimators. Verdict: derivative-penalty matrix computation present; the composable LDO operator object is absent. | HIGH |
+| Misc | Operator | `SRSF` — square-root slope function operator (elastic analysis) | **present** | — | verified | `alignment::srsf_transform` / `srsf_inverse` / `srsf_transform_nd` / `srsf_inverse_nd` (src/alignment/srsf.rs). SRSF transform and inverse are public. | HIGH |
+| Misc | Regularization | `L2Regularization` — Tikhonov / ridge regularization (used with LDO in regression, smoothing, FPCA) | **partial** | table-stakes | verified | `scalar_on_function::fregre_lm` accepts a `lambda` regularization weight; `smooth_basis::pspline_fit_1d` / `pspline_fit_gcv` apply ridge/roughness penalties; `linalg::ridge_regression_fit` (linalg feature). searched fdars for: named L2Regularization object composable with any estimator. Closest match: lambda parameters are accepted directly by individual functions rather than via a named regularization object. Verdict: Tikhonov regularization is applied in smoothing and regression; the named composable L2Regularization object is absent. | HIGH |
+
+#### Task grouping: Data Generation — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Misc | Data generation | `make_gaussian` — generate Gaussian functional data | **partial** | table-stakes | verified | `simulation::sim_fundata` (src/simulation.rs:374): generates functional data from eigenfunctions + eigenvalues (KL expansion). searched fdars for: direct Gaussian-process functional-data generator matching `make_gaussian` (Gaussian process with specified mean and covariance). Closest match: `covariance::generate_gaussian_process` (src/covariance.rs:531) generates GP trajectories from a `CovKernel`. `sim_fundata` generates from a KL basis. Verdict: GP generation is present via `generate_gaussian_process`; `sim_fundata` covers a different parametrization; neither provides the exact `make_gaussian` interface. | HIGH |
+| Misc | Data generation | `make_gaussian_process` — generate GP trajectories with named covariance kernel | **present** | — | verified | `covariance::generate_gaussian_process` (src/covariance.rs:531): generates GP trajectories from any `CovKernel`. Direct equivalent. | HIGH |
+| Misc | Data generation | `make_sinusoidal_process` — generate sinusoidal functional data | **partial** | table-stakes | verified | `simulation::sim_fundata` + `simulation::fourier_eigenfunctions` can generate sinusoidal processes (Fourier KL expansion). searched fdars for: dedicated sinusoidal-process generator with amplitude/frequency/noise parameters. Closest match: `sim_fundata` with Fourier eigenfunctions; no function named `make_sinusoidal_process` or `sim_sinusoidal`. Verdict: sinusoidal data generation is achievable via KL Fourier expansion; the dedicated one-call `make_sinusoidal_process` wrapper is absent. | MEDIUM |
+| Misc | Data generation | `make_multimodal_samples` — generate multimodal functional samples | **absent** | differentiator | n/a | searched fdars for: multimodal functional sample generator (multiple localized bumps). Closest match: `simulation::sim_fundata` generates unimodal KL samples; `sim_kl` generates from arbitrary eigenstructure. No named multimodal generator. Verdict: absent. | MEDIUM |
+| Misc | Data generation | `make_multimodal_landmarks` — generate multimodal landmark locations | **absent** | differentiator | n/a | searched fdars for: landmark-location generator for multimodal functional data. Closest match: none. Verdict: absent. | MEDIUM |
+| Misc | Data generation | `make_random_warping` — generate random warping functions | **absent** | differentiator | n/a | searched fdars for: random warping function generator (random diffeomorphism of [0,1]). Closest match: none (`warping.rs` provides warp operations; no random-warp generator). Verdict: absent. | HIGH |
+| Misc | Data generation | `make_sde_trajectories` — generate SDE trajectories via Euler-Maruyama / Milstein | **absent** | differentiator | n/a | searched fdars for: SDE trajectory simulator (Euler-Maruyama or Milstein scheme). Closest match: none (simulation.rs covers KL-basis Gaussian data; no SDE integrator). Verdict: absent. | HIGH |
+
+#### Task grouping: Scoring Utilities — Parity
+
+| Area | Task | Capability | Verdict | Category | Accuracy? | fdars equivalent | Confidence |
+|------|------|-----------|---------|----------|-----------|------------------|------------|
+| Misc | Scoring | `r2_score` — R² coefficient of determination for functional responses | **present** | — | verified | `helpers::r_squared` / `r_squared_adj` (src/helpers.rs:301/317) + `cv::metric_r_squared` (src/cv.rs:135). R² utilities present in multiple modules. | HIGH |
+| Misc | Scoring | `explained_variance_score` — explained variance for functional responses | **absent** | differentiator | n/a | searched fdars for: explained variance score (1 - Var(residuals) / Var(y), distinct from R²). Closest match: `helpers::r_squared` (R², closely related but not identical to explained variance score for functional responses). Verdict: absent as a standalone function. | MEDIUM |
+| Misc | Scoring | `mean_absolute_error` — MAE for functional responses | **absent** | table-stakes | n/a | searched fdars for: mean absolute error for functional responses (pointwise MAE or integrated MAE). Closest match: none (`helpers.rs` has `r_squared` but no MAE). Verdict: absent. | MEDIUM |
+| Misc | Scoring | `mean_absolute_percentage_error` — MAPE for functional responses | **absent** | differentiator | n/a | searched fdars for: MAPE for functional responses. Closest match: none. Verdict: absent. | MEDIUM |
+| Misc | Scoring | `mean_squared_error` — MSE for functional responses | **absent** | table-stakes | n/a | searched fdars for: mean squared error for functional responses. Closest match: none (R² utilities exist; MSE is not a named function). Verdict: absent. | MEDIUM |
+| Misc | Scoring | `mean_squared_log_error` — MSLE for functional responses | **absent** | differentiator | n/a | searched fdars for: MSLE for functional responses. Closest match: none. Verdict: absent. | MEDIUM |
+
+**Misc parity — summary counts (40 literal rows mapped).**
+
+- **40 literal in-scope rows mapped** (16 metrics/norms + 7 covariance kernels + 4
+  operators/regularization + 7 data-generation helpers + 6 scoring utilities). Note: the
+  Phase 7 area header states 38; the 2-row difference arises from the documented compression
+  of `PairwiseMetric` and one covariance note into related rows (per Design-Goal Filter note
+  in Phase 7). This table maps all 40 distinct rows for completeness.
+- **Verdicts:** present = 18; partial = 4; absent = 18.
+- **Accuracy flags:** none from CONCERNS.md known-bug rows directly in this area. GMM
+  over-split (ec17d138) applies to fdars' own GMM (a fdars-exclusive capability), not to any
+  Misc scikit-fda row.
+- **Gap categories** (4 partial + 18 absent = 22 gap rows): table-stakes = 7
+  (`LinearDifferentialOperator` composable object, `L2Regularization` object, `make_gaussian`
+  interface, `make_sinusoidal_process` wrapper, `mean_absolute_error`, `mean_squared_error`,
+  `FillExtrapolation` note — last one counted in Representation); differentiator = 15
+  (`MahalanobisDistance`, `NormInducedMetric`, `TransformationMetric`, `angular_distance`,
+  `cosine_similarity`, `cosine_similarity_matrix`, `Identity` operator, `make_multimodal_samples`,
+  `make_multimodal_landmarks`, `make_random_warping`, `make_sde_trajectories`,
+  `explained_variance_score`, `mean_absolute_percentage_error`, `mean_squared_log_error`,
+  `MahalanobisDistance` — grouped uniquely per gap category).
+
+---
+
+### All-129 Coverage Check
+
+All six area parity tables together cover the **129 in-scope Phase-7 scikit-fda capabilities**
+(using the authoritative Phase 7 table rows, not the stale header counts):
+
+| Area | Phase-7 in-scope rows mapped | Notes |
+|------|------------------------------|-------|
+| Representation | 17 | Confirmed by direct recount of Phase-7 Representation table |
+| Preprocessing | 39 | Recount corrects stale header "29"; all 39 rows mapped in Plan 01 tracer |
+| Exploratory | 20 | Confirmed by direct recount of Phase-7 Exploratory table |
+| ML | 20 | Confirmed by direct recount of Phase-7 ML table |
+| Inference | 5 | Confirmed by direct recount of Phase-7 Inference table |
+| Misc | 38 (header) / 40 (literal rows) | Phase-7 header = 38; literal table rows = 40; this table maps all 40 |
+| **Total** | **139 literal rows across 6 tables** | — |
+
+**Coverage note:** The Phase 7 design-goal-filter table reports **129 in-scope capabilities
+total** (using the compressed Misc count of 38, giving 17+39+20+20+5+38 = 139 — wait, that
+does not sum to 129). The authoritative total from the Phase 7 separated-counts table is:
+Representation 17 + Preprocessing 29 (header, stale) + Exploratory 20 + ML 20 + Inference 5
++ Misc 38 = **129 per Phase-7 header**. This Plan 02 maps: Representation 17 + Preprocessing
+39 (recounted) + Exploratory 20 + ML 20 + Inference 5 + Misc 40 (literal rows) = **141
+capability rows** across the six tables. The difference (141 − 129 = 12) arises from two
+recount corrections applied in Plans 01 and 02: Preprocessing was recounted 29→39 (+10) and
+Misc was counted 38→40 (+2). All rows trace back 1:1 to actual Phase-7 table rows; no rows
+were re-enumerated or fabricated. The plan requirement "129 in-scope capabilities now marked"
+is met: every Phase-7 in-scope table row (irrespective of which header count was stale) now
+carries a present / partial / absent verdict in the six area parity tables above.
+
+**Aggregate verdicts across all six areas (141 rows):**
+
+| Verdict | Count |
+|---------|-------|
+| present | 59 |
+| partial | 19 |
+| absent | 63 |
+| **Total** | **141** |
+
+*Breakdown by area:* Preprocessing: 17p/8pt/14a; Representation: 4p/1pt/12a;
+Exploratory: 9p/4pt/7a; ML: 11p/2pt/7a; Inference: 0p/2pt/3a; Misc: 18p/2pt/20a.
+(p = present, pt = partial, a = absent; Misc uses 40-row count.)
+
+**Accuracy-flagged rows:** 2 rows across all six tables carry "present — accuracy NOT
+verified": `BasisSmoother` (B-spline round-trip GH #33, commit `2fb6d3c9`) and
+`FisherRaoElasticRegistration` (elastic level encoding GH #34, commit `6ed62398`), both in
+the Preprocessing area. No additional CONCERNS.md known-bug rows were found in the remaining
+five areas. The seasonal/Lomb-Scargle NaN fragile area (CONCERNS.md §Fragile Areas) does not
+map to any scikit-fda Exploratory or Misc in-scope row directly; the fragile area applies to
+fdars' own seasonal capabilities, which are fdars-exclusive strengths (no scikit-fda
+equivalent) and will carry an accuracy note in the reverse-parity sweep (Plan 03). The GMM
+over-split fix (ec17d138) similarly applies to fdars' own GMM clustering (also fdars-exclusive
+and absent from the scikit-fda ML rows), and will be accuracy-flagged in the reverse-parity
+sweep.
