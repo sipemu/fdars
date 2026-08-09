@@ -987,7 +987,7 @@ represent concrete numeric operations (covariance estimation, spline interpolati
 basis-coefficient fitting, grid-to-basis conversion) that a Rust FDA library should offer
 regardless of how the data types are structured.
 
-**In-scope count (this area):** 12 rows   **Out-of-scope count:** 7 rows
+**In-scope count (this area):** 17 rows   **Out-of-scope count:** 4 rows
 
 | Task | Method | Collapsed calls | Relevance | Confidence | Source |
 |------|--------|-----------------|-----------|------------|--------|
@@ -1388,33 +1388,34 @@ the out-of-scope count is reported separately so it cannot inflate the actionabl
 
 | Area | In-Scope (Algorithm + API-Ergonomics) | Out-of-Scope (plotting + IO) | Area Total |
 |------|--------------------------------------|------------------------------|------------|
-| Representation | 13 | 7 | 20 |
+| Representation | 17 | 4 | 21 |
 | Preprocessing | 29 | 2 | 31 |
 | Exploratory | 20 | 11 | 31 |
 | ML | 20 | 0 | 20 |
 | Inference | 5 | 0 | 5 |
 | Misc | 38 | 15 | 53 |
-| **Total** | **125** | **35** | **160** |
+| **Total** | **129** | **32** | **161** |
 
-**In-scope total: 125 capabilities** — these are the rows Phase 8 parity-maps against fdars.
-**Out-of-scope total: 35 capabilities** — these are excluded from the Phase 8 actionable gap count.
+**In-scope total: 129 capabilities** — these are the rows Phase 8 parity-maps against fdars.
+**Out-of-scope total: 32 capabilities** — these are excluded from the Phase 8 actionable gap count.
 
 Notes:
-- The Representation area in-scope count (13) differs from the Plan 01 SUMMARY's stated
-  "12 rows" because the `ExceptionExtrapolation` row (ruled `In-Scope API-Ergonomics`) is
-  included in the in-scope total here. Plan 01's "12 in-scope" was counting only
-  `In-Scope Algorithm` rows; this filter counts both `In-Scope Algorithm` and
-  `In-Scope API-Ergonomics` together. The out-of-scope count (7) is higher than the 4
-  data-type rows visible in the table; 3 additional rows account for the `FData` base class
-  and two representation variants that share the Out-of-Scope (plotting) tag. Area totals
-  reflect the actual table row counts — the design-goal filter recounts the tables directly
-  and supersedes any per-area note if discrepancies arise.
+- The Representation area counts (17 in-scope, 4 out-of-scope, 21 total) are taken directly
+  from the Representation table rows, which are authoritative. The 17 in-scope rows are 16
+  `In-Scope Algorithm` (covariance estimation, the eight basis systems, spline interpolation,
+  three extrapolation policies, two irregular→basis converters, and grid-to-basis conversion)
+  plus 1 `In-Scope API-Ergonomics` (`ExceptionExtrapolation`). The 4 out-of-scope rows are the
+  data-type entries `FDataGrid`, `FDataBasis`, `FDataIrregular`, and the `FData` abstract base
+  class, all tagged `Out-of-Scope (plotting)`. Earlier per-area draft notes and the Plan 01
+  SUMMARY ("12 in-scope, 7 out-of-scope") predate the final table and were undercounting the
+  In-Scope Algorithm rows and over-counting out-of-scope; the design-goal filter recounts the
+  tables directly and supersedes any per-area note if discrepancies arise.
 - The Misc area in-scope total (38) includes: 16 metrics/norms + 7 covariance kernels
   + 4 operators/regularization + 7 data-generation helpers + 6 scoring utilities = 40 rows,
   but `Covariance` (abstract base, not enumerated separately) and the `PairwiseMetric`
   scoring wrapper are rolled into related rows — the 38 reflects only distinct capability rows
   as written in the table above.
 - Out-of-scope rows: 11 visualization (Exploratory) + 2 pipeline-plumbing (Preprocessing)
-  + 4 data-type rows (Representation) + 3 abstract-type rows (Representation) + 15 dataset
-  loaders + DataFrame IO (Misc) = 35 total.
+  + 4 data-type rows (Representation, including the `FData` abstract base class) + 15 dataset
+  loaders + DataFrame IO (Misc) = 32 total.
   and dir() spot-checks; MEDIUM for items verified against readthedocs 0.10.1 docs only.
