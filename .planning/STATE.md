@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 8
-current_phase_name: Capability Parity Matrix & Categorization
+current_phase: 08
+current_phase_name: capability-parity-matrix-categorization
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-08-09T18:37:57.010Z"
+last_updated: "2026-08-09T19:02:47.971Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-09)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 07 — scikit-fda-capability-enumeration
+**Current focus:** Phase 08 — capability-parity-matrix-categorization
 
 ## Current Position
 
-Phase: 8 — Capability Parity Matrix & Categorization
-Plan: Not started
+Phase: 08 (capability-parity-matrix-categorization) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-08-09 — Phase 07 complete, transitioned to Phase 8
+Last activity: 2026-08-09 — Phase 08 execution started
 
 Progress: [██████████] 100%
 
@@ -79,6 +79,7 @@ Progress: [██████████] 100%
 | Phase 06 P01 | 180 | 3 tasks | 8 files |
 | Phase 07 P01 | 9 | 3 tasks | 3 files |
 | Phase 07 P02 | 5 | 3 tasks | 1 files |
+| Phase 08 P1 | 8 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,7 @@ Relevant to current work:
 - [Phase ?]: D-04: MSPlotOutlierDetector (algorithm) is In-Scope Algorithm; MagnitudeShapePlot (visualization) is Out-of-Scope (plotting) — distinct rows for the algorithm vs its plot counterpart
 - [Phase ?]: D-04: fetch_* dataset loaders and DataFrame round-trips ruled Out-of-Scope (IO) per PROJECT.md; scoring metrics (r2_score etc.) ruled In-Scope API-Ergonomics
 - [Phase ?]: Phase 7 scikit-fda enumeration complete: 125 in-scope + 35 out-of-scope = 160 total capabilities across 6 areas; Design-Goal Filter with explicit borderline rulings ready for Phase 8 consumption
+- [Phase ?]: Phase 8 tracer (Plan 01): Preprocessing parity-mapped end-to-end (39 in-scope rows, 29→39 recount supersedes stale header); D-01 verdict + D-03 category rubrics established; schema user-approved for reuse across remaining 5 areas
 
 ### Pending Todos
 
