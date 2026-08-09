@@ -857,3 +857,114 @@ All timings are the criterion median point estimate from run1. Speedup = nalgebr
 | **Candidate fix** | Replace `weighted.to_dmatrix()` + `SVD::new(dmatrix, true, true)` at `regression.rs:298` with: `let mat_ref = faer::MatRef::<f64>::from_column_major_slice(weighted.as_slice(), n, m); let fa_svd = mat_ref.thin_svd()?;` Gate behind the existing `linalg` feature (`#[cfg(feature = "linalg")]`), with a nalgebra fallback for the non-linalg path. Extract U, S, Vt from `fa_svd` (faer accessors: `.U()`, `.S()`, `.V()`). Add numerical equivalence assertion in CI tests. |
 | **Evidence** | Run1 speedup at all 7 cells (faer consistently faster): 3.6×, 4.1×, 2.7×, **1.8×**, 3.7×, 3.1×, 1.9× (N∈{100,100,500,500,1000,1000,500} × M∈{50,200,50,200,50,200,500}). Primary cell N=500,M=200: 1.8× (run1) / 1.9× (run2). Equivalence test: `svd_equivalence` green within 1e-10. Phase 4 artifacts: [p4\_fpca run1](bench/p4_fpca_linalg,parallel_run1.txt). Phase 6 full artifact set: 5 files `p6_svd_*_linalg_run{1,2}.txt` + `p6_svd_conversion_linalg_run1.txt`. |
 | **Severity + Effort** | **P2 / S-effort** (borderline). Speedup at primary FPCA cell is 1.8× (run1), below the research-defined "clearly worth it" threshold of ≥2× at M≥200. Set to P2 because: (a) the direction is consistently positive at all 7 cells, (b) the absolute saving at N=1000,M=200 is ~27 ms/call — meaningful for FPCA-heavy workflows, (c) integration cost is low (~20 lines, faer already vendored). Downgrade to P3 if run3 under pinned governor shows speedup < 1.5× at N=500,M=200. S-effort: ~1 week including equivalence test + regression of `FpcaResult` output. Note: faer parallel path (not measured in Phase 6) may offer additional speedup and should be evaluated in Phase 9. |
+
+---
+
+## Phase 7 — scikit-fda Capability Enumeration
+
+Phase 7 builds the scikit-fda side of the eventual parity comparison: a versioned,
+capability-oriented inventory of scikit-fda's public surface organized by six report areas.
+Deliverables are documentation artifacts in `.planning/research/` only — no `fdars-core/src`
+files are modified.
+
+### Methodology
+
+#### Version Pinning (SC2)
+
+The pinned version for this entire section is **scikit-fda 0.10.1**.
+
+**Verification path used: RUNTIME.** A throwaway venv was created at
+`.planning/research/skfda-verify/venv` using `python3 -m venv` (Python 3.14.5).
+`pip install "scikit-fda==0.10.1"` completed successfully. The runtime confirmation:
+
+```
+python -c "import skfda; print(skfda.__version__)"
+→ 0.10.1
+```
+
+Full evidence is in [`.planning/research/skfda-verify/version.txt`](skfda-verify/version.txt)
+and [`.planning/research/skfda-verify/verify.log`](skfda-verify/verify.log). The venv is a
+throwaway only — it is not the deliverable.
+
+**D-01a coincidence:** 0.10.1 is both the agreed sole baseline (PROJECT.md Key Decisions)
+and the current latest release on PyPI. No newer version exists at the time of this
+enumeration, so the baseline is not stale and no re-pin decision is needed.
+
+#### Source Reuse (D-02)
+
+This section promotes and refactors the existing `.planning/research/FEATURES.md`
+(scikit-fda 0.10.1 API enumeration at MEDIUM confidence, verified against readthedocs).
+Promotion steps:
+
+1. Extract the scikit-fda-only public API enumeration from each FEATURES.md area.
+2. Strip all fdars gap notes — every occurrence of "fdars has / partial / equivalent" is
+   Phase-8 material (GAP-02) and must not appear in this section.
+3. Re-verify entries against the 0.10.1 source per the RUNTIME path (dir() spot-checks
+   confirm smoothing, classification, and depth module contents).
+4. Reorganize FEATURES.md's 12 sub-areas under the six SC1 report areas defined below.
+5. Raise the confidence tag from MEDIUM where the RUNTIME verification supports it.
+
+### Capability-Row Schema (D-03, D-04)
+
+This schema governs every table in this Phase 7 section. Plan 02 reuses it verbatim for
+the remaining five areas.
+
+#### Two-Level Structure (D-03)
+
+The enumeration is organized in **two levels**:
+
+1. **Six report areas** (fixed by SC1): Representation, Preprocessing, Exploratory,
+   ML (Machine Learning), Inference, Misc.
+2. Within each area, **task groupings** — named subsections collecting rows that serve
+   the same user task (e.g. "Smoothing", "Registration", "Classification").
+3. Within each task grouping, **one row per distinct method or algorithm**.
+
+#### Collapse Rule (Pitfall 9)
+
+A single scikit-fda estimator's `fit()`, `predict()`, `transform()`, and
+`inverse_transform()` are collapsed into **one capability row**. These are all part of
+the same capability — a user task like "smooth curves" — not separate features. The
+"Collapsed calls" column records which sklearn-protocol methods apply to that row.
+
+Rationale: fdars accomplishes the same tasks via builder structs plus a single call
+returning a result struct. Counting `fit/transform` as two rows would inflate the scikit-fda
+surface artificially (Pitfall 9 — counting API names instead of capabilities).
+
+#### Relevance Taxonomy (D-04, Pitfall 14)
+
+Every row carries a **Relevance** value drawn from exactly these four values:
+
+| Relevance value | Meaning |
+|----------------|---------|
+| `In-Scope Algorithm` | A numeric algorithm or capability that is in scope for fdars (regression, classification, alignment, depth, inference, etc.) |
+| `In-Scope API-Ergonomics` | An API convenience or ergonomics feature that is in scope (e.g. scoring utilities, metadata, parameter selection) |
+| `Out-of-Scope (plotting)` | A visualization or matplotlib-dependent feature; explicitly out of scope for fdars (PROJECT.md) |
+| `Out-of-Scope (IO)` | A data loading, DataFrame round-trip, or dataset-bundling feature; out of scope for fdars |
+
+**Borderline rulings:**
+
+- Plotting / Visualization classes (GraphPlot, Boxplot, etc.) → `Out-of-Scope (plotting)`.
+- DataFrame / pandas round-trips, `fetch_*` dataset loaders → `Out-of-Scope (IO)`.
+- `FDAFeatureUnion` / `PerClassTransformer` (sklearn-pipeline plumbing) → `Out-of-Scope (IO)`
+  (Rust equivalent is trait composition, not an API port; PROJECT.md).
+- The representation **type-system** (`FDataGrid` / `FDataBasis` / `FDataIrregular` as a
+  first-class object hierarchy) → the type-system refactor itself is out of scope
+  (PROJECT.md), but specific *algorithmic* capabilities riding on these types
+  (e.g. `FDataIrregular` covariance estimation, grid-to-basis conversion math,
+  spline interpolation algorithm) are `In-Scope Algorithm` and enumerated as such.
+
+**In-scope vs. out-of-scope gap counts are reported separately** so the actionable count
+for Phase 8 is not inflated by plotting/IO rows.
+
+#### Table Columns
+
+Every capability table in this section uses these exact columns:
+
+| Column | Description |
+|--------|-------------|
+| **Task** | The user task grouping (e.g. "Smoothing", "Depth measures") |
+| **Method** | The distinct method or algorithm (one row per method) |
+| **Collapsed calls** | Which sklearn-protocol calls are covered by this row (fit / predict / transform / inverse_transform / function call) |
+| **Relevance** | One of the four D-04 taxonomy values |
+| **Confidence** | HIGH (RUNTIME-verified), MEDIUM (docs-verified), LOW (inferred) |
+| **Source** | Citation: FEATURES.md §Area N, readthedocs module path, or dir() output |
