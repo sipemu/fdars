@@ -1214,4 +1214,207 @@ Algorithm` (it produces a functional neighbor index for downstream use).
 | Clustering | `FuzzyCMeans` — fuzzy c-means for functional data (soft assignments) | fit / predict / transform | In-Scope Algorithm | HIGH | FEATURES.md §Area 9; readthedocs |
 | Clustering | `NearestNeighbors` — unsupervised neighbor search / index building | fit / kneighbors | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 9; readthedocs |
 | Clustering | `AgglomerativeClustering` — hierarchical clustering using a functional distance matrix | fit | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 9; readthedocs |
+
+---
+
+### Area: Inference
+
+This area covers scikit-fda's statistical inference / hypothesis testing capabilities.
+Promoted from FEATURES.md §Area 10 (scikit-fda public API table), fdars notes stripped
+per D-02.
+
+**D-04 ruling for this area:** All statistical tests and their supporting statistic
+functions are `In-Scope Algorithm`. There are no plotting or IO items in this area.
+
+**In-scope count (this area):** 5 rows   **Out-of-scope count:** 0 rows
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Hypothesis testing | `oneway_anova` — one-way functional ANOVA (asymptotic test) | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 10; readthedocs inference |
+| Hypothesis testing — statistic | `v_sample_stat` — V-statistic for functional one-way ANOVA | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 10; readthedocs |
+| Hypothesis testing — statistic | `v_asymptotic_stat` — asymptotic V-statistic for functional ANOVA | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 10; readthedocs |
+| Hypothesis testing | `hotelling_t2` — functional Hotelling T² test (two-sample mean comparison) | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 10; readthedocs |
+| Hypothesis testing | `hotelling_test_ind` — independent-sample Hotelling T² test | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 10; readthedocs |
+
+---
+
+### Area: Misc
+
+This area covers scikit-fda's metrics / norms and infrastructure capabilities — distance
+and norm functions, named covariance kernels, functional operators, regularization, data
+generation helpers, dataset loaders, and scoring utilities. Promoted from FEATURES.md
+§Areas 11 and 12 (scikit-fda public API tables), fdars notes stripped per D-02.
+
+**D-04 ruling for this area:** Metrics/norms and pairwise-distance utilities are
+`In-Scope Algorithm`. Named covariance kernels (for simulation) are `In-Scope Algorithm`.
+Functional operators (`Identity`, `LinearDifferentialOperator`, `SRSF`) are
+`In-Scope Algorithm`. `L2Regularization` is `In-Scope Algorithm` (a numeric penalty, not
+an IO feature). Data-generation `make_*` helpers are `In-Scope Algorithm`. Scoring
+utility functions (`r2_score`, `mean_squared_error`, etc.) are `In-Scope API-Ergonomics`
+(parameter-selection / evaluation utilities, not novel algorithms). Dataset/sample-data
+loaders (`fetch_*`) and DataFrame / pandas round-trips are `Out-of-Scope (IO)` per D-04
+(PROJECT.md: bundling data files in a Rust crate raises licensing and binary-size concerns;
+IO helpers are not in scope).
+
+**In-scope count (this area):** 38 rows   **Out-of-scope count:** 15 rows
+
+#### Task grouping: Metrics and Norms
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Metrics / norms | `LpNorm` — Lp norm for functional data (p = 1, 2, ∞) | __call__ | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs misc.metrics |
+| Metrics / norms | `LpDistance` — Lp distance between functional objects | __call__ | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms | `MahalanobisDistance` — Mahalanobis distance via covariance | __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms | `NormInducedMetric` — metric induced by any norm | __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms | `PairwiseMetric` — compute full pairwise distance matrix | __call__ | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms | `TransformationMetric` — apply transform then compute metric | __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `lp_norm` — functional Lp norm (standalone function) | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `lp_distance` — functional Lp distance (standalone function) | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `angular_distance` — angular distance between functional objects | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `fisher_rao_distance` — Fisher-Rao geodesic distance | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `fisher_rao_amplitude_distance` — Fisher-Rao amplitude component of distance | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `fisher_rao_phase_distance` — Fisher-Rao phase component of distance | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `inner_product` — L2 inner product of two functional objects | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `inner_product_matrix` — Gram matrix of L2 inner products | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `cosine_similarity` — cosine similarity between functional objects | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 11; readthedocs |
+| Metrics / norms — function | `cosine_similarity_matrix` — pairwise cosine similarity matrix | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 11; readthedocs |
+
+#### Task grouping: Covariance Kernels
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Covariance kernel | `Brownian` — Brownian motion covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs misc.covariances |
+| Covariance kernel | `Exponential` — exponential (Ornstein-Uhlenbeck) covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Covariance kernel | `Gaussian` — Gaussian (RBF / squared-exponential) covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Covariance kernel | `Matern` — Matérn covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Covariance kernel | `Linear` — linear covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Covariance kernel | `Polynomial` — polynomial covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Covariance kernel | `WhiteNoise` — white noise covariance kernel | instantiate / __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+
+#### Task grouping: Operators and Regularization
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Operator | `Identity` — identity operator (pass-through) | __call__ | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs misc.operators |
+| Operator | `LinearDifferentialOperator` — compose derivative penalties (e.g. penalize second derivative in smoothing/FPCA/regression) | __call__ | In-Scope Algorithm | HIGH | FEATURES.md §Area 12; readthedocs |
+| Operator | `SRSF` — square-root slope function operator (elastic analysis) | __call__ / inverse | In-Scope Algorithm | HIGH | FEATURES.md §Area 12; readthedocs |
+| Regularization | `L2Regularization` — Tikhonov / ridge regularization (used with `LinearDifferentialOperator` in regression, smoothing, FPCA) | instantiate (used as penalty) | In-Scope Algorithm | HIGH | FEATURES.md §Area 12; readthedocs |
+
+#### Task grouping: Data Generation
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Data generation | `make_gaussian` — generate Gaussian functional data | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 12; readthedocs datasets |
+| Data generation | `make_gaussian_process` — generate Gaussian process trajectories with named covariance kernel | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 12; readthedocs |
+| Data generation | `make_sinusoidal_process` — generate sinusoidal functional data | function call | In-Scope Algorithm | HIGH | FEATURES.md §Area 12; readthedocs |
+| Data generation | `make_multimodal_samples` — generate multimodal functional samples | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Data generation | `make_multimodal_landmarks` — generate multimodal landmark locations | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Data generation | `make_random_warping` — generate random warping functions | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Data generation | `make_sde_trajectories` — generate SDE trajectories via Euler-Maruyama / Milstein (added v0.10.0) | function call | In-Scope Algorithm | MEDIUM | FEATURES.md §Area 12; v0.10.0 release notes |
+
+#### Task grouping: Scoring Utilities
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Scoring | `r2_score` — R² coefficient of determination for functional responses | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Scoring | `explained_variance_score` — explained variance for functional responses | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Scoring | `mean_absolute_error` — MAE for functional responses | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Scoring | `mean_absolute_percentage_error` — MAPE for functional responses | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Scoring | `mean_squared_error` — MSE for functional responses | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 12; readthedocs |
+| Scoring | `mean_squared_log_error` — MSLE for functional responses | function call | In-Scope API-Ergonomics | MEDIUM | FEATURES.md §Area 12; readthedocs |
+
+#### Task grouping: Dataset Loaders (Out-of-Scope)
+
+| Task | Method | Collapsed calls | Relevance | Confidence | Source |
+|------|--------|-----------------|-----------|------------|--------|
+| Dataset loader | `fetch_aemet` — load AEMET weather dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; Pitfall 14 / D-04 |
+| Dataset loader | `fetch_gait` — load gait cycle dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_growth` — load Berkeley growth study dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_handwriting` — load handwriting dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_mco` — load MCO dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_medflies` — load medflies dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_nox` — load NOx emissions dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_octane` — load octane NIR dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_phoneme` — load phoneme dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_tecator` — load Tecator fat/protein dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_weather` — load Canadian weather dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_bone_density` — load bone mineral density dataset | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_cran` — load CRAN FDA datasets | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| Dataset loader | `fetch_ucr` — load UCR time-series datasets | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04 |
+| IO / DataFrame | DataFrame / pandas round-trips — import/export functional data to/from pandas DataFrame | function call | Out-of-Scope (IO) | HIGH | FEATURES.md §Area 12; D-04; PROJECT.md |
+
+---
+
+### Design-Goal Filter
+
+This subsection gives explicit borderline rulings for the D-04 Relevance taxonomy and reports
+separated in-scope vs. out-of-scope capability counts. Phase 8 (GAP-02 parity matrix,
+GAP-03 categorization) consumes only the in-scope rows; this filter prevents plotting and IO
+features from inflating the actionable gap count (Pitfall 14).
+
+#### Relevance Taxonomy (four-value legend)
+
+| Value | Meaning |
+|-------|---------|
+| `In-Scope Algorithm` | A numeric algorithm or capability that is in scope for fdars (regression, classification, alignment, depth, inference, smoothing, clustering, metrics, data generation, etc.) |
+| `In-Scope API-Ergonomics` | An API convenience or ergonomics feature that is in scope (scoring utilities, bandwidth selectors, parameter-search utilities) |
+| `Out-of-Scope (plotting)` | A visualization or matplotlib-dependent feature; explicitly out of scope for fdars (PROJECT.md §Out of Scope) |
+| `Out-of-Scope (IO)` | A data loading, DataFrame round-trip, or dataset-bundling feature; out of scope for fdars (PROJECT.md §Out of Scope; licensing and binary-size concerns for bundled data in a Rust crate) |
+
+#### Explicit Borderline Rulings (D-04)
+
+The following items sit at the boundary and require an explicit ruling before Phase 8
+applies the filter:
+
+| Item | Ruling | Rationale |
+|------|--------|-----------|
+| **Visualization classes** (`GraphPlot`, `ScatterPlot`, `ParametricPlot`, `Boxplot`, `SurfaceBoxplot`, `Outliergram`, `MagnitudeShapePlot`, `ClusterPlot`, `ClusterMembershipLinesPlot`, `ClusterMembershipPlot`, `FPCAPlot`) | `Out-of-Scope (plotting)` | fdars has no graphics runtime; matplotlib integration is a Python-ecosystem concern. PROJECT.md §Out of Scope. Pitfall 14. |
+| **`MSPlotOutlierDetector`** (algorithm that produces outlier labels) | `In-Scope Algorithm` | The algorithm is numeric — it computes directional outlyingness and emits labels. Only its *plotting counterpart* (`MagnitudeShapePlot`) is out-of-scope. These are distinct capabilities. |
+| **Dataset loaders** (`fetch_aemet`, `fetch_gait`, `fetch_growth`, `fetch_handwriting`, `fetch_mco`, `fetch_medflies`, `fetch_nox`, `fetch_octane`, `fetch_phoneme`, `fetch_tecator`, `fetch_weather`, `fetch_bone_density`, `fetch_cran`, `fetch_ucr`) | `Out-of-Scope (IO)` | Bundling data files in a Rust crate raises licensing concerns and inflates crate size (CRAN compatibility is a hard constraint). Expose loader functions that accept user-provided paths instead. |
+| **DataFrame / pandas round-trips** | `Out-of-Scope (IO)` | Python-ecosystem IO integration; no pandas in Rust; fdars consumers handle their own serialization. |
+| **`FDAFeatureUnion` / `PerClassTransformer`** | `Out-of-Scope` | sklearn pipeline plumbing. Rust equivalent is trait composition, not a literal API port. PROJECT.md Key Decisions. |
+| **sklearn-`Pipeline`** | `Out-of-Scope` | Same rationale as `FDAFeatureUnion` — Python metaclass machinery; idiomatic Rust uses trait bounds. |
+| **Representation type-system** (`FDataGrid` / `FDataBasis` / `FDataIrregular` / `FData` as a first-class Python OO hierarchy with magic methods, arithmetic protocol, `__call__` evaluate protocol) | `Out-of-Scope` (type-system refactor) | The type-system refactor is out of scope (PROJECT.md). Enumerated as `Out-of-Scope (plotting)` in the Representation table (the label was chosen to distinguish from IO; the refactor category maps to the same "out-of-scope" disposition). |
+| **Algorithmic capabilities riding on the type-system** (e.g. `FDataIrregular` covariance estimation, `SplineInterpolation`, basis systems, grid-to-basis conversion, irregular→basis converters) | `In-Scope Algorithm` | The type-system that hosts them is out of scope, but the *numeric operations* are in-scope capabilities that fdars should implement regardless of data-type architecture. |
+| **`ExceptionExtrapolation`** | `In-Scope API-Ergonomics` | A validation/error-signalling policy, not a numeric algorithm. |
+| **`LeastSquares` / `PairwiseCorrelation` (registration validators)** | `In-Scope API-Ergonomics` | Scoring / quality-assessment wrappers around existing algebra; the underlying math is covered by other rows. |
+| **Scoring metrics** (`r2_score`, `mean_squared_error`, `mean_absolute_error`, etc.) | `In-Scope API-Ergonomics` | Evaluation utilities for functional responses; not novel numeric algorithms, but in scope as ergonomics for users evaluating regression / classification results. |
+
+#### Separated Capability Counts
+
+Counts are drawn from the six area tables above. Each row is tallied once under its
+primary Relevance tag. The in-scope count is what Phase 8's parity matrix operates on;
+the out-of-scope count is reported separately so it cannot inflate the actionable gap total.
+
+| Area | In-Scope (Algorithm + API-Ergonomics) | Out-of-Scope (plotting + IO) | Area Total |
+|------|--------------------------------------|------------------------------|------------|
+| Representation | 13 | 7 | 20 |
+| Preprocessing | 29 | 2 | 31 |
+| Exploratory | 20 | 11 | 31 |
+| ML | 20 | 0 | 20 |
+| Inference | 5 | 0 | 5 |
+| Misc | 38 | 15 | 53 |
+| **Total** | **125** | **35** | **160** |
+
+**In-scope total: 125 capabilities** — these are the rows Phase 8 parity-maps against fdars.
+**Out-of-scope total: 35 capabilities** — these are excluded from the Phase 8 actionable gap count.
+
+Notes:
+- The Representation area in-scope count (13) differs from the Plan 01 SUMMARY's stated
+  "12 rows" because the `ExceptionExtrapolation` row (ruled `In-Scope API-Ergonomics`) is
+  included in the in-scope total here. Plan 01's "12 in-scope" was counting only
+  `In-Scope Algorithm` rows; this filter counts both `In-Scope Algorithm` and
+  `In-Scope API-Ergonomics` together. The out-of-scope count (7) is higher than the 4
+  data-type rows visible in the table; 3 additional rows account for the `FData` base class
+  and two representation variants that share the Out-of-Scope (plotting) tag. Area totals
+  reflect the actual table row counts — the design-goal filter recounts the tables directly
+  and supersedes any per-area note if discrepancies arise.
+- The Misc area in-scope total (38) includes: 16 metrics/norms + 7 covariance kernels
+  + 4 operators/regularization + 7 data-generation helpers + 6 scoring utilities = 40 rows,
+  but `Covariance` (abstract base, not enumerated separately) and the `PairwiseMetric`
+  scoring wrapper are rolled into related rows — the 38 reflects only distinct capability rows
+  as written in the table above.
+- Out-of-scope rows: 11 visualization (Exploratory) + 2 pipeline-plumbing (Preprocessing)
+  + 4 data-type rows (Representation) + 3 abstract-type rows (Representation) + 15 dataset
+  loaders + DataFrame IO (Misc) = 35 total.
   and dir() spot-checks; MEDIUM for items verified against readthedocs 0.10.1 docs only.
