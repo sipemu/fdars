@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.14.0
 milestone_name: milestone
-current_phase: 7
-current_phase_name: scikit-fda Capability Enumeration
-status: planning
-stopped_at: Phase 7 context gathered
-last_updated: "2026-08-08T22:37:13.109Z"
+current_phase: 07
+current_phase_name: scikit-fda-capability-enumeration
+status: executing
+stopped_at: Completed 07-01-PLAN.md (D-01 verification, schema definition, representation area tracer)
+last_updated: "2026-08-09T13:36:48.910Z"
 last_activity: 2026-08-09
-last_activity_desc: Phase 06 complete, transitioned to Phase 7
+last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 15
+  completed_plans: 14
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-09)
 
 **Core value:** Produce an evidence-backed picture of where fdars is slow and what it is missing (vs scikit-fda), turned into a prioritized backlog.
-**Current focus:** Phase 7 — scikit-fda Capability Enumeration
+**Current focus:** Phase 07 — scikit-fda-capability-enumeration
 
 ## Current Position
 
-Phase: 7 — scikit-fda Capability Enumeration
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-09 — Phase 06 complete, transitioned to Phase 7
+Phase: 07 (scikit-fda-capability-enumeration) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-08-09 — Phase 07 execution started
 
-Progress: [██████████] 100%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [██████████] 100%
 | Phase 05 P02 | 16 | 3 tasks | 7 files |
 | Phase 05 P03 | 2 | 3 tasks | 1 files |
 | Phase 06 P01 | 180 | 3 tasks | 8 files |
+| Phase 07 P01 | 9 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -118,6 +119,9 @@ Relevant to current work:
 - [Phase ?]: svd_equivalence moved to tests/ integration test (harness=false bench issue); pattern matches alloc_audit_fpca.rs
 - [Phase ?]: faer thin_svd measured 1.8-4.1x faster than nalgebra at fdars' real FPCA sizes; P6-1 backlog at P2/S-effort (borderline 1.8x at primary N=500,M=200)
 - [Phase ?]: significant-values filter (1e-8*sigma_1) required in SVD equivalence test — near-zero values are noise in both backends
+- [Phase ?]: D-01 RUNTIME path used: scikit-fda==0.10.1 installed in throwaway venv; skfda.__version__=0.10.1 confirmed at runtime on Python 3.14.5
+- [Phase ?]: D-01a: 0.10.1 is both the agreed baseline and current latest PyPI release — no stale-baseline concern
+- [Phase ?]: D-04 representation type-system ruling: FDataGrid/FDataBasis/FDataIrregular as type-system → Out-of-Scope; algorithmic capabilities (covariance, interpolation, basis conversion) → In-Scope Algorithm
 
 ### Pending Todos
 
@@ -138,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T22:37:13.100Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-scikit-fda-capability-enumeration/07-CONTEXT.md
+Last session: 2026-08-09T13:36:48.900Z
+Stopped at: Completed 07-01-PLAN.md (D-01 verification, schema definition, representation area tracer)
+Resume file: 07-02-PLAN.md
