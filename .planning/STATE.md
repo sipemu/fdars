@@ -4,16 +4,16 @@ milestone: v0.14.0
 milestone_name: milestone
 current_phase: 07
 current_phase_name: scikit-fda-capability-enumeration
-status: executing
-stopped_at: Completed 07-01-PLAN.md (D-01 verification, schema definition, representation area tracer)
-last_updated: "2026-08-09T13:36:48.910Z"
+status: verifying
+stopped_at: Completed 07-02-PLAN.md — Phase 7 scikit-fda capability enumeration complete
+last_updated: "2026-08-09T13:45:06.196Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-09)
 
 Phase: 07 (scikit-fda-capability-enumeration) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-09 — Phase 07 execution started
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [█████████░] 93%
 | Phase 05 P03 | 2 | 3 tasks | 1 files |
 | Phase 06 P01 | 180 | 3 tasks | 8 files |
 | Phase 07 P01 | 9 | 3 tasks | 3 files |
+| Phase 07 P02 | 5 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,9 @@ Relevant to current work:
 - [Phase ?]: D-01 RUNTIME path used: scikit-fda==0.10.1 installed in throwaway venv; skfda.__version__=0.10.1 confirmed at runtime on Python 3.14.5
 - [Phase ?]: D-01a: 0.10.1 is both the agreed baseline and current latest PyPI release — no stale-baseline concern
 - [Phase ?]: D-04 representation type-system ruling: FDataGrid/FDataBasis/FDataIrregular as type-system → Out-of-Scope; algorithmic capabilities (covariance, interpolation, basis conversion) → In-Scope Algorithm
+- [Phase ?]: D-04: MSPlotOutlierDetector (algorithm) is In-Scope Algorithm; MagnitudeShapePlot (visualization) is Out-of-Scope (plotting) — distinct rows for the algorithm vs its plot counterpart
+- [Phase ?]: D-04: fetch_* dataset loaders and DataFrame round-trips ruled Out-of-Scope (IO) per PROJECT.md; scoring metrics (r2_score etc.) ruled In-Scope API-Ergonomics
+- [Phase ?]: Phase 7 scikit-fda enumeration complete: 125 in-scope + 35 out-of-scope = 160 total capabilities across 6 areas; Design-Goal Filter with explicit borderline rulings ready for Phase 8 consumption
 
 ### Pending Todos
 
@@ -142,6 +146,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T13:36:48.900Z
-Stopped at: Completed 07-01-PLAN.md (D-01 verification, schema definition, representation area tracer)
-Resume file: 07-02-PLAN.md
+Last session: 2026-08-09T13:45:06.187Z
+Stopped at: Completed 07-02-PLAN.md — Phase 7 scikit-fda capability enumeration complete
+Resume file: None
