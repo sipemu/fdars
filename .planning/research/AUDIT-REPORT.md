@@ -3,7 +3,7 @@
 **Crate:** fdars-core v0.14.0
 **Audit milestone:** v0.14.0 — audit-only, no production code changes
 **Started:** 2026-08-07
-**Status:** Consolidating — Phase 9 of 9
+**Status:** Complete — audit milestone v0.14.0
 
 ---
 
@@ -162,6 +162,110 @@ Contrast with FPCA (PF-1): `fdata_to_pc_1d` N=1000,M=200 takes **38.307 ms** —
 **Evidence:** [bench/p6_svd_faer_seq_linalg_run1.txt](bench/p6_svd_faer_seq_linalg_run1.txt) (N=500,M=200: **23.084 ms**; N=1000,M=200: **30.957 ms**) · [bench/p6_svd_nalgebra_linalg_run1.txt](bench/p6_svd_nalgebra_linalg_run1.txt) (N=500,M=200: **41.026 ms**; N=1000,M=200: **95.612 ms**) · Full 7-cell comparison grid and SC3 maintenance-risk assessment: AUDIT-REPORT.md §Phase 6 SC2/SC3. Equivalence: `tests/svd_equivalence.rs` (`svd_equivalence` integration test — passes, 1e-10 relative tolerance).
 
 **Backlog promotion:** [P6-1](../research/BACKLOG.md#p6-1----swap-nalgebra-svd-for-faer-thin_svd-in-fdata_to_pc_1d) — swap nalgebra SVD for faer `thin_svd` in `fdata_to_pc_1d`. P2 severity, S effort, score=3.00. (Note: PF-1 feeds the same item from the allocation-analysis angle; PF-5 feeds it from the measured faer-vs-nalgebra comparison angle.)
+
+---
+
+### Gap Findings
+
+**Source:** Phase 8 parity tables (Plans 01–03) covering all 141 in-scope capability rows across 6 scikit-fda areas (Representation, Preprocessing, Exploratory, ML, Inference, Misc). Full detail in §Phase 8 → All-129 Coverage Check and §Phase 8 → Gap Counts.
+
+#### Summary: 82 actionable in-scope gaps (36 table-stakes + 46 differentiator)
+
+The Phase-8 parity survey mapped 141 capability rows across 6 areas, yielding:
+
+| Verdict | Count | Meaning |
+|---------|-------|---------|
+| present | 59 | fdars has a full equivalent |
+| partial | 19 | fdars has partial coverage; capability or composable-object layer missing |
+| absent | 63 | fdars has no equivalent |
+| **Gap total (partial + absent)** | **82** | **Actionable in-scope gaps** |
+
+#### Out-of-scope exclusions (Pitfall 14 — not gaps)
+
+**32 capabilities are explicitly excluded** from the actionable gap count: 4 type-system rows (FDataGrid, FDataBasis, FDataIrregular, FData abstract base), 2 sklearn-pipeline plumbing wrappers, 11 visualization rows (MagnitudeShapePlot, phase boxplot, carpet plot, etc.), and 15 dataset-loader rows (fetch_* functions, DataFrame IO round-trips). These are out-of-scope per PROJECT.md §"Out of Scope" (plotting, IO). The competition-relevant gap picture is 82 in-scope rows, not 114 (a naive read that includes the excluded 32).
+
+#### Actionable gap breakdown by area
+
+| Area | Gaps | table-stakes | differentiator |
+|------|------|--------------|----------------|
+| Preprocessing | 22 | 8 | 14 |
+| Representation | 13 | 6 | 7 |
+| Exploratory | 11 | 7 | 4 |
+| ML | 9 | 3 | 6 |
+| Inference | 5 | 5 | 0 |
+| Misc | 22 | 7 | 15 |
+| **Total** | **82** | **36** | **46** |
+
+**Table-stakes gaps (36)** represent the competitive deficit — capabilities a general-purpose FDA library is expected to have. The most impactful table-stakes clusters are: Preprocessing (8 — smoothing abstractions, missing-value imputation, shift registration, LDO-FPCA, registration quality scores), Exploratory (7 — functional summary statistics and depth combinators), and Inference (5 — all Inference capabilities are table-stakes: asymptotic ANOVA, Hotelling T² two-sample, additional inference infrastructure).
+
+**Differentiator gaps (46)** are advanced features whose absence is acceptable today but whose presence would set fdars apart in the FDA ecosystem (variable selection, diffusion maps, mixed-effects basis converters, Stahel-Donoho outlyingness, historical linear regression, and data-generation helpers).
+
+#### Backlog promotion
+
+All 82 in-scope gap rows have been evaluated for backlog promotion. The 24 highest-priority gap items are promoted as full 7-field BACKLOG.md items (PREP-01..09, REPR-01..04, EXPL-01..03, ML-01..02, INF-01..02, MISC-01..04) in [BACKLOG.md](../research/BACKLOG.md). Items not promoted individually are low-priority sub-items within promoted clusters. The highest-ranked gap items (REPR-02 at score=4.00, EXPL-02 at score=4.00) land in the top-3 of the overall backlog, ahead of all but one performance item (PERF-PAR-CV also at score=4.00).
+
+---
+
+### fdars Strengths
+
+**Source:** Phase 8 reverse-parity strengths sweep (§Phase 8 → Reverse-Parity Strengths Sweep). The sweep walked the `STRUCTURE.md` module map against the Phase-7 scikit-fda capability table and source-confirmed each capability in `fdars-core/src/`. Full detail in §Phase 8 → Reverse-Parity Strengths Sweep (D-04).
+
+#### Summary: 30 fdars-exclusive or fdars-advantaged capabilities
+
+The reverse sweep found **30 capabilities** where fdars has an advantage over or is exclusive vs scikit-fda 0.10.1:
+
+| Type | Count |
+|------|-------|
+| none (scikit-fda has no equivalent) | 22 |
+| partial (fdars holds the advantage) | 8 |
+| **Total** | **30** |
+
+#### The 4 SC3 Headliners (no scikit-fda equivalent, HIGH confidence)
+
+These four fdars-exclusive areas are the headline differentiators identified by the SC3 unaccelerated-path cost analysis:
+
+1. **Model explainability** (`explain/`, `explain_generic/`) — 44+ public explainability functions: PDP, SHAP, ALE, LIME, permutation importance, Friedman H-statistic, Sobol indices, DFbetas/DFFits influence diagnostics, counterfactual search, anchor explanations, prototype criticism, domain-selection saliency. Unified via the `FpcPredictor` trait (15 generic functions powering regression + classification + logistic + all explainability through one interface). scikit-fda has no explainability module.
+
+2. **Statistical Process Monitoring (SPM) / control charts** (`spm/` — 20 submodule files) — Phase 1 reference-set limits, Phase 2 online monitoring, EWMA, CUSUM, MEWMA, adaptive MEWMA, Hotelling T², SPE, Nelson/Western-Electric rules, contribution analysis, ARL estimation, elastic shape monitoring, multivariate functional PCA for SPM. scikit-fda has no SPM or control-chart module.
+
+3. **Seasonal decomposition and time-series analysis** (`seasonal/` — 12 submodule files, `detrend/`) — automatic period detection (SAZED/autoperiod), peak classification, seasonal strength, Lomb-Scargle periodogram, STL-based detrending, change point detection, Hilbert transform, matrix profile, Singular Spectrum Analysis (SSA). **Note:** Lomb-Scargle NaN handling is a fragile area (CONCERNS.md §Fragile Areas) — present, accuracy NOT fully verified for extreme inputs. scikit-fda has no seasonal analysis module.
+
+4. **Online / streaming functional depth** (`streaming_depth/` — 7 submodule files) — incremental Fraiman-Muniz depth, streaming Band Depth, streaming Modified Band Depth, rolling reference set, sorted-reference-state accumulation (`StreamingDepth` trait + `StreamingFraimanMuniz`, `StreamingBd`, `StreamingMbd`, `RollingReference`, `SortedReferenceState`). scikit-fda has no streaming/online depth computation.
+
+#### Additional fdars-exclusive capabilities (D-04 candidate list + module-map walk)
+
+Beyond the 4 SC3 headliners, the module-map walk found 26 additional fdars-exclusive or fdars-advantaged capabilities:
+
+| # | Capability | fdars module | scikit-fda |
+|---|-----------|-------------|-----------|
+| 5 | Conformal prediction (regression + classification, multiple non-conformity scores, elastic conformal) | `conformal/` (7 files) | none |
+| 6 | Tolerance bands (FPCA-based, Degras bootstrap, conformal, equivalence-test, exponential, elastic) | `tolerance/` (10 files) | none |
+| 7 | GMM clustering (EM-fit, multiple covariance types) — accuracy NOT fully verified post ec17d138 fix | `gmm/` (6 files) | none |
+| 8 | Matrix profile (exact + approximate, motif discovery, discord detection) | `seasonal/matrix_profile.rs` | none |
+| 9 | Singular Spectrum Analysis (SSA decomposition, forecasting, seasonality extraction) | `seasonal/ssa.rs` | none |
+| 10 | Hilbert transform (analytical signal, instantaneous amplitude/frequency) | `seasonal/hilbert.rs` | none |
+| 11 | WIRE pipeline layer representation (serializable workflow result container) | `wire.rs` | none |
+| 12 | Functional ANOVA Mixed Models (FAMM) — random curves + fixed effects, hypothesis tests | `famm.rs` | none |
+| 13 | Elastic changepoint detection (SRSF-space amplitude + phase changepoints) | `elastic_changepoint.rs` | none |
+| 14 | Robust scalar-on-function regression (L1-norm, Huber-loss, robust CV) | `scalar_on_function/robust.rs` | none |
+| 15 | Multi-response scalar-on-function regression | `scalar_on_function/multi.rs` | none |
+| 16 | Andrews curves for functional data (Andrews transform + loadings) | `andrews.rs` | partial |
+| 17 | Function-on-function regression (general FOF, fdars-broader than scikit-fda's HistoricalLinearRegression) | `fof_regression.rs` | partial |
+| 18 | Elastic regression / shape-based regression (SRSF-space regression, logistic, PCR) | `elastic_regression/` | none |
+| 19 | Elastic FPCA (amplitude, phase, joint FPCA in shape space) | `elastic_fpca.rs` | none |
+| 20 | Elastic explain / attribution for elastic models | `elastic_explain.rs` | none |
+| 21 | Function-on-scalar regression 1D + 2D surface response (FOSR) | `function_on_scalar.rs`, `function_on_scalar_2d.rs` | partial |
+| 22 | Bayesian alignment (posterior uncertainty on warping functions) | `alignment/bayesian.rs` | none |
+| 23 | Constrained alignment with landmarks (hard-pin time points) | `alignment/constrained.rs` | none |
+| 24 | Geodesic paths on shape space | `alignment/geodesic.rs` | none |
+| 25 | Phase boxplot (numeric amplitude/phase decomposition) | `alignment/phase_boxplot.rs` | none |
+| 26 | Outlier detection for shapes (SRSF-space shape outlyingness) | `alignment/outlier.rs` | partial |
+| 27 | Shape depth measures (elastic depth in SRSF shape space) | `alignment/elastic_depth.rs` | none |
+| 28 | Irregular functional data module (kernel-smooth irregular→regular grid) | `irreg_fdata/` | partial |
+| 29 | Regression FPCA backbone (FpcPredictor trait — regression+classification+logistic+explain via one unified interface) | `regression.rs`, `explain_generic/` | partial |
+| 30 | Warping utilities (composition, inverse, complexity, distance between warpings) | `warping.rs` | partial |
+
+**Evidence:** §Phase 8 → Reverse-Parity Strengths Sweep (D-04) — full table with source-confirmed module paths, scikit-fda absence evidence, and per-item confidence ratings.
 
 ---
 
