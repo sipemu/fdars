@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.15.0
 milestone_name: Top-Backlog Quick Wins
 current_phase: 11
-current_phase_name: Performance Wins — Parallel CV Folds & faer FPCA SVD
+current_phase_name: performance-wins-parallel-cv-folds-faer-fpca-svd
 status: executing
-stopped_at: Completed 10-02-functional-summary-statistics-PLAN.md
-last_updated: "2026-08-10T22:17:57.430Z"
-last_activity: 2026-08-10
-last_activity_desc: ROADMAP.md created (Phases 10–11), 4/4 requirements mapped
+stopped_at: Completed 11-01-parallel-cv-folds-PLAN.md
+last_updated: "2026-08-10T22:30:09.643Z"
+last_activity: 2026-08-11
+last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 50
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-10)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** Phase 10 — capability-gaps-spline-interpolation-functional-summary-stat
+**Current focus:** Phase 11 — performance-wins-parallel-cv-folds-faer-fpca-svd
 
 ## Current Position
 
-Phase: 11 — Performance Wins — Parallel CV Folds & faer FPCA SVD
-Plan: Not started
+Phase: 11 (performance-wins-parallel-cv-folds-faer-fpca-svd) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-10 — Phase 10 complete, transitioned to Phase 11
+Last activity: 2026-08-11 — Phase 11 execution started
 
 ## Milestone Roadmap (v0.15.0)
 
@@ -79,6 +79,7 @@ Phases 10 and 11 are mutually independent and may be executed in either order or
 |------|----------|-------|-------|
 | Phase 10 P01 | 8 | 3 tasks | 2 files |
 | Phase 10 P02 | 9 | 3 tasks | 2 files |
+| Phase 11 P01 | 7m | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,7 @@ Conventions carried from the v0.14.0 audit that constrain implementation:
 - [Phase ?]: functional_std delegates to functional_variance: guarantees std^2==var by construction
 - [Phase ?]: Symmetric M×M covariance computes upper triangle only and mirrors (halves inner-product work)
 - [Phase ?]: alpha guard uses Range::contains per clippy::manual_range_contains lint
+- [Phase ?]: Use iter_maybe_parallel!(0..nfold).map(...).collect() for parallel CV folds in fclassif_cv; no direct rayon import for iteration, only ParallelIterator trait under cfg(feature=parallel)
 
 ### Pending Todos
 
@@ -126,8 +128,8 @@ Items acknowledged at v0.14.0 milestone close (2026-08-09):
 
 ## Session Continuity
 
-Last session: 2026-08-10T21:18:10.708Z
-Stopped at: Completed 10-02-functional-summary-statistics-PLAN.md
+Last session: 2026-08-10T22:30:09.635Z
+Stopped at: Completed 11-01-parallel-cv-folds-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

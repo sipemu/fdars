@@ -16,7 +16,7 @@ Requirements for the v0.15.0 release. Each maps to exactly one roadmap phase.
 
 ### Performance
 
-- [ ] **PERF-01**: `fclassif_cv` executes its cross-validation fold loop in parallel via `iter_maybe_parallel!(0..nfold)` when the `parallel` feature is enabled, producing fold results identical to sequential execution. *(audit: PERF-PAR-CV, P2/S — ~4–5× projected)*
+- [x] **PERF-01**: `fclassif_cv` executes its cross-validation fold loop in parallel via `iter_maybe_parallel!(0..nfold)` when the `parallel` feature is enabled, producing fold results identical to sequential execution. *(audit: PERF-PAR-CV, P2/S — ~4–5× projected)*
 - [ ] **PERF-02**: `fdata_to_pc_1d` computes its FPCA SVD via faer `thin_svd` on a zero-copy `MatRef` view under the `linalg` feature, producing an `FpcaResult` equivalent (within numerical tolerance, sign conventions reconciled) to the existing nalgebra path, which is retained for non-`linalg` builds. *(audit: P6-1, P2/S — 1.8–4.1× measured)*
 
 ## v2 Requirements
@@ -54,7 +54,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | FEAT-01 | Phase 10 | Complete |
 | FEAT-02 | Phase 10 | Complete |
-| PERF-01 | Phase 11 | Pending |
+| PERF-01 | Phase 11 | Complete |
 | PERF-02 | Phase 11 | Pending |
 
 **Coverage:**
