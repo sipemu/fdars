@@ -1,5 +1,6 @@
 //! Functional data operations: mean, center, derivatives, norms, and geometric median.
 
+use crate::error::FdarError;
 use crate::helpers::{simpsons_weights, simpsons_weights_2d, NUMERICAL_EPS};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -233,6 +234,164 @@ pub fn center_1d(data: &FdMatrix) -> FdMatrix {
     }
 
     centered
+}
+
+/// Compute pointwise sample variance of functional data (Bessel-corrected, ddof = n-1).
+///
+/// For each evaluation point j, computes the sample variance across the n curves:
+/// `var[j] = sum_i (data[(i,j)] - mean[j])^2 / (n - 1)`
+///
+/// This is a plain pointwise statistic (no integration weights), matching
+/// `FDataGrid.var()` in scikit-fda.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 2.
+///
+/// # Returns
+/// Length-m vector of pointwise sample variances.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 2` (Bessel correction requires at least
+/// two observations).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::functional_variance;
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+/// let var = functional_variance(&data).unwrap();
+/// assert_eq!(var.len(), 2);
+/// assert!((var[0] - 2.0).abs() < 1e-10); // Bessel-corrected variance
+/// ```
+pub fn functional_variance(data: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 2 rows".to_string(),
+            actual: n.to_string(),
+        });
+    }
+    let means = mean_1d(data);
+    let var: Vec<f64> = (0..m)
+        .map(|j| {
+            let col = data.column(j);
+            let mu = means[j];
+            col.iter().map(|&x| (x - mu).powi(2)).sum::<f64>() / (n - 1) as f64
+        })
+        .collect();
+    Ok(var)
+}
+
+/// Compute pointwise sample standard deviation of functional data (ddof = n-1).
+///
+/// Delegates to [`functional_variance`] so that `functional_std(data)[j]^2 ==
+/// functional_variance(data)[j]` holds by construction.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 2.
+///
+/// # Returns
+/// Length-m vector of pointwise sample standard deviations.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 2`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{functional_std, functional_variance};
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+/// let std = functional_std(&data).unwrap();
+/// let var = functional_variance(&data).unwrap();
+/// // std^2 == var pointwise
+/// for j in 0..2 {
+///     assert!((std[j].powi(2) - var[j]).abs() < 1e-10);
+/// }
+/// ```
+pub fn functional_std(data: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+    Ok(functional_variance(data)?
+        .iter()
+        .map(|v| v.sqrt())
+        .collect())
+}
+
+/// Compute the M×M sample covariance matrix of functional data (Bessel-corrected, ddof = n-1).
+///
+/// For each pair of evaluation points `(j1, j2)`, computes the sample covariance across
+/// the n curves:
+/// `cov[j1, j2] = sum_i (data[(i,j1)] - mean[j1]) * (data[(i,j2)] - mean[j2]) / (n - 1)`
+///
+/// The diagonal equals `functional_variance(data)` pointwise. The result is a symmetric
+/// M×M [`FdMatrix`] stored in column-major order.
+///
+/// This is an O(n·m²) operation — may be expensive for large m.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 2.
+///
+/// # Returns
+/// M×M sample covariance [`FdMatrix`].
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 2`, or
+/// [`FdarError::InvalidParameter`] if `m * m` overflows `usize`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{functional_covariance, functional_variance};
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+/// let cov = functional_covariance(&data).unwrap();
+/// assert_eq!(cov.shape(), (2, 2));
+/// let var = functional_variance(&data).unwrap();
+/// // Diagonal matches variance
+/// assert!((cov[(0, 0)] - var[0]).abs() < 1e-10);
+/// assert!((cov[(1, 1)] - var[1]).abs() < 1e-10);
+/// ```
+pub fn functional_covariance(data: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 2 rows".to_string(),
+            actual: n.to_string(),
+        });
+    }
+    // Guard against usize overflow in M×M allocation (threat T-10-02-04)
+    m.checked_mul(m)
+        .ok_or_else(|| FdarError::InvalidParameter {
+            parameter: "data",
+            message: format!(
+                "m={m} is too large: m*m would overflow usize (max {})",
+                usize::MAX
+            ),
+        })?;
+
+    let centered = center_1d(data);
+    let mut cov = FdMatrix::zeros(m, m);
+    let denom = (n - 1) as f64;
+    for j1 in 0..m {
+        let col1 = centered.column(j1);
+        for j2 in j1..m {
+            let col2 = centered.column(j2);
+            let val: f64 = col1
+                .iter()
+                .zip(col2.iter())
+                .map(|(&a, &b)| a * b)
+                .sum::<f64>()
+                / denom;
+            cov[(j1, j2)] = val;
+            cov[(j2, j1)] = val; // symmetric
+        }
+    }
+    Ok(cov)
 }
 
 /// Normalization method for functional data.
@@ -1149,6 +1308,67 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ============== Functional statistics tests (Task 1 — pointwise trio) ==============
+
+    #[test]
+    fn functional_variance_equals_std_squared() {
+        // 3 curves at 4 evaluation points
+        let data = FdMatrix::from_column_major(
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            3,
+            4,
+        )
+        .unwrap();
+        let var = functional_variance(&data).unwrap();
+        let std = functional_std(&data).unwrap();
+        for j in 0..4 {
+            assert!(
+                (std[j].powi(2) - var[j]).abs() < 1e-10,
+                "at j={j}: std^2={} != var={}",
+                std[j].powi(2),
+                var[j]
+            );
+        }
+    }
+
+    #[test]
+    fn functional_covariance_diagonal_matches_variance() {
+        let data = FdMatrix::from_column_major(
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            3,
+            4,
+        )
+        .unwrap();
+        let var = functional_variance(&data).unwrap();
+        let cov = functional_covariance(&data).unwrap();
+        for j in 0..4 {
+            assert!(
+                (cov[(j, j)] - var[j]).abs() < 1e-10,
+                "at j={j}: cov[j,j]={} != var={}",
+                cov[(j, j)],
+                var[j]
+            );
+        }
+    }
+
+    #[test]
+    fn functional_variance_hand_computed() {
+        // 2 curves, 2 eval points:
+        // curve 0: [1.0, 4.0], curve 1: [3.0, 2.0]
+        // col-major: [1.0, 3.0, 4.0, 2.0]
+        // means: [2.0, 3.0]
+        // var[0] = ((1-2)^2 + (3-2)^2) / (2-1) = (1+1)/1 = 2.0
+        // var[1] = ((4-3)^2 + (2-3)^2) / (2-1) = (1+1)/1 = 2.0
+        let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+        let var = functional_variance(&data).unwrap();
+        assert!((var[0] - 2.0).abs() < 1e-10, "var[0]={}", var[0]);
+        assert!((var[1] - 2.0).abs() < 1e-10, "var[1]={}", var[1]);
     }
 
     #[test]
