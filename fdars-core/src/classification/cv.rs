@@ -1,8 +1,11 @@
 //! Cross-validation for functional classification.
 
 use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 use super::lda::{lda_params, lda_predict};
 use super::qda::{build_qda_params, qda_predict};
@@ -71,44 +74,43 @@ pub fn fclassif_cv(
     // Assign folds
     let folds = assign_folds(n, nfold, seed);
 
-    let mut fold_errors = Vec::with_capacity(nfold);
+    let fold_errors: Vec<f64> = iter_maybe_parallel!(0..nfold)
+        .map(|fold| {
+            let (train_idx, test_idx) = fold_split(&folds, fold);
+            let train_data = extract_class_data(data, &train_idx);
+            let test_data = extract_class_data(data, &test_idx);
+            let train_labels: Vec<usize> = train_idx.iter().map(|&i| labels[i]).collect();
+            let test_labels: Vec<usize> = test_idx.iter().map(|&i| labels[i]).collect();
 
-    for fold in 0..nfold {
-        let (train_idx, test_idx) = fold_split(&folds, fold);
-        let train_data = extract_class_data(data, &train_idx);
-        let test_data = extract_class_data(data, &test_idx);
-        let train_labels: Vec<usize> = train_idx.iter().map(|&i| labels[i]).collect();
-        let test_labels: Vec<usize> = test_idx.iter().map(|&i| labels[i]).collect();
+            let train_cov = scalar_covariates.map(|c| extract_class_data(c, &train_idx));
+            let test_cov = scalar_covariates.map(|c| extract_class_data(c, &test_idx));
 
-        let train_cov = scalar_covariates.map(|c| extract_class_data(c, &train_idx));
-        let test_cov = scalar_covariates.map(|c| extract_class_data(c, &test_idx));
+            let predictions = cv_fold_predict(
+                &train_data,
+                &test_data,
+                argvals,
+                &train_labels,
+                g,
+                train_cov.as_ref(),
+                test_cov.as_ref(),
+                method,
+                ncomp,
+            );
 
-        let predictions = cv_fold_predict(
-            &train_data,
-            &test_data,
-            argvals,
-            &train_labels,
-            g,
-            train_cov.as_ref(),
-            test_cov.as_ref(),
-            method,
-            ncomp,
-        );
-
-        let n_test = test_labels.len();
-        let errors = match predictions {
-            Some(pred) => {
-                let wrong = pred
-                    .iter()
-                    .zip(&test_labels)
-                    .filter(|(&p, &t)| p != t)
-                    .count();
-                wrong as f64 / n_test as f64
+            let n_test = test_labels.len();
+            match predictions {
+                Some(pred) => {
+                    let wrong = pred
+                        .iter()
+                        .zip(&test_labels)
+                        .filter(|(&p, &t)| p != t)
+                        .count();
+                    wrong as f64 / n_test as f64
+                }
+                None => 1.0,
             }
-            None => 1.0,
-        };
-        fold_errors.push(errors);
-    }
+        })
+        .collect();
 
     let error_rate = fold_errors.iter().sum::<f64>() / nfold as f64;
 
