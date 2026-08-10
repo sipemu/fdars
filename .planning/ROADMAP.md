@@ -52,11 +52,11 @@ Full phase detail: [milestones/v0.14.0-ROADMAP.md](milestones/v0.14.0-ROADMAP.md
   2. Five new public functions — `trim_mean` (depth-trimmed mean), `depth_based_median` (index of deepest curve), `functional_covariance` (M×M sample covariance), `functional_variance` (pointwise), `functional_std` (pointwise) — accept an `FdMatrix` and return `Result<_, FdarError>`; inline unit tests verify each against a hand-computed reference (variance = squared std pointwise; covariance diagonal equals `functional_variance`; `depth_based_median` returns the argmax-depth curve index).
   3. Every new function validates inputs and returns `FdarError` (never panics) on dimension/parameter mismatch (e.g. `query_points` out of range, `order` too large for the grid, `alpha` outside [0,1)), exercised by inline tests.
   4. `cargo test -p fdars-core --features linalg` and `cargo clippy -p fdars-core --features linalg` pass with the new functions covered; the existing linear-interpolation path remains available (spline is additive, not a removal).
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: Spline interpolation — `spline_interpolate` in `helpers.rs` (de Boor eval over B-spline basis) + inline tests (FEAT-01, independent)
-- [ ] 10-02: Functional summary statistics — `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, `functional_std` + inline tests (FEAT-02, independent)
+- [ ] 10-01-spline-interpolate-PLAN.md — `spline_interpolate` in `helpers.rs` (B-spline fit-then-evaluate) + inline tests + crate-root re-export (FEAT-01, wave 1, independent)
+- [ ] 10-02-functional-summary-statistics-PLAN.md — `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, `functional_std` in `fdata.rs` + inline tests + crate-root re-exports (FEAT-02, wave 1, independent)
 
 **Note:** FEAT-01 and FEAT-02 are independent additive features with no shared code — the two plans are fully parallelizable.
 
