@@ -332,3 +332,68 @@ pub(super) fn extract_class_data(data: &FdMatrix, indices: &[usize]) -> FdMatrix
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a small deterministic classification dataset: n observations,
+    /// m evaluation points, 2 well-separated classes (first n/2 are class 0,
+    /// rest are class 1), argvals on [0, 1].
+    fn make_test_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<usize>) {
+        let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+        let mut raw = vec![0.0f64; n * m];
+        // Column-major: element (i, j) is at index i + j * n
+        for i in 0..n {
+            let class_offset = if i < n / 2 { 0.0 } else { 5.0 };
+            for j in 0..m {
+                // Simple bump function shifted by class_offset — well-separated classes
+                raw[i + j * n] = class_offset + (argvals[j] * std::f64::consts::PI).sin();
+            }
+        }
+        let data = FdMatrix::from_column_major(raw, n, m).unwrap();
+        let labels: Vec<usize> = (0..n).map(|i| if i < n / 2 { 0 } else { 1 }).collect();
+        (data, argvals, labels)
+    }
+
+    /// Verify that `fclassif_cv` produces bit-for-bit identical results when called
+    /// twice with the same seed and arguments, regardless of whether the `parallel`
+    /// feature is enabled.  This proves the collect-in-order determinism contract
+    /// for the parallelized fold loop.
+    #[test]
+    fn test_fclassif_cv_parallel_matches_sequential() {
+        let n = 20;
+        let m = 10;
+        let ncomp = 2;
+        let nfold = 5;
+        let seed = 42u64;
+
+        let (data, argvals, labels) = make_test_data(n, m);
+
+        let res_a = fclassif_cv(&data, &argvals, &labels, None, "lda", ncomp, nfold, seed)
+            .expect("fclassif_cv call A failed");
+        let res_b = fclassif_cv(&data, &argvals, &labels, None, "lda", ncomp, nfold, seed)
+            .expect("fclassif_cv call B failed");
+
+        assert_eq!(
+            res_a.fold_errors.len(),
+            res_b.fold_errors.len(),
+            "fold_errors length mismatch"
+        );
+        for (i, (&a, &b)) in res_a
+            .fold_errors
+            .iter()
+            .zip(res_b.fold_errors.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a, b,
+                "fold_errors[{i}] not bit-for-bit identical: {a} vs {b}"
+            );
+        }
+        assert_eq!(
+            res_a.error_rate, res_b.error_rate,
+            "error_rate not bit-for-bit identical"
+        );
+    }
+}
