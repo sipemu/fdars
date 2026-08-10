@@ -1576,6 +1576,69 @@ mod tests {
         );
     }
 
+    // ============== Consolidated input-validation test (Task 3) ==============
+
+    #[test]
+    fn functional_stats_input_validation() {
+        use crate::error::FdarError;
+
+        // n=1 matrix (2 points) — fails n>=2 requirement for variance/std/covariance
+        let one_row = FdMatrix::from_column_major(vec![1.0, 2.0], 1, 2).unwrap();
+        assert!(
+            matches!(
+                functional_variance(&one_row),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "functional_variance should reject n=1"
+        );
+        assert!(
+            matches!(
+                functional_std(&one_row),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "functional_std should reject n=1"
+        );
+        assert!(
+            matches!(
+                functional_covariance(&one_row),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "functional_covariance should reject n=1"
+        );
+
+        // n=0 matrix — fails n>=1 requirement for depth_based_median / trim_mean
+        let zero_rows = FdMatrix::zeros(0, 3);
+        assert!(
+            matches!(
+                depth_based_median(&zero_rows),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "depth_based_median should reject n=0"
+        );
+        assert!(
+            matches!(
+                trim_mean(&zero_rows, 0.0),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "trim_mean should reject n=0"
+        );
+    }
+
     #[test]
     fn test_nan_mean_no_panic() {
         let mut data_vec = vec![1.0; 6];

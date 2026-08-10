@@ -419,8 +419,9 @@ pub use utility::{
 
 // Re-export functional data operation types and functions
 pub use fdata::{
-    center_1d, deriv_1d, deriv_2d, geometric_median_1d, geometric_median_2d, mean_1d, mean_2d,
-    norm_lp_1d, normalize, normalize_with_argvals, Deriv2DResult, NormalizationMethod,
+    center_1d, depth_based_median, deriv_1d, deriv_2d, functional_covariance, functional_std,
+    functional_variance, geometric_median_1d, geometric_median_2d, mean_1d, mean_2d, norm_lp_1d,
+    normalize, normalize_with_argvals, trim_mean, Deriv2DResult, NormalizationMethod,
 };
 
 // Re-export basis representation types and functions
