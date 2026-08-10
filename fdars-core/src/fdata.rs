@@ -394,6 +394,132 @@ pub fn functional_covariance(data: &FdMatrix) -> Result<FdMatrix, FdarError> {
     Ok(cov)
 }
 
+/// Return the index of the deepest curve under the Fraiman-Muniz depth measure.
+///
+/// Computes self-depth scores (`fraiman_muniz_1d(data, data, true)`) and returns the
+/// index `i*` of the curve with the maximum depth — the functional analog of the
+/// depth-based median. The curve itself can be retrieved with `data.row(i*)` or
+/// `data[(i*, j)]`.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 1.
+///
+/// # Returns
+/// Index of the deepest curve.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n == 0`, or
+/// [`FdarError::ComputationFailed`] if the depth vector is empty (should not occur with n >= 1).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::depth_based_median;
+///
+/// // 3 curves on 5 points; the middle curve (index 1) is most central
+/// let data = FdMatrix::from_column_major(
+///     vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0],
+///     3, 5,
+/// ).unwrap();
+/// let idx = depth_based_median(&data).unwrap();
+/// assert_eq!(idx, 1);
+/// ```
+pub fn depth_based_median(data: &FdMatrix) -> Result<usize, FdarError> {
+    let (n, _) = data.shape();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 1 row".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    let depths = crate::depth::fraiman_muniz_1d(data, data, true);
+    depths
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "depth_based_median",
+            detail: "depth vector is empty".to_string(),
+        })
+}
+
+/// Compute the depth-trimmed mean of functional data.
+///
+/// Excludes the `floor(alpha * n)` least-deep curves (by Fraiman-Muniz depth) and
+/// returns the pointwise mean of the remaining curves. With `alpha = 0`, all curves
+/// are retained and the result equals [`mean_1d`] exactly.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 1.
+/// * `alpha` - Trimming fraction in `[0, 1)`. A value of `alpha = 0.2` removes the
+///   20% least-deep curves before averaging.
+///
+/// # Returns
+/// Length-m vector of trimmed pointwise mean values.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in `[0, 1)`,
+/// or [`FdarError::InvalidDimension`] if `n == 0`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{trim_mean, mean_1d};
+///
+/// let data = FdMatrix::from_column_major(
+///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, 2,
+/// ).unwrap();
+/// // alpha=0 => no trimming => equals mean
+/// let tm = trim_mean(&data, 0.0).unwrap();
+/// let mu = mean_1d(&data);
+/// for j in 0..2 {
+///     assert!((tm[j] - mu[j]).abs() < 1e-10);
+/// }
+/// ```
+pub fn trim_mean(data: &FdMatrix, alpha: f64) -> Result<Vec<f64>, FdarError> {
+    if !(0.0..1.0).contains(&alpha) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("must be in [0, 1), got {alpha}"),
+        });
+    }
+    let (n, m) = data.shape();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 1 row".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+
+    // Compute self-depth for all curves
+    let depths = crate::depth::fraiman_muniz_1d(data, data, true);
+
+    // Determine how many curves to drop (least-deep)
+    let k = (alpha * n as f64).floor() as usize;
+
+    // Sort indices by descending depth; retain the n-k deepest
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_unstable_by(|&a, &b| {
+        depths[b]
+            .partial_cmp(&depths[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let retained = &indices[..n - k];
+
+    // Compute pointwise mean over retained curves
+    let n_ret = retained.len() as f64;
+    let mean: Vec<f64> = (0..m)
+        .map(|j| retained.iter().map(|&i| data[(i, j)]).sum::<f64>() / n_ret)
+        .collect();
+
+    Ok(mean)
+}
+
 /// Normalization method for functional data.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
@@ -1369,6 +1495,85 @@ mod tests {
         let var = functional_variance(&data).unwrap();
         assert!((var[0] - 2.0).abs() < 1e-10, "var[0]={}", var[0]);
         assert!((var[1] - 2.0).abs() < 1e-10, "var[1]={}", var[1]);
+    }
+
+    // ============== Depth-based statistics tests (Task 2) ==============
+
+    #[test]
+    fn depth_based_median_argmax() {
+        // 5 curves at 10 points; curve 2 (index 2) is constant at 0.5, which is the
+        // most central value — it should have the highest FM depth.
+        // Curves 0,1,3,4 are at the extremes.
+        let n = 5;
+        let m = 10;
+        let mut data_vec = vec![0.0f64; n * m];
+        // curve 0: constant at 0.0
+        // curve 1: constant at 0.25
+        // curve 2: constant at 0.5 (most central)
+        // curve 3: constant at 0.75
+        // curve 4: constant at 1.0
+        for j in 0..m {
+            data_vec[0 + j * n] = 0.0;
+            data_vec[1 + j * n] = 0.25;
+            data_vec[2 + j * n] = 0.5;
+            data_vec[3 + j * n] = 0.75;
+            data_vec[4 + j * n] = 1.0;
+        }
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let idx = depth_based_median(&data).unwrap();
+        assert_eq!(idx, 2, "most central curve should be at index 2, got {idx}");
+    }
+
+    #[test]
+    fn trim_mean_alpha_zero_equals_mean() {
+        let n = 5;
+        let m = 4;
+        let mut data_vec = vec![0.0f64; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                data_vec[i + j * n] = (i + 1) as f64 * (j + 1) as f64;
+            }
+        }
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let tm = trim_mean(&data, 0.0).unwrap();
+        let mu = mean_1d(&data);
+        for j in 0..m {
+            assert!(
+                (tm[j] - mu[j]).abs() < 1e-10,
+                "at j={j}: trim_mean(alpha=0)={} != mean={}",
+                tm[j],
+                mu[j]
+            );
+        }
+    }
+
+    #[test]
+    fn trim_mean_rejects_bad_alpha() {
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        // alpha = 1.0 is invalid (must be < 1.0)
+        let result = trim_mean(&data, 1.0);
+        assert!(
+            matches!(
+                result,
+                Err(FdarError::InvalidParameter {
+                    parameter: "alpha",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for alpha=1.0, got {result:?}"
+        );
+        // alpha = -0.1 is invalid (must be >= 0.0)
+        let result2 = trim_mean(&data, -0.1);
+        assert!(
+            matches!(
+                result2,
+                Err(FdarError::InvalidParameter {
+                    parameter: "alpha",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for alpha=-0.1, got {result2:?}"
+        );
     }
 
     #[test]
