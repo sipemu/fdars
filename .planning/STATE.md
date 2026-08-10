@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.14.0
-milestone_name: milestone
-status: Awaiting next milestone
-stopped_at: Completed 09-03-PLAN.md
-last_updated: "2026-08-09T21:34:04.846Z"
-last_activity: 2026-08-09
-last_activity_desc: Milestone v0.14.0 completed and archived
+milestone: v0.15.0
+milestone_name: Top-Backlog Quick Wins
+status: planning
+last_updated: "2026-08-10T05:01:21.298Z"
+last_activity: 2026-08-10
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 21
-  completed_plans: 21
-current_phase: 09
-current_phase_name: consolidated-report-prioritized-backlog
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-09)
 
 ## Current Position
 
-Phase: Milestone v0.14.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-09 — Milestone v0.14.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-10 — Milestone v0.15.0 started
 
 ## Performance Metrics
 

@@ -6,7 +6,17 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 ## Core Value
 
-Produce an evidence-backed picture of where fdars is slow and what it is missing (relative to scikit-fda), turned into a prioritized backlog — so future milestones target the highest-leverage performance and functionality work first.
+A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
+
+## Current Milestone: v0.15.0 Top-Backlog Quick Wins
+
+**Goal:** Implement the four highest-value, low-effort (score 3.00–4.00, effort S) items from the v0.14.0 audit backlog — closing two table-stakes capability gaps and landing two measured performance wins in `fdars-core`. First implementation milestone (real `src/` changes).
+
+**Target features:**
+- **FEAT-01 (REPR-02):** Spline (cubic/order-k) interpolation at off-grid query points (`spline_interpolate`), reusing the existing B-spline basis — replaces linear-only interpolation.
+- **FEAT-02 (EXPL-02):** Functional summary statistics — `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, `functional_std`.
+- **PERF-01 (PERF-PAR-CV):** Parallelize the `fclassif_cv` fold loop via `iter_maybe_parallel!(0..nfold)` (~4–5× projected).
+- **PERF-02 (P6-1):** Swap FPCA SVD to faer `thin_svd` on a zero-copy `MatRef` behind the `linalg` feature (1.8–4.1× measured), retaining the nalgebra path for non-`linalg` builds.
 
 ## Requirements
 
@@ -36,9 +46,12 @@ Produce an evidence-backed picture of where fdars is slow and what it is missing
 
 ### Active
 
-<!-- Milestone complete — all audit deliverables validated (Phase 9). -->
+<!-- v0.15.0 Top-Backlog Quick Wins — promoted from the v0.14.0 audit backlog. -->
 
-_None — audit milestone v0.14.0 complete. Backlog ready to promote into the next milestone._
+- [ ] **FEAT-01** — Spline (cubic/order-k) interpolation at off-grid query points (REPR-02, P1/S)
+- [ ] **FEAT-02** — Functional summary statistics: trim_mean, depth_based_median, cov, var, std (EXPL-02, P1/S)
+- [ ] **PERF-01** — Parallelize the `fclassif_cv` fold loop via `iter_maybe_parallel!` (PERF-PAR-CV, P2/S)
+- [ ] **PERF-02** — Swap FPCA SVD to faer `thin_svd` behind `linalg` (P6-1, P2/S)
 
 ### Out of Scope
 
@@ -106,6 +119,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-09 after v0.14.0 milestone — audit milestone shipped (9 phases, 13/13 requirements, milestone audit passed): AUDIT-REPORT.md + BACKLOG.md finalized, backlog ready to promote via `/gsd-new-milestone`. Full per-phase history below.*
+*Last updated: 2026-08-10 — Started milestone v0.15.0 (Top-Backlog Quick Wins): 4 promoted backlog items (FEAT-01 spline interp, FEAT-02 summary stats, PERF-01 parallel CV, PERF-02 faer SVD swap). First implementation milestone. Prior: 2026-08-09 after v0.14.0 milestone — audit milestone shipped (9 phases, 13/13 requirements, milestone audit passed): AUDIT-REPORT.md + BACKLOG.md finalized, backlog ready to promote via `/gsd-new-milestone`. Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
