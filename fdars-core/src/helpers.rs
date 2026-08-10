@@ -978,4 +978,136 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn spline_interpolate_cubic_offgrid() {
+        // A cubic polynomial y = 2t^3 - t^2 + 0.5t - 0.1 lies exactly in the
+        // order-4 B-spline space; an order-4 interpolant should reproduce it
+        // within 1e-10 at off-grid midpoints.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // 20 evaluation points in [0, 1]
+        let poly = |x: f64| 2.0 * x.powi(3) - x.powi(2) + 0.5 * x - 0.1;
+        let vals: Vec<f64> = t.iter().map(|&x| poly(x)).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+
+        // Query at off-grid midpoints between consecutive t values
+        let q: Vec<f64> = t.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+        let result = spline_interpolate(&data, &t, &q, 4).unwrap();
+
+        for (j, &qj) in q.iter().enumerate() {
+            let expected = poly(qj);
+            let got = result[(0, j)];
+            assert!(
+                (got - expected).abs() < 1e-10,
+                "off-grid at q={qj:.4}: got {got}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn spline_interpolate_rejects_out_of_range() {
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let vals: Vec<f64> = t.iter().map(|&x| x).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+
+        // Query point below argvals[0]
+        let q_below = vec![-0.1_f64];
+        let err = spline_interpolate(&data, &t, &q_below, 4).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "query_points",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for query below domain, got {err:?}"
+        );
+
+        // Query point above argvals[m-1]
+        let q_above = vec![1.1_f64];
+        let err2 = spline_interpolate(&data, &t, &q_above, 4).unwrap_err();
+        assert!(
+            matches!(
+                err2,
+                crate::FdarError::InvalidParameter {
+                    parameter: "query_points",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for query above domain, got {err2:?}"
+        );
+    }
+
+    #[test]
+    fn spline_interpolate_rejects_bad_order() {
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let vals: Vec<f64> = t.iter().map(|&x| x).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let q = vec![0.5_f64];
+
+        // order == 0
+        let err = spline_interpolate(&data, &t, &q, 0).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "order",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for order=0, got {err:?}"
+        );
+
+        // order >= m (m=20)
+        let err2 = spline_interpolate(&data, &t, &q, 20).unwrap_err();
+        assert!(
+            matches!(
+                err2,
+                crate::FdarError::InvalidParameter {
+                    parameter: "order",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for order=20 (>=m=20), got {err2:?}"
+        );
+    }
+
+    #[test]
+    fn spline_interpolate_rejects_dim_mismatch() {
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let vals: Vec<f64> = t.iter().map(|&x| x).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+
+        // argvals.len() != data.ncols()
+        let bad_argvals: Vec<f64> = (0..15).map(|i| i as f64 / 14.0).collect();
+        let q = vec![0.5_f64];
+        let err = spline_interpolate(&data, &bad_argvals, &q, 4).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidDimension {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for argvals mismatch, got {err:?}"
+        );
+
+        // empty query_points
+        let err2 = spline_interpolate(&data, &t, &[], 4).unwrap_err();
+        assert!(
+            matches!(
+                err2,
+                crate::FdarError::InvalidDimension {
+                    parameter: "query_points",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for empty query_points, got {err2:?}"
+        );
+    }
 }
