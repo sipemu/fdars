@@ -4,9 +4,9 @@ milestone: v0.15.0
 milestone_name: Top-Backlog Quick Wins
 current_phase: 10
 current_phase_name: capability-gaps-spline-interpolation-functional-summary-stat
-status: executing
-stopped_at: Completed 10-01-spline-interpolate-PLAN.md
-last_updated: "2026-08-10T21:03:40.940Z"
+status: verifying
+stopped_at: Completed 10-02-functional-summary-statistics-PLAN.md
+last_updated: "2026-08-10T21:18:10.717Z"
 last_activity: 2026-08-10
 last_activity_desc: ROADMAP.md created (Phases 10–11), 4/4 requirements mapped
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 
 Phase: 10 (capability-gaps-spline-interpolation-functional-summary-stat) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-10 — Phase 10 execution started
 
 ## Milestone Roadmap (v0.15.0)
@@ -77,6 +77,7 @@ Phases 10 and 11 are mutually independent and may be executed in either order or
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 10 P01 | 8 | 3 tasks | 2 files |
+| Phase 10 P02 | 9 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,9 @@ Conventions carried from the v0.14.0 audit that constrain implementation:
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
 - [Phase ?]: Removed #[must_use] from spline_interpolate: Result<T, E> already carries must_use; clippy double_must_use lint confirms removal is correct
 - [Phase ?]: spline_interpolate uses nalgebra SVD pseudoinverse inline (not pub(super) svd_pseudoinverse from basis/helpers.rs) to avoid crossing module visibility boundaries
+- [Phase ?]: functional_std delegates to functional_variance: guarantees std^2==var by construction
+- [Phase ?]: Symmetric M×M covariance computes upper triangle only and mirrors (halves inner-product work)
+- [Phase ?]: alpha guard uses Range::contains per clippy::manual_range_contains lint
 
 ### Pending Todos
 
@@ -121,8 +125,8 @@ Items acknowledged at v0.14.0 milestone close (2026-08-09):
 
 ## Session Continuity
 
-Last session: 2026-08-10T21:03:40.931Z
-Stopped at: Completed 10-01-spline-interpolate-PLAN.md
+Last session: 2026-08-10T21:18:10.708Z
+Stopped at: Completed 10-02-functional-summary-statistics-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

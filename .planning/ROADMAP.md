@@ -61,7 +61,7 @@ Full phase detail: [milestones/v0.14.0-ROADMAP.md](milestones/v0.14.0-ROADMAP.md
 Plans:
 
 - [x] 10-01-spline-interpolate-PLAN.md — `spline_interpolate` in `helpers.rs` (B-spline fit-then-evaluate) + inline tests + crate-root re-export (FEAT-01, wave 1, independent)
-- [ ] 10-02-functional-summary-statistics-PLAN.md — `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, `functional_std` in `fdata.rs` + inline tests + crate-root re-exports (FEAT-02, wave 1, independent)
+- [x] 10-02-functional-summary-statistics-PLAN.md — `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, `functional_std` in `fdata.rs` + inline tests + crate-root re-exports (FEAT-02, wave 1, independent)
 
 **Note:** FEAT-01 and FEAT-02 are independent additive features with no shared code — the two plans are fully parallelizable.
 
