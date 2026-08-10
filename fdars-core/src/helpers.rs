@@ -390,6 +390,123 @@ pub fn fdata_interpolate(
     result
 }
 
+/// Fit an order-k B-spline interpolant per curve and evaluate at arbitrary query points.
+///
+/// For each curve in `data` (sampled at `argvals`), fits a B-spline of the given `order`
+/// using least-squares via SVD pseudoinverse, then evaluates at `query_points` using the
+/// same knot vector. Returns a new `FdMatrix` with shape `(n, query_points.len())`.
+///
+/// Uses the fit-then-evaluate pattern from the existing B-spline basis system
+/// (`basis::bspline`), without P-spline smoothing — this is interpolation, not smoothing.
+///
+/// # Arguments
+/// * `data`         — Functional data matrix (`n × m`)
+/// * `argvals`      — Original evaluation points (`length m`, must be sorted)
+/// * `query_points` — Points to evaluate at (must lie within `[argvals[0], argvals[m-1]]`)
+/// * `order`        — B-spline order (1 = linear, 2 = quadratic, 4 = cubic, …); must be in `[1, m)`
+///
+/// # Returns
+/// Interpolated `FdMatrix` of shape `(n, query_points.len())`
+///
+/// # Errors
+/// * `FdarError::InvalidDimension` — `argvals.len() != data.ncols()` or `query_points` is empty
+/// * `FdarError::InvalidParameter` — `order` is 0 or ≥ `m`, or any query point is outside
+///   `[argvals[0], argvals[m-1]]`
+/// * `FdarError::ComputationFailed` — SVD pseudoinverse could not be computed
+pub fn spline_interpolate(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    query_points: &[f64],
+    order: usize,
+) -> Result<crate::matrix::FdMatrix, crate::FdarError> {
+    let (n, m) = data.shape();
+
+    // --- Input validation ---
+    if argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if query_points.is_empty() {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "query_points",
+            expected: ">= 1".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if order == 0 || order >= m {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("must be in [1, {m}), got {order}"),
+        });
+    }
+    let t_min = argvals[0];
+    let t_max = argvals[m - 1];
+    for &q in query_points {
+        if q < t_min || q > t_max {
+            return Err(crate::FdarError::InvalidParameter {
+                parameter: "query_points",
+                message: format!(
+                    "all query points must lie in [{t_min}, {t_max}]; found {q} which is outside the interpolation domain"
+                ),
+            });
+        }
+    }
+
+    // --- Build knot vector and basis matrix on argvals ---
+    // nknots chosen so nbasis = nknots + order ≈ m (interpolating system)
+    let nknots = m.saturating_sub(order).max(2);
+    let knots = crate::basis::bspline::construct_bspline_knots(t_min, t_max, nknots, order);
+
+    // basis_vals: column-major, length m * nbasis; layout: basis[ti + k*m] = B_k(argvals[ti])
+    let basis_vals = crate::basis::bspline::bspline_basis(argvals, nknots, order);
+    let nbasis = basis_vals.len() / m;
+
+    // Form B (m × nbasis) — same layout as pspline.rs:86-87
+    let b_mat = nalgebra::DMatrix::from_column_slice(m, nbasis, &basis_vals);
+
+    // Compute pseudoinverse of B once via SVD and reuse across all n curves.
+    // Mirrors the pattern in basis/helpers.rs:svd_pseudoinverse (which is pub(super)).
+    let tol = NUMERICAL_EPS * b_mat.nrows().max(b_mat.ncols()) as f64;
+    let svd = nalgebra::SVD::new(b_mat.clone(), true, true);
+    let pinv = svd
+        .pseudo_inverse(tol)
+        .map_err(|e| crate::FdarError::ComputationFailed {
+            operation: "spline_interpolate SVD pseudoinverse",
+            detail: e.to_string(),
+        })?;
+    // pinv: nbasis × m
+
+    // --- Build query basis on same knots ---
+    // basis_query: column-major, length m_q * nbasis; layout: basis_query[j + k*m_q] = B_k(query[j])
+    let m_q = query_points.len();
+    let basis_query = crate::basis::bspline::bspline_basis_from_knots(query_points, &knots, order);
+
+    // --- Evaluate per curve ---
+    let mut out = crate::matrix::FdMatrix::zeros(n, m_q);
+    for i in 0..n {
+        // Gather curve i as a column vector (length m)
+        let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        let y_col = nalgebra::DVector::from_vec(y_vec);
+
+        // Solve: coefs = pinv * y  (shape: nbasis × 1)
+        let coefs = &pinv * y_col;
+
+        // Evaluate: out[i, j] = sum_k coefs[k] * basis_query[j + k*m_q]
+        for j in 0..m_q {
+            let mut val = 0.0;
+            for k in 0..nbasis {
+                val += coefs[k] * basis_query[j + k * m_q];
+            }
+            out[(i, j)] = val;
+        }
+    }
+
+    Ok(out)
+}
+
 /// Cubic Hermite interpolation at a single point.
 ///
 /// Uses Fritsch-Carlson monotone slopes for C1 interpolation.
@@ -839,6 +956,26 @@ mod tests {
             for j in 0..50 {
                 assert!(result[(i, j)].is_finite());
             }
+        }
+    }
+
+    // ── spline_interpolate ──
+
+    #[test]
+    fn spline_interpolate_reproduces_argvals() {
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let vals: Vec<f64> = t.iter().map(|&x| x.powi(3)).collect();
+        // column-major: 1 row, 20 columns
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let result = spline_interpolate(&data, &t, &t, 4).unwrap();
+        for j in 0..20 {
+            assert!(
+                (result[(0, j)] - data[(0, j)]).abs() < 1e-10,
+                "at j={j}: got {}, expected {}",
+                result[(0, j)],
+                data[(0, j)]
+            );
         }
     }
 }
