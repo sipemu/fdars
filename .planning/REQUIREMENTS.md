@@ -11,7 +11,7 @@ Requirements for the v0.15.0 release. Each maps to exactly one roadmap phase.
 
 ### Capabilities
 
-- [ ] **FEAT-01**: A caller can interpolate functional data at arbitrary off-grid query points using cubic / order-k spline interpolation — a new `spline_interpolate(data, argvals, query_points, order) -> Result<FdMatrix, FdarError>` in `helpers.rs` that fits a B-spline (reusing the existing `basis/` B-spline system) per curve and evaluates at the query points. Replaces the current linear-only interpolation. *(audit: REPR-02, P1/S)*
+- [x] **FEAT-01**: A caller can interpolate functional data at arbitrary off-grid query points using cubic / order-k spline interpolation — a new `spline_interpolate(data, argvals, query_points, order) -> Result<FdMatrix, FdarError>` in `helpers.rs` that fits a B-spline (reusing the existing `basis/` B-spline system) per curve and evaluates at the query points. Replaces the current linear-only interpolation. *(audit: REPR-02, P1/S)*
 - [ ] **FEAT-02**: A caller can compute functional descriptive statistics via public functions — `trim_mean` (depth-trimmed mean), `depth_based_median` (index of deepest curve), `functional_covariance` (M×M sample covariance), `functional_variance` (pointwise), and `functional_std` (pointwise) — over an `FdMatrix`. *(audit: EXPL-02, P1/S)*
 
 ### Performance
@@ -52,12 +52,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FEAT-01 | Phase 10 | Pending |
+| FEAT-01 | Phase 10 | Complete |
 | FEAT-02 | Phase 10 | Pending |
 | PERF-01 | Phase 11 | Pending |
 | PERF-02 | Phase 11 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 4 total
 - Mapped to phases: 4 (100%) ✓
 - Unmapped: 0

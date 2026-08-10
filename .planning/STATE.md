@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.15.0
 milestone_name: Top-Backlog Quick Wins
 current_phase: 10
-current_phase_name: Capability Gaps   — Not started
-status: planning
-stopped_at: ROADMAP.md + REQUIREMENTS.md traceability + STATE.md written
-last_updated: "2026-08-10T20:02:22.594Z"
+current_phase_name: capability-gaps-spline-interpolation-functional-summary-stat
+status: executing
+stopped_at: Completed 10-01-spline-interpolate-PLAN.md
+last_updated: "2026-08-10T21:03:40.940Z"
 last_activity: 2026-08-10
 last_activity_desc: ROADMAP.md created (Phases 10–11), 4/4 requirements mapped
 progress:
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-10)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** v0.15.0 — first implementation milestone. Roadmap created (Phases 10–11, 4 requirements mapped). Ready to plan Phase 10.
+**Current focus:** Phase 10 — capability-gaps-spline-interpolation-functional-summary-stat
 
 ## Current Position
 
-Phase: 10 — Capability Gaps (Spline Interpolation & Functional Summary Statistics) — Not started
-Plan: —
-Status: Roadmap created; awaiting phase planning
-Last activity: 2026-08-10 — ROADMAP.md created (Phases 10–11), 4/4 requirements mapped
+Phase: 10 (capability-gaps-spline-interpolation-functional-summary-stat) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-08-10 — Phase 10 execution started
 
 ## Milestone Roadmap (v0.15.0)
 
@@ -72,6 +72,11 @@ Phases 10 and 11 are mutually independent and may be executed in either order or
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 10 P01 | 8 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -94,6 +99,8 @@ Conventions carried from the v0.14.0 audit that constrain implementation:
 - FEAT-01: `spline_interpolate` reuses the existing `basis/` B-spline system (de Boor evaluation over stored coefficients); ~80–120 lines in `helpers.rs`.
 - FEAT-02: `functional_variance`/`functional_std` are one-pass O(n·m); `functional_covariance` is O(n·m²); `depth_based_median`/`trim_mean` call the existing `depth/` functions.
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
+- [Phase ?]: Removed #[must_use] from spline_interpolate: Result<T, E> already carries must_use; clippy double_must_use lint confirms removal is correct
+- [Phase ?]: spline_interpolate uses nalgebra SVD pseudoinverse inline (not pub(super) svd_pseudoinverse from basis/helpers.rs) to avoid crossing module visibility boundaries
 
 ### Pending Todos
 
@@ -114,8 +121,8 @@ Items acknowledged at v0.14.0 milestone close (2026-08-09):
 
 ## Session Continuity
 
-Last session: 2026-08-10 — Roadmap created for v0.15.0
-Stopped at: ROADMAP.md + REQUIREMENTS.md traceability + STATE.md written
+Last session: 2026-08-10T21:03:40.931Z
+Stopped at: Completed 10-01-spline-interpolate-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
