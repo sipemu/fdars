@@ -52,16 +52,16 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FEAT-01 | TBD | Pending |
-| FEAT-02 | TBD | Pending |
-| PERF-01 | TBD | Pending |
-| PERF-02 | TBD | Pending |
+| FEAT-01 | Phase 10 | Pending |
+| FEAT-02 | Phase 10 | Pending |
+| PERF-01 | Phase 11 | Pending |
+| PERF-02 | Phase 11 | Pending |
 
 **Coverage:**
 - v1 requirements: 4 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 4 ⚠️
+- Mapped to phases: 4 (100%) ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-08-10 after milestone v0.15.0 definition*
+*Last updated: 2026-08-10 after roadmap creation (Phases 10–11 mapped)*
