@@ -170,8 +170,8 @@ pub use alignment::{
 pub use helpers::{
     aic, bandwidth_candidates_from_dists, bic, cumulative_trapz, extract_curves, fdata_interpolate,
     gaussian_kernel, gradient, gradient_nonuniform, gradient_uniform, l2_distance, linear_interp,
-    quantile_sorted, r_squared, r_squared_adj, simpsons_weights, simpsons_weights_2d, trapz,
-    InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
+    quantile_sorted, r_squared, r_squared_adj, simpsons_weights, simpsons_weights_2d,
+    spline_interpolate, trapz, InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
 };
 
 // Re-export warping utilities
