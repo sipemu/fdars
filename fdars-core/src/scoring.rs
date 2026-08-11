@@ -254,10 +254,13 @@ pub fn functional_explained_variance(
             ss_res += res_centered.powi(2) * weights[j];
             ss_tot += true_centered.powi(2) * weights[j];
         }
-        // Guard near-zero SS_tot
+        // Guard near-zero SS_tot (constant true curve).
+        // CR-02: the old inner check `ss_res < NUMERICAL_EPS` was an absolute threshold
+        // comparison that returned 1.0 even when ss_res > ss_tot (both below NUMERICAL_EPS).
+        // Replace with a relative test: "perfect fit" only when the residual variance is
+        // no larger than ss_tot up to a small relative tolerance.
         let ev_i = if ss_tot < NUMERICAL_EPS {
-            // Constant true curve: perfect fit if residual also ~0, else 0.0
-            if ss_res < NUMERICAL_EPS {
+            if ss_res <= ss_tot * (1.0 + 1e-6) {
                 1.0
             } else {
                 0.0
@@ -274,7 +277,6 @@ pub fn functional_explained_variance(
 mod tests {
     use super::*;
 
-    #[cfg(test)]
     use crate::test_helpers::uniform_grid;
 
     // Helper: create an FdMatrix from row-major input (for test convenience).
@@ -495,5 +497,30 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    // CR-02 regression test: constant y_true + tiny-amplitude y_pred must NOT return 1.0.
+    // Before the fix, both ss_tot and ss_res fell below NUMERICAL_EPS and the function
+    // returned 1.0 even though ss_res > ss_tot (the prediction had MORE variation than the
+    // constant baseline).
+    #[test]
+    fn test_explained_variance_constant_true_perturbed_pred() {
+        // y_true is a constant curve (all 5.0) => SS_tot = 0.
+        // y_pred = 5.0 + 1e-6 * sin(t) has a tiny positive SS_res > SS_tot.
+        // Correct EV must be <= 0.0 (the pred is strictly worse than the baseline).
+        let m = 100_usize;
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let y_true_row: Vec<f64> = vec![5.0_f64; m];
+        let y_pred_row: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 5.0 + 1e-6 * (t * std::f64::consts::PI * 2.0).sin())
+            .collect();
+        let y_true = mat_from_rows(&[y_true_row]);
+        let y_pred = mat_from_rows(&[y_pred_row]);
+        let ev = functional_explained_variance(&y_true, &y_pred, &argvals).unwrap();
+        assert!(
+            ev <= 0.0,
+            "EV for constant true + oscillating pred must be <= 0.0, got {ev}"
+        );
     }
 }

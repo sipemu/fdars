@@ -776,6 +776,18 @@ pub fn fdata_interpolate_with_policy(
     let t_max = argvals[m - 1];
     let domain_len = t_max - t_min;
 
+    // CR-01: Guard degenerate domain before the loop — Periodic wraps via modulo domain_len
+    // and produces NaN when domain_len == 0 (IEEE 754: x % 0.0 = NaN).  Other policies do
+    // not divide by domain_len so only Periodic needs this guard.
+    if domain_len <= 0.0 && matches!(policy, ExtrapolationPolicy::Periodic) {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "Periodic extrapolation requires a positive domain length \
+                      (argvals[0] < argvals[m-1])"
+                .to_string(),
+        });
+    }
+
     let mut result = crate::matrix::FdMatrix::zeros(n, m_new);
     for i in 0..n {
         let y: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
@@ -870,6 +882,16 @@ pub fn impute_missing_values(
             parameter: "argvals",
             expected: format!("{m}"),
             actual: format!("{}", argvals.len()),
+        });
+    }
+    // WR-01: A zero-column matrix has no evaluation points and is degenerate.
+    // Without this guard the per-curve loop would report "curve 0 contains only NaN values",
+    // which is factually incorrect (the curve has no values at all).
+    if m == 0 {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "m >= 1".to_string(),
+            actual: "m=0".to_string(),
         });
     }
     let mut out_data = vec![0.0_f64; n * m]; // column-major output buffer
@@ -1614,6 +1636,56 @@ mod tests {
             (result2[(0, 2)] - 0.5).abs() < 1e-10,
             "trailing NaN should be filled with nearest valid (0.5), got {}",
             result2[(0, 2)]
+        );
+    }
+
+    // ── CR-01: Periodic + zero-length domain must error (not produce NaN) ────
+
+    #[test]
+    fn test_extrapolation_periodic_zero_length_domain_errors() {
+        // Domain [5.0, 5.0] has length 0 — Periodic would compute x % 0.0 = NaN without the guard.
+        let degenerate_argvals = vec![5.0_f64, 5.0, 5.0];
+        let vals = vec![1.0_f64, 1.0, 1.0];
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 3).unwrap();
+        // Any OOB query with Periodic on a zero-length domain must return Err.
+        let q = vec![6.0_f64]; // outside [5.0, 5.0]
+        let err = fdata_interpolate_with_policy(
+            &data,
+            &degenerate_argvals,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Periodic,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for zero-length domain + Periodic, got {err:?}"
+        );
+    }
+
+    // ── WR-01: m=0 guard in impute_missing_values ─────────────────────────
+
+    #[test]
+    fn test_impute_zero_columns_errors() {
+        // A matrix with m=0 columns is degenerate; should return InvalidDimension, not "all-NaN".
+        let data = crate::matrix::FdMatrix::zeros(2, 0);
+        let argvals: Vec<f64> = vec![];
+        let err = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for m=0 matrix, got {err:?}"
         );
     }
 
