@@ -77,12 +77,12 @@ Plans:
   3. The nalgebra SVD path is retained under `#[cfg(not(feature = "linalg"))]` so the `""` and `parallel` (non-`linalg`) builds are unchanged and still pass their tests.
   4. `cargo test -p fdars-core --features linalg`, `cargo test -p fdars-core --features parallel`, and `cargo clippy -p fdars-core --features linalg` all pass; no new external dependency is added (faer and rayon are already present).
 
-**Plans**: 1/2 plans executed
+**Plans**: 2/2 plans executed
 
 Plans:
 
 - [x] 11-01-parallel-cv-folds-PLAN.md — Parallelize `fclassif_cv` fold loop via `iter_maybe_parallel!(0..nfold)` + bit-for-bit sequential-vs-parallel equivalence test (PERF-01, wave 1, independent)
-- [ ] 11-02-faer-fpca-svd-PLAN.md — Swap FPCA SVD to faer `thin_svd` on a zero-copy `MatRef` behind `linalg`, reconcile signs via `fix_svd_signs`, retain nalgebra path + equivalence test (PERF-02, wave 1, independent)
+- [x] 11-02-faer-fpca-svd-PLAN.md — Swap FPCA SVD to faer `thin_svd` on a zero-copy `MatRef` behind `linalg`, reconcile signs via `fix_svd_signs`, retain nalgebra path + equivalence test (PERF-02, wave 1, independent)
 
 **Note:** PERF-01 and PERF-02 touch different files (`classification/cv.rs` vs `regression.rs`) with no shared code — the two plans are fully parallelizable.
 
@@ -94,7 +94,7 @@ Phases execute in numeric order: 10 → 11. Phases 10 and 11 are mutually indepe
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 10. Capability Gaps (Spline Interp & Summary Stats) | v0.15.0 | 2/2 | Complete    | 2026-08-10 |
-| 11. Performance Wins (Parallel CV & faer SVD) | v0.15.0 | 1/2 | In Progress|  |
+| 11. Performance Wins (Parallel CV & faer SVD) | v0.15.0 | 2/2 | In Progress|  |
 
 ## Coverage
 
