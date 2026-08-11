@@ -1,5 +1,6 @@
 //! Functional data operations: mean, center, derivatives, norms, and geometric median.
 
+use crate::error::FdarError;
 use crate::helpers::{simpsons_weights, simpsons_weights_2d, NUMERICAL_EPS};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -233,6 +234,290 @@ pub fn center_1d(data: &FdMatrix) -> FdMatrix {
     }
 
     centered
+}
+
+/// Compute pointwise sample variance of functional data (Bessel-corrected, ddof = n-1).
+///
+/// For each evaluation point j, computes the sample variance across the n curves:
+/// `var[j] = sum_i (data[(i,j)] - mean[j])^2 / (n - 1)`
+///
+/// This is a plain pointwise statistic (no integration weights), matching
+/// `FDataGrid.var()` in scikit-fda.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 2.
+///
+/// # Returns
+/// Length-m vector of pointwise sample variances.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 2` (Bessel correction requires at least
+/// two observations).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::functional_variance;
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+/// let var = functional_variance(&data).unwrap();
+/// assert_eq!(var.len(), 2);
+/// assert!((var[0] - 2.0).abs() < 1e-10); // Bessel-corrected variance
+/// ```
+pub fn functional_variance(data: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 2 rows".to_string(),
+            actual: n.to_string(),
+        });
+    }
+    let means = mean_1d(data);
+    let var: Vec<f64> = (0..m)
+        .map(|j| {
+            let col = data.column(j);
+            let mu = means[j];
+            col.iter().map(|&x| (x - mu).powi(2)).sum::<f64>() / (n - 1) as f64
+        })
+        .collect();
+    Ok(var)
+}
+
+/// Compute pointwise sample standard deviation of functional data (ddof = n-1).
+///
+/// Delegates to [`functional_variance`] so that `functional_std(data)[j]^2 ==
+/// functional_variance(data)[j]` holds by construction.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 2.
+///
+/// # Returns
+/// Length-m vector of pointwise sample standard deviations.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 2`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{functional_std, functional_variance};
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+/// let std = functional_std(&data).unwrap();
+/// let var = functional_variance(&data).unwrap();
+/// // std^2 == var pointwise
+/// for j in 0..2 {
+///     assert!((std[j].powi(2) - var[j]).abs() < 1e-10);
+/// }
+/// ```
+pub fn functional_std(data: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+    Ok(functional_variance(data)?
+        .iter()
+        .map(|v| v.sqrt())
+        .collect())
+}
+
+/// Compute the M×M sample covariance matrix of functional data (Bessel-corrected, ddof = n-1).
+///
+/// For each pair of evaluation points `(j1, j2)`, computes the sample covariance across
+/// the n curves:
+/// `cov[j1, j2] = sum_i (data[(i,j1)] - mean[j1]) * (data[(i,j2)] - mean[j2]) / (n - 1)`
+///
+/// The diagonal equals `functional_variance(data)` pointwise. The result is a symmetric
+/// M×M [`FdMatrix`] stored in column-major order.
+///
+/// This is an O(n·m²) operation — may be expensive for large m.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 2.
+///
+/// # Returns
+/// M×M sample covariance [`FdMatrix`].
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n < 2`, or
+/// [`FdarError::InvalidParameter`] if `m * m` overflows `usize`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{functional_covariance, functional_variance};
+///
+/// let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+/// let cov = functional_covariance(&data).unwrap();
+/// assert_eq!(cov.shape(), (2, 2));
+/// let var = functional_variance(&data).unwrap();
+/// // Diagonal matches variance
+/// assert!((cov[(0, 0)] - var[0]).abs() < 1e-10);
+/// assert!((cov[(1, 1)] - var[1]).abs() < 1e-10);
+/// ```
+pub fn functional_covariance(data: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 2 rows".to_string(),
+            actual: n.to_string(),
+        });
+    }
+    // Guard against usize overflow in M×M allocation (threat T-10-02-04)
+    m.checked_mul(m)
+        .ok_or_else(|| FdarError::InvalidParameter {
+            parameter: "data",
+            message: format!(
+                "m={m} is too large: m*m would overflow usize (max {})",
+                usize::MAX
+            ),
+        })?;
+
+    let centered = center_1d(data);
+    let mut cov = FdMatrix::zeros(m, m);
+    let denom = (n - 1) as f64;
+    for j1 in 0..m {
+        let col1 = centered.column(j1);
+        for j2 in j1..m {
+            let col2 = centered.column(j2);
+            let val: f64 = col1
+                .iter()
+                .zip(col2.iter())
+                .map(|(&a, &b)| a * b)
+                .sum::<f64>()
+                / denom;
+            cov[(j1, j2)] = val;
+            cov[(j2, j1)] = val; // symmetric
+        }
+    }
+    Ok(cov)
+}
+
+/// Return the index of the deepest curve under the Fraiman-Muniz depth measure.
+///
+/// Computes self-depth scores (`fraiman_muniz_1d(data, data, true)`) and returns the
+/// index `i*` of the curve with the maximum depth — the functional analog of the
+/// depth-based median. The curve itself can be retrieved with `data.row(i*)` or
+/// `data[(i*, j)]`.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 1.
+///
+/// # Returns
+/// Index of the deepest curve.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if `n == 0`, or
+/// [`FdarError::ComputationFailed`] if the depth vector is empty (should not occur with n >= 1).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::depth_based_median;
+///
+/// // 3 curves on 5 points; the middle curve (index 1) is most central
+/// let data = FdMatrix::from_column_major(
+///     vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0],
+///     3, 5,
+/// ).unwrap();
+/// let idx = depth_based_median(&data).unwrap();
+/// assert_eq!(idx, 1);
+/// ```
+pub fn depth_based_median(data: &FdMatrix) -> Result<usize, FdarError> {
+    let (n, _) = data.shape();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 1 row".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    let depths = crate::depth::fraiman_muniz_1d(data, data, true);
+    depths
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "depth_based_median",
+            detail: "depth vector is empty".to_string(),
+        })
+}
+
+/// Compute the depth-trimmed mean of functional data.
+///
+/// Excludes the `floor(alpha * n)` least-deep curves (by Fraiman-Muniz depth) and
+/// returns the pointwise mean of the remaining curves. With `alpha = 0`, all curves
+/// are retained and the result equals [`mean_1d`] exactly.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m), requires n >= 1.
+/// * `alpha` - Trimming fraction in `[0, 1)`. A value of `alpha = 0.2` removes the
+///   20% least-deep curves before averaging.
+///
+/// # Returns
+/// Length-m vector of trimmed pointwise mean values.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in `[0, 1)`,
+/// or [`FdarError::InvalidDimension`] if `n == 0`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{trim_mean, mean_1d};
+///
+/// let data = FdMatrix::from_column_major(
+///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, 2,
+/// ).unwrap();
+/// // alpha=0 => no trimming => equals mean
+/// let tm = trim_mean(&data, 0.0).unwrap();
+/// let mu = mean_1d(&data);
+/// for j in 0..2 {
+///     assert!((tm[j] - mu[j]).abs() < 1e-10);
+/// }
+/// ```
+pub fn trim_mean(data: &FdMatrix, alpha: f64) -> Result<Vec<f64>, FdarError> {
+    if !(0.0..1.0).contains(&alpha) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("must be in [0, 1), got {alpha}"),
+        });
+    }
+    let (n, m) = data.shape();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 1 row".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+
+    // Compute self-depth for all curves
+    let depths = crate::depth::fraiman_muniz_1d(data, data, true);
+
+    // Determine how many curves to drop (least-deep)
+    let k = (alpha * n as f64).floor() as usize;
+
+    // Sort indices by descending depth; retain the n-k deepest
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_unstable_by(|&a, &b| {
+        depths[b]
+            .partial_cmp(&depths[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let retained = &indices[..n - k];
+
+    // Compute pointwise mean over retained curves
+    let n_ret = retained.len() as f64;
+    let mean: Vec<f64> = (0..m)
+        .map(|j| retained.iter().map(|&i| data[(i, j)]).sum::<f64>() / n_ret)
+        .collect();
+
+    Ok(mean)
 }
 
 /// Normalization method for functional data.
@@ -1149,6 +1434,209 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ============== Functional statistics tests (Task 1 — pointwise trio) ==============
+
+    #[test]
+    fn functional_variance_equals_std_squared() {
+        // 3 curves at 4 evaluation points
+        let data = FdMatrix::from_column_major(
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            3,
+            4,
+        )
+        .unwrap();
+        let var = functional_variance(&data).unwrap();
+        let std = functional_std(&data).unwrap();
+        for j in 0..4 {
+            assert!(
+                (std[j].powi(2) - var[j]).abs() < 1e-10,
+                "at j={j}: std^2={} != var={}",
+                std[j].powi(2),
+                var[j]
+            );
+        }
+    }
+
+    #[test]
+    fn functional_covariance_diagonal_matches_variance() {
+        let data = FdMatrix::from_column_major(
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+            ],
+            3,
+            4,
+        )
+        .unwrap();
+        let var = functional_variance(&data).unwrap();
+        let cov = functional_covariance(&data).unwrap();
+        for j in 0..4 {
+            assert!(
+                (cov[(j, j)] - var[j]).abs() < 1e-10,
+                "at j={j}: cov[j,j]={} != var={}",
+                cov[(j, j)],
+                var[j]
+            );
+        }
+    }
+
+    #[test]
+    fn functional_variance_hand_computed() {
+        // 2 curves, 2 eval points:
+        // curve 0: [1.0, 4.0], curve 1: [3.0, 2.0]
+        // col-major: [1.0, 3.0, 4.0, 2.0]
+        // means: [2.0, 3.0]
+        // var[0] = ((1-2)^2 + (3-2)^2) / (2-1) = (1+1)/1 = 2.0
+        // var[1] = ((4-3)^2 + (2-3)^2) / (2-1) = (1+1)/1 = 2.0
+        let data = FdMatrix::from_column_major(vec![1.0, 3.0, 4.0, 2.0], 2, 2).unwrap();
+        let var = functional_variance(&data).unwrap();
+        assert!((var[0] - 2.0).abs() < 1e-10, "var[0]={}", var[0]);
+        assert!((var[1] - 2.0).abs() < 1e-10, "var[1]={}", var[1]);
+    }
+
+    // ============== Depth-based statistics tests (Task 2) ==============
+
+    #[test]
+    fn depth_based_median_argmax() {
+        // 5 curves at 10 points; curve 2 (index 2) is constant at 0.5, which is the
+        // most central value — it should have the highest FM depth.
+        // Curves 0,1,3,4 are at the extremes.
+        let n = 5;
+        let m = 10;
+        let mut data_vec = vec![0.0f64; n * m];
+        // curve 0: constant at 0.0
+        // curve 1: constant at 0.25
+        // curve 2: constant at 0.5 (most central)
+        // curve 3: constant at 0.75
+        // curve 4: constant at 1.0
+        for j in 0..m {
+            data_vec[0 + j * n] = 0.0;
+            data_vec[1 + j * n] = 0.25;
+            data_vec[2 + j * n] = 0.5;
+            data_vec[3 + j * n] = 0.75;
+            data_vec[4 + j * n] = 1.0;
+        }
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let idx = depth_based_median(&data).unwrap();
+        assert_eq!(idx, 2, "most central curve should be at index 2, got {idx}");
+    }
+
+    #[test]
+    fn trim_mean_alpha_zero_equals_mean() {
+        let n = 5;
+        let m = 4;
+        let mut data_vec = vec![0.0f64; n * m];
+        for i in 0..n {
+            for j in 0..m {
+                data_vec[i + j * n] = (i + 1) as f64 * (j + 1) as f64;
+            }
+        }
+        let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
+        let tm = trim_mean(&data, 0.0).unwrap();
+        let mu = mean_1d(&data);
+        for j in 0..m {
+            assert!(
+                (tm[j] - mu[j]).abs() < 1e-10,
+                "at j={j}: trim_mean(alpha=0)={} != mean={}",
+                tm[j],
+                mu[j]
+            );
+        }
+    }
+
+    #[test]
+    fn trim_mean_rejects_bad_alpha() {
+        let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
+        // alpha = 1.0 is invalid (must be < 1.0)
+        let result = trim_mean(&data, 1.0);
+        assert!(
+            matches!(
+                result,
+                Err(FdarError::InvalidParameter {
+                    parameter: "alpha",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for alpha=1.0, got {result:?}"
+        );
+        // alpha = -0.1 is invalid (must be >= 0.0)
+        let result2 = trim_mean(&data, -0.1);
+        assert!(
+            matches!(
+                result2,
+                Err(FdarError::InvalidParameter {
+                    parameter: "alpha",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for alpha=-0.1, got {result2:?}"
+        );
+    }
+
+    // ============== Consolidated input-validation test (Task 3) ==============
+
+    #[test]
+    fn functional_stats_input_validation() {
+        use crate::error::FdarError;
+
+        // n=1 matrix (2 points) — fails n>=2 requirement for variance/std/covariance
+        let one_row = FdMatrix::from_column_major(vec![1.0, 2.0], 1, 2).unwrap();
+        assert!(
+            matches!(
+                functional_variance(&one_row),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "functional_variance should reject n=1"
+        );
+        assert!(
+            matches!(
+                functional_std(&one_row),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "functional_std should reject n=1"
+        );
+        assert!(
+            matches!(
+                functional_covariance(&one_row),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "functional_covariance should reject n=1"
+        );
+
+        // n=0 matrix — fails n>=1 requirement for depth_based_median / trim_mean
+        let zero_rows = FdMatrix::zeros(0, 3);
+        assert!(
+            matches!(
+                depth_based_median(&zero_rows),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "depth_based_median should reject n=0"
+        );
+        assert!(
+            matches!(
+                trim_mean(&zero_rows, 0.0),
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
+            ),
+            "trim_mean should reject n=0"
+        );
     }
 
     #[test]

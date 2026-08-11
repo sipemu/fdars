@@ -170,8 +170,8 @@ pub use alignment::{
 pub use helpers::{
     aic, bandwidth_candidates_from_dists, bic, cumulative_trapz, extract_curves, fdata_interpolate,
     gaussian_kernel, gradient, gradient_nonuniform, gradient_uniform, l2_distance, linear_interp,
-    quantile_sorted, r_squared, r_squared_adj, simpsons_weights, simpsons_weights_2d, trapz,
-    InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
+    quantile_sorted, r_squared, r_squared_adj, simpsons_weights, simpsons_weights_2d,
+    spline_interpolate, trapz, InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
 };
 
 // Re-export warping utilities
@@ -419,8 +419,9 @@ pub use utility::{
 
 // Re-export functional data operation types and functions
 pub use fdata::{
-    center_1d, deriv_1d, deriv_2d, geometric_median_1d, geometric_median_2d, mean_1d, mean_2d,
-    norm_lp_1d, normalize, normalize_with_argvals, Deriv2DResult, NormalizationMethod,
+    center_1d, depth_based_median, deriv_1d, deriv_2d, functional_covariance, functional_std,
+    functional_variance, geometric_median_1d, geometric_median_2d, mean_1d, mean_2d, norm_lp_1d,
+    normalize, normalize_with_argvals, trim_mean, Deriv2DResult, NormalizationMethod,
 };
 
 // Re-export basis representation types and functions

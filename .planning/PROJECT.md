@@ -6,7 +6,17 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 ## Core Value
 
-Produce an evidence-backed picture of where fdars is slow and what it is missing (relative to scikit-fda), turned into a prioritized backlog — so future milestones target the highest-leverage performance and functionality work first.
+A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
+
+## Current Milestone: v0.15.0 Top-Backlog Quick Wins
+
+**Goal:** Implement the four highest-value, low-effort (score 3.00–4.00, effort S) items from the v0.14.0 audit backlog — closing two table-stakes capability gaps and landing two measured performance wins in `fdars-core`. First implementation milestone (real `src/` changes).
+
+**Target features:**
+- **FEAT-01 (REPR-02):** Spline (cubic/order-k) interpolation at off-grid query points (`spline_interpolate`), reusing the existing B-spline basis — replaces linear-only interpolation.
+- **FEAT-02 (EXPL-02):** Functional summary statistics — `trim_mean`, `depth_based_median`, `functional_covariance`, `functional_variance`, `functional_std`.
+- **PERF-01 (PERF-PAR-CV):** Parallelize the `fclassif_cv` fold loop via `iter_maybe_parallel!(0..nfold)` (~4–5× projected).
+- **PERF-02 (P6-1):** Swap FPCA SVD to faer `thin_svd` on a zero-copy `MatRef` behind the `linalg` feature (1.8–4.1× measured), retaining the nalgebra path for non-`linalg` builds.
 
 ## Requirements
 
@@ -33,12 +43,16 @@ Produce an evidence-backed picture of where fdars is slow and what it is missing
 - ✓ **Benchmark confirmation** — the top performance suspects were measured with real criterion numbers across the audit: FPCA/SVD grid (Phase 4, SVD ~99.8% of wall-clock), rayon thread-scaling (Phase 5, ~4.73× at 8 threads), faer-vs-nalgebra SVD (Phase 6, 1.8–4.1× faster), and elastic-alignment cost (top bottleneck: N=500,M=50 → 37.82 s; M=200 infeasible). — Validated across Phases 4–6
 - ✓ **Consolidated audit report** — `.planning/research/AUDIT-REPORT.md` (2,646 lines) flipped to **"Complete — audit milestone v0.14.0"**: `## Methodology (Consolidated)` (feature-flag matrix + infra-vs-code triage rule), `## Consolidated Findings` with five performance findings (PF-1..PF-5, each linked to a real bench artifact), gap findings (82 in-scope / 32 out-of-scope excluded), and an fdars-strengths summary (30 capabilities, 4 SC3 headliners). All 8 prior Phase sections preserved. Verified 7/7 must-haves; zero `fdars-core/src/` edits (audit-only). — Validated in Phase 9 (RPT-01, RPT-02)
 - ✓ **GSD-ready prioritized backlog** — `.planning/research/BACKLOG.md` (873 lines): `score = value / sqrt(effort)` ranking methodology (5-level value scale, S/M/L effort, P1/P2/P3 severity), a master **Ranked Backlog of 32 items** sorted 4.00 → 0.58 (strictly non-increasing), and 34 fully-worked 7-field item blocks (8 performance + 24 gap + ACC-VALIDATE). Completeness Gate PASSED (5 P1 items, top-10 non-cosmetic, strictly descending). Ready to promote via `/gsd-new-milestone`. — Validated in Phase 9 (RPT-03)
+- ✓ **Spline interpolation** — `spline_interpolate(data, argvals, query_points, order) -> Result<FdMatrix, FdarError>` in `helpers.rs`: fits an order-k B-spline per curve over the existing `basis/` system (knots → `bspline_basis` → SVD pseudoinverse → evaluate at query points) and returns a new `FdMatrix`; re-exported at the crate root. 5 inline tests (exact reproduction + off-grid cubic accuracy within 1e-10, plus 3 validation paths); existing linear-interpolation path retained (additive). — Validated in Phase 10 (FEAT-01)
+- ✓ **Functional summary statistics** — five public functions over `FdMatrix` in `fdata.rs`, all `Result`-returning and re-exported at the crate root: `functional_variance`/`functional_std` (Bessel-corrected pointwise, std²==var by construction), `functional_covariance` (symmetric M×M with `checked_mul` overflow guard), `depth_based_median` and `trim_mean` (via `fraiman_muniz_1d` self-depth). 7 inline tests against hand-computed references + error paths. — Validated in Phase 10 (FEAT-02)
+- ✓ **Parallel CV folds** — `fclassif_cv`'s fold loop in `classification/cv.rs` now runs via `iter_maybe_parallel!(0..nfold).map(...).collect()` (indexed collect preserves order), parallel under the `parallel` feature and bit-for-bit identical to sequential; a `test_fclassif_cv_parallel_matches_sequential` inline test proves determinism. No new deps. — Validated in Phase 11 (PERF-01)
+- ✓ **faer FPCA SVD** — `fdata_to_pc_1d` in `regression.rs` computes its SVD via faer `Svd::new_thin` on a zero-copy `MatRef::from_column_major_slice` under `#[cfg(feature = "linalg")]` (eliminating the `to_dmatrix()` copy), retains the nalgebra path under `#[cfg(not(feature = "linalg"))]`, and reconciles singular-vector signs via a shared `fix_svd_signs` helper. A `#[cfg(all(test, feature = "linalg"))]` `test_faer_svd_matches_nalgebra` proves numerical parity within 1e-8·σ₁. No new deps. — Validated in Phase 11 (PERF-02)
 
 ### Active
 
-<!-- Milestone complete — all audit deliverables validated (Phase 9). -->
+<!-- v0.15.0 Top-Backlog Quick Wins — all four requirements (FEAT-01/02, PERF-01/02) validated. Milestone ready to ship. -->
 
-_None — audit milestone v0.14.0 complete. Backlog ready to promote into the next milestone._
+_(none — all milestone requirements validated)_
 
 ### Out of Scope
 
@@ -65,6 +79,7 @@ _None — audit milestone v0.14.0 complete. Backlog ready to promote into the ne
 
 ## Current State
 
+- **In progress: v0.15.0 Top-Backlog Quick Wins** — both phases complete; all 4 requirements validated. Phase 11 complete (2026-08-11): PERF-01 (parallel CV folds via `iter_maybe_parallel!`) + PERF-02 (faer `thin_svd` FPCA backend under `linalg`) shipped with equivalence tests; full suite 1948 tests green, clippy clean, phase VERIFICATION passed 9/9. Code review flagged 3 advisory quality items (a weakened MEWMA test assertion, `fix_svd_signs` NaN no-op, an over-broad test name) tracked for a future phase. Phase 10 complete (2026-08-10): FEAT-01 (spline interpolation) + FEAT-02 (functional summary statistics), VERIFICATION 4/4. Milestone ready to ship (`/gsd-ship` / `/gsd-complete-milestone`).
 - **Shipped: v0.14.0 audit milestone** (2026-08-09) — 9 phases, 21 plans, all VERIFICATION passed, milestone audit passed (13/13 requirements, integration sound). Zero `fdars-core/src/` edits.
 - **Deliverables:** `.planning/research/AUDIT-REPORT.md` (consolidated report — methodology, 5 performance findings, 82 in-scope gaps, 30 fdars strengths) and `.planning/research/BACKLOG.md` (32-item value-ranked backlog, `score = value/√effort`, promotion-ready 7-field blocks).
 - **Headline findings:** SVD dominates FPCA wall-clock (~99.8%); faer `thin_svd` 1.8–4.1× faster than nalgebra; elastic alignment is the top bottleneck (infeasible at N=500,M=200 on the default path); 82 actionable capability gaps vs scikit-fda 0.10.1 (36 table-stakes, 46 differentiator); 30 fdars-exclusive strengths.
@@ -106,6 +121,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-09 after v0.14.0 milestone — audit milestone shipped (9 phases, 13/13 requirements, milestone audit passed): AUDIT-REPORT.md + BACKLOG.md finalized, backlog ready to promote via `/gsd-new-milestone`. Full per-phase history below.*
+*Last updated: 2026-08-10 — Phase 10 complete (FEAT-01 spline interpolation + FEAT-02 functional summary statistics landed in `fdars-core`, tests green, VERIFICATION passed). Phase 11 (PERF-01, PERF-02) pending. Milestone v0.15.0 (Top-Backlog Quick Wins): 4 promoted backlog items, first implementation milestone. Prior: 2026-08-09 after v0.14.0 milestone — audit milestone shipped (9 phases, 13/13 requirements, milestone audit passed): AUDIT-REPORT.md + BACKLOG.md finalized, backlog ready to promote via `/gsd-new-milestone`. Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*

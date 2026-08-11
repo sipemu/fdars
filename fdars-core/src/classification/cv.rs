@@ -1,8 +1,11 @@
 //! Cross-validation for functional classification.
 
 use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 use super::lda::{lda_params, lda_predict};
 use super::qda::{build_qda_params, qda_predict};
@@ -71,44 +74,43 @@ pub fn fclassif_cv(
     // Assign folds
     let folds = assign_folds(n, nfold, seed);
 
-    let mut fold_errors = Vec::with_capacity(nfold);
+    let fold_errors: Vec<f64> = iter_maybe_parallel!(0..nfold)
+        .map(|fold| {
+            let (train_idx, test_idx) = fold_split(&folds, fold);
+            let train_data = extract_class_data(data, &train_idx);
+            let test_data = extract_class_data(data, &test_idx);
+            let train_labels: Vec<usize> = train_idx.iter().map(|&i| labels[i]).collect();
+            let test_labels: Vec<usize> = test_idx.iter().map(|&i| labels[i]).collect();
 
-    for fold in 0..nfold {
-        let (train_idx, test_idx) = fold_split(&folds, fold);
-        let train_data = extract_class_data(data, &train_idx);
-        let test_data = extract_class_data(data, &test_idx);
-        let train_labels: Vec<usize> = train_idx.iter().map(|&i| labels[i]).collect();
-        let test_labels: Vec<usize> = test_idx.iter().map(|&i| labels[i]).collect();
+            let train_cov = scalar_covariates.map(|c| extract_class_data(c, &train_idx));
+            let test_cov = scalar_covariates.map(|c| extract_class_data(c, &test_idx));
 
-        let train_cov = scalar_covariates.map(|c| extract_class_data(c, &train_idx));
-        let test_cov = scalar_covariates.map(|c| extract_class_data(c, &test_idx));
+            let predictions = cv_fold_predict(
+                &train_data,
+                &test_data,
+                argvals,
+                &train_labels,
+                g,
+                train_cov.as_ref(),
+                test_cov.as_ref(),
+                method,
+                ncomp,
+            );
 
-        let predictions = cv_fold_predict(
-            &train_data,
-            &test_data,
-            argvals,
-            &train_labels,
-            g,
-            train_cov.as_ref(),
-            test_cov.as_ref(),
-            method,
-            ncomp,
-        );
-
-        let n_test = test_labels.len();
-        let errors = match predictions {
-            Some(pred) => {
-                let wrong = pred
-                    .iter()
-                    .zip(&test_labels)
-                    .filter(|(&p, &t)| p != t)
-                    .count();
-                wrong as f64 / n_test as f64
+            let n_test = test_labels.len();
+            match predictions {
+                Some(pred) => {
+                    let wrong = pred
+                        .iter()
+                        .zip(&test_labels)
+                        .filter(|(&p, &t)| p != t)
+                        .count();
+                    wrong as f64 / n_test as f64
+                }
+                None => 1.0,
             }
-            None => 1.0,
-        };
-        fold_errors.push(errors);
-    }
+        })
+        .collect();
 
     let error_rate = fold_errors.iter().sum::<f64>() / nfold as f64;
 
@@ -329,4 +331,69 @@ pub(super) fn extract_class_data(data: &FdMatrix, indices: &[usize]) -> FdMatrix
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a small deterministic classification dataset: n observations,
+    /// m evaluation points, 2 well-separated classes (first n/2 are class 0,
+    /// rest are class 1), argvals on [0, 1].
+    fn make_test_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<usize>) {
+        let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+        let mut raw = vec![0.0f64; n * m];
+        // Column-major: element (i, j) is at index i + j * n
+        for i in 0..n {
+            let class_offset = if i < n / 2 { 0.0 } else { 5.0 };
+            for j in 0..m {
+                // Simple bump function shifted by class_offset — well-separated classes
+                raw[i + j * n] = class_offset + (argvals[j] * std::f64::consts::PI).sin();
+            }
+        }
+        let data = FdMatrix::from_column_major(raw, n, m).unwrap();
+        let labels: Vec<usize> = (0..n).map(|i| if i < n / 2 { 0 } else { 1 }).collect();
+        (data, argvals, labels)
+    }
+
+    /// Verify that `fclassif_cv` produces bit-for-bit identical results when called
+    /// twice with the same seed and arguments, regardless of whether the `parallel`
+    /// feature is enabled.  This proves the collect-in-order determinism contract
+    /// for the parallelized fold loop.
+    #[test]
+    fn test_fclassif_cv_parallel_matches_sequential() {
+        let n = 20;
+        let m = 10;
+        let ncomp = 2;
+        let nfold = 5;
+        let seed = 42u64;
+
+        let (data, argvals, labels) = make_test_data(n, m);
+
+        let res_a = fclassif_cv(&data, &argvals, &labels, None, "lda", ncomp, nfold, seed)
+            .expect("fclassif_cv call A failed");
+        let res_b = fclassif_cv(&data, &argvals, &labels, None, "lda", ncomp, nfold, seed)
+            .expect("fclassif_cv call B failed");
+
+        assert_eq!(
+            res_a.fold_errors.len(),
+            res_b.fold_errors.len(),
+            "fold_errors length mismatch"
+        );
+        for (i, (&a, &b)) in res_a
+            .fold_errors
+            .iter()
+            .zip(res_b.fold_errors.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a, b,
+                "fold_errors[{i}] not bit-for-bit identical: {a} vs {b}"
+            );
+        }
+        assert_eq!(
+            res_a.error_rate, res_b.error_rate,
+            "error_rate not bit-for-bit identical"
+        );
+    }
 }
