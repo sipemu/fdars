@@ -19,8 +19,8 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 | Area | Capabilities |
 |------|-------------|
-| **Core** | Simulation (KL expansion, GP with 8 kernels), functional operations, smoothing (NW, local polynomial, k-NN), basis representations (B-spline, Fourier, P-spline) |
-| **Descriptive** | 10 depth measures + streaming online depth, 12 distance metrics (Lp, DTW, elastic, semimetrics, KL), LRT outlier detection |
+| **Core** | Simulation (KL expansion, GP with 8 kernels), functional operations, smoothing (NW, local polynomial, k-NN), spline interpolation, basis representations (B-spline, Fourier, P-spline) |
+| **Descriptive** | 8 depth measures + streaming online depth, functional summary statistics (variance, std, covariance, depth-based median, trimmed mean), 12 distance metrics (Lp, DTW, elastic, semimetrics, KL), LRT outlier detection |
 | **Regression** | Scalar-on-function (FPC, kernel, logistic, robust), function-on-scalar (FOSR, 2D FOSR, FANOVA), FPCA, PLS, ridge, mixed effects |
 | **Classification** | LDA, QDA, k-NN, kernel, DD-classifier, conformal prediction sets; k-means, fuzzy c-means, GMM |
 | **Elastic Alignment** | SRSF/DP alignment, Karcher mean (1-D/N-D), TSRVF, Bayesian (pCN MCMC), closed curves, transfer alignment, partial matching, multi-resolution, generative models, geodesics, FPNS, lambda CV, peak persistence |
@@ -47,7 +47,7 @@ devtools::install_github("sipemu/fdars-r")
 
 ```toml
 [dependencies]
-fdars-core = "0.9"
+fdars-core = "0.15"
 ```
 
 Or install from the repository:
@@ -67,7 +67,7 @@ For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.9", default-features = false }
+fdars-core = { version = "0.15", default-features = false }
 ```
 
 ## Data Layout
@@ -99,7 +99,7 @@ let depths = depth::fraiman_muniz_1d(&mat, &mat, true);
 
 ## Examples
 
-27 runnable examples in [`fdars-core/examples/`](fdars-core/examples/):
+28 runnable examples in [`fdars-core/examples/`](fdars-core/examples/):
 
 | # | Example | Topics |
 |---|---------|--------|
@@ -130,6 +130,7 @@ let depths = depth::fraiman_muniz_1d(&mat, &mat, true);
 | 25 | [Explainability](fdars-core/examples/25_explainability/)` *` | SHAP, ALE, PDP, anchors |
 | 26 | [Elastic Analysis](fdars-core/examples/26_elastic_analysis/)` *` | Elastic FPCA, regression, PCR |
 | 27 | [SPM](fdars-core/examples/27_spm/) | Phase I/II, EWMA, CUSUM, rules |
+| 28 | [Berkeley Growth](fdars-core/examples/28_berkeley_growth/) | Growth-curve case study: P-spline smoothing, GCV/AIC/BIC selection, 10-fold CV, PLS |
 
 `*` requires `--features linalg`
 
