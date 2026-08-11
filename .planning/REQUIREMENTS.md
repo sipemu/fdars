@@ -52,7 +52,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERF-03 | TBD | Pending |
-| FEAT-03 | TBD | Pending |
-| FEAT-04 | TBD | Pending |
-| FEAT-05 | TBD | Pending |
+| PERF-03 | Phase 12 | Pending |
+| FEAT-03 | Phase 13 | Pending |
+| FEAT-04 | Phase 13 | Pending |
+| FEAT-05 | Phase 13 | Pending |
