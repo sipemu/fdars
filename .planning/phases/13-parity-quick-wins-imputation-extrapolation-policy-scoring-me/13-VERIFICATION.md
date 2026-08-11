@@ -1,19 +1,15 @@
 ---
 phase: 13-parity-quick-wins-imputation-extrapolation-policy-scoring-me
 verified: 2026-08-11T21:26:47Z
-status: gaps_found
-score: 7/8
+status: passed
+score: 8/8
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
+gap_closure: "Resolved 2026-08-12 (commit ef8f6999): spline_interpolate_with_policy(data, argvals, query_points, order, policy) added to helpers.rs and re-exported at crate root, with 6 inline tests covering all four ExtrapolationPolicy variants + the zero-length-domain guard. ROADMAP SC#2 / FEAT-04 now covers both the linear/cubic path (fdata_interpolate_with_policy) and the spline path. Also fixed in the same pass (commit efa190ad): CR-01 (Periodic zero-length-domain NaN → now InvalidParameter), CR-02 (functional_explained_variance false 1.0 → relative guard), WR-01 (impute m=0 → InvalidDimension), IN-01 (redundant cfg(test)). Full suite (1993 unit + 532 integration + 138 doc) green; clippy --all-targets --all-features clean."
+resolved_gaps:
   - truth: "ExtrapolationPolicy threads through spline_interpolate and the existing linear interpolation/evaluation path (ROADMAP SC #2 / FEAT-04)"
-    status: partial
-    reason: "fdata_interpolate_with_policy covers the linear+cubic-hermite path only. spline_interpolate still accepts no ExtrapolationPolicy argument and always errors on OOB (hardcoded Exception-equivalent). The ROADMAP SC says both paths must be covered; only one is."
-    artifacts:
-      - path: "fdars-core/src/helpers.rs"
-        issue: "spline_interpolate (line 416) does not accept ExtrapolationPolicy. No spline_interpolate_with_policy exists. spline_interpolate hardcodes an OOB error (line 448-455), giving only Exception-equivalent behavior."
-    missing:
-      - "A spline_interpolate_with_policy(data, argvals, query_points, order, policy: ExtrapolationPolicy) -> Result<FdMatrix, FdarError> wrapper that dispatches OOB to the policy (Boundary=clamp, Exception=error, Fill=constant, Periodic=wrap) OR evidence that the ROADMAP SC was intentionally narrowed to exclude spline"
+    status: resolved
+    resolution: "spline_interpolate_with_policy added (ef8f6999), re-exported, 6 tests. Both paths now covered."
 ---
 
 # Phase 13: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics Verification Report

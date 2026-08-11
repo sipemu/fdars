@@ -15,9 +15,9 @@ Requirements for the v0.16.0 release. Each maps to exactly one roadmap phase.
 
 ### Capabilities
 
-- [ ] **FEAT-03**: A caller can impute missing values (`NaN`) in a regular-grid `FdMatrix` via a new public function returning `Result<FdMatrix, FdarError>`, with at least mean/linear-interpolation strategies over each curve; input validation rejects all-missing curves or unsupported configurations. Inline tests verify imputation reproduces known values on synthetic gaps and errors on invalid input. *(audit: PREP-03, rank 5, P2/S — `helpers.rs`, `irreg_fdata/`)*
-- [ ] **FEAT-04**: Interpolation/evaluation of functional data accepts a composable **`ExtrapolationPolicy`** enum — `Boundary` (clamp to nearest edge), `Exception` (return `FdarError` for out-of-range queries), `Fill(value)` (constant fill), and `Periodic` (wrap) — controlling behavior for query points outside `argvals`. It threads through `spline_interpolate` (and the existing linear path); inline tests exercise each variant, including the error path for `Exception`. *(audit: REPR-03, rank 6, P2/S — `helpers.rs` interpolation/evaluation paths)*
-- [ ] **FEAT-05**: A caller can score functional predictions against observations via public metric functions over `FdMatrix` — `functional_mae`, `functional_mse` (and `functional_mape`, `functional_msle`, `functional_explained_variance`) — each returning `Result<_, FdarError>` with dimension validation. Inline tests verify each against a hand-computed reference. *(audit: MISC-04, rank 9, P2/S — new `scoring.rs`)*
+- [x] **FEAT-03**: A caller can impute missing values (`NaN`) in a regular-grid `FdMatrix` via a new public function returning `Result<FdMatrix, FdarError>`, with at least mean/linear-interpolation strategies over each curve; input validation rejects all-missing curves or unsupported configurations. Inline tests verify imputation reproduces known values on synthetic gaps and errors on invalid input. *(audit: PREP-03, rank 5, P2/S — `helpers.rs`, `irreg_fdata/`)*
+- [x] **FEAT-04**: Interpolation/evaluation of functional data accepts a composable **`ExtrapolationPolicy`** enum — `Boundary` (clamp to nearest edge), `Exception` (return `FdarError` for out-of-range queries), `Fill(value)` (constant fill), and `Periodic` (wrap) — controlling behavior for query points outside `argvals`. It threads through `spline_interpolate` (and the existing linear path); inline tests exercise each variant, including the error path for `Exception`. *(audit: REPR-03, rank 6, P2/S — `helpers.rs` interpolation/evaluation paths)*
+- [x] **FEAT-05**: A caller can score functional predictions against observations via public metric functions over `FdMatrix` — `functional_mae`, `functional_mse` (and `functional_mape`, `functional_msle`, `functional_explained_variance`) — each returning `Result<_, FdarError>` with dimension validation. Inline tests verify each against a hand-computed reference. *(audit: MISC-04, rank 9, P2/S — new `scoring.rs`)*
 
 ## v2 Requirements
 
@@ -53,6 +53,6 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PERF-03 | Phase 12 | Complete |
-| FEAT-03 | Phase 13 | Pending |
-| FEAT-04 | Phase 13 | Pending |
-| FEAT-05 | Phase 13 | Pending |
+| FEAT-03 | Phase 13 | Complete |
+| FEAT-04 | Phase 13 | Complete |
+| FEAT-05 | Phase 13 | Complete |

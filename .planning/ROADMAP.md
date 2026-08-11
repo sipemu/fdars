@@ -90,6 +90,7 @@ Full phase detail: [milestones/v0.15.0-ROADMAP.md](milestones/v0.15.0-ROADMAP.md
   5. `cargo test -p fdars-core --features linalg` and `cargo clippy -p fdars-core --features linalg` pass with the new imputation, extrapolation-policy, and scoring functions covered.
 
 **Plans**: 2 plans
+
 - [x] 13-01-PLAN.md — FEAT-03 imputation + FEAT-04 extrapolation policy (both in helpers.rs, serialized)
 - [x] 13-02-PLAN.md — FEAT-05 functional scoring metrics (new scoring.rs)
 
@@ -103,7 +104,7 @@ Phases execute in numeric order: 12 → 13. Phases 12 and 13 are mutually indepe
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 12. Elastic Feasibility (Banded Alignment & `band_frac`) | v0.16.0 | 1/1 | Complete    | 2026-08-11 |
-| 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 2/2 | Complete | 2026-08-11 |
+| 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 3/2 | Complete    | 2026-08-11 |
 
 ## Coverage
 
