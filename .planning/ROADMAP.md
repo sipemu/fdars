@@ -70,7 +70,8 @@ Full phase detail: [milestones/v0.15.0-ROADMAP.md](milestones/v0.15.0-ROADMAP.md
   4. A benchmark or timing test demonstrates the feasibility improvement at a large (N, M) — the banded path completes an alignment that the unbanded default previously made infeasible (audit measured ~4–6× at representative cells).
   5. `cargo test -p fdars-core --features linalg` and `cargo clippy -p fdars-core --features linalg` pass with the new/changed alignment API covered; every new/changed public function returns `Result<T, FdarError>` and respects the column-major `FdMatrix` layout.
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 12-01-PLAN.md — Opt-in `*_with_band(band_frac: Option<f64>)` wrappers for `karcher_mean` / self+cross distance matrices, crate-root re-exports, equivalence + feasibility tests
 
 **Note:** PERF-ELASTIC-BAND is the P1 headline (value 5) — the banded implementations already exist; the work is API surfacing/defaulting + equivalence and feasibility tests, not a new algorithm. Isolated to `alignment/`, so it stands alone as its own phase and can execute concurrently with Phase 13 (no shared files).
 
