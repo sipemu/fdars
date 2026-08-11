@@ -2731,3 +2731,44 @@ fn test_karcher_mean_banded_runs() {
         }
     }
 }
+
+#[test]
+fn test_karcher_mean_with_band_none_matches_exact() {
+    // None -> unwrap_or(0.0) -> band_radius(0.0, m) -> None -> same unbanded impl.
+    // Results must be element-wise identical within 1e-15.
+    let data = make_test_data(8, 30, 11);
+    let t = uniform_grid(30);
+
+    let base = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+    let banded = karcher_mean_with_band(&data, &t, 20, 1e-4, 0.0, None);
+
+    assert_eq!(base.mean.len(), banded.mean.len());
+    assert_eq!(base.n_iter, banded.n_iter);
+    for (a, b) in base.mean.iter().zip(banded.mean.iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "mean mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_karcher_mean_with_band_wide_matches_unbanded() {
+    // At m=30: ceil(0.99 * 30) = 30 >= m-1 = 29, so the band covers the full warp.
+    // Results must match the unbanded path within 1e-12.
+    let data = make_test_data(8, 30, 13);
+    let t = uniform_grid(30);
+
+    let base = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+    let wide = karcher_mean_with_band(&data, &t, 20, 1e-4, 0.0, Some(0.99));
+
+    assert_eq!(base.mean.len(), wide.mean.len());
+    for (a, b) in base.mean.iter().zip(wide.mean.iter()) {
+        assert!(
+            (a - b).abs() < 1e-12,
+            "mean mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}

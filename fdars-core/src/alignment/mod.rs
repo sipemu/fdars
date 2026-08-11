@@ -63,7 +63,7 @@ pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};
-pub use karcher::{karcher_mean, karcher_mean_banded};
+pub use karcher::{karcher_mean, karcher_mean_banded, karcher_mean_with_band};
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
