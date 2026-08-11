@@ -94,7 +94,7 @@ Phases execute in numeric order: 10 → 11. Phases 10 and 11 are mutually indepe
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 10. Capability Gaps (Spline Interp & Summary Stats) | v0.15.0 | 2/2 | Complete    | 2026-08-10 |
-| 11. Performance Wins (Parallel CV & faer SVD) | v0.15.0 | 2/2 | In Progress|  |
+| 11. Performance Wins (Parallel CV & faer SVD) | v0.15.0 | 2/2 | Complete    | 2026-08-11 |
 
 ## Coverage
 
