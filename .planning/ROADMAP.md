@@ -17,8 +17,8 @@ Second implementation milestone. Promotes the next tier of the v0.14.0 audit bac
 - Integer phases (12, 13): Planned milestone work (continuing from v0.15.0's Phase 11)
 - Decimal phases (12.1, 12.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 12: Elastic Feasibility — Banded Alignment Default & `band_frac`** - Expose a banded DP path (`band_frac`) through the elastic alignment API so large grids become tractable; retain the exact unbanded path
-- [ ] **Phase 13: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics** - Add in-grid NaN imputation, a composable `ExtrapolationPolicy` enum, and functional scoring metrics (MAE/MSE/MAPE/MSLE/explained-variance)
+- [x] **Phase 12: Elastic Feasibility — Banded Alignment Default & `band_frac`** - Expose a banded DP path (`band_frac`) through the elastic alignment API so large grids become tractable; retain the exact unbanded path
+- [x] **Phase 13: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics** - Add in-grid NaN imputation, a composable `ExtrapolationPolicy` enum, and functional scoring metrics (MAE/MSE/MAPE/MSLE/explained-variance)
 
 ## Phase Details
 
@@ -90,8 +90,8 @@ Full phase detail: [milestones/v0.15.0-ROADMAP.md](milestones/v0.15.0-ROADMAP.md
   5. `cargo test -p fdars-core --features linalg` and `cargo clippy -p fdars-core --features linalg` pass with the new imputation, extrapolation-policy, and scoring functions covered.
 
 **Plans**: 2 plans
-- [ ] 13-01-PLAN.md — FEAT-03 imputation + FEAT-04 extrapolation policy (both in helpers.rs, serialized)
-- [ ] 13-02-PLAN.md — FEAT-05 functional scoring metrics (new scoring.rs)
+- [x] 13-01-PLAN.md — FEAT-03 imputation + FEAT-04 extrapolation policy (both in helpers.rs, serialized)
+- [x] 13-02-PLAN.md — FEAT-05 functional scoring metrics (new scoring.rs)
 
 **Note:** FEAT-03, FEAT-04, FEAT-05 are independent effort-S additive parity gaps. FEAT-03 (imputation) and FEAT-04 (extrapolation policy) both touch `helpers.rs`; FEAT-05 (scoring) lands in a new `scoring.rs`. The three plans are largely parallelizable, but FEAT-03 and FEAT-04 share `helpers.rs` — sequence or serialize those two writes (e.g. same wave with careful non-overlapping edits, or adjacent waves) to avoid a merge collision on that file.
 
@@ -103,7 +103,7 @@ Phases execute in numeric order: 12 → 13. Phases 12 and 13 are mutually indepe
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 12. Elastic Feasibility (Banded Alignment & `band_frac`) | v0.16.0 | 1/1 | Complete    | 2026-08-11 |
-| 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 0/2 | Not started | - |
+| 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 2/2 | Complete | 2026-08-11 |
 
 ## Coverage
 

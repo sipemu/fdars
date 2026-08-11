@@ -5,16 +5,16 @@ milestone_name: Elastic Feasibility + Parity Quick Wins
 current_phase: 13
 current_phase_name: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics
 status: in-progress
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-08-11T21:05:00.000Z"
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-08-11T21:13:00.000Z"
 last_activity: 2026-08-11
-last_activity_desc: Completed Phase 13 Plan 01 — ExtrapolationPolicy (FEAT-04) + impute_missing_values (FEAT-03)
+last_activity_desc: Completed Phase 13 Plan 02 — functional_mae/mse/mape/msle/explained_variance in new scoring.rs (FEAT-05)
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 2
   completed_plans: 2
-  percent: 75
+  percent: 100
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 ## Current Position
 
 Phase: 13 — Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics
-Plan: 01 complete (FEAT-03 + FEAT-04); 02 pending (FEAT-05 scoring)
-Status: In progress
-Last activity: 2026-08-11 — Plan 13-01 complete; ExtrapolationPolicy + impute_missing_values added
+Plan: 01 complete (FEAT-03 + FEAT-04); 02 complete (FEAT-05 scoring)
+Status: Complete — Phase 13 all plans done
+Last activity: 2026-08-11 — Plan 13-02 complete; scoring.rs with all five functional metrics added
 
 ## Milestone Roadmap (v0.16.0)
 
@@ -72,6 +72,7 @@ Phases 12 and 13 are mutually independent (disjoint files) and may be executed i
 |------|----------|-------|-------|
 | Phase 12-elastic-feasibility-banded-alignment-default-band-frac P01 | 22 | 3 tasks | 6 files |
 | Phase 13-parity-quick-wins P01 (FEAT-03 + FEAT-04) | 30 min | 3 tasks | 2 files |
+| Phase 13-parity-quick-wins P02 (FEAT-05 scoring) | 10 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -125,10 +126,11 @@ Items acknowledged at v0.15.0 milestone close (2026-08-11):
 
 ## Session Continuity
 
-Last session: 2026-08-11T21:05:00.000Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-08-11T21:13:00.000Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Phase 13 Plan 02 (FEAT-05 scoring metrics: functional_mae, functional_mse, functional_mape, functional_msle, functional_explained_variance in new scoring.rs)
+- Phase 13 complete. All three parity gaps closed: FEAT-03 (imputation), FEAT-04 (ExtrapolationPolicy), FEAT-05 (scoring metrics).
+- Next: run /gsd-verify-work to validate Phase 13, then /gsd-complete-milestone for v0.16.0.
