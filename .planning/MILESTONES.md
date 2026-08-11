@@ -1,5 +1,18 @@
 # Milestones
 
+## v0.15.0 Top-Backlog Quick Wins (Shipped: 2026-08-11)
+
+**Phases completed:** 2 phases, 4 plans, 0 tasks
+
+**Key accomplishments:**
+
+- Adds `spline_interpolate` — order-k B-spline fit-then-evaluate interpolation using the existing `basis/bspline` system, resolving FEAT-01 (REPR-02) with full input validation and 5 inline tests covering exact reproduction and off-grid accuracy.
+- Adds five public functional descriptive-statistics functions to `fdata.rs` — Bessel-corrected pointwise variance/std/covariance and FM-depth-based median/trim_mean — closing FEAT-02 (EXPL-02 gap vs scikit-fda).
+- Task 1 (tracer): Parallelize the fclassif_cv fold loop
+- `fdata_to_pc_1d` now decomposes its weighted matrix with faer `Svd::new_thin` on a zero-copy `MatRef` view under the `linalg` feature — eliminating the dense `to_dmatrix()` copy — while a shared `fix_svd_signs` helper reconciles singular-vector sign conventions so the faer and nalgebra paths produce equivalent `FpcaResult`s within `1e-8·σ₁`.
+
+---
+
 ## v0.14.0 Performance & scikit-fda Gap Audit (Shipped: 2026-08-09)
 
 **Phases completed:** 9 phases, 21 plans, 25 tasks
