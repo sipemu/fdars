@@ -100,7 +100,7 @@ Phases execute in numeric order: 12 → 13. Phases 12 and 13 are mutually indepe
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 12. Elastic Feasibility (Banded Alignment & `band_frac`) | v0.16.0 | 1/1 | In Progress|  |
+| 12. Elastic Feasibility (Banded Alignment & `band_frac`) | v0.16.0 | 1/1 | Complete    | 2026-08-11 |
 | 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 0/TBD | Not started | - |
 
 ## Coverage
