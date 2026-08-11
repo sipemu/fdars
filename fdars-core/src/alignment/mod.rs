@@ -75,9 +75,10 @@ pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlie
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
     elastic_align_pair_banded, elastic_align_pair_penalized, elastic_cross_distance_matrix,
-    elastic_cross_distance_matrix_banded, elastic_distance, elastic_distance_banded,
-    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, phase_distance_pair,
-    phase_self_distance_matrix, WarpPenaltyType,
+    elastic_cross_distance_matrix_banded, elastic_cross_distance_matrix_with_band,
+    elastic_distance, elastic_distance_banded, elastic_self_distance_matrix,
+    elastic_self_distance_matrix_banded, elastic_self_distance_matrix_with_band,
+    phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
 };
 pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
 pub use persistence::{peak_persistence, PersistenceDiagramResult};

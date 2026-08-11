@@ -212,6 +212,33 @@ pub fn elastic_self_distance_matrix_banded(
     self_distance_matrix_impl(data, argvals, band, lambda)
 }
 
+/// Symmetric elastic distance matrix with an opt-in Sakoe–Chiba band.
+///
+/// This is the ergonomic opt-in variant of [`elastic_self_distance_matrix`]. Pass
+/// `band_frac` to choose between the exact or banded DP path:
+///
+/// - `None` (default): exact unbanded computation, **identical** to
+///   [`elastic_self_distance_matrix`].
+/// - `Some(0.0)`: treated as exact/unbanded (equivalent to `None`), because
+///   `band_radius(0.0, m)` returns `None`.
+/// - `Some(0.1)`: banded path — typically **4–6× faster** with a small
+///   band-approximation error. `band_frac` is a Sakoe–Chiba band width expressed
+///   as a fraction of M (the number of evaluation points).
+/// - `Some(0.99)`: near-full band; at `m ≥ 10` this covers the full warp corridor
+///   and produces output within `1e-12` of the unbanded result.
+///
+/// Existing callers of [`elastic_self_distance_matrix`] are unaffected.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_self_distance_matrix_with_band(
+    data: &FdMatrix,
+    argvals: &[f64],
+    lambda: f64,
+    band_frac: Option<f64>,
+) -> FdMatrix {
+    let band = band_frac.and_then(|f| band_radius(f, argvals.len()));
+    self_distance_matrix_impl(data, argvals, band, lambda)
+}
+
 fn self_distance_matrix_impl(
     data: &FdMatrix,
     argvals: &[f64],
@@ -283,6 +310,34 @@ pub fn elastic_cross_distance_matrix_banded(
     band_frac: f64,
 ) -> FdMatrix {
     let band = band_radius(band_frac, argvals.len());
+    cross_distance_matrix_impl(data1, data2, argvals, band, lambda)
+}
+
+/// Elastic distance matrix between two datasets with an opt-in Sakoe–Chiba band.
+///
+/// This is the ergonomic opt-in variant of [`elastic_cross_distance_matrix`]. Pass
+/// `band_frac` to choose between the exact or banded DP path:
+///
+/// - `None` (default): exact unbanded computation, **identical** to
+///   [`elastic_cross_distance_matrix`].
+/// - `Some(0.0)`: treated as exact/unbanded (equivalent to `None`), because
+///   `band_radius(0.0, m)` returns `None`.
+/// - `Some(0.1)`: banded path — typically **4–6× faster** with a small
+///   band-approximation error. `band_frac` is a Sakoe–Chiba band width expressed
+///   as a fraction of M (the number of evaluation points).
+/// - `Some(0.99)`: near-full band; at `m ≥ 10` this covers the full warp corridor
+///   and produces output within `1e-12` of the unbanded result.
+///
+/// Existing callers of [`elastic_cross_distance_matrix`] are unaffected.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_cross_distance_matrix_with_band(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    lambda: f64,
+    band_frac: Option<f64>,
+) -> FdMatrix {
+    let band = band_frac.and_then(|f| band_radius(f, argvals.len()));
     cross_distance_matrix_impl(data1, data2, argvals, band, lambda)
 }
 
