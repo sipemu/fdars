@@ -171,9 +171,10 @@ pub use alignment::{
 // Re-export commonly used items
 pub use helpers::{
     aic, bandwidth_candidates_from_dists, bic, cumulative_trapz, extract_curves, fdata_interpolate,
-    gaussian_kernel, gradient, gradient_nonuniform, gradient_uniform, l2_distance, linear_interp,
-    quantile_sorted, r_squared, r_squared_adj, simpsons_weights, simpsons_weights_2d,
-    spline_interpolate, trapz, InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
+    fdata_interpolate_with_policy, gaussian_kernel, gradient, gradient_nonuniform,
+    gradient_uniform, l2_distance, linear_interp, quantile_sorted, r_squared, r_squared_adj,
+    simpsons_weights, simpsons_weights_2d, spline_interpolate, trapz, ExtrapolationPolicy,
+    InterpolationMethod, DEFAULT_CONVERGENCE_TOL, NUMERICAL_EPS,
 };
 
 // Re-export warping utilities
