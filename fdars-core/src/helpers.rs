@@ -507,6 +507,161 @@ pub fn spline_interpolate(
     Ok(out)
 }
 
+/// Interpolate functional data to a new grid using B-splines with explicit extrapolation control.
+///
+/// Like [`spline_interpolate`] but applies `policy` for any query point that falls outside the
+/// domain `[argvals[0], argvals[m-1]]` instead of always returning an error. In-range queries
+/// produce identical values to the [`spline_interpolate`] path.
+///
+/// # Arguments
+/// * `data`         — Functional data matrix (`n × m`)
+/// * `argvals`      — Original evaluation points (length `m`, must be sorted)
+/// * `query_points` — Points to evaluate at (may include out-of-range values)
+/// * `order`        — B-spline order (1 = linear, 2 = quadratic, 4 = cubic, …); must be in `[1, m)`
+/// * `policy`       — Extrapolation policy for out-of-range query points
+///
+/// # Returns
+/// Interpolated `FdMatrix` of shape `(n, query_points.len())`
+///
+/// # Errors
+/// * `FdarError::InvalidDimension` — `argvals.len() != data.ncols()` or `query_points` is empty
+/// * `FdarError::InvalidParameter` — `order` is 0 or ≥ `m`; or `policy == Exception` and any
+///   query point is outside `[argvals[0], argvals[m-1]]`; or `policy == Periodic` and the domain
+///   length is zero
+/// * `FdarError::ComputationFailed` — SVD pseudoinverse could not be computed
+///
+/// # Policy Semantics
+/// * `Boundary` — clamp OOB query to the nearest boundary (`t_min` or `t_max`) before spline eval
+/// * `Exception` — return `Err(FdarError::InvalidParameter { parameter: "query_points", .. })` on first OOB
+/// * `Fill(v)` — set OOB output cells to constant `v`; in-range cells use spline interpolation
+/// * `Periodic` — wrap OOB query modulo the domain length (same recipe as in
+///   [`fdata_interpolate_with_policy`]); requires `argvals[0] < argvals[m-1]`
+pub fn spline_interpolate_with_policy(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    query_points: &[f64],
+    order: usize,
+    policy: ExtrapolationPolicy,
+) -> Result<crate::matrix::FdMatrix, crate::FdarError> {
+    let (n, m) = data.shape();
+
+    // --- Input validation (mirrors spline_interpolate) ---
+    if argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if query_points.is_empty() {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "query_points",
+            expected: ">= 1".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if order == 0 || order >= m {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("must be in [1, {m}), got {order}"),
+        });
+    }
+
+    let t_min = argvals[0];
+    let t_max = argvals[m - 1];
+    let domain_len = t_max - t_min;
+
+    // Periodic requires a positive domain length.
+    if domain_len <= 0.0 && matches!(policy, ExtrapolationPolicy::Periodic) {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "Periodic extrapolation requires a positive domain length \
+                      (argvals[0] < argvals[m-1])"
+                .to_string(),
+        });
+    }
+
+    let m_q = query_points.len();
+
+    // --- Map each query point to an effective in-range point (or mark as Fill) ---
+    // `effective[j]` holds the remapped query to pass to the spline; `fill_mask[j]` is true
+    // when the output should be the Fill constant instead.
+    let mut effective = Vec::with_capacity(m_q);
+    let mut fill_mask = vec![false; m_q];
+
+    for (j, &q) in query_points.iter().enumerate() {
+        let in_range = q >= t_min && q <= t_max;
+        if in_range {
+            effective.push(q);
+        } else {
+            match &policy {
+                ExtrapolationPolicy::Boundary => effective.push(q.clamp(t_min, t_max)),
+                ExtrapolationPolicy::Exception => {
+                    return Err(crate::FdarError::InvalidParameter {
+                        parameter: "query_points",
+                        message: format!(
+                            "query {q} is outside domain [{t_min}, {t_max}]"
+                        ),
+                    });
+                }
+                ExtrapolationPolicy::Fill(_) => {
+                    // Placeholder; we will overwrite this column from the fill value.
+                    fill_mask[j] = true;
+                    effective.push(t_min); // dummy in-range value — will be discarded
+                }
+                ExtrapolationPolicy::Periodic => {
+                    let wrapped =
+                        t_min + ((q - t_min) % domain_len + domain_len) % domain_len;
+                    effective.push(wrapped);
+                }
+            }
+        }
+    }
+
+    // --- Run the core spline logic on the effective (all in-range) query points ---
+    // Reuse the same SVD-based evaluation as spline_interpolate.
+    let nknots = m.saturating_sub(order).max(2);
+    let knots =
+        crate::basis::bspline::construct_bspline_knots(t_min, t_max, nknots, order);
+    let basis_vals = crate::basis::bspline::bspline_basis(argvals, nknots, order);
+    let nbasis = basis_vals.len() / m;
+    let b_mat = nalgebra::DMatrix::from_column_slice(m, nbasis, &basis_vals);
+    let tol = NUMERICAL_EPS * b_mat.nrows().max(b_mat.ncols()) as f64;
+    let svd = nalgebra::SVD::new(b_mat.clone(), true, true);
+    let pinv = svd
+        .pseudo_inverse(tol)
+        .map_err(|e| crate::FdarError::ComputationFailed {
+            operation: "spline_interpolate_with_policy SVD pseudoinverse",
+            detail: e.to_string(),
+        })?;
+    let basis_query =
+        crate::basis::bspline::bspline_basis_from_knots(&effective, &knots, order);
+
+    let mut out = crate::matrix::FdMatrix::zeros(n, m_q);
+    for i in 0..n {
+        let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        let y_col = nalgebra::DVector::from_vec(y_vec);
+        let coefs = &pinv * y_col;
+
+        for j in 0..m_q {
+            if fill_mask[j] {
+                // Fill policy: overwrite with constant.
+                if let ExtrapolationPolicy::Fill(v) = policy {
+                    out[(i, j)] = v;
+                }
+            } else {
+                let mut val = 0.0_f64;
+                for k in 0..nbasis {
+                    val += coefs[k] * basis_query[j + k * m_q];
+                }
+                out[(i, j)] = val;
+            }
+        }
+    }
+
+    Ok(out)
+}
+
 /// Cubic Hermite interpolation at a single point.
 ///
 /// Uses Fritsch-Carlson monotone slopes for C1 interpolation.
@@ -1358,6 +1513,202 @@ mod tests {
                 }
             ),
             "expected InvalidDimension for empty query_points, got {err2:?}"
+        );
+    }
+
+    // ── spline_interpolate_with_policy tests ──────────────────────────────
+
+    #[test]
+    fn test_spline_with_policy_in_range_matches_spline() {
+        // In-range queries must match spline_interpolate exactly regardless of policy.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let poly = |x: f64| 2.0 * x.powi(3) - x.powi(2) + 0.5 * x - 0.1;
+        let vals: Vec<f64> = t.iter().map(|&x| poly(x)).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        // Off-grid midpoints (all in-range)
+        let q: Vec<f64> = t.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+        let expected = spline_interpolate(&data, &t, &q, 4).unwrap();
+        let actual = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            4,
+            ExtrapolationPolicy::Boundary,
+        )
+        .unwrap();
+        for j in 0..q.len() {
+            assert!(
+                (actual[(0, j)] - expected[(0, j)]).abs() < 1e-10,
+                "in-range mismatch at j={j}: policy={} vs plain={}",
+                actual[(0, j)],
+                expected[(0, j)]
+            );
+        }
+    }
+
+    #[test]
+    fn test_spline_with_policy_boundary() {
+        // OOB queries clamped to nearest boundary value.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // [0, 1]
+        let vals: Vec<f64> = t.iter().map(|&x| x.powi(2)).collect(); // y = x^2
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        // Query below (should clamp to t_min=0 → y=0) and above (clamp to t_max=1 → y≈1).
+        let q = vec![-0.5_f64, 0.5, 1.5];
+        let result = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            4,
+            ExtrapolationPolicy::Boundary,
+        )
+        .unwrap();
+        // Clamped to 0 → y = 0^2 = 0 (within spline tolerance)
+        assert!(result[(0, 0)].abs() < 1e-9, "below boundary should clamp, got {}", result[(0, 0)]);
+        // Clamped to 1 → y = 1^2 = 1 (within spline tolerance)
+        assert!((result[(0, 2)] - 1.0).abs() < 1e-9, "above boundary should clamp, got {}", result[(0, 2)]);
+        // In-range 0.5 → y ≈ 0.25
+        assert!((result[(0, 1)] - 0.25).abs() < 1e-9, "in-range should be ~0.25, got {}", result[(0, 1)]);
+    }
+
+    #[test]
+    fn test_spline_with_policy_exception() {
+        // Exception policy errors on OOB, matches spline_interpolate behavior.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let vals: Vec<f64> = t.to_vec();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let q_oob = vec![1.5_f64];
+        let err = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q_oob,
+            4,
+            ExtrapolationPolicy::Exception,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "query_points",
+                    ..
+                }
+            ),
+            "Exception policy should error on OOB, got {err:?}"
+        );
+        // In-range queries with Exception policy should succeed.
+        let q_ok = vec![0.0_f64, 0.5, 1.0];
+        let ok = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q_ok,
+            4,
+            ExtrapolationPolicy::Exception,
+        );
+        assert!(ok.is_ok(), "Exception policy should succeed for in-range queries");
+    }
+
+    #[test]
+    fn test_spline_with_policy_fill() {
+        // Fill policy: OOB cells get constant fill value; in-range cells use spline.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // [0, 1]
+        let vals: Vec<f64> = t.iter().map(|&x| x.powi(2)).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let fill_val = 42.0_f64;
+        let q = vec![-0.5_f64, 0.5, 2.0];
+        let result = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            4,
+            ExtrapolationPolicy::Fill(fill_val),
+        )
+        .unwrap();
+        assert!(
+            (result[(0, 0)] - fill_val).abs() < 1e-10,
+            "OOB below should be fill value, got {}",
+            result[(0, 0)]
+        );
+        assert!(
+            (result[(0, 2)] - fill_val).abs() < 1e-10,
+            "OOB above should be fill value, got {}",
+            result[(0, 2)]
+        );
+        // In-range: y ≈ 0.25
+        assert!(
+            (result[(0, 1)] - 0.25).abs() < 1e-9,
+            "in-range should be ~0.25, got {}",
+            result[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_spline_with_policy_periodic() {
+        // Periodic policy: OOB queries wrap modulo domain length.
+        // Use y = x (linear) on [0, 1]; a query at 1.3 should wrap to 0.3.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // [0, 1]
+        let vals: Vec<f64> = t.to_vec(); // y = x
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let q = vec![1.3_f64];
+        let result = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            4,
+            ExtrapolationPolicy::Periodic,
+        )
+        .unwrap();
+        // Expected: wrap 1.3 → 0.3, spline of y=x at 0.3 ≈ 0.3
+        assert!(
+            (result[(0, 0)] - 0.3).abs() < 1e-9,
+            "Periodic wrap of 1.3 should give ~0.3, got {}",
+            result[(0, 0)]
+        );
+        // t = -0.2 → wrap to 0.8
+        let q2 = vec![-0.2_f64];
+        let result2 = spline_interpolate_with_policy(
+            &data,
+            &t,
+            &q2,
+            4,
+            ExtrapolationPolicy::Periodic,
+        )
+        .unwrap();
+        assert!(
+            (result2[(0, 0)] - 0.8).abs() < 1e-9,
+            "Periodic wrap of -0.2 should give ~0.8, got {}",
+            result2[(0, 0)]
+        );
+    }
+
+    #[test]
+    fn test_spline_with_policy_periodic_zero_length_domain_errors() {
+        // Periodic + zero-length domain must error (same guard as fdata_interpolate_with_policy).
+        let argvals = vec![3.0_f64, 3.0, 3.0];
+        let vals = vec![1.0_f64, 1.0, 1.0];
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 3).unwrap();
+        let q = vec![4.0_f64]; // OOB
+        let err = spline_interpolate_with_policy(
+            &data,
+            &argvals,
+            &q,
+            1,
+            ExtrapolationPolicy::Periodic,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "Periodic + zero-length domain should error, got {err:?}"
         );
     }
 
