@@ -820,6 +820,118 @@ pub fn fdata_interpolate_with_policy(
     Ok(result)
 }
 
+// ── FEAT-03: NaN imputation ────────────────────────────────────────────────
+
+/// Strategy for in-grid NaN imputation in a regular `FdMatrix`.
+///
+/// Used with [`impute_missing_values`] to specify how NaN entries are replaced
+/// in each curve.
+///
+/// Leading or trailing NaN values (no neighbor on one side) are filled with
+/// the nearest valid value (boundary extension) for the `Linear` strategy.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ImputationMethod {
+    /// Linear interpolation between the nearest non-NaN neighbors.
+    ///
+    /// For gaps at the boundary (leading or trailing NaN), the nearest valid
+    /// value is used as boundary extension.
+    Linear,
+    /// Replace each NaN with the curve's mean of its non-NaN values.
+    Mean,
+    /// Replace each NaN with a user-supplied constant value.
+    Constant(f64),
+}
+
+/// Impute NaN values in a regular functional data matrix.
+///
+/// Returns a new `FdMatrix` with NaN entries replaced according to `method`.
+/// Non-NaN entries are copied through unchanged.
+///
+/// For `Linear`, gaps at the curve boundary (no neighbor on one side) are
+/// filled with the nearest valid value (boundary extension).
+///
+/// # Arguments
+/// * `data`    — Functional data matrix (`n × m`) with possible NaN entries
+/// * `argvals` — Evaluation points (length `m`, must be sorted)
+/// * `method`  — Imputation strategy
+///
+/// # Errors
+/// * `FdarError::InvalidDimension` if `argvals.len() != data.ncols()`
+/// * `FdarError::InvalidParameter` if any curve consists entirely of NaN values
+pub fn impute_missing_values(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    method: ImputationMethod,
+) -> Result<crate::matrix::FdMatrix, crate::FdarError> {
+    let (n, m) = data.shape();
+    if argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    let mut out_data = vec![0.0_f64; n * m]; // column-major output buffer
+    for i in 0..n {
+        let row: Vec<f64> = data.row(i);
+        let valid_count = row.iter().filter(|v| !v.is_nan()).count();
+        if valid_count == 0 {
+            return Err(crate::FdarError::InvalidParameter {
+                parameter: "data",
+                message: format!("curve {i} contains only NaN values"),
+            });
+        }
+        let imputed = impute_row(&row, argvals, &method);
+        for j in 0..m {
+            out_data[i + j * n] = imputed[j]; // column-major write
+        }
+    }
+    crate::matrix::FdMatrix::from_column_major(out_data, n, m)
+}
+
+/// Impute a single row (curve) of NaN values using the given strategy.
+fn impute_row(row: &[f64], argvals: &[f64], method: &ImputationMethod) -> Vec<f64> {
+    let mut result = row.to_vec();
+    match method {
+        ImputationMethod::Mean => {
+            let sum: f64 = row.iter().filter(|v| !v.is_nan()).sum();
+            let count = row.iter().filter(|v| !v.is_nan()).count();
+            let mean = sum / count as f64;
+            for v in &mut result {
+                if v.is_nan() {
+                    *v = mean;
+                }
+            }
+        }
+        ImputationMethod::Constant(c) => {
+            for v in &mut result {
+                if v.is_nan() {
+                    *v = *c;
+                }
+            }
+        }
+        ImputationMethod::Linear => {
+            let valid_idxs: Vec<usize> = (0..row.len()).filter(|&j| !row[j].is_nan()).collect();
+            for j in 0..row.len() {
+                if result[j].is_nan() {
+                    let left = valid_idxs.iter().rev().find(|&&k| k < j).copied();
+                    let right = valid_idxs.iter().find(|&&k| k > j).copied();
+                    result[j] = match (left, right) {
+                        (Some(l), Some(r)) => {
+                            linear_interp(&[argvals[l], argvals[r]], &[row[l], row[r]], argvals[j])
+                        }
+                        (Some(l), None) => row[l], // boundary fill (trailing NaN)
+                        (None, Some(r)) => row[r], // boundary fill (leading NaN)
+                        (None, None) => unreachable!(), // all-NaN already rejected
+                    };
+                }
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1400,6 +1512,117 @@ mod tests {
             ExtrapolationPolicy::Boundary,
         )
         .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidDimension {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for argvals mismatch, got {err:?}"
+        );
+    }
+
+    // ── ImputationMethod / impute_missing_values tests ────────────────────
+
+    /// Build a 1-curve FdMatrix from given values and a uniform grid.
+    fn make_curve_with_vals(vals: Vec<f64>) -> (crate::matrix::FdMatrix, Vec<f64>) {
+        let m = vals.len();
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let mat = crate::matrix::FdMatrix::from_column_major(vals, 1, m).unwrap();
+        (mat, argvals)
+    }
+
+    #[test]
+    fn test_impute_linear() {
+        // Curve: [0.0, NaN, 1.0] on argvals [0.0, 0.5, 1.0]
+        // Linear between (0,0.0) and (1.0,1.0): at t=0.5 → 0.5
+        let (data, argvals) = make_curve_with_vals(vec![0.0_f64, f64::NAN, 1.0]);
+        let result = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap();
+        // Hand-computed: linear_interp([0.0,1.0],[0.0,1.0],0.5) = 0.5
+        assert!(
+            (result[(0, 1)] - 0.5).abs() < 1e-10,
+            "linear imputation should give 0.5, got {}",
+            result[(0, 1)]
+        );
+        // Non-NaN entries unchanged
+        assert!((result[(0, 0)] - 0.0).abs() < 1e-10);
+        assert!((result[(0, 2)] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_impute_mean() {
+        // Curve: [1.0, NaN, 3.0] → mean of non-NaN = 2.0
+        let (data, argvals) = make_curve_with_vals(vec![1.0_f64, f64::NAN, 3.0]);
+        let result = impute_missing_values(&data, &argvals, ImputationMethod::Mean).unwrap();
+        assert!(
+            (result[(0, 1)] - 2.0).abs() < 1e-10,
+            "mean imputation should give 2.0, got {}",
+            result[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_impute_constant() {
+        // Curve: [1.0, NaN, 3.0] → constant 99.0
+        let (data, argvals) = make_curve_with_vals(vec![1.0_f64, f64::NAN, 3.0]);
+        let result =
+            impute_missing_values(&data, &argvals, ImputationMethod::Constant(99.0)).unwrap();
+        assert!(
+            (result[(0, 1)] - 99.0).abs() < 1e-10,
+            "constant imputation should give 99.0, got {}",
+            result[(0, 1)]
+        );
+        // Non-NaN entries unchanged
+        assert!((result[(0, 0)] - 1.0).abs() < 1e-10);
+        assert!((result[(0, 2)] - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_impute_all_nan() {
+        // An all-NaN curve should return Err(InvalidParameter)
+        let (data, argvals) = make_curve_with_vals(vec![f64::NAN, f64::NAN, f64::NAN]);
+        let err = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for all-NaN curve, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_impute_boundary_nan() {
+        // Curve: [NaN, 0.5, 1.0] → leading NaN → boundary fill with 0.5
+        let (data, argvals) = make_curve_with_vals(vec![f64::NAN, 0.5_f64, 1.0]);
+        let result = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap();
+        assert!(
+            (result[(0, 0)] - 0.5).abs() < 1e-10,
+            "leading NaN should be filled with nearest valid (0.5), got {}",
+            result[(0, 0)]
+        );
+
+        // Curve: [0.0, 0.5, NaN] → trailing NaN → boundary fill with 0.5
+        let (data2, argvals2) = make_curve_with_vals(vec![0.0_f64, 0.5, f64::NAN]);
+        let result2 = impute_missing_values(&data2, &argvals2, ImputationMethod::Linear).unwrap();
+        assert!(
+            (result2[(0, 2)] - 0.5).abs() < 1e-10,
+            "trailing NaN should be filled with nearest valid (0.5), got {}",
+            result2[(0, 2)]
+        );
+    }
+
+    #[test]
+    fn test_impute_dim_mismatch() {
+        // argvals length != ncols
+        let (data, _argvals) = make_curve_with_vals(vec![1.0, 2.0, 3.0]);
+        let bad_argvals = vec![0.0_f64, 1.0]; // len=2, ncols=3
+        let err = impute_missing_values(&data, &bad_argvals, ImputationMethod::Linear).unwrap_err();
         assert!(
             matches!(
                 err,
