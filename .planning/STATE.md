@@ -4,17 +4,17 @@ milestone: v0.16.0
 milestone_name: Elastic Feasibility + Parity Quick Wins
 current_phase: 13
 current_phase_name: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics
-status: planning
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-08-11T20:36:11.943Z"
+status: in-progress
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-08-11T21:05:00.000Z"
 last_activity: 2026-08-11
-last_activity_desc: Milestone v0.16.0 roadmap created (Phases 12–13)
+last_activity_desc: Completed Phase 13 Plan 01 — ExtrapolationPolicy (FEAT-04) + impute_missing_values (FEAT-03)
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 50
+  total_plans: 2
+  completed_plans: 2
+  percent: 75
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-11)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** Phase 12 — Elastic Feasibility (banded alignment default & `band_frac`)
+**Current focus:** Phase 13 — Parity Quick Wins (FEAT-03/04 done; FEAT-05 scoring metrics remaining)
 
 ## Current Position
 
 Phase: 13 — Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-11 — Phase 12 complete, transitioned to Phase 13
+Plan: 01 complete (FEAT-03 + FEAT-04); 02 pending (FEAT-05 scoring)
+Status: In progress
+Last activity: 2026-08-11 — Plan 13-01 complete; ExtrapolationPolicy + impute_missing_values added
 
 ## Milestone Roadmap (v0.16.0)
 
@@ -71,6 +71,7 @@ Phases 12 and 13 are mutually independent (disjoint files) and may be executed i
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 12-elastic-feasibility-banded-alignment-default-band-frac P01 | 22 | 3 tasks | 6 files |
+| Phase 13-parity-quick-wins P01 (FEAT-03 + FEAT-04) | 30 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,7 @@ Phase-specific implementation notes from the audit:
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
 - [Phase ?]: Used *_with_band(Option<f64>) wrappers (not positional parameter addition) to keep non-breaking API per LOCKED decision in CONTEXT.md
 - [Phase ?]: Added _banded variants for self/cross distance matrices to crate-root re-exports for complete discoverability
+- [Phase 13-01]: Result<T,E>-returning fns must NOT have #[must_use] — clippy::double_must_use fires under -D warnings; confirmed by STATE.md convention note
 
 ### Pending Todos
 
@@ -123,10 +125,10 @@ Items acknowledged at v0.15.0 milestone close (2026-08-11):
 
 ## Session Continuity
 
-Last session: 2026-08-11T20:01:29.189Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-08-11T21:05:00.000Z
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 12`
+- Execute Phase 13 Plan 02 (FEAT-05 scoring metrics: functional_mae, functional_mse, functional_mape, functional_msle, functional_explained_variance in new scoring.rs)
