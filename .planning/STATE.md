@@ -4,17 +4,17 @@ milestone: v0.15.0
 milestone_name: Top-Backlog Quick Wins
 current_phase: 10
 current_phase_name: Capability Gaps — Spline Interpolation & Functional Summary Statistics
-status: planning
+status: "Milestone v0.15.0 shipped — PR #38 (phases 10+11)"
 stopped_at: Completed 11-02-faer-fpca-svd-PLAN.md
-last_updated: "2026-08-11T05:45:18.057Z"
+last_updated: "2026-08-11T16:31:20.481Z"
 last_activity: 2026-08-11
-last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 2
   completed_phases: 2
   total_plans: 4
   completed_plans: 4
   percent: 100
+last_activity_desc: Phase 11 execution started
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-08-10)
 
 Phase: 10 — Capability Gaps — Spline Interpolation & Functional Summary Statistics
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-11 — Phase 11 complete, transitioned to Phase 10
+Status: Milestone v0.15.0 shipped — PR #38 (phases 10+11)
+Last activity: 2026-08-11
 
 ## Milestone Roadmap (v0.15.0)
 
