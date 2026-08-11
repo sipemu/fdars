@@ -89,7 +89,9 @@ Full phase detail: [milestones/v0.15.0-ROADMAP.md](milestones/v0.15.0-ROADMAP.md
   4. All three additions are additive (new functions/enum, no removals or breaking changes), respect the column-major `FdMatrix` layout, and never panic on input (always `Result<_, FdarError>`); the existing linear-interpolation path and `spline_interpolate` remain available.
   5. `cargo test -p fdars-core --features linalg` and `cargo clippy -p fdars-core --features linalg` pass with the new imputation, extrapolation-policy, and scoring functions covered.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 13-01-PLAN.md — FEAT-03 imputation + FEAT-04 extrapolation policy (both in helpers.rs, serialized)
+- [ ] 13-02-PLAN.md — FEAT-05 functional scoring metrics (new scoring.rs)
 
 **Note:** FEAT-03, FEAT-04, FEAT-05 are independent effort-S additive parity gaps. FEAT-03 (imputation) and FEAT-04 (extrapolation policy) both touch `helpers.rs`; FEAT-05 (scoring) lands in a new `scoring.rs`. The three plans are largely parallelizable, but FEAT-03 and FEAT-04 share `helpers.rs` — sequence or serialize those two writes (e.g. same wave with careful non-overlapping edits, or adjacent waves) to avoid a merge collision on that file.
 
@@ -101,7 +103,7 @@ Phases execute in numeric order: 12 → 13. Phases 12 and 13 are mutually indepe
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 12. Elastic Feasibility (Banded Alignment & `band_frac`) | v0.16.0 | 1/1 | Complete    | 2026-08-11 |
-| 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 0/TBD | Not started | - |
+| 13. Parity Quick Wins (Imputation, Extrapolation Policy & Scoring) | v0.16.0 | 0/2 | Not started | - |
 
 ## Coverage
 
