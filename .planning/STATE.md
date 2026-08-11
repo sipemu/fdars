@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.16.0
 milestone_name: Elastic Feasibility + Parity Quick Wins
+current_phase_name: roadmap defined
 status: planning
-last_updated: "2026-08-11T19:07:53.910Z"
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-08-11T20:01:29.683Z"
 last_activity: 2026-08-11
+last_activity_desc: Milestone v0.16.0 roadmap created (Phases 12–13)
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -62,6 +65,11 @@ Phases 12 and 13 are mutually independent (disjoint files) and may be executed i
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 12-elastic-feasibility-banded-alignment-default-band-frac P01 | 22 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -88,6 +96,8 @@ Phase-specific implementation notes from the audit:
 - FEAT-05 (new `scoring.rs`): `functional_mae`, `functional_mse`, `functional_mape`, `functional_msle`, `functional_explained_variance` over `FdMatrix` residuals — each a one-pass formula (~5–10 lines) with dimension validation; existing `r_squared`/`r_squared_adj` live in `helpers.rs` for reference.
 - Wave/serialization: FEAT-03 and FEAT-04 both edit `helpers.rs` — sequence or serialize those two plan writes to avoid a merge collision; FEAT-05 (new `scoring.rs`) is fully independent.
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
+- [Phase ?]: Used *_with_band(Option<f64>) wrappers (not positional parameter addition) to keep non-breaking API per LOCKED decision in CONTEXT.md
+- [Phase ?]: Added _banded variants for self/cross distance matrices to crate-root re-exports for complete discoverability
 
 ### Pending Todos
 
@@ -112,8 +122,8 @@ Items acknowledged at v0.15.0 milestone close (2026-08-11):
 
 ## Session Continuity
 
-Last session: 2026-08-11T19:07:53.910Z
-Stopped at: v0.16.0 roadmap created (Phases 12–13)
+Last session: 2026-08-11T20:01:29.189Z
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -11,7 +11,7 @@ Requirements for the v0.16.0 release. Each maps to exactly one roadmap phase.
 
 ### Performance / Feasibility
 
-- [ ] **PERF-03**: Elastic alignment can run on a **banded** dynamic-programming path so large grids that are currently infeasible (e.g. N=500, M=200) complete in tractable time. A `band_frac` (Sakoe-Chiba-style band width as a fraction of M) is exposed through the elastic alignment config and threaded into the DP warp search in `alignment/` (`karcher.rs`, `elastic_self_distance_matrix` / `elastic_cross_distance_matrix`); the full (unbanded) path remains available. Alignment output with a sufficiently wide band matches the unbanded result within numerical tolerance, verified by an inline test; a benchmark or timing test demonstrates the feasibility improvement at a large (N, M). *(audit: PERF-ELASTIC-BAND, rank 10, P1/M — ~4–6× measured; also P5-4)*
+- [x] **PERF-03**: Elastic alignment can run on a **banded** dynamic-programming path so large grids that are currently infeasible (e.g. N=500, M=200) complete in tractable time. A `band_frac` (Sakoe-Chiba-style band width as a fraction of M) is exposed through the elastic alignment config and threaded into the DP warp search in `alignment/` (`karcher.rs`, `elastic_self_distance_matrix` / `elastic_cross_distance_matrix`); the full (unbanded) path remains available. Alignment output with a sufficiently wide band matches the unbanded result within numerical tolerance, verified by an inline test; a benchmark or timing test demonstrates the feasibility improvement at a large (N, M). *(audit: PERF-ELASTIC-BAND, rank 10, P1/M — ~4–6× measured; also P5-4)*
 
 ### Capabilities
 
@@ -52,7 +52,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERF-03 | Phase 12 | Pending |
+| PERF-03 | Phase 12 | Complete |
 | FEAT-03 | Phase 13 | Pending |
 | FEAT-04 | Phase 13 | Pending |
 | FEAT-05 | Phase 13 | Pending |
