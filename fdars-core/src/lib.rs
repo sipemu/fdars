@@ -121,6 +121,7 @@ pub mod elastic_regression;
 pub mod explain;
 pub mod explain_generic;
 pub mod prelude;
+pub mod scoring;
 pub mod smooth_basis;
 
 // Re-export matrix types
@@ -436,4 +437,9 @@ pub use basis::{
     select_basis_auto_1d, select_fourier_nbasis_gcv, BasisAutoSelectionResult,
     BasisProjectionResult, FourierFitResult, ProjectionBasisType, PsplineFitResult,
     SingleCurveSelection,
+};
+
+// Re-export functional scoring metrics
+pub use scoring::{
+    functional_explained_variance, functional_mae, functional_mape, functional_mse, functional_msle,
 };
