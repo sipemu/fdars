@@ -2854,3 +2854,68 @@ fn test_karcher_mean_with_band_wide_matches_unbanded() {
         );
     }
 }
+
+#[test]
+fn test_self_distance_matrix_with_band_some_zero_matches_exact() {
+    // Some(0.0) is the documented sentinel meaning "treat as unbanded".
+    // band_radius(0.0, m) returns None, so Some(0.0) must produce results
+    // element-wise identical to the exact unbanded path within 1e-15.
+    let data = make_test_data(5, 30, 41);
+    let t = uniform_grid(30);
+
+    let base = elastic_self_distance_matrix(&data, &t, 0.0);
+    let sentinel = elastic_self_distance_matrix_with_band(&data, &t, 0.0, Some(0.0));
+
+    assert_eq!(base.shape(), sentinel.shape());
+    for (a, b) in base.as_slice().iter().zip(sentinel.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "self distance mismatch with Some(0.0): {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_cross_distance_matrix_with_band_some_zero_matches_exact() {
+    // Some(0.0) is the documented sentinel meaning "treat as unbanded".
+    // band_radius(0.0, m) returns None, so Some(0.0) must produce results
+    // element-wise identical to the exact unbanded path within 1e-15.
+    let d1 = make_test_data(4, 30, 43);
+    let d2 = make_test_data(5, 30, 47);
+    let t = uniform_grid(30);
+
+    let base = elastic_cross_distance_matrix(&d1, &d2, &t, 0.0);
+    let sentinel = elastic_cross_distance_matrix_with_band(&d1, &d2, &t, 0.0, Some(0.0));
+
+    assert_eq!(base.shape(), sentinel.shape());
+    for (a, b) in base.as_slice().iter().zip(sentinel.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "cross distance mismatch with Some(0.0): {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_karcher_mean_with_band_some_zero_matches_exact() {
+    // Some(0.0) is the documented sentinel meaning "treat as unbanded".
+    // unwrap_or(0.0) produces 0.0 -> band_radius(0.0, m) -> None -> unbanded impl.
+    // Results must be element-wise identical to the exact path within 1e-15.
+    let data = make_test_data(8, 30, 53);
+    let t = uniform_grid(30);
+
+    let base = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+    let sentinel = karcher_mean_with_band(&data, &t, 20, 1e-4, 0.0, Some(0.0));
+
+    assert_eq!(base.mean.len(), sentinel.mean.len());
+    assert_eq!(base.n_iter, sentinel.n_iter);
+    for (a, b) in base.mean.iter().zip(sentinel.mean.iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "mean mismatch with Some(0.0): {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}

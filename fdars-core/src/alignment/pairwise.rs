@@ -224,8 +224,9 @@ pub fn elastic_self_distance_matrix_banded(
 /// - `Some(0.1)`: banded path — typically **4–6× faster** with a small
 ///   band-approximation error. `band_frac` is a Sakoe–Chiba band width expressed
 ///   as a fraction of M (the number of evaluation points).
-/// - `Some(0.99)`: near-full band; at `m ≥ 10` this covers the full warp corridor
-///   and produces output within `1e-12` of the unbanded result.
+/// - `Some(0.99)`: near-full band; produces output within `1e-12` of the unbanded
+///   result whenever `ceil(band_frac * m) >= m - 1` (for `band_frac = 0.99`,
+///   that means `m < 200`). For `m >= 200`, use `None` for exact results.
 ///
 /// Existing callers of [`elastic_self_distance_matrix`] are unaffected.
 #[must_use = "expensive computation whose result should not be discarded"]
@@ -325,8 +326,9 @@ pub fn elastic_cross_distance_matrix_banded(
 /// - `Some(0.1)`: banded path — typically **4–6× faster** with a small
 ///   band-approximation error. `band_frac` is a Sakoe–Chiba band width expressed
 ///   as a fraction of M (the number of evaluation points).
-/// - `Some(0.99)`: near-full band; at `m ≥ 10` this covers the full warp corridor
-///   and produces output within `1e-12` of the unbanded result.
+/// - `Some(0.99)`: near-full band; produces output within `1e-12` of the unbanded
+///   result whenever `ceil(band_frac * m) >= m - 1` (for `band_frac = 0.99`,
+///   that means `m < 200`). For `m >= 200`, use `None` for exact results.
 ///
 /// Existing callers of [`elastic_cross_distance_matrix`] are unaffected.
 #[must_use = "expensive computation whose result should not be discarded"]
