@@ -45,13 +45,14 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 - ✓ **GSD-ready prioritized backlog** — `.planning/research/BACKLOG.md` (873 lines): `score = value / sqrt(effort)` ranking methodology (5-level value scale, S/M/L effort, P1/P2/P3 severity), a master **Ranked Backlog of 32 items** sorted 4.00 → 0.58 (strictly non-increasing), and 34 fully-worked 7-field item blocks (8 performance + 24 gap + ACC-VALIDATE). Completeness Gate PASSED (5 P1 items, top-10 non-cosmetic, strictly descending). Ready to promote via `/gsd-new-milestone`. — Validated in Phase 9 (RPT-03)
 - ✓ **Spline interpolation** — `spline_interpolate(data, argvals, query_points, order) -> Result<FdMatrix, FdarError>` in `helpers.rs`: fits an order-k B-spline per curve over the existing `basis/` system (knots → `bspline_basis` → SVD pseudoinverse → evaluate at query points) and returns a new `FdMatrix`; re-exported at the crate root. 5 inline tests (exact reproduction + off-grid cubic accuracy within 1e-10, plus 3 validation paths); existing linear-interpolation path retained (additive). — Validated in Phase 10 (FEAT-01)
 - ✓ **Functional summary statistics** — five public functions over `FdMatrix` in `fdata.rs`, all `Result`-returning and re-exported at the crate root: `functional_variance`/`functional_std` (Bessel-corrected pointwise, std²==var by construction), `functional_covariance` (symmetric M×M with `checked_mul` overflow guard), `depth_based_median` and `trim_mean` (via `fraiman_muniz_1d` self-depth). 7 inline tests against hand-computed references + error paths. — Validated in Phase 10 (FEAT-02)
+- ✓ **Parallel CV folds** — `fclassif_cv`'s fold loop in `classification/cv.rs` now runs via `iter_maybe_parallel!(0..nfold).map(...).collect()` (indexed collect preserves order), parallel under the `parallel` feature and bit-for-bit identical to sequential; a `test_fclassif_cv_parallel_matches_sequential` inline test proves determinism. No new deps. — Validated in Phase 11 (PERF-01)
+- ✓ **faer FPCA SVD** — `fdata_to_pc_1d` in `regression.rs` computes its SVD via faer `Svd::new_thin` on a zero-copy `MatRef::from_column_major_slice` under `#[cfg(feature = "linalg")]` (eliminating the `to_dmatrix()` copy), retains the nalgebra path under `#[cfg(not(feature = "linalg"))]`, and reconciles singular-vector signs via a shared `fix_svd_signs` helper. A `#[cfg(all(test, feature = "linalg"))]` `test_faer_svd_matches_nalgebra` proves numerical parity within 1e-8·σ₁. No new deps. — Validated in Phase 11 (PERF-02)
 
 ### Active
 
-<!-- v0.15.0 Top-Backlog Quick Wins — promoted from the v0.14.0 audit backlog. -->
+<!-- v0.15.0 Top-Backlog Quick Wins — all four requirements (FEAT-01/02, PERF-01/02) validated. Milestone ready to ship. -->
 
-- [ ] **PERF-01** — Parallelize the `fclassif_cv` fold loop via `iter_maybe_parallel!` (PERF-PAR-CV, P2/S)
-- [ ] **PERF-02** — Swap FPCA SVD to faer `thin_svd` behind `linalg` (P6-1, P2/S)
+_(none — all milestone requirements validated)_
 
 ### Out of Scope
 
@@ -78,7 +79,7 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ## Current State
 
-- **In progress: v0.15.0 Top-Backlog Quick Wins** — Phase 10 complete (2026-08-10): first real `fdars-core/src/` code of the milestone. FEAT-01 (spline interpolation) + FEAT-02 (functional summary statistics) shipped with inline tests; full suite 1946 tests green, clippy clean, phase VERIFICATION passed 4/4. Phase 11 (PERF-01 parallel CV folds, PERF-02 faer FPCA SVD) still pending.
+- **In progress: v0.15.0 Top-Backlog Quick Wins** — both phases complete; all 4 requirements validated. Phase 11 complete (2026-08-11): PERF-01 (parallel CV folds via `iter_maybe_parallel!`) + PERF-02 (faer `thin_svd` FPCA backend under `linalg`) shipped with equivalence tests; full suite 1948 tests green, clippy clean, phase VERIFICATION passed 9/9. Code review flagged 3 advisory quality items (a weakened MEWMA test assertion, `fix_svd_signs` NaN no-op, an over-broad test name) tracked for a future phase. Phase 10 complete (2026-08-10): FEAT-01 (spline interpolation) + FEAT-02 (functional summary statistics), VERIFICATION 4/4. Milestone ready to ship (`/gsd-ship` / `/gsd-complete-milestone`).
 - **Shipped: v0.14.0 audit milestone** (2026-08-09) — 9 phases, 21 plans, all VERIFICATION passed, milestone audit passed (13/13 requirements, integration sound). Zero `fdars-core/src/` edits.
 - **Deliverables:** `.planning/research/AUDIT-REPORT.md` (consolidated report — methodology, 5 performance findings, 82 in-scope gaps, 30 fdars strengths) and `.planning/research/BACKLOG.md` (32-item value-ranked backlog, `score = value/√effort`, promotion-ready 7-field blocks).
 - **Headline findings:** SVD dominates FPCA wall-clock (~99.8%); faer `thin_svd` 1.8–4.1× faster than nalgebra; elastic alignment is the top bottleneck (infeasible at N=500,M=200 on the default path); 82 actionable capability gaps vs scikit-fda 0.10.1 (36 table-stakes, 46 differentiator); 30 fdars-exclusive strengths.
