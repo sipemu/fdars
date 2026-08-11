@@ -9,6 +9,13 @@ use crate::matrix::FdMatrix;
 use anofox_regression::solvers::RidgeRegressor;
 #[cfg(feature = "linalg")]
 use anofox_regression::{FittedRegressor, Regressor};
+#[cfg(feature = "linalg")]
+use faer::linalg::solvers::Svd as FaerSvd;
+#[cfg(feature = "linalg")]
+use faer::MatRef;
+// nalgebra SVD is the production path only when `linalg` is disabled, but the
+// `linalg`-gated equivalence test also computes a reference nalgebra SVD inline.
+#[cfg(any(not(feature = "linalg"), test))]
 use nalgebra::SVD;
 
 /// Result of functional PCA.
@@ -163,6 +170,36 @@ impl FpcaResult {
     }
 }
 
+/// Fix sign ambiguity of SVD: for each component k, ensure the element of the
+/// rotation column with largest absolute value is positive. Flip both the
+/// rotation column and the scores column consistently when negative.
+///
+/// This deterministic convention must be applied to BOTH the faer and nalgebra
+/// SVD paths so that `test_faer_svd_matches_nalgebra` is reproducible.
+/// Apply BEFORE the sqrt_weights unscaling loop.
+fn fix_svd_signs(rotation: &mut FdMatrix, scores: &mut FdMatrix, ncomp: usize) {
+    let m = rotation.nrows();
+    let n = scores.nrows();
+    for k in 0..ncomp {
+        let j_max = (0..m)
+            .max_by(|&a, &b| {
+                rotation[(a, k)]
+                    .abs()
+                    .partial_cmp(&rotation[(b, k)].abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(0);
+        if rotation[(j_max, k)] < 0.0 {
+            for j in 0..m {
+                rotation[(j, k)] = -rotation[(j, k)];
+            }
+            for i in 0..n {
+                scores[(i, k)] = -scores[(i, k)];
+            }
+        }
+    }
+}
+
 /// Center columns of a matrix and return (centered_matrix, column_means).
 fn center_columns(data: &FdMatrix) -> (FdMatrix, Vec<f64>) {
     let (n, m) = data.shape();
@@ -181,6 +218,7 @@ fn center_columns(data: &FdMatrix) -> (FdMatrix, Vec<f64>) {
 }
 
 /// Extract rotation (V) and scores (U*S) from SVD results.
+#[cfg(any(not(feature = "linalg"), test))]
 fn extract_pc_components(
     svd: &SVD<f64, nalgebra::Dyn, nalgebra::Dyn>,
     n: usize,
@@ -295,12 +333,52 @@ pub fn fdata_to_pc_1d(
         }
     }
 
-    let svd = SVD::new(weighted.to_dmatrix(), true, true);
-    let (singular_values, mut rotation, scores) =
-        extract_pc_components(&svd, n, m, ncomp).ok_or_else(|| FdarError::ComputationFailed {
-            operation: "SVD",
-            detail: "failed to extract U or V_t from SVD decomposition; try reducing ncomp or check for zero-variance columns in the data".to_string(),
+    // Feature-gated SVD: faer thin_svd (zero-copy MatRef) under `linalg`,
+    // retained nalgebra path under `cfg(not(feature = "linalg"))`.
+    #[cfg(feature = "linalg")]
+    let (singular_values, mut rotation, mut scores) = {
+        let mat_ref = MatRef::<f64>::from_column_major_slice(weighted.as_slice(), n, m);
+        let svd = FaerSvd::new_thin(mat_ref).map_err(|_| FdarError::ComputationFailed {
+            operation: "SVD (faer)",
+            detail:
+                "faer thin_svd failed; try reducing ncomp or check for zero-variance columns in the data"
+                    .to_string(),
         })?;
+        let s_col = svd.S().column_vector();
+        let singular_values: Vec<f64> = s_col.iter().take(ncomp).copied().collect();
+        // faer V is m×ncomp (right singular vectors in columns — not transposed)
+        // rotation[(j, k)] = V[(j, k)] directly (un-transposed, unlike nalgebra v_t[(k,j)])
+        let mut rotation = FdMatrix::zeros(m, ncomp);
+        for k in 0..ncomp {
+            for j in 0..m {
+                rotation[(j, k)] = svd.V()[(j, k)];
+            }
+        }
+        // faer U is n×ncomp; scores = U * diag(S)
+        let mut scores = FdMatrix::zeros(n, ncomp);
+        for k in 0..ncomp {
+            let sv_k = singular_values[k];
+            for i in 0..n {
+                scores[(i, k)] = svd.U()[(i, k)] * sv_k;
+            }
+        }
+        (singular_values, rotation, scores)
+    };
+
+    #[cfg(not(feature = "linalg"))]
+    let (singular_values, mut rotation, mut scores) = {
+        let svd = SVD::new(weighted.to_dmatrix(), true, true);
+        let (sv, rot, sc) =
+            extract_pc_components(&svd, n, m, ncomp).ok_or_else(|| FdarError::ComputationFailed {
+                operation: "SVD",
+                detail: "failed to extract U or V_t from SVD decomposition; try reducing ncomp or check for zero-variance columns in the data".to_string(),
+            })?;
+        (sv, rot, sc)
+    };
+
+    // Reconcile singular-vector signs: apply BEFORE the sqrt_weights unscaling loop.
+    // Covers both cfg branches via a single shared call site.
+    fix_svd_signs(&mut rotation, &mut scores, ncomp);
 
     // Unscale loadings: divide by sqrt(weights) to get actual eigenfunctions
     for k in 0..ncomp {
@@ -874,6 +952,78 @@ mod tests {
                     j,
                     reconstructed,
                     original_centered
+                );
+            }
+        }
+    }
+
+    /// Numerical equivalence: under `linalg` the faer thin_svd path must match
+    /// the retained nalgebra path within `1e-8·σ₁` on significant components.
+    /// Near-zero (noise) components are excluded — their singular vectors are
+    /// numerically ambiguous and legitimately differ between backends.
+    #[cfg(all(test, feature = "linalg"))]
+    #[test]
+    fn test_faer_svd_matches_nalgebra() {
+        let n = 30;
+        let m = 40;
+        let ncomp = 5;
+        let (data, t) = generate_test_fdata(n, m);
+
+        // faer path (active under `linalg`)
+        let faer = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+
+        // Reference: reproduce the nalgebra path inline, running through the
+        // identical center → sqrt(weights) scale → SVD → fix_svd_signs →
+        // unscale sequence so both use the same sign convention.
+        let ncomp_eff = ncomp.min(n).min(m);
+        let (_centered, _means) = center_columns(&data);
+        let weights = simpsons_weights(&t);
+        let sqrt_weights: Vec<f64> = weights.iter().map(|w| w.sqrt()).collect();
+        let mut weighted = _centered.clone();
+        for i in 0..n {
+            for j in 0..m {
+                weighted[(i, j)] *= sqrt_weights[j];
+            }
+        }
+        let svd = nalgebra::SVD::new(weighted.to_dmatrix(), true, true);
+        let (ref_sv, mut ref_rotation, mut ref_scores) =
+            extract_pc_components(&svd, n, m, ncomp_eff).unwrap();
+        fix_svd_signs(&mut ref_rotation, &mut ref_scores, ncomp_eff);
+        for k in 0..ncomp_eff {
+            for j in 0..m {
+                if sqrt_weights[j] > 1e-15 {
+                    ref_rotation[(j, k)] /= sqrt_weights[j];
+                }
+            }
+        }
+
+        // Compare per significant component (sv[k] >= 1e-8 * sv[0]).
+        let s1 = faer.singular_values[0];
+        let tol = 1e-8 * s1;
+        for k in 0..ncomp_eff {
+            if faer.singular_values[k] < 1e-8 * s1 {
+                continue; // noise component — excluded
+            }
+            assert!(
+                (faer.singular_values[k] - ref_sv[k]).abs() < tol,
+                "singular_value[{k}] mismatch: faer={}, nalgebra={}",
+                faer.singular_values[k],
+                ref_sv[k]
+            );
+            for j in 0..m {
+                assert!(
+                    (faer.rotation[(j, k)] - ref_rotation[(j, k)]).abs() < tol,
+                    "rotation[{j},{k}] mismatch: faer={}, nalgebra={}",
+                    faer.rotation[(j, k)],
+                    ref_rotation[(j, k)]
+                );
+            }
+            for i in 0..n {
+                assert!(
+                    (faer.scores[(i, k)] - ref_scores[(i, k)]).abs() < tol,
+                    "scores[{i},{k}] mismatch: faer={}, nalgebra={}",
+                    faer.scores[(i, k)],
+                    ref_scores[(i, k)]
                 );
             }
         }
