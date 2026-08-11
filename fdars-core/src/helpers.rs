@@ -1008,7 +1008,7 @@ mod tests {
     fn spline_interpolate_rejects_out_of_range() {
         use crate::test_helpers::uniform_grid;
         let t = uniform_grid(20);
-        let vals: Vec<f64> = t.iter().map(|&x| x).collect();
+        let vals: Vec<f64> = t.to_vec();
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
 
         // Query point below argvals[0]
@@ -1044,7 +1044,7 @@ mod tests {
     fn spline_interpolate_rejects_bad_order() {
         use crate::test_helpers::uniform_grid;
         let t = uniform_grid(20);
-        let vals: Vec<f64> = t.iter().map(|&x| x).collect();
+        let vals: Vec<f64> = t.to_vec();
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
         let q = vec![0.5_f64];
 
@@ -1079,7 +1079,7 @@ mod tests {
     fn spline_interpolate_rejects_dim_mismatch() {
         use crate::test_helpers::uniform_grid;
         let t = uniform_grid(20);
-        let vals: Vec<f64> = t.iter().map(|&x| x).collect();
+        let vals: Vec<f64> = t.to_vec();
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
 
         // argvals.len() != data.ncols()

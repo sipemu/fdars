@@ -1513,7 +1513,7 @@ mod tests {
         // curve 3: constant at 0.75
         // curve 4: constant at 1.0
         for j in 0..m {
-            data_vec[0 + j * n] = 0.0;
+            data_vec[j * n] = 0.0;
             data_vec[1 + j * n] = 0.25;
             data_vec[2 + j * n] = 0.5;
             data_vec[3 + j * n] = 0.75;
