@@ -599,9 +599,7 @@ pub fn spline_interpolate_with_policy(
                 ExtrapolationPolicy::Exception => {
                     return Err(crate::FdarError::InvalidParameter {
                         parameter: "query_points",
-                        message: format!(
-                            "query {q} is outside domain [{t_min}, {t_max}]"
-                        ),
+                        message: format!("query {q} is outside domain [{t_min}, {t_max}]"),
                     });
                 }
                 ExtrapolationPolicy::Fill(_) => {
@@ -610,8 +608,7 @@ pub fn spline_interpolate_with_policy(
                     effective.push(t_min); // dummy in-range value — will be discarded
                 }
                 ExtrapolationPolicy::Periodic => {
-                    let wrapped =
-                        t_min + ((q - t_min) % domain_len + domain_len) % domain_len;
+                    let wrapped = t_min + ((q - t_min) % domain_len + domain_len) % domain_len;
                     effective.push(wrapped);
                 }
             }
@@ -621,8 +618,7 @@ pub fn spline_interpolate_with_policy(
     // --- Run the core spline logic on the effective (all in-range) query points ---
     // Reuse the same SVD-based evaluation as spline_interpolate.
     let nknots = m.saturating_sub(order).max(2);
-    let knots =
-        crate::basis::bspline::construct_bspline_knots(t_min, t_max, nknots, order);
+    let knots = crate::basis::bspline::construct_bspline_knots(t_min, t_max, nknots, order);
     let basis_vals = crate::basis::bspline::bspline_basis(argvals, nknots, order);
     let nbasis = basis_vals.len() / m;
     let b_mat = nalgebra::DMatrix::from_column_slice(m, nbasis, &basis_vals);
@@ -634,8 +630,7 @@ pub fn spline_interpolate_with_policy(
             operation: "spline_interpolate_with_policy SVD pseudoinverse",
             detail: e.to_string(),
         })?;
-    let basis_query =
-        crate::basis::bspline::bspline_basis_from_knots(&effective, &knots, order);
+    let basis_query = crate::basis::bspline::bspline_basis_from_knots(&effective, &knots, order);
 
     let mut out = crate::matrix::FdMatrix::zeros(n, m_q);
     for i in 0..n {
@@ -1529,14 +1524,9 @@ mod tests {
         // Off-grid midpoints (all in-range)
         let q: Vec<f64> = t.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
         let expected = spline_interpolate(&data, &t, &q, 4).unwrap();
-        let actual = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q,
-            4,
-            ExtrapolationPolicy::Boundary,
-        )
-        .unwrap();
+        let actual =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Boundary)
+                .unwrap();
         for j in 0..q.len() {
             assert!(
                 (actual[(0, j)] - expected[(0, j)]).abs() < 1e-10,
@@ -1556,20 +1546,27 @@ mod tests {
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
         // Query below (should clamp to t_min=0 → y=0) and above (clamp to t_max=1 → y≈1).
         let q = vec![-0.5_f64, 0.5, 1.5];
-        let result = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q,
-            4,
-            ExtrapolationPolicy::Boundary,
-        )
-        .unwrap();
+        let result =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Boundary)
+                .unwrap();
         // Clamped to 0 → y = 0^2 = 0 (within spline tolerance)
-        assert!(result[(0, 0)].abs() < 1e-9, "below boundary should clamp, got {}", result[(0, 0)]);
+        assert!(
+            result[(0, 0)].abs() < 1e-9,
+            "below boundary should clamp, got {}",
+            result[(0, 0)]
+        );
         // Clamped to 1 → y = 1^2 = 1 (within spline tolerance)
-        assert!((result[(0, 2)] - 1.0).abs() < 1e-9, "above boundary should clamp, got {}", result[(0, 2)]);
+        assert!(
+            (result[(0, 2)] - 1.0).abs() < 1e-9,
+            "above boundary should clamp, got {}",
+            result[(0, 2)]
+        );
         // In-range 0.5 → y ≈ 0.25
-        assert!((result[(0, 1)] - 0.25).abs() < 1e-9, "in-range should be ~0.25, got {}", result[(0, 1)]);
+        assert!(
+            (result[(0, 1)] - 0.25).abs() < 1e-9,
+            "in-range should be ~0.25, got {}",
+            result[(0, 1)]
+        );
     }
 
     #[test]
@@ -1580,14 +1577,9 @@ mod tests {
         let vals: Vec<f64> = t.to_vec();
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
         let q_oob = vec![1.5_f64];
-        let err = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q_oob,
-            4,
-            ExtrapolationPolicy::Exception,
-        )
-        .unwrap_err();
+        let err =
+            spline_interpolate_with_policy(&data, &t, &q_oob, 4, ExtrapolationPolicy::Exception)
+                .unwrap_err();
         assert!(
             matches!(
                 err,
@@ -1600,14 +1592,12 @@ mod tests {
         );
         // In-range queries with Exception policy should succeed.
         let q_ok = vec![0.0_f64, 0.5, 1.0];
-        let ok = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q_ok,
-            4,
-            ExtrapolationPolicy::Exception,
+        let ok =
+            spline_interpolate_with_policy(&data, &t, &q_ok, 4, ExtrapolationPolicy::Exception);
+        assert!(
+            ok.is_ok(),
+            "Exception policy should succeed for in-range queries"
         );
-        assert!(ok.is_ok(), "Exception policy should succeed for in-range queries");
     }
 
     #[test]
@@ -1619,14 +1609,9 @@ mod tests {
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
         let fill_val = 42.0_f64;
         let q = vec![-0.5_f64, 0.5, 2.0];
-        let result = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q,
-            4,
-            ExtrapolationPolicy::Fill(fill_val),
-        )
-        .unwrap();
+        let result =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Fill(fill_val))
+                .unwrap();
         assert!(
             (result[(0, 0)] - fill_val).abs() < 1e-10,
             "OOB below should be fill value, got {}",
@@ -1654,14 +1639,9 @@ mod tests {
         let vals: Vec<f64> = t.to_vec(); // y = x
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
         let q = vec![1.3_f64];
-        let result = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q,
-            4,
-            ExtrapolationPolicy::Periodic,
-        )
-        .unwrap();
+        let result =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Periodic)
+                .unwrap();
         // Expected: wrap 1.3 → 0.3, spline of y=x at 0.3 ≈ 0.3
         assert!(
             (result[(0, 0)] - 0.3).abs() < 1e-9,
@@ -1670,14 +1650,9 @@ mod tests {
         );
         // t = -0.2 → wrap to 0.8
         let q2 = vec![-0.2_f64];
-        let result2 = spline_interpolate_with_policy(
-            &data,
-            &t,
-            &q2,
-            4,
-            ExtrapolationPolicy::Periodic,
-        )
-        .unwrap();
+        let result2 =
+            spline_interpolate_with_policy(&data, &t, &q2, 4, ExtrapolationPolicy::Periodic)
+                .unwrap();
         assert!(
             (result2[(0, 0)] - 0.8).abs() < 1e-9,
             "Periodic wrap of -0.2 should give ~0.8, got {}",
@@ -1692,14 +1667,9 @@ mod tests {
         let vals = vec![1.0_f64, 1.0, 1.0];
         let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 3).unwrap();
         let q = vec![4.0_f64]; // OOB
-        let err = spline_interpolate_with_policy(
-            &data,
-            &argvals,
-            &q,
-            1,
-            ExtrapolationPolicy::Periodic,
-        )
-        .unwrap_err();
+        let err =
+            spline_interpolate_with_policy(&data, &argvals, &q, 1, ExtrapolationPolicy::Periodic)
+                .unwrap_err();
         assert!(
             matches!(
                 err,
