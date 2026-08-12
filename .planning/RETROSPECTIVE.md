@@ -40,6 +40,40 @@
 
 ---
 
+## Milestone: v0.17.0 — Registration Parity & Elastic-FPCA Performance
+
+**Shipped:** 2026-08-12 (release pending — version bump + PR + tag)
+**Phases:** 2 (14–15) | **Plans:** 3
+
+### What Was Built
+- FEAT-06: `least_squares_shift_registration` + `ShiftRegistrationResult` in new `alignment/shift.rs` — per-curve rigid shift to the sample mean via golden-section L2 minimization; fills the "simplest registration method" gap.
+- FEAT-07: three registration-quality scores (`least_squares_score`, centered-Pearson `pairwise_correlation_score`, `sobolev_least_squares_score`) in `alignment/quality.rs`, standalone-energy form.
+- PERF-04: parallelized the three elastic-FPCA per-curve loops via `iter_maybe_parallel!` collect-then-assign, `SCORES_PARALLEL_THRESHOLD=50` guard on the light loop; bit-identical to sequential (tested `parallel` ON and OFF).
+
+### What Worked
+- The audit backlog's exact line numbers + signatures made discuss/plan fast; CONTEXT locked the one real design call per phase (standalone-energy scores; :764 threshold) so planning didn't relitigate.
+- Code review earned its keep on Phase 14: caught a real CI-blocker (test-only `--all-targets` clippy warnings my `-p` clippy missed) plus a correctness fix (documented "Pearson" but implemented uncentered cosine → centered).
+- Skipping research + pattern-mapper for the mechanical Phase 15 (CONTEXT already named the analog) kept it lean without loss of quality; review came back clean.
+
+### What Was Inefficient
+- Two subagent connection drops mid-response (one planner ~75 min then errored; one integration checker) forced a retry / inline fallback. The planner retry with an explicit "work from PATTERNS/RESEARCH, don't re-explore" note completed in ~4 min — over-exploration was the likely hang cause.
+- Default-feature full-suite compile exceeded the 2-min bash cap (cold build); ran the fast checks separately.
+
+### Patterns Established
+- For a pure-refactor phase, author VALIDATION.md inline and skip research/pattern-mapper agents — the CONTEXT + one analog file is enough grounding.
+- Verify perf/parallelism phases by equivalence under `parallel` ON **and** OFF, not a pinned speedup (respects the audit's LOW-CONFIDENCE governor caveat).
+- CI parity: always run `cargo clippy --all-targets -D warnings` (not just `-p ... -- -D warnings`) — test code warnings block CI.
+
+### Key Lessons
+- A `-p` clippy run does NOT cover `--all-targets` (test/bench code); the CI gate does. Match the CI command in verify steps.
+- When an executor deviates (Phase 14 added the `mod.rs` re-export early to pass the clippy gate), thread the deviation explicitly into the next wave's prompt to avoid duplicate-import breakage.
+
+### Cost Observations
+- Model mix: orchestration on Opus; planners on Opus; executors + verifier + phase-researcher on Sonnet; plan-checker + integration-checker on Haiku; code review on Opus.
+- Notable: sequential single-tree dispatch throughout (worktree base divergence per MEMORY.md) — no parallel-wave speedup; two transient API connection drops required retries.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
