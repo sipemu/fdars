@@ -415,19 +415,24 @@ pub fn sobolev_least_squares_score(
 /// Compute the pairwise correlation registration score: mean functional Pearson
 /// correlation over all n(n−1)/2 unordered curve pairs.
 ///
-/// **Formula:** `mean over (i<k) of [⟨fᵢ, f_k⟩_L2 / (‖fᵢ‖_L2 · ‖f_k‖_L2)]`
+/// **Formula:** `mean over (i<k) of [⟨f̃ᵢ, f̃_k⟩_L2 / (‖f̃ᵢ‖_L2 · ‖f̃_k‖_L2)]`
 ///
-/// where the L2 inner product is Simpson-weighted. A zero-norm curve (all-zero
-/// curve) contributes a correlation of 0 to the mean (NaN guard).
+/// where `f̃ᵢ = fᵢ − μᵢ` is the mean-centred curve, `μᵢ = ∫ fᵢ dt / ∫ dt` is
+/// the Simpson-weighted functional mean, and all inner products and norms are
+/// Simpson-weighted. This is the functional analogue of **Pearson correlation**
+/// (centred), not cosine similarity (uncentred).
+///
+/// A zero-variance curve (`‖f̃ᵢ‖ ≈ 0`, i.e. a nearly constant curve) contributes
+/// 0 to every pair it participates in (NaN guard).
 ///
 /// Higher scores indicate greater pairwise alignment — use this score to confirm
 /// that registration has increased curve-to-curve similarity.
 ///
 /// # Standalone form
 ///
-/// This computes the mean correlation of the registered curves directly, without
-/// dividing by the correlation of the unregistered curves. This diverges from
-/// scikit-fda's `PairwiseCorrelation` scorer which returns a ratio.
+/// This computes the mean Pearson correlation of the registered curves directly,
+/// without dividing by the correlation of the unregistered curves. This diverges
+/// from scikit-fda's `PairwiseCorrelation` scorer which returns a ratio.
 ///
 /// # Complexity
 ///
@@ -440,10 +445,10 @@ pub fn sobolev_least_squares_score(
 ///
 /// # Arguments
 /// * `registered` — Registered functional data (n × m), n ≥ 2
-/// * `argvals` — Evaluation points (length m)
+/// * `argvals` — Evaluation points (length m, at least 2)
 ///
 /// # Errors
-/// * [`FdarError::InvalidDimension`] — if `m == 0` or `argvals.len() != m`
+/// * [`FdarError::InvalidDimension`] — if `m == 0`, `m < 2`, or `argvals.len() != m`
 /// * [`FdarError::InvalidParameter`] — if `n < 2` (need at least 2 curves to
 ///   form a pair)
 pub fn pairwise_correlation_score(
@@ -465,6 +470,12 @@ pub fn pairwise_correlation_score(
             actual: argvals.len().to_string(),
         });
     }
+    if argvals.len() < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "must have at least 2 evaluation points".to_string(),
+        });
+    }
     if n < 2 {
         return Err(FdarError::InvalidParameter {
             parameter: "n",
@@ -473,12 +484,28 @@ pub fn pairwise_correlation_score(
     }
 
     let weights = simpsons_weights(argvals);
+    let weight_sum: f64 = weights.iter().sum();
 
-    // Precompute row norms for O(n·m) instead of O(n²·m)
-    let norms: Vec<f64> = (0..n)
+    // Precompute centred curves and their L2 norms for O(n·m) instead of O(n²·m).
+    // μᵢ = (Σⱼ fᵢ(tⱼ) · wⱼ) / (Σⱼ wⱼ)  — Simpson-weighted functional mean.
+    // f̃ᵢ = fᵢ − μᵢ  — centred curve (true Pearson, not cosine similarity).
+    let centred: Vec<Vec<f64>> = (0..n)
         .map(|i| {
             let fi = registered.row(i);
-            fi.iter()
+            let mu: f64 = fi
+                .iter()
+                .zip(weights.iter())
+                .map(|(&a, &w)| a * w)
+                .sum::<f64>()
+                / weight_sum;
+            fi.iter().map(|&a| a - mu).collect()
+        })
+        .collect();
+
+    let norms: Vec<f64> = centred
+        .iter()
+        .map(|fi_c| {
+            fi_c.iter()
                 .zip(weights.iter())
                 .map(|(&a, &w)| a * a * w)
                 .sum::<f64>()
@@ -490,18 +517,17 @@ pub fn pairwise_correlation_score(
     let corr_sum: f64 = (0..n)
         .flat_map(|i| (i + 1..n).map(move |k| (i, k)))
         .map(|(i, k)| {
-            let fi = registered.row(i);
-            let fk = registered.row(k);
-            let inner: f64 = fi
-                .iter()
-                .zip(fk.iter())
-                .zip(weights.iter())
-                .map(|((&a, &b), &w)| a * b * w)
-                .sum();
             let denom = norms[i] * norms[k];
             if denom < 1e-15 {
+                // At least one curve is nearly constant — skip this pair.
                 0.0
             } else {
+                let inner: f64 = centred[i]
+                    .iter()
+                    .zip(centred[k].iter())
+                    .zip(weights.iter())
+                    .map(|((&a, &b), &w)| a * b * w)
+                    .sum();
                 inner / denom
             }
         })
