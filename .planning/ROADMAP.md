@@ -46,7 +46,7 @@
 
 **Plans**: 1 plan
 
-- [ ] 15-01-PLAN.md — PERF-04: parallelize the three elastic-FPCA loops (:701/:720/:764) via iter_maybe_parallel! with N≥50 guard, equivalence-tested (PERF-04-A…F)
+- [x] 15-01-PLAN.md — PERF-04: parallelize the three elastic-FPCA loops (:701/:720/:764) via iter_maybe_parallel! with N≥50 guard, equivalence-tested (PERF-04-A…F)
 
 ---
 

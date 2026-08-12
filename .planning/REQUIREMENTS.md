@@ -16,7 +16,7 @@ Requirements for milestone v0.17.0. Each maps to exactly one roadmap phase.
 
 ### Performance
 
-- [ ] **PERF-04**: The three per-curve elastic-FPCA loops in `elastic_fpca.rs` (lines 701 `shooting_vectors_from_psis`, 720 `build_augmented_srsfs`, 764 `svd_scores_and_eigenvalues`) run in parallel under the `parallel` feature via `iter_maybe_parallel!(0..n)`, producing output numerically equivalent to the sequential path (scores + eigenvalues within tolerance); the light `:764` body is guarded by a size threshold (N ≳ 50) or accepts a documented small-N regression. Projected ~4–5× at N≥50. _(Backlog: PERF-PAR-ELFPCA, rank 17, P2/M)_
+- [x] **PERF-04**: The three per-curve elastic-FPCA loops in `elastic_fpca.rs` (lines 701 `shooting_vectors_from_psis`, 720 `build_augmented_srsfs`, 764 `svd_scores_and_eigenvalues`) run in parallel under the `parallel` feature via `iter_maybe_parallel!(0..n)`, producing output numerically equivalent to the sequential path (scores + eigenvalues within tolerance); the light `:764` body is guarded by a size threshold (N ≳ 50) or accepts a documented small-N regression. Projected ~4–5× at N≥50. _(Backlog: PERF-PAR-ELFPCA, rank 17, P2/M)_
 
 ## v2 Requirements
 
@@ -47,7 +47,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | FEAT-06 | Phase 14 | Complete |
 | FEAT-07 | Phase 14 | Complete |
-| PERF-04 | Phase 15 | Pending |
+| PERF-04 | Phase 15 | Complete |
 
 **Coverage:**
 

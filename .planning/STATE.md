@@ -4,16 +4,16 @@ milestone: v0.17.0
 milestone_name: Registration Parity & Elastic-FPCA Performance
 current_phase: 15
 current_phase_name: Elastic-FPCA Performance
-status: planning
-stopped_at: Completed 14-02-PLAN.md (all 3 tasks, 2 commits)
-last_updated: "2026-08-12T12:56:56.374Z"
+status: verifying
+stopped_at: Completed 15-01-PLAN.md (all 4 tasks, 4 commits)
+last_updated: "2026-08-12T14:27:09.364Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 14 execution started
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** Phase 14 — Shift Registration
+**Current focus:** Phase 15 — Elastic-FPCA Performance
 
 ## Current Position
 
-Phase: 15 — Elastic-FPCA Performance
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-12 — Phase 14 complete, transitioned to Phase 15
+Phase: 15 (Elastic-FPCA Performance) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-08-12 — Phase 15 execution started
 
 ## Milestone Roadmap (v0.17.0)
 
@@ -73,6 +73,7 @@ Phases 14 and 15 are mutually independent (disjoint files: `alignment/` vs `elas
 |------|----------|-------|-------|
 | Phase 14-shift-registration P01 | 13m | 3 tasks | 2 files |
 | Phase 14-shift-registration P02 | 25 | 3 tasks | 3 files |
+| Phase 15 P01 | 12 | 4 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,8 @@ Phase-specific implementation notes from the audit:
 - [Phase ?]: Rule 3: added pub use shift::{...} to alignment/mod.rs in plan 14-01 instead of deferring to 14-02 (sequential execution, no merge conflict risk)
 - [Phase ?]: Standalone-energy form: registration quality scores measure absolute L2 spread (not ratio-to-original); avoids divide-by-zero on constant data
 - [Phase ?]: Result<f64, FdarError> on score functions enables dimension validation; intentional divergence from raw-f64 neighbors
+- [Phase ?]: collect-then-assign parallelism via iter_maybe_parallel! in elastic_fpca.rs — mirrors align_to_target to avoid data-race on column-major FdMatrix buffer
+- [Phase ?]: SCORES_PARALLEL_THRESHOLD = 50 outer-if at function level in svd_scores_and_eigenvalues — single branch decision, not repeated per-k check; below threshold runs original sequential loops
 
 ### Pending Todos
 
@@ -131,8 +134,8 @@ v2 backlog items deferred at v0.17.0 definition (2026-08-12): PREP-06 (LDO-regul
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:34:02.174Z
-Stopped at: Completed 14-02-PLAN.md (all 3 tasks, 2 commits)
+Last session: 2026-08-12T14:27:09.355Z
+Stopped at: Completed 15-01-PLAN.md (all 4 tasks, 4 commits)
 Resume file: None
 
 ## Operator Next Steps
