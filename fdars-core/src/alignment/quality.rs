@@ -275,6 +275,7 @@ pub fn pairwise_consistency(
 /// # Errors
 /// * [`FdarError::InvalidDimension`] — if `registered` is empty or
 ///   `argvals.len() != m`
+/// * [`FdarError::InvalidParameter`] — if `argvals.len() < 2`
 pub fn least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> Result<f64, FdarError> {
     let (n, m) = registered.shape();
     if n == 0 || m == 0 {
@@ -289,6 +290,12 @@ pub fn least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> Result<f64
             parameter: "argvals",
             expected: m.to_string(),
             actual: argvals.len().to_string(),
+        });
+    }
+    if argvals.len() < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "must have at least 2 evaluation points".to_string(),
         });
     }
 
@@ -343,7 +350,7 @@ pub fn least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> Result<f64
 /// # Errors
 /// * [`FdarError::InvalidDimension`] — if `registered` is empty or
 ///   `argvals.len() != m`
-/// * [`FdarError::InvalidParameter`] — if `lambda < 0.0`
+/// * [`FdarError::InvalidParameter`] — if `argvals.len() < 2` or `lambda < 0.0`
 pub fn sobolev_least_squares_score(
     registered: &FdMatrix,
     argvals: &[f64],
@@ -362,6 +369,12 @@ pub fn sobolev_least_squares_score(
             parameter: "argvals",
             expected: m.to_string(),
             actual: argvals.len().to_string(),
+        });
+    }
+    if argvals.len() < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "must have at least 2 evaluation points".to_string(),
         });
     }
     if lambda < 0.0 {
@@ -663,6 +676,42 @@ mod tests {
         assert!(
             matches!(result, Err(FdarError::InvalidParameter { .. })),
             "expected Err(InvalidParameter), got {result:?}"
+        );
+    }
+
+    // ---- WR-02: all three score fns reject m<2 (consistent with shift fn) ---
+
+    #[test]
+    fn test_score_fns_reject_single_point_grid() {
+        // m=1 matrix: argvals has only one evaluation point — the integral would
+        // be a bare point-mass (undefined as a functional L2 norm).
+        let argvals_1pt = vec![0.5_f64];
+        let mut data_1col = FdMatrix::zeros(3, 1);
+        for i in 0..3 {
+            data_1col[(i, 0)] = 1.0;
+        }
+
+        let r1 = least_squares_score(&data_1col, &argvals_1pt);
+        assert!(
+            matches!(r1, Err(FdarError::InvalidParameter { .. })),
+            "least_squares_score m=1 should return Err(InvalidParameter), got {r1:?}"
+        );
+
+        let r2 = sobolev_least_squares_score(&data_1col, &argvals_1pt, 0.0);
+        assert!(
+            matches!(r2, Err(FdarError::InvalidParameter { .. })),
+            "sobolev_least_squares_score m=1 should return Err(InvalidParameter), got {r2:?}"
+        );
+
+        // pairwise_correlation_score: m=0 is caught by the InvalidDimension guard first;
+        // m=1 hits the argvals.len() < 2 InvalidParameter guard.
+        let mut data_1col_2rows = FdMatrix::zeros(2, 1);
+        data_1col_2rows[(0, 0)] = 1.0;
+        data_1col_2rows[(1, 0)] = 2.0;
+        let r3 = pairwise_correlation_score(&data_1col_2rows, &argvals_1pt);
+        assert!(
+            matches!(r3, Err(FdarError::InvalidParameter { .. })),
+            "pairwise_correlation_score m=1 should return Err(InvalidParameter), got {r3:?}"
         );
     }
 }
