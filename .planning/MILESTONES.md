@@ -1,5 +1,18 @@
 # Milestones
 
+## v0.16.0 Elastic Feasibility + Parity Quick Wins (Shipped: 2026-08-12)
+
+**Phases completed:** 2 phases, 3 plans, 0 tasks
+
+**Key accomplishments:**
+
+- API surfacing only — no new algorithm.
+- 1. [Rule 1 - Bug] Removed `#[must_use]` from `fdata_interpolate_with_policy`
+- Five functional scoring metrics (MAE/MSE/MAPE/MSLE/explained-variance) integrated over argvals via Simpson's rule with per-curve averaging, domain validation, and crate-root re-export.
+- Fix four code-review findings (CR-01 Periodic NaN, CR-02 EV logic error, WR-01 misleading m=0 error, IN-01 redundant cfg-test) and add `spline_interpolate_with_policy` to close the VERIFICATION gap against ROADMAP SC#2.
+
+---
+
 ## v0.15.0 Top-Backlog Quick Wins (Shipped: 2026-08-11)
 
 **Phases completed:** 2 phases, 4 plans, 0 tasks

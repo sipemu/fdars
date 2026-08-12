@@ -8,7 +8,7 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::alignment::{
     elastic_align_pair, elastic_align_pair_banded, elastic_self_distance_matrix,
-    elastic_self_distance_matrix_banded, karcher_mean,
+    elastic_self_distance_matrix_banded, karcher_mean, karcher_mean_with_band,
 };
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
@@ -146,10 +146,55 @@ fn bench_karcher_mean(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark the public `karcher_mean_with_band` API at small-to-medium sizes,
+/// comparing `None` (exact unbanded) vs `Some(0.1)` (banded) path.
+///
+/// For large-grid feasibility cells (N=500, M=200) see the existing
+/// `bench_p3_karcher_banded` group in `benches/audit_hotpaths.rs`, which already
+/// benchmarks `karcher_mean_banded` at those infeasible sizes.
+fn bench_karcher_mean_with_band(c: &mut Criterion) {
+    let mut group = c.benchmark_group("karcher_mean_with_band");
+
+    let m = 50;
+    let n = 20;
+    let (mat, argvals) = generate_curves(n, m);
+
+    // Exact unbanded path via the _with_band wrapper (None = same as karcher_mean).
+    group.bench_function("n20_m50_none", |b| {
+        b.iter(|| {
+            karcher_mean_with_band(
+                black_box(&mat),
+                black_box(&argvals),
+                black_box(15),
+                black_box(1e-4),
+                black_box(0.0),
+                black_box(None),
+            )
+        });
+    });
+
+    // Banded path via the _with_band wrapper (band_frac = 0.1).
+    group.bench_function("n20_m50_band0.1", |b| {
+        b.iter(|| {
+            karcher_mean_with_band(
+                black_box(&mat),
+                black_box(&argvals),
+                black_box(15),
+                black_box(1e-4),
+                black_box(0.0),
+                black_box(Some(0.1)),
+            )
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_elastic_align_pair,
     bench_self_distance_matrix,
     bench_karcher_mean,
+    bench_karcher_mean_with_band,
 );
 criterion_main!(benches);

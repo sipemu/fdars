@@ -507,6 +507,156 @@ pub fn spline_interpolate(
     Ok(out)
 }
 
+/// Interpolate functional data to a new grid using B-splines with explicit extrapolation control.
+///
+/// Like [`spline_interpolate`] but applies `policy` for any query point that falls outside the
+/// domain `[argvals[0], argvals[m-1]]` instead of always returning an error. In-range queries
+/// produce identical values to the [`spline_interpolate`] path.
+///
+/// # Arguments
+/// * `data`         — Functional data matrix (`n × m`)
+/// * `argvals`      — Original evaluation points (length `m`, must be sorted)
+/// * `query_points` — Points to evaluate at (may include out-of-range values)
+/// * `order`        — B-spline order (1 = linear, 2 = quadratic, 4 = cubic, …); must be in `[1, m)`
+/// * `policy`       — Extrapolation policy for out-of-range query points
+///
+/// # Returns
+/// Interpolated `FdMatrix` of shape `(n, query_points.len())`
+///
+/// # Errors
+/// * `FdarError::InvalidDimension` — `argvals.len() != data.ncols()` or `query_points` is empty
+/// * `FdarError::InvalidParameter` — `order` is 0 or ≥ `m`; or `policy == Exception` and any
+///   query point is outside `[argvals[0], argvals[m-1]]`; or `policy == Periodic` and the domain
+///   length is zero
+/// * `FdarError::ComputationFailed` — SVD pseudoinverse could not be computed
+///
+/// # Policy Semantics
+/// * `Boundary` — clamp OOB query to the nearest boundary (`t_min` or `t_max`) before spline eval
+/// * `Exception` — return `Err(FdarError::InvalidParameter { parameter: "query_points", .. })` on first OOB
+/// * `Fill(v)` — set OOB output cells to constant `v`; in-range cells use spline interpolation
+/// * `Periodic` — wrap OOB query modulo the domain length (same recipe as in
+///   [`fdata_interpolate_with_policy`]); requires `argvals[0] < argvals[m-1]`
+pub fn spline_interpolate_with_policy(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    query_points: &[f64],
+    order: usize,
+    policy: ExtrapolationPolicy,
+) -> Result<crate::matrix::FdMatrix, crate::FdarError> {
+    let (n, m) = data.shape();
+
+    // --- Input validation (mirrors spline_interpolate) ---
+    if argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if query_points.is_empty() {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "query_points",
+            expected: ">= 1".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if order == 0 || order >= m {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("must be in [1, {m}), got {order}"),
+        });
+    }
+
+    let t_min = argvals[0];
+    let t_max = argvals[m - 1];
+    let domain_len = t_max - t_min;
+
+    // Periodic requires a positive domain length.
+    if domain_len <= 0.0 && matches!(policy, ExtrapolationPolicy::Periodic) {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "Periodic extrapolation requires a positive domain length \
+                      (argvals[0] < argvals[m-1])"
+                .to_string(),
+        });
+    }
+
+    let m_q = query_points.len();
+
+    // --- Map each query point to an effective in-range point (or mark as Fill) ---
+    // `effective[j]` holds the remapped query to pass to the spline; `fill_mask[j]` is true
+    // when the output should be the Fill constant instead.
+    let mut effective = Vec::with_capacity(m_q);
+    let mut fill_mask = vec![false; m_q];
+
+    for (j, &q) in query_points.iter().enumerate() {
+        let in_range = q >= t_min && q <= t_max;
+        if in_range {
+            effective.push(q);
+        } else {
+            match &policy {
+                ExtrapolationPolicy::Boundary => effective.push(q.clamp(t_min, t_max)),
+                ExtrapolationPolicy::Exception => {
+                    return Err(crate::FdarError::InvalidParameter {
+                        parameter: "query_points",
+                        message: format!("query {q} is outside domain [{t_min}, {t_max}]"),
+                    });
+                }
+                ExtrapolationPolicy::Fill(_) => {
+                    // Placeholder; we will overwrite this column from the fill value.
+                    fill_mask[j] = true;
+                    effective.push(t_min); // dummy in-range value — will be discarded
+                }
+                ExtrapolationPolicy::Periodic => {
+                    let wrapped = t_min + ((q - t_min) % domain_len + domain_len) % domain_len;
+                    effective.push(wrapped);
+                }
+            }
+        }
+    }
+
+    // --- Run the core spline logic on the effective (all in-range) query points ---
+    // Reuse the same SVD-based evaluation as spline_interpolate.
+    let nknots = m.saturating_sub(order).max(2);
+    let knots = crate::basis::bspline::construct_bspline_knots(t_min, t_max, nknots, order);
+    let basis_vals = crate::basis::bspline::bspline_basis(argvals, nknots, order);
+    let nbasis = basis_vals.len() / m;
+    let b_mat = nalgebra::DMatrix::from_column_slice(m, nbasis, &basis_vals);
+    let tol = NUMERICAL_EPS * b_mat.nrows().max(b_mat.ncols()) as f64;
+    let svd = nalgebra::SVD::new(b_mat.clone(), true, true);
+    let pinv = svd
+        .pseudo_inverse(tol)
+        .map_err(|e| crate::FdarError::ComputationFailed {
+            operation: "spline_interpolate_with_policy SVD pseudoinverse",
+            detail: e.to_string(),
+        })?;
+    let basis_query = crate::basis::bspline::bspline_basis_from_knots(&effective, &knots, order);
+
+    let mut out = crate::matrix::FdMatrix::zeros(n, m_q);
+    for i in 0..n {
+        let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        let y_col = nalgebra::DVector::from_vec(y_vec);
+        let coefs = &pinv * y_col;
+
+        for j in 0..m_q {
+            if fill_mask[j] {
+                // Fill policy: overwrite with constant.
+                if let ExtrapolationPolicy::Fill(v) = policy {
+                    out[(i, j)] = v;
+                }
+            } else {
+                let mut val = 0.0_f64;
+                for k in 0..nbasis {
+                    val += coefs[k] * basis_query[j + k * m_q];
+                }
+                out[(i, j)] = val;
+            }
+        }
+    }
+
+    Ok(out)
+}
+
 /// Cubic Hermite interpolation at a single point.
 ///
 /// Uses Fritsch-Carlson monotone slopes for C1 interpolation.
@@ -702,6 +852,256 @@ pub fn gradient(y: &[f64], t: &[f64]) -> Vec<f64> {
     } else {
         gradient_nonuniform(y, t)
     }
+}
+
+/// Extrapolation policy controlling behavior when a query point falls
+/// outside the domain of `argvals`.
+///
+/// Used with [`fdata_interpolate_with_policy`] to give callers explicit control
+/// over out-of-range query handling instead of the silent boundary clamp that
+/// [`fdata_interpolate`] applies.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ExtrapolationPolicy {
+    /// Clamp the query point to the nearest boundary value.
+    ///
+    /// A query at `t < t_min` returns the interpolated value at `t_min`;
+    /// a query at `t > t_max` returns the interpolated value at `t_max`.
+    Boundary,
+    /// Return an error for any out-of-range query point.
+    ///
+    /// Returns `Err(FdarError::InvalidParameter { parameter: "new_argvals", .. })`
+    /// when a query point lies outside `[argvals[0], argvals[m-1]]`.
+    Exception,
+    /// Fill out-of-range cells with a constant value.
+    Fill(f64),
+    /// Wrap query points modulo the domain length (periodic extension).
+    ///
+    /// A query at `t_min - delta` returns the same value as `t_max - delta`.
+    /// Uses the guarded-modulo recipe `((t - t_min) % L + L) % L` to handle
+    /// negative remainders for `t < t_min`.
+    Periodic,
+}
+
+/// Interpolate functional data to a new grid with explicit extrapolation control.
+///
+/// Like [`fdata_interpolate`] but applies `policy` for any query point that falls
+/// outside the domain `[argvals[0], argvals[m-1]]` instead of silently clamping.
+/// In-range queries produce identical values to the [`fdata_interpolate`] path.
+///
+/// # Arguments
+/// * `data`       — Functional data matrix (`n × m`)
+/// * `argvals`    — Original evaluation points (length `m`, must be sorted)
+/// * `new_argvals`— New evaluation points (length `m_new`)
+/// * `method`     — Interpolation method for in-range (and `Boundary`/`Periodic`) points
+/// * `policy`     — Extrapolation policy for out-of-range query points
+///
+/// # Returns
+/// Interpolated matrix `(n × m_new)`
+///
+/// # Errors
+/// * `FdarError::InvalidDimension` — `argvals.len() != data.ncols()`
+/// * `FdarError::InvalidParameter` — a query point is out of range and `policy ==
+///   ExtrapolationPolicy::Exception`
+pub fn fdata_interpolate_with_policy(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    new_argvals: &[f64],
+    method: InterpolationMethod,
+    policy: ExtrapolationPolicy,
+) -> Result<crate::matrix::FdMatrix, crate::FdarError> {
+    let (n, m) = data.shape();
+    if argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    let m_new = new_argvals.len();
+    if n == 0 || m < 2 || m_new == 0 {
+        return Ok(crate::matrix::FdMatrix::zeros(n.max(1), m_new.max(1)));
+    }
+    let t_min = argvals[0];
+    let t_max = argvals[m - 1];
+    let domain_len = t_max - t_min;
+
+    // CR-01: Guard degenerate domain before the loop — Periodic wraps via modulo domain_len
+    // and produces NaN when domain_len == 0 (IEEE 754: x % 0.0 = NaN).  Other policies do
+    // not divide by domain_len so only Periodic needs this guard.
+    if domain_len <= 0.0 && matches!(policy, ExtrapolationPolicy::Periodic) {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "Periodic extrapolation requires a positive domain length \
+                      (argvals[0] < argvals[m-1])"
+                .to_string(),
+        });
+    }
+
+    let mut result = crate::matrix::FdMatrix::zeros(n, m_new);
+    for i in 0..n {
+        let y: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        for (j, &t) in new_argvals.iter().enumerate() {
+            let in_range = t >= t_min && t <= t_max;
+            result[(i, j)] = if in_range {
+                match method {
+                    InterpolationMethod::Linear => linear_interp(argvals, &y, t),
+                    InterpolationMethod::CubicHermite => cubic_hermite_interp(argvals, &y, t),
+                }
+            } else {
+                match &policy {
+                    ExtrapolationPolicy::Boundary => {
+                        let t_clamped = t.clamp(t_min, t_max);
+                        match method {
+                            InterpolationMethod::Linear => linear_interp(argvals, &y, t_clamped),
+                            InterpolationMethod::CubicHermite => {
+                                cubic_hermite_interp(argvals, &y, t_clamped)
+                            }
+                        }
+                    }
+                    ExtrapolationPolicy::Exception => {
+                        return Err(crate::FdarError::InvalidParameter {
+                            parameter: "new_argvals",
+                            message: format!("query {t} is outside domain [{t_min}, {t_max}]"),
+                        });
+                    }
+                    ExtrapolationPolicy::Fill(v) => *v,
+                    ExtrapolationPolicy::Periodic => {
+                        let wrapped = t_min + ((t - t_min) % domain_len + domain_len) % domain_len;
+                        match method {
+                            InterpolationMethod::Linear => linear_interp(argvals, &y, wrapped),
+                            InterpolationMethod::CubicHermite => {
+                                cubic_hermite_interp(argvals, &y, wrapped)
+                            }
+                        }
+                    }
+                }
+            };
+        }
+    }
+    Ok(result)
+}
+
+// ── FEAT-03: NaN imputation ────────────────────────────────────────────────
+
+/// Strategy for in-grid NaN imputation in a regular `FdMatrix`.
+///
+/// Used with [`impute_missing_values`] to specify how NaN entries are replaced
+/// in each curve.
+///
+/// Leading or trailing NaN values (no neighbor on one side) are filled with
+/// the nearest valid value (boundary extension) for the `Linear` strategy.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ImputationMethod {
+    /// Linear interpolation between the nearest non-NaN neighbors.
+    ///
+    /// For gaps at the boundary (leading or trailing NaN), the nearest valid
+    /// value is used as boundary extension.
+    Linear,
+    /// Replace each NaN with the curve's mean of its non-NaN values.
+    Mean,
+    /// Replace each NaN with a user-supplied constant value.
+    Constant(f64),
+}
+
+/// Impute NaN values in a regular functional data matrix.
+///
+/// Returns a new `FdMatrix` with NaN entries replaced according to `method`.
+/// Non-NaN entries are copied through unchanged.
+///
+/// For `Linear`, gaps at the curve boundary (no neighbor on one side) are
+/// filled with the nearest valid value (boundary extension).
+///
+/// # Arguments
+/// * `data`    — Functional data matrix (`n × m`) with possible NaN entries
+/// * `argvals` — Evaluation points (length `m`, must be sorted)
+/// * `method`  — Imputation strategy
+///
+/// # Errors
+/// * `FdarError::InvalidDimension` if `argvals.len() != data.ncols()`
+/// * `FdarError::InvalidParameter` if any curve consists entirely of NaN values
+pub fn impute_missing_values(
+    data: &crate::matrix::FdMatrix,
+    argvals: &[f64],
+    method: ImputationMethod,
+) -> Result<crate::matrix::FdMatrix, crate::FdarError> {
+    let (n, m) = data.shape();
+    if argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    // WR-01: A zero-column matrix has no evaluation points and is degenerate.
+    // Without this guard the per-curve loop would report "curve 0 contains only NaN values",
+    // which is factually incorrect (the curve has no values at all).
+    if m == 0 {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "m >= 1".to_string(),
+            actual: "m=0".to_string(),
+        });
+    }
+    let mut out_data = vec![0.0_f64; n * m]; // column-major output buffer
+    for i in 0..n {
+        let row: Vec<f64> = data.row(i);
+        let valid_count = row.iter().filter(|v| !v.is_nan()).count();
+        if valid_count == 0 {
+            return Err(crate::FdarError::InvalidParameter {
+                parameter: "data",
+                message: format!("curve {i} contains only NaN values"),
+            });
+        }
+        let imputed = impute_row(&row, argvals, &method);
+        for j in 0..m {
+            out_data[i + j * n] = imputed[j]; // column-major write
+        }
+    }
+    crate::matrix::FdMatrix::from_column_major(out_data, n, m)
+}
+
+/// Impute a single row (curve) of NaN values using the given strategy.
+fn impute_row(row: &[f64], argvals: &[f64], method: &ImputationMethod) -> Vec<f64> {
+    let mut result = row.to_vec();
+    match method {
+        ImputationMethod::Mean => {
+            let sum: f64 = row.iter().filter(|v| !v.is_nan()).sum();
+            let count = row.iter().filter(|v| !v.is_nan()).count();
+            let mean = sum / count as f64;
+            for v in &mut result {
+                if v.is_nan() {
+                    *v = mean;
+                }
+            }
+        }
+        ImputationMethod::Constant(c) => {
+            for v in &mut result {
+                if v.is_nan() {
+                    *v = *c;
+                }
+            }
+        }
+        ImputationMethod::Linear => {
+            let valid_idxs: Vec<usize> = (0..row.len()).filter(|&j| !row[j].is_nan()).collect();
+            for j in 0..row.len() {
+                if result[j].is_nan() {
+                    let left = valid_idxs.iter().rev().find(|&&k| k < j).copied();
+                    let right = valid_idxs.iter().find(|&&k| k > j).copied();
+                    result[j] = match (left, right) {
+                        (Some(l), Some(r)) => {
+                            linear_interp(&[argvals[l], argvals[r]], &[row[l], row[r]], argvals[j])
+                        }
+                        (Some(l), None) => row[l], // boundary fill (trailing NaN)
+                        (None, Some(r)) => row[r], // boundary fill (leading NaN)
+                        (None, None) => unreachable!(), // all-NaN already rejected
+                    };
+                }
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -1108,6 +1508,523 @@ mod tests {
                 }
             ),
             "expected InvalidDimension for empty query_points, got {err2:?}"
+        );
+    }
+
+    // ── spline_interpolate_with_policy tests ──────────────────────────────
+
+    #[test]
+    fn test_spline_with_policy_in_range_matches_spline() {
+        // In-range queries must match spline_interpolate exactly regardless of policy.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let poly = |x: f64| 2.0 * x.powi(3) - x.powi(2) + 0.5 * x - 0.1;
+        let vals: Vec<f64> = t.iter().map(|&x| poly(x)).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        // Off-grid midpoints (all in-range)
+        let q: Vec<f64> = t.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
+        let expected = spline_interpolate(&data, &t, &q, 4).unwrap();
+        let actual =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Boundary)
+                .unwrap();
+        for j in 0..q.len() {
+            assert!(
+                (actual[(0, j)] - expected[(0, j)]).abs() < 1e-10,
+                "in-range mismatch at j={j}: policy={} vs plain={}",
+                actual[(0, j)],
+                expected[(0, j)]
+            );
+        }
+    }
+
+    #[test]
+    fn test_spline_with_policy_boundary() {
+        // OOB queries clamped to nearest boundary value.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // [0, 1]
+        let vals: Vec<f64> = t.iter().map(|&x| x.powi(2)).collect(); // y = x^2
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        // Query below (should clamp to t_min=0 → y=0) and above (clamp to t_max=1 → y≈1).
+        let q = vec![-0.5_f64, 0.5, 1.5];
+        let result =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Boundary)
+                .unwrap();
+        // Clamped to 0 → y = 0^2 = 0 (within spline tolerance)
+        assert!(
+            result[(0, 0)].abs() < 1e-9,
+            "below boundary should clamp, got {}",
+            result[(0, 0)]
+        );
+        // Clamped to 1 → y = 1^2 = 1 (within spline tolerance)
+        assert!(
+            (result[(0, 2)] - 1.0).abs() < 1e-9,
+            "above boundary should clamp, got {}",
+            result[(0, 2)]
+        );
+        // In-range 0.5 → y ≈ 0.25
+        assert!(
+            (result[(0, 1)] - 0.25).abs() < 1e-9,
+            "in-range should be ~0.25, got {}",
+            result[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_spline_with_policy_exception() {
+        // Exception policy errors on OOB, matches spline_interpolate behavior.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20);
+        let vals: Vec<f64> = t.to_vec();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let q_oob = vec![1.5_f64];
+        let err =
+            spline_interpolate_with_policy(&data, &t, &q_oob, 4, ExtrapolationPolicy::Exception)
+                .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "query_points",
+                    ..
+                }
+            ),
+            "Exception policy should error on OOB, got {err:?}"
+        );
+        // In-range queries with Exception policy should succeed.
+        let q_ok = vec![0.0_f64, 0.5, 1.0];
+        let ok =
+            spline_interpolate_with_policy(&data, &t, &q_ok, 4, ExtrapolationPolicy::Exception);
+        assert!(
+            ok.is_ok(),
+            "Exception policy should succeed for in-range queries"
+        );
+    }
+
+    #[test]
+    fn test_spline_with_policy_fill() {
+        // Fill policy: OOB cells get constant fill value; in-range cells use spline.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // [0, 1]
+        let vals: Vec<f64> = t.iter().map(|&x| x.powi(2)).collect();
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let fill_val = 42.0_f64;
+        let q = vec![-0.5_f64, 0.5, 2.0];
+        let result =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Fill(fill_val))
+                .unwrap();
+        assert!(
+            (result[(0, 0)] - fill_val).abs() < 1e-10,
+            "OOB below should be fill value, got {}",
+            result[(0, 0)]
+        );
+        assert!(
+            (result[(0, 2)] - fill_val).abs() < 1e-10,
+            "OOB above should be fill value, got {}",
+            result[(0, 2)]
+        );
+        // In-range: y ≈ 0.25
+        assert!(
+            (result[(0, 1)] - 0.25).abs() < 1e-9,
+            "in-range should be ~0.25, got {}",
+            result[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_spline_with_policy_periodic() {
+        // Periodic policy: OOB queries wrap modulo domain length.
+        // Use y = x (linear) on [0, 1]; a query at 1.3 should wrap to 0.3.
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(20); // [0, 1]
+        let vals: Vec<f64> = t.to_vec(); // y = x
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 20).unwrap();
+        let q = vec![1.3_f64];
+        let result =
+            spline_interpolate_with_policy(&data, &t, &q, 4, ExtrapolationPolicy::Periodic)
+                .unwrap();
+        // Expected: wrap 1.3 → 0.3, spline of y=x at 0.3 ≈ 0.3
+        assert!(
+            (result[(0, 0)] - 0.3).abs() < 1e-9,
+            "Periodic wrap of 1.3 should give ~0.3, got {}",
+            result[(0, 0)]
+        );
+        // t = -0.2 → wrap to 0.8
+        let q2 = vec![-0.2_f64];
+        let result2 =
+            spline_interpolate_with_policy(&data, &t, &q2, 4, ExtrapolationPolicy::Periodic)
+                .unwrap();
+        assert!(
+            (result2[(0, 0)] - 0.8).abs() < 1e-9,
+            "Periodic wrap of -0.2 should give ~0.8, got {}",
+            result2[(0, 0)]
+        );
+    }
+
+    #[test]
+    fn test_spline_with_policy_periodic_zero_length_domain_errors() {
+        // Periodic + zero-length domain must error (same guard as fdata_interpolate_with_policy).
+        let argvals = vec![3.0_f64, 3.0, 3.0];
+        let vals = vec![1.0_f64, 1.0, 1.0];
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 3).unwrap();
+        let q = vec![4.0_f64]; // OOB
+        let err =
+            spline_interpolate_with_policy(&data, &argvals, &q, 1, ExtrapolationPolicy::Periodic)
+                .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "Periodic + zero-length domain should error, got {err:?}"
+        );
+    }
+
+    // ── ExtrapolationPolicy tests ──────────────────────────────────────────
+
+    /// Build a 1-curve FdMatrix: y = x on [0, 1] with `n_pts` points.
+    fn make_linear_curve(n_pts: usize) -> (crate::matrix::FdMatrix, Vec<f64>) {
+        use crate::test_helpers::uniform_grid;
+        let t = uniform_grid(n_pts);
+        let vals: Vec<f64> = t.to_vec();
+        let mat = crate::matrix::FdMatrix::from_column_major(vals, 1, n_pts).unwrap();
+        (mat, t)
+    }
+
+    #[test]
+    fn test_extrapolation_boundary() {
+        let (data, t) = make_linear_curve(11); // y=x on [0,1]
+                                               // Query at t=-0.2 (below) and t=1.3 (above)
+        let q = vec![-0.2_f64, 0.5, 1.3];
+        let result = fdata_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Boundary,
+        )
+        .unwrap();
+        // Clamped to t_min=0.0 → y=0.0
+        assert!(
+            (result[(0, 0)] - 0.0).abs() < 1e-10,
+            "below boundary should clamp to 0"
+        );
+        // In-range: y=0.5
+        assert!(
+            (result[(0, 1)] - 0.5).abs() < 1e-10,
+            "in-range should interpolate correctly"
+        );
+        // Clamped to t_max=1.0 → y=1.0
+        assert!(
+            (result[(0, 2)] - 1.0).abs() < 1e-10,
+            "above boundary should clamp to 1"
+        );
+    }
+
+    #[test]
+    fn test_extrapolation_exception() {
+        let (data, t) = make_linear_curve(11);
+        let q_bad = vec![1.5_f64]; // out of range
+        let err = fdata_interpolate_with_policy(
+            &data,
+            &t,
+            &q_bad,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Exception,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "new_argvals",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for OOB query, got {err:?}"
+        );
+
+        // In-range should still work with Exception policy
+        let q_ok = vec![0.0_f64, 0.5, 1.0];
+        let result = fdata_interpolate_with_policy(
+            &data,
+            &t,
+            &q_ok,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Exception,
+        )
+        .unwrap();
+        assert!((result[(0, 1)] - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_extrapolation_fill() {
+        let (data, t) = make_linear_curve(11);
+        let fill_val = 99.0_f64;
+        let q = vec![-0.5_f64, 0.5, 2.0];
+        let result = fdata_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Fill(fill_val),
+        )
+        .unwrap();
+        assert!(
+            (result[(0, 0)] - fill_val).abs() < 1e-10,
+            "below range should be fill value"
+        );
+        assert!(
+            (result[(0, 1)] - 0.5).abs() < 1e-10,
+            "in-range should interpolate"
+        );
+        assert!(
+            (result[(0, 2)] - fill_val).abs() < 1e-10,
+            "above range should be fill value"
+        );
+    }
+
+    #[test]
+    fn test_extrapolation_periodic() {
+        let (data, t) = make_linear_curve(11); // y=x on [0,1], domain_len=1
+                                               // t = -0.1 should wrap to 0.9 (y=0.9)
+        let q = vec![-0.1_f64, 0.5, 1.1];
+        let result = fdata_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Periodic,
+        )
+        .unwrap();
+        // wrapped: ((−0.1 − 0) % 1 + 1) % 1 = (−0.1 + 1) % 1 = 0.9 % 1 = 0.9
+        assert!(
+            (result[(0, 0)] - 0.9).abs() < 1e-9,
+            "t=-0.1 should wrap to 0.9, got {}",
+            result[(0, 0)]
+        );
+        assert!(
+            (result[(0, 1)] - 0.5).abs() < 1e-10,
+            "in-range point unchanged"
+        );
+        // t=1.1 → ((1.1 − 0) % 1 + 1) % 1 = (0.1 + 1) % 1 = 0.1
+        assert!(
+            (result[(0, 2)] - 0.1).abs() < 1e-9,
+            "t=1.1 should wrap to 0.1, got {}",
+            result[(0, 2)]
+        );
+    }
+
+    #[test]
+    fn test_extrapolation_in_range_equivalence() {
+        // In-range queries must match fdata_interpolate exactly
+        let (data, t) = make_linear_curve(21);
+        let q: Vec<f64> = (0..=10).map(|i| i as f64 / 10.0).collect();
+        let expected = fdata_interpolate(&data, &t, &q, InterpolationMethod::Linear);
+        let actual = fdata_interpolate_with_policy(
+            &data,
+            &t,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Boundary,
+        )
+        .unwrap();
+        let (_, m_new) = actual.shape();
+        for j in 0..m_new {
+            assert!(
+                (actual[(0, j)] - expected[(0, j)]).abs() < 1e-12,
+                "in-range mismatch at j={j}: policy={} vs plain={}",
+                actual[(0, j)],
+                expected[(0, j)]
+            );
+        }
+    }
+
+    #[test]
+    fn test_extrapolation_policy_dim_guard() {
+        let (data, _t) = make_linear_curve(11);
+        let bad_argvals: Vec<f64> = (0..5).map(|i| i as f64 / 4.0).collect(); // len=5, ncols=11
+        let q = vec![0.5_f64];
+        let err = fdata_interpolate_with_policy(
+            &data,
+            &bad_argvals,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Boundary,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidDimension {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for argvals mismatch, got {err:?}"
+        );
+    }
+
+    // ── ImputationMethod / impute_missing_values tests ────────────────────
+
+    /// Build a 1-curve FdMatrix from given values and a uniform grid.
+    fn make_curve_with_vals(vals: Vec<f64>) -> (crate::matrix::FdMatrix, Vec<f64>) {
+        let m = vals.len();
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let mat = crate::matrix::FdMatrix::from_column_major(vals, 1, m).unwrap();
+        (mat, argvals)
+    }
+
+    #[test]
+    fn test_impute_linear() {
+        // Curve: [0.0, NaN, 1.0] on argvals [0.0, 0.5, 1.0]
+        // Linear between (0,0.0) and (1.0,1.0): at t=0.5 → 0.5
+        let (data, argvals) = make_curve_with_vals(vec![0.0_f64, f64::NAN, 1.0]);
+        let result = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap();
+        // Hand-computed: linear_interp([0.0,1.0],[0.0,1.0],0.5) = 0.5
+        assert!(
+            (result[(0, 1)] - 0.5).abs() < 1e-10,
+            "linear imputation should give 0.5, got {}",
+            result[(0, 1)]
+        );
+        // Non-NaN entries unchanged
+        assert!((result[(0, 0)] - 0.0).abs() < 1e-10);
+        assert!((result[(0, 2)] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_impute_mean() {
+        // Curve: [1.0, NaN, 3.0] → mean of non-NaN = 2.0
+        let (data, argvals) = make_curve_with_vals(vec![1.0_f64, f64::NAN, 3.0]);
+        let result = impute_missing_values(&data, &argvals, ImputationMethod::Mean).unwrap();
+        assert!(
+            (result[(0, 1)] - 2.0).abs() < 1e-10,
+            "mean imputation should give 2.0, got {}",
+            result[(0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_impute_constant() {
+        // Curve: [1.0, NaN, 3.0] → constant 99.0
+        let (data, argvals) = make_curve_with_vals(vec![1.0_f64, f64::NAN, 3.0]);
+        let result =
+            impute_missing_values(&data, &argvals, ImputationMethod::Constant(99.0)).unwrap();
+        assert!(
+            (result[(0, 1)] - 99.0).abs() < 1e-10,
+            "constant imputation should give 99.0, got {}",
+            result[(0, 1)]
+        );
+        // Non-NaN entries unchanged
+        assert!((result[(0, 0)] - 1.0).abs() < 1e-10);
+        assert!((result[(0, 2)] - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_impute_all_nan() {
+        // An all-NaN curve should return Err(InvalidParameter)
+        let (data, argvals) = make_curve_with_vals(vec![f64::NAN, f64::NAN, f64::NAN]);
+        let err = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for all-NaN curve, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_impute_boundary_nan() {
+        // Curve: [NaN, 0.5, 1.0] → leading NaN → boundary fill with 0.5
+        let (data, argvals) = make_curve_with_vals(vec![f64::NAN, 0.5_f64, 1.0]);
+        let result = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap();
+        assert!(
+            (result[(0, 0)] - 0.5).abs() < 1e-10,
+            "leading NaN should be filled with nearest valid (0.5), got {}",
+            result[(0, 0)]
+        );
+
+        // Curve: [0.0, 0.5, NaN] → trailing NaN → boundary fill with 0.5
+        let (data2, argvals2) = make_curve_with_vals(vec![0.0_f64, 0.5, f64::NAN]);
+        let result2 = impute_missing_values(&data2, &argvals2, ImputationMethod::Linear).unwrap();
+        assert!(
+            (result2[(0, 2)] - 0.5).abs() < 1e-10,
+            "trailing NaN should be filled with nearest valid (0.5), got {}",
+            result2[(0, 2)]
+        );
+    }
+
+    // ── CR-01: Periodic + zero-length domain must error (not produce NaN) ────
+
+    #[test]
+    fn test_extrapolation_periodic_zero_length_domain_errors() {
+        // Domain [5.0, 5.0] has length 0 — Periodic would compute x % 0.0 = NaN without the guard.
+        let degenerate_argvals = vec![5.0_f64, 5.0, 5.0];
+        let vals = vec![1.0_f64, 1.0, 1.0];
+        let data = crate::matrix::FdMatrix::from_column_major(vals, 1, 3).unwrap();
+        // Any OOB query with Periodic on a zero-length domain must return Err.
+        let q = vec![6.0_f64]; // outside [5.0, 5.0]
+        let err = fdata_interpolate_with_policy(
+            &data,
+            &degenerate_argvals,
+            &q,
+            InterpolationMethod::Linear,
+            ExtrapolationPolicy::Periodic,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidParameter {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for zero-length domain + Periodic, got {err:?}"
+        );
+    }
+
+    // ── WR-01: m=0 guard in impute_missing_values ─────────────────────────
+
+    #[test]
+    fn test_impute_zero_columns_errors() {
+        // A matrix with m=0 columns is degenerate; should return InvalidDimension, not "all-NaN".
+        let data = crate::matrix::FdMatrix::zeros(2, 0);
+        let argvals: Vec<f64> = vec![];
+        let err = impute_missing_values(&data, &argvals, ImputationMethod::Linear).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for m=0 matrix, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_impute_dim_mismatch() {
+        // argvals length != ncols
+        let (data, _argvals) = make_curve_with_vals(vec![1.0, 2.0, 3.0]);
+        let bad_argvals = vec![0.0_f64, 1.0]; // len=2, ncols=3
+        let err = impute_missing_values(&data, &bad_argvals, ImputationMethod::Linear).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::FdarError::InvalidDimension {
+                    parameter: "argvals",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for argvals mismatch, got {err:?}"
         );
     }
 }

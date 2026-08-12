@@ -320,6 +320,44 @@ pub fn karcher_mean_banded(
     karcher_mean_impl(data, argvals, max_iter, tol, lambda, band_frac)
 }
 
+/// Karcher (Fréchet) mean in the elastic metric with an opt-in Sakoe–Chiba band.
+///
+/// This is the ergonomic opt-in variant of [`karcher_mean`]. Pass `band_frac` to
+/// control whether the exact or banded DP path is used:
+///
+/// - `None` (default): exact unbanded computation, **identical** to [`karcher_mean`].
+///   Use this as the safe default when you do not need the banded approximation.
+/// - `Some(0.0)`: treated as exact/unbanded (equivalent to `None`), because
+///   `band_radius(0.0, m)` returns `None`.
+/// - `Some(0.1)`: banded path with `band_frac = 0.1` — typically **4–6× faster** than
+///   the unbanded path with a small band-approximation error. `band_frac` is a
+///   Sakoe–Chiba band width expressed as a fraction of M (the number of evaluation
+///   points).
+/// - `Some(0.99)`: near-full band; produces output within `1e-12` of the unbanded
+///   result whenever `ceil(band_frac * m) >= m - 1` (for `band_frac = 0.99`,
+///   that means `m < 200`). For `m >= 200`, use `None` for exact results.
+///
+/// Existing callers of [`karcher_mean`] are unaffected; this wrapper adds a new
+/// optional control path without changing any existing signature or default.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn karcher_mean_with_band(
+    data: &FdMatrix,
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    lambda: f64,
+    band_frac: Option<f64>,
+) -> KarcherMeanResult {
+    karcher_mean_impl(
+        data,
+        argvals,
+        max_iter,
+        tol,
+        lambda,
+        band_frac.unwrap_or(0.0),
+    )
+}
+
 fn karcher_mean_impl(
     data: &FdMatrix,
     argvals: &[f64],

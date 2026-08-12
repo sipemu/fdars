@@ -2731,3 +2731,191 @@ fn test_karcher_mean_banded_runs() {
         }
     }
 }
+
+#[test]
+fn test_self_distance_matrix_with_band_none_matches_exact() {
+    // None -> band_frac.and_then(...) -> None -> same unbanded impl as elastic_self_distance_matrix.
+    // Results must be element-wise identical within 1e-15.
+    let data = make_test_data(5, 30, 17);
+    let t = uniform_grid(30);
+
+    let base = elastic_self_distance_matrix(&data, &t, 0.0);
+    let banded = elastic_self_distance_matrix_with_band(&data, &t, 0.0, None);
+
+    assert_eq!(base.shape(), banded.shape());
+    for (a, b) in base.as_slice().iter().zip(banded.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "self distance mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_self_distance_matrix_with_band_wide_matches_unbanded() {
+    // At m=40: ceil(0.99 * 40) = 40 >= m-1 = 39, so the band covers the full warp.
+    // Results must match the unbanded path within 1e-12.
+    let data = make_test_data(6, 40, 19);
+    let t = uniform_grid(40);
+
+    let base = elastic_self_distance_matrix(&data, &t, 0.0);
+    let wide = elastic_self_distance_matrix_with_band(&data, &t, 0.0, Some(0.99));
+
+    assert_eq!(base.shape(), wide.shape());
+    for (a, b) in base.as_slice().iter().zip(wide.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-12,
+            "self distance mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_cross_distance_matrix_with_band_none_matches_exact() {
+    // None -> band_frac.and_then(...) -> None -> same unbanded impl as elastic_cross_distance_matrix.
+    // Results must be element-wise identical within 1e-15.
+    let d1 = make_test_data(4, 30, 23);
+    let d2 = make_test_data(5, 30, 29);
+    let t = uniform_grid(30);
+
+    let base = elastic_cross_distance_matrix(&d1, &d2, &t, 0.0);
+    let banded = elastic_cross_distance_matrix_with_band(&d1, &d2, &t, 0.0, None);
+
+    assert_eq!(base.shape(), banded.shape());
+    for (a, b) in base.as_slice().iter().zip(banded.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "cross distance mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_cross_distance_matrix_with_band_wide_matches_unbanded() {
+    // At m=30: ceil(0.99 * 30) = 30 >= m-1 = 29, so the band covers the full warp.
+    // Results must match the unbanded path within 1e-12.
+    let d1 = make_test_data(4, 30, 31);
+    let d2 = make_test_data(5, 30, 37);
+    let t = uniform_grid(30);
+
+    let base = elastic_cross_distance_matrix(&d1, &d2, &t, 0.0);
+    let wide = elastic_cross_distance_matrix_with_band(&d1, &d2, &t, 0.0, Some(0.99));
+
+    assert_eq!(base.shape(), wide.shape());
+    for (a, b) in base.as_slice().iter().zip(wide.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-12,
+            "cross distance mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_karcher_mean_with_band_none_matches_exact() {
+    // None -> unwrap_or(0.0) -> band_radius(0.0, m) -> None -> same unbanded impl.
+    // Results must be element-wise identical within 1e-15.
+    let data = make_test_data(8, 30, 11);
+    let t = uniform_grid(30);
+
+    let base = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+    let banded = karcher_mean_with_band(&data, &t, 20, 1e-4, 0.0, None);
+
+    assert_eq!(base.mean.len(), banded.mean.len());
+    assert_eq!(base.n_iter, banded.n_iter);
+    for (a, b) in base.mean.iter().zip(banded.mean.iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "mean mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_karcher_mean_with_band_wide_matches_unbanded() {
+    // At m=30: ceil(0.99 * 30) = 30 >= m-1 = 29, so the band covers the full warp.
+    // Results must match the unbanded path within 1e-12.
+    let data = make_test_data(8, 30, 13);
+    let t = uniform_grid(30);
+
+    let base = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+    let wide = karcher_mean_with_band(&data, &t, 20, 1e-4, 0.0, Some(0.99));
+
+    assert_eq!(base.mean.len(), wide.mean.len());
+    for (a, b) in base.mean.iter().zip(wide.mean.iter()) {
+        assert!(
+            (a - b).abs() < 1e-12,
+            "mean mismatch: {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_self_distance_matrix_with_band_some_zero_matches_exact() {
+    // Some(0.0) is the documented sentinel meaning "treat as unbanded".
+    // band_radius(0.0, m) returns None, so Some(0.0) must produce results
+    // element-wise identical to the exact unbanded path within 1e-15.
+    let data = make_test_data(5, 30, 41);
+    let t = uniform_grid(30);
+
+    let base = elastic_self_distance_matrix(&data, &t, 0.0);
+    let sentinel = elastic_self_distance_matrix_with_band(&data, &t, 0.0, Some(0.0));
+
+    assert_eq!(base.shape(), sentinel.shape());
+    for (a, b) in base.as_slice().iter().zip(sentinel.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "self distance mismatch with Some(0.0): {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_cross_distance_matrix_with_band_some_zero_matches_exact() {
+    // Some(0.0) is the documented sentinel meaning "treat as unbanded".
+    // band_radius(0.0, m) returns None, so Some(0.0) must produce results
+    // element-wise identical to the exact unbanded path within 1e-15.
+    let d1 = make_test_data(4, 30, 43);
+    let d2 = make_test_data(5, 30, 47);
+    let t = uniform_grid(30);
+
+    let base = elastic_cross_distance_matrix(&d1, &d2, &t, 0.0);
+    let sentinel = elastic_cross_distance_matrix_with_band(&d1, &d2, &t, 0.0, Some(0.0));
+
+    assert_eq!(base.shape(), sentinel.shape());
+    for (a, b) in base.as_slice().iter().zip(sentinel.as_slice().iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "cross distance mismatch with Some(0.0): {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}
+
+#[test]
+fn test_karcher_mean_with_band_some_zero_matches_exact() {
+    // Some(0.0) is the documented sentinel meaning "treat as unbanded".
+    // unwrap_or(0.0) produces 0.0 -> band_radius(0.0, m) -> None -> unbanded impl.
+    // Results must be element-wise identical to the exact path within 1e-15.
+    let data = make_test_data(8, 30, 53);
+    let t = uniform_grid(30);
+
+    let base = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+    let sentinel = karcher_mean_with_band(&data, &t, 20, 1e-4, 0.0, Some(0.0));
+
+    assert_eq!(base.mean.len(), sentinel.mean.len());
+    assert_eq!(base.n_iter, sentinel.n_iter);
+    for (a, b) in base.mean.iter().zip(sentinel.mean.iter()) {
+        assert!(
+            (a - b).abs() < 1e-15,
+            "mean mismatch with Some(0.0): {a} vs {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+}

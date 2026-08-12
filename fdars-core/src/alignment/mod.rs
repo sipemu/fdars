@@ -63,7 +63,7 @@ pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};
-pub use karcher::{karcher_mean, karcher_mean_banded};
+pub use karcher::{karcher_mean, karcher_mean_banded, karcher_mean_with_band};
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
@@ -75,9 +75,10 @@ pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlie
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
     elastic_align_pair_banded, elastic_align_pair_penalized, elastic_cross_distance_matrix,
-    elastic_cross_distance_matrix_banded, elastic_distance, elastic_distance_banded,
-    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, phase_distance_pair,
-    phase_self_distance_matrix, WarpPenaltyType,
+    elastic_cross_distance_matrix_banded, elastic_cross_distance_matrix_with_band,
+    elastic_distance, elastic_distance_banded, elastic_self_distance_matrix,
+    elastic_self_distance_matrix_banded, elastic_self_distance_matrix_with_band,
+    phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
 };
 pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
