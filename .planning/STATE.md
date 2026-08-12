@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.17.0
 milestone_name: Registration Parity & Elastic-FPCA Performance
 status: planning
-last_updated: "2026-08-12T07:43:15.979Z"
+last_updated: "2026-08-12T08:15:00.000Z"
 last_activity: 2026-08-12
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,34 +17,34 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-11)
+See: .planning/PROJECT.md (updated 2026-08-12)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** Phase 13 — Parity Quick Wins (FEAT-03/04 done; FEAT-05 scoring metrics remaining)
+**Current focus:** Phase 14 — Shift Registration (FEAT-06 least-squares shift registration + FEAT-07 registration-quality scores). Roadmap defined; ready to plan Phase 14.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 14 — Shift Registration (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-12 — Milestone v0.17.0 started
+Status: Roadmap created; awaiting phase planning
+Last activity: 2026-08-12 — Roadmap for v0.17.0 created (Phases 14–15, 3 requirements, 100% coverage)
 
-## Milestone Roadmap (v0.16.0)
+## Milestone Roadmap (v0.17.0)
 
-Two phases, four backlog items: one P1 elastic-feasibility item (its own phase) plus three effort-S parity gaps (one phase, parallelizable plans).
+Two phases, three backlog items. Phase 14 pairs the two registration items (they share `alignment/`; FEAT-07 scores the FEAT-06 output). Phase 15 isolates the elastic-FPCA perf win.
 
 | Phase | Requirements | Backlog IDs | Notes |
 |-------|--------------|-------------|-------|
-| 12 — Elastic Feasibility | PERF-03 | PERF-ELASTIC-BAND (P1/M; also P5-4) | Isolated to `alignment/`; banded variants exist — surface `band_frac`, keep unbanded exact |
-| 13 — Parity Quick Wins | FEAT-03, FEAT-04, FEAT-05 | PREP-03, REPR-03, MISC-04 (all P2/S) | Imputation + `ExtrapolationPolicy` enum + scoring metrics; FEAT-03/04 share `helpers.rs` |
+| 14 — Shift Registration | FEAT-06, FEAT-07 | PREP-04 (P1/M), PREP-05 (P2/S) | New `least_squares_shift_registration` in `alignment/` (golden-section L2-to-mean, returns registered curves + per-curve δᵢ) + three quality scores (`least_squares_score` / `pairwise_correlation_score` / `sobolev_least_squares_score`) in `alignment/quality.rs`. FEAT-07 scores FEAT-06 output — natural pair. |
+| 15 — Elastic-FPCA Performance | PERF-04 | PERF-PAR-ELFPCA (P2/M) | Parallelize the three per-curve loops in `elastic_fpca.rs:701/720/764` via `iter_maybe_parallel!(0..n)`; numerically equivalent to sequential; light `:764` guarded by N ≳ 50 threshold. Isolated to `elastic_fpca.rs`. |
 
-Phases 12 and 13 are mutually independent (disjoint files) and may be executed in either order or concurrently.
+Phases 14 and 15 are mutually independent (disjoint files: `alignment/` vs `elastic_fpca.rs`) and may be executed in either order or concurrently.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 29 (25 in v0.14.0 + 4 in v0.15.0)
+- Total plans completed: 33 (25 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -55,49 +55,42 @@ Phases 12 and 13 are mutually independent (disjoint files) and may be executed i
 | 01–09 | v0.14.0 | 21 |
 | 10 | v0.15.0 | 2 |
 | 11 | v0.15.0 | 2 |
+| 12 | v0.16.0 | 1 |
+| 13 | v0.16.0 | 3 |
 
 **Recent Trend:**
 
-- Last 5 plans: 10-01, 10-02, 11-01, 11-02 (v0.15.0, all completed + verified)
+- Last 5 plans: 11-01, 11-02 (v0.15.0), 12-01, 13-01, 13-02 (v0.16.0) — all completed + verified
 - Trend: —
 
 *Updated after each plan completion*
-**Per-Plan Metrics:**
-
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| Phase 12-elastic-feasibility-banded-alignment-default-band-frac P01 | 22 | 3 tasks | 6 files |
-| Phase 13-parity-quick-wins P01 (FEAT-03 + FEAT-04) | 30 min | 3 tasks | 2 files |
-| Phase 13-parity-quick-wins P02 (FEAT-05 scoring) | 10 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Relevant to current work (v0.16.0 implementation):
+Relevant to current work (v0.17.0 implementation):
 
-- v0.16.0 is the second implementation milestone — real `fdars-core/src/` changes. Each phase requires inline `#[cfg(test)]` tests and numerical-equivalence/feasibility verification.
-- Phase numbering continues from v0.15.0 (ended at Phase 11): v0.16.0 starts at Phase 12.
-- Roadmap grouping: PERF-03 (banded elastic alignment, P1 headline) → its own Phase 12 (heavier, isolated to `alignment/`); the three effort-S parity gaps FEAT-03/FEAT-04/FEAT-05 → Phase 13 (parallelizable plans). Phases 12 and 13 are mutually independent (disjoint files).
-- All four items carry exact file locations, root causes, and proposed API signatures from the v0.14.0 audit (`.planning/research/BACKLOG.md` — PERF-ELASTIC-BAND, PREP-03, REPR-03, MISC-04) — reuse, do not re-derive.
+- v0.17.0 is the third implementation milestone — real `fdars-core/src/` changes. Each phase requires inline `#[cfg(test)]` tests and numerical-equivalence / feasibility verification.
+- Phase numbering continues from v0.16.0 (ended at Phase 13): v0.17.0 starts at Phase 14.
+- Roadmap grouping: FEAT-06 (shift registration) + FEAT-07 (registration-quality scores) → Phase 14 (both live in `alignment/`; FEAT-07 scores the FEAT-06 output — natural pair). PERF-04 (parallelize elastic-FPCA loops) → Phase 15 (isolated to `elastic_fpca.rs`). Phases 14 and 15 are mutually independent (disjoint files).
+- All three items carry exact file locations, root causes, and proposed API signatures from the v0.14.0 audit (`.planning/research/BACKLOG.md` — PREP-04, PREP-05, PERF-PAR-ELFPCA) — reuse, do not re-derive.
+- Research intentionally skipped for this milestone — the v0.14.0 audit already researched these items; the backlog carries signatures + scikit-fda references (no SUMMARY.md).
 
 Conventions carried from prior milestones that constrain implementation:
 
-- Column-major `FdMatrix`; all public functions return `Result<T, FdarError>` (never panic on input); feature-gated parallelism via `iter_maybe_parallel!` (5 macros in `parallel.rs`); `#[must_use]` on expensive computations (note: `Result<T, E>` already carries must_use — do not double-annotate); inline `#[cfg(test)]` tests.
-- All four v0.16.0 items are additive/non-breaking: PERF-03's banded path is opt-in via `band_frac` (full unbanded path retained and exact); FEAT-03/04/05 are new functions/enum.
+- Column-major `FdMatrix`; all public functions return `Result<T, FdarError>` (never panic on input); feature-gated parallelism via `iter_maybe_parallel!` (5 macros in `parallel.rs`); inline `#[cfg(test)]` tests; crate-root re-export of new public functions.
+- `Result<T, E>`-returning fns must NOT carry `#[must_use]` — `clippy::double_must_use` fires under `-D warnings` (confirmed convention note, Phase 13-01).
+- All three v0.17.0 items are additive/non-breaking: FEAT-06/FEAT-07 add new functions (existing `alignment/` signatures untouched); PERF-04 is an internal parallelization (public `vert_fpca`/`joint_fpca` signatures unchanged, no new deps).
 
 Phase-specific implementation notes from the audit:
 
-- PERF-03 (`alignment/karcher.rs:300`, `elastic_self/cross_distance_matrix`): the banded variants (`karcher_mean_banded`, `elastic_self_distance_matrix_banded`, `elastic_cross_distance_matrix_banded`) already exist and are correct — `karcher_mean` currently hard-codes `band_frac=0.0` (→ `band_radius(0.0, m) = None` → full unbanded DP). Work is API surfacing/defaulting (`band_frac ≈ 0.1`), not a new algorithm. API-compat risk: adding a positional parameter is breaking — prefer `band_frac: Option<f64>` or an `ElasticConfig` field. Measured ~4–6× at representative cells; N=500,M=200 unbanded is infeasible (~700 s/iter).
-- FEAT-03 (`helpers.rs` / `irreg_fdata/`): compose existing `helpers::linear_interp` into `impute_missing_values(data, argvals, method)` with `ImputationMethod` = Linear (mean/linear-interp) / Constant; scan each row for NaN, interpolate between bounding non-NaN neighbors; reject all-missing curves. ~1 week.
-- FEAT-04 (`helpers.rs`): add `ExtrapolationPolicy` enum (`Boundary` clamp / `Exception` → `Err(FdarError)` / `Fill(f64)` / `Periodic` wrap); thread through `spline_interpolate` (from v0.15.0) and the existing linear path via a match at the boundary-check point. Small enum + dispatch, no new algorithm.
-- FEAT-05 (new `scoring.rs`): `functional_mae`, `functional_mse`, `functional_mape`, `functional_msle`, `functional_explained_variance` over `FdMatrix` residuals — each a one-pass formula (~5–10 lines) with dimension validation; existing `r_squared`/`r_squared_adj` live in `helpers.rs` for reference.
-- Wave/serialization: FEAT-03 and FEAT-04 both edit `helpers.rs` — sequence or serialize those two plan writes to avoid a merge collision; FEAT-05 (new `scoring.rs`) is fully independent.
+- FEAT-06 / Phase 14 (`alignment/`, PREP-04): implement `least_squares_shift_registration(data, argvals, ...)` — minimize `‖curveᵢ(t − δᵢ) − mean(t)‖²` per curve via golden-section / ternary search (each objective eval via linear interpolation); mean via `fdata::functional_mean`. Return registered curves + per-curve shifts `δᵢ`. `landmark_shift_deltas` already exists internally inside `landmark_register` (reference, not returned). ~1 wk equiv (M with scikit-fda comparison).
+- FEAT-07 / Phase 14 (`alignment/quality.rs`, PREP-05): add `least_squares_score` (∑‖registeredᵢ − mean‖²/n), `pairwise_correlation_score` (mean pairwise correlation), `sobolev_least_squares_score` (derivative-penalized LS) alongside existing `alignment_quality` / `warp_complexity` / `warp_smoothness`. Effort S. Scores the FEAT-06 output — verify direction (registration lowers LS score, raises correlation).
+- PERF-04 / Phase 15 (`elastic_fpca.rs:701/720/764`, PERF-PAR-ELFPCA): wrap each of the three per-curve `for i in 0..n` loops in `iter_maybe_parallel!(0..n)`. `:701` shooting-vector row / `:720` augmented-SRSF row → `.collect::<Vec<_>>()` + row-assignment; `:764` score extraction is a light body → guard behind N ≳ 50 threshold (per SC1 payback rule) or accept documented small-N regression. Equivalence-test scores + eigenvalues (elastic geometry is FP-order-sensitive). No RNG in any of the three bodies → no per-thread seeding.
+- Wave/serialization: FEAT-06 (new registration fn in `alignment/`) and FEAT-07 (`alignment/quality.rs`) touch different files within `alignment/` — mostly parallelizable, but if both add crate-root re-exports, serialize the `lib.rs`/`mod.rs` re-export edits to avoid a merge collision. PERF-04 (`elastic_fpca.rs`) is fully independent.
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
-- [Phase ?]: Used *_with_band(Option<f64>) wrappers (not positional parameter addition) to keep non-breaking API per LOCKED decision in CONTEXT.md
-- [Phase ?]: Added _banded variants for self/cross distance matrices to crate-root re-exports for complete discoverability
-- [Phase 13-01]: Result<T,E>-returning fns must NOT have #[must_use] — clippy::double_must_use fires under -D warnings; confirmed by STATE.md convention note
 
 ### Pending Todos
 
@@ -107,7 +100,8 @@ None yet.
 
 - /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer).
 - Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer).
-- PERF-03 benchmarking is sensitive to OS scheduler jitter (unpinned governor); the audit flagged some elastic cells LOW-CONFIDENCE — prefer a stable feasibility demonstration (banded completes where unbanded is infeasible) over a precise speedup number.
+- PERF-04 benchmarking is sensitive to OS scheduler jitter (unpinned governor); the audit flagged elastic cells LOW-CONFIDENCE — prefer an equivalence/feasibility demonstration (parallel matches sequential within tolerance at N ≥ 50) over a precise speedup number.
+- v0.16.0 release still pending (version bump 0.15.0 → 0.16.0 + PR to protected `main` + tag) — tracked in PROJECT.md Current State, not a v0.17.0 requirement.
 
 ## Deferred Items
 
@@ -120,12 +114,14 @@ Items acknowledged at v0.15.0 milestone close (2026-08-11):
 | tech-debt | Over-broad test name (Phase 11) | Advisory code-review item carried forward | 2026-08-11 |
 | validation | Phase 10 & 11 VALIDATION.md remain `draft` (Nyquist coverage TODO) | Carried forward | 2026-08-11 |
 
+v2 backlog items deferred at v0.17.0 definition (2026-08-12): PREP-06 (LDO-regularized FPCA), ACC-VALIDATE (fdars-vs-scikit-fda accuracy validation) — see REQUIREMENTS.md v2 section.
+
 ## Session Continuity
 
-Last session: 2026-08-11T21:13:00.000Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-08-12T08:15:00.000Z
+Stopped at: Roadmap for v0.17.0 created (Phases 14–15)
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 14 with `/gsd-plan-phase 14` (Shift Registration — FEAT-06 + FEAT-07)
