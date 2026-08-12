@@ -723,13 +723,24 @@ pub(crate) fn build_augmented_srsfs(
 ) -> FdMatrix {
     let id = m / 2;
     let m_aug = m + 1;
+    // Collect per-row owned Vecs in parallel, then assign sequentially into the
+    // column-major FdMatrix buffer (PERF-04-B, collect-then-assign pattern).
+    let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let mut row = Vec::with_capacity(m_aug);
+            for j in 0..m {
+                row.push(qn[(i, j)]);
+            }
+            let fid = aligned_data[(i, id)];
+            row.push(fid.signum() * fid.abs().sqrt());
+            row
+        })
+        .collect();
     let mut q_aug = FdMatrix::zeros(n, m_aug);
-    for i in 0..n {
-        for j in 0..m {
-            q_aug[(i, j)] = qn[(i, j)];
+    for (i, row) in rows.into_iter().enumerate() {
+        for j in 0..m_aug {
+            q_aug[(i, j)] = row[j];
         }
-        let fid = aligned_data[(i, id)];
-        q_aug[(i, m)] = fid.signum() * fid.abs().sqrt();
     }
     q_aug
 }
@@ -1199,6 +1210,50 @@ mod tests {
                     parallel_result[(i, j)],
                     seq_result[(i, j)],
                     "shooting_vectors_from_psis bit-identical at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    /// PERF-04-B: build_augmented_srsfs produces bit-identical output under parallel
+    /// and sequential feature configurations (pure per-index writes, no reduction).
+    #[test]
+    fn test_augmented_srsfs_parallel_equiv() {
+        let (data, t) = generate_test_data(51, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+        let n = 51;
+        let m = 51;
+        let qn = match &km.aligned_srsfs {
+            Some(s) => s.clone(),
+            None => crate::alignment::srsf_transform(&km.aligned_data, &t),
+        };
+
+        // Result from the (possibly parallelized) function under test.
+        let parallel_result = build_augmented_srsfs(&qn, &km.aligned_data, n, m);
+
+        // Sequential reference computed inline.
+        let id = m / 2;
+        let m_aug = m + 1;
+        let mut seq_result = FdMatrix::zeros(n, m_aug);
+        for i in 0..n {
+            for j in 0..m {
+                seq_result[(i, j)] = qn[(i, j)];
+            }
+            let fid = km.aligned_data[(i, id)];
+            seq_result[(i, m)] = fid.signum() * fid.abs().sqrt();
+        }
+
+        assert_eq!(
+            parallel_result.shape(),
+            seq_result.shape(),
+            "shapes must match"
+        );
+        for i in 0..n {
+            for j in 0..m_aug {
+                assert_eq!(
+                    parallel_result[(i, j)],
+                    seq_result[(i, j)],
+                    "build_augmented_srsfs bit-identical at ({i},{j})"
                 );
             }
         }
