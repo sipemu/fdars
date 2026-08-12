@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.17.0
 milestone_name: Registration Parity & Elastic-FPCA Performance
-status: planning
-last_updated: "2026-08-12T08:15:00.000Z"
+current_phase: 14
+current_phase_name: Shift Registration
+status: executing
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-08-12T12:20:20.597Z"
 last_activity: 2026-08-12
+last_activity_desc: Phase 14 execution started
 progress:
-  total_phases: 2
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
 ---
 
 # Project State
@@ -20,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** Phase 14 — Shift Registration (FEAT-06 least-squares shift registration + FEAT-07 registration-quality scores). Roadmap defined; ready to plan Phase 14.
+**Current focus:** Phase 14 — Shift Registration
 
 ## Current Position
 
-Phase: 14 — Shift Registration (not started)
-Plan: —
-Status: Roadmap created; awaiting phase planning
-Last activity: 2026-08-12 — Roadmap for v0.17.0 created (Phases 14–15, 3 requirements, 100% coverage)
+Phase: 14 (Shift Registration) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-08-12 — Phase 14 execution started
 
 ## Milestone Roadmap (v0.17.0)
 
@@ -64,6 +67,11 @@ Phases 14 and 15 are mutually independent (disjoint files: `alignment/` vs `elas
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 14-shift-registration P01 | 13m | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -91,6 +99,8 @@ Phase-specific implementation notes from the audit:
 - PERF-04 / Phase 15 (`elastic_fpca.rs:701/720/764`, PERF-PAR-ELFPCA): wrap each of the three per-curve `for i in 0..n` loops in `iter_maybe_parallel!(0..n)`. `:701` shooting-vector row / `:720` augmented-SRSF row → `.collect::<Vec<_>>()` + row-assignment; `:764` score extraction is a light body → guard behind N ≳ 50 threshold (per SC1 payback rule) or accept documented small-N regression. Equivalence-test scores + eigenvalues (elastic geometry is FP-order-sensitive). No RNG in any of the three bodies → no per-thread seeding.
 - Wave/serialization: FEAT-06 (new registration fn in `alignment/`) and FEAT-07 (`alignment/quality.rs`) touch different files within `alignment/` — mostly parallelizable, but if both add crate-root re-exports, serialize the `lib.rs`/`mod.rs` re-export edits to avoid a merge collision. PERF-04 (`elastic_fpca.rs`) is fully independent.
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
+- [Phase ?]: FEAT-06 shift registration: registered(t)=original(t-delta); delta=mean_centre-mu_i sign convention
+- [Phase ?]: Rule 3: added pub use shift::{...} to alignment/mod.rs in plan 14-01 instead of deferring to 14-02 (sequential execution, no merge conflict risk)
 
 ### Pending Todos
 
@@ -118,8 +128,8 @@ v2 backlog items deferred at v0.17.0 definition (2026-08-12): PREP-06 (LDO-regul
 
 ## Session Continuity
 
-Last session: 2026-08-12T08:15:00.000Z
-Stopped at: Roadmap for v0.17.0 created (Phases 14–15)
+Last session: 2026-08-12T12:20:20.589Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
