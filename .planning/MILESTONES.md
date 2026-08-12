@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.17.0 Registration Parity & Elastic-FPCA Performance (Shipped: 2026-08-12)
+
+**Phases completed:** 2 phases, 3 plans, 3 tasks
+
+**Key accomplishments:**
+
+- New file: `fdars-core/src/alignment/shift.rs`
+- Three standalone-energy registration-quality scorers added to alignment/quality.rs (Result-returning, Simpson-weighted), with all five plan-14 items re-exported at the crate root.
+
+---
+
 ## v0.16.0 Elastic Feasibility + Parity Quick Wins (Shipped: 2026-08-12)
 
 **Phases completed:** 2 phases, 3 plans, 0 tasks

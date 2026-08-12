@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.17.0
 milestone_name: Registration Parity & Elastic-FPCA Performance
-current_phase: 15
-status: completed
+status: Awaiting next milestone
 stopped_at: Completed 15-01-PLAN.md (all 4 tasks, 4 commits)
-last_updated: "2026-08-12T14:33:36.505Z"
+last_updated: "2026-08-12T19:20:06.888Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 14 execution started
 progress:
@@ -13,6 +12,7 @@ progress:
   completed_phases: 2
   total_plans: 3
   completed_plans: 3
+current_phase: 15
 current_phase_name: Elastic-FPCA Performance
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-12)
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-12 — Phase 15 complete
+Phase: Milestone v0.17.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-12 — Milestone v0.17.0 completed and archived
 
 ## Milestone Roadmap (v0.17.0)
 
@@ -140,4 +140,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 14 with `/gsd-plan-phase 14` (Shift Registration — FEAT-06 + FEAT-07)
+- Start the next milestone with /gsd-new-milestone
