@@ -330,11 +330,13 @@ pub fn least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> Result<f64
 /// Like [`least_squares_score`], this is an absolute measure, not a ratio to the
 /// unregistered data. This diverges from scikit-fda's `SobolevLeastSquares` scorer.
 ///
-/// # Uniform-grid assumption
+/// # Uniform-grid requirement (when `lambda > 0`)
 ///
-/// [`gradient_uniform`] assumes a **uniform** `argvals` grid. On non-uniform grids
-/// the derivative approximation will be inaccurate; use [`gradient_nonuniform`][crate::helpers::gradient_nonuniform]
-/// externally if your grid is non-uniform.
+/// The derivative term uses [`gradient_uniform`], which requires a **uniform**
+/// `argvals` grid. When `lambda > 0` this function validates uniformity and
+/// returns [`FdarError::InvalidParameter`] on a non-uniform grid. Use
+/// [`gradient_nonuniform`][crate::helpers::gradient_nonuniform] externally if
+/// your grid is non-uniform and compose your own Sobolev score.
 ///
 /// # Returns `Result`
 ///
@@ -350,7 +352,8 @@ pub fn least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> Result<f64
 /// # Errors
 /// * [`FdarError::InvalidDimension`] — if `registered` is empty or
 ///   `argvals.len() != m`
-/// * [`FdarError::InvalidParameter`] — if `argvals.len() < 2` or `lambda < 0.0`
+/// * [`FdarError::InvalidParameter`] — if `argvals.len() < 2`, `lambda < 0.0`,
+///   or `lambda > 0` with a non-uniform `argvals` grid
 pub fn sobolev_least_squares_score(
     registered: &FdMatrix,
     argvals: &[f64],
@@ -405,7 +408,21 @@ pub fn sobolev_least_squares_score(
     }
 
     // Sobolev derivative term: (1/n) Σᵢ ∫ (fᵢ′ − mean′)² dt
+    // gradient_uniform assumes a uniform argvals grid. Validate uniformity
+    // before computing h so callers on non-uniform grids get an error instead
+    // of a silently wrong derivative penalty.
     let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let uniform = argvals
+        .windows(2)
+        .all(|w| ((w[1] - w[0]) - h).abs() < 1e-9 * h.abs().max(1e-12));
+    if !uniform {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "sobolev_least_squares_score with lambda>0 requires a uniform grid; \
+                      use gradient_nonuniform externally for non-uniform grids"
+                .to_string(),
+        });
+    }
     let mean_prime = gradient_uniform(&mean, h);
 
     let sobol_term = (0..n)
