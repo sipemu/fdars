@@ -44,7 +44,9 @@
   3. The light `:764` body is guarded by a size threshold (N ≳ 50) — or a documented small-N regression is explicitly accepted — so parallel dispatch is only taken where it pays back, per the audit's streaming-sentinel payback rule.
   4. The change is additive and non-breaking: `vert_fpca` / `joint_fpca` public signatures and their `Result<T, FdarError>` returns are unchanged, no new dependencies are added, and the feasibility win (parallel completes correctly at N ≥ 50) is demonstrated rather than pinned to a precise speedup number — the audit flagged elastic cells LOW-CONFIDENCE under an unpinned governor.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 15-01-PLAN.md — PERF-04: parallelize the three elastic-FPCA loops (:701/:720/:764) via iter_maybe_parallel! with N≥50 guard, equivalence-tested (PERF-04-A…F)
 
 ---
 
