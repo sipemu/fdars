@@ -4,9 +4,10 @@
 
 - ✅ **v0.14.0 — Performance & scikit-fda Gap Audit** — Phases 1–9 (shipped 2026-08-09) — [archive](milestones/v0.14.0-ROADMAP.md)
 - ✅ **v0.15.0 — Top-Backlog Quick Wins** — Phases 10–11 (shipped 2026-08-11) — [archive](milestones/v0.15.0-ROADMAP.md)
-- ✅ **v0.16.0 — Elastic Feasibility + Parity Quick Wins** — Phases 12–13 (complete 2026-08-12, release pending) — [archive](milestones/v0.16.0-ROADMAP.md)
+- ✅ **v0.16.0 — Elastic Feasibility + Parity Quick Wins** — Phases 12–13 (shipped 2026-08-12, PR #40) — [archive](milestones/v0.16.0-ROADMAP.md)
+- ✅ **v0.17.0 — Registration Parity & Elastic-FPCA Performance** — Phases 14–15 (complete 2026-08-12, release pending) — [archive](milestones/v0.17.0-ROADMAP.md)
 
-## Phase Details
+## Phases
 
 <details>
 <summary>✅ v0.14.0 Performance & scikit-fda Gap Audit (Phases 1–9) — SHIPPED 2026-08-09</summary>
@@ -40,9 +41,9 @@ Full phase detail: [milestones/v0.15.0-ROADMAP.md](milestones/v0.15.0-ROADMAP.md
 </details>
 
 <details>
-<summary>✅ v0.16.0 Elastic Feasibility + Parity Quick Wins (Phases 12–13) — COMPLETE 2026-08-12 (release pending)</summary>
+<summary>✅ v0.16.0 Elastic Feasibility + Parity Quick Wins (Phases 12–13) — SHIPPED 2026-08-12 (PR #40)</summary>
 
-Second implementation milestone — the next tier of the v0.14.0 audit backlog: the P1 elastic-feasibility headline plus three effort-S scikit-fda parity gaps, all additive/non-breaking. Milestone audit passed (4/4 requirements, cross-phase integration clean, 2663 tests green). Not yet released — needs a version bump (0.15.0 → 0.16.0) + PR to protected `main` + tag.
+Second implementation milestone — the next tier of the v0.14.0 audit backlog: the P1 elastic-feasibility headline plus three effort-S scikit-fda parity gaps, all additive/non-breaking. Milestone audit passed (4/4 requirements, cross-phase integration clean, 2663 tests green). Released via PR #40 (crate 0.16.0, tag v0.16.0).
 
 - [x] Phase 12: Elastic Feasibility — Banded Alignment Default & `band_frac` (1/1 plans) — completed 2026-08-12 (PERF-03: opt-in `*_with_band` wrappers, large grids feasible)
 - [x] Phase 13: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics (2 plans + 1 gap-closure) — completed 2026-08-12 (FEAT-03 imputation, FEAT-04 `ExtrapolationPolicy` both interp paths, FEAT-05 five scoring metrics)
@@ -51,5 +52,17 @@ Full phase detail: [milestones/v0.16.0-ROADMAP.md](milestones/v0.16.0-ROADMAP.md
 
 </details>
 
+<details>
+<summary>✅ v0.17.0 Registration Parity & Elastic-FPCA Performance (Phases 14–15) — COMPLETE 2026-08-12 (release pending)</summary>
+
+Third implementation milestone — the next tier of the v0.14.0 audit backlog: the P1 shift-registration gap + its scikit-fda quality diagnostics, plus a targeted elastic-FPCA parallelization. All additive/non-breaking. Milestone audit passed (3/3 requirements, integration clean; full suite green: 2727 tests `linalg,parallel` / 2718 default). Not yet released — needs a version bump (0.16.0 → 0.17.0) + PR to protected `main` + tag (the dedicated ship step, per v0.16.0 PR #40 flow).
+
+- [x] Phase 14: Shift Registration (2/2 plans) — completed 2026-08-12 (FEAT-06 `least_squares_shift_registration` + `ShiftRegistrationResult` in new `alignment/shift.rs`; FEAT-07 three registration-quality scores in `alignment/quality.rs`)
+- [x] Phase 15: Elastic-FPCA Performance (1/1 plans) — completed 2026-08-12 (PERF-04 parallelize `:701/:720/:764` via `iter_maybe_parallel!` collect-then-assign, N≥50 guard, bit-identical equivalence)
+
+Full phase detail: [milestones/v0.17.0-ROADMAP.md](milestones/v0.17.0-ROADMAP.md)
+
+</details>
+
 ---
-*Latest: v0.16.0 code-complete 2026-08-12 — 2 phases, 4/4 requirements, milestone audit passed (2663 tests green); release pending (version bump + PR + tag). Prior: v0.15.0 shipped 2026-08-11 (crates.io 0.15.0); v0.14.0 audit shipped 2026-08-09. Next milestone starts with `/gsd-new-milestone` (fresh REQUIREMENTS.md).*
+*Latest: v0.17.0 Registration Parity & Elastic-FPCA Performance complete 2026-08-12 — Phases 14–15, 3/3 requirements (FEAT-06 shift registration + FEAT-07 registration-quality scores → Phase 14; PERF-04 parallelize elastic-FPCA → Phase 15), milestone audit passed, full suite green; release pending (version bump 0.16.0→0.17.0 + PR + tag). Prior: v0.16.0 shipped via PR #40 (crate 0.16.0, tag v0.16.0); v0.15.0 shipped 2026-08-11 (crates.io 0.15.0); v0.14.0 audit shipped 2026-08-09. Next milestone starts with `/gsd-new-milestone`.*

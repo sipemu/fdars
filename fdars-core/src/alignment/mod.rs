@@ -34,6 +34,7 @@ mod robust_karcher;
 mod set;
 mod shape;
 mod shape_ci;
+mod shift;
 mod srsf;
 mod transfer;
 mod tsrvf;
@@ -84,7 +85,8 @@ pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchR
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
 pub use phase_boxplot::{phase_boxplot, PhaseBoxplot};
 pub use quality::{
-    alignment_quality, pairwise_consistency, warp_complexity, warp_smoothness, AlignmentQuality,
+    alignment_quality, least_squares_score, pairwise_consistency, pairwise_correlation_score,
+    sobolev_least_squares_score, warp_complexity, warp_smoothness, AlignmentQuality,
 };
 pub use robust_karcher::{
     karcher_median, robust_karcher_mean, RobustKarcherConfig, RobustKarcherResult,
@@ -95,6 +97,9 @@ pub use shape::{
     OrbitRepresentative, ShapeDistanceResult, ShapeMeanResult, ShapeQuotient,
 };
 pub use shape_ci::{shape_confidence_interval, ShapeCiConfig, ShapeCiResult};
+pub use shift::{
+    least_squares_shift_registration, ShiftRegistrationResult, DEFAULT_MAX_SHIFT_FRACTION,
+};
 pub use srsf::{
     compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,
     warp_inverse_error,
