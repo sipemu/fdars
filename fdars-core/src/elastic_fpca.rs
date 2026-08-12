@@ -10,10 +10,12 @@
 //! - [`joint_fpca`] — Combined amplitude + phase FPCA
 
 use crate::alignment::{srsf_inverse, srsf_transform, KarcherMeanResult};
-
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::warping::{exp_map_sphere, inv_exp_map_sphere, l2_norm_l2, psi_to_gam};
 use nalgebra::SVD;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -697,9 +699,14 @@ pub(crate) fn shooting_vectors_from_psis(
 ) -> FdMatrix {
     let n = psis.len();
     let m = psis[0].len();
+    // Collect per-row results in parallel (each inv_exp_map_sphere call is independent),
+    // then assign sequentially into the column-major FdMatrix buffer — mirrors the
+    // collect-then-assign pattern from alignment/set.rs::align_to_target (PERF-04-A).
+    let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
+        .map(|i| inv_exp_map_sphere(mu_psi, &psis[i], time))
+        .collect();
     let mut shooting = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        let v = inv_exp_map_sphere(mu_psi, &psis[i], time);
+    for (i, v) in rows.into_iter().enumerate() {
         for j in 0..m {
             shooting[(i, j)] = v[j];
         }
@@ -1151,6 +1158,48 @@ mod tests {
                         cos_angle
                     );
                 }
+            }
+        }
+    }
+
+    // ── parallelism equivalence tests (PERF-04) ──
+
+    /// PERF-04-A: shooting_vectors_from_psis produces bit-identical output under parallel
+    /// and sequential feature configurations (pure per-index writes, no reduction).
+    #[test]
+    fn test_shooting_vectors_parallel_equiv() {
+        let (data, t) = generate_test_data(51, 51);
+        let km = karcher_mean(&data, &t, 10, 1e-4, 0.0);
+        let psis = warps_to_normalized_psi(&km.gammas, &t);
+        let time: Vec<f64> = (0..51).map(|i| i as f64 / 50.0).collect();
+        let mu_psi = sphere_karcher_mean(&psis, &time, 50);
+
+        // Result from the (possibly parallelized) function under test.
+        let parallel_result = shooting_vectors_from_psis(&psis, &mu_psi, &time);
+
+        // Sequential reference computed inline.
+        let n = psis.len();
+        let m = psis[0].len();
+        let mut seq_result = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let v = inv_exp_map_sphere(&mu_psi, &psis[i], &time);
+            for j in 0..m {
+                seq_result[(i, j)] = v[j];
+            }
+        }
+
+        assert_eq!(
+            parallel_result.shape(),
+            seq_result.shape(),
+            "shapes must match"
+        );
+        for i in 0..n {
+            for j in 0..m {
+                assert_eq!(
+                    parallel_result[(i, j)],
+                    seq_result[(i, j)],
+                    "shooting_vectors_from_psis bit-identical at ({i},{j})"
+                );
             }
         }
     }
