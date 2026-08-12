@@ -9,7 +9,7 @@
 
 ## Phases
 
-- [ ] **Phase 14: Shift Registration** - Least-squares rigid-shift registration + the three scikit-fda registration-quality scores
+- [x] **Phase 14: Shift Registration** - Least-squares rigid-shift registration + the three scikit-fda registration-quality scores (completed 2026-08-12)
 - [ ] **Phase 15: Elastic-FPCA Performance** - Parallelize the three per-curve elastic-FPCA loops, equivalence-tested
 
 ## Phase Details
