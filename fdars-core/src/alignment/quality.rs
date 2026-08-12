@@ -4,6 +4,7 @@
 use super::pairwise::elastic_align_pair;
 use super::srsf::compose_warps;
 use super::KarcherMeanResult;
+use crate::error::FdarError;
 use crate::helpers::{gradient_uniform, l2_distance, simpsons_weights};
 use crate::matrix::FdMatrix;
 
@@ -226,4 +227,416 @@ pub fn pairwise_consistency(
         .map(|&(i, j, k)| triplet_warp_deviation(data, argvals, &weights, i, j, k, lambda))
         .sum();
     total_dev / triplets.len() as f64
+}
+
+// ---------------------------------------------------------------------------
+// Registration-quality scores (FEAT-07)
+// ---------------------------------------------------------------------------
+//
+// These three functions return `Result<f64, FdarError>` — unlike the raw-f64
+// neighbors (`warp_complexity`, `warp_smoothness`, `pairwise_consistency`) in
+// this file — so that dimension/parameter validation can be surfaced to the
+// caller rather than silently producing NaN. This is an intentional deviation
+// from the older neighbors, noted in each function's rustdoc.
+//
+// All three implement **standalone-energy** forms: they measure the spread or
+// structure of the *registered* data in absolute L2 units and do NOT divide by
+// the spread of the unregistered data. This differs from scikit-fda's ratio-based
+// scorers (`LeastSquares`, `PairwiseCorrelation`, `SobolevLeastSquares`), which
+// return a ratio-to-original. The standalone form avoids division-by-zero when
+// the original data is nearly constant and is more interpretable as an absolute
+// quality measure.
+
+/// Compute the least-squares registration score: mean Simpson-weighted L2 spread
+/// of the registered curves around their cross-sectional mean.
+///
+/// **Formula:** `(1/n) Σᵢ ∫ (registeredᵢ(t) − mean(t))² dt`
+///
+/// where `mean(t)` is the cross-sectional sample mean and the integral is
+/// approximated with Simpson weights over `argvals`.
+///
+/// # Standalone-energy form
+///
+/// This is an **absolute** (standalone-energy) measure of residual spread, not a
+/// ratio to the unregistered data's spread. Lower is better after registration.
+/// This intentionally diverges from scikit-fda's `LeastSquares` scorer which
+/// returns a ratio; the standalone form avoids division-by-zero on constant data.
+///
+/// # Returns `Result`
+///
+/// Unlike the raw-`f64` quality functions in this module (`warp_complexity`,
+/// `warp_smoothness`), this function returns `Result<f64, FdarError>` to surface
+/// dimension mismatches via [`FdarError::InvalidDimension`].
+///
+/// # Arguments
+/// * `registered` — Registered functional data (n × m)
+/// * `argvals` — Evaluation points (length m)
+///
+/// # Errors
+/// * [`FdarError::InvalidDimension`] — if `registered` is empty or
+///   `argvals.len() != m`
+pub fn least_squares_score(registered: &FdMatrix, argvals: &[f64]) -> Result<f64, FdarError> {
+    let (n, m) = registered.shape();
+    if n == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "registered",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{}×{}", n, m),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: m.to_string(),
+            actual: argvals.len().to_string(),
+        });
+    }
+
+    let weights = simpsons_weights(argvals);
+    let mean = crate::fdata::mean_1d(registered);
+
+    let score = (0..n)
+        .map(|i| {
+            let fi = registered.row(i);
+            fi.iter()
+                .zip(mean.iter())
+                .zip(weights.iter())
+                .map(|((&a, &b), &w)| (a - b) * (a - b) * w)
+                .sum::<f64>()
+        })
+        .sum::<f64>()
+        / n as f64;
+
+    Ok(score)
+}
+
+/// Compute the Sobolev least-squares registration score: LS spread plus a
+/// derivative-penalty term weighted by `lambda`.
+///
+/// **Formula:** `LS_term + λ · (1/n) Σᵢ ∫ (fᵢ′(t) − mean′(t))² dt`
+///
+/// where the LS term equals [`least_squares_score`] and the derivative `fᵢ′` is
+/// approximated by [`gradient_uniform`] (5-point stencil, same as `warp_smoothness`).
+///
+/// # Standalone-energy form
+///
+/// Like [`least_squares_score`], this is an absolute measure, not a ratio to the
+/// unregistered data. This diverges from scikit-fda's `SobolevLeastSquares` scorer.
+///
+/// # Uniform-grid assumption
+///
+/// [`gradient_uniform`] assumes a **uniform** `argvals` grid. On non-uniform grids
+/// the derivative approximation will be inaccurate; use [`gradient_nonuniform`][crate::helpers::gradient_nonuniform]
+/// externally if your grid is non-uniform.
+///
+/// # Returns `Result`
+///
+/// Returns `Result<f64, FdarError>` to surface dimension/parameter validation
+/// errors, consistent with the other FEAT-07 score functions.
+///
+/// # Arguments
+/// * `registered` — Registered functional data (n × m)
+/// * `argvals` — Evaluation points (length m)
+/// * `lambda` — Non-negative weight for the derivative penalty (0.0 reproduces
+///   [`least_squares_score`])
+///
+/// # Errors
+/// * [`FdarError::InvalidDimension`] — if `registered` is empty or
+///   `argvals.len() != m`
+/// * [`FdarError::InvalidParameter`] — if `lambda < 0.0`
+pub fn sobolev_least_squares_score(
+    registered: &FdMatrix,
+    argvals: &[f64],
+    lambda: f64,
+) -> Result<f64, FdarError> {
+    let (n, m) = registered.shape();
+    if n == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "registered",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{}×{}", n, m),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: m.to_string(),
+            actual: argvals.len().to_string(),
+        });
+    }
+    if lambda < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: "lambda must be non-negative".to_string(),
+        });
+    }
+
+    let weights = simpsons_weights(argvals);
+    let mean = crate::fdata::mean_1d(registered);
+
+    // LS term: (1/n) Σᵢ ∫ (fᵢ − mean)² dt
+    let ls_term = (0..n)
+        .map(|i| {
+            let fi = registered.row(i);
+            fi.iter()
+                .zip(mean.iter())
+                .zip(weights.iter())
+                .map(|((&a, &b), &w)| (a - b) * (a - b) * w)
+                .sum::<f64>()
+        })
+        .sum::<f64>()
+        / n as f64;
+
+    if lambda == 0.0 {
+        return Ok(ls_term);
+    }
+
+    // Sobolev derivative term: (1/n) Σᵢ ∫ (fᵢ′ − mean′)² dt
+    let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+    let mean_prime = gradient_uniform(&mean, h);
+
+    let sobol_term = (0..n)
+        .map(|i| {
+            let fi_row = registered.row(i);
+            let fi_prime = gradient_uniform(&fi_row, h);
+            fi_prime
+                .iter()
+                .zip(mean_prime.iter())
+                .zip(weights.iter())
+                .map(|((&a, &b), &w)| (a - b) * (a - b) * w)
+                .sum::<f64>()
+        })
+        .sum::<f64>()
+        / n as f64;
+
+    Ok(ls_term + lambda * sobol_term)
+}
+
+/// Compute the pairwise correlation registration score: mean functional Pearson
+/// correlation over all n(n−1)/2 unordered curve pairs.
+///
+/// **Formula:** `mean over (i<k) of [⟨fᵢ, f_k⟩_L2 / (‖fᵢ‖_L2 · ‖f_k‖_L2)]`
+///
+/// where the L2 inner product is Simpson-weighted. A zero-norm curve (all-zero
+/// curve) contributes a correlation of 0 to the mean (NaN guard).
+///
+/// Higher scores indicate greater pairwise alignment — use this score to confirm
+/// that registration has increased curve-to-curve similarity.
+///
+/// # Standalone form
+///
+/// This computes the mean correlation of the registered curves directly, without
+/// dividing by the correlation of the unregistered curves. This diverges from
+/// scikit-fda's `PairwiseCorrelation` scorer which returns a ratio.
+///
+/// # Complexity
+///
+/// O(n² · m) — suitable for moderate n (e.g., n ≤ 500 with m ≤ 1000).
+///
+/// # Returns `Result`
+///
+/// Returns `Result<f64, FdarError>` to surface dimension/parameter validation
+/// errors, consistent with the other FEAT-07 score functions.
+///
+/// # Arguments
+/// * `registered` — Registered functional data (n × m), n ≥ 2
+/// * `argvals` — Evaluation points (length m)
+///
+/// # Errors
+/// * [`FdarError::InvalidDimension`] — if `m == 0` or `argvals.len() != m`
+/// * [`FdarError::InvalidParameter`] — if `n < 2` (need at least 2 curves to
+///   form a pair)
+pub fn pairwise_correlation_score(
+    registered: &FdMatrix,
+    argvals: &[f64],
+) -> Result<f64, FdarError> {
+    let (n, m) = registered.shape();
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "registered",
+            expected: "non-empty matrix (m > 0)".to_string(),
+            actual: format!("{}×{}", n, m),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: m.to_string(),
+            actual: argvals.len().to_string(),
+        });
+    }
+    if n < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n",
+            message: "pairwise correlation requires at least 2 curves".to_string(),
+        });
+    }
+
+    let weights = simpsons_weights(argvals);
+
+    // Precompute row norms for O(n·m) instead of O(n²·m)
+    let norms: Vec<f64> = (0..n)
+        .map(|i| {
+            let fi = registered.row(i);
+            fi.iter()
+                .zip(weights.iter())
+                .map(|(&a, &w)| a * a * w)
+                .sum::<f64>()
+                .sqrt()
+        })
+        .collect();
+
+    let n_pairs = n * (n - 1) / 2;
+    let corr_sum: f64 = (0..n)
+        .flat_map(|i| (i + 1..n).map(move |k| (i, k)))
+        .map(|(i, k)| {
+            let fi = registered.row(i);
+            let fk = registered.row(k);
+            let inner: f64 = fi
+                .iter()
+                .zip(fk.iter())
+                .zip(weights.iter())
+                .map(|((&a, &b), &w)| a * b * w)
+                .sum();
+            let denom = norms[i] * norms[k];
+            if denom < 1e-15 {
+                0.0
+            } else {
+                inner / denom
+            }
+        })
+        .sum();
+
+    Ok(corr_sum / n_pairs as f64)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::matrix::FdMatrix;
+
+    fn uniform_grid(n: usize) -> Vec<f64> {
+        (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
+    }
+
+    fn gaussian_bump(argvals: &[f64], mu: f64, sigma: f64) -> Vec<f64> {
+        argvals
+            .iter()
+            .map(|&t| (-(t - mu).powi(2) / (2.0 * sigma * sigma)).exp())
+            .collect()
+    }
+
+    /// Build a matrix of n Gaussian bumps with centres spread around mu=0.5.
+    /// `delta` is the half-spread (curve i gets centre 0.5 + (i - n/2)*delta/n).
+    fn make_shifted_bumps(n: usize, m: usize, delta: f64) -> (FdMatrix, Vec<f64>) {
+        let argvals = uniform_grid(m);
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let mu = 0.5 + (i as f64 - (n as f64 - 1.0) / 2.0) * delta / n as f64;
+            let bump = gaussian_bump(&argvals, mu, 0.1);
+            for j in 0..m {
+                data[(i, j)] = bump[j];
+            }
+        }
+        (data, argvals)
+    }
+
+    // ---- FEAT-07-A: least_squares_score on identical constant curves = 0.0 --
+
+    #[test]
+    fn test_ls_score_identical_curves() {
+        let m = 51;
+        let argvals = uniform_grid(m);
+        // All four rows are the same constant curve → mean == every curve → score = 0
+        let mut data = FdMatrix::zeros(4, m);
+        for i in 0..4 {
+            for j in 0..m {
+                data[(i, j)] = 2.5;
+            }
+        }
+        let score = least_squares_score(&data, &argvals).unwrap();
+        assert!(score.abs() < 1e-12, "expected 0.0, got {score}");
+    }
+
+    // ---- FEAT-07-E: sobolev with lambda=0 equals least_squares_score --------
+
+    #[test]
+    fn test_sobolev_score_lambda_zero() {
+        let (data, argvals) = make_shifted_bumps(5, 51, 0.1);
+        let ls = least_squares_score(&data, &argvals).unwrap();
+        let sobol = sobolev_least_squares_score(&data, &argvals, 0.0).unwrap();
+        assert!(
+            (sobol - ls).abs() < 1e-12,
+            "sobolev(lambda=0) should equal least_squares_score: ls={ls}, sobol={sobol}"
+        );
+    }
+
+    // ---- FEAT-07-F: sobolev with lambda>0 is >= sobolev(lambda=0) -----------
+
+    #[test]
+    fn test_sobolev_score_lambda_positive() {
+        let (data, argvals) = make_shifted_bumps(5, 51, 0.1);
+        let sobol0 = sobolev_least_squares_score(&data, &argvals, 0.0).unwrap();
+        let sobol_pos = sobolev_least_squares_score(&data, &argvals, 1.0).unwrap();
+        assert!(
+            sobol_pos >= sobol0 - 1e-12,
+            "sobolev(lambda>0) should be >= sobolev(lambda=0): sobol0={sobol0}, sobol_pos={sobol_pos}"
+        );
+    }
+
+    // ---- FEAT-07-B: least_squares_score drops after registration -------------
+    // (uses least_squares_shift_registration from shift.rs — added in Task 2)
+
+    #[test]
+    fn test_ls_score_drops_after_registration() {
+        let (data, argvals) = make_shifted_bumps(5, 101, 0.3);
+        let max_shift = 0.25;
+        let result =
+            crate::alignment::shift::least_squares_shift_registration(&data, &argvals, max_shift)
+                .unwrap();
+        let score_before = least_squares_score(&data, &argvals).unwrap();
+        let score_after = least_squares_score(&result.registered_data, &argvals).unwrap();
+        assert!(
+            score_after < score_before,
+            "LS score should drop after registration: before={score_before}, after={score_after}"
+        );
+    }
+
+    // ---- FEAT-07-C: pairwise_correlation_score rises after registration ------
+
+    #[test]
+    fn test_pairwise_corr_rises_after_registration() {
+        let (data, argvals) = make_shifted_bumps(5, 101, 0.3);
+        let max_shift = 0.25;
+        let result =
+            crate::alignment::shift::least_squares_shift_registration(&data, &argvals, max_shift)
+                .unwrap();
+        let score_before = pairwise_correlation_score(&data, &argvals).unwrap();
+        let score_after = pairwise_correlation_score(&result.registered_data, &argvals).unwrap();
+        assert!(
+            score_after > score_before,
+            "Pairwise correlation should rise after registration: before={score_before}, after={score_after}"
+        );
+    }
+
+    // ---- FEAT-07-D: pairwise_correlation_score with n=1 returns Err ---------
+
+    #[test]
+    fn test_pairwise_corr_n1_error() {
+        let m = 51;
+        let argvals = uniform_grid(m);
+        let mut single = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            single[(0, j)] = 1.0;
+        }
+        let result = pairwise_correlation_score(&single, &argvals);
+        assert!(
+            matches!(result, Err(FdarError::InvalidParameter { .. })),
+            "expected Err(InvalidParameter), got {result:?}"
+        );
+    }
 }
