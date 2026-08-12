@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.16.0
-milestone_name: Elastic Feasibility + Parity Quick Wins
-status: Awaiting next milestone
-stopped_at: Completed 13-02-PLAN.md
-last_updated: "2026-08-12T05:20:03.057Z"
+milestone: v0.17.0
+milestone_name: Registration Parity & Elastic-FPCA Performance
+status: planning
+last_updated: "2026-08-12T07:43:15.979Z"
 last_activity: 2026-08-12
-last_activity_desc: Phase 13 complete
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
-current_phase: 13
-current_phase_name: Parity Quick Wins — Imputation, Extrapolation Policy & Scoring Metrics
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 
 ## Current Position
 
-Phase: Milestone v0.16.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-12 — Milestone v0.16.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-12 — Milestone v0.17.0 started
 
 ## Milestone Roadmap (v0.16.0)
 

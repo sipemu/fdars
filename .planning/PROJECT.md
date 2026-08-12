@@ -2,21 +2,20 @@
 
 ## What This Is
 
-fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core`, v0.14.0) with broad algorithm coverage — regression, classification, clustering, depth measures, elastic shape analysis, seasonal decomposition, statistical process monitoring, and model explainability — plus WASM/JS and R bindings. The **v0.14.0 audit milestone** (shipped 2026-08-09) proactively reviewed execution performance and mapped functionality gaps against Python's scikit-fda, producing a consolidated report and a prioritized, GSD-ready backlog. The next milestone will begin executing the highest-leverage items from that backlog.
+fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core`, v0.14.0) with broad algorithm coverage — regression, classification, clustering, depth measures, elastic shape analysis, seasonal decomposition, statistical process monitoring, and model explainability — plus WASM/JS and R bindings. The **v0.14.0 audit milestone** (shipped 2026-08-09) proactively reviewed execution performance and mapped functionality gaps against Python's scikit-fda, producing a consolidated report and a prioritized, GSD-ready backlog. Subsequent milestones execute the highest-leverage items from that backlog top-first — v0.15.0 (top-4 quick wins), v0.16.0 (elastic feasibility + parity), and now **v0.17.0** (registration parity + elastic-FPCA performance).
 
 ## Core Value
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.16.0 Elastic Feasibility + Parity Quick Wins
+## Current Milestone: v0.17.0 Registration Parity & Elastic-FPCA Performance
 
-**Goal:** Make large-grid elastic alignment feasible (the audit's top bottleneck) and close three more scikit-fda parity gaps — the next tier of the v0.14.0 audit backlog.
+**Goal:** Close the remaining scikit-fda registration gaps — the missing simple shift-registration method and its standard quality diagnostics — and parallelize the elastic-FPCA critical path. Next tier of the v0.14.0 audit backlog.
 
 **Target features:**
-- **PERF-03 (PERF-ELASTIC-BAND, rank 10, P1/value 5):** Default/expose banded elastic alignment (`band_frac`) in `alignment/karcher.rs` + `elastic_self/cross_distance_matrix`, so previously-infeasible large grids (e.g. N=500, M=200) become tractable.
-- **FEAT-03 (PREP-03, rank 5, P2):** Missing-value imputation for regular `FdMatrix` grids (`helpers.rs`, `irreg_fdata/`).
-- **FEAT-04 (REPR-03, rank 6, P2):** Composable extrapolation-policy enum (Boundary / Exception / Fill / Periodic) on the interpolation/evaluation paths — pairs with v0.15.0's `spline_interpolate`.
-- **FEAT-05 (MISC-04, rank 9, P2):** Functional scoring metrics — MAE, MSE, MAPE, MSLE, explained_variance (new `scoring.rs`).
+- **FEAT-06 (PREP-04, rank 11, P1/M):** `LeastSquaresShift` registration — per-curve rigid horizontal shift to the sample mean via golden-section L2 minimization (`alignment/`); fills the "simplest registration method" gap (fdars jumps landmark → full elastic today).
+- **FEAT-07 (PREP-05, rank 13, P2/S):** Registration-quality validation scores — `least_squares_score`, `pairwise_correlation_score`, `sobolev_least_squares_score` in `alignment/quality.rs` (matches scikit-fda's `LeastSquares` / `PairwiseCorrelation` / `SobolevLeastSquares`).
+- **PERF-04 (PERF-PAR-ELFPCA, rank 17, P2/M):** Parallelize the three per-curve elastic-FPCA loops (`elastic_fpca.rs:701/720/764`) via `iter_maybe_parallel!(0..n)`; ~4–5× projected at N≥50, equivalence-tested.
 
 ## Requirements
 
@@ -54,9 +53,11 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- v0.16.0 Elastic Feasibility + Parity Quick Wins — all four requirements (PERF-03, FEAT-03/04/05) validated. -->
+<!-- v0.17.0 Registration Parity & Elastic-FPCA Performance — three requirements. -->
 
-_(none — all milestone requirements validated)_
+- [ ] **FEAT-06 (PREP-04, P1):** `LeastSquaresShift` registration — per-curve rigid horizontal shift to the sample mean via golden-section L2 minimization, returning registered curves + per-curve shifts `δᵢ`; new function in `alignment/`.
+- [ ] **FEAT-07 (PREP-05, P2):** Registration-quality validation scores — `least_squares_score`, `pairwise_correlation_score`, `sobolev_least_squares_score` in `alignment/quality.rs`.
+- [ ] **PERF-04 (PERF-PAR-ELFPCA, P2):** Parallelize the three per-curve elastic-FPCA loops (`elastic_fpca.rs:701/720/764`) via `iter_maybe_parallel!(0..n)`, numerically equivalent to sequential.
 
 ### Out of Scope
 
@@ -128,6 +129,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-12 — Milestone v0.16.0 (Elastic Feasibility + Parity Quick Wins) code-complete: 2 phases, 4/4 requirements validated, milestone audit passed (2663 tests green). Release pending (version bump + PR + tag). Prior: v0.15.0 shipped 2026-08-11 (crates.io 0.15.0). Full per-phase history below.*
+*Last updated: 2026-08-12 — Milestone v0.17.0 (Registration Parity & Elastic-FPCA Performance) started: 3 requirements (FEAT-06 shift registration, FEAT-07 registration-quality scores, PERF-04 parallelize elastic-FPCA), phases 14–15. Prior: v0.16.0 code-complete 2026-08-12 (release pending — version bump + PR + tag); v0.15.0 shipped 2026-08-11 (crates.io 0.15.0). Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
