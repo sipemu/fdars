@@ -4,16 +4,16 @@ milestone: v0.17.0
 milestone_name: Registration Parity & Elastic-FPCA Performance
 current_phase: 14
 current_phase_name: Shift Registration
-status: executing
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-08-12T12:20:20.597Z"
+status: verifying
+stopped_at: Completed 14-02-PLAN.md (all 3 tasks, 2 commits)
+last_updated: "2026-08-12T12:34:02.183Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 14 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-12)
 
 Phase: 14 (Shift Registration) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-12 — Phase 14 execution started
 
 ## Milestone Roadmap (v0.17.0)
@@ -72,6 +72,7 @@ Phases 14 and 15 are mutually independent (disjoint files: `alignment/` vs `elas
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 14-shift-registration P01 | 13m | 3 tasks | 2 files |
+| Phase 14-shift-registration P02 | 25 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Phase-specific implementation notes from the audit:
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
 - [Phase ?]: FEAT-06 shift registration: registered(t)=original(t-delta); delta=mean_centre-mu_i sign convention
 - [Phase ?]: Rule 3: added pub use shift::{...} to alignment/mod.rs in plan 14-01 instead of deferring to 14-02 (sequential execution, no merge conflict risk)
+- [Phase ?]: Standalone-energy form: registration quality scores measure absolute L2 spread (not ratio-to-original); avoids divide-by-zero on constant data
+- [Phase ?]: Result<f64, FdarError> on score functions enables dimension validation; intentional divergence from raw-f64 neighbors
 
 ### Pending Todos
 
@@ -128,8 +131,8 @@ v2 backlog items deferred at v0.17.0 definition (2026-08-12): PREP-06 (LDO-regul
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:20:20.589Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-08-12T12:34:02.174Z
+Stopped at: Completed 14-02-PLAN.md (all 3 tasks, 2 commits)
 Resume file: None
 
 ## Operator Next Steps

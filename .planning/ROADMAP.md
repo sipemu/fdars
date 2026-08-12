@@ -30,7 +30,7 @@
 **Plans**: 2 plans
 
 - [x] 14-01-PLAN.md — FEAT-06: shift.rs tracer + least_squares_shift_registration + ShiftRegistrationResult (FEAT-06-A…E)
-- [ ] 14-02-PLAN.md — FEAT-07: three quality scores in quality.rs (FEAT-07-A…F) + consolidated mod.rs/lib.rs re-exports
+- [x] 14-02-PLAN.md — FEAT-07: three quality scores in quality.rs (FEAT-07-A…F) + consolidated mod.rs/lib.rs re-exports
 
 ### Phase 15: Elastic-FPCA Performance
 

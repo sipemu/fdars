@@ -11,8 +11,8 @@ Requirements for milestone v0.17.0. Each maps to exactly one roadmap phase.
 
 ### Registration
 
-- [ ] **FEAT-06**: A user can register a set of curves by rigid horizontal shift — `least_squares_shift_registration(data, argvals, ...)` aligns each curve to the sample mean by minimizing the L2 distance under a per-curve constant shift `δᵢ` (golden-section / ternary search over the objective, evaluated via linear interpolation), returning the registered curves plus the per-curve shift values. Fills the "simplest registration method" gap — fdars currently jumps from landmark shifts to full elastic SRSF warping. _(Backlog: PREP-04, rank 11, P1/M)_
-- [ ] **FEAT-07**: A user can quantify registration quality with the three standard scikit-fda diagnostics — `least_squares_score` (∑‖registeredᵢ − mean‖²/n), `pairwise_correlation_score` (mean pairwise correlation between registered curves), and `sobolev_least_squares_score` (derivative-penalized LS) — added to `alignment/quality.rs` alongside the existing `alignment_quality` / `warp_complexity` / `warp_smoothness`. _(Backlog: PREP-05, rank 13, P2/S)_
+- [x] **FEAT-06**: A user can register a set of curves by rigid horizontal shift — `least_squares_shift_registration(data, argvals, ...)` aligns each curve to the sample mean by minimizing the L2 distance under a per-curve constant shift `δᵢ` (golden-section / ternary search over the objective, evaluated via linear interpolation), returning the registered curves plus the per-curve shift values. Fills the "simplest registration method" gap — fdars currently jumps from landmark shifts to full elastic SRSF warping. _(Backlog: PREP-04, rank 11, P1/M)_
+- [x] **FEAT-07**: A user can quantify registration quality with the three standard scikit-fda diagnostics — `least_squares_score` (∑‖registeredᵢ − mean‖²/n), `pairwise_correlation_score` (mean pairwise correlation between registered curves), and `sobolev_least_squares_score` (derivative-penalized LS) — added to `alignment/quality.rs` alongside the existing `alignment_quality` / `warp_complexity` / `warp_smoothness`. _(Backlog: PREP-05, rank 13, P2/S)_
 
 ### Performance
 
@@ -45,11 +45,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FEAT-06 | Phase 14 | Pending |
-| FEAT-07 | Phase 14 | Pending |
+| FEAT-06 | Phase 14 | Complete |
+| FEAT-07 | Phase 14 | Complete |
 | PERF-04 | Phase 15 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 3 total
 - Mapped to phases: 3
 - Unmapped: 0 ✓
