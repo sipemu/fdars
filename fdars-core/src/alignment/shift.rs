@@ -382,4 +382,47 @@ mod tests {
             }
         }
     }
+
+    // FEAT-06-D: empty data returns Err(InvalidDimension)
+    #[test]
+    fn test_shift_registration_empty_data() {
+        let argvals = uniform_grid(5);
+        // n = 0
+        let data_n0 = FdMatrix::zeros(0, 5);
+        let result = least_squares_shift_registration(&data_n0, &argvals, 0.1);
+        assert!(
+            matches!(result, Err(FdarError::InvalidDimension { .. })),
+            "expected Err(InvalidDimension) for n=0, got {result:?}"
+        );
+
+        // m = 0
+        let data_m0 = FdMatrix::zeros(3, 0);
+        let result_m0 = least_squares_shift_registration(&data_m0, &[], 0.1);
+        assert!(
+            matches!(result_m0, Err(FdarError::InvalidDimension { .. })),
+            "expected Err(InvalidDimension) for m=0, got {result_m0:?}"
+        );
+    }
+
+    // FEAT-06-E: argvals length mismatch returns Err(InvalidDimension)
+    #[test]
+    fn test_shift_registration_argvals_mismatch() {
+        let m = 5;
+        let argvals = uniform_grid(m);
+        let data = FdMatrix::zeros(2, m);
+        // Pass argvals with wrong length (m+1 instead of m)
+        let wrong_argvals = uniform_grid(m + 1);
+        let result = least_squares_shift_registration(&data, &wrong_argvals, 0.1);
+        assert!(
+            matches!(result, Err(FdarError::InvalidDimension { .. })),
+            "expected Err(InvalidDimension) for argvals length mismatch, got {result:?}"
+        );
+        // Also test argvals shorter than m
+        let short_argvals = uniform_grid(m - 1);
+        let result2 = least_squares_shift_registration(&data, &short_argvals, 0.1);
+        assert!(
+            matches!(result2, Err(FdarError::InvalidDimension { .. })),
+            "expected Err(InvalidDimension) for argvals too short, got {result2:?}"
+        );
+    }
 }
