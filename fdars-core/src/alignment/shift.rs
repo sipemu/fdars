@@ -273,20 +273,6 @@ mod tests {
             .collect()
     }
 
-    /// Build an n×m FdMatrix of Gaussian bumps, each shifted by `i * delta`.
-    fn make_shifted_bumps(n: usize, m: usize, delta: f64) -> (FdMatrix, Vec<f64>) {
-        let argvals = uniform_grid(m);
-        let mut data = FdMatrix::zeros(n, m);
-        for i in 0..n {
-            let shift = i as f64 * delta;
-            let row = gaussian_bump(&argvals, 0.5 + shift, 0.05);
-            for j in 0..m {
-                data[(i, j)] = row[j];
-            }
-        }
-        (data, argvals)
-    }
-
     // FEAT-06-A: already-aligned curves → estimated shifts ≈ 0
     #[test]
     fn test_shift_already_aligned() {
@@ -408,7 +394,6 @@ mod tests {
     #[test]
     fn test_shift_registration_argvals_mismatch() {
         let m = 5;
-        let argvals = uniform_grid(m);
         let data = FdMatrix::zeros(2, m);
         // Pass argvals with wrong length (m+1 instead of m)
         let wrong_argvals = uniform_grid(m + 1);
