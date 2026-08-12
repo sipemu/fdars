@@ -345,4 +345,41 @@ mod tests {
             );
         }
     }
+
+    // FEAT-06-C: registered curves are the correct shifted re-evaluation
+    #[test]
+    fn test_shift_registration_curve_values() {
+        // Small deterministic case: 2 curves on a 5-point grid.
+        // After registration, registered_data[(i,j)] must equal
+        // linear_interp(argvals, row_i, argvals[j] - shifts[i]) exactly.
+        let m = 5;
+        let argvals = uniform_grid(m);
+        let n = 2;
+        // Curve 0: Gaussian bump at 0.3; Curve 1: Gaussian bump at 0.7
+        let mut data = FdMatrix::zeros(n, m);
+        for (i, &mu) in [0.3_f64, 0.7].iter().enumerate() {
+            let row = gaussian_bump(&argvals, mu, 0.15);
+            for j in 0..m {
+                data[(i, j)] = row[j];
+            }
+        }
+        let max_shift = 0.25;
+        let result = least_squares_shift_registration(&data, &argvals, max_shift).unwrap();
+
+        // Spot-check all (i, j) positions: registered value must equal the
+        // shifted linear-interpolation evaluation, proving the matrix is
+        // assembled from the correct re-evaluation calls.
+        for i in 0..n {
+            let row = data.row(i);
+            let delta = result.shifts[i];
+            for j in 0..m {
+                let expected = linear_interp(&argvals, &row, argvals[j] - delta);
+                let actual = result.registered_data[(i, j)];
+                assert!(
+                    (actual - expected).abs() < 1e-9,
+                    "registered_data[({i},{j})] = {actual}, expected {expected} (shift={delta})"
+                );
+            }
+        }
+    }
 }
