@@ -24,7 +24,9 @@
   3. A user can score a registration with `least_squares_score` (∑‖registeredᵢ − mean‖²/n), `pairwise_correlation_score` (mean pairwise correlation between registered curves), and `sobolev_least_squares_score` (derivative-penalized LS), all living in `alignment/quality.rs` alongside the existing `alignment_quality` / `warp_complexity` / `warp_smoothness`.
   4. The quality scores move in the expected direction: a well-registered curve set yields a lower `least_squares_score` and higher `pairwise_correlation_score` than the same curves before registration (verified on a synthetic shifted-bumps set).
   5. All new public functions return `Result<T, FdarError>` (never panic on bad input), are re-exported at the crate root, carry inline `#[cfg(test)]` tests, and add no new API breakage — existing `alignment/` signatures are untouched.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 14-01-PLAN.md — FEAT-06: shift.rs tracer + least_squares_shift_registration + ShiftRegistrationResult (FEAT-06-A…E)
+- [ ] 14-02-PLAN.md — FEAT-07: three quality scores in quality.rs (FEAT-07-A…F) + consolidated mod.rs/lib.rs re-exports
 
 ### Phase 15: Elastic-FPCA Performance
 **Goal**: The elastic-FPCA critical path runs in parallel under the `parallel` feature, cutting wall-clock on the registration-aware FPCA path for realistic curve counts (N ≥ 50) while producing output numerically equivalent to the sequential path.
