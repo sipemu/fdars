@@ -85,7 +85,8 @@ pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchR
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
 pub use phase_boxplot::{phase_boxplot, PhaseBoxplot};
 pub use quality::{
-    alignment_quality, pairwise_consistency, warp_complexity, warp_smoothness, AlignmentQuality,
+    alignment_quality, least_squares_score, pairwise_consistency, pairwise_correlation_score,
+    sobolev_least_squares_score, warp_complexity, warp_smoothness, AlignmentQuality,
 };
 pub use robust_karcher::{
     karcher_median, robust_karcher_mean, RobustKarcherConfig, RobustKarcherResult,
