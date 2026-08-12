@@ -17,6 +17,16 @@ use nalgebra::SVD;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
+// ─── Threshold constants ─────────────────────────────────────────────────────
+
+/// Minimum curve count (N) at which the inner `for i in 0..n` fill in
+/// [`svd_scores_and_eigenvalues`] uses parallel dispatch via `iter_maybe_parallel!`.
+/// Below this threshold the sequential path is taken — the body is a single
+/// multiply (`scores[(i,k)] = u[(i,k)] * sv`), so the overhead of spawning
+/// rayon work-items exceeds the gain until N ≥ 50 (per the audit's
+/// streaming-sentinel payback analysis, PERF-04-C).
+const SCORES_PARALLEL_THRESHOLD: usize = 50;
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Result of vertical (amplitude) FPCA.
@@ -764,6 +774,12 @@ pub(crate) fn center_matrix(mat: &FdMatrix, n: usize, m: usize) -> (FdMatrix, Ve
 }
 
 /// Extract eigenvalues and scores from SVD of centered data.
+///
+/// When `n >= SCORES_PARALLEL_THRESHOLD` the inner `for i in 0..n` fill is
+/// dispatched via `iter_maybe_parallel!` (PERF-04-C). Below the threshold the
+/// sequential path is used — the body is a single multiply, so dispatch
+/// overhead exceeds the gain at small N. Both branches produce identical
+/// floating-point values (pure per-index writes, no cross-iteration reduction).
 fn svd_scores_and_eigenvalues(
     svd: &SVD<f64, nalgebra::Dyn, nalgebra::Dyn>,
     ncomp: usize,
@@ -777,10 +793,22 @@ fn svd_scores_and_eigenvalues(
         .map(|&s| s * s / (n - 1) as f64)
         .collect();
     let mut scores = FdMatrix::zeros(n, ncomp);
-    for k in 0..ncomp {
-        let sv = svd.singular_values[k];
-        for i in 0..n {
-            scores[(i, k)] = u[(i, k)] * sv;
+    if n >= SCORES_PARALLEL_THRESHOLD {
+        // Parallel branch: collect per-i values for each component, then assign.
+        for k in 0..ncomp {
+            let sv = svd.singular_values[k];
+            let col: Vec<f64> = iter_maybe_parallel!(0..n).map(|i| u[(i, k)] * sv).collect();
+            for (i, val) in col.into_iter().enumerate() {
+                scores[(i, k)] = val;
+            }
+        }
+    } else {
+        // Sequential branch: original nested loops for small N.
+        for k in 0..ncomp {
+            let sv = svd.singular_values[k];
+            for i in 0..n {
+                scores[(i, k)] = u[(i, k)] * sv;
+            }
         }
     }
     Some((scores, eigenvalues))
@@ -1213,6 +1241,46 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// PERF-04-C: svd_scores_and_eigenvalues uses the parallel branch at N >= 50 and the
+    /// sequential branch below 50; both branches produce output that exactly matches a
+    /// hand-computed u[i,k] * singular_value[k] reference.
+    #[test]
+    fn test_scores_threshold() {
+        // Helper that asserts scores equal u[(i,k)] * sv[k] for all (i,k).
+        fn check_scores_exact(n: usize, m: usize) {
+            let (data, t) = generate_test_data(n, m);
+            let km = karcher_mean(&data, &t, 5, 1e-4, 0.0);
+            let ncomp = 2.min(n - 1);
+            // Reproduce the centered-data path that horiz_fpca uses.
+            let psis = warps_to_normalized_psi(&km.gammas, &t);
+            let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+            let mu_psi = sphere_karcher_mean(&psis, &time, 20);
+            let shooting = shooting_vectors_from_psis(&psis, &mu_psi, &time);
+            let (centered, _) = center_matrix(&shooting, n, m);
+            let svd = nalgebra::SVD::new(centered.to_dmatrix(), true, true);
+            let u = svd.u.as_ref().expect("SVD U must exist");
+            let (scores, _eigenvalues) =
+                svd_scores_and_eigenvalues(&svd, ncomp, n).expect("scores must exist");
+            // Verify each score equals u[(i,k)] * singular_value[k] exactly.
+            for k in 0..ncomp {
+                let sv = svd.singular_values[k];
+                for i in 0..n {
+                    let expected = u[(i, k)] * sv;
+                    assert_eq!(
+                        scores[(i, k)],
+                        expected,
+                        "scores bit-identical at N={n} (i={i}, k={k})"
+                    );
+                }
+            }
+        }
+
+        // Small-N path (n < SCORES_PARALLEL_THRESHOLD = 50) — sequential branch.
+        check_scores_exact(10, 31);
+        // Large-N path (n >= SCORES_PARALLEL_THRESHOLD = 50) — parallel branch.
+        check_scores_exact(51, 31);
     }
 
     /// PERF-04-B: build_augmented_srsfs produces bit-identical output under parallel
