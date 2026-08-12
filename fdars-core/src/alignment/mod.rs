@@ -34,6 +34,7 @@ mod robust_karcher;
 mod set;
 mod shape;
 mod shape_ci;
+mod shift;
 mod srsf;
 mod transfer;
 mod tsrvf;
@@ -95,6 +96,9 @@ pub use shape::{
     OrbitRepresentative, ShapeDistanceResult, ShapeMeanResult, ShapeQuotient,
 };
 pub use shape_ci::{shape_confidence_interval, ShapeCiConfig, ShapeCiResult};
+pub use shift::{
+    least_squares_shift_registration, ShiftRegistrationResult, DEFAULT_MAX_SHIFT_FRACTION,
+};
 pub use srsf::{
     compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,
     warp_inverse_error,
