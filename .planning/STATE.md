@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.17.0
-milestone_name: Registration Parity & Elastic-FPCA Performance
-status: Awaiting next milestone
-stopped_at: Completed 15-01-PLAN.md (all 4 tasks, 4 commits)
-last_updated: "2026-08-12T19:20:06.888Z"
-last_activity: 2026-08-12
-last_activity_desc: Phase 14 execution started
+milestone: v0.18.0
+milestone_name: R-Ecosystem Gap Audit
+status: planning
+last_updated: "2026-08-13T20:29:30.365Z"
+last_activity: 2026-08-13
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-current_phase: 15
-current_phase_name: Elastic-FPCA Performance
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-12)
 
 ## Current Position
 
-Phase: Milestone v0.17.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-12 — Milestone v0.17.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-13 — Milestone v0.18.0 started
 
 ## Milestone Roadmap (v0.17.0)
 

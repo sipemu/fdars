@@ -2,20 +2,22 @@
 
 ## What This Is
 
-fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core`, v0.14.0) with broad algorithm coverage — regression, classification, clustering, depth measures, elastic shape analysis, seasonal decomposition, statistical process monitoring, and model explainability — plus WASM/JS and R bindings. The **v0.14.0 audit milestone** (shipped 2026-08-09) proactively reviewed execution performance and mapped functionality gaps against Python's scikit-fda, producing a consolidated report and a prioritized, GSD-ready backlog. Subsequent milestones execute the highest-leverage items from that backlog top-first — v0.15.0 (top-4 quick wins), v0.16.0 (elastic feasibility + parity), and now **v0.17.0** (registration parity + elastic-FPCA performance).
+fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core`, v0.17.0) with broad algorithm coverage — regression, classification, clustering, depth measures, elastic shape analysis, seasonal decomposition, statistical process monitoring, and model explainability — plus WASM/JS and R bindings. The **v0.14.0 audit milestone** (shipped 2026-08-09) proactively reviewed execution performance and mapped functionality gaps against Python's scikit-fda, producing a consolidated report and a prioritized, GSD-ready backlog. Subsequent implementation milestones executed the highest-leverage items from that backlog top-first — v0.15.0 (top-4 quick wins), v0.16.0 (elastic feasibility + parity), v0.17.0 (registration parity + elastic-FPCA performance) — which exhausted the actionable scikit-fda backlog. Milestone **v0.18.0** pivots the comparison yardstick to the richer, older **R FDA ecosystem** (`fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `ftsa`, `frechet`, and more): a fresh audit mapping fdars' gaps against R packages to produce a new prioritized backlog for future work.
 
 ## Core Value
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.17.0 Registration Parity & Elastic-FPCA Performance
+## Current Milestone: v0.18.0 R-Ecosystem Gap Audit
 
-**Goal:** Close the remaining scikit-fda registration gaps — the missing simple shift-registration method and its standard quality diagnostics — and parallelize the elastic-FPCA critical path. Next tier of the v0.14.0 audit backlog.
+**Goal:** Map fdars' functionality gaps against the R functional-data-analysis ecosystem — producing a consolidated gap report and a fresh GSD-ready ranked backlog, so future milestones target the highest-leverage R-parity work first. Audit-only; the R ecosystem replaces scikit-fda as this milestone's yardstick now that the actionable scikit-fda backlog is exhausted.
 
-**Target features:**
-- **FEAT-06 (PREP-04, rank 11, P1/M):** `LeastSquaresShift` registration — per-curve rigid horizontal shift to the sample mean via golden-section L2 minimization (`alignment/`); fills the "simplest registration method" gap (fdars jumps landmark → full elastic today).
-- **FEAT-07 (PREP-05, rank 13, P2/S):** Registration-quality validation scores — `least_squares_score`, `pairwise_correlation_score`, `sobolev_least_squares_score` in `alignment/quality.rs` (matches scikit-fda's `LeastSquares` / `PairwiseCorrelation` / `SobolevLeastSquares`).
-- **PERF-04 (PERF-PAR-ELFPCA, rank 17, P2/M):** Parallelize the three per-curve elastic-FPCA loops (`elastic_fpca.rs:701/720/764`) via `iter_maybe_parallel!(0..n)`; ~4–5× projected at N≥50, equivalence-tested.
+**Target deliverables:**
+- **Versioned R FDA capability inventory** — catalog the ecosystem and its capabilities (with package versions): `fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `fdaoutlier`, `ftsa`, `MFPCA`/`funData`, `fdasrvf`, `fdatest`/`fdANOVA`, `frechet`/`fdadensity`, `funHDDC`/`FDboost`, and others research surfaces.
+- **fdars-vs-R parity matrix + categorization** — capability-level present/partial/absent verdicts, gap categorization (table-stakes / differentiator / out-of-scope), plus a reverse-parity strengths sweep (fdars is already *ahead* of `fdasrvf` on elastic/shape and unique on SPM / explainability / streaming depth).
+- **Consolidated report + ranked backlog** — `score = value/√effort` methodology with GSD-ready 7-field promotion blocks (reusing the v0.14.0 backlog format), ready to promote via `/gsd-new-milestone`.
+
+**Key context:** Audit-only — zero `fdars-core/src/` edits (mirrors v0.14.0). Numeric algorithms + API ergonomics in scope; plotting/IO out of scope. Reuse v0.14.0 audit methodology and infrastructure where applicable. Phase numbering continues from v0.17.0 → starts at Phase 16.
 
 ## Requirements
 
@@ -56,17 +58,20 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- v0.17.0 Registration Parity & Elastic-FPCA Performance — all three requirements validated. -->
+<!-- v0.18.0 R-Ecosystem Gap Audit — deliverables (formalized in REQUIREMENTS.md during roadmap creation). -->
 
-_(none — all milestone requirements validated; awaiting next milestone)_
+- [ ] Versioned R FDA capability inventory across the ecosystem (`fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `fdaoutlier`, `ftsa`, `MFPCA`/`funData`, `fdasrvf`, `fdatest`/`fdANOVA`, `frechet`/`fdadensity`, `funHDDC`/`FDboost`, …)
+- [ ] fdars-vs-R capability parity matrix (present/partial/absent) with gap categorization (table-stakes / differentiator / out-of-scope) and a reverse-parity strengths sweep
+- [ ] Consolidated R-ecosystem gap report + fresh value-ranked (`score = value/√effort`) GSD-ready backlog
 
 ### Out of Scope
 
 <!-- Explicit boundaries with reasoning. -->
 
-- Implementing the performance fixes or missing features found — deferred to future milestones; this milestone is audit-only to keep scope bounded and decisions evidence-driven
-- Parity with R fda.usc / fda as the baseline — scikit-fda was chosen as the single comparison yardstick to avoid diluting the analysis
-- Plotting/visualization parity with scikit-fda — a numeric Rust library does not need matplotlib-style output; treat as low-priority unless the audit surfaces a concrete need
+- Implementing the R-parity gaps found — deferred to future milestones; v0.18.0 is audit-only to keep scope bounded and decisions evidence-driven
+- Plotting/visualization parity with R packages (`rainbow` bagplots, `roahd`/`fdaoutlier` graphical outputs, `fda` plot methods) — a numeric Rust library does not need base-R/ggplot-style rendering; the *numeric* underpinnings (e.g. outliergram/MS-plot statistics) may be in scope, but the plots themselves are not
+- Data/IO parity (R dataset loaders, `read`/`write` round-trips) — out of scope, consistent with the v0.14.0 audit fence
+- Re-auditing scikit-fda — its actionable backlog is exhausted (v0.15.0–v0.17.0); R is now the sole comparison yardstick for this milestone
 
 ## Context
 
@@ -134,6 +139,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-12 after v0.17.0 milestone — Registration Parity & Elastic-FPCA Performance complete: 2 phases (14–15), 3/3 requirements validated (FEAT-06 shift registration, FEAT-07 registration-quality scores, PERF-04 parallel elastic-FPCA), milestone audit passed, full suite green. Release pending (version bump 0.16.0→0.17.0 + PR to main + tag). Prior: v0.16.0 shipped via PR #40 (crate 0.16.0, tag v0.16.0); v0.15.0 shipped 2026-08-11. Full per-phase history below.*
+*Last updated: 2026-08-13 — started milestone v0.18.0 R-Ecosystem Gap Audit (audit-only; R FDA ecosystem replaces scikit-fda as the yardstick; phase numbering continues at Phase 16). Prior: v0.17.0 shipped via PR #41 (crate 0.17.0, tag v0.17.0) — Registration Parity & Elastic-FPCA Performance, 3/3 requirements validated; v0.16.0 shipped via PR #40 (crate 0.16.0); v0.15.0 shipped 2026-08-11. Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
