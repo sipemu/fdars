@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.18.0
 milestone_name: R-Ecosystem Gap Audit
 status: planning
-last_updated: "2026-08-13T20:29:30.365Z"
+last_updated: "2026-08-13T21:00:00.000Z"
 last_activity: 2026-08-13
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -17,34 +17,36 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-12)
+See: .planning/PROJECT.md (updated 2026-08-13)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — top audit-backlog items first.
-**Current focus:** Phase 15 — Elastic-FPCA Performance
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against the reference FDA ecosystems — this milestone maps fdars against the R FDA package ecosystem to produce the next evidence-backed, prioritized backlog.
+**Current focus:** Phase 16 — R Ecosystem Inventory
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap complete, ready to plan Phase 16)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-13 — Milestone v0.18.0 started
+Status: Roadmap created; awaiting phase planning
+Last activity: 2026-08-13 — Roadmap for v0.18.0 created (Phases 16–19)
 
-## Milestone Roadmap (v0.17.0)
+## Milestone Roadmap (v0.18.0)
 
-Two phases, three backlog items. Phase 14 pairs the two registration items (they share `alignment/`; FEAT-07 scores the FEAT-06 output). Phase 15 isolates the elastic-FPCA perf win.
+Four phases, seven requirements. Audit-only — zero `fdars-core/src/` edits (mirrors v0.14.0). The R FDA ecosystem replaces scikit-fda as the sole yardstick. Deliverables land in `.planning/research/R-AUDIT-REPORT.md` + `.planning/research/R-BACKLOG.md` (distinct from the archived scikit-fda `AUDIT-REPORT.md`/`BACKLOG.md` — do not overwrite).
 
-| Phase | Requirements | Backlog IDs | Notes |
-|-------|--------------|-------------|-------|
-| 14 — Shift Registration | FEAT-06, FEAT-07 | PREP-04 (P1/M), PREP-05 (P2/S) | New `least_squares_shift_registration` in `alignment/` (golden-section L2-to-mean, returns registered curves + per-curve δᵢ) + three quality scores (`least_squares_score` / `pairwise_correlation_score` / `sobolev_least_squares_score`) in `alignment/quality.rs`. FEAT-07 scores FEAT-06 output — natural pair. |
-| 15 — Elastic-FPCA Performance | PERF-04 | PERF-PAR-ELFPCA (P2/M) | Parallelize the three per-curve loops in `elastic_fpca.rs:701/720/764` via `iter_maybe_parallel!(0..n)`; numerically equivalent to sequential; light `:764` guarded by N ≳ 50 threshold. Isolated to `elastic_fpca.rs`. |
+| Phase | Requirements | Notes |
+|-------|--------------|-------|
+| 16 — R Ecosystem Inventory | INV-01, INV-02 | Enumerate the R FDA ecosystem capability-first (versioned, package-tagged, area-organized), then design-goal filter into in-scope / out-of-scope with per-area counts. INV-02 depends on INV-01 (same deliverable). Mirrors v0.14.0 Phase 7. |
+| 17 — Parity Matrix & Categorization | GAP-01, GAP-02 | fdars-vs-R present/partial/absent matrix (matched by capability, "searched fdars for:" evidence notes), then categorize every gap table-stakes/differentiator/out-of-scope. GAP-02 depends on GAP-01. Depends on Phase 16 (the in-scope inventory is the row set). Mirrors v0.14.0 Phase 8. |
+| 18 — Reverse-Parity Strengths Sweep | GAP-03 | Full module-map walk of fdars-core cataloguing R-unique + fdars-ahead capabilities. Independent of the R-side enumeration → parallelizable with Phases 16–17; must complete before Phase 19. |
+| 19 — Consolidated Report & Ranked Backlog | RPT-01, RPT-02 | Consolidate R-AUDIT-REPORT.md (methodology + findings + strengths) and produce R-BACKLOG.md (`score = value/√effort`, master ranked table, 7-field promotion blocks). Depends on 16, 17, 18. Mirrors v0.14.0 Phase 9. |
 
-Phases 14 and 15 are mutually independent (disjoint files: `alignment/` vs `elastic_fpca.rs`) and may be executed in either order or concurrently.
+**Execution order:** 16 → 17 → 19, with 18 parallelizable alongside 16–17 (18 walks the fdars codebase, independent of the R survey; must finish before 19).
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 33 (25 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0)
+- Total plans completed: 36 (25 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -57,53 +59,36 @@ Phases 14 and 15 are mutually independent (disjoint files: `alignment/` vs `elas
 | 11 | v0.15.0 | 2 |
 | 12 | v0.16.0 | 1 |
 | 13 | v0.16.0 | 3 |
+| 14 | v0.17.0 | 2 |
+| 15 | v0.17.0 | 1 |
 
 **Recent Trend:**
 
-- Last 5 plans: 11-01, 11-02 (v0.15.0), 12-01, 13-01, 13-02 (v0.16.0) — all completed + verified
+- Last 5 plans: 13-01, 13-02 (v0.16.0), 14-01, 14-02, 15-01 (v0.17.0) — all completed + verified
 - Trend: —
 
 *Updated after each plan completion*
-**Per-Plan Metrics:**
-
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| Phase 14-shift-registration P01 | 13m | 3 tasks | 2 files |
-| Phase 14-shift-registration P02 | 25 | 3 tasks | 3 files |
-| Phase 15 P01 | 12 | 4 tasks | 1 files |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Relevant to current work (v0.17.0 implementation):
+Relevant to current work (v0.18.0 audit):
 
-- v0.17.0 is the third implementation milestone — real `fdars-core/src/` changes. Each phase requires inline `#[cfg(test)]` tests and numerical-equivalence / feasibility verification.
-- Phase numbering continues from v0.16.0 (ended at Phase 13): v0.17.0 starts at Phase 14.
-- Roadmap grouping: FEAT-06 (shift registration) + FEAT-07 (registration-quality scores) → Phase 14 (both live in `alignment/`; FEAT-07 scores the FEAT-06 output — natural pair). PERF-04 (parallelize elastic-FPCA loops) → Phase 15 (isolated to `elastic_fpca.rs`). Phases 14 and 15 are mutually independent (disjoint files).
-- All three items carry exact file locations, root causes, and proposed API signatures from the v0.14.0 audit (`.planning/research/BACKLOG.md` — PREP-04, PREP-05, PERF-PAR-ELFPCA) — reuse, do not re-derive.
-- Research intentionally skipped for this milestone — the v0.14.0 audit already researched these items; the backlog carries signatures + scikit-fda references (no SUMMARY.md).
+- v0.18.0 is an **audit-only** milestone — zero `fdars-core/src/` edits (mirrors v0.14.0). Deliverables are a report + backlog, not code.
+- The **R FDA ecosystem** replaces scikit-fda as the sole comparison yardstick — the actionable scikit-fda backlog is exhausted (v0.15.0–v0.17.0). Do NOT re-audit scikit-fda.
+- Phase numbering **continues** from v0.17.0 (ended at Phase 15) → v0.18.0 starts at Phase 16.
+- There is **no research SUMMARY.md** for this milestone — the R survey IS the milestone's phase work (Phase 16 does the enumeration).
+- Deliverable files are **new and distinctly named**: `.planning/research/R-AUDIT-REPORT.md` + `.planning/research/R-BACKLOG.md`. Do NOT overwrite the archived scikit-fda `AUDIT-REPORT.md` / `BACKLOG.md` (reference-only templates).
+- Reuse the v0.14.0 deliverable conventions: capability-first enumeration (fit/predict/transform collapsed), verdict rubric (present/partial/absent), category rubric (table-stakes/differentiator/out-of-scope), `score = value/√effort` ranking with 7-field promotion blocks.
+- Scope fence (mirrors v0.14.0): numeric algorithms + API ergonomics **in scope**; plotting/visualization + data/IO **out of scope**. The numeric underpinnings of graphical diagnostics (e.g. outliergram/MS-plot statistics) may be in-scope; the plots themselves are not.
+- Roadmap grouping: INV-01/INV-02 → Phase 16 (same deliverable, INV-02 filters INV-01's output). GAP-01/GAP-02 → Phase 17 (GAP-02 categorizes GAP-01's gaps). GAP-03 → Phase 18 (fdars-side module-map walk, independent of the R survey → parallelizable). RPT-01/RPT-02 → Phase 19 (consolidation, depends on 16/17/18).
 
-Conventions carried from prior milestones that constrain implementation:
+Conventions carried from prior milestones (relevant even to an audit):
 
-- Column-major `FdMatrix`; all public functions return `Result<T, FdarError>` (never panic on input); feature-gated parallelism via `iter_maybe_parallel!` (5 macros in `parallel.rs`); inline `#[cfg(test)]` tests; crate-root re-export of new public functions.
-- `Result<T, E>`-returning fns must NOT carry `#[must_use]` — `clippy::double_must_use` fires under `-D warnings` (confirmed convention note, Phase 13-01).
-- All three v0.17.0 items are additive/non-breaking: FEAT-06/FEAT-07 add new functions (existing `alignment/` signatures untouched); PERF-04 is an internal parallelization (public `vert_fpca`/`joint_fpca` signatures unchanged, no new deps).
-
-Phase-specific implementation notes from the audit:
-
-- FEAT-06 / Phase 14 (`alignment/`, PREP-04): implement `least_squares_shift_registration(data, argvals, ...)` — minimize `‖curveᵢ(t − δᵢ) − mean(t)‖²` per curve via golden-section / ternary search (each objective eval via linear interpolation); mean via `fdata::functional_mean`. Return registered curves + per-curve shifts `δᵢ`. `landmark_shift_deltas` already exists internally inside `landmark_register` (reference, not returned). ~1 wk equiv (M with scikit-fda comparison).
-- FEAT-07 / Phase 14 (`alignment/quality.rs`, PREP-05): add `least_squares_score` (∑‖registeredᵢ − mean‖²/n), `pairwise_correlation_score` (mean pairwise correlation), `sobolev_least_squares_score` (derivative-penalized LS) alongside existing `alignment_quality` / `warp_complexity` / `warp_smoothness`. Effort S. Scores the FEAT-06 output — verify direction (registration lowers LS score, raises correlation).
-- PERF-04 / Phase 15 (`elastic_fpca.rs:701/720/764`, PERF-PAR-ELFPCA): wrap each of the three per-curve `for i in 0..n` loops in `iter_maybe_parallel!(0..n)`. `:701` shooting-vector row / `:720` augmented-SRSF row → `.collect::<Vec<_>>()` + row-assignment; `:764` score extraction is a light body → guard behind N ≳ 50 threshold (per SC1 payback rule) or accept documented small-N regression. Equivalence-test scores + eigenvalues (elastic geometry is FP-order-sensitive). No RNG in any of the three bodies → no per-thread seeding.
-- Wave/serialization: FEAT-06 (new registration fn in `alignment/`) and FEAT-07 (`alignment/quality.rs`) touch different files within `alignment/` — mostly parallelizable, but if both add crate-root re-exports, serialize the `lib.rs`/`mod.rs` re-export edits to avoid a merge collision. PERF-04 (`elastic_fpca.rs`) is fully independent.
-- TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for bench/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" — use `--no-verify` for docs, free /tmp before executing (MEMORY.md).
-- [Phase ?]: FEAT-06 shift registration: registered(t)=original(t-delta); delta=mean_centre-mu_i sign convention
-- [Phase ?]: Rule 3: added pub use shift::{...} to alignment/mod.rs in plan 14-01 instead of deferring to 14-02 (sequential execution, no merge conflict risk)
-- [Phase ?]: Standalone-energy form: registration quality scores measure absolute L2 spread (not ratio-to-original); avoids divide-by-zero on constant data
-- [Phase ?]: Result<f64, FdarError> on score functions enables dimension validation; intentional divergence from raw-f64 neighbors
-- [Phase ?]: collect-then-assign parallelism via iter_maybe_parallel! in elastic_fpca.rs — mirrors align_to_target to avoid data-race on column-major FdMatrix buffer
-- [Phase ?]: SCORES_PARALLEL_THRESHOLD = 50 outer-if at function level in svd_scores_and_eigenvalues — single branch decision, not repeated per-k check; below threshold runs original sequential loops
+- The fdars module map lives in `.planning/codebase/` — use it for the GAP-03 reverse-parity walk (per-module coverage), and for the "searched fdars for:" evidence notes in GAP-01 (map by capability, not API name).
+- TMPDIR=/home/simonm/.cache/fdars-bench-tmp required if any grep/build/doctest linking is needed; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer). Audit phases are mostly analysis/write, so build pressure is low.
 
 ### Pending Todos
 
@@ -111,30 +96,24 @@ None yet.
 
 ### Blockers/Concerns
 
-- /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer).
+- **R package versions must be captured explicitly** (INV-01 requires version tags). If R / the packages are not installed locally, versions come from CRAN metadata / package DESCRIPTION at survey time — record the exact version used per package so the inventory is reproducible.
+- No runtime R benchmark is in scope — this is a capability/API gap comparison only (R is interpreted; not a meaningful perf baseline). Do not attempt a cross-language speed contest.
 - Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer).
-- PERF-04 benchmarking is sensitive to OS scheduler jitter (unpinned governor); the audit flagged elastic cells LOW-CONFIDENCE — prefer an equivalence/feasibility demonstration (parallel matches sequential within tolerance at N ≥ 50) over a precise speedup number.
-- v0.16.0 release still pending (version bump 0.15.0 → 0.16.0 + PR to protected `main` + tag) — tracked in PROJECT.md Current State, not a v0.17.0 requirement.
+- /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer).
 
 ## Deferred Items
 
-Items acknowledged at v0.15.0 milestone close (2026-08-11):
+v2 backlog items deferred at v0.18.0 definition (2026-08-13): IMPL-* (implementation of any R-parity gap found — deferred to future milestones, the point of the backlog), ACC-VALIDATE (fdars-vs-reference numerical-accuracy validation, could extend to R references) — see REQUIREMENTS.md v2 section.
 
-| Category | Item | Status | Deferred At |
-|----------|------|--------|-------------|
-| tech-debt | Weakened MEWMA test assertion | Advisory code-review item carried forward | 2026-08-11 |
-| tech-debt | `fix_svd_signs` NaN no-op | Advisory code-review item carried forward | 2026-08-11 |
-| tech-debt | Over-broad test name (Phase 11) | Advisory code-review item carried forward | 2026-08-11 |
-| validation | Phase 10 & 11 VALIDATION.md remain `draft` (Nyquist coverage TODO) | Carried forward | 2026-08-11 |
-
-v2 backlog items deferred at v0.17.0 definition (2026-08-12): PREP-06 (LDO-regularized FPCA), ACC-VALIDATE (fdars-vs-scikit-fda accuracy validation) — see REQUIREMENTS.md v2 section.
+Advisory tech-debt carried from v0.15.0 (not v0.18.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; Phase 10 & 11 VALIDATION.md `draft` (Nyquist TODO). Phase 14 & 15 VALIDATION.md also remain `draft` (Nyquist TODO, v0.17.0).
 
 ## Session Continuity
 
-Last session: 2026-08-12T14:27:09.355Z
-Stopped at: Completed 15-01-PLAN.md (all 4 tasks, 4 commits)
+Last session: 2026-08-13 — created v0.18.0 roadmap (Phases 16–19)
+Stopped at: Roadmap + REQUIREMENTS traceability + STATE written; 7/7 requirements mapped
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with `/gsd-plan-phase 16` (R Ecosystem Inventory — INV-01, INV-02).
+- Phase 18 (reverse-parity strengths sweep) is independent of the R survey and may be planned/executed in parallel with Phases 16–17.

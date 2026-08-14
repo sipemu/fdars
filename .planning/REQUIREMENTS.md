@@ -55,19 +55,19 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INV-01 | Phase [N] | Pending |
-| INV-02 | Phase [N] | Pending |
-| GAP-01 | Phase [N] | Pending |
-| GAP-02 | Phase [N] | Pending |
-| GAP-03 | Phase [N] | Pending |
-| RPT-01 | Phase [N] | Pending |
-| RPT-02 | Phase [N] | Pending |
+| INV-01 | Phase 16 | Pending |
+| INV-02 | Phase 16 | Pending |
+| GAP-01 | Phase 17 | Pending |
+| GAP-02 | Phase 17 | Pending |
+| GAP-03 | Phase 18 | Pending |
+| RPT-01 | Phase 19 | Pending |
+| RPT-02 | Phase 19 | Pending |
 
 **Coverage:**
 - v1 requirements: 7 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 7 ⚠️
+- Mapped to phases: 7 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-13*
-*Last updated: 2026-08-13 after initial definition (v0.18.0 R-Ecosystem Gap Audit)*
+*Last updated: 2026-08-13 — traceability populated during roadmap creation (Phases 16–19; INV→16, GAP-01/02→17, GAP-03→18, RPT→19). 7/7 requirements mapped, no orphans.*
