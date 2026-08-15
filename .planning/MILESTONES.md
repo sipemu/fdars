@@ -1,5 +1,19 @@
 # Milestones
 
+## v0.18.0 R-Ecosystem Gap Audit (Shipped: 2026-08-15)
+
+**Phases completed:** 4 phases, 5 plans, 0 tasks
+
+**Key accomplishments:**
+
+- `.planning/research/R-AUDIT-REPORT.md` §Phase 16 — R Ecosystem Inventory (INV-01 + INV-02), consolidated from the completed web-sourced survey `16-RESEARCH.md`.
+- the `§Design-Goal Filter` section of `.planning/research/R-AUDIT-REPORT.md` (INV-02).
+- `.planning/research/R-AUDIT-REPORT.md` §Phase 17 — Parity Matrix & Categorization (GAP-01 + GAP-02), +430 lines. Audit-only; zero `fdars-core/src/` edits.
+- `.planning/research/R-AUDIT-REPORT.md` §Phase 18 — Reverse-Parity Strengths Sweep (GAP-03). Audit-only; zero `fdars-core/src/` edits.
+- RPT-01 (consolidated report) + RPT-02 (ranked backlog) — the milestone's final deliverables. Audit-only; zero `fdars-core/src/` edits. Committed `c857532f`.
+
+---
+
 ## v0.17.0 Registration Parity & Elastic-FPCA Performance (Shipped: 2026-08-12)
 
 **Phases completed:** 2 phases, 3 plans, 3 tasks

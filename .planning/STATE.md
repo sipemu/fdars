@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.18.0
 milestone_name: R-Ecosystem Gap Audit
-current_phase: 19
-status: completed
+status: Awaiting next milestone
 stopped_at: Roadmap + REQUIREMENTS traceability + STATE written; 7/7 requirements mapped
-last_updated: "2026-08-15T18:46:09.003Z"
+last_updated: "2026-08-15T18:48:13.711Z"
 last_activity: 2026-08-15
 last_activity_desc: Phase 16 complete, transitioned to Phase 17
 progress:
@@ -14,6 +13,7 @@ progress:
   total_plans: 5
   completed_plans: 5
   percent: 100
+current_phase: 19
 current_phase_name: Consolidated Report & Ranked Backlog
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-13)
 
 ## Current Position
 
-Phase: 19
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-15 — Phase 19 complete
+Phase: Milestone v0.18.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-15 — Milestone v0.18.0 completed and archived
 
 ## Milestone Roadmap (v0.18.0)
 
@@ -119,5 +119,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 16` (R Ecosystem Inventory — INV-01, INV-02).
-- Phase 18 (reverse-parity strengths sweep) is independent of the R survey and may be planned/executed in parallel with Phases 16–17.
+- Start the next milestone with /gsd-new-milestone

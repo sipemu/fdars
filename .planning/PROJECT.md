@@ -55,14 +55,16 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 - ✓ **Least-squares shift registration** — `least_squares_shift_registration(data, argvals, max_shift) -> Result<ShiftRegistrationResult, FdarError>` in new `alignment/shift.rs`: per-curve rigid horizontal shift to the cross-sectional sample mean (`mean_1d`) via golden-section L2 minimization (Simpson-weighted, `linear_interp` boundary-clamped resampling), returning `ShiftRegistrationResult { registered_data, shifts }`; crate-root re-exported. Fills the "simplest registration method" gap. — Validated in Phase 14 (FEAT-06, v0.17.0)
 - ✓ **Registration-quality scores** — `least_squares_score`, `pairwise_correlation_score` (centered functional Pearson), `sobolev_least_squares_score(…, lambda)` in `alignment/quality.rs`, all `Result<f64, FdarError>`, standalone-energy form (documented divergence from scikit-fda's ratio-based scorers). — Validated in Phase 14 (FEAT-07, v0.17.0)
 - ✓ **Parallel elastic-FPCA** — the three per-curve loops in `elastic_fpca.rs` (`shooting_vectors_from_psis`, `build_augmented_srsfs`, `svd_scores_and_eigenvalues`) parallelized via `iter_maybe_parallel!` collect-then-assign; the light score-fill guarded by `SCORES_PARALLEL_THRESHOLD = 50` (outer-if); bit-identical to sequential (tested `parallel` ON and OFF), no signature changes. — Validated in Phase 15 (PERF-04, v0.17.0)
+- ✓ **R-ecosystem capability inventory** — `.planning/research/R-AUDIT-REPORT.md` §Phase 16: versioned, capability-first inventory of 35 R FDA packages, 275 capabilities across 9 areas, design-goal-filtered to 248 in-scope. — Validated in Phase 16 (INV-01/INV-02, v0.18.0)
+- ✓ **fdars-vs-R parity matrix + categorization** — §Phase 17: 250 in-scope R capabilities mapped present/partial/absent (88/49/113), 162 actionable gaps categorized 18 table-stakes / 144 differentiator. — Validated in Phase 17 (GAP-01/GAP-02, v0.18.0)
+- ✓ **Reverse-parity strengths sweep** — §Phase 18: 42-module walk; 12 R-honest fdars strengths (headliners: model explainability for functional models, streaming depth — no R FDA package touches either). — Validated in Phase 18 (GAP-03, v0.18.0)
+- ✓ **R-ecosystem consolidated report + ranked backlog** — §Phase 19 + `.planning/research/R-BACKLOG.md`: 26 GSD-ready value-ranked items (`score = value/√effort`, 5.00→0.67), completeness gate PASS. — Validated in Phase 19 (RPT-01/RPT-02, v0.18.0)
 
 ### Active
 
-<!-- v0.18.0 R-Ecosystem Gap Audit — deliverables (formalized in REQUIREMENTS.md during roadmap creation). -->
+<!-- v0.18.0 R-Ecosystem Gap Audit shipped — all 7 requirements validated. Awaiting next milestone. -->
 
-- [ ] Versioned R FDA capability inventory across the ecosystem (`fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `fdaoutlier`, `ftsa`, `MFPCA`/`funData`, `fdasrvf`, `fdatest`/`fdANOVA`, `frechet`/`fdadensity`, `funHDDC`/`FDboost`, …)
-- [ ] fdars-vs-R capability parity matrix (present/partial/absent) with gap categorization (table-stakes / differentiator / out-of-scope) and a reverse-parity strengths sweep
-- [ ] Consolidated R-ecosystem gap report + fresh value-ranked (`score = value/√effort`) GSD-ready backlog
+_(none — v0.18.0 audit complete; the `R-BACKLOG.md` top items feed the next milestone via `/gsd-new-milestone`)_
 
 ### Out of Scope
 
@@ -90,6 +92,7 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ## Current State
 
+- **Shipped: v0.18.0 R-Ecosystem Gap Audit** (2026-08-15) — 4 phases (16–19), 5 plans, all VERIFICATION passed, milestone audit passed (7/7 requirements, cross-phase document flow coherent). Audit-only: **zero `fdars-core/src/` edits** — the R-ecosystem analog of v0.14.0. Deliverables: `.planning/research/R-AUDIT-REPORT.md` (35-package versioned inventory → 250-row parity matrix → 12 R-honest strengths → consolidated findings) + `.planning/research/R-BACKLOG.md` (26 value-ranked, promotion-ready items). **Headline findings:** the R ecosystem is far broader than scikit-fda (275 caps vs 161); **162 actionable gaps** (18 table-stakes / 144 differentiator); fdars is present on only 88/250 in-scope capabilities but leads on explainability + streaming depth. **Biggest table-stakes deficits:** functional inference (Area 5, 0 present), Fréchet/object-data & density regression (Area 7, 0 present), functional time series forecasting (Area 6, 2/25). Distinct deliverables from the archived scikit-fda `AUDIT-REPORT.md`/`BACKLOG.md` (untouched). `Rfssa` inventory-completeness caveat documented. Crate stays at 0.17.0 — no code changes.
 - **Shipped: v0.17.0 Registration Parity & Elastic-FPCA Performance** (2026-08-12) — 2 phases (14–15), 3 plans, all VERIFICATION passed, milestone audit passed (3/3 requirements, integration clean, full suite green: 2727 tests `linalg,parallel` / 2718 default); released via PR #41 (crate 0.17.0 on crates.io, tag v0.17.0). FEAT-06 `least_squares_shift_registration` + `ShiftRegistrationResult` (new `alignment/shift.rs`), FEAT-07 three registration-quality scores (`alignment/quality.rs`), PERF-04 parallelized elastic-FPCA loops (bit-identical, N≥50 guard) — all additive/non-breaking. Phase-14 review caught + fixed 1 CI-blocker + 3 warnings (incl. cosine→centered-Pearson correctness fix); Phase-15 review clean. Both VALIDATION.md remain `draft` (Nyquist TODO).
 - **Shipped: v0.16.0 Elastic Feasibility + Parity Quick Wins** (2026-08-12) — 2 phases, all VERIFICATION passed, milestone audit passed (4/4 requirements, integration clean, 2663 tests green); released via PR #40 (crate 0.16.0, tag v0.16.0). PERF-03 opt-in banded elastic alignment (large grids feasible), FEAT-03 imputation, FEAT-04 ExtrapolationPolicy (both interp paths), FEAT-05 five scoring metrics — all additive/non-breaking. Phase-13 review caught + fixed 2 real critical edge-case bugs before completion.
 - **Shipped: v0.15.0 Top-Backlog Quick Wins** (2026-08-11) — 2 phases, 4 plans, all VERIFICATION passed, milestone audit passed (4/4 requirements, integration clean); PR #38. First real `fdars-core/src/` code delivered from the audit backlog: FEAT-01 (spline interpolation) + FEAT-02 (functional summary statistics) in phase 10; PERF-01 (parallel CV folds via `iter_maybe_parallel!`) + PERF-02 (faer `thin_svd` FPCA backend under `linalg`) in phase 11 — both perf wins equivalence-tested. Full suite 1948 tests green, clippy clean. 3 advisory code-review items carried forward as tech debt (weakened MEWMA test assertion, `fix_svd_signs` NaN no-op, over-broad test name); both phase VALIDATION.md files remain `draft` (Nyquist coverage TODO).
@@ -100,11 +103,13 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ## Next Milestone Goals
 
-Begin executing the top-ranked backlog items via `/gsd-new-milestone` (fresh REQUIREMENTS.md). Highest-leverage candidates from the ranked backlog:
-- **REPR-02 / EXPL-02** (score 4.00) — spline interpolation; functional summary statistics (table-stakes capability gaps).
-- **PERF-PAR-CV** (score 4.00) — parallelize the CV fold loop (~4–5× projected).
-- **P6-1** (score 3.00) — swap FPCA SVD to faer `thin_svd` (1.8–4.1× measured).
-- **PERF-ELASTIC-BAND** (score 2.89, P1) — default/expose banded elastic alignment to make large grids feasible.
+The v0.14.0 scikit-fda backlog is exhausted (v0.15.0–v0.17.0). The next implementation milestone draws from the **new `.planning/research/R-BACKLOG.md`** (26 R-parity items) via `/gsd-new-milestone` (fresh REQUIREMENTS.md). Highest-leverage candidates:
+- **T-01** (score 5.00, P1) — constant/intercept basis + AIC smoothing-parameter selection (table-stakes quick wins).
+- **T-02** (score 5.00, P1) — depth-fence functional boxplot + general depth dispatcher (table-stakes quick wins).
+- **INF-01 / INF-02** (score 2.89, P1) — functional inference suite: two-sample tests (t/F-perm, mean/cov, SCB) + FLM goodness-of-fit / F-test / ANOVA V-stat. Inference (Area 5) is fdars' dominant table-stakes deficit (0 present).
+- **REG-01** (score 2.89, P1) — concurrent / varying-coefficient functional regression.
+- **FPCA-01** (score 2.31, P1) — unified PACE sparse/longitudinal FPCA + conditional-expectation scores.
+- Larger differentiator clusters for later: Fréchet / object-data & density regression (Area 7), functional time series forecasting (Area 6).
 
 ## Key Decisions
 
@@ -120,6 +125,9 @@ Begin executing the top-ranked backlog items via `/gsd-new-milestone` (fresh REQ
 | Registration scores use standalone-energy form (not scikit-fda's ratio-based improvement metrics) | The backlog/CONTEXT intent was absolute quality diagnostics over the registered set; documented the divergence in rustdoc | ✓ Validated — v0.17.0 (Phase 14; review confirmed not silently reverted; WR-01 fix centered the Pearson score) |
 | Elastic-FPCA `:764` light loop guarded by an N≥50 threshold (outer-if) rather than unconditional parallelization | A single-multiply body only pays back the parallel dispatch at scale; guard avoids small-N regression | ✓ Validated — v0.17.0 (Phase 15; `SCORES_PARALLEL_THRESHOLD=50`, bit-identical equivalence ON/OFF) |
 | Milestone-complete does planning archival only; the crate release (version bump + PR + tag) is a separate ship step | Keeps planning cadence decoupled from the release flow; `main` is not branch-protected, so the release PR + tag can be driven directly | ✓ Validated — v0.17.0 (released via PR #41; tag v0.17.0 → `release.yml` auto-published crate 0.17.0 to crates.io) |
+| Pivot the gap-analysis yardstick from scikit-fda to the R FDA ecosystem for v0.18.0 | scikit-fda's actionable backlog was exhausted (v0.15.0–v0.17.0); R is older/broader and surfaces the next tier of high-value gaps | ✓ Validated — v0.18.0 (35 R packages, 275 caps vs scikit-fda's 161; 162 actionable gaps found) |
+| R-audit deliverables use distinct filenames (`R-AUDIT-REPORT.md`/`R-BACKLOG.md`), never overwriting the scikit-fda audit files | Preserves the v0.14.0 audit as historical record; keeps the two yardsticks separable | ✓ Validated — v0.18.0 (both scikit-fda files untouched across all 4 phases) |
+| Reverse-parity strengths must be re-vetted against R specifically, not copied from the scikit-fda sweep | R is far broader — SPM/conformal/elastic have R analogs (`funcharts`/`conformalInference.fd`/`fdasrvf`); an uncritical copy would overstate fdars' moat | ✓ Validated — v0.18.0 (Phase 18: 30 scikit-fda strengths → 12 R-honest; genuine moat = explainability + streaming depth) |
 
 ## Evolution
 
@@ -139,6 +147,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-13 — started milestone v0.18.0 R-Ecosystem Gap Audit (audit-only; R FDA ecosystem replaces scikit-fda as the yardstick; phase numbering continues at Phase 16). Prior: v0.17.0 shipped via PR #41 (crate 0.17.0, tag v0.17.0) — Registration Parity & Elastic-FPCA Performance, 3/3 requirements validated; v0.16.0 shipped via PR #40 (crate 0.16.0); v0.15.0 shipped 2026-08-11. Full per-phase history below.*
+*Last updated: 2026-08-15 after v0.18.0 milestone — R-Ecosystem Gap Audit complete: 4 phases (16–19), 5 plans, 7/7 requirements validated, milestone audit passed, zero `fdars-core/src/` edits. Deliverables `.planning/research/R-AUDIT-REPORT.md` + `R-BACKLOG.md` (26 ranked R-parity items) ready to promote via `/gsd-new-milestone`. Prior: v0.17.0 shipped via PR #41 (crate 0.17.0, tag v0.17.0); v0.16.0 via PR #40 (crate 0.16.0); v0.15.0 shipped 2026-08-11. Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*

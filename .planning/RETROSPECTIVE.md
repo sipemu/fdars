@@ -74,6 +74,37 @@
 
 ---
 
+## Milestone: v0.18.0 — R-Ecosystem Gap Audit
+
+**Shipped:** 2026-08-15
+**Phases:** 4 (16–19) | **Plans:** 5
+
+### What Was Built
+An audit-only milestone (the R-ecosystem analog of v0.14.0): a versioned inventory of 35 R FDA packages (275 capabilities, 248 in-scope), a 250-row fdars-vs-R parity matrix (162 actionable gaps), a re-vetted reverse-parity strengths sweep (12 R-honest fdars strengths), and a 26-item value-ranked `R-BACKLOG.md`. Zero `fdars-core/src/` edits.
+
+### What Worked
+- **Web-enabled researcher for the inventory** — the CRAN-cross-checked survey (versions verified live) was the single highest-value subagent call; front-loading it made Phases 17–19 mechanical consolidations.
+- **Reusing the v0.14.0 audit as a template** — rubrics (D-01 verdict, D-03 category), the 7-field backlog block, and the fdars-side §Phase 8 catalogue gave every phase a proven shape and a head start.
+- **Honesty gates** — re-vetting strengths against R (broader than scikit-fda) collapsed 30 scikit-fda "fdars-only" items to 12; the agent surfaced its own `Rfssa` survey miss rather than hiding it.
+
+### What Was Inefficient
+- **Background-agent instability** — the planner subagent was lost twice to process exits mid-run before completing on the third try; several agents completed "late," overlapping orchestrator inline work and causing reconciliation churn. Net: the orchestrator did more inline consolidation + all phase bookkeeping itself for reliability.
+- **Count reconciliation** — the Phase-16 header count (248) vs literal parity rows (250) and a plotting/IO subtotal typo (25 vs 24) each needed a documented recount.
+
+### Patterns Established
+- **Distinct-filename discipline for a second audit** (`R-AUDIT-REPORT.md`/`R-BACKLOG.md`) keeps two yardsticks separable without touching the first audit's artifacts.
+- **Re-vet, don't copy** reverse-parity strengths when the comparison baseline widens.
+
+### Key Lessons
+- When background agents are unreliable, dispatch-and-wait for the heavy analytical phases (parity, strengths, synthesis) but keep bookkeeping + small consolidations inline — the deliverable never depends on a single agent surviving.
+- A broader yardstick (R vs scikit-fda) inverts strength claims: capabilities unique against a narrow baseline often have analogs in a deep one.
+
+### Cost Observations
+- Model mix: orchestration on Opus; researcher on Sonnet; parity/strengths/synthesis analysis agents + planner on Opus.
+- Notable: 4 heavy analysis subagents (1 researcher + 3 general-purpose) carried the bulk of the work; docs-only commits used `--no-verify` throughout (pre-commit cargo gate spuriously fails on `/tmp` for `.planning/` commits, per MEMORY).
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
