@@ -1135,3 +1135,101 @@ An R analog exists, but fdars' version is broader / more integrated. The R analo
 - **Net vs the v0.14.0 scikit-fda sweep:** the 30 scikit-fda "fdars-only" items collapse to **12 R-honest strengths** (6 unique + 6 ahead). The big casualties are **SPM, conformal, and the entire elastic/shape stack** (unique vs scikit-fda, but R has `funcharts`/`conformalInference.fd`/`fdasrvf`), plus **SSA** (`Rfssa`) and **FoF/FOSR-1D** (`refund`/`FDboost`). fdars' *genuine* R-relative moat is **explainability for functional models** and **streaming depth** — no R package touches either.
 
 *This completes Phase 18 (GAP-03 reverse-parity fdars-strengths sweep). The 12 R-honest strengths feed Phase 19's consolidated findings — keeping the backlog from proposing work in areas where fdars already leads.*
+
+---
+
+## Phase 19 — Consolidated Report
+
+**Consolidation date:** 2026-08-15 · **Requirements:** RPT-01 (this section) + RPT-02 (companion `R-BACKLOG.md`) · **Mode:** audit-only (zero `fdars-core/src/` edits). This is the final phase of milestone v0.18.0 (R-Ecosystem Gap Audit). It synthesizes Phases 16 (inventory), 17 (parity matrix + categorization), and 18 (reverse-parity strengths) into a single consolidated picture and hands the ranked backlog to `R-BACKLOG.md`.
+
+### §Methodology (Consolidated)
+
+**Yardstick.** The R functional-data-analysis package ecosystem — replacing scikit-fda (whose actionable backlog was exhausted across v0.15.0–v0.17.0). This is a *strictly broader* yardstick: the R FDA ecosystem covers areas scikit-fda never touched (metric-space/object-data regression, functional time series forecasting, sparse-PACE FPCA, functional inference), so several v0.14.0 "fdars-unique" strengths do not survive against R (see §Phase 18 re-vet casualties).
+
+**Packages surveyed (35, versions as of 2026-08).** All CRAN versions are the latest release as of the 2026-08 survey month; CRAN-archived packages were excluded (`classiFunc`, `FRegSigCom`, `fpca`, `warpMix`).
+
+| # | Package | Version | Primary Area | # | Package | Version | Primary Area |
+|---|---------|---------|--------------|---|---------|---------|--------------|
+| 1 | `fda` | 6.3.0 | Representation/Basis/Smoothing | 19 | `funcharts` | 1.8.1 | SPM / Control Charts |
+| 2 | `fda.usc` | 2.2.0 | General (depth/regression/classif) | 20 | `fdacluster` | 0.4.2 | ML Clustering |
+| 3 | `refund` | 0.1-40 | ML Regression | 21 | `registr` | 2.2.1 | Preprocessing / Registration |
+| 4 | `fdapace` | 0.6.0 | FPCA / Sparse longitudinal | 22 | `conformalInference.fd` | 1.1.1 | ML / Inference |
+| 5 | `roahd` | 1.4.3 | Depth / Outlier | 23 | `fdaPDE` | 1.1-24 | Representation / Smoothing |
+| 6 | `fdaoutlier` | 0.2.1 | Depth / Outlier | 24 | `SCBmeanfd` | 1.2.3 | Inference / Testing |
+| 7 | `ftsa` | 6.7 | Functional Time Series | 25 | `mfaces` | 0.1-4 | FPCA / Covariance |
+| 8 | `MFPCA` | 1.3-11 | FPCA (multivariate) | 26 | `fdaPOIFD` | 2.0.1 | Depth / Partially Observed |
+| 9 | `funData` | 1.3-9 | Representation | 27 | `multifamm` | 0.1.1 | ML Regression (mixed effects) |
+| 10 | `fdasrvf` | 2.4.4 | Elastic / Shape | 28 | `elasdics` | 1.1.3 | Elastic / Shape |
+| 11 | `fdatest` | 2.1.1 | Inference / Testing | 29 | `freqdom` | 2.0.5 | Functional Time Series |
+| 12 | `fdANOVA` | 0.1.2 | Inference / Testing | 30 | `fdaconcur` | 0.1.3 | ML Regression (concurrent) |
+| 13 | `frechet` | 0.3.0 | Density / Object Data / Manifold | 31 | `fdaACF` | 1.0.0 | Functional Time Series |
+| 14 | `fdadensity` | 0.1.4 | Density / Object Data | 32 | `fastFMM` | 1.0.1 | ML Regression (mixed effects) |
+| 15 | `funHDDC` | 2.3.1.1 | ML Clustering | 33 | `funFEM` | 1.2 | ML Clustering |
+| 16 | `FDboost` | 1.1-4 | ML Regression | 34 | `funLBM` | 2.3.1 | ML Clustering (co-clustering) |
+| 17 | `face` | 0.1-8 | FPCA / Covariance | 35 | `tf` | 0.5.0 | Representation |
+| 18 | `denseFLMM` | 0.1.3 | ML Regression (mixed effects) | | | | |
+
+**In-scope / out-of-scope rule (INV-02, applied throughout).** A capability is *in-scope* if it is (a) a numeric algorithm/statistical method portable to a numeric Rust library, or (b) an API-ergonomics / composable-object / CV-utility layer a library user expects. A capability is *out-of-scope* if it is a visualization renderer (`plot.*`) or an IO layer (dataset loaders, data-frame round-trips). The *numeric statistic* underpinning a diagnostic plot (outliergram MO/MEI values, functional-boxplot fence/threshold computation) is **in-scope**; only the renderer is out-of-scope. Applying this rule to the 275 surveyed capability rows yields **248 in-scope / 27 out-of-scope** (24 plotting + 3 IO). The 248 in-scope rows are the actionable comparison surface.
+
+**D-01 verdict rubric (parity, reused verbatim from the v0.14.0 audit).** Matched by *capability semantics, not API name* — a different call shape (fdars builder-struct + single call vs R's S3/S4 dispatch) is not a gap.
+- **present** — fdars delivers the same result in any call-shape (accuracy not re-verified; a known-bug area is flagged "present — accuracy NOT verified").
+- **partial** — a related/narrower/internal-only capability exists (missing a documented sub-mode, exposed only internally, or a narrower variant). An *add-a-variant* backlog candidate.
+- **absent** — no fdars capability delivers the result. An *implement-from-scratch* backlog candidate.
+
+**D-03 category rubric (applied to every gap row; present rows carry no category).**
+- **table-stakes** — a capability a general-purpose FDA library is expected to have; its absence is a competitive deficit.
+- **differentiator** — valuable but specialized; nice-to-have, not baseline-expected.
+- **out-of-scope** — on inspection really a rendering/IO-adjacent capability that should not be built (empty here — the input set was already in-scope-filtered).
+
+**`Rfssa` inventory-completeness caveat.** The Phase-16 35-package survey did **not** include `Rfssa` (functional Singular Spectrum Analysis), which was surfaced only during the Phase-18 re-vet (2026-08-15). Functional SSA therefore appears as a *strength casualty* (fdars' `seasonal/ssa` is at parity, not unique — see §Phase 18 §Re-vet casualties and A-7), but `Rfssa`'s own in-scope capabilities (functional SSA decomposition, reconstruction, forecasting) were **not** mapped as gaps in the Phase-17 parity matrix. This is a known inventory-completeness limitation: the actionable-gap total (162) may under-count by the handful of `Rfssa`-specific capabilities fdars lacks (fdars' `ssa` covers decomposition but not the full `Rfssa` forecasting/grouping suite). No other survey gaps were identified during re-vetting. The limitation is scoped to functional SSA and does not affect the table-stakes signal (all 18 table-stakes gaps trace to surveyed packages).
+
+### §Consolidated Findings
+
+**Headline numbers.**
+
+| Metric | Value |
+|--------|-------|
+| R FDA packages surveyed | **35** (as of 2026-08) |
+| Capability rows inventoried (9 areas) | **275** |
+| In-scope capabilities (actionable comparison surface) | **248** |
+| Out-of-scope (excluded by construction) | 27 (24 plotting + 3 IO) |
+| Literal in-scope rows mapped in parity matrix | 250 (net +2 literal-row reconciliation) |
+| fdars **present** | 88 / 250 (35%) |
+| fdars **partial** | 49 (add-a-variant) |
+| fdars **absent** | 113 (implement-from-scratch) |
+| **Actionable gaps (partial + absent)** | **162** |
+| — of which **table-stakes** | **18** (11%) |
+| — of which **differentiator** | **144** (89%) |
+| — of which out-of-scope | 0 |
+| fdars R-honest strengths (Phase 18) | **12** (6 unique + 6 ahead) |
+
+**Gap counts by area (partial + absent = actionable gaps).**
+
+| Area | Present | Partial | Absent | **Actionable gaps** | Largest-gap flag |
+|------|---------|---------|--------|---------------------|------------------|
+| 1 — Representation / Basis / Smoothing | 20 | 8 | 10 | **18** | |
+| 2 — Preprocessing / Registration | 16 | 4 | 2 | **6** | (fdars strong) |
+| 3 — Exploratory / Depth / Outlier | 12 | 5 | 16 | **21** | depth long tail |
+| 4 — ML (Regression + Classification + Clustering) | 25 | 12 | 20 | **32** | largest count |
+| 5 — Inference / Testing | 0 | 5 | 17 | **22** | **0 present** |
+| 6 — Functional Time Series | 2 | 3 | 20 | **23** | 2/25 present |
+| 7 — Density / Object Data / Manifold | 0 | 5 | 20 | **25** | **0 present** |
+| 8 — SPM / Control Charts | 9 | 1 | 0 | **1** | (fdars strongest) |
+| 9 — FPCA (Sparse / Longitudinal / Specialized) | 4 | 6 | 8 | **14** | sparse-PACE gap |
+| **TOTAL** | **88** | **49** | **113** | **162** | |
+
+**Gap counts by category.** The gap profile is overwhelmingly **differentiator** (144/162, 89%): the bulk of the R ecosystem fdars lacks is specialized methodology (metric-space/object-data regression, functional time series forecasting, sparse-PACE variants, the long tail of depth measures, mixed/additive/Bayesian regression families). Only **18 gaps (11%) are table-stakes** — capabilities a general-purpose FDA library is expected to have — and these are the Phase-19 priority signal. Table-stakes gaps cluster in **Area 5 Inference (8 of 18)** and **Area 4 ML regression (4 of 18)**, with Areas 9/1/3 contributing 2 each; Areas 2/6/7/8 contribute zero (Areas 2/8 because fdars already covers the baseline; Areas 6/7 because their gaps, though numerous, are specialized differentiators rather than baseline-expected).
+
+**Largest gap zones (the three "0-present-heavy" areas).**
+- **Area 7 — Density / Object Data / Manifold: 0 / 25 present.** The entire `frechet` metric-space regression suite (global/local Fréchet regression, Fréchet mean/variance/ANOVA, covariance-matrix/correlation/spherical/network/point-process responses), `fdadensity` LQD-density FPCA, and `MFPCA` multi-domain multivariate surface FPCA are absent. This area has no scikit-fda analog and was pre-flagged (Pitfall 5) as a likely large gap; the parity matrix confirms it as the single largest all-absent zone.
+- **Area 6 — Functional Time Series: 2 / 25 present.** No FTS forecasting (`ftsa` ftsm / FPC-regression / fplsr / dynamic-updating), no functional ACF/PACF (`ftsa`/`fdaACF`), no spectral dynamic PCA / spectral density operator (`freqdom`), no functional ARMA/VAR simulation, no long-run covariance. Only pointwise summary statistics and forecast-error metrics are present.
+- **Area 5 — Inference / Testing: 0 / 25 present.** fdars has essentially no standalone hypothesis-testing surface: no Interval Testing Procedure (`fdatest`), no functional ANOVA V-statistic / random-projection MANOVA (`fdANOVA`), no formal FLM goodness-of-fit / F-test (`fda.usc`), no two-sample functional t-permutation test (`fda`), no simultaneous confidence bands for the mean (`SCBmeanfd`). The 5 partials are all repurposed internals (permutation-ANOVA, Hotelling T² in an SPM context, shape-CI) — none exposed as a standalone inference test. This area alone supplies 8 of the 18 table-stakes gaps.
+
+**fdars-strengths summary (12 R-honest strengths — do not re-build).** Phase 18 walked all 42 module units in `fdars-core/src/` and, against the *broader R yardstick*, distilled the 30 scikit-fda-relative "fdars-only" items down to **12 R-honest strengths** (6 unique + 6 ahead). The backlog must **not** propose work in these areas.
+- **fdars-unique (6, no R FDA equivalent):** **U-3 model explainability for functional models** (headliner — PDP/SHAP/LIME/ALE/importance/Sobol/saliency/counterfactual/anchor/prototype/influence, model-agnostic via the `FpcPredictor` trait; no R FDA package touches this) · **U-5 streaming / online functional depth** (headliner — incremental Fraiman-Muniz + streaming BD/MBD + rolling reference; all R depth is batch-only) · U-1 Andrews-curve transform for functional data · U-2 elastic-model explainability · U-4 WIRE unified serializable workflow container · U-6 simultaneous functional tolerance bands.
+- **fdars-ahead (6, leads closest R analog):** A-1 SPM chart-type breadth (vs `funcharts`) · A-2 conformal breadth incl. classification + elastic (vs `conformalInference.fd`) · A-4 soft-DTW distance + barycenter (vs `dtw`) · A-5 robust L1/Huber scalar-on-function regression (vs `fda.usc`) · A-6 2D-surface function-on-scalar regression (vs `refund`) · A-7 functional signal toolkit — period detection / matrix profile / Hilbert / Lomb-Scargle (vs scalar-TS `tsmp`/`lomb`/`hht`).
+- **Big casualties vs the v0.14.0 scikit-fda sweep:** SPM, conformal, and the entire elastic/shape stack (unique vs scikit-fda but R has `funcharts` / `conformalInference.fd` / `fdasrvf`), plus SSA (`Rfssa`) and FoF/FOSR-1D (`refund` / `FDboost`). fdars' genuine R-relative moat is **explainability for functional models** and **streaming depth**.
+
+**Hand-off to RPT-02.** The 162 actionable gaps (18 table-stakes + 144 differentiator) are clustered into 26 GSD-ready, value-ranked backlog items in the companion `R-BACKLOG.md`, ranked by `score = value / √effort`. Table-stakes clusters (functional inference suite, concurrent regression + GLM families, sparse/PACE FPCA, functional-boxplot fences, depth dispatcher, constant basis, AIC smoothing) rank near the top; large differentiator zones (Fréchet/object-data, FTS forecasting, the depth long tail) become milestone-sized items lower in the table. Items in the 12 R-honest strength areas above are excluded from the backlog by construction.
+
+*This completes Phase 19 RPT-01 (consolidated report). The value-ranked backlog is RPT-02 (`R-BACKLOG.md`).*
