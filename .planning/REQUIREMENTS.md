@@ -9,7 +9,7 @@ Implementation milestone — real `fdars-core/src/` code. All additions are addi
 
 ### Inference
 
-- [ ] **INF-01**: Provide standalone two-sample functional hypothesis tests in a new `fdars-core/src/inference/` module — a functional t-permutation test (`t_perm_test`), an F-permutation test (`f_perm_test`), a two-sample equality-of-means/covariance test, and mean simultaneous confidence bands (`mean_scb`) with an SCB-based two-sample test. Each is `Result`-returning and crate-root re-exported. Reuses existing machinery: `function_on_scalar` permutation code, `spm::stats::hotelling_t2`, and `tolerance/degras` bootstrap-band code. (R baseline: `fda::Fperm.fd`/`tperm.fd`, `fda.usc` mean/cov equality, `SCBmeanfd`.)
+- [x] **INF-01**: Provide standalone two-sample functional hypothesis tests in a new `fdars-core/src/inference/` module — a functional t-permutation test (`t_perm_test`), an F-permutation test (`f_perm_test`), a two-sample equality-of-means/covariance test, and mean simultaneous confidence bands (`mean_scb`) with an SCB-based two-sample test. Each is `Result`-returning and crate-root re-exported. Reuses existing machinery: `function_on_scalar` permutation code, `spm::stats::hotelling_t2`, and `tolerance/degras` bootstrap-band code. (R baseline: `fda::Fperm.fd`/`tperm.fd`, `fda.usc` mean/cov equality, `SCBmeanfd`.)
 - [ ] **INF-02**: Provide formal functional-linear-model inference — a goodness-of-fit test (`flm_gof_test`) and an F-test (`flm_f_test`) operating on a fitted `FregreLmResult` (residual-based statistics against the FLM null), plus an asymptotic one-way functional ANOVA V-statistic (`oneway_anova_vstat`) alongside the existing permutation ANOVA. Reuses fitted-model residuals + integration weights. (R baseline: `fda.usc` FLM GoF/F-test, `fdatest`/`fdANOVA` V-statistic.)
 
 ## v2 Requirements
@@ -39,10 +39,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INF-01 | Phase 20 — Two-Sample Functional Tests & `inference/` Module | Pending |
+| INF-01 | Phase 20 — Two-Sample Functional Tests & `inference/` Module | Complete |
 | INF-02 | Phase 21 — Functional-Linear-Model Inference | Pending |
 
 **Coverage:**
+
 - v1 requirements: 2 total
 - Mapped to phases: 2 ✓
 - Unmapped: 0 ✓

@@ -90,32 +90,39 @@ First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes
 ## Phase Details
 
 ### Phase 20: Two-Sample Functional Tests & `inference/` Module
+
 **Goal**: fdars gains its first standalone functional-inference surface — a new `inference/` module exposing two-sample hypothesis tests over functional data, built by lifting/reusing existing permutation, Hotelling-T², and bootstrap-band machinery.
 **Depends on**: Nothing (first phase of the milestone; consumes existing `function_on_scalar`, `spm::stats`, `tolerance/degras` code)
 **Requirements**: INF-01
 **Success Criteria** (what must be TRUE):
+
   1. A new `fdars-core/src/inference/` module exists and its public tests are re-exported at the crate root (`fdars_core::t_perm_test`, `f_perm_test`, the mean/covariance equality test, and `mean_scb` are reachable without a submodule path).
   2. `t_perm_test` on two clearly-separated samples returns a p-value ≈ 0 (rejects), and on two samples drawn from the same distribution returns a large (≈ uniform-under-null) p-value; `f_perm_test` behaves analogously — both verified by inline `#[cfg(test)]` tests.
   3. The two-sample equality-of-means/covariance test (built on `spm::stats::hotelling_t2`) rejects when the two group means differ and fails to reject when they coincide.
   4. `mean_scb` returns simultaneous confidence bands that contain the true mean at (approximately) the requested coverage, and the SCB-based two-sample test flags a mean difference — both exercised by inline tests.
   5. Every new public function returns `Result<_, FdarError>`, validates its inputs (dimension/parameter guards), and adds no changes to any existing public signature (additive/non-breaking).
-**Plans**: 1 plan
-- [ ] 20-01-PLAN.md — `inference/` module + `TestResult` + all five two-sample tests (`t_perm_test`, `f_perm_test`, `two_sample_mean_test`, `mean_scb`, `scb_two_sample_test`), tracer-first (module scaffolding + `t_perm_test` end-to-end), then Hotelling and SCB expansion
+
+**Plans**: 1/1 plans executed
+
+- [x] 20-01-PLAN.md — `inference/` module + `TestResult` + all five two-sample tests (`t_perm_test`, `f_perm_test`, `two_sample_mean_test`, `mean_scb`, `scb_two_sample_test`), tracer-first (module scaffolding + `t_perm_test` end-to-end), then Hotelling and SCB expansion
 
 ### Phase 21: Functional-Linear-Model Inference
+
 **Goal**: fdars can formally test the adequacy and significance of a fitted functional linear model, and offers the asymptotic one-way functional ANOVA V-statistic alongside the existing permutation ANOVA.
 **Depends on**: Phase 20 (reuses the `inference/` module scaffolding created by INF-01)
 **Requirements**: INF-02
 **Success Criteria** (what must be TRUE):
+
   1. `flm_f_test` on a fitted `FregreLmResult` rejects (small p-value) when the FLM has a genuine functional effect, and fails to reject (large p-value) when the response is unrelated to the functional predictor — verified by inline tests.
   2. `flm_gof_test` on a fitted `FregreLmResult` fails to reject when the fitted FLM is well-specified and flags lack-of-fit when the true relationship is not linear-functional (residual-based statistic against the FLM null).
   3. `oneway_anova_vstat` computes the asymptotic V-statistic ANOVA form: it agrees (same reject/accept decision, comparable p-value) with the existing permutation ANOVA on separated vs. pooled groups, and is added alongside — not replacing — `function_on_scalar::fanova`.
   4. All new functions consume existing fitted-model residuals + integration weights, return `Result<_, FdarError>`, are crate-root re-exported, carry inline `#[cfg(test)]` tests, and introduce no changes to existing public signatures (additive/non-breaking).
+
 **Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 20. Two-Sample Functional Tests & `inference/` Module | 0/1 | Not started | - |
+| 20. Two-Sample Functional Tests & `inference/` Module | 1/1 | In Progress|  |
 | 21. Functional-Linear-Model Inference | 0/TBD | Not started | - |

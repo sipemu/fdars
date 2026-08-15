@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.19.0
 milestone_name: Functional Inference Suite
+current_phase_name: roadmap created
 status: planning
-last_updated: "2026-08-15T21:16:41.008Z"
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-08-15T22:04:34.837Z"
 last_activity: 2026-08-15
+last_activity_desc: Milestone v0.19.0 roadmap created (Phases 20–21)
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -64,6 +67,11 @@ Two sequential phases, two requirements. First **implementation** milestone from
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 20 P01 | 1 session | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -87,6 +95,7 @@ Conventions carried from prior milestones (relevant to implementation):
 - Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` for reproducible permutation tests.
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code, so this pointer matters again.
+- [Phase ?]: Phase 20 INF-01: inference/ module reuses fanova/hotelling_t2/scb_mean_degras; self-contained chi-square SF avoids a statrs dependency
 
 ### Pending Todos
 
@@ -106,8 +115,8 @@ Advisory tech-debt carried forward (not v0.19.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-15 — created v0.19.0 roadmap (Phases 20–21)
-Stopped at: Roadmap + REQUIREMENTS traceability + STATE written; 2/2 requirements mapped
+Last session: 2026-08-15T22:04:26.340Z
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
