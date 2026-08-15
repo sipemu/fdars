@@ -11,8 +11,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### R Ecosystem Inventory
 
-- [ ] **INV-01**: Produce a versioned, area-organized capability inventory of the R FDA ecosystem — enumerating capabilities **capability-first** (not API-name-first; fit/predict/transform collapsed per capability) across the core packages (`fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `fdaoutlier`, `ftsa`, `MFPCA`/`funData`, `fdasrvf`, `fdatest`/`fdANOVA`, `frechet`/`fdadensity`, `funHDDC`/`FDboost`, and any further packages surfaced during research), each capability tagged with its source package and package version.
-- [ ] **INV-02**: Apply a design-goal filter classifying every inventoried capability as **in-scope** (numeric algorithm or API-ergonomics) or **out-of-scope** (plotting/visualization or data/IO), with per-area counts — establishing the actionable comparison surface for the parity matrix.
+- [x] **INV-01**: Produce a versioned, area-organized capability inventory of the R FDA ecosystem — enumerating capabilities **capability-first** (not API-name-first; fit/predict/transform collapsed per capability) across the core packages (`fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `fdaoutlier`, `ftsa`, `MFPCA`/`funData`, `fdasrvf`, `fdatest`/`fdANOVA`, `frechet`/`fdadensity`, `funHDDC`/`FDboost`, and any further packages surfaced during research), each capability tagged with its source package and package version.
+- [x] **INV-02**: Apply a design-goal filter classifying every inventoried capability as **in-scope** (numeric algorithm or API-ergonomics) or **out-of-scope** (plotting/visualization or data/IO), with per-area counts — establishing the actionable comparison surface for the parity matrix.
 
 ### Gap Analysis
 
@@ -55,8 +55,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INV-01 | Phase 16 | Pending |
-| INV-02 | Phase 16 | Pending |
+| INV-01 | Phase 16 | Complete |
+| INV-02 | Phase 16 | Complete |
 | GAP-01 | Phase 17 | Pending |
 | GAP-02 | Phase 17 | Pending |
 | GAP-03 | Phase 18 | Pending |
@@ -64,6 +64,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RPT-02 | Phase 19 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 7 total
 - Mapped to phases: 7 ✓
 - Unmapped: 0
