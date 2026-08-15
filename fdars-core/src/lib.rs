@@ -89,6 +89,7 @@ pub mod function_on_scalar;
 pub mod function_on_scalar_2d;
 pub mod gmm;
 pub mod helpers;
+pub mod inference;
 pub mod irreg_fdata;
 pub mod landmark;
 pub mod metric;
@@ -218,6 +219,9 @@ pub use tolerance::{
     EquivalenceTestResult, ExponentialFamily, MultiplierDistribution, NonConformityScore,
     PhaseToleranceBand, ToleranceBand,
 };
+
+// Re-export functional inference types and two-sample tests
+pub use inference::{f_perm_test, t_perm_test, TestResult, DEFAULT_N_PERM};
 
 // Re-export FAMM types
 pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};

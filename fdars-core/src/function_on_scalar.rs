@@ -749,6 +749,22 @@ fn global_f_statistic(f_t: &[f64]) -> f64 {
     f_t.iter().sum::<f64>() / f_t.len() as f64
 }
 
+/// Integrated F-statistic for a grouped functional dataset.
+///
+/// Shared core of the permutation-F machinery: computes group means, the
+/// pointwise F-statistic, and reduces it to the integrated (mean-over-grid)
+/// global statistic. Reused by [`fanova`] and by the inference module's
+/// `f_perm_test` so the integrated-F math is defined in exactly one place.
+///
+/// * `data` — Functional response matrix (n × m).
+/// * `groups` — Integer group label for each row (length n).
+/// * `labels` — Sorted, deduplicated set of distinct group labels present.
+pub(crate) fn integrated_f_statistic(data: &FdMatrix, groups: &[usize], labels: &[usize]) -> f64 {
+    let (group_means, overall_mean) = compute_group_means(data, groups, labels);
+    let f_t = pointwise_f_statistic(data, groups, labels, &group_means, &overall_mean);
+    global_f_statistic(&f_t)
+}
+
 /// Functional ANOVA: test whether groups have different mean curves.
 ///
 /// Uses a permutation-based global test with the integrated F-statistic.
@@ -824,9 +840,7 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
             perm_groups.swap(i, j);
         }
 
-        let (perm_means, perm_overall) = compute_group_means(data, &perm_groups, &labels);
-        let perm_f = pointwise_f_statistic(data, &perm_groups, &labels, &perm_means, &perm_overall);
-        let perm_stat = global_f_statistic(&perm_f);
+        let perm_stat = integrated_f_statistic(data, &perm_groups, &labels);
         if perm_stat >= observed_stat {
             n_ge += 1;
         }
