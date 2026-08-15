@@ -586,3 +586,433 @@ The `frechet` + `fdadensity` area (Area 7) has no close scikit-fda analog. Phase
 
 ---
 
+
+## Phase 17 — Parity Matrix & Categorization
+
+**Map date:** 2026-08-15 · **Input set:** the **248 in-scope R capabilities** from Phase 16 §Design-Goal Filter (9 areas). The 27 out-of-scope R rows (24 plotting + 3 IO) are excluded from the actionable-gap total by construction.
+
+This section maps every in-scope R capability against fdars (crate `fdars-core`, shipped through v0.17.0), producing a per-capability verdict, a "searched fdars for:" evidence note, and the closest-match fdars module/function. It reuses the v0.14.0 scikit-fda audit (`AUDIT-REPORT.md` §Phase 8) wherever an R capability overlaps an already-assessed scikit-fda capability, and re-greps `fdars-core/src/` to confirm/extend. It then categorizes every gap.
+
+### Rubrics (documented once)
+
+**Verdict rubric (D-01, reused verbatim from the v0.14.0 audit).** Matched by **capability semantics, not API name** — a different call shape (builder-struct + single call vs R's S3/S4 dispatch) is not a gap.
+
+| Verdict | Definition |
+|---------|-----------|
+| **present** | fdars delivers the same result in *any* call-shape. (Accuracy not re-verified here; a known-bug area is flagged "present — accuracy NOT verified" per the v0.14.0 convention.) |
+| **partial** | A related/narrower/internal-only capability exists — missing a documented sub-mode, exposed only internally, or a narrower variant. A partial row is an *add-a-variant* backlog candidate. |
+| **absent** | No fdars capability delivers the result. An *implement-from-scratch* backlog candidate; closest match noted or "no match found". |
+
+**Category rubric (D-03, reused verbatim).** Applied to every gap (partial/absent) row; present rows carry no category.
+
+| Category | Definition |
+|----------|-----------|
+| **table-stakes** | A capability a general-purpose FDA library is expected to have; its absence is a competitive deficit. |
+| **differentiator** | Valuable but specialized; nice-to-have, not baseline-expected. |
+| **out-of-scope** | On inspection really a rendering/IO-adjacent capability that should not be built. Rare here (the input set is already in-scope), reserved for numeric-underpinning rows whose only realistic use is a plot/IO. |
+
+**v0.15.0–v0.17.0 credit.** The following post-date the v0.14.0 §Phase 8 audit and are credited **present** where an R capability maps to them: spline interpolation (`spline_interpolate`), functional summary statistics (`functional_variance`/`functional_std`/`functional_covariance`/`depth_based_median`/`trim_mean`), missing-value imputation (`impute_missing_values`), composable `ExtrapolationPolicy`, functional scoring metrics (`functional_mae`/`mse`/`mape`/`msle`/`explained_variance`), least-squares shift registration (`least_squares_shift_registration`) + three registration-quality scores (`least_squares_score`/`pairwise_correlation_score`/`sobolev_least_squares_score`), banded elastic alignment (`*_with_band`), parallel CV folds, faer FPCA SVD, parallel elastic-FPCA.
+
+---
+
+### §Parity-Matrix
+
+Column schema: **Capability | Source pkg(s) | Verdict | "searched fdars for:" evidence note | closest-match fdars module/function (or "no match found")**.
+
+#### Area 1: Representation / Basis Systems / Smoothing (38 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| B-spline basis system (creation, evaluation, penalty matrix) | fda | **present** | B-spline basis construction + evaluation + roughness penalty | `basis::bspline_basis`, `bspline_basis_from_knots`, `smooth_basis::bspline_penalty_matrix` |
+| Fourier basis system (creation, evaluation, penalty matrix) | fda | **present** | Fourier design matrix + penalty | `basis::fourier_basis`, `fourier_basis_with_period`, `smooth_basis::fourier_penalty_matrix` |
+| Monomial / polynomial basis (creation, evaluation, penalty) | fda | **absent** | monomial/polynomial power basis constructor | no match found (only B-spline + Fourier exposed; scikit-fda `MonomialBasis` was also absent, §Phase 8) — *differentiator* |
+| Constant / intercept basis | fda | **absent** | constant/intercept basis type | no match found (trivially constructable, no named factory; scikit-fda `ConstantBasis` also absent) — *table-stakes* |
+| Exponential basis | fda | **absent** | exponential basis constructor | no match found — *differentiator* |
+| Power basis | fda | **absent** | power basis constructor | no match found — *differentiator* |
+| Polygonal (piecewise-linear) basis | fda | **partial** | piecewise-linear basis | `helpers::linear_interp` / `fdata_interpolate` give piecewise-linear evaluation, but no named polygonal *basis system* object |
+| Finite element basis (2D/3D irregular domains via PDE) | fdaPDE | **absent** | finite-element basis over irregular meshes | no match found (scikit-fda `FiniteElementBasis` also absent) — *differentiator* |
+| Smooth fd object from raw data (penalized least squares basis expansion) | fda, fda.usc | **present** | penalized basis-expansion smoother | `smooth_basis::smooth_basis`, `basis::pspline::pspline_fit_1d` |
+| Smoothing with automatic parameter selection (GCV, AIC) | fda | **partial** | automatic smoothing-parameter selection by GCV *and* AIC | `smooth_basis::smooth_basis_gcv`, `smoothing::optim_bandwidth` (GCV/CV only; AIC absent, per §Phase 8) |
+| Monotone smoothing (integral-of-exp, strictly monotone curves) | fda | **partial** | monotone smoothing of arbitrary data | `landmark::monotone_landmark_warp` builds monotone (Fritsch-Carlson) warping functions, but there is no Ramsay integral-of-exp monotone *smoother* for general data |
+| Positive-valued smoothing (log-transformed) | fda | **absent** | log-domain positive-constrained smoother | no match found — *differentiator* |
+| Bivariate functional data smoothing (smooth.bibasis) | fda | **partial** | 2D/bivariate surface smoothing | `function_on_scalar_2d` (tensor-product penalized 2D fit) covers 2D surfaces; no direct `smooth.bibasis` raw-surface smoother |
+| P-spline smoothing for sparse functional data | face, fdaPDE | **present** | penalized-spline (P-spline) smoothing | `basis::pspline::pspline_fit_1d`, `pspline_fit_gcv` |
+| Fast covariance estimation for sparse data (FACE) | face | **partial** | fast sandwich covariance estimator for sparse data | `irreg_fdata::cov_irreg` (kernel-smoothed empirical covariance from irregular obs); not the FACE fast-sandwich algorithm specifically |
+| Fast covariance for multivariate sparse data (mfaces) | mfaces | **absent** | multivariate sparse fast covariance | no match found (single-covariate `cov_irreg` only) — *differentiator* |
+| Smoothing over 2D/3D domains with PDE regularization (FEM) | fdaPDE | **absent** | PDE-regularized FEM smoothing on irregular domains | no match found — *differentiator* |
+| Functional data derivative computation | fda, fda.usc | **present** | numerical derivative of functional data | `metric::deriv` (derivative utilities); FPCA/elastic paths use `gradient_uniform` (`warping.rs`) |
+| Linear differential operator object (Lfd) | fda | **partial** | composable Lfd operator | `smooth_basis::{bspline,fourier}_penalty_matrix` compute derivative-order penalties; no composable Lfd object (per §Phase 8 `LinearDifferentialOperator` partial) |
+| Basis penalty matrix computation | fda | **present** | roughness/derivative penalty matrix | `smooth_basis::bspline_penalty_matrix`, `fourier_penalty_matrix` |
+| Inner product / L2 norm between fd objects | fda | **present** | L2 inner product + Lp norm | `utility::inner_product`, `inner_product_matrix`, `fdata::norm_lp_1d` |
+| Trapezoidal integration (trapzmat) | fda | **present** | trapezoidal/Simpson quadrature over a grid | `helpers::simpsons_weights`, `cumulative_trapz` (`warping.rs`) |
+| Fd object arithmetic (add, subtract, scalar mult) | fda, funData, tf | **present** | pointwise fd arithmetic | `FdMatrix` element access + `center_1d`; arithmetic composable over the column-major matrix |
+| Evaluate fd at arbitrary points (off-grid interpolation) | fda, funData, tf | **present** | off-grid evaluation via interpolation | `helpers::fdata_interpolate`, `spline_interpolate` (v0.15.0), `linear_interp` |
+| Univariate functional data S4 class (funData) | funData | **present** | univariate fd container | `FdMatrix` (column-major fd container) + `fdata` conventions |
+| Multivariate functional data S4 class (multiFunData) | funData | **absent** | multivariate (multi-domain) fd container type | no match found (2D handled via flattened matrices, no composable multi-domain container) — *differentiator* |
+| Irregular functional data S4 class (irregFunData) | funData | **present** | irregular fd container | `irreg_fdata::IrregFdata` |
+| Tidy S3 functional vector (grid / spline-basis / FPC reprs) | tf | **partial** | multi-representation fd vector type | `FdMatrix` (grid) + `FpcaResult` (FPC) + `fdata_to_basis` (basis) exist as separate types; no single tidy vector switching representations |
+| Grid resampling / re-evaluation on new points | tf, funData | **present** | re-evaluate fd on new evaluation grid | `helpers::fdata_interpolate` / `spline_interpolate`, `irreg_fdata::to_regular_grid` |
+| Functional data centering | fda, fda.usc | **present** | center curves about the mean | `fdata::center_1d` / `center_2d` |
+| Mean, variance, covariance function from sample | fda, fda.usc, roahd | **present** | pointwise mean + variance + covariance surface | `fdata::mean_1d`, `functional_variance`, `functional_covariance` (v0.15.0) |
+| Basis conversion / projection (grid↔basis, basis↔basis) | fda, fda.usc | **present** | least-squares grid→basis projection | `basis::fdata_to_basis`, `fdata_to_basis_1d`, `basis_to_fdata` |
+| Functional data sub-setting and domain restriction | tf, funData | **partial** | domain restriction / sub-range extraction | column/row slicing on `FdMatrix` is possible; no named domain-restriction API |
+| Principal differential analysis (PDA — estimate linear ODE) | fda | **absent** | estimate a linear ODE (differential operator) from data | no match found — *differentiator* |
+| Functional data integration over sub-domain | tf | **present** | integrate a curve over a sub-interval | `helpers::simpsons_weights` + `cumulative_trapz` support sub-domain integration |
+| Local min/max detection on functional data | tf | **present** | local extrema / peak detection | `seasonal::peak::find_peaks_1d`, `landmark::detect_landmarks` |
+| fdata class (container with argvals) | fda.usc | **present** | fd container carrying argvals | `FdMatrix` + argvals convention; `IrregFdata` for irregular |
+| Extrapolation strategies (boundary, periodic, constant fill, exception) | fda | **present** | composable extrapolation policy | `ExtrapolationPolicy{Boundary,Exception,Fill,Periodic}` (v0.16.0, `helpers.rs`) |
+
+**Area 1 verdicts:** present = 20 · partial = 8 · absent = 10 (total 38).
+
+#### Area 2: Preprocessing / Registration (22 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Landmark registration (hard-pin time points) | fda | **present** | landmark shift/warp registration | `landmark::landmark_register`, `detect_and_register` |
+| Continuous registration to a target curve | fda | **present** | continuous alignment to a target | `alignment::align_to_target` |
+| Group-wise elastic registration via SRVF Karcher mean | fdasrvf | **present** | SRVF group registration to Karcher mean | `alignment::karcher_mean`, `karcher_mean_with_band` (v0.16.0) |
+| Pair-wise elastic alignment (SRVF geodesic DP) | fdasrvf | **present** | pairwise elastic (dynamic-programming) alignment | `alignment::elastic_align_pair`, `elastic_align_pair_banded` |
+| 2D elastic curve alignment (sparse/dense/irregular) | elasdics | **partial** | 2D/nD elastic curve alignment | `alignment::nd::elastic_align_pair_nd` (nD dense); sparse/irregular 2D-curve variant not covered |
+| Elastic curve mean (Karcher mean in SRVF space) | fdasrvf, elasdics | **present** | SRVF Karcher mean | `alignment::karcher_mean`, `robust_karcher::robust_karcher_mean` |
+| SRVF/SRSF transformation (function → SRVF) | fdasrvf | **present** | SRSF transform + inverse | `alignment::srsf_transform`, `srsf_inverse`, `srsf_transform_nd` |
+| Joint registration + non-Gaussian FPCA (exp-family) | registr | **absent** | joint registration with exponential-family (binary/count) FPCA | no match found (`elastic_fpca` is Gaussian-space; `registr`'s GLM-family registration absent) — *differentiator* |
+| Incomplete curve registration (partial observation) | registr | **partial** | registration of partially observed curves | `alignment::partial_match`, `partial` (partial-shape matching) + `spm::partial` PACE completion; not `registr`'s incomplete-curve GLM registration |
+| Warping function computation, composition, inversion | fda, fdasrvf | **present** | warp construction, composition, inversion | `warping::invert_gamma`, `normalize_warp`, `gam_to_psi`, `psi_to_gam` |
+| Phase/amplitude separation + amplitude/phase FPCA | fdasrvf | **present** | phase/amplitude decomposition + separate FPCA | `alignment::set::elastic_decomposition`, `elastic_fpca::{vert_fpca,horiz_fpca,joint_fpca}` |
+| Smooth warping function estimation (smooth.morph) | fda | **present** | smoothed warping estimate | `warping::gam_to_psi_smooth` (Nadaraya-Watson smoothed warp) |
+| K-means with simultaneous alignment | fdacluster, fdasrvf | **partial** | k-means clustering that aligns curves within the loop | `clustering::kmeans_fd` (no alignment) + `alignment/clustering` (from elastic distances); no single joint align+cluster estimator |
+| Shift, dilation, affine warping for alignment | fdacluster | **partial** | shift + dilation/affine warping models | `alignment::shift::least_squares_shift_registration` (shift only, v0.17.0); dilation/affine warping not covered |
+| Functional PCA for dimensionality reduction (preprocessing) | fda, fda.usc, fdapace | **present** | FPCA as a preprocessing/dim-reduction step | `regression::fdata_to_pc_1d` (+ `FpcaResult.project`), faer SVD backend (v0.15.0) |
+| Functional PLS for dimensionality reduction | fda.usc | **present** | functional PLS scores | `regression::fdata_to_pls_1d`, `scalar_on_function::fregre_pls` |
+| Smoothing for irregularly spaced observations | face, fdapace | **present** | kernel-smooth irregular obs onto a grid | `irreg_fdata::to_regular_grid`, `irreg_fdata::smoothing` |
+| Functional data normalization / centering | fda, fda.usc | **present** | normalize / center curves | `fdata::center_1d`, `functional_std` for scaling |
+| Cross-validation smoothing-parameter selection (leave-one-curve-out) | fda.usc, refund | **present** | LOO/GCV smoothing-parameter CV | `smoothing::cv_smoother` (CV.S), `gcv_smoother` (GCV.S), `optim_bandwidth` |
+| Data2fd — quick basis expansion from a raw matrix | fda | **present** | one-call raw matrix → basis representation | `basis::fdata_to_basis` / `fdata_to_basis_1d` |
+| Stringing (map high-dim scalar data to functional form) | fdapace | **absent** | stringing (order scalar features into a curve) | no match found — *differentiator* |
+| Registration quality score (warping complexity, amplitude var) | fdasrvf | **present** | registration-quality diagnostics | `alignment::quality::{alignment_quality,warp_complexity,warp_smoothness}` + `least_squares_score`/`pairwise_correlation_score`/`sobolev_least_squares_score` (v0.17.0) |
+
+**Area 2 verdicts:** present = 16 · partial = 4 · absent = 2 (total 22).
+
+#### Area 3: Exploratory / Depth / Outlier Detection (31 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Modified Band Depth (MBD), univariate | roahd, fdaoutlier, fda.usc | **present** | modified band depth | `depth::modified_band_1d` |
+| Band Depth (BD), univariate | roahd, fdaoutlier | **present** | band depth | `depth::band_1d` |
+| Modified Band Depth, multivariate (multiMBD) | roahd | **partial** | multivariate MBD | `depth::modified_band_1d` is univariate; 2D depths exist (`fraiman_muniz_2d`) but no multivariate multiMBD |
+| Half-Region Depth (HRD), univariate | roahd | **absent** | half-region depth | no match found — *differentiator* |
+| Modified Half-Region Depth (MHRD) | roahd | **absent** | modified half-region depth | no match found — *differentiator* |
+| Epigraph Index (EI) | roahd | **partial** | epigraph index | `depth::modified_epigraph_index_1d` (MEI present); the un-modified EI not separately exposed |
+| Modified Epigraph Index (MEI) | roahd | **present** | modified epigraph index | `depth::modified_epigraph_index_1d` |
+| Hypograph Index (HI) | roahd | **absent** | hypograph index | no match found (MEI present, MHI/HI not) — *differentiator* |
+| Modified Hypograph Index (MHI) | roahd | **absent** | modified hypograph index | no match found — *differentiator* |
+| Extremal depth | fdaoutlier | **absent** | extremal depth | no match found — *differentiator* |
+| Extreme Rank Length Depth | fdaoutlier | **absent** | extreme-rank-length depth | no match found — *differentiator* |
+| L-infinity depth | fdaoutlier | **absent** | L∞ depth | no match found — *differentiator* |
+| Total Variation Depth (TVD) + MSSI | fdaoutlier | **absent** | total-variation depth + modified shape similarity index | no match found — *differentiator* |
+| Random projection depth (multivariate) | fdaoutlier | **present** | random-projection depth | `depth::random_projection_1d`, `random_projection_2d`, `random_tukey_1d` |
+| Elastic depth (shape depth in SRVF space) | fdasrvf | **present** | elastic/shape depth | `alignment::elastic_depth` |
+| Integrated functional depth for partially observed data | fdaPOIFD | **absent** | integrated depth for partially observed curves | no match found (`spm::partial` reconstructs, not a POIFD depth) — *differentiator* |
+| General functional depth dispatcher (multiple methods) | fda.usc | **partial** | single dispatcher over multiple depth methods | depth methods exist as separate functions (`fraiman_muniz_1d`, `band_1d`, …); no unified `DepthMethod`-dispatched entry point exposed publicly |
+| Directional outlyingness statistic (Dai & Genton) | fdaoutlier | **present** | directional outlyingness | `outliers::magnitude_shape_outlyingness` (magnitude + shape components) |
+| MS-plot statistic (magnitude-shape outlyingness) | fdaoutlier | **present** | magnitude-shape outlyingness statistic | `outliers::magnitude_shape_outlyingness` (`MagnitudeShapeResult`) |
+| Outliergram statistic (MO vs MEI) | roahd | **present** | outliergram MO/MEI shape-outlier statistic | `outliers::outliergram` |
+| Depthgram statistic | roahd | **absent** | depthgram multivariate depth statistic | no match found — *differentiator* |
+| TVD+MSSI-based outlier detection (tvdmss) | fdaoutlier | **absent** | tvdmss outlier detector | no match found — *differentiator* |
+| Massive Unsupervised Outlier Detection (MUOD) | fdaoutlier | **absent** | MUOD outlier detector | no match found — *differentiator* |
+| Sequential transformation outlier detection | fdaoutlier | **absent** | sequential-transformation outlier detector | no match found — *differentiator* |
+| Elastic changepoint detection (amplitude + phase, SRSF) | fdasrvf | **present** | elastic amplitude/phase changepoint | `elastic_changepoint::{elastic_amp_changepoint,elastic_ph_changepoint,elastic_fpca_changepoint}` |
+| Outlier detection for partially observed curves (depth-based) | fdaPOIFD | **absent** | partially-observed depth outlier detection | no match found — *differentiator* |
+| Functional bootstrap CI for mean / summary statistics | fda.usc | **present** | functional bootstrap CI | `scalar_on_function::bootstrap::bootstrap_ci_fregre_lm`; `spm::bootstrap` resampling |
+| Robust mean and median for functional samples | roahd, fda.usc | **present** | robust functional mean/median | `fdata::geometric_median_1d`, `trim_mean` (v0.15.0), `depth_based_median` |
+| Spearman / Kendall rank correlation for functional data | roahd | **absent** | functional Spearman/Kendall rank correlation | no match found — *differentiator* |
+| Bootstrap hypothesis test on Spearman correlation | roahd | **absent** | bootstrap test on functional Spearman correlation | no match found — *differentiator* |
+| Covariance function estimation (empirical) | roahd, fda.usc | **present** | empirical covariance surface | `fdata::functional_covariance` (v0.15.0), `irreg_fdata::cov_irreg` |
+| Functional boxplot (depth-based outlier thresholds / fences) | roahd, fdaoutlier, fda.usc | **partial** | depth-fence functional-boxplot thresholds | `outliers::outliergram` (parabolic fence) provides fence-based detection; the López-Pintado depth-fence (1.5×IQR of depths) not a named function (per §Phase 8) |
+| Partial reconstruction of missing curves (depth-based) | fdaPOIFD | **partial** | reconstruct missing curve segments | `spm::partial` (PACE conditional-expectation domain completion); not the fdaPOIFD depth-based reconstruction |
+
+**Area 3 verdicts:** present = 12 · partial = 5 · absent = 16 (total 33).
+
+#### Area 4: ML — Regression / Classification / Clustering (59 in-scope)
+
+##### Regression (35 rows)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Scalar-on-function regression via basis expansion (penalized OLS) | fda, fda.usc | **present** | scalar-on-function via basis expansion | `scalar_on_function::fregre_lm` (over basis/FPC scores) |
+| Scalar-on-function regression via FPCA scores | fda, fda.usc, refund | **present** | FPCA-score scalar-on-function regression | `scalar_on_function::fregre_lm` with `fdata_to_pc_1d`; `model_selection_ncomp` |
+| Scalar-on-function regression via PLS scores | fda.usc | **present** | PLS-score scalar-on-function regression | `scalar_on_function::fregre_pls` |
+| Scalar-on-function nonparametric kernel regression | fda.usc | **present** | Nadaraya-Watson kernel scalar-on-function regression | `scalar_on_function::fregre_np`, `fregre_np_from_distances` |
+| Penalized scalar-on-function regression (pfr, spline) | refund | **partial** | roughness-penalized spline coefficient-function regression | `fregre_lm` + `bspline_penalty_matrix` available but LDO penalty not wired as a plug-in; no dedicated `pfr` estimator |
+| Functional GLM, scalar response (logistic, Poisson) | fda.usc, refund | **partial** | functional GLM family (logistic + Poisson + …) | `scalar_on_function::functional_logistic` (logistic only); Poisson/other exponential families absent |
+| Functional generalized spectral additive model (GSAM) | fda.usc | **absent** | spectral additive functional model | no match found — *differentiator* |
+| Functional generalized kernel additive model (GKAM) | fda.usc | **absent** | kernel additive functional model | no match found — *differentiator* |
+| Varying-coefficient / concurrent functional regression | fdaconcur, refund | **absent** | concurrent (varying-coefficient) regression | no match found — *table-stakes* |
+| History index model (effect of past predictor values) | fdaconcur, refund | **absent** | history-index (lagged) functional regression | no match found — *differentiator* |
+| Scalar-on-function variable selection (fosr.vs) | refund | **absent** | variable selection in scalar-on-function regression | no match found (scikit-fda maxima-hunting/RKHS selection also absent, §Phase 8) — *differentiator* |
+| Scalar-on-function permutation-test wrapper (fosr.perm) | refund | **partial** | permutation-test wrapper for scalar-on-function fit | `function_on_scalar::fanova` is permutation-based (functional response); no scalar-on-function permutation wrapper |
+| Function-on-scalar regression (penalized / two-step / OLS / GLS) | refund, FDboost | **present** | function-on-scalar regression | `function_on_scalar::fosr`, `fosr_fpc` |
+| Bayesian function-on-scalar regression (Gibbs/VB) | refund | **absent** | Bayesian (Gibbs/VB) function-on-scalar regression | no match found — *differentiator* |
+| Function-on-scalar regression via boosting base-learners | FDboost | **absent** | boosting-based function-on-scalar regression | no match found — *differentiator* |
+| Function-on-function regression (ff, ffpc, sff, pffr) | refund, FDboost | **present** | function-on-function regression | `fof_regression::fof_regression` |
+| Penalized flexible functional regression (pffr — multivariate, RE) | refund | **absent** | pffr flexible/mixed function-on-function regression | no match found (basic FoF present; flexible-RE variant absent) — *differentiator* |
+| Function-on-scalar linear model (fRegress framework) | fda | **present** | fRegress-style function-on-scalar linear model | `function_on_scalar::fosr` |
+| Function-on-scalar regression with functional response (fda.usc basis) | fda.usc | **present** | basis-approach function-on-scalar with functional response | `function_on_scalar::fosr`, `fosr_fpc` |
+| Elastic regression (scalar response, SRVF-space) | fdasrvf | **present** | elastic (SRVF) scalar-response regression | `elastic_regression::elastic_regression` |
+| Elastic logistic regression | fdasrvf | **present** | elastic logistic regression | `elastic_regression::elastic_logistic` |
+| Elastic multinomial logistic regression | fdasrvf | **partial** | elastic multinomial (multi-class) logistic | `elastic_logistic` is binary only; multinomial variant absent (grep: no `multinomial`) |
+| Elastic principal component regression | fdasrvf | **present** | elastic PCR | `elastic_regression::elastic_pcr` |
+| Functional additive model (FAM — scalar response) | fdapace | **absent** | functional additive model (nonparametric additive) | no match found — *differentiator* |
+| Functional concurrent regression (varying-coeff, sparse/dense) | fdapace, fdaconcur | **absent** | concurrent/varying-coefficient regression | no match found — *table-stakes* |
+| Functional linear model with cross-validation (basis, PCA, PLS) | fda.usc | **present** | CV-tuned functional linear model | `scalar_on_function::cv` (`fregre_cv`), `model_selection_ncomp` |
+| Functional linear model goodness-of-fit / F-test | fda.usc | **partial** | FLM goodness-of-fit / F-test | `helpers::r_squared`/`r_squared_adj` give fit diagnostics; no formal FLM F-test / GoF test |
+| Functional linear mixed model, dense data (denseFLMM) | denseFLMM | **partial** | functional linear mixed model | `famm` (functional mixed model, fixed-effect test) present; not the full denseFLMM random-effects estimator |
+| Multivariate functional additive mixed model (multiFAMM) | multifamm | **absent** | multivariate functional additive mixed model | no match found — *differentiator* |
+| Fast functional mixed model inference (fastFMM) | fastFMM | **partial** | fast functional mixed-model inference | `famm::fmm_test_fixed` (functional mixed-model fixed-effect test); not the fastFMM massively-parallel estimator |
+| Functional quantile regression (scalar response) | fdapace | **absent** | functional quantile regression | no match found — *differentiator* |
+| Stringing regression (high-dim → functional → FLM) | fdapace | **absent** | stringing-then-FLM regression | no match found — *differentiator* |
+| Bootstrap CIs for regression coefficients | fda.usc | **present** | bootstrap CI for functional regression coefficients | `scalar_on_function::bootstrap::{bootstrap_ci_fregre_lm,bootstrap_ci_functional_logistic}` |
+| Cross-validation for functional regression (LOOCV, k-fold) | fda.usc, refund | **present** | k-fold / LOO CV for functional regression | `scalar_on_function::cv` (`fregre_cv`), `cv::metric_r_squared` |
+| GAMLSS for functional response (distributional boosting) | FDboost | **absent** | GAMLSS distributional functional regression | no match found — *differentiator* |
+
+##### Classification (8 rows)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Functional LDA (basis/FPC scores) | fda.usc | **present** | functional LDA | `classification::fclassif_lda` |
+| Functional GLM classifier (logistic basis) | fda.usc | **present** | functional logistic classifier | `scalar_on_function::functional_logistic`, `classification::fclassif_kernel` (GLM family) |
+| Functional kernel classifier (nonparametric kNN-type) | fda.usc | **present** | kernel / kNN functional classifier | `classification::fclassif_knn`, `fclassif_kernel` |
+| DD-classifier (depth-vs-depth) | fda.usc | **present** | depth-vs-depth classifier | `classification::fclassif_dd` |
+| Functional classification using ML on FPC scores (SVM, RF) | fda.usc | **partial** | pluggable ML classifier on FPC scores | FPC scores feed `fclassif_lda`/`qda`/`knn`; no SVM/RF backends (scikit-fda-style pluggable ML absent) |
+| Elastic logistic classification (SRVF-space) | fdasrvf | **present** | elastic-space logistic classification | `elastic_regression::elastic_logistic`, `predict_elastic_logistic` |
+| Depth-based outlier classification | fdaPOIFD | **partial** | depth-based (outlier) classification | `fclassif_dd` uses depth; the fdaPOIFD partially-observed depth-outlier classifier absent |
+| Cross-validation classification (ClassifCv) | fda.usc | **present** | CV for functional classification | `classification::cv::fclassif_cv` (parallel folds, v0.15.0) |
+
+##### Clustering + Conformal (16 rows)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Functional K-means with simultaneous alignment (Sangalli) | fdacluster | **partial** | joint align+cluster k-means | `clustering::kmeans_fd` (no in-loop alignment) + elastic distances; no combined estimator |
+| Hierarchical agglomerative clustering for functional data | fdacluster | **present** | hierarchical clustering from distances | `alignment::clustering::hierarchical_from_distances`, `cut_dendrogram` |
+| DBSCAN density-based functional clustering | fdacluster | **absent** | DBSCAN on functional data | no match found — *differentiator* |
+| K-means elastic clustering with SRVF alignment | fdasrvf | **partial** | elastic k-means with SRVF alignment | `alignment::clustering::kmedoids_from_distances` on elastic distances; not in-loop SRVF k-means |
+| kCFC functional clustering via subspace embedding | fdapace | **absent** | kCFC subspace-embedding clustering | no match found — *differentiator* |
+| Model-based clustering in group-specific subspaces (funHDDC) | funHDDC | **partial** | model-based subspace functional clustering | `gmm::gmm_cluster` (Gaussian mixture on FPC scores); not funHDDC's per-group subspace model |
+| Model-based clustering in discriminative subspace (funFEM) | funFEM | **absent** | discriminative-subspace model-based clustering | no match found — *differentiator* |
+| Model-based co-clustering of functions (rows + columns) | funLBM | **absent** | latent-block co-clustering of functions | no match found — *differentiator* |
+| Slope heuristic for cluster model selection | funHDDC | **absent** | slope-heuristic model-selection criterion | no match found — *differentiator* |
+| K-means functional clustering (basic) | fda.usc | **present** | basic functional k-means | `clustering::kmeans_fd`; `fuzzy_cmeans_fd` for soft assignment |
+| Conformal prediction regions for functional regression | conformalInference.fd | **present** | conformal prediction regions | `conformal::regression`, `conformal::generic` |
+| Conformal prediction split / multi-split variants | conformalInference.fd | **present** | split / multi-split conformal | `conformal::regression` (split), `conformal::cv`, `tolerance::conformal` |
+| Functional FPCA-based prediction (FPC scores → linear prediction) | fda, refund, fda.usc | **present** | predict from FPC scores | `FpcaResult.project` + `fregre_lm`; `FpcPredictor` trait |
+| Stability selection for FDboost model terms | FDboost | **absent** | stability selection for model terms | no match found — *differentiator* |
+
+**Area 4 verdicts:** present = 25 · partial = 12 · absent = 20 (total 57 literal in-scope rows; see recount note).
+
+> **Area 4 recount note.** The Phase 16 §Design-Goal Filter header credits Area 4 with **59 in-scope** rows (61 total − 2 out-of-scope), but a direct recount of the literal Area-4 capability tables yields **57 in-scope + 1 out-of-scope (coefficient-function plot) = 58 rows**. This table maps all 57 literal in-scope rows; the 2-row header surplus is a Phase-16 over-count with no underlying capability rows to map (analogous to the stale-header recounts in the v0.14.0 §Phase 8).
+
+#### Area 5: Inference / Testing (22 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Interval Testing Procedure (ITP), one-population, B-spline | fdatest | **absent** | interval-wise testing procedure (ITP) | no match found — *differentiator* |
+| ITP one-population (Fourier basis) | fdatest | **absent** | Fourier-basis ITP | no match found — *differentiator* |
+| ITP two-population comparison (B-spline/Fourier/phase-amp) | fdatest | **absent** | two-sample ITP | no match found — *differentiator* |
+| Functional ANOVA (one-way, multiple groups) via ITP | fdatest, fdANOVA | **partial** | one-way functional ANOVA | `function_on_scalar::fanova` (permutation-based group-mean difference test); not the ITP/V-statistic form (per §Phase 8 `oneway_anova` partial) |
+| Functional ANOVA using random projections (uni/multivariate) | fdANOVA | **absent** | random-projection functional ANOVA | no match found — *differentiator* |
+| Functional MANOVA via permutation + basis representation | fdANOVA | **partial** | permutation functional MANOVA | `function_on_scalar::fanova` (single-response permutation ANOVA); no multivariate MANOVA |
+| Functional MANOVA via random projections | fdANOVA | **absent** | random-projection functional MANOVA | no match found — *differentiator* |
+| F-permutation test for functional data (Fperm.fd) | fda | **partial** | F-permutation test for functional data | `function_on_scalar::fanova` is permutation-F-based; not exposed as a standalone `Fperm.fd`-style test |
+| t-permutation test for functional two-sample comparison | fda | **absent** | two-sample functional t-permutation test | no match found — *table-stakes* |
+| FLM on-function testing (ITPlmbspline — scalar-on-function) | fdatest | **absent** | interval-wise FLM coefficient testing | no match found — *differentiator* |
+| Goodness-of-fit test for the FLM | fda.usc | **absent** | FLM goodness-of-fit test | no match found (fit diagnostics via `r_squared` only, §Phase 8) — *table-stakes* |
+| F-test for the FLM with scalar response | fda.usc | **absent** | FLM F-test (scalar response) | no match found — *table-stakes* |
+| Delsol-Ferraty-Vieu test (no functional-scalar relationship) | fda.usc | **absent** | Delsol-Ferraty-Vieu no-effect test | no match found — *differentiator* |
+| Equality of functional distributions test | fda.usc | **absent** | equality-of-distributions functional test | no match found — *differentiator* |
+| Equality of functional means / covariance test | fda.usc | **partial** | two-sample functional mean/covariance equality test | `spm::stats::hotelling_t2` (Hotelling T² statistic, SPM context — per §Phase 8 partial); not a standalone two-sample inference test |
+| Distance correlation and t-test for functional data | fda.usc | **absent** | functional distance correlation + test | no match found — *differentiator* |
+| Simultaneous confidence bands for the mean function | SCBmeanfd | **partial** | simultaneous confidence bands for mean | `alignment::shape_ci` (shape confidence intervals) + `spm` control limits; not the SCBmeanfd Gaussian-kinematic SCB |
+| Goodness-of-fit test for mean model (SCBmeanfd) | SCBmeanfd | **absent** | mean-model goodness-of-fit test | no match found — *differentiator* |
+| Two-sample equality test (SCBmeanfd) | SCBmeanfd | **absent** | SCB-based two-sample test | no match found — *table-stakes* |
+| Stationarity test for functional time series (T_stationary) | ftsa | **absent** | functional stationarity test | no match found — *differentiator* |
+| Bootstrap CI on Spearman correlation | roahd | **absent** | bootstrap CI for functional Spearman correlation | no match found — *differentiator* |
+| Likelihood ratio test for smooth functional effects (rlrt.pfr) | refund | **absent** | LRT for smooth functional effects | no match found — *differentiator* |
+
+**Area 5 verdicts:** present = 0 · partial = 5 · absent = 17 (total 22).
+
+#### Area 6: Functional Time Series (25 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Functional time series model fitting via FPCA (ftsm) | ftsa | **partial** | FPCA-based functional-time-series model | `regression::fdata_to_pc_1d` gives the FPCA decomposition; no time-ordered ftsm model/score-forecasting wrapper |
+| Functional time series forecasting via FPC regression | ftsa | **absent** | forecast future curves via FPC-score time-series models | no match found — *differentiator* |
+| Functional partial least squares forecasting (fplsr) | ftsa | **absent** | FPLS forecasting of curves | no match found — *differentiator* |
+| Dynamic updating of functional forecasts (FLR/OLS/RR/PLS) | ftsa | **absent** | dynamic forecast updating | no match found — *differentiator* |
+| Iterative forecasting (ftsmiterativeforecasts) | ftsa | **absent** | iterative multi-step curve forecasting | no match found — *differentiator* |
+| Generalized additive extreme value modeling (GAEVforecast) | ftsa | **absent** | functional GAEV forecasting | no match found — *differentiator* |
+| Functional autocorrelation function (facf) | ftsa | **absent** | functional ACF (fACF) | no match found (only scalar `autocorrelation` on a mean curve for period detection, `seasonal/`) — *differentiator* |
+| Functional ACF quantification via L2-norm | fdaACF | **absent** | L2-norm functional ACF | no match found — *differentiator* |
+| Partial functional autocorrelation function | fdaACF | **absent** | partial functional ACF | no match found — *differentiator* |
+| Distribution of functional ACF under strong white noise | fdaACF | **absent** | white-noise fACF distribution / confidence bands | no match found — *differentiator* |
+| Stationarity test for functional time series | ftsa | **absent** | functional stationarity test | no match found — *differentiator* |
+| Long-run covariance estimation (kernel sandwich) | ftsa | **absent** | long-run covariance estimator | no match found — *differentiator* |
+| Compositional data functional PCA (CoDa_FPCA) | ftsa | **absent** | compositional-data FPCA | no match found — *differentiator* |
+| Log quantile density transform FPCA (LQDT_FPCA) | ftsa | **absent** | LQD-transform density FPCA | no match found — *differentiator* |
+| Maximum autocorrelation factors (MAF) | ftsa | **absent** | maximum-autocorrelation-factor decomposition | no match found — *differentiator* |
+| Multilevel functional data model (MFDM) | ftsa | **absent** | multilevel functional data model | no match found — *differentiator* |
+| Dynamic functional PCA (Horta-Ziegelmann) | ftsa | **absent** | dynamic FPCA | no match found — *differentiator* |
+| Dynamic principal component analysis (DPCA) via spectral methods | freqdom | **absent** | spectral dynamic PCA | no match found — *differentiator* |
+| Spectral density operator estimation | freqdom | **absent** | functional spectral density operator | no match found — *differentiator* |
+| VAR / VMA process simulation for functional time series | freqdom | **absent** | functional VAR/VMA simulation | no match found — *differentiator* |
+| Functional time series summary statistics (mean, sd, var, quantile, median) | ftsa | **present** | pointwise summary statistics over a functional sample | `fdata::mean_1d`, `functional_variance`, `functional_std`, `depth_based_median` (v0.15.0) |
+| Functional time series differencing | ftsa | **partial** | difference successive curves | `detrend` module (trend removal); no dedicated fd-series differencing operator |
+| Functional time series bootstrap resampling (fbootstrap) | ftsa | **partial** | bootstrap resampling of functional observations | `spm::bootstrap`, `scalar_on_function::bootstrap`; not a time-series block bootstrap |
+| Functional ARMA simulation (sim_FARMA) | ftsa | **absent** | functional ARMA data simulation | no match found (`simulation` covers KL Gaussian data, not FARMA) — *differentiator* |
+| Functional time series error measurement | ftsa | **present** | forecast-error metrics for functional responses | `scoring::{functional_mae,functional_mse,functional_mape,functional_msle}` (v0.16.0) |
+
+**Area 6 verdicts:** present = 2 · partial = 3 · absent = 20 (total 25).
+
+#### Area 7: Density / Object Data / Manifold (25 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Global Fréchet regression (Euclidean predictors → metric-space response) | frechet | **absent** | global Fréchet regression | no match found (grep: no `frechet_regression`) — *differentiator* |
+| Local Fréchet regression (kernel-weighted) | frechet | **absent** | local Fréchet regression | no match found — *differentiator* |
+| Fréchet mean in general metric spaces | frechet | **partial** | Fréchet mean | `alignment::karcher_mean` is a Fréchet mean on the *Fisher-Rao shape manifold* only; no general metric-space Fréchet mean |
+| Fréchet variance computation | frechet | **absent** | Fréchet variance in a metric space | no match found — *differentiator* |
+| Wasserstein distance between distributions | frechet | **absent** | Wasserstein / earth-mover distance | no match found (grep: no `wasserstein`) — *differentiator* |
+| Fréchet regression for density responses (2-Wasserstein) | frechet | **absent** | density-response Fréchet regression | no match found — *differentiator* |
+| Fréchet ANOVA for object data (distributions) | frechet | **absent** | Fréchet ANOVA | no match found — *differentiator* |
+| Change point detection for object-valued time series | frechet | **partial** | changepoint for object-valued series | `elastic_changepoint`, `seasonal::change` handle functional/scalar changepoints; not general metric-space object changepoints |
+| Fréchet regression for covariance-matrix responses (Frobenius/power/log-Cholesky) | frechet | **absent** | covariance-matrix response regression | no match found — *differentiator* |
+| Fréchet integral (mean over domain) for covariance objects | frechet | **absent** | Fréchet integral over covariance objects | no match found — *differentiator* |
+| Fréchet regression for spherical data | frechet | **absent** | spherical-response regression | no match found — *differentiator* |
+| Geodesic computations on sphere (exp/log map, distance) | frechet | **absent** | sphere exp/log map + geodesic distance | no match found (`alignment` geodesics are SRVF-space, not spherical) — *differentiator* |
+| Fréchet regression for correlation matrices | frechet | **absent** | correlation-matrix response regression | no match found — *differentiator* |
+| Fréchet regression for network responses | frechet | **absent** | network-response regression | no match found — *differentiator* |
+| Fréchet ANOVA for networks | frechet | **absent** | network Fréchet ANOVA | no match found — *differentiator* |
+| Fréchet regression for point-process responses | frechet | **absent** | point-process response regression | no match found — *differentiator* |
+| FPCA for density functions via log quantile density (LQD) | fdadensity | **absent** | LQD-transform density FPCA | no match found — *differentiator* |
+| LQD ↔ density / quantile function conversion | fdadensity | **absent** | LQD ↔ density transform | no match found — *differentiator* |
+| Fraction of variance explained (FVE) for LQD-FPCA | fdadensity | **partial** | fraction-of-variance-explained selector | `FpcaResult` exposes singular values (FVE computable); no LQD-FPCA FVE helper |
+| Wasserstein Fréchet mean of densities | fdadensity | **absent** | Wasserstein barycenter of densities | no match found — *differentiator* |
+| Density normalization and regularization | fdadensity | **absent** | density normalization/regularization | no match found — *differentiator* |
+| Multivariate FPCA across different-dimensional domains (1D/2D/3D) | MFPCA | **absent** | multi-domain multivariate FPCA | no match found (1D + flattened-2D FPCA only) — *differentiator* |
+| Tensor PCA for 2D functional data (UMPCA, FCP-TPA) | MFPCA | **partial** | tensor/2D FPCA | `regression` 2D FPCA path + `function_on_scalar_2d` tensor penalty; not UMPCA/FCP-TPA tensor decompositions |
+| PACE-based FPCA for mixed-domain multivariate data | MFPCA | **absent** | mixed-domain PACE FPCA | no match found — *differentiator* |
+| DCT/spline basis expansions for 2D/3D domain data | MFPCA | **partial** | 2D/3D basis expansion | `basis` (1D B-spline/Fourier) + `function_on_scalar_2d` tensor product; no 3D/DCT basis |
+
+**Area 7 verdicts:** present = 0 · partial = 5 · absent = 20 (total 25).
+
+#### Area 8: Statistical Process Monitoring / Control Charts (10 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| Functional control chart (Phase I — reference set, control limits) | funcharts | **present** | Phase-I control-limit estimation | `spm::phase`, `spm::control` |
+| Functional control chart (Phase II — online monitoring) | funcharts | **present** | Phase-II online monitoring | `spm::phase`, `spm::control`, `spm::rules` |
+| Multivariate functional control chart | funcharts | **present** | multivariate functional control chart | `spm::mfpca`, `spm::mewma`, `spm::amewma` |
+| Robust functional control chart | funcharts | **partial** | robust (outlier-resistant) control chart | `spm::iterative` (outlier-masked Phase-I) + robust means; not a robustbase-style robust chart |
+| Profile monitoring (scalar-on-function + residual chart) | funcharts | **present** | profile monitoring | `spm::profile` |
+| ARL estimation / simulation for functional charts | funcharts | **present** | ARL estimation via simulation | `spm::arl` |
+| Functional EWMA / CUSUM chart analogs | funcharts | **present** | functional EWMA + CUSUM charts | `spm::ewma`, `spm::cusum`, `spm::mewma` |
+| Phase I estimation with outlier masking | funcharts | **present** | Phase-I with outlier masking | `spm::iterative`, `spm::phase` |
+| Parallel computing support for SPM chart simulation | funcharts | **present** | parallel SPM simulation | `spm::arl`/`spm::bootstrap` under `iter_maybe_parallel!` (parallel feature) |
+| Contribution analysis for out-of-control signals | funcharts | **present** | contribution analysis | `spm::contrib` |
+
+**Area 8 verdicts:** present = 9 · partial = 1 · absent = 0 (total 10).
+
+#### Area 9: FPCA — Sparse / Longitudinal / Specialized (18 in-scope)
+
+| Capability | Source | Verdict | searched fdars for: … | Closest match |
+|------------|--------|---------|-----------------------|---------------|
+| FPCA via PACE for sparse/irregular curves | fdapace, fda | **partial** | PACE FPCA for sparse curves | `regression::fdata_to_pc_1d` (dense FPCA) + `irreg_fdata::to_regular_grid` pre-step + `spm::partial` PACE conditional-expectation; no unified PACE FPCA estimator |
+| Covariance surface estimation from sparse observations | fdapace, face | **present** | sparse covariance-surface estimation | `irreg_fdata::cov_irreg` |
+| Mean curve estimation from sparse observations (PACE) | fdapace | **present** | sparse mean-curve estimation | `irreg_fdata::to_regular_grid` (kernel-smoothed mean over irregular obs) |
+| FPC scores via conditional expectation | fdapace | **partial** | conditional-expectation FPC scores for sparse data | `spm::partial::conditional_expectation` (PACE-framework reconstruction); not a general FPC-score estimator for arbitrary sparse FPCA |
+| Fitted continuous trajectories + confidence bands for sparse data | fdapace | **partial** | trajectory reconstruction with confidence bands | `spm::partial` reconstructs trajectories; `alignment::shape_ci` gives bands; not integrated PACE trajectory + band output |
+| FPCA for functional derivatives (FPCAder) | fdapace | **absent** | FPCA of derivatives | no match found — *differentiator* |
+| Functional SVD (FSVD — bivariate FPCA analogue) | fdapace | **absent** | functional SVD / cross-FPCA | no match found — *differentiator* |
+| Cross-covariance function estimation (GetCrCovYX/YZ) | fdapace | **absent** | cross-covariance surface estimation | no match found — *differentiator* |
+| Dynamical correlation (DynCorr) | fdapace | **absent** | dynamical correlation | no match found — *differentiator* |
+| Functional correlation (FCCor) | fdapace | **absent** | functional correlation | no match found — *differentiator* |
+| Functional variance process analysis (FVPA) | fdapace | **absent** | functional variance process | no match found — *differentiator* |
+| Number of FPC selection criteria (ER_GR, FVE threshold) | fdapace, ftsa | **present** | number-of-components selection (FVE / eigenratio) | `scalar_on_function::model_selection_ncomp`; `FpcaResult` singular values give FVE |
+| MakeFPCAInputs — FPCA input validation / formatting | fdapace | **present** | FPCA input validation/formatting | `validation` module + `IrregFdata` constructors |
+| Functional fragment completion (incomplete curve reconstruction) | fdapace | **partial** | reconstruct incomplete curves | `spm::partial` domain completion; not general fragment completion |
+| Fast FPCA for sparse data (fpca.sc — sandwich smoother) | refund | **absent** | sandwich-smoother sparse FPCA | no match found — *differentiator* |
+| FPCA via FACE (fast covariance) | refund, face | **partial** | FACE-based FPCA | `irreg_fdata::cov_irreg` + `fdata_to_pc_1d`; not the FACE fast-sandwich algorithm |
+| FPCA via sparse SVD (fpca.ssvd) | refund | **partial** | sparse-SVD FPCA | `fdata_to_pc_1d` uses thin SVD (faer, v0.15.0); not the penalized sparse-SVD (fpca.ssvd) variant |
+| FPCA via local FDA (fpca.lfda) | refund | **absent** | local-FDA FPCA | no match found — *differentiator* |
+
+**Area 9 verdicts:** present = 4 · partial = 6 · absent = 8 (total 18).
+
+### §Parity-Matrix — Verdict Counts
+
+Per-area and overall verdict tallies over the **250 literal in-scope capability rows mapped** (the 248 Phase-16 header total plus the net +2 literal-row reconciliation: Areas 3/6/7 each carry +1 literal in-scope row over their header, and Area 4 carries −2 — see the Area-4 recount note; all rows trace 1:1 to Phase-16 §R-Inventory table rows).
+
+| Area | Present | Partial | Absent | Rows | **Actionable gaps (partial+absent)** |
+|------|---------|---------|--------|------|--------------------------------------|
+| 1 — Representation / Basis / Smoothing | 20 | 8 | 10 | 38 | **18** |
+| 2 — Preprocessing / Registration | 16 | 4 | 2 | 22 | **6** |
+| 3 — Exploratory / Depth / Outlier | 12 | 5 | 16 | 33 | **21** |
+| 4 — ML (Regression + Classification + Clustering) | 25 | 12 | 20 | 57 | **32** |
+| 5 — Inference / Testing | 0 | 5 | 17 | 22 | **22** |
+| 6 — Functional Time Series | 2 | 3 | 20 | 25 | **23** |
+| 7 — Density / Object Data / Manifold | 0 | 5 | 20 | 25 | **25** |
+| 8 — SPM / Control Charts | 9 | 1 | 0 | 10 | **1** |
+| 9 — FPCA (Sparse / Longitudinal / Specialized) | 4 | 6 | 8 | 18 | **14** |
+| **TOTAL** | **88** | **49** | **113** | **250** | **162** |
+
+**Headline actionable-gap count (in-scope, absent + partial): 162** (49 partial "add-a-variant" + 113 absent "implement-from-scratch"). This is the input set Phase 19 ranks. Present = 88/250 (35%).
+
+**Where fdars is strongest (present-heavy):** SPM / control charts (9/10 present — fdars' `spm/` suite exceeds any single R package's chart coverage), Preprocessing / Registration (16/22 — the elastic/SRVF alignment stack is a core fdars strength), and Representation (20/38 — B-spline/Fourier bases, smoothing, FPCA, extrapolation policies, summary stats all shipped).
+
+**Where the gaps concentrate (absent-heavy):** Area 7 Density / Object Data / Manifold (0 present — the entire `frechet` metric-space regression + `fdadensity` LQD-FPCA + `MFPCA` multi-domain surface is absent), Area 6 Functional Time Series (2/25 present — no forecasting, functional ACF, spectral DPCA, or FARMA), and Area 5 Inference (0 present — no ITP, functional ANOVA V-statistic, or formal FLM/two-sample tests as standalone hypothesis tests). These three areas confirm the Phase-16 pre-flagged large-gap zones.
+
+**Accuracy flags (carried from v0.14.0 §Phase 8, D-02).** Two present rows touch known-bug areas and are read as "present — accuracy NOT verified": the elastic-alignment family (Area 2 "Pair-wise elastic alignment" / "Elastic curve mean" / "SRVF Karcher mean" — GH #34 level-encoding, fixed `6ed62398`) and the basis round-trip path underlying Area 1 "Basis conversion / projection" (GH #33, fixed `2fb6d3c9`). Both fixes have landed; presence is not re-validated numerically in this audit (deferred, per the v0.14.0 D-02a convention).
+
+---
+
+### §Categorization
+
+Every one of the **162 actionable gaps** (49 partial + 113 absent) is categorized under the D-03 rubric (documented once, above). Present rows carry no category.
+
+**Category counts.**
+
+| Category | Partial | Absent | **Total gaps** | Share |
+|----------|---------|--------|----------------|-------|
+| **table-stakes** | 11 | 7 | **18** | 11% |
+| **differentiator** | 38 | 106 | **144** | 89% |
+| **out-of-scope** | 0 | 0 | **0** | 0% |
+| **TOTAL** | 49 | 113 | **162** | 100% |
+
+The gap profile is overwhelmingly **differentiator** (144/162, 89%) — the bulk of the R ecosystem that fdars lacks is specialized methodology (metric-space/object-data regression, functional time series, sparse-PACE variants, the long tail of depth measures, mixed/additive/Bayesian regression families). Only **18 gaps (11%) are table-stakes** — capabilities a general-purpose FDA library is expected to have. These 18 are the Phase-19 priority signal.
+
+**out-of-scope = 0.** The mapping input set was already filtered to in-scope numeric algorithms + API-ergonomics in Phase 16; on inspection no in-scope row degraded to a rendering/IO-adjacent capability, so the out-of-scope bucket is empty here (the 27 plotting/IO R rows were excluded before this matrix).
+
+#### The 18 table-stakes gaps (Phase-19 priority signal), by area
+
+| # | Capability | Source | Verdict | Area | Rationale (why table-stakes) |
+|---|-----------|--------|---------|------|------------------------------|
+| 1 | Constant / intercept basis | fda | absent | 1 | Every basis-expansion FDA library exposes an intercept/constant basis; needed for regression design matrices. |
+| 2 | Smoothing with automatic parameter selection (GCV + AIC) | fda | partial | 1 | GCV present; AIC-based smoothing-parameter selection is a mainstream expected criterion. |
+| 3 | General functional depth dispatcher (multiple methods) | fda.usc | partial | 3 | A single depth entry point that dispatches over methods is a baseline ergonomic; fdars exposes methods only as separate functions. |
+| 4 | Functional boxplot (depth-based fence / threshold values) | roahd, fdaoutlier, fda.usc | partial | 3 | The López-Pintado depth-fence functional boxplot is the canonical robust-summary tool; only the outliergram parabolic fence is exposed. |
+| 5 | Varying-coefficient / concurrent functional regression | fdaconcur, refund | absent | 4 | Concurrent (varying-coefficient) regression is a mainstream functional-regression model absent from fdars. |
+| 6 | Functional concurrent regression (varying-coeff, sparse/dense) | fdapace, fdaconcur | absent | 4 | Same capability from the sparse-data side; still a baseline functional-regression expectation. |
+| 7 | Functional GLM, scalar response (logistic + Poisson + families) | fda.usc, refund | partial | 4 | Logistic present; Poisson/other exponential-family functional GLMs are a standard expected family. |
+| 8 | Functional linear model goodness-of-fit / F-test | fda.usc | partial | 4 | A fitted FLM should ship a GoF/F-test; only informal R² diagnostics exist. |
+| 9 | Functional ANOVA (one-way) with V-statistic | fdatest, fdANOVA | partial | 5 | One-way functional ANOVA is a baseline inference test; permutation form exists, the asymptotic V-statistic form does not. |
+| 10 | F-permutation test for functional data (Fperm.fd) | fda | partial | 5 | A standalone functional F-permutation test is a baseline two/multi-group inference tool. |
+| 11 | t-permutation test for functional two-sample comparison | fda | absent | 5 | Two-sample functional mean comparison is the most basic functional hypothesis test. |
+| 12 | Equality of functional means / covariance test | fda.usc | partial | 5 | A standalone two-sample mean/covariance equality test is baseline; only an SPM-context Hotelling T² exists. |
+| 13 | Goodness-of-fit test for the FLM | fda.usc | absent | 5 | Baseline model-adequacy test for the functional linear model. |
+| 14 | F-test for the FLM with scalar response | fda.usc | absent | 5 | Baseline significance test for the scalar-response FLM. |
+| 15 | Two-sample equality test (SCBmeanfd) | SCBmeanfd | absent | 5 | Two-sample mean-function equality is a baseline inference capability. |
+| 16 | Simultaneous confidence bands for the mean function | SCBmeanfd | partial | 5 | SCBs for the mean are a standard inferential summary; only shape-CI / SPM limits exist. |
+| 17 | FPCA via PACE for sparse/irregular curves | fdapace, fda | partial | 9 | PACE FPCA is the canonical method for sparse/longitudinal functional data; fdars has the pieces but no unified estimator. |
+| 18 | FPC scores via conditional expectation | fdapace | partial | 9 | Conditional-expectation (PACE) FPC scores are the standard way to score sparse curves; only a partial SPM-context reconstruction exists. |
+
+**Reading the priority signal.** Table-stakes gaps cluster in **Area 5 Inference (8 of 18)** — fdars has essentially no standalone hypothesis-testing surface (0 present in Area 5) — and **Area 4 ML regression (4 of 18)**, chiefly concurrent regression and functional-GLM families. **Area 9 (2)**, **Area 1 (2)**, and **Area 3 (2)** round out the list. Areas 2, 6, 7, 8 contribute **zero** table-stakes gaps: Area 2/8 because fdars already covers the baseline (registration, SPM), and Areas 6/7 because their gaps, though numerous, are specialized (functional time series, metric-space object data) rather than baseline-expected — they are the differentiator long tail, not table-stakes deficits.
+
+*This completes Phase 17 (GAP-01 parity matrix + GAP-02 categorization). The 18 table-stakes gaps and 144 differentiator gaps feed Phase 18's reverse-parity fdars-strengths sweep and Phase 19's value-ranked backlog.*
