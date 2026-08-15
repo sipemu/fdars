@@ -16,8 +16,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Gap Analysis
 
-- [ ] **GAP-01**: Produce an fdars-vs-R capability **parity matrix** — a per-capability verdict (**present / partial / absent**) mapping each in-scope R capability to fdars, **matched by capability not API name**, each row carrying a "searched fdars for:" evidence note and closest-match reference.
-- [ ] **GAP-02**: **Categorize** every absent/partial gap as **table-stakes / differentiator / out-of-scope**, with rationale, to drive value ranking.
+- [x] **GAP-01**: Produce an fdars-vs-R capability **parity matrix** — a per-capability verdict (**present / partial / absent**) mapping each in-scope R capability to fdars, **matched by capability not API name**, each row carrying a "searched fdars for:" evidence note and closest-match reference.
+- [x] **GAP-02**: **Categorize** every absent/partial gap as **table-stakes / differentiator / out-of-scope**, with rationale, to drive value ranking.
 - [ ] **GAP-03**: Produce a **reverse-parity strengths sweep** — catalog fdars capabilities with no R equivalent, or where fdars is ahead of its closest R analog (e.g. elastic/shape vs `fdasrvf`; SPM, explainability, streaming depth, conformal, tolerance bands with no R counterpart), from a full module-map walk.
 
 ### Report & Backlog
@@ -57,8 +57,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | INV-01 | Phase 16 | Complete |
 | INV-02 | Phase 16 | Complete |
-| GAP-01 | Phase 17 | Pending |
-| GAP-02 | Phase 17 | Pending |
+| GAP-01 | Phase 17 | Complete |
+| GAP-02 | Phase 17 | Complete |
 | GAP-03 | Phase 18 | Pending |
 | RPT-01 | Phase 19 | Pending |
 | RPT-02 | Phase 19 | Pending |

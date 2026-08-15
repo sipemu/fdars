@@ -75,7 +75,7 @@ New deliverables land in `.planning/research/`, named distinctly from the archiv
 - `.planning/research/R-BACKLOG.md` — the fresh `score = value/√effort` ranked backlog (mirrors the `BACKLOG.md` 7-field promotion-block format).
 
 - [x] **Phase 16: R Ecosystem Inventory** - Versioned, area-organized, capability-first inventory of the R FDA ecosystem, then design-goal filtered into in-scope / out-of-scope with per-area counts (completed 2026-08-15)
-- [ ] **Phase 17: Parity Matrix & Categorization** - Per-capability fdars-vs-R present/partial/absent verdicts (matched by capability, evidence-noted), then every gap categorized table-stakes / differentiator / out-of-scope
+- [x] **Phase 17: Parity Matrix & Categorization** - Per-capability fdars-vs-R present/partial/absent verdicts (matched by capability, evidence-noted), then every gap categorized table-stakes / differentiator / out-of-scope (completed 2026-08-15)
 - [ ] **Phase 18: Reverse-Parity Strengths Sweep** - Module-map walk of fdars cataloguing capabilities with no R equivalent or where fdars is ahead of its closest R analog
 - [ ] **Phase 19: Consolidated Report & Ranked Backlog** - Consolidated R-ecosystem gap report + GSD-ready value-ranked (`score = value/√effort`) promotion-ready backlog
 
@@ -116,7 +116,7 @@ Plans:
 
 Plans:
 
-- [ ] 17-01: Build the per-capability fdars-vs-R parity matrix with verdict rubric + evidence notes (GAP-01)
+- [x] 17-01: Build the per-capability fdars-vs-R parity matrix with verdict rubric + evidence notes (GAP-01)
 - [ ] 17-02: Categorize every gap table-stakes / differentiator / out-of-scope with rationale (GAP-02)
 
 ### Phase 18: Reverse-Parity Strengths Sweep
@@ -163,7 +163,7 @@ Phases execute in numeric order: 16 → 17 → 19, with 18 parallelizable alongs
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 16. R Ecosystem Inventory | v0.18.0 | 2/2 | Complete    | 2026-08-15 |
-| 17. Parity Matrix & Categorization | v0.18.0 | 0/2 | Not started | - |
+| 17. Parity Matrix & Categorization | v0.18.0 | 1/1 | Complete    | 2026-08-15 |
 | 18. Reverse-Parity Strengths Sweep | v0.18.0 | 0/1 | Not started | - |
 | 19. Consolidated Report & Ranked Backlog | v0.18.0 | 0/2 | Not started | - |
 
