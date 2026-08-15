@@ -39,14 +39,14 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INF-01 | Phase [N] | Pending |
-| INF-02 | Phase [N] | Pending |
+| INF-01 | Phase 20 — Two-Sample Functional Tests & `inference/` Module | Pending |
+| INF-02 | Phase 21 — Functional-Linear-Model Inference | Pending |
 
 **Coverage:**
 - v1 requirements: 2 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 2 ⚠️
+- Mapped to phases: 2 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-15*
-*Last updated: 2026-08-15 after initial definition (v0.19.0 Functional Inference Suite)*
+*Last updated: 2026-08-15 after roadmap creation (v0.19.0 Functional Inference Suite — INF-01 → Phase 20, INF-02 → Phase 21; 2/2 mapped)*

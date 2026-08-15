@@ -7,6 +7,7 @@
 - ✅ **v0.16.0 — Elastic Feasibility + Parity Quick Wins** — Phases 12–13 (shipped 2026-08-12, PR #40) — [archive](milestones/v0.16.0-ROADMAP.md)
 - ✅ **v0.17.0 — Registration Parity & Elastic-FPCA Performance** — Phases 14–15 (shipped 2026-08-12, PR #41) — [archive](milestones/v0.17.0-ROADMAP.md)
 - ✅ **v0.18.0 — R-Ecosystem Gap Audit** — Phases 16–19 (shipped 2026-08-15) — [archive](milestones/v0.18.0-ROADMAP.md)
+- 🚧 **v0.19.0 — Functional Inference Suite** — Phases 20–21 (in progress) — INF-01 + INF-02 promoted from `R-BACKLOG.md`
 
 ## Phases
 
@@ -78,3 +79,42 @@ Audit-only milestone — the R-ecosystem analog of v0.14.0: zero `fdars-core/src
 Full phase detail: [milestones/v0.18.0-ROADMAP.md](milestones/v0.18.0-ROADMAP.md)
 
 </details>
+
+### 🚧 v0.19.0 Functional Inference Suite (Phases 20–21) — IN PROGRESS
+
+First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes the two P1 table-stakes inference items (INF-01, INF-02) that close fdars' dominant table-stakes deficit: R-parity **Area 5 (Inference)**, currently **0/22 present**. All additions are additive/non-breaking, `Result`-returning, with inline `#[cfg(test)]` tests and crate-root re-exports; **zero changes to existing public signatures.** INF-01 first (creates the `inference/` module scaffolding + two-sample tests); INF-02 second (FLM inference, depends on that module existing).
+
+- [ ] **Phase 20: Two-Sample Functional Tests & `inference/` Module** — new `fdars-core/src/inference/` with standalone two-sample tests (`t_perm_test`, `f_perm_test`, mean/covariance equality, `mean_scb` + SCB two-sample test), reusing existing permutation / Hotelling-T² / bootstrap-band machinery
+- [ ] **Phase 21: Functional-Linear-Model Inference** — `flm_gof_test` + `flm_f_test` on fitted `FregreLmResult`, plus an asymptotic one-way ANOVA V-statistic (`oneway_anova_vstat`) alongside the existing permutation ANOVA
+
+## Phase Details
+
+### Phase 20: Two-Sample Functional Tests & `inference/` Module
+**Goal**: fdars gains its first standalone functional-inference surface — a new `inference/` module exposing two-sample hypothesis tests over functional data, built by lifting/reusing existing permutation, Hotelling-T², and bootstrap-band machinery.
+**Depends on**: Nothing (first phase of the milestone; consumes existing `function_on_scalar`, `spm::stats`, `tolerance/degras` code)
+**Requirements**: INF-01
+**Success Criteria** (what must be TRUE):
+  1. A new `fdars-core/src/inference/` module exists and its public tests are re-exported at the crate root (`fdars_core::t_perm_test`, `f_perm_test`, the mean/covariance equality test, and `mean_scb` are reachable without a submodule path).
+  2. `t_perm_test` on two clearly-separated samples returns a p-value ≈ 0 (rejects), and on two samples drawn from the same distribution returns a large (≈ uniform-under-null) p-value; `f_perm_test` behaves analogously — both verified by inline `#[cfg(test)]` tests.
+  3. The two-sample equality-of-means/covariance test (built on `spm::stats::hotelling_t2`) rejects when the two group means differ and fails to reject when they coincide.
+  4. `mean_scb` returns simultaneous confidence bands that contain the true mean at (approximately) the requested coverage, and the SCB-based two-sample test flags a mean difference — both exercised by inline tests.
+  5. Every new public function returns `Result<_, FdarError>`, validates its inputs (dimension/parameter guards), and adds no changes to any existing public signature (additive/non-breaking).
+**Plans**: TBD (candidate split: 20-01 module scaffolding + `t_perm_test`/`f_perm_test`; 20-02 mean/covariance equality + `mean_scb` + SCB two-sample test — planner's discretion)
+
+### Phase 21: Functional-Linear-Model Inference
+**Goal**: fdars can formally test the adequacy and significance of a fitted functional linear model, and offers the asymptotic one-way functional ANOVA V-statistic alongside the existing permutation ANOVA.
+**Depends on**: Phase 20 (reuses the `inference/` module scaffolding created by INF-01)
+**Requirements**: INF-02
+**Success Criteria** (what must be TRUE):
+  1. `flm_f_test` on a fitted `FregreLmResult` rejects (small p-value) when the FLM has a genuine functional effect, and fails to reject (large p-value) when the response is unrelated to the functional predictor — verified by inline tests.
+  2. `flm_gof_test` on a fitted `FregreLmResult` fails to reject when the fitted FLM is well-specified and flags lack-of-fit when the true relationship is not linear-functional (residual-based statistic against the FLM null).
+  3. `oneway_anova_vstat` computes the asymptotic V-statistic ANOVA form: it agrees (same reject/accept decision, comparable p-value) with the existing permutation ANOVA on separated vs. pooled groups, and is added alongside — not replacing — `function_on_scalar::fanova`.
+  4. All new functions consume existing fitted-model residuals + integration weights, return `Result<_, FdarError>`, are crate-root re-exported, carry inline `#[cfg(test)]` tests, and introduce no changes to existing public signatures (additive/non-breaking).
+**Plans**: TBD
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 20. Two-Sample Functional Tests & `inference/` Module | 0/TBD | Not started | - |
+| 21. Functional-Linear-Model Inference | 0/TBD | Not started | - |
