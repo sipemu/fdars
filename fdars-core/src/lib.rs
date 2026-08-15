@@ -222,8 +222,8 @@ pub use tolerance::{
 
 // Re-export functional inference types and two-sample tests
 pub use inference::{
-    f_perm_test, mean_scb, scb_two_sample_test, t_perm_test, two_sample_mean_test, TestResult,
-    DEFAULT_N_PERM,
+    f_perm_test, flm_f_test, mean_scb, scb_two_sample_test, t_perm_test, two_sample_mean_test,
+    TestResult, DEFAULT_N_PERM,
 };
 
 // Re-export FAMM types
