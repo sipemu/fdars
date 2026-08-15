@@ -15,7 +15,7 @@
 //!   (permutation two-sample mean tests).
 //! * [`two_sample_mean_test`] — the FPC-basis Hotelling-T² mean-equality test
 //!   in the spirit of `fda.usc` mean/covariance equality tests.
-//! * `mean_scb` / `scb_two_sample_test` — `SCBmeanfd`-style simultaneous
+//! * [`mean_scb`] / [`scb_two_sample_test`] — `SCBmeanfd`-style simultaneous
 //!   confidence bands for the mean and the mean difference.
 //!
 //! # Conventions
@@ -28,9 +28,11 @@
 
 mod hotelling;
 mod permutation;
+mod scb;
 
 pub use hotelling::two_sample_mean_test;
 pub use permutation::{f_perm_test, t_perm_test, DEFAULT_N_PERM};
+pub use scb::{mean_scb, scb_two_sample_test};
 
 /// Result of a functional two-sample hypothesis test.
 ///
