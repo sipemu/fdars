@@ -76,7 +76,7 @@ New deliverables land in `.planning/research/`, named distinctly from the archiv
 
 - [x] **Phase 16: R Ecosystem Inventory** - Versioned, area-organized, capability-first inventory of the R FDA ecosystem, then design-goal filtered into in-scope / out-of-scope with per-area counts (completed 2026-08-15)
 - [x] **Phase 17: Parity Matrix & Categorization** - Per-capability fdars-vs-R present/partial/absent verdicts (matched by capability, evidence-noted), then every gap categorized table-stakes / differentiator / out-of-scope (completed 2026-08-15)
-- [ ] **Phase 18: Reverse-Parity Strengths Sweep** - Module-map walk of fdars cataloguing capabilities with no R equivalent or where fdars is ahead of its closest R analog
+- [x] **Phase 18: Reverse-Parity Strengths Sweep** - Module-map walk of fdars cataloguing capabilities with no R equivalent or where fdars is ahead of its closest R analog (completed 2026-08-15)
 - [ ] **Phase 19: Consolidated Report & Ranked Backlog** - Consolidated R-ecosystem gap report + GSD-ready value-ranked (`score = value/√effort`) promotion-ready backlog
 
 ## Phase Details
@@ -134,7 +134,7 @@ Plans:
 
 Plans:
 
-- [ ] 18-01: Module-map walk of fdars-core cataloguing R-unique and fdars-ahead capabilities (GAP-03)
+- [x] 18-01: Module-map walk of fdars-core cataloguing R-unique and fdars-ahead capabilities (GAP-03)
 
 ### Phase 19: Consolidated Report & Ranked Backlog
 
@@ -164,7 +164,7 @@ Phases execute in numeric order: 16 → 17 → 19, with 18 parallelizable alongs
 |-------|-----------|----------------|--------|-----------|
 | 16. R Ecosystem Inventory | v0.18.0 | 2/2 | Complete    | 2026-08-15 |
 | 17. Parity Matrix & Categorization | v0.18.0 | 1/1 | Complete    | 2026-08-15 |
-| 18. Reverse-Parity Strengths Sweep | v0.18.0 | 0/1 | Not started | - |
+| 18. Reverse-Parity Strengths Sweep | v0.18.0 | 1/1 | Complete    | 2026-08-15 |
 | 19. Consolidated Report & Ranked Backlog | v0.18.0 | 0/2 | Not started | - |
 
 ---
