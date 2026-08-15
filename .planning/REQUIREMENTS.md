@@ -1,0 +1,52 @@
+# Requirements: fdars — v0.19.0 Functional Inference Suite
+
+**Defined:** 2026-08-15
+**Core Value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone gives fdars its first standalone functional-inference surface, promoted top-first from the v0.18.0 R-ecosystem backlog (`.planning/research/R-BACKLOG.md`).
+
+Implementation milestone — real `fdars-core/src/` code. All additions are additive/non-breaking, `Result`-returning, with inline `#[cfg(test)]` tests and crate-root re-exports. Closes the two P1 table-stakes items in R-parity **Area 5 (Inference)**, currently **0/22 present**.
+
+## v1 Requirements
+
+### Inference
+
+- [ ] **INF-01**: Provide standalone two-sample functional hypothesis tests in a new `fdars-core/src/inference/` module — a functional t-permutation test (`t_perm_test`), an F-permutation test (`f_perm_test`), a two-sample equality-of-means/covariance test, and mean simultaneous confidence bands (`mean_scb`) with an SCB-based two-sample test. Each is `Result`-returning and crate-root re-exported. Reuses existing machinery: `function_on_scalar` permutation code, `spm::stats::hotelling_t2`, and `tolerance/degras` bootstrap-band code. (R baseline: `fda::Fperm.fd`/`tperm.fd`, `fda.usc` mean/cov equality, `SCBmeanfd`.)
+- [ ] **INF-02**: Provide formal functional-linear-model inference — a goodness-of-fit test (`flm_gof_test`) and an F-test (`flm_f_test`) operating on a fitted `FregreLmResult` (residual-based statistics against the FLM null), plus an asymptotic one-way functional ANOVA V-statistic (`oneway_anova_vstat`) alongside the existing permutation ANOVA. Reuses fitted-model residuals + integration weights. (R baseline: `fda.usc` FLM GoF/F-test, `fdatest`/`fdANOVA` V-statistic.)
+
+## v2 Requirements
+
+Deferred to future milestones (from `.planning/research/R-BACKLOG.md`).
+
+### Inference
+
+- **INF-03**: Interval Testing Procedure (ITP) family — 1-/2-sample and FLM-coefficient interval-wise testing (`fdatest`). P2/differentiator; deferred from this milestone (the two P1 table-stakes items come first). Depends on the INF-01 `inference/` scaffolding.
+
+### Other R-parity clusters
+
+- **T-01/T-02** (score 5.00, P1) — constant basis + AIC smoothing selection; depth-fence boxplot + depth dispatcher (quick wins).
+- **REG-01** (concurrent/varying-coefficient regression), **FPCA-01** (unified PACE sparse FPCA), **FTS-01/02/03** (functional time series), **FRE-01/02** (Fréchet/object-data regression) — larger clusters ranked in `R-BACKLOG.md`.
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| INF-03 (Interval Testing Procedure / ITP) | P2 differentiator; this milestone is scoped to the two P1 table-stakes inference items. Deferred to v2. |
+| Plotting of test results (p-value heatmaps, ANOVA plots) | Out-of-scope per the project's numeric-library design goal (consistent with the R audit's plotting exclusion). |
+| Re-implementing R's exact API surface | Match the capability (test statistic + p-value + decision), not R's function signatures. |
+
+## Traceability
+
+Which phases cover which requirements. Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| INF-01 | Phase [N] | Pending |
+| INF-02 | Phase [N] | Pending |
+
+**Coverage:**
+- v1 requirements: 2 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 2 ⚠️
+
+---
+*Requirements defined: 2026-08-15*
+*Last updated: 2026-08-15 after initial definition (v0.19.0 Functional Inference Suite)*
