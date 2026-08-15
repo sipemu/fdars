@@ -99,7 +99,8 @@ First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes
   3. The two-sample equality-of-means/covariance test (built on `spm::stats::hotelling_t2`) rejects when the two group means differ and fails to reject when they coincide.
   4. `mean_scb` returns simultaneous confidence bands that contain the true mean at (approximately) the requested coverage, and the SCB-based two-sample test flags a mean difference — both exercised by inline tests.
   5. Every new public function returns `Result<_, FdarError>`, validates its inputs (dimension/parameter guards), and adds no changes to any existing public signature (additive/non-breaking).
-**Plans**: TBD (candidate split: 20-01 module scaffolding + `t_perm_test`/`f_perm_test`; 20-02 mean/covariance equality + `mean_scb` + SCB two-sample test — planner's discretion)
+**Plans**: 1 plan
+- [ ] 20-01-PLAN.md — `inference/` module + `TestResult` + all five two-sample tests (`t_perm_test`, `f_perm_test`, `two_sample_mean_test`, `mean_scb`, `scb_two_sample_test`), tracer-first (module scaffolding + `t_perm_test` end-to-end), then Hotelling and SCB expansion
 
 ### Phase 21: Functional-Linear-Model Inference
 **Goal**: fdars can formally test the adequacy and significance of a fitted functional linear model, and offers the asymptotic one-way functional ANOVA V-statistic alongside the existing permutation ANOVA.
@@ -116,5 +117,5 @@ First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 20. Two-Sample Functional Tests & `inference/` Module | 0/TBD | Not started | - |
+| 20. Two-Sample Functional Tests & `inference/` Module | 0/1 | Not started | - |
 | 21. Functional-Linear-Model Inference | 0/TBD | Not started | - |
