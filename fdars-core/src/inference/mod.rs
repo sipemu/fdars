@@ -13,7 +13,7 @@
 //!
 //! * [`t_perm_test`] / [`f_perm_test`] — `fda::tperm.fd` / `fda::Fperm.fd`
 //!   (permutation two-sample mean tests).
-//! * `two_sample_mean_test` — the FPC-basis Hotelling-T² mean-equality test
+//! * [`two_sample_mean_test`] — the FPC-basis Hotelling-T² mean-equality test
 //!   in the spirit of `fda.usc` mean/covariance equality tests.
 //! * `mean_scb` / `scb_two_sample_test` — `SCBmeanfd`-style simultaneous
 //!   confidence bands for the mean and the mean difference.
@@ -26,8 +26,10 @@
 //! inputs at entry. Result structs derive `Debug, Clone, PartialEq` and are
 //! serde-gated.
 
+mod hotelling;
 mod permutation;
 
+pub use hotelling::two_sample_mean_test;
 pub use permutation::{f_perm_test, t_perm_test, DEFAULT_N_PERM};
 
 /// Result of a functional two-sample hypothesis test.
