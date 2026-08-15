@@ -8,16 +8,15 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.18.0 R-Ecosystem Gap Audit
+## Current Milestone: v0.19.0 Functional Inference Suite
 
-**Goal:** Map fdars' functionality gaps against the R functional-data-analysis ecosystem — producing a consolidated gap report and a fresh GSD-ready ranked backlog, so future milestones target the highest-leverage R-parity work first. Audit-only; the R ecosystem replaces scikit-fda as this milestone's yardstick now that the actionable scikit-fda backlog is exhausted.
+**Goal:** Give fdars its first standalone functional-inference surface — two-sample tests and functional-linear-model inference — closing the highest-value P1 table-stakes gaps in R-parity Area 5 (currently 0/22 present). First implementation milestone promoted from the v0.18.0 `R-BACKLOG.md`.
 
-**Target deliverables:**
-- **Versioned R FDA capability inventory** — catalog the ecosystem and its capabilities (with package versions): `fda`, `fda.usc`, `refund`, `fdapace`, `roahd`, `fdaoutlier`, `ftsa`, `MFPCA`/`funData`, `fdasrvf`, `fdatest`/`fdANOVA`, `frechet`/`fdadensity`, `funHDDC`/`FDboost`, and others research surfaces.
-- **fdars-vs-R parity matrix + categorization** — capability-level present/partial/absent verdicts, gap categorization (table-stakes / differentiator / out-of-scope), plus a reverse-parity strengths sweep (fdars is already *ahead* of `fdasrvf` on elastic/shape and unique on SPM / explainability / streaming depth).
-- **Consolidated report + ranked backlog** — `score = value/√effort` methodology with GSD-ready 7-field promotion blocks (reusing the v0.14.0 backlog format), ready to promote via `/gsd-new-milestone`.
+**Target features (both P1 table-stakes from R-BACKLOG.md):**
+- **INF-01 (rank 4, score 2.89, P1/M):** new `fdars-core/src/inference/` module with standalone two-sample tests — `t_perm_test`, `f_perm_test` (`Fperm.fd`/`tperm.fd` analogs), two-sample mean/covariance equality test, and mean SCB (simultaneous confidence bands). Reuses `function_on_scalar` permutation machinery, `spm::stats::hotelling_t2`, and `tolerance/degras` bootstrap bands. Builds the module scaffolding INF-02 depends on.
+- **INF-02 (rank 5, score 2.89, P1/M):** functional-linear-model inference on `FregreLmResult` — goodness-of-fit test, F-test, plus an asymptotic one-way ANOVA V-statistic (alongside the existing permutation ANOVA). Reuses fitted-model residuals + integration weights.
 
-**Key context:** Audit-only — zero `fdars-core/src/` edits (mirrors v0.14.0). Numeric algorithms + API ergonomics in scope; plotting/IO out of scope. Reuse v0.14.0 audit methodology and infrastructure where applicable. Phase numbering continues from v0.17.0 → starts at Phase 16.
+**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports. R baseline: `fda` (`Fperm.fd`/`tperm.fd`), `fda.usc` (FLM GoF/F-test, mean/cov equality), `SCBmeanfd`, `fdatest`/`fdANOVA` (ANOVA V-stat). INF-01 first (scaffolding), then INF-02. Phase numbering continues from v0.18.0 → starts at Phase 20. INF-03 (ITP family, P2 differentiator) deferred. Crate is at 0.17.0 (v0.18.0 was audit-only); the crate-version bump is a ship-time decision.
 
 ## Requirements
 
@@ -62,9 +61,10 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- v0.18.0 R-Ecosystem Gap Audit shipped — all 7 requirements validated. Awaiting next milestone. -->
+<!-- v0.19.0 Functional Inference Suite — INF-01 + INF-02 promoted from R-BACKLOG.md (formalized in REQUIREMENTS.md during roadmap creation). -->
 
-_(none — v0.18.0 audit complete; the `R-BACKLOG.md` top items feed the next milestone via `/gsd-new-milestone`)_
+- [ ] **INF-01**: new `inference/` module with standalone two-sample functional tests (`t_perm_test`, `f_perm_test`, mean/covariance equality, mean SCB)
+- [ ] **INF-02**: functional-linear-model inference (goodness-of-fit + F-test on `FregreLmResult`, asymptotic one-way ANOVA V-statistic)
 
 ### Out of Scope
 
