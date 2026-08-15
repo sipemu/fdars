@@ -89,11 +89,11 @@ New deliverables land in `.planning/research/`, named distinctly from the archiv
   2. Capabilities are grouped into named areas (e.g. representation, preprocessing/registration, exploratory/depth-outlier, ML/regression-classification, inference, density/manifold, misc) with a per-area capability count
   3. Every inventoried capability carries a design-goal-filter tag of **in-scope** (numeric algorithm or API-ergonomics) or **out-of-scope** (plotting/visualization or data/IO), with an explicit rationale rule documented once
   4. A per-area in-scope vs out-of-scope count table exists, yielding the total actionable comparison surface the parity matrix will map against
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 16-01: Enumerate the R FDA ecosystem capability-first, versioned + package-tagged, area-organized (INV-01)
-- [ ] 16-02: Apply the in-scope / out-of-scope design-goal filter with per-area counts (INV-02)
+- [ ] 16-01-PLAN.md — Enumerate the R FDA ecosystem capability-first, versioned + package-tagged, area-organized into 9 areas with per-area counts (INV-01)
+- [ ] 16-02-PLAN.md — Apply the in-scope / out-of-scope design-goal filter with per-area count table → 248 actionable surface (INV-02)
 
 ### Phase 17: Parity Matrix & Categorization
 **Goal**: An evidence-backed fdars-vs-R parity matrix exists for every in-scope R capability, with each gap categorized to drive value ranking.
