@@ -1016,3 +1016,122 @@ The gap profile is overwhelmingly **differentiator** (144/162, 89%) — the bulk
 **Reading the priority signal.** Table-stakes gaps cluster in **Area 5 Inference (8 of 18)** — fdars has essentially no standalone hypothesis-testing surface (0 present in Area 5) — and **Area 4 ML regression (4 of 18)**, chiefly concurrent regression and functional-GLM families. **Area 9 (2)**, **Area 1 (2)**, and **Area 3 (2)** round out the list. Areas 2, 6, 7, 8 contribute **zero** table-stakes gaps: Area 2/8 because fdars already covers the baseline (registration, SPM), and Areas 6/7 because their gaps, though numerous, are specialized (functional time series, metric-space object data) rather than baseline-expected — they are the differentiator long tail, not table-stakes deficits.
 
 *This completes Phase 17 (GAP-01 parity matrix + GAP-02 categorization). The 18 table-stakes gaps and 144 differentiator gaps feed Phase 18's reverse-parity fdars-strengths sweep and Phase 19's value-ranked backlog.*
+
+---
+
+## Phase 18 — Reverse-Parity Strengths Sweep
+
+**Sweep date:** 2026-08-15 · **Requirement:** GAP-03 · **Mode:** audit-only (zero `fdars-core/src/` edits).
+
+This section walks **every module** in `fdars-core/src/` (crate shipped through v0.17.0) and catalogues where fdars is **unique** (no R FDA-ecosystem equivalent) or **ahead** of its closest R analog. The yardstick is the **R functional-data-analysis ecosystem** (the 35 packages of Phase 16 §R-Inventory + a handful of adjacent CRAN packages surfaced during re-vetting), **not scikit-fda**. This is the critical difference from the v0.14.0 §Phase 8 reverse-parity sweep (30 fdars-only-vs-scikit-fda items): **R is much broader than scikit-fda**, so several v0.14.0 "fdars-unique" items do *not* survive here.
+
+### Method & honesty rule
+
+- Every candidate strength is cross-checked against the Phase-16 R inventory (§R-Inventory), the Phase-17 parity matrix (§Parity-Matrix, esp. the present-heavy areas), and — where the inventory left doubt — a targeted CRAN/literature search (recorded in the row). A capability is **fdars-unique** only when **no R FDA package delivers it**; **fdars-ahead** only when an R analog exists but fdars' version is genuinely broader/more integrated.
+- **Where R leads, it is NOT a strength.** Per Phase 17, R leads on: `fdasrvf` elastic breadth (elastic multinomial, elastic PCA sub-variants), `fdapace` sparse-PACE FPCA, `refund`/`FDboost` FoF/pffr/boosting regression, `ftsa` functional forecasting + fACF, `frechet`/`fdadensity` metric-space & density object-data, `fdatest`/`fdANOVA`/`SCBmeanfd` inference. Those are Phase-17 gaps and are **excluded** from this catalogue.
+
+### Re-vet casualties (v0.14.0-vs-scikit-fda strengths that do NOT survive vs R)
+
+The v0.14.0 §Phase 8 sweep listed these as fdars-only vs scikit-fda; **R has them**, so they are dropped from the unique/ahead catalogues below:
+
+| v0.14.0 scikit-fda "fdars-only" item | Present in R? | R source (Phase 16 area / CRAN) |
+|---|---|---|
+| Statistical Process Monitoring / control charts (#2) | **Yes** | `funcharts` (Area 8) — Phase 17 rates fdars 9/10 *present*; fdars is ahead on chart *breadth* (see AHEAD-1), but SPM as a capability is not R-absent. |
+| Conformal prediction (#5) | **Yes** | `conformalInference.fd` (Area 4) — Phase 17 *present*; not fdars-unique. |
+| Elastic regression / FPCA / changepoint / shape depth / geodesics / Bayesian & constrained alignment / warping utils (#13, #18–#20, #22–#24, #27, #30) | **Yes (mostly)** | `fdasrvf` (Areas 2/3/4) covers SRVF regression, amplitude/phase FPCA, elastic depth, elastic changepoint, Karcher-mean geodesics, warp composition/inversion. `fdasrvf` is *broader* than fdars here (Pitfall 4) → these are Phase-17 territory, not strengths. Bayesian alignment: `fdasrvf` ships `bayesian` SRVF alignment too. |
+| Singular Spectrum Analysis (#9) | **Yes** | `Rfssa` (Functional SSA, CRAN) + `Rssa` (scalar SSA) — functional SSA decomposition exists in R. Re-vet search 2026-08-15. Dropped. |
+| Function-on-function regression (#17) | **Yes** | `refund` (`ff`/`pffr`), `FDboost` (Area 4) — fdars' `fof_regression` is *present* but R is broader (pffr mixed/RE, boosting) → Phase-17 gap side, not a strength. |
+| Function-on-scalar regression / FOSR incl. 2D (#21) | **Yes (1D)** | `refund` (`fosr`/`pffr`), `FDboost` (Area 4). 1D FOSR is *present* in both. **2D surface-response FOSR** (`function_on_scalar_2d`, tensor-product penalty) has no direct single-package R analog → retained as AHEAD-6 (nuance), not unique. |
+| Irregular functional data module (#28), Regression-FPCA backbone (#29), Multi-response SoF (#15) | **Yes / partial** | Irregular data: `funData::irregFunData`, `fdapace`, `face` (Areas 1/9). FPCA-in-regression: `refund`/`fda.usc` chain FPC scores. Multi-response SoF is niche but `refund` FoF/mv-response covers vector responses → dropped as not clearly R-absent. |
+
+### §Reverse-Parity — Per-Module Coverage (exhaustiveness proof)
+
+Every top-level module and submodule directory in `fdars-core/src/` is listed. **Strength found?** = whether the module contributes a row to the fdars-unique or fdars-ahead catalogues below (U-n / A-n), or "no" (capability present in R at parity or R leads — a Phase-17 concern, not a strength).
+
+| Module (`src/…`) | Capabilities scanned | Strength found? |
+|---|---|---|
+| `alignment/` (30 files: karcher, pairwise, srsf, geodesic, bayesian, constrained, closed, robust_karcher, shape_ci, phase_boxplot, elastic_depth, outlier, clustering, quality, shift, nd, partial_match, transfer, tsrvf, warp_stats, …) | Full SRVF/elastic alignment suite | **No** — `fdasrvf` (Pitfall 4) is broader; Phase-17 rates alignment *present* and lists sparse-2D/joint-GLM registration as gaps. Not a strength vs R. |
+| `andrews.rs` | `andrews_transform`, `andrews_loadings` | **U-1** — Andrews-curve transform + loadings for functional data; no R FDA package. |
+| `basis/` (bspline, fourier, pspline, projection, fourier_fit, auto_select) | B-spline/Fourier/P-spline bases, fit, projection, auto-select | **No** — `fda` is canonical (Area 1 *present*); R leads on monomial/constant/exp/power/FEM bases. |
+| `classification/` (lda, qda, knn, kernel, dd, cv, fit) | LDA/QDA/kNN/kernel/DD classifiers + CV | **No** — `fda.usc` at parity (Area 4 *present*). |
+| `clustering.rs` | k-means, fuzzy c-means for fd | **No** — `fda.usc`/`fdacluster` at parity; R leads (DBSCAN, funHDDC, funLBM). |
+| `conformal/` (regression, classification, cv, elastic, generic) | Split/full conformal + elastic conformal | **A-2** (nuance) — `conformalInference.fd` covers regression conformal (parity); fdars adds **conformal *classification*** + **elastic-space conformal**, which the R package does not. |
+| `covariance.rs` | Empirical / smoothed covariance surfaces | **No** — `roahd`/`fda.usc`/`face` at parity or ahead (sparse FACE). |
+| `cv.rs` | Generic CV utilities, R² metrics | **No** — ergonomic layer; `fda.usc`/`refund` at parity. |
+| `depth/` (band, modified band, fraiman_muniz, modal, random_projection, random_tukey, rpd, spatial) | Batch functional depths | **No** — `roahd`/`fdaoutlier`/`ddalpha` at parity or ahead (long tail of depths R has, fdars lacks — Phase 17). |
+| `detrend/` (stl, loess, linear, polynomial, diff, decompose, auto) | STL/LOESS detrend, differencing, decompose | **No** — STL/LOESS are scalar-TS-standard (`stats::stl`, `forecast`); fd differencing is Phase-17 *partial* (ftsa). Not R-absent. |
+| `distance.rs` | Pairwise Lp distances between curves | **No** — `fda.usc::metric.lp` at parity. |
+| `elastic_changepoint.rs` | Amplitude/phase/FPCA elastic changepoint | **No** — `fdasrvf` elastic changepoint (Area 3 *present*). |
+| `elastic_explain.rs` | `elastic_pcr_attribution` | **U-2** — feature attribution for elastic-PCR models; no R FDA explainability, elastic or otherwise. |
+| `elastic_fpca.rs` | vert/horiz/joint (amplitude/phase) FPCA | **No** — `fdasrvf` amplitude/phase FPCA (Area 2 *present*). |
+| `elastic_regression/` (regression, logistic, pcr, scalar_on_shape) | Elastic SRVF regression family | **No** — `fdasrvf` (Area 4 *present*; R leads on elastic multinomial). |
+| `explain/` (pdp, shap, ale_lime, importance, sensitivity, counterfactual, diagnostics, advanced + helpers/) | 44+ explainability fns for functional models | **U-3** (headliner) — model explainability for functional models. |
+| `explain_generic/` (pdp, shap, lime, ale, importance, saliency, sobol, friedman, anchor, prototype, counterfactual, stability + `FpcPredictor` trait) | 15 model-agnostic explainers via one trait | **U-3** (headliner) — same family; trait-driven generic layer. |
+| `famm.rs` | `fmm`, `fmm_predict`, `fmm_test_fixed` | **No** — functional mixed models exist in R (`denseFLMM`, `multifamm`, `fastFMM`, Area 4); R is broader (random-effects estimators). Phase-17 *partial*. |
+| `fdata.rs` | Core fd container + summary stats (mean/var/std/cov/median/trim) | **No** — `fda`/`fda.usc`/`roahd` at parity (Area 1 *present*). |
+| `fof_regression.rs` | Function-on-function regression | **No** — `refund`/`FDboost` broader (Area 4). |
+| `function_on_scalar.rs` | 1D FOSR + permutation ANOVA | **No** — `refund`/`FDboost` at parity/ahead. |
+| `function_on_scalar_2d.rs` | 2D surface-response FOSR (tensor penalty) | **A-6** (nuance) — 2D functional-surface response regression with tensor-product penalty; no single R package packages this exactly (`refund` pffr is 1D-response-centric). Modest lead. |
+| `gmm/` (em, cluster, covariance, init) | GMM (EM) clustering for fd | **No** — model-based fd clustering exists in R (`funHDDC`, `funFEM`, `mclust`-on-scores); R broader. |
+| `helpers.rs` | Quadrature, interpolation, extrapolation policy, imputation | **No** — infrastructure; `fda`/`tf` at parity (Area 1 *present*). |
+| `irreg_fdata/` (kernels, smoothing) | Irregular→grid kernel smoothing | **No** — `funData::irregFunData`, `fdapace`, `face` cover irregular data. |
+| `landmark.rs` | Landmark detect + register, monotone warp | **No** — `fda` landmark registration (Area 2 *present*). |
+| `linalg.rs` | faer/nalgebra linear-algebra shims | **No** — infrastructure, not a user capability. |
+| `matrix.rs` | `FdMatrix` column-major container | **No** — infrastructure; `funData`/`fda` fd containers at parity. |
+| `metric/` (lp, dtw, soft_dtw, hausdorff, kl, fourier, deriv, pca, basis_coef, hshift) | Curve distances incl. **soft-DTW + soft-DTW barycenter**, Hausdorff, KL, DTW | **A-4** — classic DTW & Lp exist in R (`dtw`, `fda.usc`); **soft-DTW divergence + soft-DTW barycenter** for functional data have no CRAN R analog (Python `tslearn` only; re-vet search 2026-08-15). |
+| `outliers.rs` | MS-plot / directional outlyingness, outliergram | **No** — `fdaoutlier`/`roahd` at parity or ahead (Area 3). |
+| `regression.rs` | FPCA (`fdata_to_pc_1d`), `FpcaResult`, PLS | **No** — FPCA at parity (`fda`/`fda.usc`/`fdapace`); the *explainability integration* is credited under U-3, not here. |
+| `scalar_on_function/` (fregre_lm, pls, nonparametric, logistic, **robust**, **multi**, cv, bootstrap) | SoF regression family | **A-5** (nuance) — core SoF at parity (`fda.usc`); **robust SoF** (`fregre_l1` L1-loss, `fregre_huber` Huber-loss) has no direct R FDA analog (fda.usc SoF is OLS/kernel/PLS). Modest lead. |
+| `scoring.rs` | Functional MAE/MSE/MAPE/MSLE/explained-variance | **No** — `ftsa` error metrics at parity (Area 6 *present*). |
+| `seasonal/` (autoperiod, period, sazed, peak, strength, change, hilbert, lomb_scargle, matrix_profile, ssa) | Period detection, peaks, Hilbert, Lomb-Scargle, matrix profile, SSA on fd | **A-7** — SSA has an R functional analog (`Rfssa`) → *not* unique; but **automatic period detection (SAZED/autoperiod), functional matrix-profile (motif/discord), Hilbert-transform instantaneous frequency, and Lomb-Scargle** for functional curves have no R **FDA** package (scalar-TS `tsmp`/`lomb`/`seewave` exist, but not integrated for fd). Ahead-of-nearest-analog (numeric-signal toolkit inside an FDA library). |
+| `simulation.rs` | KL-expansion Gaussian fd simulation | **No** — `fda.usc`/`funData`/`fdasrvf` simulate fd; `freqdom`/`ftsa` simulate FARMA/VAR (R broader, Phase-17). |
+| `smooth_basis.rs` | Penalized basis smoothing + GCV + penalty matrices | **No** — `fda::smooth.basis` canonical (Area 1 *present*). |
+| `smoothing.rs` | Kernel smoothers (NW/local-linear/kNN), CV/GCV bandwidth | **No** — `fda.usc`/`face` at parity (Area 2 *present*). |
+| `spm/` (21 files: phase, monitor, ewma, cusum, mewma, amewma, frcc, control, stats, rules, contrib, arl, elastic_spm, mfpca, iterative, profile, partial, chi_squared, ncomp, bootstrap) | Full SPM chart suite for functional data | **A-1** — `funcharts` covers functional SPM (Phase-17 *present*), so SPM is not R-absent; but fdars' **chart-type breadth** (EWMA + CUSUM + MEWMA + adaptive-MEWMA + FRCC + Nelson/Western-Electric run rules + contribution analysis + elastic-shape SPM) exceeds `funcharts` in one integrated module → ahead on breadth. |
+| `streaming_depth/` (fraiman_muniz, bd, mbd, rolling, sorted_ref) | Incremental/online functional depth | **U-5** — streaming/online functional depth; R depth is batch-only (`roahd`/`ddalpha`/`DepthProc`; re-vet search 2026-08-15). |
+| `tolerance/` (fpca, degras, conformal, equivalence, exponential, elastic + types) | Simultaneous functional tolerance bands | **U-6** — simultaneous functional tolerance bands (FPCA/Degras/conformal/equivalence/exp-family/elastic); no R FDA package. (R `SCBmeanfd` gives *confidence* bands for the mean — a different object; noted, not equated.) |
+| `utility.rs` | Inner products, inner-product matrix | **No** — `fda` inner products at parity. |
+| `validation.rs` | Input dimension/parameter validation | **No** — infrastructure. |
+| `warping.rs` | Warp invert/compose/normalize, γ↔ψ | **No** — `fda`/`fdasrvf` warp utilities (Area 2 *present*). |
+| `wire.rs` | `FdaData` unified serializable workflow-result container | **U-4** — Rust-native serializable multi-layer workflow container (FPCA/alignment/depth/cluster/regression/FOSR/tolerance/SPM/explain layers). No R analog (R uses S3/S4 result objects + lists, not a unified layer container). API-ergonomics, not a numeric algorithm. |
+
+**Exhaustiveness:** all **21 directory submodule groups + 21 top-level `.rs` files = 42 module units** in `fdars-core/src/` scanned (excludes `lib.rs`, `prelude.rs`, `error.rs`, `parallel.rs`, `test_helpers.rs`, `elastic.rs` re-export shim — pure infrastructure/re-export with no user capability). Every unit maps to a catalogue row (U-n/A-n) or an explicit "No — R at parity / R leads" verdict.
+
+### §Reverse-Parity — fdars-unique (no R equivalent)
+
+Capabilities with **no** R FDA-ecosystem package delivering them. Each row names the closest-R "none found" evidence.
+
+| # | fdars capability | fdars module / function | Closest R analog — none found (evidence) | Confidence |
+|---|---|---|---|---|
+| **U-1** | **Andrews-curve transform for functional data** — `andrews_transform` (Andrews Fourier transform for dimensionality-reduction) + `andrews_loadings` (component interpretation). | `andrews.rs` | No R FDA package offers an Andrews-curve *transform for functional data*. Generic `andrews_curve`-style plotting exists in tabular-viz packages (e.g. base/`ggplot2` recipes) but as a *plot*, not a functional-data numeric transform + loadings. Not in Phase-16 inventory. | HIGH |
+| **U-2** | **Elastic-model explainability** — `elastic_pcr_attribution`: feature attribution for elastic-PCR (SRSF-space) regression. | `elastic_explain.rs` | No R FDA package offers explainability for elastic/shape models (nor for functional models at all — see U-3). | MEDIUM |
+| **U-3** | **Model explainability for functional models** (headliner) — PDP, SHAP, LIME, ALE, permutation & Friedman-H importance, Sobol indices, saliency, sensitivity, counterfactual search, anchor explanations, prototype/criticism, DFbetas/DFFits influence diagnostics — model-agnostic via the `FpcPredictor` trait (drives regression + classification + logistic uniformly). | `explain/` (44+ fns, 9 files + helpers/), `explain_generic/` (15 fns + `FpcPredictor`) | **None found.** R has strong *model-agnostic* explainer packages (`DALEX`, `lime`, `pdp`, `iml`, `modelStudio`, `fastshap`) — but they operate on tabular/scalar-feature models and are **not integrated with functional-regression / FPC-score models**. No R FDA package (`fda.usc`, `refund`, `FDboost`, `fdapace`, …) exposes PDP/SHAP/LIME/ALE for functional predictors. Re-vet search 2026-08-15. | HIGH |
+| **U-4** | **WIRE unified workflow container** — `FdaData` + typed `Layer` enum (FPCA/alignment/distances/depth/outlier/cluster/regression/FOSR/tolerance/mean/SPM-chart/SPM-monitor/explain/custom): one serializable Rust-native structure capturing heterogeneous FDA-pipeline outputs. | `wire.rs` | **None found.** R FDA packages return per-method S3/S4 objects and ad-hoc lists; there is no unified serializable multi-layer workflow-result container. (API-ergonomics strength, not a numeric algorithm.) | MEDIUM |
+| **U-5** | **Streaming / online functional depth** (headliner) — incremental Fraiman-Muniz, streaming Band Depth & Modified Band Depth, rolling reference window, sorted-reference-state accumulation. | `streaming_depth/` (5 files; `StreamingDepth` trait + 4 impls) | **None found.** All R functional-depth packages (`roahd`, `fdaoutlier`, `ddalpha`, `DepthProc`, `depthTools`, `fda.usc`) compute depth on a **fixed batch reference set** — no incremental/online/rolling depth. Re-vet search 2026-08-15. | HIGH |
+| **U-6** | **Simultaneous functional tolerance bands** — FPCA-based, Degras bootstrap, conformal, equivalence-test, exponential-family, and elastic tolerance bands (`ToleranceBand`, `BandType`, `PhaseToleranceBand`, `ElasticToleranceBandResult`). | `tolerance/` (6 method files + types) | **None found.** No R FDA package produces simultaneous functional *tolerance* bands. `SCBmeanfd` gives *confidence* bands for the **mean function** (a different statistical object — coverage of the mean, not of future curves); `roahd`/`fdaoutlier` give depth-fence boxplots (not tolerance bands). | HIGH |
+
+**fdars-unique count: 6** (2 headliners: U-3 explainability, U-5 streaming depth; plus U-1 Andrews, U-2 elastic-explain, U-4 WIRE, U-6 tolerance bands).
+
+### §Reverse-Parity — fdars-ahead (leads closest R analog)
+
+An R analog exists, but fdars' version is broader / more integrated. The R analog is named and the nature of the lead stated. (These are *modest* leads — where R clearly leads, e.g. `fdasrvf` elastic breadth or `refund` FoF, the item is a Phase-17 gap and is excluded.)
+
+| # | fdars capability | fdars module | Named R analog | Nature of the lead |
+|---|---|---|---|---|
+| **A-1** | **SPM chart-type breadth in one module** — EWMA, CUSUM, MEWMA, adaptive-MEWMA, FRCC, χ², Hotelling-T²/SPE, Nelson/Western-Electric run rules, contribution analysis, ARL simulation, elastic-shape SPM, MFPCA SPM. | `spm/` (21 files) | `funcharts` (1.8.1) | `funcharts` covers Phase-I/II functional control charts and profile monitoring (Phase-17 rates fdars 9/10 *present* vs it). fdars packages a **wider set of chart types + run-rule logic + elastic-shape monitoring** in one integrated suite; `funcharts` does not expose CUSUM/adaptive-MEWMA/run-rules at the same breadth. Lead = chart-type breadth + rule engine. |
+| **A-2** | **Conformal prediction breadth** — split/full conformal for **regression *and* classification**, multiple non-conformity scores, plus **elastic-space** conformal. | `conformal/` (5 files) | `conformalInference.fd` (1.1.1) | The R package targets conformal *regression* prediction bands. fdars adds **conformal classification** (`ClassificationScore`) and **elastic conformal** — modes absent from the R package. Lead = task coverage (classification + elastic). |
+| **A-4** | **Soft-DTW distance + soft-DTW barycenter for curves** — smooth differentiable DTW, soft-DTW divergence, and soft-DTW barycenter, alongside classic DTW / Hausdorff / KL metrics. | `metric/soft_dtw.rs`, `metric/dtw.rs` | `dtw` (classic DTW), `fda.usc` (Lp/semimetrics) | Classic DTW and Lp semimetrics exist in R. **Soft-DTW (divergence + barycenter)** has no CRAN R implementation for functional data — it lives in Python `tslearn`/`mblondel/soft-dtw`. Lead = differentiable soft-DTW family inside an FDA library. Re-vet search 2026-08-15. |
+| **A-5** | **Robust scalar-on-function regression** — L1-loss (`fregre_l1`) and Huber-loss (`fregre_huber`) SoF regression + robust prediction/CV. | `scalar_on_function/robust.rs` | `fda.usc` (`fregre.pc`/`fregre.np`/`fregre.pls`) | `fda.usc` covers OLS/PLS/kernel SoF regression but **not L1/Huber robust-loss** SoF. (`roahd`/`fda.usc` have robust *summaries*, not robust *regression*.) Lead = robust-loss SoF estimators. |
+| **A-6** | **2D surface-response function-on-scalar regression** — `function_on_scalar_2d` with tensor-product roughness penalty (`Grid2d`, `FosrResult2d`). | `function_on_scalar_2d.rs` | `refund` (`fosr`/`pffr`) | R FOSR (`refund`) is oriented to 1D functional responses; fdars packages a **2D functional-surface response** FOSR with a tensor-product penalty as a first-class estimator. Lead = 2D-surface response support. |
+| **A-7** | **Signal-processing toolkit for functional curves** — automatic period detection (SAZED, autoperiod), functional **matrix profile** (motif/discord discovery), Hilbert-transform instantaneous frequency/amplitude, Lomb-Scargle periodogram. | `seasonal/` (autoperiod, sazed, matrix_profile, hilbert, lomb_scargle) | scalar-TS: `tsmp` (matrix profile), `lomb` (Lomb-Scargle), `seewave`/`hht` (Hilbert); functional SSA: `Rfssa` | Each primitive has a **scalar-time-series** R package, but **none is integrated for functional-data curves inside an FDA library**. (SSA itself is *not* a lead — `Rfssa` provides functional SSA; excluded.) Lead = period/motif/instantaneous-frequency signal tooling operating on `FdMatrix` curves. |
+
+**fdars-ahead count: 6** (A-1 SPM breadth, A-2 conformal breadth, A-4 soft-DTW, A-5 robust SoF, A-6 2D-FOSR, A-7 fd signal toolkit). *(Numbering skips A-3: the elastic-alignment family — an A-3 candidate vs scikit-fda — is a Phase-17 gap vs `fdasrvf` and is deliberately omitted.)*
+
+### §Reverse-Parity — Summary count
+
+- **Modules walked:** 42 module units (21 submodule directory groups + 21 top-level `.rs` capability files); 6 pure-infrastructure/re-export files excluded. Every unit carries an explicit verdict → demonstrably exhaustive.
+- **fdars-unique (no R equivalent): 6** — U-3 model explainability (headliner) · U-5 streaming/online depth (headliner) · U-1 Andrews transform · U-2 elastic-model explain · U-4 WIRE workflow container · U-6 simultaneous tolerance bands.
+- **fdars-ahead (leads closest R analog): 6** — A-1 SPM chart breadth (vs `funcharts`) · A-2 conformal breadth incl. classification+elastic (vs `conformalInference.fd`) · A-4 soft-DTW + barycenter (vs `dtw`) · A-5 robust L1/Huber SoF (vs `fda.usc`) · A-6 2D-surface FOSR (vs `refund`) · A-7 functional signal toolkit (vs scalar-TS `tsmp`/`lomb`/`hht`).
+- **Net vs the v0.14.0 scikit-fda sweep:** the 30 scikit-fda "fdars-only" items collapse to **12 R-honest strengths** (6 unique + 6 ahead). The big casualties are **SPM, conformal, and the entire elastic/shape stack** (unique vs scikit-fda, but R has `funcharts`/`conformalInference.fd`/`fdasrvf`), plus **SSA** (`Rfssa`) and **FoF/FOSR-1D** (`refund`/`FDboost`). fdars' *genuine* R-relative moat is **explainability for functional models** and **streaming depth** — no R package touches either.
+
+*This completes Phase 18 (GAP-03 reverse-parity fdars-strengths sweep). The 12 R-honest strengths feed Phase 19's consolidated findings — keeping the backlog from proposing work in areas where fdars already leads.*
