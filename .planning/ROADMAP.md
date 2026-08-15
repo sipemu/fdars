@@ -118,11 +118,13 @@ First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes
   3. `oneway_anova_vstat` computes the asymptotic V-statistic ANOVA form: it agrees (same reject/accept decision, comparable p-value) with the existing permutation ANOVA on separated vs. pooled groups, and is added alongside — not replacing — `function_on_scalar::fanova`.
   4. All new functions consume existing fitted-model residuals + integration weights, return `Result<_, FdarError>`, are crate-root re-exported, carry inline `#[cfg(test)]` tests, and introduce no changes to existing public signatures (additive/non-breaking).
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 21-01-PLAN.md — FLM inference: `flm_f_test` (tracer: F-dist SF + end-to-end F-test), then `flm_gof_test` (residual GoF) and `oneway_anova_vstat` (asymptotic V-statistic alongside `fanova`); all crate-root re-exported, additive/non-breaking
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 20. Two-Sample Functional Tests & `inference/` Module | 1/1 | Complete    | 2026-08-16 |
-| 21. Functional-Linear-Model Inference | 0/TBD | Not started | - |
+| 21. Functional-Linear-Model Inference | 0/1 | Not started | - |
