@@ -77,7 +77,7 @@ New deliverables land in `.planning/research/`, named distinctly from the archiv
 - [x] **Phase 16: R Ecosystem Inventory** - Versioned, area-organized, capability-first inventory of the R FDA ecosystem, then design-goal filtered into in-scope / out-of-scope with per-area counts (completed 2026-08-15)
 - [x] **Phase 17: Parity Matrix & Categorization** - Per-capability fdars-vs-R present/partial/absent verdicts (matched by capability, evidence-noted), then every gap categorized table-stakes / differentiator / out-of-scope (completed 2026-08-15)
 - [x] **Phase 18: Reverse-Parity Strengths Sweep** - Module-map walk of fdars cataloguing capabilities with no R equivalent or where fdars is ahead of its closest R analog (completed 2026-08-15)
-- [ ] **Phase 19: Consolidated Report & Ranked Backlog** - Consolidated R-ecosystem gap report + GSD-ready value-ranked (`score = value/√effort`) promotion-ready backlog
+- [x] **Phase 19: Consolidated Report & Ranked Backlog** - Consolidated R-ecosystem gap report + GSD-ready value-ranked (`score = value/√effort`) promotion-ready backlog (completed 2026-08-15)
 
 ## Phase Details
 
@@ -152,7 +152,7 @@ Plans:
 
 Plans:
 
-- [ ] 19-01: Consolidate the R-ecosystem gap report — methodology + findings + strengths summary (RPT-01)
+- [x] 19-01: Consolidate the R-ecosystem gap report — methodology + findings + strengths summary (RPT-01)
 - [ ] 19-02: Produce the GSD-ready value-ranked backlog with 7-field promotion blocks (RPT-02)
 
 ## Progress
@@ -165,7 +165,7 @@ Phases execute in numeric order: 16 → 17 → 19, with 18 parallelizable alongs
 | 16. R Ecosystem Inventory | v0.18.0 | 2/2 | Complete    | 2026-08-15 |
 | 17. Parity Matrix & Categorization | v0.18.0 | 1/1 | Complete    | 2026-08-15 |
 | 18. Reverse-Parity Strengths Sweep | v0.18.0 | 1/1 | Complete    | 2026-08-15 |
-| 19. Consolidated Report & Ranked Backlog | v0.18.0 | 0/2 | Not started | - |
+| 19. Consolidated Report & Ranked Backlog | v0.18.0 | 1/1 | Complete    | 2026-08-15 |
 
 ---
 *Latest: v0.18.0 R-Ecosystem Gap Audit started 2026-08-13 — Phases 16–19, 7 requirements (INV-01/INV-02 → Phase 16; GAP-01/GAP-02 → Phase 17; GAP-03 → Phase 18; RPT-01/RPT-02 → Phase 19). Audit-only (zero `fdars-core/src/` edits); R FDA ecosystem is the sole yardstick. Deliverables: `.planning/research/R-AUDIT-REPORT.md` + `.planning/research/R-BACKLOG.md` (distinct from the archived scikit-fda `AUDIT-REPORT.md`/`BACKLOG.md`). Prior: v0.17.0 shipped via PR #41 (crate 0.17.0, tag v0.17.0); v0.16.0 PR #40; v0.15.0 crates.io 0.15.0; v0.14.0 audit shipped 2026-08-09.*

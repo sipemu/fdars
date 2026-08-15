@@ -22,8 +22,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Report & Backlog
 
-- [ ] **RPT-01**: Produce a **consolidated R-ecosystem gap report** — methodology (packages + versions surveyed, in/out-of-scope rule, verdict and category rubrics) plus consolidated findings (gap counts by area and category, and the fdars-strengths summary).
-- [ ] **RPT-02**: Produce a **GSD-ready value-ranked backlog** — `score = value / √effort` methodology (value 1–5, effort S/M/L, severity P1/P2/P3), a master ranked table (strictly non-increasing), and a 7-field promotion-ready block per candidate item, ready to promote via `/gsd-new-milestone`.
+- [x] **RPT-01**: Produce a **consolidated R-ecosystem gap report** — methodology (packages + versions surveyed, in/out-of-scope rule, verdict and category rubrics) plus consolidated findings (gap counts by area and category, and the fdars-strengths summary).
+- [x] **RPT-02**: Produce a **GSD-ready value-ranked backlog** — `score = value / √effort` methodology (value 1–5, effort S/M/L, severity P1/P2/P3), a master ranked table (strictly non-increasing), and a 7-field promotion-ready block per candidate item, ready to promote via `/gsd-new-milestone`.
 
 ## v2 Requirements
 
@@ -60,8 +60,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GAP-01 | Phase 17 | Complete |
 | GAP-02 | Phase 17 | Complete |
 | GAP-03 | Phase 18 | Complete |
-| RPT-01 | Phase 19 | Pending |
-| RPT-02 | Phase 19 | Pending |
+| RPT-01 | Phase 19 | Complete |
+| RPT-02 | Phase 19 | Complete |
 
 **Coverage:**
 
