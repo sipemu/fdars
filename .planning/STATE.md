@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-08-16T19:16:25.728Z"
 last_activity: 2026-08-16
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,34 +17,34 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-15)
+See: .planning/PROJECT.md (updated 2026-08-16)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone gives fdars its first standalone functional-inference surface (R-parity Area 5, currently 0/22 present), promoted top-first from the v0.18.0 R-ecosystem backlog.
-**Current focus:** Phase 20 — Two-Sample Functional Tests & `inference/` Module
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the two top-ranked (score 5.00, P1 table-stakes, S-effort) R-parity quick wins from `.planning/research/R-BACKLOG.md`, each closing a baseline capability gap by wrapping existing fdars infrastructure.
+**Current focus:** Phase 22 — Constant Basis & AIC Smoothing Selection (T-01)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap defined)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-16 — Milestone v0.20.0 started
+Status: Roadmap complete — ready for /gsd-plan-phase 22
+Last activity: 2026-08-16 — Milestone v0.20.0 roadmap created (Phases 22–23)
 
-## Milestone Roadmap (v0.19.0)
+## Milestone Roadmap (v0.20.0)
 
-Two sequential phases, two requirements. First **implementation** milestone from the R-ecosystem backlog — real `fdars-core/src/` code. All additions are additive/non-breaking, `Result`-returning, with inline `#[cfg(test)]` tests and crate-root re-exports; **zero changes to existing public signatures.** Closes the two P1 table-stakes items in R-parity Area 5 (Inference).
+Two **independent** phases, two requirements. Second implementation milestone from the R-ecosystem backlog — real `fdars-core/src/` code. All additions are additive/non-breaking, `Result`-returning, with inline `#[cfg(test)]` tests and crate-root re-exports; **zero changes to existing public signatures.** Both items are S-effort and **wrap existing infrastructure** (low risk); mirrors the v0.15.0 quick-wins pattern.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 20 — Two-Sample Functional Tests & `inference/` Module | INF-01 | Create new `fdars-core/src/inference/` module with standalone two-sample tests: `t_perm_test`, `f_perm_test` (`tperm.fd`/`Fperm.fd` analogs), a two-sample mean/covariance-equality test, and `mean_scb` (simultaneous confidence bands) + an SCB-based two-sample test. **Reuse-first:** lift `function_on_scalar` permutation machinery, expose `spm::stats::hotelling_t2` as the two-sample mean test, reuse `tolerance/degras` bootstrap-band code for the SCB. Builds the module scaffolding INF-02 depends on. |
-| 21 — Functional-Linear-Model Inference | INF-02 | Add formal FLM inference on a fitted `FregreLmResult`: `flm_gof_test` (goodness-of-fit) + `flm_f_test` (F-test), both residual-based against the FLM null; plus an asymptotic `oneway_anova_vstat` one-way functional ANOVA V-statistic **alongside** the existing permutation ANOVA (`function_on_scalar::fanova`, not replaced). **Reuse-first:** consume fitted-model residuals + integration weights already available. **Depends on Phase 20** (shares the `inference/` module scaffolding). |
+| 22 — Constant Basis & AIC Smoothing Selection | T-01 | Add a named `constant_basis` / `ConstantBasis` constructor to `basis/` (single intercept column + zero roughness penalty, usable in regression design matrices), and add an AIC criterion (AIC = n·log(RSS/n) + 2·tr(H)) to the automatic smoothing-parameter selector (`smooth_basis` / `smoothing`, which do GCV/CV only today). **Reuse-first:** reuses the existing basis system + the hat-matrix trace already computed for GCV. No new algorithm. |
+| 23 — Functional Boxplot & Depth Dispatcher | T-02 | Add the López-Pintado depth-fence `functional_boxplot` (numeric outputs only: median curve, central region = inner 50% by depth, 1.5×IQR-of-depths whisker/fence, per-curve outlier flags — no plotting) in `outliers`/`depth`, and a unified `DepthMethod` enum + `functional_depth(data, method)` dispatcher over the existing depth functions (`fraiman_muniz_1d`, `band_1d`, `modified_band_1d`, `random_projection_1d`, …). **Reuse-first:** wraps existing depth code; dispatcher mirrors the `CovType`/`ProjectionBasisType` enum-dispatch convention. |
 
-**Execution order:** 20 → 21 (strict — INF-02's FLM inference reuses the `inference/` module created in Phase 20).
+**Execution order:** 22 and 23 are **mutually independent** (disjoint modules: `basis/`+`smoothing` vs `depth/`+`outliers`). Either may execute first; they may run in parallel. Default order 22 → 23 by backlog rank (both score 5.00; T-01 rank 1, T-02 rank 2).
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 36 (25 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0 + 5 in v0.18.0)
+- Total plans completed: 38 (21 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0 + 5 in v0.18.0 + 2 in v0.19.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -57,44 +57,39 @@ Two sequential phases, two requirements. First **implementation** milestone from
 | 12–13 | v0.16.0 | 4 |
 | 14–15 | v0.17.0 | 3 |
 | 16–19 | v0.18.0 | 5 |
+| 20–21 | v0.19.0 | 2 |
 
 **Recent Trend:**
 
-- Last 5 plans: 16-01, 16-02, 17-01, 18-01, 19-01 (v0.18.0) — all completed + verified
+- Last 5 plans: 17-01, 18-01, 19-01, 20-01, 21-01 — all completed + verified
 - Trend: —
 
 *Updated after each plan completion*
-**Per-Plan Metrics:**
-
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| Phase 20 P01 | 1 session | 3 tasks | 6 files |
-| Phase 21 P01 | 1h20m | 4 tasks | 7 files |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Relevant to current work (v0.19.0 implementation):
+Relevant to current work (v0.20.0 implementation):
 
-- v0.19.0 is an **implementation** milestone — real `fdars-core/src/` code (the first drawn from the R-ecosystem backlog). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
-- Scope is the **two P1 table-stakes inference items** (INF-01, INF-02). INF-03 (ITP family, P2 differentiator) is **deferred** to v2.
-- Phase numbering **continues** from v0.18.0 (ended at Phase 19) → v0.19.0 starts at Phase 20.
-- **INF-01 first, INF-02 second** — INF-01 creates the `fdars-core/src/inference/` module scaffolding + two-sample tests; INF-02's FLM inference reuses that module (strict 20 → 21 order).
-- **Reuse-first mandate (from R-BACKLOG.md):**
-  - INF-01 reuses `function_on_scalar` permutation machinery (lift into standalone `t_perm_test`/`f_perm_test`), exposes `spm::stats::hotelling_t2` as the two-sample mean test, and reuses `tolerance/degras` bootstrap-band code for `mean_scb`.
-  - INF-02 reuses fitted `FregreLmResult` residuals + integration weights, and adds the asymptotic V-statistic ANOVA **alongside** the existing permutation ANOVA in `function_on_scalar.rs` (not a replacement).
-- R baselines matched by **capability** (test statistic + p-value + decision), not R's exact signatures: `fda::Fperm.fd`/`tperm.fd`, `fda.usc` mean/cov equality + FLM GoF/F-test, `SCBmeanfd`, `fdatest`/`fdANOVA` V-statistic.
-- Crate is at 0.17.0 (v0.18.0 was audit-only); the crate-version bump to 0.19.0 is a **ship-time** decision, not part of the implementation phases.
+- v0.20.0 is an **implementation** milestone — real `fdars-core/src/` code (the second drawn from the R-ecosystem backlog, after v0.19.0). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
+- Scope is the **two top-ranked (score 5.00) P1 table-stakes S-effort quick wins** (T-01, T-02). Both **wrap existing infrastructure** — low risk; mirrors the v0.15.0 quick-wins pattern.
+- Phase numbering **continues** from v0.19.0 (ended at Phase 21) → v0.20.0 starts at Phase 22. No reset.
+- **T-01 and T-02 are mutually independent** — they touch **disjoint modules** (`basis/`+`smoothing`/`smooth_basis` vs `depth/`+`outliers`). Two phases (22 = T-01, 23 = T-02); no cross-phase dependency, so they may execute in either order or in parallel. Default order 22 → 23 by backlog rank.
+- **Reuse-first mandate (from R-BACKLOG.md T-01/T-02 blocks):**
+  - T-01 reuses the existing `basis/` system (constant basis = single-column design + zero roughness penalty) and the hat-matrix trace already computed for GCV (AIC = n·log(RSS/n) + 2·tr(H)); no new algorithm.
+  - T-02 wraps the existing depth functions (`fraiman_muniz_1d`, `band_1d`, `modified_band_1d`, `random_projection_1d`, …) behind a `DepthMethod`-dispatched `functional_depth`, and adds the canonical depth-fence `functional_boxplot` as numeric outputs (central region + 1.5×IQR-of-depths whisker + outlier flags).
+- R baselines matched by **capability**, not R's exact signatures: `fda`/`fda.usc` (constant basis, `akaike_information_criterion` smoothing); `roahd`/`fdaoutlier`/`fda.usc` (functional boxplot fences + general depth dispatcher).
+- **Plotting is out of scope** — T-02 delivers the *numeric* central-region/whisker/outlier outputs only (consistent with the R audit's plotting exclusion). T-01 adds **AIC only** (mainstream criterion); FPE/Shibata/Rice are a separate lower-ranked backlog item.
+- Crate is at 0.17.0 (v0.18.0 was audit-only; v0.19.0 shipped code but the release is still pending). The crate-version bump to 0.20.0 (and the pending 0.19.0 release) is a **ship-time** decision, not part of the implementation phases.
 
 Conventions carried from prior milestones (relevant to implementation):
 
-- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` for reproducible permutation tests.
+- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved.
+- Enum-dispatch convention already established (`CovType`, `ProjectionBasisType`, `DepthMethod`-style) — the T-02 `DepthMethod` dispatcher follows it.
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
-- TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code, so this pointer matters again.
-- [Phase ?]: Phase 20 INF-01: inference/ module reuses fanova/hotelling_t2/scb_mean_degras; self-contained chi-square SF avoids a statrs dependency
-- [Phase ?]: flm_gof_test uses F-form Ramsey-RESET residual lack-of-fit; oneway_anova_vstat uses scaled-chi2 (Box/Satterthwaite) V-null; F-dist SF self-contained via incomplete beta (no new dep)
+- TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
 
 ### Pending Todos
 
@@ -103,21 +98,23 @@ None yet.
 ### Blockers/Concerns
 
 - Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer).
-- /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer). Relevant again now that the milestone compiles real code + doctests.
-- Permutation tests are randomized — inline `#[cfg(test)]` assertions must seed deterministically (per-thread RNG convention) and assert on p-value **direction/threshold** (reject vs. fail-to-reject), not exact values, to avoid flaky tests.
+- /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer). Relevant since the milestone compiles real code + doctests.
+- The functional-boxplot fence definition (López-Pintado 1.5×IQR-of-depths) has minor R-implementation variants (`roahd` vs `fdaoutlier` vs `fda.usc`); pin one convention during planning and document the choice in rustdoc (as prior milestones documented divergences).
 
 ## Deferred Items
 
-v2 backlog items deferred at v0.19.0 definition (2026-08-15): INF-03 (Interval Testing Procedure / ITP family — P2 differentiator; depends on the INF-01 `inference/` scaffolding). Larger R-parity clusters (T-01/T-02 quick wins, REG-01 concurrent regression, REG-02 functional GLM families, FPCA-01 PACE sparse FPCA, FTS-*, FRE-*, etc.) remain ranked in `.planning/research/R-BACKLOG.md` — see REQUIREMENTS.md v2 section.
+v2 backlog items (from `.planning/research/R-BACKLOG.md`, see REQUIREMENTS.md v2 section): REG-01 (concurrent/varying-coefficient regression), REG-02 (functional GLM families), REG-03 (elastic multinomial regression), INF-03 (Interval Testing Procedure / ITP family — deferred from v0.19.0), FPCA-01 (PACE sparse FPCA), plus the larger differentiator clusters (DEPTH-01, OUT-01, FTS-*, FRE-*, DENS-*, CLUS-*, REP-*, SPARSE-*).
 
-Advisory tech-debt carried forward (not v0.19.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; Phases 10/11/14/15 VALIDATION.md remain `draft` (Nyquist TODO).
+Advisory tech-debt carried forward (not v0.20.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; Phases 10/11/14/15 VALIDATION.md remain `draft` (Nyquist TODO).
+
+**Also pending (not a backlog item):** a crate release for v0.19.0 — version bump + PR + tag, since v0.19.0 shipped real code.
 
 ## Session Continuity
 
-Last session: 2026-08-16T07:35:18.365Z
-Stopped at: Completed 21-01-PLAN.md
+Last session: 2026-08-16
+Stopped at: v0.20.0 roadmap created (Phases 22–23; T-01 → 22, T-02 → 23; 100% coverage)
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with `/gsd-plan-phase 22` (or `/gsd-plan-phase 23` — the two phases are independent and may be planned/executed in either order or in parallel).

@@ -8,6 +8,7 @@
 - ✅ **v0.17.0 — Registration Parity & Elastic-FPCA Performance** — Phases 14–15 (shipped 2026-08-12, PR #41) — [archive](milestones/v0.17.0-ROADMAP.md)
 - ✅ **v0.18.0 — R-Ecosystem Gap Audit** — Phases 16–19 (shipped 2026-08-15) — [archive](milestones/v0.18.0-ROADMAP.md)
 - ✅ **v0.19.0 — Functional Inference Suite** — Phases 20–21 (shipped 2026-08-16) — [archive](milestones/v0.19.0-ROADMAP.md)
+- 🚧 **v0.20.0 — Table-Stakes Quick Wins** — Phases 22–23 (in progress)
 
 ## Phases
 
@@ -91,3 +92,43 @@ First implementation milestone from the v0.18.0 R-ecosystem backlog — the two 
 Full phase detail: [milestones/v0.19.0-ROADMAP.md](milestones/v0.19.0-ROADMAP.md)
 
 </details>
+
+### 🚧 v0.20.0 Table-Stakes Quick Wins (Phases 22–23) — IN PROGRESS
+
+Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two top-ranked (score 5.00, P1 table-stakes, S-effort) R-parity quick wins, each closing a baseline capability gap by wrapping existing fdars infrastructure. Real `fdars-core/src/` code: additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **existing public signatures unchanged.** T-01 and T-02 touch **disjoint modules** (`basis/`+`smoothing` vs `depth/`+`outliers`) and are **mutually independent** — either phase may execute first; no cross-phase dependency.
+
+- [ ] **Phase 22: Constant Basis & AIC Smoothing Selection** - Named constant/intercept basis constructor in `basis/` + an AIC criterion in the automatic smoothing-parameter selector (T-01)
+- [ ] **Phase 23: Functional Boxplot & Depth Dispatcher** - López-Pintado depth-fence functional boxplot (numeric outputs) + a unified `functional_depth(data, method)` dispatcher (T-02)
+
+## Phase Details
+
+### Phase 22: Constant Basis & AIC Smoothing Selection
+**Goal**: fdars exposes a named constant/intercept basis usable in regression design matrices, and the automatic smoothing-parameter selector can choose the roughness penalty by AIC as well as the existing GCV/CV.
+**Depends on**: Nothing (independent of Phase 23 — disjoint modules `basis/` + `smoothing`/`smooth_basis`)
+**Requirements**: T-01
+**Success Criteria** (what must be TRUE):
+  1. A named `constant_basis(...)` / `ConstantBasis` constructor exists in `basis/` and returns a single intercept column with a zero roughness penalty; fitting a response against it yields an intercept-only fit equal to the response mean.
+  2. The automatic smoothing-parameter selector (`smooth_basis` / `smoothing`) accepts an AIC criterion alongside GCV/CV, computing AIC = n·log(RSS/n) + 2·tr(H) by reusing the hat-matrix trace already computed for GCV.
+  3. The AIC-selected penalty matches an independent brute-force AIC grid search over the candidate penalty range (agreement within numerical tolerance).
+  4. Both additions are additive and `Result`-returning, are re-exported at the crate root, and leave every existing basis/smoothing public signature unchanged (GCV/CV paths still produce identical results).
+  5. Inline `#[cfg(test)]` tests cover the constant-basis intercept-mean identity, the AIC-vs-grid-search match, and the input-validation error paths; the full suite + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+**Plans**: TBD
+
+### Phase 23: Functional Boxplot & Depth Dispatcher
+**Goal**: fdars exposes the canonical López-Pintado depth-fence functional boxplot as numeric outputs (central region + whisker + outlier flags) and a single `functional_depth(data, method: DepthMethod)` dispatcher over the existing depth functions.
+**Depends on**: Nothing (independent of Phase 22 — disjoint modules `depth/` + `outliers`)
+**Requirements**: T-02
+**Success Criteria** (what must be TRUE):
+  1. A `functional_boxplot(...)` entry point returns numeric outputs only — median curve, central region (inner 50% by depth), a 1.5×IQR-of-depths whisker/fence, and per-curve outlier indices/flags — with no plotting.
+  2. On data with planted outliers, `functional_boxplot` flags the known outlier curves and returns central-region and whisker bounds consistent with a 1.5×IQR-of-depths fence.
+  3. A `DepthMethod` enum + `functional_depth(data, method)` dispatcher (mirroring the existing `CovType`/`ProjectionBasisType` enum-dispatch convention) routes to each existing depth function so that, e.g., `functional_depth(data, DepthMethod::FraimanMuniz)` equals `fraiman_muniz_1d(data)` and each other variant equals its underlying function (`band_1d`, `modified_band_1d`, `random_projection_1d`, …).
+  4. Both additions are additive and `Result`-returning, are re-exported at the crate root, and leave every existing depth/outlier public signature unchanged (existing `outliergram`, `fraiman_muniz_1d`, etc. behave identically).
+  5. Inline `#[cfg(test)]` tests cover the planted-outlier detection + fence bounds, the per-method dispatcher-equals-underlying-function equalities, and input-validation error paths; the full suite + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+**Plans**: TBD
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 22. Constant Basis & AIC Smoothing Selection | 0/? | Not started | - |
+| 23. Functional Boxplot & Depth Dispatcher | 0/? | Not started | - |

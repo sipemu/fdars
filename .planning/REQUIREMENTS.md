@@ -47,14 +47,14 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| T-01 | Phase [N] | Pending |
-| T-02 | Phase [N] | Pending |
+| T-01 | Phase 22 | Pending |
+| T-02 | Phase 23 | Pending |
 
 **Coverage:**
 - v1 requirements: 2 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 2 ⚠️
+- Mapped to phases: 2 (T-01 → Phase 22, T-02 → Phase 23)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-16 after initial definition (v0.20.0 Table-Stakes Quick Wins)*
+*Last updated: 2026-08-16 after roadmap creation (v0.20.0 Table-Stakes Quick Wins) — T-01 → Phase 22, T-02 → Phase 23, 100% coverage.*
