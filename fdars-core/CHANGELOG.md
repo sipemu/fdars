@@ -5,6 +5,18 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0]
+
+### Added
+
+- **Functional inference module** (`inference/`): fdars' first standalone functional-inference surface, closing the largest table-stakes gap identified in the R-ecosystem audit (functional inference was previously absent).
+  - **Two-sample tests**: `t_perm_test` (integrated L2-of-difference permutation test), `f_perm_test` (integrated-F permutation test), `two_sample_mean_test` (Hotelling T² on a shared FPC basis), `mean_scb` (Degras simultaneous confidence bands for the mean), and `scb_two_sample_test` (SCB around the mean difference). Permutation tests default to 999 permutations with a deterministic `seed`; all return a `TestResult { statistic, p_value, n_perm }`.
+  - **Functional-linear-model inference**: `flm_f_test` (overall-significance F-test on a fitted `FregreLmResult`), `flm_gof_test` (Ramsey–RESET-style residual lack-of-fit goodness-of-fit), and `oneway_anova_vstat` (asymptotic one-way functional ANOVA V-statistic with a Satterthwaite scaled-χ² p-value), added alongside the existing permutation `fanova`.
+  - Self-contained χ² and F survival functions (regularized incomplete gamma / beta) — no new dependency.
+  - All additive/non-breaking: existing public signatures (including `fanova`, `hotelling_t2`, `scb_mean_degras`) are unchanged.
+
+_(No crate releases were published for the 0.15.0–0.18.0 development milestones' changelog entries; see the git history and `.planning/milestones/` for that work. 0.15.0–0.17.0 shipped to crates.io; 0.18.0 was an audit-only milestone with no code changes.)_
+
 ## [0.14.0]
 
 ### Added
