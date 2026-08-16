@@ -32,7 +32,7 @@ mod hotelling;
 mod permutation;
 mod scb;
 
-pub use flm::flm_f_test;
+pub use flm::{flm_f_test, flm_gof_test};
 pub use hotelling::two_sample_mean_test;
 pub use permutation::{f_perm_test, t_perm_test, DEFAULT_N_PERM};
 pub use scb::{mean_scb, scb_two_sample_test};
