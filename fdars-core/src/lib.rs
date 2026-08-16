@@ -439,7 +439,7 @@ pub use fdata::{
 
 // Re-export basis representation types and functions
 pub use basis::{
-    basis_to_fdata, basis_to_fdata_1d, bspline_basis, bspline_basis_from_knots,
+    basis_to_fdata, basis_to_fdata_1d, bspline_basis, bspline_basis_from_knots, constant_basis,
     construct_bspline_knots, difference_matrix, fdata_to_basis, fdata_to_basis_1d, fourier_basis,
     fourier_basis_with_period, fourier_fit_1d, pspline_evaluate, pspline_fit_1d, pspline_fit_gcv,
     select_basis_auto_1d, select_fourier_nbasis_gcv, BasisAutoSelectionResult,

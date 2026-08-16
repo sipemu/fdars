@@ -5,6 +5,7 @@
 
 pub mod auto_select;
 pub mod bspline;
+pub mod constant;
 pub mod fourier;
 pub mod fourier_fit;
 mod helpers;
@@ -20,6 +21,7 @@ mod tests;
 
 pub use auto_select::{select_basis_auto_1d, BasisAutoSelectionResult, SingleCurveSelection};
 pub use bspline::{bspline_basis, bspline_basis_from_knots, construct_bspline_knots};
+pub use constant::constant_basis;
 pub use fourier::{fourier_basis, fourier_basis_with_period};
 pub use fourier_fit::{fourier_fit_1d, select_fourier_nbasis_gcv, FourierFitResult};
 pub use projection::{
