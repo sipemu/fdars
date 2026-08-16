@@ -132,6 +132,30 @@ mod tests {
             res.statistic
         );
     }
+
+    #[test]
+    fn f_test_fails_to_reject_null_effect() {
+        let argvals = uniform_grid(40);
+        let n = 40;
+        // Amplitudes vary, but the response is constructed INDEPENDENTLY of the
+        // functional predictor (deterministic pseudo-noise with a separate
+        // stream), so there is no genuine effect to detect.
+        let amps: Vec<f64> = (0..n).map(|i| 0.5 + 2.0 * (i as f64) / n as f64).collect();
+        let data = make_curves(n, &argvals, &amps, 71);
+        let mut s = 98765u64;
+        let y: Vec<f64> = (0..n).map(|_| 5.0 + noise(&mut s)).collect();
+
+        let fit = fregre_lm(&data, &y, None, 3).unwrap();
+        let res = flm_f_test(&fit).unwrap();
+        assert!(
+            res.p_value > 0.20,
+            "null-effect fit should fail to reject H0, got p={} (F={}, R²={})",
+            res.p_value,
+            res.statistic,
+            fit.r_squared
+        );
+    }
+
     #[test]
     fn f_test_guards_degenerate_df() {
         // n - p - 1 <= 0: with n = 5 curves and ncomp = 3 -> df_den = 1 ok,
