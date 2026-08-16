@@ -2,10 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.20.0
 milestone_name: Table-Stakes Quick Wins
-current_phase_name: roadmap defined
+current_phase: 23
+current_phase_name: Functional Boxplot & Depth Dispatcher
 status: planning
 stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-08-16T19:43:29.324Z"
+last_updated: "2026-08-16T19:45:48.429Z"
 last_activity: 2026-08-16
 last_activity_desc: Milestone v0.20.0 roadmap created (Phases 22–23)
 progress:
@@ -27,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: 22 — Constant Basis & AIC Smoothing Selection (T-01)
-Plan: 22-01 complete
-Status: Phase 22 executed — ready for /gsd-verify-work 22 (or /gsd-plan-phase 23)
-Last activity: 2026-08-16 — Executed 22-01 (constant_basis, CvCriterion::Aic + aic_smoother, smooth_basis_aic)
+Phase: 23 — Functional Boxplot & Depth Dispatcher
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-16 — Phase 22 complete, transitioned to Phase 23
 
 ## Milestone Roadmap (v0.20.0)
 
