@@ -112,7 +112,8 @@ Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two
   3. The AIC-selected penalty matches an independent brute-force AIC grid search over the candidate penalty range (agreement within numerical tolerance).
   4. Both additions are additive and `Result`-returning, are re-exported at the crate root, and leave every existing basis/smoothing public signature unchanged (GCV/CV paths still produce identical results).
   5. Inline `#[cfg(test)]` tests cover the constant-basis intercept-mean identity, the AIC-vs-grid-search match, and the input-validation error paths; the full suite + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 22-01-PLAN.md — constant_basis constructor + CvCriterion::Aic (optim_bandwidth) + smooth_basis_aic λ selector, with crate-root re-exports and inline tests
 
 ### Phase 23: Functional Boxplot & Depth Dispatcher
 **Goal**: fdars exposes the canonical López-Pintado depth-fence functional boxplot as numeric outputs (central region + whisker + outlier flags) and a single `functional_depth(data, method: DepthMethod)` dispatcher over the existing depth functions.
@@ -130,5 +131,5 @@ Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 22. Constant Basis & AIC Smoothing Selection | 0/? | Not started | - |
+| 22. Constant Basis & AIC Smoothing Selection | 0/1 | Not started | - |
 | 23. Functional Boxplot & Depth Dispatcher | 0/? | Not started | - |
