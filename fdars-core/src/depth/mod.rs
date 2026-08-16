@@ -9,6 +9,7 @@ use rand::prelude::*;
 use rand_distr::StandardNormal;
 
 pub mod band;
+pub mod dispatch;
 pub mod fraiman_muniz;
 pub mod modal;
 pub mod random_projection;
@@ -21,6 +22,7 @@ mod tests;
 
 // Re-export all public functions
 pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
+pub use dispatch::{functional_depth, DepthMethod};
 pub use fraiman_muniz::{fraiman_muniz_1d, fraiman_muniz_2d};
 pub use modal::{modal_1d, modal_2d};
 pub use random_projection::{
