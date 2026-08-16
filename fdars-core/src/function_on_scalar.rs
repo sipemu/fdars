@@ -674,7 +674,11 @@ pub fn predict_fosr(result: &FosrResult, new_predictors: &FdMatrix) -> FdMatrix 
 // ---------------------------------------------------------------------------
 
 /// Compute group means and overall mean.
-fn compute_group_means(
+///
+/// `pub(crate)` so the inference module's `oneway_anova_vstat` can reuse the
+/// exact same group-mean / overall-mean computation as `fanova`. Behavior is
+/// unchanged — only the visibility was widened.
+pub(crate) fn compute_group_means(
     data: &FdMatrix,
     groups: &[usize],
     labels: &[usize],

@@ -26,12 +26,14 @@
 //! inputs at entry. Result structs derive `Debug, Clone, PartialEq` and are
 //! serde-gated.
 
+mod anova;
 mod dist;
 mod flm;
 mod hotelling;
 mod permutation;
 mod scb;
 
+pub use anova::oneway_anova_vstat;
 pub use flm::{flm_f_test, flm_gof_test};
 pub use hotelling::two_sample_mean_test;
 pub use permutation::{f_perm_test, t_perm_test, DEFAULT_N_PERM};

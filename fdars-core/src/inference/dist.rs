@@ -109,6 +109,28 @@ pub(crate) fn chi_square_sf(x: f64, k: usize) -> f64 {
     }
 }
 
+/// Chi-square survival function with a real-valued degrees-of-freedom argument.
+///
+/// The scaled-χ² (Satterthwaite/Box) approximation used by the V-statistic
+/// needs a non-integer `df`, so this variant takes `df: f64` directly. It is
+/// otherwise identical to [`chi_square_sf`] (the regularized upper incomplete
+/// gamma Q(df/2, x/2)).
+pub(crate) fn chi_square_sf_df(x: f64, df: f64) -> f64 {
+    if x <= 0.0 {
+        return 1.0;
+    }
+    if df <= 0.0 {
+        return 1.0;
+    }
+    let a = df / 2.0;
+    let xx = x / 2.0;
+    if xx < a + 1.0 {
+        1.0 - gamma_p_series(a, xx)
+    } else {
+        gamma_q_cf(a, xx)
+    }
+}
+
 /// Continued-fraction evaluation of the incomplete beta function
 /// (Numerical-Recipes `betacf`, Lentz form). Used only inside [`betai`].
 fn betacf(a: f64, b: f64, x: f64) -> f64 {
@@ -214,6 +236,8 @@ mod tests {
         assert!((chi_square_sf(5.9915, 2) - 0.05).abs() < 1e-3);
         // Monotone decreasing.
         assert!(chi_square_sf(1.0, 3) > chi_square_sf(5.0, 3));
+        // Real-df variant agrees with the integer variant at integer df.
+        assert!((chi_square_sf_df(5.9915, 2.0) - chi_square_sf(5.9915, 2)).abs() < 1e-12);
     }
 
     #[test]
