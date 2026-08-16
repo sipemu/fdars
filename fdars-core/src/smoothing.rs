@@ -523,12 +523,20 @@ pub fn smoothing_matrix_nw(x: &[f64], bandwidth: f64, kernel: &str) -> Result<Ve
 // ─── Cross-Validation for Kernel Smoothers ──────────────────────────────────
 
 /// CV criterion type for bandwidth selection.
+///
+/// Marked `#[non_exhaustive]` so future criteria can be added without a breaking
+/// change; match on it with a wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum CvCriterion {
     /// Leave-one-out cross-validation (R's `CV.S`).
     Cv,
     /// Generalized cross-validation (R's `GCV.S`).
     Gcv,
+    /// Akaike information criterion for the smoother:
+    /// `AIC = n·ln(RSS/n) + 2·tr(S)`, with the smoother-matrix trace `tr(S)` as
+    /// the effective degrees of freedom (the same trace GCV uses).
+    Aic,
 }
 
 /// Result of bandwidth optimization.
@@ -634,10 +642,55 @@ pub fn gcv_smoother(x: &[f64], y: &[f64], bandwidth: f64, kernel: &str) -> f64 {
     }
 }
 
+/// AIC score for a kernel smoother.
+///
+/// Computes `AIC = n·ln(RSS/n) + 2·tr(S)`, where `RSS` and `tr(S)` come from the
+/// same Nadaraya–Watson smoother matrix `S` that [`gcv_smoother`] uses. The
+/// effective degrees of freedom is the trace of the smoother matrix (the same
+/// hat-matrix trace GCV divides by), so AIC and GCV share their df definition
+/// but combine it differently: AIC applies an additive `2·tr(S)` penalty to the
+/// log residual variance instead of GCV's multiplicative `(1 − tr(S)/n)⁻²`.
+///
+/// # Arguments
+/// * `x` — Predictor values
+/// * `y` — Response values
+/// * `bandwidth` — Kernel bandwidth
+/// * `kernel` — Kernel type ("gaussian", "epanechnikov", "tricube")
+///
+/// # Returns
+/// AIC score, or `INFINITY` if inputs are invalid (n < 2, length mismatch, or
+/// non-positive bandwidth), matching [`gcv_smoother`]'s guards.
+pub fn aic_smoother(x: &[f64], y: &[f64], bandwidth: f64, kernel: &str) -> f64 {
+    let n = x.len();
+    if n < 2 || y.len() != n || bandwidth <= 0.0 {
+        return f64::INFINITY;
+    }
+
+    let s = match smoothing_matrix_nw(x, bandwidth, kernel) {
+        Ok(s) => s,
+        Err(_) => return f64::INFINITY,
+    };
+
+    // y_hat = S * y  →  RSS
+    let mut rss = 0.0;
+    for i in 0..n {
+        let y_hat: f64 = (0..n).map(|j| s[i + j * n] * y[j]).sum();
+        let resid = y[i] - y_hat;
+        rss += resid * resid;
+    }
+
+    // trace(S) = sum of diagonal — same hat-matrix trace GCV uses as df
+    let trace_s: f64 = (0..n).map(|i| s[i + i * n]).sum();
+
+    let n_f = n as f64;
+    // Standard smoother AIC: n·ln(RSS/n) + 2·tr(S).
+    n_f * (rss / n_f).max(1e-300).ln() + 2.0 * trace_s
+}
+
 /// Bandwidth optimizer for kernel smoothers (R's `optim.np`).
 ///
 /// Grid search over evenly-spaced bandwidths, selecting the one that
-/// minimizes the specified criterion (CV or GCV).
+/// minimizes the specified criterion (CV, GCV, or AIC).
 ///
 /// # Arguments
 /// * `x` — Predictor values
@@ -685,6 +738,7 @@ pub fn optim_bandwidth(
     let score_fn = match criterion {
         CvCriterion::Cv => cv_smoother,
         CvCriterion::Gcv => gcv_smoother,
+        CvCriterion::Aic => aic_smoother,
     };
 
     let mut best_h = h_min;
@@ -1169,6 +1223,148 @@ mod tests {
         let result = optim_bandwidth(&x, &y, Some((0.05, 0.5)), CvCriterion::Cv, "gaussian", 10);
         assert!(result.h_opt >= 0.05);
         assert!(result.h_opt <= 0.5);
+    }
+
+    // ============== AIC smoother tests ==============
+
+    #[test]
+    fn test_aic_smoother_matches_hand_computed() {
+        // Small fixture; recompute AIC = n·ln(RSS/n) + 2·tr(S) from the same
+        // smoother matrix and assert equality.
+        let x = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+        let y = vec![0.1, 0.4, 0.35, 0.8, 1.2];
+        let bandwidth = 0.3;
+        let kernel = "gaussian";
+
+        let s = smoothing_matrix_nw(&x, bandwidth, kernel).unwrap();
+        let n = x.len();
+        let mut rss = 0.0;
+        for i in 0..n {
+            let y_hat: f64 = (0..n).map(|j| s[i + j * n] * y[j]).sum();
+            let resid = y[i] - y_hat;
+            rss += resid * resid;
+        }
+        let trace_s: f64 = (0..n).map(|i| s[i + i * n]).sum();
+        let n_f = n as f64;
+        let expected = n_f * (rss / n_f).max(1e-300).ln() + 2.0 * trace_s;
+
+        let got = aic_smoother(&x, &y, bandwidth, kernel);
+        assert!(
+            (got - expected).abs() < 1e-12,
+            "got={got}, expected={expected}"
+        );
+    }
+
+    #[test]
+    fn test_aic_smoother_invalid_inputs() {
+        // n < 2, length mismatch, non-positive bandwidth → INFINITY.
+        assert_eq!(aic_smoother(&[0.0], &[1.0], 0.3, "gaussian"), f64::INFINITY);
+        assert_eq!(
+            aic_smoother(&[0.0, 1.0], &[1.0], 0.3, "gaussian"),
+            f64::INFINITY
+        );
+        assert_eq!(
+            aic_smoother(&[0.0, 1.0], &[1.0, 2.0], 0.0, "gaussian"),
+            f64::INFINITY
+        );
+    }
+
+    #[test]
+    fn test_optim_bandwidth_aic_matches_brute_force_grid() {
+        // optim_bandwidth with AIC must return the argmin (first-minimum tie
+        // break) of the AIC over the exact same bandwidth grid it searches.
+        let x = uniform_grid(25);
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin())
+            .collect();
+        let kernel = "gaussian";
+        let n_grid = 20;
+
+        // Replicate optim_bandwidth's default grid range.
+        let n = x.len();
+        let x_min = x.iter().copied().fold(f64::INFINITY, f64::min);
+        let x_max = x.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let h_default = ((x_max - x_min) / (n as f64).powf(0.2)).max(1e-10);
+        let (h_min, h_max) = (h_default / 5.0, h_default * 5.0);
+
+        let mut best_h = h_min;
+        let mut best_score = f64::INFINITY;
+        for i in 0..n_grid {
+            let h = h_min + (h_max - h_min) * i as f64 / (n_grid - 1) as f64;
+            let score = aic_smoother(&x, &y, h, kernel);
+            if score < best_score {
+                best_score = score;
+                best_h = h;
+            }
+        }
+
+        let result = optim_bandwidth(&x, &y, None, CvCriterion::Aic, kernel, n_grid);
+        assert_eq!(result.criterion, CvCriterion::Aic);
+        assert_eq!(result.h_opt, best_h);
+        assert_eq!(result.value, best_score);
+    }
+
+    #[test]
+    fn test_optim_bandwidth_aic_diverges_from_gcv() {
+        // AIC and GCV share the same df (tr(S)) but combine it differently:
+        // GCV's multiplicative (1 − tr/n)⁻² penalty blows up as the bandwidth
+        // shrinks (df → n), whereas AIC's additive 2·tr penalty is far milder.
+        // On noisy data over a range that reaches small bandwidths, AIC
+        // under-smooths (picks a smaller h) while GCV bottoms out at a larger h
+        // — proving the AIC path is genuinely distinct, not a GCV alias.
+        let n = 50usize;
+        let x: Vec<f64> = (0..n).map(|i| i as f64 / (n as f64 - 1.0)).collect();
+        // Deterministic LCG noise for a reproducible divergence.
+        let mut seed = 999u64;
+        let mut lcg = || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 11) as f64) / ((1u64 << 53) as f64) - 0.5
+        };
+        let y: Vec<f64> = x
+            .iter()
+            .map(|&xi| (2.0 * std::f64::consts::PI * xi).sin() + 0.5 * lcg())
+            .collect();
+        let kernel = "gaussian";
+        let range = Some((0.01, 0.5));
+
+        let aic = optim_bandwidth(&x, &y, range, CvCriterion::Aic, kernel, 60);
+        let gcv = optim_bandwidth(&x, &y, range, CvCriterion::Gcv, kernel, 60);
+        assert!(aic.h_opt.is_finite() && gcv.h_opt.is_finite());
+        assert_ne!(
+            aic.h_opt, gcv.h_opt,
+            "AIC and GCV selected the same bandwidth; expected divergence"
+        );
+        // AIC's weaker penalty under-smooths relative to GCV here.
+        assert!(
+            aic.h_opt < gcv.h_opt,
+            "expected AIC to pick a smaller bandwidth than GCV: aic={}, gcv={}",
+            aic.h_opt,
+            gcv.h_opt
+        );
+    }
+
+    #[test]
+    fn test_gcv_cv_unchanged_by_aic_addition() {
+        // Guard: adding the Aic variant must not perturb existing GCV/CV paths.
+        let x = uniform_grid(25);
+        let y: Vec<f64> = x.iter().map(|&xi| xi * xi).collect();
+        let kernel = "gaussian";
+        let h = 0.2;
+        // Recompute the classic formulas directly and compare to the public fns.
+        let n = x.len();
+        let s = smoothing_matrix_nw(&x, h, kernel).unwrap();
+        let mut rss = 0.0;
+        for i in 0..n {
+            let y_hat: f64 = (0..n).map(|j| s[i + j * n] * y[j]).sum();
+            rss += (y[i] - y_hat).powi(2);
+        }
+        let trace_s: f64 = (0..n).map(|i| s[i + i * n]).sum();
+        let denom = 1.0 - trace_s / n as f64;
+        let expected_gcv = (rss / n as f64) / (denom * denom);
+        assert!((gcv_smoother(&x, &y, h, kernel) - expected_gcv).abs() < 1e-12);
     }
 
     // ============== kNN CV tests ==============

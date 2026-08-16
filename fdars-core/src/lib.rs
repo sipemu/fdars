@@ -385,8 +385,8 @@ pub use validation::{
 
 // Re-export smoothing CV types
 pub use smoothing::{
-    cv_smoother, gcv_smoother, knn_gcv, knn_lcv, optim_bandwidth, CvCriterion, KnnCvResult,
-    OptimBandwidthResult,
+    aic_smoother, cv_smoother, gcv_smoother, knn_gcv, knn_lcv, optim_bandwidth, CvCriterion,
+    KnnCvResult, OptimBandwidthResult,
 };
 
 // Re-export regression types
