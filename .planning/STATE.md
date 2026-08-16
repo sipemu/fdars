@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.20.0
 milestone_name: Table-Stakes Quick Wins
+current_phase_name: roadmap defined
 status: planning
-last_updated: "2026-08-16T19:16:25.728Z"
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-08-16T19:43:29.324Z"
 last_activity: 2026-08-16
+last_activity_desc: Milestone v0.20.0 roadmap created (Phases 22–23)
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -24,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: Not started (roadmap defined)
-Plan: —
-Status: Roadmap complete — ready for /gsd-plan-phase 22
-Last activity: 2026-08-16 — Milestone v0.20.0 roadmap created (Phases 22–23)
+Phase: 22 — Constant Basis & AIC Smoothing Selection (T-01)
+Plan: 22-01 complete
+Status: Phase 22 executed — ready for /gsd-verify-work 22 (or /gsd-plan-phase 23)
+Last activity: 2026-08-16 — Executed 22-01 (constant_basis, CvCriterion::Aic + aic_smoother, smooth_basis_aic)
 
 ## Milestone Roadmap (v0.20.0)
 
@@ -65,6 +68,11 @@ Two **independent** phases, two requirements. Second implementation milestone fr
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 22 P01 | 18min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -111,8 +119,8 @@ Advisory tech-debt carried forward (not v0.20.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-16
-Stopped at: v0.20.0 roadmap created (Phases 22–23; T-01 → 22, T-02 → 23; 100% coverage)
+Last session: 2026-08-16T19:43:29.313Z
+Stopped at: Completed 22-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -103,33 +103,40 @@ Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two
 ## Phase Details
 
 ### Phase 22: Constant Basis & AIC Smoothing Selection
+
 **Goal**: fdars exposes a named constant/intercept basis usable in regression design matrices, and the automatic smoothing-parameter selector can choose the roughness penalty by AIC as well as the existing GCV/CV.
 **Depends on**: Nothing (independent of Phase 23 — disjoint modules `basis/` + `smoothing`/`smooth_basis`)
 **Requirements**: T-01
 **Success Criteria** (what must be TRUE):
+
   1. A named `constant_basis(...)` / `ConstantBasis` constructor exists in `basis/` and returns a single intercept column with a zero roughness penalty; fitting a response against it yields an intercept-only fit equal to the response mean.
   2. The automatic smoothing-parameter selector (`smooth_basis` / `smoothing`) accepts an AIC criterion alongside GCV/CV, computing AIC = n·log(RSS/n) + 2·tr(H) by reusing the hat-matrix trace already computed for GCV.
   3. The AIC-selected penalty matches an independent brute-force AIC grid search over the candidate penalty range (agreement within numerical tolerance).
   4. Both additions are additive and `Result`-returning, are re-exported at the crate root, and leave every existing basis/smoothing public signature unchanged (GCV/CV paths still produce identical results).
   5. Inline `#[cfg(test)]` tests cover the constant-basis intercept-mean identity, the AIC-vs-grid-search match, and the input-validation error paths; the full suite + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
-**Plans**: 1 plan
-- [ ] 22-01-PLAN.md — constant_basis constructor + CvCriterion::Aic (optim_bandwidth) + smooth_basis_aic λ selector, with crate-root re-exports and inline tests
+
+**Plans**: 1/1 plans executed
+
+- [x] 22-01-PLAN.md — constant_basis constructor + CvCriterion::Aic (optim_bandwidth) + smooth_basis_aic λ selector, with crate-root re-exports and inline tests
 
 ### Phase 23: Functional Boxplot & Depth Dispatcher
+
 **Goal**: fdars exposes the canonical López-Pintado depth-fence functional boxplot as numeric outputs (central region + whisker + outlier flags) and a single `functional_depth(data, method: DepthMethod)` dispatcher over the existing depth functions.
 **Depends on**: Nothing (independent of Phase 22 — disjoint modules `depth/` + `outliers`)
 **Requirements**: T-02
 **Success Criteria** (what must be TRUE):
+
   1. A `functional_boxplot(...)` entry point returns numeric outputs only — median curve, central region (inner 50% by depth), a 1.5×IQR-of-depths whisker/fence, and per-curve outlier indices/flags — with no plotting.
   2. On data with planted outliers, `functional_boxplot` flags the known outlier curves and returns central-region and whisker bounds consistent with a 1.5×IQR-of-depths fence.
   3. A `DepthMethod` enum + `functional_depth(data, method)` dispatcher (mirroring the existing `CovType`/`ProjectionBasisType` enum-dispatch convention) routes to each existing depth function so that, e.g., `functional_depth(data, DepthMethod::FraimanMuniz)` equals `fraiman_muniz_1d(data)` and each other variant equals its underlying function (`band_1d`, `modified_band_1d`, `random_projection_1d`, …).
   4. Both additions are additive and `Result`-returning, are re-exported at the crate root, and leave every existing depth/outlier public signature unchanged (existing `outliergram`, `fraiman_muniz_1d`, etc. behave identically).
   5. Inline `#[cfg(test)]` tests cover the planted-outlier detection + fence bounds, the per-method dispatcher-equals-underlying-function equalities, and input-validation error paths; the full suite + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+
 **Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 22. Constant Basis & AIC Smoothing Selection | 0/1 | Not started | - |
+| 22. Constant Basis & AIC Smoothing Selection | 1/1 | In Progress|  |
 | 23. Functional Boxplot & Depth Dispatcher | 0/? | Not started | - |

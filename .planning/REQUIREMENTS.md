@@ -9,7 +9,7 @@ Implementation milestone — real `fdars-core/src/` code. Both items are S-effor
 
 ### Representation & Smoothing
 
-- [ ] **T-01**: Add a named **constant/intercept basis** constructor to `basis/` (a basis object usable in regression design matrices, not just an ad-hoc constant column), AND add an **AIC criterion** to the automatic smoothing-parameter selector so `smooth_basis` / the roughness-penalty selection can choose by AIC as well as the existing GCV/CV. Reuses the existing basis system + hat-matrix trace already computed for GCV. (R baseline: `fda`/`fda.usc` constant basis + `akaike_information_criterion` smoothing.)
+- [x] **T-01**: Add a named **constant/intercept basis** constructor to `basis/` (a basis object usable in regression design matrices, not just an ad-hoc constant column), AND add an **AIC criterion** to the automatic smoothing-parameter selector so `smooth_basis` / the roughness-penalty selection can choose by AIC as well as the existing GCV/CV. Reuses the existing basis system + hat-matrix trace already computed for GCV. (R baseline: `fda`/`fda.usc` constant basis + `akaike_information_criterion` smoothing.)
 
 ### Exploratory & Depth
 
@@ -47,10 +47,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| T-01 | Phase 22 | Pending |
+| T-01 | Phase 22 | Complete |
 | T-02 | Phase 23 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 2 total
 - Mapped to phases: 2 (T-01 → Phase 22, T-02 → Phase 23)
 - Unmapped: 0 ✓
