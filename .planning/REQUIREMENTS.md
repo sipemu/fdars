@@ -13,7 +13,7 @@ Implementation milestone — real `fdars-core/src/` code. Both items are S-effor
 
 ### Exploratory & Depth
 
-- [ ] **T-02**: Add the López-Pintado **depth-fence functional boxplot** — central region (inner 50% by depth) + a 1.5×IQR-of-depths whisker + per-curve outlier flags, all as **numeric outputs** (not a plot) — AND a unified **`functional_depth(data, method: DepthMethod)`** dispatcher over the existing depth functions (`fraiman_muniz_1d`, `band_1d`, `modified_band_1d`, `random_projection_1d`, …). (R baseline: `roahd`/`fdaoutlier`/`fda.usc` functional boxplot fences + general depth dispatcher.)
+- [x] **T-02**: Add the López-Pintado **depth-fence functional boxplot** — central region (inner 50% by depth) + a 1.5×IQR-of-depths whisker + per-curve outlier flags, all as **numeric outputs** (not a plot) — AND a unified **`functional_depth(data, method: DepthMethod)`** dispatcher over the existing depth functions (`fraiman_muniz_1d`, `band_1d`, `modified_band_1d`, `random_projection_1d`, …). (R baseline: `roahd`/`fdaoutlier`/`fda.usc` functional boxplot fences + general depth dispatcher.)
 
 ## v2 Requirements
 
@@ -48,7 +48,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | T-01 | Phase 22 | Complete |
-| T-02 | Phase 23 | Pending |
+| T-02 | Phase 23 | Complete |
 
 **Coverage:**
 

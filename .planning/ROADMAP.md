@@ -98,7 +98,7 @@ Full phase detail: [milestones/v0.19.0-ROADMAP.md](milestones/v0.19.0-ROADMAP.md
 Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two top-ranked (score 5.00, P1 table-stakes, S-effort) R-parity quick wins, each closing a baseline capability gap by wrapping existing fdars infrastructure. Real `fdars-core/src/` code: additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **existing public signatures unchanged.** T-01 and T-02 touch **disjoint modules** (`basis/`+`smoothing` vs `depth/`+`outliers`) and are **mutually independent** — either phase may execute first; no cross-phase dependency.
 
 - [x] **Phase 22: Constant Basis & AIC Smoothing Selection** - Named constant/intercept basis constructor in `basis/` + an AIC criterion in the automatic smoothing-parameter selector (T-01) (completed 2026-08-16)
-- [ ] **Phase 23: Functional Boxplot & Depth Dispatcher** - López-Pintado depth-fence functional boxplot (numeric outputs) + a unified `functional_depth(data, method)` dispatcher (T-02)
+- [x] **Phase 23: Functional Boxplot & Depth Dispatcher** - López-Pintado depth-fence functional boxplot (numeric outputs) + a unified `functional_depth(data, method)` dispatcher (T-02) (completed 2026-08-16)
 
 ## Phase Details
 
@@ -134,11 +134,11 @@ Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two
 
 **Plans**: 1 plan
 
-- [ ] 23-01-PLAN.md — DepthMethod enum + functional_depth self-depth dispatcher and the depth-fence functional_boxplot (numeric outputs), in new depth/dispatch.rs with crate-root re-exports and inline tests
+- [x] 23-01-PLAN.md — DepthMethod enum + functional_depth self-depth dispatcher and the depth-fence functional_boxplot (numeric outputs), in new depth/dispatch.rs with crate-root re-exports and inline tests
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 22. Constant Basis & AIC Smoothing Selection | 1/1 | Complete    | 2026-08-16 |
-| 23. Functional Boxplot & Depth Dispatcher | 0/? | Not started | - |
+| 23. Functional Boxplot & Depth Dispatcher | 1/1 | Complete    | 2026-08-16 |
