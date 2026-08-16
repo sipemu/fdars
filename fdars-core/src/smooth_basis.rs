@@ -298,6 +298,91 @@ pub fn smooth_basis_gcv(
     best_result
 }
 
+/// Perform basis-penalized smoothing with AIC-optimal lambda.
+///
+/// Mirrors [`smooth_basis_gcv`] but selects the lambda minimizing the `aic`
+/// field of [`SmoothBasisResult`] (which `smooth_basis` computes as
+/// `total_points·ln(mse) + 2·total_edf`, using the hat-matrix trace as the
+/// degrees of freedom — the same df-as-trace convention as the kernel-path
+/// [`aic_smoother`](crate::smoothing::aic_smoother)). It searches the identical
+/// log-lambda grid, so it is a drop-in AIC alternative that leaves
+/// [`smooth_basis_gcv`] untouched.
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n × m)
+/// * `argvals` — Evaluation points (length m)
+/// * `basis_type` — Type of basis system
+/// * `nbasis` — Number of basis functions
+/// * `lfd_order` — Derivative order for penalty
+/// * `log_lambda_range` — Range of log10(lambda) to search, e.g. (-8.0, 4.0)
+/// * `n_grid` — Number of grid points for the search
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::smooth_basis::{smooth_basis_aic, BasisType};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let data = FdMatrix::from_column_major(vec![0.0; 20], 1, 20).unwrap();
+/// let result = smooth_basis_aic(
+///     &data,
+///     &argvals,
+///     &BasisType::Bspline { order: 4 },
+///     8,
+///     2,
+///     (-8.0, 4.0),
+///     30,
+/// );
+/// ```
+pub fn smooth_basis_aic(
+    data: &FdMatrix,
+    argvals: &[f64],
+    basis_type: &BasisType,
+    nbasis: usize,
+    lfd_order: usize,
+    log_lambda_range: (f64, f64),
+    n_grid: usize,
+) -> Option<SmoothBasisResult> {
+    let m = argvals.len();
+    if m == 0 || nbasis < 2 || n_grid < 2 {
+        return None;
+    }
+
+    // Compute penalty matrix once (same as smooth_basis_gcv).
+    let penalty = match basis_type {
+        BasisType::Bspline { order } => bspline_penalty_matrix(argvals, nbasis, *order, lfd_order),
+        BasisType::Fourier { period } => fourier_penalty_matrix(nbasis, *period, lfd_order),
+    };
+
+    let (lo, hi) = log_lambda_range;
+    let mut best_aic = f64::INFINITY;
+    let mut best_result: Option<SmoothBasisResult> = None;
+
+    for i in 0..n_grid {
+        let log_lam = lo + (hi - lo) * i as f64 / (n_grid - 1) as f64;
+        let lam = 10.0_f64.powf(log_lam);
+
+        let fdpar = FdPar {
+            basis_type: basis_type.clone(),
+            nbasis,
+            lambda: lam,
+            lfd_order,
+            penalty_matrix: penalty.clone(),
+        };
+
+        if let Ok(result) = smooth_basis(data, argvals, &fdpar) {
+            // Reuse the aic field smooth_basis already populates; do NOT
+            // recompute AIC inline, keeping the formula consistent.
+            if result.aic < best_aic {
+                best_aic = result.aic;
+                best_result = Some(result);
+            }
+        }
+    }
+
+    best_result
+}
+
 // ─── Config Structs ─────────────────────────────────────────────────────────
 
 /// Configuration for GCV-based smoothing parameter selection.
@@ -944,6 +1029,104 @@ mod tests {
         let basis_type = BasisType::Bspline { order: 4 };
         let result = smooth_basis_gcv(&data, &t, &basis_type, 15, 2, (-8.0, 4.0), 25);
         assert!(result.is_some(), "GCV search should succeed");
+    }
+
+    #[test]
+    fn test_smooth_basis_aic_matches_brute_force_grid() {
+        // smooth_basis_aic must return the SmoothBasisResult whose aic equals the
+        // argmin of an explicit AIC grid built by calling smooth_basis at each
+        // grid lambda and reading result.aic over the identical log-lambda grid.
+        let m = 81;
+        let n = 4;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                data[(i, j)] =
+                    (2.0 * PI * t[j]).sin() + 0.15 * ((i * 41 + j * 7) % 23) as f64 / 23.0;
+            }
+        }
+
+        let basis_type = BasisType::Bspline { order: 4 };
+        let nbasis = 12;
+        let lfd_order = 2;
+        let range = (-8.0, 4.0);
+        let n_grid = 25;
+
+        // Brute-force the AIC grid using the same penalty + grid as the selector.
+        let penalty = bspline_penalty_matrix(&t, nbasis, 4, lfd_order);
+        let (lo, hi) = range;
+        let mut brute_best_aic = f64::INFINITY;
+        for k in 0..n_grid {
+            let log_lam = lo + (hi - lo) * k as f64 / (n_grid - 1) as f64;
+            let lam = 10.0_f64.powf(log_lam);
+            let fdpar = FdPar {
+                basis_type: basis_type.clone(),
+                nbasis,
+                lambda: lam,
+                lfd_order,
+                penalty_matrix: penalty.clone(),
+            };
+            if let Ok(result) = smooth_basis(&data, &t, &fdpar) {
+                if result.aic < brute_best_aic {
+                    brute_best_aic = result.aic;
+                }
+            }
+        }
+
+        let selected =
+            smooth_basis_aic(&data, &t, &basis_type, nbasis, lfd_order, range, n_grid).unwrap();
+        assert!(
+            (selected.aic - brute_best_aic).abs() < 1e-9,
+            "selected aic={}, brute-force min aic={}",
+            selected.aic,
+            brute_best_aic
+        );
+    }
+
+    #[test]
+    fn test_smooth_basis_aic_prefers_smoother_fit_than_smallest_lambda() {
+        // On noisy data, the AIC-selected fit must have lower edf (be smoother)
+        // than the smallest-lambda candidate from the same grid, which over-fits.
+        let m = 81;
+        let n = 4;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(n, m);
+        // Smooth trend + deterministic pseudo-noise.
+        for i in 0..n {
+            for j in 0..m {
+                let noise = ((((i * 91 + j * 53) % 101) as f64) / 101.0) - 0.5;
+                data[(i, j)] = (2.0 * PI * t[j]).sin() + 0.6 * noise;
+            }
+        }
+
+        let basis_type = BasisType::Bspline { order: 4 };
+        let nbasis = 15;
+        let lfd_order = 2;
+        let range = (-8.0, 4.0);
+        let n_grid = 25;
+
+        // Smallest-lambda candidate (most flexible / highest edf).
+        let penalty = bspline_penalty_matrix(&t, nbasis, 4, lfd_order);
+        let smallest_lam = 10.0_f64.powf(range.0);
+        let fdpar_small = FdPar {
+            basis_type: basis_type.clone(),
+            nbasis,
+            lambda: smallest_lam,
+            lfd_order,
+            penalty_matrix: penalty.clone(),
+        };
+        let overfit = smooth_basis(&data, &t, &fdpar_small).unwrap();
+
+        let selected =
+            smooth_basis_aic(&data, &t, &basis_type, nbasis, lfd_order, range, n_grid).unwrap();
+
+        assert!(
+            selected.edf < overfit.edf,
+            "AIC-selected edf ({}) should be smaller (smoother) than the smallest-lambda edf ({})",
+            selected.edf,
+            overfit.edf
+        );
     }
 
     #[test]
