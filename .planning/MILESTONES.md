@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.20.0 Table-Stakes Quick Wins (Shipped: 2026-08-16)
+
+**Phases completed:** 2 phases, 2 plans, 3 tasks
+
+**Key accomplishments:**
+
+- Additive R-parity table-stakes: `constant_basis` intercept column, `CvCriterion::Aic` + `aic_smoother` kernel-bandwidth selection, and `smooth_basis_aic` λ selector — all reusing existing GCV hat-matrix-trace infrastructure with GCV/CV paths byte-for-byte unchanged.
+- None functionally.
+
+---
+
 ## v0.19.0 Functional Inference Suite (Shipped: 2026-08-16)
 
 **Phases completed:** 2 phases, 2 plans, 0 tasks

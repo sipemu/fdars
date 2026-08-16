@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.20.0
 milestone_name: Table-Stakes Quick Wins
-current_phase: 23
-status: completed
+status: Awaiting next milestone
 stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-08-16T20:03:53.220Z"
+last_updated: "2026-08-16T20:04:41.782Z"
 last_activity: 2026-08-16
 last_activity_desc: Milestone v0.20.0 roadmap created (Phases 22–23)
 progress:
@@ -14,6 +13,7 @@ progress:
   total_plans: 2
   completed_plans: 2
   percent: 100
+current_phase: 23
 current_phase_name: Functional Boxplot & Depth Dispatcher
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: 23
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-16 — Phase 23 complete
+Phase: Milestone v0.20.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-16 — Milestone v0.20.0 completed and archived
 
 ## Milestone Roadmap (v0.20.0)
 
@@ -126,4 +126,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 22` (or `/gsd-plan-phase 23` — the two phases are independent and may be planned/executed in either order or in parallel).
+- Start the next milestone with /gsd-new-milestone
