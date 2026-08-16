@@ -4,17 +4,17 @@ milestone: v0.19.0
 milestone_name: Functional Inference Suite
 current_phase: 21
 current_phase_name: Functional-Linear-Model Inference
-status: planning
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-08-15T22:07:23.599Z"
+status: executing
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-08-16T07:35:24.358Z"
 last_activity: 2026-08-16
-last_activity_desc: Phase 20 complete, transitioned to Phase 21
+last_activity_desc: Phase 21 plan 01 executed (INF-02 FLM inference) — flm_f_test, flm_gof_test, oneway_anova_vstat
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 50
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-08-15)
 ## Current Position
 
 Phase: 21 — Functional-Linear-Model Inference
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-16 — Phase 20 complete, transitioned to Phase 21
+Plan: 01 — complete (INF-02)
+Status: Phase 21 complete — ready to verify / close milestone
+Last activity: 2026-08-16 — Phase 21 plan 01 executed (flm_f_test, flm_gof_test, oneway_anova_vstat)
 
 ## Milestone Roadmap (v0.19.0)
 
@@ -73,6 +73,7 @@ Two sequential phases, two requirements. First **implementation** milestone from
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 20 P01 | 1 session | 3 tasks | 6 files |
+| Phase 21 P01 | 1h20m | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,7 @@ Conventions carried from prior milestones (relevant to implementation):
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - TMPDIR=/home/simonm/.cache/fdars-bench-tmp required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code, so this pointer matters again.
 - [Phase ?]: Phase 20 INF-01: inference/ module reuses fanova/hotelling_t2/scb_mean_degras; self-contained chi-square SF avoids a statrs dependency
+- [Phase ?]: flm_gof_test uses F-form Ramsey-RESET residual lack-of-fit; oneway_anova_vstat uses scaled-chi2 (Box/Satterthwaite) V-null; F-dist SF self-contained via incomplete beta (no new dep)
 
 ### Pending Todos
 
@@ -116,8 +118,8 @@ Advisory tech-debt carried forward (not v0.19.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-15T22:04:26.340Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-08-16T07:35:18.365Z
+Stopped at: Completed 21-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
