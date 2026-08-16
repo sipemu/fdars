@@ -5,6 +5,16 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0]
+
+### Added
+
+- **Constant/intercept basis** (`basis`): `constant_basis(t) -> Vec<f64>` — a column-major m×1 all-ones intercept column, usable in regression design matrices, mirroring the `bspline_basis`/`fourier_basis` convention.
+- **AIC smoothing-parameter selection** (`smoothing`, `smooth_basis`): a new `CvCriterion::Aic` variant (`AIC = n·ln(RSS/n) + 2·tr(S)`, reusing the GCV hat-matrix trace) selectable in `optim_bandwidth`, and `smooth_basis_aic` for AIC-optimal basis-roughness λ selection alongside the existing `smooth_basis_gcv`. `CvCriterion` is now `#[non_exhaustive]`.
+- **Unified depth dispatcher** (`depth`): `functional_depth(data, method: DepthMethod)` computes each curve's self-depth via a single entry point, with a `#[non_exhaustive]` `DepthMethod` enum (`FraimanMuniz { scale }`, `Band`, `ModifiedBand`, `RandomProjection { nproj, seed }`).
+- **Depth-fence functional boxplot** (`depth`): `functional_boxplot(data, method, factor) -> FunctionalBoxplotResult` — the canonical López-Pintado–Romo boxplot with numeric outputs (median = deepest curve, 50% central region, `factor`×-inflated fence, and per-curve outlier flags). No plotting; numeric only.
+- All additive/non-breaking: existing public signatures (kernel/basis smoothers, depth functions) are unchanged; no new dependency.
+
 ## [0.19.0]
 
 ### Added
