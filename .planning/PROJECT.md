@@ -8,15 +8,15 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.19.0 Functional Inference Suite
+## Current Milestone: v0.20.0 Table-Stakes Quick Wins
 
-**Goal:** Give fdars its first standalone functional-inference surface — two-sample tests and functional-linear-model inference — closing the highest-value P1 table-stakes gaps in R-parity Area 5 (currently 0/22 present). First implementation milestone promoted from the v0.18.0 `R-BACKLOG.md`.
+**Goal:** Ship the two top-ranked R-parity quick wins (both score 5.00, P1 table-stakes, S-effort) — each closing a baseline capability gap by wrapping existing fdars infrastructure. Continues executing the v0.18.0 `R-BACKLOG.md` top-first.
 
-**Target features (both P1 table-stakes from R-BACKLOG.md):**
-- **INF-01 (rank 4, score 2.89, P1/M):** new `fdars-core/src/inference/` module with standalone two-sample tests — `t_perm_test`, `f_perm_test` (`Fperm.fd`/`tperm.fd` analogs), two-sample mean/covariance equality test, and mean SCB (simultaneous confidence bands). Reuses `function_on_scalar` permutation machinery, `spm::stats::hotelling_t2`, and `tolerance/degras` bootstrap bands. Builds the module scaffolding INF-02 depends on.
-- **INF-02 (rank 5, score 2.89, P1/M):** functional-linear-model inference on `FregreLmResult` — goodness-of-fit test, F-test, plus an asymptotic one-way ANOVA V-statistic (alongside the existing permutation ANOVA). Reuses fitted-model residuals + integration weights.
+**Target features (both rank-1/2, score 5.00, P1 table-stakes, S-effort from R-BACKLOG.md):**
+- **T-01 (rank 1):** a named **constant/intercept basis** constructor in `basis/` (usable in regression design matrices), plus an **AIC criterion** in the automatic smoothing-parameter selector (`smooth_basis`/`smoothing` do GCV/CV only today). Reuses existing basis + hat-matrix machinery.
+- **T-02 (rank 2):** the López-Pintado **depth-fence functional boxplot** — central region + 1.5×IQR-of-depths whisker + outlier flags, as *numeric* outputs — plus a unified **`functional_depth(data, method: DepthMethod)`** dispatcher over the existing depth functions (`fraiman_muniz_1d`, `band_1d`, `modified_band_1d`, `random_projection_1d`, …).
 
-**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports. R baseline: `fda` (`Fperm.fd`/`tperm.fd`), `fda.usc` (FLM GoF/F-test, mean/cov equality), `SCBmeanfd`, `fdatest`/`fdANOVA` (ANOVA V-stat). INF-01 first (scaffolding), then INF-02. Phase numbering continues from v0.18.0 → starts at Phase 20. INF-03 (ITP family, P2 differentiator) deferred. Crate is at 0.17.0 (v0.18.0 was audit-only); the crate-version bump is a ship-time decision.
+**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports. Both items **wrap existing code** (low risk); mirrors the v0.15.0 quick-wins pattern. R baseline: `fda`/`fda.usc` (constant basis, AIC smoothing), `roahd`/`fdaoutlier`/`fda.usc` (functional boxplot fences, depth dispatcher). Phase numbering continues from v0.19.0 → starts at Phase 22. Crate bumps 0.19.0 → 0.20.0 at ship time (separate release step).
 
 ## Requirements
 
@@ -63,9 +63,10 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- v0.19.0 Functional Inference Suite shipped — both requirements validated. Awaiting next milestone. -->
+<!-- v0.20.0 Table-Stakes Quick Wins — T-01 + T-02 promoted from R-BACKLOG.md (formalized in REQUIREMENTS.md during roadmap creation). -->
 
-_(none — v0.19.0 shipped; next milestone draws from `R-BACKLOG.md` via `/gsd-new-milestone`)_
+- [ ] **T-01**: named constant/intercept basis constructor in `basis/` + AIC criterion in the automatic smoothing-parameter selector
+- [ ] **T-02**: depth-fence functional boxplot (numeric central-region/whisker/outlier outputs) + unified `functional_depth(data, method: DepthMethod)` dispatcher
 
 ### Out of Scope
 

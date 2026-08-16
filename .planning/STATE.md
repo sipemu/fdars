@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.19.0
-milestone_name: Functional Inference Suite
-status: Awaiting next milestone
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-08-16T07:39:30.934Z"
+milestone: v0.20.0
+milestone_name: Table-Stakes Quick Wins
+status: planning
+last_updated: "2026-08-16T19:16:25.728Z"
 last_activity: 2026-08-16
-last_activity_desc: Phase 21 plan 01 executed (INF-02 FLM inference) — flm_f_test, flm_gof_test, oneway_anova_vstat
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
-current_phase: 21
-current_phase_name: Functional-Linear-Model Inference
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-15)
 
 ## Current Position
 
-Phase: Milestone v0.19.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-16 — Milestone v0.19.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-16 — Milestone v0.20.0 started
 
 ## Milestone Roadmap (v0.19.0)
 
