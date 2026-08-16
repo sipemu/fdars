@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.19.0 Functional Inference Suite (Shipped: 2026-08-16)
+
+**Phases completed:** 2 phases, 2 plans, 0 tasks
+
+**Key accomplishments:**
+
+- 1. [Rule 3 - Blocking] `f_perm_test` merged forward from Task 2 into Task 1's commit
+- F-form residual lack-of-fit (Ramsey-RESET style).
+
+---
+
 ## v0.18.0 R-Ecosystem Gap Audit (Shipped: 2026-08-15)
 
 **Phases completed:** 4 phases, 5 plans, 0 tasks

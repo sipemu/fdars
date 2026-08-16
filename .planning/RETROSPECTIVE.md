@@ -105,6 +105,39 @@ An audit-only milestone (the R-ecosystem analog of v0.14.0): a versioned invento
 
 ---
 
+## Milestone: v0.19.0 — Functional Inference Suite
+
+**Shipped:** 2026-08-16
+**Phases:** 2 (20–21) | **Plans:** 2
+
+### What Was Built
+fdars' first standalone functional-inference surface: a new `fdars-core/src/inference/` module (7 files, 8 public entry points). INF-01 two-sample tests (`t_perm_test`, `f_perm_test`, `two_sample_mean_test`, `mean_scb`, `scb_two_sample_test` + `TestResult`); INF-02 FLM inference (`flm_f_test`, `flm_gof_test`, `oneway_anova_vstat`). Closes R-parity Area 5 (previously 0/22). First milestone promoted from the v0.18.0 R-backlog.
+
+### What Worked
+- **Verify-anchors-before-planning** — grepping the actual reuse targets (`fanova`/`integrated_f_statistic`, `hotelling_t2`, `scb_mean_degras`, `FregreLmResult` fields) into the CONTEXT before planning meant the plans referenced real code, not phantom APIs; `scb_mean_degras` already existing made INF-01's `mean_scb` a thin wrapper.
+- **Reuse over dependencies** — self-contained χ²/F survival functions (regularized incomplete gamma/beta) avoided a `statrs` API addition and a package-legitimacy review; the `inference/dist.rs` refactor gave both phases one home.
+- **Tracer-first plans + statistical-correctness test mandate** — each plan led with one end-to-end working test before expanding; requiring "rejects real effect / fails-to-reject null" tests (not just "compiles") caught a non-zero-mean test-noise bug during execution.
+- **Orchestrator independent re-verification** — re-running `cargo test`/`clippy` after each executor rather than trusting the summary; both phases confirmed green first-hand (2039 lib tests).
+
+### What Was Inefficient
+- **Background-executor latency** — the code executors ran long (compile/test loops); one execution spanned many minutes. Dispatch-and-wait was correct but slow; the session's earlier background-agent process-exit instability made waiting feel risky.
+- **Noisy auto-extracted accomplishments** — `milestone.complete` pulled "[Rule 3 - Blocking]"-style lines from SUMMARYs into the MILESTONES.md entry; the base entry needed manual cleanup awareness.
+- **Benign false-positive close warning** — SUMMARY path-check flagged `inference/{dist,flm,anova}.rs` as "not on disk" when they exist (path-format mismatch).
+
+### Patterns Established
+- **Implementation milestone from a research backlog**: promote a backlog cluster → CONTEXT with verified anchors → tracer-first plan → executor → independent re-verify → bookkeeping. Reusable for the next R-backlog items.
+- **`inference/dist.rs`** is now the shared home for self-contained distribution survival functions (χ², F) — extend it (t, beta) rather than adding `statrs`.
+
+### Key Lessons
+- For numeric/statistical code, tests must assert *behavior against known truth* (tabulated quantiles, reject/fail-to-reject on synthetic effects), not just execution — this is what makes an inference implementation trustworthy without a reference-library cross-check.
+- Verifying reuse anchors up front is the cheapest correctness lever: it collapses effort (found `scb_mean_degras` pre-built) and prevents plans built on non-existent APIs.
+
+### Cost Observations
+- Model mix: orchestration + planners + executors all on Opus (statistical-correctness stakes); no research pass (reuse-heavy, anchors concrete).
+- Notable: no new crate dependency; additive/non-breaking (existing signatures incl. `fanova` frozen; only visibility widenings). Crate release deferred to a separate ship step.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
