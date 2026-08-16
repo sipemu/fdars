@@ -22,7 +22,7 @@ mod tests;
 
 // Re-export all public functions
 pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
-pub use dispatch::{functional_depth, DepthMethod};
+pub use dispatch::{functional_boxplot, functional_depth, DepthMethod, FunctionalBoxplotResult};
 pub use fraiman_muniz::{fraiman_muniz_1d, fraiman_muniz_2d};
 pub use modal::{modal_1d, modal_2d};
 pub use random_projection::{
