@@ -132,7 +132,9 @@ Second implementation milestone from the v0.18.0 R-ecosystem backlog — the two
   4. Both additions are additive and `Result`-returning, are re-exported at the crate root, and leave every existing depth/outlier public signature unchanged (existing `outliergram`, `fraiman_muniz_1d`, etc. behave identically).
   5. Inline `#[cfg(test)]` tests cover the planted-outlier detection + fence bounds, the per-method dispatcher-equals-underlying-function equalities, and input-validation error paths; the full suite + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 23-01-PLAN.md — DepthMethod enum + functional_depth self-depth dispatcher and the depth-fence functional_boxplot (numeric outputs), in new depth/dispatch.rs with crate-root re-exports and inline tests
 
 ## Progress
 
