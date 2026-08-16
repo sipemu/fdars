@@ -85,7 +85,7 @@ Full phase detail: [milestones/v0.18.0-ROADMAP.md](milestones/v0.18.0-ROADMAP.md
 First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes the two P1 table-stakes inference items (INF-01, INF-02) that close fdars' dominant table-stakes deficit: R-parity **Area 5 (Inference)**, currently **0/22 present**. All additions are additive/non-breaking, `Result`-returning, with inline `#[cfg(test)]` tests and crate-root re-exports; **zero changes to existing public signatures.** INF-01 first (creates the `inference/` module scaffolding + two-sample tests); INF-02 second (FLM inference, depends on that module existing).
 
 - [x] **Phase 20: Two-Sample Functional Tests & `inference/` Module** — new `fdars-core/src/inference/` with standalone two-sample tests (`t_perm_test`, `f_perm_test`, mean/covariance equality, `mean_scb` + SCB two-sample test), reusing existing permutation / Hotelling-T² / bootstrap-band machinery (completed 2026-08-16)
-- [ ] **Phase 21: Functional-Linear-Model Inference** — `flm_gof_test` + `flm_f_test` on fitted `FregreLmResult`, plus an asymptotic one-way ANOVA V-statistic (`oneway_anova_vstat`) alongside the existing permutation ANOVA
+- [x] **Phase 21: Functional-Linear-Model Inference** — `flm_gof_test` + `flm_f_test` on fitted `FregreLmResult`, plus an asymptotic one-way ANOVA V-statistic (`oneway_anova_vstat`) alongside the existing permutation ANOVA (completed 2026-08-16)
 
 ## Phase Details
 
@@ -127,4 +127,4 @@ First implementation milestone from the v0.18.0 R-ecosystem backlog — promotes
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 20. Two-Sample Functional Tests & `inference/` Module | 1/1 | Complete    | 2026-08-16 |
-| 21. Functional-Linear-Model Inference | 1/1 | In Progress|  |
+| 21. Functional-Linear-Model Inference | 1/1 | Complete    | 2026-08-16 |
