@@ -78,7 +78,8 @@ pub struct ConcurrentRegrResult {
 /// - any predictor's shape does not match `(n, m)`, or
 /// - `argvals` is `Some` with a length different from `m`.
 ///
-/// Returns [`FdarError::InvalidParameter`] if `bandwidth <= 0.0`.
+/// Returns [`FdarError::InvalidParameter`] if `bandwidth` is not strictly
+/// positive (i.e., zero, negative, `f64::NAN`, or `f64::INFINITY`).
 ///
 /// # Notes
 ///
@@ -139,10 +140,15 @@ pub fn concurrent_regression(
         }
     }
 
-    if bandwidth <= 0.0 {
+    // Reject NaN (`is_finite()` is false for NaN), ±Inf, zero and negative
+    // values — all of which would propagate into the kernel smoother and
+    // produce silent all-zero output.  The original `bandwidth <= 0.0` guard
+    // was insufficient because `NaN <= 0.0` evaluates to `false` under
+    // IEEE 754, allowing NaN to bypass the check.
+    if !bandwidth.is_finite() || bandwidth <= 0.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "bandwidth",
-            message: format!("must be positive, got {bandwidth}"),
+            message: format!("must be finite and positive, got {bandwidth}"),
         });
     }
 
@@ -707,5 +713,67 @@ mod tests {
             ),
             "expected InvalidDimension for argvals length mismatch, got {err:?}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression test: CR-01 — NaN/Inf bandwidth must return an error
+    //
+    // Before the fix, `NaN <= 0.0` evaluated to `false` under IEEE 754, so
+    // NaN bandwidth bypassed the guard and silently returned all-zero
+    // coefficients. This test pins the corrected behaviour.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_nan_inf_bandwidth_returns_error() {
+        let n = 4;
+        let m = 6;
+
+        let mut response = FdMatrix::zeros(n, m);
+        let mut predictor = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                response[(i, j)] = (i as f64 + 1.0) * (j as f64 + 1.0);
+                predictor[(i, j)] = (i as f64 + 1.0) + (j as f64 * 0.1);
+            }
+        }
+
+        // NaN bandwidth: previously bypassed the guard → silent wrong output.
+        let err =
+            concurrent_regression(&response, &[predictor.clone()], None, f64::NAN, "gaussian")
+                .expect_err("NaN bandwidth must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "bandwidth",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for NaN bandwidth, got {err:?}"
+        );
+
+        // +Infinity bandwidth: also previously bypassed the guard.
+        let err = concurrent_regression(
+            &response,
+            &[predictor.clone()],
+            None,
+            f64::INFINITY,
+            "gaussian",
+        )
+        .expect_err("+Inf bandwidth must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "bandwidth",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for +Inf bandwidth, got {err:?}"
+        );
+
+        // Sanity-check: a normal positive bandwidth still succeeds.
+        concurrent_regression(&response, &[predictor], None, 0.2, "gaussian")
+            .expect("positive finite bandwidth must succeed");
     }
 }
