@@ -78,12 +78,18 @@ impl GlmFamily {
     /// IRLS weight: w_i = (dμ/dη)² / V(μ) = 1 / (V(μ) · g′(μ)²).
     ///
     /// For canonical links this simplifies to:
-    /// Binomial = μ(1−μ), Poisson = μ, Gamma = 1/μ², Gaussian = 1.
+    /// Binomial = μ(1−μ), Poisson = μ, Gamma = μ², Gaussian = 1.
+    ///
+    /// **Gamma derivation (inverse link):**
+    /// - dμ/dη = −μ² (from μ = 1/η → dμ/dη = −1/η² = −μ²)
+    /// - V(μ) = μ²
+    /// - w = (dμ/dη)² / V(μ) = μ⁴ / μ² = μ²
     pub(crate) fn irls_weight(self, mu: f64) -> f64 {
         match self {
             GlmFamily::Binomial => (mu * (1.0 - mu)).max(1e-10),
             GlmFamily::Poisson => mu.max(1e-10),
-            GlmFamily::Gamma => (1.0 / mu.max(1e-10).powi(2)).max(1e-10),
+            // w = μ² (NOT 1/μ²) — see derivation in doc comment above
+            GlmFamily::Gamma => mu.max(1e-10).powi(2),
             GlmFamily::Gaussian => 1.0,
         }
     }
@@ -675,42 +681,43 @@ mod tests {
 
     #[test]
     fn test_gamma_recovery() {
-        // True model: 1/mu_i = 0.5 + 0.8 * first_score_i, mu_i > 0.
-        // Use scores in [-0.5, 0.5] so eta = 0.5+0.8*s ∈ [0.1, 0.9] > 0.
+        // True model: 1/μ_i = 2.0 + 1.0 * first_score_i (Gamma inverse link).
+        // first_scores from make_rich_data are in [-1, 1], so η_i ∈ [1.0, 3.0] > 0,
+        // and μ_i = 1/η_i ∈ [0.33, 1.0] — strictly positive throughout.
+        //
+        // This test verifies that the Gamma GLM with CORRECT IRLS weight (w = μ²)
+        // recovers the true generating mean with Pearson correlation > 0.9.
+        // The 3-component functional data from make_rich_data ensures the FPCA
+        // scores are not trivially aligned with the true score, providing a
+        // meaningful regression test.
+        //
+        // Note: for this noiseless multi-component fixture the IRLS weight choice
+        // (μ² vs 1/μ²) both converge to the same point estimates; the primary
+        // value of the corr > 0.9 assertion is to confirm the overall GLM algorithm
+        // is producing a sensible Gamma fit, not just finite values.
         let n = 100;
         let m = 30;
 
-        // Build well-conditioned data with scores in [-0.5, 0.5]
-        let mut vals = vec![0.0f64; n * m];
-        let mut first_scores = vec![0.0f64; n];
-        for i in 0..n {
-            let s0 = (i as f64 / (n - 1) as f64) * 1.0 - 0.5; // in [-0.5, 0.5]
-            let s1 = ((i * 3 % n) as f64 / (n - 1) as f64) * 0.8 - 0.4;
-            let s2 = ((i * 7 % n) as f64 / (n - 1) as f64) * 0.7 - 0.35;
-            first_scores[i] = s0;
-            for j in 0..m {
-                let t = j as f64 / (m - 1) as f64;
-                let b0 = (std::f64::consts::PI * t).sin();
-                let b1 = (2.0 * std::f64::consts::PI * t).sin();
-                let b2 = (3.0 * std::f64::consts::PI * t).sin();
-                vals[i + j * n] = s0 * b0 + 0.5 * s1 * b1 + 0.25 * s2 * b2;
-            }
-        }
-        let data = FdMatrix::from_column_major(vals, n, m).unwrap();
-
-        let y: Vec<f64> = first_scores
+        let (data, first_scores) = make_rich_data(n, m);
+        // η_i = 2.0 + 1.0 * s_i, s_i ∈ [-1, 1] → η_i ∈ [1.0, 3.0] > 0
+        let true_mu: Vec<f64> = first_scores
             .iter()
-            .map(|&s| {
-                let eta = 0.5 + 0.8 * s; // in [0.1, 0.9]
-                1.0 / eta
-            })
+            .map(|&s| 1.0 / (2.0 + 1.0 * s))
             .collect();
+        let y = true_mu.clone();
 
         let fit = functional_glm(&data, &y, GlmFamily::Gamma, None, 3, 100, 1e-6).unwrap();
 
         assert!(
             fit.fitted_values.iter().all(|&v| v.is_finite() && v > 0.0),
             "all Gamma fitted_values finite and positive"
+        );
+
+        // Sanity: fitted means correlate with true means
+        let corr = pearson_corr(&fit.fitted_values, &true_mu);
+        assert!(
+            corr > 0.9,
+            "Gamma recovery: Pearson corr={corr:.4} should be > 0.9"
         );
     }
 
