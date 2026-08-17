@@ -75,6 +75,8 @@ pub struct ConcurrentRegrResult {
 /// Returns [`FdarError::InvalidDimension`] if:
 /// - `predictors` is empty,
 /// - `response` has fewer than 2 rows or zero columns,
+/// - `response` has at most as many rows as there are predictors (`n <= p`),
+///   which would make each per-column design matrix underdetermined,
 /// - any predictor's shape does not match `(n, m)`, or
 /// - `argvals` is `Some` with a length different from `m`.
 ///
@@ -83,10 +85,9 @@ pub struct ConcurrentRegrResult {
 ///
 /// # Notes
 ///
-/// For stable OLS estimates at each grid column, the sample size should
-/// satisfy `n > p + 1`. A small ridge regulariser (`eps = 1e-10 * (n + 1)`)
-/// is applied to the diagonal of each column's normal equations to prevent
-/// numerical blow-up when predictors are collinear at a grid point.
+/// A small ridge regulariser (`eps = 1e-10 * (n + 1)`) is applied to the
+/// diagonal of each column's normal equations to prevent numerical blow-up
+/// when predictors are collinear at a grid point.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn concurrent_regression(
     response: &FdMatrix,
@@ -171,6 +172,23 @@ pub fn concurrent_regression(
 
     let p = predictors.len();
     let q = p + 1; // intercept + p slopes
+
+    // Guard: with n <= p the per-column design matrix X_j ∈ R^{n×(p+1)} is
+    // underdetermined (rank at most n < p+1). The ridge stabiliser is too
+    // small (~3e-10 for n=2) to act as a statistical regulariser, so the
+    // returned coefficients would be driven almost entirely by the ridge
+    // rather than the data with no indication to the caller.
+    if n <= p {
+        return Err(FdarError::InvalidDimension {
+            parameter: "response",
+            expected: format!(
+                "at least {} rows (more observations than predictors p={})",
+                p + 1,
+                p
+            ),
+            actual: format!("{n}"),
+        });
+    }
 
     // ------------------------------------------------------------------
     // 3. Step 1 — pointwise OLS at each grid column (parallelised)
@@ -775,5 +793,78 @@ mod tests {
         // Sanity-check: a normal positive bandwidth still succeeds.
         concurrent_regression(&response, &[predictor], None, 0.2, "gaussian")
             .expect("positive finite bandwidth must succeed");
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression test: WR-01 — underdetermined system (n <= p) must return
+    // InvalidDimension rather than silently returning ridge-dominated output.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_underdetermined_system_returns_error() {
+        let m = 8;
+
+        // Case 1: n == p (square, still underdetermined for the p+1-column design).
+        // 3 predictors, 3 observations → design matrix is 3×4, rank-deficient.
+        let n = 3usize;
+        let p = 3usize;
+        let response = FdMatrix::zeros(n, m);
+        let predictors: Vec<FdMatrix> = (0..p).map(|_| FdMatrix::zeros(n, m)).collect();
+
+        let err = concurrent_regression(&response, &predictors, None, 0.2, "gaussian")
+            .expect_err("n == p should return Err (underdetermined)");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidDimension {
+                    parameter: "response",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for n==p, got {err:?}"
+        );
+
+        // Case 2: n < p (severely underdetermined).
+        let n2 = 2usize;
+        let p2 = 4usize;
+        let response2 = FdMatrix::zeros(n2, m);
+        let predictors2: Vec<FdMatrix> = (0..p2).map(|_| FdMatrix::zeros(n2, m)).collect();
+
+        let err2 = concurrent_regression(&response2, &predictors2, None, 0.2, "gaussian")
+            .expect_err("n < p should return Err (underdetermined)");
+        assert!(
+            matches!(
+                err2,
+                FdarError::InvalidDimension {
+                    parameter: "response",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for n<p, got {err2:?}"
+        );
+
+        // Sanity-check: n > p should still succeed.
+        let n3 = 6usize;
+        let p3 = 2usize;
+        let mut resp3 = FdMatrix::zeros(n3, m);
+        let argvals = uniform_grid(m);
+        for i in 0..n3 {
+            for j in 0..m {
+                resp3[(i, j)] = (i as f64 + 1.0) * argvals[j];
+            }
+        }
+        let preds3: Vec<FdMatrix> = (0..p3)
+            .map(|k| {
+                let mut pred = FdMatrix::zeros(n3, m);
+                for i in 0..n3 {
+                    for j in 0..m {
+                        pred[(i, j)] = (i as f64 + k as f64 + 1.0) * argvals[j] + 0.1;
+                    }
+                }
+                pred
+            })
+            .collect();
+        concurrent_regression(&resp3, &preds3, None, 0.2, "gaussian")
+            .expect("n > p should succeed");
     }
 }
