@@ -1,0 +1,4 @@
+# Research fetch cache (transient — regenerated on demand)
+research/.cache/
+# Guard against accidental nested-planning duplication
+.planning/
