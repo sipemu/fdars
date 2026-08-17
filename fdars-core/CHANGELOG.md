@@ -5,6 +5,14 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0]
+
+### Added
+
+- **Dense functional concurrent / varying-coefficient regression** (`concurrent_regression`): `concurrent_regression(response, predictors, argvals, bandwidth, kernel) -> Result<ConcurrentRegrResult, FdarError>` in the new `concurrent_regression` module — relates a functional response to one or more functional predictors on the *same* shared grid, recovering a smooth time-varying coefficient curve β(t). Estimated by pointwise OLS per grid column (with a ridge stabilizer) followed by local-linear kernel smoothing of the coefficient sequences, reusing the `smoothing` kernels. `ConcurrentRegrResult` carries `{ beta_curve (p×m), intercept, fitted, residuals, argvals }` with a time-varying intercept. Guards reject non-finite/non-positive bandwidth and underdetermined (`n ≤ p`) systems.
+- **Functional GLM (exponential family)** (`scalar_on_function`): `functional_glm(data, y, family, scalar_covariates, ncomp, max_iter, tol) -> Result<FunctionalGlmResult, FdarError>` plus `predict_functional_glm` — an IRLS estimator over FPC scores (reusing the `functional_logistic` loop + `fdata_to_pc_1d`) generalized across a `#[non_exhaustive]` `GlmFamily { Binomial, Poisson, Gamma, Gaussian }`, each with its canonical link and variance function. `Binomial` reproduces the existing `functional_logistic` fit within tolerance. `FunctionalGlmResult` reports fitted values (μ), linear predictors (η), coefficients, dispersion-scaled standard errors, deviance, log-likelihood, AIC/BIC, and the embedded FPCA. Per-family response-domain and non-finite input guards return `FdarError` rather than panicking; the Poisson log-likelihood uses an inline Lanczos `ln_gamma`.
+- All additive/non-breaking: existing public signatures (including `functional_logistic`) are unchanged; no new crate dependency.
+
 ## [0.20.0]
 
 ### Added
