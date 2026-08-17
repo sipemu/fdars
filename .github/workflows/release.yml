@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # This job only runs `cargo publish` (auth via CARGO_REGISTRY_TOKEN),
+          # never pushes via git — so don't persist the git auth extraheader.
+          # Avoids the benign "git failed with exit code 128" warning in the
+          # checkout Post-cleanup step (nothing left to unset).
+          persist-credentials: false
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
