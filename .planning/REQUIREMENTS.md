@@ -47,18 +47,18 @@ Explicitly excluded this milestone, with reasoning.
 
 ## Traceability
 
-Populated during roadmap creation (each requirement maps to exactly one phase).
+Each requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 | TBD | Pending |
-| REG-02 | TBD | Pending |
+| REG-01 | Phase 24 | Pending |
+| REG-02 | Phase 25 | Pending |
 
 **Coverage:**
 - v1 requirements: 2 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 2 ⚠️
+- Mapped to phases: 2 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-17*
-*Last updated: 2026-08-17 after initial definition*
+*Last updated: 2026-08-17 — roadmap created; REG-01 → Phase 24, REG-02 → Phase 25 (100% coverage)*
