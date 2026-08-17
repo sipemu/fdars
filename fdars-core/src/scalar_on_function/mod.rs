@@ -24,6 +24,7 @@ use crate::regression::{FpcaResult, PlsResult};
 mod bootstrap;
 mod cv;
 mod fregre_lm;
+mod glm;
 mod logistic;
 mod multi;
 mod nonparametric;
@@ -36,6 +37,9 @@ mod tests;
 pub use bootstrap::{bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic};
 pub use cv::{fregre_basis_cv, fregre_np_cv};
 pub use fregre_lm::{fregre_cv, fregre_lm, model_selection_ncomp, predict_fregre_lm};
+pub use glm::{functional_glm, predict_functional_glm};
+// GlmFamily and FunctionalGlmResult are defined in this module (mod.rs) and
+// exported from here directly — no glm:: re-export needed for those types.
 pub use logistic::{functional_logistic, predict_functional_logistic};
 pub use multi::{fregre_lm_multi, fregre_lm_multi_cv, predict_fregre_lm_multi, MultiCvResult};
 pub use nonparametric::{
@@ -321,6 +325,80 @@ pub struct FregreNpCvResult {
     pub h_values: Vec<f64>,
     /// Minimum mean CV error.
     pub min_cv_error: f64,
+}
+
+/// Exponential-family distribution for [`functional_glm`].
+///
+/// Each variant specifies the canonical link function and variance function
+/// for one member of the exponential family.
+///
+/// | Variant   | Link g(μ)  | Inverse link g⁻¹(η) | Variance V(μ) |
+/// |-----------|------------|---------------------|--------------|
+/// | Binomial  | logit      | sigmoid             | μ(1−μ)       |
+/// | Poisson   | log        | exp                 | μ            |
+/// | Gamma     | inverse    | 1/η                 | μ²           |
+/// | Gaussian  | identity   | η                   | 1            |
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum GlmFamily {
+    /// Logit link; binary outcomes (y ∈ {0, 1}).
+    Binomial,
+    /// Log link; non-negative integer counts (y ∈ {0, 1, 2, …}).
+    Poisson,
+    /// Inverse link (canonical); strictly positive continuous responses (y > 0).
+    Gamma,
+    /// Identity link; continuous unbounded responses.
+    Gaussian,
+}
+
+/// Result of [`functional_glm`] for a scalar response over functional predictors.
+///
+/// Contains the fitted model parameters, diagnostic statistics, and the embedded
+/// [`crate::regression::FpcaResult`] for projecting new data.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FunctionalGlmResult {
+    /// Intercept α
+    pub intercept: f64,
+    /// Functional coefficient β(t), evaluated on the original grid (length m)
+    pub beta_t: Vec<f64>,
+    /// Pointwise standard errors of β(t) (length m)
+    pub beta_se: Vec<f64>,
+    /// Scalar coefficients γ (one per scalar covariate)
+    pub gamma: Vec<f64>,
+    /// Fitted mean values μ = g⁻¹(η) (length n)
+    pub fitted_values: Vec<f64>,
+    /// Linear predictors η = Xβ (length n)
+    pub linear_predictors: Vec<f64>,
+    /// Number of FPC components used
+    pub ncomp: usize,
+    /// All regression coefficients [intercept, γ₁…γ_K, z₁…z_P]
+    pub coefficients: Vec<f64>,
+    /// Standard errors of all coefficients (intercept, FPC scores, scalar covariates)
+    pub std_errors: Vec<f64>,
+    /// Log-likelihood at convergence (kernel; see module doc for AIC comparability note)
+    pub log_likelihood: f64,
+    /// GLM deviance D = 2(LL_saturated − LL_fitted)
+    pub deviance: f64,
+    /// Number of IRLS iterations performed
+    pub iterations: usize,
+    /// FPCA result (embedded for projecting new data)
+    pub fpca: crate::regression::FpcaResult,
+    /// Akaike Information Criterion: −2·log_likelihood + 2·p
+    pub aic: f64,
+    /// Bayesian Information Criterion: −2·log_likelihood + p·ln(n)
+    pub bic: f64,
+    /// Exponential-family distribution used for this fit
+    pub family: GlmFamily,
+}
+
+impl FunctionalGlmResult {
+    /// Predict response for new functional data. Delegates to [`predict_functional_glm`].
+    pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
+        predict_functional_glm(self, new_data, new_scalar)
+    }
 }
 
 // ---------------------------------------------------------------------------
