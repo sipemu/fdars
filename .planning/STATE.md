@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.21.0
 milestone_name: Functional Regression Completeness
 current_phase: 25
-current_phase_name: Functional GLM (Exponential Family)
-status: planning
-stopped_at: Completed Phase 24 plan 01 — concurrent_regression + ConcurrentRegrResult (REG-01, commit 5480ee25)
-last_updated: "2026-08-17T10:13:16.510Z"
+current_phase_name: functional-glm-exponential-family
+status: complete
+stopped_at: Completed Phase 25 plan 01 — functional_glm + GlmFamily + FunctionalGlmResult (REG-02, commit cb839d52)
+last_updated: "2026-08-17T13:00:00.000Z"
 last_activity: 2026-08-17
-last_activity_desc: Phase 24 plan 01 complete — concurrent_regression implemented and all tests green
+last_activity_desc: Phase 25 plan 01 complete — functional_glm (4 families) implemented and all tests green
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 50
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -24,17 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the two remaining P1 table-stakes functional-regression items from `.planning/research/R-BACKLOG.md` (REG-01 concurrent/varying-coefficient regression, REG-02 exponential-family functional GLM), each reusing existing scalar-on-function design machinery.
-**Current focus:** Phase 25 — Functional GLM (Exponential Family)
+**Current focus:** Phase 25 — functional-glm-exponential-family
 
 ## Current Position
 
-Phase: 25 — Functional GLM (Exponential Family)
-Phase: 25 (functional-glm) — PENDING (next to execute)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-17 — Phase 24 complete, transitioned to Phase 25
+Phase: 25 (functional-glm-exponential-family) — COMPLETE
+Plan: 1 of 1 (complete)
+Status: All phases complete — milestone v0.21.0 ready for ship
+Last activity: 2026-08-17 — Phase 25 plan 01 complete (functional_glm, commit cb839d52)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Milestone Roadmap (v0.21.0)
 
@@ -67,6 +66,7 @@ Two **independent** phases, two requirements. Third implementation milestone dra
 | 20–21 | v0.19.0 | 2 |
 | 22–23 | v0.20.0 | 2 |
 | 24 | v0.21.0 | 1 (complete — REG-01) |
+| 25 | v0.21.0 | 1 (complete — REG-02) |
 
 **Recent Trend:**
 
@@ -80,6 +80,13 @@ Two **independent** phases, two requirements. Third implementation milestone dra
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
+
+**Phase 25 decisions (2026-08-17):**
+
+- statrs is NOT a runtime dependency of fdars-core (absent from Cargo.toml); Poisson log(y!) computed as exact integer factorial sum instead.
+- GlmFamily + FunctionalGlmResult defined in mod.rs alongside other result types; glm.rs contains only the implementation helpers.
+- Recovery tests require multi-component functional data (3 orthogonal sine-basis components with permuted scores) to ensure X'WX non-singular at ncomp=3.
+- Deviance-change convergence (< tol) used; Binomial parity still holds at fixed-point because both logistic and GLM converge to same coefficients.
 
 **Phase 24 decisions (2026-08-17):**
 
@@ -129,9 +136,10 @@ Advisory tech-debt carried forward (not v0.21.0 work): weakened MEWMA test asser
 ## Session Continuity
 
 Last session: 2026-08-17
-Stopped at: Completed Phase 24 plan 01 — concurrent_regression + ConcurrentRegrResult (REG-01, commit 5480ee25)
+Stopped at: Completed Phase 25 plan 01 — functional_glm + GlmFamily + FunctionalGlmResult (REG-02, commit cb839d52)
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Phase 25 (functional-glm, REG-02) with /gsd-execute-phase 25
+- Milestone v0.21.0 complete (REG-01 + REG-02 both shipped). Run /gsd-complete-milestone to archive and prepare for next version.
+- Version bump: crate version 0.20.0 → 0.21.0 pending (ship-time step).

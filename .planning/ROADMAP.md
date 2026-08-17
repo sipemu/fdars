@@ -148,7 +148,7 @@ Plans:
 
 Plans:
 
-- [ ] 25-01: Generalize `functional_logistic` into `functional_glm` + `GlmFamily` enum in `scalar_on_function/` (IRLS over FPC scores, four families with canonical link+variance, crate-root re-export, inline `#[cfg(test)]` tests)
+- [x] 25-01: Generalize `functional_logistic` into `functional_glm` + `GlmFamily` enum in `scalar_on_function/` (IRLS over FPC scores, four families with canonical link+variance, crate-root re-export, inline `#[cfg(test)]` tests) — completed 2026-08-17 (commit cb839d52)
 
 ## Progress
 
@@ -158,4 +158,4 @@ Phases 24 and 25 are mutually independent (disjoint modules) and may execute in 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 24. Concurrent / Varying-Coefficient Regression | v0.21.0 | 1/1 | Complete    | 2026-08-17 |
-| 25. Functional GLM (Exponential Family) | v0.21.0 | 0/1 | Not started | - |
+| 25. Functional GLM (Exponential Family) | v0.21.0 | 1/1 | Complete    | 2026-08-17 |

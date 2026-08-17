@@ -13,7 +13,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase. IDs mat
 
 ### Functional GLM
 
-- [ ] **REG-02**: User can fit a **functional GLM for a scalar response** over functional predictors via `functional_glm(data, y, family)` — an IRLS estimator over FPC/basis scores (reusing the `functional_logistic` IRLS loop + `fdata_to_pc_1d`) — with a `GlmFamily { Binomial, Poisson, Gamma, Gaussian }` enum, each carrying its canonical link and variance function. The existing `functional_logistic` public signature is retained unchanged (the `Binomial` family reproduces it); the result type is `Result`-returning and re-exported at the crate root.
+- [x] **REG-02**: User can fit a **functional GLM for a scalar response** over functional predictors via `functional_glm(data, y, family)` — an IRLS estimator over FPC/basis scores (reusing the `functional_logistic` IRLS loop + `fdata_to_pc_1d`) — with a `GlmFamily { Binomial, Poisson, Gamma, Gaussian }` enum, each carrying its canonical link and variance function. The existing `functional_logistic` public signature is retained unchanged (the `Binomial` family reproduces it); the result type is `Result`-returning and re-exported at the crate root. **COMPLETED 2026-08-17 — commit cb839d52**
 
 ## v2 Requirements
 
@@ -52,7 +52,7 @@ Each requirement maps to exactly one phase.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REG-01 | Phase 24 | Complete (2026-08-17) |
-| REG-02 | Phase 25 | Pending |
+| REG-02 | Phase 25 | Complete (2026-08-17) |
 
 **Coverage:**
 - v1 requirements: 2 total
@@ -61,4 +61,4 @@ Each requirement maps to exactly one phase.
 
 ---
 *Requirements defined: 2026-08-17*
-*Last updated: 2026-08-17 — REG-01 complete (Phase 24, commit 5480ee25); REG-02 pending (Phase 25)*
+*Last updated: 2026-08-17 — REG-01 complete (Phase 24, commit 5480ee25); REG-02 complete (Phase 25, commit cb839d52). Milestone v0.21.0 complete.*
