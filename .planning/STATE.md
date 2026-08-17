@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.21.0
 milestone_name: Functional Regression Completeness
 current_phase: 25
-current_phase_name: functional-glm
-status: executing
-stopped_at: Completed Phase 24 plan 01 — concurrent_regression + ConcurrentRegrResult shipped (REG-01)
-last_updated: "2026-08-17T11:00:00.000Z"
+current_phase_name: Functional GLM (Exponential Family)
+status: planning
+stopped_at: Completed Phase 24 plan 01 — concurrent_regression + ConcurrentRegrResult (REG-01, commit 5480ee25)
+last_updated: "2026-08-17T10:13:16.510Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 24 plan 01 complete — concurrent_regression implemented and all tests green
 progress:
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 24 (concurrent-varying-coefficient-regression) — COMPLETE
+Phase: 25 — Functional GLM (Exponential Family)
 Phase: 25 (functional-glm) — PENDING (next to execute)
-Plan: 1 of 1 complete for Phase 24
-Status: Phase 24 complete; Phase 25 ready to execute
-Last activity: 2026-08-17 — Phase 24 plan 01 completed (concurrent_regression, REG-01)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-17 — Phase 24 complete, transitioned to Phase 25
 
 Progress: [█████░░░░░] 50%
 
@@ -82,6 +82,7 @@ Two **independent** phases, two requirements. Third implementation milestone dra
 Decisions are logged in PROJECT.md Key Decisions table.
 
 **Phase 24 decisions (2026-08-17):**
+
 - Recovery test uses sin(πt) not sin(2πt): local-linear with bw=0.15 introduces 0.31 bias on full-period sin (high curvature); raw OLS was correct (<0.002 error); smoother was the bottleneck. Half-period sin(πt) recovered within 0.10 at interior, well inside 0.15 tolerance.
 - Concurrent regression column loop: iter_maybe_parallel!(0..m) with per-closure-local xtx/xty allocation (safe for rayon); serialize collected Vec<(f64, Vec<f64>)> after .collect() for order-stable determinism.
 
