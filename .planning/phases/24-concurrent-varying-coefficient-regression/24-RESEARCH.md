@@ -570,7 +570,7 @@ fdars matches this via `local_linear` from `smoothing.rs`. The fdars implementat
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`n = 1` edge case:** With a single observation, OLS is underdetermined at each column (the design is rank-1 with p+1 > 1 columns). Options: (a) error if `n < p+2`, (b) require `n ≥ 2` as a minimum. Given project convention (`fof_regression` requires `n ≥ 3`), **recommendation:** require `n ≥ 2` and rely on the ridge stabilizer for the degenerate case. Document that for `n < p+2` results may be unreliable.
 
