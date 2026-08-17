@@ -27,9 +27,12 @@
 //!   (more scale-invariant; recommended for multi-family code).
 //! - **Canonical links only:** Gamma uses inverse link (g(μ)=1/μ), NOT log-link.
 //! - **AIC/BIC:** computed as `−2·log_likelihood + 2p` and `−2·log_likelihood + p·ln(n)`
-//!   using the log-likelihood kernel per family (dispersion φ is not separately estimated
-//!   for Gamma/Gaussian).  Gamma and Gaussian AIC magnitudes are therefore **not** directly
-//!   comparable to R's `glm()` / `lm()` output.
+//!   using the log-likelihood kernel per family. The dispersion φ is **not** folded into
+//!   the Gamma/Gaussian AIC/BIC log-likelihood kernel, so Gamma and Gaussian AIC magnitudes
+//!   are **not** directly comparable to R's `glm()` / `lm()` output.
+//! - **Standard errors:** the dispersion φ (φ = 1 for Binomial/Poisson; Pearson χ²/dof for
+//!   Gaussian/Gamma) IS applied to the reported coefficient standard errors:
+//!   `Var(β̂) = φ·(XᵀWX)⁻¹`.
 //! - **μ/η clamping:** Poisson clamps η ≤ 500 before `exp`; Gamma clamps η ≥ 1e-10 so
 //!   μ = 1/η remains finite; all families clamp μ ≥ 1e-10 in weight/deviance computations.
 //! - **Gamma intercept initialisation:** β₀ = 1/mean(y) so η₀ > 0 (μ₀ = mean(y)), preventing
