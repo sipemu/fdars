@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.21.0 Functional Regression Completeness (Shipped: 2026-08-17)
+
+**Phases completed:** 2 phases, 2 plans, 4 tasks
+
+**Key accomplishments:**
+
+- Dense functional concurrent regression via pointwise OLS + local-linear smoothing: new `concurrent_regression` entry point with `ConcurrentRegrResult`, zero new dependencies, all SC1–SC5 verified by inline tests
+- `link_deriv(mu) = -1/mu²` (negative). Working response uses
+
+---
+
 ## v0.20.0 Table-Stakes Quick Wins (Shipped: 2026-08-16)
 
 **Phases completed:** 2 phases, 2 plans, 3 tasks

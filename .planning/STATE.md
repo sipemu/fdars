@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.21.0
 milestone_name: Functional Regression Completeness
-current_phase: 25
-status: completed
+status: Awaiting next milestone
 stopped_at: Completed Phase 25 plan 01 — functional_glm + GlmFamily + FunctionalGlmResult (REG-02, commit cb839d52)
-last_updated: "2026-08-17T13:39:21.812Z"
+last_updated: "2026-08-17T13:48:47.567Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 25 plan 01 complete — functional_glm (4 families) implemented and all tests green
 progress:
@@ -14,6 +13,7 @@ progress:
   total_plans: 2
   completed_plans: 2
   percent: 100
+current_phase: 25
 current_phase_name: functional-glm-exponential-family
 ---
 
@@ -28,12 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 25
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-17 — Phase 25 complete
-
-Progress: [██████████] 100%
+Phase: Milestone v0.21.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-17 — Milestone v0.21.0 completed and archived
 
 ## Milestone Roadmap (v0.21.0)
 
@@ -141,5 +139,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Milestone v0.21.0 complete (REG-01 + REG-02 both shipped). Run /gsd-complete-milestone to archive and prepare for next version.
-- Version bump: crate version 0.20.0 → 0.21.0 pending (ship-time step).
+- Start the next milestone with /gsd-new-milestone
