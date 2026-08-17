@@ -396,7 +396,16 @@ pub struct FunctionalGlmResult {
 
 impl FunctionalGlmResult {
     /// Predict response for new functional data. Delegates to [`predict_functional_glm`].
-    pub fn predict(&self, new_data: &FdMatrix, new_scalar: Option<&FdMatrix>) -> Vec<f64> {
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`FdarError::InvalidDimension`] from [`predict_functional_glm`]
+    /// when `new_data` / `new_scalar` shapes do not match the fitted model.
+    pub fn predict(
+        &self,
+        new_data: &FdMatrix,
+        new_scalar: Option<&FdMatrix>,
+    ) -> Result<Vec<f64>, FdarError> {
         predict_functional_glm(self, new_data, new_scalar)
     }
 }

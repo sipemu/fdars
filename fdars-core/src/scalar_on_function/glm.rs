@@ -126,8 +126,9 @@ impl GlmFamily {
     /// separately.  See module-level documentation for the resulting AIC
     /// comparability caveat.
     ///
-    /// For the Poisson family, `log(y!)` is computed exactly as `Σ_{k=1}^{y} ln(k)` — valid
-    /// since Poisson responses are validated to be non-negative integers before fitting.
+    /// For the Poisson family, `log(y!) = ln Γ(y+1)` is computed via the private
+    /// [`ln_gamma`] Lanczos helper — O(1) and overflow-free (the earlier
+    /// `Σ_{k=1}^{y} ln(k)` form was O(y) and, on a saturating `y as u64`, unbounded).
     pub(crate) fn log_likelihood(self, y: &[f64], mu: &[f64]) -> f64 {
         y.iter()
             .zip(mu)
@@ -138,8 +139,9 @@ impl GlmFamily {
                 }
                 GlmFamily::Poisson => {
                     let mi = mi.max(1e-300);
-                    // log(y!) = Σ_{k=1}^{y} ln(k) (exact for non-negative integer y)
-                    let ln_y_fact: f64 = (1..=(yi as u64)).map(|k| (k as f64).ln()).sum();
+                    // log(y!) = ln Γ(y+1) — O(1), overflow-free (yi is a validated
+                    // finite non-negative integer, so yi + 1.0 >= 1.0).
+                    let ln_y_fact = ln_gamma(yi + 1.0);
                     yi * mi.ln() - mi - ln_y_fact
                 }
                 GlmFamily::Gamma => {
@@ -160,6 +162,17 @@ impl GlmFamily {
 // ---------------------------------------------------------------------------
 
 fn validate_response(y: &[f64], family: GlmFamily) -> Result<(), FdarError> {
+    // Reject non-finite responses for ALL families FIRST. IEEE 754 makes
+    // `NaN <= 0.0` false and `f64::INFINITY.floor() == f64::INFINITY`, so a
+    // non-finite value would otherwise slip past the per-family guards below —
+    // producing an all-NaN result (Gamma NaN) or, for Poisson, a `yi as u64`
+    // saturation to u64::MAX driving an unbounded log-factorial loop.
+    if let Some(&bad) = y.iter().find(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!("response contains a non-finite value ({bad})"),
+        });
+    }
     match family {
         GlmFamily::Binomial => {
             if y.iter().any(|&yi| yi != 0.0 && yi != 1.0) {
@@ -189,6 +202,39 @@ fn validate_response(y: &[f64], family: GlmFamily) -> Result<(), FdarError> {
         GlmFamily::Gaussian => {} // unrestricted
     }
     Ok(())
+}
+
+/// Natural log of the Gamma function via the Lanczos approximation (g = 7, n = 9).
+///
+/// Used for the Poisson `log(y!) = ln Γ(y+1)` term. O(1) and overflow-free — it
+/// replaces an O(y) running `Σ ln(k)` sum, and adds no crate dependency (statrs
+/// is not vendored). Accurate to ~15 significant digits for the arguments used
+/// here (`x = y + 1 >= 1`); the reflection branch covers `x < 0.5` for completeness.
+fn ln_gamma(x: f64) -> f64 {
+    const G: f64 = 7.0;
+    const C: [f64; 9] = [
+        0.999_999_999_999_809_9,
+        676.520_368_121_885_1,
+        -1_259.139_216_722_402_8,
+        771.323_428_777_653_1,
+        -176.615_029_162_140_6,
+        12.507_343_278_686_905,
+        -0.138_571_095_265_720_12,
+        9.984_369_578_019_572e-6,
+        1.505_632_735_149_311_6e-7,
+    ];
+    if x < 0.5 {
+        // Reflection: ln Γ(x) = ln(π / sin(πx)) − ln Γ(1 − x)
+        std::f64::consts::PI.ln() - (std::f64::consts::PI * x).sin().abs().ln() - ln_gamma(1.0 - x)
+    } else {
+        let x = x - 1.0;
+        let mut a = C[0];
+        let t = x + G + 0.5;
+        for (i, &c) in C.iter().enumerate().skip(1) {
+            a += c / (x + i as f64);
+        }
+        0.5 * (2.0 * std::f64::consts::PI).ln() + (x + 0.5) * t.ln() - t + a.ln()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -339,9 +385,35 @@ fn build_glm_result(
             xtwx[j * p + k] = s;
         }
     }
+    // Dispersion φ scales the coefficient covariance: Var(β̂) = φ·(XᵀWX)⁻¹.
+    // φ = 1 for Binomial/Poisson (fixed by the family); for Gaussian/Gamma it is
+    // estimated by the Pearson χ² statistic over residual dof, so the reported
+    // standard errors are not systematically too small.
+    let dispersion = match family {
+        GlmFamily::Binomial | GlmFamily::Poisson => 1.0,
+        GlmFamily::Gaussian => {
+            let dof = n.saturating_sub(p).max(1) as f64;
+            let rss: f64 = y
+                .iter()
+                .zip(&fitted_values)
+                .map(|(&yi, &mi)| (yi - mi).powi(2))
+                .sum();
+            rss / dof
+        }
+        GlmFamily::Gamma => {
+            let dof = n.saturating_sub(p).max(1) as f64;
+            // Pearson χ² with V(μ) = μ²: Σ ((yᵢ − μᵢ)/μᵢ)²
+            let chi2: f64 = y
+                .iter()
+                .zip(&fitted_values)
+                .map(|(&yi, &mi)| ((yi - mi) / mi.max(1e-10)).powi(2))
+                .sum();
+            chi2 / dof
+        }
+    };
     let std_errors = cholesky_factor(&xtwx, p).map_or_else(
         |_| vec![f64::NAN; p],
-        |l| compute_ols_std_errors(&l, p, 1.0),
+        |l| compute_ols_std_errors(&l, p, dispersion),
     );
     let beta_se = compute_beta_se(&std_errors[1..=ncomp], &fpca.rotation, m);
 
@@ -406,6 +478,7 @@ fn build_glm_result(
 /// Returns [`FdarError::InvalidDimension`] if:
 /// - `data` has fewer than 3 rows or zero columns
 /// - `y.len() != n`
+/// - `scalar_covariates` is provided but its row count differs from `n`
 ///
 /// Returns [`FdarError::InvalidParameter`] if any response value violates the
 /// family's domain constraint (Binomial y ∉ {0,1}; Poisson y < 0 or non-integer;
@@ -463,6 +536,16 @@ pub fn functional_glm(
             actual: format!("{}", y.len()),
         });
     }
+    if let Some(sc) = scalar_covariates {
+        let sc_rows = sc.shape().0;
+        if sc_rows != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "scalar_covariates",
+                expected: format!("{n} rows (matching data)"),
+                actual: format!("{sc_rows}"),
+            });
+        }
+    }
 
     // --- Response-domain guard (fires before FPCA) ---
     validate_response(y, family)?;
@@ -489,18 +572,62 @@ pub fn functional_glm(
 /// # Arguments
 ///
 /// * `fit` — A fitted [`FunctionalGlmResult`]
-/// * `new_data` — New functional predictor matrix (n_new × m)
+/// * `new_data` — New functional predictor matrix (n_new × m), where `m` MUST
+///   equal the training grid length
 /// * `new_scalar` — Optional new scalar covariates (n_new × p)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `new_data`'s column count differs
+/// from the training grid length, or if `new_scalar`'s shape does not match the
+/// fitted model's scalar-covariate count (or is missing when the model has
+/// scalar covariates). This prevents out-of-bounds indexing / silent truncation.
 pub fn predict_functional_glm(
     fit: &FunctionalGlmResult,
     new_data: &FdMatrix,
     new_scalar: Option<&FdMatrix>,
-) -> Vec<f64> {
+) -> Result<Vec<f64>, FdarError> {
     let (n_new, m) = new_data.shape();
     let ncomp = fit.ncomp;
     let p_scalar = fit.gamma.len();
+    let m_train = fit.fpca.mean.len();
 
-    (0..n_new)
+    if m != m_train {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data",
+            expected: format!("{m_train} columns (training grid length)"),
+            actual: format!("{m}"),
+        });
+    }
+    match new_scalar {
+        Some(sc) => {
+            let (sc_rows, sc_cols) = sc.shape();
+            if sc_rows != n_new {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "new_scalar",
+                    expected: format!("{n_new} rows (matching new_data)"),
+                    actual: format!("{sc_rows}"),
+                });
+            }
+            if sc_cols != p_scalar {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "new_scalar",
+                    expected: format!("{p_scalar} columns (model scalar covariates)"),
+                    actual: format!("{sc_cols}"),
+                });
+            }
+        }
+        None if p_scalar > 0 => {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new_scalar",
+                expected: format!("{p_scalar} columns (model was fit with scalar covariates)"),
+                actual: "None".to_string(),
+            });
+        }
+        None => {}
+    }
+
+    Ok((0..n_new)
         .map(|i| {
             let mut eta = fit.coefficients[0]; // intercept
             for k in 0..ncomp {
@@ -519,7 +646,7 @@ pub fn predict_functional_glm(
             }
             fit.family.inv_link(eta)
         })
-        .collect()
+        .collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -576,9 +703,13 @@ mod tests {
         // Binary labels: first half 0, second half 1
         let y_bin: Vec<f64> = (0..n).map(|i| if i < n / 2 { 0.0 } else { 1.0 }).collect();
 
-        let fit_logistic = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
+        // functional_logistic stops on max-coefficient-change while functional_glm
+        // stops on deviance-change. The per-step IRLS update is identical, so with a
+        // tight tol and ample iterations BOTH fully converge to the same fixed point
+        // — making the parity comparison deterministic (not criterion-timing dependent).
+        let fit_logistic = functional_logistic(&data, &y_bin, None, 3, 100, 1e-12).unwrap();
         let fit_glm =
-            functional_glm(&data, &y_bin, GlmFamily::Binomial, None, 3, 25, 1e-6).unwrap();
+            functional_glm(&data, &y_bin, GlmFamily::Binomial, None, 3, 100, 1e-12).unwrap();
 
         // Coefficient parity
         for (i, (a, b)) in fit_logistic
@@ -781,6 +912,60 @@ mod tests {
         assert!(
             matches!(result, Err(FdarError::InvalidDimension { .. })),
             "expected InvalidDimension for y.len() mismatch"
+        );
+    }
+
+    #[test]
+    fn test_nonfinite_response_guard() {
+        // IN-01 / CR-02a: NaN (Gamma) and +Inf (Poisson) must be rejected rather
+        // than slipping past the per-family guards into an all-NaN result / an
+        // unbounded log-factorial loop.
+        let n = 10;
+        let m = 20;
+        let data = make_data(n, m);
+
+        let mut y_nan = vec![1.0f64; n];
+        y_nan[3] = f64::NAN;
+        assert!(
+            matches!(
+                functional_glm(&data, &y_nan, GlmFamily::Gamma, None, 3, 25, 1e-6),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "expected InvalidParameter for NaN Gamma response"
+        );
+
+        let mut y_inf = vec![1.0f64; n];
+        y_inf[5] = f64::INFINITY;
+        assert!(
+            matches!(
+                functional_glm(&data, &y_inf, GlmFamily::Poisson, None, 3, 25, 1e-6),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "expected InvalidParameter for +Inf Poisson response"
+        );
+    }
+
+    #[test]
+    fn test_predict_dimension_guard() {
+        // CR-03: predict must reject a new_data grid length that differs from the
+        // training grid instead of panicking / silently truncating.
+        let n = 30;
+        let m = 40;
+        let data = make_data(n, m);
+        let y: Vec<f64> = (0..n).map(|i| (i as f64) * 0.5 + 1.0).collect();
+        let fit = functional_glm(&data, &y, GlmFamily::Gaussian, None, 3, 25, 1e-6).unwrap();
+
+        // Correct grid length succeeds.
+        assert!(predict_functional_glm(&fit, &data, None).is_ok());
+
+        // Wrong grid length → InvalidDimension (no panic).
+        let wrong = make_data(5, m + 3);
+        assert!(
+            matches!(
+                predict_functional_glm(&fit, &wrong, None),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "expected InvalidDimension for mismatched predict grid length"
         );
     }
 
