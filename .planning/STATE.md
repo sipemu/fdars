@@ -3,10 +3,9 @@ gsd_state_version: 1.0
 milestone: v0.21.0
 milestone_name: Functional Regression Completeness
 current_phase: 25
-current_phase_name: functional-glm-exponential-family
-status: complete
+status: completed
 stopped_at: Completed Phase 25 plan 01 — functional_glm + GlmFamily + FunctionalGlmResult (REG-02, commit cb839d52)
-last_updated: "2026-08-17T13:00:00.000Z"
+last_updated: "2026-08-17T13:39:21.812Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 25 plan 01 complete — functional_glm (4 families) implemented and all tests green
 progress:
@@ -15,6 +14,7 @@ progress:
   total_plans: 2
   completed_plans: 2
   percent: 100
+current_phase_name: functional-glm-exponential-family
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 25 (functional-glm-exponential-family) — COMPLETE
-Plan: 1 of 1 (complete)
-Status: All phases complete — milestone v0.21.0 ready for ship
-Last activity: 2026-08-17 — Phase 25 plan 01 complete (functional_glm, commit cb839d52)
+Phase: 25
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-08-17 — Phase 25 complete
 
 Progress: [██████████] 100%
 
