@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.20.0
-milestone_name: Table-Stakes Quick Wins
-status: Awaiting next milestone
-stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-08-16T20:04:41.782Z"
-last_activity: 2026-08-16
-last_activity_desc: Milestone v0.20.0 roadmap created (Phases 22–23)
+milestone: v0.21.0
+milestone_name: Functional Regression Completeness
+status: planning
+last_updated: "2026-08-17T05:23:23.024Z"
+last_activity: 2026-08-17
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
-current_phase: 23
-current_phase_name: Functional Boxplot & Depth Dispatcher
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: Milestone v0.20.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-16 — Milestone v0.20.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-17 — Milestone v0.21.0 started
 
 ## Milestone Roadmap (v0.20.0)
 

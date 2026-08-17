@@ -8,15 +8,15 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.20.0 Table-Stakes Quick Wins
+## Current Milestone: v0.21.0 Functional Regression Completeness
 
-**Goal:** Ship the two top-ranked R-parity quick wins (both score 5.00, P1 table-stakes, S-effort) — each closing a baseline capability gap by wrapping existing fdars infrastructure. Continues executing the v0.18.0 `R-BACKLOG.md` top-first.
+**Goal:** Close the two remaining P1 table-stakes functional-regression gaps against the R ecosystem — concurrent/varying-coefficient regression and exponential-family functional GLMs — both additively, reusing existing scalar-on-function design machinery. Continues executing the v0.18.0 `R-BACKLOG.md` top-first.
 
-**Target features (both rank-1/2, score 5.00, P1 table-stakes, S-effort from R-BACKLOG.md):**
-- **T-01 (rank 1):** a named **constant/intercept basis** constructor in `basis/` (usable in regression design matrices), plus an **AIC criterion** in the automatic smoothing-parameter selector (`smooth_basis`/`smoothing` do GCV/CV only today). Reuses existing basis + hat-matrix machinery.
-- **T-02 (rank 2):** the López-Pintado **depth-fence functional boxplot** — central region + 1.5×IQR-of-depths whisker + outlier flags, as *numeric* outputs — plus a unified **`functional_depth(data, method: DepthMethod)`** dispatcher over the existing depth functions (`fraiman_muniz_1d`, `band_1d`, `modified_band_1d`, `random_projection_1d`, …).
+**Target features (both P1 table-stakes, M-effort from R-BACKLOG.md):**
+- **REG-01 (rank 6, score 2.89):** functional **concurrent / varying-coefficient regression** — β(t) varying over the shared argument, estimated via pointwise / local-linear least squares on the dense grid with a roughness penalty. New `concurrent_regression.rs`, returns `{ beta_curve, fitted, residuals }`. **Dense variant only** — the sparse/PACE path is deferred (no FPCA-01 dependency pulled in). Reuses `smoothing.rs` kernels.
+- **REG-02 (rank 7, score 2.31):** **functional GLM exponential-family** — generalize `functional_logistic` into `functional_glm(data, y, family)` via IRLS over FPC scores, with `GlmFamily { Binomial, Poisson, Gamma, Gaussian }` (link + variance function per family). Existing `functional_logistic` retained unchanged. Reuses the logistic IRLS loop + `fdata_to_pc_1d`.
 
-**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports. Both items **wrap existing code** (low risk); mirrors the v0.15.0 quick-wins pattern. R baseline: `fda`/`fda.usc` (constant basis, AIC smoothing), `roahd`/`fdaoutlier`/`fda.usc` (functional boxplot fences, depth dispatcher). Phase numbering continues from v0.19.0 → starts at Phase 22. Crate bumps 0.19.0 → 0.20.0 at ship time (separate release step).
+**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** Both items are reuse-first (existing SoF design machinery). R baselines: `fdaconcur`/`refund`/`fdapace` (REG-01), `fda.usc`/`refund` (REG-02). Phase numbering continues from v0.20.0 → starts at Phase 24. Crate version bump + PR + tag is a separate ship step (crate is behind: 0.19.0 released; the v0.20.0 → 0.20.0 bump is still pending).
 
 ## Requirements
 
@@ -66,9 +66,10 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- v0.20.0 Table-Stakes Quick Wins shipped — both requirements validated. Awaiting next milestone. -->
+<!-- v0.21.0 Functional Regression Completeness — building toward these (REQ-IDs in REQUIREMENTS.md). -->
 
-_(none — v0.20.0 shipped; next milestone draws from `R-BACKLOG.md` via `/gsd-new-milestone`)_
+- [ ] **REG-01**: Functional concurrent / varying-coefficient regression (dense variant) — `concurrent_regression.rs`
+- [ ] **REG-02**: Functional GLM exponential-family (`GlmFamily { Binomial, Poisson, Gamma, Gaussian }`) via `functional_glm`
 
 ### Out of Scope
 
@@ -158,6 +159,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-16 after v0.20.0 milestone — Table-Stakes Quick Wins complete: 2 phases (22–23), 2/2 requirements validated (T-01 constant basis + AIC smoothing; T-02 functional boxplot + depth dispatcher), milestone audit passed, full suite 2061 lib tests green + clippy clean, additive/non-breaking, no new dep. New `basis/constant.rs` + `depth/dispatch.rs`. Release pending (crate 0.19.0 → 0.20.0 bump + tag). Prior: v0.19.0 Functional Inference Suite released as crate 0.19.0 (tag v0.19.0, crates.io); v0.18.0 R-Ecosystem Gap Audit (zero-code, produced `R-BACKLOG.md`); v0.17.0 via PR #41. Full per-phase history below.*
+*Last updated: 2026-08-17 — started milestone v0.21.0 Functional Regression Completeness: the two remaining P1 table-stakes regression items from `R-BACKLOG.md` (REG-01 concurrent/varying-coefficient regression, dense variant; REG-02 functional GLM exponential-family). Continues top-first backlog execution. Phase numbering continues → starts at Phase 24. Prior: v0.20.0 Table-Stakes Quick Wins (2 phases 22–23, T-01/T-02, 2061 lib tests green, release pending crate 0.19.0 → 0.20.0); v0.19.0 Functional Inference Suite released as crate 0.19.0 (tag v0.19.0, crates.io); v0.18.0 R-Ecosystem Gap Audit (zero-code, produced `R-BACKLOG.md`); v0.17.0 via PR #41. Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
