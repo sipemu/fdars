@@ -138,6 +138,41 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.21.0 — Functional Regression Completeness
+
+**Shipped:** 2026-08-17
+**Phases:** 2 | **Plans:** 2 | **Tasks:** 4
+
+### What Was Built
+- **REG-01 (Phase 24):** dense functional concurrent / varying-coefficient regression — `concurrent_regression` + `ConcurrentRegrResult` in new `concurrent_regression.rs`; pointwise-OLS-per-grid-column then local-linear kernel smoothing of β(t), reusing `smoothing.rs`.
+- **REG-02 (Phase 25):** functional GLM over FPC scores — `functional_glm` + `GlmFamily{Binomial,Poisson,Gamma,Gaussian}` + `FunctionalGlmResult` in new `scalar_on_function/glm.rs`, generalizing the `functional_logistic` IRLS loop. Binomial reproduces logistic within 1e-6.
+- Both additive/non-breaking, no new crate dependency; full suite 2081 lib + doctests green, clippy `--all-targets` clean.
+
+### What Worked
+- **Reuse-first paid off:** both phases landed one plan each because the research pinned exact reuse targets (`smoothing::solve_gaussian_pub`/`local_linear`; `functional_logistic` IRLS + `fdata_to_pc_1d`).
+- **Code review earned its keep:** it caught a *real* correctness bug in Phase 25 (Gamma IRLS weight inverted `1/μ²` vs `μ²`) that the finiteness-only test missed, plus a Poisson factorial-overflow DoS and several panic-on-bad-input guards. Both phases shipped materially more robust for it.
+- Tracer-first decomposition (Gaussian/single-predictor end-to-end first) gave a compiling result struct early and de-risked the family/predictor expansion.
+
+### What Was Inefficient
+- **The `gsd-code-fixer` subagent stalled** (600s stream watchdog) mid-run on Phase 25 because the per-commit pre-commit hook runs the *full* suite + clippy (~2 min each) and 8 atomic fix commits blew the watchdog budget. Recovery: fast-forwarded its one committed fix, then applied the remaining 7 findings inline and gated once. Lesson: for multi-commit fix runs against a heavy per-commit hook, batch the commits or gate-once-at-end rather than atomic-per-finding.
+- **Research claimed `statrs` was a dependency** (it wasn't) — the executor had to pivot Poisson `log(y!)` to an inline computation; a follow-up review flagged the naive O(y) form and it was replaced with an inline Lanczos `ln_gamma`. Verifying dependency availability during research would have avoided the churn.
+- The pre-commit hook's full-suite run repeatedly false-failed docs-only commits via the known /tmp doctest-link exhaustion; `--no-verify` for docs (per MEMORY) worked but is friction.
+
+### Patterns Established
+- **Non-finite input guard belongs first** in family/response validation — `NaN <= 0.0` is false and `Inf.floor() == Inf`, so per-family guards silently pass non-finite values (same class of bug surfaced in *both* phases: bandwidth NaN in 24, response NaN/Inf in 25).
+- **Store `link_deriv` separately from `irls_weight`** for multi-family IRLS — the Binomial shortcut `z = η + (y−μ)/w` breaks for Gamma where `g'(μ)` is negative.
+- Dispersion φ (Pearson χ²/dof) scales SEs for Gaussian/Gamma; φ=1 for Binomial/Poisson.
+
+### Key Lessons
+- A recovery test that only asserts *finiteness* cannot catch a weight/sign bug — assert *accuracy* (recovery within tolerance) for numerical estimators.
+- Milestone completion is decoupled from crate release here: the `v*` tag triggers crates.io publish, so tagging is an operator ship-time step, not part of `/gsd-complete-milestone` (tag intentionally skipped).
+
+### Cost Observations
+- Model mix: orchestration on Opus; researchers/executors/reviewers/verifiers on Sonnet; plan-checker on Haiku.
+- Notable: code-review + adversarial re-review cycle (find → fix → re-review clean) was the highest-leverage spend this milestone — it converted a silently-wrong Gamma GLM into a correct one.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
