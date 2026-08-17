@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the two remaining P1 table-stakes functional-regression items from `.planning/research/R-BACKLOG.md` (REG-01 concurrent/varying-coefficient regression, REG-02 exponential-family functional GLM), each reusing existing scalar-on-function design machinery.
-**Current focus:** Phase 24 — concurrent-varying-coefficient-regression
+**Current focus:** Phase 25 — Functional GLM (Exponential Family)
 
 ## Current Position
 
