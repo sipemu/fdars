@@ -78,6 +78,7 @@ pub mod andrews;
 pub mod basis;
 pub mod classification;
 pub mod clustering;
+pub mod concurrent_regression;
 pub mod cv;
 pub mod depth;
 pub mod detrend;
@@ -228,6 +229,9 @@ pub use inference::{
 
 // Re-export FAMM types
 pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
+
+// Re-export concurrent (varying-coefficient) regression types
+pub use concurrent_regression::{concurrent_regression, ConcurrentRegrResult};
 
 // Re-export function-on-function regression types
 pub use fof_regression::{fof_cv, fof_regression, predict_fof, FofCvResult, FofResult};
