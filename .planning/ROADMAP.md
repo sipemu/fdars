@@ -125,7 +125,7 @@ Full phase detail: [milestones/v0.20.0-ROADMAP.md](milestones/v0.20.0-ROADMAP.md
 **Plans**: 1 plan
 
 Plans:
-- [ ] 24-01: Implement dense concurrent/varying-coefficient regression in `concurrent_regression.rs` (penalized pointwise LS β(t) via `smoothing.rs` kernels, result struct, crate-root re-export, inline `#[cfg(test)]` tests)
+- [x] 24-01: Implement dense concurrent/varying-coefficient regression in `concurrent_regression.rs` (penalized pointwise LS β(t) via `smoothing.rs` kernels, result struct, crate-root re-export, inline `#[cfg(test)]` tests) — completed 2026-08-17 (commit 5480ee25)
 
 #### Phase 25: Functional GLM (Exponential Family)
 **Goal**: Users can fit a functional GLM for a scalar response over functional predictors across the four mainstream exponential-family families, generalizing the existing logistic path without breaking it.

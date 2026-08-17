@@ -9,7 +9,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase. IDs mat
 
 ### Concurrent Regression
 
-- [ ] **REG-01**: User can fit a **dense functional concurrent (varying-coefficient) regression** — a model relating a functional response to one or more functional predictors evaluated at the *same* shared argument, estimating a time-varying coefficient β(t) — via a new public entry point in `fdars-core/src/concurrent_regression.rs`. β(t) is estimated by pointwise / local-linear least squares over the shared dense grid with a roughness (smoothing) penalty, reusing `smoothing.rs` kernels. The result carries `{ beta_curve, fitted, residuals }`, is `Result`-returning, and is re-exported at the crate root. Existing regression APIs are untouched (additive/non-breaking).
+- [x] **REG-01**: User can fit a **dense functional concurrent (varying-coefficient) regression** — a model relating a functional response to one or more functional predictors evaluated at the *same* shared argument, estimating a time-varying coefficient β(t) — via a new public entry point in `fdars-core/src/concurrent_regression.rs`. β(t) is estimated by pointwise / local-linear least squares over the shared dense grid with a roughness (smoothing) penalty, reusing `smoothing.rs` kernels. The result carries `{ beta_curve, fitted, residuals }`, is `Result`-returning, and is re-exported at the crate root. Existing regression APIs are untouched (additive/non-breaking). **COMPLETED 2026-08-17 — commit 5480ee25**
 
 ### Functional GLM
 
@@ -51,7 +51,7 @@ Each requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 | Phase 24 | Pending |
+| REG-01 | Phase 24 | Complete (2026-08-17) |
 | REG-02 | Phase 25 | Pending |
 
 **Coverage:**
@@ -61,4 +61,4 @@ Each requirement maps to exactly one phase.
 
 ---
 *Requirements defined: 2026-08-17*
-*Last updated: 2026-08-17 — roadmap created; REG-01 → Phase 24, REG-02 → Phase 25 (100% coverage)*
+*Last updated: 2026-08-17 — REG-01 complete (Phase 24, commit 5480ee25); REG-02 pending (Phase 25)*

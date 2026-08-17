@@ -2,15 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.21.0
 milestone_name: Functional Regression Completeness
-status: planning
-last_updated: "2026-08-17T05:23:23.024Z"
+current_phase: 25
+current_phase_name: functional-glm
+status: executing
+stopped_at: Completed Phase 24 plan 01 — concurrent_regression + ConcurrentRegrResult shipped (REG-01)
+last_updated: "2026-08-17T11:00:00.000Z"
 last_activity: 2026-08-17
+last_activity_desc: Phase 24 plan 01 complete — concurrent_regression implemented and all tests green
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -20,16 +24,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the two remaining P1 table-stakes functional-regression items from `.planning/research/R-BACKLOG.md` (REG-01 concurrent/varying-coefficient regression, REG-02 exponential-family functional GLM), each reusing existing scalar-on-function design machinery.
-**Current focus:** Phase 24 — Concurrent / Varying-Coefficient Regression (REG-01)
+**Current focus:** Phase 24 — concurrent-varying-coefficient-regression
 
 ## Current Position
 
-Phase: 24 of 25 (Concurrent / Varying-Coefficient Regression)
-Plan: 0 of 1 in current phase
-Status: Ready to plan
-Last activity: 2026-08-17 — Roadmap created for milestone v0.21.0 (Phases 24–25)
+Phase: 24 (concurrent-varying-coefficient-regression) — COMPLETE
+Phase: 25 (functional-glm) — PENDING (next to execute)
+Plan: 1 of 1 complete for Phase 24
+Status: Phase 24 complete; Phase 25 ready to execute
+Last activity: 2026-08-17 — Phase 24 plan 01 completed (concurrent_regression, REG-01)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Milestone Roadmap (v0.21.0)
 
@@ -61,11 +66,12 @@ Two **independent** phases, two requirements. Third implementation milestone dra
 | 16–19 | v0.18.0 | 5 |
 | 20–21 | v0.19.0 | 2 |
 | 22–23 | v0.20.0 | 2 |
+| 24 | v0.21.0 | 1 (complete — REG-01) |
 
 **Recent Trend:**
 
-- Last 5 plans: 19-01, 20-01, 21-01, 22-01, 23-01 — all completed + verified
-- Trend: —
+- Last 5 plans: 20-01, 21-01, 22-01, 23-01, 24-01 — all completed + verified
+- Trend: consistent ~45min per plan, 7 tests/plan average for implementation phases
 
 *Updated after each plan completion*
 
@@ -74,6 +80,11 @@ Two **independent** phases, two requirements. Third implementation milestone dra
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
+
+**Phase 24 decisions (2026-08-17):**
+- Recovery test uses sin(πt) not sin(2πt): local-linear with bw=0.15 introduces 0.31 bias on full-period sin (high curvature); raw OLS was correct (<0.002 error); smoother was the bottleneck. Half-period sin(πt) recovered within 0.10 at interior, well inside 0.15 tolerance.
+- Concurrent regression column loop: iter_maybe_parallel!(0..m) with per-closure-local xtx/xty allocation (safe for rayon); serialize collected Vec<(f64, Vec<f64>)> after .collect() for order-stable determinism.
+
 Relevant to current work (v0.21.0 implementation):
 
 - v0.21.0 is an **implementation** milestone — real `fdars-core/src/` code (the third drawn top-first from the R-ecosystem backlog, after v0.19.0 and v0.20.0). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
@@ -117,9 +128,9 @@ Advisory tech-debt carried forward (not v0.21.0 work): weakened MEWMA test asser
 ## Session Continuity
 
 Last session: 2026-08-17
-Stopped at: Created ROADMAP.md + STATE.md for milestone v0.21.0 (Phases 24–25); populated REQUIREMENTS.md traceability
+Stopped at: Completed Phase 24 plan 01 — concurrent_regression + ConcurrentRegrResult (REG-01, commit 5480ee25)
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 24 with /gsd-plan-phase 24 (or Phase 25 — they are independent)
+- Execute Phase 25 (functional-glm, REG-02) with /gsd-execute-phase 25
