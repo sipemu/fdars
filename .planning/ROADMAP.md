@@ -20,28 +20,35 @@
 ## Phase Details
 
 ### Phase 26: PACE Sparse FPCA
+
 **Goal**: A user with sparse / irregularly-sampled functional data can fit a complete PACE FPCA in a single call — recovering a smoothed mean, eigenfunctions/eigenvalues, per-curve conditional-expectation (BLUP/PACE) FPC scores, and fitted continuous trajectories with pointwise confidence bands — via a new crate-root entry point, without any of that user's existing FPCA code changing.
 **Depends on**: Nothing (independent of Phase 27; disjoint modules)
 **Requirements**: FPCA-01
 **Success Criteria** (what must be TRUE):
+
   1. User can call a new public `pace_fpca`-style entry point in `fdars-core/src/pace_fpca.rs` (re-exported at the crate root) on sparse/irregular input and receive a `Result` carrying the smoothed mean, eigenvalues + eigenfunctions, per-curve conditional-expectation FPC scores, and fitted trajectories with pointwise confidence bands.
   2. On synthetic sparse data drawn from a known generative model (known mean + eigenfunctions + score distribution + sampling density), the recovered eigenstructure and per-curve BLUP scores/trajectories match the ground truth within a documented tolerance (inline `#[cfg(test)]` recovery test).
   3. The estimator is built by orchestrating existing pieces — `irreg_fdata` (+ `cov_irreg`) covariance surface, `spm::partial::conditional_expectation`, and `regression::fdata_to_pc_1d` eigendecomposition — adding no new crate dependency.
   4. Invalid inputs (empty / degenerate / mismatched argvals vs values / too-few observations) return `FdarError` rather than panicking, with dimension/parameter checks at the entry point.
   5. Existing FPCA APIs (`fdata_to_pc_1d`, `FpcaResult`, `irreg_fdata`, `spm::partial`) keep their current public signatures unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+
 **Plans**: 1 plan
-- [ ] 26-01-PLAN.md — New `pace_fpca.rs`: PACE sparse-FPCA estimator (smoothed mean + covariance-surface eigendecomposition + per-curve BLUP scores + fitted trajectories with prediction-variance bands), `Result`-returning, crate-root re-exported, reuse-only (no new dependency)
+
+- [x] 26-01-PLAN.md — New `pace_fpca.rs`: PACE sparse-FPCA estimator (smoothed mean + covariance-surface eigendecomposition + per-curve BLUP scores + fitted trajectories with prediction-variance bands), `Result`-returning, crate-root re-exported, reuse-only (no new dependency)
 
 ### Phase 27: Elastic Multinomial Regression
+
 **Goal**: A user can fit an elastic multinomial (multi-class, K ≥ 2) logistic regression over SRSF/SRVF space and predict class probabilities / labels for new curves via a new crate-root entry point — completing fdars' elastic-regression family — while the existing binary `elastic_logistic` continues to work exactly as before.
 **Depends on**: Nothing (independent of Phase 26; disjoint modules)
 **Requirements**: REG-03
 **Success Criteria** (what must be TRUE):
+
   1. User can call a new multinomial elastic-logistic entry point in `fdars-core/src/elastic_regression/logistic.rs` (re-exported at the crate root) with K ≥ 2 class labels and receive a `Result`-wrapped fitted model over SRSF/SRVF space (one-vs-rest or softmax).
   2. User can call a companion `predict_elastic_multinomial` on new curves and receive class probabilities / predicted labels.
   3. On synthetic data with well-separated per-class shape templates, the fitted model recovers the correct labels within a documented accuracy threshold (inline `#[cfg(test)]` classification test), and the K = 2 multinomial path agrees with the existing binary `elastic_logistic` within tolerance.
   4. The extension reuses the existing SRVF representation + warping machinery, adds no new crate dependency, and invalid inputs (fewer than 2 classes / label-curve count mismatch / empty input) return `FdarError` rather than panicking.
   5. The existing binary `elastic_logistic` public signature is retained unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+
 **Plans**: TBD (1 plan expected — reuse-first extension, S-effort)
 
 ## Progress

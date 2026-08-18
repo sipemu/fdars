@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.22.0
 milestone_name: PACE Sparse FPCA & Elastic Multinomial
-status: planning
-last_updated: "2026-08-18T18:10:00.000Z"
+current_phase: 26
+current_phase_name: pace-sparse-fpca
+status: verifying
+stopped_at: "Completed 26-01-PLAN.md: PACE sparse FPCA (FPCA-01) — pace_fpca.rs, 13 tests, 4 commits"
+last_updated: "2026-08-18T21:47:14.003Z"
 last_activity: 2026-08-18
+last_activity_desc: Phase 26 execution started
 progress:
-  total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 1
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -20,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-18)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the final P1 table-stakes item (FPCA-01, unified PACE sparse FPCA) and completes fdars' elastic-regression family (REG-03, elastic multinomial), each by orchestrating/extending existing `fdars-core/src/` code.
-**Current focus:** Roadmap defined (v0.22.0) — ready to plan Phase 26
+**Current focus:** Phase 26 — pace-sparse-fpca
 
 ## Current Position
 
-Phase: 26 (PACE Sparse FPCA) — not started
-Plan: —
-Status: Roadmap defined; awaiting phase planning
-Last activity: 2026-08-18 — Milestone v0.22.0 roadmap created (2 phases 26–27)
+Phase: 26 (pace-sparse-fpca) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-08-18 — Phase 26 execution started
 
 ## Milestone Roadmap (v0.22.0)
 
@@ -69,6 +72,11 @@ Two **independent** phases, two requirements. Fourth implementation milestone dr
 - Trend: consistent ~45min per plan, 7 tests/plan average for implementation phases
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 26 P01 | 120 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -96,6 +104,10 @@ Conventions carried from prior milestones (relevant to implementation):
 - Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved.
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
+- [Phase ?]: Do NOT subtract sigma2 from cov_irreg surface before eigendecomposition — sigma2 enters only as ridge term in Sigma_yi (Yao et al. 2005 §2.2)
+- [Phase ?]: nalgebra symmetric_eigen() returns ASCENDING eigenvalues — collect pairs, sort descending; fix_svd_signs convention: largest-magnitude element positive
+- [Phase ?]: helpers::linear_interp (public) for eigenfunction interpolation; irreg_fdata::linear_interp is pub(super) and inaccessible from pace_fpca.rs
+- [Phase ?]: No new crate dependency: Beasley-Springer-Moro rational approximation replaces statrs for standard normal quantile
 
 ### Pending Todos
 
@@ -118,8 +130,8 @@ Advisory tech-debt carried forward (not v0.22.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-18
-Stopped at: Created v0.22.0 roadmap (Phases 26 FPCA-01, 27 REG-03); REQUIREMENTS.md traceability confirmed (FPCA-01 → 26, REG-03 → 27)
+Last session: 2026-08-18T21:47:13.993Z
+Stopped at: Completed 26-01-PLAN.md: PACE sparse FPCA (FPCA-01) — pace_fpca.rs, 13 tests, 4 commits
 Resume file: None
 
 ## Operator Next Steps

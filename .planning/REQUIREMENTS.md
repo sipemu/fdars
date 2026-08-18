@@ -9,7 +9,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase. IDs mat
 
 ### Sparse FPCA
 
-- [ ] **FPCA-01**: User can fit a **unified PACE sparse FPCA** for sparse / irregularly-sampled functional data via a new public entry point in `fdars-core/src/pace_fpca.rs` (re-exported at the crate root). The estimator chains existing pieces into one call: a kernel-smoothed mean, a smoothed covariance surface (`irreg_fdata::cov_irreg`), its eigendecomposition (eigenvalues + eigenfunctions), **conditional-expectation (BLUP / PACE) FPC scores** per curve, and **fitted continuous trajectories with pointwise confidence bands**. It is `Result`-returning, validates its inputs (returning `FdarError` rather than panicking on empty/degenerate/mismatched input), reuses `irreg_fdata` + `spm::partial::conditional_expectation` + `regression` machinery, adds no new crate dependency, and leaves existing FPCA APIs unchanged (additive/non-breaking).
+- [x] **FPCA-01**: User can fit a **unified PACE sparse FPCA** for sparse / irregularly-sampled functional data via a new public entry point in `fdars-core/src/pace_fpca.rs` (re-exported at the crate root). The estimator chains existing pieces into one call: a kernel-smoothed mean, a smoothed covariance surface (`irreg_fdata::cov_irreg`), its eigendecomposition (eigenvalues + eigenfunctions), **conditional-expectation (BLUP / PACE) FPC scores** per curve, and **fitted continuous trajectories with pointwise confidence bands**. It is `Result`-returning, validates its inputs (returning `FdarError` rather than panicking on empty/degenerate/mismatched input), reuses `irreg_fdata` + `spm::partial::conditional_expectation` + `regression` machinery, adds no new crate dependency, and leaves existing FPCA APIs unchanged (additive/non-breaking).
 
 ### Elastic Regression
 
@@ -49,10 +49,11 @@ Each requirement maps to exactly one phase (filled during roadmap creation).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FPCA-01 | Phase 26 | Pending |
+| FPCA-01 | Phase 26 | Complete |
 | REG-03 | Phase 27 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 2 total
 - Mapped to phases: 2 (pending roadmap)
 - Unmapped: 0
