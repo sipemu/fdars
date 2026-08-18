@@ -122,6 +122,7 @@ pub mod elastic_fpca;
 pub mod elastic_regression;
 pub mod explain;
 pub mod explain_generic;
+pub mod pace_fpca;
 pub mod prelude;
 pub mod scoring;
 pub mod smooth_basis;
@@ -232,6 +233,9 @@ pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
 
 // Re-export concurrent (varying-coefficient) regression types
 pub use concurrent_regression::{concurrent_regression, ConcurrentRegrResult};
+
+// Re-export PACE sparse FPCA types
+pub use pace_fpca::{pace_fpca, PaceFpcaConfig, PaceFpcaResult};
 
 // Re-export function-on-function regression types
 pub use fof_regression::{fof_cv, fof_regression, predict_fof, FofCvResult, FofResult};
