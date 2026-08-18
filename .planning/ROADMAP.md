@@ -29,7 +29,8 @@
   3. The estimator is built by orchestrating existing pieces — `irreg_fdata` (+ `cov_irreg`) covariance surface, `spm::partial::conditional_expectation`, and `regression::fdata_to_pc_1d` eigendecomposition — adding no new crate dependency.
   4. Invalid inputs (empty / degenerate / mismatched argvals vs values / too-few observations) return `FdarError` rather than panicking, with dimension/parameter checks at the entry point.
   5. Existing FPCA APIs (`fdata_to_pc_1d`, `FpcaResult`, `irreg_fdata`, `spm::partial`) keep their current public signatures unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
-**Plans**: TBD (1 plan expected — reuse-first orchestration, M-effort)
+**Plans**: 1 plan
+- [ ] 26-01-PLAN.md — New `pace_fpca.rs`: PACE sparse-FPCA estimator (smoothed mean + covariance-surface eigendecomposition + per-curve BLUP scores + fitted trajectories with prediction-variance bands), `Result`-returning, crate-root re-exported, reuse-only (no new dependency)
 
 ### Phase 27: Elastic Multinomial Regression
 **Goal**: A user can fit an elastic multinomial (multi-class, K ≥ 2) logistic regression over SRSF/SRVF space and predict class probabilities / labels for new curves via a new crate-root entry point — completing fdars' elastic-regression family — while the existing binary `elastic_logistic` continues to work exactly as before.
