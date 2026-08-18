@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.21.0
-milestone_name: Functional Regression Completeness
-status: Awaiting next milestone
-stopped_at: Completed Phase 25 plan 01 — functional_glm + GlmFamily + FunctionalGlmResult (REG-02, commit cb839d52)
-last_updated: "2026-08-17T13:48:47.567Z"
-last_activity: 2026-08-17
-last_activity_desc: Phase 25 plan 01 complete — functional_glm (4 families) implemented and all tests green
+milestone: v0.22.0
+milestone_name: PACE Sparse FPCA & Elastic Multinomial
+status: planning
+last_updated: "2026-08-18T17:49:24.660Z"
+last_activity: 2026-08-18
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
-current_phase: 25
-current_phase_name: functional-glm-exponential-family
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: Milestone v0.21.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-17 — Milestone v0.21.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-18 — Milestone v0.22.0 started
 
 ## Milestone Roadmap (v0.21.0)
 

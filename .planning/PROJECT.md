@@ -8,15 +8,15 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.21.0 Functional Regression Completeness
+## Current Milestone: v0.22.0 PACE Sparse FPCA & Elastic Multinomial
 
-**Goal:** Close the two remaining P1 table-stakes functional-regression gaps against the R ecosystem — concurrent/varying-coefficient regression and exponential-family functional GLMs — both additively, reusing existing scalar-on-function design machinery. Continues executing the v0.18.0 `R-BACKLOG.md` top-first.
+**Goal:** Close the final P1 table-stakes gap (sparse/PACE FPCA) and complete fdars' elastic-regression family (multinomial) — both by orchestrating/extending existing `fdars-core/src/` code, additively and non-breaking. Continues executing the v0.18.0 `R-BACKLOG.md` top-first (P1 table-stakes exhausted after this milestone).
 
-**Target features (both P1 table-stakes, M-effort from R-BACKLOG.md):**
-- **REG-01 (rank 6, score 2.89):** functional **concurrent / varying-coefficient regression** — β(t) varying over the shared argument, estimated via pointwise / local-linear least squares on the dense grid with a roughness penalty. New `concurrent_regression.rs`, returns `{ beta_curve, fitted, residuals }`. **Dense variant only** — the sparse/PACE path is deferred (no FPCA-01 dependency pulled in). Reuses `smoothing.rs` kernels.
-- **REG-02 (rank 7, score 2.31):** **functional GLM exponential-family** — generalize `functional_logistic` into `functional_glm(data, y, family)` via IRLS over FPC scores, with `GlmFamily { Binomial, Poisson, Gamma, Gaussian }` (link + variance function per family). Existing `functional_logistic` retained unchanged. Reuses the logistic IRLS loop + `fdata_to_pc_1d`.
+**Target features (from R-BACKLOG.md):**
+- **FPCA-01 (rank 8, score 2.31, P1 table-stakes, M-effort):** unified **PACE sparse FPCA** for sparse/irregular curves — new `pace_fpca.rs` orchestrating existing pieces: smoothed mean + `irreg_fdata::cov_irreg` covariance surface → eigendecomposition → conditional-expectation (BLUP) FPC scores per curve → fitted trajectories + pointwise confidence bands. Reuses `irreg_fdata` + `spm::partial::conditional_expectation` + `regression::fdata_to_pc_1d`. Also unblocks REG-01's deferred sparse/PACE path and SPARSE-01. R baseline: `fdapace` / `fda`.
+- **REG-03 (rank 3, score 3.00, P2 differentiator, S-effort):** **elastic multinomial regression** — extend `elastic_regression/logistic.rs` from binary to multi-class (one-vs-rest or softmax over SRSF space) + `predict_elastic_multinomial`, closing the sole partial in fdars' otherwise-complete elastic-regression family. Reuses the existing SRVF representation + warping machinery. R baseline: `fdasrvf`.
 
-**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** Both items are reuse-first (existing SoF design machinery). R baselines: `fdaconcur`/`refund`/`fdapace` (REG-01), `fda.usc`/`refund` (REG-02). Phase numbering continues from v0.20.0 → starts at Phase 24. Crate version bump + PR + tag is a separate ship step (crate is behind: 0.19.0 released; the v0.20.0 → 0.20.0 bump is still pending).
+**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** Both items are reuse-first (orchestrate/extend existing code — no new subsystem, no new dependency). Phase numbering continues from v0.21.0 (ended at Phase 25) → starts at Phase 26. The two phases touch disjoint modules (`pace_fpca.rs` vs `elastic_regression/`) and are mutually independent. Crate version bump + PR + tag is a separate operator-driven ship-time step (crate at 0.21.0 released on crates.io).
 
 ## Requirements
 
@@ -68,9 +68,10 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- No active requirements — v0.21.0 Functional Regression Completeness fully validated (REG-01, REG-02). Next milestone TBD from R-BACKLOG.md. -->
+<!-- v0.22.0 PACE Sparse FPCA & Elastic Multinomial — building toward these (REQ-IDs in REQUIREMENTS.md). -->
 
-_(none — milestone v0.21.0 complete)_
+- [ ] **FPCA-01**: Unified PACE sparse FPCA + conditional-expectation scores — new `pace_fpca.rs`
+- [ ] **REG-03**: Elastic multinomial regression (multi-class SRSF logistic) — `elastic_regression/logistic.rs`
 
 ### Out of Scope
 
@@ -161,6 +162,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-17 — v0.21.0 Functional Regression Completeness shipped & released: Phase 24 (REG-01 concurrent/varying-coefficient regression, dense) + Phase 25 (REG-02 functional GLM exponential-family), both additive/non-breaking, no new dependency, full suite + clippy green. Milestone audited (2/2), archived; **crate `fdars-core` 0.21.0 published to crates.io (tag v0.21.0)**. Continues top-first backlog execution. Phase numbering continues → starts at Phase 24. Prior: v0.20.0 Table-Stakes Quick Wins (2 phases 22–23, T-01/T-02, 2061 lib tests green, release pending crate 0.19.0 → 0.20.0); v0.19.0 Functional Inference Suite released as crate 0.19.0 (tag v0.19.0, crates.io); v0.18.0 R-Ecosystem Gap Audit (zero-code, produced `R-BACKLOG.md`); v0.17.0 via PR #41. Full per-phase history below.*
+*Last updated: 2026-08-18 — started milestone v0.22.0 PACE Sparse FPCA & Elastic Multinomial: FPCA-01 (unified PACE sparse FPCA + conditional-expectation scores — the last P1 table-stakes item) + REG-03 (elastic multinomial regression — completes the elastic family). Both reuse-first (orchestrate/extend existing code), additive/non-breaking, no new dependency. Phase numbering continues → starts at Phase 26. Prior: v0.21.0 Functional Regression Completeness shipped & released as crate 0.21.0 (tag v0.21.0, crates.io); v0.20.0 as 0.20.0; v0.19.0 as 0.19.0. Continues top-first backlog execution. Phase numbering continues → starts at Phase 24. Prior: v0.20.0 Table-Stakes Quick Wins (2 phases 22–23, T-01/T-02, 2061 lib tests green, release pending crate 0.19.0 → 0.20.0); v0.19.0 Functional Inference Suite released as crate 0.19.0 (tag v0.19.0, crates.io); v0.18.0 R-Ecosystem Gap Audit (zero-code, produced `R-BACKLOG.md`); v0.17.0 via PR #41. Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
