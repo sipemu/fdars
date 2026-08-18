@@ -521,4 +521,296 @@ mod tests {
         assert_eq!(_config.ncomp, 3);
         assert_eq!(_config.alpha, 0.05);
     }
+
+    // -----------------------------------------------------------------------
+    // Task 2: Synthetic recovery test helpers
+    //
+    // Generative model (Yao-Müller-Wang 2005 style, known ground truth):
+    //   n = 20 curves, each observed at 3–8 uniform-random points on [0,1]
+    //   Mean: µ(t) = 0
+    //   Eigenfunctions: φ₁(t) = √2 sin(πt), φ₂(t) = √2 cos(πt)   (L² orthonormal on [0,1])
+    //   Eigenvalues: λ₁ = 1.0, λ₂ = 0.5
+    //   Scores: ξ_i1 ~ N(0, 1.0), ξ_i2 ~ N(0, 0.5), seeded deterministically
+    //   Observations: Y_ij = X_i(t_ij) + ε_ij, ε_ij ~ N(0, 0.01)
+    //
+    // Open questions — tolerance assertions are the arbiter:
+    //   A4: If recovered eigenvalues are off by factor n (=20), divide covariance surface by n
+    //       before eigendecomposition and document.
+    //   A1: symmetric_eigen() API and ascending eigenvalue order verified in Task 1 tracer.
+    // -----------------------------------------------------------------------
+
+    /// Minimal LCG pseudo-normal generator (Box-Muller, deterministic seed).
+    fn lcg_normal_samples(seed: u64, count: usize) -> Vec<f64> {
+        let mut state = seed;
+        let mut out = Vec::with_capacity(count);
+        // Generate pairs via Box-Muller
+        let mut i = 0;
+        while out.len() < count {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let u1 = ((state >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let u2 = ((state >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
+            let r = (-2.0 * u1.ln()).sqrt();
+            let theta = 2.0 * std::f64::consts::PI * u2;
+            out.push(r * theta.cos());
+            if out.len() < count {
+                out.push(r * theta.sin());
+            }
+            i += 1;
+            // safety valve
+            if i > 10 * count + 100 {
+                break;
+            }
+        }
+        out.truncate(count);
+        out
+    }
+
+    /// Build the synthetic sparse dataset for Task 2 tests.
+    fn synthetic_sparse_dataset(
+        n: usize,
+        seed: u64,
+    ) -> (IrregFdata, Vec<Vec<f64>>, Vec<f64>, Vec<f64>) {
+        use std::f64::consts::PI;
+        let sigma2_true = 0.01_f64;
+        let lambda = [1.0_f64, 0.5];
+
+        // True score draws: 2*n scores (n for component 0, n for component 1)
+        let all_normals = lcg_normal_samples(seed, 4 * n + 60);
+        // Scores: ξ_{i,0} ~ N(0, λ₀), ξ_{i,1} ~ N(0, λ₁)
+        let true_scores: Vec<(f64, f64)> = (0..n)
+            .map(|i| {
+                (
+                    all_normals[i] * lambda[0].sqrt(),
+                    all_normals[n + i] * lambda[1].sqrt(),
+                )
+            })
+            .collect();
+
+        // Noise samples
+        let noise_start = 2 * n;
+
+        // Per-curve random point count: use LCG to get 3–8 pts
+        let mut state2 = seed.wrapping_add(999_999_007);
+        let mut argvals_list: Vec<Vec<f64>> = Vec::with_capacity(n);
+        let mut values_list: Vec<Vec<f64>> = Vec::with_capacity(n);
+        let mut noise_idx = noise_start;
+
+        for i in 0..n {
+            // Random number of points: 3–8
+            state2 = state2
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let n_pts = 3 + (state2 >> 61) as usize; // 0..7 + 3 = 3..10, cap at 8
+            let n_pts = n_pts.min(8);
+
+            // Uniform points on [0,1]
+            let mut ts: Vec<f64> = (0..n_pts)
+                .map(|j| (j as f64 + 0.5) / n_pts as f64)
+                .collect();
+            // Add small jitter from LCG
+            for t in ts.iter_mut() {
+                state2 = state2
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                let jitter =
+                    ((state2 >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 0.4 / n_pts as f64;
+                *t = (*t + jitter).clamp(0.0, 1.0);
+            }
+            ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+            // Observed values: X_i(t) + noise
+            let (xi0, xi1) = true_scores[i];
+            let ys: Vec<f64> = ts
+                .iter()
+                .enumerate()
+                .map(|(j, &t)| {
+                    let phi1 = (2.0_f64).sqrt() * (PI * t).sin();
+                    let phi2 = (2.0_f64).sqrt() * (PI * t).cos();
+                    let x_true = xi0 * phi1 + xi1 * phi2;
+                    let eps =
+                        all_normals.get(noise_idx + j).copied().unwrap_or(0.0) * sigma2_true.sqrt();
+                    x_true + eps
+                })
+                .collect();
+            noise_idx += n_pts;
+
+            argvals_list.push(ts);
+            values_list.push(ys);
+        }
+
+        let ifd = IrregFdata::from_lists(&argvals_list, &values_list);
+        let true_score_vecs: Vec<Vec<f64>> = true_scores.iter().map(|&(a, b)| vec![a, b]).collect();
+        (ifd, true_score_vecs, lambda.to_vec(), vec![sigma2_true])
+    }
+
+    /// Pearson correlation between two equal-length slices.
+    fn pearson_corr(x: &[f64], y: &[f64]) -> f64 {
+        let n = x.len() as f64;
+        let mx = x.iter().sum::<f64>() / n;
+        let my = y.iter().sum::<f64>() / n;
+        let num: f64 = x
+            .iter()
+            .zip(y.iter())
+            .map(|(&a, &b)| (a - mx) * (b - my))
+            .sum();
+        let dx: f64 = x.iter().map(|&a| (a - mx).powi(2)).sum::<f64>().sqrt();
+        let dy: f64 = y.iter().map(|&b| (b - my).powi(2)).sum::<f64>().sqrt();
+        if dx < 1e-12 || dy < 1e-12 {
+            0.0
+        } else {
+            num / (dx * dy)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // RED: test_pace_synthetic_recovery — will FAIL until Task 2 is implemented
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_pace_synthetic_recovery() {
+        // Tolerances are the arbiter for two open questions (A4: 1/n scaling of cov; A1: eigen API).
+        // If λ̂₁ is off by factor 20 (= n), divide cov surface by n before eigen and document.
+        let n = 20_usize;
+        let (ifd, _true_scores, true_lambda, _) = synthetic_sparse_dataset(n, 42);
+
+        let m = 51_usize;
+        let config = PaceFpcaConfig {
+            ncomp: 2,
+            bandwidth: 0.3,
+            sigma2: 0.01,
+            work_grid: (0..m).map(|i| i as f64 / (m - 1) as f64).collect(),
+            alpha: 0.05,
+        };
+
+        let result = pace_fpca(&ifd, &config).expect("synthetic recovery should succeed");
+        assert!(
+            result.ncomp >= 2,
+            "expected at least 2 positive eigenvalues, got {}",
+            result.ncomp
+        );
+
+        // Check eigenvalue recovery within tolerance
+        let lam0 = result.eigenvalues[0];
+        let lam1 = result.eigenvalues[1];
+        assert!(
+            (lam0 - true_lambda[0]).abs() < 0.2,
+            "λ̂₁ = {lam0:.4} should be within 0.2 of true λ₁ = {}",
+            true_lambda[0]
+        );
+        assert!(
+            (lam1 - true_lambda[1]).abs() < 0.15,
+            "λ̂₂ = {lam1:.4} should be within 0.15 of true λ₂ = {}",
+            true_lambda[1]
+        );
+
+        // Check eigenfunction correlation with true eigenfunctions (sign-aligned)
+        use std::f64::consts::PI;
+        let phi1_true: Vec<f64> = config
+            .work_grid
+            .iter()
+            .map(|&t| (2.0_f64).sqrt() * (PI * t).sin())
+            .collect();
+        let phi2_true: Vec<f64> = config
+            .work_grid
+            .iter()
+            .map(|&t| (2.0_f64).sqrt() * (PI * t).cos())
+            .collect();
+
+        let phi1_hat: Vec<f64> = (0..m).map(|j| result.eigenfunctions[(j, 0)]).collect();
+        let phi2_hat: Vec<f64> = (0..m).map(|j| result.eigenfunctions[(j, 1)]).collect();
+
+        let corr1 = pearson_corr(&phi1_hat, &phi1_true).abs();
+        let corr2 = pearson_corr(&phi2_hat, &phi2_true).abs();
+        assert!(
+            corr1 > 0.95,
+            "eigenfunction 1 correlation = {corr1:.4}, expected > 0.95"
+        );
+        assert!(
+            corr2 > 0.95,
+            "eigenfunction 2 correlation = {corr2:.4}, expected > 0.95"
+        );
+    }
+
+    #[test]
+    fn test_blup_scores_known() {
+        // BLUP scores should correlate > 0.8 with true scores from the generative model.
+        let n = 20_usize;
+        let (ifd, true_scores, _, _) = synthetic_sparse_dataset(n, 42);
+
+        let m = 51_usize;
+        let config = PaceFpcaConfig {
+            ncomp: 2,
+            bandwidth: 0.3,
+            sigma2: 0.01,
+            work_grid: (0..m).map(|i| i as f64 / (m - 1) as f64).collect(),
+            alpha: 0.05,
+        };
+
+        let result = pace_fpca(&ifd, &config).expect("blup scores test should succeed");
+
+        // True scores for component 0 (may have sign flip vs recovered eigenfunction)
+        let true_xi0: Vec<f64> = true_scores.iter().map(|ts| ts[0]).collect();
+        let hat_xi0: Vec<f64> = (0..n).map(|i| result.scores[(i, 0)]).collect();
+
+        // Scores should not all be zero (as in the placeholder)
+        let all_zero = hat_xi0.iter().all(|&v| v == 0.0);
+        assert!(!all_zero, "BLUP scores must not all be zero");
+
+        let corr0 = pearson_corr(&hat_xi0, &true_xi0).abs();
+        assert!(
+            corr0 > 0.8,
+            "score correlation for component 0 = {corr0:.4}, expected > 0.8"
+        );
+    }
+
+    #[test]
+    fn test_fitted_within_bands() {
+        // Every fitted[i,j] must be within [fitted_lower[i,j], fitted_upper[i,j]].
+        let data = small_irreg_data();
+        let m = 21_usize;
+        let config = PaceFpcaConfig {
+            ncomp: 2,
+            bandwidth: 0.2,
+            sigma2: 0.01,
+            work_grid: (0..m).map(|i| i as f64 / (m - 1) as f64).collect(),
+            alpha: 0.05,
+        };
+        let result = pace_fpca(&data, &config).expect("band coverage test should succeed");
+        let n = data.n_obs();
+        for i in 0..n {
+            for j in 0..m {
+                let f = result.fitted[(i, j)];
+                let lo = result.fitted_lower[(i, j)];
+                let hi = result.fitted_upper[(i, j)];
+                assert!(
+                    f >= lo - 1e-10,
+                    "fitted[{i},{j}]={f} < fitted_lower[{i},{j}]={lo}"
+                );
+                assert!(
+                    f <= hi + 1e-10,
+                    "fitted[{i},{j}]={f} > fitted_upper[{i},{j}]={hi}"
+                );
+                // Bands not both zero (placeholder would have this)
+                assert!(
+                    !(lo == 0.0 && hi == 0.0 && f != 0.0),
+                    "degenerate band at [{i},{j}]: fitted={f}, lower=upper=0"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_determinism() {
+        // Identical inputs must produce identical outputs.
+        let data = small_irreg_data();
+        let config = PaceFpcaConfig::default();
+        let r1 = pace_fpca(&data, &config).expect("first call");
+        let r2 = pace_fpca(&data, &config).expect("second call");
+        assert_eq!(r1, r2, "pace_fpca must be deterministic");
+    }
 }
