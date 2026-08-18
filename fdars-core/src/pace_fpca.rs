@@ -134,6 +134,10 @@ pub struct PaceFpcaResult {
 fn standard_normal_quantile(p: f64) -> f64 {
     // Rational approximation coefficients — Beasley, Springer, Moro (1977/1994)
     // as tabulated in Abramowitz & Stegun §26.2.16.
+    // A&S uses three `a` coefficients (a0..a2); A[3]=0.0 is a padding zero that
+    // keeps the Horner form uniform without contributing to the numerator.
+    // B[0]=1.0 is the implicit `1` in the rational denominator 1 + b1*t + b2*t² + b3*t³
+    // (not listed explicitly in A&S, but required to construct the rational form).
     const A: [f64; 4] = [2.515_517, 0.802_853, 0.010_328, 0.0];
     const B: [f64; 4] = [1.0, 1.432_788, 0.189_269, 0.001_308];
 
@@ -250,7 +254,7 @@ fn eigendecompose_cov(
 ///
 /// Returns [`FdarError::InvalidDimension`] if:
 /// - `data` has zero observations,
-/// - any curve has zero observed points,
+/// - any curve has fewer than 2 observed points (PACE requires at least 2 per curve),
 /// - `config.work_grid` has fewer than 2 points.
 ///
 /// Returns [`FdarError::InvalidParameter`] if:
@@ -261,6 +265,7 @@ fn eigendecompose_cov(
 /// - `config.work_grid` is not sorted or contains non-finite values.
 ///
 /// Returns [`FdarError::ComputationFailed`] if:
+/// - `mean_irreg` returns non-finite values (bandwidth too narrow for the data range),
 /// - no positive eigenvalues are found after eigendecomposing the covariance surface,
 /// - a per-curve Σ_yi Cholesky solve fails even after a single ridge-stabilisation retry.
 #[must_use = "expensive computation whose result should not be discarded"]
@@ -278,11 +283,12 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
     }
 
     for i in 0..n {
-        if data.n_points(i) == 0 {
+        let n_pts = data.n_points(i);
+        if n_pts < 2 {
             return Err(FdarError::InvalidDimension {
                 parameter: "data",
-                expected: format!("curve {i} must have at least 1 observed point"),
-                actual: format!("curve {i} has 0 observed points"),
+                expected: format!("curve {i} must have at least 2 observed points for PACE"),
+                actual: format!("curve {i} has {n_pts} observed point(s)"),
             });
         }
     }
@@ -358,6 +364,24 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
         config.bandwidth,
         KernelType::Gaussian,
     );
+
+    // Guard against narrow-bandwidth NaN: if any work-grid point has no
+    // observations within the kernel support, mean_irreg returns NaN there.
+    // Without this check, NaN propagates silently into residuals, scores,
+    // fitted values, and confidence bands, and pace_fpca returns Ok with
+    // NaN-filled matrices — undetectable by the caller.
+    let nan_count = mean.iter().filter(|v| !v.is_finite()).count();
+    if nan_count > 0 {
+        return Err(FdarError::ComputationFailed {
+            operation: "pace_fpca mean smoothing",
+            detail: format!(
+                "mean_irreg returned non-finite values for {nan_count} of {} work-grid points; \
+                 bandwidth {:.4e} is likely too narrow for the data range — try increasing it",
+                mean.len(),
+                config.bandwidth
+            ),
+        });
+    }
 
     // ------------------------------------------------------------------
     // 3. Step 2: Smoothed covariance surface on the work grid (m×m)
@@ -455,28 +479,33 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
                 sigma_yi[row * n_i + row] += sigma2;
             }
 
-            // Solve v = Σ_yi^{-1} resid via cholesky_solve (which uses cholesky_factor)
-            // Retry once with a small ridge if the first attempt fails.
-            let v = match cholesky_solve(&sigma_yi, &resid, n_i) {
-                Ok(v) => v,
+            // Resolve sigma_yi once (with optional ridge) so that the BLUP solve
+            // and all subsequent band solves operate on the IDENTICAL linear system.
+            // This prevents the subtle asymmetry where the BLUP uses the unridged
+            // matrix while the band solve (silently) uses a different ridged version.
+            let sigma_yi_resolved = match cholesky_solve(&sigma_yi, &resid, n_i) {
+                Ok(_) => sigma_yi.clone(), // Cholesky succeeds → use as-is
                 Err(_) => {
-                    // Add 1e-8 ridge and retry once
-                    let mut sigma_yi_r = sigma_yi.clone();
+                    // Add 1e-8 ridge and check that it's now positive-definite.
+                    let mut r = sigma_yi.clone();
                     for row in 0..n_i {
-                        sigma_yi_r[row * n_i + row] += 1e-8;
+                        r[row * n_i + row] += 1e-8;
                     }
-                    cholesky_solve(&sigma_yi_r, &resid, n_i).map_err(|_| {
-                        FdarError::ComputationFailed {
-                            operation: "pace_fpca BLUP",
-                            detail: format!(
-                                "Cholesky solve for Sigma_yi of curve {i} failed \
-                                     even after adding a 1e-8 ridge; sigma2 may be too small \
-                                     or curve has nearly collinear eigenfunction values"
-                            ),
-                        }
-                    })?
+                    r
                 }
             };
+
+            // Solve v = Σ_yi_resolved^{-1} resid
+            let v = cholesky_solve(&sigma_yi_resolved, &resid, n_i).map_err(|_| {
+                FdarError::ComputationFailed {
+                    operation: "pace_fpca BLUP",
+                    detail: format!(
+                        "Cholesky solve for Sigma_yi of curve {i} failed \
+                         even after adding a 1e-8 ridge; sigma2 may be too small \
+                         or curve has nearly collinear eigenfunction values"
+                    ),
+                }
+            })?;
 
             // BLUP scores: ξ_ik = λ_k · dot(Φ_i[:,k], v)
             let scores_row: Vec<f64> = (0..actual_ncomp)
@@ -505,18 +534,17 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
             let mut sigma_inv_phi_lam = vec![0.0_f64; n_i * actual_ncomp];
             for k in 0..actual_ncomp {
                 let phi_col_k: Vec<f64> = (0..n_i).map(|j| phi_i[j * actual_ncomp + k]).collect();
-                let sol = match cholesky_solve(&sigma_yi, &phi_col_k, n_i) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        // Use the ridge-corrected sigma_yi if needed
-                        let mut sigma_yi_r = sigma_yi.clone();
-                        for row in 0..n_i {
-                            sigma_yi_r[row * n_i + row] += 1e-8;
-                        }
-                        cholesky_solve(&sigma_yi_r, &phi_col_k, n_i)
-                            .unwrap_or_else(|_| vec![0.0; n_i])
+                // Use the already-resolved (possibly ridged) sigma_yi for consistency
+                // with the BLUP solve above. Propagate errors rather than zero-filling,
+                // which would silently inflate the confidence bands.
+                let sol = cholesky_solve(&sigma_yi_resolved, &phi_col_k, n_i).map_err(|_| {
+                    FdarError::ComputationFailed {
+                        operation: "pace_fpca band solve",
+                        detail: format!(
+                            "Cholesky solve for Sigma_yi[:,{k}] of curve {i} failed after ridge"
+                        ),
                     }
-                };
+                })?;
                 for j in 0..n_i {
                     sigma_inv_phi_lam[j * actual_ncomp + k] = eigenvalues[k] * sol[j];
                 }
@@ -733,7 +761,7 @@ mod tests {
         let mut state = seed;
         let mut out = Vec::with_capacity(count);
         // Generate pairs via Box-Muller
-        let mut i = 0;
+        let mut safety_valve = 0_usize;
         while out.len() < count {
             state = state
                 .wrapping_mul(6_364_136_223_846_793_005)
@@ -749,9 +777,11 @@ mod tests {
             if out.len() < count {
                 out.push(r * theta.sin());
             }
-            i += 1;
-            // safety valve
-            if i > 10 * count + 100 {
+            safety_valve += 1;
+            // safety valve: Box-Muller terminates in ceil(count/2) iterations; this
+            // guard is unreachable in practice but prevents an infinite loop on
+            // degenerate LCG state.
+            if safety_valve > 10 * count + 100 {
                 break;
             }
         }
@@ -1071,6 +1101,59 @@ mod tests {
             ),
             "expected InvalidDimension for zero-point curve, got {err:?}"
         );
+    }
+
+    #[test]
+    fn test_one_point_curve_rejected() {
+        // A curve with exactly 1 observed point must be rejected (WR-03):
+        // a single observed point is insufficient for PACE — the method requires
+        // at least 2 points per curve to estimate within-curve variation.
+        let argvals_list = vec![
+            vec![0.0, 0.5, 1.0], // normal curve
+            vec![0.5],           // single-point curve
+        ];
+        let values_list = vec![vec![0.0, 0.5, 1.0], vec![0.5]];
+        let data = IrregFdata::from_lists(&argvals_list, &values_list);
+        let config = valid_config();
+        let err = pace_fpca(&data, &config).expect_err("single-point curve must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for single-point curve, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_narrow_bandwidth_returns_err_not_nan() {
+        // CR-01 regression: a very narrow bandwidth (0.001) on data spanning [0,1]
+        // causes mean_irreg to return NaN for grid points with no kernel support.
+        // pace_fpca must return Err(ComputationFailed), NOT Ok with NaN-filled matrices.
+        let data = small_irreg_data();
+        let m = 21_usize;
+        let config = PaceFpcaConfig {
+            ncomp: 1,
+            bandwidth: 0.001, // far too narrow — most grid points get zero kernel weight
+            sigma2: 0.01,
+            work_grid: (0..m).map(|i| i as f64 / (m - 1) as f64).collect(),
+            alpha: 0.05,
+        };
+        let result = pace_fpca(&data, &config);
+        assert!(
+            result.is_err(),
+            "narrow bandwidth must return Err, not Ok with NaN; got {:?}",
+            result.map(|r| r.mean.iter().any(|v| !v.is_finite()))
+        );
+        if let Err(FdarError::ComputationFailed { operation, .. }) = result {
+            assert!(
+                operation.contains("mean smoothing"),
+                "expected ComputationFailed from mean smoothing, got operation={operation:?}"
+            );
+        }
     }
 
     #[test]
