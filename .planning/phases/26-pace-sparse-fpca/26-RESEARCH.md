@@ -718,7 +718,7 @@ fn prediction_variance_one_curve(
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **nalgebra 0.33 SymmetricEigen API exact signature**
    - What we know: nalgebra provides symmetric eigendecomposition; the type exists as `nalgebra::linalg::SymmetricEigen`.
