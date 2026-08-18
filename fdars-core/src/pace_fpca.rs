@@ -1014,4 +1014,230 @@ mod tests {
         let r2 = pace_fpca(&data, &config).expect("second call");
         assert_eq!(r1, r2, "pace_fpca must be deterministic");
     }
+
+    // -----------------------------------------------------------------------
+    // Task 3: Error-path tests — all invalid-input paths return the correct
+    // FdarError variant without panicking.
+    // -----------------------------------------------------------------------
+
+    /// Minimal valid config for use in error-path tests.
+    fn valid_config() -> PaceFpcaConfig {
+        let m = 11_usize;
+        PaceFpcaConfig {
+            ncomp: 1,
+            bandwidth: 0.2,
+            sigma2: 0.01,
+            work_grid: (0..m).map(|i| i as f64 / (m - 1) as f64).collect(),
+            alpha: 0.05,
+        }
+    }
+
+    #[test]
+    fn test_empty_data() {
+        let empty = IrregFdata::from_lists(&[], &[]);
+        let config = valid_config();
+        let err = pace_fpca(&empty, &config).expect_err("empty data must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for data, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_too_few_points() {
+        // A curve with 0 observed points must be rejected.
+        // Build one curve with 0 points by providing an empty argvals/values list.
+        let argvals_list = vec![
+            vec![0.0, 0.5, 1.0], // normal curve
+            vec![],              // zero-point curve
+        ];
+        let values_list = vec![vec![0.0, 0.5, 1.0], vec![]];
+        let data = IrregFdata::from_lists(&argvals_list, &values_list);
+        let config = valid_config();
+        let err = pace_fpca(&data, &config).expect_err("zero-point curve must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for zero-point curve, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_zero_ncomp() {
+        let data = small_irreg_data();
+        let mut config = valid_config();
+        config.ncomp = 0;
+        let err = pace_fpca(&data, &config).expect_err("ncomp=0 must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "ncomp",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for ncomp=0, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_invalid_bandwidth() {
+        let data = small_irreg_data();
+
+        // bandwidth = 0.0
+        let mut config = valid_config();
+        config.bandwidth = 0.0;
+        let err = pace_fpca(&data, &config).expect_err("bandwidth=0.0 must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "bandwidth",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for bandwidth=0.0, got {err:?}"
+        );
+
+        // bandwidth negative
+        config.bandwidth = -0.1;
+        let err = pace_fpca(&data, &config).expect_err("negative bandwidth must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "bandwidth",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for negative bandwidth, got {err:?}"
+        );
+
+        // bandwidth NaN
+        config.bandwidth = f64::NAN;
+        let err = pace_fpca(&data, &config).expect_err("NaN bandwidth must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "bandwidth",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for NaN bandwidth, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_invalid_sigma2() {
+        let data = small_irreg_data();
+
+        // sigma2 = 0.0
+        let mut config = valid_config();
+        config.sigma2 = 0.0;
+        let err = pace_fpca(&data, &config).expect_err("sigma2=0.0 must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "sigma2",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for sigma2=0.0, got {err:?}"
+        );
+
+        // sigma2 negative
+        config.sigma2 = -0.01;
+        let err = pace_fpca(&data, &config).expect_err("negative sigma2 must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "sigma2",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for negative sigma2, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_invalid_alpha() {
+        let data = small_irreg_data();
+
+        // alpha = 0.0 (boundary, not open interval)
+        let mut config = valid_config();
+        config.alpha = 0.0;
+        let err = pace_fpca(&data, &config).expect_err("alpha=0.0 must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "alpha",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for alpha=0.0, got {err:?}"
+        );
+
+        // alpha = 1.0 (boundary, not open interval)
+        config.alpha = 1.0;
+        let err = pace_fpca(&data, &config).expect_err("alpha=1.0 must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidParameter {
+                    parameter: "alpha",
+                    ..
+                }
+            ),
+            "expected InvalidParameter for alpha=1.0, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_short_work_grid() {
+        let data = small_irreg_data();
+
+        // 1-point grid
+        let mut config = valid_config();
+        config.work_grid = vec![0.5];
+        let err = pace_fpca(&data, &config).expect_err("1-point work_grid must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidDimension {
+                    parameter: "work_grid",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for 1-point work_grid, got {err:?}"
+        );
+
+        // 0-point grid
+        config.work_grid = vec![];
+        let err = pace_fpca(&data, &config).expect_err("empty work_grid must return Err");
+        assert!(
+            matches!(
+                err,
+                FdarError::InvalidDimension {
+                    parameter: "work_grid",
+                    ..
+                }
+            ),
+            "expected InvalidDimension for empty work_grid, got {err:?}"
+        );
+    }
 }
