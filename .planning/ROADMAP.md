@@ -49,7 +49,10 @@
   4. The extension reuses the existing SRVF representation + warping machinery, adds no new crate dependency, and invalid inputs (fewer than 2 classes / label-curve count mismatch / empty input) return `FdarError` rather than panicking.
   5. The existing binary `elastic_logistic` public signature is retained unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD (1 plan expected — reuse-first extension, S-effort)
+**Plans**: 1 plan
+
+Plans:
+- [ ] 27-01-PLAN.md — OvR elastic multinomial (elastic_multinomial + predict_elastic_multinomial + ElasticMultinomialResult), reusing binary elastic_logistic K times; re-exports + input guards + tests
 
 ## Progress
 
