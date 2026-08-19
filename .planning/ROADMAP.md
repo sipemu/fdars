@@ -50,7 +50,9 @@
   4. Invalid inputs (empty / single-curve / mismatched dimensions / degenerate columns) return `FdarError` rather than panicking, with checks at each entry point.
   5. Existing outlier detectors (`magnitude_shape_outlyingness`, `outliergram`) and all DEPTH-01 depth functions keep their public signatures unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 29-01-PLAN.md — tvdmss (TRACER: TvdMssResult + iqr_fence + functional_boxplot + re-export) + muod (pointwise-mean regression, upper IQR fence)
+- [ ] 29-02-PLAN.md — sequential_transform_outliers (T0/T1/T2/D1 cumulative + functional_boxplot base) + depthgram (MBD/MEI parabola, upper fence)
 
 ### Phase 30: Interval Testing Procedure Family
 **Goal**: A user can run the Interval Testing Procedure (ITP) family that `fdatest` provides — one-population and two-population interval-wise tests over B-spline and Fourier bases with domain-selective adjusted p-values, plus interval-wise FLM coefficient testing — via a new `inference/itp.rs`, reusing the shipped INF-01 permutation infrastructure and `basis/` projection, without any existing inference code changing.
@@ -71,7 +73,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 28. Depth-Measure Long Tail | 0/TBD | Not started | - |
-| 29. Outlier-Detector Suite | 0/TBD | Not started | - |
+| 29. Outlier-Detector Suite | 0/2 | Not started | - |
 | 30. Interval Testing Procedure Family | 0/TBD | Not started | - |
 
 **Execution order:** Phase 29 (OUT-01) has a **hard dependency on Phase 28** (DEPTH-01) — `tvdmss` reuses DEPTH-01's total-variation depth + MSSI, so **28 must complete before 29**. Phase 30 (INF-03) is **independent** of Phases 28/29 (it depends only on the already-shipped INF-01 permutation infrastructure + existing `basis/`) and **may run in parallel** with them. Default sequence: 28 → 29, with 30 free to run alongside. First differentiator milestone (P1 table-stakes exhausted after v0.22.0); all three items score 2.31 (P2, M-effort) in `R-BACKLOG.md`. Additive/non-breaking, reuse-first, no new crate dependency.
