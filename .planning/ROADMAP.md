@@ -33,7 +33,10 @@
   4. Invalid inputs (empty matrix / single curve / mismatched argvals vs values / degenerate columns) return `FdarError` rather than panicking, with dimension/parameter checks at each entry point.
   5. No new crate dependency is added, existing depth-measure and `DepthMethod` public signatures are untouched (additive/non-breaking), and the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 28-01-PLAN.md — hypo_epi.rs (HI/MHI/EI, tracer) + half_region.rs (HRD/MHRD) wired to DepthMethod
+- [ ] 28-02-PLAN.md — extremal.rs + erl.rs + linf.rs (extremal / ERL / L∞ depths) wired to DepthMethod
+- [ ] 28-03-PLAN.md — tvd.rs (TvdMssResult + TVD/MSSI, pinned for Phase 29) + all-9-variant dispatcher round-trip
 
 ### Phase 29: Outlier-Detector Suite
 **Goal**: A user can flag magnitude and shape outliers in a functional sample with the four `fdaoutlier`/`roahd` detectors fdars was missing — `tvdmss` (TVD+MSSI), `muod` (Massive Unsupervised Outlier Detection), sequential-transformation detection, and the `depthgram` statistic — as numeric outputs (indices/scores, no rendering), reusing the DEPTH-01 depths and the existing MS-plot / outliergram machinery, without any existing outlier code changing.
