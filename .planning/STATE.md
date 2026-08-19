@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.22.0
-milestone_name: PACE Sparse FPCA & Elastic Multinomial
-status: Awaiting next milestone
-stopped_at: "Completed 27-01-PLAN.md: elastic multinomial OvR (REG-03) — logistic.rs, 7 tests, 2 commits"
-last_updated: "2026-08-19T08:41:48.281Z"
+milestone: v0.23.0
+milestone_name: Depth, Outliers & Interval Inference
+status: planning
+last_updated: "2026-08-19T12:25:03.266Z"
 last_activity: 2026-08-19
-last_activity_desc: Phase 26 complete, transitioned to Phase 27
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-current_phase: 27
-current_phase_name: elastic-multinomial-regression
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-18)
 
 ## Current Position
 
-Phase: Milestone v0.22.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-19 — Milestone v0.22.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-19 — Milestone v0.23.0 started
 
 ## Milestone Roadmap (v0.22.0)
 
@@ -133,8 +130,8 @@ Advisory tech-debt carried forward (not v0.22.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-19T08:29:12.683Z
-Stopped at: Completed 27-01-PLAN.md: elastic multinomial OvR (REG-03) — logistic.rs, 7 tests, 2 commits
+Last session: 2026-08-19T08:44:24.488Z
+Stopped at: context exhaustion at 75% (2026-08-19)
 Resume file: None
 
 ## Operator Next Steps

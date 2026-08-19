@@ -8,15 +8,16 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.22.0 PACE Sparse FPCA & Elastic Multinomial
+## Current Milestone: v0.23.0 Depth, Outliers & Interval Inference
 
-**Goal:** Close the final P1 table-stakes gap (sparse/PACE FPCA) and complete fdars' elastic-regression family (multinomial) — both by orchestrating/extending existing `fdars-core/src/` code, additively and non-breaking. Continues executing the v0.18.0 `R-BACKLOG.md` top-first (P1 table-stakes exhausted after this milestone).
+**Goal:** Close the top three P2 differentiator gaps from the v0.18.0 `R-BACKLOG.md` (all tied at score 2.31, M-effort) — the depth-measure long tail, the robust outlier-detector suite, and the Interval Testing Procedure family — each by extending existing `fdars-core/src/` modules, additively and non-breaking. First milestone drawing differentiators now that the P1 table-stakes tier is exhausted.
 
 **Target features (from R-BACKLOG.md):**
-- **FPCA-01 (rank 8, score 2.31, P1 table-stakes, M-effort):** unified **PACE sparse FPCA** for sparse/irregular curves — new `pace_fpca.rs` orchestrating existing pieces: smoothed mean + `irreg_fdata::cov_irreg` covariance surface → eigendecomposition → conditional-expectation (BLUP) FPC scores per curve → fitted trajectories + pointwise confidence bands. Reuses `irreg_fdata` + `spm::partial::conditional_expectation` + `regression::fdata_to_pc_1d`. Also unblocks REG-01's deferred sparse/PACE path and SPARSE-01. R baseline: `fdapace` / `fda`.
-- **REG-03 (rank 3, score 3.00, P2 differentiator, S-effort):** **elastic multinomial regression** — extend `elastic_regression/logistic.rs` from binary to multi-class (one-vs-rest or softmax over SRSF space) + `predict_elastic_multinomial`, closing the sole partial in fdars' otherwise-complete elastic-regression family. Reuses the existing SRVF representation + warping machinery. R baseline: `fdasrvf`.
+- **DEPTH-01 (rank 9, score 2.31, P2 differentiator, M-effort):** **depth-measure long tail** in `depth/` — half-region & modified half-region depth (HRD/MHRD), hypograph/modified-hypograph & un-modified epigraph indices (HI/MHI/EI), extremal depth, extreme-rank-length depth (ERL), L∞ depth, and total-variation depth with MSSI. One function per measure following the existing per-file convention over the column-major `FdMatrix`; each registered in the T-02 `DepthMethod` dispatcher. Excludes streaming depth (batch measures only). R baseline: `roahd` / `fdaoutlier`.
+- **OUT-01 (rank 10, score 2.31, P2 differentiator, M-effort):** **outlier-detector suite** in `outliers.rs` — `tvdmss` (TVD+MSSI detector), `muod` (Massive Unsupervised Outlier Detection), `sequential_transform_outliers`, and the `depthgram` statistic (numeric outputs; renderer out-of-scope). Reuses the existing MS-plot / outliergram machinery + DEPTH-01 depths. R baseline: `fdaoutlier` / `roahd`. **Depends on DEPTH-01** (tvdmss reuses TVD+MSSI depth).
+- **INF-03 (rank 11, score 2.31, P2 differentiator, M-effort):** **Interval Testing Procedure (ITP) family** in new `inference/itp.rs` — one-population and two-population interval-wise tests (B-spline & Fourier bases) with domain-selective adjusted p-values, plus interval-wise FLM coefficient testing. Reuses the INF-01 permutation infrastructure + `basis/` projection. Independent of DEPTH-01/OUT-01. R baseline: `fdatest`.
 
-**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** Both items are reuse-first (orchestrate/extend existing code — no new subsystem, no new dependency). Phase numbering continues from v0.21.0 (ended at Phase 25) → starts at Phase 26. The two phases touch disjoint modules (`pace_fpca.rs` vs `elastic_regression/`) and are mutually independent. Crate version bump + PR + tag is a separate operator-driven ship-time step (crate at 0.21.0 released on crates.io).
+**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** All three are reuse-first (extend `depth/` / `outliers.rs` / `inference/` + `basis/` — no new subsystem, **no new dependency**). Phase numbering continues from v0.22.0 (ended at Phase 27) → starts at Phase 28. Execution order **28 (DEPTH-01) → 29 (OUT-01)** is a hard dependency (tvdmss needs TVD+MSSI); Phase 30 (INF-03) is independent and may run in parallel. Crate version bump + PR + tag is a separate operator-driven ship-time step (crate at 0.22.0 released on crates.io).
 
 ## Requirements
 
@@ -70,9 +71,11 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- No active requirements — v0.22.0 fully validated. P1 table-stakes tier exhausted; next milestone draws differentiators from R-BACKLOG.md. -->
+<!-- Current scope — v0.23.0 (first differentiator milestone; drawn top-first from R-BACKLOG.md now that P1 table-stakes are exhausted). -->
 
-_(none — milestone v0.22.0 complete)_
+- [ ] **DEPTH-01**: Depth-measure long tail in `depth/` (HRD/MHRD, HI/MHI/EI, extremal, ERL, L∞, TVD+MSSI) + dispatcher registration — Phase 28
+- [ ] **OUT-01**: Outlier-detector suite in `outliers.rs` (`tvdmss`, `muod`, `sequential_transform_outliers`, `depthgram`) — Phase 29 (depends on DEPTH-01)
+- [ ] **INF-03**: Interval Testing Procedure family in `inference/itp.rs` (1-/2-population interval-wise tests + FLM coefficient testing) — Phase 30
 
 ### Out of Scope
 
@@ -165,6 +168,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-19 — v0.22.0 PACE Sparse FPCA & Elastic Multinomial shipped: FPCA-01 (`pace_fpca`, the final P1 table-stakes item) + REG-03 (`elastic_multinomial`, completes the elastic family), both additive/non-breaking, no new dependency, full suite 2107 + clippy + serde build green. Milestone audited (2/2), archived. **P1 table-stakes tier exhausted.** Released as crate 0.22.0 on crates.io (tag v0.22.0). Prior: v0.21.0 released as crate 0.21.0 (tag v0.21.0); v0.20.0 as 0.20.0; v0.19.0 as 0.19.0; v0.18.0 R-Ecosystem Gap Audit (produced `R-BACKLOG.md`). Full per-phase history below.*
+*Last updated: 2026-08-19 — v0.23.0 Depth, Outliers & Interval Inference started: DEPTH-01 (depth-measure long tail, Phase 28), OUT-01 (outlier-detector suite, Phase 29, depends on DEPTH-01), INF-03 (Interval Testing Procedure family, Phase 30) — the top three P2 differentiators from `R-BACKLOG.md` (score 2.31 each). First differentiator milestone (P1 table-stakes exhausted after v0.22.0). Additive/non-breaking, reuse-first, no new dependency. Prior: v0.22.0 PACE Sparse FPCA & Elastic Multinomial shipped (FPCA-01 + REG-03, crate 0.22.0, tag v0.22.0); v0.21.0 as crate 0.21.0; v0.20.0 as 0.20.0; v0.19.0 as 0.19.0; v0.18.0 R-Ecosystem Gap Audit (produced `R-BACKLOG.md`). Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
