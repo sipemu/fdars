@@ -5,6 +5,14 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0]
+
+### Added
+
+- **Unified PACE sparse FPCA** (`pace_fpca`): `pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaResult, FdarError>` in the new `pace_fpca` module — a single-call PACE (Yao–Müller–Wang) FPCA for sparse / irregularly-sampled functional data. Produces a kernel-smoothed mean, a symmetric eigendecomposition of the smoothed covariance surface (`irreg_fdata::cov_irreg`, eigenvalues + eigenfunctions), per-curve conditional-expectation (BLUP) FPC scores, and fitted continuous trajectories with pointwise prediction-variance confidence bands (`fitted_lower`/`fitted_upper`). `PaceFpcaConfig` carries `ncomp`, `bandwidth`, `sigma2`, `work_grid`, and `alpha`. Entry-point guards (empty data, curves with fewer than 2 observations, `ncomp` too large, non-positive `bandwidth`/`sigma2`, mismatched work grid, non-finite smoothed mean) return `FdarError` rather than panicking. Reuses existing `irreg_fdata` / smoothing / linear-algebra machinery; no new dependency.
+- **Elastic multinomial regression** (`elastic_regression`): `elastic_multinomial(data, y: &[usize], argvals, ncomp_beta, lambda, max_iter, tol) -> Result<ElasticMultinomialResult, FdarError>` plus `predict_elastic_multinomial` — multi-class (K ≥ 2) elastic logistic regression over SRSF/SRVF space via one-vs-rest, extending the existing binary elastic logistic to complete fdars' elastic-regression family. `ElasticMultinomialResult` carries the per-class models, row-normalized class posteriors, argmax predicted labels, and training accuracy, with a `predict` convenience method. Input guards (fewer than 2 classes, non-contiguous labels, label/curve-count mismatch, empty/short input) return `FdarError`. The binary `elastic_logistic` / `predict_elastic_logistic` are retained unchanged; `ElasticLogisticResult` gains a feature-gated serde derive.
+- All additive/non-breaking: existing public signatures are unchanged; no new crate dependency.
+
 ## [0.21.0]
 
 ### Added
