@@ -14,7 +14,7 @@
 
 ## Phases
 
-- [ ] **Phase 26: PACE Sparse FPCA** - Unified PACE estimator for sparse/irregular curves — smoothed mean + covariance-surface eigendecomposition + conditional-expectation (BLUP) scores + fitted trajectories with bands (FPCA-01)
+- [x] **Phase 26: PACE Sparse FPCA** - Unified PACE estimator for sparse/irregular curves — smoothed mean + covariance-surface eigendecomposition + conditional-expectation (BLUP) scores + fitted trajectories with bands (FPCA-01) (completed 2026-08-19)
 - [ ] **Phase 27: Elastic Multinomial Regression** - Multi-class (K ≥ 2) elastic logistic over SRSF/SRVF space + `predict_elastic_multinomial`, completing fdars' elastic-regression family (REG-03)
 
 ## Phase Details
@@ -55,7 +55,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 26. PACE Sparse FPCA | 0/1 | Not started | - |
+| 26. PACE Sparse FPCA | 1/1 | Complete    | 2026-08-19 |
 | 27. Elastic Multinomial Regression | 0/1 | Not started | - |
 
 <details>
