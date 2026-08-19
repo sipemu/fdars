@@ -701,6 +701,282 @@ pub fn muod(data: &FdMatrix, config: MuodConfig) -> Result<MuodResult, FdarError
     })
 }
 
+/// A single step in a [`sequential_transform_outliers`] pipeline.
+///
+/// Transforms are applied **cumulatively** (each step feeds the next):
+/// - `T0` — identity (raw data)
+/// - `T1` — vertical centering: subtract each curve's mean
+/// - `T2` — L2 normalization: divide each curve by its L2 norm
+/// - `D1` — lag-1 first difference (`m → m−1` columns)
+/// - `D2` — identical to `D1` (re-differences when applied after `D1`)
+///
+/// The multivariate outlyingness transform `O` is out of scope for this phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub enum SeqTransform {
+    /// Identity (raw data).
+    T0,
+    /// Vertical centering: subtract each curve's mean.
+    T1,
+    /// L2 normalization: divide each curve by its L2 norm.
+    T2,
+    /// Lag-1 first difference.
+    D1,
+    /// Identical to [`SeqTransform::D1`].
+    D2,
+}
+
+/// Configuration for [`sequential_transform_outliers`].
+///
+/// Not `serde`-serializable — it carries a [`DepthMethod`], which does not derive serde.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeqTransformConfig {
+    /// Depth method for the per-step functional boxplot. Default [`DepthMethod::ModifiedBand`].
+    pub depth_method: DepthMethod,
+    /// Fence inflation factor for the per-step functional boxplot. Default `1.5`.
+    pub emp_factor: f64,
+}
+
+impl Default for SeqTransformConfig {
+    fn default() -> Self {
+        Self {
+            depth_method: DepthMethod::ModifiedBand,
+            emp_factor: 1.5,
+        }
+    }
+}
+
+/// Numeric output of [`sequential_transform_outliers`] (no rendering).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct SeqTransformOutliers {
+    /// Outlier row indices flagged after each transform step, in sequence order.
+    pub per_transform_outliers: Vec<(SeqTransform, Vec<usize>)>,
+    /// Union of all per-transform outlier indices (sorted, deduplicated).
+    pub union_outliers: Vec<usize>,
+}
+
+/// Apply a single [`SeqTransform`] to a matrix, returning the transformed matrix.
+fn seq_transform_apply(current: &FdMatrix, t: SeqTransform) -> Result<FdMatrix, FdarError> {
+    let (n, m) = current.shape();
+    match t {
+        SeqTransform::T0 => Ok(current.clone()),
+        SeqTransform::T1 => {
+            let mut cm = vec![0.0; n * m];
+            for i in 0..n {
+                let mut mean = 0.0;
+                for j in 0..m {
+                    mean += current[(i, j)];
+                }
+                mean /= m as f64;
+                for j in 0..m {
+                    cm[i + j * n] = current[(i, j)] - mean;
+                }
+            }
+            FdMatrix::from_column_major(cm, n, m)
+        }
+        SeqTransform::T2 => {
+            let mut cm = vec![0.0; n * m];
+            for i in 0..n {
+                let mut norm = 0.0;
+                for j in 0..m {
+                    norm += current[(i, j)].powi(2);
+                }
+                let norm = norm.sqrt();
+                if norm < 1e-15 {
+                    return Err(FdarError::ComputationFailed {
+                        operation: "T2 normalization",
+                        detail: format!("zero-norm curve at row {i}"),
+                    });
+                }
+                for j in 0..m {
+                    cm[i + j * n] = current[(i, j)] / norm;
+                }
+            }
+            FdMatrix::from_column_major(cm, n, m)
+        }
+        SeqTransform::D1 | SeqTransform::D2 => {
+            if m < 2 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 2 columns for lag-1 differencing".to_string(),
+                    actual: format!("{m} columns"),
+                });
+            }
+            let m2 = m - 1;
+            let mut cm = vec![0.0; n * m2];
+            for i in 0..n {
+                for k in 0..m2 {
+                    cm[i + k * n] = current[(i, k + 1)] - current[(i, k)];
+                }
+            }
+            FdMatrix::from_column_major(cm, n, m2)
+        }
+    }
+}
+
+/// Sequential-transformation outlier detection (Dai et al. 2020 / `fdaoutlier::seq_transform`).
+///
+/// Applies each transform in `sequence` **cumulatively** (every step's output feeds the next) and
+/// runs a functional boxplot after each step, collecting the per-step outlier sets. The
+/// `union_outliers` field (all indices flagged by at least one step) is an fdars convenience — the R
+/// baseline returns only the per-transform sets.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if the sample has fewer than 2 curves or if a `D1`/`D2`
+/// step is reached with fewer than 2 columns; returns [`FdarError::ComputationFailed`] if a `T2`
+/// step encounters a zero-norm curve.
+#[must_use = "outlier detection results should not be discarded"]
+pub fn sequential_transform_outliers(
+    data: &FdMatrix,
+    sequence: &[SeqTransform],
+    config: SeqTransformConfig,
+) -> Result<SeqTransformOutliers, FdarError> {
+    let n = data.nrows();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 curves".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+
+    let mut current = data.clone();
+    let mut per_transform_outliers = Vec::with_capacity(sequence.len());
+    for &t in sequence {
+        current = seq_transform_apply(&current, t)?;
+        let fbp = functional_boxplot(&current, config.depth_method, config.emp_factor)?;
+        per_transform_outliers.push((t, fbp.outliers));
+    }
+
+    let mut union_outliers: Vec<usize> = per_transform_outliers
+        .iter()
+        .flat_map(|(_, v)| v.iter().copied())
+        .collect();
+    union_outliers.sort_unstable();
+    union_outliers.dedup();
+
+    Ok(SeqTransformOutliers {
+        per_transform_outliers,
+        union_outliers,
+    })
+}
+
+/// Configuration for [`depthgram`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DepthgramConfig {
+    /// IQR factor for the parabola (shape) upper fence. Default `1.5`.
+    pub outliergram_factor: f64,
+    /// Inflation factor for the MBD magnitude functional boxplot. Default `1.5`.
+    pub boxplot_factor: f64,
+}
+
+impl Default for DepthgramConfig {
+    fn default() -> Self {
+        Self {
+            outliergram_factor: 1.5,
+            boxplot_factor: 1.5,
+        }
+    }
+}
+
+/// Numeric output of the [`depthgram`] statistic (no rendering).
+///
+/// For univariate (p=1) functional data the three representations (dimension-wise `_d`, time-wise
+/// `_t`, correlation-corrected `_t2`) are identical.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct DepthgramResult {
+    /// MBD of the MEI vector, dimension-wise.
+    pub mbd_mei_d: Vec<f64>,
+    /// MEI of the MBD vector, dimension-wise.
+    pub mei_mbd_d: Vec<f64>,
+    /// MBD of the MEI vector, time-wise (equals `_d` for p=1).
+    pub mbd_mei_t: Vec<f64>,
+    /// MEI of the MBD vector, time-wise (equals `_d` for p=1).
+    pub mei_mbd_t: Vec<f64>,
+    /// MBD of the MEI vector, correlation-corrected (equals `_d` for p=1).
+    pub mbd_mei_t2: Vec<f64>,
+    /// MEI of the MBD vector, correlation-corrected (equals `_d` for p=1).
+    pub mei_mbd_t2: Vec<f64>,
+    /// Row indices flagged as shape outliers (upper fence on the parabola deviation).
+    pub shape_outliers: Vec<usize>,
+    /// Row indices flagged as magnitude outliers (functional boxplot on MBD).
+    pub magnitude_outliers: Vec<usize>,
+    /// Modified band depth per curve.
+    pub mbd: Vec<f64>,
+    /// Modified epigraph index per curve.
+    pub mei: Vec<f64>,
+}
+
+/// Depthgram statistic (roahd `depthGram`) — numeric coordinates + outlier flags (no rendering).
+///
+/// Computes the modified band depth (MBD) and modified epigraph index (MEI) of the sample, then the
+/// `(MBD-of-MEI, MEI-of-MBD)` index pairs. Shape outliers are curves whose MBD falls above the
+/// outliergram parabola's upper IQR fence; magnitude outliers come from a functional boxplot on the
+/// MBD values.
+///
+/// **Divergence:** roahd's depthgram is defined for p-variate data and returns three distinct
+/// representations. This implementation handles univariate (p=1) functional data only, where all
+/// three representations are equivalent (the `_d`, `_t`, `_t2` fields are identical). At least ~4
+/// curves are needed for a meaningful parabola IQR.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if the sample has fewer than 2 curves or zero columns.
+#[must_use = "outlier detection results should not be discarded"]
+pub fn depthgram(data: &FdMatrix, config: DepthgramConfig) -> Result<DepthgramResult, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 curves and 1 column".to_string(),
+            actual: format!("{n} rows, {m} columns"),
+        });
+    }
+
+    let mbd = modified_band_1d(data, data);
+    let mei = modified_epigraph_index_1d(data, data);
+
+    // (MBD of MEI, MEI of MBD) via n×1 matrix wrapping.
+    let mei_mat = FdMatrix::from_column_major(mei.clone(), n, 1)?;
+    let mbd_mat = FdMatrix::from_column_major(mbd.clone(), n, 1)?;
+    let mbd_mei = modified_band_1d(&mei_mat, &mei_mat);
+    let mei_mbd = modified_epigraph_index_1d(&mbd_mat, &mbd_mat);
+
+    // Shape outliers: deviation above the outliergram parabola, upper IQR fence.
+    let nf = n as f64;
+    let a2 = -2.0 / (nf * (nf - 1.0));
+    let a0 = a2;
+    let a1 = 2.0 * (nf + 1.0) / (nf - 1.0);
+    let dist: Vec<f64> = (0..n)
+        .map(|i| (a0 + a1 * mei[i] + a2 * nf * nf * mei[i] * mei[i]) - mbd[i])
+        .collect();
+    let (_, upper) = iqr_fence(&dist, config.outliergram_factor);
+    let shape_outliers: Vec<usize> = (0..n).filter(|&i| dist[i] > upper).collect();
+
+    // Magnitude outliers: functional boxplot on the MBD values.
+    let mbd_mat2 = FdMatrix::from_column_major(mbd.clone(), n, 1)?;
+    let fbp = functional_boxplot(&mbd_mat2, DepthMethod::ModifiedBand, config.boxplot_factor)?;
+    let magnitude_outliers = fbp.outliers;
+
+    Ok(DepthgramResult {
+        mbd_mei_d: mbd_mei.clone(),
+        mei_mbd_d: mei_mbd.clone(),
+        mbd_mei_t: mbd_mei.clone(),
+        mei_mbd_t: mei_mbd.clone(),
+        mbd_mei_t2: mbd_mei,
+        mei_mbd_t2: mei_mbd,
+        shape_outliers,
+        magnitude_outliers,
+        mbd,
+        mei,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1270,8 +1546,10 @@ mod tests {
                         // Same shape family as its own inlier, only shifted / scaled.
                         "magnitude" => inlier_shape(i, x) + 10.0,
                         "amplitude" => 5.0 * inlier_shape(i, x),
-                        // A genuinely different shape (high frequency), similar magnitude.
-                        "shape" => 0.5 * (x * 12.0 * PI).sin(),
+                        // A genuinely different shape: centered on the sin trend (same
+                        // vertical band as the inliers) but with a high-frequency wiggle
+                        // that weaves through the bundle — low MBD, mid MEI, low MSS.
+                        "shape" => (x * PI).sin() + 0.4 * (x * 12.0 * PI).sin(),
                         "constant" => 0.5,
                         _ => inlier_shape(i, x),
                     }
@@ -1376,6 +1654,126 @@ mod tests {
         let one_col = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
         assert!(matches!(
             muod(&one_col, MuodConfig::default()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    // --- Phase 29 Plan 02: sequential_transform_outliers + depthgram ---
+
+    #[test]
+    fn seq_transform_default_sequence_flags_outlier_and_union_is_flatten() {
+        let idx = 4usize;
+        let data = outlier_sample(12, 40, idx, "magnitude");
+        let seq = [SeqTransform::T0, SeqTransform::T1, SeqTransform::D1];
+        let res =
+            sequential_transform_outliers(&data, &seq, SeqTransformConfig::default()).unwrap();
+
+        assert_eq!(res.per_transform_outliers.len(), 3);
+        assert!(
+            res.per_transform_outliers
+                .iter()
+                .any(|(_, v)| !v.is_empty()),
+            "no transform flagged anything"
+        );
+        assert!(
+            res.union_outliers.contains(&idx),
+            "union {:?} missing outlier {idx}",
+            res.union_outliers
+        );
+        // union == sorted, deduped flatten of the per-transform sets.
+        let mut expected: Vec<usize> = res
+            .per_transform_outliers
+            .iter()
+            .flat_map(|(_, v)| v.iter().copied())
+            .collect();
+        expected.sort_unstable();
+        expected.dedup();
+        assert_eq!(res.union_outliers, expected);
+    }
+
+    #[test]
+    fn seq_transform_error_paths() {
+        // D1 with a single column.
+        let one_col = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
+        assert!(matches!(
+            sequential_transform_outliers(
+                &one_col,
+                &[SeqTransform::D1],
+                SeqTransformConfig::default()
+            ),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        // T2 with an all-zero curve → ComputationFailed.
+        let mut cm = vec![0.0; 3 * 4];
+        for i in [0usize, 2] {
+            for t in 0..4 {
+                cm[i + t * 3] = 1.0 + i as f64 + t as f64;
+            }
+        }
+        // row 1 stays all-zero
+        let zero_row = FdMatrix::from_column_major(cm, 3, 4).unwrap();
+        assert!(matches!(
+            sequential_transform_outliers(
+                &zero_row,
+                &[SeqTransform::T2],
+                SeqTransformConfig::default()
+            ),
+            Err(FdarError::ComputationFailed { .. })
+        ));
+        // n == 1.
+        let one_curve = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        assert!(matches!(
+            sequential_transform_outliers(
+                &one_curve,
+                &[SeqTransform::T0],
+                SeqTransformConfig::default()
+            ),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn depthgram_flags_magnitude_and_shape() {
+        let mag = outlier_sample(12, 40, 3, "magnitude");
+        let r = depthgram(&mag, DepthgramConfig::default()).unwrap();
+        assert_eq!(r.mbd.len(), 12);
+        assert_eq!(r.mei.len(), 12);
+        assert_eq!(r.mbd_mei_d.len(), 12);
+        assert!(
+            r.magnitude_outliers.contains(&3),
+            "magnitude: {:?}",
+            r.magnitude_outliers
+        );
+
+        let shp = outlier_sample(14, 60, 9, "shape");
+        let r = depthgram(&shp, DepthgramConfig::default()).unwrap();
+        assert!(
+            r.shape_outliers.contains(&9),
+            "shape: {:?}",
+            r.shape_outliers
+        );
+    }
+
+    #[test]
+    fn depthgram_p1_representations_equivalent() {
+        let data = outlier_sample(10, 30, 2, "magnitude");
+        let r = depthgram(&data, DepthgramConfig::default()).unwrap();
+        assert_eq!(r.mbd_mei_d, r.mbd_mei_t);
+        assert_eq!(r.mbd_mei_d, r.mbd_mei_t2);
+        assert_eq!(r.mei_mbd_d, r.mei_mbd_t);
+        assert_eq!(r.mei_mbd_d, r.mei_mbd_t2);
+    }
+
+    #[test]
+    fn depthgram_rejects_bad_dims() {
+        let one = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
+        assert!(matches!(
+            depthgram(&one, DepthgramConfig::default()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        let empty = FdMatrix::from_column_major(vec![], 0, 0).unwrap();
+        assert!(matches!(
+            depthgram(&empty, DepthgramConfig::default()),
             Err(FdarError::InvalidDimension { .. })
         ));
     }

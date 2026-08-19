@@ -432,9 +432,11 @@ pub use depth::{
 
 // Re-export outlier detection functions
 pub use outliers::{
-    detect_outliers_lrt, magnitude_shape_outlyingness, muod, outliergram, outliers_threshold_lrt,
-    outliers_threshold_lrt_with_dist, tvdmss, MagnitudeShapeResult, MuodConfig, MuodResult,
-    OutligramResult, TvdMssConfig, TvdMssOutliers,
+    depthgram, detect_outliers_lrt, magnitude_shape_outlyingness, muod, outliergram,
+    outliers_threshold_lrt, outliers_threshold_lrt_with_dist, sequential_transform_outliers,
+    tvdmss, DepthgramConfig, DepthgramResult, MagnitudeShapeResult, MuodConfig, MuodResult,
+    OutligramResult, SeqTransform, SeqTransformConfig, SeqTransformOutliers, TvdMssConfig,
+    TvdMssOutliers,
 };
 
 // Re-export utility functions
