@@ -11,16 +11,75 @@
 - ✅ **v0.20.0 — Table-Stakes Quick Wins** — Phases 22–23 (shipped 2026-08-16) — [archive](milestones/v0.20.0-ROADMAP.md)
 - ✅ **v0.21.0 — Functional Regression Completeness** — Phases 24–25 (shipped 2026-08-17) — [archive](milestones/v0.21.0-ROADMAP.md)
 - ✅ **v0.22.0 — PACE Sparse FPCA & Elastic Multinomial** — Phases 26–27 (shipped 2026-08-19) — [archive](milestones/v0.22.0-ROADMAP.md)
+- 🔨 **v0.23.0 — Depth, Outliers & Interval Inference** — Phases 28–30 (in progress)
 
 ## Phases
+
+- [ ] **Phase 28: Depth-Measure Long Tail** - Add the missing univariate functional depth measures (HRD/MHRD, HI/MHI/EI, extremal, ERL, L∞, TVD+MSSI) to `depth/`, each registered in the `DepthMethod` dispatcher (DEPTH-01)
+- [ ] **Phase 29: Outlier-Detector Suite** - Add `tvdmss`, `muod`, `sequential_transform_outliers`, and the `depthgram` statistic to `outliers.rs`, reusing DEPTH-01's TVD+MSSI depth (OUT-01, depends on Phase 28)
+- [ ] **Phase 30: Interval Testing Procedure Family** - Implement one-/two-population interval-wise tests (B-spline & Fourier) with domain-selective adjusted p-values + interval-wise FLM coefficient testing in new `inference/itp.rs` (INF-03, independent of Phases 28/29)
+
+## Phase Details
+
+### Phase 28: Depth-Measure Long Tail
+**Goal**: A user can compute every canonical batch univariate functional depth measure that `roahd`/`fdaoutlier` expose but fdars was missing — half-region & modified half-region depth, hypograph/modified-hypograph & epigraph indices, extremal depth, extreme-rank-length depth, L∞ depth, and total-variation depth with MSSI — over a column-major `FdMatrix`, and select any of them through the existing unified `DepthMethod` dispatcher, without any existing depth code changing.
+**Depends on**: Nothing (independent of Phase 30; Phase 29 depends on this phase)
+**Requirements**: DEPTH-01
+**Success Criteria** (what must be TRUE):
+
+  1. User can call a new `Result`-returning public function per measure in `fdars-core/src/depth/` (crate-root re-exported) — half-region depth (HRD), modified half-region depth (MHRD), hypograph index (HI), modified-hypograph index (MHI), un-modified epigraph index (EI), extremal depth, extreme-rank-length depth (ERL), L∞ depth, and total-variation depth with MSSI — each computing the measure over a column-major `FdMatrix` and returning per-curve depth values.
+  2. Each new measure is registered as a `DepthMethod` variant so `functional_depth(data, method)` dispatches to it, and the existing `DepthMethod` variants and dispatcher signature keep working unchanged.
+  3. On synthetic data with a known depth ordering (a clearly-central curve plus injected magnitude/shape outliers), each measure ranks the central curve deepest and the outliers shallowest, matching the documented reference behavior within tolerance (inline `#[cfg(test)]` tests).
+  4. Invalid inputs (empty matrix / single curve / mismatched argvals vs values / degenerate columns) return `FdarError` rather than panicking, with dimension/parameter checks at each entry point.
+  5. No new crate dependency is added, existing depth-measure and `DepthMethod` public signatures are untouched (additive/non-breaking), and the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+
+**Plans**: TBD
+
+### Phase 29: Outlier-Detector Suite
+**Goal**: A user can flag magnitude and shape outliers in a functional sample with the four `fdaoutlier`/`roahd` detectors fdars was missing — `tvdmss` (TVD+MSSI), `muod` (Massive Unsupervised Outlier Detection), sequential-transformation detection, and the `depthgram` statistic — as numeric outputs (indices/scores, no rendering), reusing the DEPTH-01 depths and the existing MS-plot / outliergram machinery, without any existing outlier code changing.
+**Depends on**: Phase 28 (tvdmss reuses DEPTH-01's total-variation depth + MSSI; must be sequenced after Phase 28)
+**Requirements**: OUT-01
+**Success Criteria** (what must be TRUE):
+
+  1. User can call new `Result`-returning public functions in `fdars-core/src/outliers.rs` (crate-root re-exported) — `tvdmss`, `muod`, `sequential_transform_outliers`, and a `depthgram` statistic — each returning numeric outputs (flagged outlier indices and/or per-curve scores), with no plotting/rendering.
+  2. On synthetic data with injected magnitude outliers and injected shape outliers, `tvdmss` flags both classes and the other detectors return the expected outlier index sets within a documented tolerance (inline `#[cfg(test)]` tests).
+  3. `tvdmss` computes its detector from DEPTH-01's total-variation depth + MSSI (built on Phase 28), and the suite reuses the existing MS-plot / outliergram machinery rather than reimplementing it — adding no new crate dependency.
+  4. Invalid inputs (empty / single-curve / mismatched dimensions / degenerate columns) return `FdarError` rather than panicking, with checks at each entry point.
+  5. Existing outlier detectors (`magnitude_shape_outlyingness`, `outliergram`) and all DEPTH-01 depth functions keep their public signatures unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+
+**Plans**: TBD
+
+### Phase 30: Interval Testing Procedure Family
+**Goal**: A user can run the Interval Testing Procedure (ITP) family that `fdatest` provides — one-population and two-population interval-wise tests over B-spline and Fourier bases with domain-selective adjusted p-values, plus interval-wise FLM coefficient testing — via a new `inference/itp.rs`, reusing the shipped INF-01 permutation infrastructure and `basis/` projection, without any existing inference code changing.
+**Depends on**: Nothing (independent of Phases 28/29; depends only on already-shipped INF-01 permutation infrastructure + existing `basis/` — may run in parallel with Phases 28/29)
+**Requirements**: INF-03
+**Success Criteria** (what must be TRUE):
+
+  1. User can call new `Result`-returning public entry points in `fdars-core/src/inference/itp.rs` (crate-root re-exported) for a one-population interval-wise test, a two-population interval-wise test, and an interval-wise FLM coefficient test, each accepting a basis choice (B-spline or Fourier) and returning per-component/per-domain adjusted p-values.
+  2. Each test returns domain-selective adjusted p-values (the ITP interval-wise closure adjustment), so a user can identify which sub-intervals of the domain drive a significant result — not just a single global p-value.
+  3. On synthetic data with a localized between-group difference confined to a known sub-interval (and a null case with no difference), the adjusted p-values are small on the true differing interval and non-significant elsewhere / everywhere in the null case, within a documented tolerance (inline `#[cfg(test)]` tests).
+  4. The ITP family reuses the INF-01 permutation infrastructure and `basis/` projection, adds no new crate dependency, and invalid inputs (empty / mismatched group sizes / incompatible basis parameters) return `FdarError` rather than panicking.
+  5. Existing `inference/` entry points (INF-01/INF-02 tests) and `basis/` projection keep their public signatures unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
+
+**Plans**: TBD
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 28. Depth-Measure Long Tail | 0/TBD | Not started | - |
+| 29. Outlier-Detector Suite | 0/TBD | Not started | - |
+| 30. Interval Testing Procedure Family | 0/TBD | Not started | - |
+
+**Execution order:** Phase 29 (OUT-01) has a **hard dependency on Phase 28** (DEPTH-01) — `tvdmss` reuses DEPTH-01's total-variation depth + MSSI, so **28 must complete before 29**. Phase 30 (INF-03) is **independent** of Phases 28/29 (it depends only on the already-shipped INF-01 permutation infrastructure + existing `basis/`) and **may run in parallel** with them. Default sequence: 28 → 29, with 30 free to run alongside. First differentiator milestone (P1 table-stakes exhausted after v0.22.0); all three items score 2.31 (P2, M-effort) in `R-BACKLOG.md`. Additive/non-breaking, reuse-first, no new crate dependency.
 
 <details>
 <summary>✅ v0.22.0 PACE Sparse FPCA & Elastic Multinomial (Phases 26–27) — SHIPPED 2026-08-19</summary>
 
 Final P1 table-stakes item (FPCA-01) + elastic-family completion (REG-03), each reuse-first (orchestrate/extend existing code). Additive/non-breaking, no new dependency; full suite 2107 lib tests green, clippy `--all-targets` clean, serde-feature build verified. Milestone audit passed (2/2). Disjoint independent modules. Code review caught + fixed real bugs both phases (Phase 26: NaN-mean guard + BLUP/band ridge/error consistency + n_i≥2; Phase 27: serde-feature compile break + normalization Inf/NaN guard). After this milestone the P1 table-stakes tier is exhausted.
 
-- [x] Phase 26: PACE Sparse FPCA (1/1 plans) — completed 2026-08-19 (FPCA-01: `pace_fpca` + `PaceFpcaConfig` + `PaceFpcaResult` in new `pace_fpca.rs` — smoothed mean + cov-surface eigendecomposition + BLUP conditional-expectation scores + fitted trajectories with Ω prediction-variance bands)
-- [x] Phase 27: Elastic Multinomial Regression (1/1 plans) — completed 2026-08-19 (REG-03: `elastic_multinomial` + `predict_elastic_multinomial` + `ElasticMultinomialResult` in `elastic_regression/logistic.rs` — one-vs-rest over the unchanged binary `elastic_logistic`)
+- [x] Phase 26: PACE Sparse FPCA (1/1 plans) — completed 2026-08-19 (FPCA-01: `pace_fpca` + `PaceFpcaConfig` + `PaceFpcaResult` in new `pace_fpca.rs`)
+- [x] Phase 27: Elastic Multinomial Regression (1/1 plans) — completed 2026-08-19 (REG-03: `elastic_multinomial` + `predict_elastic_multinomial` + `ElasticMultinomialResult` in `elastic_regression/logistic.rs`)
 
 Full phase detail: [milestones/v0.22.0-ROADMAP.md](milestones/v0.22.0-ROADMAP.md)
 
@@ -121,10 +180,10 @@ Full phase detail: [milestones/v0.20.0-ROADMAP.md](milestones/v0.20.0-ROADMAP.md
 <details>
 <summary>✅ v0.21.0 Functional Regression Completeness (Phases 24–25) — SHIPPED 2026-08-17</summary>
 
-Third batch of R-backlog items — the two remaining P1 table-stakes functional-regression gaps (REG-01 rank 6, REG-02 rank 7), each reusing existing scalar-on-function design machinery. Additive/non-breaking, `Result`-returning, **zero changes to existing public signatures**, no new crate dependency. Full suite green (2081 lib tests + doctests), clippy `--all-targets` clean. Milestone audit passed (2/2). Both phases independent (disjoint modules). Code review caught + fixed real bugs in both phases (Phase 24: NaN/Inf-bandwidth + `n≤p` guards; Phase 25: Gamma IRLS-weight inversion, Poisson factorial overflow, predict/covariate dimension guards). Crate release (version bump + PR + tag) deferred to an operator-driven ship-time step.
+Third batch of R-backlog items — the two remaining P1 table-stakes functional-regression gaps (REG-01 rank 6, REG-02 rank 7), each reusing existing scalar-on-function design machinery. Additive/non-breaking, `Result`-returning, **zero changes to existing public signatures**, no new crate dependency. Full suite green (2081 lib tests + doctests), clippy `--all-targets` clean. Milestone audit passed (2/2). Both phases independent (disjoint modules).
 
-- [x] Phase 24: Concurrent / Varying-Coefficient Regression (1/1 plans) — completed 2026-08-17 (REG-01: `concurrent_regression` + `ConcurrentRegrResult` in new `concurrent_regression.rs`, pointwise-OLS-then-kernel-smooth β(t) reusing `smoothing.rs`, commit 5480ee25)
-- [x] Phase 25: Functional GLM (Exponential Family) (1/1 plans) — completed 2026-08-17 (REG-02: `functional_glm` + `GlmFamily{Binomial,Poisson,Gamma,Gaussian}` + `FunctionalGlmResult` in new `scalar_on_function/glm.rs`, IRLS over FPC scores generalizing `functional_logistic`, commit cb839d52)
+- [x] Phase 24: Concurrent / Varying-Coefficient Regression (1/1 plans) — completed 2026-08-17 (REG-01: `concurrent_regression` + `ConcurrentRegrResult` in new `concurrent_regression.rs`)
+- [x] Phase 25: Functional GLM (Exponential Family) (1/1 plans) — completed 2026-08-17 (REG-02: `functional_glm` + `GlmFamily{Binomial,Poisson,Gamma,Gaussian}` + `FunctionalGlmResult` in new `scalar_on_function/glm.rs`)
 
 Full phase detail: [milestones/v0.21.0-ROADMAP.md](milestones/v0.21.0-ROADMAP.md)
 

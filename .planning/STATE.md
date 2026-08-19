@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-08-19T12:25:03.266Z"
 last_activity: 2026-08-19
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,34 +17,35 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-18)
+See: .planning/PROJECT.md (updated 2026-08-19)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the final P1 table-stakes item (FPCA-01, unified PACE sparse FPCA) and completes fdars' elastic-regression family (REG-03, elastic multinomial), each by orchestrating/extending existing `fdars-core/src/` code.
-**Current focus:** Planning next milestone (v0.22.0 shipped; P1 table-stakes exhausted)
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone closes the top three P2 differentiator gaps from the v0.18.0 `R-BACKLOG.md` (score 2.31 each): the depth-measure long tail (DEPTH-01), the robust outlier-detector suite (OUT-01), and the Interval Testing Procedure family (INF-03), each by extending existing `fdars-core/src/` modules additively.
+**Current focus:** Roadmap drafted (Phases 28–30); next is phase planning
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap drafted)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-19 — Milestone v0.23.0 started
+Status: Roadmap created — awaiting phase planning
+Last activity: 2026-08-19 — ROADMAP.md written for Phases 28–30
 
-## Milestone Roadmap (v0.22.0)
+## Milestone Roadmap (v0.23.0)
 
-Two **independent** phases, two requirements. Fourth implementation milestone drawn top-first from the R-ecosystem backlog (after v0.19.0 INF-01/INF-02, v0.20.0 T-01/T-02, v0.21.0 REG-01/REG-02) — real `fdars-core/src/` code. All additions are additive/non-breaking, `Result`-returning, with inline `#[cfg(test)]` tests and crate-root re-exports; **zero changes to existing public signatures.** Both items are reuse-first (orchestrate/extend existing code); no new algorithm subsystem, no new crate dependency. **After this milestone the P1 table-stakes tier is exhausted** — the remaining backlog is all P2/P3 differentiators.
+Three phases, three requirements — the top three P2 differentiators from `R-BACKLOG.md` (all tied at score 2.31, M-effort). First **differentiator** milestone (the P1 table-stakes tier was exhausted after v0.22.0). Real `fdars-core/src/` code — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** All three are reuse-first (extend `depth/` / `outliers.rs` / `inference/` + `basis/`); no new algorithm subsystem, **no new crate dependency.** Numeric outputs only — plotting/rendering out of scope.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 26 — PACE Sparse FPCA | FPCA-01 | New `pace_fpca.rs`: a unified PACE sparse FPCA estimator for sparse/irregular curves, chaining existing pieces in one call — kernel-smoothed mean + `irreg_fdata::cov_irreg` covariance surface → eigendecomposition (`regression::fdata_to_pc_1d`) → conditional-expectation (BLUP/PACE) FPC scores per curve (`spm::partial::conditional_expectation`) → fitted trajectories + pointwise confidence bands. `Result`-returning, crate-root re-export. **Reuse-first:** orchestrates `irreg_fdata` + `spm::partial` + `regression`. The **last P1 table-stakes** item (rank 8, score 2.31, M-effort). Also unblocks REG-01's deferred sparse/PACE path + SPARSE-01 (future). |
-| 27 — Elastic Multinomial Regression | REG-03 | `elastic_regression/logistic.rs`: extend the binary `elastic_logistic` to multinomial (multi-class, K ≥ 2) elastic logistic over SRSF/SRVF space (one-vs-rest or softmax) + a `predict_elastic_multinomial` companion returning class probabilities / labels. `Result`-returning, crate-root re-export. **Reuse-first:** reuses the existing SRVF representation + warping machinery; binary `elastic_logistic` signature retained unchanged. Rank 3, score 3.00, S-effort — closes the sole partial in fdars' otherwise-complete elastic-regression family. |
+| 28 — Depth-Measure Long Tail | DEPTH-01 | `depth/`: add HRD/MHRD, HI/MHI/EI, extremal, ERL, L∞, TVD+MSSI — one `Result`-returning function per measure over the column-major `FdMatrix`, each registered in the T-02 `DepthMethod` dispatcher. Batch measures only (excludes streaming depth). R baseline: `roahd`/`fdaoutlier`. Rank 9, score 2.31. |
+| 29 — Outlier-Detector Suite | OUT-01 | `outliers.rs`: add `tvdmss` (TVD+MSSI detector), `muod`, `sequential_transform_outliers`, and the `depthgram` statistic (numeric outputs; renderer out-of-scope), reusing the existing MS-plot / outliergram machinery + DEPTH-01 depths. R baseline: `fdaoutlier`/`roahd`. Rank 10, score 2.31. **Hard dependency on Phase 28** — tvdmss reuses DEPTH-01's TVD+MSSI depth. |
+| 30 — Interval Testing Procedure Family | INF-03 | new `inference/itp.rs`: one-/two-population interval-wise tests (B-spline & Fourier bases) with domain-selective adjusted p-values + interval-wise FLM coefficient testing, reusing the INF-01 permutation infra + `basis/` projection. R baseline: `fdatest`. Rank 11, score 2.31. **Independent** of Phases 28/29. |
 
-**Execution order:** 26 and 27 are **mutually independent** (disjoint modules: new `pace_fpca.rs` orchestrating `irreg_fdata`/`spm::partial`/`regression` vs `elastic_regression/logistic.rs` + SRVF/warping machinery). Either may execute first; they may run in parallel. Default order 26 → 27 by backlog rank (FPCA-01 is the last P1 table-stakes item; REG-03 is a high-score S-effort differentiator). Mirrors the v0.19.0/v0.20.0/v0.21.0 two-independent-phases structure.
+**Execution order:** Phase 29 (OUT-01) has a **hard dependency on Phase 28** (DEPTH-01) — `tvdmss` reuses DEPTH-01's total-variation depth + MSSI, so **28 must complete before 29**. Phase 30 (INF-03) is **independent** (depends only on the already-shipped INF-01 permutation infrastructure + existing `basis/`) and **may run in parallel** with Phases 28/29. Default sequence 28 → 29, with 30 free to run alongside.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 42 (21 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0 + 5 in v0.18.0 + 2 in v0.19.0 + 2 in v0.20.0 + 2 in v0.21.0)
+- Total plans completed: 44 (21 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0 + 5 in v0.18.0 + 2 in v0.19.0 + 2 in v0.20.0 + 2 in v0.21.0 + 2 in v0.22.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -60,21 +61,17 @@ Two **independent** phases, two requirements. Fourth implementation milestone dr
 | 20–21 | v0.19.0 | 2 |
 | 22–23 | v0.20.0 | 2 |
 | 24–25 | v0.21.0 | 2 |
-| 26 | v0.22.0 | TBD (FPCA-01) |
-| 27 | v0.22.0 | TBD (REG-03) |
+| 26–27 | v0.22.0 | 2 |
+| 28 | v0.23.0 | TBD (DEPTH-01) |
+| 29 | v0.23.0 | TBD (OUT-01) |
+| 30 | v0.23.0 | TBD (INF-03) |
 
 **Recent Trend:**
 
-- Last 5 plans: 21-01, 22-01, 23-01, 24-01, 25-01 — all completed + verified
+- Last 5 plans: 23-01, 24-01, 25-01, 26-01, 27-01 — all completed + verified
 - Trend: consistent ~45min per plan, 7 tests/plan average for implementation phases
 
 *Updated after each plan completion*
-**Per-Plan Metrics:**
-
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| Phase 26 P01 | 120 | 3 tasks | 2 files |
-| Phase 27 P27-01 | 20 | 4 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -82,32 +79,24 @@ Two **independent** phases, two requirements. Fourth implementation milestone dr
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-Relevant to current work (v0.22.0 implementation):
+Relevant to current work (v0.23.0 implementation):
 
-- v0.22.0 is an **implementation** milestone — real `fdars-core/src/` code (the fourth drawn top-first from the R-ecosystem backlog, after v0.19.0, v0.20.0, v0.21.0). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
-- Scope is **FPCA-01** (rank 8, score 2.31, P1 table-stakes, M-effort — the *last* P1 table-stakes item) + **REG-03** (rank 3, score 3.00, P2 differentiator, S-effort — completes the elastic family). Both are **reuse-first** (orchestrate/extend existing code); no new algorithm subsystem, no new crate dependency.
-- Phase numbering **continues** from v0.21.0 (ended at Phase 25) → v0.22.0 starts at Phase 26. No reset.
-- **FPCA-01 and REG-03 are mutually independent** — disjoint modules (new `pace_fpca.rs` orchestrating `irreg_fdata`/`spm::partial`/`regression` vs `elastic_regression/logistic.rs` + SRVF/warping). Two phases (26 = FPCA-01, 27 = REG-03); no cross-phase dependency, so they may execute in either order or in parallel. Default order 26 → 27 by backlog rank. Mirrors the v0.19.0/v0.20.0/v0.21.0 two-independent-phases structure.
-- **FPCA-01 scope decision (locked):** orchestrate existing pieces only — kernel-smoothed mean + `irreg_fdata::cov_irreg` covariance surface → eigendecompose (`regression::fdata_to_pc_1d`) → conditional-expectation (BLUP/PACE) scores per curve (`spm::partial::conditional_expectation`) → fitted trajectories + pointwise bands. A configurable/non-canonical PACE bandwidth-selection subsystem (new GCV/CV layer for the covariance surface) is **out of scope** — reuse existing smoothing bandwidth machinery / defaults / caller-supplied bandwidth. The sparse/PACE variant of REG-01 is *enabled* by this work but is a distinct capability, **deferred** to a future milestone.
-- **REG-03 scope decision (locked):** extend `elastic_logistic` to multinomial (multi-class, K ≥ 2) logistic over SRSF/SRVF space (one-vs-rest or softmax) + `predict_elastic_multinomial`. Elastic multinomial beyond logistic (multinomial elastic PCR, ordinal) is **out of scope** — REG-03 closes only the single elastic-logistic multi-class partial. The existing binary `elastic_logistic` public signature is retained unchanged.
-- **Reuse-first mandate (from R-BACKLOG.md FPCA-01/REG-03 blocks):**
-  - FPCA-01 orchestrates `irreg_fdata` (+ `cov_irreg`) + `spm::partial::conditional_expectation` + `regression::fdata_to_pc_1d`; validates inputs via the existing `validation` module; returns the mean, eigenstructure, per-curve BLUP scores, and fitted trajectories with bands.
-  - REG-03 reuses the existing SRVF representation + warping machinery; the binary `elastic_logistic` path stays unchanged and (at K = 2) should agree with the multinomial path.
-- R baselines matched by **capability**, not R's exact signatures: `fdapace`/`fda` (FPCA-01); `fdasrvf` (REG-03).
-- **Plotting is out of scope** — no rendering of FPCA trajectories, confidence bands, or class boundaries (consistent with the R-audit plotting exclusion).
-- Crate is at **0.21.0 released** on crates.io (v0.21.0, tag pushed). The crate-version bump + PR + tag for this milestone is a **ship-time** step, decoupled from the implementation phases.
+- v0.23.0 is an **implementation** milestone — real `fdars-core/src/` code (drawn top-first from the R-ecosystem backlog, after v0.19.0–v0.22.0). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
+- Scope is the **top three P2 differentiators** from `R-BACKLOG.md` (all tied at score 2.31, M-effort): **DEPTH-01** (rank 9), **OUT-01** (rank 10), **INF-03** (rank 11). First differentiator milestone — the P1 table-stakes tier is exhausted after v0.22.0. All three are **reuse-first** (extend `depth/` / `outliers.rs` / `inference/` + `basis/`); no new algorithm subsystem, **no new crate dependency**. Plotting/rendering out of scope (numeric outputs only).
+- Phase numbering **continues** from v0.22.0 (ended at Phase 27) → v0.23.0 starts at Phase 28. No reset.
+- **One requirement per phase, three phases:** Phase 28 = DEPTH-01, Phase 29 = OUT-01, Phase 30 = INF-03.
+- **Phase 29 (OUT-01) has a hard dependency on Phase 28 (DEPTH-01)** — `tvdmss` reuses DEPTH-01's total-variation depth + MSSI. **28 must complete before 29.**
+- **Phase 30 (INF-03) is independent** of Phases 28/29 — it depends only on the already-shipped INF-01 permutation infrastructure + existing `basis/` projection, so it may run in parallel with 28/29.
+- **DEPTH-01 scope (from R-BACKLOG.md block):** add HRD, MHRD, HI, MHI, EI, extremal depth, ERL, L∞ depth, and TVD+MSSI as one `Result`-returning function per measure over the column-major `FdMatrix` (existing per-file convention), each registered in the T-02 `DepthMethod` dispatcher. **Excludes** streaming depth (fdars strength U-5) — batch measures only. R baseline: `roahd`/`fdaoutlier`.
+- **OUT-01 scope (from R-BACKLOG.md block):** add `tvdmss`, `muod`, `sequential_transform_outliers`, and the `depthgram` statistic to `outliers.rs` (numeric outputs; renderer out-of-scope), reusing the existing MS-plot / outliergram machinery + DEPTH-01 depths. Excludes `fdaPOIFD` partially-observed detectors (deferred). R baseline: `fdaoutlier`/`roahd`.
+- **INF-03 scope (from R-BACKLOG.md block):** new `inference/itp.rs` — one-/two-population interval-wise tests (B-spline & Fourier bases) with domain-selective adjusted p-values (the ITP interval-wise closure adjustment) + interval-wise FLM coefficient testing, reusing the INF-01 permutation infra + `basis/` projection. Excludes random-projection ANOVA/MANOVA (`fdANOVA`, deferred). R baseline: `fdatest`.
+- R baselines matched by **capability**, not R's exact signatures.
 
 Conventions carried from prior milestones (relevant to implementation):
 
-- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved.
+- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved (permutation tests in INF-03 need seeded reproducibility, mirroring INF-01's 999-perm default).
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
-- [Phase ?]: Do NOT subtract sigma2 from cov_irreg surface before eigendecomposition — sigma2 enters only as ridge term in Sigma_yi (Yao et al. 2005 §2.2)
-- [Phase ?]: nalgebra symmetric_eigen() returns ASCENDING eigenvalues — collect pairs, sort descending; fix_svd_signs convention: largest-magnitude element positive
-- [Phase ?]: helpers::linear_interp (public) for eigenfunction interpolation; irreg_fdata::linear_interp is pub(super) and inaccessible from pace_fpca.rs
-- [Phase ?]: No new crate dependency: Beasley-Springer-Moro rational approximation replaces statrs for standard normal quantile
-- [Phase ?]: OvR multinomial: reuse binary elastic_logistic K times unchanged (maximal reuse, no new dep)
-- [Phase ?]: Row-normalise OvR sigmoid scores to class posteriors; zero-row guard assigns uniform 1/K
 
 ### Pending Todos
 
@@ -115,25 +104,26 @@ None yet.
 
 ### Blockers/Concerns
 
-- Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer).
+- Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer). Phase 30 is independent and could otherwise parallelize with 28/29, but sequential fallback may serialize them regardless.
 - /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer). Relevant since the milestone compiles real code + doctests.
-- FPCA-01: the PACE estimator wires together four existing pieces (`irreg_fdata::cov_irreg`, `spm::partial::conditional_expectation`, `regression::fdata_to_pc_1d`, kernel-smoothed mean) whose interfaces/conventions (grid alignment, measurement-error variance σ² for the BLUP, band construction) must be reconciled during planning; pin the conditional-expectation formulation + confidence-band definition and document them in rustdoc (as prior milestones documented divergences from R baselines).
-- REG-03: choice of one-vs-rest vs softmax, the multinomial IRLS/optimizer convergence policy, and the K = 2 ↔ binary-`elastic_logistic` agreement condition should be pinned during planning and documented; input guards needed for fewer-than-2-classes and label/curve-count mismatch.
+- DEPTH-01: several measures (HRD/MHRD, HI/MHI/EI, ERL) have subtle reference definitions (`roahd`/`fdaoutlier`); pin the exact statistic and MSSI construction for TVD during planning and document any divergence from the R baseline in rustdoc (as prior milestones documented divergences).
+- OUT-01: `tvdmss` consumes DEPTH-01's TVD+MSSI — pin the DEPTH-01 TVD/MSSI interface first so Phase 29 has a stable dependency; `muod` / `sequential_transform_outliers` / `depthgram` numeric-output shapes should be pinned during planning.
+- INF-03: the ITP interval-wise closure p-value-adjustment and the B-spline vs Fourier basis-projection paths must be reconciled against the INF-01 permutation infrastructure during planning; the domain-selective adjusted-p-value definition should be pinned + documented.
 
 ## Deferred Items
 
-v2 backlog items (from `.planning/research/R-BACKLOG.md`, see REQUIREMENTS.md v2 section): **REG-01 sparse/PACE variant** (now *enabled* by FPCA-01's PACE infra, but a distinct capability — deferred), a configurable/non-canonical PACE bandwidth-selection subsystem, elastic multinomial beyond logistic (multinomial elastic PCR, ordinal), extra GLM families (inverse-Gaussian, negative-binomial) + configurable links, and the remaining P2/P3 differentiators (DEPTH-01, OUT-01, INF-03, REG-04/05/06, FTS-*, FRE-*, DENS-*, CLUS-*, REP-*, SPARSE-*, FPCA-02).
+v2 backlog items (from `.planning/research/R-BACKLOG.md`, see REQUIREMENTS.md v2 section): REG-04, REG-05, CLUS-01, REP-01, FTS-02 (score 1.73, P2); DENS-01, FPCA-02, SPARSE-01 (score 1.73, P3); FTS-01, FRE-01 (score 1.33, L); FTS-03, FRE-02, REG-06, REP-02, CLUS-02 (score ≤ 1.00, L). Also from prior milestones: REG-01 sparse/PACE variant, configurable PACE bandwidth-selection subsystem, elastic multinomial beyond logistic, extra GLM families + configurable links. Explicit v0.23.0 exclusions: plotting/rendering of depth regions/boxplots/depthgram/outlier flags/ITP p-value surfaces; streaming/online depth variants (fdars strength U-5); `fdaPOIFD` partially-observed detectors; random-projection ANOVA/MANOVA (`fdANOVA`).
 
-Advisory tech-debt carried forward (not v0.22.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files remain `draft` (Nyquist TODO).
+Advisory tech-debt carried forward (not v0.23.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files remain `draft` (Nyquist TODO).
 
-**Also pending (not a backlog item):** a crate release for v0.22.0 — version bump (0.21.0 → next) + PR + tag, since this milestone ships real code (operator-driven ship-time step).
+**Also pending (not a backlog item):** a crate release for v0.23.0 — version bump (0.22.0 → next) + PR + tag, since this milestone ships real code (operator-driven ship-time step).
 
 ## Session Continuity
 
-Last session: 2026-08-19T08:44:24.488Z
-Stopped at: context exhaustion at 75% (2026-08-19)
+Last session: 2026-08-19
+Stopped at: roadmap created (Phases 28–30)
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with `/gsd-plan-phase 28` (DEPTH-01), or plan Phase 30 (INF-03, independent) in parallel.
