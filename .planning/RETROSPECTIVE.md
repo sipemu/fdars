@@ -173,6 +173,34 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.22.0 — PACE Sparse FPCA & Elastic Multinomial
+
+**Shipped:** 2026-08-19
+**Phases:** 2 | **Plans:** 2
+
+### What Was Built
+- FPCA-01: `pace_fpca` unified PACE sparse FPCA (new `pace_fpca.rs`) — smoothed mean + cov-surface eigendecomposition + newly-implemented BLUP conditional-expectation scores + Ω prediction-variance bands.
+- REG-03: `elastic_multinomial` one-vs-rest over the unchanged binary `elastic_logistic` — completes the elastic-regression family.
+- Additive/non-breaking, no new dependency; full suite 2107 + clippy + serde-feature build green.
+
+### What Worked
+- Reuse-first held: each phase = 1 plan. Tracer-first sequencing de-risked the PACE algorithmic core early.
+- Code review again earned its keep — 3 blockers across the two phases that the `linalg,parallel` gate could NOT catch: a NaN-mean → all-NaN silent result (Phase 26) and a **serde-feature compile break** (Phase 27, only surfaces under `--features serde`). Both fixed with regression tests + an explicit `--features serde` build check added to the gate.
+- Batched-single-commit fix strategy (vs atomic-per-finding) avoided the code-fixer stall seen in v0.21.0.
+
+### What Was Inefficient
+- **The R-BACKLOG was wrong again** — it claimed `spm::partial::conditional_expectation` provided PACE reconstruction; it does not exist (same class as v0.21.0's `statrs` claim). The BLUP scorer had to be implemented, not orchestrated. Lesson: verify backlog "reuse" claims against the actual codebase during discuss/research, not execution.
+- The `gsd-verifier` stalled on Phase 26/27's slow full-suite run (600s watchdog). Worked around by writing VERIFICATION.md from independently-run gate evidence (clippy + suite + targeted tests) — the orchestrator filesystem-fallback pattern.
+
+### Key Lessons
+- Feature-gated code (`serde`) needs a feature-matrix build in the gate — a default-feature clippy/test pass is not sufficient. Added `cargo build --features serde,linalg,parallel` to the review verification.
+- Non-finite-input guards remain the recurring bug class (NaN mean here; NaN bandwidth/response in v0.21.0) — validate finiteness first, before per-case guards.
+
+### Cost Observations
+- Model mix: orchestration on Opus; planners on Opus; researchers/executors/reviewers/verifiers on Sonnet; plan-checker on Haiku. Skipped the researcher for the pure-reuse REG-03 phase (context economy) — plan-checker still gated it.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
