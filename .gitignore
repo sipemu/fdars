@@ -59,3 +59,6 @@ covr/
 # Quarto/RMarkdown cache and output files
 *_cache/
 *_files/
+
+# Harness agent worktrees / local Claude config — never track
+.claude/
