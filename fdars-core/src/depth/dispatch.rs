@@ -10,7 +10,10 @@
 //! The dispatcher only *wraps* the underlying depth functions — their signatures
 //! are unchanged.
 
-use crate::depth::{band_1d, fraiman_muniz_1d, modified_band_1d, random_projection_1d_seeded};
+use crate::depth::{
+    band_1d, epigraph_index_1d, fraiman_muniz_1d, hypograph_index_1d, modified_band_1d,
+    modified_hypograph_index_1d, random_projection_1d_seeded,
+};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
@@ -40,6 +43,15 @@ pub enum DepthMethod {
         /// RNG seed for deterministic projections.
         seed: u64,
     },
+    /// Hypograph index (HI). Global indicator: fraction of reference curves globally
+    /// at or below the object curve. Requires n >= 2. [CITED: roahd::HI]
+    HypographIndex,
+    /// Modified hypograph index (MHI). Pointwise average: fraction of time the object
+    /// curve dominates each reference curve. [CITED: roahd::MHI]
+    ModifiedHypographIndex,
+    /// Epigraph index (EI, un-modified). Global indicator: fraction of reference curves
+    /// globally at or above the object curve. Requires n >= 2. [CITED: roahd::EI]
+    EpigraphIndex,
 }
 
 /// Compute the **self-depth** of every curve in `data` w.r.t. the sample.
@@ -93,6 +105,27 @@ pub fn functional_depth(data: &FdMatrix, method: DepthMethod) -> Result<Vec<f64>
                 });
             }
             random_projection_1d_seeded(data, data, nproj, Some(seed))
+        }
+        DepthMethod::HypographIndex => {
+            if n < 2 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 2 curves for hypograph index".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            hypograph_index_1d(data, data)?
+        }
+        DepthMethod::ModifiedHypographIndex => modified_hypograph_index_1d(data, data)?,
+        DepthMethod::EpigraphIndex => {
+            if n < 2 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 2 curves for epigraph index".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            epigraph_index_1d(data, data)?
         }
     };
 
