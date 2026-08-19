@@ -420,13 +420,13 @@ pub use metric::{
 
 // Re-export depth measure functions
 pub use depth::{
-    band_1d, epigraph_index_1d, fraiman_muniz_1d, fraiman_muniz_2d, functional_boxplot,
-    functional_depth, functional_spatial_1d, functional_spatial_2d, half_region_depth_1d,
-    hypograph_index_1d, kernel_functional_spatial_1d, kernel_functional_spatial_2d, modal_1d,
-    modal_2d, modified_band_1d, modified_epigraph_index_1d, modified_half_region_depth_1d,
-    modified_hypograph_index_1d, random_projection_1d, random_projection_1d_seeded,
-    random_projection_2d, random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d, DepthMethod,
-    FunctionalBoxplotResult,
+    band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz_1d,
+    fraiman_muniz_2d, functional_boxplot, functional_depth, functional_spatial_1d,
+    functional_spatial_2d, half_region_depth_1d, hypograph_index_1d, kernel_functional_spatial_1d,
+    kernel_functional_spatial_2d, linfinity_depth_1d, modal_1d, modal_2d, modified_band_1d,
+    modified_epigraph_index_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
+    random_projection_1d, random_projection_1d_seeded, random_projection_2d, random_tukey_1d,
+    random_tukey_1d_seeded, random_tukey_2d, DepthMethod, FunctionalBoxplotResult,
 };
 
 // Re-export outlier detection functions

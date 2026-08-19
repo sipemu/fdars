@@ -10,9 +10,12 @@ use rand_distr::StandardNormal;
 
 pub mod band;
 pub mod dispatch;
+pub mod erl;
+pub mod extremal;
 pub mod fraiman_muniz;
 pub mod half_region;
 pub mod hypo_epi;
+pub mod linf;
 pub mod modal;
 pub mod random_projection;
 pub mod random_tukey;
@@ -25,9 +28,12 @@ mod tests;
 // Re-export all public functions
 pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
 pub use dispatch::{functional_boxplot, functional_depth, DepthMethod, FunctionalBoxplotResult};
+pub use erl::extreme_rank_length_depth_1d;
+pub use extremal::extremal_depth_1d;
 pub use fraiman_muniz::{fraiman_muniz_1d, fraiman_muniz_2d};
 pub use half_region::{half_region_depth_1d, modified_half_region_depth_1d};
 pub use hypo_epi::{epigraph_index_1d, hypograph_index_1d, modified_hypograph_index_1d};
+pub use linf::linfinity_depth_1d;
 pub use modal::{modal_1d, modal_2d};
 pub use random_projection::{
     random_projection_1d, random_projection_1d_seeded, random_projection_2d,

@@ -11,9 +11,9 @@
 //! are unchanged.
 
 use crate::depth::{
-    band_1d, epigraph_index_1d, fraiman_muniz_1d, half_region_depth_1d, hypograph_index_1d,
-    modified_band_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
-    random_projection_1d_seeded,
+    band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz_1d,
+    half_region_depth_1d, hypograph_index_1d, linfinity_depth_1d, modified_band_1d,
+    modified_half_region_depth_1d, modified_hypograph_index_1d, random_projection_1d_seeded,
 };
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -59,6 +59,14 @@ pub enum DepthMethod {
     /// Modified half-region depth (MHRD) = min(MEI, MHI) over the pointwise modified
     /// indices. [CITED: roahd::MHRD]
     ModifiedHalfRegion,
+    /// Extremal depth (Narisetty & Nair 2016). Rank-ordering measure; requires n >= 3.
+    /// [CITED: fdaoutlier::extremal_depth]
+    Extremal,
+    /// Extreme-rank-length depth. Lexicographic rank-vector ordering; requires n >= 2.
+    /// [CITED: fdaoutlier::extreme_rank_length]
+    ExtremeRankLength,
+    /// L-infinity (sup-norm) depth. Valid for n >= 1. [CITED: fdaoutlier::linfinity_depth]
+    LInfinity,
 }
 
 /// Compute the **self-depth** of every curve in `data` w.r.t. the sample.
@@ -154,6 +162,27 @@ pub fn functional_depth(data: &FdMatrix, method: DepthMethod) -> Result<Vec<f64>
             }
             modified_half_region_depth_1d(data, data)?
         }
+        DepthMethod::Extremal => {
+            if n < 3 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 3 curves for extremal depth".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            extremal_depth_1d(data, data)?
+        }
+        DepthMethod::ExtremeRankLength => {
+            if n < 2 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 2 curves for extreme-rank-length depth".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            extreme_rank_length_depth_1d(data, data)?
+        }
+        DepthMethod::LInfinity => linfinity_depth_1d(data, data)?,
     };
 
     Ok(depths)
