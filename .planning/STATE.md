@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.22.0
 milestone_name: PACE Sparse FPCA & Elastic Multinomial
 current_phase: 27
-current_phase_name: Elastic Multinomial Regression
-status: planning
-stopped_at: "Completed 26-01-PLAN.md: PACE sparse FPCA (FPCA-01) — pace_fpca.rs, 13 tests, 4 commits"
-last_updated: "2026-08-19T06:01:29.835Z"
+current_phase_name: elastic-multinomial-regression
+status: verifying
+stopped_at: "Completed 27-01-PLAN.md: elastic multinomial OvR (REG-03) — logistic.rs, 7 tests, 2 commits"
+last_updated: "2026-08-19T08:29:12.693Z"
 last_activity: 2026-08-19
 last_activity_desc: Phase 26 complete, transitioned to Phase 27
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-18)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the final P1 table-stakes item (FPCA-01, unified PACE sparse FPCA) and completes fdars' elastic-regression family (REG-03, elastic multinomial), each by orchestrating/extending existing `fdars-core/src/` code.
-**Current focus:** Phase 26 — pace-sparse-fpca
+**Current focus:** Phase 27 — elastic-multinomial-regression
 
 ## Current Position
 
-Phase: 27 — Elastic Multinomial Regression
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-19 — Phase 26 complete, transitioned to Phase 27
+Phase: 27 (elastic-multinomial-regression) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-08-19 — Phase 27 execution started
 
 ## Milestone Roadmap (v0.22.0)
 
@@ -77,6 +77,7 @@ Two **independent** phases, two requirements. Fourth implementation milestone dr
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 26 P01 | 120 | 3 tasks | 2 files |
+| Phase 27 P27-01 | 20 | 4 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Conventions carried from prior milestones (relevant to implementation):
 - [Phase ?]: nalgebra symmetric_eigen() returns ASCENDING eigenvalues — collect pairs, sort descending; fix_svd_signs convention: largest-magnitude element positive
 - [Phase ?]: helpers::linear_interp (public) for eigenfunction interpolation; irreg_fdata::linear_interp is pub(super) and inaccessible from pace_fpca.rs
 - [Phase ?]: No new crate dependency: Beasley-Springer-Moro rational approximation replaces statrs for standard normal quantile
+- [Phase ?]: OvR multinomial: reuse binary elastic_logistic K times unchanged (maximal reuse, no new dep)
+- [Phase ?]: Row-normalise OvR sigmoid scores to class posteriors; zero-row guard assigns uniform 1/K
 
 ### Pending Todos
 
@@ -130,8 +133,8 @@ Advisory tech-debt carried forward (not v0.22.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-18T21:47:13.993Z
-Stopped at: Completed 26-01-PLAN.md: PACE sparse FPCA (FPCA-01) — pace_fpca.rs, 13 tests, 4 commits
+Last session: 2026-08-19T08:29:12.683Z
+Stopped at: Completed 27-01-PLAN.md: elastic multinomial OvR (REG-03) — logistic.rs, 7 tests, 2 commits
 Resume file: None
 
 ## Operator Next Steps

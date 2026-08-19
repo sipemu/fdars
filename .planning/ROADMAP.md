@@ -52,7 +52,8 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 27-01-PLAN.md — OvR elastic multinomial (elastic_multinomial + predict_elastic_multinomial + ElasticMultinomialResult), reusing binary elastic_logistic K times; re-exports + input guards + tests
+
+- [x] 27-01-PLAN.md — OvR elastic multinomial (elastic_multinomial + predict_elastic_multinomial + ElasticMultinomialResult), reusing binary elastic_logistic K times; re-exports + input guards + tests
 
 ## Progress
 

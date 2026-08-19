@@ -13,7 +13,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase. IDs mat
 
 ### Elastic Regression
 
-- [ ] **REG-03**: User can fit an **elastic multinomial (multi-class) logistic regression** over SRSF/SRVF space via a new public entry point in `fdars-core/src/elastic_regression/logistic.rs` (re-exported at the crate root), extending the existing binary elastic logistic to K ≥ 2 classes (one-vs-rest or softmax), plus a `predict_elastic_multinomial` companion that returns class probabilities / predicted labels for new curves. It is `Result`-returning, reuses the existing SRVF representation + warping machinery, validates inputs (returning `FdarError`, no panic), adds no new crate dependency, and retains the existing binary `elastic_logistic` public signature unchanged (additive/non-breaking).
+- [x] **REG-03**: User can fit an **elastic multinomial (multi-class) logistic regression** over SRSF/SRVF space via a new public entry point in `fdars-core/src/elastic_regression/logistic.rs` (re-exported at the crate root), extending the existing binary elastic logistic to K ≥ 2 classes (one-vs-rest or softmax), plus a `predict_elastic_multinomial` companion that returns class probabilities / predicted labels for new curves. It is `Result`-returning, reuses the existing SRVF representation + warping machinery, validates inputs (returning `FdarError`, no panic), adds no new crate dependency, and retains the existing binary `elastic_logistic` public signature unchanged (additive/non-breaking).
 
 ## v2 Requirements
 
@@ -50,7 +50,7 @@ Each requirement maps to exactly one phase (filled during roadmap creation).
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FPCA-01 | Phase 26 | Complete |
-| REG-03 | Phase 27 | Pending |
+| REG-03 | Phase 27 | Complete |
 
 **Coverage:**
 
