@@ -19,7 +19,8 @@ mod tests;
 
 // Re-export all public items
 pub use logistic::{
-    elastic_logistic, elastic_logistic_with_config, predict_elastic_logistic, ElasticLogisticResult,
+    elastic_logistic, elastic_logistic_with_config, elastic_multinomial, predict_elastic_logistic,
+    predict_elastic_multinomial, ElasticLogisticResult, ElasticMultinomialResult,
 };
 pub use pcr::{elastic_pcr, elastic_pcr_with_config, ElasticPcrResult};
 pub use regression::{

@@ -340,10 +340,11 @@ pub use elastic_fpca::{
 
 // Re-export elastic regression types
 pub use elastic_regression::{
-    elastic_logistic, elastic_logistic_with_config, elastic_pcr, elastic_pcr_with_config,
-    elastic_regression, elastic_regression_with_config, predict_elastic_logistic,
-    predict_elastic_regression, predict_scalar_on_shape, scalar_on_shape, ElasticConfig,
-    ElasticLogisticResult, ElasticPcrConfig, ElasticPcrResult, ElasticRegressionResult,
+    elastic_logistic, elastic_logistic_with_config, elastic_multinomial, elastic_pcr,
+    elastic_pcr_with_config, elastic_regression, elastic_regression_with_config,
+    predict_elastic_logistic, predict_elastic_multinomial, predict_elastic_regression,
+    predict_scalar_on_shape, scalar_on_shape, ElasticConfig, ElasticLogisticResult,
+    ElasticMultinomialResult, ElasticPcrConfig, ElasticPcrResult, ElasticRegressionResult,
     IndexMethod, PcaMethod, ScalarOnShapeConfig, ScalarOnShapeResult,
 };
 

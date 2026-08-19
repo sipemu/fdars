@@ -748,10 +748,7 @@ mod tests {
         // y has 1 fewer element than n
         let bad_y: Vec<usize> = vec![0; data.nrows() - 1];
         let result = elastic_multinomial(&data, &bad_y, &argvals, 4, 0.0, 5, 1e-3);
-        assert!(
-            matches!(result, Err(_)),
-            "should return Err on y.len() != n"
-        );
+        assert!(result.is_err(), "should return Err on y.len() != n");
     }
 
     #[test]
@@ -759,7 +756,7 @@ mod tests {
         let (data, _, argvals) = make_class_data(2, 2, 10);
         let all_zero: Vec<usize> = vec![0; data.nrows()];
         let result = elastic_multinomial(&data, &all_zero, &argvals, 4, 0.0, 5, 1e-3);
-        assert!(matches!(result, Err(_)), "should return Err for K<2");
+        assert!(result.is_err(), "should return Err for K<2");
     }
 
     #[test]
@@ -771,7 +768,7 @@ mod tests {
         bad_y[data.nrows() - 2] = 2;
         let result = elastic_multinomial(&data, &bad_y, &argvals, 4, 0.0, 5, 1e-3);
         assert!(
-            matches!(result, Err(_)),
+            result.is_err(),
             "should return Err for non-contiguous labels"
         );
     }
@@ -782,9 +779,6 @@ mod tests {
         let y: Vec<usize> = vec![];
         let argvals = uniform_grid(10);
         let result = elastic_multinomial(&data, &y, &argvals, 4, 0.0, 5, 1e-3);
-        assert!(
-            matches!(result, Err(_)),
-            "should return Err for empty input"
-        );
+        assert!(result.is_err(), "should return Err for empty input");
     }
 }
