@@ -4,7 +4,9 @@
 //! based on depth measures and likelihood ratio tests.
 
 use crate::depth::band::{modified_band_1d, modified_epigraph_index_1d};
+use crate::depth::{functional_boxplot, total_variation_depth_1d, DepthMethod};
 use crate::error::FdarError;
+use crate::helpers::{quantile_sorted, sort_nan_safe};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFraimanMuniz};
@@ -443,6 +445,260 @@ fn solve_3x3(a: [[f64; 3]; 3], b: [f64; 3]) -> (f64, f64, f64) {
         + b[0] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
 
     (det_x / det, det_y / det, det_z / det)
+}
+
+/// Lower and upper IQR fences `(Q1 − factor·IQR, Q3 + factor·IQR)` for a value slice.
+///
+/// Shared cutoff helper for the outlier detectors. Uses linear-interpolation quantiles
+/// ([`quantile_sorted`]) rather than R's floor-index quartiles — the two agree for n > 20 and
+/// differ only marginally for small samples.
+fn iqr_fence(values: &[f64], factor: f64) -> (f64, f64) {
+    let mut sorted = values.to_vec();
+    sort_nan_safe(&mut sorted);
+    let q1 = quantile_sorted(&sorted, 0.25);
+    let q3 = quantile_sorted(&sorted, 0.75);
+    let iqr = q3 - q1;
+    (q1 - factor * iqr, q3 + factor * iqr)
+}
+
+/// Configuration for [`tvdmss`]. Defaults reproduce the `fdaoutlier` `tvdmss` defaults.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TvdMssConfig {
+    /// IQR multiplier for the shape (MSS lower-fence) stage. Default `1.5`.
+    pub emp_factor_mss: f64,
+    /// Inflation factor for the magnitude-stage functional boxplot. Default `1.5`.
+    pub emp_factor_tvd: f64,
+    /// Fraction of the original n used as the stage-2 central region. Default `0.5`.
+    /// Documented for parity with `fdaoutlier`; fdars' [`functional_boxplot`] fixes the
+    /// central region at the deepest 50%, so this field is currently informational.
+    pub central_region_tvd: f64,
+}
+
+impl Default for TvdMssConfig {
+    fn default() -> Self {
+        Self {
+            emp_factor_mss: 1.5,
+            emp_factor_tvd: 1.5,
+            central_region_tvd: 0.5,
+        }
+    }
+}
+
+/// Numeric output of the [`tvdmss`] two-stage detector (no rendering).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct TvdMssOutliers {
+    /// Row indices flagged as magnitude outliers (stage 2: functional boxplot on TVD).
+    pub magnitude_outliers: Vec<usize>,
+    /// Row indices flagged as shape outliers (stage 1: lower IQR fence on MSS).
+    pub shape_outliers: Vec<usize>,
+    /// Total variation depth per curve (over original indices).
+    pub tvd: Vec<f64>,
+    /// Modified shape similarity index per curve (over original indices).
+    pub mss: Vec<f64>,
+}
+
+/// TVD + MSSI two-stage outlier detector (Huang & Sun 2019 / `fdaoutlier::tvdmss`).
+///
+/// Stage 1 flags **shape outliers** as curves whose MSS falls below the lower IQR fence
+/// (`Q1 − emp_factor_mss·IQR`) and below the mean MSS. Stage 2 removes those curves and runs a
+/// López-Pintado–Romo depth-fence [`functional_boxplot`] on the remaining curves' values to flag
+/// **magnitude outliers**, re-mapping the reduced indices back to the original sample.
+///
+/// Consumes Phase 28's [`total_variation_depth_1d`] directly for the `tvd`/`mss` vectors — no
+/// reimplementation. **Divergence:** `fdaoutlier` scales the stage-2 central region by
+/// `n_orig / n_reduced`; fdars' `functional_boxplot` fixes the central region at the deepest 50%
+/// of the reduced set, so `central_region_tvd` is informational only.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if the sample has fewer than 3 curves or zero columns.
+#[must_use = "outlier detection results should not be discarded"]
+pub fn tvdmss(data: &FdMatrix, config: TvdMssConfig) -> Result<TvdMssOutliers, FdarError> {
+    let (n, m) = data.shape();
+    if n < 3 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 curves and 1 column".to_string(),
+            actual: format!("{n} rows, {m} columns"),
+        });
+    }
+
+    let depth = total_variation_depth_1d(data, data)?;
+
+    // Stage 1: shape outliers = low-MSS lower tail.
+    let (lower_mss, _) = iqr_fence(&depth.mss, config.emp_factor_mss);
+    let mean_mss = depth.mss.iter().sum::<f64>() / n as f64;
+    let shape_outliers: Vec<usize> = (0..n)
+        .filter(|&i| depth.mss[i] < lower_mss && depth.mss[i] < mean_mss)
+        .collect();
+
+    // Stage 2: magnitude outliers via functional boxplot on the non-shape curves.
+    let keep: Vec<usize> = (0..n).filter(|i| !shape_outliers.contains(i)).collect();
+    let mut magnitude_outliers = Vec::new();
+    if keep.len() >= 3 {
+        let kn = keep.len();
+        let mut col_major = vec![0.0; kn * m];
+        for (r, &orig) in keep.iter().enumerate() {
+            for j in 0..m {
+                col_major[r + j * kn] = data[(orig, j)];
+            }
+        }
+        let reduced = FdMatrix::from_column_major(col_major, kn, m)?;
+        let fbp = functional_boxplot(&reduced, DepthMethod::ModifiedBand, config.emp_factor_tvd)?;
+        magnitude_outliers = fbp.outliers.iter().map(|&r| keep[r]).collect();
+    }
+
+    Ok(TvdMssOutliers {
+        magnitude_outliers,
+        shape_outliers,
+        tvd: depth.tvd,
+        mss: depth.mss,
+    })
+}
+
+/// Configuration for [`muod`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MuodConfig {
+    /// IQR multiplier for the per-index upper boxplot cutoff. Default `1.5`.
+    pub factor: f64,
+}
+
+impl Default for MuodConfig {
+    fn default() -> Self {
+        Self { factor: 1.5 }
+    }
+}
+
+/// Numeric output of the [`muod`] detector: per-curve indices and flagged sets (no rendering).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct MuodResult {
+    /// Row indices flagged as shape outliers (upper fence on the shape index).
+    pub shape_outliers: Vec<usize>,
+    /// Row indices flagged as magnitude outliers (upper fence on the magnitude index).
+    pub magnitude_outliers: Vec<usize>,
+    /// Row indices flagged as amplitude outliers (upper fence on the amplitude index).
+    pub amplitude_outliers: Vec<usize>,
+    /// Shape index per curve: `|corr(X_i, μ) − 1|` (0 = same shape as the mean).
+    pub shape_index: Vec<f64>,
+    /// Magnitude index per curve: `|intercept_i|` (0 = same location as the mean).
+    pub magnitude_index: Vec<f64>,
+    /// Amplitude index per curve: `|slope_i − 1|` (0 = same amplitude as the mean).
+    pub amplitude_index: Vec<f64>,
+}
+
+/// Per-curve MUOD indices `(shape, magnitude, amplitude)` from OLS regression on the pointwise mean.
+fn muod_indices(data: &FdMatrix) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let (n, m) = data.shape();
+
+    // Pointwise mean μ_t and its moments.
+    let mut mu = vec![0.0; m];
+    for (j, mu_j) in mu.iter_mut().enumerate() {
+        let mut s = 0.0;
+        for i in 0..n {
+            s += data[(i, j)];
+        }
+        *mu_j = s / n as f64;
+    }
+    let mu_mean = mu.iter().sum::<f64>() / m as f64;
+    let mu_var = mu.iter().map(|&v| (v - mu_mean).powi(2)).sum::<f64>() / (m as f64 - 1.0);
+    let mu_std = mu_var.sqrt();
+
+    let triples: Vec<(f64, f64, f64)> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let mut xi_mean = 0.0;
+            for j in 0..m {
+                xi_mean += data[(i, j)];
+            }
+            xi_mean /= m as f64;
+
+            let mut cov = 0.0;
+            let mut xi_var = 0.0;
+            for j in 0..m {
+                let dx = data[(i, j)] - xi_mean;
+                let dmu = mu[j] - mu_mean;
+                cov += dx * dmu;
+                xi_var += dx * dx;
+            }
+            cov /= m as f64 - 1.0;
+            xi_var /= m as f64 - 1.0;
+            let xi_std = xi_var.sqrt();
+
+            let slope = if mu_var < 1e-15 { 1.0 } else { cov / mu_var };
+            let intercept = xi_mean - slope * mu_mean;
+            let corr = if xi_std < 1e-15 || mu_std < 1e-15 {
+                1.0
+            } else {
+                cov / (xi_std * mu_std)
+            };
+
+            ((corr - 1.0).abs(), intercept.abs(), (slope - 1.0).abs())
+        })
+        .collect();
+
+    let mut shape = Vec::with_capacity(n);
+    let mut magnitude = Vec::with_capacity(n);
+    let mut amplitude = Vec::with_capacity(n);
+    for (s, mg, a) in triples {
+        shape.push(s);
+        magnitude.push(mg);
+        amplitude.push(a);
+    }
+    (shape, magnitude, amplitude)
+}
+
+/// Fast-MUOD (Massive Unsupervised Outlier Detection) via per-curve regression on the pointwise mean.
+///
+/// For each curve, regresses it against the sample's pointwise mean μ and forms three indices —
+/// `shape = |corr(X_i, μ) − 1|`, `magnitude = |intercept_i|`, `amplitude = |slope_i − 1|` — then
+/// flags outliers per index with the upper IQR boxplot whisker (`Q3 + factor·IQR`).
+///
+/// **Divergence:** this is the Fast-MUOD variant (regression against the pointwise mean), not
+/// `fdaoutlier`'s pairwise C++ block; results match on the standard synthetic benchmarks. Only the
+/// `boxplot` cutoff is implemented (the `tangent` cutoff is deferred to the backlog). Degenerate
+/// variances (`< 1e-15`) fall back to a neutral index so a constant curve yields no NaN.
+///
+/// # Errors
+/// Returns [`FdarError::InvalidDimension`] if the sample has fewer than 3 curves or fewer than 2 columns.
+#[must_use = "outlier detection results should not be discarded"]
+pub fn muod(data: &FdMatrix, config: MuodConfig) -> Result<MuodResult, FdarError> {
+    let (n, m) = data.shape();
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 curves".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    if m < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 columns".to_string(),
+            actual: format!("{m} columns"),
+        });
+    }
+
+    let (shape_index, magnitude_index, amplitude_index) = muod_indices(data);
+    let flag_upper = |idx: &[f64]| -> Vec<usize> {
+        let (_, upper) = iqr_fence(idx, config.factor);
+        (0..n).filter(|&i| idx[i] > upper).collect()
+    };
+    let shape_outliers = flag_upper(&shape_index);
+    let magnitude_outliers = flag_upper(&magnitude_index);
+    let amplitude_outliers = flag_upper(&amplitude_index);
+
+    Ok(MuodResult {
+        shape_outliers,
+        magnitude_outliers,
+        amplitude_outliers,
+        shape_index,
+        magnitude_index,
+        amplitude_index,
+    })
 }
 
 #[cfg(test)]
@@ -991,5 +1247,136 @@ mod tests {
     fn outliergram_too_few_curves() {
         let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0], 2, 2).unwrap();
         assert!(outliergram(&data, 1.5).is_err());
+    }
+
+    // --- Phase 29: tvdmss + muod ---
+
+    /// `n` sinusoids each with a genuine per-curve shape perturbation (so the derivative
+    /// ranks that drive MSS are well-defined, not floating-point noise). `outlier_idx` is
+    /// replaced per `kind`: "magnitude" = same shape +10 vertical shift, "amplitude" = ×5
+    /// scale, "shape" = a genuinely different high-frequency wiggle, "constant" = a flat curve.
+    fn outlier_sample(n: usize, m: usize, outlier_idx: usize, kind: &str) -> FdMatrix {
+        // A normal inlier-shaped curve for row i: a primary sine plus a small curve-specific
+        // secondary harmonic that gives each curve real (non-degenerate) derivative variation.
+        let inlier_shape = |i: usize, x: f64| -> f64 {
+            (x * PI).sin() + 0.1 * (x * 4.0 * PI + 0.3 * i as f64).sin()
+        };
+        let mut cm = vec![0.0; n * m];
+        for i in 0..n {
+            for t in 0..m {
+                let x = t as f64 / (m as f64 - 1.0);
+                let val = if i == outlier_idx {
+                    match kind {
+                        // Same shape family as its own inlier, only shifted / scaled.
+                        "magnitude" => inlier_shape(i, x) + 10.0,
+                        "amplitude" => 5.0 * inlier_shape(i, x),
+                        // A genuinely different shape (high frequency), similar magnitude.
+                        "shape" => 0.5 * (x * 12.0 * PI).sin(),
+                        "constant" => 0.5,
+                        _ => inlier_shape(i, x),
+                    }
+                } else {
+                    inlier_shape(i, x)
+                };
+                cm[i + t * n] = val;
+            }
+        }
+        FdMatrix::from_column_major(cm, n, m).unwrap()
+    }
+
+    #[test]
+    fn tvdmss_flags_magnitude_outlier() {
+        let idx = 4usize;
+        let data = outlier_sample(12, 40, idx, "magnitude");
+        let res = tvdmss(&data, TvdMssConfig::default()).unwrap();
+        assert_eq!(res.tvd.len(), 12);
+        assert_eq!(res.mss.len(), 12);
+        assert!(
+            res.magnitude_outliers.contains(&idx),
+            "magnitude outlier {idx} not flagged: {:?}",
+            res.magnitude_outliers
+        );
+    }
+
+    #[test]
+    fn tvdmss_flags_shape_outlier() {
+        let idx = 7usize;
+        let data = outlier_sample(12, 60, idx, "shape");
+        let res = tvdmss(&data, TvdMssConfig::default()).unwrap();
+        assert!(
+            res.shape_outliers.contains(&idx),
+            "shape outlier {idx} not flagged: {:?}",
+            res.shape_outliers
+        );
+    }
+
+    #[test]
+    fn tvdmss_rejects_empty_and_too_few() {
+        let empty = FdMatrix::from_column_major(vec![], 0, 0).unwrap();
+        assert!(matches!(
+            tvdmss(&empty, TvdMssConfig::default()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        let two = outlier_sample(2, 8, 0, "none");
+        assert!(matches!(
+            tvdmss(&two, TvdMssConfig::default()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn muod_flags_magnitude_amplitude_shape() {
+        let mag = outlier_sample(12, 40, 3, "magnitude");
+        let r = muod(&mag, MuodConfig::default()).unwrap();
+        assert_eq!(r.shape_index.len(), 12);
+        assert!(
+            r.magnitude_outliers.contains(&3),
+            "magnitude: {:?}",
+            r.magnitude_outliers
+        );
+
+        let amp = outlier_sample(12, 40, 5, "amplitude");
+        let r = muod(&amp, MuodConfig::default()).unwrap();
+        assert!(
+            r.amplitude_outliers.contains(&5),
+            "amplitude: {:?}",
+            r.amplitude_outliers
+        );
+
+        let shp = outlier_sample(12, 60, 8, "shape");
+        let r = muod(&shp, MuodConfig::default()).unwrap();
+        assert!(
+            r.shape_outliers.contains(&8),
+            "shape: {:?}",
+            r.shape_outliers
+        );
+    }
+
+    #[test]
+    fn muod_constant_curve_no_nan() {
+        let data = outlier_sample(12, 40, 6, "constant");
+        let r = muod(&data, MuodConfig::default()).unwrap();
+        for v in r
+            .shape_index
+            .iter()
+            .chain(&r.magnitude_index)
+            .chain(&r.amplitude_index)
+        {
+            assert!(!v.is_nan(), "index produced NaN");
+        }
+    }
+
+    #[test]
+    fn muod_rejects_bad_dims() {
+        let two = outlier_sample(2, 8, 0, "none");
+        assert!(matches!(
+            muod(&two, MuodConfig::default()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        let one_col = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 3, 1).unwrap();
+        assert!(matches!(
+            muod(&one_col, MuodConfig::default()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
     }
 }
