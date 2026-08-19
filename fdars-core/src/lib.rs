@@ -426,7 +426,8 @@ pub use depth::{
     kernel_functional_spatial_2d, linfinity_depth_1d, modal_1d, modal_2d, modified_band_1d,
     modified_epigraph_index_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
     random_projection_1d, random_projection_1d_seeded, random_projection_2d, random_tukey_1d,
-    random_tukey_1d_seeded, random_tukey_2d, DepthMethod, FunctionalBoxplotResult,
+    random_tukey_1d_seeded, random_tukey_2d, total_variation_depth_1d, DepthMethod,
+    FunctionalBoxplotResult, TvdMssResult,
 };
 
 // Re-export outlier detection functions

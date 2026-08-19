@@ -14,6 +14,7 @@ use crate::depth::{
     band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz_1d,
     half_region_depth_1d, hypograph_index_1d, linfinity_depth_1d, modified_band_1d,
     modified_half_region_depth_1d, modified_hypograph_index_1d, random_projection_1d_seeded,
+    total_variation_depth_1d,
 };
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -67,6 +68,9 @@ pub enum DepthMethod {
     ExtremeRankLength,
     /// L-infinity (sup-norm) depth. Valid for n >= 1. [CITED: fdaoutlier::linfinity_depth]
     LInfinity,
+    /// Total variation depth + MSSI (Huang & Sun 2019). Dispatches the TVD (magnitude)
+    /// component; requires n >= 3. [CITED: fdaoutlier::total_variation_depth]
+    TotalVariation,
 }
 
 /// Compute the **self-depth** of every curve in `data` w.r.t. the sample.
@@ -183,6 +187,16 @@ pub fn functional_depth(data: &FdMatrix, method: DepthMethod) -> Result<Vec<f64>
             extreme_rank_length_depth_1d(data, data)?
         }
         DepthMethod::LInfinity => linfinity_depth_1d(data, data)?,
+        DepthMethod::TotalVariation => {
+            if n < 3 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 3 curves for total variation depth".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            total_variation_depth_1d(data, data)?.tvd
+        }
     };
 
     Ok(depths)
@@ -485,5 +499,69 @@ mod tests {
         assert!(functional_boxplot(&single, DepthMethod::ModifiedBand, 1.5).is_err());
         let data = sample(6, 12);
         assert!(functional_boxplot(&data, DepthMethod::ModifiedBand, -1.0).is_err());
+    }
+
+    // --- Phase 28 all-variant coverage ---
+
+    /// The nine parameter-free depth measures added across plans 28-01..28-03.
+    const NEW_VARIANTS: [DepthMethod; 9] = [
+        DepthMethod::HalfRegion,
+        DepthMethod::ModifiedHalfRegion,
+        DepthMethod::HypographIndex,
+        DepthMethod::ModifiedHypographIndex,
+        DepthMethod::EpigraphIndex,
+        DepthMethod::Extremal,
+        DepthMethod::ExtremeRankLength,
+        DepthMethod::LInfinity,
+        DepthMethod::TotalVariation,
+    ];
+
+    #[test]
+    fn all_nine_new_variants_round_trip() {
+        let data = sample(6, 12); // n >= 3 so every guard is satisfied
+        for method in NEW_VARIANTS {
+            let got = functional_depth(&data, method).unwrap();
+            assert_eq!(got.len(), data.nrows(), "wrong length for {method:?}");
+        }
+    }
+
+    #[test]
+    fn existing_variants_unchanged_regression() {
+        // The additive change must not alter the four pre-existing variants.
+        let data = sample(6, 12);
+        assert!(functional_depth(&data, DepthMethod::FraimanMuniz { scale: false }).is_ok());
+        assert!(functional_depth(&data, DepthMethod::Band).is_ok());
+        assert!(functional_depth(&data, DepthMethod::ModifiedBand).is_ok());
+        assert!(
+            functional_depth(&data, DepthMethod::RandomProjection { nproj: 10, seed: 1 }).is_ok()
+        );
+    }
+
+    #[test]
+    fn min_n_guards_return_err_without_panic() {
+        // Single curve: every measure needing >= 2 (and >= 3) rejects it.
+        let single = sample(1, 8);
+        for method in [
+            DepthMethod::Band,
+            DepthMethod::HalfRegion,
+            DepthMethod::ModifiedHalfRegion,
+            DepthMethod::HypographIndex,
+            DepthMethod::EpigraphIndex,
+            DepthMethod::ExtremeRankLength,
+            DepthMethod::Extremal,
+            DepthMethod::TotalVariation,
+        ] {
+            assert!(
+                functional_depth(&single, method).is_err(),
+                "{method:?} should reject n=1"
+            );
+        }
+        // n=2 rejects the n>=3 measures.
+        let two = sample(2, 8);
+        assert!(functional_depth(&two, DepthMethod::Extremal).is_err());
+        assert!(functional_depth(&two, DepthMethod::TotalVariation).is_err());
+        // Empty matrix rejected by a representative new variant.
+        let empty = FdMatrix::from_column_major(vec![], 0, 0).unwrap();
+        assert!(functional_depth(&empty, DepthMethod::LInfinity).is_err());
     }
 }

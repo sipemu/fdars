@@ -21,6 +21,7 @@ pub mod random_projection;
 pub mod random_tukey;
 pub mod rpd;
 pub mod spatial;
+pub mod tvd;
 
 #[cfg(test)]
 mod tests;
@@ -44,6 +45,7 @@ pub use spatial::{
     functional_spatial_1d, functional_spatial_2d, kernel_functional_spatial_1d,
     kernel_functional_spatial_2d,
 };
+pub use tvd::{total_variation_depth_1d, TvdMssResult};
 
 // ---------------------------------------------------------------------------
 // Shared helpers
