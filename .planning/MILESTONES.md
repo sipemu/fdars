@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.22.0 PACE Sparse FPCA & Elastic Multinomial (Shipped: 2026-08-19)
+
+**Phases completed:** 2 phases, 2 plans, 0 tasks
+
+**Key accomplishments:**
+
+- Yao-Muller-Wang (2005) PACE FPCA estimator for sparse irregular functional data: six-step pipeline (mean→covariance surface→eigendecomposition→BLUP scores→fitted trajectories→confidence bands), 1243-line module, 13 tests, zero new dependencies.
+- 1. [Rule 1 - Bug] Clippy: redundant pattern matching in reject tests
+
+---
+
 ## v0.21.0 Functional Regression Completeness (Shipped: 2026-08-17)
 
 **Phases completed:** 2 phases, 2 plans, 4 tasks

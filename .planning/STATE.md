@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v0.22.0
 milestone_name: PACE Sparse FPCA & Elastic Multinomial
-current_phase: 27
-status: completed
+status: Awaiting next milestone
 stopped_at: "Completed 27-01-PLAN.md: elastic multinomial OvR (REG-03) — logistic.rs, 7 tests, 2 commits"
-last_updated: "2026-08-19T08:40:49.483Z"
+last_updated: "2026-08-19T08:41:48.281Z"
 last_activity: 2026-08-19
 last_activity_desc: Phase 26 complete, transitioned to Phase 27
 progress:
@@ -13,6 +12,7 @@ progress:
   completed_phases: 2
   total_plans: 2
   completed_plans: 2
+current_phase: 27
 current_phase_name: elastic-multinomial-regression
 ---
 
@@ -23,14 +23,14 @@ current_phase_name: elastic-multinomial-regression
 See: .planning/PROJECT.md (updated 2026-08-18)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone ships the final P1 table-stakes item (FPCA-01, unified PACE sparse FPCA) and completes fdars' elastic-regression family (REG-03, elastic multinomial), each by orchestrating/extending existing `fdars-core/src/` code.
-**Current focus:** Phase 27 — elastic-multinomial-regression
+**Current focus:** Planning next milestone (v0.22.0 shipped; P1 table-stakes exhausted)
 
 ## Current Position
 
-Phase: 27
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-19 — Phase 27 complete
+Phase: Milestone v0.22.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-19 — Milestone v0.22.0 completed and archived
 
 ## Milestone Roadmap (v0.22.0)
 
@@ -139,4 +139,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with /gsd-plan-phase 26 (or 27 — they are independent)
+- Start the next milestone with /gsd-new-milestone
