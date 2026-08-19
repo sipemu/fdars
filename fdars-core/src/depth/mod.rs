@@ -11,6 +11,7 @@ use rand_distr::StandardNormal;
 pub mod band;
 pub mod dispatch;
 pub mod fraiman_muniz;
+pub mod half_region;
 pub mod hypo_epi;
 pub mod modal;
 pub mod random_projection;
@@ -25,6 +26,7 @@ mod tests;
 pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
 pub use dispatch::{functional_boxplot, functional_depth, DepthMethod, FunctionalBoxplotResult};
 pub use fraiman_muniz::{fraiman_muniz_1d, fraiman_muniz_2d};
+pub use half_region::{half_region_depth_1d, modified_half_region_depth_1d};
 pub use hypo_epi::{epigraph_index_1d, hypograph_index_1d, modified_hypograph_index_1d};
 pub use modal::{modal_1d, modal_2d};
 pub use random_projection::{

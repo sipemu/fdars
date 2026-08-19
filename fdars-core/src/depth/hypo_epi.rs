@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(hi.len(), n);
         let inv = 1.0 / n as f64;
         for &v in &hi {
-            assert!(v >= 0.0 && v <= 1.0 + 1e-12, "HI out of range: {v}");
+            assert!((0.0..=1.0 + 1e-12).contains(&v), "HI out of range: {v}");
             // v * n must be an integer within floating-point rounding.
             let k = v / inv;
             assert!(
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(ei.len(), n);
         let inv = 1.0 / n as f64;
         for &v in &ei {
-            assert!(v >= 0.0 && v <= 1.0 + 1e-12, "EI out of range: {v}");
+            assert!((0.0..=1.0 + 1e-12).contains(&v), "EI out of range: {v}");
             let k = v / inv;
             assert!(
                 (k - k.round()).abs() < 1e-9,
@@ -309,25 +309,44 @@ mod tests {
     // --- MHI tests ---
 
     #[test]
-    fn mhi_central_curve_has_highest_depth() {
-        // With n=9 curves (offsets 0..8), the middle curve (row 4) should score
-        // closest to 0.5 and be the deepest by MHI.
+    fn mhi_is_monotone_in_curve_height_and_central_near_half() {
+        // MHI is a ONE-SIDED index, not a depth: it measures how much a curve
+        // dominates the others from above. With n=9 vertically-stacked curves
+        // (offsets 0..8), MHI increases monotonically with row height, so the
+        // TOP curve (row 8) is the maximum and the central curve (row 4) ≈ 0.5.
         let n = 9usize;
         let data = sample(n, 30);
         let mhi = modified_hypograph_index_1d(&data, &data).unwrap();
         assert_eq!(mhi.len(), n);
 
-        // The central row should be the deepest.
+        // Monotone non-decreasing in row index (higher curve dominates more).
+        for i in 1..n {
+            assert!(
+                mhi[i] >= mhi[i - 1] - 1e-12,
+                "MHI should be non-decreasing in curve height: row {i} = {}, row {} = {}",
+                mhi[i],
+                i - 1,
+                mhi[i - 1]
+            );
+        }
+
+        // The top curve is the maximum; the central curve sits near 0.5.
         let max_idx = mhi
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
             .map(|(i, _)| i)
             .unwrap();
-        let center = n / 2; // row 4
         assert_eq!(
-            max_idx, center,
-            "MHI should rank the central curve (row {center}) deepest, got row {max_idx}"
+            max_idx,
+            n - 1,
+            "top curve should maximize MHI, got row {max_idx}"
+        );
+        let center = n / 2;
+        assert!(
+            (mhi[center] - 0.5).abs() < 0.1,
+            "central curve MHI should be near 0.5, got {}",
+            mhi[center]
         );
     }
 
@@ -349,7 +368,7 @@ mod tests {
         let data = sample(8, 20);
         let mhi = modified_hypograph_index_1d(&data, &data).unwrap();
         for &v in &mhi {
-            assert!(v >= 0.0 && v <= 1.0 + 1e-12, "MHI out of range: {v}");
+            assert!((0.0..=1.0 + 1e-12).contains(&v), "MHI out of range: {v}");
         }
     }
 
@@ -409,6 +428,6 @@ mod tests {
         let data = sample(6, 12);
         let got = functional_depth(&data, DepthMethod::Band).unwrap();
         assert_eq!(got.len(), data.nrows());
-        assert!(got.iter().all(|&d| d >= 0.0 && d <= 1.0 + 1e-12));
+        assert!(got.iter().all(|&d| (0.0..=1.0 + 1e-12).contains(&d)));
     }
 }

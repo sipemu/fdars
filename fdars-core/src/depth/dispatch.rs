@@ -11,8 +11,9 @@
 //! are unchanged.
 
 use crate::depth::{
-    band_1d, epigraph_index_1d, fraiman_muniz_1d, hypograph_index_1d, modified_band_1d,
-    modified_hypograph_index_1d, random_projection_1d_seeded,
+    band_1d, epigraph_index_1d, fraiman_muniz_1d, half_region_depth_1d, hypograph_index_1d,
+    modified_band_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
+    random_projection_1d_seeded,
 };
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -52,6 +53,12 @@ pub enum DepthMethod {
     /// Epigraph index (EI, un-modified). Global indicator: fraction of reference curves
     /// globally at or above the object curve. Requires n >= 2. [CITED: roahd::EI]
     EpigraphIndex,
+    /// Half-region depth (HRD) = min(EI, HI) over the global indicators. Requires n >= 2.
+    /// [CITED: roahd::HRD]
+    HalfRegion,
+    /// Modified half-region depth (MHRD) = min(MEI, MHI) over the pointwise modified
+    /// indices. [CITED: roahd::MHRD]
+    ModifiedHalfRegion,
 }
 
 /// Compute the **self-depth** of every curve in `data` w.r.t. the sample.
@@ -126,6 +133,26 @@ pub fn functional_depth(data: &FdMatrix, method: DepthMethod) -> Result<Vec<f64>
                 });
             }
             epigraph_index_1d(data, data)?
+        }
+        DepthMethod::HalfRegion => {
+            if n < 2 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 2 curves for half-region depth".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            half_region_depth_1d(data, data)?
+        }
+        DepthMethod::ModifiedHalfRegion => {
+            if n < 2 {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    expected: "at least 2 curves for modified half-region depth".to_string(),
+                    actual: format!("{n}"),
+                });
+            }
+            modified_half_region_depth_1d(data, data)?
         }
     };
 
