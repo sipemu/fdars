@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.23.0
 milestone_name: Depth, Outliers & Interval Inference
-status: planning
-last_updated: "2026-08-19T12:25:03.266Z"
+status: in_progress
+last_updated: "2026-08-19T21:00:00.000Z"
 last_activity: 2026-08-19
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone closes the top three P2 differentiator gaps from the v0.18.0 `R-BACKLOG.md` (score 2.31 each): the depth-measure long tail (DEPTH-01), the robust outlier-detector suite (OUT-01), and the Interval Testing Procedure family (INF-03), each by extending existing `fdars-core/src/` modules additively.
-**Current focus:** Roadmap drafted (Phases 28–30); next is phase planning
+**Current focus:** Phase 28 (DEPTH-01) complete & verified; next is Phase 29 (OUT-01)
 
 ## Current Position
 
-Phase: Not started (roadmap drafted)
-Plan: —
-Status: Roadmap created — awaiting phase planning
-Last activity: 2026-08-19 — ROADMAP.md written for Phases 28–30
+Phase: 28 complete (DEPTH-01) — verification passed 5/5; next: Phase 29 (OUT-01)
+Plan: 28-01, 28-02, 28-03 all complete + verified
+Status: Phase 28 shipped — all 9 depth measures (HI/MHI/EI/HRD/MHRD, extremal, ERL, L∞, TVD+MSSI) added additively; TvdMssResult pinned for Phase 29
+Last activity: 2026-08-19 — Phase 28 executed inline (executor subagent stalled on long builds; orchestrator salvaged + completed), full suite green (2154 lib + integration), clippy clean
 
 ## Milestone Roadmap (v0.23.0)
 
