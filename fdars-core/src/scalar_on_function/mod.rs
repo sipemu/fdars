@@ -21,6 +21,7 @@ use crate::linalg::cholesky_solve as linalg_cholesky_solve;
 use crate::matrix::FdMatrix;
 use crate::regression::{FpcaResult, PlsResult};
 
+mod additive;
 mod bootstrap;
 mod cv;
 mod fregre_lm;
@@ -34,6 +35,10 @@ mod robust;
 mod tests;
 
 // Re-export all public items from submodules
+pub use additive::{
+    fam, fregre_gkam, fregre_gsam, FamConfig, FamResult, GkamConfig, GkamResult, GsamConfig,
+    GsamResult,
+};
 pub use bootstrap::{bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic};
 pub use cv::{fregre_basis_cv, fregre_np_cv};
 pub use fregre_lm::{fregre_cv, fregre_lm, model_selection_ncomp, predict_fregre_lm};
