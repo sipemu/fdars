@@ -34,7 +34,11 @@
   4. The additive family reuses `smoothing.rs` kernels and `fdata_to_pc_1d` rather than adding a new subsystem, adds no new crate dependency, and invalid inputs (empty matrix / mismatched response length / mismatched argvals vs values / degenerate columns / invalid lag window) return `FdarError` rather than panicking.
   5. Existing `scalar_on_function/` public signatures and `fdata_to_pc_1d` keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 31-01-PLAN.md — FAM tracer (new module wired end-to-end) + GKAM + GSAM estimators
+- [ ] 31-02-PLAN.md — variable_selection (GroupLasso) + permutation_test_fam + history_index
 
 ### Phase 32: Flexible Mixed-Effects Regression
 **Goal**: A user can estimate flexible functional mixed-effects models that `denseFLMM`/`multifamm`/`fastFMM`/`refund` (pffr) expose but fdars was missing — a dense functional linear mixed model (denseFLMM-style mixed-model equations over FPC scores / basis coefficients), a multivariate functional additive mixed variant (multiFAMM), fast functional mixed-model inference (fastFMM), and a flexible random-effects function-on-function path — by extending `famm.rs` (today only `fmm_test_fixed`) and wiring the flexible-RE path into the already-present `fof_regression.rs`, without any existing mixed-model or FoF code changing.
