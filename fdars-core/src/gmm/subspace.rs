@@ -189,12 +189,12 @@ fn normalize_log_probs(log_probs: &[f64], resp: &mut [f64]) -> f64 {
 ///
 /// Returns `(resp_flat, log_likelihood)` where `resp_flat` is n*k row-major.
 fn e_step_subspace(
-    data_rows: &[Vec<f64>], // n rows of length m
-    means: &[Vec<f64>],     // k means of length m
-    subspaces: &[Vec<f64>], // k subspace matrices (m * d_k_eff, col-major)
+    data_rows: &[Vec<f64>],   // n rows of length m
+    means: &[Vec<f64>],       // k means of length m
+    subspaces: &[Vec<f64>],   // k subspace matrices (m * d_k_eff, col-major)
     within_vars: &[Vec<f64>], // k within-subspace var vectors
-    noise_vars: &[f64],     // k noise variances
-    weights: &[f64],        // k mixing proportions
+    noise_vars: &[f64],       // k noise variances
+    weights: &[f64],          // k mixing proportions
     k: usize,
     m: usize,
 ) -> (Vec<f64>, f64) {
@@ -208,7 +208,11 @@ fn e_step_subspace(
         for c in 0..k {
             if weights[c] > 1e-15 {
                 let d_k_eff = within_vars[c].len();
-                let diff: Vec<f64> = x.iter().zip(means[c].iter()).map(|(&xi, &mi)| xi - mi).collect();
+                let diff: Vec<f64> = x
+                    .iter()
+                    .zip(means[c].iter())
+                    .map(|(&xi, &mi)| xi - mi)
+                    .collect();
                 let ld = log_density_subspace(
                     &diff,
                     &subspaces[c],
@@ -293,15 +297,15 @@ fn run_one_em(
     init_assignments: &[usize],
     reg: f64,
 ) -> Option<(
-    Vec<f64>,            // resp flat (n*k)
-    Vec<Vec<f64>>,       // means
-    Vec<Vec<f64>>,       // subspaces (col-major)
-    Vec<Vec<f64>>,       // within_vars
-    Vec<f64>,            // noise_vars
-    Vec<f64>,            // weights
-    f64,                 // log_likelihood
-    usize,               // iterations
-    bool,                // converged
+    Vec<f64>,      // resp flat (n*k)
+    Vec<Vec<f64>>, // means
+    Vec<Vec<f64>>, // subspaces (col-major)
+    Vec<Vec<f64>>, // within_vars
+    Vec<f64>,      // noise_vars
+    Vec<f64>,      // weights
+    f64,           // log_likelihood
+    usize,         // iterations
+    bool,          // converged
 )> {
     let n = data_rows.len();
 
@@ -320,10 +324,7 @@ fn run_one_em(
             means[c][j] /= nc as f64;
         }
     }
-    let mut weights: Vec<f64> = counts
-        .iter()
-        .map(|&c| c.max(1) as f64 / n as f64)
-        .collect();
+    let mut weights: Vec<f64> = counts.iter().map(|&c| c.max(1) as f64 / n as f64).collect();
 
     // Initialise subspaces and noise vars to identity-like fallback
     let mut subspaces: Vec<Vec<f64>> = vec![vec![0.0_f64; m * d_k_req.min(m)]; k];
@@ -374,8 +375,16 @@ fn run_one_em(
         iterations = iter + 1;
 
         // E-step
-        let (new_resp, ll) =
-            e_step_subspace(data_rows, &means, &subspaces, &within_vars, &noise_vars, &weights, k, m);
+        let (new_resp, ll) = e_step_subspace(
+            data_rows,
+            &means,
+            &subspaces,
+            &within_vars,
+            &noise_vars,
+            &weights,
+            k,
+            m,
+        );
         resp = new_resp;
 
         if (ll - prev_ll).abs() < tol && iter > 0 {
@@ -470,8 +479,16 @@ fn run_one_em(
     }
 
     // Final E-step for accurate LL
-    let (final_resp, final_ll) =
-        e_step_subspace(data_rows, &means, &subspaces, &within_vars, &noise_vars, &weights, k, m);
+    let (final_resp, final_ll) = e_step_subspace(
+        data_rows,
+        &means,
+        &subspaces,
+        &within_vars,
+        &noise_vars,
+        &weights,
+        k,
+        m,
+    );
 
     Some((
         final_resp,
@@ -634,11 +651,20 @@ pub fn funhddC_cluster(
         }
     }
 
-    let (resp, means, subspaces_flat, within_vars, noise_vars, weights, log_likelihood, iterations, converged) =
-        best.ok_or_else(|| FdarError::ComputationFailed {
-            operation: "funhddC_cluster",
-            detail: "all EM restarts failed".to_string(),
-        })?;
+    let (
+        resp,
+        means,
+        subspaces_flat,
+        within_vars,
+        noise_vars,
+        weights,
+        log_likelihood,
+        iterations,
+        converged,
+    ) = best.ok_or_else(|| FdarError::ComputationFailed {
+        operation: "funhddC_cluster",
+        detail: "all EM restarts failed".to_string(),
+    })?;
 
     // Parameter count for BIC/ICL:
     // per-group: m*d_k_eff (subspace) - d_k_eff*(d_k_eff-1)/2 (Stiefel constraint) + d_k_eff (a_k) + 1 (b_k)
@@ -663,8 +689,7 @@ pub fn funhddC_cluster(
             if d == 0 || flat.is_empty() {
                 FdMatrix::zeros(m, 1)
             } else {
-                FdMatrix::from_column_major(flat, m, d)
-                    .unwrap_or_else(|_| FdMatrix::zeros(m, d))
+                FdMatrix::from_column_major(flat, m, d).unwrap_or_else(|_| FdMatrix::zeros(m, d))
             }
         })
         .collect();
@@ -739,10 +764,7 @@ mod tests {
         };
         let result = funhddC_cluster(&data, &argvals, &config).unwrap();
         let ari = adjusted_rand_index(&labels, &result.cluster);
-        assert!(
-            ari >= 0.90,
-            "Recovery ARI should be >= 0.90, got {ari:.4}"
-        );
+        assert!(ari >= 0.90, "Recovery ARI should be >= 0.90, got {ari:.4}");
     }
 
     #[test]
@@ -758,8 +780,16 @@ mod tests {
             ncomp_init: 8,
         };
         let result = funhddC_cluster(&data, &argvals, &config).unwrap();
-        assert!(result.bic.is_finite(), "BIC should be finite, got {}", result.bic);
-        assert!(result.icl.is_finite(), "ICL should be finite, got {}", result.icl);
+        assert!(
+            result.bic.is_finite(),
+            "BIC should be finite, got {}",
+            result.bic
+        );
+        assert!(
+            result.icl.is_finite(),
+            "ICL should be finite, got {}",
+            result.icl
+        );
         assert!(
             result.log_likelihood.is_finite(),
             "log-likelihood should be finite, got {}",
@@ -781,14 +811,20 @@ mod tests {
         };
         let r1 = funhddC_cluster(&data, &argvals, &config).unwrap();
         let r2 = funhddC_cluster(&data, &argvals, &config).unwrap();
-        assert_eq!(r1.cluster, r2.cluster, "Same seed must give identical cluster assignments");
+        assert_eq!(
+            r1.cluster, r2.cluster,
+            "Same seed must give identical cluster assignments"
+        );
     }
 
     #[test]
     fn test_funhddC_invalid_empty() {
         let data = FdMatrix::zeros(0, 10);
         let argvals = uniform_grid(10);
-        let config = FunHddcConfig { k: 2, ..Default::default() };
+        let config = FunHddcConfig {
+            k: 2,
+            ..Default::default()
+        };
         assert!(funhddC_cluster(&data, &argvals, &config).is_err());
     }
 
@@ -796,7 +832,10 @@ mod tests {
     fn test_funhddC_invalid_k_zero() {
         let data = FdMatrix::zeros(5, 10);
         let argvals = uniform_grid(10);
-        let config = FunHddcConfig { k: 0, ..Default::default() };
+        let config = FunHddcConfig {
+            k: 0,
+            ..Default::default()
+        };
         assert!(funhddC_cluster(&data, &argvals, &config).is_err());
     }
 
@@ -804,7 +843,10 @@ mod tests {
     fn test_funhddC_invalid_k_exceeds_n() {
         let data = FdMatrix::zeros(3, 10);
         let argvals = uniform_grid(10);
-        let config = FunHddcConfig { k: 5, ..Default::default() };
+        let config = FunHddcConfig {
+            k: 5,
+            ..Default::default()
+        };
         assert!(funhddC_cluster(&data, &argvals, &config).is_err());
     }
 
@@ -812,7 +854,11 @@ mod tests {
     fn test_funhddC_invalid_dk_ge_m() {
         let data = FdMatrix::zeros(5, 10);
         let argvals = uniform_grid(10);
-        let config = FunHddcConfig { k: 2, d_k: 10, ..Default::default() };
+        let config = FunHddcConfig {
+            k: 2,
+            d_k: 10,
+            ..Default::default()
+        };
         assert!(funhddC_cluster(&data, &argvals, &config).is_err());
     }
 
@@ -820,7 +866,10 @@ mod tests {
     fn test_funhddC_invalid_argvals_mismatch() {
         let data = FdMatrix::zeros(5, 10);
         let argvals = uniform_grid(8); // wrong length
-        let config = FunHddcConfig { k: 2, ..Default::default() };
+        let config = FunHddcConfig {
+            k: 2,
+            ..Default::default()
+        };
         assert!(funhddC_cluster(&data, &argvals, &config).is_err());
     }
 }

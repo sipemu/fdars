@@ -22,7 +22,11 @@ pub fn uniform_grid(n: usize) -> Vec<f64> {
 ///
 /// Panics if `a.len() != b.len()`.
 pub fn adjusted_rand_index(a: &[usize], b: &[usize]) -> f64 {
-    assert_eq!(a.len(), b.len(), "adjusted_rand_index: label vectors must have equal length");
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "adjusted_rand_index: label vectors must have equal length"
+    );
     let n = a.len();
     if n == 0 {
         return 1.0;
@@ -115,7 +119,10 @@ mod tests {
         // Structured grouping perpendicular: alternating
         let b: Vec<usize> = (0..20).map(|i| i % 2).collect();
         let ari = adjusted_rand_index(&a, &b);
-        assert!(ari.abs() < 0.3, "unrelated labels: ARI = {ari} should be near 0");
+        assert!(
+            ari.abs() < 0.3,
+            "unrelated labels: ARI = {ari} should be near 0"
+        );
     }
 
     #[test]
@@ -123,6 +130,9 @@ mod tests {
         let a = vec![0, 0, 1, 1, 2, 2];
         let b = vec![2, 2, 0, 0, 1, 1];
         let ari = adjusted_rand_index(&a, &b);
-        assert!((ari - 1.0).abs() < 1e-9, "3-cluster permutation: ARI = {ari}");
+        assert!(
+            (ari - 1.0).abs() < 1e-9,
+            "3-cluster permutation: ARI = {ari}"
+        );
     }
 }
