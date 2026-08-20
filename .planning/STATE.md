@@ -1,19 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.24.0
-milestone_name: Functional Regression & Clustering Breadth
 current_phase: 33
 current_phase_name: Model-Based & Density Functional Clustering
-status: executing
-stopped_at: Completed 33-02-PLAN.md
-last_updated: "2026-08-20T20:21:24.971Z"
+status: verifying
+stopped_at: Completed 33-03-PLAN.md (funFEM + align-cluster)
+last_updated: "2026-08-20T20:37:59.564Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 31 execution started
+state_head: f85371f535d44af6eb060faf5939c15c2fed3053
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
+milestone_name: Functional Regression & Clustering Breadth
 ---
 
 # Project State
@@ -29,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 Phase: 33 (Model-Based & Density Functional Clustering) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-20 — Phase 33 execution started
 
 ## Milestone Roadmap (v0.24.0)
@@ -84,6 +85,7 @@ Three phases, three requirements — the next three top-ranked P2 differentiator
 | Phase 32-flexible-mixed-effects-regression P02 | 15 | 2 tasks | 2 files |
 | Phase 33 P00 | 7 | 3 tasks | 4 files |
 | Phase 33 P02 | 5m | 3 tasks | 2 files |
+| Phase 33-model-based-density-functional-clustering P03 | 11 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -117,6 +119,9 @@ Conventions carried from prior milestones (relevant to implementation):
 - [Phase ?]: DBSCAN uses Vec<Option<usize>> for type-safe noise labeling in clustering_advanced
 - [Phase ?]: kCFC uses k-means++ init + per-cluster fdata_to_pc_1d reconstruction error reassignment
 - [Phase ?]: Empty-cluster fallback in kCFC: keep prior FPCA model to avoid NaN
+- [Phase 33]: funFEM uses W^{-1}B via Cholesky+SVD (simplified Fisher-EM, no generalized-eigenvalue crate)
+- [Phase 33]: align-cluster init: Fisher-Yates shuffle + strided pick to avoid degenerate same-group templates
+- [Phase 33]: resp bootstrap from hard labels required to seed first Fisher-EM E-step
 
 ### Pending Todos
 
@@ -140,8 +145,8 @@ Advisory tech-debt carried forward (not v0.24.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-20T20:21:24.954Z
-Stopped at: Completed 33-02-PLAN.md
+Last session: 2026-08-20T20:37:59.488Z
+Stopped at: Completed 33-03-PLAN.md (funFEM + align-cluster)
 Resume file: None
 
 ## Operator Next Steps

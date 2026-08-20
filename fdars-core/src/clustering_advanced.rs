@@ -924,9 +924,7 @@ pub fn funfem_cluster(
         }
 
         // Exponentiate
-        for v in &mut resp {
-            *v = 0.0;
-        }
+        resp.fill(0.0);
         for i in 0..n {
             for ki in 0..k {
                 resp[i * k + ki] = log_resp[i * k + ki].exp().max(1e-300);
@@ -1095,9 +1093,9 @@ fn update_gmm_params_from_hard(
     cluster: &[usize],
     k: usize,
     d: usize,
-    pi: &mut Vec<f64>,
-    mu_k: &mut Vec<Vec<f64>>,
-    sigma_k: &mut Vec<Vec<f64>>,
+    pi: &mut [f64],
+    mu_k: &mut [Vec<f64>],
+    sigma_k: &mut [Vec<f64>],
 ) {
     let n = cluster.len();
     let mut counts = vec![0usize; k];
@@ -1149,9 +1147,9 @@ fn update_gmm_params_from_soft(
     k: usize,
     d: usize,
     n: usize,
-    pi: &mut Vec<f64>,
-    mu_k: &mut Vec<Vec<f64>>,
-    sigma_k: &mut Vec<Vec<f64>>,
+    pi: &mut [f64],
+    mu_k: &mut [Vec<f64>],
+    sigma_k: &mut [Vec<f64>],
 ) {
     let mut n_k = vec![0.0_f64; k];
     for i in 0..n {
