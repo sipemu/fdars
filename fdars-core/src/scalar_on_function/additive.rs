@@ -1178,7 +1178,8 @@ pub struct HistoryIndexResult {
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
 /// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.2).cos()).collect();
-/// let config = VarSelectConfig { ncomp: 2, ..Default::default() };
+/// let mut config = VarSelectConfig::default();
+/// config.ncomp = 2;
 /// let result = variable_selection(&[&data], &y, &[argvals.as_slice()], None, &config).unwrap();
 /// assert_eq!(result.active_predictors.len(), 1);
 /// ```
@@ -1801,8 +1802,12 @@ fn group_lasso_cd(
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
 /// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.2).cos()).collect();
-/// let fam_cfg = FamConfig { ncomp: 2, ..Default::default() };
-/// let perm_cfg = PermTestConfig { n_perm: 9, seed: 42, statistic: PermTestStatistic::R2 };
+/// let mut fam_cfg = FamConfig::default();
+/// fam_cfg.ncomp = 2;
+/// let mut perm_cfg = PermTestConfig::default();
+/// perm_cfg.n_perm = 9;
+/// perm_cfg.seed = 42;
+/// perm_cfg.statistic = PermTestStatistic::R2;
 /// let result = permutation_test_fam(&data, &y, &argvals, None, &fam_cfg, &perm_cfg).unwrap();
 /// assert!((0.0..=1.0).contains(&result.p_value));
 /// ```
@@ -1941,7 +1946,9 @@ fn extract_perm_stat(fit: &FamResult, stat: PermTestStatistic) -> f64 {
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..m).map(|j| j as f64).collect();
 /// let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.5).sin()).collect();
-/// let config = HistoryIndexConfig { window: 5.0, n_lags: 10, ..Default::default() };
+/// let mut config = HistoryIndexConfig::default();
+/// config.window = 5.0;
+/// config.n_lags = 10;
 /// let result = history_index(&data, &y, &argvals, &config).unwrap();
 /// assert_eq!(result.gamma.len(), 10);
 /// assert_eq!(result.lag_grid.len(), 10);
