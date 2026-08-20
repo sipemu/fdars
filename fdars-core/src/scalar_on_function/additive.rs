@@ -151,11 +151,14 @@ pub struct FamResult {
     pub fitted_values: Vec<f64>,
     /// Residuals y − ŷ (length n).
     pub residuals: Vec<f64>,
-    /// Component fits f_k(ξ_k) for each observation, outer index = component (ncomp × n).
+    /// Component fits f_k(ξ_k) for each observation, outer index = component.
+    /// Length = `ncomp + scalar_covariates.ncols()` (when scalar covariates are provided,
+    /// indices 0..ncomp correspond to FPC components; subsequent entries to scalar covariates).
     pub component_fits: Vec<Vec<f64>>,
     /// Mean response μ_y (intercept of the additive model).
     pub intercept: f64,
-    /// Per-component optimal bandwidth (length ncomp).
+    /// Per-component optimal bandwidth. Length = `ncomp + scalar_covariates.ncols()`.
+    /// Indices 0..ncomp correspond to FPC components; subsequent entries to scalar covariates.
     pub bandwidths: Vec<f64>,
     /// Number of FPC components used.
     pub ncomp: usize,
@@ -197,11 +200,14 @@ pub struct GsamResult {
     pub fitted_values: Vec<f64>,
     /// Residuals y − ŷ (length n).
     pub residuals: Vec<f64>,
-    /// Component fits f_j(ξ_j) per FPC component (ncomp × n).
+    /// Component fits f_j(ξ_j) per component. Length = `ncomp + scalar_covariates.ncols()`
+    /// (when scalar covariates are provided, indices 0..ncomp correspond to FPC components;
+    /// subsequent entries to scalar covariates).
     pub component_fits: Vec<Vec<f64>>,
     /// Mean response intercept.
     pub intercept: f64,
-    /// Per-component bandwidth (length ncomp).
+    /// Per-component bandwidth. Length = `ncomp + scalar_covariates.ncols()`.
+    /// Indices 0..ncomp correspond to FPC components; subsequent entries to scalar covariates.
     pub bandwidths: Vec<f64>,
     /// Number of FPC components used.
     pub ncomp: usize,
@@ -215,7 +221,14 @@ pub struct GsamResult {
 // Private shared helpers
 // ---------------------------------------------------------------------------
 
-/// Resolve ncomp: auto-select by single-component GCV if 0, else clamp to min(n,m).
+/// Resolve ncomp: auto-select by forward-selection GCV if 0, else clamp to min(n,m).
+///
+/// When `ncomp == 0`, performs forward selection: for each candidate count j = 1..=cap,
+/// evaluates the GCV of a 1-D NW smooth on the j-th FPC score applied to the partial
+/// residual after accounting for components 1..(j-1). Selects the count j that yields
+/// the best incremental GCV improvement. This correctly interprets the count as "use
+/// the first j components" rather than the index of the single best component.
+///
 /// Returns `Err(InvalidParameter)` if the explicitly-requested ncomp exceeds min(n,m).
 fn resolve_ncomp_additive(
     ncomp: usize,
@@ -229,21 +242,35 @@ fn resolve_ncomp_additive(
 ) -> Result<usize, FdarError> {
     let max_ncomp = n.min(m);
     if ncomp == 0 {
-        // Auto-select: fit 1-component FAM for each k and pick the k giving lowest GCV.
-        // Simple heuristic: start from k=1, find the largest k where adding a component
-        // improves GCV. Cap at min(n, m, 10) for speed.
+        // Auto-select via forward selection: for each candidate count j, evaluate
+        // the GCV of the j-th component applied to the partial residual given
+        // components 1..(j-1) already fit. Cap at min(n, m, 10) for speed.
         let cap = max_ncomp.clamp(1, 10);
-        // Use cross-validation over ncomp: try k = 1..cap and pick best via GCV proxy.
-        // We evaluate FPCA scores for cap components and pick k using GCV on a 1D smooth.
         let fpca_full = fdata_to_pc_1d(data, cap, argvals)?;
+        let mu_y = y.iter().sum::<f64>() / n as f64;
         let mut best_ncomp = 1usize;
         let mut best_gcv = f64::INFINITY;
-        for k in 1..=cap {
-            let xi_k: Vec<f64> = (0..n).map(|i| fpca_full.scores[(i, k - 1)]).collect();
-            let gcv = optim_bandwidth(&xi_k, y, None, CvCriterion::Gcv, kernel, n_grid).value;
-            if gcv < best_gcv {
-                best_gcv = gcv;
-                best_ncomp = k;
+        // component_fits_acc[k] = fitted values of the k-th component (0-indexed)
+        let mut component_fits_acc: Vec<Vec<f64>> = Vec::with_capacity(cap);
+
+        for j in 0..cap {
+            let xi_j: Vec<f64> = (0..n).map(|i| fpca_full.scores[(i, j)]).collect();
+            // Partial residual: y - mu_y - sum of previously fitted components
+            let partial: Vec<f64> = (0..n)
+                .map(|i| {
+                    let prior_sum: f64 = component_fits_acc.iter().map(|cf| cf[i]).sum();
+                    y[i] - mu_y - prior_sum
+                })
+                .collect();
+            let bw_result = optim_bandwidth(&xi_j, &partial, None, CvCriterion::Gcv, kernel, n_grid);
+            let gcv_j = bw_result.value;
+            // Fit this component using the selected bandwidth
+            let fit_j = nadaraya_watson(&xi_j, &partial, &xi_j, bw_result.h_opt, kernel)
+                .unwrap_or_else(|_| vec![0.0; n]);
+            component_fits_acc.push(fit_j);
+            if gcv_j < best_gcv {
+                best_gcv = gcv_j;
+                best_ncomp = j + 1; // j is 0-indexed; best_ncomp is the count
             }
         }
         Ok(best_ncomp)
@@ -543,6 +570,13 @@ pub fn fregre_gkam(
     let n = y.len();
 
     // Validate inputs
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: "at least 1 observation".to_string(),
+            actual: "0".to_string(),
+        });
+    }
     if predictors.is_empty() {
         return Err(FdarError::InvalidDimension {
             parameter: "predictors",
@@ -1023,7 +1057,9 @@ impl Default for PermTestConfig {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct PermTestResult {
-    /// Permutation p-value: (n_ge + 1) / (n_perm + 1).
+    /// Permutation p-value: (n_ge + 1) / (n_perm_success + 1).
+    /// Uses the count of successful refits in the denominator so that failed
+    /// permutations (e.g., degenerate shuffled data) do not bias the p-value.
     pub p_value: f64,
     /// Test statistic on the original (unpermuted) data.
     pub observed_statistic: f64,
@@ -1098,8 +1134,9 @@ pub struct HistoryIndexResult {
 /// 1. Run `fdata_to_pc_1d` on each predictor → score groups ξ^0, …, ξ^{P−1}.
 /// 2. Build design X = \[μ | ξ^0 | … | ξ^{P−1} | Z\] (Z = optional scalar
 ///    covariates).
-/// 3. If `config.lambda == 0.0`, CV-select λ over a grid from
+/// 3. If `config.lambda == 0.0`, 5-fold CV-select λ over a geometric grid from
 ///    `0.01·λ_max` to `λ_max` where `λ_max = max_g ||X_g'y|| / √K_g`.
+///    Each fold trains on 4/5 of the data and evaluates held-out prediction error.
 /// 4. Coordinate-descent group-lasso: for each group g compute the partial-
 ///    residual OLS update β̂_g via `cholesky_solve`, then soft-threshold:
 ///    `β_g = β̂_g · max(0, 1 − λ√K_g / ||β̂_g||)`.
@@ -1436,18 +1473,22 @@ fn compute_varselect_fitted(
         .collect()
 }
 
-/// Select lambda via simple LOO-proxy CV for group lasso.
+/// Select lambda via 5-fold cross-validation for group lasso.
 ///
-/// Evaluates a grid of lambda values from `0.01·lambda_max` to `lambda_max`
-/// and returns the lambda with the lowest mean squared prediction error.
+/// Evaluates a geometric grid of lambda values from `0.01·lambda_max` to `lambda_max`
+/// and returns the lambda with the lowest 5-fold cross-validated mean squared error.
+///
+/// Each fold trains on 4/5 of the data and evaluates prediction error on the held-out
+/// 1/5. This avoids the monotone-MSE trap of training-set evaluation (training MSE is
+/// non-increasing as λ decreases, so it always selects the smallest λ).
 #[allow(clippy::too_many_arguments)]
 fn select_group_lasso_lambda(
     y: &[f64],
     _y_centered: &[f64],
-    mu_y: f64,
+    _mu_y: f64,
     n: usize,
     score_groups: &[Vec<Vec<f64>>],
-    k_sizes: &[usize],
+    _k_sizes: &[usize],
     lambda_max: f64,
     n_grid: usize,
     max_iter: usize,
@@ -1455,36 +1496,97 @@ fn select_group_lasso_lambda(
     scalar_covariates: Option<&FdMatrix>,
 ) -> f64 {
     let grid_size = n_grid.max(2);
+    let big_p = score_groups.len();
+
+    // Use min(5, n) folds; degrade gracefully when n is tiny.
+    let n_folds = 5_usize.min(n).max(2);
+
+    // Build fold assignments: observation i goes to fold i % n_folds.
+    // This gives roughly equal-sized folds without randomisation (deterministic).
+    let fold_of: Vec<usize> = (0..n).map(|i| i % n_folds).collect();
+
     let mut best_lambda = lambda_max * 0.1;
-    let mut best_mse = f64::INFINITY;
+    let mut best_cv_err = f64::INFINITY;
 
     for gi in 0..grid_size {
         let frac = (gi as f64 + 1.0) / grid_size as f64;
-        let lam = lambda_max * (0.01_f64.powf(1.0 - frac)); // geometric grid: 0.01*lmax..lmax
-        let y_centered: Vec<f64> = y.iter().map(|&yi| yi - mu_y).collect();
-        if let Ok((coeffs, _, _)) = group_lasso_cd(
-            y,
-            &y_centered,
-            mu_y,
-            n,
-            score_groups,
-            k_sizes,
-            lam,
-            max_iter,
-            epsilon,
-            scalar_covariates,
-        ) {
-            let big_p = score_groups.len();
-            let fitted =
-                compute_varselect_fitted(n, mu_y, score_groups, &coeffs, scalar_covariates, big_p);
-            let mse: f64 = y
+        let lam = lambda_max * (0.01_f64.powf(1.0 - frac)); // geometric: 0.01*lmax..lmax
+
+        let mut cv_sq_err = 0.0_f64;
+        let mut cv_count = 0usize;
+
+        for fold in 0..n_folds {
+            // Split indices into train / validation
+            let train_idx: Vec<usize> = (0..n).filter(|&i| fold_of[i] != fold).collect();
+            let val_idx: Vec<usize> = (0..n).filter(|&i| fold_of[i] == fold).collect();
+            if train_idx.is_empty() || val_idx.is_empty() {
+                continue;
+            }
+
+            let n_tr = train_idx.len();
+            let mu_tr = train_idx.iter().map(|&i| y[i]).sum::<f64>() / n_tr as f64;
+            let y_tr_centered: Vec<f64> = train_idx.iter().map(|&i| y[i] - mu_tr).collect();
+            let y_tr: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+
+            // Build score_groups restricted to train rows
+            let sg_tr: Vec<Vec<Vec<f64>>> = score_groups
                 .iter()
-                .zip(&fitted)
-                .map(|(&yi, &yh)| (yi - yh).powi(2))
-                .sum::<f64>()
-                / n as f64;
-            if mse < best_mse {
-                best_mse = mse;
+                .map(|grp| grp.iter().map(|col| train_idx.iter().map(|&i| col[i]).collect()).collect())
+                .collect();
+
+            // Build scalar_covariates restricted to train rows (column-major FdMatrix)
+            let sc_tr_mat: Option<FdMatrix> = scalar_covariates.and_then(|sc| {
+                let p_sc = sc.ncols();
+                let mut cm = vec![0.0_f64; n_tr * p_sc];
+                for (row, &orig_i) in train_idx.iter().enumerate() {
+                    for j in 0..p_sc {
+                        cm[j * n_tr + row] = sc[(orig_i, j)];
+                    }
+                }
+                FdMatrix::from_column_major(cm, n_tr, p_sc).ok()
+            });
+
+            let k_sizes_tr: Vec<usize> = sg_tr.iter().map(|g| g.len()).collect();
+
+            let fit_result = group_lasso_cd(
+                &y_tr,
+                &y_tr_centered,
+                mu_tr,
+                n_tr,
+                &sg_tr,
+                &k_sizes_tr,
+                lam,
+                max_iter,
+                epsilon,
+                sc_tr_mat.as_ref(),
+            );
+
+            if let Ok((coeffs_tr, _, _)) = fit_result {
+                // Predict on validation fold using train-fold coefficients
+                for &i in &val_idx {
+                    let mut yhat = mu_tr;
+                    for p in 0..big_p {
+                        for (k, col) in score_groups[p].iter().enumerate() {
+                            yhat += coeffs_tr[p][k] * col[i];
+                        }
+                    }
+                    if let Some(sc) = scalar_covariates {
+                        let p_sc = sc.ncols();
+                        for j in 0..p_sc {
+                            yhat += coeffs_tr[big_p][j] * sc[(i, j)];
+                        }
+                    }
+                    let err = y[i] - yhat;
+                    cv_sq_err += err * err;
+                    cv_count += 1;
+                }
+            }
+        }
+
+        if cv_count > 0 {
+            let cv_mse = cv_sq_err / cv_count as f64;
+            if cv_mse < best_cv_err {
+                best_cv_err = cv_mse;
                 best_lambda = lam;
             }
         }
@@ -1572,7 +1674,19 @@ fn group_lasso_cd(
             }
 
             let beta_ols = crate::linalg::cholesky_solve(&xtx_g, &xty_g, k_g)
-                .unwrap_or_else(|_| xty_g.clone()); // fall back to gradient step on singular
+                .unwrap_or_else(|_| {
+                    // Cholesky failed: X_g'X_g is (near-)singular.
+                    // Add ridge regularization: solve (X_g'X_g + δI) β = X_g' partial.
+                    // δ is 1e-6 × (mean diagonal) to keep the scale relative to the data.
+                    let diag_sum: f64 = (0..k_g).map(|d| xtx_g[d * k_g + d].abs()).sum();
+                    let delta = (1e-6 * diag_sum / k_g as f64).max(1e-8);
+                    let mut xtx_ridge = xtx_g.clone();
+                    for d in 0..k_g {
+                        xtx_ridge[d * k_g + d] += delta;
+                    }
+                    crate::linalg::cholesky_solve(&xtx_ridge, &xty_g, k_g)
+                        .unwrap_or_else(|_| vec![0.0; k_g]) // final fallback: zero-out group
+                });
 
             // Group-lasso soft threshold
             let norm_ols: f64 = beta_ols.iter().map(|&b| b * b).sum::<f64>().sqrt();
@@ -1701,6 +1815,13 @@ pub fn permutation_test_fam(
     config: &FamConfig,
     perm_config: &PermTestConfig,
 ) -> Result<PermTestResult, FdarError> {
+    if perm_config.n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "perm_config.n_perm",
+            message: "n_perm must be >= 1 for a meaningful permutation test".to_string(),
+        });
+    }
+
     // Fit on original data first (propagates FdarError on failure)
     let original_fit = fam(data, y, argvals, scalar_covariates, config)?;
 
@@ -1737,7 +1858,9 @@ pub fn permutation_test_fam(
         }
     }
 
-    let p_value = (n_ge + 1) as f64 / (n_perm + 1) as f64;
+    // Use actual successful refits in both numerator and denominator
+    // (Phipson & Smyth 2010 corrected for partially-failed permutations)
+    let p_value = (n_ge + 1) as f64 / (n_perm_success + 1) as f64;
 
     Ok(PermTestResult {
         p_value,
@@ -2813,5 +2936,153 @@ mod tests {
             n,
             "history_scores.len() should equal n"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // WR-01: fregre_gkam empty-y guard
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn gkam_empty_y_returns_err() {
+        // WR-01: fregre_gkam with n=0 (empty y) must return Err, not Ok with NaN.
+        let m = 10;
+        let argvals = uniform_grid(m);
+        // Zero-row data matrix
+        let empty_data = FdMatrix::zeros(0, m);
+        let y_empty: Vec<f64> = vec![];
+        let config = GkamConfig::default();
+
+        let result = fregre_gkam(&[&empty_data], &y_empty, &[&argvals], None, &config);
+        assert!(
+            result.is_err(),
+            "fregre_gkam with empty y should return Err, got Ok"
+        );
+        match result.unwrap_err() {
+            FdarError::InvalidDimension { parameter, .. } => {
+                assert_eq!(parameter, "y", "error should report parameter='y'");
+            }
+            e => panic!("expected InvalidDimension(y), got {e:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // WR-02: FamResult / GsamResult component_fits length with scalar covariates
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn fam_scalar_covariates_component_fits_len() {
+        // WR-02: when scalar_covariates is provided, component_fits and bandwidths
+        // should have length ncomp + p_scalar, not ncomp alone.
+        let n = 30;
+        let m = 12;
+        let argvals = uniform_grid(m);
+        let data = make_sine_data(n, m, 1.0);
+        let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.2).cos()).collect();
+
+        // Build a scalar covariate matrix (n × 2)
+        let p_scalar = 2_usize;
+        let sc_vals: Vec<f64> = (0..n * p_scalar)
+            .map(|k| (k as f64 * 0.1).sin())
+            .collect();
+        // FdMatrix is column-major: n rows, p_scalar cols
+        let mut sc_cm = vec![0.0_f64; n * p_scalar];
+        for row in 0..n {
+            for col in 0..p_scalar {
+                sc_cm[col * n + row] = sc_vals[row * p_scalar + col];
+            }
+        }
+        let sc = FdMatrix::from_column_major(sc_cm, n, p_scalar).unwrap();
+
+        let ncomp = 2;
+        let config = FamConfig {
+            ncomp,
+            ..Default::default()
+        };
+        let result = fam(&data, &y, &argvals, Some(&sc), &config).unwrap();
+
+        let expected_len = ncomp + p_scalar;
+        assert_eq!(
+            result.component_fits.len(),
+            expected_len,
+            "component_fits.len() should be ncomp + p_scalar = {expected_len}, got {}",
+            result.component_fits.len()
+        );
+        assert_eq!(
+            result.bandwidths.len(),
+            expected_len,
+            "bandwidths.len() should be ncomp + p_scalar = {expected_len}, got {}",
+            result.bandwidths.len()
+        );
+    }
+
+    #[test]
+    fn gsam_scalar_covariates_component_fits_len() {
+        // WR-02: same check for fregre_gsam.
+        let n = 30;
+        let m = 12;
+        let argvals = uniform_grid(m);
+        let data = make_sine_data(n, m, 1.0);
+        let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.3).sin()).collect();
+
+        let p_scalar = 2_usize;
+        let mut sc_cm = vec![0.0_f64; n * p_scalar];
+        for row in 0..n {
+            for col in 0..p_scalar {
+                sc_cm[col * n + row] = ((row * p_scalar + col) as f64 * 0.15).cos();
+            }
+        }
+        let sc = FdMatrix::from_column_major(sc_cm, n, p_scalar).unwrap();
+
+        let ncomp = 2;
+        let config = GsamConfig {
+            ncomp,
+            ..Default::default()
+        };
+        let result = fregre_gsam(&data, &y, &argvals, Some(&sc), &config).unwrap();
+
+        let expected_len = ncomp + p_scalar;
+        assert_eq!(
+            result.component_fits.len(),
+            expected_len,
+            "component_fits.len() should be ncomp + p_scalar = {expected_len}, got {}",
+            result.component_fits.len()
+        );
+        assert_eq!(
+            result.bandwidths.len(),
+            expected_len,
+            "bandwidths.len() should be ncomp + p_scalar = {expected_len}, got {}",
+            result.bandwidths.len()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // WR-04: permutation_test_fam n_perm == 0 guard
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn perm_zero_nperm_returns_err() {
+        // WR-04: n_perm == 0 must return Err rather than p_value = 1.0.
+        let n = 20;
+        let m = 8;
+        let argvals = uniform_grid(m);
+        let data = make_sine_data(n, m, 1.0);
+        let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let fam_cfg = FamConfig {
+            ncomp: 1,
+            ..Default::default()
+        };
+        let perm_cfg = PermTestConfig {
+            n_perm: 0,
+            seed: 42,
+            statistic: PermTestStatistic::R2,
+        };
+        let result = permutation_test_fam(&data, &y, &argvals, None, &fam_cfg, &perm_cfg);
+        assert!(result.is_err(), "n_perm=0 should return Err");
+        match result.unwrap_err() {
+            FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "perm_config.n_perm");
+            }
+            e => panic!("expected InvalidParameter, got {e:?}"),
+        }
     }
 }
