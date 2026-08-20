@@ -30,12 +30,14 @@ mod anova;
 mod dist;
 mod flm;
 mod hotelling;
+mod itp;
 mod permutation;
 mod scb;
 
 pub use anova::oneway_anova_vstat;
 pub use flm::{flm_f_test, flm_gof_test};
 pub use hotelling::two_sample_mean_test;
+pub use itp::{itp_one_pop, ItpResult};
 pub use permutation::{f_perm_test, t_perm_test, DEFAULT_N_PERM};
 pub use scb::{mean_scb, scb_two_sample_test};
 
