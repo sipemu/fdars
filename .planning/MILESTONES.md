@@ -1,5 +1,22 @@
 # Milestones
 
+## v0.23.0 Depth, Outliers & Interval Inference (Shipped: 2026-08-20)
+
+**Phases completed:** 3 phases (28–30), 7 plans
+
+**Milestone audit:** PASSED — 3/3 requirements satisfied, cross-phase integration verified (`.planning/milestones/v0.23.0-MILESTONE-AUDIT.md`)
+
+**Delivered:** The top three P2 differentiator gaps from the R-ecosystem backlog (score 2.31 each), all additive/non-breaking to `fdars-core` with zero changes to existing public signatures and no new crate dependency.
+
+**Key accomplishments:**
+
+- **DEPTH-01 — Depth-Measure Long Tail (Phase 28):** 9 canonical batch depth measures added to `depth/` — hypograph/modified-hypograph/epigraph indices (HI/MHI/EI), half-region & modified half-region depth (HRD/MHRD), extremal depth, extreme-rank-length depth (ERL), L∞ depth, and total-variation depth with MSSI — each a `Result`-returning fn registered in the `DepthMethod` dispatcher. `TvdMssResult { tvd, mss }` pinned as a forward contract.
+- **OUT-01 — Outlier-Detector Suite (Phase 29):** `tvdmss` (two-stage TVD+MSSI, consuming DEPTH-01's `total_variation_depth_1d`), `muod` (Fast-MUOD regression-vs-mean indices), `sequential_transform_outliers` (T0/T1/T2/D1 cumulative + functional boxplot), and the `depthgram` statistic — numeric outputs reusing the MS-plot / outliergram machinery + a shared `iqr_fence` helper.
+- **INF-03 — Interval Testing Procedure Family (Phase 30):** new `inference/itp.rs` with `itp_one_pop`, `itp_two_pop`, and `itp_flm` — B-spline/Fourier basis-wise permutation tests with the Pini & Vantini interval-wise closure adjustment (`pval_correct`) for domain-selective adjusted p-values, reusing the INF-01 permutation pattern + `basis/` projection.
+
+**Tech debt (non-blocking):** VALIDATION.md files left `status: draft` (Nyquist NOT-VALIDATED — run `/gsd-validate-phase 28|29|30` to reconcile); intentional R-baseline divergences documented in rustdoc (Fast-MUOD, univariate depthgram, response-permutation FLM, symmetric extremal/ERL). Crate release (version bump 0.22.0→0.23.0 + tag + crates.io) is a pending operator ship-time step — NOT performed by this run (Cargo.toml still 0.22.0).
+
+
 ## v0.22.0 PACE Sparse FPCA & Elastic Multinomial (Shipped: 2026-08-19)
 
 **Phases completed:** 2 phases, 2 plans, 0 tasks

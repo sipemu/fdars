@@ -4,7 +4,7 @@ milestone: v0.23.0
 milestone_name: Depth, Outliers & Interval Inference
 current_phase: 29
 current_phase_name: "verification passed 5/5; next: Phase 30"
-status: in_progress
+status: complete
 stopped_at: Completed 30-02-PLAN.md (itp_two_pop + itp_flm)
 last_updated: "2026-08-20T06:41:17.503Z"
 last_activity: 2026-08-19
