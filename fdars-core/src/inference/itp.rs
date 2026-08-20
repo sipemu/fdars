@@ -1258,37 +1258,55 @@ mod tests {
 
     // ─── itp_flm tests ───────────────────────────────────────────────────────
 
-    /// Build a sample where y is a linear functional of X (localized signal).
-    /// X is sine curves; y = coefficient of B-spline component `signal_comp`
-    /// (extracted directly) plus noise — so there IS a true regression signal.
-    fn make_flm_sample(n: usize, argvals: &[f64], seed: u64) -> (FdMatrix, Vec<f64>) {
+    /// Build a sample where y is the mean of X over [lo, hi] plus small noise.
+    /// This creates a strong, localized functional regression signal: curves with
+    /// larger values on [lo, hi] have larger y.
+    fn make_flm_sample(
+        n: usize,
+        argvals: &[f64],
+        lo: f64,
+        hi: f64,
+        seed: u64,
+    ) -> (FdMatrix, Vec<f64>) {
         use rand::Rng;
         let mut rng = StdRng::seed_from_u64(seed);
         let m = argvals.len();
         let mut data = FdMatrix::zeros(n, m);
         let mut y = vec![0.0f64; n];
         for i in 0..n {
-            let phase: f64 = rng.gen::<f64>() * std::f64::consts::PI;
-            let amp: f64 = rng.gen::<f64>() * 0.5 + 0.75; // amplitude in [0.75, 1.25]
+            // Each curve is a random linear ramp with different slope/offset
+            let scale: f64 = rng.gen::<f64>() * 3.0 + 1.0; // slope in [1, 4]
+            let offset: f64 = (rng.gen::<f64>() - 0.5) * 2.0; // offset in [-1, 1]
+            let mut local_sum = 0.0f64;
+            let mut local_cnt = 0usize;
             for (j, &t) in argvals.iter().enumerate() {
-                let noise: f64 = (rng.gen::<f64>() - 0.5) * 0.05;
-                data[(i, j)] = amp * (t * 2.0 * std::f64::consts::PI + phase).sin() + noise;
+                let noise: f64 = (rng.gen::<f64>() - 0.5) * 0.02;
+                let v = scale * t + offset + noise;
+                data[(i, j)] = v;
+                if t >= lo && t <= hi {
+                    local_sum += v;
+                    local_cnt += 1;
+                }
             }
-            // y = amplitude + small noise — correlated with the overall curve level
-            let y_noise: f64 = (rng.gen::<f64>() - 0.5) * 0.1;
-            y[i] = amp + y_noise;
+            // y = mean of X on [lo, hi] plus tiny noise — strong local signal
+            let y_noise: f64 = (rng.gen::<f64>() - 0.5) * 0.05;
+            y[i] = if local_cnt > 0 {
+                local_sum / local_cnt as f64
+            } else {
+                0.0
+            } + y_noise;
         }
         (data, y)
     }
 
-    /// When y is correlated with the functional predictor, at least one
-    /// adjusted p-value should be significant (< 0.05).
+    /// When y is the mean of X over [0.3, 0.7], at least one adjusted p-value
+    /// should be significant (< 0.05) — a strong localized functional signal.
     #[test]
     fn flm_effect() {
         let m = 50;
         let n = 30;
         let argvals = uniform_grid(m);
-        let (data, y) = make_flm_sample(n, &argvals, 7007);
+        let (data, y) = make_flm_sample(n, &argvals, 0.3, 0.7, 7007);
         let result = itp_flm(
             &data,
             &y,
