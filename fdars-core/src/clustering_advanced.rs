@@ -796,8 +796,10 @@ pub fn funfem_cluster(
                 .iter()
                 .enumerate()
                 .min_by(|(_, &c1), (_, &c2)| {
-                    let d1 = l2_dist_rowmajor(&row_major_scores, i, c1, ncomp_eff, &weights_uniform);
-                    let d2 = l2_dist_rowmajor(&row_major_scores, i, c2, ncomp_eff, &weights_uniform);
+                    let d1 =
+                        l2_dist_rowmajor(&row_major_scores, i, c1, ncomp_eff, &weights_uniform);
+                    let d2 =
+                        l2_dist_rowmajor(&row_major_scores, i, c2, ncomp_eff, &weights_uniform);
                     d1.partial_cmp(&d2).unwrap_or(std::cmp::Ordering::Equal)
                 })
                 .map(|(ki, _)| ki)
@@ -813,7 +815,15 @@ pub fn funfem_cluster(
     let mut sigma_k: Vec<Vec<f64>> = vec![vec![1.0; ncomp_eff]; k];
 
     // Initialize mu_k from initial assignment
-    update_gmm_params_from_hard(&row_major_scores, &cluster, k, ncomp_eff, &mut pi, &mut mu_k, &mut sigma_k);
+    update_gmm_params_from_hard(
+        &row_major_scores,
+        &cluster,
+        k,
+        ncomp_eff,
+        &mut pi,
+        &mut mu_k,
+        &mut sigma_k,
+    );
 
     // Discriminative subspace directions (ncomp_eff x p_disc_eff) — identity init
     let mut disc_dirs: Vec<f64> = {
@@ -949,13 +959,25 @@ pub fn funfem_cluster(
             .collect();
 
         // Update score-space params for next subspace computation
-        update_gmm_params_from_soft(&row_major_scores, &resp, k, ncomp_eff, n, &mut pi, &mut mu_k, &mut sigma_k);
+        update_gmm_params_from_soft(
+            &row_major_scores,
+            &resp,
+            k,
+            ncomp_eff,
+            n,
+            &mut pi,
+            &mut mu_k,
+            &mut sigma_k,
+        );
 
         // ── Fisher-EM discriminative subspace update ───────────────────────
         // Compute between-scatter B_soft and within-scatter W_soft in score space
         let global_mean: Vec<f64> = (0..ncomp_eff)
             .map(|j| {
-                (0..n).map(|i| row_major_scores[i * ncomp_eff + j]).sum::<f64>() / n as f64
+                (0..n)
+                    .map(|i| row_major_scores[i * ncomp_eff + j])
+                    .sum::<f64>()
+                    / n as f64
             })
             .collect();
 
@@ -988,7 +1010,9 @@ pub fn funfem_cluster(
         }
 
         // Add data-scaled regularization floor to W_soft diagonal (Pitfall 3)
-        let trace_w: f64 = (0..ncomp_eff).map(|j| w_soft[j * ncomp_eff + j]).sum::<f64>();
+        let trace_w: f64 = (0..ncomp_eff)
+            .map(|j| w_soft[j * ncomp_eff + j])
+            .sum::<f64>();
         let reg_floor = (trace_w / ncomp_eff as f64 * 1e-4).max(1e-8);
         for j in 0..ncomp_eff {
             w_soft[j * ncomp_eff + j] += reg_floor;
@@ -1001,7 +1025,9 @@ pub fn funfem_cluster(
                 // Form W^{-1} B by solving W * X = B column by column
                 let mut winv_b = vec![0.0_f64; ncomp_eff * ncomp_eff];
                 for col in 0..ncomp_eff {
-                    let b_col: Vec<f64> = (0..ncomp_eff).map(|r| b_soft[r * ncomp_eff + col]).collect();
+                    let b_col: Vec<f64> = (0..ncomp_eff)
+                        .map(|r| b_soft[r * ncomp_eff + col])
+                        .collect();
                     let x = crate::linalg::cholesky_forward_back(&l_w, &b_col, ncomp_eff);
                     for r in 0..ncomp_eff {
                         winv_b[r * ncomp_eff + col] = x[r];
@@ -1076,7 +1102,9 @@ fn update_gmm_params_from_hard(
     let n = cluster.len();
     let mut counts = vec![0usize; k];
     for &c in cluster {
-        if c < k { counts[c] += 1; }
+        if c < k {
+            counts[c] += 1;
+        }
     }
     for ki in 0..k {
         pi[ki] = (counts[ki] as f64 / n as f64).max(1e-300);
@@ -1350,15 +1378,10 @@ pub fn align_cluster_fd(
     }
     // Pick k evenly-strided indices from the shuffled list for spread
     let step = n / k;
-    let template_indices: Vec<usize> = (0..k)
-        .map(|ki| shuffled[(ki * step).min(n - 1)])
-        .collect();
+    let template_indices: Vec<usize> = (0..k).map(|ki| shuffled[(ki * step).min(n - 1)]).collect();
 
     // Initialize templates as the selected curve values
-    let mut templates: Vec<Vec<f64>> = template_indices
-        .iter()
-        .map(|&ci| data.row(ci))
-        .collect();
+    let mut templates: Vec<Vec<f64>> = template_indices.iter().map(|&ci| data.row(ci)).collect();
 
     let mut cluster: Vec<usize> = vec![0; n];
     let mut distances = FdMatrix::zeros(n, k);
@@ -1915,7 +1938,15 @@ mod tests {
         let m = 20;
         let (data, t, _) = two_tight_clusters(5, m);
         assert!(
-            funfem_cluster(&data, &t, &FunFemConfig { k: 0, ..FunFemConfig::default() }).is_err(),
+            funfem_cluster(
+                &data,
+                &t,
+                &FunFemConfig {
+                    k: 0,
+                    ..FunFemConfig::default()
+                }
+            )
+            .is_err(),
             "k=0 must return Err"
         );
     }
@@ -1925,7 +1956,15 @@ mod tests {
         let m = 20;
         let (data, t, _) = two_tight_clusters(3, m);
         assert!(
-            funfem_cluster(&data, &t, &FunFemConfig { k: 10, ..FunFemConfig::default() }).is_err(),
+            funfem_cluster(
+                &data,
+                &t,
+                &FunFemConfig {
+                    k: 10,
+                    ..FunFemConfig::default()
+                }
+            )
+            .is_err(),
             "k>n must return Err"
         );
     }
@@ -1935,7 +1974,15 @@ mod tests {
         let m = 20;
         let (data, t, _) = two_tight_clusters(5, m);
         assert!(
-            funfem_cluster(&data, &t, &FunFemConfig { ncomp: 0, ..FunFemConfig::default() }).is_err(),
+            funfem_cluster(
+                &data,
+                &t,
+                &FunFemConfig {
+                    ncomp: 0,
+                    ..FunFemConfig::default()
+                }
+            )
+            .is_err(),
             "ncomp=0 must return Err"
         );
     }
@@ -2079,7 +2126,15 @@ mod tests {
         let m = 20;
         let (data, t, _) = two_tight_clusters(5, m);
         assert!(
-            align_cluster_fd(&data, &t, &AlignClusterConfig { k: 0, ..AlignClusterConfig::default() }).is_err(),
+            align_cluster_fd(
+                &data,
+                &t,
+                &AlignClusterConfig {
+                    k: 0,
+                    ..AlignClusterConfig::default()
+                }
+            )
+            .is_err(),
             "k=0 must return Err"
         );
     }
@@ -2089,7 +2144,15 @@ mod tests {
         let m = 20;
         let (data, t, _) = two_tight_clusters(3, m);
         assert!(
-            align_cluster_fd(&data, &t, &AlignClusterConfig { k: 20, ..AlignClusterConfig::default() }).is_err(),
+            align_cluster_fd(
+                &data,
+                &t,
+                &AlignClusterConfig {
+                    k: 20,
+                    ..AlignClusterConfig::default()
+                }
+            )
+            .is_err(),
             "k>n must return Err"
         );
     }

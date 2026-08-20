@@ -422,9 +422,11 @@ pub use clustering::{
     silhouette_score, silhouette_score_from_distances, FuzzyCmeansResult, KmeansResult,
 };
 
-// Re-export advanced clustering types (DBSCAN, kCFC; funFEM + align-cluster added in plan 33-03)
+// Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{
-    dbscan_fd, kcfc_cluster, DbscanConfig, DbscanResult, KcfcConfig, KcfcResult,
+    align_cluster_fd, dbscan_fd, funfem_cluster, kcfc_cluster, AlignClusterConfig,
+    AlignClusterResult, DbscanConfig, DbscanResult, FunFemConfig, FunFemResult, KcfcConfig,
+    KcfcResult,
 };
 
 // Re-export distance metric types and functions
