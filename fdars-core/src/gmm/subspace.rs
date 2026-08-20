@@ -146,9 +146,12 @@ fn log_density_subspace(
     }
 
     // Complement squared norm: ||diff||^2 - ||z||^2
+    // Clamp to 0 to avoid floating-point underflow (z_sq can exceed diff_sq by
+    // a small epsilon when the observation lies almost entirely in the subspace,
+    // which would produce a negative complement and inflate the log-density).
     let diff_sq: f64 = diff.iter().map(|v| v * v).sum();
     let z_sq: f64 = z.iter().map(|v| v * v).sum();
-    let complement_sq = diff_sq - z_sq;
+    let complement_sq = (diff_sq - z_sq).max(0.0);
 
     if b_k <= 0.0 {
         return f64::NEG_INFINITY;
