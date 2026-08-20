@@ -78,6 +78,7 @@ pub mod andrews;
 pub mod basis;
 pub mod classification;
 pub mod clustering;
+pub mod clustering_advanced;
 pub mod concurrent_regression;
 pub mod cv;
 pub mod depth;
