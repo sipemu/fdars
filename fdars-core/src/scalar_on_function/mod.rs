@@ -36,8 +36,11 @@ mod tests;
 
 // Re-export all public items from submodules
 pub use additive::{
-    fam, fregre_gkam, fregre_gsam, FamConfig, FamResult, GkamConfig, GkamResult, GsamConfig,
-    GsamResult,
+    fam, fregre_gkam, fregre_gsam, history_index, permutation_test_fam, variable_selection,
+    FamConfig, FamResult, GkamConfig, GkamResult, GsamConfig, GsamResult,
+    HistoryIndexConfig, HistoryIndexResult,
+    PermTestConfig, PermTestResult, PermTestStatistic,
+    VarSelectConfig, VarSelectPenalty, VarSelectResult,
 };
 pub use bootstrap::{bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic};
 pub use cv::{fregre_basis_cv, fregre_np_cv};

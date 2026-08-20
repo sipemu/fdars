@@ -252,14 +252,16 @@ pub use scalar_on_function::{
     bootstrap_ci_fregre_lm, bootstrap_ci_functional_logistic, fam, fregre_basis_cv, fregre_cv,
     fregre_gkam, fregre_gsam, fregre_huber, fregre_l1, fregre_lm, fregre_lm_multi,
     fregre_lm_multi_cv, fregre_np_cv, fregre_np_from_distances, fregre_np_mixed, fregre_pls,
-    functional_glm, functional_logistic, model_selection_ncomp, predict_fregre_lm,
-    predict_fregre_lm_multi, predict_fregre_np, predict_fregre_np_from_distances,
-    predict_fregre_pls, predict_fregre_robust, predict_functional_glm, predict_functional_logistic,
+    functional_glm, functional_logistic, history_index, model_selection_ncomp,
+    permutation_test_fam, predict_fregre_lm, predict_fregre_lm_multi, predict_fregre_np,
+    predict_fregre_np_from_distances, predict_fregre_pls, predict_fregre_robust,
+    predict_functional_glm, predict_functional_logistic, variable_selection,
     BootstrapCiResult, FamConfig, FamResult, FregreBasisCvResult, FregreCvResult, FregreLmResult,
     FregreNpCvResult, FregreNpResult, FregreRobustResult, FunctionalGlmResult,
     FunctionalLogisticResult, GkamConfig, GkamResult, GlmFamily, GsamConfig, GsamResult,
-    ModelSelectionResult, MultiCvResult, MultiFregreLmResult, PlsRegressionResult,
-    SelectionCriterion,
+    HistoryIndexConfig, HistoryIndexResult, ModelSelectionResult, MultiCvResult,
+    MultiFregreLmResult, PermTestConfig, PermTestResult, PermTestStatistic, PlsRegressionResult,
+    SelectionCriterion, VarSelectConfig, VarSelectPenalty, VarSelectResult,
 };
 
 // Re-export generic explainability types
