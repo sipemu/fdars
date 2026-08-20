@@ -690,7 +690,9 @@ pub fn funhddC_cluster(
         .map(|(flat, av)| {
             let d = av.len();
             if d == 0 || flat.is_empty() {
-                FdMatrix::zeros(m, 1)
+                // Use d.max(1) so ncols matches within_vars[c].len() even when
+                // d == 0 would produce an m×1 matrix mismatched to the field.
+                FdMatrix::zeros(m, d.max(1))
             } else {
                 FdMatrix::from_column_major(flat, m, d).unwrap_or_else(|_| FdMatrix::zeros(m, d))
             }
