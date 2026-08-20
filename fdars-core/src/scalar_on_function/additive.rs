@@ -213,7 +213,7 @@ fn resolve_ncomp_additive(
         // Auto-select: fit 1-component FAM for each k and pick the k giving lowest GCV.
         // Simple heuristic: start from k=1, find the largest k where adding a component
         // improves GCV. Cap at min(n, m, 10) for speed.
-        let cap = max_ncomp.min(10).max(1);
+        let cap = max_ncomp.clamp(1, 10);
         // Use cross-validation over ncomp: try k = 1..cap and pick best via GCV proxy.
         // We evaluate FPCA scores for cap components and pick k using GCV on a 1D smooth.
         let fpca_full = fdata_to_pc_1d(data, cap, argvals)?;
