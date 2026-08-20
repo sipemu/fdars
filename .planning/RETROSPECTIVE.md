@@ -201,6 +201,40 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.24.0 — Functional Regression & Clustering Breadth
+
+**Shipped:** 2026-08-20
+**Phases:** 3 (31–33) | **Plans:** 7 | **Tasks:** 9
+
+### What Was Built
+- **REG-04 (Phase 31):** additive functional regression in new `scalar_on_function/additive.rs` — FAM/GKAM/GSAM, group-lasso `variable_selection`, seeded `permutation_test_fam`, `history_index`.
+- **REG-05 (Phase 32):** flexible mixed-effects — `dense_flmm`/`multi_famm`/`fast_fmm` in `famm.rs` (reusing the existing REML-EM), plus `fof_re_regression`/`predict_fof_re` in `fof_regression.rs`.
+- **CLUS-01 (Phase 33):** five clusterers — funHDDC (`gmm/subspace.rs`), DBSCAN/kCFC/funFEM/align-and-cluster (`clustering_advanced.rs`), + test-only `adjusted_rand_index`.
+- All three: additive/non-breaking, `Result`-returning, crate-root re-exported, **no new dependency**. Verified 5/5 each; whole-crate 2268-test suite + `cargo clippy --all-targets` green.
+
+### What Worked
+- **Reuse-first paid off big:** Phase 32's four estimators all reduced to composing the pre-existing `fit_scalar_mixed_model` REML-EM; Phase 33 composed gmm E-step + distance/alignment infra. Research surfaced these reductions early, keeping the actual code small.
+- **The code-review gate earned its keep:** it caught genuinely broken numerics that all tests had passed — a monotonic-MSE λ-selection that made `variable_selection` a no-op (P31), inert `fastFMM` config fields (P32), a negative E-step complement that biased funHDDC responsibilities (P33). 5 blockers + 12 warnings fixed across the milestone.
+- **Tracer-first** consistently de-risked each phase: one estimator wired end-to-end and green before expanding.
+
+### What Was Inefficient
+- **Executor stalls on the full-target build.** Two Phase-32 executor dispatches ran ~50 min and dropped their API connections mid-response — the culprit was `cargo clippy --all-targets` compiling all 28 examples + 8 benches. Recovery cost real wall-clock (recover committed work, finish inline).
+- **Doctests slipped past executors.** Executors were scoped to `--lib` tests to avoid the stall, so `#[non_exhaustive]`-config doctests (E0639) and a closure-move doctest (E0507) only surfaced when the orchestrator ran the full gate — three separate orchestrator-side fixes.
+
+### Patterns Established
+- **Anti-stall executor contract:** dispatch executors with `--lib <filter>` builds + `--no-verify` commits + "commit early and often"; the **orchestrator** runs the one authoritative `--all-targets` + doctest gate out-of-band. This made Phase-33 executors fast and reliable after the Phase-32 stalls.
+- **Doctest dual rule:** `#[non_exhaustive]` configs need `let mut c = X::default(); c.field = …` in doctests (external-crate E0639) but struct-literal in inline tests (clippy `field_reassign_with_default`). Now baked into planner/executor prompts.
+
+### Key Lessons
+- Passing tests ≠ correct numerics — the review gate is where subtle algorithm bugs (λ-selection, variance clamps, false convergence) actually got caught. Keep it mandatory even when the suite is green.
+- Match the executor's build scope to the project's real gate cost; a repo whose pre-commit/`--all-targets` build is minutes-long will stall subagents unless the heavy gate is lifted to the orchestrator.
+
+### Cost Observations
+- Model mix: orchestration + planners on Opus; researchers/pattern-mappers/executors/code-reviewers/fixers/verifiers/integration-checker on Sonnet; plan-checkers on Haiku.
+- Notable: ran researcher + pattern-mapper in parallel per phase (33 especially) to cut planning wall-clock; recovered two dropped-connection executors inline rather than re-dispatching.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

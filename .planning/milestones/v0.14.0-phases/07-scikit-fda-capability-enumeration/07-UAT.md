@@ -4,6 +4,10 @@ phase: 07-scikit-fda-capability-enumeration
 source: [07-VERIFICATION.md]
 started: 2026-08-09T00:00:00Z
 updated: 2026-08-09T00:00:00Z
+audit_acknowledged:
+  milestone: v0.24.0
+  at: 2026-08-20
+  gap_snapshot: "passed::scenarios=0"
 ---
 
 ## Current Test
@@ -19,8 +23,10 @@ result: PASSED — resolved 2026-08-09 (commit f92466fe): actual table ruled aut
 ## Tests
 
 ### 1. Reconcile Representation area count discrepancy
+
 expected: |
   Three sources disagree on the Representation area counts:
+
   - Per-area header note: "12 in-scope, 7 out-of-scope" (19 total)
   - Design-Goal Filter table: "13 in-scope, 7 out-of-scope" (20 total)
   - Actual Representation table rows (counted): 17 In-Scope + 4 Out-of-Scope (21 total)

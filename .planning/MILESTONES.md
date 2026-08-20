@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.24.0 Functional Regression & Clustering Breadth (Shipped: 2026-08-20)
+
+**Phases completed:** 3 phases, 7 plans, 9 tasks
+
+**Key accomplishments:**
+
+- funHDDC AkBk per-group subspace EM (FPCA init + nalgebra SVD M-step + BIC/ICL) plus `adjusted_rand_index` test helper in `gmm/subspace.rs`, wired to crate root.
+- funFEM (Fisher-EM discriminative-subspace GMM) and elastic k-means (Karcher-mean templates + amplitude_distance reassignment) appended to clustering_advanced.rs, completing the five-clusterer CLUS-01 set and re-exported at crate root
+
+---
+
 ## v0.23.0 Depth, Outliers & Interval Inference (Shipped: 2026-08-20)
 
 **Phases completed:** 3 phases (28–30), 7 plans
@@ -15,7 +26,6 @@
 - **INF-03 — Interval Testing Procedure Family (Phase 30):** new `inference/itp.rs` with `itp_one_pop`, `itp_two_pop`, and `itp_flm` — B-spline/Fourier basis-wise permutation tests with the Pini & Vantini interval-wise closure adjustment (`pval_correct`) for domain-selective adjusted p-values, reusing the INF-01 permutation pattern + `basis/` projection.
 
 **Tech debt (non-blocking):** VALIDATION.md files left `status: draft` (Nyquist NOT-VALIDATED — run `/gsd-validate-phase 28|29|30` to reconcile); intentional R-baseline divergences documented in rustdoc (Fast-MUOD, univariate depthgram, response-permutation FLM, symmetric extremal/ERL). Crate release (version bump 0.22.0→0.23.0 + tag + crates.io) is a pending operator ship-time step — NOT performed by this run (Cargo.toml still 0.22.0).
-
 
 ## v0.22.0 PACE Sparse FPCA & Elastic Multinomial (Shipped: 2026-08-19)
 

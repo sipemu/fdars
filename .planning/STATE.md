@@ -1,19 +1,19 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.24.0
-current_phase: 33
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 33 complete — all phases complete
-last_updated: "2026-08-20T21:00:17.138Z"
+last_updated: "2026-08-20T21:05:42.367Z"
 last_activity: 2026-08-20
-last_activity_desc: Phase 33 complete
-state_head: 9f25bade03522921ac55a3ffc16847ede9a7a65e
+last_activity_desc: Milestone v0.24.0 completed and archived
+state_head: a0611f52fd6c9b43adc73e311987dd81c7b74969
 progress:
   total_phases: 3
   completed_phases: 3
   total_plans: 7
   completed_plans: 7
 milestone_name: Functional Regression & Clustering Breadth
+current_phase: 33
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 ## Current Position
 
-Phase: 33
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-20 — Phase 33 complete
+Phase: Milestone v0.24.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-20 — Milestone v0.24.0 completed and archived
 
 ## Milestone Roadmap (v0.24.0)
 
@@ -150,4 +150,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan any phase with `/gsd-plan-phase 31` (REG-04), `/gsd-plan-phase 32` (REG-05), or `/gsd-plan-phase 33` (CLUS-01) — all three are independent and may be planned in any order or in parallel.
+- Start the next milestone with /gsd-new-milestone
