@@ -80,7 +80,7 @@ Plans:
 Plans:
 
 - [x] 33-00-PLAN.md — tracer: `adjusted_rand_index` test helper + funHDDC per-group subspace EM in `gmm/subspace.rs` + crate-root re-exports (Wave 1)
-- [ ] 33-02-PLAN.md — DBSCAN (density, None-is-noise) + kCFC (per-cluster FPCA loop) in new `clustering_advanced.rs` + re-exports (Wave 2)
+- [x] 33-02-PLAN.md — DBSCAN (density, None-is-noise) + kCFC (per-cluster FPCA loop) in new `clustering_advanced.rs` + re-exports (Wave 2)
 - [ ] 33-03-PLAN.md — funFEM (Fisher-EM discriminative subspace) + joint align-and-cluster (elastic k-means) appended to `clustering_advanced.rs` + re-exports (Wave 3)
 
 ## Progress
