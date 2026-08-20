@@ -1774,9 +1774,11 @@ mod tests {
         )
         .unwrap();
 
-        // Determine which result cluster corresponds to ground truth 0
+        // Determine which result cluster corresponds to ground truth 0 and 1.
+        // Use an explicit lookup instead of arithmetic (1 - gt0_cluster) so the
+        // test is not k==2-specific and does not risk wrapping on usize.
         let gt0_cluster = result.cluster[0]; // first curve is in ground truth 0
-        let gt1_cluster = 1 - gt0_cluster;
+        let gt1_cluster = result.cluster[n_per]; // first curve in ground truth 1
 
         let mut correct_ordering = 0;
         let mut total = 0;
@@ -1786,8 +1788,10 @@ mod tests {
             } else {
                 gt1_cluster
             };
+            // Find the "other" cluster by scanning — avoids k==2-only arithmetic.
+            let other_cluster = (0..2).find(|&c| c != expected_cluster).unwrap_or(0);
             let err_own = result.reconstruction_errors[(i, expected_cluster)];
-            let err_other = result.reconstruction_errors[(i, 1 - expected_cluster)];
+            let err_other = result.reconstruction_errors[(i, other_cluster)];
             if err_own.is_finite() && err_other.is_finite() {
                 if err_own < err_other {
                     correct_ordering += 1;
