@@ -18,7 +18,7 @@ Requirements for milestone v0.24.0. Each maps to exactly one roadmap phase.
 
 - [x] **REG-04**: Add nonparametric additive functional regression in new `scalar_on_function/additive.rs` — a functional additive model (FAM, backfitting over FPC-score components), a generalized kernel additive model (GKAM) and generalized spectral additive model (GSAM) variant, a group-penalized scalar-on-function `variable_selection` helper, a permutation-test wrapper, and a history-index (lagged-predictor-window) estimator. Reuses `smoothing.rs` kernels + `fdata_to_pc_1d`. Additive/non-breaking; independent of REG-05/CLUS-01. R baseline: `fdapace` (FAM) / `fda.usc` (GKAM, GSAM) / `refund` (fosr.vs, fosr.perm, history-index).
 
-- [ ] **REG-05**: Extend functional mixed models beyond fixed-effect testing to full random-effects estimation — extend `famm.rs` (which today provides only `fmm_test_fixed`) with a dense functional linear mixed model (denseFLMM-style mixed-model equations over FPC scores / basis coefficients), a multivariate functional additive mixed variant (multiFAMM), fast functional mixed-model inference (fastFMM), and wire a flexible random-effects function-on-function path into `fof_regression.rs`. Note: the base function-on-function capability is already present at parity — this item extends only the flexible/RE variant. Additive/non-breaking; independent of REG-04/CLUS-01. R baseline: `denseFLMM` / `multifamm` / `fastFMM` / `refund` (pffr).
+- [x] **REG-05**: Extend functional mixed models beyond fixed-effect testing to full random-effects estimation — extend `famm.rs` (which today provides only `fmm_test_fixed`) with a dense functional linear mixed model (denseFLMM-style mixed-model equations over FPC scores / basis coefficients), a multivariate functional additive mixed variant (multiFAMM), fast functional mixed-model inference (fastFMM), and wire a flexible random-effects function-on-function path into `fof_regression.rs`. Note: the base function-on-function capability is already present at parity — this item extends only the flexible/RE variant. Additive/non-breaking; independent of REG-04/CLUS-01. R baseline: `denseFLMM` / `multifamm` / `fastFMM` / `refund` (pffr).
 
 ### Functional Clustering (differentiators)
 
@@ -57,7 +57,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REG-04 | Phase 31 | Complete |
-| REG-05 | Phase 32 | Pending |
+| REG-05 | Phase 32 | Complete |
 | CLUS-01 | Phase 33 | Pending |
 
 **Coverage:**

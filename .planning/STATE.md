@@ -5,15 +5,15 @@ milestone_name: Functional Regression & Clustering Breadth
 current_phase: 32
 current_phase_name: Flexible Mixed-Effects Regression
 status: executing
-stopped_at: Completed 31-02-PLAN.md
-last_updated: "2026-08-20T12:46:17.750Z"
+stopped_at: Completed 32-02-PLAN.md
+last_updated: "2026-08-20T17:05:10.069Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 4
 ---
 
 # Project State
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 32 (Flexible Mixed-Effects Regression) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 32
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-08-20 — Phase 32 execution started
 
 ## Milestone Roadmap (v0.24.0)
@@ -81,6 +81,7 @@ Three phases, three requirements — the next three top-ranked P2 differentiator
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 31 P02 | 563 | 3 tasks | 3 files |
+| Phase 32-flexible-mixed-effects-regression P02 | 15 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,8 @@ Conventions carried from prior milestones (relevant to implementation):
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
 - [Phase ?]: GroupLasso only this phase; GroupMcp/GroupScad return FdarError::InvalidParameter (future work)
 - [Phase ?]: Single shared StdRng::seed_from_u64(seed) for permutation_test_fam — NOT per-iteration seed+k
+- [Phase ?]: fof_re_regression: x_scores passed to fit_scalar_mixed_model WITHOUT h.sqrt() rescaling — L2 weighting already in fpca_x.project() (Pitfall 2)
+- [Phase ?]: predict_fof_re: fixed-effect-only prediction, no RE for new subjects (matches fmm_predict convention)
 
 ### Pending Todos
 
@@ -130,8 +133,8 @@ Advisory tech-debt carried forward (not v0.24.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-20T10:49:18.200Z
-Stopped at: Completed 31-02-PLAN.md
+Last session: 2026-08-20T17:05:10.060Z
+Stopped at: Completed 32-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

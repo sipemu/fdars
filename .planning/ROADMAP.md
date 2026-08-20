@@ -59,8 +59,8 @@ Plans:
 
 Plans:
 
-- [ ] 32-01-PLAN.md — denseFLMM tracer + multiFAMM + fastFMM in `famm.rs` (+ 6 pub(crate) promotions, re-exports)
-- [ ] 32-02-PLAN.md — flexible-RE function-on-function (`fof_re_regression` + `predict_fof_re`) in `fof_regression.rs` (Wave 2)
+- [x] 32-01-PLAN.md — denseFLMM tracer + multiFAMM + fastFMM in `famm.rs` (+ 6 pub(crate) promotions, re-exports)
+- [x] 32-02-PLAN.md — flexible-RE function-on-function (`fof_re_regression` + `predict_fof_re`) in `fof_regression.rs` (Wave 2)
 
 ### Phase 33: Model-Based & Density Functional Clustering
 
