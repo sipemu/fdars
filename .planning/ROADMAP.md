@@ -16,7 +16,7 @@
 
 ## Phases
 
-- [ ] **Phase 31: Additive Functional Regression & Variable Selection** - Add FAM/GKAM/GSAM additive scalar-on-function models, a group-penalized `variable_selection` helper, a permutation-test wrapper, and a history-index (lagged) estimator in new `scalar_on_function/additive.rs` (REG-04, independent)
+- [x] **Phase 31: Additive Functional Regression & Variable Selection** - Add FAM/GKAM/GSAM additive scalar-on-function models, a group-penalized `variable_selection` helper, a permutation-test wrapper, and a history-index (lagged) estimator in new `scalar_on_function/additive.rs` (REG-04, independent) (completed 2026-08-20)
 - [ ] **Phase 32: Flexible Mixed-Effects Regression** - Extend `famm.rs` beyond fixed-effect testing to random-effects estimation (denseFLMM/multiFAMM/fastFMM) and wire a flexible-RE function-on-function path into `fof_regression.rs` (REG-05, independent)
 - [ ] **Phase 33: Model-Based & Density Functional Clustering** - Add funHDDC/funFEM subspace models, DBSCAN over functional distances, a kCFC subspace-embedding loop, and a joint align-and-cluster estimator extending `clustering.rs` + `gmm/` (CLUS-01, independent)
 
@@ -76,7 +76,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 31. Additive Functional Regression & Variable Selection | 0/TBD | Not started | - |
+| 31. Additive Functional Regression & Variable Selection | 2/2 | Complete    | 2026-08-20 |
 | 32. Flexible Mixed-Effects Regression | 0/TBD | Not started | - |
 | 33. Model-Based & Density Functional Clustering | 0/TBD | Not started | - |
 
