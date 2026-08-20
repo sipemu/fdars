@@ -1427,6 +1427,10 @@ pub fn align_cluster_fd(
         }
 
         // ── Template update: Karcher mean of cluster members ──────────────
+        // Track whether any template was changed (including by empty-cluster
+        // reinit) so convergence is not declared on the same iteration that a
+        // reinit occurred — the new template must be tested in the next pass.
+        let mut template_changed = false;
         for ki in 0..k {
             let member_indices: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
 
@@ -1437,6 +1441,7 @@ pub fn align_cluster_fd(
                 if !non_members.is_empty() {
                     let rand_idx = rng.gen_range(0..non_members.len());
                     templates[ki] = data.row(non_members[rand_idx]);
+                    template_changed = true;
                 }
                 // (If somehow all n are in one cluster, keep the old template)
                 continue;
@@ -1463,7 +1468,12 @@ pub fn align_cluster_fd(
             templates[ki] = km.mean;
         }
 
-        if !changed {
+        // Converge only when no curve moved AND no template was reinit-ed due to
+        // an empty cluster.  Including template_changed prevents the algorithm
+        // from declaring convergence on the same iteration as an empty-cluster
+        // reinit, before the new template has been used in a subsequent
+        // reassignment pass.
+        if !changed && !template_changed {
             converged = true;
             break;
         }
