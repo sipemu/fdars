@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.24.0
-status: Awaiting next milestone
-stopped_at: Phase 33 complete — all phases complete
-last_updated: "2026-08-20T21:05:42.367Z"
+milestone: v0.25.0
+milestone_name: Serial Dependence, Representation & Density Breadth
+status: planning
+last_updated: "2026-08-20T21:51:25.022Z"
 last_activity: 2026-08-20
-last_activity_desc: Milestone v0.24.0 completed and archived
-state_head: a0611f52fd6c9b43adc73e311987dd81c7b74969
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-milestone_name: Functional Regression & Clustering Breadth
-current_phase: 33
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 ## Current Position
 
-Phase: Milestone v0.24.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-20 — Milestone v0.24.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-20 — Milestone v0.25.0 started
 
 ## Milestone Roadmap (v0.24.0)
 

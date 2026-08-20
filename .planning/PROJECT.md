@@ -8,25 +8,23 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: none (v0.24.0 shipped 2026-08-20)
+## Current Milestone: v0.25.0 Serial Dependence, Representation & Density Breadth
 
-**Last shipped:** v0.24.0 Functional Regression & Clustering Breadth — REG-04, REG-05, CLUS-01 all delivered, verified 5/5, and integrated (2268-test suite green, `cargo clippy --all-targets` clean). Real `fdars-core/src/` code, additive/non-breaking, no new dependency. See the Validated section below and [`milestones/v0.24.0-ROADMAP.md`](milestones/v0.24.0-ROADMAP.md).
-
-**Pending ship-time step (operator):** crate release for v0.23.0 **and** v0.24.0 — `fdars-core/Cargo.toml` is still `0.23.0`; bump + PR + tag/publish is a deliberate operator-driven step (a `v*` tag push triggers the crates.io publish). Deferred, not done by the autonomous run.
-
-**Next:** run `/gsd-new-milestone` to draw the next top-ranked items from `R-BACKLOG.md`.
-
-<details>
-<summary>v0.24.0 milestone goal (shipped)</summary>
-
-**Goal:** Draw the next three top-ranked P2 differentiators (score 1.73, M-effort) from the v0.18.0 `R-BACKLOG.md` — broadening fdars' functional-regression and functional-clustering families — each by extending existing `fdars-core/src/` modules, additively and non-breaking.
+**Goal:** Draw the next three top-ranked items (all score 1.73, M-effort) from the v0.18.0 `R-BACKLOG.md` — broadening fdars' functional-time-series diagnostics, representation layer, and density-FDA families — each by adding or extending `fdars-core/src/` modules, additively and non-breaking.
 
 **Target features (from R-BACKLOG.md):**
-- **REG-04 (rank 12, score 1.73, P2 differentiator, M-effort):** **additive functional regression + variable selection** — functional additive model (FAM), generalized kernel additive model (GKAM), generalized spectral additive model (GSAM), plus scalar-on-function variable selection and a permutation-test wrapper. New `scalar_on_function/additive.rs` — backfitting over FPC-score components, kernel/spectral additive variants, a group-penalized `variable_selection` helper, and a history-index (lagged) estimator, reusing `smoothing.rs` kernels + `fdata_to_pc_1d`. R baseline: `fdapace` / `fda.usc` / `refund`.
-- **REG-05 (rank 13, score 1.73, P2 differentiator, M-effort):** **flexible mixed-effects regression** — extend `famm.rs` beyond fixed-effect testing (`fmm_test_fixed`) to full random-effects estimation (denseFLMM / multiFAMM / fastFMM), plus a flexible-RE function-on-function path wired into `fof_regression.rs`. R baseline: `denseFLMM` / `multifamm` / `fastFMM` / `refund` (pffr).
-- **CLUS-01 (rank 15, score 1.73, P2 differentiator, M-effort):** **model-based / density functional clustering** — funHDDC per-group subspace models, funFEM discriminative-subspace clustering, DBSCAN over functional distances, kCFC subspace-embedding, and a joint align-and-cluster estimator. Extend `clustering.rs` + `gmm/`, reusing `distance.rs` + `alignment/`. R baseline: `funHDDC` / `funFEM` / `fdacluster` / `fdapace`.
+- **FTS-02 (rank 14, score 1.73, P2 differentiator, M-effort):** **functional serial-dependence tooling** — L2-norm functional ACF/PACF with strong-white-noise confidence bands, a functional stationarity test, long-run covariance via a kernel-sandwich estimator, and a functional differencing operator. New `fts/acf.rs`, reusing `helpers` quadrature + `covariance.rs`. R baseline: `ftsa` / `fdaACF`. Foundational for the deferred FTS-01/FTS-03 forecasting items ("build this before FTS-01").
+- **REP-01 (rank 16, score 1.73, P2 differentiator, M-effort):** **basis-system completions** — `monomial_basis`, `exponential_basis`, `power_basis`, `polygonal_basis` factories (with penalty matrices) in `basis/`; a `MultiFunData` multivariate/multi-domain container (new `multi_fdata.rs`); a composable `Lfd`/linear-differential-operator object; and a `principal_differential_analysis` estimator. R baseline: `fda` / `funData` / `tf`.
+- **DENS-01 (rank 17, score 1.73, P3 differentiator, M-effort):** **density object-data FDA** — the log-quantile-density (LQD) transform + inverse, LQD-FPCA for probability densities (reuse `fdata_to_pc_1d` in LQD space), a 1D Wasserstein Fréchet mean (quantile-average barycenter), and density normalization/regularization. New `density_fda.rs`. R baseline: `fdadensity`.
 
-**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** All three are reuse-first (extend `scalar_on_function/` / `famm.rs` / `clustering.rs` + `gmm/` — no new subsystem, **no new dependency**). Phase numbering continues from v0.23.0 (ended at Phase 30) → starts at Phase 31. All three requirements are **independent** — no cross-phase hard dependency (unlike v0.23.0's DEPTH→OUT chain) — so Phases 31/32/33 may run in any order or in parallel. Crate version bump 0.23.0→0.24.0 + PR + tag is a separate operator-driven ship-time step (crate at 0.23.0 on crates.io).
+**Key context:** Implementation milestone (real `fdars-core/src/` code) — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** All three are reuse-first (new `fts/`, extend `basis/` + new `multi_fdata.rs`, new `density_fda.rs` reusing `fdata_to_pc_1d` — **no new crate dependency**). Numeric outputs only — plotting/rendering out of scope. Phase numbering continues from v0.24.0 (ended at Phase 33) → starts at **Phase 34**. All three requirements are **independent** (disjoint code areas) — Phases 34/35/36 may run in any order or in parallel.
+
+**Pending ship-time step (operator):** crate release for v0.23.0, v0.24.0 **and** v0.25.0 — `fdars-core/Cargo.toml` is still `0.23.0`; bump + PR + tag/publish is a deliberate operator-driven step (a `v*` tag push triggers the crates.io publish). Deferred, not done by the autonomous run.
+
+<details>
+<summary>v0.24.0 milestone goal (shipped 2026-08-20)</summary>
+
+**Shipped:** v0.24.0 Functional Regression & Clustering Breadth — REG-04 (additive functional regression + variable selection, Phase 31), REG-05 (flexible mixed-effects regression, Phase 32), CLUS-01 (model-based/density functional clustering, Phase 33) — the three top-ranked P2 differentiators from `R-BACKLOG.md` (score 1.73 each). All delivered, verified 5/5, integrated (2268-test suite green, `cargo clippy --all-targets` clean). Real `fdars-core/src/` code, additive/non-breaking, no new dependency. See [`milestones/v0.24.0-ROADMAP.md`](milestones/v0.24.0-ROADMAP.md).
 
 </details>
 
@@ -88,9 +86,11 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- No active milestone. Run /gsd-new-milestone to draw the next items from R-BACKLOG.md. -->
+<!-- v0.25.0 scope — the next three top-ranked R-BACKLOG items (score 1.73, M-effort). REQ-IDs in REQUIREMENTS.md. -->
 
-- (none — v0.24.0 shipped; next milestone not yet started)
+- [ ] **FTS-02** — functional serial-dependence tooling (fACF/PACF + white-noise bands, stationarity test, long-run covariance, differencing) — new `fts/acf.rs`
+- [ ] **REP-01** — basis-system completions (monomial/exponential/power/polygonal factories, `MultiFunData`, `Lfd`, PDA) — extend `basis/` + new `multi_fdata.rs`
+- [ ] **DENS-01** — density object-data FDA (LQD transform + inverse, LQD-FPCA, 1D Wasserstein barycenter) — new `density_fda.rs`
 
 ### Out of Scope
 
@@ -183,6 +183,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-20 — v0.24.0 Functional Regression & Clustering Breadth **shipped** (audit passed, milestone archived): REG-04 (additive functional regression + variable selection, Phase 31), REG-05 (flexible mixed-effects regression, Phase 32), CLUS-01 (model-based/density functional clustering, Phase 33) — the three top-ranked P2 differentiators from `R-BACKLOG.md` (score 1.73 each). All independent, additive/non-breaking, reuse-first, no new dependency; each verified 5/5 with code-review fixes applied (5 blockers + 12 warnings across the milestone), whole-crate 2268-test suite + `cargo clippy --all-targets` green. Crate still at 0.23.0 — version bump + tag/publish for v0.23.0 and v0.24.0 is a deferred operator ship-time step. Prior: v0.23.0 Depth, Outliers & Interval Inference (DEPTH-01 + OUT-01 + INF-03, crate 0.23.0, tag v0.23.0); v0.22.0 PACE Sparse FPCA & Elastic Multinomial (crate 0.22.0); v0.21.0–v0.19.0 as their versions; v0.18.0 R-Ecosystem Gap Audit (produced `R-BACKLOG.md`). Full per-phase history below.*
+*Last updated: 2026-08-20 — v0.25.0 Serial Dependence, Representation & Density Breadth **started**: FTS-02 (functional serial-dependence tooling — new `fts/acf.rs`), REP-01 (basis-system completions — extend `basis/` + new `multi_fdata.rs`), DENS-01 (density object-data FDA — new `density_fda.rs`) — the next three top-ranked `R-BACKLOG.md` items (score 1.73 each, M-effort). All independent, additive/non-breaking, reuse-first, no new dependency. Phase numbering continues → Phases 34/35/36. Prior: v0.24.0 Functional Regression & Clustering Breadth **shipped** (audit passed, milestone archived): REG-04 (additive functional regression + variable selection, Phase 31), REG-05 (flexible mixed-effects regression, Phase 32), CLUS-01 (model-based/density functional clustering, Phase 33) — the three top-ranked P2 differentiators from `R-BACKLOG.md` (score 1.73 each). All independent, additive/non-breaking, reuse-first, no new dependency; each verified 5/5 with code-review fixes applied (5 blockers + 12 warnings across the milestone), whole-crate 2268-test suite + `cargo clippy --all-targets` green. Crate still at 0.23.0 — version bump + tag/publish for v0.23.0 and v0.24.0 is a deferred operator ship-time step. Prior: v0.23.0 Depth, Outliers & Interval Inference (DEPTH-01 + OUT-01 + INF-03, crate 0.23.0, tag v0.23.0); v0.22.0 PACE Sparse FPCA & Elastic Multinomial (crate 0.22.0); v0.21.0–v0.19.0 as their versions; v0.18.0 R-Ecosystem Gap Audit (produced `R-BACKLOG.md`). Full per-phase history below.*
 
 *Phase 9 (Consolidated Report & Prioritized Backlog) complete — **audit milestone v0.14.0 done**: AUDIT-REPORT.md finalized (Methodology + Consolidated Findings: 5 perf findings PF-1..5, 82 in-scope gaps, 30 fdars strengths) and BACKLOG.md finalized (32-item Ranked Backlog by `value/sqrt(effort)`, 34 seven-field blocks, Completeness Gate PASSED); verified 7/7; zero src edits (RPT-01/02/03). Backlog ready to promote via `/gsd-new-milestone`. Prior: Phase 8 (Capability Parity Matrix & Categorization) — six area parity tables (141 rows, 59 present / 19 partial / 63 absent) mapping fdars vs scikit-fda 0.10.1 by capability, both rubrics (D-01 verdict, D-03 category), 82 actionable in-scope gaps separated from 32 out-of-scope, a 30-row reverse-parity strengths sweep, and a drafted UNRANKED gap backlog (21 entries + D-02a accuracy-validation item); known-bug rows accuracy-flagged; verified 9/9; zero src edits (GAP-02/03/04). Prior: Phase 7 scikit-fda capability enumeration (GAP-01, skfda 0.10.1, 129 in-scope / 32 out-of-scope); Phase 6 conditional SVD comparison (PERF-06, faer 1.8–4.1× faster, P6-1); Phase 5 parallelism gap assessment (PERF-05); Phase 4 FPCA/SVD & allocation audit (PERF-03/04, Phase-6 GO); Phase 2 static hot-path map (PERF-01); Phase 1 benchmark apparatus + baselines (PERF-02).*
