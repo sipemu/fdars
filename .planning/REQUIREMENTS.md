@@ -15,11 +15,11 @@ Requirements for milestone v0.23.0. Each maps to exactly one roadmap phase.
 
 ### Depth Measures
 
-- [ ] **DEPTH-01**: Add the missing univariate functional depth measures to `depth/` — half-region depth (HRD) and modified half-region depth (MHRD), hypograph/modified-hypograph indices (HI/MHI) and the un-modified epigraph index (EI), extremal depth, extreme-rank-length depth (ERL), L∞ depth, and total-variation depth with MSSI. Each is a `Result`-returning function over the column-major `FdMatrix` following the existing per-file convention, and each is registered in the T-02 `DepthMethod` dispatcher. Excludes streaming depth (batch measures only). R baseline: `roahd` / `fdaoutlier`.
+- [x] **DEPTH-01**: Add the missing univariate functional depth measures to `depth/` — half-region depth (HRD) and modified half-region depth (MHRD), hypograph/modified-hypograph indices (HI/MHI) and the un-modified epigraph index (EI), extremal depth, extreme-rank-length depth (ERL), L∞ depth, and total-variation depth with MSSI. Each is a `Result`-returning function over the column-major `FdMatrix` following the existing per-file convention, and each is registered in the T-02 `DepthMethod` dispatcher. Excludes streaming depth (batch measures only). R baseline: `roahd` / `fdaoutlier`.
 
 ### Outlier Detection
 
-- [ ] **OUT-01**: Add the outlier-detection algorithms to `outliers.rs` — `tvdmss` (total-variation-depth + MSSI detector, reusing DEPTH-01's TVD+MSSI), `muod` (Massive Unsupervised Outlier Detection), `sequential_transform_outliers` (sequential-transformation detection), and the `depthgram` statistic (numeric outputs; renderer out-of-scope). Reuses the existing MS-plot / outliergram machinery. R baseline: `fdaoutlier` / `roahd`. **Depends on DEPTH-01.**
+- [x] **OUT-01**: Add the outlier-detection algorithms to `outliers.rs` — `tvdmss` (total-variation-depth + MSSI detector, reusing DEPTH-01's TVD+MSSI), `muod` (Massive Unsupervised Outlier Detection), `sequential_transform_outliers` (sequential-transformation detection), and the `depthgram` statistic (numeric outputs; renderer out-of-scope). Reuses the existing MS-plot / outliergram machinery. R baseline: `fdaoutlier` / `roahd`. **Depends on DEPTH-01.**
 
 ### Functional Inference
 
@@ -63,8 +63,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DEPTH-01 | Phase 28 | Pending |
-| OUT-01 | Phase 29 | Pending |
+| DEPTH-01 | Phase 28 | Complete |
+| OUT-01 | Phase 29 | Complete |
 | INF-03 | Phase 30 | Complete |
 
 **Coverage:**
