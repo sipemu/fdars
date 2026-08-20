@@ -75,7 +75,12 @@ Plans:
   4. Invalid inputs (empty matrix / fewer curves than requested clusters / mismatched argvals vs values / invalid DBSCAN eps or min-points / degenerate columns) return `FdarError` rather than panicking, with checks at each entry point.
   5. Existing clustering entry points (`kmeans_fd`, `fuzzy_cmeans_fd`, `gmm_cluster`, hierarchical / k-medoids) and `gmm/` / `distance.rs` / `alignment/` public signatures keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 33-00-PLAN.md — tracer: `adjusted_rand_index` test helper + funHDDC per-group subspace EM in `gmm/subspace.rs` + crate-root re-exports (Wave 1)
+- [ ] 33-02-PLAN.md — DBSCAN (density, None-is-noise) + kCFC (per-cluster FPCA loop) in new `clustering_advanced.rs` + re-exports (Wave 2)
+- [ ] 33-03-PLAN.md — funFEM (Fisher-EM discriminative subspace) + joint align-and-cluster (elastic k-means) appended to `clustering_advanced.rs` + re-exports (Wave 3)
 
 ## Progress
 
@@ -83,7 +88,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 31. Additive Functional Regression & Variable Selection | 2/2 | Complete    | 2026-08-20 |
 | 32. Flexible Mixed-Effects Regression | 2/2 | Complete    | 2026-08-20 |
-| 33. Model-Based & Density Functional Clustering | 0/TBD | Not started | - |
+| 33. Model-Based & Density Functional Clustering | 0/3 | Planned | - |
 
 **Execution order:** All three phases are **independent** — REG-04 (Phase 31), REG-05 (Phase 32), and CLUS-01 (Phase 33) have no cross-phase hard dependency (unlike v0.23.0's DEPTH→OUT chain), so they may be planned and executed in any order or in parallel. Each extends a disjoint area of the codebase (`scalar_on_function/` / `famm.rs`+`fof_regression.rs` / `clustering.rs`+`gmm/`). The next three top-ranked P2 differentiators in `R-BACKLOG.md` (REG-04 rank 12, REG-05 rank 13, CLUS-01 rank 15 — all score 1.73, M-effort). Additive/non-breaking, reuse-first, **no new crate dependency**; numeric outputs only (plotting out of scope).
 
