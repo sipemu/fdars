@@ -931,9 +931,9 @@ pub struct DenseFlmmConfig {
     /// Include random slopes in addition to random intercepts (default: false).
     ///
     /// When `false`, only random intercepts are estimated.
-    /// Random-slope estimation is not yet implemented; setting this to `true`
-    /// is accepted (no error) but silently falls back to intercept-only estimation.
-    /// `sigma2_slope` will always be zero-filled in this release.
+    /// Random-slope estimation is **not yet implemented**; setting this to `true`
+    /// returns [`FdarError::InvalidParameter`] until the feature ships.
+    /// `sigma2_slope` is always zero-filled in this release.
     pub random_slopes: bool,
 }
 
@@ -975,7 +975,12 @@ pub struct DenseFlmmResult {
     pub residuals: FdMatrix,
     /// Variance of random effects at each time point Var_i(b̂_i(t)) (length m)
     pub random_variance: Vec<f64>,
-    /// Average residual variance across FPC components
+    /// Mean residual variance averaged across FPC-score component models.
+    ///
+    /// Each per-component model operates on L²-normalized scores; this average
+    /// is on the normalized scale and is not directly comparable to the marginal
+    /// residual variance `σ²_ε` from R's `lmer()`. See the struct-level
+    /// parametrization note.
     pub sigma2_eps: f64,
     /// Random-intercept variance per FPC component (length k)
     pub sigma2_u: Vec<f64>,
@@ -1054,6 +1059,20 @@ pub fn dense_flmm(
         return Err(FdarError::InvalidParameter {
             parameter: "ncomp",
             message: "must be >= 1".to_string(),
+        });
+    }
+    if config.max_iter == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.random_slopes {
+        return Err(FdarError::InvalidParameter {
+            parameter: "random_slopes",
+            message: "random slope estimation is not yet implemented; \
+                      use random_slopes: false"
+                .to_string(),
         });
     }
 
@@ -1527,6 +1546,12 @@ pub fn fast_fmm(
             message: "must be >= 1 (use 1 for no smoothing)".to_string(),
         });
     }
+    if config.max_iter == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: "must be >= 1".to_string(),
+        });
+    }
 
     let (subject_map, n_subjects) = build_subject_map(subject_ids);
     let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);
@@ -1543,11 +1568,19 @@ pub fn fast_fmm(
     let per_point: Vec<PointwiseResult> = iter_maybe_parallel!(0..m)
         .map(|t| {
             let y_t: Vec<f64> = data.column(t).to_vec();
-            let r = fit_scalar_mixed_model(&y_t, &subject_map, n_subjects, covariates, p);
+            let r = fit_scalar_mixed_model_tracked(
+                &y_t,
+                &subject_map,
+                n_subjects,
+                covariates,
+                p,
+                config.max_iter,
+                config.tol,
+            );
             PointwiseResult {
-                gamma: r.gamma,
-                sigma2_u: r.sigma2_u,
-                sigma2_eps: r.sigma2_eps,
+                gamma: r.result.gamma,
+                sigma2_u: r.result.sigma2_u,
+                sigma2_eps: r.result.sigma2_eps,
             }
         })
         .collect();
@@ -1567,8 +1600,15 @@ pub fn fast_fmm(
     }
 
     // Step 2: Running-mean smoothing along the grid axis (per covariate row)
+    // Force smooth_window to an odd value so the half-width formula `half = w / 2`
+    // produces a symmetric window of exactly `w` elements (for even w the range
+    // [t-half, t+half+1) would be w+1 elements wide — one too many).
+    let w = if config.smooth_window % 2 == 0 {
+        config.smooth_window + 1
+    } else {
+        config.smooth_window
+    };
     let mut smoothed_beta_data = raw_beta_data.clone();
-    let w = config.smooth_window;
     if w > 1 && m > 1 {
         let half = w / 2;
         for j in 0..p {
@@ -2373,5 +2413,213 @@ mod tests {
         let cfg = FastFmmConfig::default();
         let bad_ids = vec![0usize; subject_ids.len() + 1];
         assert!(fast_fmm(&data, &bad_ids, None, &cfg).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // REG-05-G: dense_flmm converged field is exercised (WR-04)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_dense_flmm_converged() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 20);
+        // With plenty of iterations, well-conditioned data should converge.
+        let cfg = DenseFlmmConfig {
+            max_iter: 100,
+            ..Default::default()
+        };
+        let result = dense_flmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap();
+        assert!(result.converged, "should converge with 100 iterations");
+
+        // With max_iter=1 and a very tight tol, convergence should fail to be
+        // reported (n_iter reported is exactly 1).
+        let tight_cfg = DenseFlmmConfig {
+            max_iter: 1,
+            tol: 1e-30,
+            ..Default::default()
+        };
+        let result2 = dense_flmm(&data, &subject_ids, Some(&covariates), &tight_cfg).unwrap();
+        assert_eq!(result2.n_iter, 1, "expected exactly 1 iteration");
+        // With 1 iteration and a near-impossible tolerance, converged is likely false.
+        // We do not assert it is false (could converge in 1 step on degenerate data),
+        // but we do verify n_iter is tracked correctly.
+    }
+
+    // -----------------------------------------------------------------------
+    // REG-05-K: fast_fmm detects a real fixed effect (WR-04)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fast_fmm_detects_effect() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 20);
+        let cfg = FastFmmConfig {
+            compute_inference: true,
+            ..Default::default()
+        };
+        let result = fast_fmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap();
+        // beta_matrix row 0 (the covariate effect) should be non-zero since the
+        // data-generating process includes a fixed covariate term z * t * 3.
+        let norm_sq: f64 = (0..result.beta_matrix.ncols())
+            .map(|t| result.beta_matrix[(0, t)].powi(2))
+            .sum();
+        assert!(
+            norm_sq > 0.0,
+            "beta_matrix row 0 should be non-zero for data with a real covariate effect"
+        );
+        // At least some grid points should show a meaningful t-statistic.
+        let max_abs_t: f64 = (0..result.t_stats.ncols())
+            .map(|t| result.t_stats[(0, t)].abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_abs_t > 0.5,
+            "expected a noticeable t-stat somewhere on the grid, got max |t|={max_abs_t}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // REG-05-L: fast_fmm empty-data error path (WR-04)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fast_fmm_empty_data_error() {
+        let empty = FdMatrix::zeros(0, 0);
+        let cfg = FastFmmConfig::default();
+        let err = fast_fmm(&empty, &[], None, &cfg).unwrap_err();
+        match err {
+            FdarError::InvalidDimension { parameter, .. } => {
+                assert_eq!(parameter, "data");
+            }
+            other => panic!("Expected InvalidDimension for data, got {:?}", other),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // CR-01: fast_fmm max_iter actually takes effect
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fast_fmm_max_iter_takes_effect() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 20);
+        // A very tight 1-iteration run should yield different variance estimates
+        // than a well-converged 100-iteration run.
+        let cfg_tight = FastFmmConfig {
+            max_iter: 1,
+            tol: 1e-30,
+            compute_inference: false,
+            ..Default::default()
+        };
+        let cfg_full = FastFmmConfig {
+            max_iter: 100,
+            tol: 1e-10,
+            compute_inference: false,
+            ..Default::default()
+        };
+        let r1 = fast_fmm(&data, &subject_ids, Some(&covariates), &cfg_tight).unwrap();
+        let r2 = fast_fmm(&data, &subject_ids, Some(&covariates), &cfg_full).unwrap();
+        // sigma2_eps at some grid points should differ between 1-iter and 100-iter.
+        let same = r1
+            .sigma2_eps
+            .iter()
+            .zip(&r2.sigma2_eps)
+            .all(|(a, b)| (a - b).abs() < 1e-12);
+        assert!(
+            !same,
+            "1-iter and 100-iter fast_fmm should produce different sigma2_eps (max_iter is now wired)"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // WR-01: even smooth_window is rounded up to nearest odd
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fast_fmm_even_smooth_window() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(6, 3, 15);
+        // Even window (4) — should not error, and produces finite results.
+        let cfg_even = FastFmmConfig {
+            smooth_window: 4,
+            compute_inference: false,
+            ..Default::default()
+        };
+        let result = fast_fmm(&data, &subject_ids, Some(&covariates), &cfg_even).unwrap();
+        assert_eq!(result.n_grid, 15);
+        for j in 0..result.beta_matrix.nrows() {
+            for t in 0..result.beta_matrix.ncols() {
+                assert!(result.beta_matrix[(j, t)].is_finite());
+            }
+        }
+        // Odd window (5) should produce the same result as even 4 (rounded up to 5).
+        let cfg_odd = FastFmmConfig {
+            smooth_window: 5,
+            compute_inference: false,
+            ..Default::default()
+        };
+        let result_odd = fast_fmm(&data, &subject_ids, Some(&covariates), &cfg_odd).unwrap();
+        for j in 0..result.beta_matrix.nrows() {
+            for t in 0..result.beta_matrix.ncols() {
+                assert!(
+                    (result.beta_matrix[(j, t)] - result_odd.beta_matrix[(j, t)]).abs() < 1e-12,
+                    "even window 4 should produce identical output to odd window 5 (rounded up)"
+                );
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // WR-02: random_slopes = true returns InvalidParameter
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_dense_flmm_random_slopes_errors() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(6, 2, 15);
+        let cfg = DenseFlmmConfig {
+            random_slopes: true,
+            ..Default::default()
+        };
+        let err = dense_flmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap_err();
+        match err {
+            FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "random_slopes");
+            }
+            other => panic!(
+                "Expected InvalidParameter for random_slopes, got {:?}",
+                other
+            ),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // WR-03: max_iter == 0 returns InvalidParameter for dense_flmm and fast_fmm
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_dense_flmm_max_iter_zero_errors() {
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(4, 2, 10);
+        let cfg = DenseFlmmConfig {
+            max_iter: 0,
+            ..Default::default()
+        };
+        let err = dense_flmm(&data, &subject_ids, None, &cfg).unwrap_err();
+        match err {
+            FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "max_iter");
+            }
+            other => panic!("Expected InvalidParameter for max_iter, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_fast_fmm_max_iter_zero_errors() {
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(4, 2, 10);
+        let cfg = FastFmmConfig {
+            max_iter: 0,
+            ..Default::default()
+        };
+        let err = fast_fmm(&data, &subject_ids, None, &cfg).unwrap_err();
+        match err {
+            FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "max_iter");
+            }
+            other => panic!("Expected InvalidParameter for max_iter, got {:?}", other),
+        }
     }
 }
