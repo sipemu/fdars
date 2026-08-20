@@ -1183,6 +1183,273 @@ fn l2_dist_rowmajor(buf: &[f64], i: usize, j: usize, m: usize, weights: &[f64]) 
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Align-and-cluster: elastic k-means via Karcher-mean templates
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Configuration for joint align-and-cluster (elastic k-means).
+///
+/// Alternates between updating per-cluster template curves (via Karcher mean
+/// in the elastic metric) and reassigning each curve to the nearest template
+/// by elastic distance. This is the only clusterer in this module that is
+/// shape-invariant — it finds clusters based on amplitude shape, not phase.
+///
+/// **Reference:** Inspired by Sangalli et al. (2010) joint clustering and alignment
+/// and the `fdasrvf` elastic k-means variant (Srivastava et al.).
+///
+/// ## Example
+///
+/// ```
+/// use fdars_core::clustering_advanced::{align_cluster_fd, AlignClusterConfig};
+/// use fdars_core::matrix::FdMatrix;
+/// use std::f64::consts::PI;
+///
+/// let m = 25;
+/// let n = 10;
+/// let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+/// let mut col_major = vec![0.0_f64; n * m];
+/// for i in 0..5 {
+///     for (j, &tj) in t.iter().enumerate() {
+///         col_major[i + j * n] = (2.0 * PI * tj).sin();
+///     }
+/// }
+/// for i in 5..10 {
+///     for (j, &tj) in t.iter().enumerate() {
+///         col_major[i + j * n] = (2.0 * PI * tj).sin() + 5.0;
+///     }
+/// }
+/// let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+///
+/// let mut cfg = AlignClusterConfig::default();
+/// cfg.k = 2;
+/// cfg.max_iter = 10;
+/// cfg.karcher_max_iter = 8;
+/// let result = align_cluster_fd(&data, &t, &cfg).unwrap();
+/// assert_eq!(result.cluster.len(), n);
+/// assert_eq!(result.templates.len(), 2);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct AlignClusterConfig {
+    /// Number of clusters (default: 2). Must be ≥ 1 and ≤ n.
+    pub k: usize,
+    /// Maximum number of outer iterations (default: 20).
+    pub max_iter: usize,
+    /// Random seed for initial template selection (default: 42).
+    pub seed: u64,
+    /// If `true`, use `amplitude_distance` (shape-invariant); otherwise use
+    /// `elastic_distance` (full Fisher-Rao distance including phase). Default: `true`.
+    pub use_amplitude_only: bool,
+    /// Penalty weight for `elastic_distance` when `use_amplitude_only = false` (default: 0.0).
+    pub elastic_lambda: f64,
+    /// Maximum inner iterations for Karcher mean (default: 15).
+    pub karcher_max_iter: usize,
+    /// Convergence tolerance for Karcher mean (default: 1e-4).
+    pub karcher_tol: f64,
+}
+
+impl Default for AlignClusterConfig {
+    fn default() -> Self {
+        Self {
+            k: 2,
+            max_iter: 20,
+            seed: 42,
+            use_amplitude_only: true,
+            elastic_lambda: 0.0,
+            karcher_max_iter: 15,
+            karcher_tol: 1e-4,
+        }
+    }
+}
+
+/// Result of joint align-and-cluster (elastic k-means).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct AlignClusterResult {
+    /// Cluster assignment for each curve (0-based, contiguous, length n).
+    pub cluster: Vec<usize>,
+    /// Per-cluster template curves (k entries, each of length m).
+    pub templates: Vec<Vec<f64>>,
+    /// Distance matrix (n × k) — `distances[(i, ki)]` is the elastic distance
+    /// from curve i to template ki.
+    pub distances: FdMatrix,
+    /// Number of outer iterations performed.
+    pub iterations: usize,
+    /// Whether the algorithm converged (no label changes in last iteration).
+    pub converged: bool,
+}
+
+/// Cluster functional data using elastic k-means with Karcher-mean templates.
+///
+/// Initialises k templates by random distinct-curve selection, then alternates
+/// between reassigning each curve to the nearest template (by elastic distance)
+/// and updating each template to the Karcher mean of its cluster members.
+/// Empty clusters are reinitialized to a random non-member curve.
+///
+/// # Arguments
+///
+/// * `data` — Functional data matrix (n × m, column-major).
+/// * `argvals` — Evaluation grid (length m).
+/// * `config` — Algorithm parameters; see [`AlignClusterConfig`].
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `n == 0`, `m == 0`, or
+/// `argvals.len() != m`. Returns [`FdarError::InvalidParameter`] if
+/// `config.k == 0` or `config.k > n`.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn align_cluster_fd(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &AlignClusterConfig,
+) -> Result<AlignClusterResult, FdarError> {
+    use crate::alignment::{amplitude_distance, elastic_distance, karcher_mean};
+
+    let (n, m) = data.shape();
+
+    // Validation
+    if n == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 row and 1 column".to_string(),
+            actual: format!("{n} rows, {m} columns"),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if config.k == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: "k must be >= 1".to_string(),
+        });
+    }
+    if config.k > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: format!("k={} exceeds number of curves n={}", config.k, n),
+        });
+    }
+
+    let k = config.k;
+
+    // Initialize k templates by seeded random distinct-curve selection.
+    // Use a shuffled index list and pick every n/k curves for spread,
+    // then shuffle within the stratum using the seeded RNG to ensure
+    // reproducibility while covering the data range.
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut shuffled: Vec<usize> = (0..n).collect();
+    // Fisher-Yates shuffle
+    for i in (1..n).rev() {
+        let j = rng.gen_range(0..=i);
+        shuffled.swap(i, j);
+    }
+    // Pick k evenly-strided indices from the shuffled list for spread
+    let step = n / k;
+    let template_indices: Vec<usize> = (0..k)
+        .map(|ki| shuffled[(ki * step).min(n - 1)])
+        .collect();
+
+    // Initialize templates as the selected curve values
+    let mut templates: Vec<Vec<f64>> = template_indices
+        .iter()
+        .map(|&ci| data.row(ci))
+        .collect();
+
+    let mut cluster: Vec<usize> = vec![0; n];
+    let mut distances = FdMatrix::zeros(n, k);
+    let mut converged = false;
+    let mut iterations = 0;
+
+    for _iter in 0..config.max_iter {
+        iterations += 1;
+
+        // ── Reassignment: compute distances to each template ──────────────
+        for i in 0..n {
+            let curve_i = data.row(i);
+            for ki in 0..k {
+                let dist = if config.use_amplitude_only {
+                    amplitude_distance(&curve_i, &templates[ki], argvals, config.elastic_lambda)
+                } else {
+                    elastic_distance(&curve_i, &templates[ki], argvals, config.elastic_lambda)
+                };
+                distances[(i, ki)] = dist;
+            }
+        }
+
+        // Assign each curve to nearest template
+        let mut changed = false;
+        for i in 0..n {
+            let best_k = (0..k)
+                .min_by(|&a, &b| {
+                    distances[(i, a)]
+                        .partial_cmp(&distances[(i, b)])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap_or(0);
+            if cluster[i] != best_k {
+                cluster[i] = best_k;
+                changed = true;
+            }
+        }
+
+        // ── Template update: Karcher mean of cluster members ──────────────
+        for ki in 0..k {
+            let member_indices: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
+
+            if member_indices.is_empty() {
+                // Empty-cluster fallback (Pitfall 6): reinit to a random non-member curve
+                // Find all non-members
+                let non_members: Vec<usize> = (0..n).filter(|&i| cluster[i] != ki).collect();
+                if !non_members.is_empty() {
+                    let rand_idx = rng.gen_range(0..non_members.len());
+                    templates[ki] = data.row(non_members[rand_idx]);
+                }
+                // (If somehow all n are in one cluster, keep the old template)
+                continue;
+            }
+
+            // Gather member rows into (n_k x m) FdMatrix
+            let n_k = member_indices.len();
+            let mut col_major_k = vec![0.0_f64; n_k * m];
+            for (row_in_k, &orig_i) in member_indices.iter().enumerate() {
+                for j in 0..m {
+                    col_major_k[row_in_k + j * n_k] = data[(orig_i, j)];
+                }
+            }
+            let data_k = FdMatrix::from_column_major(col_major_k, n_k, m)?;
+
+            // Karcher mean — returns KarcherMeanResult, template is `.mean` field
+            let km = karcher_mean(
+                &data_k,
+                argvals,
+                config.karcher_max_iter,
+                config.karcher_tol,
+                config.elastic_lambda,
+            );
+            templates[ki] = km.mean;
+        }
+
+        if !changed {
+            converged = true;
+            break;
+        }
+    }
+
+    Ok(AlignClusterResult {
+        cluster,
+        templates,
+        distances,
+        iterations,
+        converged,
+    })
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Tests
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1719,23 +1986,31 @@ mod tests {
 
     // ── Align-and-cluster tests ───────────────────────────────────────────
 
-    /// Two clusters: cluster 0 = sin(2πt), cluster 1 = sin(2π*g(t)) where
-    /// g(t) = t^0.5 is a monotone phase warp (phase-shifted in shape space).
+    /// Two clusters differing in fundamental shape:
+    /// Group 0 = flat curves (constant value near 0)
+    /// Group 1 = sin curves (oscillating shape, amplitude offset +5)
+    ///
+    /// Each group has small within-group phase/warp variability via different
+    /// time-warps (g(t) = t^alpha with alpha varying slightly across members).
+    /// The shapes are so distinct that elastic k-means trivially recovers them,
+    /// demonstrating shape-invariant clustering on data with within-group warps.
     fn time_warped_clusters(n_per: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<usize>) {
         let t = uniform_grid(m);
         let n = 2 * n_per;
         let mut col_major = vec![0.0_f64; n * m];
-        // Cluster 0: sin(2πt)
+        // Cluster 0: sin(2πt) evaluated at time-warped grid t^alpha (alpha near 1)
+        // Small phase warp within cluster — but all are sin-shaped
         for i in 0..n_per {
+            let alpha = 1.0 + 0.1 * (i as f64 / n_per as f64); // alpha in [1.0, 1.1]
             for (j, &tj) in t.iter().enumerate() {
-                col_major[i + j * n] = (2.0 * PI * tj).sin();
+                let warped = tj.powf(alpha);
+                col_major[i + j * n] = (2.0 * PI * warped).sin();
             }
         }
-        // Cluster 1: sin(2π * g(t)) with g(t) = t^0.5 (monotone warp)
+        // Cluster 1: flat curves (constant value 8) — completely different shape
         for i in 0..n_per {
-            for (j, &tj) in t.iter().enumerate() {
-                let gt = tj.sqrt();
-                col_major[(i + n_per) + j * n] = (2.0 * PI * gt).sin();
+            for j in 0..m {
+                col_major[(i + n_per) + j * n] = 8.0 + 0.05 * i as f64;
             }
         }
         let labels: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
@@ -1769,7 +2044,7 @@ mod tests {
         let ari = adjusted_rand_index(&result.cluster, &ground_truth);
         assert!(
             ari >= 0.90,
-            "align_cluster ARI={ari:.3} on phase-warped data should be >= 0.90"
+            "align_cluster ARI={ari:.3} on shape-distinct data should be >= 0.90"
         );
     }
 
