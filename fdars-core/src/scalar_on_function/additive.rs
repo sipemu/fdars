@@ -262,7 +262,8 @@ fn resolve_ncomp_additive(
                     y[i] - mu_y - prior_sum
                 })
                 .collect();
-            let bw_result = optim_bandwidth(&xi_j, &partial, None, CvCriterion::Gcv, kernel, n_grid);
+            let bw_result =
+                optim_bandwidth(&xi_j, &partial, None, CvCriterion::Gcv, kernel, n_grid);
             let gcv_j = bw_result.value;
             // Fit this component using the selected bandwidth
             let fit_j = nadaraya_watson(&xi_j, &partial, &xi_j, bw_result.h_opt, kernel)
@@ -1532,7 +1533,11 @@ fn select_group_lasso_lambda(
             // Build score_groups restricted to train rows
             let sg_tr: Vec<Vec<Vec<f64>>> = score_groups
                 .iter()
-                .map(|grp| grp.iter().map(|col| train_idx.iter().map(|&i| col[i]).collect()).collect())
+                .map(|grp| {
+                    grp.iter()
+                        .map(|col| train_idx.iter().map(|&i| col[i]).collect())
+                        .collect()
+                })
                 .collect();
 
             // Build scalar_covariates restricted to train rows (column-major FdMatrix)
@@ -1674,8 +1679,8 @@ fn group_lasso_cd(
                     .sum();
             }
 
-            let beta_ols = crate::linalg::cholesky_solve(&xtx_g, &xty_g, k_g)
-                .unwrap_or_else(|_| {
+            let beta_ols =
+                crate::linalg::cholesky_solve(&xtx_g, &xty_g, k_g).unwrap_or_else(|_| {
                     // Cholesky failed: X_g'X_g is (near-)singular.
                     // Add ridge regularization: solve (X_g'X_g + δI) β = X_g' partial.
                     // δ is 1e-6 × (mean diagonal) to keep the scale relative to the data.
@@ -2988,9 +2993,7 @@ mod tests {
 
         // Build a scalar covariate matrix (n × 2)
         let p_scalar = 2_usize;
-        let sc_vals: Vec<f64> = (0..n * p_scalar)
-            .map(|k| (k as f64 * 0.1).sin())
-            .collect();
+        let sc_vals: Vec<f64> = (0..n * p_scalar).map(|k| (k as f64 * 0.1).sin()).collect();
         // FdMatrix is column-major: n rows, p_scalar cols
         let mut sc_cm = vec![0.0_f64; n * p_scalar];
         for row in 0..n {
