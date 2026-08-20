@@ -1716,4 +1716,152 @@ mod tests {
         assert_eq!(result.cluster.len(), n);
         assert_eq!(result.membership.shape(), (n, 2));
     }
+
+    // ── Align-and-cluster tests ───────────────────────────────────────────
+
+    /// Two clusters: cluster 0 = sin(2πt), cluster 1 = sin(2π*g(t)) where
+    /// g(t) = t^0.5 is a monotone phase warp (phase-shifted in shape space).
+    fn time_warped_clusters(n_per: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<usize>) {
+        let t = uniform_grid(m);
+        let n = 2 * n_per;
+        let mut col_major = vec![0.0_f64; n * m];
+        // Cluster 0: sin(2πt)
+        for i in 0..n_per {
+            for (j, &tj) in t.iter().enumerate() {
+                col_major[i + j * n] = (2.0 * PI * tj).sin();
+            }
+        }
+        // Cluster 1: sin(2π * g(t)) with g(t) = t^0.5 (monotone warp)
+        for i in 0..n_per {
+            for (j, &tj) in t.iter().enumerate() {
+                let gt = tj.sqrt();
+                col_major[(i + n_per) + j * n] = (2.0 * PI * gt).sin();
+            }
+        }
+        let labels: Vec<usize> = (0..n).map(|i| if i < n_per { 0 } else { 1 }).collect();
+        (
+            FdMatrix::from_column_major(col_major, n, m).unwrap(),
+            t,
+            labels,
+        )
+    }
+
+    #[test]
+    fn test_align_cluster_shape_shift() {
+        // Use small n_per and m as per the anti-stall note (elastic DP is slow)
+        let m = 30;
+        let n_per = 6;
+        let (data, t, ground_truth) = time_warped_clusters(n_per, m);
+        let result = align_cluster_fd(
+            &data,
+            &t,
+            &AlignClusterConfig {
+                k: 2,
+                max_iter: 15,
+                seed: 42,
+                use_amplitude_only: true,
+                elastic_lambda: 0.0,
+                karcher_max_iter: 10,
+                karcher_tol: 1e-3,
+            },
+        )
+        .unwrap();
+        let ari = adjusted_rand_index(&result.cluster, &ground_truth);
+        assert!(
+            ari >= 0.90,
+            "align_cluster ARI={ari:.3} on phase-warped data should be >= 0.90"
+        );
+    }
+
+    #[test]
+    fn test_align_cluster_recovery() {
+        let m = 30;
+        let n_per = 6;
+        let (data, t, ground_truth) = two_separated_clusters(n_per, m);
+        let result = align_cluster_fd(
+            &data,
+            &t,
+            &AlignClusterConfig {
+                k: 2,
+                max_iter: 15,
+                seed: 7,
+                use_amplitude_only: true,
+                elastic_lambda: 0.0,
+                karcher_max_iter: 10,
+                karcher_tol: 1e-3,
+            },
+        )
+        .unwrap();
+        let ari = adjusted_rand_index(&result.cluster, &ground_truth);
+        assert!(
+            ari >= 0.90,
+            "align_cluster ARI={ari:.3} on amplitude-separated data should be >= 0.90"
+        );
+    }
+
+    #[test]
+    fn test_align_cluster_invalid_k_zero() {
+        let m = 20;
+        let (data, t, _) = two_tight_clusters(5, m);
+        assert!(
+            align_cluster_fd(&data, &t, &AlignClusterConfig { k: 0, ..AlignClusterConfig::default() }).is_err(),
+            "k=0 must return Err"
+        );
+    }
+
+    #[test]
+    fn test_align_cluster_invalid_k_gt_n() {
+        let m = 20;
+        let (data, t, _) = two_tight_clusters(3, m);
+        assert!(
+            align_cluster_fd(&data, &t, &AlignClusterConfig { k: 20, ..AlignClusterConfig::default() }).is_err(),
+            "k>n must return Err"
+        );
+    }
+
+    #[test]
+    fn test_align_cluster_invalid_empty_data() {
+        let data = FdMatrix::zeros(0, 0);
+        let t: Vec<f64> = vec![];
+        assert!(
+            align_cluster_fd(&data, &t, &AlignClusterConfig::default()).is_err(),
+            "empty data must return Err"
+        );
+    }
+
+    #[test]
+    fn test_align_cluster_invalid_argvals_mismatch() {
+        let m = 20;
+        let (data, _t, _) = two_tight_clusters(5, m);
+        let wrong_t = uniform_grid(m + 5);
+        assert!(
+            align_cluster_fd(&data, &wrong_t, &AlignClusterConfig::default()).is_err(),
+            "argvals mismatch must return Err"
+        );
+    }
+
+    #[test]
+    fn test_align_cluster_output_shapes() {
+        let m = 20;
+        let n_per = 4;
+        let (data, t, _) = two_separated_clusters(n_per, m);
+        let n = 2 * n_per;
+        let result = align_cluster_fd(
+            &data,
+            &t,
+            &AlignClusterConfig {
+                k: 2,
+                max_iter: 5,
+                seed: 1,
+                karcher_max_iter: 5,
+                karcher_tol: 1e-2,
+                ..AlignClusterConfig::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(result.cluster.len(), n);
+        assert_eq!(result.templates.len(), 2);
+        assert!(result.templates.iter().all(|t| t.len() == m));
+        assert_eq!(result.distances.shape(), (n, 2));
+    }
 }
