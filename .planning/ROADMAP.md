@@ -55,7 +55,12 @@ Plans:
   4. The mixed-model family reuses the existing `famm.rs` fixed-effect machinery and FPC-score / basis-coefficient infrastructure rather than adding a new subsystem, adds no new crate dependency, and invalid inputs (empty data / mismatched grouping factor length / singular design / mismatched dimensions) return `FdarError` rather than panicking.
   5. Existing `famm::fmm_test_fixed` and the base `fof_regression.rs` public signatures keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 32-01-PLAN.md — denseFLMM tracer + multiFAMM + fastFMM in `famm.rs` (+ 6 pub(crate) promotions, re-exports)
+- [ ] 32-02-PLAN.md — flexible-RE function-on-function (`fof_re_regression` + `predict_fof_re`) in `fof_regression.rs` (Wave 2)
 
 ### Phase 33: Model-Based & Density Functional Clustering
 
@@ -77,7 +82,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 31. Additive Functional Regression & Variable Selection | 2/2 | Complete    | 2026-08-20 |
-| 32. Flexible Mixed-Effects Regression | 0/TBD | Not started | - |
+| 32. Flexible Mixed-Effects Regression | 0/2 | Not started | - |
 | 33. Model-Based & Density Functional Clustering | 0/TBD | Not started | - |
 
 **Execution order:** All three phases are **independent** — REG-04 (Phase 31), REG-05 (Phase 32), and CLUS-01 (Phase 33) have no cross-phase hard dependency (unlike v0.23.0's DEPTH→OUT chain), so they may be planned and executed in any order or in parallel. Each extends a disjoint area of the codebase (`scalar_on_function/` / `famm.rs`+`fof_regression.rs` / `clustering.rs`+`gmm/`). The next three top-ranked P2 differentiators in `R-BACKLOG.md` (REG-04 rank 12, REG-05 rank 13, CLUS-01 rank 15 — all score 1.73, M-effort). Additive/non-breaking, reuse-first, **no new crate dependency**; numeric outputs only (plotting out of scope).
