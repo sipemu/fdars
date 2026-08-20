@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.23.0
-milestone_name: Depth, Outliers & Interval Inference
-current_phase: 29
-current_phase_name: "verification passed 5/5; next: Phase 30"
-status: complete
-stopped_at: Completed 30-02-PLAN.md (itp_two_pop + itp_flm)
-last_updated: "2026-08-20T06:41:17.503Z"
-last_activity: 2026-08-19
-last_activity_desc: Phase 29 executed inline, full lib suite green (2165 tests), clippy --all-targets clean, serde build clean
+milestone: v0.24.0
+milestone_name: Functional Regression & Clustering Breadth
+status: planning
+last_updated: "2026-08-20T08:03:20.146Z"
+last_activity: 2026-08-20
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 
 ## Current Position
 
-Phase: 29 complete (OUT-01) — verification passed 5/5; next: Phase 30 (INF-03, independent)
-Plan: 28-* and 29-* all complete + verified (5 plans)
-Status: Phases 28+29 shipped — 9 depth measures + 4 outlier detectors (tvdmss/muod/sequential_transform_outliers/depthgram) added additively; tvdmss consumes Phase 28 TvdMssResult
-Last activity: 2026-08-19 — Phase 29 executed inline, full lib suite green (2165 tests), clippy --all-targets clean, serde build clean
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-08-20 — Milestone v0.24.0 started
 
 ## Milestone Roadmap (v0.23.0)
 
