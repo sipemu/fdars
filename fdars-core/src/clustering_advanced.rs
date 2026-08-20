@@ -402,6 +402,12 @@ pub fn kcfc_cluster(
             message: format!("k={} exceeds number of curves n={}", config.k, n),
         });
     }
+    if config.ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be >= 1".to_string(),
+        });
+    }
 
     let k = config.k;
     let weights = simpsons_weights(argvals);
@@ -1881,6 +1887,30 @@ mod tests {
         assert_eq!(result.cluster.len(), n);
         assert_eq!(result.fpca_models.len(), 2);
         assert_eq!(result.reconstruction_errors.shape(), (n, 2));
+    }
+
+    #[test]
+    fn test_kcfc_ncomp_zero_returns_err() {
+        // ncomp == 0 must be caught at entry rather than silently assigning all
+        // curves to cluster 0 (which was the pre-fix behavior when fdata_to_pc_1d
+        // returned Err and was swallowed by the degenerate-cluster arm).
+        let m = 20;
+        let (data, t, _) = two_tight_clusters(5, m);
+        let result = kcfc_cluster(
+            &data,
+            &t,
+            &KcfcConfig {
+                k: 2,
+                ncomp: 0,
+                ..Default::default()
+            },
+        );
+        assert!(result.is_err(), "ncomp=0 must return Err, got Ok");
+        if let Err(FdarError::InvalidParameter { parameter, .. }) = result {
+            assert_eq!(parameter, "ncomp");
+        } else {
+            panic!("expected InvalidParameter {{ parameter: \"ncomp\" }}");
+        }
     }
 
     // ── funFEM tests ─────────────────────────────────────────────────────────
