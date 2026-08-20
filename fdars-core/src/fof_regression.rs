@@ -516,6 +516,468 @@ pub fn fof_cv(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Random-effects function-on-function regression
+// ---------------------------------------------------------------------------
+
+/// Configuration for [`fof_re_regression`].
+///
+/// No `#[non_exhaustive]` — callers may construct with struct literals.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FofReConfig {
+    /// Number of predictor FPC components (default: 3)
+    pub ncomp_x: usize,
+    /// Number of response FPC components (default: 3)
+    pub ncomp_y: usize,
+    /// Maximum REML EM iterations per Y-score component (default: 50)
+    pub max_iter: usize,
+    /// Convergence tolerance for variance components (default: 1e-10)
+    pub tol: f64,
+}
+
+impl Default for FofReConfig {
+    fn default() -> Self {
+        Self {
+            ncomp_x: 3,
+            ncomp_y: 3,
+            max_iter: 50,
+            tol: 1e-10,
+        }
+    }
+}
+
+/// Result of a random-effects function-on-function regression.
+///
+/// Extends [`FofResult`] with subject-level random intercepts on Y-score
+/// components, enabling prediction for grouped/longitudinal functional data.
+///
+/// # Divergence from `refund::pffr`
+///
+/// R's `pffr(y ~ pcre(x))` uses a penalized-spline GAMM (mgcv) backend with
+/// functional random effects represented in a spline basis. `fof_re_regression`
+/// instead uses the FPC-score parametrization: both X and Y are decomposed into
+/// FPC scores (`fdata_to_pc_1d`), and for each Y-score component a scalar linear
+/// mixed model (REML EM, reusing `famm::fit_scalar_mixed_model`) is fitted with
+/// the X-scores as fixed-effect covariates and subject IDs as the grouping factor.
+/// No basis penalties are applied — this matches the locked design decision for
+/// Phase 32.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FofReResult {
+    /// Intercept function α(s) = mean_y(s) (length m_y)
+    pub intercept: Vec<f64>,
+    /// Coefficient surface β(s,t) stored as (m_y × m_x) matrix
+    pub beta_surface: FdMatrix,
+    /// Fitted response curves (n × m_y), including fixed + random effects
+    pub fitted: FdMatrix,
+    /// Residual curves (n × m_y)
+    pub residuals: FdMatrix,
+    /// R-squared per response grid point (length m_y)
+    pub r_squared_t: Vec<f64>,
+    /// Overall R-squared (mean of pointwise R-squared)
+    pub r_squared: f64,
+    /// Number of predictor FPC components used
+    pub ncomp_x: usize,
+    /// Number of response FPC components used
+    pub ncomp_y: usize,
+    /// FPCA of predictor (carried for prediction)
+    pub fpca_x: FpcaResult,
+    /// FPCA of response (carried for reconstruction)
+    pub fpca_y: FpcaResult,
+    /// Fixed-effect coefficient matrix B (ncomp_x × ncomp_y):
+    /// Y-scores ≈ X-scores * B
+    pub coef_matrix: FdMatrix,
+    /// Subject-level random intercept functions (n_subjects × m_y)
+    pub random_effects: FdMatrix,
+    /// Per-Y-component random-intercept variance (length ncomp_y)
+    pub sigma2_u: Vec<f64>,
+    /// Mean residual variance across Y-score components
+    pub sigma2_eps: f64,
+    /// Number of unique subjects
+    pub n_subjects: usize,
+}
+
+/// Flexible random-effects function-on-function regression via double FPCA.
+///
+/// Extends [`fof_regression`] by fitting a scalar linear mixed model (REML EM)
+/// for each Y-score component, adding subject-level random intercepts. This
+/// captures within-subject correlation in grouped/longitudinal functional data.
+///
+/// # Algorithm
+///
+/// 1. **Double FPCA** (same as `fof_regression`): decompose X and Y into FPC
+///    scores via `fdata_to_pc_1d`.
+/// 2. **Per-Y-score mixed model** (new): for each Y-score component `l`,
+///    fit `y_scores[:,l] = x_scores * γ_l + u_{subj(i),l} + ε_il` using
+///    `famm::fit_scalar_mixed_model`. X-scores are passed directly as
+///    covariates without rescaling (Pitfall 2: projection already carries
+///    the L² weighting — do NOT re-apply `h.sqrt()` normalization).
+/// 3. **Reconstruction** (same structure as `fof_regression`): build
+///    `beta_surface` from `coef_matrix`; fitted curves add mean_y + fixed
+///    X-score contribution + subject random-effect contribution;
+///    `random_effects` reconstructed via `famm::recover_random_effects`.
+///
+/// # Arguments
+/// * `x_data` - Functional predictor (n × m_x)
+/// * `y_data` - Functional response (n × m_y)
+/// * `subject_ids` - Subject identifier for each observation (length n)
+/// * `x_argvals` - Predictor evaluation grid (length m_x)
+/// * `y_argvals` - Response evaluation grid (length m_y)
+/// * `config` - [`FofReConfig`] with component counts and convergence settings
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if:
+/// - `x_data` and `y_data` have different row counts
+/// - fewer than 3 observations
+/// - argvals lengths do not match column counts
+/// - `subject_ids.len()` does not equal `n`
+///
+/// Returns [`FdarError::InvalidParameter`] if `ncomp_x` or `ncomp_y` is zero.
+/// Returns [`FdarError::ComputationFailed`] if FPCA fails.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fof_regression::{fof_re_regression, FofReConfig};
+///
+/// let (n, mx, my) = (20, 25, 15);
+/// let n_subjects = 5;
+/// let x = FdMatrix::from_column_major(
+///     (0..n * mx).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * j * 0.2).sin()
+///     }).collect(), n, mx,
+/// ).unwrap();
+/// let y = FdMatrix::from_column_major(
+///     (0..n * my).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         0.5 * ((i + 1.0) * j * 0.15).cos()
+///     }).collect(), n, my,
+/// ).unwrap();
+/// let tx: Vec<f64> = (0..mx).map(|j| j as f64 / (mx - 1) as f64).collect();
+/// let ty: Vec<f64> = (0..my).map(|j| j as f64 / (my - 1) as f64).collect();
+/// // 4 visits per subject
+/// let subject_ids: Vec<usize> = (0..n).map(|i| i / 4).collect();
+///
+/// let config = FofReConfig::default();
+/// let fit = fof_re_regression(&x, &y, &subject_ids, &tx, &ty, &config).unwrap();
+/// assert_eq!(fit.fitted.shape(), (n, my));
+/// assert_eq!(fit.beta_surface.shape(), (my, mx));
+/// assert_eq!(fit.random_effects.nrows(), n_subjects);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fof_re_regression(
+    x_data: &FdMatrix,
+    y_data: &FdMatrix,
+    subject_ids: &[usize],
+    x_argvals: &[f64],
+    y_argvals: &[f64],
+    config: &FofReConfig,
+) -> Result<FofReResult, FdarError> {
+    let (n_x, m_x) = x_data.shape();
+    let (n_y, m_y) = y_data.shape();
+
+    // --- Input validation ---
+    if n_x != n_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_data",
+            expected: format!("{n_x} rows (matching x_data)"),
+            actual: format!("{n_y} rows"),
+        });
+    }
+    let n = n_x;
+
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_data",
+            expected: "at least 3 observations".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    if x_argvals.len() != m_x {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_argvals",
+            expected: format!("{m_x} elements"),
+            actual: format!("{} elements", x_argvals.len()),
+        });
+    }
+    if y_argvals.len() != m_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_argvals",
+            expected: format!("{m_y} elements"),
+            actual: format!("{} elements", y_argvals.len()),
+        });
+    }
+    if subject_ids.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_ids",
+            expected: format!("length {n}"),
+            actual: format!("length {}", subject_ids.len()),
+        });
+    }
+    if config.ncomp_x == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_x",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.ncomp_y == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_y",
+            message: "must be >= 1".to_string(),
+        });
+    }
+
+    let ncomp_x = config.ncomp_x.min(n - 1).min(m_x);
+    let ncomp_y = config.ncomp_y.min(n - 1).min(m_y);
+
+    // --- Step 1: Double FPCA ---
+    let fpca_x = fdata_to_pc_1d(x_data, ncomp_x, x_argvals)?;
+    let fpca_y = fdata_to_pc_1d(y_data, ncomp_y, y_argvals)?;
+
+    // Project to score space using L²-weighted inner product
+    let x_scores = fpca_x.project(x_data)?;
+    let y_scores = fpca_y.project(y_data)?;
+
+    // Build subject structure (non-contiguous IDs handled by build_subject_map)
+    let (subject_map, n_subjects) = crate::famm::build_subject_map(subject_ids);
+
+    // Wrap x_scores as covariates for fit_scalar_mixed_model.
+    // INTENTIONAL: x_scores are passed directly WITHOUT re-applying h.sqrt() normalization.
+    // The L² weighting is already embedded in fpca_x.project(); re-scaling would double-count
+    // it (Pitfall 2, per Phase 32 RESEARCH.md). This diverges from fit_all_components in
+    // famm.rs which applies score_scale = h.sqrt() before calling fit_scalar_mixed_model.
+    let p = ncomp_x; // number of fixed-effect covariates per Y-score model
+
+    // --- Step 2: Per-Y-score mixed model ---
+    let mut coef_matrix = FdMatrix::zeros(ncomp_x, ncomp_y);
+    // u_hat_per_component[l] = Vec of length n_subjects (random intercepts for Y-score l)
+    let mut u_hat_per_component: Vec<Vec<f64>> = Vec::with_capacity(ncomp_y);
+    let mut sigma2_u = vec![0.0; ncomp_y];
+    let mut sigma2_eps_total = 0.0_f64;
+
+    for l in 0..ncomp_y {
+        // Extract y_scores column l into a Vec<f64>
+        let y_scores_l: Vec<f64> = (0..n).map(|i| y_scores[(i, l)]).collect();
+
+        let result = crate::famm::fit_scalar_mixed_model(
+            &y_scores_l,
+            &subject_map,
+            n_subjects,
+            Some(&x_scores),
+            p,
+        );
+
+        // gamma_l: fixed-effect coefficients (length ncomp_x)
+        for k in 0..ncomp_x {
+            if k < result.gamma.len() {
+                coef_matrix[(k, l)] = result.gamma[k];
+            }
+        }
+        u_hat_per_component.push(result.u_hat);
+        sigma2_u[l] = result.sigma2_u;
+        sigma2_eps_total += result.sigma2_eps;
+    }
+    let sigma2_eps = sigma2_eps_total / ncomp_y as f64;
+
+    // --- Step 3: Reconstruction ---
+
+    // Reconstruct β(s,t) surface
+    let mut beta_surface = FdMatrix::zeros(m_y, m_x);
+    for si in 0..m_y {
+        for tj in 0..m_x {
+            let mut val = 0.0;
+            for k in 0..ncomp_x {
+                for l in 0..ncomp_y {
+                    val +=
+                        coef_matrix[(k, l)] * fpca_x.rotation[(tj, k)] * fpca_y.rotation[(si, l)];
+                }
+            }
+            beta_surface[(si, tj)] = val;
+        }
+    }
+
+    // recover_random_effects expects u_hat[subject][component].
+    // u_hat_per_component is organized as [component][subject], so transpose.
+    let mut u_hat_by_subject: Vec<Vec<f64>> = vec![vec![0.0; ncomp_y]; n_subjects];
+    for l in 0..ncomp_y {
+        for s in 0..n_subjects {
+            u_hat_by_subject[s][l] = u_hat_per_component[l][s];
+        }
+    }
+    // Reconstruct random effects: n_subjects × m_y
+    // random_effects[s, j] = Σ_l u_hat_by_subject[s][l] * phi_y^l(j)
+    let random_effects = crate::famm::recover_random_effects(
+        &u_hat_by_subject,
+        &fpca_y.rotation,
+        n_subjects,
+        m_y,
+        ncomp_y,
+    );
+
+    // Compute fitted curves: mean_y + fixed-effect contribution + subject random effect
+    let mut fitted = FdMatrix::zeros(n, m_y);
+    for i in 0..n {
+        let s = subject_map[i];
+        for j in 0..m_y {
+            let mut val = fpca_y.mean[j];
+            // Fixed-effect contribution: Σ_l (Σ_k x_scores[i,k] * gamma[k,l]) * phi_y^l(j)
+            for l in 0..ncomp_y {
+                let mut score_l = 0.0;
+                for k in 0..ncomp_x {
+                    score_l += x_scores[(i, k)] * coef_matrix[(k, l)];
+                }
+                val += score_l * fpca_y.rotation[(j, l)];
+            }
+            // Random-effect contribution: b_s(j) = Σ_l u_hat[l][s] * phi_y^l(j)
+            val += random_effects[(s, j)];
+            fitted[(i, j)] = val;
+        }
+    }
+
+    // Residuals
+    let mut residuals = FdMatrix::zeros(n, m_y);
+    for i in 0..n {
+        for j in 0..m_y {
+            residuals[(i, j)] = y_data[(i, j)] - fitted[(i, j)];
+        }
+    }
+
+    // Intercept: α(s) = mean_y(s)
+    let intercept = fpca_y.mean.clone();
+
+    // Pointwise R²
+    let mut r_squared_t = vec![0.0; m_y];
+    for j in 0..m_y {
+        let y_mean_j = fpca_y.mean[j];
+        let mut ss_tot = 0.0;
+        let mut ss_res = 0.0;
+        for i in 0..n {
+            ss_tot += (y_data[(i, j)] - y_mean_j).powi(2);
+            ss_res += residuals[(i, j)].powi(2);
+        }
+        r_squared_t[j] = if ss_tot > 0.0 {
+            1.0 - ss_res / ss_tot
+        } else {
+            0.0
+        };
+    }
+    let r_squared = r_squared_t.iter().sum::<f64>() / m_y as f64;
+
+    Ok(FofReResult {
+        intercept,
+        beta_surface,
+        fitted,
+        residuals,
+        r_squared_t,
+        r_squared,
+        ncomp_x,
+        ncomp_y,
+        fpca_x,
+        fpca_y,
+        coef_matrix,
+        random_effects,
+        sigma2_u,
+        sigma2_eps,
+        n_subjects,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Prediction for random-effects FoF model
+// ---------------------------------------------------------------------------
+
+/// Predict functional responses from new functional predictors using a fitted
+/// [`FofReResult`].
+///
+/// Prediction is **fixed-effect only** — no random effects are added for
+/// unseen subjects. This mirrors the `fmm_predict` / `predict_fof` convention:
+/// new subjects receive only the population-level fixed-effect prediction.
+///
+/// # Arguments
+/// * `fit` - A fitted [`FofReResult`]
+/// * `new_x` - New functional predictor data (n_new × m_x)
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if the column count of `new_x`
+/// does not match the predictor grid used during fitting.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fof_regression::{fof_re_regression, predict_fof_re, FofReConfig};
+///
+/// let (n, mx, my) = (20, 25, 15);
+/// let x = FdMatrix::from_column_major(
+///     (0..n * mx).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         ((i + 1.0) * j * 0.2).sin()
+///     }).collect(), n, mx,
+/// ).unwrap();
+/// let y = FdMatrix::from_column_major(
+///     (0..n * my).map(|k| {
+///         let i = (k % n) as f64;
+///         let j = (k / n) as f64;
+///         0.5 * ((i + 1.0) * j * 0.15).cos()
+///     }).collect(), n, my,
+/// ).unwrap();
+/// let tx: Vec<f64> = (0..mx).map(|j| j as f64 / (mx - 1) as f64).collect();
+/// let ty: Vec<f64> = (0..my).map(|j| j as f64 / (my - 1) as f64).collect();
+/// let subject_ids: Vec<usize> = (0..n).map(|i| i / 4).collect();
+///
+/// let config = FofReConfig::default();
+/// let fit = fof_re_regression(&x, &y, &subject_ids, &tx, &ty, &config).unwrap();
+/// let predicted = predict_fof_re(&fit, &x).unwrap();
+/// assert_eq!(predicted.shape(), (n, my));
+/// ```
+#[must_use = "prediction result should not be discarded"]
+pub fn predict_fof_re(fit: &FofReResult, new_x: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    let (n_new, _m_x) = new_x.shape();
+
+    // Project onto predictor FPCA
+    let x_scores = fit.fpca_x.project(new_x)?;
+
+    let ncomp_x = fit.ncomp_x;
+    let ncomp_y = fit.ncomp_y;
+    let m_y = fit.fpca_y.mean.len();
+
+    // Compute predicted Y-scores: Ŷ_scores = X_scores * coef_matrix (fixed effect only)
+    let mut pred_scores = FdMatrix::zeros(n_new, ncomp_y);
+    for i in 0..n_new {
+        for l in 0..ncomp_y {
+            let mut s = 0.0;
+            for k in 0..ncomp_x {
+                s += x_scores[(i, k)] * fit.coef_matrix[(k, l)];
+            }
+            pred_scores[(i, l)] = s;
+        }
+    }
+
+    // Reconstruct: Ŷ(s) = mean_y(s) + Σ_l score_l * φ_y^l(s)
+    // No random effects for new (unseen) subjects — fixed-effect only prediction.
+    let mut predicted = FdMatrix::zeros(n_new, m_y);
+    for i in 0..n_new {
+        for j in 0..m_y {
+            let mut val = fit.fpca_y.mean[j];
+            for l in 0..ncomp_y {
+                val += pred_scores[(i, l)] * fit.fpca_y.rotation[(j, l)];
+            }
+            predicted[(i, j)] = val;
+        }
+    }
+
+    Ok(predicted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -679,6 +1141,234 @@ mod tests {
                 assert!(
                     (fit.residuals[(i, j)] - expected_resid).abs() < 1e-10,
                     "residual mismatch at ({i}, {j})"
+                );
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: generate FoF data with subject IDs for RE tests
+    // -----------------------------------------------------------------------
+
+    /// Generate test data with a grouped structure (repeated visits per subject).
+    ///
+    /// Each subject contributes `n_visits` curves.  Subject-level random shifts
+    /// are added to Y so that random effects should be detectable.
+    fn make_fof_re_data(
+        n_subjects: usize,
+        n_visits: usize,
+        mx: usize,
+        my: usize,
+        seed: u64,
+    ) -> (FdMatrix, FdMatrix, Vec<usize>, Vec<f64>, Vec<f64>) {
+        let n = n_subjects * n_visits;
+        let tx: Vec<f64> = (0..mx).map(|j| j as f64 / (mx - 1).max(1) as f64).collect();
+        let ty: Vec<f64> = (0..my).map(|j| j as f64 / (my - 1).max(1) as f64).collect();
+
+        let mut x = FdMatrix::zeros(n, mx);
+        let mut y = FdMatrix::zeros(n, my);
+        let mut subject_ids = Vec::with_capacity(n);
+
+        for s in 0..n_subjects {
+            // Subject-level random shift to Y (so RE should be non-zero)
+            let shift =
+                ((seed.wrapping_mul(13).wrapping_add(s as u64 * 97) % 1000) as f64 / 500.0) - 1.0;
+
+            for v in 0..n_visits {
+                let i = s * n_visits + v;
+                subject_ids.push(s);
+
+                let a = ((seed.wrapping_mul(17).wrapping_add(i as u64 * 31) % 1000) as f64 / 500.0)
+                    - 1.0;
+                let b = ((seed.wrapping_mul(7).wrapping_add(i as u64 * 53) % 1000) as f64 / 500.0)
+                    - 1.0;
+
+                for j in 0..mx {
+                    x[(i, j)] = a * (2.0 * PI * tx[j]).sin() + b * (4.0 * PI * tx[j]).cos();
+                }
+                for j in 0..my {
+                    // Fixed effect: depends on x-loadings
+                    // Random shift: subject-level
+                    y[(i, j)] = 1.5 * a * (2.0 * PI * ty[j]).cos()
+                        - 0.8 * b * (3.0 * PI * ty[j]).sin()
+                        + shift  // subject-level random intercept in curve-space
+                        + 0.01 * (seed.wrapping_add(i as u64 + j as u64) % 10) as f64;
+                }
+            }
+        }
+
+        (x, y, subject_ids, tx, ty)
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 1: fof_re_regression tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fof_re_regression_dims() {
+        let (x, y, ids, tx, ty) = make_fof_re_data(5, 4, 30, 20, 42);
+        let n = x.nrows();
+        let mx = x.ncols();
+        let my = y.ncols();
+        let n_subjects = 5;
+        let config = FofReConfig {
+            ncomp_x: 3,
+            ncomp_y: 3,
+            ..FofReConfig::default()
+        };
+        let fit = fof_re_regression(&x, &y, &ids, &tx, &ty, &config).unwrap();
+
+        assert_eq!(fit.beta_surface.shape(), (my, mx), "beta_surface shape");
+        assert_eq!(fit.fitted.shape(), (n, my), "fitted shape");
+        assert_eq!(fit.residuals.shape(), (n, my), "residuals shape");
+        assert_eq!(
+            fit.random_effects.nrows(),
+            n_subjects,
+            "random_effects rows"
+        );
+        assert_eq!(fit.random_effects.ncols(), my, "random_effects cols");
+        assert_eq!(fit.coef_matrix.shape(), (3, 3), "coef_matrix shape");
+        assert_eq!(fit.intercept.len(), my, "intercept length");
+        assert_eq!(fit.sigma2_u.len(), 3, "sigma2_u length");
+        assert_eq!(fit.n_subjects, n_subjects, "n_subjects");
+        assert_eq!(fit.ncomp_x, 3, "ncomp_x");
+        assert_eq!(fit.ncomp_y, 3, "ncomp_y");
+    }
+
+    #[test]
+    fn test_fof_re_regression_invariant() {
+        let (x, y, ids, tx, ty) = make_fof_re_data(5, 4, 30, 20, 42);
+        let config = FofReConfig::default();
+        let fit = fof_re_regression(&x, &y, &ids, &tx, &ty, &config).unwrap();
+
+        let (n, my) = y.shape();
+        for i in 0..n {
+            for j in 0..my {
+                let reconstructed = fit.fitted[(i, j)] + fit.residuals[(i, j)];
+                assert!(
+                    (reconstructed - y[(i, j)]).abs() < 1e-6,
+                    "fitted+residuals != y at ({i},{j}): reconstructed={reconstructed}, y={}",
+                    y[(i, j)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_fof_re_regression_re_nonzero() {
+        // With distinct subject-level shifts, random_effects L2 norm must be > 0
+        let (x, y, ids, tx, ty) = make_fof_re_data(5, 4, 30, 20, 42);
+        let config = FofReConfig::default();
+        let fit = fof_re_regression(&x, &y, &ids, &tx, &ty, &config).unwrap();
+
+        let n_subjects = fit.random_effects.nrows();
+        let my = fit.random_effects.ncols();
+        let mut l2_sq = 0.0_f64;
+        for s in 0..n_subjects {
+            for j in 0..my {
+                l2_sq += fit.random_effects[(s, j)].powi(2);
+            }
+        }
+        let l2 = l2_sq.sqrt();
+        assert!(
+            l2 > 0.0,
+            "random_effects L2 norm should be > 0 for grouped data, got {l2}"
+        );
+    }
+
+    #[test]
+    fn test_fof_re_regression_ids_mismatch() {
+        let (x, y, _ids, tx, ty) = make_fof_re_data(5, 4, 30, 20, 42);
+        let bad_ids: Vec<usize> = vec![0, 1, 2]; // wrong length
+        let config = FofReConfig::default();
+        let err = fof_re_regression(&x, &y, &bad_ids, &tx, &ty, &config).unwrap_err();
+        match err {
+            FdarError::InvalidDimension { parameter, .. } => {
+                assert_eq!(parameter, "subject_ids");
+            }
+            other => panic!("Expected InvalidDimension for subject_ids, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_fof_re_reexport() {
+        // Smoke test: fof_re_regression is accessible in scope via super::*
+        let _ = fof_re_regression;
+    }
+
+    // -----------------------------------------------------------------------
+    // Task 2: predict_fof_re tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_predict_fof_re_shape() {
+        let (x, y, ids, tx, ty) = make_fof_re_data(5, 4, 30, 20, 42);
+        let my = y.ncols();
+        let config = FofReConfig::default();
+        let fit = fof_re_regression(&x, &y, &ids, &tx, &ty, &config).unwrap();
+
+        let n_new = 7;
+        let mx = x.ncols();
+        let new_x = FdMatrix::from_column_major(
+            (0..n_new * mx)
+                .map(|k| {
+                    let i = (k % n_new) as f64;
+                    let j = (k / n_new) as f64;
+                    (i * j * 0.1).sin()
+                })
+                .collect(),
+            n_new,
+            mx,
+        )
+        .unwrap();
+
+        let predicted = predict_fof_re(&fit, &new_x).unwrap();
+        assert_eq!(predicted.shape(), (n_new, my), "shape mismatch");
+
+        // All entries must be finite
+        for i in 0..n_new {
+            for j in 0..my {
+                assert!(
+                    predicted[(i, j)].is_finite(),
+                    "non-finite prediction at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_predict_fof_re_training_matches_fixed() {
+        // On training data, predict_fof_re returns fixed-effect-only fitted values.
+        // These should equal: mean_y + sum_l (x_scores[i,l] * coef_matrix[:,l]) * phi_y^l
+        // i.e., fitted minus the random-effect contribution.
+        let (x, y, ids, tx, ty) = make_fof_re_data(5, 4, 30, 20, 42);
+        let my = y.ncols();
+        let config = FofReConfig::default();
+        let fit = fof_re_regression(&x, &y, &ids, &tx, &ty, &config).unwrap();
+
+        let fixed_only = predict_fof_re(&fit, &x).unwrap();
+        assert_eq!(fixed_only.shape(), (x.nrows(), my));
+
+        // Compute expected fixed-effect part manually: mean_y + X_scores * coef_matrix reconstructed
+        let x_scores = fit.fpca_x.project(&x).unwrap();
+        let ncomp_x = fit.ncomp_x;
+        let ncomp_y = fit.ncomp_y;
+        let n = x.nrows();
+
+        for i in 0..n {
+            for j in 0..my {
+                let mut expected = fit.fpca_y.mean[j];
+                for l in 0..ncomp_y {
+                    let mut sc = 0.0;
+                    for k in 0..ncomp_x {
+                        sc += x_scores[(i, k)] * fit.coef_matrix[(k, l)];
+                    }
+                    expected += sc * fit.fpca_y.rotation[(j, l)];
+                }
+                assert!(
+                    (fixed_only[(i, j)] - expected).abs() < 1e-6,
+                    "fixed-only prediction mismatch at ({i},{j}): got {}, expected {expected}",
+                    fixed_only[(i, j)]
                 );
             }
         }

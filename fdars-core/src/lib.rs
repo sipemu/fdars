@@ -243,7 +243,10 @@ pub use concurrent_regression::{concurrent_regression, ConcurrentRegrResult};
 pub use pace_fpca::{pace_fpca, PaceFpcaConfig, PaceFpcaResult};
 
 // Re-export function-on-function regression types
-pub use fof_regression::{fof_cv, fof_regression, predict_fof, FofCvResult, FofResult};
+pub use fof_regression::{
+    fof_cv, fof_re_regression, fof_regression, predict_fof, predict_fof_re, FofCvResult,
+    FofReConfig, FofReResult, FofResult,
+};
 
 // Re-export function-on-scalar regression types
 pub use function_on_scalar::{
