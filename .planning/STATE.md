@@ -23,7 +23,7 @@ current_phase: 33
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the next three top-ranked P2 differentiator gaps from the v0.18.0 `R-BACKLOG.md` (score 1.73 each): additive functional regression + variable selection (REG-04), flexible mixed-effects regression (REG-05), and model-based/density functional clustering (CLUS-01), each by extending existing `fdars-core/src/` modules additively.
-**Current focus:** Phase 33 — Model-Based & Density Functional Clustering
+**Current focus:** Planning next milestone (v0.24.0 shipped & archived; run `/gsd-new-milestone`). Deferred operator ship-step: crate release for v0.23.0 + v0.24.0 (bump `fdars-core/Cargo.toml` from 0.23.0, tag/publish).
 
 ## Current Position
 
