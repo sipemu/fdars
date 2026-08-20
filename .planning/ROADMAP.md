@@ -66,7 +66,9 @@
   4. The ITP family reuses the INF-01 permutation infrastructure and `basis/` projection, adds no new crate dependency, and invalid inputs (empty / mismatched group sizes / incompatible basis parameters) return `FdarError` rather than panicking.
   5. Existing `inference/` entry points (INF-01/INF-02 tests) and `basis/` projection keep their public signatures unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 30-01-PLAN.md — pval_correct closure helper (hand-computed test) + itp_one_pop wired end-to-end + ItpResult + serde + mod.rs/lib.rs re-export (tracer)
+- [ ] 30-02-PLAN.md — itp_two_pop (pool + relabel) + itp_flm (response permutation) reusing the plan-01 closure helpers
 
 ## Progress
 
@@ -74,7 +76,7 @@
 |-------|----------------|--------|-----------|
 | 28. Depth-Measure Long Tail | 0/TBD | Not started | - |
 | 29. Outlier-Detector Suite | 0/2 | Not started | - |
-| 30. Interval Testing Procedure Family | 0/TBD | Not started | - |
+| 30. Interval Testing Procedure Family | 0/2 | Not started | - |
 
 **Execution order:** Phase 29 (OUT-01) has a **hard dependency on Phase 28** (DEPTH-01) — `tvdmss` reuses DEPTH-01's total-variation depth + MSSI, so **28 must complete before 29**. Phase 30 (INF-03) is **independent** of Phases 28/29 (it depends only on the already-shipped INF-01 permutation infrastructure + existing `basis/`) and **may run in parallel** with them. Default sequence: 28 → 29, with 30 free to run alongside. First differentiator milestone (P1 table-stakes exhausted after v0.22.0); all three items score 2.31 (P2, M-effort) in `R-BACKLOG.md`. Additive/non-breaking, reuse-first, no new crate dependency.
 
