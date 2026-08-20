@@ -182,7 +182,7 @@ pub fn fmm(
 }
 
 /// Build mapping from observation index to subject index (0..n_subjects-1).
-fn build_subject_map(subject_ids: &[usize]) -> (Vec<usize>, usize) {
+pub(crate) fn build_subject_map(subject_ids: &[usize]) -> (Vec<usize>, usize) {
     let mut unique_ids: Vec<usize> = subject_ids.to_vec();
     unique_ids.sort_unstable();
     unique_ids.dedup();
@@ -261,21 +261,21 @@ fn fit_all_components(
 }
 
 /// Scalar mixed model result for one FPC component.
-struct ScalarMixedResult {
-    gamma: Vec<f64>, // fixed effects (length p)
-    u_hat: Vec<f64>, // random effects per subject (length n_subjects)
-    sigma2_u: f64,   // random effect variance
-    sigma2_eps: f64, // residual variance
+pub(crate) struct ScalarMixedResult {
+    pub(crate) gamma: Vec<f64>, // fixed effects (length p)
+    pub(crate) u_hat: Vec<f64>, // random effects per subject (length n_subjects)
+    pub(crate) sigma2_u: f64,   // random effect variance
+    pub(crate) sigma2_eps: f64, // residual variance
 }
 
 /// Precomputed subject structure for the mixed model.
-struct SubjectStructure {
-    counts: Vec<usize>,
-    obs: Vec<Vec<usize>>,
+pub(crate) struct SubjectStructure {
+    pub(crate) counts: Vec<usize>,
+    pub(crate) obs: Vec<Vec<usize>>,
 }
 
 impl SubjectStructure {
-    fn new(subject_map: &[usize], n_subjects: usize, n: usize) -> Self {
+    pub(crate) fn new(subject_map: &[usize], n_subjects: usize, n: usize) -> Self {
         let mut counts = vec![0usize; n_subjects];
         let mut obs: Vec<Vec<usize>> = vec![Vec::new(); n_subjects];
         for i in 0..n {
@@ -435,7 +435,7 @@ fn reml_variance_update(
 /// Uses iterative GLS for fixed effects + REML EM for variance components,
 /// matching R's lmer() behavior. Initializes from Henderson's ANOVA, then
 /// iterates until convergence.
-fn fit_scalar_mixed_model(
+pub(crate) fn fit_scalar_mixed_model(
     y: &[f64],
     subject_map: &[usize],
     n_subjects: usize,
@@ -671,7 +671,7 @@ fn recover_beta_functions(
 }
 
 /// Recover b̂_i(t) = Σ_k û_ik φ_k(t) for each subject i.
-fn recover_random_effects(
+pub(crate) fn recover_random_effects(
     u_hat: &[Vec<f64>],
     rotation: &FdMatrix,
     n_subjects: usize,
