@@ -1113,7 +1113,9 @@ fn update_gmm_params_from_hard(
     for ki in 0..k {
         pi[ki] = (counts[ki] as f64 / n as f64).max(1e-300);
         mu_k[ki] = vec![0.0; d];
-        sigma_k[ki] = vec![1.0; d];
+        // Initialize to 0 so that the accumulation below yields Σ(x-μ)²
+        // (not 1 + Σ(x-μ)², which was the previous incorrect value).
+        sigma_k[ki] = vec![0.0; d];
         for i in 0..n {
             if cluster[i] == ki {
                 for j in 0..d {
