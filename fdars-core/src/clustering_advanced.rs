@@ -477,8 +477,7 @@ pub fn kcfc_cluster(
 
         // ── Fit per-cluster FPCA models ───────────────────────────────────
         for ki in 0..k {
-            let member_indices: Vec<usize> =
-                (0..n).filter(|&i| cluster[i] == ki).collect();
+            let member_indices: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
 
             if member_indices.is_empty() {
                 // Keep previous model (or None on first iteration)
@@ -656,8 +655,7 @@ mod tests {
         // Cluster 0: sin waves
         for i in 0..n_per {
             for (j, &tj) in t.iter().enumerate() {
-                col_major[i + j * n] =
-                    (2.0 * PI * tj).sin() + 0.05 * (i as f64 / n_per as f64);
+                col_major[i + j * n] = (2.0 * PI * tj).sin() + 0.05 * (i as f64 / n_per as f64);
             }
         }
         // Cluster 1: cos waves shifted up by 8 (very different shape)
@@ -713,18 +711,16 @@ mod tests {
         )
         .unwrap();
         // The 2 outlier curves should be noise
-        assert_eq!(result.n_noise, 2, "expected exactly 2 noise points, got {}", result.n_noise);
+        assert_eq!(
+            result.n_noise, 2,
+            "expected exactly 2 noise points, got {}",
+            result.n_noise
+        );
         assert_eq!(result.n_clusters, 2, "expected 2 clusters");
         // Verify outlier indices (last 2) are None
         let n = data.nrows();
-        assert!(
-            result.cluster[n - 2].is_none(),
-            "outlier 0 should be noise"
-        );
-        assert!(
-            result.cluster[n - 1].is_none(),
-            "outlier 1 should be noise"
-        );
+        assert!(result.cluster[n - 2].is_none(), "outlier 0 should be noise");
+        assert!(result.cluster[n - 1].is_none(), "outlier 1 should be noise");
     }
 
     #[test]
@@ -878,7 +874,11 @@ mod tests {
         let mut correct_ordering = 0;
         let mut total = 0;
         for i in 0..data.nrows() {
-            let expected_cluster = if ground_truth[i] == 0 { gt0_cluster } else { gt1_cluster };
+            let expected_cluster = if ground_truth[i] == 0 {
+                gt0_cluster
+            } else {
+                gt1_cluster
+            };
             let err_own = result.reconstruction_errors[(i, expected_cluster)];
             let err_other = result.reconstruction_errors[(i, 1 - expected_cluster)];
             if err_own.is_finite() && err_other.is_finite() {
