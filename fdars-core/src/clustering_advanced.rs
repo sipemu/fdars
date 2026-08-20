@@ -50,9 +50,12 @@ use rand::prelude::*;
 /// # let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
 /// let dist = l2_distance_matrix(&data, &argvals);
 /// let n = data.nrows();
-/// let mut upper: Vec<f64> = (0..n)
-///     .flat_map(|i| ((i + 1)..n).map(move |j| dist[(i, j)]))
-///     .collect();
+/// let mut upper: Vec<f64> = Vec::new();
+/// for i in 0..n {
+///     for j in (i + 1)..n {
+///         upper.push(dist[(i, j)]);
+///     }
+/// }
 /// upper.sort_by(|a, b| a.partial_cmp(b).unwrap());
 /// let median_dist = upper[upper.len() / 2];
 /// let eps = 0.3 * median_dist; // start here, tune as needed
