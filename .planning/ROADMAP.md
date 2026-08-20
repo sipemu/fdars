@@ -18,7 +18,7 @@
 
 - [x] **Phase 31: Additive Functional Regression & Variable Selection** - Add FAM/GKAM/GSAM additive scalar-on-function models, a group-penalized `variable_selection` helper, a permutation-test wrapper, and a history-index (lagged) estimator in new `scalar_on_function/additive.rs` (REG-04, independent) (completed 2026-08-20)
 - [x] **Phase 32: Flexible Mixed-Effects Regression** - Extend `famm.rs` beyond fixed-effect testing to random-effects estimation (denseFLMM/multiFAMM/fastFMM) and wire a flexible-RE function-on-function path into `fof_regression.rs` (REG-05, independent) (completed 2026-08-20)
-- [ ] **Phase 33: Model-Based & Density Functional Clustering** - Add funHDDC/funFEM subspace models, DBSCAN over functional distances, a kCFC subspace-embedding loop, and a joint align-and-cluster estimator extending `clustering.rs` + `gmm/` (CLUS-01, independent)
+- [x] **Phase 33: Model-Based & Density Functional Clustering** - Add funHDDC/funFEM subspace models, DBSCAN over functional distances, a kCFC subspace-embedding loop, and a joint align-and-cluster estimator extending `clustering.rs` + `gmm/` (CLUS-01, independent) (completed 2026-08-20)
 
 ## Phase Details
 
@@ -89,7 +89,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 31. Additive Functional Regression & Variable Selection | 2/2 | Complete    | 2026-08-20 |
 | 32. Flexible Mixed-Effects Regression | 2/2 | Complete    | 2026-08-20 |
-| 33. Model-Based & Density Functional Clustering | 0/3 | Planned | - |
+| 33. Model-Based & Density Functional Clustering | 3/3 | Complete    | 2026-08-20 |
 
 **Execution order:** All three phases are **independent** — REG-04 (Phase 31), REG-05 (Phase 32), and CLUS-01 (Phase 33) have no cross-phase hard dependency (unlike v0.23.0's DEPTH→OUT chain), so they may be planned and executed in any order or in parallel. Each extends a disjoint area of the codebase (`scalar_on_function/` / `famm.rs`+`fof_regression.rs` / `clustering.rs`+`gmm/`). The next three top-ranked P2 differentiators in `R-BACKLOG.md` (REG-04 rank 12, REG-05 rank 13, CLUS-01 rank 15 — all score 1.73, M-effort). Additive/non-breaking, reuse-first, **no new crate dependency**; numeric outputs only (plotting out of scope).
 
