@@ -230,7 +230,11 @@ pub use inference::{
 };
 
 // Re-export FAMM types
-pub use famm::{fmm, fmm_predict, fmm_test_fixed, FmmResult, FmmTestResult};
+pub use famm::{
+    dense_flmm, fast_fmm, fmm, fmm_predict, fmm_test_fixed, multi_famm, DenseFlmmConfig,
+    DenseFlmmResult, FastFmmConfig, FastFmmResult, FmmResult, FmmTestResult, MultiFammConfig,
+    MultiFammResult,
+};
 
 // Re-export concurrent (varying-coefficient) regression types
 pub use concurrent_regression::{concurrent_regression, ConcurrentRegrResult};

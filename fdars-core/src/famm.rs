@@ -913,6 +913,823 @@ fn permute_rows(mat: &FdMatrix, indices: &[usize]) -> FdMatrix {
 }
 
 // ---------------------------------------------------------------------------
+// denseFLMM — dense functional linear mixed model
+// ---------------------------------------------------------------------------
+
+/// Configuration for [`dense_flmm`].
+///
+/// No `#[non_exhaustive]` — callers may use struct-literal construction.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DenseFlmmConfig {
+    /// Number of FPC components (default: 3)
+    pub ncomp: usize,
+    /// Maximum REML EM iterations per component model (default: 50)
+    pub max_iter: usize,
+    /// Relative convergence tolerance for variance components (default: 1e-10)
+    pub tol: f64,
+    /// Include random slopes in addition to random intercepts (default: false).
+    ///
+    /// When `false`, only random intercepts are estimated.
+    /// Random-slope estimation is not yet implemented; setting this to `true`
+    /// is accepted (no error) but silently falls back to intercept-only estimation.
+    /// `sigma2_slope` will always be zero-filled in this release.
+    pub random_slopes: bool,
+}
+
+impl Default for DenseFlmmConfig {
+    fn default() -> Self {
+        Self {
+            ncomp: 3,
+            max_iter: 50,
+            tol: 1e-10,
+            random_slopes: false,
+        }
+    }
+}
+
+/// Result of a dense functional linear mixed model fit.
+///
+/// # Parametrization note
+///
+/// fdars formulates the model over FPC scores (reusing `fdata_to_pc_1d`) rather than
+/// over spline/basis coefficients as in R's `denseFLMM` package. Consequently
+/// variance components are per FPC component, not smoothed over the argument domain.
+///
+/// Random-slope estimation is not implemented in this release; `sigma2_slope` is
+/// always zero-filled (one entry per FPC component). Future releases may add
+/// two-random-effect scalar LMM support via a dedicated helper.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DenseFlmmResult {
+    /// Overall mean function μ̂(t) (length m)
+    pub mean_function: Vec<f64>,
+    /// Fixed effect coefficient functions β̂_j(t) (p × m matrix, one row per covariate)
+    pub beta_functions: FdMatrix,
+    /// Random effect functions b̂_i(t) per subject (n_subjects × m)
+    pub random_effects: FdMatrix,
+    /// Fitted values for all observations (n_total × m)
+    pub fitted: FdMatrix,
+    /// Residuals (n_total × m)
+    pub residuals: FdMatrix,
+    /// Variance of random effects at each time point Var_i(b̂_i(t)) (length m)
+    pub random_variance: Vec<f64>,
+    /// Average residual variance across FPC components
+    pub sigma2_eps: f64,
+    /// Random-intercept variance per FPC component (length k)
+    pub sigma2_u: Vec<f64>,
+    /// Random-slope variance per FPC component (zero-filled when `random_slopes = false`)
+    pub sigma2_slope: Vec<f64>,
+    /// Number of FPC components actually used
+    pub ncomp: usize,
+    /// Number of unique subjects
+    pub n_subjects: usize,
+    /// FPC eigenvalues (singular values squared / n_total), length k
+    pub eigenvalues: Vec<f64>,
+    /// Maximum number of REML EM iterations reached across components
+    pub n_iter: usize,
+    /// `true` if all component models converged before `config.max_iter`
+    pub converged: bool,
+}
+
+/// Fit a dense functional linear mixed model via FPC score decomposition.
+///
+/// Extends [`fmm`] with REML convergence metadata and the `DenseFlmmConfig`
+/// struct interface.
+///
+/// # Parametrization divergence from R's `denseFLMM`
+///
+/// R's `denseFLMM` estimates eigenfunctions from raw covariance smoothing
+/// (gamm/bam REML over basis coefficients). fdars decomposes curves into
+/// FPC scores via `fdata_to_pc_1d`, then fits a per-component scalar mixed
+/// model — producing equivalent fixed-effect and random-effect functions but
+/// without the covariance-smoothing regularization step.
+///
+/// # Arguments
+///
+/// * `data` — All observed curves (n_total × m)
+/// * `subject_ids` — Subject identifier for each curve (length n_total)
+/// * `covariates` — Subject-level covariates (n_total × p), or `None`
+/// * `config` — Algorithm configuration
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` is empty or `subject_ids`
+/// length mismatches `data.nrows()`.
+/// Returns [`FdarError::InvalidParameter`] if `config.ncomp` is zero.
+/// Returns [`FdarError::ComputationFailed`] if the underlying FPCA fails.
+///
+/// # Example
+///
+/// ```rust
+/// use fdars_core::famm::{DenseFlmmConfig, dense_flmm};
+/// let mut cfg = DenseFlmmConfig::default();
+/// cfg.ncomp = 2;
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dense_flmm(
+    data: &FdMatrix,
+    subject_ids: &[usize],
+    covariates: Option<&FdMatrix>,
+    config: &DenseFlmmConfig,
+) -> Result<DenseFlmmResult, FdarError> {
+    let n_total = data.nrows();
+    let m = data.ncols();
+    if n_total == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{n_total} x {m}"),
+        });
+    }
+    if subject_ids.len() != n_total {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_ids",
+            expected: format!("length {n_total}"),
+            actual: format!("length {}", subject_ids.len()),
+        });
+    }
+    if config.ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be >= 1".to_string(),
+        });
+    }
+
+    let (subject_map, n_subjects) = build_subject_map(subject_ids);
+
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+    let fpca = fdata_to_pc_1d(data, config.ncomp, &argvals)?;
+    let k = fpca.scores.ncols();
+
+    let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);
+
+    // Scale scores as in fit_all_components
+    let h = if m > 1 { 1.0 / (m - 1) as f64 } else { 1.0 };
+    let score_scale = h.sqrt();
+
+    // Fit each component with convergence tracking
+    let per_comp: Vec<ScalarMixedResultWithMeta> = iter_maybe_parallel!(0..k)
+        .map(|comp| {
+            let comp_scores: Vec<f64> = (0..n_total)
+                .map(|i| fpca.scores[(i, comp)] * score_scale)
+                .collect();
+            fit_scalar_mixed_model_tracked(
+                &comp_scores,
+                &subject_map,
+                n_subjects,
+                covariates,
+                p,
+                config.max_iter,
+                config.tol,
+            )
+        })
+        .collect();
+
+    // Unpack per-component results
+    let mut gamma = vec![vec![0.0; k]; p];
+    let mut u_hat = vec![vec![0.0; k]; n_subjects];
+    let mut sigma2_u = vec![0.0; k];
+    let mut sigma2_eps_total = 0.0;
+    let mut all_converged = true;
+    let mut max_n_iter = 0usize;
+
+    for (comp, r) in per_comp.iter().enumerate() {
+        for j in 0..p {
+            gamma[j][comp] = r.result.gamma[j] / score_scale;
+        }
+        for s in 0..n_subjects {
+            u_hat[s][comp] = r.result.u_hat[s] / score_scale;
+        }
+        sigma2_u[comp] = r.result.sigma2_u;
+        sigma2_eps_total += r.result.sigma2_eps;
+        if !r.converged {
+            all_converged = false;
+        }
+        if r.n_iter > max_n_iter {
+            max_n_iter = r.n_iter;
+        }
+    }
+    let sigma2_eps = if k > 0 {
+        sigma2_eps_total / k as f64
+    } else {
+        0.0
+    };
+
+    let beta_functions = recover_beta_functions(&gamma, &fpca.rotation, p, m, k);
+    let random_effects = recover_random_effects(&u_hat, &fpca.rotation, n_subjects, m, k);
+    let random_variance = compute_random_variance(&random_effects, n_subjects, m);
+
+    let (fitted, residuals) = compute_fitted_residuals(
+        data,
+        &fpca.mean,
+        &beta_functions,
+        &random_effects,
+        covariates,
+        &subject_map,
+        n_total,
+        m,
+        p,
+    );
+
+    let eigenvalues: Vec<f64> = fpca
+        .singular_values
+        .iter()
+        .map(|&sv| sv * sv / n_total as f64)
+        .collect();
+
+    // sigma2_slope is always zero-filled (random-slope estimation not yet implemented)
+    let sigma2_slope = vec![0.0; k];
+
+    Ok(DenseFlmmResult {
+        mean_function: fpca.mean,
+        beta_functions,
+        random_effects,
+        fitted,
+        residuals,
+        random_variance,
+        sigma2_eps,
+        sigma2_u,
+        sigma2_slope,
+        ncomp: k,
+        n_subjects,
+        eigenvalues,
+        n_iter: max_n_iter,
+        converged: all_converged,
+    })
+}
+
+/// Internal: scalar mixed model result with convergence metadata.
+struct ScalarMixedResultWithMeta {
+    result: ScalarMixedResult,
+    n_iter: usize,
+    converged: bool,
+}
+
+/// Fit scalar mixed model, tracking convergence and iteration count.
+fn fit_scalar_mixed_model_tracked(
+    y: &[f64],
+    subject_map: &[usize],
+    n_subjects: usize,
+    covariates: Option<&FdMatrix>,
+    p: usize,
+    max_iter: usize,
+    tol: f64,
+) -> ScalarMixedResultWithMeta {
+    let n = y.len();
+    let ss = SubjectStructure::new(subject_map, n_subjects, n);
+
+    let gamma_init = estimate_fixed_effects(y, covariates, p, n);
+    let residuals_init = compute_ols_residuals(y, covariates, &gamma_init, p, n);
+    let (mut sigma2_u, mut sigma2_e) =
+        estimate_variance_components(&residuals_init, subject_map, n_subjects, n);
+
+    if sigma2_e < 1e-15 {
+        sigma2_e = 1e-6;
+    }
+    if sigma2_u < 1e-15 {
+        sigma2_u = sigma2_e * 0.1;
+    }
+
+    let mut gamma = gamma_init;
+    let mut converged = false;
+    let mut n_iter = 0usize;
+
+    for _iter in 0..max_iter {
+        n_iter += 1;
+        let sigma2_u_old = sigma2_u;
+        let sigma2_e_old = sigma2_e;
+
+        let weights = shrinkage_weights(&ss, sigma2_u, sigma2_e);
+
+        if let Some(cov) = covariates.filter(|_| p > 0) {
+            if let Some(g) = gls_update_gamma(cov, p, &ss, &weights, y, sigma2_e) {
+                gamma = g;
+            }
+        }
+
+        let r = compute_ols_residuals(y, covariates, &gamma, p, n);
+        (sigma2_u, sigma2_e) = reml_variance_update(&r, &ss, &weights, sigma2_u, p);
+
+        let delta = (sigma2_u - sigma2_u_old).abs() + (sigma2_e - sigma2_e_old).abs();
+        if delta < tol * (sigma2_u_old + sigma2_e_old) {
+            converged = true;
+            break;
+        }
+    }
+
+    let final_residuals = compute_ols_residuals(y, covariates, &gamma, p, n);
+    let u_hat = compute_blup(
+        &final_residuals,
+        subject_map,
+        n_subjects,
+        sigma2_u,
+        sigma2_e,
+    );
+
+    ScalarMixedResultWithMeta {
+        result: ScalarMixedResult {
+            gamma,
+            u_hat,
+            sigma2_u,
+            sigma2_eps: sigma2_e,
+        },
+        n_iter,
+        converged,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// multiFAMM — multivariate stacked extension
+// ---------------------------------------------------------------------------
+
+/// Configuration for [`multi_famm`].
+///
+/// No `#[non_exhaustive]` — callers may use struct-literal construction.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MultiFammConfig {
+    /// Number of FPC components per response dimension (default: 3)
+    pub ncomp: usize,
+    /// Maximum REML EM iterations per component model (default: 50)
+    pub max_iter: usize,
+    /// Convergence tolerance (default: 1e-10)
+    pub tol: f64,
+}
+
+impl Default for MultiFammConfig {
+    fn default() -> Self {
+        Self {
+            ncomp: 3,
+            max_iter: 50,
+            tol: 1e-10,
+        }
+    }
+}
+
+/// Result of a multivariate FAMM fit.
+///
+/// # Divergence from R's `multiFAMM`
+///
+/// R's `multiFAMM` (Volkmann et al. 2021) uses joint multivariate FPCA so that
+/// cross-dimension covariance kernels K_g(d,e)(t,t') are modelled. fdars instead
+/// runs D independent univariate FPCAs (one per response dimension via
+/// [`dense_flmm`]), capturing within-dimension structure but **not**
+/// cross-dimension covariances. This is a documented capability divergence;
+/// users requiring cross-dimension random effects should consider the R package.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MultiFammResult {
+    /// Per-dimension FLMM results (length D)
+    pub components: Vec<DenseFlmmResult>,
+    /// Fitted values stacked row-wise across all dimensions: (n_total × D) × m
+    pub stacked_fitted: FdMatrix,
+    /// Residuals stacked row-wise across all dimensions: (n_total × D) × m
+    pub stacked_residuals: FdMatrix,
+    /// Number of response dimensions D
+    pub n_dims: usize,
+}
+
+/// Fit a multivariate functional additive mixed model.
+///
+/// Calls [`dense_flmm`] independently for each response dimension and stacks
+/// the fitted curves and residuals row-wise.
+///
+/// All dimensions must share the same number of evaluation points (`ncols`).
+///
+/// # Divergence from R's `multiFAMM`
+///
+/// Cross-dimension covariance kernels are not modelled; see [`MultiFammResult`]
+/// for details.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if:
+/// - `data` is empty (zero dimensions),
+/// - any dimension has zero rows or columns,
+/// - dimensions differ in grid size (`ncols`), or
+/// - `subject_ids` length mismatches `data[0].nrows()`.
+///
+/// Returns [`FdarError::InvalidParameter`] if `config.ncomp` is zero.
+/// Propagates errors from [`dense_flmm`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn multi_famm(
+    data: &[FdMatrix],
+    subject_ids: &[usize],
+    covariates: Option<&FdMatrix>,
+    config: &MultiFammConfig,
+) -> Result<MultiFammResult, FdarError> {
+    let n_dims = data.len();
+    if n_dims == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least one response dimension".to_string(),
+            actual: "0 dimensions".to_string(),
+        });
+    }
+
+    let n_total = data[0].nrows();
+    let m = data[0].ncols();
+
+    if n_total == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{n_total} x {m}"),
+        });
+    }
+
+    // Validate all dimensions share the same grid and row count
+    for (d, dim) in data.iter().enumerate().skip(1) {
+        if dim.ncols() != m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("all dimensions share ncols = {m}"),
+                actual: format!("dimension {d} has ncols = {}", dim.ncols()),
+            });
+        }
+        if dim.nrows() != n_total {
+            return Err(FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("all dimensions share nrows = {n_total}"),
+                actual: format!("dimension {d} has nrows = {}", dim.nrows()),
+            });
+        }
+    }
+
+    // Build per-dimension DenseFlmmConfig from MultiFammConfig
+    let dense_cfg = DenseFlmmConfig {
+        ncomp: config.ncomp,
+        max_iter: config.max_iter,
+        tol: config.tol,
+        random_slopes: false,
+    };
+
+    // Fit each dimension independently
+    let mut components: Vec<DenseFlmmResult> = Vec::with_capacity(n_dims);
+    for dim_data in data.iter() {
+        let result = dense_flmm(dim_data, subject_ids, covariates, &dense_cfg)?;
+        components.push(result);
+    }
+
+    // Stack fitted and residuals row-wise: (n_total * n_dims) × m
+    let stacked_rows = n_total * n_dims;
+    let mut stacked_fitted_data = vec![0.0; stacked_rows * m];
+    let mut stacked_residuals_data = vec![0.0; stacked_rows * m];
+
+    for (d, comp) in components.iter().enumerate() {
+        for i in 0..n_total {
+            let row = d * n_total + i;
+            for t in 0..m {
+                // column-major: element (row, col) at index row + col * nrows
+                stacked_fitted_data[row + t * stacked_rows] = comp.fitted[(i, t)];
+                stacked_residuals_data[row + t * stacked_rows] = comp.residuals[(i, t)];
+            }
+        }
+    }
+
+    let stacked_fitted = FdMatrix::from_column_major(stacked_fitted_data, stacked_rows, m)
+        .map_err(|_| FdarError::ComputationFailed {
+            operation: "multi_famm stacking",
+            detail: "failed to build stacked_fitted matrix".to_string(),
+        })?;
+    let stacked_residuals = FdMatrix::from_column_major(stacked_residuals_data, stacked_rows, m)
+        .map_err(|_| FdarError::ComputationFailed {
+            operation: "multi_famm stacking",
+            detail: "failed to build stacked_residuals matrix".to_string(),
+        })?;
+
+    Ok(MultiFammResult {
+        components,
+        stacked_fitted,
+        stacked_residuals,
+        n_dims,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// fastFMM — massively-univariate per-gridpoint inference
+// ---------------------------------------------------------------------------
+
+/// Configuration for [`fast_fmm`].
+///
+/// No `#[non_exhaustive]` — callers may use struct-literal construction.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FastFmmConfig {
+    /// Running-mean smoother window width along the grid axis (default: 3; 1 = no smoothing).
+    ///
+    /// # Divergence from R's `fastFMM`
+    ///
+    /// R's `fastFMM` uses mgcv thin-plate splines for post-smoothing. fdars uses
+    /// a running-mean smoother configured by this window width. Savitzky-Golay
+    /// smoothing (better peak preservation) is a planned future improvement.
+    pub smooth_window: usize,
+    /// Maximum iterations for each per-gridpoint scalar mixed model (default: 30)
+    pub max_iter: usize,
+    /// Convergence tolerance (default: 1e-8)
+    pub tol: f64,
+    /// Compute Wald t-statistics and pointwise p-values (default: true).
+    ///
+    /// When `false`, `t_stats` is zero-filled and `p_values` is one-filled.
+    ///
+    /// # Divergence from R's `fastFMM`
+    ///
+    /// R uses a bootstrap for non-Gaussian inference. fdars provides Wald-only
+    /// (standard-normal approximation) inference.
+    pub compute_inference: bool,
+}
+
+impl Default for FastFmmConfig {
+    fn default() -> Self {
+        Self {
+            smooth_window: 3,
+            max_iter: 30,
+            tol: 1e-8,
+            compute_inference: true,
+        }
+    }
+}
+
+/// Result of a fast massively-univariate functional mixed model fit.
+///
+/// # Divergence from R's `fastFMM`
+///
+/// R's `fastFMM` (Cui et al. 2022, JCGS 31(1):219–230) fits per-gridpoint
+/// GLMMs via `lme4` and smooths via mgcv. fdars fits per-gridpoint scalar mixed
+/// models via the existing REML-EM solver, smooths via running-mean, and
+/// computes Wald-only inference — no bootstrap.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FastFmmResult {
+    /// Smoothed fixed-effect functions: p × m matrix (one row per covariate)
+    pub beta_matrix: FdMatrix,
+    /// Wald t-statistics: p × m (zero-filled when `compute_inference = false`)
+    pub t_stats: FdMatrix,
+    /// Pointwise two-sided p-values: p × m (one-filled when `compute_inference = false`)
+    pub p_values: FdMatrix,
+    /// Per-gridpoint residual variance estimate (length m)
+    pub sigma2_eps: Vec<f64>,
+    /// Per-gridpoint random-intercept variance estimate (length m)
+    pub sigma2_u: Vec<f64>,
+    /// Number of grid points m
+    pub n_grid: usize,
+}
+
+/// Fit a fast massively-univariate functional mixed model.
+///
+/// Fits a scalar mixed model at each grid point independently, then
+/// applies a running-mean smoother along the grid axis.
+///
+/// # Algorithm
+///
+/// 1. For each grid point t in 0..m: fit a scalar mixed model on `data.column(t)`
+///    via REML-EM, producing raw (β̂(t), û_i(t), σ̂²_u(t), σ̂²_ε(t)).
+/// 2. Smooth the raw p × m coefficient matrix with a running-mean window of
+///    width `config.smooth_window` (window 1 = identity / no smoothing).
+/// 3. When `config.compute_inference`: compute Wald t-statistics
+///    `t_jt = β̂_j(t) / se_j(t)` using a standard-normal two-sided p-value.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` is empty or `subject_ids`
+/// length mismatches `data.nrows()`.
+/// Returns [`FdarError::InvalidParameter`] if `config.smooth_window` is zero.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fast_fmm(
+    data: &FdMatrix,
+    subject_ids: &[usize],
+    covariates: Option<&FdMatrix>,
+    config: &FastFmmConfig,
+) -> Result<FastFmmResult, FdarError> {
+    let n_total = data.nrows();
+    let m = data.ncols();
+    if n_total == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{n_total} x {m}"),
+        });
+    }
+    if subject_ids.len() != n_total {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_ids",
+            expected: format!("length {n_total}"),
+            actual: format!("length {}", subject_ids.len()),
+        });
+    }
+    if config.smooth_window == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "smooth_window",
+            message: "must be >= 1 (use 1 for no smoothing)".to_string(),
+        });
+    }
+
+    let (subject_map, n_subjects) = build_subject_map(subject_ids);
+    let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);
+
+    // Per-gridpoint result container (immutable per-item for safe parallel collect)
+    struct PointwiseResult {
+        gamma: Vec<f64>, // length p (fixed effects at this grid point)
+        sigma2_u: f64,   // random-intercept variance at this grid point
+        sigma2_eps: f64, // residual variance at this grid point
+    }
+
+    // Step 1: Fit per-gridpoint scalar mixed models
+    // Use column-major zero-copy access: data.column(t) is a contiguous &[f64]
+    let per_point: Vec<PointwiseResult> = iter_maybe_parallel!(0..m)
+        .map(|t| {
+            let y_t: Vec<f64> = data.column(t).to_vec();
+            let r = fit_scalar_mixed_model(&y_t, &subject_map, n_subjects, covariates, p);
+            PointwiseResult {
+                gamma: r.gamma,
+                sigma2_u: r.sigma2_u,
+                sigma2_eps: r.sigma2_eps,
+            }
+        })
+        .collect();
+
+    // Unpack into raw p × m beta matrix and per-gridpoint variances
+    let mut raw_beta_data = vec![0.0; p * m]; // row-by-row in column-major: row=j, col=t
+    let mut sigma2_eps_vec = vec![0.0; m];
+    let mut sigma2_u_vec = vec![0.0; m];
+
+    for (t, pt) in per_point.iter().enumerate() {
+        // Fill column-major beta: element (j, t) at index j + t * p
+        for j in 0..p {
+            raw_beta_data[j + t * p] = pt.gamma.get(j).copied().unwrap_or(0.0);
+        }
+        sigma2_eps_vec[t] = pt.sigma2_eps;
+        sigma2_u_vec[t] = pt.sigma2_u;
+    }
+
+    // Step 2: Running-mean smoothing along the grid axis (per covariate row)
+    let mut smoothed_beta_data = raw_beta_data.clone();
+    let w = config.smooth_window;
+    if w > 1 && m > 1 {
+        let half = w / 2;
+        for j in 0..p {
+            for t in 0..m {
+                let lo = t.saturating_sub(half);
+                let hi = (t + half + 1).min(m);
+                let count = (hi - lo) as f64;
+                let sum: f64 = (lo..hi).map(|tt| raw_beta_data[j + tt * p]).sum();
+                smoothed_beta_data[j + t * p] = sum / count;
+            }
+        }
+    }
+
+    // Build the smoothed beta FdMatrix (p × m, column-major)
+    let beta_matrix = if p > 0 {
+        FdMatrix::from_column_major(smoothed_beta_data, p, m).map_err(|_| {
+            FdarError::ComputationFailed {
+                operation: "fast_fmm",
+                detail: "failed to build beta_matrix".to_string(),
+            }
+        })?
+    } else {
+        FdMatrix::zeros(0, m)
+    };
+
+    // Step 3: Wald inference
+    let (t_stats, p_values) = if config.compute_inference && p > 0 {
+        // Compute X'X for standard errors using the first non-zero observation
+        // SE²_j(t) = sigma2_eps(t) * (X'X)^{-1}_{jj}
+        // We accumulate X'X once (same design for all t) then invert
+        let xtx_inv_diag = compute_xtx_inv_diag(covariates, p, n_total);
+
+        let mut t_data = vec![0.0f64; p * m];
+        let mut pv_data = vec![1.0f64; p * m];
+
+        for j in 0..p {
+            for t in 0..m {
+                let beta_jt = beta_matrix[(j, t)];
+                let se_sq = sigma2_eps_vec[t] * xtx_inv_diag.get(j).copied().unwrap_or(1.0);
+                let se = se_sq.sqrt().max(1e-15);
+                let t_stat = beta_jt / se;
+                let pval = 2.0 * normal_sf(t_stat.abs());
+                t_data[j + t * p] = t_stat;
+                pv_data[j + t * p] = pval.clamp(0.0, 1.0);
+            }
+        }
+
+        let ts = FdMatrix::from_column_major(t_data, p, m).map_err(|_| {
+            FdarError::ComputationFailed {
+                operation: "fast_fmm",
+                detail: "failed to build t_stats".to_string(),
+            }
+        })?;
+        let pv = FdMatrix::from_column_major(pv_data, p, m).map_err(|_| {
+            FdarError::ComputationFailed {
+                operation: "fast_fmm",
+                detail: "failed to build p_values".to_string(),
+            }
+        })?;
+        (ts, pv)
+    } else {
+        // No inference or no covariates: zeros / ones
+        (FdMatrix::zeros(p, m), ones_fdmatrix(p, m))
+    };
+
+    Ok(FastFmmResult {
+        beta_matrix,
+        t_stats,
+        p_values,
+        sigma2_eps: sigma2_eps_vec,
+        sigma2_u: sigma2_u_vec,
+        n_grid: m,
+    })
+}
+
+/// Compute diagonal of (X'X)^{-1} for Wald standard errors.
+fn compute_xtx_inv_diag(covariates: Option<&FdMatrix>, p: usize, n: usize) -> Vec<f64> {
+    let Some(cov) = covariates else {
+        return vec![1.0; p];
+    };
+    let mut xtx = vec![0.0; p * p];
+    for i in 0..n {
+        for r in 0..p {
+            for s in r..p {
+                let val = cov[(i, r)] * cov[(i, s)];
+                xtx[r * p + s] += val;
+                if r != s {
+                    xtx[s * p + r] += val;
+                }
+            }
+        }
+    }
+    for j in 0..p {
+        xtx[j * p + j] += 1e-8;
+    }
+    // Invert via Cholesky; fall back to reciprocal diagonal if singular
+    if let Some(inv) = cholesky_invert(&xtx, p) {
+        (0..p).map(|j| inv[j * p + j].max(1e-15)).collect()
+    } else {
+        // Fallback: diagonal only
+        (0..p)
+            .map(|j| {
+                let d = xtx[j * p + j];
+                if d > 1e-15 {
+                    1.0 / d
+                } else {
+                    1.0
+                }
+            })
+            .collect()
+    }
+}
+
+/// Invert a p×p symmetric positive definite matrix via Cholesky.
+fn cholesky_invert(a: &[f64], p: usize) -> Option<Vec<f64>> {
+    let l = linalg_cholesky_factor(a, p).ok()?;
+    // Solve A * X = I column by column
+    let mut inv = vec![0.0; p * p];
+    let mut e = vec![0.0; p];
+    for j in 0..p {
+        e.fill(0.0);
+        e[j] = 1.0;
+        let col = linalg_cholesky_forward_back(&l, &e, p);
+        for i in 0..p {
+            inv[i * p + j] = col[i];
+        }
+    }
+    Some(inv)
+}
+
+/// Standard normal survival function: P(Z > x) using erf approximation.
+fn normal_sf(x: f64) -> f64 {
+    // 0.5 * erfc(x / sqrt(2))
+    0.5 * erfc(x / core::f64::consts::SQRT_2)
+}
+
+/// Complementary error function approximation (Abramowitz & Stegun 7.1.26).
+fn erfc(x: f64) -> f64 {
+    // Handle negative x via symmetry: erfc(-x) = 2 - erfc(x)
+    if x < 0.0 {
+        return 2.0 - erfc(-x);
+    }
+    // Rational approximation valid for x >= 0, max |error| < 1.5e-7
+    let t = 1.0 / (1.0 + 0.3275911 * x);
+    let poly = t
+        * (0.254_829_592
+            + t * (-0.284_496_736
+                + t * (1.421_413_741 + t * (-1.453_152_027 + t * 1.061_405_429))));
+    poly * (-x * x).exp()
+}
+
+/// Create an FdMatrix filled with ones (p × m).
+fn ones_fdmatrix(p: usize, m: usize) -> FdMatrix {
+    if p == 0 || m == 0 {
+        return FdMatrix::zeros(p, m);
+    }
+    let data = vec![1.0f64; p * m];
+    FdMatrix::from_column_major(data, p, m).unwrap_or_else(|_| FdMatrix::zeros(p, m))
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1390,5 +2207,171 @@ mod tests {
             "R-squared should be high with enough components: {}",
             r_squared
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // dense_flmm tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_dense_flmm_basic() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 30);
+        let cfg = DenseFlmmConfig::default();
+        let result = dense_flmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap();
+        assert_eq!(result.ncomp, cfg.ncomp);
+        assert_eq!(result.n_subjects, 10);
+        assert_eq!(result.mean_function.len(), 30);
+        assert_eq!(result.beta_functions.ncols(), 30);
+        assert_eq!(result.random_variance.len(), 30);
+        assert_eq!(result.sigma2_u.len(), cfg.ncomp);
+        // Random-slope variance is always present, zero-filled this release.
+        assert_eq!(result.sigma2_slope.len(), cfg.ncomp);
+        assert!(result.sigma2_slope.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn test_dense_flmm_fitted_plus_residuals_equals_data() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(8, 3, 24);
+        let cfg = DenseFlmmConfig::default();
+        let result = dense_flmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap();
+        let n = data.nrows();
+        let m = data.ncols();
+        for i in 0..n {
+            for j in 0..m {
+                let recon = result.fitted[(i, j)] + result.residuals[(i, j)];
+                assert!(
+                    (recon - data[(i, j)]).abs() < 1e-6,
+                    "fitted+residuals must equal data at ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_dense_flmm_recovers_signal_and_positive_variance() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(12, 4, 30);
+        let cfg = DenseFlmmConfig {
+            ncomp: 4,
+            ..Default::default()
+        };
+        let result = dense_flmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap();
+        // Residuals shrink relative to a mean-only baseline (fit tracks the truth).
+        let n = data.nrows();
+        let m = data.ncols();
+        let mut col_means = vec![0.0; m];
+        for j in 0..m {
+            for i in 0..n {
+                col_means[j] += data[(i, j)];
+            }
+            col_means[j] /= n as f64;
+        }
+        let (mut base_ss, mut resid_ss) = (0.0_f64, 0.0_f64);
+        for i in 0..n {
+            for j in 0..m {
+                base_ss += (data[(i, j)] - col_means[j]).powi(2);
+                resid_ss += result.residuals[(i, j)].powi(2);
+            }
+        }
+        assert!(
+            resid_ss < 0.5 * base_ss,
+            "mixed model should explain most variance: resid={resid_ss}, base={base_ss}"
+        );
+        // At least one FPC component has positive random-intercept variance.
+        assert!(result.sigma2_u.iter().any(|&v| v > 0.0));
+    }
+
+    #[test]
+    fn test_dense_flmm_invalid_inputs() {
+        let cfg = DenseFlmmConfig::default();
+        let empty = FdMatrix::from_column_major(vec![], 0, 0).unwrap();
+        assert!(dense_flmm(&empty, &[], None, &cfg).is_err());
+
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(4, 2, 10);
+        // Mismatched subject_ids length.
+        let bad_ids = vec![0usize; subject_ids.len() + 1];
+        assert!(dense_flmm(&data, &bad_ids, None, &cfg).is_err());
+
+        // ncomp == 0.
+        let bad_cfg = DenseFlmmConfig {
+            ncomp: 0,
+            ..Default::default()
+        };
+        assert!(dense_flmm(&data, &subject_ids, None, &bad_cfg).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // multi_famm tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_multi_famm_basic() {
+        let (d0, subject_ids, cov, _t) = generate_fmm_data(10, 3, 20);
+        let (d1, _s1, _c1, _t1) = generate_fmm_data(10, 3, 20);
+        let cfg = MultiFammConfig {
+            ncomp: 3,
+            max_iter: 50,
+            tol: 1e-10,
+        };
+        let result = multi_famm(&[d0, d1], &subject_ids, Some(&cov), &cfg).unwrap();
+        assert_eq!(result.n_dims, 2);
+        assert_eq!(result.components.len(), 2);
+        // Stacked matrices carry D * n_total rows.
+        assert_eq!(result.stacked_fitted.nrows(), 2 * subject_ids.len());
+        assert_eq!(result.stacked_residuals.nrows(), 2 * subject_ids.len());
+    }
+
+    #[test]
+    fn test_multi_famm_invalid_inputs() {
+        let cfg = MultiFammConfig {
+            ncomp: 3,
+            max_iter: 50,
+            tol: 1e-10,
+        };
+        // Empty dimension list.
+        assert!(multi_famm(&[], &[], None, &cfg).is_err());
+
+        // Grid-size mismatch between dimensions.
+        let (d0, subject_ids, cov, _t) = generate_fmm_data(6, 2, 20);
+        let (d1, _s1, _c1, _t1) = generate_fmm_data(6, 2, 25);
+        assert!(multi_famm(&[d0, d1], &subject_ids, Some(&cov), &cfg).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // fast_fmm tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_fast_fmm_basic() {
+        let (data, subject_ids, covariates, _t) = generate_fmm_data(10, 3, 20);
+        let cfg = FastFmmConfig::default();
+        let result = fast_fmm(&data, &subject_ids, Some(&covariates), &cfg).unwrap();
+        assert_eq!(result.n_grid, 20);
+        assert_eq!(result.beta_matrix.ncols(), 20);
+        assert_eq!(result.p_values.ncols(), 20);
+        assert_eq!(result.sigma2_eps.len(), 20);
+        // p-values must be valid probabilities, t-stats finite.
+        for i in 0..result.p_values.nrows() {
+            for j in 0..result.p_values.ncols() {
+                let p = result.p_values[(i, j)];
+                assert!((0.0..=1.0).contains(&p), "p-value out of range: {p}");
+                assert!(result.t_stats[(i, j)].is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn test_fast_fmm_invalid_inputs() {
+        let (data, subject_ids, _cov, _t) = generate_fmm_data(4, 2, 10);
+        // smooth_window == 0.
+        let bad_cfg = FastFmmConfig {
+            smooth_window: 0,
+            ..Default::default()
+        };
+        assert!(fast_fmm(&data, &subject_ids, None, &bad_cfg).is_err());
+
+        // Mismatched subject_ids length.
+        let cfg = FastFmmConfig::default();
+        let bad_ids = vec![0usize; subject_ids.len() + 1];
+        assert!(fast_fmm(&data, &bad_ids, None, &cfg).is_err());
     }
 }
