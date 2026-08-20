@@ -5,15 +5,15 @@ milestone_name: Functional Regression & Clustering Breadth
 current_phase: 33
 current_phase_name: Model-Based & Density Functional Clustering
 status: executing
-stopped_at: Completed 32-02-PLAN.md
-last_updated: "2026-08-20T20:03:49.477Z"
+stopped_at: Completed 33-00-PLAN.md (funHDDC tracer + ARI helper)
+last_updated: "2026-08-20T20:12:49.289Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 33 (Model-Based & Density Functional Clustering) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 33
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-08-20 — Phase 33 execution started
 
 ## Milestone Roadmap (v0.24.0)
@@ -82,6 +82,7 @@ Three phases, three requirements — the next three top-ranked P2 differentiator
 |------|----------|-------|-------|
 | Phase 31 P02 | 563 | 3 tasks | 3 files |
 | Phase 32-flexible-mixed-effects-regression P02 | 15 | 2 tasks | 2 files |
+| Phase 33 P00 | 7 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,8 @@ Conventions carried from prior milestones (relevant to implementation):
 - [Phase ?]: Single shared StdRng::seed_from_u64(seed) for permutation_test_fam — NOT per-iteration seed+k
 - [Phase ?]: fof_re_regression: x_scores passed to fit_scalar_mixed_model WITHOUT h.sqrt() rescaling — L2 weighting already in fpca_x.project() (Pitfall 2)
 - [Phase ?]: predict_fof_re: fixed-effect-only prediction, no RE for new subjects (matches fmm_predict convention)
+- [Phase ?]: AkBk single-model funHDDC (not full 6-model R family) — documented in rustdoc
+- [Phase ?]: nalgebra SVD in gmm/subspace.rs for MSRV 1.81 compliance (faer would require 1.84+)
 
 ### Pending Todos
 
@@ -133,8 +136,8 @@ Advisory tech-debt carried forward (not v0.24.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-20T17:05:10.060Z
-Stopped at: Completed 32-02-PLAN.md
+Last session: 2026-08-20T20:12:49.273Z
+Stopped at: Completed 33-00-PLAN.md (funHDDC tracer + ARI helper)
 Resume file: None
 
 ## Operator Next Steps

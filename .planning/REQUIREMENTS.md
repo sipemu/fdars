@@ -22,7 +22,7 @@ Requirements for milestone v0.24.0. Each maps to exactly one roadmap phase.
 
 ### Functional Clustering (differentiators)
 
-- [ ] **CLUS-01**: Add functional clustering paradigms beyond the existing k-means/GMM/hierarchical/k-medoids — a funHDDC-style per-group subspace covariance model (extending `gmm/`), a funFEM discriminative-subspace clustering variant, a DBSCAN density clusterer over functional distances (reusing `distance.rs`), a kCFC subspace-embedding loop, and a joint align-and-cluster estimator (reusing `alignment/`). Numeric cluster assignments + model outputs only. Additive/non-breaking; independent of REG-04/REG-05. R baseline: `funHDDC` / `funFEM` / `fdacluster` (DBSCAN, Sangalli joint) / `fdapace` (kCFC) / `fdasrvf` (elastic k-means).
+- [x] **CLUS-01**: Add functional clustering paradigms beyond the existing k-means/GMM/hierarchical/k-medoids — a funHDDC-style per-group subspace covariance model (extending `gmm/`), a funFEM discriminative-subspace clustering variant, a DBSCAN density clusterer over functional distances (reusing `distance.rs`), a kCFC subspace-embedding loop, and a joint align-and-cluster estimator (reusing `alignment/`). Numeric cluster assignments + model outputs only. Additive/non-breaking; independent of REG-04/REG-05. R baseline: `funHDDC` / `funFEM` / `fdacluster` (DBSCAN, Sangalli joint) / `fdapace` (kCFC) / `fdasrvf` (elastic k-means).
 
 ## v2 Requirements
 
@@ -58,7 +58,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | REG-04 | Phase 31 | Complete |
 | REG-05 | Phase 32 | Complete |
-| CLUS-01 | Phase 33 | Pending |
+| CLUS-01 | Phase 33 | Complete |
 
 **Coverage:**
 

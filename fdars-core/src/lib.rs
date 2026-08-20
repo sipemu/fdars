@@ -325,7 +325,6 @@ pub use conformal::{
 };
 
 // Re-export GMM clustering types
-#[allow(non_snake_case)]
 pub use gmm::{
     funhddC_cluster, gmm_cluster, gmm_cluster_with_config, gmm_em, predict_gmm, CovType,
     FunHddcConfig, FunHddcResult, GmmClusterConfig, GmmClusterResult, GmmResult,
