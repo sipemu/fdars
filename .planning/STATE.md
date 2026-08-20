@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.24.0
 milestone_name: Functional Regression & Clustering Breadth
-status: planning
-last_updated: "2026-08-20T08:03:20.146Z"
+current_phase: 31
+current_phase_name: Additive Functional Regression & Variable Selection
+status: executing
+stopped_at: Roadmap for v0.24.0 created (ROADMAP.md, STATE.md, REQUIREMENTS.md traceability)
+last_updated: "2026-08-20T10:26:14.317Z"
 last_activity: 2026-08-20
+last_activity_desc: Phase 31 execution started
 progress:
-  total_phases: 3
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -20,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the next three top-ranked P2 differentiator gaps from the v0.18.0 `R-BACKLOG.md` (score 1.73 each): additive functional regression + variable selection (REG-04), flexible mixed-effects regression (REG-05), and model-based/density functional clustering (CLUS-01), each by extending existing `fdars-core/src/` modules additively.
-**Current focus:** Roadmap created (Phases 31–33); next is planning the first phase
+**Current focus:** Phase 31 — Additive Functional Regression & Variable Selection
 
 ## Current Position
 
-Phase: Not started (roadmap created, ready to plan)
-Plan: —
-Status: Roadmap created — awaiting first phase plan
-Last activity: 2026-08-20 — Milestone v0.24.0 roadmap created (Phases 31–33)
+Phase: 31 (Additive Functional Regression & Variable Selection) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 31
+Last activity: 2026-08-20 — Phase 31 execution started
 
 ## Milestone Roadmap (v0.24.0)
 
