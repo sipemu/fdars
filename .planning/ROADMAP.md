@@ -23,6 +23,7 @@
 ## Phase Details
 
 ### Phase 31: Additive Functional Regression & Variable Selection
+
 **Goal**: A user can fit nonparametric additive scalar-on-function regression models that `fdapace`/`fda.usc`/`refund` expose but fdars was missing — a functional additive model (FAM, backfitting over FPC-score components), generalized kernel and spectral additive variants (GKAM/GSAM), a group-penalized scalar-on-function `variable_selection` helper, a permutation-test significance wrapper, and a history-index (lagged-predictor-window) estimator — all in a new `scalar_on_function/additive.rs`, reusing `smoothing.rs` kernels and `fdata_to_pc_1d`, without any existing regression code changing.
 **Depends on**: Nothing (independent of Phases 32/33; may run in any order or in parallel)
 **Requirements**: REG-04
@@ -37,10 +38,12 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 31-01-PLAN.md — FAM tracer (new module wired end-to-end) + GKAM + GSAM estimators
-- [ ] 31-02-PLAN.md — variable_selection (GroupLasso) + permutation_test_fam + history_index
+
+- [x] 31-01-PLAN.md — FAM tracer (new module wired end-to-end) + GKAM + GSAM estimators
+- [x] 31-02-PLAN.md — variable_selection (GroupLasso) + permutation_test_fam + history_index
 
 ### Phase 32: Flexible Mixed-Effects Regression
+
 **Goal**: A user can estimate flexible functional mixed-effects models that `denseFLMM`/`multifamm`/`fastFMM`/`refund` (pffr) expose but fdars was missing — a dense functional linear mixed model (denseFLMM-style mixed-model equations over FPC scores / basis coefficients), a multivariate functional additive mixed variant (multiFAMM), fast functional mixed-model inference (fastFMM), and a flexible random-effects function-on-function path — by extending `famm.rs` (today only `fmm_test_fixed`) and wiring the flexible-RE path into the already-present `fof_regression.rs`, without any existing mixed-model or FoF code changing.
 **Depends on**: Nothing (independent of Phases 31/33; may run in any order or in parallel)
 **Requirements**: REG-05
@@ -55,6 +58,7 @@ Plans:
 **Plans**: TBD
 
 ### Phase 33: Model-Based & Density Functional Clustering
+
 **Goal**: A user can cluster functional data with the paradigms `funHDDC`/`funFEM`/`fdacluster`/`fdapace`/`fdasrvf` expose but fdars was missing beyond its existing k-means/GMM/hierarchical/k-medoids — a funHDDC-style per-group subspace covariance model (extending `gmm/`), a funFEM discriminative-subspace clustering variant, a DBSCAN density clusterer over functional distances (reusing `distance.rs`), a kCFC subspace-embedding loop, and a joint align-and-cluster estimator (reusing `alignment/`) — as numeric cluster assignments and model outputs only (no rendering), without any existing clustering code changing.
 **Depends on**: Nothing (independent of Phases 31/32; may run in any order or in parallel)
 **Requirements**: CLUS-01

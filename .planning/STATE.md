@@ -5,15 +5,15 @@ milestone_name: Functional Regression & Clustering Breadth
 current_phase: 31
 current_phase_name: Additive Functional Regression & Variable Selection
 status: executing
-stopped_at: Roadmap for v0.24.0 created (ROADMAP.md, STATE.md, REQUIREMENTS.md traceability)
-last_updated: "2026-08-20T10:26:14.317Z"
+stopped_at: Completed 31-02-PLAN.md
+last_updated: "2026-08-20T10:49:18.208Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 31 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 0
+  completed_plans: 2
 ---
 
 # Project State
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 31 (Additive Functional Regression & Variable Selection) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 31
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-08-20 — Phase 31 execution started
 
 ## Milestone Roadmap (v0.24.0)
@@ -76,6 +76,11 @@ Three phases, three requirements — the next three top-ranked P2 differentiator
 - Trend: consistent ~45min per plan, 7 tests/plan average for implementation phases
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 31 P02 | 563 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -100,6 +105,8 @@ Conventions carried from prior milestones (relevant to implementation):
 - Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved (the REG-04 permutation-test wrapper needs seeded reproducibility, mirroring INF-01's 999-perm default).
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
+- [Phase ?]: GroupLasso only this phase; GroupMcp/GroupScad return FdarError::InvalidParameter (future work)
+- [Phase ?]: Single shared StdRng::seed_from_u64(seed) for permutation_test_fam — NOT per-iteration seed+k
 
 ### Pending Todos
 
@@ -123,8 +130,8 @@ Advisory tech-debt carried forward (not v0.24.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-20
-Stopped at: Roadmap for v0.24.0 created (ROADMAP.md, STATE.md, REQUIREMENTS.md traceability)
+Last session: 2026-08-20T10:49:18.200Z
+Stopped at: Completed 31-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

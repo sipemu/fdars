@@ -50,11 +50,11 @@
 //!   lag grid — same model class, marginal-integration approximation rather than
 //!   bivariate spline.
 
+use super::nonparametric::{compute_pairwise_distances, gaussian_kernel, select_bandwidth_loo};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc_1d, FpcaResult};
 use crate::smoothing::{nadaraya_watson, optim_bandwidth, CvCriterion};
-use super::nonparametric::{compute_pairwise_distances, gaussian_kernel, select_bandwidth_loo};
 
 // ---------------------------------------------------------------------------
 // Config types
@@ -326,7 +326,11 @@ fn fpc_additive_smooth(
     let fitted_values: Vec<f64> = (0..n)
         .map(|i| mu_y + (0..total_comp).map(|k| component_fits[k][i]).sum::<f64>())
         .collect();
-    let residuals: Vec<f64> = y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
 
     // R² via shared helper (p = total_comp for df counting)
     let (r_squared, _) = super::compute_r_squared(y, &residuals, total_comp);
@@ -334,7 +338,14 @@ fn fpc_additive_smooth(
     // Only return the ncomp FPC-score components (not scalar covariate components)
     // plus the bandwidths split accordingly.
     // But the contract says component_fits has length ncomp+p_scalar; callers can slice.
-    Ok((component_fits, bandwidths, mu_y, fitted_values, residuals, r_squared))
+    Ok((
+        component_fits,
+        bandwidths,
+        mu_y,
+        fitted_values,
+        residuals,
+        r_squared,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -738,8 +749,11 @@ pub fn fregre_gkam(
     let fitted_values: Vec<f64> = (0..n)
         .map(|i| mu_y + (0..total_comp).map(|k| component_fits[k][i]).sum::<f64>())
         .collect();
-    let residuals: Vec<f64> =
-        y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
     let (r_squared, _) = super::compute_r_squared(y, &residuals, total_comp);
 
     Ok(GkamResult {
@@ -997,7 +1011,11 @@ pub struct PermTestConfig {
 
 impl Default for PermTestConfig {
     fn default() -> Self {
-        Self { n_perm: 999, seed: 42, statistic: PermTestStatistic::R2 }
+        Self {
+            n_perm: 999,
+            seed: 42,
+            statistic: PermTestStatistic::R2,
+        }
     }
 }
 
@@ -1032,7 +1050,12 @@ pub struct HistoryIndexConfig {
 
 impl Default for HistoryIndexConfig {
     fn default() -> Self {
-        Self { window: 1.0, n_lags: 20, bandwidth: 0.0, kernel: "gaussian".to_string() }
+        Self {
+            window: 1.0,
+            n_lags: 20,
+            bandwidth: 0.0,
+            kernel: "gaussian".to_string(),
+        }
     }
 }
 
@@ -1254,10 +1277,18 @@ pub fn variable_selection(
 
     // Compute fitted values and residuals
     let fitted_values: Vec<f64> = compute_varselect_fitted(
-        n, mu_y, &score_groups, &coefficients, scalar_covariates, big_p,
+        n,
+        mu_y,
+        &score_groups,
+        &coefficients,
+        scalar_covariates,
+        big_p,
     );
-    let residuals: Vec<f64> =
-        y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
     let (r_squared, _) = super::compute_r_squared(y, &residuals, k_sizes.iter().sum::<usize>());
 
     let active_predictors: Vec<bool> = coefficients[..big_p]
@@ -1314,11 +1345,12 @@ fn variable_selection_ls(
             col_offset += 1;
         }
     }
-    let x_mat = FdMatrix::from_column_major(x_flat, n, total_cols)
-        .map_err(|e| FdarError::ComputationFailed {
+    let x_mat = FdMatrix::from_column_major(x_flat, n, total_cols).map_err(|e| {
+        FdarError::ComputationFailed {
             operation: "variable_selection_ls design matrix",
             detail: e.to_string(),
-        })?;
+        }
+    })?;
     let y_centered: Vec<f64> = y.iter().map(|&yi| yi - mu_y).collect();
     let xtx = super::compute_xtx(&x_mat);
     let xty: Vec<f64> = (0..total_cols)
@@ -1331,11 +1363,10 @@ fn variable_selection_ls(
                 .sum::<f64>()
         })
         .collect();
-    let l = super::cholesky_factor(&xtx, total_cols)
-        .map_err(|_| FdarError::ComputationFailed {
-            operation: "variable_selection_ls cholesky",
-            detail: "design matrix is singular".to_string(),
-        })?;
+    let l = super::cholesky_factor(&xtx, total_cols).map_err(|_| FdarError::ComputationFailed {
+        operation: "variable_selection_ls cholesky",
+        detail: "design matrix is singular".to_string(),
+    })?;
     let flat_coeffs = super::cholesky_forward_back(&l, &xty, total_cols);
 
     // Split coefficients back into groups
@@ -1349,10 +1380,18 @@ fn variable_selection_ls(
     coefficients.push(flat_coeffs[offset..offset + p_scalar].to_vec());
 
     let fitted_values = compute_varselect_fitted(
-        n, mu_y, &score_groups, &coefficients, scalar_covariates, big_p,
+        n,
+        mu_y,
+        &score_groups,
+        &coefficients,
+        scalar_covariates,
+        big_p,
     );
-    let residuals: Vec<f64> =
-        y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
     let (r_squared, _) = super::compute_r_squared(y, &residuals, total_cols);
     let active_predictors = vec![true; big_p];
     Ok(VarSelectResult {
@@ -1438,8 +1477,12 @@ fn select_group_lasso_lambda(
             let big_p = score_groups.len();
             let fitted =
                 compute_varselect_fitted(n, mu_y, score_groups, &coeffs, scalar_covariates, big_p);
-            let mse: f64 =
-                y.iter().zip(&fitted).map(|(&yi, &yh)| (yi - yh).powi(2)).sum::<f64>() / n as f64;
+            let mse: f64 = y
+                .iter()
+                .zip(&fitted)
+                .map(|(&yi, &yh)| (yi - yh).powi(2))
+                .sum::<f64>()
+                / n as f64;
             if mse < best_mse {
                 best_mse = mse;
                 best_lambda = lam;
@@ -1514,10 +1557,18 @@ fn group_lasso_cd(
             let mut xty_g = vec![0.0_f64; k_g];
             for a in 0..k_g {
                 for b in 0..k_g {
-                    let dot: f64 = group[a].iter().zip(&group[b]).map(|(&xa, &xb)| xa * xb).sum();
+                    let dot: f64 = group[a]
+                        .iter()
+                        .zip(&group[b])
+                        .map(|(&xa, &xb)| xa * xb)
+                        .sum();
                     xtx_g[a * k_g + b] = dot;
                 }
-                xty_g[a] = group[a].iter().zip(&partial).map(|(&xa, &pa)| xa * pa).sum();
+                xty_g[a] = group[a]
+                    .iter()
+                    .zip(&partial)
+                    .map(|(&xa, &pa)| xa * pa)
+                    .sum();
             }
 
             let beta_ols = crate::linalg::cholesky_solve(&xtx_g, &xty_g, k_g)
@@ -1688,7 +1739,12 @@ pub fn permutation_test_fam(
 
     let p_value = (n_ge + 1) as f64 / (n_perm + 1) as f64;
 
-    Ok(PermTestResult { p_value, observed_statistic, null_statistics, n_perm_success })
+    Ok(PermTestResult {
+        p_value,
+        observed_statistic,
+        null_statistics,
+        n_perm_success,
+    })
 }
 
 /// Extract the permutation test statistic from a `FamResult`.
@@ -1863,9 +1919,16 @@ pub fn history_index(
             let x_col: Vec<f64> = (0..n).map(|i| x_lag[i][l]).collect();
             let x_mean = x_col.iter().sum::<f64>() / n as f64;
             let xx: f64 = x_col.iter().map(|&v| (v - x_mean).powi(2)).sum();
-            let xy: f64 =
-                x_col.iter().zip(&y_centered).map(|(&x, &yc)| (x - x_mean) * yc).sum();
-            if xx > 1e-15 { xy / xx } else { 0.0 }
+            let xy: f64 = x_col
+                .iter()
+                .zip(&y_centered)
+                .map(|(&x, &yc)| (x - x_mean) * yc)
+                .sum();
+            if xx > 1e-15 {
+                xy / xx
+            } else {
+                0.0
+            }
         })
         .collect();
 
@@ -1897,12 +1960,21 @@ pub fn history_index(
 
     // Compute history scores: score_i = Σ_l gamma_l * x_lag[i,l] * delta_u
     let history_scores: Vec<f64> = (0..n)
-        .map(|i| gamma.iter().enumerate().map(|(l, &g)| g * x_lag[i][l] * delta_u).sum())
+        .map(|i| {
+            gamma
+                .iter()
+                .enumerate()
+                .map(|(l, &g)| g * x_lag[i][l] * delta_u)
+                .sum()
+        })
         .collect();
 
     // OLS: fit E{Y_i} = beta_0 + beta_1 * score_i
     let score_mean = history_scores.iter().sum::<f64>() / n as f64;
-    let sxx: f64 = history_scores.iter().map(|&s| (s - score_mean).powi(2)).sum();
+    let sxx: f64 = history_scores
+        .iter()
+        .map(|&s| (s - score_mean).powi(2))
+        .sum();
     let sxy: f64 = history_scores
         .iter()
         .zip(y.iter())
@@ -1911,10 +1983,15 @@ pub fn history_index(
     let slope = if sxx > 1e-15 { sxy / sxx } else { 0.0 };
     let intercept = mu_y - slope * score_mean;
 
-    let fitted_values: Vec<f64> =
-        history_scores.iter().map(|&s| intercept + slope * s).collect();
-    let residuals: Vec<f64> =
-        y.iter().zip(&fitted_values).map(|(&yi, &yh)| yi - yh).collect();
+    let fitted_values: Vec<f64> = history_scores
+        .iter()
+        .map(|&s| intercept + slope * s)
+        .collect();
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
     let (r_squared, _) = super::compute_r_squared(y, &residuals, 2);
 
     Ok(HistoryIndexResult {
@@ -2016,7 +2093,10 @@ mod tests {
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.5);
         let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.2).cos()).collect();
-        let config = FamConfig { ncomp: 2, ..Default::default() };
+        let config = FamConfig {
+            ncomp: 2,
+            ..Default::default()
+        };
         let result = fam(&data, &y, &argvals, None, &config).unwrap();
 
         for i in 0..n {
@@ -2039,15 +2119,26 @@ mod tests {
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let config = FamConfig { ncomp: 3, ..Default::default() };
+        let config = FamConfig {
+            ncomp: 3,
+            ..Default::default()
+        };
         let result = fam(&data, &y, &argvals, None, &config).unwrap();
 
         assert_eq!(result.ncomp, 3, "ncomp field should be 3");
-        assert_eq!(result.component_fits.len(), 3, "component_fits.len() should equal ncomp");
+        assert_eq!(
+            result.component_fits.len(),
+            3,
+            "component_fits.len() should equal ncomp"
+        );
         for (k, cf) in result.component_fits.iter().enumerate() {
             assert_eq!(cf.len(), n, "component_fits[{k}] should have length n={n}");
         }
-        assert_eq!(result.bandwidths.len(), 3, "bandwidths.len() should equal ncomp");
+        assert_eq!(
+            result.bandwidths.len(),
+            3,
+            "bandwidths.len() should equal ncomp"
+        );
         assert_eq!(result.fitted_values.len(), n);
         assert_eq!(result.residuals.len(), n);
     }
@@ -2059,7 +2150,10 @@ mod tests {
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
         let y_ok: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let config = FamConfig { ncomp: 2, ..Default::default() };
+        let config = FamConfig {
+            ncomp: 2,
+            ..Default::default()
+        };
 
         // Empty FdMatrix (0 rows)
         let empty_data = FdMatrix::zeros(0, m);
@@ -2160,7 +2254,11 @@ mod tests {
         };
         let result = fregre_gkam(&[&data], &y, &[&argvals], None, &config).unwrap();
 
-        assert!(result.converged, "expected convergence, got iterations={}", result.iterations);
+        assert!(
+            result.converged,
+            "expected convergence, got iterations={}",
+            result.iterations
+        );
         assert!(
             result.iterations <= config.max_iter,
             "iterations {} > max_iter {}",
@@ -2193,7 +2291,10 @@ mod tests {
 
         // argvals_list length mismatch
         let err = fregre_gkam(&[&data], &y_ok, &[], None, &config);
-        assert!(err.is_err(), "argvals_list length mismatch should return Err");
+        assert!(
+            err.is_err(),
+            "argvals_list length mismatch should return Err"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2252,7 +2353,10 @@ mod tests {
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
 
         // ncomp > min(n, m) = 8
-        let config = GsamConfig { ncomp: 100, ..Default::default() };
+        let config = GsamConfig {
+            ncomp: 100,
+            ..Default::default()
+        };
         let err = fregre_gsam(&data, &y, &argvals, None, &config);
         assert!(err.is_err(), "ncomp > min(n,m) should return Err");
         match err.unwrap_err() {
@@ -2271,11 +2375,18 @@ mod tests {
         let data = make_sine_data(n, m, 1.0);
         let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.1).sin()).collect();
 
-        let config = GsamConfig { ncomp: 3, ..Default::default() };
+        let config = GsamConfig {
+            ncomp: 3,
+            ..Default::default()
+        };
         let result = fregre_gsam(&data, &y, &argvals, None, &config).unwrap();
 
         assert_eq!(result.ncomp, 3);
-        assert_eq!(result.component_fits.len(), 3, "component_fits.len() should equal ncomp");
+        assert_eq!(
+            result.component_fits.len(),
+            3,
+            "component_fits.len() should equal ncomp"
+        );
         assert_eq!(result.fitted_values.len(), n);
     }
 
@@ -2326,11 +2437,18 @@ mod tests {
             })
             .collect();
 
-        let config = VarSelectConfig { ncomp: 1, lambda_n_grid: 20, ..Default::default() };
-        let result =
-            variable_selection(&pred_refs, &y, &argvals_list, None, &config).unwrap();
+        let config = VarSelectConfig {
+            ncomp: 1,
+            lambda_n_grid: 20,
+            ..Default::default()
+        };
+        let result = variable_selection(&pred_refs, &y, &argvals_list, None, &config).unwrap();
 
-        assert_eq!(result.active_predictors.len(), 5, "should have 5 active_predictors entries");
+        assert_eq!(
+            result.active_predictors.len(),
+            5,
+            "should have 5 active_predictors entries"
+        );
         // At least predictors 0 and 2 must be active
         assert!(
             result.active_predictors[0],
@@ -2384,8 +2502,7 @@ mod tests {
             lambda: 1e6, // massively oversized lambda
             ..Default::default()
         };
-        let result =
-            variable_selection(&pred_refs, &y, &argvals_list, None, &config).unwrap();
+        let result = variable_selection(&pred_refs, &y, &argvals_list, None, &config).unwrap();
 
         // With lambda >> lambda_max every group should be zeroed out
         assert!(
@@ -2402,7 +2519,10 @@ mod tests {
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
         let y_ok: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let config = VarSelectConfig { ncomp: 2, ..Default::default() };
+        let config = VarSelectConfig {
+            ncomp: 2,
+            ..Default::default()
+        };
 
         // Empty predictor list
         let err = variable_selection(&[], &y_ok, &[], None, &config);
@@ -2414,13 +2534,7 @@ mod tests {
 
         // Predictor/response length mismatch
         let data_wrong = make_sine_data(n + 5, m, 1.0);
-        let err = variable_selection(
-            &[&data_wrong],
-            &y_ok,
-            &[&argvals],
-            None,
-            &config,
-        );
+        let err = variable_selection(&[&data_wrong], &y_ok, &[&argvals], None, &config);
         assert!(err.is_err(), "mismatched n should return Err");
         match err.unwrap_err() {
             FdarError::InvalidDimension { .. } => {}
@@ -2462,9 +2576,15 @@ mod tests {
             .map(|i| fpca.scores[(i, 0)] * 2.0 + (i as f64 * 0.31).sin() * 0.05)
             .collect();
 
-        let fam_cfg = FamConfig { ncomp: 1, ..Default::default() };
-        let perm_cfg =
-            PermTestConfig { n_perm: 19, seed: 42, statistic: PermTestStatistic::R2 };
+        let fam_cfg = FamConfig {
+            ncomp: 1,
+            ..Default::default()
+        };
+        let perm_cfg = PermTestConfig {
+            n_perm: 19,
+            seed: 42,
+            statistic: PermTestStatistic::R2,
+        };
 
         let r1 = permutation_test_fam(&data, &y, &argvals, None, &fam_cfg, &perm_cfg).unwrap();
         let r2 = permutation_test_fam(&data, &y, &argvals, None, &fam_cfg, &perm_cfg).unwrap();
@@ -2487,11 +2607,16 @@ mod tests {
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let fam_cfg = FamConfig { ncomp: 1, ..Default::default() };
-        let perm_cfg =
-            PermTestConfig { n_perm: 9, seed: 0, statistic: PermTestStatistic::FittedNorm };
-        let result =
-            permutation_test_fam(&data, &y, &argvals, None, &fam_cfg, &perm_cfg).unwrap();
+        let fam_cfg = FamConfig {
+            ncomp: 1,
+            ..Default::default()
+        };
+        let perm_cfg = PermTestConfig {
+            n_perm: 9,
+            seed: 0,
+            statistic: PermTestStatistic::FittedNorm,
+        };
+        let result = permutation_test_fam(&data, &y, &argvals, None, &fam_cfg, &perm_cfg).unwrap();
         assert!(
             (0.0..=1.0).contains(&result.p_value),
             "p_value out of [0,1]: {}",
@@ -2520,8 +2645,15 @@ mod tests {
         // Pure noise: y = noise (no relationship to predictor)
         let y_null: Vec<f64> = (0..n).map(|i| (i as f64 * 0.37).sin() * 0.3).collect();
 
-        let fam_cfg = FamConfig { ncomp: 1, ..Default::default() };
-        let perm_cfg = PermTestConfig { n_perm: 99, seed: 42, statistic: PermTestStatistic::R2 };
+        let fam_cfg = FamConfig {
+            ncomp: 1,
+            ..Default::default()
+        };
+        let perm_cfg = PermTestConfig {
+            n_perm: 99,
+            seed: 42,
+            statistic: PermTestStatistic::R2,
+        };
 
         let r_signal =
             permutation_test_fam(&data, &y_signal, &argvals, None, &fam_cfg, &perm_cfg).unwrap();
@@ -2602,10 +2734,18 @@ mod tests {
         );
         // gamma should be roughly uniform — coefficient of variation should be < 2
         let g_mean = result.gamma.iter().sum::<f64>() / n_lags as f64;
-        let g_std = (result.gamma.iter().map(|&g| (g - g_mean).powi(2)).sum::<f64>()
+        let g_std = (result
+            .gamma
+            .iter()
+            .map(|&g| (g - g_mean).powi(2))
+            .sum::<f64>()
             / n_lags as f64)
             .sqrt();
-        let cv = if g_mean.abs() > 1e-10 { g_std / g_mean.abs() } else { 0.0 };
+        let cv = if g_mean.abs() > 1e-10 {
+            g_std / g_mean.abs()
+        } else {
+            0.0
+        };
         assert!(
             cv < 2.0,
             "gamma should be approximately uniform (CV < 2.0), got CV={}",
@@ -2622,7 +2762,11 @@ mod tests {
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
 
         // window > argvals range (which is ~1.0 for uniform_grid)
-        let config = HistoryIndexConfig { window: 2.0, n_lags: 10, ..Default::default() };
+        let config = HistoryIndexConfig {
+            window: 2.0,
+            n_lags: 10,
+            ..Default::default()
+        };
         let err = history_index(&data, &y, &argvals, &config);
         assert!(err.is_err(), "window > argvals range should return Err");
         match err.unwrap_err() {
@@ -2642,12 +2786,32 @@ mod tests {
         let y: Vec<f64> = (0..n).map(|i| (i as f64 * 0.2).cos()).collect();
 
         let n_lags = 12;
-        let config = HistoryIndexConfig { window: 0.5, n_lags, ..Default::default() };
+        let config = HistoryIndexConfig {
+            window: 0.5,
+            n_lags,
+            ..Default::default()
+        };
         let result = history_index(&data, &y, &argvals, &config).unwrap();
 
-        assert_eq!(result.gamma.len(), n_lags, "gamma.len() should equal n_lags");
-        assert_eq!(result.lag_grid.len(), n_lags, "lag_grid.len() should equal n_lags");
-        assert_eq!(result.fitted_values.len(), n, "fitted_values.len() should equal n");
-        assert_eq!(result.history_scores.len(), n, "history_scores.len() should equal n");
+        assert_eq!(
+            result.gamma.len(),
+            n_lags,
+            "gamma.len() should equal n_lags"
+        );
+        assert_eq!(
+            result.lag_grid.len(),
+            n_lags,
+            "lag_grid.len() should equal n_lags"
+        );
+        assert_eq!(
+            result.fitted_values.len(),
+            n,
+            "fitted_values.len() should equal n"
+        );
+        assert_eq!(
+            result.history_scores.len(),
+            n,
+            "history_scores.len() should equal n"
+        );
     }
 }
