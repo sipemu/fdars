@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.23.0
 milestone_name: Depth, Outliers & Interval Inference
+current_phase: 29
+current_phase_name: "verification passed 5/5; next: Phase 30"
 status: in_progress
-last_updated: "2026-08-19T21:00:00.000Z"
+stopped_at: Completed 30-01-PLAN.md
+last_updated: "2026-08-20T06:33:40.650Z"
 last_activity: 2026-08-19
+last_activity_desc: Phase 29 executed inline, full lib suite green (2165 tests), clippy --all-targets clean, serde build clean
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 67
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -97,6 +100,8 @@ Conventions carried from prior milestones (relevant to implementation):
 - Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved (permutation tests in INF-03 need seeded reproducibility, mirroring INF-01's 999-perm default).
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
+- [Phase ?]: build_pval_matrix uses n_ge/n_perm (no +1) for internal closure matrix; only ItpResult.raw_pvalues uses (n_ge+1)/(n_perm+1) correction
+- [Phase ?]: pval_correct cone-walk ends with corrected.reverse() restoring natural component order; confirmed by p=4 hand-computed unit test
 
 ### Pending Todos
 
@@ -120,8 +125,8 @@ Advisory tech-debt carried forward (not v0.23.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-19
-Stopped at: roadmap created (Phases 28–30)
+Last session: 2026-08-20T06:33:32.194Z
+Stopped at: Completed 30-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
