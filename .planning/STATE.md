@@ -5,15 +5,15 @@ milestone_name: Depth, Outliers & Interval Inference
 current_phase: 29
 current_phase_name: "verification passed 5/5; next: Phase 30"
 status: in_progress
-stopped_at: Completed 30-01-PLAN.md
-last_updated: "2026-08-20T06:33:40.650Z"
+stopped_at: Completed 30-02-PLAN.md (itp_two_pop + itp_flm)
+last_updated: "2026-08-20T06:41:17.503Z"
 last_activity: 2026-08-19
 last_activity_desc: Phase 29 executed inline, full lib suite green (2165 tests), clippy --all-targets clean, serde build clean
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -125,8 +125,8 @@ Advisory tech-debt carried forward (not v0.23.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-20T06:33:32.194Z
-Stopped at: Completed 30-01-PLAN.md
+Last session: 2026-08-20T06:41:17.496Z
+Stopped at: Completed 30-02-PLAN.md (itp_two_pop + itp_flm)
 Resume file: None
 
 ## Operator Next Steps

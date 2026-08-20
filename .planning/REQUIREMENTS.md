@@ -23,7 +23,7 @@ Requirements for milestone v0.23.0. Each maps to exactly one roadmap phase.
 
 ### Functional Inference
 
-- [ ] **INF-03**: Implement the Interval Testing Procedure (ITP) family in new `inference/itp.rs` — one-population and two-population interval-wise tests (B-spline and Fourier bases) with domain-selective adjusted p-values, plus interval-wise FLM coefficient testing. Reuses the INF-01 permutation infrastructure and `basis/` projection. Independent of DEPTH-01/OUT-01. R baseline: `fdatest`.
+- [x] **INF-03**: Implement the Interval Testing Procedure (ITP) family in new `inference/itp.rs` — one-population and two-population interval-wise tests (B-spline and Fourier bases) with domain-selective adjusted p-values, plus interval-wise FLM coefficient testing. Reuses the INF-01 permutation infrastructure and `basis/` projection. Independent of DEPTH-01/OUT-01. R baseline: `fdatest`.
 
 ## v2 Requirements
 
@@ -65,9 +65,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | DEPTH-01 | Phase 28 | Pending |
 | OUT-01 | Phase 29 | Pending |
-| INF-03 | Phase 30 | Pending |
+| INF-03 | Phase 30 | Complete |
 
 **Coverage:**
+
 - v1 requirements: 3 total
 - Mapped to phases: 3
 - Unmapped: 0 ✓
