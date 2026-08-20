@@ -133,9 +133,7 @@ fn build_pval_matrix(
     let mut mat = vec![vec![1.0f64; p]; p];
 
     // Last row: raw p-values (length-1 intervals)
-    for j in 0..p {
-        mat[p - 1][j] = raw_pvalues[j];
-    }
+    mat[p - 1][..p].copy_from_slice(&raw_pvalues[..p]);
 
     // Doubled arrays for the circular wrap-around
     let pval_2x: Vec<f64> = raw_pvalues
@@ -432,7 +430,7 @@ mod tests {
         // var=3: start get_2x_rev(3,3)=mat[3][(4)%4]=mat[3][0]=0.60; no update → 0.60
         // before reverse: [0.42, 0.48, 0.55, 0.60]
         // after  reverse: [0.60, 0.55, 0.48, 0.42]
-        let expected = vec![0.60, 0.55, 0.48, 0.42];
+        let expected = [0.60, 0.55, 0.48, 0.42];
         assert_eq!(adjusted.len(), p);
         for (k, (&got, &exp)) in adjusted.iter().zip(expected.iter()).enumerate() {
             assert!(
