@@ -15,6 +15,7 @@ pub mod cluster;
 pub mod covariance;
 pub mod em;
 pub mod init;
+pub mod subspace;
 #[cfg(test)]
 mod tests;
 
@@ -77,3 +78,4 @@ pub struct GmmClusterResult {
 // Re-export all public items
 pub use cluster::{gmm_cluster, gmm_cluster_with_config, predict_gmm, GmmClusterConfig};
 pub use em::gmm_em;
+pub use subspace::{funhddC_cluster, FunHddcConfig, FunHddcResult};
