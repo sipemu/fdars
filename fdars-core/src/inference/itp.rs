@@ -379,6 +379,372 @@ pub fn itp_one_pop(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Two-population entry point helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Validate two-population inputs; return `(n_a, n_b, m)` or `FdarError`.
+fn validate_two_samples_itp(
+    data_a: &FdMatrix,
+    data_b: &FdMatrix,
+    argvals: &[f64],
+) -> Result<(usize, usize, usize), FdarError> {
+    let (n_a, m_a) = data_a.shape();
+    let (n_b, m_b) = data_b.shape();
+    if m_a == 0 || m_b == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column (grid points)".to_string(),
+            actual: format!("data_a has {m_a} columns, data_b has {m_b} columns"),
+        });
+    }
+    if m_a != m_b {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data_b",
+            expected: format!("{m_a} columns (matching data_a)"),
+            actual: format!("{m_b} columns"),
+        });
+    }
+    if argvals.len() != m_a {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m_a} elements (matching data columns)"),
+            actual: format!("{} elements", argvals.len()),
+        });
+    }
+    if n_a < 2 || n_b < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 rows per sample".to_string(),
+            actual: format!("data_a has {n_a} rows, data_b has {n_b} rows"),
+        });
+    }
+    Ok((n_a, n_b, m_a))
+}
+
+/// Pool two coefficient matrices (shape `(n_a, p)` and `(n_b, p)`) into one
+/// `(n_a + n_b, p)` matrix. Rows 0..n_a come from `coeff_a`, rows n_a.. from `coeff_b`.
+fn pool_coefficients_itp(
+    coeff_a: &FdMatrix,
+    coeff_b: &FdMatrix,
+    n_a: usize,
+    n_b: usize,
+    p: usize,
+) -> FdMatrix {
+    let mut pooled = FdMatrix::zeros(n_a + n_b, p);
+    for k in 0..p {
+        for i in 0..n_a {
+            pooled[(i, k)] = coeff_a[(i, k)];
+        }
+        for i in 0..n_b {
+            pooled[(n_a + i, k)] = coeff_b[(i, k)];
+        }
+    }
+    pooled
+}
+
+/// Fisher–Yates in-place shuffle of an index vector (7-line copy of
+/// `permutation::shuffle_labels`, which is private to that module).
+fn shuffle_itp(v: &mut [usize], rng: &mut StdRng) {
+    use rand::Rng;
+    let n = v.len();
+    for i in (1..n).rev() {
+        let j = rng.gen_range(0..=i);
+        v.swap(i, j);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public entry point: two-population ITP
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Interval-wise two-population test (pool + relabel permutation).
+///
+/// Tests H₀: the mean functions of groups A and B are equal. Projects both
+/// groups onto `nbasis` basis functions, pools the resulting coefficient
+/// matrices `(n_a + n_b, p)`, and runs an interval-wise closure test on the
+/// per-component mean-difference statistic.
+///
+/// The test statistic per basis component `k` is
+/// `|colMean(coeff_a[:, k]) - colMean(coeff_b[:, k])|`.  The permutation null
+/// relabels the pooled coefficient rows via Fisher–Yates (inline copy of the
+/// `permutation::shuffle_labels` pattern).
+///
+/// Matches `fdatest::ITP2bspline` up to the `(n_ge + 1) / (n_perm + 1)`
+/// p-value correction (R uses `n_ge / B` without the +1).
+///
+/// # Arguments
+///
+/// * `data_a` — functional data matrix for group A, shape `(n_a, m)`.
+/// * `data_b` — functional data matrix for group B, shape `(n_b, m)`.
+/// * `argvals` — evaluation points, length `m`.
+/// * `basis_type` — `ProjectionBasisType::Bspline` or `::Fourier`.
+/// * `nbasis` — requested number of basis functions (≥ 2).
+/// * `n_perm` — number of relabel permutations (≥ 1).
+/// * `seed` — RNG seed for reproducibility.
+///
+/// # Errors
+///
+/// * `InvalidDimension` — if `n_a < 2 || n_b < 2`, `m_a != m_b`, or `argvals.len() != m`.
+/// * `InvalidParameter` — if `nbasis < 2`, `n_perm == 0`, or basis projection fails.
+#[must_use = "the ItpResult contains the adjusted p-values"]
+pub fn itp_two_pop(
+    data_a: &FdMatrix,
+    data_b: &FdMatrix,
+    argvals: &[f64],
+    basis_type: ProjectionBasisType,
+    nbasis: usize,
+    n_perm: usize,
+    seed: u64,
+) -> Result<ItpResult, FdarError> {
+    // 1. Validate inputs
+    let (n_a, n_b, m) = validate_two_samples_itp(data_a, data_b, argvals)?;
+    if nbasis < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: "must be >= 2".to_string(),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be >= 1".to_string(),
+        });
+    }
+
+    // 2. Project each group to basis coefficients
+    let proj_a = fdata_to_basis(data_a, argvals, nbasis, basis_type).ok_or_else(|| {
+        FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("basis projection failed for data_a (nbasis={nbasis}, m={m})"),
+        }
+    })?;
+    let proj_b = fdata_to_basis(data_b, argvals, nbasis, basis_type).ok_or_else(|| {
+        FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("basis projection failed for data_b (nbasis={nbasis}, m={m})"),
+        }
+    })?;
+    let p = proj_a.n_basis; // actual basis count (clamp-safe)
+    let coeff_a = proj_a.coefficients; // (n_a, p)
+    let coeff_b = proj_b.coefficients; // (n_b, p)
+
+    // 3. Pool coefficient rows into (n, p)
+    let pooled = pool_coefficients_itp(&coeff_a, &coeff_b, n_a, n_b, p);
+    let n = n_a + n_b;
+
+    // 4. Observed per-component statistic: |colMean(a) - colMean(b)|
+    let t0: Vec<f64> = (0..p)
+        .map(|k| {
+            let m_a = (0..n_a).map(|i| pooled[(i, k)]).sum::<f64>() / n_a as f64;
+            let m_b = (n_a..n).map(|i| pooled[(i, k)]).sum::<f64>() / n_b as f64;
+            (m_a - m_b).abs()
+        })
+        .collect();
+
+    // 5. Pool + relabel permutation loop → t_perm (n_perm, p)
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut perm_idx: Vec<usize> = (0..n).collect();
+    let mut t_perm: Vec<Vec<f64>> = Vec::with_capacity(n_perm);
+    for _ in 0..n_perm {
+        shuffle_itp(&mut perm_idx, &mut rng);
+        let row: Vec<f64> = (0..p)
+            .map(|k| {
+                let m_a = (0..n_a).map(|r| pooled[(r, k)]).sum::<f64>() / n_a as f64;
+                let m_b = (n_a..n).map(|i| pooled[(perm_idx[i], k)]).sum::<f64>() / n_b as f64;
+                (m_a - m_b).abs()
+            })
+            .collect();
+        t_perm.push(row);
+    }
+
+    // 6. Raw per-component p-values (+1 correction)
+    let raw_pvalues: Vec<f64> = (0..p)
+        .map(|k| {
+            let n_ge = t_perm.iter().filter(|row| row[k] >= t0[k]).count();
+            (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0)
+        })
+        .collect();
+
+    // 7–9. Rank-transform → pval_matrix → closure adjustment
+    let l = rank_transform(&t_perm, p, n_perm);
+    let pval_matrix = build_pval_matrix(&raw_pvalues, &l, p, n_perm);
+    let adjusted_pvalues = pval_correct(&pval_matrix, p);
+
+    Ok(ItpResult {
+        adjusted_pvalues,
+        raw_pvalues,
+        basis_type,
+        n_basis: p,
+        n_perm,
+    })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLM entry point helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Simple-regression t-statistic `|β̂_k / se_k|` for basis component `k`.
+///
+/// Fits OLS regression of `y` on the k-th column of `coeff`. Returns `0.0`
+/// if the predictor is degenerate (`sxx < 1e-30`) or the residual variance
+/// is non-positive (`se2 <= 0.0`), preventing divide-by-zero and NaN
+/// propagation (T-30-04 guard).
+fn component_t_stat(y: &[f64], coeff: &FdMatrix, k: usize) -> f64 {
+    let n = y.len();
+    let mx: f64 = (0..n).map(|i| coeff[(i, k)]).sum::<f64>() / n as f64;
+    let my: f64 = y.iter().sum::<f64>() / n as f64;
+    let sxx: f64 = (0..n).map(|i| (coeff[(i, k)] - mx).powi(2)).sum();
+    if sxx < 1e-30 {
+        return 0.0;
+    }
+    let sxy: f64 = (0..n).map(|i| (coeff[(i, k)] - mx) * (y[i] - my)).sum();
+    let beta = sxy / sxx;
+    let rss: f64 = (0..n)
+        .map(|i| {
+            let yhat = my + beta * (coeff[(i, k)] - mx);
+            (y[i] - yhat).powi(2)
+        })
+        .sum();
+    // se2 = rss / ((n-2) * sxx)  [standard error of beta squared]
+    let se2 = rss / ((n - 2) as f64 * sxx);
+    if se2 <= 0.0 {
+        return 0.0;
+    }
+    (beta / se2.sqrt()).abs()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public entry point: interval-wise FLM coefficient test
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Interval-wise FLM coefficient test (response-permutation null).
+///
+/// Tests H₀: the response `y` is independent of the functional predictor
+/// `data`. Projects `data` onto `nbasis` basis functions and, for each
+/// basis component `k`, computes a simple-regression t-statistic
+/// `|β̂_k / se_k|`. The permutation null shuffles the response vector `y`
+/// (response permutation) and re-evaluates all per-component t-statistics.
+///
+/// **Assumption A2 divergence from R:** This implementation uses the
+/// response-permutation simplification (shuffle `y`) rather than the
+/// partial-residual method employed by `fdatest::ITPlmbspline`. The simpler
+/// approach tests the global null "y is independent of the functional
+/// predictor" consistently with the INF-01 permutation philosophy.
+/// Per-component partial-residual permutation would require fitting
+/// `n_perm × p` additional regressions and is not implemented here.
+///
+/// # Arguments
+///
+/// * `data` — functional data matrix (predictor), shape `(n, m)`.
+/// * `y` — response vector, length `n`.
+/// * `argvals` — evaluation points, length `m`.
+/// * `basis_type` — `ProjectionBasisType::Bspline` or `::Fourier`.
+/// * `nbasis` — requested number of basis functions (≥ 2).
+/// * `n_perm` — number of response permutations (≥ 1).
+/// * `seed` — RNG seed for reproducibility.
+///
+/// # Errors
+///
+/// * `InvalidDimension` — if `n < 2`, `y.len() != n`, or `argvals.len() != m`.
+/// * `InvalidParameter` — if `nbasis < 2`, `n_perm == 0`, or basis projection fails.
+#[must_use = "the ItpResult contains the adjusted p-values"]
+pub fn itp_flm(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    basis_type: ProjectionBasisType,
+    nbasis: usize,
+    n_perm: usize,
+    seed: u64,
+) -> Result<ItpResult, FdarError> {
+    // 1. Validate inputs
+    let (n, m) = data.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 rows (observations)".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n} elements (matching data rows)"),
+            actual: format!("{} elements", y.len()),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m} elements (matching data columns)"),
+            actual: format!("{} elements", argvals.len()),
+        });
+    }
+    if nbasis < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: "must be >= 2".to_string(),
+        });
+    }
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be >= 1".to_string(),
+        });
+    }
+
+    // 2. Project X onto basis coefficients (once)
+    let proj = fdata_to_basis(data, argvals, nbasis, basis_type).ok_or_else(|| {
+        FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("basis projection failed (nbasis={nbasis}, m={m})"),
+        }
+    })?;
+    let coeff = proj.coefficients; // (n, p)
+    let p = proj.n_basis;
+
+    // 3. Observed per-component t-statistics
+    let t0: Vec<f64> = (0..p).map(|k| component_t_stat(y, &coeff, k)).collect();
+
+    // 4. Response-permutation loop → t_perm (n_perm, p)
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut perm_idx: Vec<usize> = (0..n).collect();
+    let mut t_perm: Vec<Vec<f64>> = Vec::with_capacity(n_perm);
+    let mut y_perm: Vec<f64> = vec![0.0; n];
+    for _ in 0..n_perm {
+        shuffle_itp(&mut perm_idx, &mut rng);
+        for i in 0..n {
+            y_perm[i] = y[perm_idx[i]];
+        }
+        let row: Vec<f64> = (0..p)
+            .map(|k| component_t_stat(&y_perm, &coeff, k))
+            .collect();
+        t_perm.push(row);
+    }
+
+    // 5. Raw per-component p-values (+1 correction)
+    let raw_pvalues: Vec<f64> = (0..p)
+        .map(|k| {
+            let n_ge = t_perm.iter().filter(|row| row[k] >= t0[k]).count();
+            (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0)
+        })
+        .collect();
+
+    // 6–8. Rank-transform → pval_matrix → closure adjustment
+    let l = rank_transform(&t_perm, p, n_perm);
+    let pval_matrix = build_pval_matrix(&raw_pvalues, &l, p, n_perm);
+    let adjusted_pvalues = pval_correct(&pval_matrix, p);
+
+    Ok(ItpResult {
+        adjusted_pvalues,
+        raw_pvalues,
+        basis_type,
+        n_basis: p,
+        n_perm,
+    })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -646,6 +1012,421 @@ mod tests {
         assert!(
             matches!(
                 itp_one_pop(&data, &argvals, None, ProjectionBasisType::Bspline, 5, 0, 0),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "n_perm == 0 should return InvalidParameter"
+        );
+    }
+
+    // ─── itp_two_pop tests ───────────────────────────────────────────────────
+
+    /// Build a sample of sine curves with an optional constant additive shift
+    /// on `[shift_lo, shift_hi]` (used for both one-pop and two-pop fixtures).
+    fn make_two_pop_sample(
+        n: usize,
+        argvals: &[f64],
+        shift: f64,
+        shift_lo: f64,
+        shift_hi: f64,
+        seed: u64,
+    ) -> FdMatrix {
+        use rand::Rng;
+        let mut rng = StdRng::seed_from_u64(seed);
+        let m = argvals.len();
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let phase: f64 = rng.gen::<f64>() * std::f64::consts::PI;
+            for (j, &t) in argvals.iter().enumerate() {
+                let noise: f64 = rng.gen::<f64>() * 0.05;
+                let s = if t >= shift_lo && t <= shift_hi {
+                    shift
+                } else {
+                    0.0
+                };
+                data[(i, j)] = (t * 2.0 * std::f64::consts::PI + phase).sin() + noise + s;
+            }
+        }
+        data
+    }
+
+    /// On a localized constant shift between groups, at least one adjusted
+    /// p-value should be small (< 0.05).
+    #[test]
+    fn two_population_localized() {
+        let m = 50;
+        let n = 30;
+        let argvals = uniform_grid(m);
+        let data_a = make_two_pop_sample(n, &argvals, 0.0, 0.4, 0.6, 1001);
+        // Group B has a shift of 2.0 on [0.4, 0.6]
+        let data_b = make_two_pop_sample(n, &argvals, 2.0, 0.4, 0.6, 2002);
+        let result = itp_two_pop(
+            &data_a,
+            &data_b,
+            &argvals,
+            ProjectionBasisType::Bspline,
+            15,
+            499,
+            42,
+        )
+        .expect("itp_two_pop should succeed");
+        assert_eq!(result.n_perm, 499);
+        assert!(!result.adjusted_pvalues.is_empty());
+        let min_p = result
+            .adjusted_pvalues
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            min_p < 0.05,
+            "Expected at least one significant component, min adjusted p = {min_p}"
+        );
+    }
+
+    /// Under the null (both groups same distribution), all adjusted p-values
+    /// should be non-significant (max > 0.10).
+    #[test]
+    fn two_population_null() {
+        let m = 50;
+        let n = 30;
+        let argvals = uniform_grid(m);
+        let data_a = make_two_pop_sample(n, &argvals, 0.0, 0.0, 1.0, 3003);
+        let data_b = make_two_pop_sample(n, &argvals, 0.0, 0.0, 1.0, 4004);
+        let result = itp_two_pop(
+            &data_a,
+            &data_b,
+            &argvals,
+            ProjectionBasisType::Bspline,
+            15,
+            499,
+            42,
+        )
+        .expect("itp_two_pop should succeed");
+        let max_p = result
+            .adjusted_pvalues
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            max_p > 0.10,
+            "Expected non-significant result under null, max adjusted p = {max_p}"
+        );
+    }
+
+    /// Same seed must produce bit-identical results.
+    #[test]
+    fn two_population_deterministic() {
+        let m = 30;
+        let n = 15;
+        let argvals = uniform_grid(m);
+        let data_a = make_two_pop_sample(n, &argvals, 0.0, 0.0, 1.0, 5005);
+        let data_b = make_two_pop_sample(n, &argvals, 1.0, 0.3, 0.7, 6006);
+        let r1 = itp_two_pop(
+            &data_a,
+            &data_b,
+            &argvals,
+            ProjectionBasisType::Bspline,
+            10,
+            99,
+            77,
+        )
+        .unwrap();
+        let r2 = itp_two_pop(
+            &data_a,
+            &data_b,
+            &argvals,
+            ProjectionBasisType::Bspline,
+            10,
+            99,
+            77,
+        )
+        .unwrap();
+        assert_eq!(r1, r2, "same seed must give bit-identical ItpResult");
+    }
+
+    /// Invalid inputs must return FdarError, never panic.
+    #[test]
+    fn two_population_error_paths() {
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let good = FdMatrix::zeros(5, m);
+
+        // n_a < 2
+        let one_row = FdMatrix::zeros(1, m);
+        assert!(
+            matches!(
+                itp_two_pop(
+                    &one_row,
+                    &good,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "n_a < 2 should return InvalidDimension"
+        );
+
+        // n_b < 2
+        assert!(
+            matches!(
+                itp_two_pop(
+                    &good,
+                    &one_row,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "n_b < 2 should return InvalidDimension"
+        );
+
+        // m_a != m_b
+        let wide = FdMatrix::zeros(5, m + 1);
+        assert!(
+            matches!(
+                itp_two_pop(
+                    &good,
+                    &wide,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "m_a != m_b should return InvalidDimension"
+        );
+
+        // argvals mismatch
+        let short_argvals = uniform_grid(m - 1);
+        assert!(
+            matches!(
+                itp_two_pop(
+                    &good,
+                    &good,
+                    &short_argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "argvals mismatch should return InvalidDimension"
+        );
+
+        // nbasis < 2
+        assert!(
+            matches!(
+                itp_two_pop(
+                    &good,
+                    &good,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    1,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "nbasis < 2 should return InvalidParameter"
+        );
+
+        // n_perm == 0
+        assert!(
+            matches!(
+                itp_two_pop(
+                    &good,
+                    &good,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    0,
+                    0
+                ),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "n_perm == 0 should return InvalidParameter"
+        );
+    }
+
+    // ─── itp_flm tests ───────────────────────────────────────────────────────
+
+    /// Build a sample where y is a linear functional of X (localized signal).
+    /// X is sine curves; y = coefficient of B-spline component `signal_comp`
+    /// (extracted directly) plus noise — so there IS a true regression signal.
+    fn make_flm_sample(n: usize, argvals: &[f64], seed: u64) -> (FdMatrix, Vec<f64>) {
+        use rand::Rng;
+        let mut rng = StdRng::seed_from_u64(seed);
+        let m = argvals.len();
+        let mut data = FdMatrix::zeros(n, m);
+        let mut y = vec![0.0f64; n];
+        for i in 0..n {
+            let phase: f64 = rng.gen::<f64>() * std::f64::consts::PI;
+            let amp: f64 = rng.gen::<f64>() * 0.5 + 0.75; // amplitude in [0.75, 1.25]
+            for (j, &t) in argvals.iter().enumerate() {
+                let noise: f64 = (rng.gen::<f64>() - 0.5) * 0.05;
+                data[(i, j)] = amp * (t * 2.0 * std::f64::consts::PI + phase).sin() + noise;
+            }
+            // y = amplitude + small noise — correlated with the overall curve level
+            let y_noise: f64 = (rng.gen::<f64>() - 0.5) * 0.1;
+            y[i] = amp + y_noise;
+        }
+        (data, y)
+    }
+
+    /// When y is correlated with the functional predictor, at least one
+    /// adjusted p-value should be significant (< 0.05).
+    #[test]
+    fn flm_effect() {
+        let m = 50;
+        let n = 30;
+        let argvals = uniform_grid(m);
+        let (data, y) = make_flm_sample(n, &argvals, 7007);
+        let result = itp_flm(
+            &data,
+            &y,
+            &argvals,
+            ProjectionBasisType::Bspline,
+            15,
+            499,
+            42,
+        )
+        .expect("itp_flm should succeed");
+        assert_eq!(result.n_perm, 499);
+        assert!(!result.adjusted_pvalues.is_empty());
+        let min_p = result
+            .adjusted_pvalues
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            min_p < 0.05,
+            "Expected at least one significant component with functional effect, min adjusted p = {min_p}"
+        );
+    }
+
+    /// When y is independent of X (pure noise), all adjusted p-values should
+    /// be non-significant (max > 0.10).
+    #[test]
+    fn flm_null() {
+        use rand::Rng;
+        let m = 50;
+        let n = 30;
+        let argvals = uniform_grid(m);
+        let mut rng = StdRng::seed_from_u64(8008);
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let phase: f64 = rng.gen::<f64>() * std::f64::consts::PI;
+            for (j, &t) in argvals.iter().enumerate() {
+                data[(i, j)] = (t * 2.0 * std::f64::consts::PI + phase).sin();
+            }
+        }
+        // y is pure independent noise — no functional signal
+        let y: Vec<f64> = (0..n).map(|_| rng.gen::<f64>()).collect();
+        let result = itp_flm(
+            &data,
+            &y,
+            &argvals,
+            ProjectionBasisType::Bspline,
+            15,
+            499,
+            42,
+        )
+        .expect("itp_flm should succeed");
+        let max_p = result
+            .adjusted_pvalues
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            max_p > 0.10,
+            "Expected non-significant result under null, max adjusted p = {max_p}"
+        );
+    }
+
+    /// Invalid inputs must return FdarError, never panic.
+    #[test]
+    fn flm_error_paths() {
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let data = FdMatrix::zeros(5, m);
+        let y = vec![0.0f64; 5];
+
+        // n < 2
+        let one_row = FdMatrix::zeros(1, m);
+        let y1 = vec![0.0f64; 1];
+        assert!(
+            matches!(
+                itp_flm(
+                    &one_row,
+                    &y1,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "n < 2 should return InvalidDimension"
+        );
+
+        // y.len() != n
+        let y_wrong = vec![0.0f64; 3];
+        assert!(
+            matches!(
+                itp_flm(
+                    &data,
+                    &y_wrong,
+                    &argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "y.len() != n should return InvalidDimension"
+        );
+
+        // argvals mismatch
+        let short_argvals = uniform_grid(m - 1);
+        assert!(
+            matches!(
+                itp_flm(
+                    &data,
+                    &y,
+                    &short_argvals,
+                    ProjectionBasisType::Bspline,
+                    5,
+                    99,
+                    0
+                ),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "argvals mismatch should return InvalidDimension"
+        );
+
+        // nbasis < 2
+        assert!(
+            matches!(
+                itp_flm(&data, &y, &argvals, ProjectionBasisType::Bspline, 1, 99, 0),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "nbasis < 2 should return InvalidParameter"
+        );
+
+        // n_perm == 0
+        assert!(
+            matches!(
+                itp_flm(&data, &y, &argvals, ProjectionBasisType::Bspline, 5, 0, 0),
                 Err(FdarError::InvalidParameter { .. })
             ),
             "n_perm == 0 should return InvalidParameter"
