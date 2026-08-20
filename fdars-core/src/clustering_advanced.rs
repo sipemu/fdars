@@ -996,4 +996,126 @@ mod tests {
         assert_eq!(result.fpca_models.len(), 2);
         assert_eq!(result.reconstruction_errors.shape(), (n, 2));
     }
+
+    // ── funFEM tests ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_funfem_recovery() {
+        let m = 40;
+        let n_per = 10;
+        let (data, t, ground_truth) = two_separated_clusters(n_per, m);
+        let result = funfem_cluster(
+            &data,
+            &t,
+            &FunFemConfig {
+                k: 2,
+                ncomp: 5,
+                p_disc: 1,
+                max_iter: 30,
+                tol: 1e-5,
+                seed: 42,
+            },
+        )
+        .unwrap();
+        let ari = adjusted_rand_index(&result.cluster, &ground_truth);
+        assert!(
+            ari >= 0.90,
+            "funFEM ARI={ari:.3} should be >= 0.90 on well-separated data"
+        );
+    }
+
+    #[test]
+    fn test_funfem_deterministic() {
+        let m = 30;
+        let n_per = 8;
+        let (data, t, _) = two_separated_clusters(n_per, m);
+        let cfg = FunFemConfig {
+            k: 2,
+            ncomp: 4,
+            p_disc: 1,
+            max_iter: 20,
+            tol: 1e-5,
+            seed: 99,
+        };
+        let r1 = funfem_cluster(&data, &t, &cfg).unwrap();
+        let r2 = funfem_cluster(&data, &t, &cfg).unwrap();
+        assert_eq!(
+            r1.cluster, r2.cluster,
+            "same seed must produce identical assignments"
+        );
+    }
+
+    #[test]
+    fn test_funfem_invalid_k_zero() {
+        let m = 20;
+        let (data, t, _) = two_tight_clusters(5, m);
+        assert!(
+            funfem_cluster(&data, &t, &FunFemConfig { k: 0, ..FunFemConfig::default() }).is_err(),
+            "k=0 must return Err"
+        );
+    }
+
+    #[test]
+    fn test_funfem_invalid_k_gt_n() {
+        let m = 20;
+        let (data, t, _) = two_tight_clusters(3, m);
+        assert!(
+            funfem_cluster(&data, &t, &FunFemConfig { k: 10, ..FunFemConfig::default() }).is_err(),
+            "k>n must return Err"
+        );
+    }
+
+    #[test]
+    fn test_funfem_invalid_ncomp_zero() {
+        let m = 20;
+        let (data, t, _) = two_tight_clusters(5, m);
+        assert!(
+            funfem_cluster(&data, &t, &FunFemConfig { ncomp: 0, ..FunFemConfig::default() }).is_err(),
+            "ncomp=0 must return Err"
+        );
+    }
+
+    #[test]
+    fn test_funfem_invalid_empty_data() {
+        let data = FdMatrix::zeros(0, 0);
+        let t: Vec<f64> = vec![];
+        assert!(
+            funfem_cluster(&data, &t, &FunFemConfig::default()).is_err(),
+            "empty data must return Err"
+        );
+    }
+
+    #[test]
+    fn test_funfem_invalid_argvals_mismatch() {
+        let m = 20;
+        let (data, _t, _) = two_tight_clusters(5, m);
+        let wrong_t = uniform_grid(m + 2);
+        assert!(
+            funfem_cluster(&data, &wrong_t, &FunFemConfig::default()).is_err(),
+            "argvals mismatch must return Err"
+        );
+    }
+
+    #[test]
+    fn test_funfem_output_shapes() {
+        let m = 30;
+        let n_per = 6;
+        let (data, t, _) = two_separated_clusters(n_per, m);
+        let n = 2 * n_per;
+        let result = funfem_cluster(
+            &data,
+            &t,
+            &FunFemConfig {
+                k: 2,
+                ncomp: 4,
+                p_disc: 1,
+                max_iter: 10,
+                tol: 1e-4,
+                seed: 1,
+            },
+        )
+        .unwrap();
+        assert_eq!(result.cluster.len(), n);
+        assert_eq!(result.membership.shape(), (n, 2));
+    }
 }
