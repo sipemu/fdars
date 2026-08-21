@@ -127,6 +127,7 @@ pub mod explain_generic;
 pub mod pace_fpca;
 pub mod prelude;
 pub mod scoring;
+pub mod multi_fdata;
 pub mod smooth_basis;
 
 // Re-export matrix types
