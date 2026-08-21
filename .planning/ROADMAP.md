@@ -36,7 +36,9 @@
   4. The sandwich-smoother / sparse-SVD (ssvd) path estimates loadings/scores via a smoothed-covariance (sandwich) estimator as an alternative to the raw thin-SVD decomposition, agreeing with the dense `fdata_to_pc_1d` result in the dense/no-smoothing limit within a documented tolerance; all variants reuse `fdata_to_pc_1d` + `covariance.rs` rather than adding a new subsystem, add no new crate dependency, and invalid inputs (empty matrix, mismatched argvals vs values, mismatched sample sizes between the two samples for `fsvd`/`cross_covariance`/`dynamical_correlation`, `ncomp` out of range, degenerate columns) return `FdarError` rather than panicking.
   5. Existing public signatures across `fdars-core` (including `fdata_to_pc_1d` and everything in `covariance.rs`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 37-01-PLAN.md — Create fpca_variants module + FsvdResult; land cross_covariance (tracer) + fpca_der (Wave 1)
+- [ ] 37-02-PLAN.md — dynamical_correlation, fsvd, ssvd + crate-root smoke re-export test (Wave 2)
 
 ### Phase 38: Sparse Fast Covariance & Trajectory Bands
 
@@ -57,7 +59,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 37. Specialized FPCA Variants | 0/TBD | Not started | - |
+| 37. Specialized FPCA Variants | 0/2 | Not started | - |
 | 38. Sparse Fast Covariance & Trajectory Bands | 0/TBD | Not started | - |
 
 **Execution order:** Both phases are **independent** — FPCA-02 (Phase 37) and SPARSE-01 (Phase 38) have **no cross-phase hard dependency** (as with prior implementation milestones), so they may be planned and executed in **any order or in parallel**. Each extends a disjoint area of the codebase (extend `regression.rs` / new `fpca_variants.rs` vs extend `irreg_fdata/`). The two remaining top-ranked `R-BACKLOG.md` items in the 1.73 tier (FPCA-02 rank 18, SPARSE-01 rank 19 — both score 1.73, M-effort). Both are P3 differentiators completing the FPCA/covariance cluster and complementing the already-shipped PACE core (FPCA-01); SPARSE-01's trajectory-band output integrates with `pace_fpca`. Additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports, **zero changes to existing public signatures**; reuse-first, **no new crate dependency**; numeric outputs only (plotting/rendering out of scope). R baselines matched by capability, not R's exact signatures.
