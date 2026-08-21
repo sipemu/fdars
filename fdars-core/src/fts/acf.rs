@@ -626,6 +626,109 @@ pub fn stationarity_test(
     })
 }
 
+/// Bartlett kernel-sandwich long-run covariance estimator.
+///
+/// Estimates the m×m long-run covariance operator of a functional time series
+/// using the Bartlett (triangular) kernel:
+///
+/// ```text
+/// Ĉ_LRC(s,t) = Ĉ_0(s,t)  +  Σ_{h=1}^{b-1}  (1 - h/b) * (Ĉ_h(s,t) + Ĉ_h^T(s,t))
+/// ```
+///
+/// where `Ĉ_h` is the lag-h sample autocovariance operator and `b` is the bandwidth.
+///
+/// # Arguments
+///
+/// * `data` — Time-ordered functional observations (`N × m`, column-major).
+///   Rows are curves ordered from earliest to latest.
+/// * `argvals` — Evaluation points on the common grid (length `m`).
+/// * `bandwidth` — Number of lags to include (exclusive upper bound in the Bartlett
+///   sum). `None` uses the default `⌊N^{1/3}⌋` (standard HAC cube-root rule).
+///   `Some(0)` reduces the estimator to the lag-0 sample covariance operator C_0.
+///
+/// # Errors
+///
+/// * [`FdarError::InvalidDimension`] — `data` is empty or `argvals.len() != m`.
+///
+/// # Algorithm notes
+///
+/// * **Bartlett kernel only.** Flat-top (Andrews) and Parzen kernels are deferred.
+/// * **Default bandwidth `⌊N^{1/3}⌋`** — the standard HAC rule of thumb (see ftsa
+///   `long_run_covariance_estimation`). For small N the default may be 0 or 1,
+///   which is mathematically correct (reduces to C_0 or C_0 + C_1-terms).
+/// * **bandwidth 0 → C_0.** `long_run_covariance(data, argvals, Some(0))` is
+///   element-wise identical to the lag-0 sample covariance operator, enabling the
+///   plan-34-01 `autocovariance_matrix` helper to be the sole computation spine.
+/// * **Reuses `autocovariance_matrix`.** This function calls the same `pub(crate)`
+///   helper used by `functional_acf` for every lag, adding no new subsystem.
+///   The loop guard `h < bandwidth && h < n` (T-34-06) prevents out-of-bounds lag.
+/// * **Symmetry.** Because `Ĉ_{-h} = Ĉ_h^T` for a stationary series, the
+///   accumulator adds both `w_h * Ĉ_h` and `w_h * Ĉ_h^T`, producing a symmetric
+///   m×m output matrix.
+///
+/// # R baseline divergence
+///
+/// `ftsa::long_run_covariance_estimation` supports multiple kernel types (Bartlett,
+/// Parzen) and an adaptive bandwidth selector. This implementation provides the
+/// Bartlett kernel only and the fixed `⌊N^{1/3}⌋` default. The returned matrix is
+/// directly comparable; only the bandwidth selection rule may differ for small N.
+#[must_use = "returns long-run covariance result; result should be examined"]
+pub fn long_run_covariance(
+    data: &FdMatrix,
+    argvals: &[f64],
+    bandwidth: Option<usize>,
+) -> Result<super::LongRunCovResult, FdarError> {
+    let (n, m) = validate_fts_input(data, argvals)?;
+
+    // Resolve bandwidth: None → ⌊N^{1/3}⌋; Some(b) → b (clamped to n-1 silently).
+    let resolved_bandwidth = match bandwidth {
+        None => (n as f64).cbrt().floor() as usize,
+        Some(b) => b,
+    };
+
+    let xbar = mean_curve(data, n, m);
+
+    // C_0 is always the base of the accumulator.
+    let c0 = autocovariance_matrix(data, &xbar, 0, n, m);
+
+    if resolved_bandwidth == 0 {
+        // Bandwidth 0 → return C_0 unchanged (locked CONTEXT.md decision).
+        return Ok(super::LongRunCovResult {
+            cov_matrix: c0,
+            m,
+            bandwidth: 0,
+            n_curves: n,
+        });
+    }
+
+    // Accumulate: start with C_0, then add w_h * (C_h + C_h^T) for h = 1..bandwidth.
+    let mut acc = c0;
+    // h = bandwidth gives Bartlett weight 0 (Common Pitfalls §5); loop is exclusive.
+    // Also guard h < n so autocovariance_matrix never receives h >= n.
+    let max_h = resolved_bandwidth.min(n - 1);
+    for h in 1..max_h {
+        let w_h = 1.0 - (h as f64) / (resolved_bandwidth as f64);
+        let c_h = autocovariance_matrix(data, &xbar, h, n, m);
+        // Add w_h * C_h and w_h * C_h^T into the accumulator.
+        for j2 in 0..m {
+            for j1 in 0..m {
+                let val = w_h * c_h[j1 + j2 * m];
+                // C_h term: acc[j1, j2] += w_h * c_h[j1, j2]
+                acc[j1 + j2 * m] += val;
+                // C_h^T term: acc[j2, j1] += w_h * c_h[j1, j2]  (i.e. c_h^T[j2,j1] = c_h[j1,j2])
+                acc[j2 + j1 * m] += val;
+            }
+        }
+    }
+
+    Ok(super::LongRunCovResult {
+        cov_matrix: acc,
+        m,
+        bandwidth: resolved_bandwidth,
+        n_curves: n,
+    })
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -889,6 +992,70 @@ mod tests {
             ),
             "0-row matrix should return InvalidDimension"
         );
+    }
+
+    // ── LRC tests (plan 34-03): long_run_covariance ───────────────────────
+
+    /// bandwidth Some(0) must return exactly the lag-0 sample covariance C_0
+    /// (element-wise within 1e-12).
+    #[test]
+    fn lrc_bandwidth_zero() {
+        let (data, argvals) = make_whitenoise_curves(40, 10, 55);
+        let (n, m) = data.shape();
+        let xbar = mean_curve(&data, n, m);
+        let c0 = autocovariance_matrix(&data, &xbar, 0, n, m);
+        let result =
+            super::super::acf::long_run_covariance(&data, &argvals, Some(0)).unwrap();
+        assert_eq!(result.bandwidth, 0, "bandwidth field must be 0");
+        assert_eq!(result.m, m, "m field must match data columns");
+        assert_eq!(result.n_curves, n, "n_curves must match data rows");
+        assert_eq!(result.cov_matrix.len(), m * m, "cov_matrix must be m×m");
+        for (idx, (&lrc_val, &c0_val)) in result.cov_matrix.iter().zip(c0.iter()).enumerate() {
+            assert!(
+                (lrc_val - c0_val).abs() < 1e-12,
+                "LRC at index {idx}: {lrc_val} != C_0 {c0_val} (bandwidth=0 must equal C_0)"
+            );
+        }
+    }
+
+    /// The returned cov_matrix is symmetric within 1e-10.
+    #[test]
+    fn lrc_symmetric() {
+        let (data, argvals) = make_ar1_curves(60, 10, 66);
+        let result =
+            super::super::acf::long_run_covariance(&data, &argvals, None).unwrap();
+        let m = result.m;
+        for j1 in 0..m {
+            for j2 in 0..m {
+                let upper = result.cov_matrix[j1 + j2 * m];
+                let lower = result.cov_matrix[j2 + j1 * m];
+                assert!(
+                    (upper - lower).abs() < 1e-10,
+                    "LRC[{j1},{j2}]={upper} != LRC[{j2},{j1}]={lower} (must be symmetric)"
+                );
+            }
+        }
+    }
+
+    /// bandwidth None returns a finite m×m matrix with the correct default bandwidth.
+    #[test]
+    fn lrc_default_bandwidth() {
+        let n = 50usize;
+        let m = 10usize;
+        let (data, argvals) = make_whitenoise_curves(n, m, 77);
+        let result =
+            super::super::acf::long_run_covariance(&data, &argvals, None).unwrap();
+        let expected_bw = (n as f64).cbrt().floor() as usize;
+        assert_eq!(
+            result.bandwidth, expected_bw,
+            "default bandwidth must be ⌊N^{{1/3}}⌋ = {expected_bw}"
+        );
+        assert_eq!(result.m, m);
+        assert_eq!(result.n_curves, n);
+        assert_eq!(result.cov_matrix.len(), m * m);
+        for &v in &result.cov_matrix {
+            assert!(v.is_finite(), "all cov_matrix entries must be finite");
+        }
     }
 
     // ── Task 2 tests: stationarity_test ──────────────────────────────────
