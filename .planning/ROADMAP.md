@@ -79,7 +79,10 @@ Plans:
   4. The 1D Wasserstein Fréchet mean equals the quantile-average barycenter — reducing to the input density on a single-density sample and lying quantile-between its inputs on a two-density sample — and the density-normalization helper turns a non-negative unnormalized curve into one that integrates to 1; the module reuses `fdata_to_pc_1d` + `helpers` quadrature rather than adding a new subsystem, adding no new crate dependency; invalid inputs (negative/all-zero density, non-monotone grid, mismatched argvals vs values, empty sample) return `FdarError` rather than panicking.
   5. Existing public signatures across `fdars-core` (including `fdata_to_pc_1d`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 36-01-PLAN.md — Tracer: density_fda module skeleton + normalize_density + lqd_transform + inverse_lqd round-trip (wave 1)
+- [ ] 36-02-PLAN.md — wasserstein_barycenter (1D quantile-average Fréchet mean) + crate-root re-export (wave 2)
+- [ ] 36-03-PLAN.md — lqd_fpca + LqdFpcaResult (LQD-space FPCA via fdata_to_pc_1d) + phase-wide gate (wave 3)
 
 ## Progress
 
@@ -87,7 +90,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 34. Functional Serial-Dependence Tooling | 3/3 | Complete    | 2026-08-21 |
 | 35. Basis-System Completions | 4/4 | Complete    | 2026-08-21 |
-| 36. Density Object-Data FDA | 0/0 | Not started | - |
+| 36. Density Object-Data FDA | 0/3 | Not started | - |
 
 **Execution order:** All three phases are **independent** — FTS-02 (Phase 34), REP-01 (Phase 35), and DENS-01 (Phase 36) have **no cross-phase hard dependency** (as in v0.24.0's REG-04/REG-05/CLUS-01), so they may be planned and executed in **any order or in parallel**. Each extends a disjoint area of the codebase (new `fts/acf.rs` / extend `basis/` + new `multi_fdata.rs` / new `density_fda.rs`). The next three top-ranked `R-BACKLOG.md` items (FTS-02 rank 14, REP-01 rank 16, DENS-01 rank 17 — all score 1.73, M-effort). Additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports, **zero changes to existing public signatures**; reuse-first, **no new crate dependency**; numeric outputs only (plotting/rendering out of scope). R baselines matched by capability, not R's exact signatures.
 
