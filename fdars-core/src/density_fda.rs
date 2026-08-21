@@ -6,6 +6,11 @@
 //! space L²([0,1]), where ordinary FPCA applies.  The inverse map always returns a valid
 //! (non-negative, unit-integral) probability density.
 //!
+//! # Types
+//!
+//! - [`LqdFpcaResult`] — output of [`lqd_fpca`], embedding the LQD-space
+//!   [`crate::regression::FpcaResult`] plus fraction of variance explained (FVE).
+//!
 //! # R baseline
 //!
 //! The algorithms in this module are based on the R package **fdadensity 0.1.4**
@@ -255,7 +260,9 @@ pub fn lqd_transform(
     if psi.iter().any(|v| !v.is_finite()) {
         return Err(FdarError::ComputationFailed {
             operation: "lqd_transform",
-            detail: "non-finite ψ values produced; check for zero/near-zero density values"
+            detail: "non-finite ψ values produced; possible cause: a density value \
+                     underflowed to 0 after normalization (input density too small \
+                     relative to its maximum on this grid)"
                 .to_string(),
         });
     }
@@ -410,7 +417,14 @@ pub fn wasserstein_barycenter(
             actual: "0 rows".to_string(),
         });
     }
-    if m == 0 || argvals.len() != m {
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "density_matrix",
+            expected: "at least 1 column".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    if argvals.len() != m {
         return Err(FdarError::InvalidDimension {
             parameter: "argvals",
             expected: format!("{m} elements (matching density_matrix columns)"),
@@ -544,6 +558,7 @@ pub fn wasserstein_barycenter(
 ///
 /// Propagates errors from [`lqd_transform`] and [`fdata_to_pc_1d`].
 /// Returns [`FdarError::InvalidDimension`] for empty matrix or argvals mismatch.
+/// Returns [`FdarError::InvalidParameter`] when `ncomp == 0`.
 #[must_use = "expensive SVD computation — store or use the returned LqdFpcaResult"]
 pub fn lqd_fpca(
     density_matrix: &FdMatrix,
@@ -564,6 +579,12 @@ pub fn lqd_fpca(
             parameter: "argvals",
             expected: format!("{m} elements"),
             actual: format!("{} elements", argvals.len()),
+        });
+    }
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be at least 1".to_string(),
         });
     }
 
@@ -604,10 +625,21 @@ pub fn lqd_fpca(
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
 
-/// Remove adjacent duplicate x values, keeping the first of each pair.
+/// Remove adjacent duplicate x values (and any non-monotone values), keeping the
+/// first of each run.
 ///
-/// Used before `linear_interp` to guarantee a strictly monotone x-axis when
-/// the quantile function Q may have flat segments.
+/// Used before `linear_interp` to guarantee a strictly monotone x-axis.  Callers
+/// pass `q_scaled`, the rescaled quantile function, which is *intended* to be
+/// non-decreasing (positive-linear map of a cumulative integral).  In practice,
+/// [`crate::helpers::cumulative_trapz`]'s generalized-Simpson pairing can produce
+/// small numerical reversals at intermediate grid points.  This helper silently
+/// discards any point where `x[i] <= x[i-1]`, recovering a strictly-increasing
+/// x-axis before the binary-search-based `linear_interp`.
+///
+/// **Silent drop:** points that are exactly equal to or strictly less than the
+/// previously kept value are skipped without error.  This is the intended behaviour
+/// for the current call sites; future callers that require non-decreasingness should
+/// validate their input before calling this helper.
 fn dedup_adjacent(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let mut xd = Vec::with_capacity(x.len());
     let mut yd = Vec::with_capacity(y.len());
@@ -616,6 +648,8 @@ fn dedup_adjacent(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
             xd.push(xi);
             yd.push(yi);
         }
+        // Points where xi <= xd.last() are silently skipped (duplicates or
+        // numerical reversals from cumulative_trapz's Simpson pairing).
     }
     (xd, yd)
 }
@@ -638,8 +672,11 @@ fn quantile_density_from_q(q: &[f64], t: &[f64]) -> Vec<f64> {
     }
     // Backward difference at right boundary
     qd[n - 1] = (q[n - 1] - q[n - 2]) / (t[n - 1] - t[n - 2]);
-    // The density is 1/q(t); clamp non-positive q to a small epsilon
-    let eps = 1e-12_f64;
+    // The density is 1/q(t); clamp non-positive q to a small epsilon.
+    // eps = 1e-6 prevents 1e12 tail spikes from a too-small clamp: at tails
+    // the central-difference dq can be legitimately small on coarse grids,
+    // and 1/1e-12 = 1e12 dominates boundary interpolation in the barycenter.
+    let eps = 1e-6_f64;
     qd.iter().map(|&dq| 1.0 / dq.max(eps)).collect()
 }
 
@@ -1067,5 +1104,30 @@ mod tests {
         let data = FdMatrix::zeros(0, 101);
         let err = lqd_fpca(&data, &argvals, 2, Some(101));
         assert!(err.is_err(), "empty density matrix should return an error");
+    }
+
+    #[test]
+    fn error_lqd_fpca_zero_ncomp() {
+        // ncomp = 0 must be rejected with InvalidParameter, not silently produce
+        // an empty fve vec that panics callers doing result.fve.last().unwrap().
+        let argvals: Vec<f64> = (0..101).map(|i| -3.0 + i as f64 * 6.0 / 100.0).collect();
+        let mut data = FdMatrix::zeros(5, 101);
+        for i in 0..5usize {
+            let dens = truncated_gaussian(&argvals, -1.0 + i as f64 * 0.5);
+            for (j, &v) in dens.iter().enumerate() {
+                data[(i, j)] = v;
+            }
+        }
+        let err = lqd_fpca(&data, &argvals, 0, Some(101));
+        assert!(
+            matches!(
+                err,
+                Err(FdarError::InvalidParameter {
+                    parameter: "ncomp",
+                    ..
+                })
+            ),
+            "ncomp=0 should return InvalidParameter, got {err:?}"
+        );
     }
 }
