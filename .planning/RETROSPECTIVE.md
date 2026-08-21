@@ -268,6 +268,40 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.26.0 — FPCA Breadth & Sparse Covariance
+
+**Shipped:** 2026-08-21
+**Phases:** 2 | **Plans:** 4 | **Tasks:** 11
+
+### What Was Built
+- **FPCA-02 (Phase 37):** new `fpca_variants.rs` — `fpca_der` (derivative FPCA), `fsvd` (functional SVD / cross-FPCA → `FsvdResult`), `cross_covariance`, `dynamical_correlation` (Dubin–Müller), `ssvd` (sandwich-smoother). Verified 5/5.
+- **SPARSE-01 (Phase 38):** new `irreg_fdata/face.rs` — `face_covariance` (FACE kernel-sandwich + PSD projection), `mface_covariance` + `MfaceCovResult` (multivariate block covariance), `face_trajectory` (pace_fpca-delegated fitted trajectories + bands). Verified 5/5.
+- 8 new crate-root-re-exported public symbols; 2414 lib + doc tests green; milestone audit PASSED 8/8.
+
+### What Worked
+- **Reuse-first paid off twice:** Phase 38 directly reused Phase 37's `gaussian_smooth_cov` sandwich (one `pub(crate)` bump) and the shipped `pace_fpca` BLUP bands — `face_trajectory` was a one-line delegation. The two-phase ordering (FPCA sandwich first) made the sparse-covariance sandwich nearly free.
+- **Inline execution was the right call:** the worktree-base-divergence + executor-cargo-stall memory pointers were honoured up front (execute inline, `--no-verify` commits, gates run out-of-band), avoiding the subagent stalls that plagued prior runs. Every phase gate ran green in the orchestrator context.
+- **Adversarial self-review found real gaps:** the post-execute code-review pass caught untested branches both times (fsvd `q>p` Gram branch; mface `P=3` block assembly) — added coverage before verification.
+
+### What Was Inefficient
+- **nalgebra SVD rabbit hole:** `fsvd`'s planned `SVD::new` path silently produced a wrong decomposition on near-rank-deficient cross-covariance (its own `recompose()` failed). Several debug cycles to diagnose before switching to the robust Gram-matrix symmetric-eigendecomposition. A "verify recompose ≈ input" reflex on any library SVD would have caught it in one step.
+- **Tolerance calibration by trial:** dense-limit / band-coverage tolerances (0.30, 0.40, 0.85) needed a couple of runs each to settle — RESEARCH gave ballpark figures but the sharp OU ridge + finite-sample band undercoverage only surfaced at test time.
+
+### Patterns Established
+- **Kernel-sandwich as the house style for smoothed covariance:** ssvd, `face_covariance`, and `mface_covariance` all share the `cov → gaussian_smooth_cov → W^{1/2}·Cov·W^{1/2} symmetric_eigen → PSD-clip` pipeline. Documented K-FACE-vs-P-FACE / curve-first-FPCAder divergences from R in rustdoc.
+- **Gram-matrix eigendecomposition** as the robust substitute for a flaky general SVD on rank-deficient inputs (feature-agnostic, no faer needed).
+
+### Key Lessons
+- When a library SVD feeds downstream math, assert it reconstructs its input before trusting its factors — general SVD can fail silently on rank-deficient matrices.
+- Repo operational memory (worktree divergence, executor stalls, /tmp exhaustion, target/ bloat, no-tag-to-avoid-publish) is worth loading *before* the first heavy build — it shaped the whole execution strategy and avoided every known failure mode.
+
+### Cost Observations
+- Model mix: planners on opus, researchers/executors/verifiers on sonnet, plan-checkers on haiku; orchestration + inline execution on opus.
+- Notable: both phases independent but shared-file ownership (`lib.rs`, `irreg_fdata/mod.rs`) + worktree-divergence fallback serialized them regardless — same pattern as v0.25.0.
+- Crate release (v0.23.0–v0.26.0) remains a deferred operator step; no `v0.26.0` git tag created (avoids a phantom crates.io publish while Cargo.toml is still 0.24.0).
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
