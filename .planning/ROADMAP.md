@@ -36,7 +36,12 @@
   4. The long-run-covariance kernel-sandwich estimator returns a symmetric operator/matrix that reduces to the lag-0 sample covariance when the bandwidth selects only lag 0, and the tooling reuses `helpers` quadrature + `covariance.rs` rather than adding a new subsystem — adding no new crate dependency; invalid inputs (empty matrix / fewer curves than the requested max lag / mismatched argvals vs values / degenerate columns / invalid bandwidth) return `FdarError` rather than panicking.
   5. Existing public signatures across `fdars-core` (including `covariance.rs` and `helpers`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 34-01-PLAN.md — Tracer: fts module skeleton + shared autocovariance helper + L2-norm fACF/fPACF with MC strong-white-noise band (functional_acf, functional_pacf, FacfResult), crate-root re-exported
+- [ ] 34-02-PLAN.md — Expansion: functional_difference (cumulative-sum round-trip) + Monte-Carlo stationarity_test (StationarityResult)
+- [ ] 34-03-PLAN.md — Expansion: Bartlett long_run_covariance (LongRunCovResult) + phase-wide error/determinism sweep + full-suite/clippy gate
 
 ### Phase 35: Basis-System Completions
 
@@ -72,7 +77,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 34. Functional Serial-Dependence Tooling | 0/0 | Not started | - |
+| 34. Functional Serial-Dependence Tooling | 0/3 | Planned | - |
 | 35. Basis-System Completions | 0/0 | Not started | - |
 | 36. Density Object-Data FDA | 0/0 | Not started | - |
 
