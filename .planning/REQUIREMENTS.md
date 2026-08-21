@@ -59,20 +59,24 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FPCA-02-01 | Phase 37 | Pending |
-| FPCA-02-02 | Phase 37 | Pending |
-| FPCA-02-03 | Phase 37 | Pending |
-| FPCA-02-04 | Phase 37 | Pending |
-| FPCA-02-05 | Phase 37 | Pending |
-| SPARSE-01-01 | Phase 38 | Pending |
-| SPARSE-01-02 | Phase 38 | Pending |
-| SPARSE-01-03 | Phase 38 | Pending |
+| FPCA-02-01 | Phase 37 | Planned |
+| FPCA-02-02 | Phase 37 | Planned |
+| FPCA-02-03 | Phase 37 | Planned |
+| FPCA-02-04 | Phase 37 | Planned |
+| FPCA-02-05 | Phase 37 | Planned |
+| SPARSE-01-01 | Phase 38 | Planned |
+| SPARSE-01-02 | Phase 38 | Planned |
+| SPARSE-01-03 | Phase 38 | Planned |
 
 **Coverage:**
 - v1 requirements: 8 total
-- Mapped to phases: 8 (proposed — confirmed by roadmapper)
+- Mapped to phases: 8 (100% — confirmed by roadmapper)
 - Unmapped: 0
+
+**Phase mapping:**
+- Phase 37 (FPCA-02): FPCA-02-01, FPCA-02-02, FPCA-02-03, FPCA-02-04, FPCA-02-05
+- Phase 38 (SPARSE-01): SPARSE-01-01, SPARSE-01-02, SPARSE-01-03
 
 ---
 *Requirements defined: 2026-08-21*
-*Last updated: 2026-08-21 after initial definition*
+*Last updated: 2026-08-21 — traceability confirmed by roadmapper (Phases 37–38, 8/8 mapped)*
