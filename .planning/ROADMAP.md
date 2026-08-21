@@ -53,14 +53,16 @@
   4. The fitted-trajectory entry point returns, per sparse curve, a fitted continuous trajectory on the requested grid together with pointwise confidence bands, integrating with the FACE covariance path (and reusing `pace_fpca` machinery where applicable) such that on densely-sampled synthetic curves the fitted trajectory tracks the true curve within its bands within a documented tolerance; the module adds no new crate dependency, and invalid inputs (empty sample, mismatched variable counts / observation counts for `mface_covariance`, non-monotone or mismatched argvals, degenerate/all-missing curves, invalid bandwidth) return `FdarError` rather than panicking.
   5. Existing public signatures across `fdars-core` (including `irreg_fdata::cov_irreg` and `pace_fpca`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 38-01-PLAN.md — Create face.rs + module wiring + `face_covariance` (SPARSE-01-01) end-to-end tracer + full gate (Wave 1)
+- [ ] 38-02-PLAN.md — `mface_covariance` + `MfaceCovResult` (SPARSE-01-02), `face_trajectory` (SPARSE-01-03), crate-root re-export smoke test (Wave 2)
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 37. Specialized FPCA Variants | 2/2 | ✅ Complete | 2026-08-21 |
-| 38. Sparse Fast Covariance & Trajectory Bands | 0/TBD | Not started | - |
+| 38. Sparse Fast Covariance & Trajectory Bands | 0/2 | Not started | - |
 
 **Execution order:** Both phases are **independent** — FPCA-02 (Phase 37) and SPARSE-01 (Phase 38) have **no cross-phase hard dependency** (as with prior implementation milestones), so they may be planned and executed in **any order or in parallel**. Each extends a disjoint area of the codebase (extend `regression.rs` / new `fpca_variants.rs` vs extend `irreg_fdata/`). The two remaining top-ranked `R-BACKLOG.md` items in the 1.73 tier (FPCA-02 rank 18, SPARSE-01 rank 19 — both score 1.73, M-effort). Both are P3 differentiators completing the FPCA/covariance cluster and complementing the already-shipped PACE core (FPCA-01); SPARSE-01's trajectory-band output integrates with `pace_fpca`. Additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports, **zero changes to existing public signatures**; reuse-first, **no new crate dependency**; numeric outputs only (plotting/rendering out of scope). R baselines matched by capability, not R's exact signatures.
 
