@@ -1108,6 +1108,67 @@ mod tests {
     }
 
     #[test]
+    fn test_fsvd_wide_left_gram_branch() {
+        // p < q exercises the Cw·Cwᵀ (gram-on-left) branch. Same rank-1 structure
+        // with the grids swapped: X has fewer points than Y.
+        let n = 8usize;
+        let px = 14usize;
+        let qy = 22usize;
+        let ax: Vec<f64> = (0..px).map(|i| i as f64 / (px as f64 - 1.0)).collect();
+        let ay: Vec<f64> = (0..qy).map(|i| i as f64 / (qy as f64 - 1.0)).collect();
+        let amps: Vec<f64> = (0..n).map(|i| 0.5 + i as f64 * 0.4).collect();
+        let mut xv = vec![0.0; n * px];
+        let mut yv = vec![0.0; n * qy];
+        for i in 0..n {
+            for j in 0..px {
+                xv[i + j * n] = amps[i] * (std::f64::consts::PI * ax[j]).sin();
+            }
+            for j in 0..qy {
+                yv[i + j * n] = amps[i] * (std::f64::consts::PI * ay[j]).cos();
+            }
+        }
+        let x = FdMatrix::from_column_major(xv, n, px).unwrap();
+        let y = FdMatrix::from_column_major(yv, n, qy).unwrap();
+        let res = fsvd(&x, &ax, &y, &ay, 2).unwrap();
+        assert_eq!(res.left_functions.shape(), (px, 2));
+        assert_eq!(res.right_functions.shape(), (qy, 2));
+        // Unit-L2 norm on both grids (proves the gram-on-left unscaling is correct).
+        let wx = simpsons_weights(&ax);
+        let wy = simpsons_weights(&ay);
+        assert!(approx(
+            weighted_l2_sq(res.left_functions.column(0), &wx),
+            1.0,
+            1e-8
+        ));
+        assert!(approx(
+            weighted_l2_sq(res.right_functions.column(0), &wy),
+            1.0,
+            1e-8
+        ));
+        // Rank-1 cross-covariance reconstruction.
+        let c = cross_covariance(&x, &y).unwrap();
+        let mut sse = 0.0;
+        let mut sst = 0.0;
+        for s in 0..px {
+            for t in 0..qy {
+                let mut recon = 0.0;
+                for k in 0..res.singular_values.len() {
+                    recon += res.singular_values[k]
+                        * res.left_functions[(s, k)]
+                        * res.right_functions[(t, k)];
+                }
+                sse += (c[(s, t)] - recon).powi(2);
+                sst += c[(s, t)].powi(2);
+            }
+        }
+        assert!(
+            sse / sst < 1e-6,
+            "wide reconstruction rel err {}",
+            sse / sst
+        );
+    }
+
+    #[test]
     fn test_fsvd_errors() {
         let (x, ax) = sine_sample(5, 10, 3.0);
         let (y, ay) = sine_sample(5, 8, 4.0);
