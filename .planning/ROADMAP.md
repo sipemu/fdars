@@ -39,9 +39,10 @@
 **Plans**: 3 plans
 
 Plans:
-- [ ] 34-01-PLAN.md — Tracer: fts module skeleton + shared autocovariance helper + L2-norm fACF/fPACF with MC strong-white-noise band (functional_acf, functional_pacf, FacfResult), crate-root re-exported
-- [ ] 34-02-PLAN.md — Expansion: functional_difference (cumulative-sum round-trip) + Monte-Carlo stationarity_test (StationarityResult)
-- [ ] 34-03-PLAN.md — Expansion: Bartlett long_run_covariance (LongRunCovResult) + phase-wide error/determinism sweep + full-suite/clippy gate
+
+- [x] 34-01-PLAN.md — Tracer: fts module skeleton + shared autocovariance helper + L2-norm fACF/fPACF with MC strong-white-noise band (functional_acf, functional_pacf, FacfResult), crate-root re-exported
+- [x] 34-02-PLAN.md — Expansion: functional_difference (cumulative-sum round-trip) + Monte-Carlo stationarity_test (StationarityResult)
+- [x] 34-03-PLAN.md — Expansion: Bartlett long_run_covariance (LongRunCovResult) + phase-wide error/determinism sweep + full-suite/clippy gate
 
 ### Phase 35: Basis-System Completions
 
