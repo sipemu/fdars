@@ -88,6 +88,7 @@ pub mod distance;
 pub mod famm;
 pub mod fdata;
 pub mod fof_regression;
+pub mod fpca_variants;
 pub mod fts;
 pub mod function_on_scalar;
 pub mod function_on_scalar_2d;
@@ -434,6 +435,8 @@ pub use smoothing::{
 
 // Re-export regression types
 pub use regression::{fdata_to_pc_1d, fdata_to_pls_1d, FpcaResult, PlsResult};
+// Re-export specialized FPCA variants (Phase 37)
+pub use fpca_variants::{cross_covariance, fpca_der, FsvdResult};
 #[cfg(feature = "linalg")]
 pub use regression::{ridge_regression_fit, RidgeResult};
 
