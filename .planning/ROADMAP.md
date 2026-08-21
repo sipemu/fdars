@@ -80,9 +80,10 @@ Plans:
   5. Existing public signatures across `fdars-core` (including `fdata_to_pc_1d`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
 **Plans**: 3 plans
-- [ ] 36-01-PLAN.md — Tracer: density_fda module skeleton + normalize_density + lqd_transform + inverse_lqd round-trip (wave 1)
-- [ ] 36-02-PLAN.md — wasserstein_barycenter (1D quantile-average Fréchet mean) + crate-root re-export (wave 2)
-- [ ] 36-03-PLAN.md — lqd_fpca + LqdFpcaResult (LQD-space FPCA via fdata_to_pc_1d) + phase-wide gate (wave 3)
+
+- [x] 36-01-PLAN.md — Tracer: density_fda module skeleton + normalize_density + lqd_transform + inverse_lqd round-trip (wave 1)
+- [x] 36-02-PLAN.md — wasserstein_barycenter (1D quantile-average Fréchet mean) + crate-root re-export (wave 2)
+- [x] 36-03-PLAN.md — lqd_fpca + LqdFpcaResult (LQD-space FPCA via fdata_to_pc_1d) + phase-wide gate (wave 3)
 
 ## Progress
 
