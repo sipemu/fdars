@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.26.0
-status: Awaiting next milestone
-stopped_at: v0.26.0 roadmap created (Phases 37–38) — ready to plan
-last_updated: "2026-08-21T20:38:24.585Z"
-last_activity: 2026-08-21
-last_activity_desc: Milestone v0.26.0 completed and archived
-state_head: ea4dd7e0d3646090cd6985362b1c6a991e751dbf
+milestone: v0.27.0
+milestone_name: Functional Time Series & Fréchet Regression
+status: planning
+last_updated: "2026-08-21T22:29:07.121Z"
+last_activity: 2026-08-22
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-milestone_name: FPCA Breadth & Sparse Covariance
-current_phase: 38
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-21)
 
 ## Current Position
 
-Phase: Milestone v0.26.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-21 — Milestone v0.26.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-22 — Milestone v0.27.0 started
 
 ## Milestone Roadmap (v0.26.0)
 
