@@ -114,11 +114,7 @@ fn hs_norm_sq(c_h: &[f64], m: usize, weights: &[f64]) -> f64 {
 /// `normalization = ∫_T C_0(t,t) dt` — trapezoidal integral of the diagonal of C_0.
 /// Returns `Err(ComputationFailed)` when the diagonal integral is below `NUMERICAL_EPS`
 /// (degenerate / zero-variance input).
-fn acf_normalization(
-    c0: &[f64],
-    m: usize,
-    argvals: &[f64],
-) -> Result<f64, FdarError> {
+fn acf_normalization(c0: &[f64], m: usize, argvals: &[f64]) -> Result<f64, FdarError> {
     let diag: Vec<f64> = (0..m).map(|j| c0[j + j * m]).collect();
     let norm = trapz(&diag, argvals);
     if norm.abs() < NUMERICAL_EPS {
@@ -142,13 +138,7 @@ fn acf_normalization(
 ///
 /// `eigenvalues` must already be sorted descending and truncated to those with
 /// `λ_j / λ_max > 1e-4`.
-fn mc_band_threshold(
-    eigenvalues: &[f64],
-    n: usize,
-    n_sim: usize,
-    ci: f64,
-    seed: u64,
-) -> f64 {
+fn mc_band_threshold(eigenvalues: &[f64], n: usize, n_sim: usize, ci: f64, seed: u64) -> f64 {
     use rand_distr::{ChiSquared, Distribution};
     let mut rng = StdRng::seed_from_u64(seed);
     let chi2 = ChiSquared::new(1.0).expect("df=1 is always valid");
@@ -194,15 +184,9 @@ fn durbin_levinson_pacf(rho: &[f64]) -> Vec<f64> {
 
     for k in 2..=p {
         // numerator = rho[k-1] - Σ_{j=1}^{k-1} phi[k-1][j] * rho[k-1-j]
-        let num = rho[k - 1]
-            - (1..k)
-                .map(|j| phi[k - 1][j] * rho[k - 1 - j])
-                .sum::<f64>();
+        let num = rho[k - 1] - (1..k).map(|j| phi[k - 1][j] * rho[k - 1 - j]).sum::<f64>();
         // denominator = 1 - Σ_{j=1}^{k-1} phi[k-1][j] * rho[j-1]
-        let den = 1.0
-            - (1..k)
-                .map(|j| phi[k - 1][j] * rho[j - 1])
-                .sum::<f64>();
+        let den = 1.0 - (1..k).map(|j| phi[k - 1][j] * rho[j - 1]).sum::<f64>();
         if den.abs() < 1e-12 {
             // Denominator collapse — set remaining PACF to 0.
             break;
@@ -1003,11 +987,17 @@ mod tests {
         // functional_acf determinism
         let acf1 = functional_acf(&data, &argvals, None, 200, 0.95, 42).unwrap();
         let acf2 = functional_acf(&data, &argvals, None, 200, 0.95, 42).unwrap();
-        assert_eq!(acf1, acf2, "functional_acf: same seed must give bit-identical result");
+        assert_eq!(
+            acf1, acf2,
+            "functional_acf: same seed must give bit-identical result"
+        );
         // stationarity_test determinism
         let st1 = stationarity_test(&data, &argvals, 99, 123).unwrap();
         let st2 = stationarity_test(&data, &argvals, 99, 123).unwrap();
-        assert_eq!(st1, st2, "stationarity_test: same seed must give bit-identical result");
+        assert_eq!(
+            st1, st2,
+            "stationarity_test: same seed must give bit-identical result"
+        );
     }
 
     // ── Task 2 tests: MC white-noise band ──────────────────────────────────
@@ -1021,7 +1011,11 @@ mod tests {
         assert_eq!(result.upper_band.len(), result.lags.len());
         let mut all_inside = true;
         for (h, (&rho, &band)) in result.acf.iter().zip(result.upper_band.iter()).enumerate() {
-            assert!(band.is_finite() && band > 0.0, "band must be positive at lag {}", h + 1);
+            assert!(
+                band.is_finite() && band > 0.0,
+                "band must be positive at lag {}",
+                h + 1
+            );
             if rho > band {
                 all_inside = false;
             }
@@ -1138,7 +1132,10 @@ mod tests {
         assert!(
             matches!(
                 functional_difference(&one_row),
-                Err(FdarError::InvalidDimension { parameter: "data", .. })
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
             ),
             "1-row matrix should return InvalidDimension"
         );
@@ -1148,7 +1145,10 @@ mod tests {
         assert!(
             matches!(
                 functional_difference(&zero_row),
-                Err(FdarError::InvalidDimension { parameter: "data", .. })
+                Err(FdarError::InvalidDimension {
+                    parameter: "data",
+                    ..
+                })
             ),
             "0-row matrix should return InvalidDimension"
         );
@@ -1261,7 +1261,10 @@ mod tests {
         let (data, argvals) = make_whitenoise_curves(40, 15, 303);
         let r1 = stationarity_test(&data, &argvals, 199, 123).unwrap();
         let r2 = stationarity_test(&data, &argvals, 199, 123).unwrap();
-        assert_eq!(r1, r2, "same seed must give bit-identical StationarityResult");
+        assert_eq!(
+            r1, r2,
+            "same seed must give bit-identical StationarityResult"
+        );
     }
 
     /// stationarity_test: error paths for n_perm==0 and empty input.
@@ -1272,7 +1275,10 @@ mod tests {
         assert!(
             matches!(
                 stationarity_test(&data, &argvals, 0, 1),
-                Err(FdarError::InvalidParameter { parameter: "n_perm", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "n_perm",
+                    ..
+                })
             ),
             "n_perm == 0 must return InvalidParameter"
         );
@@ -1290,7 +1296,10 @@ mod tests {
         assert!(
             matches!(
                 stationarity_test(&data, &bad_argvals, 99, 1),
-                Err(FdarError::InvalidDimension { parameter: "argvals", .. })
+                Err(FdarError::InvalidDimension {
+                    parameter: "argvals",
+                    ..
+                })
             ),
             "argvals mismatch must return InvalidDimension"
         );
@@ -1309,7 +1318,10 @@ mod tests {
         assert!(
             matches!(
                 functional_acf(&good, &argvals, None, 0, 0.95, 1),
-                Err(FdarError::InvalidParameter { parameter: "n_sim", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "n_sim",
+                    ..
+                })
             ),
             "functional_acf: n_sim == 0 must return InvalidParameter"
         );
@@ -1317,7 +1329,10 @@ mod tests {
         assert!(
             matches!(
                 functional_pacf(&good, &argvals, None, 0, 0.95, 1),
-                Err(FdarError::InvalidParameter { parameter: "n_sim", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "n_sim",
+                    ..
+                })
             ),
             "functional_pacf: n_sim == 0 must return InvalidParameter"
         );
@@ -1326,7 +1341,10 @@ mod tests {
         assert!(
             matches!(
                 functional_acf(&good, &argvals, None, 99, 1.5, 1),
-                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "ci",
+                    ..
+                })
             ),
             "functional_acf: ci = 1.5 must return InvalidParameter"
         );
@@ -1334,7 +1352,10 @@ mod tests {
         assert!(
             matches!(
                 functional_acf(&good, &argvals, None, 99, 0.0, 1),
-                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "ci",
+                    ..
+                })
             ),
             "functional_acf: ci = 0.0 must return InvalidParameter"
         );
@@ -1342,7 +1363,10 @@ mod tests {
         assert!(
             matches!(
                 functional_acf(&good, &argvals, None, 99, -0.1, 1),
-                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "ci",
+                    ..
+                })
             ),
             "functional_acf: ci = -0.1 must return InvalidParameter"
         );
@@ -1350,7 +1374,10 @@ mod tests {
         assert!(
             matches!(
                 functional_pacf(&good, &argvals, None, 99, 1.0, 1),
-                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+                Err(FdarError::InvalidParameter {
+                    parameter: "ci",
+                    ..
+                })
             ),
             "functional_pacf: ci = 1.0 must return InvalidParameter"
         );
