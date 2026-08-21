@@ -15,19 +15,19 @@ Requirements for milestone v0.26.0. Each maps to a roadmap phase.
 
 R baseline: `fdapace` (FPCAder, FSVD, GetCrCov, DynCorr, FCCor), `refund` (fpca.sc sandwich, fpca.ssvd). Extends `regression.rs` (or a new `fpca_variants.rs`), reusing the dense FPCA (`fdata_to_pc_1d`) + `covariance.rs`.
 
-- [ ] **FPCA-02-01**: User can compute FPCA of curve derivatives (`fpca_der`) — eigenfunction/score decomposition of the differentiated process, returning derivative loadings and scores.
-- [ ] **FPCA-02-02**: User can compute a functional SVD / cross-FPCA (`fsvd`) between two functional samples — the bivariate singular-value decomposition yielding paired left/right singular functions and singular values.
-- [ ] **FPCA-02-03**: User can estimate a cross-covariance surface (`cross_covariance`) between two functional samples over their argument grids.
-- [ ] **FPCA-02-04**: User can compute dynamical / functional correlation (`dynamical_correlation`) between two functional samples as a scalar association measure.
-- [ ] **FPCA-02-05**: User can run a sandwich-smoother / sparse-SVD (ssvd) FPCA path that estimates loadings/scores via a smoothed-covariance (sandwich) estimator as an alternative to the raw thin-SVD decomposition.
+- [x] **FPCA-02-01**: User can compute FPCA of curve derivatives (`fpca_der`) — eigenfunction/score decomposition of the differentiated process, returning derivative loadings and scores.
+- [x] **FPCA-02-02**: User can compute a functional SVD / cross-FPCA (`fsvd`) between two functional samples — the bivariate singular-value decomposition yielding paired left/right singular functions and singular values.
+- [x] **FPCA-02-03**: User can estimate a cross-covariance surface (`cross_covariance`) between two functional samples over their argument grids.
+- [x] **FPCA-02-04**: User can compute dynamical / functional correlation (`dynamical_correlation`) between two functional samples as a scalar association measure.
+- [x] **FPCA-02-05**: User can run a sandwich-smoother / sparse-SVD (ssvd) FPCA path that estimates loadings/scores via a smoothed-covariance (sandwich) estimator as an alternative to the raw thin-SVD decomposition.
 
 ### SPARSE-01 — Sparse/irregular fast covariance + trajectory bands
 
 R baseline: `face` (FACE), `mfaces` (multivariate FACE), `fdapace` (trajectory bands). Extends `irreg_fdata/`, building on `cov_irreg`, and integrates with the shipped PACE `pace_fpca` (FPCA-01).
 
-- [ ] **SPARSE-01-01**: User can estimate a sparse-data covariance surface via the FACE fast-sandwich smoother (`face_covariance`) over irregular/sparse functional data.
-- [ ] **SPARSE-01-02**: User can estimate a multivariate sparse covariance via the `mfaces` extension (`mface_covariance`) for multiple simultaneously-observed sparse functional variables.
-- [ ] **SPARSE-01-03**: User can obtain fitted continuous trajectories with pointwise confidence bands for sparse curves, integrated with the FACE covariance path (and reusing `pace_fpca` machinery where applicable).
+- [x] **SPARSE-01-01**: User can estimate a sparse-data covariance surface via the FACE fast-sandwich smoother (`face_covariance`) over irregular/sparse functional data.
+- [x] **SPARSE-01-02**: User can estimate a multivariate sparse covariance via the `mfaces` extension (`mface_covariance`) for multiple simultaneously-observed sparse functional variables.
+- [x] **SPARSE-01-03**: User can obtain fitted continuous trajectories with pointwise confidence bands for sparse curves, integrated with the FACE covariance path (and reusing `pace_fpca` machinery where applicable).
 
 ## Future Requirements
 
@@ -59,14 +59,14 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FPCA-02-01 | Phase 37 | Planned |
-| FPCA-02-02 | Phase 37 | Planned |
-| FPCA-02-03 | Phase 37 | Planned |
-| FPCA-02-04 | Phase 37 | Planned |
-| FPCA-02-05 | Phase 37 | Planned |
-| SPARSE-01-01 | Phase 38 | Planned |
-| SPARSE-01-02 | Phase 38 | Planned |
-| SPARSE-01-03 | Phase 38 | Planned |
+| FPCA-02-01 | Phase 37 | Complete |
+| FPCA-02-02 | Phase 37 | Complete |
+| FPCA-02-03 | Phase 37 | Complete |
+| FPCA-02-04 | Phase 37 | Complete |
+| FPCA-02-05 | Phase 37 | Complete |
+| SPARSE-01-01 | Phase 38 | Complete |
+| SPARSE-01-02 | Phase 38 | Complete |
+| SPARSE-01-03 | Phase 38 | Complete |
 
 **Coverage:**
 - v1 requirements: 8 total
