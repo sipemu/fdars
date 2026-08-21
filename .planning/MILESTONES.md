@@ -1,5 +1,18 @@
 # Milestones
 
+## v0.26.0 FPCA Breadth & Sparse Covariance (Shipped: 2026-08-21)
+
+**Phases completed:** 2 phases, 4 plans, 11 tasks
+
+**Key accomplishments:**
+
+- Established the additive `fpca_variants.rs` module and landed the two simplest FPCA variants end-to-end (cross-covariance surface + derivative FPCA), plus the `FsvdResult` scaffold for Plan 02.
+- Completed FPCA-02 with the three normalization-sensitive variants — the Dubin–Müller dynamical correlation, the functional cross-SVD, and the sandwich-smoother FPCA path — all crate-root reachable.
+- Landed the FACE fast-sandwich sparse-covariance estimator as the phase tracer — a new `irreg_fdata/face.rs` reusing `cov_irreg` + the Phase-37 sandwich smoother, producing a symmetric PSD covariance surface.
+- Completed SPARSE-01 with the multivariate FACE block covariance (`mface_covariance` + `MfaceCovResult`) and the sparse trajectory-band entry point (`face_trajectory`, a thin PACE delegation) — all four FACE symbols crate-root reachable.
+
+---
+
 ## v0.25.0 Serial Dependence, Representation & Density Breadth (Shipped: 2026-08-21)
 
 **Phases completed:** 3 phases, 10 plans, 11 tasks

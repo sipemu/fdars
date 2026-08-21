@@ -14,57 +14,21 @@
 - ✅ **v0.23.0 — Depth, Outliers & Interval Inference** — Phases 28–30 (shipped 2026-08-20) — [archive](milestones/v0.23.0-ROADMAP.md)
 - ✅ **v0.24.0 — Functional Regression & Clustering Breadth** — Phases 31–33 (shipped 2026-08-20) — [archive](milestones/v0.24.0-ROADMAP.md)
 - ✅ **v0.25.0 — Serial Dependence, Representation & Density Breadth** — Phases 34–36 (shipped 2026-08-21) — [archive](milestones/v0.25.0-ROADMAP.md)
-- 🔨 **v0.26.0 — FPCA Breadth & Sparse Covariance** — Phases 37–38 (in progress)
+- ✅ **v0.26.0 — FPCA Breadth & Sparse Covariance** — Phases 37–38 (shipped 2026-08-21) — [archive](milestones/v0.26.0-ROADMAP.md)
 
 ## Phases
 
-- [x] **Phase 37: Specialized FPCA Variants** (2/2 plans) — completed 2026-08-21 (FPCA-02) - Add FPCA of derivatives (`fpca_der`), functional SVD / cross-FPCA (`fsvd`), cross-covariance surfaces (`cross_covariance`), dynamical/functional correlation (`dynamical_correlation`), and a sandwich-smoother / sparse-SVD (ssvd) FPCA path — extend `regression.rs` (or new `fpca_variants.rs`), reusing `fdata_to_pc_1d` + `covariance.rs` (FPCA-02, independent)
-- [x] **Phase 38: Sparse Fast Covariance & Trajectory Bands** (2/2 plans) — completed 2026-08-21 (SPARSE-01) - Add the FACE fast-sandwich sparse-data covariance estimator (`face_covariance`), its multivariate `mfaces` extension (`mface_covariance`), and fitted continuous trajectories with pointwise confidence bands — extend `irreg_fdata/`, reusing `cov_irreg` and integrating with the shipped PACE `pace_fpca` (SPARSE-01, independent)
+<details>
+<summary>✅ v0.26.0 FPCA Breadth & Sparse Covariance (Phases 37–38) — SHIPPED 2026-08-21</summary>
 
-## Phase Details
+The two remaining top-ranked `R-BACKLOG.md` items (score 1.73, M-effort), exhausting the 1.73 tier: FPCA-02 (Phase 37), SPARSE-01 (Phase 38). Both additive/non-breaking, reuse-first, no new crate dependency; whole-crate 2414 lib + doc tests green, `cargo clippy --all-targets` clean. Both phases independent (disjoint modules: `fpca_variants.rs` vs `irreg_fdata/face.rs`), each verified 5/5, milestone audit PASSED 8/8.
 
-### Phase 37: Specialized FPCA Variants
+- [x] Phase 37: Specialized FPCA Variants (2/2 plans) — completed 2026-08-21 (FPCA-02) — `fpca_der`, `fsvd`, `cross_covariance`, `dynamical_correlation`, `ssvd`
+- [x] Phase 38: Sparse Fast Covariance & Trajectory Bands (2/2 plans) — completed 2026-08-21 (SPARSE-01) — `face_covariance`, `mface_covariance`, `face_trajectory`
 
-**Goal**: A user can run the specialized FPCA variants that `fdapace`/`refund` expose but fdars was missing — FPCA of curve derivatives (`fpca_der`), a functional SVD / cross-FPCA between two functional samples (`fsvd`), a cross-covariance surface between two samples (`cross_covariance`), a dynamical/functional correlation scalar (`dynamical_correlation`), and a sandwich-smoother / sparse-SVD (ssvd) FPCA path — all by extending `fdars-core/src/regression.rs` (or a new `fpca_variants.rs`), reusing the existing dense FPCA (`fdata_to_pc_1d`) and `covariance.rs`, without any existing code changing. Completes the FPCA long tail alongside the already-shipped PACE core (FPCA-01).
-**Depends on**: Nothing (independent of Phase 38; may run in any order or in parallel). Reuses shipped `fdata_to_pc_1d` + `covariance.rs`.
-**Requirements**: FPCA-02 (FPCA-02-01, FPCA-02-02, FPCA-02-03, FPCA-02-04, FPCA-02-05)
-**Success Criteria** (what must be TRUE):
+Full phase detail: [milestones/v0.26.0-ROADMAP.md](milestones/v0.26.0-ROADMAP.md)
 
-  1. User can call new `Result`-returning public entry points (crate-root re-exported) in `fdars-core/src/regression.rs` (or a new `fpca_variants.rs`), each consuming functional data in column-major `FdMatrix` form and returning structured numeric output: FPCA of derivatives (`fpca_der`), a functional SVD / cross-FPCA (`fsvd`), a cross-covariance surface (`cross_covariance`), a dynamical/functional correlation (`dynamical_correlation`), and a sandwich-smoother / sparse-SVD (ssvd) FPCA path.
-  2. `fpca_der` returns derivative loadings and scores of the differentiated process such that, on a synthetic sample whose curves differ along a known smooth mode of variation, the leading derivative component reconstructs the differentiated curves within a documented tolerance (inline `#[cfg(test)]` tests).
-  3. `fsvd` returns paired left/right singular functions and singular values whose bivariate reconstruction recovers a known low-rank cross-covariance structure between two functional samples within a documented tolerance; `cross_covariance` returns a symmetric-in-construction surface over the two argument grids that agrees with the empirical cross-covariance on a hand-computed reference; and `dynamical_correlation` returns a scalar in a documented range that is 1 (within tolerance) for perfectly co-varying samples and near 0 for independent samples (inline `#[cfg(test)]` tests).
-  4. The sandwich-smoother / sparse-SVD (ssvd) path estimates loadings/scores via a smoothed-covariance (sandwich) estimator as an alternative to the raw thin-SVD decomposition, agreeing with the dense `fdata_to_pc_1d` result in the dense/no-smoothing limit within a documented tolerance; all variants reuse `fdata_to_pc_1d` + `covariance.rs` rather than adding a new subsystem, add no new crate dependency, and invalid inputs (empty matrix, mismatched argvals vs values, mismatched sample sizes between the two samples for `fsvd`/`cross_covariance`/`dynamical_correlation`, `ncomp` out of range, degenerate columns) return `FdarError` rather than panicking.
-  5. Existing public signatures across `fdars-core` (including `fdata_to_pc_1d` and everything in `covariance.rs`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
-
-**Plans**: 2 plans
-- [ ] 37-01-PLAN.md — Create fpca_variants module + FsvdResult; land cross_covariance (tracer) + fpca_der (Wave 1)
-- [ ] 37-02-PLAN.md — dynamical_correlation, fsvd, ssvd + crate-root smoke re-export test (Wave 2)
-
-### Phase 38: Sparse Fast Covariance & Trajectory Bands
-
-**Goal**: A user can estimate sparse/irregular functional covariance with the fast-sandwich smoother `face`/`mfaces` expose but fdars was missing — the FACE fast-sandwich covariance surface for sparse/irregular data (`face_covariance`), its multivariate extension for multiple simultaneously-observed sparse variables (`mface_covariance`), and integrated fitted continuous trajectories with pointwise confidence bands for sparse curves — all by extending `fdars-core/src/irreg_fdata/`, building on the existing `cov_irreg` and integrating with the shipped PACE `pace_fpca` (FPCA-01) machinery where applicable, without any existing code changing.
-**Depends on**: Nothing (independent of Phase 37; may run in any order or in parallel). Builds on shipped `irreg_fdata::cov_irreg` + `pace_fpca`.
-**Requirements**: SPARSE-01 (SPARSE-01-01, SPARSE-01-02, SPARSE-01-03)
-**Success Criteria** (what must be TRUE):
-
-  1. User can call new `Result`-returning public entry points (crate-root re-exported) in `fdars-core/src/irreg_fdata/`, each consuming sparse/irregular functional data and returning structured numeric output: a FACE fast-sandwich covariance surface (`face_covariance`), a multivariate `mfaces` covariance (`mface_covariance`), and fitted trajectories with pointwise confidence bands integrated with the FACE covariance path.
-  2. `face_covariance` returns a symmetric covariance surface that recovers a known covariance surface on dense-limit synthetic data (curves sampled densely enough to approximate the regular case) within a documented tolerance, and reuses `cov_irreg` / the existing sparse-covariance machinery rather than adding a new subsystem (inline `#[cfg(test)]` tests).
-  3. `mface_covariance` estimates the joint (block) covariance across multiple simultaneously-observed sparse functional variables, recovering the correct within-variable and cross-variable covariance blocks on a synthetic two-variable sample with a known cross-structure within a documented tolerance (inline `#[cfg(test)]` tests).
-  4. The fitted-trajectory entry point returns, per sparse curve, a fitted continuous trajectory on the requested grid together with pointwise confidence bands, integrating with the FACE covariance path (and reusing `pace_fpca` machinery where applicable) such that on densely-sampled synthetic curves the fitted trajectory tracks the true curve within its bands within a documented tolerance; the module adds no new crate dependency, and invalid inputs (empty sample, mismatched variable counts / observation counts for `mface_covariance`, non-monotone or mismatched argvals, degenerate/all-missing curves, invalid bandwidth) return `FdarError` rather than panicking.
-  5. Existing public signatures across `fdars-core` (including `irreg_fdata::cov_irreg` and `pace_fpca`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
-
-**Plans**: 2 plans
-- [ ] 38-01-PLAN.md — Create face.rs + module wiring + `face_covariance` (SPARSE-01-01) end-to-end tracer + full gate (Wave 1)
-- [ ] 38-02-PLAN.md — `mface_covariance` + `MfaceCovResult` (SPARSE-01-02), `face_trajectory` (SPARSE-01-03), crate-root re-export smoke test (Wave 2)
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 37. Specialized FPCA Variants | 2/2 | ✅ Complete | 2026-08-21 |
-| 38. Sparse Fast Covariance & Trajectory Bands | 2/2 | ✅ Complete | 2026-08-21 |
-
-**Execution order:** Both phases are **independent** — FPCA-02 (Phase 37) and SPARSE-01 (Phase 38) have **no cross-phase hard dependency** (as with prior implementation milestones), so they may be planned and executed in **any order or in parallel**. Each extends a disjoint area of the codebase (extend `regression.rs` / new `fpca_variants.rs` vs extend `irreg_fdata/`). The two remaining top-ranked `R-BACKLOG.md` items in the 1.73 tier (FPCA-02 rank 18, SPARSE-01 rank 19 — both score 1.73, M-effort). Both are P3 differentiators completing the FPCA/covariance cluster and complementing the already-shipped PACE core (FPCA-01); SPARSE-01's trajectory-band output integrates with `pace_fpca`. Additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports, **zero changes to existing public signatures**; reuse-first, **no new crate dependency**; numeric outputs only (plotting/rendering out of scope). R baselines matched by capability, not R's exact signatures.
+</details>
 
 <details>
 <summary>✅ v0.25.0 Serial Dependence, Representation & Density Breadth (Phases 34–36) — SHIPPED 2026-08-21</summary>
