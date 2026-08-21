@@ -586,7 +586,10 @@ pub fn fsvd(
 }
 
 /// Separable row-then-column Gaussian smoothing of an m×m covariance surface.
-fn gaussian_smooth_cov(cov: &FdMatrix, argvals: &[f64], bandwidth: f64) -> FdMatrix {
+///
+/// `pub(crate)` so the FACE sparse-covariance path (`irreg_fdata::face`) can reuse
+/// the same sandwich smoother without duplicating it. Not part of the public API.
+pub(crate) fn gaussian_smooth_cov(cov: &FdMatrix, argvals: &[f64], bandwidth: f64) -> FdMatrix {
     let m = argvals.len();
     // Precompute the normalized kernel weight matrix K[(a,b)].
     let mut kernel = vec![0.0_f64; m * m];

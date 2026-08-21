@@ -228,6 +228,8 @@ pub use simulation::{EFunType, EValType};
 
 // Re-export irregular fdata types
 pub use irreg_fdata::{IrregFdata, KernelType};
+// Re-export FACE sparse covariance (Phase 38)
+pub use irreg_fdata::face_covariance;
 
 // Re-export tolerance band types
 pub use tolerance::{

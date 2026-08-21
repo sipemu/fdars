@@ -20,6 +20,7 @@
 //!
 //! The offsets would be: [0, 5, 8, 15]
 
+pub mod face;
 pub mod kernels;
 pub mod smoothing;
 
@@ -27,6 +28,7 @@ pub mod smoothing;
 mod tests;
 
 // Re-export all public items
+pub use face::face_covariance;
 pub use kernels::{mean_irreg, KernelType};
 pub use smoothing::{cov_irreg, integrate_irreg, metric_lp_irreg, norm_lp_irreg, to_regular_grid};
 
