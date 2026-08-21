@@ -89,6 +89,9 @@ impl Lfd {
     ///
     /// # Errors
     ///
+    /// * [`FdarError::InvalidParameter`] if `coefs` is empty (`m = 0`); use
+    ///   `coefs = vec![vec![0.0]]` for a pure first-derivative operator.
+    /// * [`FdarError::InvalidDimension`] if `n_pts < 2` (single-point grid cannot produce derivatives).
     /// * [`FdarError::InvalidDimension`] if `argvals.len() != data.ncols()`.
     /// * [`FdarError::InvalidDimension`] if any `coefs[k]` has a length other than
     ///   `1` or `n_pts`.
@@ -99,6 +102,25 @@ impl Lfd {
     pub fn apply(&self, data: &FdMatrix, argvals: &[f64]) -> Result<FdMatrix, FdarError> {
         let (n, n_pts) = data.shape();
         let m = self.coefs.len(); // operator order
+
+        // Guard: empty coefs is not a valid operator (WR-02).
+        if m == 0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "coefs",
+                message: "Lfd requires at least one weight function (coefs.len() >= 1); \
+                          use coefs = vec![vec![0.0]] for the pure-derivative operator"
+                    .to_string(),
+            });
+        }
+
+        // Guard: single-point grid produces only zero derivatives (IN-03).
+        if n_pts < 2 {
+            return Err(FdarError::InvalidDimension {
+                parameter: "argvals",
+                expected: ">= 2 (required for finite-difference derivatives)".to_string(),
+                actual: n_pts.to_string(),
+            });
+        }
 
         // Validate argvals length matches data columns.
         if argvals.len() != n_pts {
@@ -216,6 +238,7 @@ pub struct PdaResult {
 /// # Errors
 ///
 /// * [`FdarError::InvalidDimension`] if `argvals.len() != data.ncols()`.
+/// * [`FdarError::InvalidDimension`] if `n_pts < 2` (single-point grid cannot produce derivatives).
 /// * [`FdarError::InvalidParameter`] if `order == 0`.
 /// * [`FdarError::InvalidDimension`] if `n_curves < order + 1` (underdetermined system).
 ///
@@ -250,6 +273,15 @@ pub fn principal_differential_analysis(
             parameter: "argvals",
             expected: n_pts.to_string(),
             actual: argvals.len().to_string(),
+        });
+    }
+
+    // Guard: single-point grid produces only zero derivatives (IN-03).
+    if n_pts < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: ">= 2 (required for finite-difference derivatives)".to_string(),
+            actual: n_pts.to_string(),
         });
     }
 
@@ -349,6 +381,21 @@ mod tests {
     use std::f64::consts::PI;
 
     // ── Lfd tests ────────────────────────────────────────────────────────────
+
+    /// WR-02: empty coefs returns Err(InvalidParameter).
+    #[test]
+    fn lfd_empty_coefs_returns_err() {
+        let n_pts = 10;
+        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let data = FdMatrix::zeros(2, n_pts);
+        let lfd = Lfd { coefs: vec![] };
+        let result = lfd.apply(&data, &argvals);
+        assert!(
+            matches!(result, Err(FdarError::InvalidParameter { .. })),
+            "expected InvalidParameter for empty coefs, got: {:?}",
+            result
+        );
+    }
 
     /// A constant operator (m=1, β₀ = c) applied to a constant curve:
     /// D¹(const) = 0, so Lx(t) = 0 + c · const = c · const.
@@ -518,6 +565,40 @@ mod tests {
         assert!(
             matches!(result, Err(FdarError::InvalidDimension { .. })),
             "expected InvalidDimension, got: {:?}",
+            result
+        );
+    }
+
+    /// IN-03: Lfd::apply with n_pts == 1 returns Err(InvalidDimension).
+    #[test]
+    fn lfd_single_point_grid_returns_err() {
+        let argvals = vec![0.5_f64];
+        let mut data = FdMatrix::zeros(2, 1);
+        data[(0, 0)] = 1.0;
+        data[(1, 0)] = 2.0;
+        let lfd = Lfd {
+            coefs: vec![vec![1.0]],
+        };
+        let result = lfd.apply(&data, &argvals);
+        assert!(
+            matches!(result, Err(FdarError::InvalidDimension { .. })),
+            "expected InvalidDimension for n_pts=1, got: {:?}",
+            result
+        );
+    }
+
+    /// IN-03: principal_differential_analysis with n_pts == 1 returns Err(InvalidDimension).
+    #[test]
+    fn pda_single_point_grid_returns_err() {
+        let argvals = vec![0.5_f64];
+        let mut data = FdMatrix::zeros(5, 1);
+        for i in 0..5 {
+            data[(i, 0)] = i as f64;
+        }
+        let result = principal_differential_analysis(&data, &argvals, 2);
+        assert!(
+            matches!(result, Err(FdarError::InvalidDimension { .. })),
+            "expected InvalidDimension for n_pts=1, got: {:?}",
             result
         );
     }

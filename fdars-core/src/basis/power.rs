@@ -167,7 +167,17 @@ fn gram_entry(ei: f64, ej: f64, d: usize, a: f64, b: f64) -> f64 {
     let p = ei + ej - 2.0 * d as f64 + 1.0;
     if p.abs() < 1e-15 {
         if a <= 0.0 {
-            return 0.0; // improper integral at a=0; set to 0 conservatively
+            // Integral ∫₀ᵇ t⁻¹ dt is improper — this path is unreachable for the
+            // current lfd_order=2 with non-negative integer exponents (all falling
+            // factorials yield ei,ej >= 2, so p = ei+ej-3 >= 1 > 0).
+            // If lfd_order is ever made user-configurable, this branch WILL be reached
+            // and must return Err, not 0 — the correct value is +∞.
+            debug_assert!(
+                false,
+                "gram_entry: improper integral t^(-1) encountered (a={a}, b={b}); \
+                 penalty result would be wrong if lfd_order < 2"
+            );
+            return 0.0;
         }
         ci * cj * (b.ln() - a.ln())
     } else {
@@ -204,13 +214,13 @@ fn power_penalty_numeric(
     }
     let t_min = argvals[0];
     let t_max = argvals[argvals.len() - 1];
-    // Strictly positive grid (domain check already done in caller)
-    let t_min_safe = t_min.max(1e-10);
+    // t_min is already guaranteed > 0 by the requires_positive domain check in power_basis.
+    // Do NOT clamp t_min — the penalty quadrature grid must match the eval domain exactly.
     let n_sub = 10;
     let n_quad = (argvals.len() - 1) * n_sub + 1;
 
     let quad_t: Vec<f64> = (0..n_quad)
-        .map(|i| t_min_safe + (t_max - t_min_safe) * i as f64 / (n_quad - 1) as f64)
+        .map(|i| t_min + (t_max - t_min) * i as f64 / (n_quad - 1) as f64)
         .collect();
 
     let mut basis_fine = vec![0.0_f64; n_quad * nbasis];
@@ -220,7 +230,7 @@ fn power_penalty_numeric(
         }
     }
 
-    let h = (t_max - t_min_safe) / (n_quad - 1) as f64;
+    let h = (t_max - t_min) / (n_quad - 1) as f64;
     let deriv_basis = differentiate_basis_columns(&basis_fine, n_quad, nbasis, h, lfd_order);
     let weights = simpsons_weights(&quad_t);
     integrate_symmetric_penalty(&deriv_basis, &weights, nbasis, n_quad)
@@ -376,5 +386,33 @@ mod tests {
         let bs2 = bs.clone();
         assert_eq!(bs, bs2);
         let _ = format!("{bs:?}");
+    }
+
+    /// WR-01: penalty quadrature domain matches eval domain for very small t_min.
+    ///
+    /// A fractional exponent with argvals[0] = 1e-11 (< 1e-10) must not silently
+    /// shift the penalty grid to t_min=1e-10, producing a domain inconsistency.
+    /// After the fix, penalty_matrix should be consistent (symmetric, finite, no NaN).
+    #[test]
+    fn power_penalty_domain_matches_eval_for_tiny_t_min() {
+        // t_min = 1e-11 — previously clamped to 1e-10 causing domain shift.
+        let t: Vec<f64> = (0..5).map(|i| 1e-11 + i as f64 * 1e-11).collect();
+        let bs = power_basis(&t, &[0.5, 1.5]).unwrap();
+        let k = bs.nbasis;
+        // Penalty must be finite (no NaN/Inf).
+        for val in &bs.penalty_matrix {
+            assert!(val.is_finite(), "penalty entry is not finite: {val}");
+        }
+        // Penalty must be symmetric.
+        for j in 0..k {
+            for l in 0..k {
+                let pjl = bs.penalty_matrix[j + l * k];
+                let plj = bs.penalty_matrix[l + j * k];
+                assert!(
+                    (pjl - plj).abs() < 1e-10,
+                    "P[{j},{l}]={pjl} != P[{l},{j}]={plj}"
+                );
+            }
+        }
     }
 }

@@ -143,7 +143,17 @@ fn gram_entry(ei: f64, ej: f64, d: usize, a: f64, b: f64) -> f64 {
     if p.abs() < 1e-15 {
         // Integral of t^{-1} over [a,b] — requires a > 0
         if a <= 0.0 {
-            return 0.0; // improper integral on [0, b]; set to 0 conservatively
+            // Integral ∫₀ᵇ t⁻¹ dt is improper — this path is unreachable for the
+            // current lfd_order=2 with non-negative integer exponents (all falling
+            // factorials yield ei,ej >= 2, so p = ei+ej-3 >= 1 > 0).
+            // If lfd_order is ever made user-configurable, this branch WILL be reached
+            // and must return Err, not 0 — the correct value is +∞.
+            debug_assert!(
+                false,
+                "gram_entry: improper integral t^(-1) encountered (a={a}, b={b}); \
+                 penalty result would be wrong if lfd_order < 2"
+            );
+            return 0.0;
         }
         ci * cj * (b.ln() - a.ln())
     } else {

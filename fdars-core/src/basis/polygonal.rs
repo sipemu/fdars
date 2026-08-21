@@ -189,7 +189,10 @@ fn polygonal_penalty_numeric(
     let t_min = knots[0];
     let t_max = knots[knots.len() - 1];
     let n_sub = 10;
-    let n_quad = (argvals.len() - 1) * n_sub + 1;
+    // Drive quadrature density from knot count, not argvals count.
+    // This ensures each piecewise-linear interval gets at least n_sub sub-points
+    // regardless of how coarse the evaluation grid is relative to the knot sequence.
+    let n_quad = (knots.len() - 1) * n_sub + 1;
 
     let quad_t: Vec<f64> = (0..n_quad)
         .map(|i| t_min + (t_max - t_min) * i as f64 / (n_quad - 1) as f64)
