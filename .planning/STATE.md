@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.25.0
-status: Awaiting next milestone
-stopped_at: Phase 36 complete — all phases complete
-last_updated: "2026-08-21T12:22:15.446Z"
+milestone: v0.26.0
+milestone_name: FPCA Breadth & Sparse Covariance
+status: planning
+last_updated: "2026-08-21T12:40:01.642Z"
 last_activity: 2026-08-21
-last_activity_desc: Milestone v0.25.0 completed and archived
-state_head: 9e3a8cc7b34673cfa2919de4773dbfb5ce773263
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
-milestone_name: Serial Dependence, Representation & Density Breadth
-current_phase: 36
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 ## Current Position
 
-Phase: Milestone v0.25.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-21 — Milestone v0.25.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-21 — Milestone v0.26.0 started
 
 ## Milestone Roadmap (v0.25.0)
 
