@@ -547,7 +547,7 @@ pub fn basis_nbasis_cv_with_config(
 // ─── Internal Helpers ───────────────────────────────────────────────────────
 
 /// Differentiate column-major basis matrix `lfd_order` times using gradient_uniform.
-fn differentiate_basis_columns(
+pub(crate) fn differentiate_basis_columns(
     basis: &[f64],
     n_quad: usize,
     nbasis: usize,
@@ -570,7 +570,7 @@ fn differentiate_basis_columns(
 }
 
 /// Integrate symmetric penalty: R[j,k] = ∫ D^m B_j · D^m B_k dt.
-fn integrate_symmetric_penalty(
+pub(crate) fn integrate_symmetric_penalty(
     deriv_basis: &[f64],
     weights: &[f64],
     k: usize,
