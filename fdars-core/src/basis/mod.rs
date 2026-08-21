@@ -4,11 +4,13 @@
 //! functional data in a finite-dimensional basis.
 
 pub mod auto_select;
+pub mod basis_system;
 pub mod bspline;
 pub mod constant;
 pub mod fourier;
 pub mod fourier_fit;
 mod helpers;
+pub mod monomial;
 pub mod projection;
 pub mod pspline;
 
@@ -20,10 +22,12 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 pub use auto_select::{select_basis_auto_1d, BasisAutoSelectionResult, SingleCurveSelection};
+pub use basis_system::BasisSystem;
 pub use bspline::{bspline_basis, bspline_basis_from_knots, construct_bspline_knots};
 pub use constant::constant_basis;
 pub use fourier::{fourier_basis, fourier_basis_with_period};
 pub use fourier_fit::{fourier_fit_1d, select_fourier_nbasis_gcv, FourierFitResult};
+pub use monomial::monomial_basis;
 pub use projection::{
     basis_to_fdata, basis_to_fdata_1d, fdata_to_basis, fdata_to_basis_1d, BasisProjectionResult,
     ProjectionBasisType,
