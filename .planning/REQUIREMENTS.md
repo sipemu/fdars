@@ -16,7 +16,7 @@ Requirements for milestone v0.25.0. Each maps to exactly one roadmap phase.
 
 ### Functional Time Series (differentiators)
 
-- [ ] **FTS-02**: Add functional serial-dependence tooling in a new `fts/acf.rs` module — L2-norm functional autocorrelation (fACF) and partial ACF (fPACF) with the strong-white-noise limiting distribution for confidence bands, a functional stationarity test, a long-run covariance kernel-sandwich estimator, and a functional differencing operator. Reuses `helpers` quadrature + `covariance.rs`. Additive/non-breaking; independent of REP-01/DENS-01. R baseline: `ftsa` (facf, T_stationary, long-run covariance) / `fdaACF` (L2-norm fACF, partial fACF, white-noise distribution). Notes: foundational for the deferred FTS-01/FTS-03 forecasting items — build this before FTS-01.
+- [x] **FTS-02**: Add functional serial-dependence tooling in a new `fts/acf.rs` module — L2-norm functional autocorrelation (fACF) and partial ACF (fPACF) with the strong-white-noise limiting distribution for confidence bands, a functional stationarity test, a long-run covariance kernel-sandwich estimator, and a functional differencing operator. Reuses `helpers` quadrature + `covariance.rs`. Additive/non-breaking; independent of REP-01/DENS-01. R baseline: `ftsa` (facf, T_stationary, long-run covariance) / `fdaACF` (L2-norm fACF, partial fACF, white-noise distribution). Notes: foundational for the deferred FTS-01/FTS-03 forecasting items — build this before FTS-01.
 
 ### Representation (differentiators)
 
@@ -60,11 +60,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FTS-02 | Phase 34 | Pending |
+| FTS-02 | Phase 34 | Complete |
 | REP-01 | Phase 35 | Pending |
 | DENS-01 | Phase 36 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 3 total
 - Mapped to phases: 3
 - Unmapped: 0 ✓

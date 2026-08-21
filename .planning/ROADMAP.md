@@ -17,7 +17,7 @@
 
 ## Phases
 
-- [ ] **Phase 34: Functional Serial-Dependence Tooling** - Add L2-norm functional ACF/PACF with strong-white-noise confidence bands, a functional stationarity test, a long-run-covariance kernel-sandwich estimator, and a functional differencing operator in a new `fts/acf.rs`, reusing `helpers` quadrature + `covariance.rs` (FTS-02, independent)
+- [x] **Phase 34: Functional Serial-Dependence Tooling** - Add L2-norm functional ACF/PACF with strong-white-noise confidence bands, a functional stationarity test, a long-run-covariance kernel-sandwich estimator, and a functional differencing operator in a new `fts/acf.rs`, reusing `helpers` quadrature + `covariance.rs` (FTS-02, independent) (completed 2026-08-21)
 - [ ] **Phase 35: Basis-System Completions** - Add `monomial_basis`/`exponential_basis`/`power_basis`/`polygonal_basis` factories (with penalty matrices) to `basis/`, a composable `MultiFunData` multi-domain container in new `multi_fdata.rs`, a composable `Lfd`/linear-differential-operator object, and a `principal_differential_analysis` estimator (REP-01, independent)
 - [ ] **Phase 36: Density Object-Data FDA** - Add the log-quantile-density (LQD) transform + inverse, LQD-FPCA for probability densities (reuse `fdata_to_pc_1d` in LQD space), a 1D Wasserstein Fréchet-mean barycenter, and density normalization/regularization in a new `density_fda.rs` (DENS-01, independent)
 
@@ -78,7 +78,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 34. Functional Serial-Dependence Tooling | 0/3 | Planned | - |
+| 34. Functional Serial-Dependence Tooling | 3/3 | Complete    | 2026-08-21 |
 | 35. Basis-System Completions | 0/0 | Not started | - |
 | 36. Density Object-Data FDA | 0/0 | Not started | - |
 
