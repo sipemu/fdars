@@ -57,7 +57,14 @@ Plans:
   4. The new bases and PDA reuse the existing `basis/` penalty/evaluation conventions and `helpers` quadrature rather than adding a new subsystem, add no new crate dependency, and invalid inputs (empty/mismatched argvals, non-monotone knots for the polygonal basis, invalid degree/rate parameters, mismatched `MultiFunData` observation counts, singular PDA design) return `FdarError` rather than panicking.
   5. Existing `basis/` public signatures (including the B-spline, Fourier, and constant bases) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+
+- [ ] 35-01-PLAN.md — Tracer: BasisSystem struct + monomial_basis (analytic penalty) + pub(crate) promotion of smooth_basis numeric-Gram helpers, wired through basis/mod.rs + crate-root lib.rs
+- [ ] 35-02-PLAN.md — Expansion: exponential_basis + power_basis + polygonal_basis factories (numeric/analytic Gram penalties), crate-root re-exported
+- [ ] 35-03-PLAN.md — Expansion: MultiFunData + FdComponent multi-domain container in new multi_fdata.rs, with invariant enforcement + accessors
+- [ ] 35-04-PLAN.md — Expansion: Lfd operator (apply) + principal_differential_analysis + PdaResult in new pda.rs, with harmonic-oscillator recovery; phase-gate full suite + clippy
 
 ### Phase 36: Density Object-Data FDA
 
@@ -79,7 +86,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 34. Functional Serial-Dependence Tooling | 3/3 | Complete    | 2026-08-21 |
-| 35. Basis-System Completions | 0/0 | Not started | - |
+| 35. Basis-System Completions | 0/4 | Planned | - |
 | 36. Density Object-Data FDA | 0/0 | Not started | - |
 
 **Execution order:** All three phases are **independent** — FTS-02 (Phase 34), REP-01 (Phase 35), and DENS-01 (Phase 36) have **no cross-phase hard dependency** (as in v0.24.0's REG-04/REG-05/CLUS-01), so they may be planned and executed in **any order or in parallel**. Each extends a disjoint area of the codebase (new `fts/acf.rs` / extend `basis/` + new `multi_fdata.rs` / new `density_fda.rs`). The next three top-ranked `R-BACKLOG.md` items (FTS-02 rank 14, REP-01 rank 16, DENS-01 rank 17 — all score 1.73, M-effort). Additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports, **zero changes to existing public signatures**; reuse-first, **no new crate dependency**; numeric outputs only (plotting/rendering out of scope). R baselines matched by capability, not R's exact signatures.
