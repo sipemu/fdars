@@ -660,6 +660,51 @@ mod tests {
         assert!(mface_covariance(&vars, &grids, f64::NAN).is_err());
     }
 
+    #[test]
+    fn test_mface_three_vars() {
+        // P=3 exercises the general block assembly: multiple off-diagonal pairs
+        // (0,1),(0,2),(1,2) and offsets for a variable with p>=2.
+        let n = 15usize;
+        let (v01, g01, _) = two_var_sample(n, 6, 21);
+        // A third variable with a DIFFERENT grid size to stress the offsets.
+        let (v2only, _, _) = two_var_sample(n, 8, 22);
+        let grid3: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+        let vars = vec![v01[0].clone(), v01[1].clone(), v2only[0].clone()];
+        let grids = vec![g01[0].clone(), g01[1].clone(), grid3];
+        let res = mface_covariance(&vars, &grids, 0.15).unwrap();
+
+        let gt: usize = grids.iter().map(std::vec::Vec::len).sum();
+        assert_eq!(res.block_cov.shape(), (gt, gt));
+        assert_eq!(res.offsets, vec![0, 6, 12]);
+        // Full symmetry.
+        for i in 0..gt {
+            for j in 0..gt {
+                assert!((res.block_cov[(i, j)] - res.block_cov[(j, i)]).abs() < 1e-9);
+            }
+        }
+        // Every diagonal block equals the standalone face_covariance; every
+        // off-diagonal pair (p<q) is the transpose of its mirror.
+        for p in 0..3 {
+            let diag = face_covariance(&vars[p], &grids[p], 0.15).unwrap();
+            let bpp = res.block(p, p);
+            for i in 0..grids[p].len() {
+                for j in 0..grids[p].len() {
+                    assert!((bpp[(i, j)] - diag[(i, j)]).abs() < 1e-9);
+                }
+            }
+            for q in (p + 1)..3 {
+                let bpq = res.block(p, q);
+                let bqp = res.block(q, p);
+                assert_eq!(bpq.shape(), (grids[p].len(), grids[q].len()));
+                for i in 0..grids[p].len() {
+                    for j in 0..grids[q].len() {
+                        assert!((bpq[(i, j)] - bqp[(j, i)]).abs() < 1e-9);
+                    }
+                }
+            }
+        }
+    }
+
     // ---- face_trajectory -------------------------------------------------
 
     fn dense_sample(n: usize, m: usize, seed: u64) -> (IrregFdata, Vec<f64>, Vec<Vec<f64>>) {
