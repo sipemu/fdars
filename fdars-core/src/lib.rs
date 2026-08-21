@@ -81,6 +81,7 @@ pub mod clustering;
 pub mod clustering_advanced;
 pub mod concurrent_regression;
 pub mod cv;
+pub mod density_fda;
 pub mod depth;
 pub mod detrend;
 pub mod distance;
@@ -124,11 +125,11 @@ pub mod elastic_fpca;
 pub mod elastic_regression;
 pub mod explain;
 pub mod explain_generic;
+pub mod multi_fdata;
 pub mod pace_fpca;
+pub mod pda;
 pub mod prelude;
 pub mod scoring;
-pub mod multi_fdata;
-pub mod pda;
 pub mod smooth_basis;
 
 // Re-export matrix types
@@ -138,7 +139,12 @@ pub use matrix::{FdCurveSet, FdMatrix};
 pub use multi_fdata::{FdComponent, MultiFunData};
 
 // Re-export linear differential operator and principal differential analysis
-pub use pda::{Lfd, PdaResult, principal_differential_analysis};
+pub use pda::{principal_differential_analysis, Lfd, PdaResult};
+
+// Re-export density-valued FDA entry points
+pub use density_fda::{
+    inverse_lqd, lqd_fpca, lqd_transform, normalize_density, wasserstein_barycenter, LqdFpcaResult,
+};
 
 // Re-export Andrews curves types
 pub use andrews::{andrews_loadings, andrews_transform, AndrewsLoadings, AndrewsResult};
