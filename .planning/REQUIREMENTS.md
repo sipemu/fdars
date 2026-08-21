@@ -20,7 +20,7 @@ Requirements for milestone v0.25.0. Each maps to exactly one roadmap phase.
 
 ### Representation (differentiators)
 
-- [ ] **REP-01**: Complete the basis-system family — add `monomial_basis`, `exponential_basis`, `power_basis`, and a named `polygonal_basis` (piecewise-linear) factory to `basis/`, each with penalty matrices; a composable `MultiFunData` multivariate/multi-domain functional-data container in a new `multi_fdata.rs`; a composable `Lfd`/linear-differential-operator object; and a `principal_differential_analysis` (PDA, linear-ODE estimation) estimator. Additive/non-breaking; the constant basis is already handled (T-01); independent of FTS-02/DENS-01. R baseline: `fda` (monomial, exponential, power, polygonal bases; Lfd/PDA) / `funData` (multiFunData multi-domain container) / `tf` (tidy multi-representation vector).
+- [x] **REP-01**: Complete the basis-system family — add `monomial_basis`, `exponential_basis`, `power_basis`, and a named `polygonal_basis` (piecewise-linear) factory to `basis/`, each with penalty matrices; a composable `MultiFunData` multivariate/multi-domain functional-data container in a new `multi_fdata.rs`; a composable `Lfd`/linear-differential-operator object; and a `principal_differential_analysis` (PDA, linear-ODE estimation) estimator. Additive/non-breaking; the constant basis is already handled (T-01); independent of FTS-02/DENS-01. R baseline: `fda` (monomial, exponential, power, polygonal bases; Lfd/PDA) / `funData` (multiFunData multi-domain container) / `tf` (tidy multi-representation vector).
 
 ### Density FDA (differentiators)
 
@@ -61,7 +61,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FTS-02 | Phase 34 | Complete |
-| REP-01 | Phase 35 | Pending |
+| REP-01 | Phase 35 | Complete |
 | DENS-01 | Phase 36 | Pending |
 
 **Coverage:**

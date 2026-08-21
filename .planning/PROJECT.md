@@ -89,7 +89,7 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 <!-- v0.25.0 scope — the next three top-ranked R-BACKLOG items (score 1.73, M-effort). REQ-IDs in REQUIREMENTS.md. -->
 
 - ✓ **FTS-02** — functional serial-dependence tooling (fACF/PACF + white-noise bands, stationarity test, long-run covariance, differencing) — new `fts/acf.rs` — **Phase 34, verified 5/5** (25 tests, clippy `--all-targets` clean, no new dep)
-- [ ] **REP-01** — basis-system completions (monomial/exponential/power/polygonal factories, `MultiFunData`, `Lfd`, PDA) — extend `basis/` + new `multi_fdata.rs`
+- ✓ **REP-01** — basis-system completions (monomial/exponential/power/polygonal factories + penalties, `MultiFunData`, `Lfd`, PDA) — extend `basis/` + new `multi_fdata.rs` + `pda.rs` — **Phase 35, verified 13/13** (2363 tests + 163 doctests, clippy `--all-targets` clean, no new dep)
 - [ ] **DENS-01** — density object-data FDA (LQD transform + inverse, LQD-FPCA, 1D Wasserstein barycenter) — new `density_fda.rs`
 
 ### Out of Scope
