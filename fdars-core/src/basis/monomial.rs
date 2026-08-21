@@ -185,23 +185,25 @@ mod tests {
     }
 
     /// Closed-form eval: t=[0,1,2], nbasis=3 → cols [1,1,1], [0,1,2], [0,1,4].
+    ///
+    /// Column-major layout: element (ti, j) is at index ti + j * n_eval.
     #[test]
     fn monomial_eval_matrix_closed_form() {
         let t = vec![0.0, 1.0, 2.0];
         let bs = monomial_basis(&t, 3).unwrap();
-        let n = 3;
-        // col 0: B₀(t) = 1
-        assert!((bs.eval_matrix[0 + 0 * n] - 1.0).abs() < 1e-12);
-        assert!((bs.eval_matrix[1 + 0 * n] - 1.0).abs() < 1e-12);
-        assert!((bs.eval_matrix[2 + 0 * n] - 1.0).abs() < 1e-12);
-        // col 1: B₁(t) = t
-        assert!((bs.eval_matrix[0 + 1 * n] - 0.0).abs() < 1e-12);
-        assert!((bs.eval_matrix[1 + 1 * n] - 1.0).abs() < 1e-12);
-        assert!((bs.eval_matrix[2 + 1 * n] - 2.0).abs() < 1e-12);
-        // col 2: B₂(t) = t²
-        assert!((bs.eval_matrix[0 + 2 * n] - 0.0).abs() < 1e-12);
-        assert!((bs.eval_matrix[1 + 2 * n] - 1.0).abs() < 1e-12);
-        assert!((bs.eval_matrix[2 + 2 * n] - 4.0).abs() < 1e-12);
+        let n = bs.n_eval; // == 3
+        // col 0: B₀(t) = 1 — indices 0, 1, 2
+        assert!((bs.eval_matrix[0] - 1.0).abs() < 1e-12, "B₀(0)");
+        assert!((bs.eval_matrix[1] - 1.0).abs() < 1e-12, "B₀(1)");
+        assert!((bs.eval_matrix[2] - 1.0).abs() < 1e-12, "B₀(2)");
+        // col 1: B₁(t) = t — indices n, n+1, n+2
+        assert!((bs.eval_matrix[n] - 0.0).abs() < 1e-12, "B₁(0)");
+        assert!((bs.eval_matrix[n + 1] - 1.0).abs() < 1e-12, "B₁(1)");
+        assert!((bs.eval_matrix[n + 2] - 2.0).abs() < 1e-12, "B₁(2)");
+        // col 2: B₂(t) = t² — indices 2*n, 2*n+1, 2*n+2
+        assert!((bs.eval_matrix[2 * n] - 0.0).abs() < 1e-12, "B₂(0)");
+        assert!((bs.eval_matrix[2 * n + 1] - 1.0).abs() < 1e-12, "B₂(1)");
+        assert!((bs.eval_matrix[2 * n + 2] - 4.0).abs() < 1e-12, "B₂(2)");
     }
 
     /// eval_matrix shape invariant.
@@ -258,13 +260,17 @@ mod tests {
     }
 
     /// P[0,0] == 0 and P[1,1] == 0 for lfd_order=2 (D²(1)=0, D²(t)=0).
+    ///
+    /// Column-major layout: P[j,k] at index j + k * nbasis.
     #[test]
     fn monomial_penalty_low_exponents_zero() {
         let t = vec![0.0, 0.5, 1.0];
         let bs = monomial_basis(&t, 3).unwrap();
-        let k = 3;
-        assert!((bs.penalty_matrix[0 + 0 * k]).abs() < 1e-12, "P[0,0] should be 0");
-        assert!((bs.penalty_matrix[1 + 1 * k]).abs() < 1e-12, "P[1,1] should be 0");
+        let k = bs.nbasis; // == 3
+        // P[0,0] at index 0 + 0*k = 0
+        assert!(bs.penalty_matrix[0].abs() < 1e-12, "P[0,0] should be 0");
+        // P[1,1] at index 1 + 1*k = 1 + k
+        assert!(bs.penalty_matrix[1 + k].abs() < 1e-12, "P[1,1] should be 0");
     }
 
     /// BasisSystem derives Debug, Clone, PartialEq.
