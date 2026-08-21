@@ -133,6 +133,9 @@ pub mod smooth_basis;
 // Re-export matrix types
 pub use matrix::{FdCurveSet, FdMatrix};
 
+// Re-export multi-domain functional data container
+pub use multi_fdata::{FdComponent, MultiFunData};
+
 // Re-export Andrews curves types
 pub use andrews::{andrews_loadings, andrews_transform, AndrewsLoadings, AndrewsResult};
 
