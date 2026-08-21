@@ -19,7 +19,7 @@
 
 mod acf;
 
-pub use acf::{functional_acf, functional_pacf};
+pub use acf::{functional_acf, functional_difference, functional_pacf, stationarity_test};
 
 /// Result of functional ACF/PACF estimation.
 ///

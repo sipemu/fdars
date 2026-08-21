@@ -232,7 +232,10 @@ pub use inference::{
 };
 
 // Re-export functional time series serial-dependence types (FTS-02)
-pub use fts::{functional_acf, functional_pacf, FacfResult};
+pub use fts::{
+    functional_acf, functional_difference, functional_pacf, stationarity_test, FacfResult,
+    StationarityResult,
+};
 
 // Re-export FAMM types
 pub use famm::{

@@ -412,6 +412,220 @@ pub fn functional_pacf(
     functional_acf(data, argvals, max_lag, n_sim, ci, seed)
 }
 
+/// Functional first-difference operator.
+///
+/// Computes the first-order difference of a time-ordered curve series, mirroring
+/// `ftsa::diff.fts` with `lag = 1`. For a series of N curves on an m-point grid,
+/// the output is an `(N-1) × m` matrix where:
+///
+/// ```text
+/// D[i, j] = data[(i+1, j)] - data[(i, j)]    for i in 0..=(N-2), j in 0..=(m-1)
+/// ```
+///
+/// # Round-trip tolerance
+///
+/// The original series is recoverable from `D` and the first curve via a running
+/// cumulative sum:
+///
+/// ```text
+/// reconstructed[0, j] = data[(0, j)]
+/// reconstructed[i, j] = reconstructed[i-1, j] + D[i-1, j]    for i >= 1
+/// ```
+///
+/// This round-trips within machine precision (|reconstructed[i,j] - data[i,j]| < 1e-10
+/// for typical f64 inputs). The tolerance is tight because first-differencing and
+/// cumulative-summation are exact inverse operations in floating-point arithmetic
+/// (no approximation is involved, only floating-point rounding).
+///
+/// # Higher-order differencing
+///
+/// Only order-1 (lag-1) differencing is provided. Higher-order or lag-d
+/// differencing can be achieved by applying `functional_difference` repeatedly:
+/// `functional_difference(&functional_difference(&data)?)?`. Convenience wrappers
+/// for `order` and `lag` parameters are a deferred extension.
+///
+/// # Arguments
+///
+/// * `data` — Time-ordered functional observations (`N × m`, column-major). Rows
+///   are curves ordered from earliest to latest.
+///
+/// # Errors
+///
+/// * [`FdarError::InvalidDimension`] — `data` has fewer than 2 rows (N < 2).
+///   Differencing a single curve or empty matrix is undefined.
+///
+/// # Examples
+///
+/// ```rust
+/// use fdars_core::{FdMatrix, functional_difference};
+///
+/// // Three curves on a 5-point grid.
+/// let mut data = FdMatrix::zeros(3, 5);
+/// for i in 0..3 {
+///     for j in 0..5 {
+///         data[(i, j)] = (i as f64) * (j as f64 + 1.0);
+///     }
+/// }
+/// let diff = functional_difference(&data).unwrap();
+/// assert_eq!(diff.shape(), (2, 5)); // N-1 rows
+/// ```
+#[must_use = "returns first-difference curve series; result should be examined"]
+pub fn functional_difference(data: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    let (n, m) = data.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: ">= 2 rows".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    let mut out = FdMatrix::zeros(n - 1, m);
+    for i in 0..(n - 1) {
+        for j in 0..m {
+            out[(i, j)] = data[(i + 1, j)] - data[(i, j)];
+        }
+    }
+    Ok(out)
+}
+
+/// Functional stationarity test (KPSS-style partial-sum statistic with Monte-Carlo p-value).
+///
+/// Tests H₀: the functional time series is (second-order) stationary. The test
+/// statistic is a KPSS-style partial-sum functional norm:
+///
+/// ```text
+/// T = (1/N²) Σ_{k=1}^{N} ‖S_k‖²_L2
+/// ```
+///
+/// where `S_k[j] = Σ_{i=0}^{k-1} (x_i[j] - x̄[j])` are the partial sums of the
+/// centered curves and `‖·‖²_L2 = Σ_j · · w[j]` uses Simpson quadrature weights.
+/// A large T indicates non-stationarity (growing partial sums signal a trend).
+///
+/// # p-value computation
+///
+/// The Monte-Carlo p-value is computed by randomly permuting the row (curve) order
+/// `n_perm` times using a seeded Fisher-Yates shuffle, recomputing T for each
+/// permutation, and counting `n_ge` permutations where `perm_T >= observed_T`:
+///
+/// ```text
+/// p_value = (n_ge + 1) / (n_perm + 1)
+/// ```
+///
+/// This is a valid permutation p-value regardless of any long-run-variance
+/// normalisation (see DIVERGENCE note below).
+///
+/// # Reproducibility
+///
+/// A single `StdRng::seed_from_u64(seed)` instance is used for all `n_perm`
+/// shuffles. The same `(data, argvals, n_perm, seed)` tuple always produces a
+/// bit-identical `StationarityResult`.
+///
+/// # Arguments
+///
+/// * `data` — Time-ordered functional observations (`N × m`, column-major).
+/// * `argvals` — Evaluation points on the common grid (length `m`).
+/// * `n_perm` — Number of row permutations for the Monte-Carlo p-value (≥ 1).
+/// * `seed` — Deterministic RNG seed.
+///
+/// # Errors
+///
+/// * [`FdarError::InvalidDimension`] — `data` is empty or `argvals.len() != m`.
+/// * [`FdarError::InvalidParameter`] — `n_perm == 0`.
+///
+/// # DIVERGENCE / ASSUMED: normalization constant
+///
+/// The `ftsa::T_stationary` implementation (Horváth, Kokoszka, Rice 2014,
+/// *Journal of Econometrics* 179:66–82) includes a long-run-variance normalization
+/// factor: the statistic is scaled by the inverse of the estimated long-run
+/// covariance operator norm, which controls the null distribution. This
+/// normalization is not pinned from the publicly available `ftsa` documentation
+/// alone (it requires reading the HKR 2014 paper or `ftsa` source code directly).
+///
+/// This implementation uses the **unnormalized KPSS-style partial-sum statistic**
+/// with a **pure seeded-permutation p-value**. The permutation p-value is valid
+/// regardless of the normalization constant: permuting the row order destroys
+/// temporal dependence and simulates the null distribution of T for this specific
+/// dataset. The trade-off is that the raw statistic value is not directly comparable
+/// across datasets of different variance. Implementing the exact HKR 2014
+/// long-run-variance normalization is a documented future-precision item.
+#[must_use = "returns stationarity test result; result should be examined"]
+pub fn stationarity_test(
+    data: &FdMatrix,
+    argvals: &[f64],
+    n_perm: usize,
+    seed: u64,
+) -> Result<super::StationarityResult, FdarError> {
+    let (n, m) = validate_fts_input(data, argvals)?;
+    if n_perm == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_perm",
+            message: "must be >= 1".to_string(),
+        });
+    }
+
+    let weights = simpsons_weights(argvals);
+    let xbar = mean_curve(data, n, m);
+
+    // Compute centered curves as a flat row-major buffer for efficient permutation.
+    // centered[i * m + j] = data[(i,j)] - xbar[j]
+    let mut centered = vec![0.0f64; n * m];
+    for i in 0..n {
+        for j in 0..m {
+            centered[i * m + j] = data[(i, j)] - xbar[j];
+        }
+    }
+
+    // Compute the KPSS-style partial-sum statistic T for a given row order.
+    let stationarity_statistic = |row_order: &[usize]| -> f64 {
+        // S_k[j] = Σ_{i=0}^{k-1} centered[row_order[i]][j]
+        // T = (1/N²) Σ_{k=1}^{N} Σ_j S_k[j]² * w[j]
+        let mut partial_sum = vec![0.0f64; m];
+        let mut t = 0.0f64;
+        let inv_n2 = 1.0 / (n * n) as f64;
+        for k in 0..n {
+            let row = row_order[k];
+            for j in 0..m {
+                partial_sum[j] += centered[row * m + j];
+            }
+            // Add ‖S_{k+1}‖²_L2 to T.
+            let mut norm_sq = 0.0f64;
+            for j in 0..m {
+                norm_sq += partial_sum[j] * partial_sum[j] * weights[j];
+            }
+            t += norm_sq;
+        }
+        t * inv_n2
+    };
+
+    // Natural order for observed statistic.
+    let natural_order: Vec<usize> = (0..n).collect();
+    let observed_t = stationarity_statistic(&natural_order);
+
+    // Permutation loop: single shared RNG seeded once.
+    use rand::Rng;
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut row_indices: Vec<usize> = (0..n).collect();
+    let mut n_ge = 0usize;
+    for _ in 0..n_perm {
+        // Fisher-Yates in-place shuffle.
+        for i in (1..n).rev() {
+            let j = rng.gen_range(0..=i);
+            row_indices.swap(i, j);
+        }
+        let perm_t = stationarity_statistic(&row_indices);
+        if perm_t >= observed_t {
+            n_ge += 1;
+        }
+    }
+
+    let p_value = (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0);
+    Ok(super::StationarityResult {
+        statistic: observed_t,
+        p_value,
+        n_perm,
+    })
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -608,6 +822,153 @@ mod tests {
         assert!(
             result.pacf.iter().any(|&v| v.abs() > 0.05),
             "fPACF should have at least one nonzero entry on AR(1) data"
+        );
+    }
+
+    // ── Task 1 tests: functional_difference ───────────────────────────────
+
+    /// Differencing an N×m matrix produces an (N-1)×m matrix that round-trips
+    /// via running cumulative sum within 1e-10.
+    #[test]
+    fn diff_roundtrip() {
+        let m = 15usize;
+        let n = 8usize;
+        let argvals = uniform_grid(m);
+        // Deterministic analytic data: data[(i,j)] = sin(i + argvals[j]).
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for (j, &t) in argvals.iter().enumerate() {
+                data[(i, j)] = (i as f64 + t).sin();
+            }
+        }
+        let diff = functional_difference(&data).expect("functional_difference should succeed");
+        assert_eq!(diff.shape(), (n - 1, m), "output shape must be (N-1) x m");
+
+        // Reconstruct via cumulative sum from row 0.
+        let mut recon = FdMatrix::zeros(n, m);
+        for j in 0..m {
+            recon[(0, j)] = data[(0, j)];
+        }
+        for i in 1..n {
+            for j in 0..m {
+                recon[(i, j)] = recon[(i - 1, j)] + diff[(i - 1, j)];
+            }
+        }
+        // Verify round-trip within 1e-10.
+        for i in 0..n {
+            for j in 0..m {
+                let err = (recon[(i, j)] - data[(i, j)]).abs();
+                assert!(
+                    err < 1e-10,
+                    "round-trip error at ({i},{j}): {err} exceeds 1e-10"
+                );
+            }
+        }
+    }
+
+    /// functional_difference errors with InvalidDimension when N < 2.
+    #[test]
+    fn diff_too_few_rows() {
+        let m = 10usize;
+        // 1-row matrix.
+        let one_row = FdMatrix::zeros(1, m);
+        assert!(
+            matches!(
+                functional_difference(&one_row),
+                Err(FdarError::InvalidDimension { parameter: "data", .. })
+            ),
+            "1-row matrix should return InvalidDimension"
+        );
+        // 0-row matrix (edge case — hits m==0 check in validate_fts_input if used,
+        // but functional_difference checks n directly before touching argvals).
+        let zero_row = FdMatrix::zeros(0, m);
+        assert!(
+            matches!(
+                functional_difference(&zero_row),
+                Err(FdarError::InvalidDimension { parameter: "data", .. })
+            ),
+            "0-row matrix should return InvalidDimension"
+        );
+    }
+
+    // ── Task 2 tests: stationarity_test ──────────────────────────────────
+
+    /// Stationary series (i.i.d. white-noise GP, no trend) should NOT be rejected
+    /// at significance level 0.05 (p-value > 0.05) with a seeded permutation test.
+    #[test]
+    fn stat_test_stationary() {
+        // Use n=60, m=20, 499 permutations, fixed seed for reproducibility.
+        let (data, argvals) = make_whitenoise_curves(60, 20, 101);
+        let result = stationarity_test(&data, &argvals, 499, 42).unwrap();
+        assert!(
+            result.p_value > 0.05,
+            "stationary series should NOT be rejected at 0.05 (p = {:.4})",
+            result.p_value
+        );
+        assert!(result.statistic.is_finite(), "statistic must be finite");
+        assert_eq!(result.n_perm, 499);
+    }
+
+    /// Trended (non-stationary) series X_i(t) = i*t + GP_sample should be rejected
+    /// at significance level 0.05 (p-value <= 0.05).
+    #[test]
+    fn stat_test_nonstationary() {
+        let n = 50usize;
+        let m = 20usize;
+        let (gp_data, argvals) = make_whitenoise_curves(n, m, 202);
+        // Add linear trend: X_i(t) = i * t + GP_sample.
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for (j, &t) in argvals.iter().enumerate() {
+                data[(i, j)] = (i as f64) * t + gp_data[(i, j)];
+            }
+        }
+        let result = stationarity_test(&data, &argvals, 499, 77).unwrap();
+        assert!(
+            result.p_value <= 0.05,
+            "trended series should be rejected at 0.05 (p = {:.4})",
+            result.p_value
+        );
+    }
+
+    /// stationarity_test: bit-identical results for identical seed + inputs.
+    #[test]
+    fn stat_test_deterministic() {
+        let (data, argvals) = make_whitenoise_curves(40, 15, 303);
+        let r1 = stationarity_test(&data, &argvals, 199, 123).unwrap();
+        let r2 = stationarity_test(&data, &argvals, 199, 123).unwrap();
+        assert_eq!(r1, r2, "same seed must give bit-identical StationarityResult");
+    }
+
+    /// stationarity_test: error paths for n_perm==0 and empty input.
+    #[test]
+    fn stat_test_invalid() {
+        let (data, argvals) = make_whitenoise_curves(30, 15, 1);
+        // n_perm == 0 must return InvalidParameter.
+        assert!(
+            matches!(
+                stationarity_test(&data, &argvals, 0, 1),
+                Err(FdarError::InvalidParameter { parameter: "n_perm", .. })
+            ),
+            "n_perm == 0 must return InvalidParameter"
+        );
+        // Empty matrix must return InvalidDimension.
+        let empty = FdMatrix::zeros(0, 15);
+        assert!(
+            matches!(
+                stationarity_test(&empty, &argvals, 99, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "empty matrix must return InvalidDimension"
+        );
+        // Argvals length mismatch must return InvalidDimension.
+        let bad_argvals = uniform_grid(10);
+        assert!(
+            matches!(
+                stationarity_test(&data, &bad_argvals, 99, 1),
+                Err(FdarError::InvalidDimension { parameter: "argvals", .. })
+            ),
+            "argvals mismatch must return InvalidDimension"
         );
     }
 }
