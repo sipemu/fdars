@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.26.0
-current_phase: 37
+current_phase: 38
 status: completed
 stopped_at: v0.26.0 roadmap created (Phases 37–38) — ready to plan
-last_updated: "2026-08-21T19:45:13.244Z"
+last_updated: "2026-08-21T20:34:05.982Z"
 last_activity: 2026-08-21
-last_activity_desc: Phase 37 marked complete
-state_head: 0544e5bae31ab42fba57d1baae6c862b522b3e9a
+last_activity_desc: Phase 38 marked complete
+state_head: 0c6e6e87710b2f2af0e404ec91df359a965a4f8f
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
 milestone_name: FPCA Breadth & Sparse Covariance
 ---
 
@@ -23,14 +23,14 @@ milestone_name: FPCA Breadth & Sparse Covariance
 See: .planning/PROJECT.md (updated 2026-08-21)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two remaining top-ranked items from the v0.18.0 `R-BACKLOG.md` (score 1.73, M-effort): specialized FPCA variants (FPCA-02) and fast sparse/irregular covariance (SPARSE-01), each by adding `fdars-core/src/` code additively.
-**Current focus:** Phase 37 — Specialized FPCA Variants
+**Current focus:** Phase 38 — Sparse Fast Covariance & Trajectory Bands
 
 ## Current Position
 
-Phase: 37 — COMPLETE
+Phase: 38 — COMPLETE
 Plan: 1 of 2
-Status: Phase 37 complete
-Last activity: 2026-08-21 — Phase 37 marked complete
+Status: Phase 38 complete
+Last activity: 2026-08-21 — Phase 38 marked complete
 
 ## Milestone Roadmap (v0.26.0)
 
