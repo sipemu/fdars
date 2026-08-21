@@ -433,6 +433,12 @@ pub fn wasserstein_barycenter(
                 actual: format!("{}", w.len()),
             });
         }
+        if w.iter().any(|&wi| wi < 0.0 || !wi.is_finite()) {
+            return Err(FdarError::InvalidParameter {
+                parameter: "weights",
+                message: "weights must be non-negative and finite".to_string(),
+            });
+        }
         let s: f64 = w.iter().sum();
         if s < 1e-15 {
             return Err(FdarError::InvalidParameter {
@@ -966,5 +972,100 @@ mod tests {
             "leading PC should explain >80% of variance for a shift family, got FVE[0] = {}",
             result.fve[0]
         );
+    }
+
+    #[test]
+    fn barycenter_weighted_extreme() {
+        // Weights [1.0, 0.0] put all mass on the first density → barycenter ≈ d1.
+        let argvals: Vec<f64> = (0..201).map(|i| -5.0 + i as f64 * 10.0 / 200.0).collect();
+        let d1 = truncated_gaussian(&argvals, -1.0);
+        let d2 = truncated_gaussian(&argvals, 1.0);
+        let mut data = FdMatrix::zeros(2, 201);
+        for (j, (&a, &b)) in d1.iter().zip(d2.iter()).enumerate() {
+            data[(0, j)] = a;
+            data[(1, j)] = b;
+        }
+        let bary = wasserstein_barycenter(&data, &argvals, Some(&[1.0, 0.0])).unwrap();
+        let d1n = normalize_density(&d1, &argvals).unwrap();
+        let d2n = normalize_density(&d2, &argvals).unwrap();
+        // The all-weight-on-d1 barycenter recovers d1 up to quantile-inversion
+        // interpolation error (linear-interp floor, same family as the LQD round-trip).
+        // The meaningful, resolution-robust check is that it is far closer to d1 than d2.
+        let l1 = |a: &[f64], b: &[f64]| -> f64 {
+            a.iter().zip(b).map(|(&x, &y)| (x - y).abs()).sum::<f64>()
+        };
+        let err_d1 = l1(&bary, &d1n);
+        let err_d2 = l1(&bary, &d2n);
+        assert!(
+            err_d1 < 0.4 * err_d2,
+            "all-weight-on-d1 barycenter should track d1 (L1 to d1 = {err_d1}, to d2 = {err_d2})"
+        );
+    }
+
+    #[test]
+    fn barycenter_normalized_nonneg() {
+        // Barycenter output is a valid density: integrates to 1 and is non-negative.
+        let argvals: Vec<f64> = (0..201).map(|i| -5.0 + i as f64 * 10.0 / 200.0).collect();
+        let mut data = FdMatrix::zeros(3, 201);
+        for i in 0..3usize {
+            let dens = truncated_gaussian(&argvals, -1.5 + i as f64 * 1.5);
+            for (j, &v) in dens.iter().enumerate() {
+                data[(i, j)] = v;
+            }
+        }
+        let bary = wasserstein_barycenter(&data, &argvals, None).unwrap();
+        let integral = trapz(&bary, &argvals);
+        assert!((integral - 1.0).abs() < 1e-6, "integral = {integral}");
+        assert!(
+            bary.iter().all(|&v| v >= -1e-9),
+            "negative barycenter value"
+        );
+    }
+
+    #[test]
+    fn error_barycenter_bad_weights() {
+        // A negative weight must be rejected, not silently accepted.
+        let argvals: Vec<f64> = (0..201).map(|i| -5.0 + i as f64 * 10.0 / 200.0).collect();
+        let mut data = FdMatrix::zeros(2, 201);
+        for i in 0..2usize {
+            let dens = truncated_gaussian(&argvals, -1.0 + 2.0 * i as f64);
+            for (j, &v) in dens.iter().enumerate() {
+                data[(i, j)] = v;
+            }
+        }
+        let err = wasserstein_barycenter(&data, &argvals, Some(&[-0.5, 1.5]));
+        assert!(
+            matches!(err, Err(FdarError::InvalidParameter { .. })),
+            "negative weight should return InvalidParameter, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn lqd_fpca_full_rank_fve_reaches_one() {
+        // At full rank the cumulative FVE must reach 1.
+        let argvals: Vec<f64> = (0..101).map(|i| -3.0 + i as f64 * 6.0 / 100.0).collect();
+        let mut data = FdMatrix::zeros(5, 101);
+        for i in 0..5usize {
+            let dens = truncated_gaussian(&argvals, -1.5 + i as f64 * 0.75);
+            for (j, &v) in dens.iter().enumerate() {
+                data[(i, j)] = v;
+            }
+        }
+        // 5 curves → rank ≤ 4 after centering; request 4 components.
+        let result = lqd_fpca(&data, &argvals, 4, Some(101)).unwrap();
+        let last = *result.fve.last().unwrap();
+        assert!(
+            (last - 1.0).abs() < 1e-6,
+            "full-rank cumulative FVE should reach 1, got {last}"
+        );
+    }
+
+    #[test]
+    fn error_lqd_fpca_empty() {
+        // An empty density matrix must return an error, not panic.
+        let argvals: Vec<f64> = (0..101).map(|i| -3.0 + i as f64 * 6.0 / 100.0).collect();
+        let data = FdMatrix::zeros(0, 101);
+        let err = lqd_fpca(&data, &argvals, 2, Some(101));
+        assert!(err.is_err(), "empty density matrix should return an error");
     }
 }
