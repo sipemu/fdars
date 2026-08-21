@@ -1,19 +1,19 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.25.0
-current_phase: 36
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 36 complete — all phases complete
-last_updated: "2026-08-21T12:12:10.068Z"
+last_updated: "2026-08-21T12:22:15.446Z"
 last_activity: 2026-08-21
-last_activity_desc: Phase 36 complete
-state_head: 8a1ed417adefd6a323e24c285f6f7adc8b217a9d
+last_activity_desc: Milestone v0.25.0 completed and archived
+state_head: 9e3a8cc7b34673cfa2919de4773dbfb5ce773263
 progress:
   total_phases: 3
   completed_phases: 3
   total_plans: 10
   completed_plans: 10
 milestone_name: Serial Dependence, Representation & Density Breadth
+current_phase: 36
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 ## Current Position
 
-Phase: 36
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-21 — Phase 36 complete
+Phase: Milestone v0.25.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-21 — Milestone v0.25.0 completed and archived
 
 ## Milestone Roadmap (v0.25.0)
 
@@ -130,4 +130,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 34` (or 35 / 36 — all independent, any order).
+- Start the next milestone with /gsd-new-milestone

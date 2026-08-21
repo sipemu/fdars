@@ -1,5 +1,19 @@
 # Milestones
 
+## v0.25.0 Serial Dependence, Representation & Density Breadth (Shipped: 2026-08-21)
+
+**Phases completed:** 3 phases, 10 plans, 11 tasks
+
+**Key accomplishments:**
+
+- `BasisSystem` struct + `monomial_basis` analytic-Gram factory end-to-end, with `pub(crate)` numeric-Gram helpers promoted for downstream reuse — tracer slice for REP-01 basis-family architecture.
+- Three remaining basis factories (exponential, power, polygonal) completing the four-factory REP-01 family — each returning `BasisSystem` with eval matrix and penalty, all crate-root re-exported, clippy gate clean.
+- DENS-01 · **Wave:** 1 · **Status:** complete
+- DENS-01 · **Wave:** 2 · **Status:** complete
+- DENS-01 · **Wave:** 3 · **Status:** complete
+
+---
+
 ## v0.24.0 Functional Regression & Clustering Breadth (Shipped: 2026-08-20)
 
 **Phases completed:** 3 phases, 7 plans, 9 tasks
