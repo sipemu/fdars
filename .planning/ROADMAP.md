@@ -61,10 +61,10 @@ Plans:
 
 Plans:
 
-- [ ] 35-01-PLAN.md — Tracer: BasisSystem struct + monomial_basis (analytic penalty) + pub(crate) promotion of smooth_basis numeric-Gram helpers, wired through basis/mod.rs + crate-root lib.rs
-- [ ] 35-02-PLAN.md — Expansion: exponential_basis + power_basis + polygonal_basis factories (numeric/analytic Gram penalties), crate-root re-exported
-- [ ] 35-03-PLAN.md — Expansion: MultiFunData + FdComponent multi-domain container in new multi_fdata.rs, with invariant enforcement + accessors
-- [ ] 35-04-PLAN.md — Expansion: Lfd operator (apply) + principal_differential_analysis + PdaResult in new pda.rs, with harmonic-oscillator recovery; phase-gate full suite + clippy
+- [x] 35-01-PLAN.md — Tracer: BasisSystem struct + monomial_basis (analytic penalty) + pub(crate) promotion of smooth_basis numeric-Gram helpers, wired through basis/mod.rs + crate-root lib.rs
+- [x] 35-02-PLAN.md — Expansion: exponential_basis + power_basis + polygonal_basis factories (numeric/analytic Gram penalties), crate-root re-exported
+- [x] 35-03-PLAN.md — Expansion: MultiFunData + FdComponent multi-domain container in new multi_fdata.rs, with invariant enforcement + accessors
+- [x] 35-04-PLAN.md — Expansion: Lfd operator (apply) + principal_differential_analysis + PdaResult in new pda.rs, with harmonic-oscillator recovery; phase-gate full suite + clippy
 
 ### Phase 36: Density Object-Data FDA
 
