@@ -87,6 +87,7 @@ pub mod distance;
 pub mod famm;
 pub mod fdata;
 pub mod fof_regression;
+pub mod fts;
 pub mod function_on_scalar;
 pub mod function_on_scalar_2d;
 pub mod gmm;
@@ -229,6 +230,9 @@ pub use inference::{
     oneway_anova_vstat, scb_two_sample_test, t_perm_test, two_sample_mean_test, ItpResult,
     TestResult, DEFAULT_N_PERM,
 };
+
+// Re-export functional time series serial-dependence types (FTS-02)
+pub use fts::{functional_acf, functional_pacf, FacfResult};
 
 // Re-export FAMM types
 pub use famm::{
