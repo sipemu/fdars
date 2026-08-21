@@ -194,7 +194,7 @@ mod tests {
         let t = vec![0.0, 1.0];
         let bs = exponential_basis(&t, &[0.0, -1.0]).unwrap();
         let n = bs.n_eval; // == 2
-        // col 0 (rate=0): [1, 1]
+                           // col 0 (rate=0): [1, 1]
         assert!((bs.eval_matrix[0] - 1.0).abs() < 1e-12, "B_0(0)");
         assert!((bs.eval_matrix[1] - 1.0).abs() < 1e-12, "B_0(1)");
         // col 1 (rate=-1): [1, exp(-1)]

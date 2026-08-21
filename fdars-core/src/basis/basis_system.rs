@@ -53,10 +53,7 @@
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BasisSystem {
     /// Column-major evaluation matrix, shape `(n_eval × nbasis)`.
     /// Element (t_i, j) is at index `i + j * n_eval`.

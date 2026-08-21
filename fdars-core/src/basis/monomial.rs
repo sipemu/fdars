@@ -202,7 +202,7 @@ mod tests {
         let t = vec![0.0, 1.0, 2.0];
         let bs = monomial_basis(&t, 3).unwrap();
         let n = bs.n_eval; // == 3
-        // col 0: B₀(t) = 1 — indices 0, 1, 2
+                           // col 0: B₀(t) = 1 — indices 0, 1, 2
         assert!((bs.eval_matrix[0] - 1.0).abs() < 1e-12, "B₀(0)");
         assert!((bs.eval_matrix[1] - 1.0).abs() < 1e-12, "B₀(1)");
         assert!((bs.eval_matrix[2] - 1.0).abs() < 1e-12, "B₀(2)");
@@ -277,7 +277,7 @@ mod tests {
         let t = vec![0.0, 0.5, 1.0];
         let bs = monomial_basis(&t, 3).unwrap();
         let k = bs.nbasis; // == 3
-        // P[0,0] at index 0 + 0*k = 0
+                           // P[0,0] at index 0 + 0*k = 0
         assert!(bs.penalty_matrix[0].abs() < 1e-12, "P[0,0] should be 0");
         // P[1,1] at index 1 + 1*k = 1 + k
         assert!(bs.penalty_matrix[1 + k].abs() < 1e-12, "P[1,1] should be 0");

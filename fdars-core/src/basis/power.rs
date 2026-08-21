@@ -88,9 +88,7 @@ pub fn power_basis(argvals: &[f64], exponents: &[f64]) -> Result<BasisSystem, Fd
     }
 
     // Determine whether any exponent requires a strictly-positive domain.
-    let requires_positive = exponents
-        .iter()
-        .any(|&e| !is_nonneg_integer(e));
+    let requires_positive = exponents.iter().any(|&e| !is_nonneg_integer(e));
 
     if requires_positive {
         // Reject non-positive argvals to prevent NaN/Inf leaking into eval/penalty.
@@ -291,7 +289,10 @@ mod tests {
         let bs = power_basis(&t, &exponents).unwrap();
         let n = bs.n_eval;
         // col 0 (exp=0.5): [1^0.5, 1.5^0.5, 2^0.5]
-        assert!((bs.eval_matrix[0] - 1.0_f64.powf(0.5)).abs() < 1e-12, "B_0(1)");
+        assert!(
+            (bs.eval_matrix[0] - 1.0_f64.powf(0.5)).abs() < 1e-12,
+            "B_0(1)"
+        );
         assert!(
             (bs.eval_matrix[1] - 1.5_f64.powf(0.5)).abs() < 1e-12,
             "B_0(1.5)"

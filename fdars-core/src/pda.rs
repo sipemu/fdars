@@ -331,11 +331,7 @@ pub fn principal_differential_analysis(
 
         // Solve via SVD pseudoinverse: β = pinv(X_j) · y_j.
         let svd = nalgebra::SVD::new(x_j, true, true);
-        let max_sv = svd
-            .singular_values
-            .iter()
-            .copied()
-            .fold(0.0_f64, f64::max);
+        let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
         let threshold = 1e-10 * max_sv;
 
         // Compute the pseudoinverse action: pinv(X) y = V · diag(1/σ) · U^T · y.
@@ -499,9 +495,7 @@ mod tests {
     fn pda_recovers_harmonic_oscillator() {
         let omega = 2.0 * PI;
         let n_pts = 101;
-        let argvals: Vec<f64> = (0..n_pts)
-            .map(|i| i as f64 / (n_pts - 1) as f64)
-            .collect();
+        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
         let n_curves = 20;
 
         // x_i(t) = A_i · cos(ω t) + B_i · sin(ω t), with varied A_i, B_i.

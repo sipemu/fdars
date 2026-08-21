@@ -270,7 +270,7 @@ mod tests {
         let argvals = vec![0.0, 0.25, 0.5, 0.75, 1.0];
         let bs = polygonal_basis(&argvals, &knots).unwrap();
         let n = bs.n_eval; // == 5
-        // ti=1 is t=0.25
+                           // ti=1 is t=0.25
         let b0 = bs.eval_matrix[1]; // j=0: index 1 + 0*5 = 1
         let b1 = bs.eval_matrix[1 + n]; // j=1: index 1 + 1*5 = 6
         let b2 = bs.eval_matrix[1 + 2 * n]; // j=2: index 1 + 2*5 = 11
@@ -303,9 +303,7 @@ mod tests {
         let bs = polygonal_basis(&argvals, &knots).unwrap();
         let n = bs.n_eval;
         for ti in 0..n {
-            let sum: f64 = (0..bs.nbasis)
-                .map(|j| bs.eval_matrix[ti + j * n])
-                .sum();
+            let sum: f64 = (0..bs.nbasis).map(|j| bs.eval_matrix[ti + j * n]).sum();
             assert!(
                 (sum - 1.0).abs() < 1e-12,
                 "partition-of-unity violated at ti={ti}: sum={sum}"
