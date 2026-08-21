@@ -128,6 +128,7 @@ pub mod pace_fpca;
 pub mod prelude;
 pub mod scoring;
 pub mod multi_fdata;
+pub mod pda;
 pub mod smooth_basis;
 
 // Re-export matrix types
@@ -135,6 +136,9 @@ pub use matrix::{FdCurveSet, FdMatrix};
 
 // Re-export multi-domain functional data container
 pub use multi_fdata::{FdComponent, MultiFunData};
+
+// Re-export linear differential operator and principal differential analysis
+pub use pda::{Lfd, PdaResult, principal_differential_analysis};
 
 // Re-export Andrews curves types
 pub use andrews::{andrews_loadings, andrews_transform, AndrewsLoadings, AndrewsResult};
