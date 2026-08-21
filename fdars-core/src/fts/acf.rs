@@ -238,7 +238,9 @@ fn durbin_levinson_pacf(rho: &[f64]) -> Vec<f64> {
 ///
 /// * [`FdarError::InvalidDimension`] — `data` is empty, `argvals.len() != m`,
 ///   or the requested `max_lag + 1 > N` (too few curves).
-/// * [`FdarError::InvalidParameter`] — `max_lag == 0` (must be ≥ 1).
+/// * [`FdarError::InvalidParameter`] — `max_lag == 0` (must be ≥ 1),
+///   **or `n_sim == 0`** (must be ≥ 1),
+///   **or `ci` is not in the open interval `(0.0, 1.0)`**.
 /// * [`FdarError::ComputationFailed`] — the lag-0 covariance diagonal
 ///   integrates to near zero (degenerate / constant-curve input).
 ///
@@ -276,6 +278,20 @@ pub fn functional_acf(
     use nalgebra::DMatrix;
 
     let (n, m) = validate_fts_input(data, argvals)?;
+
+    // Validate n_sim and ci before any expensive computation.
+    if n_sim == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_sim",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if !(ci > 0.0 && ci < 1.0) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ci",
+            message: "must be in the open interval (0.0, 1.0)".to_string(),
+        });
+    }
 
     // Resolve max_lag default: min(20, N/4), floored at 1.
     let ml = match max_lag {
@@ -1277,6 +1293,66 @@ mod tests {
                 Err(FdarError::InvalidDimension { parameter: "argvals", .. })
             ),
             "argvals mismatch must return InvalidDimension"
+        );
+    }
+
+    // ── IN-01: n_sim == 0 and out-of-range ci guards ──────────────────────
+
+    /// functional_acf with n_sim == 0 must return InvalidParameter (CR-01 fix).
+    /// functional_acf with ci outside (0.0, 1.0) must return InvalidParameter (WR-01 fix).
+    /// functional_pacf delegates to functional_acf and inherits the same guards.
+    #[test]
+    fn invalid_parameter_guards() {
+        let (good, argvals) = make_whitenoise_curves(20, 10, 99);
+
+        // functional_acf: n_sim == 0 must return InvalidParameter { parameter: "n_sim" }
+        assert!(
+            matches!(
+                functional_acf(&good, &argvals, None, 0, 0.95, 1),
+                Err(FdarError::InvalidParameter { parameter: "n_sim", .. })
+            ),
+            "functional_acf: n_sim == 0 must return InvalidParameter"
+        );
+        // functional_pacf: n_sim == 0 must return InvalidParameter (delegates to functional_acf)
+        assert!(
+            matches!(
+                functional_pacf(&good, &argvals, None, 0, 0.95, 1),
+                Err(FdarError::InvalidParameter { parameter: "n_sim", .. })
+            ),
+            "functional_pacf: n_sim == 0 must return InvalidParameter"
+        );
+
+        // functional_acf: ci >= 1.0 must return InvalidParameter { parameter: "ci" }
+        assert!(
+            matches!(
+                functional_acf(&good, &argvals, None, 99, 1.5, 1),
+                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+            ),
+            "functional_acf: ci = 1.5 must return InvalidParameter"
+        );
+        // functional_acf: ci == 0.0 must return InvalidParameter { parameter: "ci" }
+        assert!(
+            matches!(
+                functional_acf(&good, &argvals, None, 99, 0.0, 1),
+                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+            ),
+            "functional_acf: ci = 0.0 must return InvalidParameter"
+        );
+        // functional_acf: ci < 0.0 must return InvalidParameter { parameter: "ci" }
+        assert!(
+            matches!(
+                functional_acf(&good, &argvals, None, 99, -0.1, 1),
+                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+            ),
+            "functional_acf: ci = -0.1 must return InvalidParameter"
+        );
+        // functional_pacf: ci out-of-range must return InvalidParameter
+        assert!(
+            matches!(
+                functional_pacf(&good, &argvals, None, 99, 1.0, 1),
+                Err(FdarError::InvalidParameter { parameter: "ci", .. })
+            ),
+            "functional_pacf: ci = 1.0 must return InvalidParameter"
         );
     }
 }
