@@ -436,7 +436,9 @@ pub use smoothing::{
 // Re-export regression types
 pub use regression::{fdata_to_pc_1d, fdata_to_pls_1d, FpcaResult, PlsResult};
 // Re-export specialized FPCA variants (Phase 37)
-pub use fpca_variants::{cross_covariance, fpca_der, FsvdResult};
+pub use fpca_variants::{
+    cross_covariance, dynamical_correlation, fpca_der, fsvd, ssvd, FsvdResult,
+};
 #[cfg(feature = "linalg")]
 pub use regression::{ridge_regression_fit, RidgeResult};
 
