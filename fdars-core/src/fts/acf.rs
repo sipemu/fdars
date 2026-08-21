@@ -850,6 +850,150 @@ mod tests {
         assert_eq!(r1, r2, "same seed must give bit-identical FacfResult");
     }
 
+    // ── Consolidated error/determinism sweep (plan 34-03, Task 2) ────────
+
+    /// Consolidated error-handling test covering all five fts entry points.
+    ///
+    /// Each function must return FdarError::InvalidDimension on an empty (0×m) matrix
+    /// and on an argvals length mismatch (for functions that take argvals).
+    /// `functional_difference` additionally returns InvalidDimension on a 1-row matrix.
+    #[test]
+    fn error_handling() {
+        let m = 15usize;
+        let argvals = uniform_grid(m);
+        let bad_argvals = uniform_grid(m / 2); // wrong length
+        let empty = FdMatrix::zeros(0, m);
+        let one_row = FdMatrix::zeros(1, m);
+        let (good, _) = make_whitenoise_curves(30, m, 1);
+
+        // functional_acf: empty matrix
+        assert!(
+            matches!(
+                functional_acf(&empty, &argvals, None, 99, 0.95, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "functional_acf: empty matrix must return InvalidDimension"
+        );
+        // functional_acf: argvals mismatch
+        assert!(
+            matches!(
+                functional_acf(&good, &bad_argvals, None, 99, 0.95, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "functional_acf: argvals mismatch must return InvalidDimension"
+        );
+        // functional_pacf: empty matrix
+        assert!(
+            matches!(
+                functional_pacf(&empty, &argvals, None, 99, 0.95, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "functional_pacf: empty matrix must return InvalidDimension"
+        );
+        // functional_pacf: argvals mismatch
+        assert!(
+            matches!(
+                functional_pacf(&good, &bad_argvals, None, 99, 0.95, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "functional_pacf: argvals mismatch must return InvalidDimension"
+        );
+        // stationarity_test: empty matrix
+        assert!(
+            matches!(
+                stationarity_test(&empty, &argvals, 99, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "stationarity_test: empty matrix must return InvalidDimension"
+        );
+        // stationarity_test: argvals mismatch
+        assert!(
+            matches!(
+                stationarity_test(&good, &bad_argvals, 99, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "stationarity_test: argvals mismatch must return InvalidDimension"
+        );
+        // long_run_covariance: empty matrix
+        assert!(
+            matches!(
+                long_run_covariance(&empty, &argvals, None),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "long_run_covariance: empty matrix must return InvalidDimension"
+        );
+        // long_run_covariance: argvals mismatch
+        assert!(
+            matches!(
+                long_run_covariance(&good, &bad_argvals, None),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "long_run_covariance: argvals mismatch must return InvalidDimension"
+        );
+        // functional_difference: 1-row matrix
+        assert!(
+            matches!(
+                functional_difference(&one_row),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "functional_difference: 1-row matrix must return InvalidDimension"
+        );
+    }
+
+    /// functional_acf with max_lag = Some(k) where k + 1 > n returns an error.
+    #[test]
+    fn too_few_curves() {
+        // n=5 curves; max_lag=5 requires at least 6 curves.
+        let (data, argvals) = make_whitenoise_curves(5, 10, 88);
+        assert!(
+            matches!(
+                functional_acf(&data, &argvals, Some(5), 99, 0.95, 1),
+                Err(FdarError::InvalidDimension { .. })
+            ),
+            "max_lag >= n must return InvalidDimension"
+        );
+    }
+
+    /// functional_acf on constant (degenerate) curves returns ComputationFailed.
+    ///
+    /// A matrix whose rows are all identical has a lag-0 covariance diagonal that
+    /// integrates to zero, triggering the ComputationFailed guard in acf_normalization.
+    #[test]
+    fn degenerate_columns() {
+        let n = 10usize;
+        let m = 8usize;
+        let argvals = uniform_grid(m);
+        // All rows identical — lag-0 covariance is exactly zero.
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                data[(i, j)] = argvals[j]; // constant across rows
+            }
+        }
+        assert!(
+            matches!(
+                functional_acf(&data, &argvals, None, 99, 0.95, 1),
+                Err(FdarError::ComputationFailed { .. })
+            ),
+            "constant-row matrix must return ComputationFailed (degenerate lag-0 diagonal)"
+        );
+    }
+
+    /// functional_acf and stationarity_test each produce bit-identical results
+    /// across two calls with the same seed.
+    #[test]
+    fn deterministic_seed_all() {
+        let (data, argvals) = make_whitenoise_curves(50, 15, 5);
+        // functional_acf determinism
+        let acf1 = functional_acf(&data, &argvals, None, 200, 0.95, 42).unwrap();
+        let acf2 = functional_acf(&data, &argvals, None, 200, 0.95, 42).unwrap();
+        assert_eq!(acf1, acf2, "functional_acf: same seed must give bit-identical result");
+        // stationarity_test determinism
+        let st1 = stationarity_test(&data, &argvals, 99, 123).unwrap();
+        let st2 = stationarity_test(&data, &argvals, 99, 123).unwrap();
+        assert_eq!(st1, st2, "stationarity_test: same seed must give bit-identical result");
+    }
+
     // ── Task 2 tests: MC white-noise band ──────────────────────────────────
 
     /// On i.i.d. white-noise curves all nonzero-lag fACF values are inside the band.
@@ -1004,8 +1148,7 @@ mod tests {
         let (n, m) = data.shape();
         let xbar = mean_curve(&data, n, m);
         let c0 = autocovariance_matrix(&data, &xbar, 0, n, m);
-        let result =
-            super::super::acf::long_run_covariance(&data, &argvals, Some(0)).unwrap();
+        let result = long_run_covariance(&data, &argvals, Some(0)).unwrap();
         assert_eq!(result.bandwidth, 0, "bandwidth field must be 0");
         assert_eq!(result.m, m, "m field must match data columns");
         assert_eq!(result.n_curves, n, "n_curves must match data rows");
@@ -1022,8 +1165,7 @@ mod tests {
     #[test]
     fn lrc_symmetric() {
         let (data, argvals) = make_ar1_curves(60, 10, 66);
-        let result =
-            super::super::acf::long_run_covariance(&data, &argvals, None).unwrap();
+        let result = long_run_covariance(&data, &argvals, None).unwrap();
         let m = result.m;
         for j1 in 0..m {
             for j2 in 0..m {
@@ -1043,8 +1185,7 @@ mod tests {
         let n = 50usize;
         let m = 10usize;
         let (data, argvals) = make_whitenoise_curves(n, m, 77);
-        let result =
-            super::super::acf::long_run_covariance(&data, &argvals, None).unwrap();
+        let result = long_run_covariance(&data, &argvals, None).unwrap();
         let expected_bw = (n as f64).cbrt().floor() as usize;
         assert_eq!(
             result.bandwidth, expected_bw,
