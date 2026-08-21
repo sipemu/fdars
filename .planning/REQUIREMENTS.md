@@ -24,7 +24,7 @@ Requirements for milestone v0.25.0. Each maps to exactly one roadmap phase.
 
 ### Density FDA (differentiators)
 
-- [ ] **DENS-01**: Add density-valued FDA in a new `density_fda.rs` module — the log-quantile-density (LQD) transform and its inverse (compositional-geometry map), LQD-FPCA for probability densities (reuse `fdata_to_pc_1d` in LQD space, with FVE for LQD-FPCA), a 1D Wasserstein Fréchet mean (quantile-average barycenter) of densities, and density normalization/regularization. Numeric outputs only. Additive/non-breaking; independent of FTS-02/REP-01. R baseline: `fdadensity` (0.1.4). Notes: the 1D-density subset of R-audit Area 7 — simpler than the general Fréchet items (FRE-01/FRE-02).
+- [x] **DENS-01**: Add density-valued FDA in a new `density_fda.rs` module — the log-quantile-density (LQD) transform and its inverse (compositional-geometry map), LQD-FPCA for probability densities (reuse `fdata_to_pc_1d` in LQD space, with FVE for LQD-FPCA), a 1D Wasserstein Fréchet mean (quantile-average barycenter) of densities, and density normalization/regularization. Numeric outputs only. Additive/non-breaking; independent of FTS-02/REP-01. R baseline: `fdadensity` (0.1.4). Notes: the 1D-density subset of R-audit Area 7 — simpler than the general Fréchet items (FRE-01/FRE-02).
 
 ## v2 Requirements
 
@@ -62,7 +62,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | FTS-02 | Phase 34 | Complete |
 | REP-01 | Phase 35 | Complete |
-| DENS-01 | Phase 36 | Pending |
+| DENS-01 | Phase 36 | Complete |
 
 **Coverage:**
 
