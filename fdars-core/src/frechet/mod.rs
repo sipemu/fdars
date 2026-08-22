@@ -41,7 +41,10 @@ pub use anova::frechet_anova;
 pub use mean::{frechet_mean, frechet_variance};
 pub use regression::{frechet_global_reg, frechet_local_reg};
 pub use space::{wasserstein2_distance, MetricSpace, WassersteinDensitySpace};
-pub use spaces::{CorrelationMatrixSpace, SpdMatrixSpace, SpdMetric};
+pub use spaces::{
+    CorrelationMatrixSpace, NetworkSpace, PointProcessSpace, SpdMatrixSpace, SpdMetric,
+    SphericalSpace,
+};
 
 use crate::matrix::FdMatrix;
 
