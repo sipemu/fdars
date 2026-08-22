@@ -31,10 +31,12 @@
 //! uses a zero-dependency sort-based isotonic projection (see the regression
 //! submodule).
 
+mod anova;
 mod mean;
 mod regression;
 mod space;
 
+pub use anova::frechet_anova;
 pub use mean::{frechet_mean, frechet_variance};
 pub use regression::{frechet_global_reg, frechet_local_reg};
 pub use space::{wasserstein2_distance, MetricSpace, WassersteinDensitySpace};
@@ -69,4 +71,32 @@ pub struct FrechetLocalRegResult {
     pub xout: FdMatrix,
     /// The kernel bandwidth used.
     pub bandwidth: f64,
+}
+
+/// Result of a Fréchet ANOVA group-difference test ([`frechet_anova`]).
+///
+/// The Dubey–Müller `Tₙ` statistic with a primary seeded permutation p-value and
+/// a secondary asymptotic χ²(k−1) p-value.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FrechetAnovaResult {
+    /// Dubey–Müller `Tₙ` test statistic.
+    pub statistic: f64,
+    /// Asymptotic χ²(k−1) p-value (secondary inference).
+    pub p_value_asymptotic: f64,
+    /// Seeded-permutation p-value (primary reported inference).
+    pub p_value_permutation: f64,
+    /// Number of permutations used.
+    pub n_perm: usize,
+    /// Per-group Fréchet variances V̂ₗ (length k).
+    pub group_frechet_variances: Vec<f64>,
+    /// Pooled Fréchet variance V̂ₚ.
+    pub pooled_frechet_variance: f64,
+    /// The Fₙ variance-contrast component.
+    pub fn_statistic: f64,
+    /// The Uₙ pairwise-dispersion component.
+    pub un_statistic: f64,
+    /// The group labels used (contiguous 0..k).
+    pub group_labels: Vec<usize>,
 }

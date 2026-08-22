@@ -27,7 +27,7 @@
 //! serde-gated.
 
 mod anova;
-mod dist;
+pub(crate) mod dist;
 mod flm;
 mod hotelling;
 mod itp;

@@ -150,8 +150,9 @@ pub use density_fda::{
 
 // Re-export Fréchet / object-data regression types
 pub use frechet::{
-    frechet_global_reg, frechet_local_reg, frechet_mean, frechet_variance, wasserstein2_distance,
-    FrechetGlobalRegResult, FrechetLocalRegResult, MetricSpace, WassersteinDensitySpace,
+    frechet_anova, frechet_global_reg, frechet_local_reg, frechet_mean, frechet_variance,
+    wasserstein2_distance, FrechetAnovaResult, FrechetGlobalRegResult, FrechetLocalRegResult,
+    MetricSpace, WassersteinDensitySpace,
 };
 
 // Re-export Andrews curves types
