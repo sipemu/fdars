@@ -15,23 +15,23 @@ Requirements for milestone v0.28.0. Each maps to a roadmap phase.
 
 R baseline: `freqdom` (DPCA, spectral density, VAR/VMA) + `ftsa` (FARMA simulation, dynamic FPCA). New `fdars-core/src/fts/spectral.rs` (spectral density + DPCA via the existing `rustfft` dependency) plus a functional VAR/VMA + FARMA simulator in `simulation.rs`. Builds on the shipped FTS-01/FTS-02 (`fts/forecast.rs`, `fts/acf.rs`) autocovariance/forecasting foundation.
 
-- [ ] **FTS-03-01**: User can estimate the spectral density operator of a functional time series — the frequency-domain long-run covariance formed via `rustfft` over lagged autocovariance operators, evaluated at a set of Fourier frequencies.
-- [ ] **FTS-03-02**: User can compute dynamic functional PCA (DPCA) — dynamic eigen-filters and dynamic scores derived from the estimated spectral density operator.
-- [ ] **FTS-03-03**: User can reconstruct curves from DPCA dynamic scores via inverse dynamic filtering (optimal DPCA reconstruction of the original series).
-- [ ] **FTS-03-04**: User can simulate a functional VAR/VMA process — a functional autoregressive / moving-average curve series generated from user-supplied operator kernels.
-- [ ] **FTS-03-05**: User can simulate a functional ARMA (FARMA) process — a combined AR+MA functional curve-series simulator.
+- [x] **FTS-03-01**: User can estimate the spectral density operator of a functional time series — the frequency-domain long-run covariance formed via `rustfft` over lagged autocovariance operators, evaluated at a set of Fourier frequencies.
+- [x] **FTS-03-02**: User can compute dynamic functional PCA (DPCA) — dynamic eigen-filters and dynamic scores derived from the estimated spectral density operator.
+- [x] **FTS-03-03**: User can reconstruct curves from DPCA dynamic scores via inverse dynamic filtering (optimal DPCA reconstruction of the original series).
+- [x] **FTS-03-04**: User can simulate a functional VAR/VMA process — a functional autoregressive / moving-average curve series generated from user-supplied operator kernels.
+- [x] **FTS-03-05**: User can simulate a functional ARMA (FARMA) process — a combined AR+MA functional curve-series simulator.
 
 ### FRE-02 — Object-data Fréchet regression across specific metric spaces
 
 R baseline: `frechet` 0.3.0 (covariance/correlation-matrix regression, spherical/geodesics, network, point-process, each with a Fréchet-ANOVA analog). Extends `fdars-core/src/frechet/` with per-space metric + geodesic operations implemented as pluggable `MetricSpace` backends for the shipped FRE-01 Fréchet-regression solver (`frechet_global_reg` / `frechet_local_reg` / `frechet_anova` consume them generically).
 
-- [ ] **FRE-02-01**: User can use an SPD covariance-matrix response space — distance + weighted-Fréchet-mean solver under Frobenius, power, and log-Cholesky metrics — as a `MetricSpace` backend.
-- [ ] **FRE-02-02**: User can use a correlation-matrix response space (correlation-manifold distance + weighted Fréchet mean) as a `MetricSpace` backend.
-- [ ] **FRE-02-03**: User can use a spherical-data response space with geodesic exp/log maps and a weighted Fréchet-mean solver as a `MetricSpace` backend.
-- [ ] **FRE-02-04**: User can use a network response space (graph-Laplacian / adjacency-based distance + weighted Fréchet mean) as a `MetricSpace` backend.
-- [ ] **FRE-02-05**: User can use a point-process response space (intensity/count-based distance + weighted Fréchet mean) as a `MetricSpace` backend.
-- [ ] **FRE-02-06**: User can run global and local Fréchet regression over Euclidean predictors with at least one non-density object backend (e.g. SPD covariance matrices), reusing the generic FRE-01 solver.
-- [ ] **FRE-02-07**: User can run a Fréchet-ANOVA group-difference test over at least one non-density object space, reusing the generic `frechet_anova` machinery.
+- [x] **FRE-02-01**: User can use an SPD covariance-matrix response space — distance + weighted-Fréchet-mean solver under Frobenius, power, and log-Cholesky metrics — as a `MetricSpace` backend.
+- [x] **FRE-02-02**: User can use a correlation-matrix response space (correlation-manifold distance + weighted Fréchet mean) as a `MetricSpace` backend.
+- [x] **FRE-02-03**: User can use a spherical-data response space with geodesic exp/log maps and a weighted Fréchet-mean solver as a `MetricSpace` backend.
+- [x] **FRE-02-04**: User can use a network response space (graph-Laplacian / adjacency-based distance + weighted Fréchet mean) as a `MetricSpace` backend.
+- [x] **FRE-02-05**: User can use a point-process response space (intensity/count-based distance + weighted Fréchet mean) as a `MetricSpace` backend.
+- [x] **FRE-02-06**: User can run global and local Fréchet regression over Euclidean predictors with at least one non-density object backend (e.g. SPD covariance matrices), reusing the generic FRE-01 solver.
+- [x] **FRE-02-07**: User can run a Fréchet-ANOVA group-difference test over at least one non-density object space, reusing the generic `frechet_anova` machinery.
 
 ## Future Requirements
 
@@ -68,18 +68,18 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FTS-03-01 | Phase 41 | Pending |
-| FTS-03-02 | Phase 41 | Pending |
-| FTS-03-03 | Phase 41 | Pending |
-| FTS-03-04 | Phase 41 | Pending |
-| FTS-03-05 | Phase 41 | Pending |
-| FRE-02-01 | Phase 42 | Pending |
-| FRE-02-02 | Phase 42 | Pending |
-| FRE-02-03 | Phase 42 | Pending |
-| FRE-02-04 | Phase 42 | Pending |
-| FRE-02-05 | Phase 42 | Pending |
-| FRE-02-06 | Phase 42 | Pending |
-| FRE-02-07 | Phase 42 | Pending |
+| FTS-03-01 | Phase 41 | Complete |
+| FTS-03-02 | Phase 41 | Complete |
+| FTS-03-03 | Phase 41 | Complete |
+| FTS-03-04 | Phase 41 | Complete |
+| FTS-03-05 | Phase 41 | Complete |
+| FRE-02-01 | Phase 42 | Complete |
+| FRE-02-02 | Phase 42 | Complete |
+| FRE-02-03 | Phase 42 | Complete |
+| FRE-02-04 | Phase 42 | Complete |
+| FRE-02-05 | Phase 42 | Complete |
+| FRE-02-06 | Phase 42 | Complete |
+| FRE-02-07 | Phase 42 | Complete |
 
 **Coverage:**
 
