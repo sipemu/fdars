@@ -37,7 +37,10 @@
   4. The functional PLS forecasting variant (`fplsr`) produces PLS-score-based forecasts as an alternative to FPC-score regression; the dynamic-update path updates an existing forecast when new curve observation(s) arrive without refitting from scratch and agrees (within a documented tolerance) with a full refit that includes the same new observations; and the iterative multi-step path returns per-horizon forecast curves for h > 1 whose h = 1 curve matches the single-step forecast (inline `#[cfg(test)]` tests).
   5. All entry points reuse `fdata_to_pc_1d` + `scoring.rs` + the FTS-02 `fts/acf.rs` foundation rather than adding a new algorithm subsystem, add **no new crate dependency**, use per-thread seeded RNG for any stochastic path, and invalid inputs (empty/too-short series, fewer observations than requested components, non-monotone or mismatched argvals, `h < 1`, `ncomp` out of range, degenerate columns) return `FdarError` rather than panicking. Existing public signatures across `fdars-core` (including `fdata_to_pc_1d`, `scoring.rs`, and `fts/acf.rs`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 39-01-PLAN.md — Tracer: module scaffold + wiring + Yule-Walker AR helpers + `ftsm` fit + `ftsm_forecast` one-step (FTS-01-01, FTS-01-02)
+- [ ] 39-02-PLAN.md — `ftsm_forecast_multistep` (iterative h>1) + `ftsm_update` (dynamic update, no FPCA refit) (FTS-01-05, FTS-01-04)
+- [ ] 39-03-PLAN.md — `fplsr` functional PLS lag-1 forecasting variant + `FplsrResult` (FTS-01-03)
 
 ### Phase 40: Fréchet / Object-Data Regression
 
@@ -58,7 +61,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 39. Functional Time-Series Forecasting | 0/TBD | Not started | - |
+| 39. Functional Time-Series Forecasting | 0/3 | Not started | - |
 | 40. Fréchet / Object-Data Regression | 0/TBD | Not started | - |
 
 **Execution order:** Both phases are **independent** — FTS-01 (Phase 39) and FRE-01 (Phase 40) have **no cross-phase hard dependency** (as with prior implementation milestones), and each touches a disjoint area of the codebase (new `fts/forecast.rs` vs new `frechet/` module). They may be planned and executed in **any order or in parallel**. The two score-1.33 (L-effort) `R-BACKLOG.md` items (FTS-01 rank 20, FRE-01 rank 21), exhausting the 1.33 tier. Both are P2 differentiators opening the two largest gap zones (Area 6 functional time series, 2/25 present; Area 7 density/object data, 0/25 present). FTS-01 builds on the shipped FTS-02 (`fts/acf.rs`) foundation; FRE-01 shares DENS-01's (`density_fda.rs`) Wasserstein/quantile machinery. **Milestone constraints (apply to both phases):** additive/non-breaking (zero changes to existing public signatures), reuse-first (no new algorithm subsystem beyond the two new modules), all public functions `Result<T, FdarError>`-returning, inline `#[cfg(test)]` tests with hand-computed/reference checks + error paths, crate-root re-exports, **no new crate dependency**, numeric outputs only (plotting/rendering out of scope), `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean. R baselines matched by capability, not R's exact signatures. The next tier (score 1.00, L-effort) is FTS-03 (spectral FTS, depends on FTS-01) + FRE-02 (object-data Fréchet spaces, depends on FRE-01).
