@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.27.0
-status: Awaiting next milestone
-stopped_at: v0.27.0 roadmap created (Phases 39–40) — ready to plan
-last_updated: "2026-08-22T15:36:50.091Z"
+milestone: v0.28.0
+milestone_name: Spectral Functional Time Series & Object-Data Fréchet Regression
+status: planning
+last_updated: "2026-08-22T16:47:35.938Z"
 last_activity: 2026-08-22
-last_activity_desc: Milestone v0.27.0 completed and archived
-state_head: 128860d347b8c476dcaa4d7837b52a4e2e9afc4e
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
-milestone_name: Functional Time Series & Fréchet Regression
-current_phase: 40
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -22,15 +19,15 @@ current_phase: 40
 
 See: .planning/PROJECT.md (updated 2026-08-22)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two score-1.33 (L-effort) items from the v0.18.0 `R-BACKLOG.md`: functional time-series forecasting (FTS-01) and Fréchet / object-data regression (FRE-01), each by adding `fdars-core/src/` code additively.
-**Current focus:** v0.27.0 shipped — awaiting next milestone (`/gsd-new-milestone`)
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone (v0.28.0) draws the two now-unblocked score-1.00 (L-effort) items from the v0.18.0 `R-BACKLOG.md`: spectral functional time series (FTS-03) and object-data Fréchet regression (FRE-02), each by adding `fdars-core/src/` code additively.
+**Current focus:** v0.28.0 started — defining requirements
 
 ## Current Position
 
-Phase: Milestone v0.27.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-22 — Completed quick task 260822-pvk: README pyfda link + R-outdated note
+Status: Defining requirements
+Last activity: 2026-08-22 — Milestone v0.28.0 started
 
 ## Milestone Roadmap (v0.27.0)
 
