@@ -231,8 +231,8 @@ pub use landmark::{
 // Re-export detrending types
 pub use detrend::{DecomposeResult, StlConfig, StlResult, TrendResult};
 
-// Re-export simulation types
-pub use simulation::{EFunType, EValType};
+// Re-export simulation types (incl. FTS-03-04/05 functional VAR/VMA + FARMA simulators, plan 41-02)
+pub use simulation::{sim_farma, sim_fvarma, EFunType, EValType, FarmaResult, FvarmaResult};
 
 // Re-export irregular fdata types
 pub use irreg_fdata::{IrregFdata, KernelType};

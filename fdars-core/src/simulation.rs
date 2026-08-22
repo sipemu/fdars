@@ -453,9 +453,431 @@ pub fn add_error_curve(data: &FdMatrix, sd: f64, seed: Option<u64>) -> FdMatrix 
     FdMatrix::from_column_major(result, n, m).expect("dimension invariant: data.len() == n * m")
 }
 
+// ─── Functional VAR/VMA + FARMA simulators (FTS-03-04/05, plan 41-02) ─────────
+
+/// Result of a functional VAR/VMA (`sim_fvarma`) simulation.
+///
+/// Produced by [`sim_fvarma`]. `curves` is the `N × m` simulated series (rows =
+/// curves, columns = grid points).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FvarmaResult {
+    /// Simulated curve series, shape `N × m`.
+    pub curves: FdMatrix,
+    /// Autoregressive order p (= number of AR operator kernels).
+    pub ar_order: usize,
+    /// Moving-average order q (= number of MA operator kernels).
+    pub ma_order: usize,
+    /// Number of burn-in curves discarded before the kept output.
+    pub burn_in: usize,
+}
+
+/// Result of a functional ARMA (`sim_farma`) simulation.
+///
+/// Produced by [`sim_farma`]. Same fields as [`FvarmaResult`]; the two share the
+/// underlying recurrence and are bit-identical for identical inputs.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FarmaResult {
+    /// Simulated curve series, shape `N × m`.
+    pub curves: FdMatrix,
+    /// Autoregressive order p (= number of AR operator kernels).
+    pub ar_order: usize,
+    /// Moving-average order q (= number of MA operator kernels).
+    pub ma_order: usize,
+    /// Number of burn-in curves discarded before the kept output.
+    pub burn_in: usize,
+}
+
+/// Validate the grid and that every operator kernel is a flat m×m matrix.
+fn validate_operator_kernels(
+    argvals: &[f64],
+    ar_ops: &[Vec<f64>],
+    ma_ops: &[Vec<f64>],
+) -> Result<usize, crate::FdarError> {
+    let m = argvals.len();
+    if m == 0 {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: "non-empty grid".to_string(),
+            actual: "0 elements".to_string(),
+        });
+    }
+    for a in ar_ops {
+        if a.len() != m * m {
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "ar_ops",
+                expected: format!("{} elements per kernel (m*m)", m * m),
+                actual: format!("{} elements", a.len()),
+            });
+        }
+    }
+    for b in ma_ops {
+        if b.len() != m * m {
+            return Err(crate::FdarError::InvalidDimension {
+                parameter: "ma_ops",
+                expected: format!("{} elements per kernel (m*m)", m * m),
+                actual: format!("{} elements", b.len()),
+            });
+        }
+    }
+    Ok(m)
+}
+
+/// Shared functional VAR/VMA/FARMA recurrence used by both public entry points.
+///
+/// Runs `burn_in + n` steps of `X_t = Σ_k A_k·X_{t-k} + ε_t + Σ_k B_k·ε_{t-k}`
+/// with i.i.d. N(0,1) innovations per grid point, discards the first `burn_in`
+/// curves, and returns the kept `n × m` series. Returns `ComputationFailed` if
+/// any curve entry becomes non-finite (non-stationary operator).
+fn fvarma_core(
+    n: usize,
+    argvals: &[f64],
+    ar_ops: &[Vec<f64>],
+    ma_ops: &[Vec<f64>],
+    burn_in: usize,
+    seed: u64,
+) -> Result<FdMatrix, crate::FdarError> {
+    let m = validate_operator_kernels(argvals, ar_ops, ma_ops)?;
+    let p = ar_ops.len();
+    let q = ma_ops.len();
+
+    let mut rng = StdRng::seed_from_u64(seed);
+    let normal = Normal::new(0.0, 1.0).expect("valid distribution parameters");
+
+    // Ring histories: hist_x[k] = X_{t-1-k}, hist_eps[k] = ε_{t-1-k}.
+    let mut hist_x: Vec<Vec<f64>> = Vec::with_capacity(p);
+    let mut hist_eps: Vec<Vec<f64>> = Vec::with_capacity(q);
+    let mut kept: Vec<Vec<f64>> = Vec::with_capacity(n);
+
+    let total = burn_in + n;
+    for step in 0..total {
+        let eps_t: Vec<f64> = (0..m).map(|_| rng.sample::<f64, _>(normal)).collect();
+        let mut x_new = eps_t.clone();
+
+        // AR terms: X_t += A_k · X_{t-1-k}.
+        for (k, a_k) in ar_ops.iter().enumerate() {
+            if let Some(x_prev) = hist_x.get(k) {
+                for j1 in 0..m {
+                    let mut s = 0.0;
+                    for j2 in 0..m {
+                        s += a_k[j1 + j2 * m] * x_prev[j2];
+                    }
+                    x_new[j1] += s;
+                }
+            }
+        }
+        // MA terms: X_t += B_k · ε_{t-1-k}.
+        for (k, b_k) in ma_ops.iter().enumerate() {
+            if let Some(e_prev) = hist_eps.get(k) {
+                for j1 in 0..m {
+                    let mut s = 0.0;
+                    for j2 in 0..m {
+                        s += b_k[j1 + j2 * m] * e_prev[j2];
+                    }
+                    x_new[j1] += s;
+                }
+            }
+        }
+
+        // Divergence guard (Pitfall 5): reject non-finite values instead of emitting them.
+        if x_new.iter().any(|v| !v.is_finite()) {
+            return Err(crate::FdarError::ComputationFailed {
+                operation: "sim_fvarma burn-in",
+                detail:
+                    "curve values diverged to NaN/Inf; ensure AR operators have spectral radius < 1"
+                        .to_string(),
+            });
+        }
+
+        if p > 0 {
+            hist_x.insert(0, x_new.clone());
+            if hist_x.len() > p {
+                hist_x.pop();
+            }
+        }
+        if q > 0 {
+            hist_eps.insert(0, eps_t);
+            if hist_eps.len() > q {
+                hist_eps.pop();
+            }
+        }
+
+        if step >= burn_in {
+            kept.push(x_new);
+        }
+    }
+
+    // Assemble N×m column-major FdMatrix: data[i + j*n] = kept[i][j].
+    let mut data = vec![0.0f64; n * m];
+    for (i, curve) in kept.iter().enumerate() {
+        for (j, &v) in curve.iter().enumerate() {
+            data[i + j * n] = v;
+        }
+    }
+    FdMatrix::from_column_major(data, n, m).map_err(|_| crate::FdarError::ComputationFailed {
+        operation: "sim_fvarma assembly",
+        detail: format!("could not assemble {n}×{m} curve matrix"),
+    })
+}
+
+/// Simulate a functional VAR/VMA process from user-supplied operator kernels.
+///
+/// Generates `n` curves from the recurrence
+/// `X_t = Σ_{k=1}^{p} A_k·X_{t-k} + ε_t + Σ_{k=1}^{q} B_k·ε_{t-k}`,
+/// where each `A_k` (AR) and `B_k` (MA) is a flat column-major m×m operator kernel
+/// applied by matrix-vector product to the grid-discretized curve, and the
+/// innovations `ε_t` are i.i.d. standard-normal per grid point. The first
+/// `burn_in` curves are discarded so the kept output is approximately stationary.
+///
+/// # Arguments
+///
+/// * `n` — number of output curves.
+/// * `argvals` — grid points; `m = argvals.len()`.
+/// * `ar_ops` — AR operator kernels, each a flat m×m column-major matrix (`p = ar_ops.len()`).
+/// * `ma_ops` — MA operator kernels, each a flat m×m column-major matrix (`q = ma_ops.len()`).
+/// * `burn_in` — number of leading curves to discard (200 is a reasonable default
+///   for moderate operator norms).
+/// * `seed` — RNG seed; output is bit-identical for a fixed seed
+///   (`StdRng::seed_from_u64`), with no entropy fallback.
+///
+/// # Errors
+///
+/// [`crate::FdarError::InvalidDimension`] if `argvals` is empty or any kernel is
+/// not m×m; [`crate::FdarError::ComputationFailed`] if the recurrence diverges to
+/// NaN/Inf (a non-stationary operator).
+///
+/// # Stationarity
+///
+/// Stationarity (companion-matrix spectral radius < 1; sufficient condition
+/// `‖A_1‖_HS < 1` for FAR(1)) is the caller's responsibility — it is not enforced,
+/// only guarded against numeric divergence.
+///
+/// # Divergence from `freqdom`
+///
+/// Innovations use an identity covariance (i.i.d. N(0,1) per grid point);
+/// `freqdom::fts.rar` accepts a user-supplied innovation covariance σ.
+#[must_use = "the simulated curve series is the return value and should be used"]
+pub fn sim_fvarma(
+    n: usize,
+    argvals: &[f64],
+    ar_ops: &[Vec<f64>],
+    ma_ops: &[Vec<f64>],
+    burn_in: usize,
+    seed: u64,
+) -> Result<FvarmaResult, crate::FdarError> {
+    let curves = fvarma_core(n, argvals, ar_ops, ma_ops, burn_in, seed)?;
+    Ok(FvarmaResult {
+        curves,
+        ar_order: ar_ops.len(),
+        ma_order: ma_ops.len(),
+        burn_in,
+    })
+}
+
+/// Simulate a functional ARMA (FARMA) process combining AR and MA operator terms.
+///
+/// FARMA is the combined AR+MA case of the functional operator recurrence; this is
+/// a thin named entry point over the shared [`sim_fvarma`] recurrence and is
+/// bit-identical to `sim_fvarma` for identical inputs. See [`sim_fvarma`] for the
+/// recurrence, stationarity responsibility, and R-baseline divergence.
+///
+/// # Errors
+///
+/// Same as [`sim_fvarma`].
+#[must_use = "the simulated curve series is the return value and should be used"]
+pub fn sim_farma(
+    n: usize,
+    argvals: &[f64],
+    ar_ops: &[Vec<f64>],
+    ma_ops: &[Vec<f64>],
+    burn_in: usize,
+    seed: u64,
+) -> Result<FarmaResult, crate::FdarError> {
+    let curves = fvarma_core(n, argvals, ar_ops, ma_ops, burn_in, seed)?;
+    Ok(FarmaResult {
+        curves,
+        ar_order: ar_ops.len(),
+        ma_order: ma_ops.len(),
+        burn_in,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── FTS-03-04/05 simulator helpers + oracles ────────────────────────────
+
+    fn uniform_grid(m: usize) -> Vec<f64> {
+        (0..m).map(|j| j as f64 / (m - 1) as f64).collect()
+    }
+
+    /// Frobenius norm of the lag-`h` sample autocovariance operator.
+    fn lag_autocov_fro(data: &FdMatrix, h: usize) -> f64 {
+        let (n, m) = data.shape();
+        let mut xbar = vec![0.0f64; m];
+        for (j, xb) in xbar.iter_mut().enumerate() {
+            let mut s = 0.0;
+            for i in 0..n {
+                s += data[(i, j)];
+            }
+            *xb = s / n as f64;
+        }
+        let mut fro = 0.0;
+        for j1 in 0..m {
+            for j2 in 0..m {
+                let mut c = 0.0;
+                for i in 0..(n - h) {
+                    c += (data[(i, j1)] - xbar[j1]) * (data[(i + h, j2)] - xbar[j2]);
+                }
+                c /= n as f64;
+                fro += c * c;
+            }
+        }
+        fro.sqrt()
+    }
+
+    fn scaled_identity(m: usize, s: f64) -> Vec<f64> {
+        let mut a = vec![0.0f64; m * m];
+        for j in 0..m {
+            a[j + j * m] = s;
+        }
+        a
+    }
+
+    #[test]
+    fn fvarma_deterministic() {
+        let (n, m) = (30, 8);
+        let argvals = uniform_grid(m);
+        let ar = vec![scaled_identity(m, 0.3)];
+        let a = sim_fvarma(n, &argvals, &ar, &[], 50, 42).unwrap();
+        let b = sim_fvarma(n, &argvals, &ar, &[], 50, 42).unwrap();
+        assert_eq!(a, b, "same seed must give bit-identical output");
+        assert_eq!(a.curves.shape(), (n, m));
+        assert!(a.curves.as_slice().iter().all(|x| x.is_finite()));
+        assert_eq!(a.ar_order, 1);
+        assert_eq!(a.ma_order, 0);
+    }
+
+    #[test]
+    fn fvarma_zero_op_white_noise() {
+        // Oracle 4: zero AR operator ⇒ pure i.i.d. innovations, near-zero lag-1 ACF.
+        let (n, m) = (500, 6);
+        let argvals = uniform_grid(m);
+        let ar = vec![vec![0.0f64; m * m]];
+        let res = sim_fvarma(n, &argvals, &ar, &[], 0, 7).unwrap();
+        assert!(res.curves.as_slice().iter().all(|x| x.is_finite()));
+        let c0 = lag_autocov_fro(&res.curves, 0);
+        let c1 = lag_autocov_fro(&res.curves, 1);
+        assert!(c1 < 0.15 * c0, "lag-1 ACF too large: c1={c1}, c0={c0}");
+    }
+
+    #[test]
+    fn fvarma_rank1_dependence() {
+        // Oracle 6: rank-1 AR operator ⇒ non-trivial lag-1 serial dependence.
+        let (n, m) = (400, 10);
+        let argvals = uniform_grid(m);
+        let raw: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (std::f64::consts::PI * t).sin())
+            .collect();
+        let norm = raw.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let phi: Vec<f64> = raw.iter().map(|x| x / norm).collect();
+        let mut ar1 = vec![0.0f64; m * m];
+        for j1 in 0..m {
+            for j2 in 0..m {
+                ar1[j1 + j2 * m] = 0.8 * phi[j1] * phi[j2];
+            }
+        }
+        let res = sim_fvarma(n, &argvals, &[ar1], &[], 200, 3).unwrap();
+        let c0 = lag_autocov_fro(&res.curves, 0);
+        let c1 = lag_autocov_fro(&res.curves, 1);
+        assert!(c1 > 0.1 * c0, "lag-1 dependence too weak: c1={c1}, c0={c0}");
+    }
+
+    #[test]
+    fn fvarma_dimension_errors() {
+        let (n, m) = (20, 5);
+        let argvals = uniform_grid(m);
+        // AR kernel wrong length.
+        assert!(matches!(
+            sim_fvarma(n, &argvals, &[vec![0.0; m * m - 1]], &[], 10, 1),
+            Err(crate::FdarError::InvalidDimension {
+                parameter: "ar_ops",
+                ..
+            })
+        ));
+        // MA kernel wrong length.
+        assert!(matches!(
+            sim_fvarma(n, &argvals, &[], &[vec![0.0; m * m + 2]], 10, 1),
+            Err(crate::FdarError::InvalidDimension {
+                parameter: "ma_ops",
+                ..
+            })
+        ));
+        // Empty grid.
+        assert!(matches!(
+            sim_fvarma(n, &[], &[], &[], 10, 1),
+            Err(crate::FdarError::InvalidDimension {
+                parameter: "argvals",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn fvarma_divergence_guard() {
+        // Spectral radius ≥ 1 (2×identity) ⇒ geometric blow-up ⇒ ComputationFailed.
+        let (n, m) = (10, 4);
+        let argvals = uniform_grid(m);
+        let ar = vec![scaled_identity(m, 2.0)];
+        assert!(matches!(
+            sim_fvarma(n, &argvals, &ar, &[], 2000, 1),
+            Err(crate::FdarError::ComputationFailed {
+                operation: "sim_fvarma burn-in",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn farma_shape_and_order() {
+        let (n, m) = (40, 5);
+        let argvals = uniform_grid(m);
+        let ar = vec![scaled_identity(m, 0.3)];
+        let ma = vec![scaled_identity(m, 0.2)];
+        let res = sim_farma(n, &argvals, &ar, &ma, 50, 9).unwrap();
+        assert_eq!(res.curves.shape(), (n, m));
+        assert!(res.curves.as_slice().iter().all(|x| x.is_finite()));
+        assert_eq!(res.ar_order, 1);
+        assert_eq!(res.ma_order, 1);
+    }
+
+    #[test]
+    fn farma_deterministic() {
+        let (n, m) = (25, 6);
+        let argvals = uniform_grid(m);
+        let ar = vec![scaled_identity(m, 0.4)];
+        let ma = vec![scaled_identity(m, 0.25)];
+        let a = sim_farma(n, &argvals, &ar, &ma, 40, 11).unwrap();
+        let b = sim_farma(n, &argvals, &ar, &ma, 40, 11).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn farma_equals_fvarma() {
+        // FARMA = combined AR+MA: identical inputs + seed ⇒ identical curves.
+        let (n, m) = (30, 6);
+        let argvals = uniform_grid(m);
+        let ar = vec![scaled_identity(m, 0.35)];
+        let ma = vec![scaled_identity(m, 0.2)];
+        let f = sim_fvarma(n, &argvals, &ar, &ma, 60, 77).unwrap();
+        let g = sim_farma(n, &argvals, &ar, &ma, 60, 77).unwrap();
+        assert_eq!(f.curves, g.curves);
+    }
 
     #[test]
     fn test_fourier_eigenfunctions_dimensions() {
