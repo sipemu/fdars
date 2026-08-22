@@ -640,7 +640,7 @@ pub fn lqd_fpca(
 /// previously kept value are skipped without error.  This is the intended behaviour
 /// for the current call sites; future callers that require non-decreasingness should
 /// validate their input before calling this helper.
-fn dedup_adjacent(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn dedup_adjacent(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let mut xd = Vec::with_capacity(x.len());
     let mut yd = Vec::with_capacity(y.len());
     for (i, (&xi, &yi)) in x.iter().zip(y.iter()).enumerate() {
@@ -658,7 +658,7 @@ fn dedup_adjacent(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
 ///
 /// Uses central differences in the interior and forward/backward differences at
 /// the endpoints, then clamps negative values to 0 for numerical safety.
-fn quantile_density_from_q(q: &[f64], t: &[f64]) -> Vec<f64> {
+pub(crate) fn quantile_density_from_q(q: &[f64], t: &[f64]) -> Vec<f64> {
     let n = q.len();
     let mut qd = vec![0.0_f64; n];
     if n < 2 {

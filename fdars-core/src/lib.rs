@@ -89,6 +89,7 @@ pub mod famm;
 pub mod fdata;
 pub mod fof_regression;
 pub mod fpca_variants;
+pub mod frechet;
 pub mod fts;
 pub mod function_on_scalar;
 pub mod function_on_scalar_2d;
@@ -145,6 +146,11 @@ pub use pda::{principal_differential_analysis, Lfd, PdaResult};
 // Re-export density-valued FDA entry points
 pub use density_fda::{
     inverse_lqd, lqd_fpca, lqd_transform, normalize_density, wasserstein_barycenter, LqdFpcaResult,
+};
+
+// Re-export Fréchet / object-data regression types (Wave 1: mean/variance/distance/space)
+pub use frechet::{
+    frechet_mean, frechet_variance, wasserstein2_distance, MetricSpace, WassersteinDensitySpace,
 };
 
 // Re-export Andrews curves types
