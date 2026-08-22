@@ -46,7 +46,7 @@ All phases through v0.27.0 are shipped and archived under `milestones/`.
 **Milestone Goal:** Draw the two now-unblocked score-1.00 (L-effort) `R-BACKLOG.md` items — spectral functional time series (FTS-03) and object-data Fréchet regression across specific metric spaces (FRE-02) — each by adding `fdars-core/src/` code additively and non-breaking, extending the v0.27.0 foundation.
 
 - [x] **Phase 41: Spectral Functional Time Series** - Frequency-domain FTS — spectral density operator, DPCA (filters + scores + reconstruction), and functional VAR/VMA + FARMA process simulators (completed 2026-08-22)
-- [ ] **Phase 42: Object-Data Fréchet Regression** - Non-density `MetricSpace` backends (SPD covariance / correlation / spherical / network / point-process) feeding the shipped FRE-01 regression + ANOVA solver
+- [x] **Phase 42: Object-Data Fréchet Regression** - Non-density `MetricSpace` backends (SPD covariance / correlation / spherical / network / point-process) feeding the shipped FRE-01 regression + ANOVA solver (completed 2026-08-23)
 
 ## Phase Details
 
@@ -86,9 +86,9 @@ Plans:
 
 Plans:
 
-- [ ] 42-01-PLAN.md — SPD + correlation matrix `MetricSpace` backends + `frechet/spaces/` module skeleton (FRE-02-01/02)
-- [ ] 42-02-PLAN.md — spherical + network + point-process `MetricSpace` backends (FRE-02-03/04/05)
-- [ ] 42-03-PLAN.md — generic solver reuse: `pub(crate)` weight/Tₙ helper extraction + `frechet_global_reg_space`/`frechet_local_reg_space`/`frechet_anova_space` over the SPD backend (FRE-02-06/07)
+- [x] 42-01-PLAN.md — SPD + correlation matrix `MetricSpace` backends + `frechet/spaces/` module skeleton (FRE-02-01/02)
+- [x] 42-02-PLAN.md — spherical + network + point-process `MetricSpace` backends (FRE-02-03/04/05)
+- [x] 42-03-PLAN.md — generic solver reuse: `pub(crate)` weight/Tₙ helper extraction + `frechet_global_reg_space`/`frechet_local_reg_space`/`frechet_anova_space` over the SPD backend (FRE-02-06/07)
 
 ## Progress
 
@@ -98,4 +98,4 @@ Phases 41 and 42 are **independent** (disjoint code areas: `fts/spectral.rs` + `
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 41. Spectral Functional Time Series | v0.28.0 | 2/2 | Complete    | 2026-08-22 |
-| 42. Object-Data Fréchet Regression | v0.28.0 | 0/3 | Planned | - |
+| 42. Object-Data Fréchet Regression | v0.28.0 | 3/3 | Complete    | 2026-08-23 |
