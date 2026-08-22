@@ -1,19 +1,19 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.27.0
-current_phase: 40
-status: completed
+status: Awaiting next milestone
 stopped_at: v0.27.0 roadmap created (Phases 39–40) — ready to plan
-last_updated: "2026-08-22T15:32:05.319Z"
+last_updated: "2026-08-22T15:36:50.091Z"
 last_activity: 2026-08-22
-last_activity_desc: Phase 40 marked complete
-state_head: ae684cc0a781eb119797f3588b3b5e29117916e9
+last_activity_desc: Milestone v0.27.0 completed and archived
+state_head: 128860d347b8c476dcaa4d7837b52a4e2e9afc4e
 progress:
   total_phases: 2
   completed_phases: 2
   total_plans: 6
   completed_plans: 6
 milestone_name: Functional Time Series & Fréchet Regression
+current_phase: 40
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 
 ## Current Position
 
-Phase: 40 — COMPLETE
-Plan: 1 of 3
-Status: Phase 40 complete
-Last activity: 2026-08-22 — Phase 40 marked complete
+Phase: Milestone v0.27.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-22 — Milestone v0.27.0 completed and archived
 
 ## Milestone Roadmap (v0.27.0)
 
@@ -129,4 +129,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with /gsd-plan-phase 39 (FTS-01) — or /gsd-plan-phase 40 (FRE-01); both are independent and may be planned in any order or in parallel.
+- Start the next milestone with /gsd-new-milestone

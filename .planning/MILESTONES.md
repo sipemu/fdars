@@ -1,5 +1,20 @@
 # Milestones
 
+## v0.27.0 Functional Time Series & Fréchet Regression (Shipped: 2026-08-22)
+
+**Phases completed:** 2 phases, 6 plans, 15 tasks
+
+**Key accomplishments:**
+
+- A time-ordered curve series can now be decomposed into an FPCA-based `ftsm` model and forecast one (or more) steps ahead via per-component Yule-Walker AR score models, reconstructed back into curves — the end-to-end tracer through module wiring, FPCA delegation, AR estimation, and reconstruction.
+- Forecasts now extend to arbitrary horizons via iterative AR plug-in (`ftsm_forecast_multistep`), and an existing fit can be updated in place as new curves arrive (`ftsm_update`) by projecting onto frozen FPC loadings and re-fitting the score AR models — no FPCA recomputation.
+- `fplsr` adds a PLS-score alternative to the FPC-score AR path: a lag-1 design (regress next curve on current curve) solved as one scalar PLS regression per evaluation point, reusing the shipped `fregre_pls` machinery, producing a one-step forecast curve plus in-sample fitted curves.
+- The `frechet` module now provides a generic `MetricSpace` abstraction with a 1D-Wasserstein density backend, the public `wasserstein2_distance`, and the sample `frechet_mean`/`frechet_variance` — the end-to-end tracer proving trait → density backend → DENS-01 reuse → generic statistics, plus the signed-weight quantile-average helper Wave 2 regression depends on.
+- `frechet_global_reg` (Petersen–Müller global linear weights) and `frechet_local_reg` (local-linear Gaussian-kernel weights) predict conditional density responses at new Euclidean predictor values, both routing signed weights through the sort-based `signed_quantile_average` — never `wasserstein_barycenter`.
+- `frechet_anova` completes FRE-01: a Dubey–Müller `Tₙ` group-difference test over the Wasserstein density space with a primary seeded-permutation p-value and a secondary asymptotic χ²(k−1) p-value, reusing the Wave-1 Fréchet mean/variance machinery and the in-crate chi-square survival function — no new dependency.
+
+---
+
 ## v0.26.0 FPCA Breadth & Sparse Covariance (Shipped: 2026-08-21)
 
 **Phases completed:** 2 phases, 4 plans, 11 tasks

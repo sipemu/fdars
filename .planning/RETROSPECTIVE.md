@@ -302,6 +302,41 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.27.0 — Functional Time Series & Fréchet Regression
+
+**Shipped:** 2026-08-22
+**Phases:** 2 (39–40) | **Plans:** 6 | **Tasks:** 15
+
+### What Was Built
+- **FTS-01** (Phase 39): new `fts/forecast.rs` — `ftsm` (FPCA + per-component Yule-Walker AR / AIC), `ftsm_forecast`/`ftsm_forecast_multistep` (iterative plug-in), `ftsm_update` (dynamic update, no FPCA refit), `fplsr` (lag-1 per-point PLS). Reuses `fdata_to_pc_1d` + `scoring.rs` + `fts/acf.rs`.
+- **FRE-01** (Phase 40): new `frechet/` — `MetricSpace`/`WassersteinDensitySpace`, `wasserstein2_distance`, `frechet_mean`/`frechet_variance`, global/local Fréchet regression, `frechet_anova`. Reuses `density_fda.rs`.
+- Both additive/non-breaking, no new dependency; 46 new inline tests; whole crate 2460 lib + 172 doc tests green.
+
+### What Worked
+- Reuse-first paid off: `ftsm` is a thin wrapper over `fdata_to_pc_1d`; frechet delegates the sample barycenter to `wasserstein_barycenter`. Research + pattern-mapper agents pinned real APIs up front.
+- The tracer-first plan shape (prove trait→backend→reuse end-to-end before expanding) caught the hardest integration risks in Plan 01 of each phase.
+- Plan-checker's 3 blockers on Phase 40 (public W₂ API, signed-weight divergence docs, σ̂ₗ² [ASSUMED]) were all cheap, correct, and fixed in one revision cycle.
+
+### What Was Inefficient
+- Diagnosing the Fréchet-regression bias burned ~30 min: the reused `wasserstein_barycenter` rescale-to-full-support step spuriously stretched narrow barycenters (~0.5 W₂ error). Fixed by inverting the averaged quantile directly in x-units in the frechet-owned `signed_quantile_average`.
+- Narrow synthetic test densities (σ=0.3 on a wide grid) triggered quantile-tail artifacts; grid-filling data (σ≈1) is required for meaningful barycenter tests — a reusable lesson for any density-round-trip testing.
+
+### Patterns Established
+- Signed-weight quantile average + sort-based isotonic projection = zero-dependency stand-in for R `frechet`'s osqp QP.
+- Metric-space Fréchet ANOVA via seeded label-permutation (per-iteration seeding → thread-count-independent).
+- Documented numeric floors (Wasserstein-barycenter ~0.1–0.15 W₂ round-trip) drive test tolerances rather than machine-eps.
+
+### Key Lessons
+- When reusing a numeric helper (`wasserstein_barycenter`), verify its round-trip accuracy for YOUR input regime before building on it — its rescale assumption was invisible until the regression bias surfaced.
+- Owning a private copy of the reused inversion (`signed_quantile_average`) let me fix the bias without touching shipped DENS-01 behavior.
+
+### Cost Observations
+- Model mix: opus (planner/executor-inline) + sonnet (research/pattern/verify) + haiku (plan-checker).
+- Execution: inline (worktree base divergence + executor cargo-stall memory), each phase independently re-verified.
+- Notable: 1 plan-revision cycle on Phase 40; 1 mid-execution numeric-bias fix. No milestone gaps.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
