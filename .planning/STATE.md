@@ -119,7 +119,7 @@ v2 backlog items (from `.planning/research/R-BACKLOG.md`): FTS-03 (spectral func
 
 Advisory tech-debt carried forward (not v0.27.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files (incl. Phases 28–38) remain `draft` (Nyquist TODO); intentional R-baseline divergences documented in rustdoc across prior milestones.
 
-**Also pending (not a backlog item):** a crate release for v0.23.0 through v0.26.0 — `fdars-core/Cargo.toml` is still `0.24.0` → version bump + PR + tag, since all shipped real code (operator-driven ship-time step; a `v*` tag push triggers the crates.io publish). The autonomous runs deliberately did **not** create `v0.25.0`/`v0.26.0` git tags for this reason.
+**Release status:** `fdars-core` **0.27.0 published to crates.io** (tag `v0.27.0`, 2026-08-22; `release.yml` `cargo publish` succeeded). The 0.27.0 crate folds in all additive code shipped since 0.24.0 (v0.25.0/v0.26.0 were never published separately). `CHANGELOG.md` added at repo root.
 
 ## Session Continuity
 
