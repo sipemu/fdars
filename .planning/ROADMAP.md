@@ -63,14 +63,25 @@
   4. User can run global Fréchet regression with Euclidean predictors (predicting the conditional Fréchet-mean response object at new predictor values via the global/linear weight scheme) and local (local-linear / kernel-weighted) Fréchet regression, such that on synthetic data generated from a known predictor→object relationship the predicted response objects track the truth within a documented tolerance, and the density-response variant predicts a conditional density response from Euclidean predictors in 2-Wasserstein space (inline `#[cfg(test)]` tests).
   5. User can run a Fréchet ANOVA group-difference test on metric-space responses based on Fréchet means/variances, returning a numeric test statistic (and p-value) that flags a genuine between-group difference and does not flag a homogeneous sample on synthetic data. All entry points reuse `density_fda.rs`'s quantile/Wasserstein machinery rather than adding a new subsystem, add **no new crate dependency**, use per-thread seeded RNG for any stochastic (e.g. permutation) path, and invalid inputs (empty sample, mismatched predictor/response counts, non-monotone or mismatched grids, invalid bandwidth, fewer than two groups for ANOVA, degenerate objects) return `FdarError` rather than panicking. Existing public signatures across `fdars-core` (including `density_fda.rs`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
-**Plans**: TBD
+**Plans**: 3 plans
+**Wave 1**
+
+- [ ] 40-01-PLAN.md — Tracer: `frechet/` scaffold + `MetricSpace` trait + `WassersteinDensitySpace` + W₂ distance + `signed_quantile_average` helper + `frechet_mean`/`frechet_variance` + lib.rs wiring (FRE-01-01, FRE-01-02, FRE-01-03, FRE-01-06)
+
+**Wave 2** *(blocked on Wave 1 completion — shares mod.rs/lib.rs)*
+
+- [ ] 40-02-PLAN.md — Global (Petersen–Müller signed-weight) + local (kernel local-linear) Fréchet regression + density-response variant, via `signed_quantile_average` (FRE-01-04, FRE-01-05, FRE-01-07)
+
+**Wave 3** *(blocked on Wave 2 completion — shares mod.rs/lib.rs)*
+
+- [ ] 40-03-PLAN.md — Fréchet ANOVA (Dubey–Müller Tn + χ²(k−1) asymptotic + seeded 999-perm p-value), reusing in-crate `chi_square_sf` (FRE-01-08)
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 39. Functional Time-Series Forecasting | 0/3 | Not started | - |
-| 40. Fréchet / Object-Data Regression | 0/TBD | Not started | - |
+| 40. Fréchet / Object-Data Regression | 0/3 | Not started | - |
 
 **Execution order:** Both phases are **independent** — FTS-01 (Phase 39) and FRE-01 (Phase 40) have **no cross-phase hard dependency** (as with prior implementation milestones), and each touches a disjoint area of the codebase (new `fts/forecast.rs` vs new `frechet/` module). They may be planned and executed in **any order or in parallel**. The two score-1.33 (L-effort) `R-BACKLOG.md` items (FTS-01 rank 20, FRE-01 rank 21), exhausting the 1.33 tier. Both are P2 differentiators opening the two largest gap zones (Area 6 functional time series, 2/25 present; Area 7 density/object data, 0/25 present). FTS-01 builds on the shipped FTS-02 (`fts/acf.rs`) foundation; FRE-01 shares DENS-01's (`density_fda.rs`) Wasserstein/quantile machinery. **Milestone constraints (apply to both phases):** additive/non-breaking (zero changes to existing public signatures), reuse-first (no new algorithm subsystem beyond the two new modules), all public functions `Result<T, FdarError>`-returning, inline `#[cfg(test)]` tests with hand-computed/reference checks + error paths, crate-root re-exports, **no new crate dependency**, numeric outputs only (plotting/rendering out of scope), `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean. R baselines matched by capability, not R's exact signatures. The next tier (score 1.00, L-effort) is FTS-03 (spectral FTS, depends on FTS-01) + FRE-02 (object-data Fréchet spaces, depends on FRE-01).
 
