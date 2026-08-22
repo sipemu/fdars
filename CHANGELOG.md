@@ -5,6 +5,47 @@ All notable changes to `fdars-core` are documented here. This project adheres to
 non-breaking** — no existing public signature changed and no new crate dependency
 was added in this span.
 
+## [0.28.0] - 2026-08-23
+
+Covers the v0.28.0 development milestone (Spectral Functional Time Series &
+Object-Data Fréchet Regression). Additive and non-breaking — no existing public
+signature changed, no new crate dependency.
+
+### Added — v0.28.0 (Spectral Functional Time Series, FTS-03)
+
+- **Spectral functional time series** (`fdars-core::fts`, new `fts/spectral.rs`):
+  - `spectral_density` — the spectral density operator: a Bartlett-weighted DFT (via
+    `rustfft`) across the lag index of the reused `fts/acf.rs` autocovariance
+    operators, evaluated at the Fourier frequencies `θ_k = 2πk/N`; per-frequency
+    Hermitian m×m operator (`SpectralDensityResult`).
+  - `dpca` — dynamic functional PCA: per-frequency dynamic eigen-filters (inverse-FFT
+    of Simpson-metric-scaled eigenvectors) + dynamic scores over the valid interior
+    (`DpcaResult`).
+  - `dpca_reconstruct` — inverse dynamic filtering with a monotone-non-increasing
+    integrated-L2 reconstruction error (`DpcaReconstruction`).
+  - R baseline: `freqdom` / `ftsa`. Documented divergences: real-part
+    (`SymmetricEigen`) eigendecomposition, `1/2π` omission, score trimming.
+- **Functional VAR/VMA + FARMA simulators** (`fdars-core::simulation`):
+  - `sim_fvarma` — VAR/VMA from user-supplied m×m operator kernels with Gaussian
+    innovations, burn-in, deterministic `seed` (`FvarmaResult`).
+  - `sim_farma` — combined AR+MA (FARMA) simulator (`FarmaResult`).
+
+### Added — v0.28.0 (Object-Data Fréchet Regression, FRE-02)
+
+- **Non-density `MetricSpace` backends** (`fdars-core::frechet`, new `frechet/spaces/`):
+  - `SpdMatrixSpace` + `SpdMetric { Frobenius, Power(f64), LogCholesky }` — SPD
+    covariance-matrix responses.
+  - `CorrelationMatrixSpace`, `SphericalSpace` (geodesic exp/log + intrinsic Karcher
+    mean), `NetworkSpace` (graph Laplacian), `PointProcessSpace` (intensity L2).
+- **Generic Fréchet regression + ANOVA** over any `MetricSpace` backend:
+  - `frechet_global_reg_space` / `frechet_local_reg_space` — return a predicted object
+    per query row.
+  - `frechet_anova_space` — Dubey–Müller Tₙ group-difference test (seeded permutation)
+    over object responses.
+  - The existing density `frechet_global_reg` / `frechet_local_reg` / `frechet_anova`
+    now delegate to shared `pub(crate)` weight/Tₙ helpers — output bit-identical
+    (non-breaking). R baseline: `frechet` 0.3.0.
+
 ## [0.27.0] - 2026-08-22
 
 Published release covering the v0.25.0, v0.26.0, and v0.27.0 development
