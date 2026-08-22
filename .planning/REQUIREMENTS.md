@@ -1,0 +1,92 @@
+# Requirements: fdars — Milestone v0.28.0 Spectral Functional Time Series & Object-Data Fréchet Regression
+
+**Defined:** 2026-08-22
+**Core Value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two now-unblocked score-1.00 (L-effort) items from the v0.18.0 `R-BACKLOG.md`: spectral functional time series (FTS-03) and object-data Fréchet regression (FRE-02).
+
+**Source:** [`.planning/research/R-BACKLOG.md`](research/R-BACKLOG.md) items FTS-03 (rank 22) and FRE-02 (rank 23). Both dependencies (FTS-01, FRE-01) shipped in v0.27.0.
+
+**Milestone constraints (apply to every requirement):** additive/non-breaking (zero changes to existing public signatures); reuse-first (no new algorithm subsystem beyond the new `fts/spectral.rs` module + `frechet/` backends + `simulation.rs` additions); all public functions `Result<T, FdarError>`-returning; inline `#[cfg(test)]` tests with hand-computed/reference checks + error paths; crate-root re-exports; **no new crate dependency** (FTS-03 reuses the existing `rustfft`; FRE-02 plugs into the shipped FRE-01 solver); numeric outputs only (plotting/rendering out of scope); `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean; document any divergence from the R baseline in rustdoc.
+
+## v1 Requirements
+
+Requirements for milestone v0.28.0. Each maps to a roadmap phase.
+
+### FTS-03 — Spectral functional time series
+
+R baseline: `freqdom` (DPCA, spectral density, VAR/VMA) + `ftsa` (FARMA simulation, dynamic FPCA). New `fdars-core/src/fts/spectral.rs` (spectral density + DPCA via the existing `rustfft` dependency) plus a functional VAR/VMA + FARMA simulator in `simulation.rs`. Builds on the shipped FTS-01/FTS-02 (`fts/forecast.rs`, `fts/acf.rs`) autocovariance/forecasting foundation.
+
+- [ ] **FTS-03-01**: User can estimate the spectral density operator of a functional time series — the frequency-domain long-run covariance formed via `rustfft` over lagged autocovariance operators, evaluated at a set of Fourier frequencies.
+- [ ] **FTS-03-02**: User can compute dynamic functional PCA (DPCA) — dynamic eigen-filters and dynamic scores derived from the estimated spectral density operator.
+- [ ] **FTS-03-03**: User can reconstruct curves from DPCA dynamic scores via inverse dynamic filtering (optimal DPCA reconstruction of the original series).
+- [ ] **FTS-03-04**: User can simulate a functional VAR/VMA process — a functional autoregressive / moving-average curve series generated from user-supplied operator kernels.
+- [ ] **FTS-03-05**: User can simulate a functional ARMA (FARMA) process — a combined AR+MA functional curve-series simulator.
+
+### FRE-02 — Object-data Fréchet regression across specific metric spaces
+
+R baseline: `frechet` 0.3.0 (covariance/correlation-matrix regression, spherical/geodesics, network, point-process, each with a Fréchet-ANOVA analog). Extends `fdars-core/src/frechet/` with per-space metric + geodesic operations implemented as pluggable `MetricSpace` backends for the shipped FRE-01 Fréchet-regression solver (`frechet_global_reg` / `frechet_local_reg` / `frechet_anova` consume them generically).
+
+- [ ] **FRE-02-01**: User can use an SPD covariance-matrix response space — distance + weighted-Fréchet-mean solver under Frobenius, power, and log-Cholesky metrics — as a `MetricSpace` backend.
+- [ ] **FRE-02-02**: User can use a correlation-matrix response space (correlation-manifold distance + weighted Fréchet mean) as a `MetricSpace` backend.
+- [ ] **FRE-02-03**: User can use a spherical-data response space with geodesic exp/log maps and a weighted Fréchet-mean solver as a `MetricSpace` backend.
+- [ ] **FRE-02-04**: User can use a network response space (graph-Laplacian / adjacency-based distance + weighted Fréchet mean) as a `MetricSpace` backend.
+- [ ] **FRE-02-05**: User can use a point-process response space (intensity/count-based distance + weighted Fréchet mean) as a `MetricSpace` backend.
+- [ ] **FRE-02-06**: User can run global and local Fréchet regression over Euclidean predictors with at least one non-density object backend (e.g. SPD covariance matrices), reusing the generic FRE-01 solver.
+- [ ] **FRE-02-07**: User can run a Fréchet-ANOVA group-difference test over at least one non-density object space, reusing the generic `frechet_anova` machinery.
+
+## Future Requirements
+
+Deferred to future milestones (tracked in `R-BACKLOG.md`, not in this roadmap).
+
+### ML Regression (0.67 L-effort tier)
+
+- **REG-06**: Boosting / Bayesian functional regression (FDboost, GAMLSS, Gibbs/VB FOSR).
+
+### Representation (0.67 L-effort tier)
+
+- **REP-02**: FEM/PDE smoothing on irregular 2D/3D domains (fdaPDE).
+
+### Clustering (0.67 L-effort tier)
+
+- **CLUS-02**: Functional co-clustering (funLBM latent-block) + slope-heuristic selection.
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| New crate dependency for spectral / object-space machinery | Milestone constraint — FTS-03 reuses the existing `rustfft`; FRE-02 reuses the shipped FRE-01 solver + in-crate linear algebra; adding a dep triggers a package-legitimacy review |
+| Plotting/visualization of spectra, DPCA filters, or object-space Fréchet fits | Numeric Rust library — renderer stays out of scope (consistent with the v0.14.0/v0.18.0 audit fence); only numeric outputs are delivered |
+| Changes to existing public signatures (`fdata_to_pc_1d`, `fts/acf.rs`, `fts/forecast.rs`, `frechet/`, `simulation.rs`, …) | Additive/non-breaking constraint — new functions/modules only; existing paths preserved bit-for-bit |
+| Boosting / Bayesian functional regression (FDboost, GAMLSS, Gibbs/VB) — REG-06 | Lower-ranked (0.67) backlog item; not in this milestone |
+| FEM/PDE smoothing on irregular 2D/3D domains (fdaPDE) — REP-02 | Lower-ranked (0.67) backlog item; not in this milestone |
+| Functional co-clustering (funLBM) — CLUS-02 | Lower-ranked (0.67) backlog item; not in this milestone |
+
+## Traceability
+
+Which phases cover which requirements. Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FTS-03-01 | Phase 41 | Pending |
+| FTS-03-02 | Phase 41 | Pending |
+| FTS-03-03 | Phase 41 | Pending |
+| FTS-03-04 | Phase 41 | Pending |
+| FTS-03-05 | Phase 41 | Pending |
+| FRE-02-01 | Phase 42 | Pending |
+| FRE-02-02 | Phase 42 | Pending |
+| FRE-02-03 | Phase 42 | Pending |
+| FRE-02-04 | Phase 42 | Pending |
+| FRE-02-05 | Phase 42 | Pending |
+| FRE-02-06 | Phase 42 | Pending |
+| FRE-02-07 | Phase 42 | Pending |
+
+**Coverage:**
+
+- v1 requirements: 12 total (FTS-03: 5, FRE-02: 7)
+- Mapped to phases: 12
+- Unmapped: 0 ✓
+
+---
+*Requirements defined: 2026-08-22*
+*Last updated: 2026-08-22 after initial definition*
