@@ -148,11 +148,11 @@ pub use density_fda::{
     inverse_lqd, lqd_fpca, lqd_transform, normalize_density, wasserstein_barycenter, LqdFpcaResult,
 };
 
-// Re-export Fréchet / object-data regression types
+// Re-export Fréchet / object-data regression types (FRE-01 + FRE-02 object spaces)
 pub use frechet::{
     frechet_anova, frechet_global_reg, frechet_local_reg, frechet_mean, frechet_variance,
-    wasserstein2_distance, FrechetAnovaResult, FrechetGlobalRegResult, FrechetLocalRegResult,
-    MetricSpace, WassersteinDensitySpace,
+    wasserstein2_distance, CorrelationMatrixSpace, FrechetAnovaResult, FrechetGlobalRegResult,
+    FrechetLocalRegResult, MetricSpace, SpdMatrixSpace, SpdMetric, WassersteinDensitySpace,
 };
 
 // Re-export Andrews curves types
