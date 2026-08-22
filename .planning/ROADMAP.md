@@ -16,7 +16,7 @@
 - ✅ **v0.25.0 — Serial Dependence, Representation & Density Breadth** — Phases 34–36 (shipped 2026-08-21) — [archive](milestones/v0.25.0-ROADMAP.md)
 - ✅ **v0.26.0 — FPCA Breadth & Sparse Covariance** — Phases 37–38 (shipped 2026-08-21) — [archive](milestones/v0.26.0-ROADMAP.md)
 - ✅ **v0.27.0 — Functional Time Series & Fréchet Regression** — Phases 39–40 (shipped 2026-08-22) — [archive](milestones/v0.27.0-ROADMAP.md)
-- 🚧 **v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression** — Phases 41–42 (in progress)
+- ✅ **v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression** — Phases 41–42 (shipped 2026-08-23) — [archive](milestones/v0.28.0-ROADMAP.md)
 
 ## Overview
 
@@ -39,63 +39,14 @@ Full detail: [milestones/v0.27.0-ROADMAP.md](milestones/v0.27.0-ROADMAP.md)
 
 </details>
 
-All phases through v0.27.0 are shipped and archived under `milestones/`.
+<details>
+<summary>✅ v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression (Phases 41–42) — SHIPPED 2026-08-23</summary>
 
-### 🚧 v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression (In Progress)
+- [x] Phase 41: Spectral Functional Time Series (FTS-03, 2 plans) — new `fts/spectral.rs` (`spectral_density`, `dpca`, `dpca_reconstruct`) + `simulation.rs` (`sim_fvarma`, `sim_farma`)
+- [x] Phase 42: Object-Data Fréchet Regression (FRE-02, 3 plans) — new `frechet/spaces/` (`SpdMatrixSpace`/`SpdMetric`, `CorrelationMatrixSpace`, `SphericalSpace`, `NetworkSpace`, `PointProcessSpace`) + generic `frechet_global_reg_space`/`frechet_local_reg_space`/`frechet_anova_space`
 
-**Milestone Goal:** Draw the two now-unblocked score-1.00 (L-effort) `R-BACKLOG.md` items — spectral functional time series (FTS-03) and object-data Fréchet regression across specific metric spaces (FRE-02) — each by adding `fdars-core/src/` code additively and non-breaking, extending the v0.27.0 foundation.
+Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.28.0-ROADMAP.md](milestones/v0.28.0-ROADMAP.md)
 
-- [x] **Phase 41: Spectral Functional Time Series** - Frequency-domain FTS — spectral density operator, DPCA (filters + scores + reconstruction), and functional VAR/VMA + FARMA process simulators (completed 2026-08-22)
-- [x] **Phase 42: Object-Data Fréchet Regression** - Non-density `MetricSpace` backends (SPD covariance / correlation / spherical / network / point-process) feeding the shipped FRE-01 regression + ANOVA solver (completed 2026-08-23)
+</details>
 
-## Phase Details
-
-### Phase 41: Spectral Functional Time Series
-
-**Goal**: Users can analyze a functional time series in the frequency domain — estimate its spectral density operator, run dynamic FPCA, reconstruct curves from dynamic scores — and simulate functional VAR/VMA and FARMA processes.
-**Depends on**: Nothing new in v0.28.0 (builds on the shipped FTS-01/FTS-02 — `fts/forecast.rs`, `fts/acf.rs`). Independent of Phase 42.
-**Requirements**: FTS-03-01, FTS-03-02, FTS-03-03, FTS-03-04, FTS-03-05
-**Success Criteria** (what must be TRUE):
-
-  1. User can estimate the spectral density operator of a functional time series at a set of Fourier frequencies (the `rustfft`-transformed long-run covariance over lagged autocovariance operators) and receives a numeric per-frequency operator result.
-  2. User can compute dynamic functional PCA from that spectral density — obtaining dynamic eigen-filters and dynamic scores as numeric outputs.
-  3. User can reconstruct the original curve series from the DPCA dynamic scores via inverse dynamic filtering, and the reconstruction error decreases as more dynamic components are retained.
-  4. User can simulate a functional VAR/VMA curve series from user-supplied operator kernels, producing a deterministic (seeded) numeric curve set.
-  5. User can simulate a functional ARMA (FARMA) curve series combining AR and MA operator terms, producing a deterministic (seeded) numeric curve set.
-
-**Plans**: 2 plans
-
-Plans:
-
-- [x] 41-01-PLAN.md — spectral density operator + DPCA filters/scores + reconstruction (`fts/spectral.rs`; FTS-03-01/02/03)
-- [x] 41-02-PLAN.md — functional VAR/VMA + FARMA simulators (`simulation.rs`; FTS-03-04/05)
-
-### Phase 42: Object-Data Fréchet Regression
-
-**Goal**: Users can run global/local Fréchet regression and Fréchet-ANOVA over non-density object responses by selecting a `MetricSpace` backend — SPD covariance matrices (Frobenius / power / log-Cholesky), correlation matrices, spherical data, networks, or point processes.
-**Depends on**: The shipped FRE-01 solver (`frechet/` — `MetricSpace` trait, `frechet_global_reg`/`frechet_local_reg`/`frechet_anova`). Independent of Phase 41.
-**Requirements**: FRE-02-01, FRE-02-02, FRE-02-03, FRE-02-04, FRE-02-05, FRE-02-06, FRE-02-07
-**Success Criteria** (what must be TRUE):
-
-  1. User can select an SPD covariance-matrix response space (distance + weighted-Fréchet-mean under Frobenius, power, and log-Cholesky metrics) as a `MetricSpace` backend and get numeric distances and Fréchet means.
-  2. User can select correlation-matrix, spherical (geodesic exp/log), network, and point-process response spaces — each a `MetricSpace` backend with a numeric distance and a weighted-Fréchet-mean solver.
-  3. User can run global and local Fréchet regression over Euclidean predictors with at least one non-density object backend (e.g. SPD covariance matrices), reusing the generic FRE-01 solver, and receive a predicted object response at a new predictor value.
-  4. User can run a Fréchet-ANOVA group-difference test over at least one non-density object space, reusing the generic `frechet_anova` machinery, and receive a numeric test statistic and (seeded-permutation) p-value.
-
-**Plans**: 3 plans
-
-Plans:
-
-- [x] 42-01-PLAN.md — SPD + correlation matrix `MetricSpace` backends + `frechet/spaces/` module skeleton (FRE-02-01/02)
-- [x] 42-02-PLAN.md — spherical + network + point-process `MetricSpace` backends (FRE-02-03/04/05)
-- [x] 42-03-PLAN.md — generic solver reuse: `pub(crate)` weight/Tₙ helper extraction + `frechet_global_reg_space`/`frechet_local_reg_space`/`frechet_anova_space` over the SPD backend (FRE-02-06/07)
-
-## Progress
-
-**Execution Order:**
-Phases 41 and 42 are **independent** (disjoint code areas: `fts/spectral.rs` + `simulation.rs` vs `frechet/` metric backends), with no cross-phase hard dependency. They may be planned and executed in any order or in parallel.
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 41. Spectral Functional Time Series | v0.28.0 | 2/2 | Complete    | 2026-08-22 |
-| 42. Object-Data Fréchet Regression | v0.28.0 | 3/3 | Complete    | 2026-08-23 |
+All phases through v0.28.0 are shipped and archived under `milestones/`.

@@ -337,6 +337,34 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression
+
+**Shipped:** 2026-08-23
+**Phases:** 2 | **Plans:** 5
+
+### What Was Built
+- Phase 41 (FTS-03): `fts/spectral.rs` — `spectral_density`, `dpca`, `dpca_reconstruct` + `sim_fvarma`/`sim_farma` simulators.
+- Phase 42 (FRE-02): `frechet/spaces/` five `MetricSpace` backends + generic `frechet_*_reg_space`/`frechet_anova_space` reusing extracted `pub(crate)` helpers.
+
+### What Worked
+- The metric-consistent DPCA trick (fold Simpson weights into the eigenproblem via `W^{1/2}` scaling, mirroring the existing `acf.rs` MC-band scaling) made rank-1 reconstruction exact and kept scores/reconstruction self-consistent.
+- Non-breaking generification pattern: keep the concrete public fn, extract a shared `pub(crate)` core, add a generic sibling — the existing density Fréchet tests became a free regression gate proving byte-identical behavior.
+- Direct-sum DFT as an in-test oracle validated the FFT spectral path to 1e-9.
+
+### What Was Inefficient
+- Two clippy round-trips on Phase 42 tests (`useless_vec`, `cloned_ref_to_slice_refs`, negated partial-ord) — the full `--all-targets` gate lints test code, so test helpers need the same care as src.
+
+### Patterns Established
+- Object-data `MetricSpace` backend template (entry-validated struct + `impl MetricSpace`, never panic); iterative-mean backends guard division-by-`sin θ` at antipode + hard iter cap → `ComputationFailed`.
+
+### Key Lessons
+- Code review earned its keep both phases: caught a real usize-underflow panic (41) and a `Power(f64::INFINITY)` validation gap (42) that tests missed.
+
+### Cost Observations
+- Executed inline (worktree/executor-stall memory); each phase independently verified + code-reviewed. Whole-crate: **2514 lib tests green, clippy `--all-targets` clean, fmt clean.** Milestone audit PASSED 12/12.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

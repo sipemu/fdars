@@ -1,5 +1,15 @@
 # Milestones
 
+## v0.28.0 Spectral Functional Time Series & Object-Data Fréchet Regression (Shipped: 2026-08-23)
+
+**Phases completed:** 2 phases, 5 plans, 0 tasks
+
+**Key accomplishments:**
+
+- (none recorded)
+
+---
+
 ## v0.27.0 Functional Time Series & Fréchet Regression (Shipped: 2026-08-22)
 
 **Phases completed:** 2 phases, 6 plans, 15 tasks

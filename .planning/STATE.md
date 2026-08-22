@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.28.0
 milestone_name: Spectral Functional Time Series & Object-Data Fréchet Regression
-current_phase: 42
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 42 complete — all phases complete
-last_updated: "2026-08-22T22:34:24.161Z"
+last_updated: "2026-08-22T22:40:15.890Z"
 last_activity: 2026-08-23
-last_activity_desc: Phase 42 complete
-state_head: ac79e4aba8d1318efc1a85db3f5f89c535b52ccd
+last_activity_desc: Milestone v0.28.0 completed and archived
+state_head: 708c87cda643b7d519c56806620c485c0d2eca7b
 progress:
   total_phases: 2
   completed_phases: 2
   total_plans: 5
   completed_plans: 5
   percent: 100
+current_phase: 42
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 
 ## Current Position
 
-Phase: 42
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-23 — Phase 42 complete
+Phase: Milestone v0.28.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-23 — Milestone v0.28.0 completed and archived
 
 ## Milestone Roadmap (v0.28.0)
 
@@ -137,4 +137,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 41` (or `/gsd-plan-phase 42` — the two phases are independent and may be planned in any order or in parallel)
+- Start the next milestone with /gsd-new-milestone
