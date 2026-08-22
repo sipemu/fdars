@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.27.0
 milestone_name: Functional Time Series & Fréchet Regression
 status: planning
-last_updated: "2026-08-21T22:29:07.121Z"
+last_updated: "2026-08-22T00:00:00.000Z"
 last_activity: 2026-08-22
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,34 +17,34 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-21)
+See: .planning/PROJECT.md (updated 2026-08-22)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two remaining top-ranked items from the v0.18.0 `R-BACKLOG.md` (score 1.73, M-effort): specialized FPCA variants (FPCA-02) and fast sparse/irregular covariance (SPARSE-01), each by adding `fdars-core/src/` code additively.
-**Current focus:** Phase 38 — Sparse Fast Covariance & Trajectory Bands
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two score-1.33 (L-effort) items from the v0.18.0 `R-BACKLOG.md`: functional time-series forecasting (FTS-01) and Fréchet / object-data regression (FRE-01), each by adding `fdars-core/src/` code additively.
+**Current focus:** Phase 39 — Functional Time-Series Forecasting
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 39 — Functional Time-Series Forecasting (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-22 — Milestone v0.27.0 started
+Status: Roadmap created (Phases 39–40) — ready to plan
+Last activity: 2026-08-22 — Milestone v0.27.0 roadmap created
 
-## Milestone Roadmap (v0.26.0)
+## Milestone Roadmap (v0.27.0)
 
-Two phases, two requirements — the two remaining top-ranked `R-BACKLOG.md` items (both tied at score 1.73, M-effort): FPCA-02 (rank 18), SPARSE-01 (rank 19). Completes the FPCA long tail and adds fast sparse-covariance estimation, exhausting the 1.73 tier. Real `fdars-core/src/` code — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** Both are reuse-first (extend `regression.rs` / new `fpca_variants.rs` reusing `fdata_to_pc_1d` + `covariance.rs`; extend `irreg_fdata/` reusing `cov_irreg` + `pace_fpca`); no new algorithm subsystem, **no new crate dependency.** Numeric outputs only — plotting/rendering out of scope.
+Two phases, two requirements — the two score-1.33 (L-effort) `R-BACKLOG.md` items: FTS-01 (rank 20), FRE-01 (rank 21). Opens the two largest gap zones (Area 6 functional time series, 2/25 present; Area 7 density/object data, 0/25 present), exhausting the 1.33 tier. Real `fdars-core/src/` code — additive/non-breaking, `Result`-returning, inline `#[cfg(test)]` tests, crate-root re-exports; **zero changes to existing public signatures.** Both are reuse-first (new `fts/forecast.rs` reusing `fdata_to_pc_1d` + `scoring.rs` + FTS-02's `fts/acf.rs`; new `frechet/` module sharing DENS-01's `density_fda.rs` quantile/Wasserstein machinery); no new algorithm subsystem beyond the two new modules, **no new crate dependency.** Numeric outputs only — plotting/rendering out of scope.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 37 — Specialized FPCA Variants | FPCA-02 | extend `regression.rs` (or new `fpca_variants.rs`): `fpca_der` (FPCA of derivatives), `fsvd` (functional SVD / cross-FPCA), `cross_covariance` (cross-covariance surface between two samples), `dynamical_correlation` (scalar association), and a sandwich-smoother / sparse-SVD (ssvd) FPCA path. Reuses `fdata_to_pc_1d` + `covariance.rs`. Complements the shipped PACE core (FPCA-01). R baseline: `fdapace` (FPCAder, FSVD, GetCrCov, DynCorr, FCCor) / `refund` (fpca.sc sandwich, fpca.ssvd). Rank 18, score 1.73. |
-| 38 — Sparse Fast Covariance & Trajectory Bands | SPARSE-01 | extend `irreg_fdata/`: `face_covariance` (FACE fast-sandwich sparse-data covariance surface), `mface_covariance` (multivariate `mfaces` extension), and fitted continuous trajectories with pointwise confidence bands integrated with the FACE path. Builds on `cov_irreg`, integrates with the shipped PACE `pace_fpca` (FPCA-01). R baseline: `face` / `mfaces` / `fdapace` (trajectory bands). Rank 19, score 1.73. |
+| 39 — Functional Time-Series Forecasting | FTS-01 (5 reqs) | new `fts/forecast.rs`: `ftsm` (FPCA-based functional time-series model — mean + FPC loadings + score-time-series + fitted curves), FPC-score-regression forecasting (scalar AR/ARIMA-style models per score sequence → reconstruct forecast curves), `fplsr` (functional PLS forecasting variant), dynamic forecast updating, iterative multi-step (h > 1) forecasting. Reuses `fdata_to_pc_1d` + `scoring.rs`, builds on the shipped FTS-02 (`fts/acf.rs`, Phase 34). R baseline: `ftsa`. Rank 20, score 1.33, P2 differentiator. |
+| 40 — Fréchet / Object-Data Regression | FRE-01 (8 reqs) | new `frechet/` module: metric-space abstraction (distance + weighted-Fréchet-mean solver) with a 1D-Wasserstein (density-response) backend, Fréchet mean/variance, global & local (kernel-weighted) Fréchet regression over Euclidean predictors, 1D 2-Wasserstein distance, density-response Fréchet regression, Fréchet ANOVA. Shares DENS-01's (`density_fda.rs`, Phase 36) quantile/Wasserstein machinery. R baseline: `frechet`. Rank 21, score 1.33, P2 differentiator. |
 
-**Execution order:** Both phases are **independent** — FPCA-02 (Phase 37) and SPARSE-01 (Phase 38) have **no cross-phase hard dependency** (as in prior implementation milestones), and each touches a disjoint area of the codebase (extend `regression.rs`/new `fpca_variants.rs` vs extend `irreg_fdata/`). They may be planned and executed in **any order or in parallel**. No forced sequence.
+**Execution order:** Both phases are **independent** — FTS-01 (Phase 39) and FRE-01 (Phase 40) have **no cross-phase hard dependency** (as in prior implementation milestones), and each touches a disjoint area of the codebase (new `fts/forecast.rs` vs new `frechet/` module). They may be planned and executed in **any order or in parallel**. No forced sequence.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 68 (21 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0 + 5 in v0.18.0 + 2 in v0.19.0 + 2 in v0.20.0 + 2 in v0.21.0 + 2 in v0.22.0 + 7 in v0.23.0 + 7 in v0.24.0 + 10 in v0.25.0)
+- Total plans completed: 72 (21 in v0.14.0 + 4 in v0.15.0 + 4 in v0.16.0 + 3 in v0.17.0 + 5 in v0.18.0 + 2 in v0.19.0 + 2 in v0.20.0 + 2 in v0.21.0 + 2 in v0.22.0 + 7 in v0.23.0 + 7 in v0.24.0 + 10 in v0.25.0 + 4 in v0.26.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -64,12 +64,13 @@ Two phases, two requirements — the two remaining top-ranked `R-BACKLOG.md` ite
 | 28–30 | v0.23.0 | 7 |
 | 31–33 | v0.24.0 | 7 |
 | 34–36 | v0.25.0 | 10 |
-| 37 | v0.26.0 | TBD (FPCA-02) |
-| 38 | v0.26.0 | TBD (SPARSE-01) |
+| 37–38 | v0.26.0 | 4 |
+| 39 | v0.27.0 | TBD (FTS-01) |
+| 40 | v0.27.0 | TBD (FRE-01) |
 
 **Recent Trend:**
 
-- Last milestone: v0.25.0 phases 34–36 (10 plans) — all completed + verified (5/5, 13/13, 7/7), milestone audit PASSED
+- Last milestone: v0.26.0 phases 37–38 (4 plans) — both completed + verified (5/5 each), milestone audit PASSED 8/8
 - Trend: consistent ~45min per plan, 7 tests/plan average for implementation phases
 
 *Updated after each plan completion*
@@ -80,20 +81,20 @@ Two phases, two requirements — the two remaining top-ranked `R-BACKLOG.md` ite
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-Relevant to current work (v0.26.0 implementation):
+Relevant to current work (v0.27.0 implementation):
 
-- v0.26.0 is an **implementation** milestone — real `fdars-core/src/` code (drawn top-first from the R-ecosystem backlog, after v0.19.0–v0.25.0). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
-- Scope is the **two remaining top-ranked** `R-BACKLOG.md` items (both tied at score 1.73, M-effort): **FPCA-02** (rank 18), **SPARSE-01** (rank 19) — completing the FPCA long tail and adding fast sparse-covariance estimation. Shipping these two exhausts the 1.73 tier. Both are **reuse-first** (extend `regression.rs` / new `fpca_variants.rs`; extend `irreg_fdata/`); no new algorithm subsystem, **no new crate dependency**. Plotting/rendering out of scope (numeric outputs only).
-- Phase numbering **continues** from v0.25.0 (ended at Phase 36) → v0.26.0 starts at Phase 37. No reset.
-- **One requirement per phase, two phases:** Phase 37 = FPCA-02, Phase 38 = SPARSE-01.
-- **Both phases are independent** — no cross-phase hard dependency. Each touches a disjoint area of the codebase, so 37/38 may run in **any order or in parallel**.
-- **FPCA-02 scope (from R-BACKLOG.md block):** extend `regression.rs` (or new `fpca_variants.rs`) — `fpca_der` (differentiate loadings / FPCA of the differentiated process), `fsvd` (bivariate SVD / cross-FPCA between two samples, paired left/right singular functions + singular values), `cross_covariance` (cross-covariance surface between two samples over their argument grids), `dynamical_correlation` (scalar functional-correlation association measure), and a sandwich-smoother / sparse-SVD (ssvd) FPCA path (smoothed-covariance estimator as an alternative to the raw thin-SVD). Reuses `fdata_to_pc_1d` + `covariance.rs`. Complements the shipped PACE core (FPCA-01, already handles the table-stakes PACE path). R baseline: `fdapace` (FPCAder, FSVD, GetCrCov, DynCorr, FCCor) / `refund` (fpca.sc sandwich, fpca.ssvd).
-- **SPARSE-01 scope (from R-BACKLOG.md block):** extend `irreg_fdata/` — `face_covariance` (FACE fast-sandwich covariance estimator for sparse/irregular functional data), `mface_covariance` (the multivariate `mfaces` extension for multiple simultaneously-observed sparse variables), and integrated fitted continuous trajectories with pointwise confidence bands for sparse curves. Builds on `irreg_fdata::cov_irreg` and integrates with the shipped PACE `pace_fpca` (FPCA-01) machinery where applicable. R baseline: `face` (FACE) / `mfaces` (multivariate FACE) / `fdapace` (trajectory bands).
-- R baselines matched by **capability**, not R's exact signatures.
+- v0.27.0 is an **implementation** milestone — real `fdars-core/src/` code (drawn top-first from the R-ecosystem backlog, after v0.19.0–v0.26.0). All additions are **additive/non-breaking**, `Result`-returning, with inline `#[cfg(test)]` tests + crate-root re-exports; **zero changes to existing public signatures.**
+- Scope is the **two score-1.33 (L-effort)** `R-BACKLOG.md` items: **FTS-01** (rank 20, functional time-series forecasting) + **FRE-01** (rank 21, Fréchet/object-data regression). Shipping these two exhausts the 1.33 tier. Both are **reuse-first** (new `fts/forecast.rs` reusing `fdata_to_pc_1d` + `scoring.rs` + FTS-02's `fts/acf.rs`; new `frechet/` module sharing DENS-01's `density_fda.rs` quantile/Wasserstein machinery); no new algorithm subsystem beyond the two new modules, **no new crate dependency**. Plotting/rendering out of scope (numeric outputs only).
+- Phase numbering **continues** from v0.26.0 (ended at Phase 38) → v0.27.0 starts at Phase 39. No reset.
+- **One requirement per phase, two phases:** Phase 39 = FTS-01, Phase 40 = FRE-01.
+- **Both phases are independent** — no cross-phase hard dependency. Each touches a disjoint area of the codebase (new `fts/forecast.rs` vs new `frechet/` module), so 39/40 may run in **any order or in parallel**.
+- **FTS-01 scope (from R-BACKLOG.md block):** new `fdars-core/src/fts/forecast.rs` — decompose a time-ordered curve series via `fdata_to_pc_1d` (`ftsm`: mean + FPC loadings + score-time-series + fitted curves), fit scalar (AR/ARIMA-style) time-series models to each FPC-score sequence and reconstruct h-step-ahead forecast curves, a functional PLS forecasting variant (`fplsr`), a dynamic-updating path (update forecast on new observation without full refit), and iterative multi-step (h > 1) forecasting. Reuses `fdata_to_pc_1d` + `scoring.rs`; **depends on the shipped FTS-02** (`fts/acf.rs`, Phase 34) for score-model order/inference. R baseline: `ftsa`. Largest single-area gap zone by capability count (Area 6, 2/25 present).
+- **FRE-01 scope (from R-BACKLOG.md block):** new `fdars-core/src/frechet/` module — a metric-space abstraction (distance + weighted-Fréchet-mean solver) with a 1D-Wasserstein (density-response) backend as the first concrete space, Fréchet mean (weighted barycenter) + variance (mean squared distance to the mean), global Fréchet regression (weighted global/linear weight scheme over Euclidean predictors), local (local-linear / kernel-weighted) Fréchet regression, the 1D 2-Wasserstein distance (quantile-based), density-response Fréchet regression (conditional density from Euclidean predictors in 2-Wasserstein space), and Fréchet ANOVA (group-difference test on metric-space responses via means/variances). **Shares DENS-01's** (`density_fda.rs`, Phase 36) quantile/Wasserstein machinery — start from the density (2-Wasserstein) response space. R baseline: `frechet`. Single largest all-absent zone (Area 7, 0/25 present).
+- R baselines matched by **capability**, not R's exact signatures. Document any divergence from the R baseline in rustdoc (as prior milestones documented divergences).
 
 Conventions carried from prior milestones (relevant to implementation):
 
-- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved (any Monte-Carlo band / bootstrap paths need seeded reproducibility, mirroring INF-01's 999-perm default and FTS-02's white-noise bands).
+- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved (any Monte-Carlo / bootstrap / permutation paths need seeded reproducibility — relevant to FRE-01's Fréchet ANOVA if permutation-based, mirroring INF-01's 999-perm default).
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
 
@@ -103,25 +104,26 @@ None yet.
 
 ### Blockers/Concerns
 
-- Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer). Both phases are independent and could otherwise parallelize, but sequential fallback may serialize them regardless.
+- Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer). Both phases are independent and could otherwise parallelize, but sequential fallback may serialize them regardless. Prior milestone (v0.26.0) executed phases inline (not via gsd-executor subagents) for this reason.
 - /tmp tmpfs exhaustion can block pre-commit doctest linking with bogus "No space left" — use `--no-verify` for docs and free /tmp before executing (MEMORY.md pointer). Relevant since the milestone compiles real code + doctests. Also: `target/` grows to 100+GB and fills /home; `rm -rf target/debug/{incremental,examples}` frees ~108G if example LINK fails (MEMORY.md pointer).
-- FPCA-02: the FPCAder differentiation convention (which loadings/scores are of the differentiated process), the `fsvd` bivariate-SVD normalization + sign convention, the `cross_covariance` surface weighting/integration, the `dynamical_correlation` definition + range, and the sandwich-smoother / ssvd smoothing choice each have specific `fdapace`/`refund` reference formulations; pin the derivative estimator, the cross-SVD normalization, the cross-covariance integration, the dynamical-correlation formula, and the sandwich-smoother bandwidth during planning, and document any divergence from the R baseline in rustdoc (as prior milestones documented divergences). Reuse `fdata_to_pc_1d` + `covariance.rs`.
-- SPARSE-01: the FACE fast-sandwich smoother (tensor-product spline basis + sandwich weighting), the `mfaces` multivariate block-covariance construction (within-variable + cross-variable blocks), and the trajectory-band integration with `pace_fpca` (BLUP scores → fitted trajectory → pointwise Ω bands) each have specific `face`/`mfaces`/`fdapace` reference definitions; pin the FACE basis + sandwich weighting, the multivariate block layout, and the band construction during planning; reuse `cov_irreg` + `pace_fpca` rather than re-deriving. Note: `cov_irreg` gives a kernel-smoothed empirical covariance, not the FACE sandwich specifically — FACE is the new estimator.
+- Executor subagents trip the 600s stream watchdog on long fdars cargo builds; `--no-verify` commits leave fmt drift → run `cargo fmt` per commit + a whole-crate sweep at milestone end (MEMORY.md pointers).
+- FTS-01: the `ftsm` reconstruction/truncation convention, the choice of scalar time-series model (AR/ARIMA-style) fit to each FPC-score sequence and how its order is selected (reuse FTS-02's ACF/PACF), the `fplsr` PLS-score formulation, the dynamic-updating update rule, and the iterative multi-step reconstruction each have specific `ftsa` reference formulations; pin the score-model family + order selection, the PLS forecasting variant, the dynamic-update rule, and the multi-step iteration during planning, and document any divergence from `ftsa` in rustdoc. Reuse `fdata_to_pc_1d` + `scoring.rs` + `fts/acf.rs`.
+- FRE-01: the metric-space abstraction shape (distance + weighted-Fréchet-mean solver trait/struct), the global-vs-local Fréchet-regression weight schemes (global linear weights vs local-linear/kernel weights), the 1D 2-Wasserstein distance formulation (quantile-based, must reuse `density_fda.rs`), the density-response prediction path, and the Fréchet-ANOVA test statistic (+ p-value derivation, seeded if permutation-based) each have specific `frechet` reference definitions; pin the abstraction, the weight schemes, the Wasserstein formula, and the ANOVA statistic during planning; reuse `density_fda.rs`'s quantile/Wasserstein machinery rather than re-deriving. Document any divergence in rustdoc.
 
 ## Deferred Items
 
-v2 backlog items (from `.planning/research/R-BACKLOG.md`): FTS-01, FRE-01 (score 1.33, L-effort — the next tier after the 1.73 tier is exhausted by this milestone); FTS-03, FRE-02, REG-06, REP-02, CLUS-02 (score ≤ 1.00, L). FTS-01 builds on the shipped FTS-02's serial-dependence foundation; FRE-01/FRE-02 are the general Fréchet/object-data items (DENS-01 covered only the tractable 1D-density subset of Area 7; FRE-01 shares DENS-01's Wasserstein/quantile machinery). Explicit v0.26.0 exclusions: new crate dependency for FACE/SVD/covariance; plotting/rendering of FPCA loadings, cross-covariance surfaces, or trajectory bands; changes to existing public signatures (`fdata_to_pc_1d`, `pace_fpca`, `cov_irreg`); general object-space Fréchet machinery (FRE-01/FRE-02); the FTS forecasting subsystem (FTS-01).
+v2 backlog items (from `.planning/research/R-BACKLOG.md`): FTS-03 (spectral functional time series — DPCA/spectral-density/VAR-VMA/FARMA, score 1.00, L-effort — **depends on FTS-01**, reuses `rustfft`); FRE-02 (object-data Fréchet spaces — covariance/correlation/spherical/network/point-process, score 1.00, L-effort — **depends on FRE-01**'s solver framework); REG-06, REP-02, CLUS-02 (score ≤ 1.00, L). These form the next tier once v0.27.0 exhausts the 1.33 tier. Explicit v0.27.0 exclusions: new crate dependency for time-series / metric-space machinery; plotting/rendering of forecasts, prediction bands, or Fréchet fits; changes to existing public signatures (`fdata_to_pc_1d`, `fts/acf.rs`, `density_fda.rs`, `scoring.rs`); spectral/frequency-domain FTS (FTS-03); object-space Fréchet backends beyond 1D density/Wasserstein (FRE-02); Bayesian/boosting functional regression (REG-06).
 
-Advisory tech-debt carried forward (not v0.26.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files (incl. Phases 28–36) remain `draft` (Nyquist TODO); intentional R-baseline divergences documented in rustdoc across prior milestones.
+Advisory tech-debt carried forward (not v0.27.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files (incl. Phases 28–38) remain `draft` (Nyquist TODO); intentional R-baseline divergences documented in rustdoc across prior milestones.
 
-**Also pending (not a backlog item):** a crate release for v0.23.0, v0.24.0 **and** v0.25.0 — version bump (Cargo.toml still 0.23.0) + PR + tag, since all three shipped real code (operator-driven ship-time step; a `v*` tag push triggers the crates.io publish).
+**Also pending (not a backlog item):** a crate release for v0.23.0 through v0.26.0 — `fdars-core/Cargo.toml` is still `0.24.0` → version bump + PR + tag, since all shipped real code (operator-driven ship-time step; a `v*` tag push triggers the crates.io publish). The autonomous runs deliberately did **not** create `v0.25.0`/`v0.26.0` git tags for this reason.
 
 ## Session Continuity
 
-Last session: 2026-08-21T13:00:00.000Z
-Stopped at: v0.26.0 roadmap created (Phases 37–38) — ready to plan
+Last session: 2026-08-22T00:00:00.000Z
+Stopped at: v0.27.0 roadmap created (Phases 39–40) — ready to plan
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with /gsd-plan-phase 39 (FTS-01) — or /gsd-plan-phase 40 (FRE-01); both are independent and may be planned in any order or in parallel.
