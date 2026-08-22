@@ -38,8 +38,16 @@
   5. All entry points reuse `fdata_to_pc_1d` + `scoring.rs` + the FTS-02 `fts/acf.rs` foundation rather than adding a new algorithm subsystem, add **no new crate dependency**, use per-thread seeded RNG for any stochastic path, and invalid inputs (empty/too-short series, fewer observations than requested components, non-monotone or mismatched argvals, `h < 1`, `ncomp` out of range, degenerate columns) return `FdarError` rather than panicking. Existing public signatures across `fdars-core` (including `fdata_to_pc_1d`, `scoring.rs`, and `fts/acf.rs`) keep working unchanged (additive/non-breaking); the full suite plus `cargo clippy --all-targets --features linalg,parallel -- -D warnings` stays green.
 
 **Plans**: 3 plans
+**Wave 1**
+
 - [ ] 39-01-PLAN.md — Tracer: module scaffold + wiring + Yule-Walker AR helpers + `ftsm` fit + `ftsm_forecast` one-step (FTS-01-01, FTS-01-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 39-02-PLAN.md — `ftsm_forecast_multistep` (iterative h>1) + `ftsm_update` (dynamic update, no FPCA refit) (FTS-01-05, FTS-01-04)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 39-03-PLAN.md — `fplsr` functional PLS lag-1 forecasting variant + `FplsrResult` (FTS-01-03)
 
 ### Phase 40: Fréchet / Object-Data Regression
