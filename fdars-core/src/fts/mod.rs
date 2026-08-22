@@ -18,10 +18,12 @@
 //! `Debug, Clone, PartialEq` and are serde-gated.
 
 mod acf;
+mod forecast;
 
 pub use acf::{
     functional_acf, functional_difference, functional_pacf, long_run_covariance, stationarity_test,
 };
+pub use forecast::{ftsm, ftsm_forecast};
 
 /// Result of functional ACF/PACF estimation.
 ///
@@ -72,4 +74,58 @@ pub struct LongRunCovResult {
     pub bandwidth: usize,
     /// Number of curves N.
     pub n_curves: usize,
+}
+
+/// Diagnostics for a single fitted FPC-score AR(p) model.
+///
+/// One per retained component in [`FtsmResult::ar_models`]. Produced by [`ftsm`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct ArModelResult {
+    /// Selected AR order p (0 = white noise), chosen by AIC.
+    pub order: usize,
+    /// AR coefficients phi_1..phi_p (0-indexed: `phi[0]` is the lag-1 coefficient).
+    pub phi: Vec<f64>,
+    /// Innovation (residual) variance from the Yule-Walker fit.
+    pub sigma2: f64,
+}
+
+/// Result of fitting the FPCA-based functional time-series model.
+///
+/// Produced by [`ftsm`]. Carries the FPCA decomposition (mean, loadings,
+/// score-time-series, reconstructed fitted curves, integration weights) plus the
+/// per-component AR-model diagnostics used for forecasting.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FtsmResult {
+    /// Mean curve μ(u), length m.
+    pub mean: Vec<f64>,
+    /// FPC loadings φ_k, shape m × ncomp.
+    pub rotation: crate::matrix::FdMatrix,
+    /// FPC score time-series β_{t,k}, shape n × ncomp.
+    pub scores: crate::matrix::FdMatrix,
+    /// Reconstructed fitted curves, shape n × m.
+    pub fitted: crate::matrix::FdMatrix,
+    /// Simpson integration weights, length m.
+    pub weights: Vec<f64>,
+    /// Effective number of retained components (clamped to min(ncomp, n, m)).
+    pub ncomp: usize,
+    /// Per-component fitted AR-model diagnostics (length = ncomp).
+    pub ar_models: Vec<ArModelResult>,
+}
+
+/// Result of an FPC-score-AR curve forecast.
+///
+/// Produced by [`ftsm_forecast`]. `forecast` is an h × m matrix whose row `i`
+/// holds the forecast curve for horizon `i + 1`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FtsmForecastResult {
+    /// Forecast curves, shape h × m (row i = horizon i+1).
+    pub forecast: crate::matrix::FdMatrix,
+    /// Forecast horizon (number of steps ahead).
+    pub h: usize,
 }

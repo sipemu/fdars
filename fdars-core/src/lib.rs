@@ -250,8 +250,9 @@ pub use inference::{
 
 // Re-export functional time series serial-dependence types (FTS-02)
 pub use fts::{
-    functional_acf, functional_difference, functional_pacf, long_run_covariance, stationarity_test,
-    FacfResult, LongRunCovResult, StationarityResult,
+    ftsm, ftsm_forecast, functional_acf, functional_difference, functional_pacf,
+    long_run_covariance, stationarity_test, ArModelResult, FacfResult, FtsmForecastResult,
+    FtsmResult, LongRunCovResult, StationarityResult,
 };
 
 // Re-export FAMM types
