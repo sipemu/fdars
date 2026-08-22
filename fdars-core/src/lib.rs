@@ -150,7 +150,8 @@ pub use density_fda::{
 
 // Re-export Fréchet / object-data regression types (FRE-01 + FRE-02 object spaces)
 pub use frechet::{
-    frechet_anova, frechet_global_reg, frechet_local_reg, frechet_mean, frechet_variance,
+    frechet_anova, frechet_anova_space, frechet_global_reg, frechet_global_reg_space,
+    frechet_local_reg, frechet_local_reg_space, frechet_mean, frechet_variance,
     wasserstein2_distance, CorrelationMatrixSpace, FrechetAnovaResult, FrechetGlobalRegResult,
     FrechetLocalRegResult, MetricSpace, NetworkSpace, PointProcessSpace, SpdMatrixSpace, SpdMetric,
     SphericalSpace, WassersteinDensitySpace,

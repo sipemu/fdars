@@ -37,9 +37,11 @@ mod regression;
 mod space;
 mod spaces;
 
-pub use anova::frechet_anova;
+pub use anova::{frechet_anova, frechet_anova_space};
 pub use mean::{frechet_mean, frechet_variance};
-pub use regression::{frechet_global_reg, frechet_local_reg};
+pub use regression::{
+    frechet_global_reg, frechet_global_reg_space, frechet_local_reg, frechet_local_reg_space,
+};
 pub use space::{wasserstein2_distance, MetricSpace, WassersteinDensitySpace};
 pub use spaces::{
     CorrelationMatrixSpace, NetworkSpace, PointProcessSpace, SpdMatrixSpace, SpdMetric,

@@ -29,12 +29,15 @@ use rand::SeedableRng;
 /// asymptotic statistic magnitude diverges from R on real data the formula may
 /// need adjustment. The seeded permutation p-value (the primary reported
 /// inference) is robust to this assumption.
-fn compute_tn(
-    space: &WassersteinDensitySpace,
-    objects: &[Vec<f64>],
+pub(crate) fn compute_tn_generic<S: MetricSpace>(
+    space: &S,
+    objects: &[S::Object],
     labels: &[usize],
     k: usize,
-) -> Result<(f64, f64, f64, Vec<f64>, f64), FdarError> {
+) -> Result<(f64, f64, f64, Vec<f64>, f64), FdarError>
+where
+    S::Object: Clone,
+{
     let n = objects.len();
 
     // Partition object indices by (contiguous 0..k) group id.
@@ -53,7 +56,7 @@ fn compute_tn(
     for (g, idx) in groups.iter().enumerate() {
         let n_g = idx.len();
         lambda[g] = n_g as f64 / n as f64;
-        let subset: Vec<Vec<f64>> = idx.iter().map(|&i| objects[i].clone()).collect();
+        let subset: Vec<S::Object> = idx.iter().map(|&i| objects[i].clone()).collect();
         let mu_g = frechet_mean(space, &subset, None)?;
         // d²(Yᵢ, μ̂ₗ) for each member.
         let d2: Vec<f64> = subset
@@ -108,8 +111,8 @@ fn compute_tn(
 /// per-iteration seeded RNG (`StdRng::seed_from_u64(seed + k)`), so it is
 /// reproducible for a fixed `seed`. Pass `n_perm = 0` to use the default of 999.
 ///
-/// The exact σ̂ₗ² variance estimator is **[ASSUMED]** (see [`compute_tn`]); the
-/// permutation p-value does not depend on that assumption.
+/// The exact σ̂ₗ² variance estimator is **[ASSUMED]** (see [`compute_tn_generic`]);
+/// the permutation p-value does not depend on that assumption.
 ///
 /// # Errors
 /// Returns [`FdarError::InvalidDimension`] for a `group_labels`/response length
@@ -160,7 +163,7 @@ pub fn frechet_anova(
     let n_perm = if n_perm == 0 { 999 } else { n_perm };
 
     let (tn_obs, fn_stat, un_stat, group_vars, pooled_var) =
-        compute_tn(&space, &objects, group_labels, k)?;
+        compute_tn_generic(&space, &objects, group_labels, k)?;
     let p_asymptotic = chi_square_sf(tn_obs, k - 1);
 
     // Seeded permutation p-value (per-iteration RNG → thread-count-independent).
@@ -170,7 +173,94 @@ pub fn frechet_anova(
         let mut perm_labels = group_labels.to_vec();
         perm_labels.shuffle(&mut rng);
         // A degenerate permutation (compute error) is skipped conservatively.
-        if let Ok((tn_perm, _, _, _, _)) = compute_tn(&space, &objects, &perm_labels, k) {
+        if let Ok((tn_perm, _, _, _, _)) = compute_tn_generic(&space, &objects, &perm_labels, k) {
+            if tn_perm >= tn_obs {
+                n_ge += 1;
+            }
+        }
+    }
+    let p_permutation = (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0);
+
+    Ok(FrechetAnovaResult {
+        statistic: tn_obs,
+        p_value_asymptotic: p_asymptotic,
+        p_value_permutation: p_permutation,
+        n_perm,
+        group_frechet_variances: group_vars,
+        pooled_frechet_variance: pooled_var,
+        fn_statistic: fn_stat,
+        un_statistic: un_stat,
+        group_labels: group_labels.to_vec(),
+    })
+}
+
+/// Fréchet ANOVA group-difference test over an arbitrary object [`MetricSpace`]
+/// backend (FRE-02-07). Reuses the Dubey–Müller [`compute_tn_generic`] statistic
+/// and the identical seeded-permutation p-value machinery as [`frechet_anova`],
+/// generalized from densities to any metric-space objects.
+///
+/// `objects` are the responses (one per observation); `group_labels` assigns each
+/// to a contiguous group `0..k`. Pass `n_perm = 0` for the default of 999. The
+/// permutation p-value is reproducible for a fixed `seed`
+/// (`StdRng::seed_from_u64(seed.wrapping_add(perm))`).
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] for an empty sample or a
+/// `group_labels`/objects length mismatch; [`FdarError::InvalidParameter`] for
+/// fewer than two distinct groups or non-contiguous labels.
+#[must_use = "returns the Fréchet ANOVA result; examine the p-values"]
+pub fn frechet_anova_space<S: MetricSpace>(
+    space: &S,
+    objects: &[S::Object],
+    group_labels: &[usize],
+    n_perm: usize,
+    seed: u64,
+) -> Result<FrechetAnovaResult, FdarError>
+where
+    S::Object: Clone,
+{
+    let n = objects.len();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "objects",
+            expected: "at least 1 object".to_string(),
+            actual: "0 objects".to_string(),
+        });
+    }
+    if group_labels.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "group_labels",
+            expected: format!("{n} labels (matching objects)"),
+            actual: format!("{} labels", group_labels.len()),
+        });
+    }
+    let k = group_labels.iter().copied().max().map_or(0, |mx| mx + 1);
+    let distinct: std::collections::BTreeSet<usize> = group_labels.iter().copied().collect();
+    if distinct.len() < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "group_labels",
+            message: "need at least 2 distinct groups for a Fréchet ANOVA".to_string(),
+        });
+    }
+    if distinct.len() != k || *distinct.iter().next().unwrap() != 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "group_labels",
+            message: format!("group labels must be contiguous 0..{k}"),
+        });
+    }
+
+    let n_perm = if n_perm == 0 { 999 } else { n_perm };
+
+    let (tn_obs, fn_stat, un_stat, group_vars, pooled_var) =
+        compute_tn_generic(space, objects, group_labels, k)?;
+    let p_asymptotic = chi_square_sf(tn_obs, k - 1);
+
+    let mut n_ge = 0usize;
+    for perm in 0..n_perm {
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(perm as u64));
+        let mut perm_labels = group_labels.to_vec();
+        perm_labels.shuffle(&mut rng);
+        if let Ok((tn_perm, _, _, _, _)) = compute_tn_generic(space, objects, &perm_labels, k) {
             if tn_perm >= tn_obs {
                 n_ge += 1;
             }
@@ -290,5 +380,63 @@ mod tests {
             frechet_anova(&resp, &argvals, &labels, 49, 1).unwrap_err(),
             FdarError::InvalidDimension { .. }
         ));
+    }
+
+    // ── Generic object-space ANOVA (FRE-02-07) ──────────────────────────────
+
+    use crate::frechet::{SpdMatrixSpace, SpdMetric};
+
+    /// A 2-group SPD sample: `n_each` 2×2 matrices near `base_a`·I then near
+    /// `base_b`·I, with small deterministic within-group jitter.
+    fn spd_two_group(n_each: usize, base_a: f64, base_b: f64) -> (Vec<Vec<f64>>, Vec<usize>) {
+        let mut objects = Vec::with_capacity(2 * n_each);
+        let mut labels = vec![0usize; 2 * n_each];
+        for i in 0..n_each {
+            let e = 0.02 * ((i as f64) - n_each as f64 / 2.0);
+            objects.push(vec![base_a + e, 0.0, 0.0, base_a - 0.5 * e]);
+            labels[i] = 0;
+        }
+        for i in 0..n_each {
+            let e = 0.02 * ((i as f64) - n_each as f64 / 2.0);
+            objects.push(vec![base_b + e, 0.0, 0.0, base_b - 0.5 * e]);
+            labels[n_each + i] = 1;
+        }
+        (objects, labels)
+    }
+
+    #[test]
+    fn spd_anova_homogeneous_not_significant() {
+        let space = SpdMatrixSpace::new(2, SpdMetric::Frobenius).unwrap();
+        // Both groups drawn from the same distribution around identity.
+        let (objects, labels) = spd_two_group(12, 1.0, 1.0);
+        let res = frechet_anova_space(&space, &objects, &labels, 199, 7).unwrap();
+        assert!(
+            res.p_value_permutation > 0.05,
+            "perm p = {}",
+            res.p_value_permutation
+        );
+    }
+
+    #[test]
+    fn spd_anova_separated_significant() {
+        let space = SpdMatrixSpace::new(2, SpdMetric::Frobenius).unwrap();
+        // Group A near identity, group B near 4·identity.
+        let (objects, labels) = spd_two_group(15, 1.0, 4.0);
+        let res = frechet_anova_space(&space, &objects, &labels, 199, 42).unwrap();
+        assert!(
+            res.p_value_permutation < 0.05,
+            "perm p = {}",
+            res.p_value_permutation
+        );
+    }
+
+    #[test]
+    fn spd_anova_seed_reproducible() {
+        let space = SpdMatrixSpace::new(2, SpdMetric::Frobenius).unwrap();
+        let (objects, labels) = spd_two_group(10, 1.0, 2.0);
+        let a = frechet_anova_space(&space, &objects, &labels, 99, 123).unwrap();
+        let b = frechet_anova_space(&space, &objects, &labels, 99, 123).unwrap();
+        assert_eq!(a.p_value_permutation, b.p_value_permutation);
+        assert_eq!(a.statistic, b.statistic);
     }
 }
