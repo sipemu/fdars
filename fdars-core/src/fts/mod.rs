@@ -23,7 +23,7 @@ mod forecast;
 pub use acf::{
     functional_acf, functional_difference, functional_pacf, long_run_covariance, stationarity_test,
 };
-pub use forecast::{ftsm, ftsm_forecast};
+pub use forecast::{ftsm, ftsm_forecast, ftsm_forecast_multistep, ftsm_update};
 
 /// Result of functional ACF/PACF estimation.
 ///

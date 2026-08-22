@@ -343,8 +343,9 @@ fn ar_model_from_fit(fit: &FtsmResult, k: usize) -> ArModel {
 /// [`FtsmForecastResult::forecast`] is an `h × m` matrix (row `i` = horizon
 /// `i + 1`).
 ///
-/// For `h = 1` this is the single-step convenience forecast; the
-/// `ftsm_forecast_multistep` entry point provides the equivalent multi-step path.
+/// For `h = 1` this is the single-step convenience forecast;
+/// [`ftsm_forecast_multistep`] is the underlying multi-step path this delegates to
+/// (so the `h = 1` output is bit-identical to a `h = 1` multi-step call).
 ///
 /// # Errors
 ///
@@ -353,6 +354,31 @@ fn ar_model_from_fit(fit: &FtsmResult, k: usize) -> ArModel {
 /// grid.
 #[must_use = "returns forecast result; result should be examined"]
 pub fn ftsm_forecast(
+    fit: &FtsmResult,
+    h: usize,
+    argvals: &[f64],
+) -> Result<FtsmForecastResult, FdarError> {
+    ftsm_forecast_multistep(fit, h, argvals)
+}
+
+/// Iterative multi-step forecast: per-horizon forecast curves for `h >= 1`.
+///
+/// Each FPC-score AR model is forecast `h` horizons ahead via the iterative
+/// plug-in recursion (forecast scores are fed back into the AR window for horizons
+/// beyond the model order), and the forecast scores at each horizon are recombined
+/// into a forecast curve as `mean[j] + Σ_k score_k · rotation[(j,k)]` (the same
+/// arithmetic as [`crate::regression::FpcaResult::reconstruct`]). The returned
+/// [`FtsmForecastResult::forecast`] is an `h × m` matrix (row `i` = horizon
+/// `i + 1`). The `h = 1` row is bit-identical to [`ftsm_forecast`], which delegates
+/// here.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] for `h < 1` and
+/// [`FdarError::InvalidDimension`] when `argvals` length differs from the fitted
+/// grid.
+#[must_use = "returns forecast result; result should be examined"]
+pub fn ftsm_forecast_multistep(
     fit: &FtsmResult,
     h: usize,
     argvals: &[f64],
@@ -392,6 +418,110 @@ pub fn ftsm_forecast(
     }
 
     Ok(FtsmForecastResult { forecast, h })
+}
+
+// ─── ftsm dynamic update ─────────────────────────────────────────────────────
+
+/// Dynamically update a fitted [`FtsmResult`] as new observation(s) arrive,
+/// WITHOUT refitting the FPCA.
+///
+/// New curve row(s) are projected onto the FROZEN FPC loadings (mean, rotation,
+/// weights from `fit`) using the same arithmetic as
+/// [`crate::regression::FpcaResult::project`], the resulting scores are appended
+/// to the score-time-series, and each per-component AR model is re-fit (same
+/// Yule-Walker + AIC selection). The mean curve and loadings are never
+/// recomputed.
+///
+/// # Divergence
+///
+/// The dynamic update freezes the mean curve from the initial [`ftsm`] fit; for
+/// long update sequences the frozen mean can drift from the true sample mean, so
+/// periodic full refit via [`ftsm`] is recommended. This is why the update agrees
+/// with a full refit only up to a documented tolerance, not to machine epsilon.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] when `new_curve` has a column count
+/// other than the fitted grid width, or when `argvals` length differs from the
+/// fitted grid.
+#[must_use = "returns forecast result; result should be examined"]
+pub fn ftsm_update(
+    fit: &FtsmResult,
+    new_curve: &FdMatrix,
+    argvals: &[f64],
+) -> Result<FtsmResult, FdarError> {
+    let m = fit.mean.len();
+    let (k_new, m_new) = new_curve.shape();
+    if k_new == 0 || m_new != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_curve",
+            expected: format!("k x {m} (k >= 1 new rows matching the fitted grid)"),
+            actual: format!("{k_new} rows, {m_new} columns"),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m} elements (matching fitted grid)"),
+            actual: format!("{} elements", argvals.len()),
+        });
+    }
+
+    let ncomp = fit.ncomp;
+    let n_old = fit.scores.nrows();
+    let n_ext = n_old + k_new;
+
+    // Build the extended score matrix: old scores followed by projected new scores.
+    let mut ext_scores = FdMatrix::zeros(n_ext, ncomp);
+    for i in 0..n_old {
+        for k in 0..ncomp {
+            ext_scores[(i, k)] = fit.scores[(i, k)];
+        }
+    }
+    // Project each new row onto the FROZEN loadings (FpcaResult::project arithmetic).
+    for r in 0..k_new {
+        for k in 0..ncomp {
+            let mut sum = 0.0;
+            for j in 0..m {
+                sum += (new_curve[(r, j)] - fit.mean[j]) * fit.rotation[(j, k)] * fit.weights[j];
+            }
+            ext_scores[(n_old + r, k)] = sum;
+        }
+    }
+
+    // Re-fit AR models per component on the extended score columns (no FPCA refit).
+    let mut ar_models = Vec::with_capacity(ncomp);
+    for k in 0..ncomp {
+        let col = ext_scores.column(k);
+        let ar = ArModel::fit(col, n_ext)?;
+        ar_models.push(ArModelResult {
+            order: ar.order,
+            phi: ar.phi,
+            sigma2: ar.sigma2,
+        });
+    }
+
+    // Rebuild fitted curves for the extended series (mean + Σ_k score·rotation).
+    let mut fitted = FdMatrix::zeros(n_ext, m);
+    for i in 0..n_ext {
+        for j in 0..m {
+            let mut val = fit.mean[j];
+            for k in 0..ncomp {
+                val += ext_scores[(i, k)] * fit.rotation[(j, k)];
+            }
+            fitted[(i, j)] = val;
+        }
+    }
+
+    Ok(FtsmResult {
+        mean: fit.mean.clone(),
+        rotation: fit.rotation.clone(),
+        scores: ext_scores,
+        fitted,
+        weights: fit.weights.clone(),
+        ncomp,
+        ar_models,
+    })
 }
 
 #[cfg(test)]
@@ -614,5 +744,111 @@ mod tests {
         let fit = ftsm(&data, 2, &argvals).unwrap();
         let err = ftsm_forecast(&fit, 0, &argvals).unwrap_err();
         assert!(matches!(err, FdarError::InvalidParameter { parameter, .. } if parameter == "h"));
+    }
+
+    // ── Plan 02: multi-step + dynamic update ──────────────────────────────────
+
+    #[test]
+    fn multistep_h1_equals_single_step() {
+        let (data, argvals) = ar1_curve_series(120, 25, 0.7);
+        let fit = ftsm(&data, 3, &argvals).unwrap();
+        let single = ftsm_forecast(&fit, 1, &argvals).unwrap();
+        let multi = ftsm_forecast_multistep(&fit, 1, &argvals).unwrap();
+        assert_eq!(single.forecast.shape(), multi.forecast.shape());
+        for j in 0..25 {
+            assert!(
+                (single.forecast[(0, j)] - multi.forecast[(0, j)]).abs() < 1e-12,
+                "mismatch at j={j}"
+            );
+        }
+    }
+
+    #[test]
+    fn multistep_returns_h_rows() {
+        let (data, argvals) = ar1_curve_series(120, 20, 0.6);
+        let fit = ftsm(&data, 2, &argvals).unwrap();
+        let fc = ftsm_forecast_multistep(&fit, 5, &argvals).unwrap();
+        assert_eq!(fc.forecast.shape(), (5, 20));
+        assert_eq!(fc.h, 5);
+    }
+
+    #[test]
+    fn multistep_rejects_h_zero() {
+        let (data, argvals) = ar1_curve_series(40, 20, 0.5);
+        let fit = ftsm(&data, 2, &argvals).unwrap();
+        let err = ftsm_forecast_multistep(&fit, 0, &argvals).unwrap_err();
+        assert!(matches!(err, FdarError::InvalidParameter { parameter, .. } if parameter == "h"));
+    }
+
+    #[test]
+    fn update_agrees_with_refit() {
+        let (data, argvals) = ar1_curve_series(120, 25, 0.75);
+        let (n, m) = data.shape();
+        // Fit on data[0..n-1].
+        let mut train = FdMatrix::zeros(n - 1, m);
+        for i in 0..n - 1 {
+            for j in 0..m {
+                train[(i, j)] = data[(i, j)];
+            }
+        }
+        let fit = ftsm(&train, 3, &argvals).unwrap();
+        // The new observation = last row of data.
+        let mut new_curve = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            new_curve[(0, j)] = data[(n - 1, j)];
+        }
+        let updated = ftsm_update(&fit, &new_curve, &argvals).unwrap();
+        // Full refit on data[0..n].
+        let full = ftsm(&data, 3, &argvals).unwrap();
+        let upd_fc = ftsm_forecast(&updated, 1, &argvals).unwrap();
+        let full_fc = ftsm_forecast(&full, 1, &argvals).unwrap();
+        // Relative-L2 between the two 1-step forecasts < 1% (frozen-mean divergence).
+        let err = functional_mse(&full_fc.forecast, &upd_fc.forecast, &argvals).unwrap();
+        let scale = {
+            let mut zero = FdMatrix::zeros(1, m);
+            for j in 0..m {
+                zero[(0, j)] = 0.0;
+            }
+            functional_mse(&full_fc.forecast, &zero, &argvals).unwrap()
+        };
+        assert!(err < 0.01 * scale.max(1e-9), "err = {err}, scale = {scale}");
+    }
+
+    #[test]
+    fn update_freezes_loadings() {
+        let (data, argvals) = ar1_curve_series(80, 20, 0.6);
+        let fit = ftsm(&data, 2, &argvals).unwrap();
+        let mut new_curve = FdMatrix::zeros(1, 20);
+        for j in 0..20 {
+            new_curve[(0, j)] = data[(0, j)];
+        }
+        let updated = ftsm_update(&fit, &new_curve, &argvals).unwrap();
+        assert_eq!(updated.mean, fit.mean);
+        assert_eq!(updated.rotation, fit.rotation);
+        assert_eq!(updated.weights, fit.weights);
+    }
+
+    #[test]
+    fn update_extends_scores() {
+        let (data, argvals) = ar1_curve_series(80, 20, 0.6);
+        let fit = ftsm(&data, 2, &argvals).unwrap();
+        let mut new_curve = FdMatrix::zeros(1, 20);
+        for j in 0..20 {
+            new_curve[(0, j)] = data[(0, j)];
+        }
+        let updated = ftsm_update(&fit, &new_curve, &argvals).unwrap();
+        assert_eq!(updated.scores.nrows(), fit.scores.nrows() + 1);
+        assert_eq!(updated.fitted.nrows(), fit.fitted.nrows() + 1);
+    }
+
+    #[test]
+    fn update_rejects_bad_shape() {
+        let (data, argvals) = ar1_curve_series(40, 20, 0.5);
+        let fit = ftsm(&data, 2, &argvals).unwrap();
+        let bad = FdMatrix::zeros(1, 19);
+        let err = ftsm_update(&fit, &bad, &argvals).unwrap_err();
+        assert!(
+            matches!(err, FdarError::InvalidDimension { parameter, .. } if parameter == "new_curve")
+        );
     }
 }
