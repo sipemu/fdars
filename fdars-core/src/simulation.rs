@@ -583,12 +583,16 @@ fn fvarma_core(
         }
 
         // Divergence guard (Pitfall 5): reject non-finite values instead of emitting them.
+        // Fires anywhere in the recurrence (burn-in or kept output), so the message
+        // stays phase-agnostic.
         if x_new.iter().any(|v| !v.is_finite()) {
+            let phase = if step < burn_in { "burn-in" } else { "output" };
             return Err(crate::FdarError::ComputationFailed {
-                operation: "sim_fvarma burn-in",
-                detail:
-                    "curve values diverged to NaN/Inf; ensure AR operators have spectral radius < 1"
-                        .to_string(),
+                operation: "sim_fvarma recurrence",
+                detail: format!(
+                    "curve values diverged to NaN/Inf during {phase} (step {step}); \
+                     ensure AR operators have spectral radius < 1"
+                ),
             });
         }
 
@@ -837,7 +841,7 @@ mod tests {
         assert!(matches!(
             sim_fvarma(n, &argvals, &ar, &[], 2000, 1),
             Err(crate::FdarError::ComputationFailed {
-                operation: "sim_fvarma burn-in",
+                operation: "sim_fvarma recurrence",
                 ..
             })
         ));

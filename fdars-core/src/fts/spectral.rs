@@ -218,14 +218,18 @@ fn eigen_at_frequency(
     // Sort by eigenvalue descending.
     pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     // Sign-align: make the largest-magnitude entry positive (Pitfall 2).
+    // Track the argmax index directly (no float-equality re-scan) so the flip is
+    // robust regardless of FP recomputation of `.abs()`.
     for (_, evec) in &mut pairs {
-        let max_abs = evec.iter().copied().fold(0.0f64, |acc, x| acc.max(x.abs()));
-        let sign = evec
-            .iter()
-            .copied()
-            .find(|x| x.abs() == max_abs)
-            .map_or(1.0, |x| if x < 0.0 { -1.0 } else { 1.0 });
-        if sign < 0.0 {
+        let mut arg = 0usize;
+        let mut best = 0.0f64;
+        for (idx, &x) in evec.iter().enumerate() {
+            if x.abs() > best {
+                best = x.abs();
+                arg = idx;
+            }
+        }
+        if evec[arg] < 0.0 {
             evec.iter_mut().for_each(|x| *x = -*x);
         }
     }
@@ -317,6 +321,8 @@ pub fn dpca(
                 let tap = buf[lag].re * inv_n * inv_sw;
                 let row_pos = l + lag; // lag +lag
                 let row_neg = l - lag; // lag -lag (symmetric filter)
+                                       // At lag == 0, row_pos == row_neg (== L): the two writes target the
+                                       // same central tap with the same value, which is intended.
                 filt[row_pos + j * n_rows] = tap;
                 filt[row_neg + j * n_rows] = tap;
             }
@@ -380,6 +386,16 @@ pub fn dpca_reconstruct(
     let (n, m) = validate_fts_input(data, argvals)?;
     let l = dpca.filter_lag;
     let ncomp = dpca.ncomp;
+    // Guard the interior-length subtraction BEFORE it runs: passing data shorter
+    // than the DPCA fit (n < 2L+1) would underflow `n - 2*l` (panic in debug,
+    // garbage index in release) ahead of the consistency check below.
+    if n < 2 * l + 1 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} rows (2*filter_lag + 1)", 2 * l + 1),
+            actual: format!("{n} rows"),
+        });
+    }
     let n_interior = n - 2 * l;
 
     // Consistency checks against the supplied DpcaResult.
@@ -757,6 +773,24 @@ mod tests {
         assert!(matches!(
             dpca_reconstruct(&data, &argvals[..m - 1], &res),
             Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn dpca_reconstruct_short_data_errors_not_panics() {
+        // Regression (CR-01): data shorter than 2L+1 must return an error, not
+        // underflow `n - 2*l`.
+        let (n, m) = (60, 6);
+        let argvals = uniform_grid(m);
+        let data = multimode_series(n, m, &[0.6, 0.4], 8);
+        let res = dpca(&data, &argvals, 2, None, Some(4)).unwrap();
+        let short = multimode_series(2 * res.filter_lag, m, &[0.6, 0.4], 9); // n < 2L+1
+        assert!(matches!(
+            dpca_reconstruct(&short, &argvals, &res),
+            Err(FdarError::InvalidDimension {
+                parameter: "data",
+                ..
+            })
         ));
     }
 }
