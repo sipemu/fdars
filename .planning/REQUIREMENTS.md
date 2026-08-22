@@ -15,24 +15,24 @@ Requirements for milestone v0.27.0. Each maps to a roadmap phase.
 
 R baseline: `ftsa` (ftsm, FPC-regression forecasting, fplsr, dynamic updating, iterative forecasting). New `fdars-core/src/fts/forecast.rs`, reusing `fdata_to_pc_1d` (FPCA decomposition) + `scoring.rs` (forecast-error metrics), building on the shipped FTS-02 ACF/long-run-covariance foundation (`fts/acf.rs`) for score-model order/inference.
 
-- [ ] **FTS-01-01**: User can fit an FPCA-based functional time-series model (`ftsm`) over a time-ordered curve series — decompose via `fdata_to_pc_1d`, retain mean + FPC loadings + the score-time-series, and reconstruct fitted curves.
-- [ ] **FTS-01-02**: User can forecast future curves by fitting scalar time-series (AR/ARIMA-style) models to each FPC-score sequence and reconstructing the h-step-ahead forecast curve(s) from the forecast scores.
-- [ ] **FTS-01-03**: User can produce a functional PLS forecasting variant (`fplsr`) — PLS-score-based forecasting as an alternative to FPC-score regression.
-- [ ] **FTS-01-04**: User can dynamically update an existing forecast as new curve observation(s) arrive, without refitting from scratch (dynamic-updating path).
-- [ ] **FTS-01-05**: User can obtain iterative multi-step (h > 1) forecasts with per-horizon forecast curves.
+- [x] **FTS-01-01**: User can fit an FPCA-based functional time-series model (`ftsm`) over a time-ordered curve series — decompose via `fdata_to_pc_1d`, retain mean + FPC loadings + the score-time-series, and reconstruct fitted curves.
+- [x] **FTS-01-02**: User can forecast future curves by fitting scalar time-series (AR/ARIMA-style) models to each FPC-score sequence and reconstructing the h-step-ahead forecast curve(s) from the forecast scores.
+- [x] **FTS-01-03**: User can produce a functional PLS forecasting variant (`fplsr`) — PLS-score-based forecasting as an alternative to FPC-score regression.
+- [x] **FTS-01-04**: User can dynamically update an existing forecast as new curve observation(s) arrive, without refitting from scratch (dynamic-updating path).
+- [x] **FTS-01-05**: User can obtain iterative multi-step (h > 1) forecasts with per-horizon forecast curves.
 
 ### FRE-01 — Fréchet / object-data regression + statistics
 
 R baseline: `frechet` (global/local Fréchet regression, Fréchet mean/variance, Wasserstein, density-response regression, Fréchet ANOVA). New `fdars-core/src/frechet/` module — a metric-space abstraction (distance + weighted-Fréchet-mean solver) — starting from the density/2-Wasserstein response space that shares DENS-01's (`density_fda.rs`) quantile machinery.
 
-- [ ] **FRE-01-01**: User can define a metric-space abstraction (a distance + weighted-Fréchet-mean solver) that the regression/statistics routines consume, with a 1D-Wasserstein (density-response) backend as the first concrete space.
-- [ ] **FRE-01-02**: User can compute the Fréchet mean of a sample of metric-space objects (weighted-barycenter solver).
-- [ ] **FRE-01-03**: User can compute the Fréchet variance of a sample (mean squared distance to the Fréchet mean).
-- [ ] **FRE-01-04**: User can run global Fréchet regression with Euclidean predictors — predict the conditional Fréchet mean of the response object at new predictor values via the weighted global (linear) weight scheme.
-- [ ] **FRE-01-05**: User can run local (local-linear / kernel-weighted) Fréchet regression over Euclidean predictors.
-- [ ] **FRE-01-06**: User can compute the 1D 2-Wasserstein distance between two distributions (quantile-based), reusing DENS-01's quantile machinery.
-- [ ] **FRE-01-07**: User can run density-response Fréchet regression — predict a conditional density response from Euclidean predictors in 2-Wasserstein space.
-- [ ] **FRE-01-08**: User can run a Fréchet ANOVA — a group-difference test on metric-space responses based on Fréchet means/variances.
+- [x] **FRE-01-01**: User can define a metric-space abstraction (a distance + weighted-Fréchet-mean solver) that the regression/statistics routines consume, with a 1D-Wasserstein (density-response) backend as the first concrete space.
+- [x] **FRE-01-02**: User can compute the Fréchet mean of a sample of metric-space objects (weighted-barycenter solver).
+- [x] **FRE-01-03**: User can compute the Fréchet variance of a sample (mean squared distance to the Fréchet mean).
+- [x] **FRE-01-04**: User can run global Fréchet regression with Euclidean predictors — predict the conditional Fréchet mean of the response object at new predictor values via the weighted global (linear) weight scheme.
+- [x] **FRE-01-05**: User can run local (local-linear / kernel-weighted) Fréchet regression over Euclidean predictors.
+- [x] **FRE-01-06**: User can compute the 1D 2-Wasserstein distance between two distributions (quantile-based), reusing DENS-01's quantile machinery.
+- [x] **FRE-01-07**: User can run density-response Fréchet regression — predict a conditional density response from Euclidean predictors in 2-Wasserstein space.
+- [x] **FRE-01-08**: User can run a Fréchet ANOVA — a group-difference test on metric-space responses based on Fréchet means/variances.
 
 ## Future Requirements
 
@@ -65,19 +65,19 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FTS-01-01 | Phase 39 | Pending |
-| FTS-01-02 | Phase 39 | Pending |
-| FTS-01-03 | Phase 39 | Pending |
-| FTS-01-04 | Phase 39 | Pending |
-| FTS-01-05 | Phase 39 | Pending |
-| FRE-01-01 | Phase 40 | Pending |
-| FRE-01-02 | Phase 40 | Pending |
-| FRE-01-03 | Phase 40 | Pending |
-| FRE-01-04 | Phase 40 | Pending |
-| FRE-01-05 | Phase 40 | Pending |
-| FRE-01-06 | Phase 40 | Pending |
-| FRE-01-07 | Phase 40 | Pending |
-| FRE-01-08 | Phase 40 | Pending |
+| FTS-01-01 | Phase 39 | Complete |
+| FTS-01-02 | Phase 39 | Complete |
+| FTS-01-03 | Phase 39 | Complete |
+| FTS-01-04 | Phase 39 | Complete |
+| FTS-01-05 | Phase 39 | Complete |
+| FRE-01-01 | Phase 40 | Complete |
+| FRE-01-02 | Phase 40 | Complete |
+| FRE-01-03 | Phase 40 | Complete |
+| FRE-01-04 | Phase 40 | Complete |
+| FRE-01-05 | Phase 40 | Complete |
+| FRE-01-06 | Phase 40 | Complete |
+| FRE-01-07 | Phase 40 | Complete |
+| FRE-01-08 | Phase 40 | Complete |
 
 **Coverage:**
 - v1 requirements: 13 total (FTS-01: 5, FRE-01: 8)
