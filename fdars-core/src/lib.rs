@@ -256,11 +256,13 @@ pub use inference::{
     TestResult, DEFAULT_N_PERM,
 };
 
-// Re-export functional time series serial-dependence types (FTS-02)
+// Re-export functional time series serial-dependence types (FTS-02) and
+// spectral / dynamic-FPCA types (FTS-03, plan 41-01)
 pub use fts::{
-    fplsr, ftsm, ftsm_forecast, ftsm_forecast_multistep, ftsm_update, functional_acf,
-    functional_difference, functional_pacf, long_run_covariance, stationarity_test, ArModelResult,
-    FacfResult, FplsrResult, FtsmForecastResult, FtsmResult, LongRunCovResult, StationarityResult,
+    dpca, dpca_reconstruct, fplsr, ftsm, ftsm_forecast, ftsm_forecast_multistep, ftsm_update,
+    functional_acf, functional_difference, functional_pacf, long_run_covariance, spectral_density,
+    stationarity_test, ArModelResult, DpcaReconstruction, DpcaResult, FacfResult, FplsrResult,
+    FtsmForecastResult, FtsmResult, LongRunCovResult, SpectralDensityResult, StationarityResult,
 };
 
 // Re-export FAMM types

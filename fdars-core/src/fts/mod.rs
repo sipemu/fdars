@@ -19,11 +19,100 @@
 
 mod acf;
 mod forecast;
+mod spectral;
 
 pub use acf::{
     functional_acf, functional_difference, functional_pacf, long_run_covariance, stationarity_test,
 };
 pub use forecast::{fplsr, ftsm, ftsm_forecast, ftsm_forecast_multistep, ftsm_update};
+pub use spectral::{dpca, dpca_reconstruct, spectral_density};
+
+use crate::matrix::FdMatrix;
+
+/// Result of the spectral density operator estimator.
+///
+/// Produced by [`spectral_density`] (plan 41-01, FTS-03-01). Holds the complex
+/// m×m spectral density operator at each of the `n_curves` Fourier frequencies
+/// `θ_j = 2πj/N`. The operator at frequency `k` is stored as separate real
+/// (`re[k]`) and imaginary (`im[k]`) flat column-major m×m matrices — element
+/// `(j1, j2)` lives at index `j1 + j2 * m`. The operator is Hermitian:
+/// `im[k][j1 + j2*m] == -im[k][j2 + j1*m]`.
+///
+/// # Divergence from `freqdom`
+///
+/// The `1/2π` pre-factor is omitted (matching the crate's `long_run_covariance`,
+/// which does not divide by `2π`), so eigenvalues are `2π` larger than `freqdom`
+/// output. Filter shapes (eigenvectors) are unaffected.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct SpectralDensityResult {
+    /// Fourier frequencies `θ_j = 2πj/N`, length `n_curves`.
+    pub freqs: Vec<f64>,
+    /// Real part of the operator at each frequency; `re[k]` is a flat column-major m×m matrix.
+    pub re: Vec<Vec<f64>>,
+    /// Imaginary part of the operator at each frequency; `im[k]` is a flat column-major m×m matrix.
+    pub im: Vec<Vec<f64>>,
+    /// Grid dimension m (each `re[k]`/`im[k]` is m×m).
+    pub m: usize,
+    /// Number of curves N (= number of Fourier frequencies).
+    pub n_curves: usize,
+    /// Bartlett lag-window bandwidth used.
+    pub bandwidth: usize,
+}
+
+/// Result of dynamic functional PCA (DPCA).
+///
+/// Produced by [`dpca`] (plan 41-01, FTS-03-02). Holds the time-domain dynamic
+/// eigen-filters and the dynamic score series.
+///
+/// # Divergence from `freqdom`
+///
+/// Eigenvectors are computed from `Re(f̂(θ))` via [`nalgebra::SymmetricEigen`]
+/// (nalgebra 0.33 has no stable complex Hermitian path without `faer`); this is
+/// exact for the leading dynamic subspace of a Bartlett-windowed estimator.
+/// Filters and scores use the Simpson-weighted L2 inner product consistently,
+/// so the estimator/score/reconstruction metric matches.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct DpcaResult {
+    /// Dynamic eigen-filters, one per component. `filters[c]` is a `(2L+1) × m`
+    /// [`FdMatrix`]: row `l_idx` holds the filter tap at lag `l_idx - L`, column `j`
+    /// is the grid point.
+    pub filters: Vec<FdMatrix>,
+    /// Dynamic scores, shape `(N - 2L) × ncomp` (interior time points only).
+    pub scores: FdMatrix,
+    /// Per-component eigenvalue trajectory across frequencies: `eigenvalues[c]`
+    /// has length `n_freqs` (negative finite-sample eigenvalues clipped to 0).
+    pub eigenvalues: Vec<Vec<f64>>,
+    /// Number of Fourier frequencies N.
+    pub n_freqs: usize,
+    /// Filter lag support L (window is `[-L, L]`).
+    pub filter_lag: usize,
+    /// Number of retained dynamic components.
+    pub ncomp: usize,
+    /// Inclusive interior time range `(L, N-1-L)` for which scores are defined.
+    pub valid_range: (usize, usize),
+}
+
+/// Result of DPCA curve reconstruction from dynamic scores.
+///
+/// Produced by [`dpca_reconstruct`] (plan 41-01, FTS-03-03). The
+/// `reconstruction_error` is monotone non-increasing in the number of retained
+/// components (integrated-L2 error over the fully-defined interior).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct DpcaReconstruction {
+    /// Reconstructed curves over the interior, shape `(N - 2L) × m`.
+    pub fitted: FdMatrix,
+    /// Integrated-L2 reconstruction error using K = 1..=ncomp components
+    /// (`reconstruction_error[K-1]`); monotone non-increasing in K.
+    pub reconstruction_error: Vec<f64>,
+    /// Inclusive interior time range `(L, N-1-L)` matching the source [`DpcaResult`].
+    pub valid_range: (usize, usize),
+}
 
 /// Result of functional ACF/PACF estimation.
 ///
