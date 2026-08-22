@@ -2,18 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.27.0
 current_phase: 40
-current_phase_name: Fréchet / Object-Data Regression
-status: executing
+status: completed
 stopped_at: v0.27.0 roadmap created (Phases 39–40) — ready to plan
-last_updated: "2026-08-22T15:03:17.053Z"
+last_updated: "2026-08-22T15:32:05.319Z"
 last_activity: 2026-08-22
-last_activity_desc: Phase 39 marked complete
-state_head: 0b29e4b79176ffc257079c8e8125db942d2a5c9b
+last_activity_desc: Phase 40 marked complete
+state_head: ae684cc0a781eb119797f3588b3b5e29117916e9
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 6
 milestone_name: Functional Time Series & Fréchet Regression
 ---
 
@@ -24,14 +23,14 @@ milestone_name: Functional Time Series & Fréchet Regression
 See: .planning/PROJECT.md (updated 2026-08-22)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two score-1.33 (L-effort) items from the v0.18.0 `R-BACKLOG.md`: functional time-series forecasting (FTS-01) and Fréchet / object-data regression (FRE-01), each by adding `fdars-core/src/` code additively.
-**Current focus:** Phase 39 — Functional Time-Series Forecasting
+**Current focus:** Phase 40 — Fréchet / Object-Data Regression
 
 ## Current Position
 
-Phase: 40 (Fréchet / Object-Data Regression) — READY TO EXECUTE
+Phase: 40 — COMPLETE
 Plan: 1 of 3
-Status: Ready to execute
-Last activity: 2026-08-22 — Phase 39 marked complete
+Status: Phase 40 complete
+Last activity: 2026-08-22 — Phase 40 marked complete
 
 ## Milestone Roadmap (v0.27.0)
 
