@@ -127,7 +127,7 @@ v2 backlog items (from `.planning/research/R-BACKLOG.md`): REG-06 (boosting/Baye
 
 Advisory tech-debt carried forward (not v0.28.0 work): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files (incl. Phases 28–40) remain `draft` (Nyquist TODO); intentional R-baseline divergences documented in rustdoc across prior milestones (incl. v0.27.0's signed-weight isotonic projection, Fréchet-ANOVA σ̂ₗ² `[ASSUMED]` estimator, Wasserstein-barycenter reconstruction floor).
 
-**Release status:** `fdars-core` **0.27.0 published to crates.io** (tag `v0.27.0`, 2026-08-22; `release.yml` `cargo publish` succeeded). The 0.27.0 crate folds in all additive code shipped since 0.24.0 (v0.25.0/v0.26.0 were never published separately). `CHANGELOG.md` at repo root. v0.28.0 ship (version bump 0.27.0 → 0.28.0 + tag + crates.io) is a pending operator ship-time step once both phases complete.
+**Release status:** `fdars-core` **0.28.0 published to crates.io** (tag `v0.28.0`, 2026-08-23; `release.yml` `cargo publish` run 32604345463 succeeded). Version bumped 0.27.0 → 0.28.0, `main` + tag pushed, `CHANGELOG.md` updated with the v0.28.0 FTS-03/FRE-02 additions. Prior: 0.27.0 published 2026-08-22 (folded in v0.25.0/v0.26.0 which were never published separately). Milestone v0.28.0 fully shipped and archived under `.planning/milestones/`.
 
 ## Session Continuity
 
