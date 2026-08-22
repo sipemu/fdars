@@ -105,7 +105,7 @@ Conventions carried from prior milestones (relevant to implementation):
 
 ### Pending Todos
 
-None yet.
+- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** — preserved from the removed `.beads` issue tracker (issue `fdars-j75`, the only OPEN issue of 15; the other 14 were closed R-vs-fdars validation tasks, already reflected in the test suite). The full historical export remains in git history at `.beads/issues.jsonl` if needed.
 
 ### Blockers/Concerns
 
