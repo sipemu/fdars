@@ -6,14 +6,15 @@
 [![codecov](https://codecov.io/gh/sipemu/fdars/graph/badge.svg)](https://codecov.io/gh/sipemu/fdars)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-High-performance Functional Data Analysis tools implemented in Rust with R bindings.
+High-performance Functional Data Analysis tools implemented in Rust, with Python and R bindings.
 
 ## Packages
 
 | Package | Language | Registry | Folder | Status |
 |---------|----------|----------|--------|--------|
-| fdars | R | CRAN | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![CRAN](https://www.r-pkg.org/badges/version/fdars)](https://cran.r-project.org/package=fdars) |
 | fdars-core | Rust | crates.io | `fdars-core/` | [![Crates.io](https://img.shields.io/crates/v/fdars-core.svg)](https://crates.io/crates/fdars-core) |
+| pyfda | Python | GitHub | [sipemu/pyfda](https://github.com/sipemu/pyfda) | Python bindings |
+| fdars | R | CRAN | [sipemu/fdars-r](https://github.com/sipemu/fdars-r) | [![CRAN](https://www.r-pkg.org/badges/version/fdars)](https://cran.r-project.org/package=fdars) ⚠️ outdated |
 
 ## Features
 
@@ -34,15 +35,6 @@ High-performance Functional Data Analysis tools implemented in Rust with R bindi
 
 ## Installation
 
-### R (fdars)
-
-```r
-install.packages("fdars")
-
-# Development version from GitHub (requires Rust toolchain)
-devtools::install_github("sipemu/fdars-r")
-```
-
 ### Rust (fdars-core)
 
 ```toml
@@ -55,6 +47,25 @@ Or install from the repository:
 ```toml
 [dependencies]
 fdars-core = { git = "https://github.com/sipemu/fdars" }
+```
+
+### Python (pyfda)
+
+Python bindings are available via [sipemu/pyfda](https://github.com/sipemu/pyfda):
+
+```bash
+pip install git+https://github.com/sipemu/pyfda
+```
+
+### R (fdars)
+
+> ⚠️ **Note:** The R package currently lags behind the Rust core and is outdated at the moment. For the latest capabilities, use `fdars-core` (Rust) or [`pyfda`](https://github.com/sipemu/pyfda) (Python).
+
+```r
+install.packages("fdars")
+
+# Development version from GitHub (requires Rust toolchain)
+devtools::install_github("sipemu/fdars-r")
 ```
 
 ## Feature Flags
@@ -142,8 +153,9 @@ With the `parallel` feature (enabled by default), computationally intensive oper
 
 ## Documentation
 
-- **R Package**: [https://sipemu.github.io/fdars/](https://sipemu.github.io/fdars/)
 - **Rust Crate**: [https://docs.rs/fdars-core](https://docs.rs/fdars-core)
+- **Python Package**: [https://github.com/sipemu/pyfda](https://github.com/sipemu/pyfda)
+- **R Package**: [https://sipemu.github.io/fdars/](https://sipemu.github.io/fdars/) (⚠️ outdated — lags the Rust core)
 
 ## License
 

@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 Phase: Milestone v0.27.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-22 — Milestone v0.27.0 completed and archived
+Last activity: 2026-08-22 — Completed quick task 260822-pvk: README pyfda link + R-outdated note
 
 ## Milestone Roadmap (v0.27.0)
 
@@ -112,6 +112,12 @@ None yet.
 - Executor subagents trip the 600s stream watchdog on long fdars cargo builds; `--no-verify` commits leave fmt drift → run `cargo fmt` per commit + a whole-crate sweep at milestone end (MEMORY.md pointers).
 - FTS-01: the `ftsm` reconstruction/truncation convention, the choice of scalar time-series model (AR/ARIMA-style) fit to each FPC-score sequence and how its order is selected (reuse FTS-02's ACF/PACF), the `fplsr` PLS-score formulation, the dynamic-updating update rule, and the iterative multi-step reconstruction each have specific `ftsa` reference formulations; pin the score-model family + order selection, the PLS forecasting variant, the dynamic-update rule, and the multi-step iteration during planning, and document any divergence from `ftsa` in rustdoc. Reuse `fdata_to_pc_1d` + `scoring.rs` + `fts/acf.rs`.
 - FRE-01: the metric-space abstraction shape (distance + weighted-Fréchet-mean solver trait/struct), the global-vs-local Fréchet-regression weight schemes (global linear weights vs local-linear/kernel weights), the 1D 2-Wasserstein distance formulation (quantile-based, must reuse `density_fda.rs`), the density-response prediction path, and the Fréchet-ANOVA test statistic (+ p-value derivation, seeded if permutation-based) each have specific `frechet` reference definitions; pin the abstraction, the weight schemes, the Wasserstein formula, and the ANOVA statistic during planning; reuse `density_fda.rs`'s quantile/Wasserstein machinery rather than re-deriving. Document any divergence in rustdoc.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260822-pvk | Update README: link Python package pyfda, note R package outdated | 2026-08-22 | ce8d1f91 | [260822-pvk-update-readme-link-python-package-pyfda-](./quick/260822-pvk-update-readme-link-python-package-pyfda-/) |
 
 ## Deferred Items
 
