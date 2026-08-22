@@ -59,10 +59,11 @@ All phases through v0.27.0 are shipped and archived under `milestones/`.
   3. User can reconstruct the original curve series from the DPCA dynamic scores via inverse dynamic filtering, and the reconstruction error decreases as more dynamic components are retained.
   4. User can simulate a functional VAR/VMA curve series from user-supplied operator kernels, producing a deterministic (seeded) numeric curve set.
   5. User can simulate a functional ARMA (FARMA) curve series combining AR and MA operator terms, producing a deterministic (seeded) numeric curve set.
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 41-01: TBD (pin during planning)
+- [ ] 41-01-PLAN.md — spectral density operator + DPCA filters/scores + reconstruction (`fts/spectral.rs`; FTS-03-01/02/03)
+- [ ] 41-02-PLAN.md — functional VAR/VMA + FARMA simulators (`simulation.rs`; FTS-03-04/05)
 
 ### Phase 42: Object-Data Fréchet Regression
 **Goal**: Users can run global/local Fréchet regression and Fréchet-ANOVA over non-density object responses by selecting a `MetricSpace` backend — SPD covariance matrices (Frobenius / power / log-Cholesky), correlation matrices, spherical data, networks, or point processes.
@@ -85,5 +86,5 @@ Phases 41 and 42 are **independent** (disjoint code areas: `fts/spectral.rs` + `
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 41. Spectral Functional Time Series | v0.28.0 | 0/TBD | Not started | - |
+| 41. Spectral Functional Time Series | v0.28.0 | 0/2 | Planned | - |
 | 42. Object-Data Fréchet Regression | v0.28.0 | 0/TBD | Not started | - |
