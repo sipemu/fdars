@@ -28,6 +28,7 @@ use nalgebra::DMatrix;
 /// The metric used by an [`SpdMatrixSpace`].
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum SpdMetric {
     /// Element-wise Frobenius distance; weighted-average mean.
     Frobenius,
@@ -63,7 +64,7 @@ impl SpdMatrixSpace {
             });
         }
         if let SpdMetric::Power(alpha) = metric {
-            if alpha <= 0.0 || alpha.is_nan() {
+            if alpha <= 0.0 || !alpha.is_finite() {
                 return Err(FdarError::InvalidParameter {
                     parameter: "alpha",
                     message: "power-metric exponent must be > 0".to_string(),
@@ -295,6 +296,21 @@ mod tests {
         ));
         assert!(matches!(
             SpdMatrixSpace::new(2, SpdMetric::Power(-1.0)),
+            Err(FdarError::InvalidParameter {
+                parameter: "alpha",
+                ..
+            })
+        ));
+        // Non-finite exponents must be rejected (CR-01: Inf slipped past is_nan()).
+        assert!(matches!(
+            SpdMatrixSpace::new(2, SpdMetric::Power(f64::INFINITY)),
+            Err(FdarError::InvalidParameter {
+                parameter: "alpha",
+                ..
+            })
+        ));
+        assert!(matches!(
+            SpdMatrixSpace::new(2, SpdMetric::Power(f64::NAN)),
             Err(FdarError::InvalidParameter {
                 parameter: "alpha",
                 ..

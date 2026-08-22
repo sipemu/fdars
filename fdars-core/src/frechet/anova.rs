@@ -108,8 +108,8 @@ where
 /// asymptotic χ²(k−1) p-value (secondary).
 ///
 /// The permutation p-value shuffles the group labels `n_perm` times with a
-/// per-iteration seeded RNG (`StdRng::seed_from_u64(seed + k)`), so it is
-/// reproducible for a fixed `seed`. Pass `n_perm = 0` to use the default of 999.
+/// per-iteration seeded RNG (`StdRng::seed_from_u64(seed.wrapping_add(perm))`), so
+/// it is reproducible for a fixed `seed`. Pass `n_perm = 0` to use the default of 999.
 ///
 /// The exact σ̂ₗ² variance estimator is **[ASSUMED]** (see [`compute_tn_generic`]);
 /// the permutation p-value does not depend on that assumption.
