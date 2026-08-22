@@ -23,7 +23,7 @@ current_phase: 40
 See: .planning/PROJECT.md (updated 2026-08-22)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the two score-1.33 (L-effort) items from the v0.18.0 `R-BACKLOG.md`: functional time-series forecasting (FTS-01) and Fréchet / object-data regression (FRE-01), each by adding `fdars-core/src/` code additively.
-**Current focus:** Phase 40 — Fréchet / Object-Data Regression
+**Current focus:** v0.27.0 shipped — awaiting next milestone (`/gsd-new-milestone`)
 
 ## Current Position
 
