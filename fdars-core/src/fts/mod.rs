@@ -23,7 +23,7 @@ mod forecast;
 pub use acf::{
     functional_acf, functional_difference, functional_pacf, long_run_covariance, stationarity_test,
 };
-pub use forecast::{ftsm, ftsm_forecast, ftsm_forecast_multistep, ftsm_update};
+pub use forecast::{fplsr, ftsm, ftsm_forecast, ftsm_forecast_multistep, ftsm_update};
 
 /// Result of functional ACF/PACF estimation.
 ///
@@ -128,4 +128,21 @@ pub struct FtsmForecastResult {
     pub forecast: crate::matrix::FdMatrix,
     /// Forecast horizon (number of steps ahead).
     pub h: usize,
+}
+
+/// Result of the functional PLS forecasting variant.
+///
+/// Produced by [`fplsr`]. A lag-1 PLS design (predictor = current curve,
+/// response = next curve) yields a one-step-ahead forecast curve plus the
+/// in-sample lag-1 fitted curves.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FplsrResult {
+    /// One-step-ahead forecast of the next curve, shape 1 × m.
+    pub forecast: crate::matrix::FdMatrix,
+    /// In-sample lag-1 fitted curves, shape (n-1) × m.
+    pub fitted: crate::matrix::FdMatrix,
+    /// Number of PLS components used (clamped to min(ncomp, n-1, m)).
+    pub ncomp: usize,
 }

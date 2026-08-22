@@ -42,11 +42,12 @@
 //! `Debug, Clone, PartialEq`, are serde-gated, and are declared in
 //! [`super`](crate::fts).
 
-use super::{ArModelResult, FtsmForecastResult, FtsmResult};
+use super::{ArModelResult, FplsrResult, FtsmForecastResult, FtsmResult};
 use crate::error::FdarError;
 use crate::helpers::NUMERICAL_EPS;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
+use crate::scalar_on_function::{fregre_pls, predict_fregre_pls};
 
 // ─── Input validation ────────────────────────────────────────────────────────
 
@@ -524,6 +525,83 @@ pub fn ftsm_update(
     })
 }
 
+// ─── fplsr: functional PLS forecasting ───────────────────────────────────────
+
+/// Functional PLS forecasting variant (a PLS-score alternative to FPC-score AR).
+///
+/// Fits a lag-1 PLS design — predictor = current curve (rows `0..n-2`), response
+/// = next curve (rows `1..n-1`) — and forecasts the next curve one step ahead.
+/// Because the shipped PLS machinery ([`crate::scalar_on_function::fregre_pls`])
+/// takes a scalar response, the functional (curve) response is handled by fitting
+/// one scalar PLS regression per evaluation point (Option A of the research
+/// note): for each grid point `j`, the next-curve column `j` is regressed on the
+/// current curve via PLS, the in-sample fits populate column `j` of `fitted`, and
+/// the last observed curve is projected + predicted to give the forecast at `j`.
+///
+/// # Divergence from `ftsa`
+///
+/// `ftsa::fplsr` uses a unified NIPALS/SIMPLS functional operator; this
+/// implementation uses per-evaluation-point scalar PLS regression (functionally
+/// equivalent for point prediction, less elegant). Deterministic — no RNG.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] for empty data / mismatched `argvals`,
+/// and [`FdarError::InvalidParameter`] for `ncomp == 0` or `n < 3` (need at least
+/// two lag-1 rows plus a forecast origin). PLS/rank failures propagate as
+/// [`FdarError::ComputationFailed`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fplsr(data: &FdMatrix, ncomp: usize, argvals: &[f64]) -> Result<FplsrResult, FdarError> {
+    let (n, m) = validate_fts_input(data, argvals)?;
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be >= 1".to_string(),
+        });
+    }
+    if n < 3 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "data",
+            message: format!("need at least 3 observations for a lag-1 PLS forecast, got n = {n}"),
+        });
+    }
+    // Lag-1 design has n-1 rows; clamp ncomp to avoid overfitting / rank deficiency.
+    let nrows = n - 1;
+    let ncomp = ncomp.min(nrows).min(m);
+
+    let mut x_cur = FdMatrix::zeros(nrows, m);
+    let mut x_next = FdMatrix::zeros(nrows, m);
+    for i in 0..nrows {
+        for j in 0..m {
+            x_cur[(i, j)] = data[(i, j)];
+            x_next[(i, j)] = data[(i + 1, j)];
+        }
+    }
+    // Forecast origin: the last observed curve (row n-1), as a 1 x m matrix.
+    let mut last = FdMatrix::zeros(1, m);
+    for j in 0..m {
+        last[(0, j)] = data[(n - 1, j)];
+    }
+
+    let mut forecast = FdMatrix::zeros(1, m);
+    let mut fitted = FdMatrix::zeros(nrows, m);
+    for j in 0..m {
+        let y_j: Vec<f64> = (0..nrows).map(|i| x_next[(i, j)]).collect();
+        let fit_j = fregre_pls(&x_cur, &y_j, argvals, ncomp, None)?;
+        for i in 0..nrows {
+            fitted[(i, j)] = fit_j.fitted_values[i];
+        }
+        let pred = predict_fregre_pls(&fit_j, &last, None)?;
+        forecast[(0, j)] = pred[0];
+    }
+
+    Ok(FplsrResult {
+        forecast,
+        fitted,
+        ncomp,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -850,5 +928,116 @@ mod tests {
         assert!(
             matches!(err, FdarError::InvalidDimension { parameter, .. } if parameter == "new_curve")
         );
+    }
+
+    // ── Plan 03: functional PLS forecasting ───────────────────────────────────
+
+    /// Full-rank AR-driven curve series for PLS tests: three AR(1) components on
+    /// three basis functions plus small broadband noise, so the lag-1 predictor is
+    /// well-conditioned (not confined to a low-dimensional subspace).
+    fn pls_curve_series(n: usize, m: usize, phi: f64) -> (FdMatrix, Vec<f64>) {
+        let argvals = uniform_grid(m);
+        let basis: Vec<Vec<f64>> = (1..=3)
+            .map(|c| {
+                argvals
+                    .iter()
+                    .map(|u| (c as f64 * std::f64::consts::PI * u).sin())
+                    .collect::<Vec<f64>>()
+            })
+            .collect();
+        let phis = [phi, phi * 0.7, phi * 0.5];
+        let mut comps = vec![vec![0.0f64; n]; 3];
+        for (c, comp) in comps.iter_mut().enumerate() {
+            let e = lcg_white(n, 0xC0FFEE00 + c as u64);
+            comp[0] = e[0];
+            for t in 1..n {
+                comp[t] = phis[c] * comp[t - 1] + e[t];
+            }
+        }
+        let noise = lcg_white(n * m, 0xBEEF_1234);
+        let mut data = FdMatrix::zeros(n, m);
+        for t in 0..n {
+            for j in 0..m {
+                let mut v = 0.05 * noise[t * m + j];
+                for c in 0..3 {
+                    v += comps[c][t] * basis[c][j];
+                }
+                data[(t, j)] = v;
+            }
+        }
+        (data, argvals)
+    }
+
+    #[test]
+    fn fplsr_produces_finite_forecast() {
+        let (data, argvals) = pls_curve_series(60, 25, 0.7);
+        let res = fplsr(&data, 2, &argvals).unwrap();
+        assert_eq!(res.forecast.shape(), (1, 25));
+        assert_eq!(res.fitted.shape(), (59, 25));
+        for j in 0..25 {
+            assert!(res.forecast[(0, j)].is_finite());
+        }
+    }
+
+    #[test]
+    fn fplsr_no_worse_than_naive() {
+        // Fit on data[0..n-1], forecast the n-th curve, compare to naive last-curve.
+        let (data, argvals) = pls_curve_series(80, 25, 0.75);
+        let (n, m) = data.shape();
+        let mut train = FdMatrix::zeros(n - 1, m);
+        for i in 0..n - 1 {
+            for j in 0..m {
+                train[(i, j)] = data[(i, j)];
+            }
+        }
+        let mut truth = FdMatrix::zeros(1, m);
+        let mut naive = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            truth[(0, j)] = data[(n - 1, j)];
+            naive[(0, j)] = data[(n - 2, j)];
+        }
+        let res = fplsr(&train, 3, &argvals).unwrap();
+        let model_mse = functional_mse(&truth, &res.forecast, &argvals).unwrap();
+        let naive_mse = functional_mse(&truth, &naive, &argvals).unwrap();
+        assert!(model_mse.is_finite());
+        assert!(
+            model_mse <= naive_mse,
+            "model_mse = {model_mse}, naive_mse = {naive_mse}"
+        );
+    }
+
+    #[test]
+    fn fplsr_deterministic() {
+        let (data, argvals) = pls_curve_series(50, 20, 0.6);
+        let a = fplsr(&data, 2, &argvals).unwrap();
+        let b = fplsr(&data, 2, &argvals).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn fplsr_rejects_bad_input() {
+        let (data, argvals) = ar1_curve_series(40, 20, 0.5);
+        // empty
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(matches!(
+            fplsr(&empty, 1, &[]).unwrap_err(),
+            FdarError::InvalidDimension { .. }
+        ));
+        // ncomp == 0
+        assert!(matches!(
+            fplsr(&data, 0, &argvals).unwrap_err(),
+            FdarError::InvalidParameter { parameter, .. } if parameter == "ncomp"
+        ));
+        // n < 3
+        let (short, short_argvals) = ar1_curve_series(2, 20, 0.5);
+        assert!(matches!(
+            fplsr(&short, 1, &short_argvals).unwrap_err(),
+            FdarError::InvalidParameter { parameter, .. } if parameter == "data"
+        ));
+        // argvals mismatch
+        assert!(matches!(
+            fplsr(&data, 2, &uniform_grid(19)).unwrap_err(),
+            FdarError::InvalidDimension { .. }
+        ));
     }
 }
