@@ -32,7 +32,41 @@
 //! submodule).
 
 mod mean;
+mod regression;
 mod space;
 
 pub use mean::{frechet_mean, frechet_variance};
+pub use regression::{frechet_global_reg, frechet_local_reg};
 pub use space::{wasserstein2_distance, MetricSpace, WassersteinDensitySpace};
+
+use crate::matrix::FdMatrix;
+
+/// Result of global Fréchet regression ([`frechet_global_reg`]).
+///
+/// Predicts a conditional Fréchet-mean density response at each `xout` row via the
+/// Petersen–Müller global linear weight scheme.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FrechetGlobalRegResult {
+    /// Predicted density responses, shape n_out × m (row i = prediction at `xout` row i).
+    pub predicted: FdMatrix,
+    /// The predictor values predictions were made at, shape n_out × p.
+    pub xout: FdMatrix,
+    /// Column means of the training predictors, length p.
+    pub x_bar: Vec<f64>,
+}
+
+/// Result of local (local-linear, kernel-weighted) Fréchet regression
+/// ([`frechet_local_reg`]).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct FrechetLocalRegResult {
+    /// Predicted density responses, shape n_out × m.
+    pub predicted: FdMatrix,
+    /// The predictor values predictions were made at, shape n_out × p.
+    pub xout: FdMatrix,
+    /// The kernel bandwidth used.
+    pub bandwidth: f64,
+}

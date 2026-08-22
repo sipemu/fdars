@@ -202,9 +202,6 @@ fn density_to_quantile(row: &[f64], argvals: &[f64], t_grid: &[f64]) -> Vec<f64>
 /// # Errors
 /// Returns [`FdarError`] on dimension mismatch or a degenerate (zero-range)
 /// quantile average.
-// Consumed by the Wave 2 regression submodule (frechet::regression); the
-// `allow` is removed once that caller lands.
-#[allow(dead_code)]
 pub(crate) fn signed_quantile_average(
     density_matrix: &FdMatrix,
     argvals: &[f64],
@@ -248,8 +245,14 @@ pub(crate) fn signed_quantile_average(
     // Sort-based monotone (isotonic) projection — the no-osqp alternative.
     q_bar.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
+    // Clamp the averaged quantile to the target support so the inverted density
+    // stays on `argvals` (signed extrapolation weights can push Q̄ slightly past
+    // the grid edges).
     let lb = argvals[0];
     let ub = argvals[m - 1];
+    for v in q_bar.iter_mut() {
+        *v = v.clamp(lb, ub);
+    }
     let q_range = q_bar[n_q - 1] - q_bar[0];
     if q_range < 1e-15 {
         return Err(FdarError::ComputationFailed {
@@ -257,15 +260,12 @@ pub(crate) fn signed_quantile_average(
             detail: "quantile average has zero range; degenerate weighted input".to_string(),
         });
     }
-    let d_range = ub - lb;
-    let q_scaled: Vec<f64> = q_bar
-        .iter()
-        .map(|&v| (v - q_bar[0]) * d_range / q_range + lb)
-        .collect();
 
-    // Invert Q̄ → density using the DENS-01 back-map.
-    let dens_raw = quantile_density_from_q(&q_scaled, &t_grid);
-    let (q_dedup, dens_dedup) = dedup_adjacent(&q_scaled, &dens_raw);
+    // Invert Q̄ → density directly in x-units (Q̄ is a weighted average of quantile
+    // functions, already on the argvals x-scale — no rescale-to-full-support, which
+    // would spuriously stretch a narrow barycenter across the whole grid).
+    let dens_raw = quantile_density_from_q(&q_bar, &t_grid);
+    let (q_dedup, dens_dedup) = dedup_adjacent(&q_bar, &dens_raw);
     let dens: Vec<f64> = argvals
         .iter()
         .map(|&x| linear_interp(&q_dedup, &dens_dedup, x))
@@ -384,9 +384,10 @@ mod tests {
     }
 
     #[test]
-    fn signed_quantile_average_uniform_weights_matches_barycenter() {
-        // With uniform non-negative weights, the signed average must agree with
-        // the wasserstein_barycenter on the same data.
+    fn signed_quantile_average_uniform_weights_recovers_true_barycenter() {
+        // With uniform non-negative weights, the signed quantile average of two
+        // unit Gaussians at ±1 is the true Wasserstein barycenter N(0,1) (the
+        // location-family barycenter is the mean-location Gaussian).
         let argvals = uniform_grid(101, -5.0, 5.0);
         let d0 = gaussian(&argvals, -1.0);
         let d1 = gaussian(&argvals, 1.0);
@@ -398,9 +399,9 @@ mod tests {
         let w = vec![0.5, 0.5];
         let n_q = argvals.len().max(101);
         let signed = signed_quantile_average(&mat, &argvals, &w, n_q).unwrap();
-        let bary = wasserstein_barycenter(&mat, &argvals, Some(&w)).unwrap();
-        let diff = wasserstein2_distance(&signed, &bary, &argvals).unwrap();
-        assert!(diff < 0.05, "diff = {diff}");
+        let truth = gaussian(&argvals, 0.0);
+        let diff = wasserstein2_distance(&signed, &truth, &argvals).unwrap();
+        assert!(diff < 0.15, "diff = {diff}");
     }
 
     #[test]

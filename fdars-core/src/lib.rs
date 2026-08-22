@@ -148,9 +148,10 @@ pub use density_fda::{
     inverse_lqd, lqd_fpca, lqd_transform, normalize_density, wasserstein_barycenter, LqdFpcaResult,
 };
 
-// Re-export Fréchet / object-data regression types (Wave 1: mean/variance/distance/space)
+// Re-export Fréchet / object-data regression types
 pub use frechet::{
-    frechet_mean, frechet_variance, wasserstein2_distance, MetricSpace, WassersteinDensitySpace,
+    frechet_global_reg, frechet_local_reg, frechet_mean, frechet_variance, wasserstein2_distance,
+    FrechetGlobalRegResult, FrechetLocalRegResult, MetricSpace, WassersteinDensitySpace,
 };
 
 // Re-export Andrews curves types
