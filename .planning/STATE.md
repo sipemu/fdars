@@ -120,6 +120,7 @@ Conventions carried from prior milestones (relevant to implementation):
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260822-pvk | Update README: link Python package pyfda, note R package outdated | 2026-08-22 | 0c634e55 | [260822-pvk-update-readme-link-python-package-pyfda-](./quick/260822-pvk-update-readme-link-python-package-pyfda-/) |
+| 260823-bds | Remove unused .beads issue tracker + stale AGENTS.md (conserved open issue fdars-j75 → Pending Todos) | 2026-08-23 | 198b5566 | [260823-bds-remove-beads-issue-tracker](./quick/260823-bds-remove-beads-issue-tracker/) |
 
 ## Deferred Items
 
