@@ -71,7 +71,12 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.28.0-ROAD
   3. User can fit a GAMLSS-style distributional functional regression that models more than one distributional parameter (e.g. location + scale) of the response.
   4. User can fit a Bayesian function-on-scalar regression via a Gibbs/VB sampler and obtain coefficient posterior summaries (posterior mean + credible bands).
   5. User can run FDboost-style stability selection over the boosting base-learners and obtain per-learner selection frequencies / a stable predictor set.
-**Plans**: TBD (large standalone estimation subsystem — expect multi-plan decomposition)
+**Plans**: 5 plans
+  - [ ] 43-01-boosting-core-fosr-PLAN.md — boosting core + boosted FOSR (REG-06-01): shared component-wise boosting loop, penalized B-spline base-learner fit, `BoostingConfig`/all config+result types, `boost_fosr`, `boost_fosr_one_step`, module barrel + skeletons, lib.rs/prelude registration (wave 1)
+  - [ ] 43-02-boosted-fofr-PLAN.md — boosted FoFR (REG-06-02): FPC-score signal-compression base-learners through the boosting core, reconstructed β(s,t) surfaces (wave 2)
+  - [ ] 43-03-gamlss-location-scale-PLAN.md — GAMLSS location+scale (REG-06-03): cyclic gamboostLSS boosting over μ (identity) and σ (log link), Gaussian negative gradients (wave 2)
+  - [ ] 43-04-bayesian-fosr-gibbs-PLAN.md — Bayesian FOSR (REG-06-04): conjugate Normal/Inverse-Gamma Gibbs on FPC-score coefficients, posterior mean + pointwise credible bands, seeded determinism (wave 2)
+  - [ ] 43-05-stability-selection-PLAN.md — stability selection (REG-06-05): B seeded ⌊n/2⌋ subsamples over the boosting path, per-learner selection frequencies, stable set at π=0.9, PFER bound (wave 2)
 
 ### Phase 44: FEM/PDE Smoothing on Irregular 2D Domains
 **Goal**: A user can smooth scattered observations over an irregular 2D domain using a finite-element basis with PDE (Laplacian) regularization — plus obtain shape-constrained (positive, monotone) smoothers — capabilities absent from fdars' regular-grid 2D FOSR strength.
@@ -103,7 +108,7 @@ Full detail: this section (active milestone — archived to `milestones/v0.29.0-
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 43. Boosting / Bayesian Functional Regression | 0/TBD | Not started | - |
+| 43. Boosting / Bayesian Functional Regression | 0/5 | Planned | - |
 | 44. FEM/PDE Smoothing on Irregular 2D Domains | 0/TBD | Not started | - |
 | 45. Functional Co-Clustering (funLBM latent-block) | 0/TBD | Not started | - |
 
