@@ -1,0 +1,83 @@
+# Requirements: fdars — Milestone v0.29.0 Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
+
+**Defined:** 2026-08-23
+**Core Value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone draws the **final three** items from the v0.18.0 `R-BACKLOG.md` (all score 0.67, L-effort), **exhausting the R-parity backlog**: boosting/Bayesian functional regression (REG-06), FEM/PDE smoothing on irregular domains (REP-02), and functional co-clustering (CLUS-02).
+
+**Source:** [`.planning/research/R-BACKLOG.md`](research/R-BACKLOG.md) items REG-06 (rank 24), REP-02 (rank 25), CLUS-02 (rank 26) — the last three ranked items; #1–23 shipped through v0.28.0.
+
+**Milestone constraints (apply to every requirement):** additive/non-breaking (zero changes to existing public signatures — new functions/modules only); all public functions `Result<T, FdarError>`-returning; inline `#[cfg(test)]` tests with hand-computed/reference checks + error paths; crate-root re-exports; **no new crate dependency** (carrying the prior-milestone convention — the planner may flag REP-02's mesh/FEM subsystem at plan time if an in-house implementation proves impractical); numeric outputs only (plotting/rendering out of scope); `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean; document any divergence from the R baseline in rustdoc. **Note:** unlike prior reuse-first milestones, all three are large standalone estimation subsystems.
+
+## v1 Requirements
+
+Requirements for milestone v0.29.0. Each category maps to a roadmap phase.
+
+### REG-06 — Boosting / Bayesian functional regression
+
+R baseline: `FDboost` 1.1-4 (component-wise gradient boosting, GAMLSS, stability selection) + `refund` (Bayesian FOSR via Gibbs/VB). New `fdars-core/src/boosting_regression.rs` — component-wise gradient boosting with functional base-learners; a Gibbs/VB Bayesian function-on-scalar sampler. fdars regression is currently penalized/kernel/PLS/elastic only — no boosting or Bayesian machinery (Area 4, all absent differentiators).
+
+- [ ] **REG-06-01**: User can fit component-wise gradient-boosting functional regression with functional base-learners for a **function-on-scalar** response (boosted FOSR), selecting one base-learner per iteration.
+- [ ] **REG-06-02**: User can fit component-wise gradient-boosting functional regression for a **function-on-function** predictor/response (boosted FoFR base-learners).
+- [ ] **REG-06-03**: User can fit a GAMLSS-style distributional functional regression — modelling more than one distributional parameter (e.g. location + scale) of the response.
+- [ ] **REG-06-04**: User can fit a Bayesian function-on-scalar regression via a Gibbs/VB sampler, obtaining coefficient posterior summaries (mean + credible bands).
+- [ ] **REG-06-05**: User can run FDboost-style stability selection over the boosting base-learners to obtain selection frequencies / a stable predictor set.
+
+### REP-02 — FEM/PDE smoothing on irregular 2D/3D domains
+
+R baseline: `fdaPDE` 1.1-24 (finite-element basis, PDE-regularized smoothing over irregular domains). New `fdars-core/src/fem_smoothing.rs` — a linear finite-element basis over a triangulated mesh + PDE (Laplacian) regularization penalty; plus positive (log-domain) and Ramsay integral-of-exp monotone smoothers added to `smooth_basis.rs`. Does **not** overlap fdars' A-6 strength (regular-grid 2D FOSR / `function_on_scalar_2d`) — this is irregular-mesh FEM (Area 1, absent/partial differentiators).
+
+- [ ] **REP-02-01**: User can construct a linear finite-element basis over a user-supplied triangulated 2D mesh (nodes + triangle connectivity), evaluating basis functions and assembling mass/stiffness matrices.
+- [ ] **REP-02-02**: User can perform PDE-regularized (Laplacian-penalty) surface smoothing of scattered observations over an irregular 2D domain via the FE basis, returning a fitted surface + smoothing diagnostics.
+- [ ] **REP-02-03**: User can perform positive-valued smoothing (log-domain fit guaranteeing a nonnegative fitted function).
+- [ ] **REP-02-04**: User can perform monotone smoothing via the Ramsay integral-of-exponential representation (guaranteed-monotone fitted function) added to `smooth_basis.rs`.
+
+### CLUS-02 — Functional co-clustering (funLBM latent-block)
+
+R baseline: `funLBM` 2.3.1 (functional latent block model) + `funHDDC` (slope heuristic). New `fdars-core/src/coclustering.rs` — a latent-block-model EM (block-wise Gaussian on FPC scores) with simultaneous row (curve) and column (argument) clustering, plus a slope-heuristic model-selection helper. fdars' existing `clustering.rs`/`gmm/` cluster curves only (Area 4, absent differentiators).
+
+- [ ] **CLUS-02-01**: User can fit a functional latent block model (funLBM) that **simultaneously** assigns curves to row-clusters and argument points to column-clusters via a block-wise-Gaussian EM on FPC scores, given a target (row, column) block count.
+- [ ] **CLUS-02-02**: User can retrieve the co-clustering result — row labels, column labels, per-block parameters, and a converged log-likelihood / model criterion (e.g. ICL).
+- [ ] **CLUS-02-03**: User can select the number of blocks via the slope-heuristic criterion over a range of candidate (row, column) block counts.
+
+## Future Requirements
+
+`R-BACKLOG.md` is **exhausted** after this milestone. No further ranked R-parity items remain. The next milestone requires a fresh yardstick (a new gap-audit against another reference ecosystem, a performance/consolidation pass, or a crate-release-hardening milestone) — to be decided via `/gsd-new-milestone`.
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| New crate dependency for boosting, mesh/FEM, or co-clustering machinery | Milestone constraint — carry the prior-milestone convention of in-crate implementations; adding a dep triggers a package-legitimacy review. REP-02's mesh/FEM is the one place the planner may revisit this at plan time if an in-house implementation proves impractical |
+| Plotting/visualization of boosting paths, FE meshes/surfaces, or co-cluster blocks | Numeric Rust library — renderer stays out of scope (consistent with the v0.14.0/v0.18.0 audit fence); only numeric outputs are delivered |
+| Changes to existing public signatures (`smooth_basis.rs`, `clustering.rs`, `gmm/`, regression modules, …) | Additive/non-breaking constraint — new functions/modules only; existing paths preserved bit-for-bit. REP-02 adds new smoothers to `smooth_basis.rs` additively |
+| 3D tetrahedral-mesh FEM (only 2D triangulated meshes are in v1 scope) | Bounds REP-02's effort — 2D irregular-domain FEM captures the core `fdaPDE` capability; 3D volumetric meshing is a large extension deferred unless surfaced by a future audit |
+| Full mgcv/BayesX-grade sampler diagnostics (convergence tests, multiple chains, R̂) | REG-06's Bayesian FOSR delivers posterior summaries + credible bands; exhaustive MCMC diagnostics are out of scope for a numeric library |
+
+## Traceability
+
+Which phases cover which requirements. Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| REG-06-01 | Phase 43 | Pending |
+| REG-06-02 | Phase 43 | Pending |
+| REG-06-03 | Phase 43 | Pending |
+| REG-06-04 | Phase 43 | Pending |
+| REG-06-05 | Phase 43 | Pending |
+| REP-02-01 | Phase 44 | Pending |
+| REP-02-02 | Phase 44 | Pending |
+| REP-02-03 | Phase 44 | Pending |
+| REP-02-04 | Phase 44 | Pending |
+| CLUS-02-01 | Phase 45 | Pending |
+| CLUS-02-02 | Phase 45 | Pending |
+| CLUS-02-03 | Phase 45 | Pending |
+
+**Coverage:**
+- v1 requirements: 12 total
+- Mapped to phases: 12 (pending roadmapper confirmation)
+- Unmapped: 0
+
+---
+*Requirements defined: 2026-08-23*
+*Last updated: 2026-08-23 after initial definition*
