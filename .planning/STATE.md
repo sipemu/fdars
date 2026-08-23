@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.28.0
-milestone_name: Spectral Functional Time Series & Object-Data Fréchet Regression
-status: Awaiting next milestone
-stopped_at: Phase 42 complete — all phases complete
-last_updated: "2026-08-22T22:40:15.890Z"
+milestone: v0.29.0
+milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
+status: planning
+last_updated: "2026-08-23T19:45:26.468Z"
 last_activity: 2026-08-23
-last_activity_desc: Milestone v0.28.0 completed and archived
-state_head: 708c87cda643b7d519c56806620c485c0d2eca7b
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
-current_phase: 42
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-22)
 
 ## Current Position
 
-Phase: Milestone v0.28.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-23 — Milestone v0.28.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-23 — Milestone v0.29.0 started
 
 ## Milestone Roadmap (v0.28.0)
 
