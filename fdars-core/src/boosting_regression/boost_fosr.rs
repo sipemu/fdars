@@ -48,7 +48,7 @@ use super::{BoostFosrResult, BoostingConfig};
 /// # Layout
 ///
 /// Output is column-major: element (i, k) is at index `i + k * n`.
-fn build_bspline_design(x_vals: &[f64], nbasis: usize, order: usize) -> Vec<f64> {
+pub(crate) fn build_bspline_design_at(x_vals: &[f64], nbasis: usize, order: usize) -> Vec<f64> {
     // nknots such that nknots + order = nbasis
     let nknots = nbasis.saturating_sub(order).max(2);
 
@@ -362,7 +362,7 @@ pub fn boost_fosr(
         let x_col = predictors.column(j);
 
         // Build design matrix Φⱼ (n × K, column-major)
-        let phi = build_bspline_design(x_col, nbasis, order);
+        let phi = build_bspline_design_at(x_col, nbasis, order);
         let actual_k = phi.len() / n; // actual K (may differ slightly due to nknots rounding)
 
         // Compute penalty matrix Rⱼ (K × K, column-major from bspline_penalty_matrix)
