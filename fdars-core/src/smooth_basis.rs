@@ -41,6 +41,35 @@ pub struct FdPar {
     pub penalty_matrix: Vec<f64>,
 }
 
+/// Result of log-domain positive smoothing.
+///
+/// The fitted values are guaranteed strictly positive (> 0) for any strictly-positive
+/// input, because they are obtained by exponentiating the log-domain B-spline smooth.
+///
+/// # Bias caveat
+///
+/// This is a log-transform smoother: it minimises squared error in **log space**
+/// (`‖log(y) − Φc‖²`), not in the original scale.  The back-transformed values
+/// `exp(Φ̂c)` are therefore **not** the minimum-MSE estimate of `E[y | t]` — they
+/// tend to underestimate the conditional mean by a Jensen's-inequality correction.
+/// For an approximately unbiased estimate in the original scale apply
+/// `exp(fitted + σ² / 2)` where `σ²` is the conditional variance of the log-transformed
+/// fit (e.g. from the GCV score).  The correction is intentionally left to the caller
+/// in v1.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SmoothPositiveResult {
+    /// Fitted values in the original (positive) scale (n × m, all entries > 0).
+    pub fitted: FdMatrix,
+    /// B-spline coefficients from the log-domain smooth (n × K).
+    pub log_coefficients: FdMatrix,
+    /// Effective degrees of freedom of the log-domain fit.
+    pub edf: f64,
+    /// GCV score of the log-domain fit.
+    pub gcv: f64,
+}
+
 /// Result of basis-penalized smoothing.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -381,6 +410,112 @@ pub fn smooth_basis_aic(
     }
 
     best_result
+}
+
+/// Positive-valued smoothing via log-domain transformation.
+///
+/// Smooths strictly-positive functional data by transforming to the log scale,
+/// applying the existing [`smooth_basis`] B-spline smoother, and then
+/// exponentiating the fitted values so the result is guaranteed strictly positive.
+///
+/// This is the log-domain positive-smoothing idiom; it is appropriate for responses
+/// that are nonnegative by construction (densities, concentrations, intensities).
+///
+/// # Arguments
+/// * `data` — Functional data matrix (n × m); every element must be **strictly positive**
+/// * `argvals` — Evaluation points (length m)
+/// * `fdpar` — Functional parameter object specifying basis and penalty (unchanged from
+///   [`smooth_basis`])
+///
+/// # Errors
+/// Returns [`crate::FdarError::InvalidDimension`] if dimensions are inconsistent or
+/// `n == 0 || m == 0`.
+/// Returns [`crate::FdarError::InvalidParameter`] if any element of `data` is ≤ 0 (the
+/// log transform is undefined there).
+/// Propagates [`crate::FdarError::ComputationFailed`] from the inner [`smooth_basis`]
+/// call if matrix inversion fails.
+///
+/// # Bias caveat
+///
+/// See [`SmoothPositiveResult`] for the retransformation bias note.
+///
+/// # R baseline
+/// Analogous to `fda::smooth.pos` (R fda package), but uses the existing fdars
+/// B-spline penalty infrastructure rather than a separate estimation path.  The
+/// key divergence: this implementation minimises squared error in log space rather
+/// than iterating toward the conditional mean in the original scale.
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::smooth_basis::{smooth_positive, BasisType, FdPar, bspline_penalty_matrix};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let argvals: Vec<f64> = (0..41).map(|i| i as f64 / 40.0).collect();
+/// let y: Vec<f64> = argvals.iter().map(|&t| 2.0 + t.sin() + 0.05).collect();
+/// let data = FdMatrix::from_column_major(y, 1, 41).unwrap();
+/// let penalty = bspline_penalty_matrix(&argvals, 10, 4, 2);
+/// let fdpar = FdPar { basis_type: BasisType::Bspline { order: 4 }, nbasis: 10, lambda: 1e-3, lfd_order: 2, penalty_matrix: penalty };
+/// let result = smooth_positive(&data, &argvals, &fdpar).unwrap();
+/// assert!(result.fitted[(0, 0)] > 0.0);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn smooth_positive(
+    data: &FdMatrix,
+    argvals: &[f64],
+    fdpar: &FdPar,
+) -> Result<SmoothPositiveResult, crate::FdarError> {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 || argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/argvals",
+            expected: "n > 0, m > 0, argvals.len() == m".to_string(),
+            actual: format!("n={}, m={}, argvals.len()={}", n, m, argvals.len()),
+        });
+    }
+
+    // T-44-07: validate all data > 0 before any ln to prevent NaN/-Inf.
+    for i in 0..n {
+        for j in 0..m {
+            if data[(i, j)] <= 0.0 {
+                return Err(crate::FdarError::InvalidParameter {
+                    parameter: "data",
+                    message: format!(
+                        "smooth_positive requires strictly positive data (log-domain smoother); \
+                         found value {} <= 0 at observation {}, evaluation point {}",
+                        data[(i, j)],
+                        i,
+                        j
+                    ),
+                });
+            }
+        }
+    }
+
+    // Build log-transformed data matrix.
+    let mut log_data = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            log_data[(i, j)] = data[(i, j)].ln();
+        }
+    }
+
+    // Delegate to the existing smooth_basis on log(data).
+    let inner = smooth_basis(&log_data, argvals, fdpar)?;
+
+    // Exp-reconstruct: exp of any finite real is strictly positive.
+    let mut fitted = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            fitted[(i, j)] = inner.fitted[(i, j)].exp();
+        }
+    }
+
+    Ok(SmoothPositiveResult {
+        fitted,
+        log_coefficients: inner.coefficients,
+        edf: inner.edf,
+        gcv: inner.gcv,
+    })
 }
 
 // ─── Config Structs ─────────────────────────────────────────────────────────
@@ -2985,5 +3120,132 @@ mod tests {
         let res = result.unwrap();
         assert_eq!(res.optimal_nbasis, 7);
         assert_eq!(res.scores.len(), 1);
+    }
+
+    // ─── smooth_positive tests ──────────────────────────────────────────────
+
+    /// Build a shared FdPar for positive-smoother tests (B-spline, nbasis=10, lambda=1e-3).
+    fn make_positive_fdpar(argvals: &[f64]) -> FdPar {
+        let nbasis = 10;
+        let penalty = bspline_penalty_matrix(argvals, nbasis, 4, 2);
+        FdPar {
+            basis_type: BasisType::Bspline { order: 4 },
+            nbasis,
+            lambda: 1e-3,
+            lfd_order: 2,
+            penalty_matrix: penalty,
+        }
+    }
+
+    #[test]
+    fn test_smooth_positive_is_positive() {
+        // Positive signal: 2 + sin(2π t) stays in (1, 3) — strictly positive.
+        let m = 41;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            // add a tiny deterministic wiggle so the curve is not constant
+            let wiggle = 0.05 * ((j * 7) % 13) as f64 / 13.0;
+            data[(0, j)] = 2.0 + (2.0 * PI * t[j]).sin() + wiggle;
+        }
+
+        let fdpar = make_positive_fdpar(&t);
+        let result = smooth_positive(&data, &t, &fdpar);
+        assert!(result.is_ok(), "smooth_positive should succeed on positive data");
+
+        let res = result.unwrap();
+        assert_eq!(res.fitted.shape(), (1, m));
+        assert_eq!(res.log_coefficients.nrows(), 1);
+
+        for j in 0..m {
+            let v = res.fitted[(0, j)];
+            assert!(v > 0.0, "fitted value at j={} is not positive: {}", j, v);
+            assert!(v.is_finite(), "fitted value at j={} is not finite: {}", j, v);
+        }
+    }
+
+    #[test]
+    fn test_smooth_positive_recovers_curve() {
+        // With a small lambda, the smoother should closely track the true positive curve.
+        let m = 41;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(1, m);
+        let mut truth = vec![0.0f64; m];
+        for j in 0..m {
+            truth[j] = 2.0 + (2.0 * PI * t[j]).sin();
+            data[(0, j)] = truth[j]; // no noise — test recovery directly
+        }
+
+        let nbasis = 10;
+        let penalty = bspline_penalty_matrix(&t, nbasis, 4, 2);
+        let fdpar = FdPar {
+            basis_type: BasisType::Bspline { order: 4 },
+            nbasis,
+            lambda: 1e-6, // small lambda → close interpolation
+            lfd_order: 2,
+            penalty_matrix: penalty,
+        };
+
+        let res = smooth_positive(&data, &t, &fdpar).unwrap();
+        let mae: f64 = (0..m)
+            .map(|j| (res.fitted[(0, j)] - truth[j]).abs())
+            .sum::<f64>()
+            / m as f64;
+
+        assert!(
+            mae < 0.2,
+            "Mean absolute error too large: {}; smooth_positive should recover positive curve",
+            mae
+        );
+        // EDF and GCV should be reasonable.
+        assert!(res.edf > 0.0, "EDF should be positive");
+        assert!(res.gcv.is_finite(), "GCV should be finite");
+    }
+
+    #[test]
+    fn test_smooth_positive_rejects_nonpositive() {
+        // A data matrix with one zero element should be rejected with InvalidParameter.
+        let m = 41;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            data[(0, j)] = 2.0 + (2.0 * PI * t[j]).sin();
+        }
+        // Inject a non-positive value at position (0, 10).
+        data[(0, 10)] = 0.0;
+
+        let fdpar = make_positive_fdpar(&t);
+        let result = smooth_positive(&data, &t, &fdpar);
+        assert!(result.is_err(), "smooth_positive must reject data with a zero element");
+
+        match result.unwrap_err() {
+            crate::FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "data");
+            }
+            other => panic!("Expected InvalidParameter, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_smooth_positive_rejects_negative() {
+        // A data matrix with one negative element should also be rejected.
+        let m = 41;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            data[(0, j)] = 2.0 + (2.0 * PI * t[j]).sin();
+        }
+        data[(0, 20)] = -0.5;
+
+        let fdpar = make_positive_fdpar(&t);
+        let result = smooth_positive(&data, &t, &fdpar);
+        assert!(result.is_err(), "smooth_positive must reject data with a negative element");
+
+        match result.unwrap_err() {
+            crate::FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "data");
+            }
+            other => panic!("Expected InvalidParameter, got {:?}", other),
+        }
     }
 }
