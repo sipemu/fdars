@@ -4,16 +4,16 @@ milestone: v0.29.0
 current_phase: 44
 current_phase_name: FEM/PDE Smoothing on Irregular 2D Domains
 status: executing
-stopped_at: Completed 44-02-srpde-smoothing-gcv-PLAN.md
-last_updated: "2026-08-24T16:55:24.133Z"
+stopped_at: Completed 44-03-positive-smoother-PLAN.md
+last_updated: "2026-08-24T17:00:33.869Z"
 last_activity: 2026-08-24
 last_activity_desc: Phase 44 execution started
-state_head: 278ec438d02bf2c534bd3018f1132ddfc0292573
+state_head: 5a9946bc3e3122e2027a687e8d9f0f09880a3da6
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23)
 ## Current Position
 
 Phase: 44 (FEM/PDE Smoothing on Irregular 2D Domains) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-24 — Phase 44 execution started
 
@@ -89,6 +89,7 @@ Three phases, three requirements — the **final three** `R-BACKLOG.md` items (a
 | Phase 43 P01 | 13 | 3 tasks | 8 files |
 | Phase 43 P02 | 6 | 2 tasks | 1 files |
 | Phase 44 P02 | 15 | 3 tasks | 2 files |
+| Phase 44 P03 | 720 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,7 @@ Conventions carried from prior milestones (relevant to implementation):
 - [Phase 43]: BaseLearner struct pre-factors Cholesky once per learner — amortized over mstop iterations (only back-solves per iteration)
 - [Phase 43]: boost_fofr uses bfpc FPC-score compression (fdata_to_pc_1d) rather than FDboost bsignal B-spline joint expansion — simpler, dependency-free, documented divergence in rustdoc
 - [Phase 44]: edf/GCV computed inside fem_smooth to avoid double Cholesky; O(N^3) A_inv cost documented; eps=1e-10 ridge lifts K null space
+- [Phase 44]: Used FdMatrix for SmoothPositiveResult fields (not Vec<f64>) per PLAN.md; delegated all smoothing to existing smooth_basis on log(data); validated data > 0 before any ln to mitigate T-44-07
 
 ### Pending Todos
 
@@ -152,8 +154,8 @@ Advisory tech-debt carried forward (not v0.29.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-24T16:55:24.099Z
-Stopped at: Completed 44-02-srpde-smoothing-gcv-PLAN.md
+Last session: 2026-08-24T17:00:33.801Z
+Stopped at: Completed 44-03-positive-smoother-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

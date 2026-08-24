@@ -3151,7 +3151,10 @@ mod tests {
 
         let fdpar = make_positive_fdpar(&t);
         let result = smooth_positive(&data, &t, &fdpar);
-        assert!(result.is_ok(), "smooth_positive should succeed on positive data");
+        assert!(
+            result.is_ok(),
+            "smooth_positive should succeed on positive data"
+        );
 
         let res = result.unwrap();
         assert_eq!(res.fitted.shape(), (1, m));
@@ -3160,7 +3163,12 @@ mod tests {
         for j in 0..m {
             let v = res.fitted[(0, j)];
             assert!(v > 0.0, "fitted value at j={} is not positive: {}", j, v);
-            assert!(v.is_finite(), "fitted value at j={} is not finite: {}", j, v);
+            assert!(
+                v.is_finite(),
+                "fitted value at j={} is not finite: {}",
+                j,
+                v
+            );
         }
     }
 
@@ -3216,7 +3224,10 @@ mod tests {
 
         let fdpar = make_positive_fdpar(&t);
         let result = smooth_positive(&data, &t, &fdpar);
-        assert!(result.is_err(), "smooth_positive must reject data with a zero element");
+        assert!(
+            result.is_err(),
+            "smooth_positive must reject data with a zero element"
+        );
 
         match result.unwrap_err() {
             crate::FdarError::InvalidParameter { parameter, .. } => {
@@ -3239,7 +3250,10 @@ mod tests {
 
         let fdpar = make_positive_fdpar(&t);
         let result = smooth_positive(&data, &t, &fdpar);
-        assert!(result.is_err(), "smooth_positive must reject data with a negative element");
+        assert!(
+            result.is_err(),
+            "smooth_positive must reject data with a negative element"
+        );
 
         match result.unwrap_err() {
             crate::FdarError::InvalidParameter { parameter, .. } => {
