@@ -514,10 +514,8 @@ mod tests {
 
         // Assemble predictors (n × 2, column-major)
         let mut pred_data = vec![0.0f64; n * 2];
-        for i in 0..n {
-            pred_data[i] = x1[i]; // column 0
-            pred_data[i + n] = x2[i]; // column 1
-        }
+        pred_data[..n].copy_from_slice(&x1);
+        pred_data[n..].copy_from_slice(&x2);
         let predictors = FdMatrix::from_column_major(pred_data, n, 2).unwrap();
 
         // Response Y_i(t) = x_i · sin(π·t) + small deterministic "noise"
