@@ -385,8 +385,9 @@ pub use fem_smoothing::{
 pub use smooth_basis::{
     basis_nbasis_cv, basis_nbasis_cv_with_config, bspline_penalty_matrix, fourier_penalty_matrix,
     smooth_basis, smooth_basis_aic, smooth_basis_gcv, smooth_basis_gcv_with_config,
-    smooth_positive, BasisCriterion, BasisNbasisCvConfig, BasisNbasisCvResult, BasisType, FdPar,
-    SmoothBasisGcvConfig, SmoothBasisResult, SmoothPositiveResult,
+    smooth_monotone, smooth_positive, BasisCriterion, BasisNbasisCvConfig, BasisNbasisCvResult,
+    BasisType, FdPar, SmoothBasisGcvConfig, SmoothBasisResult, SmoothMonotoneResult,
+    SmoothPositiveResult,
 };
 
 // Re-export elastic FPCA types

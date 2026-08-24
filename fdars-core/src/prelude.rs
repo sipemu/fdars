@@ -41,7 +41,7 @@ pub use crate::smoothing::{CvCriterion, OptimBandwidthResult};
 
 // Basis types
 pub use crate::basis::BasisProjectionResult;
-pub use crate::smooth_basis::{BasisType, SmoothBasisResult, SmoothPositiveResult};
+pub use crate::smooth_basis::{BasisType, SmoothBasisResult, SmoothMonotoneResult, SmoothPositiveResult};
 
 // FEM smoothing (wave-1 foundation)
 pub use crate::fem_smoothing::FemSmoothResult;

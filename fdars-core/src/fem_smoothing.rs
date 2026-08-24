@@ -471,7 +471,7 @@ pub fn fem_basis_eval(
 ///   `obs_xy` point outside the mesh domain (surfaced by [`fem_basis_eval`]).
 /// - [`FdarError::ComputationFailed`]: the Cholesky factorisation of `A` fails (matrix is
 ///   singular even after ridge); check that observations are not all collinear on a single node.
-#[must_use]
+#[must_use = "expensive FEM smoothing computation whose result should not be discarded"]
 pub fn fem_smooth(
     nodes: &[[f64; 2]],
     triangles: &[[usize; 3]],
@@ -625,7 +625,7 @@ pub fn fem_smooth(
 ///   is too coarse relative to the observations — try widening `log_lambda_range` or adding
 ///   more observations).
 /// - Any error from [`fem_smooth`] propagated from the last failed grid call.
-#[must_use]
+#[must_use = "GCV-selected FEM smoothing result should not be discarded"]
 pub fn fem_smooth_gcv(
     nodes: &[[f64; 2]],
     triangles: &[[usize; 3]],
@@ -699,7 +699,7 @@ pub fn fem_smooth_gcv(
 /// - [`FdarError::InvalidDimension`]: `node_values.len() != nodes.len()`.
 /// - [`FdarError::InvalidParameter`]: any query point outside the mesh domain (surfaced by
 ///   [`fem_basis_eval`]).
-#[must_use]
+#[must_use = "FEM surface prediction result should not be discarded"]
 pub fn fem_predict(
     node_values: &[f64],
     nodes: &[[f64; 2]],
