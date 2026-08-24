@@ -18,6 +18,9 @@ pub use crate::regression::RidgeResult;
 pub use crate::regression::{FpcaResult, PlsResult};
 pub use crate::scalar_on_function::{FregreLmResult, FunctionalLogisticResult};
 
+// Boosting and Bayesian functional regression results (Phase 43 REG-06)
+pub use crate::boosting_regression::{BayesianFosrResult, BoostFosrResult};
+
 // Classification
 pub use crate::classification::{ClassifCvResult, ClassifFit, ClassifMethod, ClassifResult};
 
