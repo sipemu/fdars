@@ -3774,7 +3774,7 @@ mod tests {
     fn test_smooth_monotone_errors_on_bad_params() {
         let m = 10_usize;
         let t = uniform_grid(m);
-        let data: Vec<f64> = t.iter().map(|&ti| ti).collect();
+        let data: Vec<f64> = t.clone();
 
         // nbasis == 1 → InvalidParameter
         let result = smooth_monotone(&data, &t, 1, 4, 1e-3, 50);
