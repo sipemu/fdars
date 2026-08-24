@@ -740,7 +740,7 @@ pub fn smooth_monotone(
             // (0,1): j0*j1
             a_mat[1] += j0 * j1;
             a_mat[big_p] += j1 * j0; // (1,0) = symmetric
-            // (1,1): j1*j1
+                                     // (1,1): j1*j1
             a_mat[big_p + 1] += j1 * j1;
 
             // g[0], g[1]
@@ -3612,7 +3612,10 @@ mod tests {
         // (test_smooth_monotone_bounded_iterations) uses max_iter=50 separately.
         let m = 51_usize;
         let t = uniform_grid(m);
-        let y: Vec<f64> = t.iter().map(|&ti| 1.0 / (1.0 + (-8.0 * (ti - 0.5)).exp())).collect();
+        let y: Vec<f64> = t
+            .iter()
+            .map(|&ti| 1.0 / (1.0 + (-8.0 * (ti - 0.5)).exp()))
+            .collect();
 
         let result = smooth_monotone(&y, &t, 10, 4, 1e-4, 100)
             .expect("smooth_monotone should succeed on logistic data");
@@ -3620,9 +3623,12 @@ mod tests {
         // Recovery within tolerance.  Tolerance is 0.15 (not a tight 0.05) to allow
         // for boundary effects in cumulative-trapezoid integration and B-spline knot
         // placement at the grid edges — both standard sources of bias in v1.
-        let mae: f64 =
-            y.iter().zip(result.fitted.iter()).map(|(&yi, &fi)| (yi - fi).abs()).sum::<f64>()
-                / m as f64;
+        let mae: f64 = y
+            .iter()
+            .zip(result.fitted.iter())
+            .map(|(&yi, &fi)| (yi - fi).abs())
+            .sum::<f64>()
+            / m as f64;
         assert!(
             mae < 0.15,
             "Mean absolute error {} too large for logistic recovery (tolerance 0.15, iterations={})",
@@ -3754,7 +3760,10 @@ mod tests {
         let data: Vec<f64> = (0..m).map(|i| i as f64).collect();
         let argvals: Vec<f64> = (0..m - 1).map(|i| i as f64).collect();
         let result = smooth_monotone(&data, &argvals, 4, 4, 1e-3, 50);
-        assert!(result.is_err(), "smooth_monotone should fail for argvals length mismatch");
+        assert!(
+            result.is_err(),
+            "smooth_monotone should fail for argvals length mismatch"
+        );
         match result.unwrap_err() {
             crate::FdarError::InvalidDimension { .. } => {}
             other => panic!("Expected InvalidDimension, got {:?}", other),
@@ -3769,7 +3778,10 @@ mod tests {
 
         // nbasis == 1 → InvalidParameter
         let result = smooth_monotone(&data, &t, 1, 4, 1e-3, 50);
-        assert!(result.is_err(), "smooth_monotone should fail for nbasis == 1");
+        assert!(
+            result.is_err(),
+            "smooth_monotone should fail for nbasis == 1"
+        );
         match result.unwrap_err() {
             crate::FdarError::InvalidParameter { parameter, .. } => {
                 assert_eq!(parameter, "nbasis");
@@ -3779,7 +3791,10 @@ mod tests {
 
         // max_iter == 0 → InvalidParameter
         let result = smooth_monotone(&data, &t, 8, 4, 1e-3, 0);
-        assert!(result.is_err(), "smooth_monotone should fail for max_iter == 0");
+        assert!(
+            result.is_err(),
+            "smooth_monotone should fail for max_iter == 0"
+        );
         match result.unwrap_err() {
             crate::FdarError::InvalidParameter { parameter, .. } => {
                 assert_eq!(parameter, "max_iter");

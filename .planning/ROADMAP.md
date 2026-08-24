@@ -119,7 +119,7 @@ Full detail: this section (active milestone — archived to `milestones/v0.29.0-
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 43. Boosting / Bayesian Functional Regression | 2/5 | In Progress|  |
-| 44. FEM/PDE Smoothing on Irregular 2D Domains | 3/4 | In Progress|  |
+| 44. FEM/PDE Smoothing on Irregular 2D Domains | 4/4 | In Progress|  |
 | 45. Functional Co-Clustering (funLBM latent-block) | 0/TBD | Not started | - |
 
 All phases through v0.28.0 are shipped and archived under `milestones/`.
