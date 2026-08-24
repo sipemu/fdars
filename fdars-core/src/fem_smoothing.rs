@@ -412,6 +412,308 @@ pub fn fem_basis_eval(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// SR-PDE surface smoothing
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// PDE-regularised (Laplacian-penalty) surface smoothing at a **fixed** smoothing parameter λ.
+///
+/// Solves the SR-PDE penalised normal equations `(Φ'Φ + λ·K) c = Φ'y` using the in-house dense
+/// Cholesky solver from [`crate::linalg`]. Returns the fitted node-coefficient vector `c`
+/// together with diagnostic fields (edf, GCV, RSS, λ).
+///
+/// # SR-PDE System
+///
+/// - **Φ** (n_obs × N) is the observation matrix built from P1 hat-function evaluations at
+///   `obs_xy` (3 non-zeros per row by barycentric coordinates).
+/// - **K** (N × N) is the global stiffness matrix assembled by [`assemble_fem_matrices`].
+/// - **ε = 1 × 10⁻¹⁰ ridge** is added to the diagonal of `Φ'Φ + λ·K` before factorisation to
+///   lift K's constant null space (the constant function has zero roughness penalty but may have
+///   zero data fit with very few observations).
+///
+/// # GCV and EDF
+///
+/// Effective degrees of freedom: `edf = tr(A⁻¹ · Φ'Φ)`, where `A = Φ'Φ + λK + εI`.
+/// This trace is computed as the elementwise dot product of `A⁻¹` and `Φ'Φ` (both N×N,
+/// symmetric), avoiding the n_obs×n_obs hat matrix. `A⁻¹` is built column-by-column via
+/// Cholesky forward-back substitution — **O(N³)** cost. For v1, **N ≲ 2 000** is recommended.
+///
+/// `GCV = (RSS / n) / (1 − edf / n)²`, set to `f64::INFINITY` if `edf ≥ n`.
+///
+/// # Arguments
+///
+/// * `nodes` — mesh nodes, each `[x, y]` (N nodes, N ≥ 1).
+/// * `triangles` — triangle connectivity (T triangles). Validated on entry.
+/// * `obs_xy` — observation locations (n_obs points), each `[x, y]`. All must lie inside the
+///   mesh.
+/// * `y` — observed scalar response values (length n_obs).
+/// * `lambda` — smoothing parameter (≥ 0; larger → smoother surface).
+///
+/// # Errors
+///
+/// - [`FdarError::InvalidDimension`]: empty `nodes`, `triangles`, or `y`; or
+///   `obs_xy.len() != y.len()`.
+/// - [`FdarError::InvalidParameter`]: `lambda < 0.0`; degenerate/out-of-range mesh; or any
+///   `obs_xy` point outside the mesh domain (surfaced by [`fem_basis_eval`]).
+/// - [`FdarError::ComputationFailed`]: the Cholesky factorisation of `A` fails (matrix is
+///   singular even after ridge); check that observations are not all collinear on a single node.
+#[must_use]
+pub fn fem_smooth(
+    nodes: &[[f64; 2]],
+    triangles: &[[usize; 3]],
+    obs_xy: &[[f64; 2]],
+    y: &[f64],
+    lambda: f64,
+) -> Result<FemSmoothResult, FdarError> {
+    // ── Input validation ─────────────────────────────────────────────────────
+    if y.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: "at least one observation".to_string(),
+            actual: "0 observations".to_string(),
+        });
+    }
+    if obs_xy.len() != y.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "obs_xy",
+            expected: format!("{} (= len(y))", y.len()),
+            actual: obs_xy.len().to_string(),
+        });
+    }
+    if lambda < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: "smoothing parameter must be >= 0.0".to_string(),
+        });
+    }
+
+    let n_obs = obs_xy.len();
+    let big_n = nodes.len(); // number of mesh nodes
+
+    // ── Build K (stiffness) via assemble_fem_matrices ────────────────────────
+    // mesh_validate is called inside assemble_fem_matrices.
+    let (_m, k_global) = assemble_fem_matrices(nodes, triangles)?;
+
+    // ── Build Φ (n_obs × big_n) row-major flat Vec<f64> ──────────────────────
+    // fem_basis_eval validates mesh (again) and returns an error if any obs is outside.
+    let basis_evals = fem_basis_eval(nodes, triangles, obs_xy)?;
+    let mut phi = vec![0.0_f64; n_obs * big_n];
+    for (i, (_tri_idx, weights)) in basis_evals.iter().enumerate() {
+        for &(node_idx, hat_val) in weights.iter() {
+            phi[i * big_n + node_idx] = hat_val;
+        }
+    }
+
+    // ── Assemble Φ'Φ (N × N, row-major) ──────────────────────────────────────
+    // O(n_obs · N²); exploiting symmetry of Φ'Φ.
+    let mut phi_t_phi = vec![0.0_f64; big_n * big_n];
+    for i in 0..n_obs {
+        for a in 0..big_n {
+            let phi_ia = phi[i * big_n + a];
+            if phi_ia == 0.0 {
+                continue;
+            }
+            for b in a..big_n {
+                let val = phi_ia * phi[i * big_n + b];
+                phi_t_phi[a * big_n + b] += val;
+                if a != b {
+                    phi_t_phi[b * big_n + a] += val;
+                }
+            }
+        }
+    }
+
+    // ── Build A = Φ'Φ + λ·K + ε·I ─────────────────────────────────────────
+    let mut a_mat = phi_t_phi.clone();
+    for ab in 0..(big_n * big_n) {
+        a_mat[ab] += lambda * k_global[ab];
+    }
+    for a in 0..big_n {
+        a_mat[a * big_n + a] += 1e-10; // ridge to lift K's constant null space
+    }
+
+    // ── Build Φ'y (length N) ─────────────────────────────────────────────────
+    let mut phi_t_y = vec![0.0_f64; big_n];
+    for i in 0..n_obs {
+        for a in 0..big_n {
+            phi_t_y[a] += phi[i * big_n + a] * y[i];
+        }
+    }
+
+    // ── Solve (Φ'Φ + λK + εI) c = Φ'y ───────────────────────────────────────
+    let c = crate::linalg::cholesky_solve(&a_mat, &phi_t_y, big_n)?;
+
+    // ── Fitted values at observations ─────────────────────────────────────────
+    let fitted_obs: Vec<f64> = (0..n_obs)
+        .map(|i| (0..big_n).map(|a| phi[i * big_n + a] * c[a]).sum())
+        .collect();
+
+    let rss: f64 = (0..n_obs).map(|i| (y[i] - fitted_obs[i]).powi(2)).sum();
+
+    // ── Compute A⁻¹ column-by-column for GCV trace ───────────────────────────
+    let l = crate::linalg::cholesky_factor(&a_mat, big_n)?;
+    let mut a_inv = vec![0.0_f64; big_n * big_n];
+    let mut e_col = vec![0.0_f64; big_n];
+    for j in 0..big_n {
+        e_col.iter_mut().for_each(|v| *v = 0.0);
+        e_col[j] = 1.0;
+        let col = crate::linalg::cholesky_forward_back(&l, &e_col, big_n);
+        for i in 0..big_n {
+            a_inv[i * big_n + j] = col[i]; // a_inv[i, j] in row-major
+        }
+    }
+
+    // edf = tr(A⁻¹ · Φ'Φ) = Σ_{a,b} A⁻¹[a,b] * Φ'Φ[b,a]
+    let mut edf = 0.0_f64;
+    for a in 0..big_n {
+        for b in 0..big_n {
+            edf += a_inv[a * big_n + b] * phi_t_phi[b * big_n + a];
+        }
+    }
+
+    let n_obs_f = n_obs as f64;
+    let gcv_denom = 1.0 - edf / n_obs_f;
+    let gcv = if gcv_denom.abs() > 1e-10 {
+        (rss / n_obs_f) / (gcv_denom * gcv_denom)
+    } else {
+        f64::INFINITY
+    };
+
+    Ok(FemSmoothResult {
+        node_values: c,
+        fitted_obs,
+        edf,
+        gcv,
+        rss,
+        lambda,
+        n_nodes: nodes.len(),
+        n_triangles: triangles.len(),
+    })
+}
+
+/// PDE-regularised surface smoothing with GCV-optimal λ selected from a log₁₀ grid.
+///
+/// Evaluates [`fem_smooth`] at `n_grid` equally-spaced log₁₀(λ) values spanning
+/// `log_lambda_range` and returns the result with the smallest finite GCV score.
+///
+/// Mirrors the grid-search approach of `smooth_basis_gcv` in `smooth_basis.rs`.
+///
+/// # Arguments
+///
+/// * `log_lambda_range` — `(lo, hi)` in log₁₀ scale (e.g., `(-6.0, 2.0)`).
+/// * `n_grid` — number of grid points (≥ 2). Larger grids give finer resolution at O(n_grid · N³)
+///   total cost.
+///
+/// # Errors
+///
+/// - [`FdarError::InvalidParameter`]: `n_grid < 2`.
+/// - [`FdarError::ComputationFailed`]: all grid points produced non-finite GCV scores (e.g., mesh
+///   is too coarse relative to the observations — try widening `log_lambda_range` or adding
+///   more observations).
+/// - Any error from [`fem_smooth`] propagated from the last failed grid call.
+#[must_use]
+pub fn fem_smooth_gcv(
+    nodes: &[[f64; 2]],
+    triangles: &[[usize; 3]],
+    obs_xy: &[[f64; 2]],
+    y: &[f64],
+    log_lambda_range: (f64, f64),
+    n_grid: usize,
+) -> Result<FemSmoothResult, FdarError> {
+    if n_grid < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_grid",
+            message: "GCV lambda grid requires at least 2 points".to_string(),
+        });
+    }
+
+    let (lo, hi) = log_lambda_range;
+    let mut best_gcv = f64::INFINITY;
+    let mut best_result: Option<FemSmoothResult> = None;
+    let mut last_err: Option<FdarError> = None;
+
+    for i in 0..n_grid {
+        let log_lam = lo + (hi - lo) * i as f64 / (n_grid - 1) as f64;
+        let lam = 10.0_f64.powf(log_lam);
+        match fem_smooth(nodes, triangles, obs_xy, y, lam) {
+            Ok(res) => {
+                if res.gcv.is_finite() && res.gcv < best_gcv {
+                    best_gcv = res.gcv;
+                    best_result = Some(res);
+                }
+            }
+            Err(e) => {
+                last_err = Some(e);
+            }
+        }
+    }
+
+    if let Some(result) = best_result {
+        return Ok(result);
+    }
+
+    // All grid points produced non-finite GCV or errors.
+    if let Some(e) = last_err {
+        return Err(e);
+    }
+
+    Err(FdarError::ComputationFailed {
+        operation: "fem_smooth_gcv",
+        detail: "all lambda grid points produced non-finite GCV; try widening \
+                 log_lambda_range or adding more observations"
+            .to_string(),
+    })
+}
+
+/// Evaluate the fitted surface at new (x, y) locations by P1 interpolation.
+///
+/// For each query point, locates its containing triangle and computes
+/// `Σ_k φ_k(x, y) · node_values[k]` using the three non-zero barycentric weights.
+///
+/// **Linear-field exactness:** P1 interpolation reproduces any linear function exactly,
+/// so `fem_predict` returns the exact value for linear node-value fields.
+///
+/// # Arguments
+///
+/// * `node_values` — fitted surface values at the mesh nodes (length N = `nodes.len()`).
+/// * `nodes` — mesh nodes (same as passed to [`fem_smooth`]).
+/// * `triangles` — triangle connectivity (same as passed to [`fem_smooth`]).
+/// * `query_xy` — locations at which to evaluate the surface, each `[x, y]`.
+///
+/// # Errors
+///
+/// - [`FdarError::InvalidDimension`]: `node_values.len() != nodes.len()`.
+/// - [`FdarError::InvalidParameter`]: any query point outside the mesh domain (surfaced by
+///   [`fem_basis_eval`]).
+#[must_use]
+pub fn fem_predict(
+    node_values: &[f64],
+    nodes: &[[f64; 2]],
+    triangles: &[[usize; 3]],
+    query_xy: &[[f64; 2]],
+) -> Result<Vec<f64>, FdarError> {
+    if node_values.len() != nodes.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "node_values",
+            expected: format!("{} (= nodes.len())", nodes.len()),
+            actual: node_values.len().to_string(),
+        });
+    }
+
+    let basis_evals = fem_basis_eval(nodes, triangles, query_xy)?;
+    let predictions: Vec<f64> = basis_evals
+        .iter()
+        .map(|(_tri_idx, weights)| {
+            weights
+                .iter()
+                .map(|&(node_idx, hat_val)| hat_val * node_values[node_idx])
+                .sum()
+        })
+        .collect();
+
+    Ok(predictions)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Tests
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -583,6 +885,216 @@ mod tests {
         assert!(
             matches!(result, Err(FdarError::InvalidParameter { parameter: "query_xy", .. })),
             "outside-mesh point must return InvalidParameter(query_xy), got: {result:?}"
+        );
+    }
+
+    // ── Refined mesh fixture (4×4 nodes = 16 nodes, 18 triangles) ─────────────
+    //
+    // Grid cells: 3×3 = 9 cells, each split into 2 triangles → 18 triangles total.
+    // Node (i, j) has index i * 4 + j  (i = row 0..4, j = col 0..4).
+    // Node coords: x = j/3, y = i/3   (maps [0,3]×[0,3] grid to [0,1]×[0,1]).
+    //
+    // Each cell (i, j) with i in 0..3, j in 0..3 has lower-left node at index i*4+j.
+    //   Lower-left triangle: [i*4+j, i*4+j+1, (i+1)*4+j+1]
+    //   Upper-right triangle: [i*4+j, (i+1)*4+j+1, (i+1)*4+j]
+    fn refined_square_mesh() -> (Vec<[f64; 2]>, Vec<[usize; 3]>) {
+        let mut nodes = Vec::with_capacity(16);
+        for i in 0..4_usize {
+            for j in 0..4_usize {
+                nodes.push([j as f64 / 3.0, i as f64 / 3.0]);
+            }
+        }
+        let mut triangles = Vec::with_capacity(18);
+        for i in 0..3_usize {
+            for j in 0..3_usize {
+                let ll = i * 4 + j; // lower-left
+                let lr = i * 4 + j + 1; // lower-right
+                let ul = (i + 1) * 4 + j; // upper-left
+                let ur = (i + 1) * 4 + j + 1; // upper-right
+                triangles.push([ll, lr, ur]);
+                triangles.push([ll, ur, ul]);
+            }
+        }
+        (nodes, triangles)
+    }
+
+    /// Observation points placed at cell centres (deterministic, no RNG).
+    fn cell_centres() -> Vec<[f64; 2]> {
+        let mut pts = Vec::with_capacity(9);
+        for i in 0..3_usize {
+            for j in 0..3_usize {
+                let cx = (j as f64 + 0.5) / 3.0;
+                let cy = (i as f64 + 0.5) / 3.0;
+                pts.push([cx, cy]);
+            }
+        }
+        pts
+    }
+
+    // ── Task 1 (tracer) tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_fem_smooth_solves_and_reduces_residual() {
+        let (nodes, triangles) = refined_square_mesh();
+        let obs_xy = cell_centres();
+        let n_obs = obs_xy.len();
+
+        // Smooth ground truth: g(x,y) = sin(π·x)·sin(π·y) evaluated at cell centres.
+        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+
+        let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-2).unwrap();
+
+        assert_eq!(result.node_values.len(), nodes.len(), "node_values length mismatch");
+        assert_eq!(result.fitted_obs.len(), obs_xy.len(), "fitted_obs length mismatch");
+        assert!(result.rss.is_finite(), "rss must be finite");
+
+        // RSS / n_obs must be small relative to variance of y.
+        let y_mean = y.iter().sum::<f64>() / n_obs as f64;
+        let y_var = y.iter().map(|&v| (v - y_mean).powi(2)).sum::<f64>() / n_obs as f64;
+        let relative_mse = result.rss / n_obs as f64;
+        assert!(
+            relative_mse < 0.1 * y_var.max(1e-6),
+            "relative MSE = {relative_mse:.3e} should be small relative to y variance {y_var:.3e}"
+        );
+    }
+
+    // ── Task 2 tests — GCV/edf + surface recovery + interpolation limit ────────
+
+    #[test]
+    fn test_fem_smooth_recovers_surface() {
+        let (nodes, triangles) = refined_square_mesh();
+        let obs_xy = cell_centres();
+
+        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+
+        let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-3).unwrap();
+
+        // Mean absolute error between fitted and true at obs points.
+        let mae = result
+            .fitted_obs
+            .iter()
+            .zip(y.iter())
+            .map(|(&f, &t)| (f - t).abs())
+            .sum::<f64>()
+            / obs_xy.len() as f64;
+
+        assert!(
+            mae < 0.15,
+            "surface recovery MAE = {mae:.4} should be below 0.15"
+        );
+    }
+
+    #[test]
+    fn test_fem_smooth_interpolation_limit() {
+        let (nodes, triangles) = refined_square_mesh();
+        let obs_xy = cell_centres();
+
+        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+
+        // Very small λ → near-interpolation (small residuals at observations).
+        let result_small = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-8).unwrap();
+        // Large λ → strong smoothing (larger residuals).
+        let result_large = fem_smooth(&nodes, &triangles, &obs_xy, &y, 10.0).unwrap();
+
+        assert!(
+            result_small.rss < result_large.rss,
+            "small λ should yield smaller RSS: small={:.4e} vs large={:.4e}",
+            result_small.rss, result_large.rss
+        );
+        // At very small λ, residuals at observations should be near zero.
+        let max_resid_small = result_small
+            .fitted_obs
+            .iter()
+            .zip(y.iter())
+            .map(|(&f, &t)| (f - t).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_resid_small < 0.05,
+            "at λ=1e-8 max residual at obs = {max_resid_small:.4e} should approach 0"
+        );
+    }
+
+    #[test]
+    fn test_fem_gcv_finite() {
+        let (nodes, triangles) = refined_square_mesh();
+        let obs_xy = cell_centres();
+        let n_obs = obs_xy.len();
+
+        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+
+        let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 0.1).unwrap();
+
+        assert!(result.gcv.is_finite(), "GCV must be finite, got: {}", result.gcv);
+        assert!(result.edf > 0.0, "edf must be positive, got: {}", result.edf);
+        assert!(
+            result.edf <= n_obs as f64 + 1e-6,
+            "edf must not exceed n_obs={n_obs}, got: {}", result.edf
+        );
+    }
+
+    // ── Task 3 tests — fem_smooth_gcv + fem_predict + outside-mesh error ───────
+
+    #[test]
+    fn test_fem_smooth_gcv_selects_finite() {
+        let (nodes, triangles) = refined_square_mesh();
+        let obs_xy = cell_centres();
+
+        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+
+        let result = fem_smooth_gcv(&nodes, &triangles, &obs_xy, &y, (-6.0, 2.0), 9).unwrap();
+
+        assert!(result.gcv.is_finite(), "GCV from gcv search must be finite, got: {}", result.gcv);
+        assert!(
+            result.lambda >= 1e-6 && result.lambda <= 1e2 + 1e-9,
+            "chosen lambda = {} must lie within [1e-6, 1e2]", result.lambda
+        );
+    }
+
+    #[test]
+    fn test_fem_predict_matches_nodes() {
+        // Use the unit-square mesh (4 nodes, 2 triangles).
+        let (nodes, triangles) = unit_square_mesh();
+
+        // Linear field f(x, y) = 1.0 + 2.0*x + 3.0*y evaluated at nodes.
+        let f_lin = |x: f64, y: f64| 1.0 + 2.0 * x + 3.0 * y;
+        let node_values: Vec<f64> = nodes.iter().map(|&[x, y]| f_lin(x, y)).collect();
+
+        // Interior query points (inside the mesh).
+        let query_xy: Vec<[f64; 2]> = vec![
+            [0.25, 0.25],
+            [0.5, 0.5],
+            [0.75, 0.25],
+            [0.25, 0.75],
+        ];
+
+        let preds = fem_predict(&node_values, &nodes, &triangles, &query_xy).unwrap();
+
+        for (&[qx, qy], &pred) in query_xy.iter().zip(preds.iter()) {
+            let exact = f_lin(qx, qy);
+            assert!(
+                (pred - exact).abs() < 1e-9,
+                "fem_predict at ({qx},{qy}): got {pred}, expected {exact}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_fem_smooth_obs_outside_mesh_error() {
+        let (nodes, triangles) = refined_square_mesh();
+
+        // One obs point clearly outside the [0,1]×[0,1] mesh.
+        let obs_xy: Vec<[f64; 2]> = vec![[0.25, 0.25], [5.0, 5.0]];
+        let y = vec![0.5, 0.8];
+
+        let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 0.1);
+        assert!(
+            matches!(result, Err(FdarError::InvalidParameter { parameter: "query_xy", .. })),
+            "obs outside mesh must return InvalidParameter(query_xy), got: {result:?}"
         );
     }
 }

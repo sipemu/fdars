@@ -376,8 +376,10 @@ pub use streaming_depth::{
     StreamingFraimanMuniz, StreamingMbd,
 };
 
-// Re-export FEM smoothing types (wave-1: mesh assembly + basis evaluation)
-pub use fem_smoothing::{assemble_fem_matrices, fem_basis_eval, FemSmoothResult};
+// Re-export FEM smoothing types (wave-1 + wave-2: mesh assembly, basis evaluation, SR-PDE smoothing)
+pub use fem_smoothing::{
+    assemble_fem_matrices, fem_basis_eval, fem_predict, fem_smooth, fem_smooth_gcv, FemSmoothResult,
+};
 
 // Re-export smooth basis types
 pub use smooth_basis::{
