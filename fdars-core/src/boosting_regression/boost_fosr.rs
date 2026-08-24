@@ -244,10 +244,10 @@ pub(crate) fn boost_fosr_one_step(
 ///
 /// let n = 20;
 /// let m = 15;
-/// let p = 2;
+/// let p = 1;
 /// let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
 /// let x_vals: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
-/// let predictors = FdMatrix::from_column_major(x_vals, n, p);
+/// let predictors = FdMatrix::from_column_major(x_vals, n, p).unwrap();
 /// let data = FdMatrix::zeros(n, m);
 /// let config = BoostingConfig {
 ///     mstop: 10, nu: 0.1, nbasis: 8, order: 4, lfd_order: 2, lambda: 1.0,
@@ -518,7 +518,7 @@ mod tests {
             pred_data[i] = x1[i]; // column 0
             pred_data[i + n] = x2[i]; // column 1
         }
-        let predictors = FdMatrix::from_column_major(pred_data, n, 2);
+        let predictors = FdMatrix::from_column_major(pred_data, n, 2).unwrap();
 
         // Response Y_i(t) = x_i · sin(π·t) + small deterministic "noise"
         let mut y_data = vec![0.0f64; n * m];
@@ -529,7 +529,7 @@ mod tests {
                 y_data[i + t * n] = x1[i] * beta_t + noise;
             }
         }
-        let data = FdMatrix::from_column_major(y_data, n, m);
+        let data = FdMatrix::from_column_major(y_data, n, m).unwrap();
 
         (data, predictors, argvals)
     }
