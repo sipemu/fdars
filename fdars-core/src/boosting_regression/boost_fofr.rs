@@ -557,7 +557,7 @@ mod tests {
         let mut y_data = vec![0.0f64; n * m_y];
         for (t, &tv) in ty.iter().enumerate() {
             for i in 0..n {
-                let noise = 0.05 * ((i + t + 7) as f64 * 2.718).sin();
+                let noise = 0.05 * ((i + t + 7) as f64 * std::f64::consts::E).sin();
                 y_data[i + t * n] = as_[i] * (std::f64::consts::PI * tv).cos()
                     + bs[i] * (2.0 * std::f64::consts::PI * tv).cos()
                     + noise;
