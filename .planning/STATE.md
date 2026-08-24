@@ -1,19 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.29.0
-current_phase: 43
-current_phase_name: Boosting / Bayesian Functional Regression
+current_phase: 44
+current_phase_name: FEM/PDE Smoothing on Irregular 2D Domains
 status: executing
-stopped_at: Completed 43-02-boosted-fofr-PLAN.md
-last_updated: "2026-08-24T07:00:50.508Z"
-last_activity: 2026-08-23
-last_activity_desc: Phase 43 execution started
-state_head: 954db9c4b9a0ffb66da7f363d84837374769d468
+stopped_at: Phase 43 complete (verification passed, 5/5 REG-06)
+last_updated: "2026-08-24T09:30:00.000Z"
+last_activity: 2026-08-24
+last_activity_desc: Phase 43 complete + verified; starting Phase 44
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 5
 milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
 ---
 
@@ -24,14 +23,14 @@ milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-
 See: .planning/PROJECT.md (updated 2026-08-23)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone (v0.29.0) draws the **final three** items from the v0.18.0 `R-BACKLOG.md` (all score 0.67, L-effort), **exhausting the R-parity backlog**: boosting/Bayesian functional regression (REG-06), FEM/PDE smoothing on irregular domains (REP-02), and functional co-clustering (CLUS-02), each by adding `fdars-core/src/` code additively.
-**Current focus:** Phase 43 — Boosting / Bayesian Functional Regression
+**Current focus:** Phase 44 — FEM/PDE Smoothing on Irregular 2D Domains
 
 ## Current Position
 
-Phase: 43 (Boosting / Bayesian Functional Regression) — EXECUTING
-Plan: 3 of 5
-Status: Ready to execute
-Last activity: 2026-08-23 — Phase 43 execution started
+Phase: 44 (FEM/PDE Smoothing on Irregular 2D Domains) — starting
+Plan: —
+Status: Phase 43 complete + verified (5/5 REG-06 passed; clippy --all-targets clean, 2543 lib tests + all integration/doctests green). Beginning Phase 44.
+Last activity: 2026-08-24 — Phase 43 shipped (boosting_regression module: boost_fosr, boost_fofr, gamlss_fosr, bayesian_fosr, stability_selection)
 
 ## Milestone Roadmap (v0.29.0)
 
