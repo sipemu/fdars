@@ -518,6 +518,306 @@ pub fn smooth_positive(
     })
 }
 
+/// Result of Ramsay monotone smoothing via integral-of-exponential representation.
+///
+/// The fitted values are structurally monotone: since `f'(t) = β₁·exp(w(t))` and
+/// `exp(w(t)) > 0` always, the sign of `β₁` determines direction.  This guarantee
+/// holds even if the Gauss-Newton iteration did not fully converge.
+///
+/// # R baseline
+/// Analogous to `fda::smooth.monotone` (R fda package).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SmoothMonotoneResult {
+    /// Fitted values at the input `argvals` (length m). Structurally monotone.
+    pub fitted: Vec<f64>,
+    /// Intercept β₀ (value of the fitted function at `argvals[0]`).
+    pub beta0: f64,
+    /// Scale β₁. Positive → nondecreasing fit; negative → nonincreasing fit.
+    pub beta1: f64,
+    /// B-spline coefficients for the log-rate function `w(u)` (length = actual nbasis).
+    pub w_coefficients: Vec<f64>,
+    /// Number of Gauss-Newton iterations executed.
+    pub iterations: usize,
+    /// Whether the Gauss-Newton update norm fell below `1e-8` before `max_iter`.
+    pub converged: bool,
+}
+
+/// Monotone smoothing via Ramsay's integral-of-exponential representation.
+///
+/// Fits `f(t) = β₀ + β₁ ∫₀ᵗ exp(w(u)) du` where `w(u) = Σⱼ αⱼ Ψⱼ(u)` is a
+/// B-spline expansion, and `(β₀, β₁, α)` are estimated by penalised Gauss-Newton
+/// nonlinear least squares.
+///
+/// **Monotonicity is structural**: `f'(t) = β₁·exp(w(t)) > 0` (or `< 0` if
+/// `β₁ < 0`) for any parameter values, including underconverged iterates.
+/// Direction is auto-detected from the data: increasing data → `β₁ > 0`,
+/// decreasing data → `β₁ < 0`.
+///
+/// # Arguments
+/// * `data` — Observed response values (length m, need not be monotone)
+/// * `argvals` — Evaluation / domain points (length m, strictly increasing recommended)
+/// * `nbasis` — Target number of B-spline basis functions for `w(u)` (≥ 2)
+/// * `order` — B-spline order (e.g. 4 for cubic; ≥ 1)
+/// * `lambda` — Roughness penalty weight on `w(u)` (≥ 0; 0 = no penalty)
+/// * `max_iter` — Maximum Gauss-Newton iterations (≥ 1; typically 50 suffices)
+///
+/// # Errors
+/// * [`crate::FdarError::InvalidDimension`] — `data.len() < 3`, `argvals.len() != data.len()`
+/// * [`crate::FdarError::InvalidParameter`] — `nbasis < 2`, `order < 1`, `lambda < 0`,
+///   `max_iter < 1`
+/// * [`crate::FdarError::ComputationFailed`] — Cholesky of the GN normal equations failed
+///   after Levenberg ridge augmentation (rank-deficient system)
+///
+/// # Divergence from R
+/// Dense Gauss-Newton; no sparse solver.  Practical for m ≤ 500.  The
+/// `λ_mono` parameter penalises roughness of `w(u)` via `bspline_penalty_matrix`,
+/// reusing the existing fdars infrastructure.  Direction flip (decreasing data)
+/// is handled by allowing `β₁ < 0` rather than by negating the data.
+///
+/// # Example
+/// ```no_run
+/// use fdars_core::smooth_basis::smooth_monotone;
+///
+/// let t: Vec<f64> = (0..41).map(|i| i as f64 / 40.0).collect();
+/// let y: Vec<f64> = t.iter().map(|&ti| ti * ti).collect(); // t² is increasing
+/// let result = smooth_monotone(&y, &t, 8, 4, 1e-3, 50).unwrap();
+/// assert!(result.beta1 > 0.0);
+/// for i in 1..t.len() {
+///     assert!(result.fitted[i] >= result.fitted[i - 1] - 1e-9);
+/// }
+/// ```
+#[must_use = "expensive nonlinear least-squares computation whose result should not be discarded"]
+pub fn smooth_monotone(
+    data: &[f64],
+    argvals: &[f64],
+    nbasis: usize,
+    order: usize,
+    lambda: f64,
+    max_iter: usize,
+) -> Result<SmoothMonotoneResult, crate::FdarError> {
+    // ── Validation ────────────────────────────────────────────────────────────
+    let m = data.len();
+    if m < 3 || argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/argvals",
+            expected: "data.len() >= 3, argvals.len() == data.len()".to_string(),
+            actual: format!("data.len()={}, argvals.len()={}", m, argvals.len()),
+        });
+    }
+    if nbasis < 2 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("smooth_monotone requires nbasis >= 2, got {}", nbasis),
+        });
+    }
+    if order < 1 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("smooth_monotone requires order >= 1, got {}", order),
+        });
+    }
+    if lambda < 0.0 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!("smooth_monotone requires lambda >= 0, got {}", lambda),
+        });
+    }
+    if max_iter < 1 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: format!("smooth_monotone requires max_iter >= 1, got {}", max_iter),
+        });
+    }
+
+    // ── B-spline basis setup ──────────────────────────────────────────────────
+    // Use the same nknots convention as bspline_penalty_matrix so that
+    // actual_k == penalty matrix dimension.
+    let nknots = nbasis.saturating_sub(order).max(2);
+    // basis is n*actual_k column-major: basis[ti + j*m] = Ψ_j(t_i)
+    let basis_flat = crate::basis::bspline_basis(argvals, nknots, order);
+    let actual_k = basis_flat.len() / m;
+
+    // Precompute roughness penalty R (actual_k × actual_k, COLUMN-MAJOR).
+    // We will need it in ROW-MAJOR for the normal equations; R is symmetric so
+    // penalty_col[a + b*k] == penalty_col[b + a*k] — no explicit transpose needed.
+    let penalty_col = bspline_penalty_matrix(argvals, nbasis, order, 2);
+    // penalty_col may be sized (actual_k_pm)² — compute its actual side length.
+    let actual_k_pm = (penalty_col.len() as f64).sqrt() as usize;
+    // k used throughout: take the minimum in case of rare sizing mismatch.
+    let k = actual_k.min(actual_k_pm);
+
+    // Helper: Ψ_j(t_i) from column-major basis_flat.
+    let psi_at = |i: usize, j: usize| -> f64 {
+        if j < actual_k {
+            basis_flat[i + j * m]
+        } else {
+            0.0
+        }
+    };
+
+    // ── Initialisation ────────────────────────────────────────────────────────
+    let t_range = (argvals[m - 1] - argvals[0]).max(1e-12);
+    let beta0_init = data[0];
+    // beta1 sign auto-detects data direction; avoids dividing by zero t_range.
+    let beta1_init = (data[m - 1] - data[0]) / t_range;
+    // If the data is flat, use a tiny positive value so the fit is still valid.
+    let beta1_init = if beta1_init.abs() < 1e-12 {
+        1e-6
+    } else {
+        beta1_init
+    };
+    let mut beta0 = beta0_init;
+    let mut beta1 = beta1_init;
+    let mut alpha = vec![0.0_f64; k]; // w = 0 everywhere → exp(w) = 1
+
+    let big_p = 2 + k; // total parameter dimension
+
+    // ── Helper: build W[i] and Iexp_psi[i*k + j] via cumulative trapezoid ────
+    // argvals may not start at 0; we shift so integration starts at argvals[0].
+    // W[i] = ∫_{argvals[0]}^{argvals[i]} exp(w(u)) du (trapezoid rule on data grid)
+    // Iexp_psi[i*k+j] = ∫_{argvals[0]}^{argvals[i]} exp(w(u))·Ψ_j(u) du
+    let build_integrals = |alpha: &[f64]| -> (Vec<f64>, Vec<f64>) {
+        let mut exp_w = vec![0.0_f64; m];
+        for i in 0..m {
+            let w_i: f64 = (0..k).map(|j| alpha[j] * psi_at(i, j)).sum();
+            // Clamp to [-30, 30] to avoid overflow (threat T-44-08).
+            let w_clamped = w_i.clamp(-30.0, 30.0);
+            exp_w[i] = w_clamped.exp();
+        }
+        // W[i]: cumulative trapezoid of exp_w.
+        let mut w_int = vec![0.0_f64; m];
+        for i in 1..m {
+            let dt = argvals[i] - argvals[i - 1];
+            w_int[i] = w_int[i - 1] + 0.5 * (exp_w[i - 1] + exp_w[i]) * dt;
+        }
+        // Iexp_psi: cumulative trapezoid of exp_w * Ψ_j for each j.
+        let mut iexp_psi = vec![0.0_f64; m * k];
+        for i in 1..m {
+            let dt = argvals[i] - argvals[i - 1];
+            for j in 0..k {
+                let integrand_prev = exp_w[i - 1] * psi_at(i - 1, j);
+                let integrand_cur = exp_w[i] * psi_at(i, j);
+                iexp_psi[i * k + j] =
+                    iexp_psi[(i - 1) * k + j] + 0.5 * (integrand_prev + integrand_cur) * dt;
+            }
+        }
+        (w_int, iexp_psi)
+    };
+
+    // ── Gauss-Newton loop ─────────────────────────────────────────────────────
+    let mut iterations = 0_usize;
+    let mut converged = false;
+
+    for iter in 0..max_iter {
+        let (w_int, iexp_psi) = build_integrals(&alpha);
+
+        // Residuals: r_i = data[i] - f(t_i).
+        let mut resid = vec![0.0_f64; m];
+        for i in 0..m {
+            let f_i = beta0 + beta1 * w_int[i];
+            resid[i] = data[i] - f_i;
+        }
+
+        // Build normal equations A = JᵀJ (row-major big_p × big_p) and g = Jᵀr.
+        let mut a_mat = vec![0.0_f64; big_p * big_p];
+        let mut g_vec = vec![0.0_f64; big_p];
+
+        for i in 0..m {
+            // Jacobian row for observation i: [1, W[i], β₁·Iexp_psi[i,0..k]]
+            // col-0: ∂f/∂β₀ = 1
+            // col-1: ∂f/∂β₁ = W[i]
+            // col-(2+j): ∂f/∂α_j = β₁ · Iexp_psi[i*k+j]
+            let j0 = 1.0_f64;
+            let j1 = w_int[i];
+
+            // Accumulate JᵀJ and Jᵀr.
+            // Row/col indices: 0 = β₀, 1 = β₁, 2+j = α_j.
+
+            // (0,0): j0*j0
+            a_mat[0] += j0 * j0;
+            // (0,1): j0*j1
+            a_mat[1] += j0 * j1;
+            a_mat[big_p] += j1 * j0; // (1,0) = symmetric
+            // (1,1): j1*j1
+            a_mat[big_p + 1] += j1 * j1;
+
+            // g[0], g[1]
+            g_vec[0] += j0 * resid[i];
+            g_vec[1] += j1 * resid[i];
+
+            for aj in 0..k {
+                let jc = beta1 * iexp_psi[i * k + aj];
+                // (0, 2+aj) and (2+aj, 0)
+                a_mat[2 + aj] += j0 * jc;
+                a_mat[(2 + aj) * big_p] += jc * j0;
+                // (1, 2+aj) and (2+aj, 1)
+                a_mat[big_p + (2 + aj)] += j1 * jc;
+                a_mat[(2 + aj) * big_p + 1] += jc * j1;
+                // (2+aj, 2+aj) and cross-terms
+                for bj in 0..k {
+                    let jd = beta1 * iexp_psi[i * k + bj];
+                    a_mat[(2 + aj) * big_p + (2 + bj)] += jc * jd;
+                }
+                // g[2+aj]
+                g_vec[2 + aj] += jc * resid[i];
+            }
+        }
+
+        // Levenberg ridge on diagonal (threat T-44-09, T-44-10).
+        for d in 0..big_p {
+            a_mat[d * big_p + d] += 1e-6 * (1.0 + a_mat[d * big_p + d].abs());
+        }
+
+        // Add λ·R into the α–α sub-block.
+        // penalty_col is COLUMN-MAJOR (k×k): penalty_col[a + b*k] = R[a,b].
+        // a_mat is ROW-MAJOR (big_p×big_p): a_mat[(2+a)*big_p + (2+b)] += λ·R[a,b].
+        for a in 0..k {
+            for b in 0..k {
+                let r_ab = if a < actual_k_pm && b < actual_k_pm {
+                    penalty_col[a + b * actual_k_pm]
+                } else {
+                    0.0
+                };
+                a_mat[(2 + a) * big_p + (2 + b)] += lambda * r_ab;
+            }
+        }
+
+        // Solve normal equations.
+        let delta = crate::linalg::cholesky_solve(&a_mat, &g_vec, big_p)?;
+
+        // Apply update.
+        beta0 += delta[0];
+        beta1 += delta[1];
+        for j in 0..k {
+            alpha[j] += delta[2 + j];
+        }
+
+        iterations = iter + 1;
+
+        // Convergence check: ‖δ‖₂ < 1e-8.
+        let delta_norm: f64 = delta.iter().map(|d| d * d).sum::<f64>().sqrt();
+        if delta_norm < 1e-8 {
+            converged = true;
+            break;
+        }
+    }
+
+    // ── Final fit ─────────────────────────────────────────────────────────────
+    let (w_int_final, _) = build_integrals(&alpha);
+    let fitted: Vec<f64> = (0..m).map(|i| beta0 + beta1 * w_int_final[i]).collect();
+
+    Ok(SmoothMonotoneResult {
+        fitted,
+        beta0,
+        beta1,
+        w_coefficients: alpha,
+        iterations,
+        converged,
+    })
+}
+
 // ─── Config Structs ─────────────────────────────────────────────────────────
 
 /// Configuration for GCV-based smoothing parameter selection.
@@ -3260,6 +3560,231 @@ mod tests {
                 assert_eq!(parameter, "data");
             }
             other => panic!("Expected InvalidParameter, got {:?}", other),
+        }
+    }
+
+    // ============== smooth_monotone tests (Task 1: tracer) ==============
+
+    #[test]
+    fn test_smooth_monotone_is_monotone() {
+        // Fit a monotone-increasing target: g(t) = t².
+        let m = 41_usize;
+        let t = uniform_grid(m); // [0, 1] uniform
+        let y: Vec<f64> = t.iter().map(|&ti| ti * ti).collect();
+
+        let result = smooth_monotone(&y, &t, 8, 4, 1e-3, 50)
+            .expect("smooth_monotone should succeed on t² data");
+
+        // Every fitted value must be finite.
+        for (i, &v) in result.fitted.iter().enumerate() {
+            assert!(v.is_finite(), "fitted[{}] = {} is not finite", i, v);
+        }
+
+        // Structural nondecreasing guarantee must hold regardless of convergence.
+        for i in 1..m {
+            assert!(
+                result.fitted[i] >= result.fitted[i - 1] - 1e-9,
+                "Monotonicity violated at i={}: fitted[{}]={} < fitted[{}]={}",
+                i,
+                i,
+                result.fitted[i],
+                i - 1,
+                result.fitted[i - 1]
+            );
+        }
+
+        // beta1 should be positive (increasing direction).
+        assert!(
+            result.beta1 > 0.0,
+            "beta1 should be positive for increasing data, got {}",
+            result.beta1
+        );
+    }
+
+    // ============== smooth_monotone tests (Task 2: recovery + direction) ==============
+
+    #[test]
+    fn test_smooth_monotone_recovers_increasing() {
+        // Logistic target: well-conditioned smooth increasing function on [0,1].
+        // The logistic has high curvature near the inflection; the Gauss-Newton scheme
+        // requires more iterations to shape the w(u) spline precisely.  We use
+        // max_iter=100 so convergence can complete; the bounded-iterations oracle
+        // (test_smooth_monotone_bounded_iterations) uses max_iter=50 separately.
+        let m = 51_usize;
+        let t = uniform_grid(m);
+        let y: Vec<f64> = t.iter().map(|&ti| 1.0 / (1.0 + (-8.0 * (ti - 0.5)).exp())).collect();
+
+        let result = smooth_monotone(&y, &t, 10, 4, 1e-4, 100)
+            .expect("smooth_monotone should succeed on logistic data");
+
+        // Recovery within tolerance.  Tolerance is 0.15 (not a tight 0.05) to allow
+        // for boundary effects in cumulative-trapezoid integration and B-spline knot
+        // placement at the grid edges — both standard sources of bias in v1.
+        let mae: f64 =
+            y.iter().zip(result.fitted.iter()).map(|(&yi, &fi)| (yi - fi).abs()).sum::<f64>()
+                / m as f64;
+        assert!(
+            mae < 0.15,
+            "Mean absolute error {} too large for logistic recovery (tolerance 0.15, iterations={})",
+            mae,
+            result.iterations
+        );
+
+        // Monotonicity must still hold regardless of convergence.
+        for i in 1..m {
+            assert!(
+                result.fitted[i] >= result.fitted[i - 1] - 1e-9,
+                "Monotonicity violated at i={}: fitted[{}]={} < fitted[{}]={}",
+                i,
+                result.fitted[i],
+                i,
+                result.fitted[i - 1],
+                i - 1
+            );
+        }
+    }
+
+    #[test]
+    fn test_smooth_monotone_decreasing() {
+        // Decreasing target: g(t) = 1 - t (simple linear decrease).
+        let m = 41_usize;
+        let t = uniform_grid(m);
+        let y: Vec<f64> = t.iter().map(|&ti| 1.0 - ti).collect();
+
+        let result = smooth_monotone(&y, &t, 8, 4, 1e-3, 50)
+            .expect("smooth_monotone should succeed on decreasing data");
+
+        // Direction auto-detected: beta1 must be negative.
+        assert!(
+            result.beta1 < 0.0,
+            "beta1 should be negative for decreasing data, got {}",
+            result.beta1
+        );
+
+        // Fit must be nonincreasing: fitted[i] <= fitted[i-1] + 1e-9.
+        for i in 1..m {
+            assert!(
+                result.fitted[i] <= result.fitted[i - 1] + 1e-9,
+                "Nonincreasing violated at i={}: fitted[{}]={} > fitted[{}]={}",
+                i,
+                result.fitted[i],
+                i,
+                result.fitted[i - 1],
+                i - 1
+            );
+        }
+    }
+
+    #[test]
+    fn test_smooth_monotone_bounded_iterations() {
+        // Noisy monotone data (deterministic pseudo-noise so test is reproducible).
+        let m = 51_usize;
+        let t = uniform_grid(m);
+        let y: Vec<f64> = t
+            .iter()
+            .enumerate()
+            .map(|(i, &ti)| {
+                let noise = 0.05 * ((i * 17 + 3) % 11) as f64 / 10.0 - 0.025;
+                ti + noise // noisy increasing; not guaranteed sorted but trend is up
+            })
+            .collect();
+
+        let result = smooth_monotone(&y, &t, 8, 4, 1e-2, 50)
+            .expect("smooth_monotone should succeed on noisy data");
+
+        // Bounded iteration count.
+        assert!(
+            result.iterations <= 50,
+            "iterations ({}) must be <= max_iter (50)",
+            result.iterations
+        );
+
+        // Structural monotonicity holds even if not converged.
+        // Increasing data → beta1 > 0 → fitted is nondecreasing.
+        // (beta1 < 0 would mean fitted is nonincreasing — check the appropriate direction.)
+        if result.beta1 >= 0.0 {
+            for i in 1..m {
+                assert!(
+                    result.fitted[i] >= result.fitted[i - 1] - 1e-9,
+                    "Nondecreasing violated (beta1={}) at i={}",
+                    result.beta1,
+                    i
+                );
+            }
+        } else {
+            for i in 1..m {
+                assert!(
+                    result.fitted[i] <= result.fitted[i - 1] + 1e-9,
+                    "Nonincreasing violated (beta1={}) at i={}",
+                    result.beta1,
+                    i
+                );
+            }
+        }
+    }
+
+    // ============== smooth_monotone tests (Task 3: error paths) ==============
+
+    #[test]
+    fn test_smooth_monotone_errors_on_short_input() {
+        // data.len() == 2 → need >= 3.
+        let data = vec![0.0, 1.0];
+        let argvals = vec![0.0, 1.0];
+        let result = smooth_monotone(&data, &argvals, 4, 4, 1e-3, 50);
+        assert!(
+            result.is_err(),
+            "smooth_monotone should fail for data.len() == 2"
+        );
+        match result.unwrap_err() {
+            crate::FdarError::InvalidDimension { parameter, .. } => {
+                assert!(
+                    parameter.contains("data") || parameter.contains("argvals"),
+                    "Expected data/argvals dimension error, got param={}",
+                    parameter
+                );
+            }
+            other => panic!("Expected InvalidDimension, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_smooth_monotone_errors_on_argvals_mismatch() {
+        // argvals.len() != data.len()
+        let m = 10_usize;
+        let data: Vec<f64> = (0..m).map(|i| i as f64).collect();
+        let argvals: Vec<f64> = (0..m - 1).map(|i| i as f64).collect();
+        let result = smooth_monotone(&data, &argvals, 4, 4, 1e-3, 50);
+        assert!(result.is_err(), "smooth_monotone should fail for argvals length mismatch");
+        match result.unwrap_err() {
+            crate::FdarError::InvalidDimension { .. } => {}
+            other => panic!("Expected InvalidDimension, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_smooth_monotone_errors_on_bad_params() {
+        let m = 10_usize;
+        let t = uniform_grid(m);
+        let data: Vec<f64> = t.iter().map(|&ti| ti).collect();
+
+        // nbasis == 1 → InvalidParameter
+        let result = smooth_monotone(&data, &t, 1, 4, 1e-3, 50);
+        assert!(result.is_err(), "smooth_monotone should fail for nbasis == 1");
+        match result.unwrap_err() {
+            crate::FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "nbasis");
+            }
+            other => panic!("Expected InvalidParameter(nbasis), got {:?}", other),
+        }
+
+        // max_iter == 0 → InvalidParameter
+        let result = smooth_monotone(&data, &t, 8, 4, 1e-3, 0);
+        assert!(result.is_err(), "smooth_monotone should fail for max_iter == 0");
+        match result.unwrap_err() {
+            crate::FdarError::InvalidParameter { parameter, .. } => {
+                assert_eq!(parameter, "max_iter");
+            }
+            other => panic!("Expected InvalidParameter(max_iter), got {:?}", other),
         }
     }
 }
