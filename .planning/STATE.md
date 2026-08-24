@@ -4,16 +4,16 @@ milestone: v0.29.0
 current_phase: 43
 current_phase_name: Boosting / Bayesian Functional Regression
 status: executing
-stopped_at: Completed 43-01-boosting-core-fosr-PLAN.md
-last_updated: "2026-08-24T06:52:09.059Z"
+stopped_at: Completed 43-02-boosted-fofr-PLAN.md
+last_updated: "2026-08-24T07:00:50.508Z"
 last_activity: 2026-08-23
 last_activity_desc: Phase 43 execution started
-state_head: c50eb195040b12be65ea758bc607186f7ac6737a
+state_head: 954db9c4b9a0ffb66da7f363d84837374769d468
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
 milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-23)
 ## Current Position
 
 Phase: 43 (Boosting / Bayesian Functional Regression) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-23 — Phase 43 execution started
 
@@ -87,6 +87,7 @@ Three phases, three requirements — the **final three** `R-BACKLOG.md` items (a
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 43 P01 | 13 | 3 tasks | 8 files |
+| Phase 43 P02 | 6 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,7 @@ Conventions carried from prior milestones (relevant to implementation):
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
 - [Phase 43]: Beta matrix in BoostFosrResult stores mean fitted-value proxy (p × m_t) not B-spline K-vectors — consistent with FosrResult.beta convention
 - [Phase 43]: BaseLearner struct pre-factors Cholesky once per learner — amortized over mstop iterations (only back-solves per iteration)
+- [Phase 43]: boost_fofr uses bfpc FPC-score compression (fdata_to_pc_1d) rather than FDboost bsignal B-spline joint expansion — simpler, dependency-free, documented divergence in rustdoc
 
 ### Pending Todos
 
@@ -148,8 +150,8 @@ Advisory tech-debt carried forward (not v0.29.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-24T06:52:09.049Z
-Stopped at: Completed 43-01-boosting-core-fosr-PLAN.md
+Last session: 2026-08-24T07:00:50.498Z
+Stopped at: Completed 43-02-boosted-fofr-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

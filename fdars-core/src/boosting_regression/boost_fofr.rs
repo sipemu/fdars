@@ -66,7 +66,11 @@ fn st_times_vec(scores: &FdMatrix, u_col: &[f64]) -> Vec<f64> {
         .map(|kk| {
             // scores.column(kk) is contiguous (column-major): element (i,kk) at i + kk*n
             let s_col = scores.column(kk);
-            s_col.iter().zip(u_col.iter()).map(|(&s, &u)| s * u).sum::<f64>()
+            s_col
+                .iter()
+                .zip(u_col.iter())
+                .map(|(&s, &u)| s * u)
+                .sum::<f64>()
         })
         .collect()
 }
@@ -538,7 +542,9 @@ mod tests {
         let ty = uniform_grid(m_y);
 
         // Deterministic amplitude coefficients for each observation
-        let as_: Vec<f64> = (0..n).map(|i| (i as f64) / (n - 1) as f64 * 2.0 - 1.0).collect();
+        let as_: Vec<f64> = (0..n)
+            .map(|i| (i as f64) / (n - 1) as f64 * 2.0 - 1.0)
+            .collect();
         let bs: Vec<f64> = (0..n)
             .map(|i| ((i + 1) as f64 * 1.618) % 1.0 * 2.0 - 1.0)
             .collect();
@@ -566,11 +572,13 @@ mod tests {
         let y = FdMatrix::from_column_major(y_data, n, m_y).unwrap();
 
         // A noise predictor (constant across observations → no signal)
-        let noise_x_data: Vec<f64> = (0..n * m_x).map(|k| {
-            let i = k % n;
-            let t = k / n;
-            0.02 * ((i + t * 3) as f64 * 1.234).sin()
-        }).collect();
+        let noise_x_data: Vec<f64> = (0..n * m_x)
+            .map(|k| {
+                let i = k % n;
+                let t = k / n;
+                0.02 * ((i + t * 3) as f64 * 1.234).sin()
+            })
+            .collect();
         let noise_x = FdMatrix::from_column_major(noise_x_data, n, m_x).unwrap();
 
         (x, y, tx, ty, noise_x)
@@ -602,11 +610,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            result.fitted.shape(),
-            (25, 18),
-            "fitted must be (n, m_y)"
-        );
+        assert_eq!(result.fitted.shape(), (25, 18), "fitted must be (n, m_y)");
         assert_eq!(
             result.residuals.shape(),
             (25, 18),
@@ -637,14 +641,7 @@ mod tests {
             mstop: 40,
             ..default_config()
         };
-        let result = boost_fofr(
-            &[&x],
-            &[tx.as_slice()],
-            &y,
-            &ty,
-            &config,
-        )
-        .unwrap();
+        let result = boost_fofr(&[&x], &[tx.as_slice()], &y, &ty, &config).unwrap();
 
         let gcv = &result.gcv_path;
         assert_eq!(gcv.len(), config.mstop);
@@ -665,14 +662,7 @@ mod tests {
     fn boost_fofr_r_squared_in_range() {
         let (x, y, tx, ty, _noise_x) = make_fofr_data(25, 20, 18);
         let config = default_config();
-        let result = boost_fofr(
-            &[&x],
-            &[tx.as_slice()],
-            &y,
-            &ty,
-            &config,
-        )
-        .unwrap();
+        let result = boost_fofr(&[&x], &[tx.as_slice()], &y, &ty, &config).unwrap();
 
         assert!(
             result.r_squared >= -0.05,
@@ -705,8 +695,16 @@ mod tests {
         .unwrap();
 
         // Two predictors → two beta surfaces, each (m_x, m_y)
-        assert_eq!(result.beta_surfaces.len(), 2, "one beta surface per predictor");
-        assert_eq!(result.score_coefs.len(), 2, "one score_coefs entry per predictor");
+        assert_eq!(
+            result.beta_surfaces.len(),
+            2,
+            "one beta surface per predictor"
+        );
+        assert_eq!(
+            result.score_coefs.len(),
+            2,
+            "one score_coefs entry per predictor"
+        );
 
         for j in 0..2 {
             assert_eq!(
@@ -727,14 +725,7 @@ mod tests {
 
         // Predictor with wrong number of rows
         let bad_x = FdMatrix::zeros(10, 20);
-        let err = boost_fofr(
-            &[&bad_x],
-            &[tx.as_slice()],
-            &y,
-            &ty,
-            &config,
-        )
-        .unwrap_err();
+        let err = boost_fofr(&[&bad_x], &[tx.as_slice()], &y, &ty, &config).unwrap_err();
         assert!(
             matches!(err, FdarError::InvalidDimension { .. }),
             "row mismatch must return InvalidDimension, got {err:?}"
@@ -742,14 +733,7 @@ mod tests {
 
         // x_argvals wrong length
         let bad_tx: Vec<f64> = vec![0.0, 0.5, 1.0]; // length 3, not 20
-        let err = boost_fofr(
-            &[&x],
-            &[bad_tx.as_slice()],
-            &y,
-            &ty,
-            &config,
-        )
-        .unwrap_err();
+        let err = boost_fofr(&[&x], &[bad_tx.as_slice()], &y, &ty, &config).unwrap_err();
         assert!(
             matches!(err, FdarError::InvalidDimension { .. }),
             "argvals mismatch must return InvalidDimension, got {err:?}"
@@ -757,14 +741,7 @@ mod tests {
 
         // y_argvals wrong length
         let bad_ty: Vec<f64> = vec![0.0, 1.0]; // length 2, not 18
-        let err = boost_fofr(
-            &[&x],
-            &[tx.as_slice()],
-            &y,
-            &bad_ty,
-            &config,
-        )
-        .unwrap_err();
+        let err = boost_fofr(&[&x], &[tx.as_slice()], &y, &bad_ty, &config).unwrap_err();
         assert!(
             matches!(err, FdarError::InvalidDimension { .. }),
             "y_argvals mismatch must return InvalidDimension, got {err:?}"
@@ -776,7 +753,10 @@ mod tests {
         let (x, y, tx, ty, _noise_x) = make_fofr_data(25, 20, 18);
 
         // mstop == 0
-        let config = BoostingConfig { mstop: 0, ..default_config() };
+        let config = BoostingConfig {
+            mstop: 0,
+            ..default_config()
+        };
         let err = boost_fofr(&[&x], &[tx.as_slice()], &y, &ty, &config).unwrap_err();
         assert!(
             matches!(err, FdarError::InvalidParameter { .. }),
@@ -784,7 +764,10 @@ mod tests {
         );
 
         // ncomp_x == 0
-        let config = BoostingConfig { ncomp_x: 0, ..default_config() };
+        let config = BoostingConfig {
+            ncomp_x: 0,
+            ..default_config()
+        };
         let err = boost_fofr(&[&x], &[tx.as_slice()], &y, &ty, &config).unwrap_err();
         assert!(
             matches!(err, FdarError::InvalidParameter { .. }),
@@ -792,7 +775,10 @@ mod tests {
         );
 
         // nu > 1
-        let config = BoostingConfig { nu: 1.5, ..default_config() };
+        let config = BoostingConfig {
+            nu: 1.5,
+            ..default_config()
+        };
         let err = boost_fofr(&[&x], &[tx.as_slice()], &y, &ty, &config).unwrap_err();
         assert!(
             matches!(err, FdarError::InvalidParameter { .. }),
