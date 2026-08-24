@@ -88,6 +88,7 @@ pub mod detrend;
 pub mod distance;
 pub mod famm;
 pub mod fdata;
+pub mod fem_smoothing;
 pub mod fof_regression;
 pub mod fpca_variants;
 pub mod frechet;
@@ -374,6 +375,9 @@ pub use streaming_depth::{
     FullReferenceState, RollingReference, SortedReferenceState, StreamingBd, StreamingDepth,
     StreamingFraimanMuniz, StreamingMbd,
 };
+
+// Re-export FEM smoothing types (wave-1: mesh assembly + basis evaluation)
+pub use fem_smoothing::{assemble_fem_matrices, fem_basis_eval, FemSmoothResult};
 
 // Re-export smooth basis types
 pub use smooth_basis::{

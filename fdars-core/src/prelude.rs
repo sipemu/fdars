@@ -43,6 +43,9 @@ pub use crate::smoothing::{CvCriterion, OptimBandwidthResult};
 pub use crate::basis::BasisProjectionResult;
 pub use crate::smooth_basis::{BasisType, SmoothBasisResult};
 
+// FEM smoothing (wave-1 foundation)
+pub use crate::fem_smoothing::FemSmoothResult;
+
 // Elastic analysis
 pub use crate::elastic_fpca::{HorizFpcaResult, JointFpcaResult, VertFpcaResult};
 pub use crate::elastic_regression::{
