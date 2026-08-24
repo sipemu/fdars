@@ -161,11 +161,7 @@ fn mesh_validate(nodes: &[[f64; 2]], triangles: &[[usize; 3]]) -> Result<(), Fda
 #[inline]
 fn element_mass(area: f64) -> [[f64; 3]; 3] {
     let a = area / 12.0;
-    [
-        [2.0 * a, a, a],
-        [a, 2.0 * a, a],
-        [a, a, 2.0 * a],
-    ]
+    [[2.0 * a, a, a], [a, 2.0 * a, a], [a, a, 2.0 * a]]
 }
 
 /// Element stiffness matrix for a P1 triangle (Laplacian weak form, 3×3 local).
@@ -184,9 +180,12 @@ fn element_mass(area: f64) -> [[f64; 3]; 3] {
 /// Caller must ensure `area > 0` (guaranteed by `mesh_validate`).
 #[inline]
 fn element_stiffness(
-    x0: f64, y0: f64,
-    x1: f64, y1: f64,
-    x2: f64, y2: f64,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
     area: f64,
 ) -> [[f64; 3]; 3] {
     let b0 = y1 - y2;
@@ -197,9 +196,21 @@ fn element_stiffness(
     let c2 = x1 - x0;
     let s = 1.0 / (4.0 * area);
     [
-        [s * (b0 * b0 + c0 * c0), s * (b0 * b1 + c0 * c1), s * (b0 * b2 + c0 * c2)],
-        [s * (b1 * b0 + c1 * c0), s * (b1 * b1 + c1 * c1), s * (b1 * b2 + c1 * c2)],
-        [s * (b2 * b0 + c2 * c0), s * (b2 * b1 + c2 * c1), s * (b2 * b2 + c2 * c2)],
+        [
+            s * (b0 * b0 + c0 * c0),
+            s * (b0 * b1 + c0 * c1),
+            s * (b0 * b2 + c0 * c2),
+        ],
+        [
+            s * (b1 * b0 + c1 * c0),
+            s * (b1 * b1 + c1 * c1),
+            s * (b1 * b2 + c1 * c2),
+        ],
+        [
+            s * (b2 * b0 + c2 * c0),
+            s * (b2 * b1 + c2 * c1),
+            s * (b2 * b2 + c2 * c2),
+        ],
     ]
 }
 
@@ -297,10 +308,14 @@ pub fn assemble_fem_matrices(
 /// ```
 #[inline]
 fn barycentric(
-    px: f64, py: f64,
-    x0: f64, y0: f64,
-    x1: f64, y1: f64,
-    x2: f64, y2: f64,
+    px: f64,
+    py: f64,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
 ) -> Option<(f64, f64, f64)> {
     let det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
     if det.abs() < BARY_DET_EPS {
@@ -858,10 +873,7 @@ mod tests {
     #[test]
     fn test_fem_empty_mesh_error() {
         // Empty nodes.
-        let result_empty_nodes = assemble_fem_matrices(
-            &[] as &[[f64; 2]],
-            &[[0_usize, 1, 2]],
-        );
+        let result_empty_nodes = assemble_fem_matrices(&[] as &[[f64; 2]], &[[0_usize, 1, 2]]);
         assert!(
             matches!(result_empty_nodes, Err(FdarError::InvalidDimension { .. })),
             "empty nodes must return InvalidDimension, got: {result_empty_nodes:?}"
@@ -883,7 +895,13 @@ mod tests {
         let query = [[5.0_f64, 5.0]];
         let result = fem_basis_eval(&nodes, &triangles, &query);
         assert!(
-            matches!(result, Err(FdarError::InvalidParameter { parameter: "query_xy", .. })),
+            matches!(
+                result,
+                Err(FdarError::InvalidParameter {
+                    parameter: "query_xy",
+                    ..
+                })
+            ),
             "outside-mesh point must return InvalidParameter(query_xy), got: {result:?}"
         );
     }
@@ -940,13 +958,22 @@ mod tests {
         let n_obs = obs_xy.len();
 
         // Smooth ground truth: g(x,y) = sin(π·x)·sin(π·y) evaluated at cell centres.
-        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let g =
+            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
         let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-2).unwrap();
 
-        assert_eq!(result.node_values.len(), nodes.len(), "node_values length mismatch");
-        assert_eq!(result.fitted_obs.len(), obs_xy.len(), "fitted_obs length mismatch");
+        assert_eq!(
+            result.node_values.len(),
+            nodes.len(),
+            "node_values length mismatch"
+        );
+        assert_eq!(
+            result.fitted_obs.len(),
+            obs_xy.len(),
+            "fitted_obs length mismatch"
+        );
         assert!(result.rss.is_finite(), "rss must be finite");
 
         // RSS / n_obs must be small relative to variance of y.
@@ -966,7 +993,8 @@ mod tests {
         let (nodes, triangles) = refined_square_mesh();
         let obs_xy = cell_centres();
 
-        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let g =
+            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
         let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-3).unwrap();
@@ -991,7 +1019,8 @@ mod tests {
         let (nodes, triangles) = refined_square_mesh();
         let obs_xy = cell_centres();
 
-        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let g =
+            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
         let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
 
         // Very small λ → near-interpolation (small residuals at observations).
@@ -1002,7 +1031,8 @@ mod tests {
         assert!(
             result_small.rss < result_large.rss,
             "small λ should yield smaller RSS: small={:.4e} vs large={:.4e}",
-            result_small.rss, result_large.rss
+            result_small.rss,
+            result_large.rss
         );
         // At very small λ, residuals at observations should be near zero.
         let max_resid_small = result_small
@@ -1023,16 +1053,26 @@ mod tests {
         let obs_xy = cell_centres();
         let n_obs = obs_xy.len();
 
-        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let g =
+            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
         let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 0.1).unwrap();
 
-        assert!(result.gcv.is_finite(), "GCV must be finite, got: {}", result.gcv);
-        assert!(result.edf > 0.0, "edf must be positive, got: {}", result.edf);
+        assert!(
+            result.gcv.is_finite(),
+            "GCV must be finite, got: {}",
+            result.gcv
+        );
+        assert!(
+            result.edf > 0.0,
+            "edf must be positive, got: {}",
+            result.edf
+        );
         assert!(
             result.edf <= n_obs as f64 + 1e-6,
-            "edf must not exceed n_obs={n_obs}, got: {}", result.edf
+            "edf must not exceed n_obs={n_obs}, got: {}",
+            result.edf
         );
     }
 
@@ -1043,15 +1083,21 @@ mod tests {
         let (nodes, triangles) = refined_square_mesh();
         let obs_xy = cell_centres();
 
-        let g = |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
+        let g =
+            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
         let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
 
         let result = fem_smooth_gcv(&nodes, &triangles, &obs_xy, &y, (-6.0, 2.0), 9).unwrap();
 
-        assert!(result.gcv.is_finite(), "GCV from gcv search must be finite, got: {}", result.gcv);
+        assert!(
+            result.gcv.is_finite(),
+            "GCV from gcv search must be finite, got: {}",
+            result.gcv
+        );
         assert!(
             result.lambda >= 1e-6 && result.lambda <= 1e2 + 1e-9,
-            "chosen lambda = {} must lie within [1e-6, 1e2]", result.lambda
+            "chosen lambda = {} must lie within [1e-6, 1e2]",
+            result.lambda
         );
     }
 
@@ -1065,12 +1111,7 @@ mod tests {
         let node_values: Vec<f64> = nodes.iter().map(|&[x, y]| f_lin(x, y)).collect();
 
         // Interior query points (inside the mesh).
-        let query_xy: Vec<[f64; 2]> = vec![
-            [0.25, 0.25],
-            [0.5, 0.5],
-            [0.75, 0.25],
-            [0.25, 0.75],
-        ];
+        let query_xy: Vec<[f64; 2]> = vec![[0.25, 0.25], [0.5, 0.5], [0.75, 0.25], [0.25, 0.75]];
 
         let preds = fem_predict(&node_values, &nodes, &triangles, &query_xy).unwrap();
 
@@ -1093,7 +1134,13 @@ mod tests {
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 0.1);
         assert!(
-            matches!(result, Err(FdarError::InvalidParameter { parameter: "query_xy", .. })),
+            matches!(
+                result,
+                Err(FdarError::InvalidParameter {
+                    parameter: "query_xy",
+                    ..
+                })
+            ),
             "obs outside mesh must return InvalidParameter(query_xy), got: {result:?}"
         );
     }

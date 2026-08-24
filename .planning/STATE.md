@@ -4,15 +4,16 @@ milestone: v0.29.0
 current_phase: 44
 current_phase_name: FEM/PDE Smoothing on Irregular 2D Domains
 status: executing
-stopped_at: Phase 43 complete (verification passed, 5/5 REG-06)
-last_updated: "2026-08-24T09:30:00.000Z"
+stopped_at: Completed 44-02-srpde-smoothing-gcv-PLAN.md
+last_updated: "2026-08-24T16:55:24.133Z"
 last_activity: 2026-08-24
-last_activity_desc: Phase 43 complete + verified; starting Phase 44
+last_activity_desc: Phase 44 execution started
+state_head: 278ec438d02bf2c534bd3018f1132ddfc0292573
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 9
+  completed_plans: 7
 milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
 ---
 
@@ -27,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-23)
 
 ## Current Position
 
-Phase: 44 (FEM/PDE Smoothing on Irregular 2D Domains) — starting
-Plan: —
-Status: Phase 43 complete + verified (5/5 REG-06 passed; clippy --all-targets clean, 2543 lib tests + all integration/doctests green). Beginning Phase 44.
-Last activity: 2026-08-24 — Phase 43 shipped (boosting_regression module: boost_fosr, boost_fofr, gamlss_fosr, bayesian_fosr, stability_selection)
+Phase: 44 (FEM/PDE Smoothing on Irregular 2D Domains) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-08-24 — Phase 44 execution started
 
 ## Milestone Roadmap (v0.29.0)
 
@@ -87,6 +88,7 @@ Three phases, three requirements — the **final three** `R-BACKLOG.md` items (a
 |------|----------|-------|-------|
 | Phase 43 P01 | 13 | 3 tasks | 8 files |
 | Phase 43 P02 | 6 | 2 tasks | 1 files |
+| Phase 44 P02 | 15 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -117,6 +119,7 @@ Conventions carried from prior milestones (relevant to implementation):
 - [Phase 43]: Beta matrix in BoostFosrResult stores mean fitted-value proxy (p × m_t) not B-spline K-vectors — consistent with FosrResult.beta convention
 - [Phase 43]: BaseLearner struct pre-factors Cholesky once per learner — amortized over mstop iterations (only back-solves per iteration)
 - [Phase 43]: boost_fofr uses bfpc FPC-score compression (fdata_to_pc_1d) rather than FDboost bsignal B-spline joint expansion — simpler, dependency-free, documented divergence in rustdoc
+- [Phase 44]: edf/GCV computed inside fem_smooth to avoid double Cholesky; O(N^3) A_inv cost documented; eps=1e-10 ridge lifts K null space
 
 ### Pending Todos
 
@@ -149,8 +152,8 @@ Advisory tech-debt carried forward (not v0.29.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-24T07:00:50.498Z
-Stopped at: Completed 43-02-boosted-fofr-PLAN.md
+Last session: 2026-08-24T16:55:24.099Z
+Stopped at: Completed 44-02-srpde-smoothing-gcv-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
