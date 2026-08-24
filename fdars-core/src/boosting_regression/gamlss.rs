@@ -19,9 +19,9 @@
 //! Gaussian family (location + scale) is implemented. Link functions: identity for μ,
 //! log for σ.
 
+use super::{BoostingConfig, GamlssResult};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use super::{GamlssResult, BoostingConfig};
 
 /// GAMLSS-style distributional functional regression.
 ///

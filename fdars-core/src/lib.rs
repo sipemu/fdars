@@ -76,6 +76,7 @@ pub mod andrews;
 
 // Shared utility modules
 pub mod basis;
+pub mod boosting_regression;
 pub mod classification;
 pub mod clustering;
 pub mod clustering_advanced;
@@ -100,7 +101,6 @@ pub mod irreg_fdata;
 pub mod landmark;
 pub mod metric;
 pub mod outliers;
-pub mod boosting_regression;
 pub mod regression;
 pub mod scalar_on_function;
 pub mod seasonal;
@@ -532,7 +532,7 @@ pub use scoring::{
 
 // Re-export boosting and Bayesian functional regression types (Phase 43 REG-06)
 pub use boosting_regression::{
-    bayesian_fosr, boost_fofr, boost_fosr, gamlss_fosr, stability_selection,
-    BayesianConfig, BayesianFosrResult, BoostFofrResult, BoostFosrResult,
-    BoostingConfig, GamlssResult, StabilityConfig, StabilityResult,
+    bayesian_fosr, boost_fofr, boost_fosr, gamlss_fosr, stability_selection, BayesianConfig,
+    BayesianFosrResult, BoostFofrResult, BoostFosrResult, BoostingConfig, GamlssResult,
+    StabilityConfig, StabilityResult,
 };

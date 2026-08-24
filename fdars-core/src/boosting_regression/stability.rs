@@ -19,9 +19,9 @@
 //! Selection criterion: base-learner appears in `selected_learners` at any iteration.
 //! Seeded per replicate for full reproducibility.
 
+use super::{BoostingConfig, StabilityConfig, StabilityResult};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use super::{BoostingConfig, StabilityConfig, StabilityResult};
 
 /// FDboost-style stability selection.
 ///

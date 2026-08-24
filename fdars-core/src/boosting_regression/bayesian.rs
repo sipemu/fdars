@@ -18,9 +18,9 @@
 //! Uses FPCA score compression (`fdata_to_pc_1d`) rather than spline basis priors.
 //! Pointwise credible bands only (no simultaneous bands). Seeded for determinism.
 
+use super::{BayesianConfig, BayesianFosrResult};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use super::{BayesianConfig, BayesianFosrResult};
 
 /// Bayesian function-on-scalar regression via conjugate Gibbs sampler.
 ///

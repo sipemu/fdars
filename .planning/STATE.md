@@ -1,16 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.29.0
-milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
-status: planning
-last_updated: "2026-08-23T20:15:00.000Z"
+current_phase: 43
+current_phase_name: Boosting / Bayesian Functional Regression
+status: executing
+stopped_at: Completed 43-01-boosting-core-fosr-PLAN.md
+last_updated: "2026-08-24T06:52:09.059Z"
 last_activity: 2026-08-23
+last_activity_desc: Phase 43 execution started
+state_head: c50eb195040b12be65ea758bc607186f7ac6737a
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 5
+  completed_plans: 1
+milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
 ---
 
 # Project State
@@ -20,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-23)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against the reference FDA ecosystems — this milestone (v0.29.0) draws the **final three** items from the v0.18.0 `R-BACKLOG.md` (all score 0.67, L-effort), **exhausting the R-parity backlog**: boosting/Bayesian functional regression (REG-06), FEM/PDE smoothing on irregular domains (REP-02), and functional co-clustering (CLUS-02), each by adding `fdars-core/src/` code additively.
-**Current focus:** Phase 43 — Boosting / Bayesian Functional Regression (roadmap approved; ready to plan)
+**Current focus:** Phase 43 — Boosting / Bayesian Functional Regression
 
 ## Current Position
 
-Phase: Not started (roadmap defined — 3 phases)
-Plan: —
-Status: Roadmap created — awaiting phase planning
-Last activity: 2026-08-23 — Milestone v0.29.0 roadmap created (Phases 43/44/45)
+Phase: 43 (Boosting / Bayesian Functional Regression) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-08-23 — Phase 43 execution started
 
 ## Milestone Roadmap (v0.29.0)
 
@@ -78,6 +82,11 @@ Three phases, three requirements — the **final three** `R-BACKLOG.md` items (a
 - Trend: consistent ~45min per plan, 7 tests/plan average for implementation phases. **v0.29.0 is heavier** — three large standalone estimation subsystems (boosting/Bayesian, mesh/FEM, latent-block EM), each likely a multi-plan decomposition.
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 43 P01 | 13 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -105,6 +114,8 @@ Conventions carried from prior milestones (relevant to implementation):
 - Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon parallelism (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` where randomness is involved — relevant here: REG-06's Bayesian Gibbs/VB sampler + stability-selection resampling and CLUS-02's EM initialization must be seeded/deterministic; FPC scores reuse `fdata_to_pc_1d`.
 - Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — a plain `-p ... -D warnings` false-greens; MEMORY.md pointer).
 - `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone builds real code + doctests, so this pointer matters.
+- [Phase 43]: Beta matrix in BoostFosrResult stores mean fitted-value proxy (p × m_t) not B-spline K-vectors — consistent with FosrResult.beta convention
+- [Phase 43]: BaseLearner struct pre-factors Cholesky once per learner — amortized over mstop iterations (only back-solves per iteration)
 
 ### Pending Todos
 
@@ -137,8 +148,8 @@ Advisory tech-debt carried forward (not v0.29.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-23T20:15:00.000Z
-Stopped at: v0.29.0 roadmap created — Phases 43/44/45 defined, 12/12 requirements mapped
+Last session: 2026-08-24T06:52:09.049Z
+Stopped at: Completed 43-01-boosting-core-fosr-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -78,7 +78,9 @@ pub(crate) fn pointwise_r_squared(data: &FdMatrix, fitted: &FdMatrix) -> Vec<f64
         .map(|t| {
             let mean_t: f64 = (0..n).map(|i| data[(i, t)]).sum::<f64>() / n as f64;
             let ss_tot: f64 = (0..n).map(|i| (data[(i, t)] - mean_t).powi(2)).sum();
-            let ss_res: f64 = (0..n).map(|i| (data[(i, t)] - fitted[(i, t)]).powi(2)).sum();
+            let ss_res: f64 = (0..n)
+                .map(|i| (data[(i, t)] - fitted[(i, t)]).powi(2))
+                .sum();
             if ss_tot > 1e-15 {
                 1.0 - ss_res / ss_tot
             } else {
@@ -182,7 +184,9 @@ pub(crate) fn boost_fosr_one_step(
         (Some(f), Some(c)) => Ok((best_j, f, c)),
         _ => Err(FdarError::ComputationFailed {
             operation: "boost_fosr_one_step",
-            detail: "no valid base-learner found; all Cholesky solves failed or no learners provided".to_string(),
+            detail:
+                "no valid base-learner found; all Cholesky solves failed or no learners provided"
+                    .to_string(),
         }),
     }
 }
@@ -270,10 +274,7 @@ pub fn boost_fosr(
         return Err(FdarError::InvalidDimension {
             parameter: "data/predictors",
             expected: format!("n >= 3, m > 0, predictors.nrows() == n (n={n})"),
-            actual: format!(
-                "n={n}, m={m_t}, predictors.nrows()={}",
-                predictors.nrows()
-            ),
+            actual: format!("n={n}, m={m_t}, predictors.nrows()={}", predictors.nrows()),
         });
     }
     if argvals.len() != m_t {
@@ -375,7 +376,8 @@ pub fn boost_fosr(
                 .map(|i| x_min + (x_max - x_min) * i as f64 / (n_pts - 1).max(1) as f64)
                 .collect()
         };
-        let r_col_major = bspline_penalty_matrix(&x_argvals_for_penalty, actual_k, order, config.lfd_order);
+        let r_col_major =
+            bspline_penalty_matrix(&x_argvals_for_penalty, actual_k, order, config.lfd_order);
 
         // Build Aⱼ = Φⱼ'Φⱼ + λ·Rⱼ + ε·I (K × K row-major)
         // Note: Φ is column-major (element (i,k) at phi[i + k*n])
@@ -552,7 +554,11 @@ mod tests {
         let result = boost_fosr(&data, &predictors, &argvals, &config).unwrap();
 
         let gcv = &result.gcv_path;
-        assert_eq!(gcv.len(), config.mstop, "gcv_path should have mstop entries");
+        assert_eq!(
+            gcv.len(),
+            config.mstop,
+            "gcv_path should have mstop entries"
+        );
 
         // Each entry should be <= the previous (non-increasing RSS)
         for i in 1..gcv.len() {
@@ -630,14 +636,8 @@ mod tests {
 
         // Every pointwise r_squared_t entry should also be sane
         for (t, &r2t) in result.r_squared_t.iter().enumerate() {
-            assert!(
-                r2t >= -0.05,
-                "r_squared_t[{t}] = {r2t} < -0.05"
-            );
-            assert!(
-                r2t <= 1.0 + 1e-8,
-                "r_squared_t[{t}] = {r2t} > 1"
-            );
+            assert!(r2t >= -0.05, "r_squared_t[{t}] = {r2t} < -0.05");
+            assert!(r2t <= 1.0 + 1e-8, "r_squared_t[{t}] = {r2t} > 1");
         }
     }
 
@@ -654,10 +654,7 @@ mod tests {
             "selected_learners must have mstop entries"
         );
         for (iter, &j) in result.selected_learners.iter().enumerate() {
-            assert!(
-                j < p,
-                "selected_learners[{iter}] = {j} >= p={p}"
-            );
+            assert!(j < p, "selected_learners[{iter}] = {j} >= p={p}");
         }
     }
 
@@ -684,24 +681,36 @@ mod tests {
         let mut config = default_config();
         config.mstop = 0;
         let err = boost_fosr(&data, &predictors, &argvals, &config).unwrap_err();
-        assert!(matches!(err, FdarError::InvalidParameter { .. }), "mstop=0 should return InvalidParameter");
+        assert!(
+            matches!(err, FdarError::InvalidParameter { .. }),
+            "mstop=0 should return InvalidParameter"
+        );
 
         // nu <= 0
         let mut config = default_config();
         config.nu = -0.1;
         let err = boost_fosr(&data, &predictors, &argvals, &config).unwrap_err();
-        assert!(matches!(err, FdarError::InvalidParameter { .. }), "nu<0 should return InvalidParameter");
+        assert!(
+            matches!(err, FdarError::InvalidParameter { .. }),
+            "nu<0 should return InvalidParameter"
+        );
 
         // lambda <= 0
         let mut config = default_config();
         config.lambda = 0.0;
         let err = boost_fosr(&data, &predictors, &argvals, &config).unwrap_err();
-        assert!(matches!(err, FdarError::InvalidParameter { .. }), "lambda=0 should return InvalidParameter");
+        assert!(
+            matches!(err, FdarError::InvalidParameter { .. }),
+            "lambda=0 should return InvalidParameter"
+        );
 
         // nbasis < 4
         let mut config = default_config();
         config.nbasis = 2;
         let err = boost_fosr(&data, &predictors, &argvals, &config).unwrap_err();
-        assert!(matches!(err, FdarError::InvalidParameter { .. }), "nbasis<4 should return InvalidParameter");
+        assert!(
+            matches!(err, FdarError::InvalidParameter { .. }),
+            "nbasis<4 should return InvalidParameter"
+        );
     }
 }

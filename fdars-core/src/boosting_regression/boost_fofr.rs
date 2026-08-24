@@ -15,9 +15,9 @@
 //! Uses FPC score compression (`fdata_to_pc_1d`) rather than FDboost's `bsignal`
 //! B-spline joint expansion. Simpler and dependency-free.
 
+use super::{BoostFofrResult, BoostingConfig};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use super::{BoostFofrResult, BoostingConfig};
 
 /// Component-wise gradient boosting for function-on-function regression.
 ///
