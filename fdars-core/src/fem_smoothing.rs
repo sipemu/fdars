@@ -247,7 +247,6 @@ fn element_stiffness(
 /// assert_eq!(m.len(), 16); // 4×4
 /// assert_eq!(k.len(), 16);
 /// ```
-#[must_use]
 pub fn assemble_fem_matrices(
     nodes: &[[f64; 2]],
     triangles: &[[usize; 3]],
@@ -383,7 +382,6 @@ fn locate_point(
 /// let sum: f64 = weights.iter().map(|(_, w)| w).sum();
 /// assert!((sum - 1.0).abs() < 1e-12, "hat values must sum to 1");
 /// ```
-#[must_use]
 pub fn fem_basis_eval(
     nodes: &[[f64; 2]],
     triangles: &[[usize; 3]],
