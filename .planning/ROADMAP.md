@@ -17,7 +17,7 @@
 - ✅ **v0.26.0 — FPCA Breadth & Sparse Covariance** — Phases 37–38 (shipped 2026-08-21) — [archive](milestones/v0.26.0-ROADMAP.md)
 - ✅ **v0.27.0 — Functional Time Series & Fréchet Regression** — Phases 39–40 (shipped 2026-08-22) — [archive](milestones/v0.27.0-ROADMAP.md)
 - ✅ **v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression** — Phases 41–42 (shipped 2026-08-23) — [archive](milestones/v0.28.0-ROADMAP.md)
-- 🔵 **v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering** — Phases 43–45 (active) — the FINAL three `R-BACKLOG.md` items (all score 0.67, L-effort); **exhausts the backlog**
+- ✅ **v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering** — Phases 43–45 (shipped 2026-08-30) — [archive](milestones/v0.29.0-ROADMAP.md)
 
 ## Overview
 
@@ -53,7 +53,7 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.28.0-ROAD
 </details>
 
 <details open>
-<summary>🔵 v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering (Phases 43–45) — ACTIVE</summary>
+<summary>✅ v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering (Phases 43–45) — SHIPPED 2026-08-30</summary>
 
 - [ ] **Phase 43: Boosting / Bayesian Functional Regression** (REG-06) — new `boosting_regression.rs`: component-wise gradient boosting with functional base-learners (boosted FOSR + boosted FoFR), GAMLSS distributional regression, Bayesian FOSR (Gibbs/VB), FDboost stability selection. R baseline `FDboost`/`refund`.
 - [ ] **Phase 44: FEM/PDE Smoothing on Irregular 2D Domains** (REP-02) — new `fem_smoothing.rs`: linear finite-element basis over a triangulated 2D mesh + PDE (Laplacian) regularization; positive (log-domain) & Ramsay integral-of-exp monotone smoothers added additively to `smooth_basis.rs`. R baseline `fdaPDE`. Planner MAY revisit the no-dependency constraint here.
