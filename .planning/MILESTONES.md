@@ -1,5 +1,18 @@
 # Milestones
 
+## v0.29.0 Boosting/Bayesian, FEM/PDE & Co-Clustering (Shipped: 2026-08-30)
+
+**Phases completed:** 3 phases, 11 plans, 3 tasks
+
+**Key accomplishments:**
+
+- Component-wise B-spline-boosted FOSR (REG-06-01) with penalized Cholesky base-learners, plus full module scaffold (all 5 config structs, all 5 result structs, 4 compiling skeletons) registered in lib.rs and prelude.rs.
+- Boosted FoFR via FPC-score signal compression (bfpc): per-predictor FPCA design, amortised Cholesky base-learner solve, and rotation-matrix coefficient-surface reconstruction.
+- Log-domain positive smoother wrapping existing `smooth_basis` on `ln(data)` with exp-reconstruction for a strictly-positive guaranteed fit.
+- Ramsay integral-of-exp monotone smoother with Gauss-Newton + cumulative-trapezoid integration, direction auto-detect, structural monotonicity guarantee.
+
+---
+
 ## v0.28.0 Spectral Functional Time Series & Object-Data Fréchet Regression (Shipped: 2026-08-23)
 
 **Phases completed:** 2 phases, 5 plans, 0 tasks

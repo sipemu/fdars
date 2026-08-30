@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.29.0
-current_phase: 45
-current_phase_name: Functional Co-Clustering (funLBM latent-block)
-status: executing
+status: Awaiting next milestone
 stopped_at: Completed 45-02-slope-heuristic-selection-PLAN.md
-last_updated: "2026-08-30T19:01:19.568Z"
+last_updated: "2026-08-30T19:08:03.757Z"
 last_activity: 2026-08-30
-last_activity_desc: Phase 45 execution resumed (wave continue)
-state_head: d4d6accf359b03f97bf442f4e1ed041a384319cd
+last_activity_desc: Milestone v0.29.0 completed and archived
+state_head: 3ac940c420642153d68afead4ce9dc9bfe1ec8bc
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
   completed_plans: 11
 milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
+current_phase: 45
+current_phase_name: Functional Co-Clustering (funLBM latent-block)
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-23)
 
 ## Current Position
 
-Phase: 45 (Functional Co-Clustering (funLBM latent-block)) — EXECUTING
-Plan: 1 of ?
-Status: Executing Phase 45
-Last activity: 2026-08-30 — Phase 45 execution resumed (wave continue)
+Phase: Milestone v0.29.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-30 — Milestone v0.29.0 completed and archived
 
 ## Milestone Roadmap (v0.29.0)
 
@@ -164,4 +164,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 43` (or 44 / 45 — any order; all three are independent). Expect multi-plan decomposition per phase (heaviest milestone in the sequence).
+- Start the next milestone with /gsd-new-milestone
