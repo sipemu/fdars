@@ -80,7 +80,12 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
   2. A **duplication/consolidation inventory** exists cataloging machinery repeated across modules with source anchors (file:line), ranked by dedup leverage — enough to drive Phase 49 concretely.
   3. An **API-inconsistency inventory** exists cataloging config/result patterns and redundant public functions that are candidates for additive unification, each with a proposed canonical form noted — enough to drive Phase 50 concretely.
   4. The profiling pass uses only existing dev-dependencies (criterion, feature-gated `dhat-heap`) — no new crate dependency — and makes zero behavior-changing edits to `fdars-core/src/` algorithms.
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 46-01-PLAN.md — Wave 0 setup + baseline-green + tracer probe-bench pipeline (fpca_variants end-to-end) + PROF-01 doc skeleton (PROF-01)
+- [ ] 46-02-PLAN.md — Expand probe benches to remaining 8 subsystems + dhat alloc probes + complete PROF-01 ranked inventory + remove throwaway benches (PROF-01)
+- [ ] 46-03-PLAN.md — PROF-02 duplication/consolidation inventory (static grep analysis, ranked by dedup leverage) (PROF-02)
+- [ ] 46-04-PLAN.md — PROF-03 API-inconsistency inventory (static analysis, proposed canonical forms, additive-safe classification) (PROF-03)
+- [ ] 46-05-PLAN.md — PROF-00 summary tying inventories together + final zero-behavior-change gate + validation sign-off (PROF-01/02/03)
 **UI hint**: no
 
 ### Phase 47: Hot-Path & Allocation Performance
@@ -149,7 +154,7 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 46. Whole-Crate Profiling & Measurement | 0/TBD | Not started | - |
+| 46. Whole-Crate Profiling & Measurement | 0/5 | Planned | - |
 | 47. Hot-Path & Allocation Performance | 0/TBD | Not started | - |
 | 48. Parallelism-Gap Closure | 0/TBD | Not started | - |
 | 49. Code Consolidation / Dedup | 0/TBD | Not started | - |
