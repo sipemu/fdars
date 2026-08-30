@@ -3,9 +3,9 @@ phase: 46
 slug: whole-crate-profiling-measurement
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-30
 ---
 
@@ -72,10 +72,11 @@ binaries and are discarded (not registered as permanent `[[bench]]` entries — 
 
 ## Validation Sign-Off
 
-- [ ] Full suite green before measurement (baseline)
-- [ ] Full suite green after probe benches removed (zero behavior change confirmed)
-- [ ] No throwaway probe bench left registered as a permanent `[[bench]]` (Phase 51 owns those)
-- [ ] Three inventory documents exist, each with the required anchors/numbers
-- [ ] `nyquist_compliant: true` set in frontmatter (N/A test coverage — measure-only; set once baseline-green + inventories confirmed)
+- [x] Full suite green before measurement (baseline) — 13 test groups, 0 failed (Plan 01 Task 1)
+- [x] Full suite green after probe benches removed (zero behavior change confirmed) — 0 failed (Plan 02 Task 3)
+- [x] No throwaway probe bench left registered as a permanent `[[bench]]` (Phase 51 owns those) — `grep probe_ Cargo.toml` → 0; 10 registered benches intact
+- [x] Three inventory documents exist, each with the required anchors/numbers — PROF-01 (11 anchors), PROF-02 (10 anchors + CONS tags), PROF-03 (11 anchors + API tags); plus PROF-00 index
+- [x] `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean (exit 0, 0 warnings)
+- [x] `nyquist_compliant: true` set in frontmatter (measure-only — no new test coverage; baseline-green + inventories confirmed)
 
-**Approval:** pending
+**Approval:** approved 2026-08-30 — measure-only phase; full suite green before and after, clippy `--all-targets` clean, four inventory docs grounded, zero `src/` edits.
