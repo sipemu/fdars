@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.29.0
-status: Awaiting next milestone
-stopped_at: Completed 45-02-slope-heuristic-selection-PLAN.md
-last_updated: "2026-08-30T19:08:03.757Z"
+milestone: v0.30.0
+milestone_name: Performance & Consolidation Pass
+status: planning
+last_updated: "2026-08-30T19:45:11.231Z"
 last_activity: 2026-08-30
-last_activity_desc: Milestone v0.29.0 completed and archived
-state_head: 3ac940c420642153d68afead4ce9dc9bfe1ec8bc
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
-milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
-current_phase: 45
-current_phase_name: Functional Co-Clustering (funLBM latent-block)
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-23)
 
 ## Current Position
 
-Phase: Milestone v0.29.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-30 — Milestone v0.29.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-30 — Milestone v0.30.0 started
 
 ## Milestone Roadmap (v0.29.0)
 
