@@ -66,25 +66,33 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROF-01 | TBD | Pending |
-| PROF-02 | TBD | Pending |
-| PROF-03 | TBD | Pending |
-| PERF-01 | TBD | Pending |
-| PERF-02 | TBD | Pending |
-| PERF-03 | TBD | Pending |
-| CONS-01 | TBD | Pending |
-| CONS-02 | TBD | Pending |
-| API-01 | TBD | Pending |
-| API-02 | TBD | Pending |
-| API-03 | TBD | Pending |
-| BENCH-01 | TBD | Pending |
-| BENCH-02 | TBD | Pending |
+| PROF-01 | Phase 46 | Pending |
+| PROF-02 | Phase 46 | Pending |
+| PROF-03 | Phase 46 | Pending |
+| PERF-01 | Phase 47 | Pending |
+| PERF-02 | Phase 47 | Pending |
+| PERF-03 | Phase 48 | Pending |
+| CONS-01 | Phase 49 | Pending |
+| CONS-02 | Phase 49 | Pending |
+| API-01 | Phase 50 | Pending |
+| API-02 | Phase 50 | Pending |
+| API-03 | Phase 50 | Pending |
+| BENCH-01 | Phase 51 | Pending |
+| BENCH-02 | Phase 51 | Pending |
 
 **Coverage:**
 - v1 requirements: 13 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 13 ⚠️ (filled by roadmapper)
+- Mapped to phases: 13 ✓ (Phases 46–51)
+- Unmapped: 0 ✓
+
+**Phase → Requirement summary:**
+- Phase 46 (Profiling & Measurement): PROF-01, PROF-02, PROF-03
+- Phase 47 (Hot-Path & Allocation Performance): PERF-01, PERF-02
+- Phase 48 (Parallelism-Gap Closure): PERF-03
+- Phase 49 (Code Consolidation / Dedup): CONS-01, CONS-02
+- Phase 50 (Additive API-Surface Consolidation): API-01, API-02, API-03
+- Phase 51 (Benchmark Coverage & Regression Guards): BENCH-01, BENCH-02
 
 ---
 *Requirements defined: 2026-08-30*
-*Last updated: 2026-08-30 after initial definition (milestone v0.30.0 start)*
+*Last updated: 2026-08-30 after roadmap creation (Phases 46–51 mapped; 13/13 requirements covered)*
