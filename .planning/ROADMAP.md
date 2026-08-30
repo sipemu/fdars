@@ -97,7 +97,11 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
   2. Allocation hotspots identified by PROF-01 (unnecessary `FdMatrix`↔`DMatrix` copies, per-iteration allocations in hot loops) are reduced, verified by an **allocation profile** (feature-gated `dhat-heap`) showing fewer/smaller allocations plus equivalence tests confirming unchanged output.
   3. Every optimization is behavior-preserving and additive: no existing public signature changes, and any `linalg`/non-`linalg` split path keeps both branches producing equivalent results.
   4. No new crate dependency is introduced.
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 47-01-PLAN.md — Wave 0 proof pipeline (perf_hotpaths bench + equivalence + dhat alloc-audit + PERF-RESULTS.md) + OPT-A tracer: fts::dpca allocation reduction (17,739 → <1000 blocks) (PERF-01, PERF-02)
+- [ ] 47-02-PLAN.md — OPT-B/C/D: DMatrix::from_fn copy removals in fsvd, ssvd, functional_acf (+ sqrt_w precompute) (PERF-02)
+- [ ] 47-03-PLAN.md — OPT-E: irreg_fdata::cov_irreg kernel-weight precompute (~98% fewer exp(); ≥15% face_covariance wall-time) (PERF-01)
+- [ ] 47-04-PLAN.md — OPT-F: fem_smooth clone removal + document/defer O(N³) bottleneck + finalize PERF-RESULTS.md + VALIDATION sign-off (PERF-01)
 **UI hint**: no
 
 ### Phase 48: Parallelism-Gap Closure
@@ -155,7 +159,7 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 46. Whole-Crate Profiling & Measurement | 5/5 | ✓ Complete | 2026-08-30 |
-| 47. Hot-Path & Allocation Performance | 0/TBD | Not started | - |
+| 47. Hot-Path & Allocation Performance | 0/4 | Planned | - |
 | 48. Parallelism-Gap Closure | 0/TBD | Not started | - |
 | 49. Code Consolidation / Dedup | 0/TBD | Not started | - |
 | 50. Additive API-Surface Consolidation | 0/TBD | Not started | - |
