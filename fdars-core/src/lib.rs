@@ -467,7 +467,10 @@ pub use fpca_variants::{
 pub use regression::{ridge_regression_fit, RidgeResult};
 
 // Re-export co-clustering types (funLBM latent block model)
-pub use coclustering::{co_cluster, BlockParams, CoClusterConfig, CoClusterResult};
+pub use coclustering::{
+    co_cluster, co_cluster_select, BlockParams, CoClusterConfig, CoClusterResult,
+    CoClusterSelectResult,
+};
 
 // Re-export clustering types
 pub use clustering::{
