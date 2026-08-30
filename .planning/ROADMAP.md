@@ -109,7 +109,8 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.28.0-ROAD
   3. User can select the number of blocks via the slope-heuristic criterion over a range of candidate (row, column) block counts.
 
 **Plans**: 2 plans
-- [ ] 45-01-funlbm-cem-core-PLAN.md — funLBM CEM core: co_cluster fit + CoClusterResult/BlockParams + ICL (CLUS-02-01, CLUS-02-02)
+
+- [x] 45-01-funlbm-cem-core-PLAN.md — funLBM CEM core: co_cluster fit + CoClusterResult/BlockParams + ICL (CLUS-02-01, CLUS-02-02)
 - [ ] 45-02-slope-heuristic-selection-PLAN.md — Birgé–Massart slope-heuristic (K,L) model selection over a grid (CLUS-02-03)
 
 Full detail: this section (active milestone — archived to `milestones/v0.29.0-ROADMAP.md` on ship).
@@ -122,6 +123,6 @@ Full detail: this section (active milestone — archived to `milestones/v0.29.0-
 |-------|----------------|--------|-----------|
 | 43. Boosting / Bayesian Functional Regression | 2/5 | In Progress|  |
 | 44. FEM/PDE Smoothing on Irregular 2D Domains | 4/4 | In Progress|  |
-| 45. Functional Co-Clustering (funLBM latent-block) | 0/2 | Not started | - |
+| 45. Functional Co-Clustering (funLBM latent-block) | 1/2 | In Progress|  |
 
 All phases through v0.28.0 are shipped and archived under `milestones/`.

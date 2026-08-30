@@ -4,16 +4,16 @@ milestone: v0.29.0
 current_phase: 45
 current_phase_name: Functional Co-Clustering (funLBM latent-block)
 status: executing
-stopped_at: Completed 44-04-monotone-smoother-PLAN.md
-last_updated: "2026-08-24T17:15:09.726Z"
-last_activity: 2026-08-24
-last_activity_desc: Phase 45 execution started
-state_head: 90adb2d6542253a0430733f89f19d0801ac0bfa7
+stopped_at: Completed 45-01-PLAN.md
+last_updated: "2026-08-30T18:56:29.272Z"
+last_activity: 2026-08-30
+last_activity_desc: Phase 45 execution resumed (wave continue)
+state_head: a06d6a2d2bb21abe6bb55e6cb10623ea3ff1bac8
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 11
+  completed_plans: 10
 milestone_name: Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-23)
 Phase: 45 (Functional Co-Clustering (funLBM latent-block)) — EXECUTING
 Plan: 1 of ?
 Status: Executing Phase 45
-Last activity: 2026-08-24 — Phase 45 execution started
+Last activity: 2026-08-30 — Phase 45 execution resumed (wave continue)
 
 ## Milestone Roadmap (v0.29.0)
 
@@ -91,6 +91,7 @@ Three phases, three requirements — the **final three** `R-BACKLOG.md` items (a
 | Phase 44 P02 | 15 | 3 tasks | 2 files |
 | Phase 44 P03 | 720 | 2 tasks | 3 files |
 | Phase 44 P44-04 | 25 | 3 tasks | 4 files |
+| Phase 45 P01 | 30 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,7 @@ Conventions carried from prior milestones (relevant to implementation):
 - [Phase 44]: edf/GCV computed inside fem_smooth to avoid double Cholesky; O(N^3) A_inv cost documented; eps=1e-10 ridge lifts K null space
 - [Phase 44]: Used FdMatrix for SmoothPositiveResult fields (not Vec<f64>) per PLAN.md; delegated all smoothing to existing smooth_basis on log(data); validated data > 0 before any ln to mitigate T-44-07
 - [Phase 44]: Ramsay integral-of-exp monotone smoother: structural monotonicity via f'=β₁·exp(w(t)), direction auto-detected from data
+- [Phase 45]: Column-clusters range over m argument points (col_labels.len()==m) — true funLBM; one global FPCA reused with block-score projection
 
 ### Pending Todos
 
@@ -156,8 +158,8 @@ Advisory tech-debt carried forward (not v0.29.0 work): weakened MEWMA test asser
 
 ## Session Continuity
 
-Last session: 2026-08-24T17:09:28.998Z
-Stopped at: Completed 44-04-monotone-smoother-PLAN.md
+Last session: 2026-08-30T18:56:29.034Z
+Stopped at: Completed 45-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
