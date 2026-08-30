@@ -861,7 +861,10 @@ fn cem_single_fit(
 ///
 /// let data = FdMatrix::zeros(10, 8);
 /// let argvals: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
-/// let config = CoClusterConfig { n_row_blocks: 2, n_col_blocks: 2, ncomp: 3, ..Default::default() };
+/// let mut config = CoClusterConfig::default();
+/// config.n_row_blocks = 2;
+/// config.n_col_blocks = 2;
+/// config.ncomp = 3;
 /// let result = co_cluster(&data, &argvals, &config)?;
 /// assert_eq!(result.row_labels.len(), 10);
 /// assert_eq!(result.col_labels.len(), 8);
@@ -1075,7 +1078,9 @@ pub struct CoClusterSelectResult {
 ///
 /// let data = FdMatrix::zeros(20, 10);
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let config = CoClusterConfig { ncomp: 3, n_init: 2, ..Default::default() };
+/// let mut config = CoClusterConfig::default();
+/// config.ncomp = 3;
+/// config.n_init = 2;
 /// let result = co_cluster_select(&data, &argvals, &[2, 3, 4], &[2, 3], &config)?;
 /// println!("Selected K={}, L={}", result.best_k, result.best_l);
 /// # Ok::<(), fdars_core::error::FdarError>(())
