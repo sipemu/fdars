@@ -80,6 +80,7 @@ pub mod boosting_regression;
 pub mod classification;
 pub mod clustering;
 pub mod clustering_advanced;
+pub mod coclustering;
 pub mod concurrent_regression;
 pub mod cv;
 pub mod density_fda;
@@ -464,6 +465,9 @@ pub use fpca_variants::{
 };
 #[cfg(feature = "linalg")]
 pub use regression::{ridge_regression_fit, RidgeResult};
+
+// Re-export co-clustering types (funLBM latent block model)
+pub use coclustering::{co_cluster, BlockParams, CoClusterConfig, CoClusterResult};
 
 // Re-export clustering types
 pub use clustering::{

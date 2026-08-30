@@ -81,3 +81,6 @@ pub use crate::alignment::{
 
 // Irregular functional data
 pub use crate::irreg_fdata::IrregFdata;
+
+// Co-clustering (funLBM latent block model)
+pub use crate::coclustering::{CoClusterConfig, CoClusterResult};
