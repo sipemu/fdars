@@ -95,10 +95,6 @@ harness = false
 name = "audit_hotpaths"
 harness = false
 
-[[bench]]
-name = "probe_fpca_variants"   # THROWAWAY — Phase 46 profiling only; removed in Plan 02
-harness = false
-
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
