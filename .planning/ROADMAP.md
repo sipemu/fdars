@@ -60,7 +60,7 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 
 **Milestone Goal:** Profile the whole crate, then land behavior-preserving improvements on four fronts — hot-path performance, code dedup, additive API consolidation, and benchmark coverage — driven by same-milestone profiling evidence rather than an external gap-audit.
 
-- [ ] **Phase 46: Whole-Crate Profiling & Measurement** - Produce the three ranked inventories (hot-path targets, duplication, API inconsistencies) that drive every downstream phase
+- [x] **Phase 46: Whole-Crate Profiling & Measurement** - Produce the three ranked inventories (hot-path targets, duplication, API inconsistencies) that drive every downstream phase
 - [ ] **Phase 47: Hot-Path & Allocation Performance** - Optimize the top-ranked compute-bound paths and allocation hotspots with before/after benchmark + equivalence proof
 - [ ] **Phase 48: Parallelism-Gap Closure** - Close feature-gated rayon parallelism gaps in the newer subsystems, equivalence-tested with payback-threshold guards
 - [ ] **Phase 49: Code Consolidation / Dedup** - Factor duplicated numerical + statistical-test machinery into shared `pub(crate)` helpers; migrate all call sites, behavior unchanged
@@ -154,7 +154,7 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 46. Whole-Crate Profiling & Measurement | 0/5 | Planned | - |
+| 46. Whole-Crate Profiling & Measurement | 5/5 | ✓ Complete | 2026-08-30 |
 | 47. Hot-Path & Allocation Performance | 0/TBD | Not started | - |
 | 48. Parallelism-Gap Closure | 0/TBD | Not started | - |
 | 49. Code Consolidation / Dedup | 0/TBD | Not started | - |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.30.0
 milestone_name: Performance & Consolidation Pass
-status: planning
-last_updated: "2026-08-30T20:15:00.000Z"
+status: executing
+last_updated: "2026-08-30T22:30:00.000Z"
 last_activity: 2026-08-30
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 5
+  completed_plans: 5
+  percent: 17
 ---
 
 # Project State
@@ -20,16 +20,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-30)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library — with both parity backlogs exhausted, v0.30.0 pivots from breadth to depth: profile the whole crate, then land behavior-preserving improvements across hot-path performance, code duplication, additive API consistency, and benchmark coverage.
-**Current focus:** Phase 46 — Whole-Crate Profiling & Measurement (measure-first; ranks all downstream targets)
+**Current focus:** Phase 47 — Hot-Path & Allocation Performance (consumes PROF-01's ranked targets)
 
 ## Current Position
 
-Phase: 46 of 51 (Whole-Crate Profiling & Measurement) — first phase of the milestone
-Plan: — (roadmap just created; not yet planned)
-Status: Ready to plan
-Last activity: 2026-08-30 — Roadmap created for v0.30.0 (Phases 46–51, 13/13 requirements mapped)
+Phase: 47 of 51 (Hot-Path & Allocation Performance) — Phase 46 complete
+Plan: — (not yet planned)
+Status: Phase 46 complete & verified (passed 4/4); ready to plan Phase 47
+Last activity: 2026-08-30 — Phase 46 executed (5 plans) and verified passed; three ranked inventories produced (PROF-00/01/02/03)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 17%
+
+### Phase 46 outcomes (feed downstream phases)
+- **PROF-01** (→ Phase 47/51): top hot paths `face_covariance` (984ms), `fem_smooth` (452ms), `frechet_anova` (133ms); top allocation `fts::dpca` (42MB churn). All 9 subsystems ranked with file:line anchors.
+- **PROF-02** (→ Phase 49): top dedup = χ²/F survival (2 independent gamma kernels, `inference/dist.rs:99` vs `spm/chi_squared.rs:164`); then permutation loops, seeded-RNG, SVD sign-fix.
+- **PROF-03** (→ Phase 50): 4 Config structs missing `Default`; non-seedable `fanova`; breaking items deferred to APIB-01.
+- Measure-only confirmed: zero `src/` edits, no new dependency, full suite green, clippy `--all-targets` clean.
 
 ## Milestone Roadmap (v0.30.0)
 
