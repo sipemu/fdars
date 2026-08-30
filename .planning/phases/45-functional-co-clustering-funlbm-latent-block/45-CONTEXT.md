@@ -27,10 +27,11 @@ document divergences in rustdoc.
 ## Implementation Decisions
 
 ### Block Model & FPC Representation
-- Block model: funLBM block-wise Gaussian — each (row-block k, column-block l) block is modelled by a low-dimensional Gaussian on FPC scores.
-- FPC scores source: global FPCA via the existing `fdata_to_pc_1d` on the full data; block Gaussians operate on subvectors of the global scores (reuse existing machinery, simpler than per-block FPCA).
-- Column-block assignment: an arbitrary cluster label per argument point (L column-clusters); columns need NOT be contiguous.
+- **Column-clusters range over the ARGUMENT POINTS** (RESOLVED after research flagged the ambiguity): `col_labels` has length **m** — the m argument/time points are partitioned into L column-clusters (need NOT be contiguous). This matches CLUS-02-01 ("argument points to column-clusters") — true funLBM, NOT clustering of FPC components.
+- Block model: funLBM block-wise Gaussian — each (row-block k, column-block l) block is modelled by a low-dimensional Gaussian on the block's FPC scores.
+- FPC representation (reconciles "global FPCA reuse" with column-clusters-over-argument-points): compute **one global FPCA** via existing `fdata_to_pc_1d`. For a curve i in column-block l, the block score is the projection of `Y_i` **restricted to column-block l's argument points** onto the global FPC loadings restricted to those same points. This keeps columns = argument points while reusing a single global FPCA (no per-iteration FPCA recomputation). The block Gaussian is fit on those per-(k,l) block scores.
 - FPC components per block: a fixed small `d` taken from config (`ncomp`).
+- Block covariance: diagonal per-component variance is acceptable (no Cholesky needed, WASM/MSRV-safe) — planner's discretion (full vs diagonal), documented as a divergence if diagonal.
 
 ### EM Algorithm
 - EM variant: variational / classification EM on the latent block model, alternating updates of row memberships and column memberships (deterministic — no stochastic SEM-Gibbs in v1).
