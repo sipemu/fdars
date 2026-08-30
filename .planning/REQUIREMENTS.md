@@ -15,28 +15,28 @@ Requirements for milestone v0.29.0. Each category maps to a roadmap phase.
 
 R baseline: `FDboost` 1.1-4 (component-wise gradient boosting, GAMLSS, stability selection) + `refund` (Bayesian FOSR via Gibbs/VB). New `fdars-core/src/boosting_regression.rs` — component-wise gradient boosting with functional base-learners; a Gibbs/VB Bayesian function-on-scalar sampler. fdars regression is currently penalized/kernel/PLS/elastic only — no boosting or Bayesian machinery (Area 4, all absent differentiators).
 
-- [ ] **REG-06-01**: User can fit component-wise gradient-boosting functional regression with functional base-learners for a **function-on-scalar** response (boosted FOSR), selecting one base-learner per iteration.
-- [ ] **REG-06-02**: User can fit component-wise gradient-boosting functional regression for a **function-on-function** predictor/response (boosted FoFR base-learners).
-- [ ] **REG-06-03**: User can fit a GAMLSS-style distributional functional regression — modelling more than one distributional parameter (e.g. location + scale) of the response.
-- [ ] **REG-06-04**: User can fit a Bayesian function-on-scalar regression via a Gibbs/VB sampler, obtaining coefficient posterior summaries (mean + credible bands).
-- [ ] **REG-06-05**: User can run FDboost-style stability selection over the boosting base-learners to obtain selection frequencies / a stable predictor set.
+- [x] **REG-06-01**: User can fit component-wise gradient-boosting functional regression with functional base-learners for a **function-on-scalar** response (boosted FOSR), selecting one base-learner per iteration.
+- [x] **REG-06-02**: User can fit component-wise gradient-boosting functional regression for a **function-on-function** predictor/response (boosted FoFR base-learners).
+- [x] **REG-06-03**: User can fit a GAMLSS-style distributional functional regression — modelling more than one distributional parameter (e.g. location + scale) of the response.
+- [x] **REG-06-04**: User can fit a Bayesian function-on-scalar regression via a Gibbs/VB sampler, obtaining coefficient posterior summaries (mean + credible bands).
+- [x] **REG-06-05**: User can run FDboost-style stability selection over the boosting base-learners to obtain selection frequencies / a stable predictor set.
 
 ### REP-02 — FEM/PDE smoothing on irregular 2D/3D domains
 
 R baseline: `fdaPDE` 1.1-24 (finite-element basis, PDE-regularized smoothing over irregular domains). New `fdars-core/src/fem_smoothing.rs` — a linear finite-element basis over a triangulated mesh + PDE (Laplacian) regularization penalty; plus positive (log-domain) and Ramsay integral-of-exp monotone smoothers added to `smooth_basis.rs`. Does **not** overlap fdars' A-6 strength (regular-grid 2D FOSR / `function_on_scalar_2d`) — this is irregular-mesh FEM (Area 1, absent/partial differentiators).
 
-- [ ] **REP-02-01**: User can construct a linear finite-element basis over a user-supplied triangulated 2D mesh (nodes + triangle connectivity), evaluating basis functions and assembling mass/stiffness matrices.
-- [ ] **REP-02-02**: User can perform PDE-regularized (Laplacian-penalty) surface smoothing of scattered observations over an irregular 2D domain via the FE basis, returning a fitted surface + smoothing diagnostics.
-- [ ] **REP-02-03**: User can perform positive-valued smoothing (log-domain fit guaranteeing a nonnegative fitted function).
-- [ ] **REP-02-04**: User can perform monotone smoothing via the Ramsay integral-of-exponential representation (guaranteed-monotone fitted function) added to `smooth_basis.rs`.
+- [x] **REP-02-01**: User can construct a linear finite-element basis over a user-supplied triangulated 2D mesh (nodes + triangle connectivity), evaluating basis functions and assembling mass/stiffness matrices.
+- [x] **REP-02-02**: User can perform PDE-regularized (Laplacian-penalty) surface smoothing of scattered observations over an irregular 2D domain via the FE basis, returning a fitted surface + smoothing diagnostics.
+- [x] **REP-02-03**: User can perform positive-valued smoothing (log-domain fit guaranteeing a nonnegative fitted function).
+- [x] **REP-02-04**: User can perform monotone smoothing via the Ramsay integral-of-exponential representation (guaranteed-monotone fitted function) added to `smooth_basis.rs`.
 
 ### CLUS-02 — Functional co-clustering (funLBM latent-block)
 
 R baseline: `funLBM` 2.3.1 (functional latent block model) + `funHDDC` (slope heuristic). New `fdars-core/src/coclustering.rs` — a latent-block-model EM (block-wise Gaussian on FPC scores) with simultaneous row (curve) and column (argument) clustering, plus a slope-heuristic model-selection helper. fdars' existing `clustering.rs`/`gmm/` cluster curves only (Area 4, absent differentiators).
 
-- [ ] **CLUS-02-01**: User can fit a functional latent block model (funLBM) that **simultaneously** assigns curves to row-clusters and argument points to column-clusters via a block-wise-Gaussian EM on FPC scores, given a target (row, column) block count.
-- [ ] **CLUS-02-02**: User can retrieve the co-clustering result — row labels, column labels, per-block parameters, and a converged log-likelihood / model criterion (e.g. ICL).
-- [ ] **CLUS-02-03**: User can select the number of blocks via the slope-heuristic criterion over a range of candidate (row, column) block counts.
+- [x] **CLUS-02-01**: User can fit a functional latent block model (funLBM) that **simultaneously** assigns curves to row-clusters and argument points to column-clusters via a block-wise-Gaussian EM on FPC scores, given a target (row, column) block count.
+- [x] **CLUS-02-02**: User can retrieve the co-clustering result — row labels, column labels, per-block parameters, and a converged log-likelihood / model criterion (e.g. ICL).
+- [x] **CLUS-02-03**: User can select the number of blocks via the slope-heuristic criterion over a range of candidate (row, column) block counts.
 
 ## Future Requirements
 
