@@ -16,8 +16,10 @@
 //! `.planning/phases/48-parallelism-gap-closure/PERF-PARALLEL-RESULTS.md`.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use std::f64::consts::PI;
 use std::time::Duration;
 
+use fdars_core::coclustering::{co_cluster, CoClusterConfig};
 use fdars_core::frechet::frechet_anova;
 use fdars_core::matrix::FdMatrix;
 
@@ -73,5 +75,44 @@ fn bench_frechet_anova(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_frechet_anova);
+/// Deterministic two-latent-row-group curves for co_cluster (no RNG). Row group `i % 2` shifts
+/// the sinusoid; mirrors the `co_cluster_data` helper in `tests/equivalence_phase48.rs`.
+fn co_cluster_curves(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
+    let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+    let mut data = vec![0.0; n * m];
+    for i in 0..n {
+        let grp = i % 2;
+        let phase = if grp == 0 { 0.0 } else { 0.35 } + 0.05 * ((i as f64 * 1.7).sin());
+        let amp = 1.0 + 0.3 * ((i as f64 * 0.9).sin()) + if grp == 0 { 0.0 } else { 0.5 };
+        for j in 0..m {
+            data[i + j * n] = amp * (2.0 * PI * (argvals[j] + phase)).sin();
+        }
+    }
+    (FdMatrix::from_column_major(data, n, m).unwrap(), argvals)
+}
+
+/// co_cluster multi-restart CEM (src/coclustering.rs — PROF-01 candidate). n=200, m=50, n_init=8
+/// (ABOVE CO_CLUSTER_INIT_PARALLEL_THRESHOLD → parallel branch).
+fn bench_co_cluster(c: &mut Criterion) {
+    let mut group = c.benchmark_group("perf_parallelism_co_cluster");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(30));
+    group.warm_up_time(Duration::from_secs(3));
+    let (data, argvals) = co_cluster_curves(200, 50);
+    let mut cfg = CoClusterConfig::default();
+    cfg.n_row_blocks = 2;
+    cfg.n_col_blocks = 2;
+    cfg.ncomp = 3;
+    cfg.max_iter = 50;
+    cfg.n_init = 8;
+    cfg.seed = 42;
+    group.bench_function("n200_m50_ninit8", |b| {
+        b.iter(|| {
+            black_box(co_cluster(black_box(&data), black_box(&argvals), black_box(&cfg)).unwrap())
+        })
+    });
+    group.finish();
+}
+
+criterion_group!(benches, bench_frechet_anova, bench_co_cluster);
 criterion_main!(benches);

@@ -47,7 +47,7 @@ Cell: `perf_parallelism_co_cluster/*` (added by plan 48-02).
 | Constant | Location | Value | Rationale |
 |----------|----------|-------|-----------|
 | `FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD` | `src/frechet/anova.rs` | 200 | n_perm is the work driver; below ~200 perms rayon dispatch overhead can exceed the per-perm `compute_tn_generic` cost. Conservative; Wave 3 criterion measurement confirms/adjusts. |
-| `CO_CLUSTER_INIT_PARALLEL_THRESHOLD` | `src/coclustering.rs` | _TBD (plan 48-02)_ | _TBD_ |
+| `CO_CLUSTER_INIT_PARALLEL_THRESHOLD` | `src/coclustering.rs` | 3 | n_init is the parallel work driver; below 3 restarts rayon dispatch overhead can exceed the per-init CEM cost. Mirrors the v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent; Wave 3 thread-scaling confirms/adjusts. |
 
 ## Deferrals
 
