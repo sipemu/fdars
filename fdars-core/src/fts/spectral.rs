@@ -193,14 +193,11 @@ fn eigen_at_frequency(
     ncomp: usize,
     sqrt_w: &[f64],
 ) -> (Vec<f64>, Vec<Vec<f64>>) {
-    // Build W^{1/2} Re(f̂) W^{1/2}, symmetrised defensively.
-    let mut scaled = vec![0.0f64; m * m];
-    for j1 in 0..m {
-        for j2 in 0..m {
-            scaled[j1 + j2 * m] = spec_real[j1 + j2 * m] * sqrt_w[j1] * sqrt_w[j2];
-        }
-    }
-    let mut mat = DMatrix::from_column_slice(m, m, &scaled);
+    // Build W^{1/2} Re(f̂) W^{1/2} directly (no intermediate `scaled` Vec), symmetrised defensively.
+    // (row, col) = (j1, j2); the column-major source index `j1 + j2 * m` matches `DMatrix::from_fn`.
+    let mut mat = DMatrix::from_fn(m, m, |j1, j2| {
+        spec_real[j1 + j2 * m] * sqrt_w[j1] * sqrt_w[j2]
+    });
     for j1 in 0..m {
         for j2 in (j1 + 1)..m {
             let avg = 0.5 * (mat[(j1, j2)] + mat[(j2, j1)]);
@@ -209,32 +206,35 @@ fn eigen_at_frequency(
         }
     }
     let eig = nalgebra::SymmetricEigen::new(mat);
-    let mut pairs: Vec<(f64, Vec<f64>)> = eig
-        .eigenvalues
-        .iter()
-        .zip(eig.eigenvectors.column_iter())
-        .map(|(&val, col)| (val, col.iter().copied().collect()))
-        .collect();
-    // Sort by eigenvalue descending.
-    pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    // Sign-align: make the largest-magnitude entry positive (Pitfall 2).
-    // Track the argmax index directly (no float-equality re-scan) so the flip is
-    // robust regardless of FP recomputation of `.abs()`.
-    for (_, evec) in &mut pairs {
+    // Index-sort by eigenvalue descending — stable, matching the previous pair-sort's tie order
+    // (ascending original index). Materialise ONLY the retained `ncomp` eigenvectors as Vecs instead
+    // of all `m` (OPT-A: eliminates ~m per-call `col.iter().copied().collect()` allocations).
+    let mut idx: Vec<usize> = (0..m).collect();
+    idx.sort_by(|&a, &b| {
+        eig.eigenvalues[b]
+            .partial_cmp(&eig.eigenvalues[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let take = ncomp.min(m);
+    let mut eigenvalues: Vec<f64> = Vec::with_capacity(take);
+    let mut eigenvectors: Vec<Vec<f64>> = Vec::with_capacity(take);
+    for &col in idx.iter().take(take) {
+        eigenvalues.push(eig.eigenvalues[col]);
+        let mut evec: Vec<f64> = eig.eigenvectors.column(col).iter().copied().collect();
+        // Sign-align: make the largest-magnitude entry positive (Pitfall 2). Track argmax directly.
         let mut arg = 0usize;
         let mut best = 0.0f64;
-        for (idx, &x) in evec.iter().enumerate() {
+        for (i, &x) in evec.iter().enumerate() {
             if x.abs() > best {
                 best = x.abs();
-                arg = idx;
+                arg = i;
             }
         }
         if evec[arg] < 0.0 {
             evec.iter_mut().for_each(|x| *x = -*x);
         }
+        eigenvectors.push(evec);
     }
-    let eigenvalues: Vec<f64> = pairs.iter().take(ncomp).map(|(v, _)| *v).collect();
-    let eigenvectors: Vec<Vec<f64>> = pairs.into_iter().take(ncomp).map(|(_, e)| e).collect();
     (eigenvalues, eigenvectors)
 }
 

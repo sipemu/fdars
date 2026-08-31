@@ -95,6 +95,10 @@ harness = false
 name = "audit_hotpaths"
 harness = false
 
+[[bench]]
+name = "perf_hotpaths"   # PERMANENT — Phase 47 PERF proof / Phase 51 BENCH-02 regression guard
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
