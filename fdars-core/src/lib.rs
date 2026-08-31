@@ -137,6 +137,47 @@ pub mod prelude;
 pub mod scoring;
 pub mod smooth_basis;
 
+/// Hidden test-support surface used ONLY by the crate's integration
+/// equivalence tests (`tests/equivalence_phase49.rs`). NOT part of the public
+/// API — it exists solely so the behavior-preservation goldens can reach the
+/// `pub(crate)` numerical primitives and the current `inference`/`spm` tail
+/// functions from an external test crate. `#[doc(hidden)]` keeps it out of the
+/// rendered docs; these are thin forwarding `fn`s (not `pub use` re-exports,
+/// which cannot escape `pub(crate)`), so no existing signature is widened and
+/// no stable guarantee is made about this module.
+#[doc(hidden)]
+pub mod __equivalence_test_support {
+    /// Forwards to the CURRENT (pre-consolidation) `inference`/`spm` tail
+    /// functions — the goldens assert these stay bit-identical across the
+    /// call-site migration.
+    pub mod current {
+        #[inline]
+        pub fn chi_square_sf(x: f64, k: usize) -> f64 {
+            crate::inference::dist::chi_square_sf(x, k)
+        }
+        #[inline]
+        pub fn chi_square_sf_df(x: f64, df: f64) -> f64 {
+            crate::inference::dist::chi_square_sf_df(x, df)
+        }
+        #[inline]
+        pub fn f_sf(f: f64, d1: f64, d2: f64) -> f64 {
+            crate::inference::dist::f_sf(f, d1, d2)
+        }
+        #[inline]
+        pub fn chi2_cdf(x: f64, k: usize) -> f64 {
+            crate::spm::chi_squared::chi2_cdf(x, k)
+        }
+        #[inline]
+        pub fn chi2_quantile(p: f64, k: usize) -> f64 {
+            crate::spm::chi_squared::chi2_quantile(p, k)
+        }
+        #[inline]
+        pub fn regularized_gamma_p(a: f64, x: f64) -> f64 {
+            crate::spm::chi_squared::regularized_gamma_p(a, x)
+        }
+    }
+}
+
 // Re-export matrix types
 pub use matrix::{FdCurveSet, FdMatrix};
 

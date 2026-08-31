@@ -24,7 +24,7 @@ use std::f64::consts::PI;
 /// Uses a 7-coefficient Lanczos series (g = 7) for high accuracy
 /// across the positive reals. Coefficients from Pugh (2004), Table 4,
 /// for g=7, n=9, achieving relative error < 1e-10 for x > 0.5.
-pub(super) fn ln_gamma(x: f64) -> f64 {
+pub(crate) fn ln_gamma(x: f64) -> f64 {
     // Lanczos coefficients for g = 7, n = 9 (Pugh, 2004, Table 4)
     const COEFFS: [f64; 9] = [
         0.999_999_999_999_809_9,
@@ -65,7 +65,7 @@ pub(super) fn ln_gamma(x: f64) -> f64 {
 /// incomplete gamma function.
 ///
 /// Uses series expansion for x < a + 1, continued fraction otherwise.
-pub(super) fn regularized_gamma_p(a: f64, x: f64) -> f64 {
+pub(crate) fn regularized_gamma_p(a: f64, x: f64) -> f64 {
     if x < 0.0 {
         return 0.0;
     }
@@ -161,7 +161,7 @@ fn gamma_cf(a: f64, x: f64) -> f64 {
 /// Chi-squared CDF: P(chi2(k) <= x).
 ///
 /// Computed as `regularized_gamma_p(k/2, x/2)`.
-pub(super) fn chi2_cdf(x: f64, k: usize) -> f64 {
+pub(crate) fn chi2_cdf(x: f64, k: usize) -> f64 {
     if x <= 0.0 {
         return 0.0;
     }
@@ -186,7 +186,7 @@ pub(super) fn chi2_cdf(x: f64, k: usize) -> f64 {
 /// | 1 | 0.95 | 3.84146 | 3.84146 | < 1e-10 |
 /// | 5 | 0.95 | 11.0705 | 11.0705 | < 1e-10 |
 /// | 10 | 0.99 | 23.2093 | 23.2093 | < 1e-10 |
-pub(super) fn chi2_quantile(p: f64, k: usize) -> f64 {
+pub(crate) fn chi2_quantile(p: f64, k: usize) -> f64 {
     if p <= 0.0 {
         return 0.0;
     }

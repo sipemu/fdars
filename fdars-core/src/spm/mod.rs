@@ -55,7 +55,7 @@
 pub mod amewma;
 pub mod arl;
 pub mod bootstrap;
-pub(super) mod chi_squared;
+pub(crate) mod chi_squared;
 pub mod contrib;
 pub mod control;
 pub mod cusum;
