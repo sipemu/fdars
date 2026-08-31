@@ -40,18 +40,37 @@ Cell: `perf_parallelism_co_cluster/*` (added by plan 48-02).
 
 | Cell | 1-thread median | 20-thread median | Ratio (20t / 1t) | Speedup (1t / 20t) |
 |------|-----------------|------------------|------------------|--------------------|
-| _TBD (plan 48-02)_ | — | — | — | — |
+| n200_m50_ninit8 | 337.34 ms | 52.91 ms | 0.157 | **6.4×** |
+
+Captured 2026-08-31 (governor `powersave`, LOW-CONFIDENCE on absolute numbers; direction
+unambiguous). Criterion reported `change: -84.0%` (20t vs 1t), p < 0.05. n_init=8 caps parallel
+fan-out at 8-way, so 6.4× is near the achievable ceiling for this cell — well above the payback
+break-even. No threshold review needed for co_cluster.
 
 ## Threshold constants
 
 | Constant | Location | Value | Rationale |
 |----------|----------|-------|-----------|
-| `FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD` | `src/frechet/anova.rs` | 200 | n_perm is the work driver; below ~200 perms rayon dispatch overhead can exceed the per-perm `compute_tn_generic` cost. Conservative; Wave 3 criterion measurement confirms/adjusts. |
-| `CO_CLUSTER_INIT_PARALLEL_THRESHOLD` | `src/coclustering.rs` | 3 | n_init is the parallel work driver; below 3 restarts rayon dispatch overhead can exceed the per-init CEM cost. Mirrors the v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent; Wave 3 thread-scaling confirms/adjusts. |
+| `FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD` | `src/frechet/anova.rs` | 200 | n_perm is the work driver; below ~200 perms rayon dispatch overhead can exceed the per-perm `compute_tn_generic` cost. **Validated by thread-scaling** (9.9× at n_perm=999); kept conservative — the large cell is far above break-even, so the exact crossover is not safety-critical. |
+| `CO_CLUSTER_INIT_PARALLEL_THRESHOLD` | `src/coclustering.rs` | 3 | n_init is the work driver; below 3 restarts rayon dispatch overhead can exceed the per-init CEM cost. **Validated by thread-scaling** (6.4× at n_init=8). Mirrors the v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent; kept at 3 (default `n_init`=3 hits the parallel path only when a caller opts into ≥3 restarts). |
 
-## Deferrals
+Both thresholds hold against the measured break-even — the parallelized cells are ~6–10× faster
+well above threshold, and the sequential branch below threshold is bit-identical (proven by the
+`*_below_threshold` goldens). No numeric computation was changed; only the guard consts exist.
 
-- **`frechet_anova_space<S: MetricSpace>`** (generic path, anova.rs) NOT parallelized — would require
-  an `S: Sync` bound, a public-generic signature widening that could break external `MetricSpace`
-  impls. DEFER-with-rationale. The concrete `frechet_anova` (parallelized here) already covers the
-  PROF-01 hotspot. (Finalized/signed off in plan 48-03.)
+## Deferred (documented)
+
+These PROF-01/RESEARCH parallelization candidates were DELIBERATELY NOT parallelized this phase —
+each with a rationale below, not a silent omission. They remain open for a future milestone.
+
+| Target | Location | Why deferred |
+|--------|----------|--------------|
+| `t_perm_test` / `f_perm_test` | `src/inference/permutation.rs` | Use a SINGLE shared advancing `StdRng` across permutations. Parallelizing requires per-perm reseeding, which **changes the returned p-values** — a numeric-output change. Out of scope for this behavior-preserving milestone; revisit in a milestone that accepts a re-baseline. |
+| `frechet_anova_space<S: MetricSpace>` | `src/frechet/anova.rs` | Parallelizing needs an added `S: Sync` bound — a public-generic signature widening that could break external non-`Sync` `MetricSpace` impls. The concrete `frechet_anova` (parallelized here) already captures the PROF-01 hotspot. Revisit if `MetricSpace` is confirmed sealed/internal. |
+| `explain/importance.rs` (:131, :221) | `src/explain/importance.rs` | Low outer-loop fan-out (ncomp 3–10) + shared inner RNG. Phase 49 CONS-02 folds this into the already-parallel `explain_generic` path, gaining parallelism for free — parallelizing it standalone here would be throwaway work. |
+
+## Regression-guard note
+
+The permanent `perf_parallelism` cells (`frechet_anova`, `co_cluster`) feed **Phase 51 BENCH-02** as
+regression guards for the wins recorded above. Re-run under a `performance` governor to supersede
+the LOW-CONFIDENCE absolute medians when a pinned environment is available.

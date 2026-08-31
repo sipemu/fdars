@@ -1,9 +1,9 @@
 ---
 phase: 48
 slug: parallelism-gap-closure
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-31
 ---
 
@@ -45,21 +45,21 @@ parallelizing needs a per-perm reseed that changes the returned p-values) and `e
 
 | Req | Behavior | Test Type | Command | Status |
 |-----|----------|-----------|---------|--------|
-| PERF-03 | `frechet_anova` p-value bit-identical parallel vs sequential AND ON vs OFF | golden equivalence | `cargo test -- golden_frechet_anova_parallel` under both feature configs | ⬜ |
-| PERF-03 | `co_cluster` labels + log-likelihood bit-identical parallel vs sequential | golden equivalence | `cargo test -- golden_co_cluster_parallel` under both configs | ⬜ |
-| PERF-03 | `frechet_anova` thread-scaling ≥2× at n_perm=999 (20 vs 1 thread) | criterion | `RAYON_NUM_THREADS=1` vs `=20 cargo bench --bench perf_parallelism -- frechet_anova` | ⬜ |
-| PERF-03 | `co_cluster` thread-scaling speedup at n_init≥ threshold | criterion | `RAYON_NUM_THREADS=1` vs `=20 ... -- co_cluster` | ⬜ |
-| PERF-03 | Payback threshold guards small inputs (below-threshold uses sequential) | unit | assert the outer-if boundary (const documented) | ⬜ |
-| PERF-03 | Existing determinism/seed tests still pass (no output change) | unit | `cargo test -- anova_permutation_is_seed_reproducible co_cluster` | ⬜ |
-| all | Existing suite green — BOTH feature configs | integration | `cargo test --features linalg,parallel` AND `--no-default-features --features linalg` | ⬜ |
+| PERF-03 | `frechet_anova` p-value bit-identical parallel vs sequential AND ON vs OFF | golden equivalence | `cargo test -- golden_frechet_anova_parallel` under both feature configs | ✅ |
+| PERF-03 | `co_cluster` labels + log-likelihood bit-identical parallel vs sequential | golden equivalence | `cargo test -- golden_co_cluster_parallel` under both configs | ✅ |
+| PERF-03 | `frechet_anova` thread-scaling ≥2× at n_perm=999 (20 vs 1 thread) | criterion | `RAYON_NUM_THREADS=1` vs `=20 cargo bench --bench perf_parallelism -- frechet_anova` → **9.9×** | ✅ |
+| PERF-03 | `co_cluster` thread-scaling speedup at n_init≥ threshold | criterion | `RAYON_NUM_THREADS=1` vs `=20 ... -- co_cluster` → **6.4×** | ✅ |
+| PERF-03 | Payback threshold guards small inputs (below-threshold uses sequential) | unit | `*_below_threshold` goldens pass; consts documented (frechet 200, co_cluster 3) | ✅ |
+| PERF-03 | Existing determinism/seed tests still pass (no output change) | unit | `cargo test -- anova_permutation_is_seed_reproducible co_cluster` | ✅ |
+| all | Existing suite green — BOTH feature configs | integration | `cargo test --features linalg,parallel` AND `--no-default-features --features linalg` → 2583 lib tests each | ✅ |
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `tests/equivalence_phase48.rs` — golden tests for `frechet_anova` + `co_cluster` capturing the CURRENT (pre-parallel) seeded output; must pass under both feature configs after parallelization.
-- [ ] `benches/perf_parallelism.rs` + `[[bench]] name = "perf_parallelism"` (PERMANENT — Phase 51 BENCH-02) — thread-scaling cells.
-- [ ] Free disk before bench builds: `rm -rf target/debug/{incremental,examples}`.
+- [x] `tests/equivalence_phase48.rs` — golden tests for `frechet_anova` + `co_cluster` capturing the CURRENT (pre-parallel) seeded output; pass under both feature configs after parallelization.
+- [x] `benches/perf_parallelism.rs` + `[[bench]] name = "perf_parallelism"` (PERMANENT — Phase 51 BENCH-02) — thread-scaling cells (frechet_anova + co_cluster).
+- [x] Free disk before bench builds: `rm -rf target/debug/{incremental,examples}`.
 
 ---
 
@@ -73,12 +73,12 @@ parallelizing needs a per-perm reseed that changes the returned p-values) and `e
 
 ## Validation Sign-Off
 
-- [ ] `frechet_anova` + `co_cluster` golden tests pass under BOTH `--features parallel` and parallel-off (bit-identical)
-- [ ] Payback-threshold consts documented; below-threshold path is sequential
-- [ ] ≥1 thread-scaling criterion cell shows speedup at large input
-- [ ] Per-iteration `seed + k` determinism preserved (existing seed-reproducibility tests green, values UNCHANGED)
-- [ ] Deferred targets (t_perm_test/f_perm_test, explain/importance) documented with rationale
-- [ ] Full suite green (both feature configs) + clippy `--all-targets` clean; no public signature change (or `S: Sync` widening explicitly justified as internal-only)
-- [ ] `nyquist_compliant: true` set once all above hold
+- [x] `frechet_anova` + `co_cluster` golden tests pass under BOTH `--features parallel` and parallel-off (bit-identical) — 5/5 equivalence tests each config
+- [x] Payback-threshold consts documented; below-threshold path is sequential (`FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD=200`, `CO_CLUSTER_INIT_PARALLEL_THRESHOLD=3`)
+- [x] ≥1 thread-scaling criterion cell shows speedup at large input — frechet_anova 9.9×, co_cluster 6.4×
+- [x] Per-iteration `seed + k` determinism preserved (existing seed-reproducibility tests green, values UNCHANGED)
+- [x] Deferred targets (t_perm_test/f_perm_test, frechet_anova_space, explain/importance) documented with rationale in PERF-PARALLEL-RESULTS.md
+- [x] Full suite green (both feature configs) + clippy `--all-targets` clean; no public signature change (`frechet_anova`/`co_cluster` byte-identical; `frechet_anova_space` `S: Sync` widening explicitly deferred)
+- [x] `nyquist_compliant: true` set once all above hold
 
-**Approval:** pending
+**Approval:** ✅ validated 2026-08-31 — PERF-03 met (2 safe parallelizations with payback guards + bit-identical output under both configs; unsafe/marginal targets documented+deferred). Governor `powersave` → absolute medians LOW-CONFIDENCE, but the 6–10× thread-scaling direction is unambiguous.
