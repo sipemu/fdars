@@ -189,6 +189,10 @@ pub fn fpc_shap_values_logistic(
 
     let base_value = predict_proba(&mean_scores, &mean_z);
     let mut values = FdMatrix::zeros(n, ncomp);
+    // Phase-49 CONS-02: NOT migrated to helpers::seed_for_thread — this is a single
+    // plain-`seed` RNG advanced sequentially across all observations, not the
+    // per-thread `seed + k` offset contract. Reseeding per observation would change
+    // the coalition-sampling stream and thus the SHAP values.
     let mut rng = StdRng::seed_from_u64(seed);
 
     for i in 0..n {

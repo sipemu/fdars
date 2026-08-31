@@ -63,7 +63,7 @@ pub fn generic_permutation_importance(
 
     let results: Vec<(f64, f64)> = iter_maybe_parallel!(0..ncomp)
         .map(|k| {
-            let mut rng_k = StdRng::seed_from_u64(seed.wrapping_add(k as u64));
+            let mut rng_k = crate::helpers::seed_for_thread(seed, k);
             let mut sum_metric = 0.0;
             for _ in 0..n_perm {
                 let mut perm_scores = clone_scores_matrix(&scores, n, ncomp);

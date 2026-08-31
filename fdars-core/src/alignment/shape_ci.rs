@@ -1,8 +1,6 @@
 //! Bootstrap confidence intervals for curve shapes in the elastic metric.
 
-use rand::rngs::StdRng;
 use rand::Rng;
-use rand::SeedableRng;
 
 use super::karcher::karcher_mean;
 use super::pairwise::elastic_align_pair;
@@ -118,7 +116,7 @@ pub fn shape_confidence_interval(
     // ── Bootstrap loop ──
     let boot_means: Vec<Vec<f64>> = iter_maybe_parallel!(0..config.n_bootstrap)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(config.seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(config.seed, b);
 
             // Resample n indices with replacement
             let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();

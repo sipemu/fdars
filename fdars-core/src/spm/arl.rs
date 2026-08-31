@@ -35,7 +35,7 @@ use crate::iter_maybe_parallel;
 use rayon::iter::ParallelIterator;
 
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand_distr::StandardNormal;
 
 /// Configuration for ARL simulation.
@@ -174,7 +174,7 @@ pub fn arl0_ewma_t2(
     let run_lengths: Vec<usize> =
         iter_maybe_parallel!((0..config.n_simulations).collect::<Vec<_>>())
             .map(|rep| {
-                let mut rng = StdRng::seed_from_u64(config.seed + rep as u64);
+                let mut rng = crate::helpers::seed_for_thread(config.seed, rep);
                 let mut z = vec![0.0_f64; ncomp];
                 for step in 1..=config.max_run_length {
                     // Generate N(0, eigenvalue) scores and apply EWMA
@@ -245,7 +245,7 @@ pub fn arl0_spe(
     let run_lengths: Vec<usize> =
         iter_maybe_parallel!((0..config.n_simulations).collect::<Vec<_>>())
             .map(|rep| {
-                let mut rng = StdRng::seed_from_u64(config.seed + rep as u64);
+                let mut rng = crate::helpers::seed_for_thread(config.seed, rep);
                 for step in 1..=config.max_run_length {
                     let spe = sample_gamma(&mut rng, shape) * gamma_scale;
                     if spe > ucl {
@@ -298,7 +298,7 @@ fn arl_t2_impl(
     let run_lengths: Vec<usize> =
         iter_maybe_parallel!((0..config.n_simulations).collect::<Vec<_>>())
             .map(|rep| {
-                let mut rng = StdRng::seed_from_u64(config.seed + rep as u64);
+                let mut rng = crate::helpers::seed_for_thread(config.seed, rep);
                 for step in 1..=config.max_run_length {
                     let mut t2 = 0.0_f64;
                     for l in 0..ncomp {

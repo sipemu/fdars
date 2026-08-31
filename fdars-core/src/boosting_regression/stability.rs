@@ -34,8 +34,7 @@ use super::{BoostingConfig, StabilityConfig, StabilityResult};
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -134,7 +133,7 @@ pub fn stability_selection(
     // ---- Resample loop (deterministic per replicate, parallel-safe) --------
     let per_resample: Vec<Vec<bool>> = iter_maybe_parallel!(0..b_count)
         .map(|b| -> Result<Vec<bool>, FdarError> {
-            let mut rng = StdRng::seed_from_u64(stab_config.seed.wrapping_add(b as u64));
+            let mut rng = crate::helpers::seed_for_thread(stab_config.seed, b);
             // Sample `half` distinct row indices without replacement via a partial
             // Fisher–Yates shuffle (first `half` slots hold the sample).
             let mut idx: Vec<usize> = (0..n).collect();
