@@ -12,10 +12,17 @@ use super::{FrechetAnovaResult, MetricSpace};
 use crate::error::FdarError;
 use crate::helpers::NUMERICAL_EPS;
 use crate::inference::dist::chi_square_sf;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
+
+/// Payback threshold: below this permutation count, sequential dispatch avoids rayon overhead
+/// (small-input regression guard — v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent; PERF-03).
+pub(crate) const FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD: usize = 200;
 
 /// Compute the Dubey–Müller `Tₙ` statistic and its components for a labelling.
 ///
@@ -166,19 +173,24 @@ pub fn frechet_anova(
         compute_tn_generic(&space, &objects, group_labels, k)?;
     let p_asymptotic = chi_square_sf(tn_obs, k - 1);
 
-    // Seeded permutation p-value (per-iteration RNG → thread-count-independent).
-    let mut n_ge = 0usize;
-    for perm in 0..n_perm {
+    // Seeded permutation p-value (per-iteration RNG → thread-count-independent). Each perm reseeds
+    // `seed + perm`, so the count is order-independent → the parallel sum is BIT-IDENTICAL to the
+    // sequential one and to parallel-OFF (PERF-03). A payback threshold keeps small n_perm sequential.
+    let count_ge = |perm: usize| -> usize {
         let mut rng = StdRng::seed_from_u64(seed.wrapping_add(perm as u64));
         let mut perm_labels = group_labels.to_vec();
         perm_labels.shuffle(&mut rng);
         // A degenerate permutation (compute error) is skipped conservatively.
-        if let Ok((tn_perm, _, _, _, _)) = compute_tn_generic(&space, &objects, &perm_labels, k) {
-            if tn_perm >= tn_obs {
-                n_ge += 1;
-            }
+        match compute_tn_generic(&space, &objects, &perm_labels, k) {
+            Ok((tn_perm, _, _, _, _)) if tn_perm >= tn_obs => 1,
+            _ => 0,
         }
-    }
+    };
+    let n_ge: usize = if n_perm >= FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD {
+        iter_maybe_parallel!(0..n_perm).map(count_ge).sum()
+    } else {
+        (0..n_perm).map(count_ge).sum()
+    };
     let p_permutation = (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0);
 
     Ok(FrechetAnovaResult {
