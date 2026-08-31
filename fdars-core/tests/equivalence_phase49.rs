@@ -216,3 +216,217 @@ fn gamma_chi2_cdf_family_new_bit_identical() {
     assert_eq!(reg_gamma_q(2.0, 1.0), 1.0 - RGP_A2_X1);
     assert_eq!(reg_gamma_q(50.0, 48.15), 1.0 - RGP_A50_X48_15);
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// SVD SIGN-FIX goldens (CONS-01, plan 49-02). The sign convention — "for each component k, make the
+// largest-|·| entry positive" — is consolidated into ONE pub(crate) decision core in regression.rs.
+// Two call sites gate their flips from it: fdata_to_pc_1d's fix_svd_signs (flips rotation AND scores
+// in lockstep) and pace_fpca's eigendecompose_cov (flips eigenfunctions ONLY — no scores matrix at
+// that point). These goldens are the exact f64 bits produced by the CURRENT (pre-refactor) code and
+// MUST reproduce BIT-IDENTICALLY (assert_eq!) after the sign-decision core is extracted, under BOTH
+// --features linalg,parallel AND --no-default-features --features linalg.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+// FPCA rotation (m=8 rows × ncomp=3 cols, column-major flatten). Column signs are set by the
+// sign-decision core; the dominant |·| entry of each rotation column is positive.
+const FPCA_ROTATION: [f64; 24] = [
+    -0.0,
+    0.3269209249205384,
+    -0.8875273506317356,
+    -1.0745506015092254,
+    0.5552174854021699,
+    1.5313934507848797,
+    1.2032114837353158,
+    0.7127196995738764,
+    -9.857382031715978e-16,
+    0.019189741069902917,
+    -1.1219371034802588,
+    0.9004762592858471,
+    1.0748442149135518,
+    -0.9025616139944942,
+    1.44587539280986,
+    1.7208858461357057,
+    1.5263043145882805e-15,
+    -0.4065526952335004,
+    -0.5590584746937156,
+    0.8832675032755642,
+    2.194203356838404,
+    0.8410604393825144,
+    -1.146644256221298,
+    -0.7516873993254113,
+];
+
+// FPCA scores (n=5 rows × ncomp=3 cols, column-major flatten). Flipped in lockstep with the rotation
+// column whenever that column's dominant entry was negative.
+const FPCA_SCORES: [f64; 15] = [
+    -0.07764966330218807,
+    -0.7044830972210234,
+    0.2657050422841701,
+    0.4371545850379199,
+    0.07927313320112106,
+    -0.021329399651274443,
+    -0.1724470348473898,
+    -0.0874128096622758,
+    -0.3414733270182405,
+    0.6226625711791806,
+    0.3209396681056325,
+    -0.08201044634433237,
+    -0.5003813845693599,
+    0.2217874336136012,
+    0.0396647291944584,
+];
+
+// pace_fpca eigenfunctions (m=21 rows × ncomp=2 cols, column-major flatten). SINGLE-matrix flip: the
+// eigenfunction column is negated when its dominant |·| entry is negative (there is NO scores matrix
+// at that point — BLUP scores are computed later).
+const PACE_NCOMP: usize = 2;
+const PACE_EIGENFUNCTIONS: [f64; 42] = [
+    0.1456965165550319,
+    0.20291892412883983,
+    0.27209662942964286,
+    0.35325981177313526,
+    0.4447048932415157,
+    0.5428831831187857,
+    0.6430762415817446,
+    0.7407656766542221,
+    0.8330558990416346,
+    0.9193296326533805,
+    1.0007255054019575,
+    1.0787077298729817,
+    1.1534914960321347,
+    1.2231680791769577,
+    1.2840052825067514,
+    1.331720239207729,
+    1.3629590663302416,
+    1.3762165573842906,
+    1.3719326674434202,
+    1.3520102182490779,
+    1.3191578863667774,
+    1.7848574660932566,
+    1.6816640706565742,
+    1.5511755776397556,
+    1.3961821636579554,
+    1.2246684007487443,
+    1.0500986882459402,
+    0.8893993975774812,
+    0.7583406233155535,
+    0.6655385347790131,
+    0.6074498547579806,
+    0.5667367657626416,
+    0.5155000266506697,
+    0.4234074667452139,
+    0.26839144107858015,
+    0.045104428663088655,
+    -0.23357400916887633,
+    -0.5426177631772527,
+    -0.8543766569626076,
+    -1.146329153249015,
+    -1.404555187230801,
+    -1.6234975584071192,
+];
+
+/// Deterministic FPCA fixture (5 curves × 8 points) driving `fdata_to_pc_1d` — the two-matrix
+/// (rotation + scores) sign-flip site.
+fn fpca_sign_fixture() -> (fdars_core::matrix::FdMatrix, Vec<f64>) {
+    use fdars_core::matrix::FdMatrix;
+    let n = 5usize;
+    let m = 8usize;
+    let mut cm = Vec::with_capacity(n * m);
+    for j in 0..m {
+        for i in 0..n {
+            let t = j as f64 / (m - 1) as f64;
+            cm.push(((i as f64 + 1.0) * (t * 3.0)).sin() + 0.3 * (i as f64) * t);
+        }
+    }
+    let data = FdMatrix::from_column_major(cm, n, m).unwrap();
+    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    (data, argvals)
+}
+
+/// Deterministic irregular fixture (mirrors src `small_irreg_data`) driving `pace_fpca` — the
+/// eigenfunction-only (single-matrix) sign-flip site.
+fn pace_sign_fixture() -> (fdars_core::IrregFdata, fdars_core::PaceFpcaConfig) {
+    use fdars_core::{IrregFdata, PaceFpcaConfig};
+    let argvals_list = vec![
+        vec![0.1, 0.4, 0.7],
+        vec![0.0, 0.3, 0.6, 0.9],
+        vec![0.2, 0.5, 0.8],
+        vec![0.0, 0.25, 0.5, 0.75, 1.0],
+        vec![0.1, 0.5, 0.9],
+        vec![0.0, 0.4, 0.8],
+    ];
+    let values_list: Vec<Vec<f64>> = argvals_list
+        .iter()
+        .enumerate()
+        .map(|(i, ts)| {
+            ts.iter()
+                .map(|&t: &f64| (i as f64 + 1.0) * t.sin())
+                .collect()
+        })
+        .collect();
+    let ifd = IrregFdata::from_lists(&argvals_list, &values_list);
+    let pm = 21usize;
+    let config = PaceFpcaConfig {
+        ncomp: 2,
+        bandwidth: 0.2,
+        sigma2: 0.01,
+        work_grid: (0..pm).map(|i| i as f64 / (pm - 1) as f64).collect(),
+        alpha: 0.05,
+    };
+    (ifd, config)
+}
+
+#[test]
+fn svd_sign_fpca_two_matrix_bit_identical() {
+    use fdars_core::regression::fdata_to_pc_1d;
+    let (data, argvals) = fpca_sign_fixture();
+    let fpca = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+
+    assert_eq!(fpca.rotation.shape(), (8, 3));
+    assert_eq!(fpca.scores.shape(), (5, 3));
+
+    // Rotation: every entry bit-identical (column signs fixed by the sign-decision core).
+    let (rm, rk) = fpca.rotation.shape();
+    for k in 0..rk {
+        for j in 0..rm {
+            assert_eq!(
+                fpca.rotation[(j, k)],
+                FPCA_ROTATION[j + k * rm],
+                "rotation[({j},{k})] drifted"
+            );
+        }
+    }
+    // Scores: flipped in lockstep with the rotation column — bit-identical.
+    let (sn, sk) = fpca.scores.shape();
+    for k in 0..sk {
+        for i in 0..sn {
+            assert_eq!(
+                fpca.scores[(i, k)],
+                FPCA_SCORES[i + k * sn],
+                "scores[({i},{k})] drifted"
+            );
+        }
+    }
+}
+
+#[test]
+fn svd_sign_pace_eigenfunctions_single_matrix_bit_identical() {
+    use fdars_core::pace_fpca;
+    let (ifd, config) = pace_sign_fixture();
+    let res = pace_fpca(&ifd, &config).unwrap();
+
+    assert_eq!(res.ncomp, PACE_NCOMP);
+    assert_eq!(res.eigenfunctions.shape(), (21, PACE_NCOMP));
+
+    // Eigenfunctions: single-matrix sign flip (no scores at that point) — bit-identical.
+    let (em, ek) = res.eigenfunctions.shape();
+    for k in 0..ek {
+        for j in 0..em {
+            assert_eq!(
+                res.eigenfunctions[(j, k)],
+                PACE_EIGENFUNCTIONS[j + k * em],
+                "eigenfunctions[({j},{k})] drifted"
+            );
+        }
+    }
+}
