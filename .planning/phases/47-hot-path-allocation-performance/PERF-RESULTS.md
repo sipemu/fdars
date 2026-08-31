@@ -48,7 +48,7 @@ dhat probes. Before-numbers are the PROF-01 (Phase 46) measurements.
 | OPT | Cell | Before (PROF-01) | After | Δ |
 |-----|------|------------------|-------|---|
 | OPT-A | `perf_dpca/n200_m50` | (allocation-bound; wall-time secondary) | _TBD_ | _informational_ |
-| OPT-E | `perf_face_covariance/n200_m30` | 983.8 ms | _TBD (Plan 03)_ | _target ≥15%_ |
+| OPT-E | `perf_face_covariance/n200_m30` | 983.8 ms | 189.8 ms [167.8, 217.3] | **−80.7%** (non-overlapping CIs; ≫15% bar) |
 | OPT-F | `perf_fem_smooth/nodes576` | 452.3 ms | _TBD (Plan 04, partial — clone removal only)_ | _informational_ |
 
 ---

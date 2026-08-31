@@ -124,55 +124,51 @@ pub fn cov_irreg(ifd: &IrregFdata, s_grid: &[f64], t_grid: &[f64], bandwidth: f6
         .map(|(&v, &m)| v - m)
         .collect();
 
-    // Estimate covariance at each (s, t) pair
-    let mut cov = vec![0.0; ns * nt];
-
-    for (si, &s) in s_grid.iter().enumerate() {
+    // OPT-E: precompute per-observation Gaussian kernel-weight tables once — the ONLY exp() calls.
+    // `w1 = k((obs_time - s)/bw)` depends on the grid column `s` but not the row `t` (and vice-versa
+    // for `w2`), so the previous per-cell recomputation evaluated each kernel ~ns·nt times. Factoring
+    // the tables out of the (si, ti) grid loop is algebraically exact and cuts exp() calls by ~98%.
+    let total_obs = ifd.argvals.len();
+    let mut w_s = vec![0.0f64; total_obs * ns];
+    let mut w_t = vec![0.0f64; total_obs * nt];
+    for (obs_idx, &ot) in ifd.argvals.iter().enumerate() {
+        for (si, &s) in s_grid.iter().enumerate() {
+            w_s[obs_idx + si * total_obs] = kernel_gaussian((ot - s) / bandwidth);
+        }
         for (ti, &t) in t_grid.iter().enumerate() {
-            cov[si + ti * ns] =
-                accumulate_cov_at_point(&ifd.offsets, &ifd.argvals, &centered, n, s, t, bandwidth);
+            w_t[obs_idx + ti * total_obs] = kernel_gaussian((ot - t) / bandwidth);
+        }
+    }
+
+    // Estimate covariance at each (s, t) pair. The per-cell accumulation order (i → j1 → j2) is kept
+    // identical to the previous `accumulate_cov_at_point` so FP summation matches to 1e-12.
+    let mut cov = vec![0.0; ns * nt];
+    for si in 0..ns {
+        for ti in 0..nt {
+            let mut sum_weights = 0.0;
+            let mut sum_products = 0.0;
+            for i in 0..n {
+                let start = ifd.offsets[i];
+                let end = ifd.offsets[i + 1];
+                for j1 in start..end {
+                    let w1 = w_s[j1 + si * total_obs];
+                    for j2 in start..end {
+                        let w2 = w_t[j2 + ti * total_obs];
+                        let w = w1 * w2;
+                        sum_weights += w;
+                        sum_products += w * centered[j1] * centered[j2];
+                    }
+                }
+            }
+            cov[si + ti * ns] = if sum_weights > 0.0 {
+                sum_products / sum_weights
+            } else {
+                0.0
+            };
         }
     }
 
     FdMatrix::from_column_major(cov, ns, nt).expect("dimension invariant: data.len() == n * m")
-}
-
-/// Compute kernel-weighted covariance estimate at a single (s, t) grid point.
-fn accumulate_cov_at_point(
-    offsets: &[usize],
-    obs_times: &[f64],
-    centered: &[f64],
-    n: usize,
-    s: f64,
-    t: f64,
-    bandwidth: f64,
-) -> f64 {
-    let mut sum_weights = 0.0;
-    let mut sum_products = 0.0;
-
-    for i in 0..n {
-        let start = offsets[i];
-        let end = offsets[i + 1];
-        let obs_t = &obs_times[start..end];
-        let obs_c = &centered[start..end];
-
-        for j1 in 0..obs_t.len() {
-            for j2 in 0..obs_t.len() {
-                let w1 = kernel_gaussian((obs_t[j1] - s) / bandwidth);
-                let w2 = kernel_gaussian((obs_t[j2] - t) / bandwidth);
-                let w = w1 * w2;
-
-                sum_weights += w;
-                sum_products += w * obs_c[j1] * obs_c[j2];
-            }
-        }
-    }
-
-    if sum_weights > 0.0 {
-        sum_products / sum_weights
-    } else {
-        0.0
-    }
 }
 
 // =============================================================================

@@ -15,6 +15,7 @@ use std::f64::consts::PI;
 
 use fdars_core::fpca_variants::{fsvd, ssvd};
 use fdars_core::fts::{dpca, functional_acf};
+use fdars_core::irreg_fdata::{face_covariance, IrregFdata};
 use fdars_core::matrix::FdMatrix;
 
 /// Relative-closeness assertion: `|a-b| <= tol * max(|a|, 1e-12)`.
@@ -127,4 +128,38 @@ fn golden_functional_acf_n40_m12() {
     assert_rel_close(r.pacf[0], 7.10234356424632618e-1, 1e-12);
     assert_rel_close(r.pacf[1], -2.85845108686378857e-1, 1e-12);
     assert_rel_close(r.upper_band[0], 2.50742939451547353e-1, 1e-10);
+}
+
+// ─── OPT-E: face_covariance kernel-weight-table precompute (irreg_fdata/smoothing.rs) ──────────
+#[test]
+fn golden_face_covariance_n40() {
+    // Deterministic irregular data: 40 curves, 3-5 obs points each, no RNG.
+    let mut argvals_list: Vec<Vec<f64>> = Vec::with_capacity(40);
+    let mut values_list: Vec<Vec<f64>> = Vec::with_capacity(40);
+    for i in 0..40usize {
+        let npts = 3 + (i % 3); // 3,4,5
+        let mut av = Vec::with_capacity(npts);
+        let mut vv = Vec::with_capacity(npts);
+        for k in 0..npts {
+            let t = (k as f64 + 0.3 * (i as f64 * 0.7).sin().abs()) / (npts as f64);
+            let t = t.clamp(0.0, 1.0);
+            av.push(t);
+            vv.push((2.0 * PI * (t + 0.1 * i as f64)).sin() + 0.05 * i as f64);
+        }
+        argvals_list.push(av);
+        values_list.push(vv);
+    }
+    let ifd = IrregFdata::from_lists(&argvals_list, &values_list);
+    let grid: Vec<f64> = (0..10).map(|j| j as f64 / 9.0).collect();
+    let cov = face_covariance(&ifd, &grid, 0.15).unwrap();
+    let s = cov.as_slice();
+    let (ns, nt) = cov.shape();
+    // Reference captured from pre-OPT-E code. rel 1e-12: the w_s/w_t factoring is exact
+    // (Gaussian kernel separable in s,t) and preserves the per-cell i→j1→j2 summation order.
+    assert_eq!(s.len(), 100);
+    assert_rel_close(s[0], 5.02285392885318593e-1, 1e-12);
+    assert_rel_close(s[ns - 1], 1.05308144194836459e-1, 1e-12);
+    assert_rel_close(s[ns * (nt - 1)], 1.05308144194836389e-1, 1e-12);
+    assert_rel_close(s[ns * nt - 1], 6.66851657132077946e-1, 1e-12);
+    assert_rel_close(s[ns * nt / 2], 1.62141589034421940e-1, 1e-12);
 }
