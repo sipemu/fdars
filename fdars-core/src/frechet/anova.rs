@@ -13,9 +13,7 @@ use crate::error::FdarError;
 use crate::helpers::NUMERICAL_EPS;
 use crate::inference::dist::chi_square_sf;
 use crate::matrix::FdMatrix;
-use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
-use rand::SeedableRng;
 
 /// Payback threshold: below this permutation count, sequential dispatch avoids rayon overhead
 /// (small-input regression guard — v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent; PERF-03).
@@ -273,7 +271,7 @@ where
     // phase's behavior-preservation mandate (CONS-02 Plan A; RESEARCH A2/A3). Left inline by design.
     let mut n_ge = 0usize;
     for perm in 0..n_perm {
-        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(perm as u64));
+        let mut rng = crate::helpers::seed_for_thread(seed, perm);
         let mut perm_labels = group_labels.to_vec();
         perm_labels.shuffle(&mut rng);
         if let Ok((tn_perm, _, _, _, _)) = compute_tn_generic(space, objects, &perm_labels, k) {

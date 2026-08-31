@@ -5,7 +5,6 @@ use crate::explain::{
 };
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
-use rand::prelude::*;
 
 use super::FpcPredictor;
 
@@ -75,7 +74,8 @@ pub fn generic_shap_values(
 
     let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            let mut rng_i = StdRng::seed_from_u64(seed.wrapping_add(i as u64));
+            // Phase-49 CONS-02: per-component thread-offset seeding via the shared helper.
+            let mut rng_i = crate::helpers::seed_for_thread(seed, i);
             let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
             let obs_z = get_obs_scalar(scalar_covariates, i, p_scalar, &mean_z);
 
