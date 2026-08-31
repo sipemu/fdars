@@ -43,8 +43,16 @@ use std::f64::consts::PI;
 use rand::prelude::*;
 
 use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::regression::fdata_to_pc_1d;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
+
+/// Below this init count, the multi-restart CEM loop dispatches sequentially to avoid rayon
+/// overhead exceeding the per-init compute. Payback threshold — mirrors the v0.17.0
+/// `SCORES_PARALLEL_THRESHOLD` precedent; refined by `perf_parallelism` thread-scaling in Wave 3.
+pub(crate) const CO_CLUSTER_INIT_PARALLEL_THRESHOLD: usize = 3;
 
 /// Per-block Gaussian parameters (diagonal covariance in the FPC score space).
 ///
@@ -930,9 +938,10 @@ pub fn co_cluster(
 
     // --- Multi-restart CEM ---
     let n_init = config.n_init.max(1);
-    let mut best: Option<CoClusterResult> = None;
 
-    for init in 0..n_init {
+    // One initialization+fit, fully determined by `init` (per-init seeding is order-independent).
+    // Only `kmeans_fd` is fallible; its error is the one the old sequential `?` short-circuited on.
+    let run_init = |init: usize| -> Result<CoClusterResult, FdarError> {
         let seed = config.seed.wrapping_add(init as u64 * 1000);
 
         // Row initialization via kmeans_fd
@@ -958,14 +967,31 @@ pub fn co_cluster(
             config.max_iter,
             config.tol,
         );
+        Ok(result)
+    };
 
-        let is_better = best
-            .as_ref()
-            .map_or(true, |b| result.log_likelihood > b.log_likelihood);
-        if is_better {
-            best = Some(result);
+    // Build the per-init results in index order. Above the payback threshold the map runs in
+    // parallel (when the `parallel` feature is on); `collect::<Result<Vec,_>>()` yields the first
+    // Err in iteration order — the same error the sequential `?` propagated. Both branches produce
+    // the identical index-ordered Vec, so only the dispatch differs.
+    let results: Vec<CoClusterResult> = if n_init >= CO_CLUSTER_INIT_PARALLEL_THRESHOLD {
+        iter_maybe_parallel!(0..n_init)
+            .map(run_init)
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        (0..n_init).map(run_init).collect::<Result<Vec<_>, _>>()?
+    };
+
+    // Reduce SEQUENTIALLY with strict `>` so the lowest init index wins ties — `reduce` keeps `acc`
+    // (the earlier element) unless a strictly-greater log_likelihood appears, exactly matching the
+    // old loop's "only replace when strictly greater" tie-break.
+    let best = results.into_iter().reduce(|acc, r| {
+        if r.log_likelihood > acc.log_likelihood {
+            r
+        } else {
+            acc
         }
-    }
+    });
 
     best.ok_or_else(|| FdarError::ComputationFailed {
         operation: "co_cluster",
