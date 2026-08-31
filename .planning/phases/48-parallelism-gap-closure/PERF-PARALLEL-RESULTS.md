@@ -28,7 +28,11 @@ Cell: `perf_parallelism_frechet_anova/n24_m81_nperm999` (n=24 curves, m=81 argva
 
 | Cell | 1-thread median | 20-thread median | Ratio (20t / 1t) | Speedup (1t / 20t) |
 |------|-----------------|------------------|------------------|--------------------|
-| n24_m81_nperm999 | _TBD (Task 4)_ | _TBD (Task 4)_ | _TBD_ | _TBD_ |
+| n24_m81_nperm999 | 322.73 ms | 32.57 ms | 0.101 | **9.9×** |
+
+Captured 2026-08-31 (governor `powersave`, LOW-CONFIDENCE on absolute numbers; the ~10× direction
+is unambiguous). Criterion reported `change: -89.8%` (20t vs 1t), p < 0.05. Comfortably beats the
+0.6× target — no Wave 3 threshold review needed for frechet_anova.
 
 ## co_cluster (src/coclustering.rs — Wave 2 / plan 48-02)
 
