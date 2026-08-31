@@ -63,7 +63,7 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 - [x] **Phase 46: Whole-Crate Profiling & Measurement** - Produce the three ranked inventories (hot-path targets, duplication, API inconsistencies) that drive every downstream phase
 - [x] **Phase 47: Hot-Path & Allocation Performance** - Optimize the top-ranked compute-bound paths and allocation hotspots with before/after benchmark + equivalence proof
 - [x] **Phase 48: Parallelism-Gap Closure** - Close feature-gated rayon parallelism gaps in the newer subsystems, equivalence-tested with payback-threshold guards (completed 2026-08-31)
-- [ ] **Phase 49: Code Consolidation / Dedup** - Factor duplicated numerical + statistical-test machinery into shared `pub(crate)` helpers; migrate all call sites, behavior unchanged
+- [x] **Phase 49: Code Consolidation / Dedup** - Factor duplicated numerical + statistical-test machinery into shared `pub(crate)` helpers; migrate all call sites, behavior unchanged (completed 2026-08-31)
 - [ ] **Phase 50: Additive API-Surface Consolidation** - Unify inconsistent config/result patterns and redundant public functions via unified alternatives + `#[deprecated]`; zero breakage to existing callers
 - [ ] **Phase 51: Benchmark Coverage & Regression Guards** - Add criterion benches for the currently-unbenchmarked new modules and commit the PERF-proof benches as permanent regression guards
 
@@ -143,10 +143,10 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 
 **Plans**: 4 plans
 
-- [ ] 49-01-PLAN.md — TRACER: χ²/gamma → src/distributions.rs shared primitives + 2 tail wrappers; migrate inference/dist.rs + spm/chi_squared.rs + spm/bootstrap.rs bit-identically; scaffold equivalence_phase49.rs (CONS-01)
-- [ ] 49-02-PLAN.md — SVD sign-decision core in regression.rs + pace_fpca single-matrix migration; FPCA/pace_fpca sign goldens (CONS-01)
-- [ ] 49-03-PLAN.md — seed_for_thread(seed,k) in helpers.rs + migrate the thread-offset RNG sites; RNG-stream golden (CONS-02)
-- [ ] 49-04-PLAN.md — permutation_pvalue scaffold + frechet_anova migration (Plan A); document the 5 advancing-RNG/LCG deferrals + explain/importance fold-in correction (CONS-02)
+- [x] 49-01-PLAN.md — TRACER: χ²/gamma → src/distributions.rs shared primitives + 2 tail wrappers; migrate inference/dist.rs + spm/chi_squared.rs + spm/bootstrap.rs bit-identically; scaffold equivalence_phase49.rs (CONS-01)
+- [x] 49-02-PLAN.md — SVD sign-decision core in regression.rs + pace_fpca single-matrix migration; FPCA/pace_fpca sign goldens (CONS-01)
+- [x] 49-03-PLAN.md — seed_for_thread(seed,k) in helpers.rs + migrate the thread-offset RNG sites; RNG-stream golden (CONS-02)
+- [x] 49-04-PLAN.md — permutation_pvalue scaffold + frechet_anova migration (Plan A); document the 5 advancing-RNG/LCG deferrals + explain/importance fold-in correction (CONS-02)
 
 **UI hint**: no
 
@@ -189,7 +189,7 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 | 46. Whole-Crate Profiling & Measurement | 5/5 | ✓ Complete | 2026-08-30 |
 | 47. Hot-Path & Allocation Performance | 4/4 | ✓ Complete | 2026-08-31 |
 | 48. Parallelism-Gap Closure | 3/3 | Complete    | 2026-08-31 |
-| 49. Code Consolidation / Dedup | 0/TBD | Not started | - |
+| 49. Code Consolidation / Dedup | 5/4 | Complete    | 2026-08-31 |
 | 50. Additive API-Surface Consolidation | 0/TBD | Not started | - |
 | 51. Benchmark Coverage & Regression Guards | 0/TBD | Not started | - |
 

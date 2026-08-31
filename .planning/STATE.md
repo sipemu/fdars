@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.30.0
 milestone_name: Performance & Consolidation Pass
-current_phase: 49
-current_phase_name: Code Consolidation / Dedup
+current_phase: 50
+current_phase_name: Additive API-Surface Consolidation
 status: planning
-stopped_at: Phase 48 complete, ready to plan Phase 49
-last_updated: "2026-08-31T15:00:42.616Z"
+stopped_at: Phase 49 complete, ready to plan Phase 50
+last_updated: "2026-08-31T19:41:01.419Z"
 last_activity: 2026-08-31
-last_activity_desc: Phase 48 complete, transitioned to Phase 49
-state_head: e8668bacddab7009fc41863e84187ceed1ee61ce
+last_activity_desc: Phase 49 complete, transitioned to Phase 50
+state_head: a9f9b9b3975d70bd40aa6f891275886caa5776fe
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
-  percent: 50
+  completed_phases: 4
+  total_plans: 16
+  completed_plans: 16
+  percent: 67
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-30)
 
 ## Current Position
 
-Phase: 49 of 51 (Code Consolidation / Dedup)
+Phase: 50 of 51 (Additive API-Surface Consolidation)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-31 — Phase 48 complete, transitioned to Phase 49
+Last activity: 2026-08-31 — Phase 49 complete, transitioned to Phase 50
 
 Progress: [███░░░░░░░] 33%
 
@@ -143,7 +143,7 @@ Advisory tech-debt carried forward (not necessarily v0.30.0 work, but some may s
 ## Session Continuity
 
 Last session: 2026-08-30T20:15:00.000Z
-Stopped at: Phase 48 complete, ready to plan Phase 49
+Stopped at: Phase 49 complete, ready to plan Phase 50
 Resume file: None
 
 ## Operator Next Steps

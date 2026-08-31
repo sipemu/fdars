@@ -21,8 +21,8 @@ Requirements for milestone v0.30.0. Each maps to a roadmap phase. **Measure-firs
 
 ### Code Consolidation / Dedup (CONS)
 
-- [ ] **CONS-01**: Duplicated numerical machinery cataloged in PROF-02 (e.g. FPCA scoring, Cholesky/ridge solves, Simpson/quadrature weights, χ² / F survival functions, SVD sign-fix) is factored into shared `pub(crate)` helpers; all call sites migrated; behavior unchanged (full suite green).
-- [ ] **CONS-02**: Duplicated statistical-test scaffolding (permutation-test loops, per-thread seeded-RNG patterns) is consolidated into a reusable helper; call sites migrated; determinism/reproducibility preserved.
+- [x] **CONS-01**: Duplicated numerical machinery cataloged in PROF-02 (e.g. FPCA scoring, Cholesky/ridge solves, Simpson/quadrature weights, χ² / F survival functions, SVD sign-fix) is factored into shared `pub(crate)` helpers; all call sites migrated; behavior unchanged (full suite green).
+- [x] **CONS-02**: Duplicated statistical-test scaffolding (permutation-test loops, per-thread seeded-RNG patterns) is consolidated into a reusable helper; call sites migrated; determinism/reproducibility preserved.
 
 ### API Surface Consolidation — additive only (API)
 
@@ -72,8 +72,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PERF-01 | Phase 47 | Pending |
 | PERF-02 | Phase 47 | Pending |
 | PERF-03 | Phase 48 | Complete |
-| CONS-01 | Phase 49 | Pending |
-| CONS-02 | Phase 49 | Pending |
+| CONS-01 | Phase 49 | Complete |
+| CONS-02 | Phase 49 | Complete |
 | API-01 | Phase 50 | Pending |
 | API-02 | Phase 50 | Pending |
 | API-03 | Phase 50 | Pending |
