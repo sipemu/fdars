@@ -141,7 +141,13 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
   3. The full test suite is green after migration and behavior is unchanged — no public signature changed, no numeric output altered.
   4. No new crate dependency is introduced.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [ ] 49-01-PLAN.md — TRACER: χ²/gamma → src/distributions.rs shared primitives + 2 tail wrappers; migrate inference/dist.rs + spm/chi_squared.rs + spm/bootstrap.rs bit-identically; scaffold equivalence_phase49.rs (CONS-01)
+- [ ] 49-02-PLAN.md — SVD sign-decision core in regression.rs + pace_fpca single-matrix migration; FPCA/pace_fpca sign goldens (CONS-01)
+- [ ] 49-03-PLAN.md — seed_for_thread(seed,k) in helpers.rs + migrate the thread-offset RNG sites; RNG-stream golden (CONS-02)
+- [ ] 49-04-PLAN.md — permutation_pvalue scaffold + frechet_anova migration (Plan A); document the 5 advancing-RNG/LCG deferrals + explain/importance fold-in correction (CONS-02)
+
 **UI hint**: no
 
 ### Phase 50: Additive API-Surface Consolidation
