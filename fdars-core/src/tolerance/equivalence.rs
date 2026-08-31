@@ -26,7 +26,7 @@ fn equivalence_multiplier_sup_stats(
     let n2f = n2 as f64;
     iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let g1 = generate_multiplier_weights(&mut rng, n1, multiplier);
             let g2 = generate_multiplier_weights(&mut rng, n2, multiplier);
             (0..m)
@@ -53,7 +53,7 @@ fn equivalence_percentile_sup_stats(
 ) -> Vec<f64> {
     iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let idx1: Vec<usize> = (0..n1).map(|_| rng.gen_range(0..n1)).collect();
             let idx2: Vec<usize> = (0..n2).map(|_| rng.gen_range(0..n2)).collect();
             (0..m)
@@ -80,7 +80,7 @@ fn equivalence_one_sample_multiplier_stats(
     let sqrt_n = (n as f64).sqrt();
     iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let g = generate_multiplier_weights(&mut rng, n, multiplier);
             (0..m)
                 .map(|j| {
@@ -105,7 +105,7 @@ fn equivalence_one_sample_percentile_stats(
 ) -> Vec<f64> {
     iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let idx: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
             (0..m)
                 .map(|j| {

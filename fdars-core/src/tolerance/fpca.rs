@@ -65,7 +65,7 @@ fn fpca_pointwise_boot(
 ) -> ToleranceBand {
     let boot_stds: Vec<Vec<f64>> = iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let mut curve = vec![0.0; m];
             let mut sum = vec![0.0; m];
             let mut sum_sq = vec![0.0; m];
@@ -109,7 +109,7 @@ fn fpca_simultaneous_boot(
 
     let mut sup_norms: Vec<f64> = iter_maybe_parallel!(0..nb)
         .map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed + b as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let mut max_dev = 0.0_f64;
             let mut curve = vec![0.0; m];
             for _ in 0..n {

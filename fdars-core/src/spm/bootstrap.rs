@@ -46,8 +46,7 @@ use crate::iter_maybe_parallel;
 use super::control::{spe_control_limit, t2_control_limit, ControlLimit};
 use crate::distributions::reg_gamma_p;
 
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -250,7 +249,7 @@ fn bootstrap_quantile(values: &[f64], p: f64, n_bootstrap: usize, seed: u64) -> 
     // Collect all bootstrap maxima (the p-quantile from each resample)
     let quantiles: Vec<f64> = iter_maybe_parallel!((0..n_bootstrap).collect::<Vec<_>>())
         .map(|rep| {
-            let mut rng = StdRng::seed_from_u64(seed + rep as u64);
+            let mut rng = crate::helpers::seed_for_thread(seed, rep);
             let mut sample: Vec<f64> = (0..n).map(|_| values[rng.gen_range(0..n)]).collect();
             sort_nan_safe(&mut sample);
             let idx = ((p * n as f64).ceil() as usize)

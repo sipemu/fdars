@@ -105,7 +105,7 @@ pub fn gauss_model(
     let mut scores = FdMatrix::zeros(n_samples, total_ncomp);
 
     for i in 0..n_samples {
-        let mut rng = StdRng::seed_from_u64(seed + i as u64);
+        let mut rng = crate::helpers::seed_for_thread(seed, i);
 
         // Generate amplitude scores and reconstruct SRSF
         let mut q_new = vec![0.0; m_aug];
@@ -273,7 +273,7 @@ pub fn joint_gauss_model(
     let mut scores_out = FdMatrix::zeros(n_samples, total_ncomp);
 
     for i in 0..n_samples {
-        let mut rng = StdRng::seed_from_u64(seed + i as u64);
+        let mut rng = crate::helpers::seed_for_thread(seed, i);
 
         // Sample from joint distribution
         let mut joint_z = vec![0.0; total_ncomp];

@@ -86,7 +86,7 @@ pub fn bootstrap_ci_fregre_lm(
     // Bootstrap replicates
     let boot_betas: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_boot)
         .filter_map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed.wrapping_add(b as u64));
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
 
             let boot_data = subsample_rows(data, &indices);
@@ -209,7 +209,7 @@ pub fn bootstrap_ci_functional_logistic(
     // Bootstrap replicates
     let boot_betas: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_boot)
         .filter_map(|b| {
-            let mut rng = StdRng::seed_from_u64(seed.wrapping_add(b as u64));
+            let mut rng = crate::helpers::seed_for_thread(seed, b);
             let indices: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
 
             let boot_data = subsample_rows(data, &indices);

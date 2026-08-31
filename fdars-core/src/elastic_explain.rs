@@ -311,7 +311,7 @@ fn permutation_importance(
 
     let mut total_r2 = 0.0;
     for p in 0..n_perm {
-        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(p as u64));
+        let mut rng = crate::helpers::seed_for_thread(seed, p);
         let mut perm_idx: Vec<usize> = (0..n).collect();
         perm_idx.shuffle(&mut rng);
 
@@ -381,7 +381,7 @@ fn permutation_importance_single(
     let contribs: Vec<f64> = fitted_values.iter().map(|&f| f - alpha).collect();
     let mut total_r2 = 0.0;
     for p in 0..n_perm {
-        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(p as u64));
+        let mut rng = crate::helpers::seed_for_thread(seed, p);
         let mut perm_idx: Vec<usize> = (0..n).collect();
         perm_idx.shuffle(&mut rng);
 
