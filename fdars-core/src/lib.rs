@@ -87,6 +87,7 @@ pub mod density_fda;
 pub mod depth;
 pub mod detrend;
 pub mod distance;
+pub(crate) mod distributions;
 pub mod famm;
 pub mod fdata;
 pub mod fem_smoothing;
@@ -174,6 +175,35 @@ pub mod __equivalence_test_support {
         #[inline]
         pub fn regularized_gamma_p(a: f64, x: f64) -> f64 {
             crate::spm::chi_squared::regularized_gamma_p(a, x)
+        }
+    }
+
+    /// Forwards to the NEW consolidated `crate::distributions::*` surface — the goldens assert the
+    /// shared module reproduces the pre-refactor bits directly.
+    pub mod distributions {
+        #[inline]
+        pub fn chi2_sf(x: f64, df: f64) -> f64 {
+            crate::distributions::chi2_sf(x, df)
+        }
+        #[inline]
+        pub fn chi2_cdf(x: f64, k: usize) -> f64 {
+            crate::distributions::chi2_cdf(x, k)
+        }
+        #[inline]
+        pub fn chi2_quantile(p: f64, k: usize) -> f64 {
+            crate::distributions::chi2_quantile(p, k)
+        }
+        #[inline]
+        pub fn reg_gamma_p(a: f64, x: f64) -> f64 {
+            crate::distributions::reg_gamma_p(a, x)
+        }
+        #[inline]
+        pub fn reg_gamma_q(a: f64, x: f64) -> f64 {
+            crate::distributions::reg_gamma_q(a, x)
+        }
+        #[inline]
+        pub fn ln_gamma(x: f64) -> f64 {
+            crate::distributions::ln_gamma(x)
         }
     }
 }

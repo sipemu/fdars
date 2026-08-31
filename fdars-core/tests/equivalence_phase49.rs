@@ -23,9 +23,7 @@
 
 #![allow(clippy::excessive_precision)]
 
-use fdars_core::__equivalence_test_support::current;
-// NOTE: `distributions::*` `_new` goldens are added in Plan 49-01 Task 2 (once src/distributions.rs
-// exists). This Task-1 harness pins the pre-refactor bits via the CURRENT tail path only.
+use fdars_core::__equivalence_test_support::{current, distributions};
 
 // ─── χ² survival function (SF family, inference/dist.rs) ────────────────────────────────────────
 // Q-direct upper-tail path (tiny=1e-300). The x=70.59,k=1 point is the far-tail linchpin: the SF
@@ -157,5 +155,64 @@ fn gamma_chi2_cdf_family_current_bit_identical() {
     assert_eq!(regularized_gamma_p(50.0, 48.15), RGP_A50_X48_15);
 }
 
-// The NEW consolidated `distributions::*` `_new` goldens (asserting the shared module reproduces
-// these same bits directly) are appended in Plan 49-01 Task 2, once `src/distributions.rs` exists.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// Goldens asserted against the NEW consolidated `distributions::*` surface. These prove the shared
+// module reproduces the exact pre-refactor bits directly (independent of the call-site migration).
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn gamma_chi2_sf_family_new_bit_identical() {
+    use distributions::chi2_sf;
+    assert_eq!(chi2_sf(0.1, 1.0), SF_K1_X0_1);
+    assert_eq!(chi2_sf(3.84, 1.0), SF_K1_X3_84);
+    assert_eq!(chi2_sf(70.59, 1.0), SF_K1_X70_59); // FAR TAIL via the SF-private Q continued fraction
+    assert_eq!(chi2_sf(4.0, 2.0), SF_K2_X4);
+    assert_eq!(chi2_sf(5.99, 2.0), SF_K2_X5_99);
+    assert_eq!(chi2_sf(0.1, 3.0), SF_K3_X0_1);
+    assert_eq!(chi2_sf(3.84, 3.0), SF_K3_X3_84);
+    assert_eq!(chi2_sf(5.99, 10.0), SF_K10_X5_99);
+    assert_eq!(chi2_sf(21.0, 10.0), SF_K10_X21);
+    assert_eq!(chi2_sf(21.0, 20.0), SF_K20_X21);
+    assert_eq!(chi2_sf(31.41, 20.0), SF_K20_X31_41);
+    // Real-df path (single df:f64 entry serves both usize-k and real-df SF sites).
+    assert_eq!(chi2_sf(5.99, 2.0), SFDF_DF2_X5_99);
+    assert_eq!(chi2_sf(8.0, 3.7), SFDF_DF3_7_X8);
+    assert_eq!(chi2_sf(2.0, 3.7), SFDF_DF3_7_X2);
+}
+
+#[test]
+fn gamma_chi2_cdf_family_new_bit_identical() {
+    use distributions::{chi2_cdf, chi2_quantile, reg_gamma_p, reg_gamma_q};
+    assert_eq!(chi2_cdf(1.3862943611198906, 2), CDF_X1_386_K2);
+    assert_eq!(chi2_cdf(5.991464547107979, 2), CDF_X5_991_K2);
+    assert_eq!(chi2_cdf(0.1, 1), CDF_X0_1_K1);
+    assert_eq!(chi2_cdf(3.84, 1), CDF_X3_84_K1);
+    assert_eq!(chi2_cdf(10.0, 5), CDF_X10_K5);
+    assert_eq!(chi2_cdf(21.0, 10), CDF_X21_K10);
+    assert_eq!(chi2_cdf(0.0, 1), 0.0);
+
+    assert_eq!(chi2_quantile(0.5, 1), QUANT_P0_5_K1);
+    assert_eq!(chi2_quantile(0.95, 1), QUANT_P0_95_K1);
+    assert_eq!(chi2_quantile(0.99, 1), QUANT_P0_99_K1);
+    assert_eq!(chi2_quantile(0.5, 5), QUANT_P0_5_K5);
+    assert_eq!(chi2_quantile(0.95, 5), QUANT_P0_95_K5);
+    assert_eq!(chi2_quantile(0.99, 5), QUANT_P0_99_K5);
+    assert_eq!(chi2_quantile(0.5, 10), QUANT_P0_5_K10);
+    assert_eq!(chi2_quantile(0.95, 10), QUANT_P0_95_K10);
+    assert_eq!(chi2_quantile(0.99, 10), QUANT_P0_99_K10);
+    assert_eq!(chi2_quantile(0.5, 20), QUANT_P0_5_K20);
+    assert_eq!(chi2_quantile(0.95, 20), QUANT_P0_95_K20);
+    assert_eq!(chi2_quantile(0.99, 20), QUANT_P0_99_K20);
+
+    assert_eq!(reg_gamma_p(0.5, 0.5 * 0.5), RGP_HALFNORM_X0_5);
+    assert_eq!(reg_gamma_p(0.5, 1.0 * 1.0), RGP_HALFNORM_X1);
+    assert_eq!(reg_gamma_p(0.5, 1.5 * 1.5), RGP_HALFNORM_X1_5);
+    assert_eq!(reg_gamma_p(0.5, 2.0 * 2.0), RGP_HALFNORM_X2);
+    assert_eq!(reg_gamma_p(0.5, 3.0 * 3.0), RGP_HALFNORM_X3);
+    assert_eq!(reg_gamma_p(2.0, 1.0), RGP_A2_X1);
+    assert_eq!(reg_gamma_p(50.0, 48.15), RGP_A50_X48_15);
+
+    // reg_gamma_q is the exact complement (CDF family only).
+    assert_eq!(reg_gamma_q(2.0, 1.0), 1.0 - RGP_A2_X1);
+    assert_eq!(reg_gamma_q(50.0, 48.15), 1.0 - RGP_A50_X48_15);
+}
