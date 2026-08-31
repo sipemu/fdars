@@ -134,6 +134,7 @@ pub mod explain_generic;
 pub mod multi_fdata;
 pub mod pace_fpca;
 pub mod pda;
+pub(crate) mod permutation_test;
 pub mod prelude;
 pub mod scoring;
 pub mod smooth_basis;

@@ -24,6 +24,7 @@
 #![allow(clippy::excessive_precision)]
 
 use fdars_core::__equivalence_test_support::{current, distributions};
+use fdars_core::matrix::FdMatrix;
 
 // ─── χ² survival function (SF family, inference/dist.rs) ────────────────────────────────────────
 // Q-direct upper-tail path (tiny=1e-300). The x=70.59,k=1 point is the far-tail linchpin: the SF
@@ -484,4 +485,67 @@ fn rng_stream_seed_for_thread_bit_identical() {
     assert_eq!(seed_for_thread_draws(42, 0, 8), RNG_SEED42_K0.to_vec());
     assert_eq!(seed_for_thread_draws(42, 1, 8), RNG_SEED42_K1.to_vec());
     assert_eq!(seed_for_thread_draws(42, 3, 8), RNG_SEED42_K3.to_vec());
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// PERMUTATION-SCAFFOLD CONSOLIDATION golden (CONS-02, plan 49-04). `frechet_anova`'s PRIMARY per-perm
+// loop is migrated onto the one authoritative `permutation_test::permutation_pvalue` helper (per-perm
+// reseed, threshold-gated parallel, (1+n_ge)/(1+n_perm)). This golden is captured against the CURRENT
+// (pre-migration) frechet_anova and duplicates the PERMANENT Phase-48 goldens
+// (equivalence_phase48.rs::golden_frechet_anova_parallel + _below_threshold) as cheap in-phase
+// insurance (RESEARCH A3): the migrated helper MUST reproduce these EXACT bits under BOTH
+// --features linalg,parallel AND --no-default-features --features linalg. The draw-application
+// contract (helper shuffles 0..n; closure gathers group_labels[perm_idx[i]]) makes the bit-identity
+// PROVABLE — one Fisher–Yates on a length-n slice under the same per-perm seed ⇒ identical position-
+// permutation ⇒ identical perm_labels. The n_perm=999 case exercises the FRECHET_ANOVA_PERM_PARALLEL_
+// THRESHOLD=200 parallel path; the n_perm=50 case exercises the below-threshold sequential path.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+// Captured from CURRENT frechet_anova (identical to the Phase-48 goldens — same fixture, seed=42).
+const FRECHET_STATISTIC: f64 = 1.17320834419366224e3;
+const FRECHET_P_PERM_999: f64 = 1.00000000000000002e-3; // n_perm=999 → parallel branch
+const FRECHET_P_PERM_50: f64 = 1.96078431372549017e-2; // n_perm=50 → sequential branch
+const FRECHET_P_ASYMPTOTIC: f64 = 4.05441402554881990e-257;
+
+/// Deterministic two-group **density** data (rows strictly positive — WassersteinDensitySpace),
+/// mirroring the Phase-48 `two_group_densities` fixture EXACTLY so the goldens coincide.
+fn frechet_two_group_densities(n_per: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<usize>) {
+    let argvals: Vec<f64> = (0..m)
+        .map(|j| -3.0 + 6.0 * j as f64 / (m - 1) as f64)
+        .collect();
+    let n = 2 * n_per;
+    let mut data = vec![0.0; n * m];
+    let mut labels = vec![0usize; n];
+    for i in 0..n {
+        let g = if i < n_per { 0 } else { 1 };
+        labels[i] = g;
+        let mu = if g == 0 { -0.5 } else { 0.5 } + 0.2 * ((i as f64 * 1.7).sin());
+        let sigma = 0.7 + 0.2 * ((i as f64 * 1.3).sin().abs());
+        for j in 0..m {
+            let z = (argvals[j] - mu) / sigma;
+            data[i + j * n] = (-0.5 * z * z).exp() / sigma + 1e-6;
+        }
+    }
+    (
+        FdMatrix::from_column_major(data, n, m).unwrap(),
+        argvals,
+        labels,
+    )
+}
+
+#[test]
+fn frechet_anova_permutation_scaffold_bit_identical() {
+    use fdars_core::frechet::frechet_anova;
+    let (data, argvals, labels) = frechet_two_group_densities(12, 20);
+
+    // Parallel branch (n_perm=999 >= FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD=200).
+    let r_par = frechet_anova(&data, &argvals, &labels, 999, 42).unwrap();
+    assert_eq!(r_par.statistic, FRECHET_STATISTIC);
+    assert_eq!(r_par.p_value_permutation, FRECHET_P_PERM_999);
+    assert_eq!(r_par.p_value_asymptotic, FRECHET_P_ASYMPTOTIC);
+
+    // Sequential branch (n_perm=50 < threshold) — same statistic, below-threshold p-value.
+    let r_seq = frechet_anova(&data, &argvals, &labels, 50, 42).unwrap();
+    assert_eq!(r_seq.statistic, FRECHET_STATISTIC);
+    assert_eq!(r_seq.p_value_permutation, FRECHET_P_PERM_50);
 }
