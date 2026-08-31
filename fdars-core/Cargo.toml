@@ -99,6 +99,10 @@ harness = false
 name = "perf_hotpaths"   # PERMANENT — Phase 47 PERF proof / Phase 51 BENCH-02 regression guard
 harness = false
 
+[[bench]]
+name = "perf_parallelism"   # PERMANENT — Phase 48 PERF-03 thread-scaling proof / Phase 51 BENCH-02 regression guard
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
