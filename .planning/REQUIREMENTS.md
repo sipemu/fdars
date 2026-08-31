@@ -17,7 +17,7 @@ Requirements for milestone v0.30.0. Each maps to a roadmap phase. **Measure-firs
 
 - [ ] **PERF-01**: Each top-ranked hot path from PROF-01 is optimized behavior-preservingly, proven by a before/after criterion benchmark showing measurable improvement, with existing tests green (numeric outputs unchanged or provably-equivalent within documented tolerance).
 - [ ] **PERF-02**: Allocation hotspots identified by PROF-01 (unnecessary `FdMatrix`↔`DMatrix` copies, per-iteration allocations in hot loops) are reduced, verified by an allocation profile (feature-gated `dhat-heap`) and equivalence tests.
-- [ ] **PERF-03**: Parallelism gaps identified in the newer subsystems are closed with feature-gated rayon (via the existing `parallel.rs` macros), equivalence-tested vs the sequential path, with a payback-threshold N guard where a small-input regression is possible.
+- [x] **PERF-03**: Parallelism gaps identified in the newer subsystems are closed with feature-gated rayon (via the existing `parallel.rs` macros), equivalence-tested vs the sequential path, with a payback-threshold N guard where a small-input regression is possible.
 
 ### Code Consolidation / Dedup (CONS)
 
@@ -71,7 +71,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PROF-03 | Phase 46 | Pending |
 | PERF-01 | Phase 47 | Pending |
 | PERF-02 | Phase 47 | Pending |
-| PERF-03 | Phase 48 | Pending |
+| PERF-03 | Phase 48 | Complete |
 | CONS-01 | Phase 49 | Pending |
 | CONS-02 | Phase 49 | Pending |
 | API-01 | Phase 50 | Pending |
@@ -81,11 +81,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BENCH-02 | Phase 51 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 13 total
 - Mapped to phases: 13 ✓ (Phases 46–51)
 - Unmapped: 0 ✓
 
 **Phase → Requirement summary:**
+
 - Phase 46 (Profiling & Measurement): PROF-01, PROF-02, PROF-03
 - Phase 47 (Hot-Path & Allocation Performance): PERF-01, PERF-02
 - Phase 48 (Parallelism-Gap Closure): PERF-03

@@ -2,15 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.30.0
 milestone_name: Performance & Consolidation Pass
-status: executing
-last_updated: "2026-08-31T02:00:00.000Z"
+current_phase: 49
+current_phase_name: Code Consolidation / Dedup
+status: planning
+stopped_at: Phase 48 complete, ready to plan Phase 49
+last_updated: "2026-08-31T15:00:42.616Z"
 last_activity: 2026-08-31
+last_activity_desc: Phase 48 complete, transitioned to Phase 49
+state_head: e8668bacddab7009fc41863e84187ceed1ee61ce
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
-  percent: 33
+  completed_phases: 3
+  total_plans: 12
+  completed_plans: 12
+  percent: 50
 ---
 
 # Project State
@@ -24,19 +29,21 @@ See: .planning/PROJECT.md (updated 2026-08-30)
 
 ## Current Position
 
-Phase: 48 of 51 (Parallelism-Gap Closure) — Phases 46, 47 complete
-Plan: — (not yet planned)
-Status: Phase 47 complete & verified (passed 4/4, code review clean); ready to plan Phase 48
-Last activity: 2026-08-31 — Phase 47 executed (4 plans) and verified passed; 6 behavior-preserving optimizations landed
+Phase: 49 of 51 (Code Consolidation / Dedup)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-31 — Phase 48 complete, transitioned to Phase 49
 
 Progress: [███░░░░░░░] 33%
 
 ### Phase 46 outcomes (feed downstream phases)
+
 - **PROF-01** (→ Phase 47 ✓/51): top hot paths `face_covariance` (984ms), `fem_smooth` (452ms), `frechet_anova` (133ms); top allocation `fts::dpca` (42MB churn). All 9 subsystems ranked with file:line anchors.
 - **PROF-02** (→ Phase 49): top dedup = χ²/F survival (2 independent gamma kernels, `inference/dist.rs:99` vs `spm/chi_squared.rs:164`); then permutation loops, seeded-RNG, SVD sign-fix.
 - **PROF-03** (→ Phase 50): 4 Config structs missing `Default`; non-seedable `fanova`; breaking items deferred to APIB-01.
 
 ### Phase 47 outcomes (PERF-01/02)
+
 - **face_covariance −80.7% wall-time** (983.8→189.8ms) via kernel-weight-table precompute (OPT-E) — PERF-01 headline.
 - **fts::dpca −54% allocations** (17,739→8,139 blocks) via eigenvector index-sort (OPT-A) — PERF-02 headline.
 - OPT-B/C/D: fsvd/ssvd/functional_acf FdMatrix↔DMatrix copy removals. OPT-F: fem_smooth clone removal; O(N³) solve documented+deferred.
@@ -136,7 +143,7 @@ Advisory tech-debt carried forward (not necessarily v0.30.0 work, but some may s
 ## Session Continuity
 
 Last session: 2026-08-30T20:15:00.000Z
-Stopped at: Created v0.30.0 roadmap (ROADMAP.md Phases 46–51; REQUIREMENTS.md traceability filled, 13/13 mapped)
+Stopped at: Phase 48 complete, ready to plan Phase 49
 Resume file: None
 
 ## Operator Next Steps

@@ -62,7 +62,7 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 
 - [x] **Phase 46: Whole-Crate Profiling & Measurement** - Produce the three ranked inventories (hot-path targets, duplication, API inconsistencies) that drive every downstream phase
 - [x] **Phase 47: Hot-Path & Allocation Performance** - Optimize the top-ranked compute-bound paths and allocation hotspots with before/after benchmark + equivalence proof
-- [ ] **Phase 48: Parallelism-Gap Closure** - Close feature-gated rayon parallelism gaps in the newer subsystems, equivalence-tested with payback-threshold guards
+- [x] **Phase 48: Parallelism-Gap Closure** - Close feature-gated rayon parallelism gaps in the newer subsystems, equivalence-tested with payback-threshold guards (completed 2026-08-31)
 - [ ] **Phase 49: Code Consolidation / Dedup** - Factor duplicated numerical + statistical-test machinery into shared `pub(crate)` helpers; migrate all call sites, behavior unchanged
 - [ ] **Phase 50: Additive API-Surface Consolidation** - Unify inconsistent config/result patterns and redundant public functions via unified alternatives + `#[deprecated]`; zero breakage to existing callers
 - [ ] **Phase 51: Benchmark Coverage & Regression Guards** - Add criterion benches for the currently-unbenchmarked new modules and commit the PERF-proof benches as permanent regression guards
@@ -72,82 +72,104 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 ## Phase Details
 
 ### Phase 46: Whole-Crate Profiling & Measurement
+
 **Goal**: Produce the evidence base for the whole milestone — a ranked hot-path optimization target list, a duplication/consolidation inventory, and an API-inconsistency inventory — so every downstream implementation phase optimizes real bottlenecks, dedups real duplication, and unifies real inconsistencies rather than guessing.
 **Depends on**: Nothing (first phase of the milestone)
 **Requirements**: PROF-01, PROF-02, PROF-03
 **Success Criteria** (what must be TRUE):
+
   1. A whole-crate criterion + allocation profiling pass exists that produces a **ranked hot-path optimization target list** (N×M-scaled where relevant), prioritizing the reuse-first v0.19–v0.29 subsystems (`inference`, `fts`, `frechet`, `density_fda`, `fpca_variants`, `face`, `boosting_regression`, `fem_smoothing`, `coclustering`), each target carrying a real criterion/allocation number and a source anchor.
   2. A **duplication/consolidation inventory** exists cataloging machinery repeated across modules with source anchors (file:line), ranked by dedup leverage — enough to drive Phase 49 concretely.
   3. An **API-inconsistency inventory** exists cataloging config/result patterns and redundant public functions that are candidates for additive unification, each with a proposed canonical form noted — enough to drive Phase 50 concretely.
   4. The profiling pass uses only existing dev-dependencies (criterion, feature-gated `dhat-heap`) — no new crate dependency — and makes zero behavior-changing edits to `fdars-core/src/` algorithms.
+
 **Plans**: 5 plans
+
 - [ ] 46-01-PLAN.md — Wave 0 setup + baseline-green + tracer probe-bench pipeline (fpca_variants end-to-end) + PROF-01 doc skeleton (PROF-01)
 - [ ] 46-02-PLAN.md — Expand probe benches to remaining 8 subsystems + dhat alloc probes + complete PROF-01 ranked inventory + remove throwaway benches (PROF-01)
 - [ ] 46-03-PLAN.md — PROF-02 duplication/consolidation inventory (static grep analysis, ranked by dedup leverage) (PROF-02)
 - [ ] 46-04-PLAN.md — PROF-03 API-inconsistency inventory (static analysis, proposed canonical forms, additive-safe classification) (PROF-03)
 - [ ] 46-05-PLAN.md — PROF-00 summary tying inventories together + final zero-behavior-change gate + validation sign-off (PROF-01/02/03)
+
 **UI hint**: no
 
 ### Phase 47: Hot-Path & Allocation Performance
+
 **Goal**: A user's compute-bound and allocation-heavy workloads run measurably faster while producing numerically-identical (or provably-equivalent within tolerance) results — the top-ranked hot paths and allocation hotspots from Phase 46 are optimized with benchmark proof.
 **Depends on**: Phase 46 (consumes PROF-01's ranked hot-path + allocation target list)
 **Requirements**: PERF-01, PERF-02
 **Success Criteria** (what must be TRUE):
+
   1. Each top-ranked hot path from PROF-01 is optimized, proven by a **before/after criterion benchmark showing measurable improvement**, with the existing test suite green (numeric outputs unchanged or provably-equivalent within documented tolerance).
   2. Allocation hotspots identified by PROF-01 (unnecessary `FdMatrix`↔`DMatrix` copies, per-iteration allocations in hot loops) are reduced, verified by an **allocation profile** (feature-gated `dhat-heap`) showing fewer/smaller allocations plus equivalence tests confirming unchanged output.
   3. Every optimization is behavior-preserving and additive: no existing public signature changes, and any `linalg`/non-`linalg` split path keeps both branches producing equivalent results.
   4. No new crate dependency is introduced.
+
 **Plans**: 4 plans
+
 - [ ] 47-01-PLAN.md — Wave 0 proof pipeline (perf_hotpaths bench + equivalence + dhat alloc-audit + PERF-RESULTS.md) + OPT-A tracer: fts::dpca allocation reduction (17,739 → <1000 blocks) (PERF-01, PERF-02)
 - [ ] 47-02-PLAN.md — OPT-B/C/D: DMatrix::from_fn copy removals in fsvd, ssvd, functional_acf (+ sqrt_w precompute) (PERF-02)
 - [ ] 47-03-PLAN.md — OPT-E: irreg_fdata::cov_irreg kernel-weight precompute (~98% fewer exp(); ≥15% face_covariance wall-time) (PERF-01)
 - [ ] 47-04-PLAN.md — OPT-F: fem_smooth clone removal + document/defer O(N³) bottleneck + finalize PERF-RESULTS.md + VALIDATION sign-off (PERF-01)
+
 **UI hint**: no
 
 ### Phase 48: Parallelism-Gap Closure
+
 **Goal**: A user with the `parallel` feature enabled gets multi-threaded speedups on the newer subsystems that previously ran only sequentially, with no small-input regression and bit-equivalent results versus the sequential path.
 **Depends on**: Phase 46 (parallelism gaps surfaced by PROF-01), Phase 47 (shares the perf-benchmark harness; sequenced after the compute/allocation wins)
 **Requirements**: PERF-03
 **Success Criteria** (what must be TRUE):
+
   1. Parallelism gaps identified in the newer subsystems are closed with **feature-gated rayon** via the existing `parallel.rs` macros (`iter_maybe_parallel!` etc.), so the `parallel`-on path is faster on large inputs (criterion thread-scaling evidence).
   2. Each parallelized loop is **equivalence-tested against the sequential path** (bit-identical, tested with the `parallel` feature both ON and OFF).
   3. Where a small-input regression is possible, a **payback-threshold N guard** (outer-if) prevents parallel dispatch below the measured break-even size — matching the v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent.
   4. Per-thread RNG seeding determinism (`StdRng::seed_from_u64(seed + k)`) is preserved for any parallelized randomized loop; no new crate dependency.
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 49: Code Consolidation / Dedup
+
 **Goal**: Duplicated numerical and statistical-test machinery scattered across the v0.19–v0.29 modules is factored into shared `pub(crate)` helpers with every call site migrated — reducing surface area and drift risk while leaving all observable behavior unchanged.
 **Depends on**: Phase 46 (consumes PROF-02's ranked duplication/consolidation inventory)
 **Requirements**: CONS-01, CONS-02
 **Success Criteria** (what must be TRUE):
+
   1. Duplicated **numerical machinery** cataloged in PROF-02 (e.g. FPCA scoring, Cholesky/ridge solves, Simpson/quadrature weights, χ²/F survival functions, SVD sign-fix) is factored into shared `pub(crate)` helpers and **all call sites are migrated** to them.
   2. Duplicated **statistical-test scaffolding** (permutation-test loops, per-thread seeded-RNG patterns) is consolidated into a reusable helper, with call sites migrated and **determinism/reproducibility preserved** (seeded results unchanged).
   3. The full test suite is green after migration and behavior is unchanged — no public signature changed, no numeric output altered.
   4. No new crate dependency is introduced.
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 50: Additive API-Surface Consolidation
+
 **Goal**: A user gets a single canonical, consistent entry point for previously-inconsistent config/result patterns and redundant public functions — with the old forms still compiling and passing (now emitting deprecation warnings), so R/WASM bindings, the 28 examples, and external callers all keep working with zero breakage.
 **Depends on**: Phase 46 (consumes PROF-03's API-inconsistency inventory)
 **Requirements**: API-01, API-02, API-03
 **Success Criteria** (what must be TRUE):
+
   1. Inconsistent config/result patterns from PROF-03 gain **unified alternatives**; the previous forms are marked `#[deprecated]` with a `note` pointing to the replacement; both the deprecated and unified paths continue to compile and pass tests.
   2. Redundant public functions gain a **single canonical entry point**; superseded functions are marked `#[deprecated]` (never removed) and the crate-root re-export surface is tightened accordingly — **no existing public signature is changed**.
   3. `cargo build` / `cargo test`, the **28 examples**, and the R/WASM binding call sites all still pass with **deprecation warnings only** — zero breakage to existing callers.
   4. No new crate dependency is introduced.
+
 **Plans**: TBD
 **UI hint**: no
 
 ### Phase 51: Benchmark Coverage & Regression Guards
+
 **Goal**: The criterion suite covers the previously-unbenchmarked new modules, and the benchmarks that proved the PERF wins are committed as permanent regression guards with documented before/after numbers — so future changes can detect both new bottlenecks and regressions of the wins landed this milestone.
 **Depends on**: Phase 46 (module list), Phase 47 + Phase 48 (BENCH-02 guards the PERF-01/02/03 wins landed there)
 **Requirements**: BENCH-01, BENCH-02
 **Success Criteria** (what must be TRUE):
+
   1. New criterion benchmarks — registered as `[[bench]]` entries and runnable via `cargo bench` — cover the currently-unbenchmarked new modules: `fts`, `frechet`, `boosting_regression`, `coclustering`, `fem_smoothing`, `density_fda`, `inference`, `fpca_variants`, `face`.
   2. The benchmarks used to prove the PERF-01/02/03 wins are **committed as permanent regression guards**, with the before/after numbers documented so future changes can detect regressions.
   3. The full clippy gate (`cargo clippy --all-targets --features linalg,parallel -- -D warnings`, which lints bench code) stays green with the new bench entries; no new crate dependency.
+
 **Plans**: TBD
 **UI hint**: no
 
@@ -160,7 +182,7 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 |-------|----------------|--------|-----------|
 | 46. Whole-Crate Profiling & Measurement | 5/5 | ✓ Complete | 2026-08-30 |
 | 47. Hot-Path & Allocation Performance | 4/4 | ✓ Complete | 2026-08-31 |
-| 48. Parallelism-Gap Closure | 0/TBD | Not started | - |
+| 48. Parallelism-Gap Closure | 3/3 | Complete    | 2026-08-31 |
 | 49. Code Consolidation / Dedup | 0/TBD | Not started | - |
 | 50. Additive API-Surface Consolidation | 0/TBD | Not started | - |
 | 51. Benchmark Coverage & Regression Guards | 0/TBD | Not started | - |
