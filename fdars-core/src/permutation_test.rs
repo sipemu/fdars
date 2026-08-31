@@ -54,9 +54,6 @@ use rayon::iter::ParallelIterator;
 /// A degenerate permutation (e.g. a compute error the caller wants to skip
 /// conservatively) is expressed by having `stat` return [`f64::NEG_INFINITY`],
 /// so the `>= observed` comparison yields `false` (counts 0).
-// NOTE (49-04 Task 1): temporarily `dead_code`-allowed — the sole consumer
-// (frechet_anova's primary loop) is wired up in Task 2, which removes this allow.
-#[allow(dead_code)]
 pub(crate) fn permutation_pvalue<F>(
     observed: f64,
     n: usize,

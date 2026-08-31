@@ -12,13 +12,10 @@ use super::{FrechetAnovaResult, MetricSpace};
 use crate::error::FdarError;
 use crate::helpers::NUMERICAL_EPS;
 use crate::inference::dist::chi_square_sf;
-use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-#[cfg(feature = "parallel")]
-use rayon::iter::ParallelIterator;
 
 /// Payback threshold: below this permutation count, sequential dispatch avoids rayon overhead
 /// (small-input regression guard — v0.17.0 `SCORES_PARALLEL_THRESHOLD` precedent; PERF-03).
@@ -173,25 +170,28 @@ pub fn frechet_anova(
         compute_tn_generic(&space, &objects, group_labels, k)?;
     let p_asymptotic = chi_square_sf(tn_obs, k - 1);
 
-    // Seeded permutation p-value (per-iteration RNG → thread-count-independent). Each perm reseeds
-    // `seed + perm`, so the count is order-independent → the parallel sum is BIT-IDENTICAL to the
-    // sequential one and to parallel-OFF (PERF-03). A payback threshold keeps small n_perm sequential.
-    let count_ge = |perm: usize| -> usize {
-        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(perm as u64));
-        let mut perm_labels = group_labels.to_vec();
-        perm_labels.shuffle(&mut rng);
-        // A degenerate permutation (compute error) is skipped conservatively.
-        match compute_tn_generic(&space, &objects, &perm_labels, k) {
-            Ok((tn_perm, _, _, _, _)) if tn_perm >= tn_obs => 1,
-            _ => 0,
-        }
-    };
-    let n_ge: usize = if n_perm >= FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD {
-        iter_maybe_parallel!(0..n_perm).map(count_ge).sum()
-    } else {
-        (0..n_perm).map(count_ge).sum()
-    };
-    let p_permutation = (n_ge as f64 + 1.0) / (n_perm as f64 + 1.0);
+    // Seeded permutation p-value via the authoritative permutation_test::permutation_pvalue scaffold
+    // (CONS-02, plan 49-04). The helper shuffles a position vector 0..n once per perm under the SAME
+    // per-perm reseed (seed+perm) this loop used, so the closure reproduces the old `perm_labels`
+    // bit-for-bit by GATHERING group_labels[perm_idx[i]] (Fisher–Yates on a length-n slice ⇒ identical
+    // position-permutation — do NOT re-shuffle inside). Each perm reseeds → the parallel sum is
+    // BIT-IDENTICAL to sequential and to parallel-OFF (PERF-03); frechet passes its own payback
+    // threshold. A degenerate permutation (compute error) returns NEG_INFINITY → conservatively skipped
+    // (never `>= tn_obs`), matching the old count-0 branch. Phase-48 goldens are the backstop.
+    let p_permutation = crate::permutation_test::permutation_pvalue(
+        tn_obs,
+        n,
+        n_perm,
+        seed,
+        FRECHET_ANOVA_PERM_PARALLEL_THRESHOLD,
+        |perm_idx: &[usize]| -> f64 {
+            let perm_labels: Vec<usize> = perm_idx.iter().map(|&i| group_labels[i]).collect();
+            match compute_tn_generic(&space, &objects, &perm_labels, k) {
+                Ok((tn_perm, _, _, _, _)) => tn_perm,
+                Err(_) => f64::NEG_INFINITY,
+            }
+        },
+    );
 
     Ok(FrechetAnovaResult {
         statistic: tn_obs,
@@ -267,6 +267,10 @@ where
         compute_tn_generic(space, objects, group_labels, k)?;
     let p_asymptotic = chi_square_sf(tn_obs, k - 1);
 
+    // NOT migrated to permutation_test::permutation_pvalue — this generic-MetricSpace variant is
+    // SEQUENTIAL today (plain `for perm`, no threshold gate) and has NO dedicated Phase-48 golden;
+    // migrating would introduce parallelism with no bit-identity equivalence backstop, violating the
+    // phase's behavior-preservation mandate (CONS-02 Plan A; RESEARCH A2/A3). Left inline by design.
     let mut n_ge = 0usize;
     for perm in 0..n_perm {
         let mut rng = StdRng::seed_from_u64(seed.wrapping_add(perm as u64));
