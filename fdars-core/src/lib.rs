@@ -206,6 +206,23 @@ pub mod __equivalence_test_support {
             crate::distributions::ln_gamma(x)
         }
     }
+
+    /// Forwards to the `pub(crate)` per-thread RNG-seeding helper (CONS-02) so
+    /// the `rng_stream` golden can prove the consolidated
+    /// `helpers::seed_for_thread` draws are bit-identical to the pre-refactor
+    /// `StdRng::seed_from_u64(seed + k)` formula from an external test crate.
+    pub mod helpers {
+        /// Returns the first `n` `u64` draws produced by
+        /// `crate::helpers::seed_for_thread(seed, k)`. Returning drawn `u64`s
+        /// (rather than the `pub(crate)` `StdRng` itself) keeps the crate-private
+        /// RNG type from escaping while still exercising the exact stream.
+        #[inline]
+        pub fn seed_for_thread_draws(seed: u64, k: usize, n: usize) -> Vec<u64> {
+            use rand::RngCore;
+            let mut rng = crate::helpers::seed_for_thread(seed, k);
+            (0..n).map(|_| rng.next_u64()).collect()
+        }
+    }
 }
 
 // Re-export matrix types

@@ -11,6 +11,25 @@ pub fn sort_nan_safe(slice: &mut [f64]) {
     slice.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 }
 
+/// Per-thread deterministic RNG seeding — the single home for the parallel-loop
+/// determinism contract (CONS-02).
+///
+/// Given a base `seed` and a per-iteration index `k` (the loop's `i` / `b` /
+/// `rep` / `p`), returns an `StdRng` seeded at `seed + k`. Using
+/// `wrapping_add` makes the offset total (no overflow panic in debug builds)
+/// while remaining **bit-identical** to the plain `seed + k as u64` form for all
+/// non-overflowing inputs — so every hand-rolled thread-offset site migrates to
+/// this helper without changing a single RNG draw.
+///
+/// The body is EXACTLY `StdRng::seed_from_u64(seed.wrapping_add(k as u64))` and
+/// must stay that way: it is the determinism contract that keeps bootstrap CIs,
+/// tolerance bands, outlier detection, and generative alignment reproducible.
+#[inline]
+pub(crate) fn seed_for_thread(seed: u64, k: usize) -> rand::rngs::StdRng {
+    use rand::SeedableRng;
+    rand::rngs::StdRng::seed_from_u64(seed.wrapping_add(k as u64))
+}
+
 /// Extract curves from column-major data matrix.
 ///
 /// Converts a flat column-major matrix into a vector of curve vectors,

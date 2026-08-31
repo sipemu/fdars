@@ -430,3 +430,58 @@ fn svd_sign_pace_eigenfunctions_single_matrix_bit_identical() {
         }
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// SEEDED-RNG CONSOLIDATION goldens (CONS-02, plan 49-03). The per-thread determinism contract
+// `seed + k` is consolidated into ONE pub(crate) helper `helpers::seed_for_thread(seed, k)` whose body
+// is EXACTLY `StdRng::seed_from_u64(seed.wrapping_add(k as u64))`. `wrapping_add` is bit-identical to
+// the plain `seed + k as u64` form for all non-overflowing inputs, so every migrated thread-offset
+// site keeps its EXACT RNG stream. The consts below are the first 8 u64 draws produced by the
+// PRE-REFACTOR formula `StdRng::seed_from_u64(42 + k)` (captured verbatim; for seed=42, k∈{0,1,3} the
+// wrapping and plain forms are trivially equal — 42+3 ≪ u64::MAX). This golden pins the contract on the
+// helper ALONE (independent of the per-site downstream goldens), under BOTH feature configs.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+// seed_from_u64(42 + 0) — first 8 u64 draws.
+const RNG_SEED42_K0: [u64; 8] = [
+    9713269763989775522,
+    10011513049433592189,
+    11740708795755607249,
+    7487565853151867058,
+    633513173585076202,
+    7654602743214997928,
+    13603079691933612283,
+    15665927001465599799,
+];
+// seed_from_u64(42 + 1) — first 8 u64 draws.
+const RNG_SEED42_K1: [u64; 8] = [
+    13888656601109899510,
+    7748424868751293521,
+    7281802212127063514,
+    6945627241540686980,
+    1527362893385383704,
+    18389352529620154249,
+    2885470914457776372,
+    564464919976309943,
+];
+// seed_from_u64(42 + 3) — first 8 u64 draws.
+const RNG_SEED42_K3: [u64; 8] = [
+    5701288609795542878,
+    963872696619426818,
+    16485337332698311621,
+    5460190459464948039,
+    9785743222799402055,
+    8506977482393017863,
+    3039877466836775605,
+    9172263138704748396,
+];
+
+#[test]
+fn rng_stream_seed_for_thread_bit_identical() {
+    use fdars_core::__equivalence_test_support::helpers::seed_for_thread_draws;
+
+    // The helper's stream must equal the pre-refactor `seed_from_u64(seed + k)` draws EXACTLY.
+    assert_eq!(seed_for_thread_draws(42, 0, 8), RNG_SEED42_K0.to_vec());
+    assert_eq!(seed_for_thread_draws(42, 1, 8), RNG_SEED42_K1.to_vec());
+    assert_eq!(seed_for_thread_draws(42, 3, 8), RNG_SEED42_K3.to_vec());
+}
