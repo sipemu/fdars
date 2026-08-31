@@ -971,9 +971,13 @@ pub fn co_cluster(
     };
 
     // Build the per-init results in index order. Above the payback threshold the map runs in
-    // parallel (when the `parallel` feature is on); `collect::<Result<Vec,_>>()` yields the first
-    // Err in iteration order — the same error the sequential `?` propagated. Both branches produce
-    // the identical index-ordered Vec, so only the dispatch differs.
+    // parallel (when the `parallel` feature is on). `collect::<Result<Vec,_>>()` short-circuits on
+    // an Err and preserves index order for the Ok values (rayon's IndexedParallelIterator). Error
+    // equivalence here does NOT rely on *which* Err wins a race: `run_init`'s only fallible call
+    // (`kmeans_fd`) fails solely on init-independent input validation, so every init would yield the
+    // identical error value anyway. Both branches thus produce the identical index-ordered Vec (or
+    // the identical Err); only the dispatch differs. (If an init-DEPENDENT fallible call is ever
+    // added inside `run_init`, revisit this: rayon does not guarantee the *lowest-index* Err wins.)
     let results: Vec<CoClusterResult> = if n_init >= CO_CLUSTER_INIT_PARALLEL_THRESHOLD {
         iter_maybe_parallel!(0..n_init)
             .map(run_init)
