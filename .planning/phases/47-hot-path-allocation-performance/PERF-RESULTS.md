@@ -49,11 +49,30 @@ dhat probes. Before-numbers are the PROF-01 (Phase 46) measurements.
 |-----|------|------------------|-------|---|
 | OPT-A | `perf_dpca/n200_m50` | (allocation-bound; wall-time secondary) | _TBD_ | _informational_ |
 | OPT-E | `perf_face_covariance/n200_m30` | 983.8 ms | 189.8 ms [167.8, 217.3] | **−80.7%** (non-overlapping CIs; ≫15% bar) |
-| OPT-F | `perf_fem_smooth/nodes576` | 452.3 ms | _TBD (Plan 04, partial — clone removal only)_ | _informational_ |
+| OPT-F | `perf_fem_smooth/nodes576` | 452.3 ms | ≈ unchanged (clone removal is an allocation win: one N×N ~2.6 MB copy dropped; compute unchanged) | O(N³) solve DEFERRED |
 
 ---
 
 ## Deferred (documented, no safe behavior-preserving win)
 
-- _TBD (Plan 04): `fem_smooth` O(N³) Cholesky + GCV-EDF bottleneck — no constant-factor win without
-  sparse solvers (new dep, out of scope) or dropping GCV (breaking API). Clone removal only._
+- **`fem_smooth` O(N³) dense Cholesky + GCV-EDF column solves** (the ~452 ms @ 576-nodes bottleneck,
+  `src/fem_smoothing.rs`). No safe behavior-preserving constant-factor win exists without either
+  (a) sparse assembly/solvers — requires a new crate dependency, out of scope for this
+  no-new-dependency milestone; or (b) skipping the GCV `edf` computation — would change the returned
+  `edf`/`gcv` fields, a breaking API change, out of scope. OPT-F landed the safe part (drop the
+  `phi_t_phi.clone()` N×N copy). A rustdoc DEFER note records this at the A⁻¹ loop. Revisit in a
+  future sparse-linalg or 1.0-readiness milestone.
+
+## Summary (OPT-A..F)
+
+| OPT | Target | Result | Requirement |
+|-----|--------|--------|-------------|
+| A | `fts::dpca` | −54% alloc blocks (17,739→8,139), behavior-preserving | PERF-02 |
+| B | `fpca_variants::fsvd` | copy removal (275→274 blocks + m×m copy) | PERF-02 |
+| C | `fpca_variants::ssvd` | copy removal (22→21 blocks + m×m copy) | PERF-02 |
+| D | `fts::functional_acf` | copy removal + ~m² fewer `sqrt()` | PERF-02 |
+| E | `irreg_fdata::face_covariance` | **−80.7% wall-time** (983.8→189.8 ms) | PERF-01 |
+| F | `fem_smoothing::fem_smooth` | clone removal (N×N alloc); O(N³) solve DEFERRED | PERF-01 |
+
+All six behavior-preserving (golden equivalence tests, rel ≤1e-12). Headline wins: **E −80.7% wall-time**
+(PERF-01), **A −54% allocations** (PERF-02). The `perf_hotpaths` benches + this ledger feed Phase 51 (BENCH-02).

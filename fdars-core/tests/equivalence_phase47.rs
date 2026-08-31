@@ -163,3 +163,45 @@ fn golden_face_covariance_n40() {
     assert_rel_close(s[ns * nt - 1], 6.66851657132077946e-1, 1e-12);
     assert_rel_close(s[ns * nt / 2], 1.62141589034421940e-1, 1e-12);
 }
+
+// ─── OPT-F: fem_smooth single-pass phi_t_phi/a_mat build (fem_smoothing.rs) ────────────────────
+/// Deterministic k×k triangular mesh over the unit square.
+fn fem_grid_mesh(k: usize) -> (Vec<[f64; 2]>, Vec<[usize; 3]>) {
+    let idx = |r: usize, c: usize| r * k + c;
+    let mut nodes = Vec::with_capacity(k * k);
+    for r in 0..k {
+        for c in 0..k {
+            nodes.push([c as f64 / (k - 1) as f64, r as f64 / (k - 1) as f64]);
+        }
+    }
+    let mut tris = Vec::with_capacity(2 * (k - 1) * (k - 1));
+    for r in 0..k - 1 {
+        for c in 0..k - 1 {
+            tris.push([idx(r, c), idx(r, c + 1), idx(r + 1, c)]);
+            tris.push([idx(r, c + 1), idx(r + 1, c + 1), idx(r + 1, c)]);
+        }
+    }
+    (nodes, tris)
+}
+
+#[test]
+fn golden_fem_smooth_64nodes() {
+    let (nodes, triangles) = fem_grid_mesh(8); // 64 nodes / 98 triangles
+    let obs_xy: Vec<[f64; 2]> = nodes.clone();
+    let y: Vec<f64> = nodes
+        .iter()
+        .map(|p| (2.0 * PI * p[0]).sin() * (2.0 * PI * p[1]).cos())
+        .collect();
+    let r = fdars_core::fem_smoothing::fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-2).unwrap();
+    let nv = &r.node_values;
+    // Reference captured from pre-OPT-F code. rel 1e-12: the single-pass build produces a_mat by the
+    // same accumulation as the prior phi_t_phi.clone(), and phi_t_phi stays pure for the GCV trace.
+    assert_eq!(nv.len(), 64);
+    assert_rel_close(nv[0], 3.86481419918930811e-3, 1e-12);
+    assert_rel_close(nv[nv.len() / 2], -6.84597696733260739e-3, 1e-12);
+    assert_rel_close(nv[nv.len() - 1], -3.86481419918955314e-3, 1e-12);
+    assert_rel_close(r.fitted_obs[0], 3.86481419918930811e-3, 1e-12);
+    assert_rel_close(r.edf, 6.21215902431500666e1, 1e-12);
+    assert_rel_close(r.gcv, 4.80844160901536255e-2, 1e-12);
+    assert_rel_close(r.rss, 2.65097140616217964e-3, 1e-12);
+}

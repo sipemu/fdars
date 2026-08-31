@@ -1,9 +1,9 @@
 ---
 phase: 47
 slug: hot-path-allocation-performance
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-30
 ---
 
@@ -71,12 +71,12 @@ created: 2026-08-30
 
 ## Validation Sign-Off
 
-- [ ] Every optimized path has a golden equivalence test that passes (output preserved within tolerance)
-- [ ] Each PERF-02 change has a dhat alloc-audit showing fewer/smaller allocations
-- [ ] ≥1 before/after criterion cell shows ≥15% wall-time (or ≥25% allocation) improvement
-- [ ] Existing full suite green + clippy `--all-targets` clean
-- [ ] No public signature changed; `linalg`/non-`linalg` branches equivalent
-- [ ] Deferred targets (fem_smooth O(N³) solve, any other) documented with rationale
-- [ ] `nyquist_compliant: true` set once all above hold
+- [x] Every optimized path has a golden equivalence test that passes — 6 golden tests (dpca, ssvd, fsvd, functional_acf, face_covariance, fem_smooth) all pass at rel 1e-12
+- [x] Each PERF-02 change has a dhat alloc-audit showing fewer/smaller allocations — dpca 17,739→8,139 (hard gate <9000); fsvd 275→274, ssvd 22→21 (baseline prints)
+- [x] ≥1 before/after criterion cell shows ≥15% / ≥25% improvement — face_covariance −80.7% wall-time (983.8→189.8ms); dpca −54% allocations
+- [x] Existing full suite green (181 doctests + all unit/integration, 0 failed) + clippy `--all-targets` clean (0 warnings)
+- [x] No public signature changed; `linalg`/non-`linalg` branches equivalent
+- [x] Deferred target documented with rationale — fem_smooth O(N³) Cholesky/GCV solve (rustdoc DEFER note + PERF-RESULTS.md Deferred section)
+- [x] `nyquist_compliant: true` set — all above hold
 
-**Approval:** pending
+**Approval:** approved 2026-08-31 — 6 golden equivalence tests pass (rel 1e-12), PERF-01 headline face_covariance −80.7%, PERF-02 headline dpca −54% allocations, suite + clippy green, no signature changes, fem_smooth O(N³) documented+deferred.

@@ -520,7 +520,11 @@ pub fn fem_smooth(
 
     // ── Assemble Φ'Φ (N × N, row-major) ──────────────────────────────────────
     // O(n_obs · N²); exploiting symmetry of Φ'Φ.
+    // OPT-F: build Φ'Φ and A = Φ'Φ (…+λK+εI below) in a SINGLE assembly pass, removing the
+    // load-bearing `phi_t_phi.clone()` (one N×N copy, ~2.6 MB at N=576). `phi_t_phi` is kept PURE
+    // (Φ'Φ only) because the GCV trace below reads it; regularization is added to `a_mat` alone.
     let mut phi_t_phi = vec![0.0_f64; big_n * big_n];
+    let mut a_mat = vec![0.0_f64; big_n * big_n];
     for i in 0..n_obs {
         for a in 0..big_n {
             let phi_ia = phi[i * big_n + a];
@@ -530,15 +534,16 @@ pub fn fem_smooth(
             for b in a..big_n {
                 let val = phi_ia * phi[i * big_n + b];
                 phi_t_phi[a * big_n + b] += val;
+                a_mat[a * big_n + b] += val;
                 if a != b {
                     phi_t_phi[b * big_n + a] += val;
+                    a_mat[b * big_n + a] += val;
                 }
             }
         }
     }
 
-    // ── Build A = Φ'Φ + λ·K + ε·I ─────────────────────────────────────────
-    let mut a_mat = phi_t_phi.clone();
+    // ── Build A = Φ'Φ + λ·K + ε·I (added to a_mat only; phi_t_phi stays pure) ──────────────
     for ab in 0..(big_n * big_n) {
         a_mat[ab] += lambda * k_global[ab];
     }
@@ -565,6 +570,13 @@ pub fn fem_smooth(
     let rss: f64 = (0..n_obs).map(|i| (y[i] - fitted_obs[i]).powi(2)).sum();
 
     // ── Compute A⁻¹ column-by-column for GCV trace ───────────────────────────
+    // PERF (Phase 47 OPT-F, DEFERRED): this dense O(N³) Cholesky factorization plus the N
+    // column-by-column forward/back solves for the full A⁻¹ (needed only for the GCV edf trace) is
+    // the structural wall-time bottleneck (~452 ms @ 576 nodes, PROF-01). No safe behavior-preserving
+    // constant-factor win exists without either sparse assembly/solvers (a new crate dependency —
+    // out of scope for this no-new-dependency milestone) or skipping the GCV computation (which would
+    // change the returned `edf`/`gcv` fields — a breaking API change, also out of scope). Deferred; a
+    // future breaking/1.0-readiness or sparse-linalg milestone can revisit. See PERF-RESULTS.md.
     let l = crate::linalg::cholesky_factor(&a_mat, big_n)?;
     let mut a_inv = vec![0.0_f64; big_n * big_n];
     let mut e_col = vec![0.0_f64; big_n];
