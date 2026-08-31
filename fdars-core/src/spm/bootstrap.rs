@@ -43,8 +43,8 @@ use crate::error::FdarError;
 use crate::helpers::sort_nan_safe;
 use crate::iter_maybe_parallel;
 
-use super::chi_squared::regularized_gamma_p;
 use super::control::{spe_control_limit, t2_control_limit, ControlLimit};
+use crate::distributions::reg_gamma_p;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -356,7 +356,7 @@ fn kde_quantile(values: &[f64], p: f64, bandwidth: Option<f64>) -> Result<f64, F
 ///
 /// Phi(x) = 0.5 * (1 + erf(x / sqrt(2)))
 ///
-/// The error function is computed via `regularized_gamma_p(0.5, x^2)`,
+/// The error function is computed via `reg_gamma_p(0.5, x^2)`,
 /// exploiting the identity erf(x) = P(0.5, x^2) for x >= 0.
 ///
 /// Uses the complementary error function (erfc) path internally for
@@ -375,5 +375,5 @@ fn normal_cdf(x: f64) -> f64 {
 /// Uses the identity: erf(x) = P(0.5, x^2), which follows from the
 /// substitution u = sqrt(t) in the integral representation of P(0.5, x^2).
 fn erf_via_gamma(x: f64) -> f64 {
-    regularized_gamma_p(0.5, x * x)
+    reg_gamma_p(0.5, x * x)
 }

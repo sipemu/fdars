@@ -8,6 +8,12 @@
 //! formula for x < 0.5, this covers the full domain. The chi-squared CDF
 //! inherits this precision through the regularized incomplete gamma function.
 //!
+//! Phase-49 CONS-01: the CDF-family regularized incomplete gamma kernel and the
+//! Lanczos `ln_gamma` were consolidated into `crate::distributions`. The
+//! `pub(crate)` names below are preserved (spm-internal callers and `spm/tests.rs`
+//! are unchanged) but now delegate to the shared home — a bit-identical
+//! code-motion locked by `tests/equivalence_phase49.rs`.
+//!
 //! # References
 //!
 //! - Abramowitz, M. & Stegun, I.A. (1964). *Handbook of Mathematical
@@ -17,266 +23,28 @@
 //! - Pugh, G.R. (2004). *An Analysis of the Lanczos Gamma Approximation*.
 //!   Ph.D. thesis, University of British Columbia. Table 4, g=7, n=9.
 
-use std::f64::consts::PI;
-
-/// Natural logarithm of the gamma function using the Lanczos approximation.
-///
-/// Uses a 7-coefficient Lanczos series (g = 7) for high accuracy
-/// across the positive reals. Coefficients from Pugh (2004), Table 4,
-/// for g=7, n=9, achieving relative error < 1e-10 for x > 0.5.
-pub(crate) fn ln_gamma(x: f64) -> f64 {
-    // Lanczos coefficients for g = 7, n = 9 (Pugh, 2004, Table 4)
-    const COEFFS: [f64; 9] = [
-        0.999_999_999_999_809_9,
-        676.520_368_121_885_1,
-        -1_259.139_216_722_402_8,
-        771.323_428_777_653_1,
-        -176.615_029_162_140_6,
-        12.507_343_278_686_905,
-        -0.138_571_095_265_720_12,
-        9.984_369_578_019_572e-6,
-        1.505_632_735_149_311_6e-7,
-    ];
-    const G: f64 = 7.0;
-
-    if x < 0.5 {
-        // Reflection formula: Gamma(x) * Gamma(1-x) = pi / sin(pi*x)
-        let ln_pi = PI.ln();
-        let sin_val = (PI * x).sin();
-        if sin_val.abs() < 1e-30 {
-            return f64::INFINITY;
-        }
-        return ln_pi - sin_val.abs().ln() - ln_gamma(1.0 - x);
-    }
-
-    let x = x - 1.0;
-    let mut sum = COEFFS[0];
-    for i in 1..9 {
-        sum += COEFFS[i] / (x + i as f64);
-    }
-
-    let t = x + G + 0.5;
-    0.5 * (2.0 * PI).ln() + (x + 0.5) * t.ln() - t + sum.ln()
-}
-
-/// Regularized lower incomplete gamma function P(a, x).
-///
-/// P(a, x) = gamma(a, x) / Gamma(a) where gamma(a, x) is the lower
-/// incomplete gamma function.
-///
-/// Uses series expansion for x < a + 1, continued fraction otherwise.
+/// Regularized lower incomplete gamma function P(a, x). Delegates to the
+/// consolidated [`crate::distributions::reg_gamma_p`] (P-direct tail policy).
 pub(crate) fn regularized_gamma_p(a: f64, x: f64) -> f64 {
-    if x < 0.0 {
-        return 0.0;
-    }
-    if x == 0.0 {
-        return 0.0;
-    }
-    if a <= 0.0 {
-        return 1.0;
-    }
-
-    if x < a + 1.0 {
-        // Series expansion
-        gamma_series(a, x)
-    } else {
-        // Continued fraction (upper tail), then complement
-        1.0 - gamma_cf(a, x)
-    }
+    crate::distributions::reg_gamma_p(a, x)
 }
 
-/// Series expansion for the regularized lower incomplete gamma P(a, x).
-///
-/// P(a, x) = exp(-x + a*ln(x) - ln(Gamma(a))) * sum_{n=0}^{inf} x^n / (a*(a+1)*...*(a+n))
-///
-/// The series converges geometrically: after k terms, |remainder| < |last_term| * x/(a+k).
-/// For a >= 1 and x < a+1, convergence within 50 terms for epsilon = 1e-14.
-fn gamma_series(a: f64, x: f64) -> f64 {
-    let ln_gamma_a = ln_gamma(a);
-    let max_iter = 200;
-    let eps = 1e-14;
-
-    let mut ap = a;
-    let mut sum = 1.0 / a;
-    let mut del = sum;
-
-    for _ in 0..max_iter {
-        ap += 1.0;
-        del *= x / ap;
-        sum += del;
-        if del.abs() < sum.abs() * eps {
-            break;
-        }
-    }
-
-    let log_prefix = a * x.ln() - x - ln_gamma_a;
-    if log_prefix < -700.0 {
-        return 0.0;
-    }
-    sum * log_prefix.exp()
-}
-
-/// Continued fraction for the regularized upper incomplete gamma Q(a, x) = 1 - P(a, x).
-///
-/// Uses the modified Lentz algorithm for the continued fraction representation
-/// of the upper incomplete gamma function. The continued fraction converges
-/// superlinearly for x > a+1. Typically 10–20 terms suffice for epsilon = 1e-14.
-fn gamma_cf(a: f64, x: f64) -> f64 {
-    let ln_gamma_a = ln_gamma(a);
-    let max_iter = 200;
-    let eps = 1e-14;
-    let tiny = 1e-30;
-
-    let mut b = x + 1.0 - a;
-    let mut c = 1.0 / tiny;
-    let mut d = 1.0 / b;
-    let mut h = d;
-
-    for i in 1..=max_iter {
-        let an = -(i as f64) * (i as f64 - a);
-        b += 2.0;
-        d = an * d + b;
-        if d.abs() < tiny {
-            d = tiny;
-        }
-        c = b + an / c;
-        if c.abs() < tiny {
-            c = tiny;
-        }
-        d = 1.0 / d;
-        let del = d * c;
-        h *= del;
-        if (del - 1.0).abs() < eps {
-            break;
-        }
-    }
-
-    let log_prefix = a * x.ln() - x - ln_gamma_a;
-    if log_prefix < -700.0 {
-        return 0.0;
-    }
-    log_prefix.exp() * h
-}
-
-/// Chi-squared CDF: P(chi2(k) <= x).
-///
-/// Computed as `regularized_gamma_p(k/2, x/2)`.
+/// Chi-squared CDF: P(χ²(k) <= x). Delegates to [`crate::distributions::chi2_cdf`].
 pub(crate) fn chi2_cdf(x: f64, k: usize) -> f64 {
-    if x <= 0.0 {
-        return 0.0;
-    }
-    if k == 0 {
-        return 1.0;
-    }
-    regularized_gamma_p(k as f64 / 2.0, x / 2.0)
+    crate::distributions::chi2_cdf(x, k)
 }
 
-/// Chi-squared quantile function (inverse CDF).
-///
-/// Uses Wilson-Hilferty initial approximation (Johnson et al., 1994, §18.6.2)
-/// followed by Newton-Raphson refinement. The Wilson-Hilferty approximation
-/// has relative error O(k^{-1}), providing a good starting point for
-/// Newton-Raphson. The refinement converges to ~1e-12 relative error in
-/// 3–5 iterations.
-///
-/// # Accuracy
-///
-/// | k | p | Exact | This impl | Rel error |
-/// |---|---|-------|-----------|-----------|
-/// | 1 | 0.95 | 3.84146 | 3.84146 | < 1e-10 |
-/// | 5 | 0.95 | 11.0705 | 11.0705 | < 1e-10 |
-/// | 10 | 0.99 | 23.2093 | 23.2093 | < 1e-10 |
+/// Chi-squared quantile function (inverse CDF). Delegates to
+/// [`crate::distributions::chi2_quantile`] (Wilson-Hilferty + Newton).
 pub(crate) fn chi2_quantile(p: f64, k: usize) -> f64 {
-    if p <= 0.0 {
-        return 0.0;
-    }
-    if p >= 1.0 {
-        return f64::INFINITY;
-    }
-    if k == 0 {
-        return 0.0;
-    }
-
-    let df = k as f64;
-
-    // Wilson-Hilferty initial approximation
-    let z = normal_quantile_approx(p);
-    let ratio = 2.0 / (9.0 * df);
-    let cube = 1.0 - ratio + z * ratio.sqrt();
-    let mut x = df * cube * cube * cube;
-    if x <= 0.0 {
-        x = 0.01;
-    }
-
-    // Newton-Raphson refinement
-    let max_iter = 50;
-    let tol = 1e-12;
-
-    for _ in 0..max_iter {
-        let cdf_val = chi2_cdf(x, k);
-        let error = cdf_val - p;
-        if error.abs() < tol {
-            break;
-        }
-
-        // PDF of chi2: f(x) = x^{k/2-1} * exp(-x/2) / (2^{k/2} * Gamma(k/2))
-        let log_pdf =
-            (df / 2.0 - 1.0) * x.ln() - x / 2.0 - (df / 2.0) * 2.0_f64.ln() - ln_gamma(df / 2.0);
-        let pdf = log_pdf.exp();
-
-        if pdf < 1e-30 {
-            break;
-        }
-
-        let delta = error / pdf;
-        x -= delta;
-
-        // Ensure x stays positive
-        if x <= 0.0 {
-            x = tol;
-        }
-    }
-
-    x
-}
-
-/// Approximate normal quantile (probit function) using rational approximation.
-///
-/// Abramowitz and Stegun (1964) approximation 26.2.23 with maximum absolute
-/// error < 4.5e-4 for the standard normal quantile.
-fn normal_quantile_approx(p: f64) -> f64 {
-    if p <= 0.0 {
-        return f64::NEG_INFINITY;
-    }
-    if p >= 1.0 {
-        return f64::INFINITY;
-    }
-    if (p - 0.5).abs() < 1e-15 {
-        return 0.0;
-    }
-
-    let sign = if p < 0.5 { -1.0 } else { 1.0 };
-    let p = if p < 0.5 { p } else { 1.0 - p };
-
-    let t = (-2.0 * p.ln()).sqrt();
-
-    // Rational approximation coefficients
-    let c0 = 2.515_517;
-    let c1 = 0.802_853;
-    let c2 = 0.010_328;
-    let d1 = 1.432_788;
-    let d2 = 0.189_269;
-    let d3 = 0.001_308;
-
-    let num = c0 + c1 * t + c2 * t * t;
-    let den = 1.0 + d1 * t + d2 * t * t + d3 * t * t * t;
-
-    sign * (t - num / den)
+    crate::distributions::chi2_quantile(p, k)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::distributions::ln_gamma;
+    use std::f64::consts::PI;
 
     #[test]
     fn test_ln_gamma_known_values() {

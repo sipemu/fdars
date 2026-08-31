@@ -10,125 +10,30 @@
 //! Consumers: `hotelling.rs` (χ² tail for the Hotelling-T² p-value),
 //! `flm.rs` (F tail for the FLM significance / goodness-of-fit tests), and
 //! `anova.rs` (χ² tail for the scaled-χ² V-statistic p-value).
+//!
+//! Phase-49 CONS-01: the χ² SF machinery (`ln_gamma` + the Q-direct series/CF
+//! primitives) was consolidated into `crate::distributions`; the χ² survival
+//! wrappers here now delegate to `distributions::chi2_sf`, and the F-tail path
+//! (`betai`/`betacf`) shares the consolidated `distributions::ln_gamma`. This is
+//! a bit-identical code-motion (locked by `tests/equivalence_phase49.rs`).
 
-/// Regularized lower incomplete gamma function P(a, x) via the series
-/// expansion (converges for x < a + 1). Numerical-Recipes style.
-fn gamma_p_series(a: f64, x: f64) -> f64 {
-    // Uses the series P(a,x) = x^a e^{-x} / Γ(a) · Σ_{n≥0} x^n / (a(a+1)...(a+n))
-    let mut ap = a;
-    let mut sum = 1.0 / a;
-    let mut del = sum;
-    for _ in 0..200 {
-        ap += 1.0;
-        del *= x / ap;
-        sum += del;
-        if del.abs() < sum.abs() * 1e-15 {
-            break;
-        }
-    }
-    sum * (-x + a * x.ln() - ln_gamma(a)).exp()
-}
-
-/// Regularized upper incomplete gamma function Q(a, x) via the continued
-/// fraction (converges for x >= a + 1). Numerical-Recipes style.
-fn gamma_q_cf(a: f64, x: f64) -> f64 {
-    let tiny = 1e-300;
-    let mut b = x + 1.0 - a;
-    let mut c = 1.0 / tiny;
-    let mut d = 1.0 / b;
-    let mut h = d;
-    for i in 1..200 {
-        let an = -(i as f64) * (i as f64 - a);
-        b += 2.0;
-        d = an * d + b;
-        if d.abs() < tiny {
-            d = tiny;
-        }
-        c = b + an / c;
-        if c.abs() < tiny {
-            c = tiny;
-        }
-        d = 1.0 / d;
-        let del = d * c;
-        h *= del;
-        if (del - 1.0).abs() < 1e-15 {
-            break;
-        }
-    }
-    (-x + a * x.ln() - ln_gamma(a)).exp() * h
-}
-
-/// Log-gamma via the Lanczos approximation.
-///
-/// The coefficients are the published Lanczos g = 7, n = 9 series; their full
-/// precision is intentional, so `clippy::excessive_precision` is allowed here.
-///
-/// Exposed `pub(crate)` because both the incomplete-gamma (χ²) and the
-/// incomplete-beta (F) machinery share it.
-#[allow(clippy::excessive_precision)]
-pub(crate) fn ln_gamma(x: f64) -> f64 {
-    const G: f64 = 7.0;
-    const COEF: [f64; 9] = [
-        0.999_999_999_999_809_93,
-        676.520_368_121_885_1,
-        -1_259.139_216_722_402_8,
-        771.323_428_777_653_1,
-        -176.615_029_162_140_6,
-        12.507_343_278_686_905,
-        -0.138_571_095_265_720_12,
-        9.984_369_578_019_572e-6,
-        1.505_632_735_149_311_6e-7,
-    ];
-    if x < 0.5 {
-        // Reflection formula.
-        std::f64::consts::PI.ln() - (std::f64::consts::PI * x).sin().ln() - ln_gamma(1.0 - x)
-    } else {
-        let x = x - 1.0;
-        let mut a = COEF[0];
-        let t = x + G + 0.5;
-        for (i, &c) in COEF.iter().enumerate().skip(1) {
-            a += c / (x + i as f64);
-        }
-        0.5 * (2.0 * std::f64::consts::PI).ln() + (x + 0.5) * t.ln() - t + a.ln()
-    }
-}
+use crate::distributions::{chi2_sf, ln_gamma};
 
 /// Chi-square survival function: P(X > x) for X ~ χ²(k degrees of freedom).
 ///
-/// Equivalent to the regularized upper incomplete gamma Q(k/2, x/2).
+/// Equivalent to the regularized upper incomplete gamma Q(k/2, x/2). Delegates
+/// to the consolidated [`crate::distributions::chi2_sf`] (SF-direct tail policy).
 pub(crate) fn chi_square_sf(x: f64, k: usize) -> f64 {
-    if x <= 0.0 {
-        return 1.0;
-    }
-    let a = k as f64 / 2.0;
-    let xx = x / 2.0;
-    if xx < a + 1.0 {
-        1.0 - gamma_p_series(a, xx)
-    } else {
-        gamma_q_cf(a, xx)
-    }
+    chi2_sf(x, k as f64)
 }
 
 /// Chi-square survival function with a real-valued degrees-of-freedom argument.
 ///
 /// The scaled-χ² (Satterthwaite/Box) approximation used by the V-statistic
-/// needs a non-integer `df`, so this variant takes `df: f64` directly. It is
-/// otherwise identical to [`chi_square_sf`] (the regularized upper incomplete
-/// gamma Q(df/2, x/2)).
+/// needs a non-integer `df`, so this variant takes `df: f64` directly. Delegates
+/// to the consolidated [`crate::distributions::chi2_sf`].
 pub(crate) fn chi_square_sf_df(x: f64, df: f64) -> f64 {
-    if x <= 0.0 {
-        return 1.0;
-    }
-    if df <= 0.0 {
-        return 1.0;
-    }
-    let a = df / 2.0;
-    let xx = x / 2.0;
-    if xx < a + 1.0 {
-        1.0 - gamma_p_series(a, xx)
-    } else {
-        gamma_q_cf(a, xx)
-    }
+    chi2_sf(x, df)
 }
 
 /// Continued-fraction evaluation of the incomplete beta function
