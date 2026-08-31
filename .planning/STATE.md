@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.30.0
 milestone_name: Performance & Consolidation Pass
 status: executing
-last_updated: "2026-08-30T22:30:00.000Z"
-last_activity: 2026-08-30
+last_updated: "2026-08-31T02:00:00.000Z"
+last_activity: 2026-08-31
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
-  percent: 17
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 9
+  percent: 33
 ---
 
 # Project State
@@ -20,22 +20,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-30)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library — with both parity backlogs exhausted, v0.30.0 pivots from breadth to depth: profile the whole crate, then land behavior-preserving improvements across hot-path performance, code duplication, additive API consistency, and benchmark coverage.
-**Current focus:** Phase 47 — Hot-Path & Allocation Performance (consumes PROF-01's ranked targets)
+**Current focus:** Phase 48 — Parallelism-Gap Closure (feature-gated rayon in newer subsystems; shares Phase 47's perf harness)
 
 ## Current Position
 
-Phase: 47 of 51 (Hot-Path & Allocation Performance) — Phase 46 complete
+Phase: 48 of 51 (Parallelism-Gap Closure) — Phases 46, 47 complete
 Plan: — (not yet planned)
-Status: Phase 46 complete & verified (passed 4/4); ready to plan Phase 47
-Last activity: 2026-08-30 — Phase 46 executed (5 plans) and verified passed; three ranked inventories produced (PROF-00/01/02/03)
+Status: Phase 47 complete & verified (passed 4/4, code review clean); ready to plan Phase 48
+Last activity: 2026-08-31 — Phase 47 executed (4 plans) and verified passed; 6 behavior-preserving optimizations landed
 
-Progress: [█░░░░░░░░░] 17%
+Progress: [███░░░░░░░] 33%
 
 ### Phase 46 outcomes (feed downstream phases)
-- **PROF-01** (→ Phase 47/51): top hot paths `face_covariance` (984ms), `fem_smooth` (452ms), `frechet_anova` (133ms); top allocation `fts::dpca` (42MB churn). All 9 subsystems ranked with file:line anchors.
+- **PROF-01** (→ Phase 47 ✓/51): top hot paths `face_covariance` (984ms), `fem_smooth` (452ms), `frechet_anova` (133ms); top allocation `fts::dpca` (42MB churn). All 9 subsystems ranked with file:line anchors.
 - **PROF-02** (→ Phase 49): top dedup = χ²/F survival (2 independent gamma kernels, `inference/dist.rs:99` vs `spm/chi_squared.rs:164`); then permutation loops, seeded-RNG, SVD sign-fix.
 - **PROF-03** (→ Phase 50): 4 Config structs missing `Default`; non-seedable `fanova`; breaking items deferred to APIB-01.
-- Measure-only confirmed: zero `src/` edits, no new dependency, full suite green, clippy `--all-targets` clean.
+
+### Phase 47 outcomes (PERF-01/02)
+- **face_covariance −80.7% wall-time** (983.8→189.8ms) via kernel-weight-table precompute (OPT-E) — PERF-01 headline.
+- **fts::dpca −54% allocations** (17,739→8,139 blocks) via eigenvector index-sort (OPT-A) — PERF-02 headline.
+- OPT-B/C/D: fsvd/ssvd/functional_acf FdMatrix↔DMatrix copy removals. OPT-F: fem_smooth clone removal; O(N³) solve documented+deferred.
+- Permanent artifacts (feed Phase 51 BENCH-02): `benches/perf_hotpaths.rs`, `tests/equivalence_phase47.rs` (6 golden tests, rel 1e-12), `tests/alloc_audit_dpca.rs`, `PERF-RESULTS.md`.
+- All behavior-preserving (golden 1e-12), no signature changes, no new dependency, suite + clippy `--all-targets` green, code review clean.
+- **Frechet_anova (133ms, PROF-01 #4) and co_cluster inits are noted PERF-03 parallelism candidates for Phase 48.**
 
 ## Milestone Roadmap (v0.30.0)
 
