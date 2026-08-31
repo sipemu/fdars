@@ -215,18 +215,12 @@ fn eigendecompose_cov(
         }
     }
 
-    // Sign convention: for each component k, ensure the element with the
-    // largest absolute value is positive (mirrors `fix_svd_signs` in regression.rs).
+    // Sign convention: for each component k, ensure the element with the largest absolute value is
+    // positive. The sign DECISION is gated by the shared CONS-01 core in `regression.rs`; here the
+    // flip is SINGLE-matrix (eigenfunctions only — there is NO scores matrix at this point; BLUP
+    // scores are computed later), unlike `fix_svd_signs`'s two-matrix lockstep flip.
     for k in 0..actual_ncomp {
-        let j_max = (0..m)
-            .max_by(|&a, &b| {
-                eigenfunctions[(a, k)]
-                    .abs()
-                    .partial_cmp(&eigenfunctions[(b, k)].abs())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .unwrap_or(0);
-        if eigenfunctions[(j_max, k)] < 0.0 {
+        if crate::regression::dominant_sign_negative(&eigenfunctions, k, m) {
             for j in 0..m {
                 eigenfunctions[(j, k)] = -eigenfunctions[(j, k)];
             }

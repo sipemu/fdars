@@ -170,6 +170,31 @@ impl FpcaResult {
     }
 }
 
+/// Shared SVD/eigendecomposition sign-DECISION core (CONS-01).
+///
+/// For column `k` of `col` (an `nrows`-row column-major matrix), returns `true`
+/// iff the entry with the largest absolute value is strictly negative — the
+/// canonical "make the dominant entry positive" convention. This is the single
+/// home for the sign rule: both [`fix_svd_signs`] (FPCA rotation+scores, a
+/// two-matrix lockstep flip) and `pace_fpca::eigendecompose_cov` (eigenfunctions
+/// only, a single-matrix flip) gate their flips from this decision, so the rule
+/// cannot drift between the two sites.
+///
+/// The max-abs tie-break is `max_by` on `.abs().partial_cmp()` with
+/// `unwrap_or(Equal)` and an empty-range fallback of index `0` — preserved
+/// verbatim so every call site stays bit-identical.
+pub(crate) fn dominant_sign_negative(col: &FdMatrix, k: usize, nrows: usize) -> bool {
+    let j_max = (0..nrows)
+        .max_by(|&a, &b| {
+            col[(a, k)]
+                .abs()
+                .partial_cmp(&col[(b, k)].abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(0);
+    col[(j_max, k)] < 0.0
+}
+
 /// Fix sign ambiguity of SVD: for each component k, ensure the element of the
 /// rotation column with largest absolute value is positive. Flip both the
 /// rotation column and the scores column consistently when negative.
@@ -177,19 +202,14 @@ impl FpcaResult {
 /// This deterministic convention must be applied to BOTH the faer and nalgebra
 /// SVD paths so that `test_faer_svd_matches_nalgebra` is reproducible.
 /// Apply BEFORE the sqrt_weights unscaling loop.
+///
+/// The sign DECISION is delegated to [`dominant_sign_negative`] (the shared
+/// CONS-01 core); this function owns only the two-matrix lockstep flip.
 fn fix_svd_signs(rotation: &mut FdMatrix, scores: &mut FdMatrix, ncomp: usize) {
     let m = rotation.nrows();
     let n = scores.nrows();
     for k in 0..ncomp {
-        let j_max = (0..m)
-            .max_by(|&a, &b| {
-                rotation[(a, k)]
-                    .abs()
-                    .partial_cmp(&rotation[(b, k)].abs())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .unwrap_or(0);
-        if rotation[(j_max, k)] < 0.0 {
+        if dominant_sign_negative(rotation, k, m) {
             for j in 0..m {
                 rotation[(j, k)] = -rotation[(j, k)];
             }
