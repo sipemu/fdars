@@ -50,3 +50,30 @@ fn count_dpca_allocations_n200_m50() {
         stats.total_blocks
     );
 }
+
+/// Baseline print (not a regression gate) — OPT-B `fsvd` copy removal. Before OPT-B: 275 blocks.
+#[test]
+#[cfg(feature = "dhat-heap")]
+fn count_fsvd_allocations_n200_m50() {
+    let (x, ax) = generate_test_curves(200, 50);
+    let (y, ay) = generate_test_curves(200, 50);
+    let _profiler = dhat::Profiler::builder().testing().build();
+    let _ = fdars_core::fpca_variants::fsvd(&x, &ax, &y, &ay, 5);
+    let stats = dhat::HeapStats::get();
+    println!("[fsvd n200_m50] total_blocks: {}", stats.total_blocks);
+    println!("[fsvd n200_m50] total_bytes: {}", stats.total_bytes);
+    println!("[fsvd n200_m50] max_bytes: {}", stats.max_bytes);
+}
+
+/// Baseline print (not a regression gate) — OPT-C `ssvd` copy removal. Before OPT-C: 22 blocks.
+#[test]
+#[cfg(feature = "dhat-heap")]
+fn count_ssvd_allocations_n200_m50() {
+    let (data, argvals) = generate_test_curves(200, 50);
+    let _profiler = dhat::Profiler::builder().testing().build();
+    let _ = fdars_core::fpca_variants::ssvd(&data, 5, &argvals, 0.3);
+    let stats = dhat::HeapStats::get();
+    println!("[ssvd n200_m50] total_blocks: {}", stats.total_blocks);
+    println!("[ssvd n200_m50] total_bytes: {}", stats.total_bytes);
+    println!("[ssvd n200_m50] max_bytes: {}", stats.max_bytes);
+}

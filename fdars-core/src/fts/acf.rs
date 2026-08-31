@@ -326,15 +326,12 @@ pub fn functional_acf(
     // as the HS norm. (Without weight-scaling, the raw eigenvalues of the m×m
     // matrix C_0 are O(n * variance) rather than O(variance), producing an
     // over-inflated band.)
-    let mut c0_scaled = vec![0.0f64; m * m];
-    for j1 in 0..m {
-        let sw1 = weights[j1].sqrt();
-        for j2 in 0..m {
-            c0_scaled[j1 + j2 * m] = c0[j1 + j2 * m] * sw1 * weights[j2].sqrt();
-        }
-    }
+    // OPT-D: precompute sqrt(w) once (was ~m² redundant `weights[j2].sqrt()` calls) and build the
+    // scaled matrix directly via from_fn (no `c0_scaled` staging Vec). from_fn's (j1, j2) matches
+    // the previous column-major `c0_scaled[j1 + j2*m]` fill.
+    let sqrt_w: Vec<f64> = weights.iter().map(|w| w.sqrt()).collect();
     // Symmetrise defensively (should already be symmetric up to fp noise).
-    let mut c0_mat = DMatrix::from_column_slice(m, m, &c0_scaled);
+    let mut c0_mat = DMatrix::from_fn(m, m, |j1, j2| c0[j1 + j2 * m] * sqrt_w[j1] * sqrt_w[j2]);
     for j1 in 0..m {
         for j2 in (j1 + 1)..m {
             let avg = 0.5 * (c0_mat[(j1, j2)] + c0_mat[(j2, j1)]);

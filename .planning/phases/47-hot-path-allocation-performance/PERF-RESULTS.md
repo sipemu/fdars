@@ -32,9 +32,14 @@ dhat probes. Before-numbers are the PROF-01 (Phase 46) measurements.
 | OPT | Function | Before (blocks / total B / peak B) | After (blocks / total B / peak B) | Reduction |
 |-----|----------|-----------------------------------|-----------------------------------|-----------|
 | OPT-A | `fts::dpca` | 17,739 / 42,084,568 / 8,637,712 | 8,139 / 33,782,168 / 8,315,984 | **−54% blocks** (−20% bytes) |
-| OPT-B | `fpca_variants::fsvd` | 275 / 600,049 / 410,880 | _TBD (Plan 02)_ | — |
-| OPT-C | `fpca_variants::ssvd` | 22 / 314,416 / 182,384 | _TBD (Plan 02)_ | — |
-| OPT-D | `fts::functional_acf` | _(measured in Plan 02)_ | _TBD_ | — |
+| OPT-B | `fpca_variants::fsvd` | 275 blocks | 274 blocks | −1 block (gram staging Vec + m×m matrix copy) |
+| OPT-C | `fpca_variants::ssvd` | 22 blocks | 21 blocks | −1 block (c_scaled staging Vec + m×m matrix copy) |
+| OPT-D | `fts::functional_acf` | (staging Vec + ~m² redundant `sqrt`) | from_fn + m `sqrt` | −1 block + drops ~(m²−m) `sqrt()` calls |
+
+> OPT-B/C/D are pure copy-eliminations: each removes one `Vec` staging buffer + the redundant m×m
+> matrix copy into nalgebra (block count drops by 1; the avoided bytes are the m×m copy). OPT-D also
+> replaces ~m² `weights[j].sqrt()` recomputations with m precomputed roots. All three proven
+> byte-equivalent by golden tests at rel 1e-12.
 
 ---
 

@@ -468,24 +468,20 @@ pub fn fsvd(
     //    matrix (robust for rank-deficient Cw; nalgebra's general SVD can fail to
     //    converge on near-rank-1 inputs). Decompose the smaller of Cw·Cwᵀ / Cwᵀ·Cw.
     let gram_on_right = q <= p; // eigendecompose the (min×min) Gram matrix
-    let g_dim = q.min(p);
-    let mut gram = vec![0.0_f64; g_dim * g_dim];
-    if gram_on_right {
+                                // OPT-B copy removal: build the Gram matrix directly (no `gram` staging Vec). from_fn's
+                                // (row, col) = (a, b) matches the previous column-major `gram[a + b*dim]` fill exactly.
+    let eigen = if gram_on_right {
         // Cwᵀ·Cw is q×q: gram[(a,b)] = Σ_s cw[(s,a)]·cw[(s,b)].
-        for a in 0..q {
-            for b in 0..q {
-                gram[a + b * q] = (0..p).map(|s| cw[(s, a)] * cw[(s, b)]).sum();
-            }
-        }
+        DMatrix::from_fn(q, q, |a, b| {
+            (0..p).map(|s| cw[(s, a)] * cw[(s, b)]).sum::<f64>()
+        })
     } else {
         // Cw·Cwᵀ is p×p: gram[(a,b)] = Σ_t cw[(a,t)]·cw[(b,t)].
-        for a in 0..p {
-            for b in 0..p {
-                gram[a + b * p] = (0..q).map(|t| cw[(a, t)] * cw[(b, t)]).sum();
-            }
-        }
+        DMatrix::from_fn(p, p, |a, b| {
+            (0..q).map(|t| cw[(a, t)] * cw[(b, t)]).sum::<f64>()
+        })
     }
-    let eigen = DMatrix::from_column_slice(g_dim, g_dim, &gram).symmetric_eigen();
+    .symmetric_eigen();
     let mut pairs: Vec<(f64, usize)> = (0..eigen.eigenvalues.len())
         .map(|idx| (eigen.eigenvalues[idx], idx))
         .collect();
@@ -731,13 +727,12 @@ pub fn ssvd(
     // Sandwich eigendecompose: W^{1/2}·Cov·W^{1/2} (inlined pace_fpca pattern).
     let w = simpsons_weights(argvals);
     let sqrt_w: Vec<f64> = w.iter().map(|v| v.sqrt()).collect();
-    let mut c_scaled = vec![0.0_f64; m * m];
-    for col in 0..m {
-        for row in 0..m {
-            c_scaled[row + col * m] = sqrt_w[row] * smooth_cov[(row, col)] * sqrt_w[col];
-        }
-    }
-    let eigen = DMatrix::from_column_slice(m, m, &c_scaled).symmetric_eigen();
+    // OPT-C copy removal: build the scaled covariance directly (no `c_scaled` staging Vec).
+    // from_fn's (row, col) matches the previous column-major `c_scaled[row + col*m]` fill.
+    let eigen = DMatrix::from_fn(m, m, |row, col| {
+        sqrt_w[row] * smooth_cov[(row, col)] * sqrt_w[col]
+    })
+    .symmetric_eigen();
     let mut pairs: Vec<(f64, usize)> = (0..eigen.eigenvalues.len())
         .map(|k| (eigen.eigenvalues[k], k))
         .collect();

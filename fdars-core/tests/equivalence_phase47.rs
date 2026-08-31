@@ -13,7 +13,8 @@
 
 use std::f64::consts::PI;
 
-use fdars_core::fts::dpca;
+use fdars_core::fpca_variants::{fsvd, ssvd};
+use fdars_core::fts::{dpca, functional_acf};
 use fdars_core::matrix::FdMatrix;
 
 /// Relative-closeness assertion: `|a-b| <= tol * max(|a|, 1e-12)`.
@@ -80,4 +81,50 @@ fn golden_dpca_n50_m10() {
     assert_rel_close(r.filters[1].as_slice()[0], FILT1_0, 1e-12);
     assert_rel_close(r.scores.as_slice()[0], SCORES_0, 1e-12);
     assert_rel_close(*r.scores.as_slice().last().unwrap(), SCORES_LAST, 1e-12);
+}
+
+// ─── OPT-C: ssvd sandwich-eigen copy removal (fpca_variants.rs) ────────────────────────────────
+#[test]
+fn golden_ssvd_n30_m12() {
+    let (data, argvals) = generate_curves(30, 12);
+    let r = ssvd(&data, 3, &argvals, 0.1).unwrap();
+    // Reference captured from pre-OPT-C code. rel 1e-12: from_fn is byte-identical to
+    // from_column_slice(&c_scaled) (same column-major arithmetic).
+    assert_rel_close(r.singular_values[0], 2.24787453825566086e0, 1e-12);
+    assert_rel_close(r.singular_values[1], 1.01807594146085556e0, 1e-12);
+    assert_rel_close(r.singular_values[2], 2.32292395913555848e-8, 1e-10);
+    assert_rel_close(r.rotation.as_slice()[0], 1.50783709265766985e0, 1e-12);
+    assert_rel_close(r.scores.as_slice()[0], 4.22050180009691023e-1, 1e-12);
+}
+
+// ─── OPT-B: fsvd gram copy removal (fpca_variants.rs) ─────────────────────────────────────────
+#[test]
+fn golden_fsvd_n20_p15_q10() {
+    let (x, ax) = generate_curves(20, 15);
+    let (y, ay) = generate_curves(20, 10);
+    let r = fsvd(&x, &ax, &y, &ay, 3).unwrap();
+    // Reference captured from pre-OPT-B code. rel 1e-12: from_fn is byte-identical to
+    // from_column_slice(&gram) (same column-major arithmetic).
+    assert_rel_close(r.singular_values[0], 2.50821617715771994e-1, 1e-12);
+    assert_rel_close(r.singular_values[1], 6.02876754087493597e-2, 1e-12);
+    assert_rel_close(r.left_functions.as_slice()[0], 1.41398040862575569e0, 1e-12);
+    assert_rel_close(
+        r.right_functions.as_slice()[0],
+        1.42469272612456255e0,
+        1e-12,
+    );
+}
+
+// ─── OPT-D: functional_acf c0_scaled from_fn + sqrt_w precompute (fts/acf.rs) ──────────────────
+#[test]
+fn golden_functional_acf_n40_m12() {
+    let (data, argvals) = generate_curves(40, 12);
+    let r = functional_acf(&data, &argvals, Some(5), 50, 0.95, 7).unwrap();
+    // Reference captured from pre-OPT-D code. acf/pacf are the deterministic covariance path
+    // (rel 1e-12); upper_band is the seed-fixed Monte-Carlo path (also exact here, rel 1e-10).
+    assert_rel_close(r.acf[0], 7.10234356424632618e-1, 1e-12);
+    assert_rel_close(r.acf[1], 3.62777392633280904e-1, 1e-12);
+    assert_rel_close(r.pacf[0], 7.10234356424632618e-1, 1e-12);
+    assert_rel_close(r.pacf[1], -2.85845108686378857e-1, 1e-12);
+    assert_rel_close(r.upper_band[0], 2.50742939451547353e-1, 1e-10);
 }
