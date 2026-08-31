@@ -871,6 +871,9 @@ fn permutation_test(
 ) -> (Vec<f64>, Vec<f64>) {
     use rand::prelude::*;
     let n_total = data.nrows();
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng (per-perm
+    // reseed would change the p-values) AND is multi-statistic (per-covariate n_ge[j]); the `-> f64`
+    // scaffold cannot express a per-covariate count (Phase-49 CONS-02 Plan A).
     let mut rng = StdRng::seed_from_u64(seed);
     let mut n_ge = vec![0usize; p];
 

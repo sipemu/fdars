@@ -170,6 +170,8 @@ pub fn t_perm_test(
     let mut labels: Vec<usize> = (0..(n_a + n_b)).map(|i| usize::from(i >= n_a)).collect();
     let observed = integrated_l2_mean_diff(&pooled, &labels, n_a, m, &weights);
 
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng across all
+    // permutations; per-perm reseed would change the p-value (Phase-49 CONS-02 Plan A).
     let mut rng = StdRng::seed_from_u64(seed);
     let mut n_ge = 0usize;
     for _ in 0..n_perm {
@@ -233,6 +235,8 @@ pub fn f_perm_test(
     let mut groups: Vec<usize> = (0..(n_a + n_b)).map(|i| usize::from(i >= n_a)).collect();
     let observed = integrated_f_statistic(&pooled, &groups, &labels_dedup);
 
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng across all
+    // permutations; per-perm reseed would change the p-value (Phase-49 CONS-02 Plan A).
     let mut rng = StdRng::seed_from_u64(seed);
     let mut n_ge = 0usize;
     for _ in 0..n_perm {

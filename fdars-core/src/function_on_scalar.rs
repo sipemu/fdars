@@ -832,7 +832,10 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
     let mut n_ge = 0usize;
     let mut perm_groups = groups.to_vec();
 
-    // Simple LCG for reproducibility without requiring rand
+    // Simple LCG for reproducibility without requiring rand.
+    // NOT migrated to permutation_test::permutation_pvalue — this uses a hardcoded-42 LCG with NO `seed`
+    // param (outside the StdRng contract the scaffold assumes); migrating would change the p-value
+    // (Phase-49 CONS-02 Plan A).
     let mut rng_state: u64 = 42;
     for _ in 0..n_perm {
         // Fisher-Yates shuffle with LCG

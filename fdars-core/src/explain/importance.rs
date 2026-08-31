@@ -122,6 +122,11 @@ pub fn fpc_permutation_importance(
     );
     let baseline = 1.0 - ss_res_base / ss_tot;
 
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng across ALL
+    // components; per-perm reseed would change the importances (Phase-49 CONS-02 Plan A). The Phase-48
+    // hand-off "fold into the already-parallel generic path" is behavior-CHANGING (generic path reseeds
+    // per-component seed+k; this advances one RNG) → DEFERRED to a future behavior-changing phase with a
+    // re-baselined golden, NOT done here.
     let mut rng = StdRng::seed_from_u64(seed);
     let mut importance = vec![0.0; ncomp];
     let mut permuted_metric = vec![0.0; ncomp];
@@ -212,6 +217,11 @@ pub fn fpc_permutation_importance_logistic(
         .count() as f64
         / n as f64;
 
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng across ALL
+    // components; per-perm reseed would change the importances (Phase-49 CONS-02 Plan A). The Phase-48
+    // hand-off "fold into the already-parallel generic path" is behavior-CHANGING (generic path reseeds
+    // per-component seed+k; this advances one RNG) → DEFERRED to a future behavior-changing phase with a
+    // re-baselined golden, NOT done here.
     let mut rng = StdRng::seed_from_u64(seed);
     let mut importance = vec![0.0; ncomp];
     let mut permuted_metric = vec![0.0; ncomp];
@@ -530,6 +540,11 @@ pub fn conditional_permutation_importance(
         1.0 - ss_res / ss_tot
     };
 
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng across ALL
+    // components; per-perm reseed would change the importances (Phase-49 CONS-02 Plan A). The Phase-48
+    // hand-off "fold into the already-parallel generic path" is behavior-CHANGING (generic path reseeds
+    // per-component seed+k; this advances one RNG) → DEFERRED to a future behavior-changing phase with a
+    // re-baselined golden, NOT done here.
     let mut rng = StdRng::seed_from_u64(seed);
     let mut importance = vec![0.0; ncomp];
     let mut permuted_metric = vec![0.0; ncomp];
@@ -640,6 +655,11 @@ pub fn conditional_permutation_importance_logistic(
         correct as f64 / n as f64
     };
 
+    // NOT migrated to permutation_test::permutation_pvalue — uses a single ADVANCING StdRng across ALL
+    // components; per-perm reseed would change the importances (Phase-49 CONS-02 Plan A). The Phase-48
+    // hand-off "fold into the already-parallel generic path" is behavior-CHANGING (generic path reseeds
+    // per-component seed+k; this advances one RNG) → DEFERRED to a future behavior-changing phase with a
+    // re-baselined golden, NOT done here.
     let mut rng = StdRng::seed_from_u64(seed);
     let mut importance = vec![0.0; ncomp];
     let mut permuted_metric = vec![0.0; ncomp];
