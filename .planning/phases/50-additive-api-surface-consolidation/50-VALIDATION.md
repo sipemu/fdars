@@ -62,7 +62,7 @@ touching genuine `_nd` algorithms (`pca_nd`, `karcher_*_nd`, `srsf_*_nd`); all f
 | API-01 (#1) | BoostingConfig/BayesianConfig/StabilityConfig `::default()` == documented values; StlConfig untouched (no E0119) | unit | `cargo test … boosting_regression` (both configs) | 50-01 | ⬜ |
 | API-01/02 (#2) | `fanova_seeded(…, 42)` AND the `fanova` shim reproduce the CURRENT fanova output BIT-IDENTICALLY (global_statistic + p_value, LCG preserved not StdRng) | integration golden | `cargo test … --test equivalence_phase50 fanova` (both configs) | 50-02 | ⬜ |
 | API-02 (#2) | `fanova_seeded` with a different seed changes p_value but not global_statistic (seed actually threads) | integration golden | `cargo test … --test equivalence_phase50 fanova` | 50-02 | ⬜ |
-| API-02 (#4) | 5 unified dispatchers == their `_1d` AND `_2d` outputs (modal/fraiman_muniz/random_projection/random_tukey + fdata mean) | integration golden | `cargo test … --test equivalence_phase50 dispatch` (both configs) | 50-03 | ⬜ |
+| API-02 (#4) | 5 unified dispatchers: 3 deterministic (modal/fraiman_muniz/fdata mean) == their `_1d` AND `_2d` outputs bit-identically; 2 RNG (random_projection/random_tukey) forward-by-construction to `_1d` (thread_rng → no runtime equality) verified STRUCTURALLY (len + [0,1]) | integration golden + structural | `cargo test … --test equivalence_phase50 dispatch` (both configs) | 50-03 | ⬜ |
 | API-02 (#4) | ONLY the 5 `_2d` shims deprecated; NO `_1d` deprecated; `_nd`/regression/deriv/geometric_median/functional_spatial untouched | static + clippy | grep `#[deprecated]` set == {fanova, modal_2d, fraiman_muniz_2d, random_projection_2d, random_tukey_2d, mean_2d}; `clippy --all-targets -D warnings` | 50-03 | ⬜ |
 | API-01 (#3) | Canonical FpcaResult vocabulary documented; NO field rename | static | grep the doc note in regression.rs; grep confirms no field renamed | 50-03 | ⬜ |
 | API-03 | 28 examples build with deprecation warnings only (example 21 migrated to fanova_seeded) | smoke | `cargo build -p fdars-core --examples --features linalg,parallel` | 50-01/02/03 | ⬜ |
@@ -76,7 +76,7 @@ touching genuine `_nd` algorithms (`pca_nd`, `karcher_*_nd`, `srsf_*_nd`); all f
 
 - [ ] `fdars-core/tests/equivalence_phase50.rs` — created by plan 50-02 (fanova golden), extended by 50-03 (dispatch-equality goldens). Mirror `equivalence_phase49.rs` header + `#![allow(clippy::excessive_precision)]` + `const` f64 goldens + `assert_eq!` (NOT tolerance).
 - [ ] fanova golden captures the CURRENT (pre-change) `fanova` output (global_statistic + p_value) from a DETERMINISTIC fixture (≥2 groups, n≥3) BEFORE any src/ edit; the golden test fn carries `#[allow(deprecated)]`.
-- [ ] Dispatch-equality goldens use the SAME deterministic fixture/seed as the existing depth `*_2d_delegates` tests so RNG-projection paths (random_projection/random_tukey) are reproducible.
+- [ ] Dispatch goldens: the 3 deterministic pairs (modal/fraiman_muniz/mean) use `assert_eq!` against a fixed fixture; the 2 RNG pairs (random_projection/random_tukey) use a STRUCTURAL valid-depth-vector check (len + [0,1]) — NOT `assert_eq!` — because their `_1d` calls `_seeded(…, None)` → thread_rng (no public seed → not reproducible).
 - [ ] One-line `::default()` smoke test (50-01) asserting the documented config values under both configs.
 
 ---
@@ -115,7 +115,7 @@ either MIGRATED (user-facing/integration surfaces) or `#[allow(deprecated)]` (be
 
 - [ ] Item #1: 3 boosting `Default` impls compile; `::default()` == documented values under BOTH configs; StlConfig untouched (no E0119)
 - [ ] Item #2: `fanova_seeded` keeps the LCG (NOT StdRng); `fanova` deprecated shim delegates with seed=42; `equivalence_phase50` fanova golden bit-identical (global_statistic + p_value) under BOTH configs
-- [ ] Item #4: `Dim` enum in src/dim.rs re-exported at crate root; 5 unified dispatchers == their `_1d`/`_2d` outputs (assert_eq!, deterministic fixture) under BOTH configs
+- [ ] Item #4: `Dim` enum in src/dim.rs re-exported at crate root; 5 unified dispatchers ship — 3 deterministic (modal/fraiman_muniz/mean) == their `_1d`/`_2d` outputs (assert_eq!, fixed fixture); 2 RNG (random_projection/random_tukey) structural valid-depth-vector check — under BOTH configs
 - [ ] Item #4: ONLY the 5 `_2d` shims are `#[deprecated(since="0.30.0")]`; NO `_1d` deprecated; regression/deriv/geometric_median/functional_spatial and all `_nd` algorithms untouched
 - [ ] Item #3: canonical-vocabulary doc note in regression.rs; NO field renamed
 - [ ] Deprecation hygiene: every in-crate deprecated-fn caller migrated or `#[allow(deprecated)]`; `depth/dispatch.rs` warning-free; `clippy --all-targets --features linalg,parallel -- -D warnings` clean
