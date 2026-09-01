@@ -115,6 +115,10 @@ harness = false
 name = "frechet_benchmarks"   # Phase 51 BENCH-01 — frechet::frechet_global_reg coverage
 harness = false
 
+[[bench]]
+name = "boosting_regression_benchmarks"   # Phase 51 BENCH-01 — boosting_regression::boost_fosr coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
