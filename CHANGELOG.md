@@ -5,6 +5,59 @@ All notable changes to `fdars-core` are documented here. This project adheres to
 non-breaking** — no existing public signature changed and no new crate dependency
 was added in this span.
 
+## [0.30.0] - 2026-09-01
+
+Covers the v0.30.0 development milestone (Performance & Consolidation Pass) — the
+first internally-driven, measure-first depth pass rather than an external gap-audit.
+**Behavior-preserving** (numeric outputs unchanged or provably-equivalent within
+documented tolerance, proven by existing tests + before/after criterion benchmarks)
+and **additive/non-breaking** — no existing public signature was removed and no new
+crate dependency was added. Folds in the v0.29.0 development work as well (the
+0.29.0 tag was published without a corresponding root changelog entry).
+
+### Performance (behavior-preserving)
+
+- **`face_covariance` −80.7% wall-time** (983.8 → 189.8 ms): the sparse FACE
+  covariance estimator now precomputes per-observation Gaussian kernel-weight tables
+  once instead of recomputing them per `(s, t)` grid cell (~98% fewer `exp()` calls);
+  byte-equivalent output.
+- **`fts::dpca` −54% allocations** (17,739 → 8,139 blocks): dynamic-PCA eigenvector
+  materialization now uses an index-sort instead of staging into intermediate `Vec`s;
+  golden-equivalent within 1e-12.
+- **`fsvd` / `ssvd` / `functional_acf`**: eigen matrices are now built via
+  `DMatrix::from_fn` (no `Vec` staging, no `m×m` copy); `functional_acf` also
+  precomputes `sqrt(w)`. Byte-equivalent (golden 1e-12).
+- **`fem_smooth`**: `phi_t_phi` and the assembly matrix are built in a single pass,
+  dropping an `N×N` clone; byte-equivalent. (The `O(N³)` Cholesky/GCV cost is
+  documented and deferred.)
+- **Thread-scaling**: `frechet_anova` and co-clustering initialization gained
+  feature-gated rayon parallelism via the `parallel.rs` macros, equivalence-tested
+  vs. sequential (ON/OFF) with payback-threshold guards.
+
+### Changed — internal consolidation (no API change)
+
+- Duplicated numerical/statistical machinery factored into shared `pub(crate)`
+  helpers: χ²/F survival distributions (`distributions.rs`), per-thread RNG seeding
+  (`seed_for_thread`), permutation-test p-value scaffolding (`permutation_pvalue`),
+  and the SVD sign-fix core — with all prior call sites migrated. Behavior unchanged.
+
+### Added — additive API consolidation
+
+- `fanova_seeded` — a seedable variant of the permutation `fanova` (the original
+  non-seedable `fanova` is retained).
+- A `Dim` dimensionality parameter plus 5 unified dispatchers over previously
+  separate `_1d` / `_2d` entry points.
+- New criterion `[[bench]]` coverage for the previously-unbenchmarked modules
+  (`fts`, `frechet`, `boosting_regression`, `coclustering`, `fem_smoothing`,
+  `density_fda`, `inference`, `fpca_variants`, `face`), plus a `BENCH-RESULTS.md`
+  regression-guard ledger.
+
+### Deprecated
+
+- 6 redundant public forms are now marked `#[deprecated]` in favor of the unified
+  alternatives above. **All deprecated signatures still compile and work** — the
+  breaking removal is deferred to a future 1.0-readiness release.
+
 ## [0.28.0] - 2026-08-23
 
 Covers the v0.28.0 development milestone (Spectral Functional Time Series &
