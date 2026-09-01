@@ -103,6 +103,10 @@ harness = false
 name = "perf_parallelism"   # PERMANENT — Phase 48 PERF-03 thread-scaling proof / Phase 51 BENCH-02 regression guard
 harness = false
 
+[[bench]]
+name = "inference_benchmarks"   # Phase 51 BENCH-01 — inference::t_perm_test coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
