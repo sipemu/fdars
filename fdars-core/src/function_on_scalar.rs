@@ -769,14 +769,27 @@ pub(crate) fn integrated_f_statistic(data: &FdMatrix, groups: &[usize], labels: 
     global_f_statistic(&f_t)
 }
 
-/// Functional ANOVA: test whether groups have different mean curves.
+/// Functional ANOVA with an explicit permutation seed (reproducible p-values).
 ///
-/// Uses a permutation-based global test with the integrated F-statistic.
+/// Tests whether groups have different mean curves via a permutation-based global test with the
+/// integrated F-statistic. The `seed` initializes the permutation RNG, so repeated calls with the
+/// same `seed` yield identical p-values, and distinct seeds give independent permutation draws.
+///
+/// # Note on the RNG
+///
+/// This function deliberately keeps `fanova`'s original hand-rolled linear congruential generator
+/// (LCG: multiplier `6_364_136_223_846_793_005`, increment `1`, bit-extract `(state >> 33) % (i+1)`)
+/// rather than `StdRng`, so that `fanova_seeded(data, groups, n_perm, 42)` reproduces the historical
+/// `fanova` output **bit-identically**. This diverges from the sibling seeded functions
+/// (`frechet_anova`, `t_perm_test`, `f_perm_test`) which use `StdRng`; unifying on `StdRng` here
+/// would change the permutation stream (and hence the p-value) and is therefore deferred to APIB-01
+/// as a breaking behavior change.
 ///
 /// # Arguments
 /// * `data` - Functional response matrix (n × m)
 /// * `groups` - Group labels for each observation (length n, integer-coded)
 /// * `n_perm` - Number of permutations for the global test
+/// * `seed` - Seed for the permutation RNG (reproducibility)
 ///
 /// # Returns
 /// [`FanovaResult`] with group means, F-statistics, and permutation p-value
@@ -788,7 +801,12 @@ pub(crate) fn integrated_f_statistic(data: &FdMatrix, groups: &[usize], labels: 
 /// Returns [`FdarError::InvalidParameter`] if fewer than 2 distinct groups
 /// are present.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<FanovaResult, FdarError> {
+pub fn fanova_seeded(
+    data: &FdMatrix,
+    groups: &[usize],
+    n_perm: usize,
+    seed: u64,
+) -> Result<FanovaResult, FdarError> {
     let (n, m) = data.shape();
     if m == 0 {
         return Err(FdarError::InvalidDimension {
@@ -832,11 +850,11 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
     let mut n_ge = 0usize;
     let mut perm_groups = groups.to_vec();
 
-    // Simple LCG for reproducibility without requiring rand.
-    // NOT migrated to permutation_test::permutation_pvalue — this uses a hardcoded-42 LCG with NO `seed`
-    // param (outside the StdRng contract the scaffold assumes); migrating would change the p-value
-    // (Phase-49 CONS-02 Plan A).
-    let mut rng_state: u64 = 42;
+    // Simple LCG for reproducibility without requiring rand. The `seed` threads directly into the
+    // LCG state; `seed = 42` reproduces the historical `fanova` permutation stream bit-identically.
+    // NOT migrated to permutation_test::permutation_pvalue — that helper assumes the StdRng contract;
+    // migrating would change the p-value. StdRng unification is deferred to APIB-01.
+    let mut rng_state: u64 = seed;
     for _ in 0..n_perm {
         // Fisher-Yates shuffle with LCG
         for i in (1..n).rev() {
@@ -865,6 +883,39 @@ pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<Fanova
         n_groups,
         group_labels: labels,
     })
+}
+
+/// Functional ANOVA: test whether groups have different mean curves.
+///
+/// Uses a permutation-based global test with the integrated F-statistic.
+///
+/// # Deprecated
+///
+/// This function uses a fixed permutation seed (42), so its p-value is not caller-controllable.
+/// Prefer [`fanova_seeded`], which accepts an explicit `seed`. `fanova(data, groups, n_perm)` is now
+/// a thin shim delegating to `fanova_seeded(data, groups, n_perm, 42)` — its output is unchanged.
+///
+/// # Arguments
+/// * `data` - Functional response matrix (n × m)
+/// * `groups` - Group labels for each observation (length n, integer-coded)
+/// * `n_perm` - Number of permutations for the global test
+///
+/// # Returns
+/// [`FanovaResult`] with group means, F-statistics, and permutation p-value
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has zero columns,
+/// `groups.len()` does not match the number of rows in `data`, or `n < 3`.
+/// Returns [`FdarError::InvalidParameter`] if fewer than 2 distinct groups
+/// are present.
+#[deprecated(
+    since = "0.30.0",
+    note = "use `fanova_seeded` for reproducible permutation p-values; `fanova` delegates with the legacy fixed seed 42"
+)]
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<FanovaResult, FdarError> {
+    fanova_seeded(data, groups, n_perm, 42)
 }
 
 impl FosrResult {

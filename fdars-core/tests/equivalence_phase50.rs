@@ -36,6 +36,9 @@ const FANOVA_N_PERM: usize = 199;
 const FANOVA_GLOBAL_STATISTIC: f64 = 42.36027574578335;
 // p_value — seed-DEPENDENT (LCG permutation stream). The linchpin proving the LCG is preserved.
 const FANOVA_P_VALUE_SEED42: f64 = 0.11;
+// p_value with a DIFFERENT seed (7): must differ from the seed-42 value (proves the seed threads
+// into the LCG) while the seed-independent global_statistic stays identical.
+const FANOVA_P_VALUE_SEED7: f64 = 0.105;
 
 /// Deterministic two-group functional fixture (n=6 curves × m=5 points) with a clear group effect,
 /// driving `fanova`. Fixed literals — no RNG, no time dependence — so the goldens are reproducible.
@@ -71,4 +74,32 @@ fn fanova_shim_seed42_bit_identical() {
     assert_eq!(r.global_statistic, FANOVA_GLOBAL_STATISTIC);
     assert_eq!(r.p_value, FANOVA_P_VALUE_SEED42);
     assert_eq!(r.n_perm, FANOVA_N_PERM);
+}
+
+/// `fanova_seeded(…, 42)` — the new seeded entry point with the legacy seed — must reproduce the
+/// SAME bits as the deprecated shim (the LCG stream is preserved verbatim). Not deprecated, so no
+/// `#[allow(deprecated)]` needed.
+#[test]
+fn fanova_seeded_seed42_bit_identical() {
+    use fdars_core::function_on_scalar::fanova_seeded;
+    let (data, groups) = fanova_fixture();
+    let r = fanova_seeded(&data, &groups, FANOVA_N_PERM, 42).unwrap();
+    assert_eq!(r.global_statistic, FANOVA_GLOBAL_STATISTIC);
+    assert_eq!(r.p_value, FANOVA_P_VALUE_SEED42);
+    assert_eq!(r.n_perm, FANOVA_N_PERM);
+}
+
+/// A DIFFERENT seed (7) must change the p_value (proving the seed threads into the LCG) while
+/// leaving the seed-independent global_statistic identical. This is the sanity check that
+/// `fanova_seeded` is not silently ignoring `seed`.
+#[test]
+fn fanova_seeded_different_seed_changes_pvalue_not_statistic() {
+    use fdars_core::function_on_scalar::fanova_seeded;
+    let (data, groups) = fanova_fixture();
+    let r7 = fanova_seeded(&data, &groups, FANOVA_N_PERM, 7).unwrap();
+    // global_statistic is seed-independent — identical across seeds.
+    assert_eq!(r7.global_statistic, FANOVA_GLOBAL_STATISTIC);
+    // p_value is seed-dependent — differs from seed 42, matches the captured seed-7 golden.
+    assert_eq!(r7.p_value, FANOVA_P_VALUE_SEED7);
+    assert_ne!(r7.p_value, FANOVA_P_VALUE_SEED42);
 }

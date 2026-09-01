@@ -380,7 +380,7 @@ pub use fof_regression::{
 
 // Re-export function-on-scalar regression types
 pub use function_on_scalar::{
-    fanova, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
+    fanova, fanova_seeded, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
 };
 pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 
