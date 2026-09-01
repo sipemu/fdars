@@ -131,6 +131,10 @@ harness = false
 name = "density_fda_benchmarks"   # Phase 51 BENCH-01 — density_fda::lqd_fpca coverage
 harness = false
 
+[[bench]]
+name = "fpca_variants_benchmarks"   # Phase 51 BENCH-01 — fpca_variants::fpca_der coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
