@@ -64,6 +64,24 @@ pub struct BoostingConfig {
     pub seed: u64,
 }
 
+impl Default for BoostingConfig {
+    /// FDboost-convention defaults: `mstop = 100`, `nu = 0.1`, cubic (`order = 4`)
+    /// B-spline base-learners with `nbasis = 10`, second-derivative penalty
+    /// (`lfd_order = 2`), `lambda = 1.0`, `ncomp_x = 3`, `seed = 0`.
+    fn default() -> Self {
+        Self {
+            mstop: 100,
+            nu: 0.1,
+            nbasis: 10,
+            order: 4,
+            lfd_order: 2,
+            lambda: 1.0,
+            ncomp_x: 3,
+            seed: 0,
+        }
+    }
+}
+
 /// Configuration for the Bayesian FOSR Gibbs sampler (REG-06-04).
 ///
 /// Uses conjugate Normal-Inverse-Gamma priors. Defaults match the weakly-informative
@@ -94,6 +112,24 @@ pub struct BayesianConfig {
     pub seed: u64,
 }
 
+impl Default for BayesianConfig {
+    /// Weakly-informative defaults per Jiang et al. (2025): `tau2 = 100.0`,
+    /// `IG(0.001, 0.001)`, with `ncomp = 4`, `n_iter = 400`, `burn_in = 200`,
+    /// `thin = 1`, `seed = 0` (mirrors `bayesian::tests::default_config`).
+    fn default() -> Self {
+        Self {
+            ncomp: 4,
+            tau2: 100.0,
+            ig_a0: 0.001,
+            ig_b0: 0.001,
+            n_iter: 400,
+            burn_in: 200,
+            thin: 1,
+            seed: 0,
+        }
+    }
+}
+
 /// Configuration for FDboost-style stability selection (REG-06-05).
 ///
 /// Implements the Meinshausen-Bühlmann subsampling scheme with ⌊n/2⌋ rows
@@ -109,6 +145,18 @@ pub struct StabilityConfig {
     pub pi_thr: f64,
     /// Base RNG seed; replicate `b` uses `seed.wrapping_add(b as u64)` for isolation.
     pub seed: u64,
+}
+
+impl Default for StabilityConfig {
+    /// Meinshausen-Bühlmann defaults: `n_resamples = 100`, `pi_thr = 0.9`,
+    /// `seed = 0`.
+    fn default() -> Self {
+        Self {
+            n_resamples: 100,
+            pi_thr: 0.9,
+            seed: 0,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
