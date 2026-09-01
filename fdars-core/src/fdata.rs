@@ -1,5 +1,6 @@
 //! Functional data operations: mean, center, derivatives, norms, and geometric median.
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::helpers::{simpsons_weights, simpsons_weights_2d, NUMERICAL_EPS};
 use crate::iter_maybe_parallel;
@@ -176,6 +177,23 @@ pub fn mean_1d(data: &FdMatrix) -> Vec<f64> {
             col.iter().sum::<f64>() / n as f64
         })
         .collect()
+}
+
+/// Compute the mean function for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one (both compute the pointwise mean
+/// over the flattened column-major grid), so both [`Dim`] arms forward to
+/// [`mean_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// single future seam should a real 2D specialization ever be needed.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn mean(data: &FdMatrix, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => mean_1d(data),
+    }
 }
 
 /// Compute the mean function for 2D surfaces.

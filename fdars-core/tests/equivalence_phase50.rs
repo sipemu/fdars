@@ -103,3 +103,105 @@ fn fanova_seeded_different_seed_changes_pvalue_not_statistic() {
     assert_eq!(r7.p_value, FANOVA_P_VALUE_SEED7);
     assert_ne!(r7.p_value, FANOVA_P_VALUE_SEED42);
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// UNIFIED `Dim` DISPATCH goldens (API-02, plan 50-03). Five unified dispatchers each forward to their
+// `_1d` primitive for both `Dim` arms (the `_2d` path never diverged). The 3 DETERMINISTIC dispatchers
+// (modal, fraiman_muniz, mean) assert BIT-IDENTICAL equality to BOTH `_1d` and `_2d`. The 2 RNG
+// dispatchers (random_projection, random_tukey) call `_1d` → `_seeded(…, None)` → `thread_rng()`
+// (fresh entropy, no public seed), so two calls are independent draws and `assert_eq!` would flake;
+// they are verified STRUCTURALLY instead (output length == n_obs AND every value ∈ [0,1]), mirroring
+// the existing `test_random_projection_2d_returns_valid` (depth/tests.rs). The dispatcher's forwarding
+// to `_1d` is a compile-time (single-arm `match`) guarantee, not a runtime one.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+use fdars_core::Dim;
+
+/// Deterministic depth/mean fixture: `n` mild sinusoids on an `m`-point grid (no RNG, no time).
+/// Column-major flatten: element (i, j) at index i + j * n.
+fn dispatch_fixture(n: usize, m: usize) -> FdMatrix {
+    let mut cm = vec![0.0f64; n * m];
+    for j in 0..m {
+        let t = j as f64 / (m as f64 - 1.0);
+        for i in 0..n {
+            cm[i + j * n] = (t * std::f64::consts::PI).sin() + 0.05 * i as f64;
+        }
+    }
+    FdMatrix::from_column_major(cm, n, m).unwrap()
+}
+
+/// Assert `vec` is a valid depth vector: correct length and every value in [0, 1].
+fn assert_valid_depth_vec(vec: &[f64], n_obs: usize) {
+    assert_eq!(vec.len(), n_obs, "depth vector length must equal n_obs");
+    for &d in vec {
+        assert!(
+            (0.0..=1.0).contains(&d),
+            "depth value {d} out of [0, 1] range"
+        );
+    }
+}
+
+/// DETERMINISTIC pair — `modal(…, Dim::One)` is bit-identical to `modal_1d(…)`.
+#[test]
+fn dispatch_modal_equals_1d() {
+    use fdars_core::depth::{modal, modal_1d};
+    let data = dispatch_fixture(6, 12);
+    let h = 0.5;
+    let unified_one = modal(&data, &data, h, Dim::One);
+    let unified_two = modal(&data, &data, h, Dim::Two);
+    let want = modal_1d(&data, &data, h);
+    assert_eq!(unified_one, want);
+    // Both Dim arms forward to the same `_1d` primitive.
+    assert_eq!(unified_two, want);
+}
+
+/// DETERMINISTIC pair — `fraiman_muniz(…, Dim::Two)` is bit-identical to `fraiman_muniz_1d(…)`.
+#[test]
+fn dispatch_fraiman_muniz_equals_1d() {
+    use fdars_core::depth::{fraiman_muniz, fraiman_muniz_1d};
+    let data = dispatch_fixture(6, 12);
+    for scale in [true, false] {
+        let unified_two = fraiman_muniz(&data, &data, scale, Dim::Two);
+        let unified_one = fraiman_muniz(&data, &data, scale, Dim::One);
+        let want = fraiman_muniz_1d(&data, &data, scale);
+        assert_eq!(unified_two, want);
+        assert_eq!(unified_one, want);
+    }
+}
+
+/// DETERMINISTIC pair — `mean(…, Dim::One)` is bit-identical to `mean_1d(…)`.
+#[test]
+fn dispatch_mean_equals_1d() {
+    use fdars_core::fdata::{mean, mean_1d};
+    let data = dispatch_fixture(6, 12);
+    let unified_one = mean(&data, Dim::One);
+    let unified_two = mean(&data, Dim::Two);
+    let want = mean_1d(&data);
+    assert_eq!(unified_one, want);
+    assert_eq!(unified_two, want);
+}
+
+/// RNG pair — `random_projection(…, Dim::One)` forwards to `random_projection_1d` (thread_rng, no
+/// public seed). Verified STRUCTURALLY (len + [0,1]); no `assert_eq!` possible.
+#[test]
+fn dispatch_random_projection_is_valid() {
+    use fdars_core::depth::random_projection;
+    let data = dispatch_fixture(6, 12);
+    let got = random_projection(&data, &data, 20, Dim::One);
+    assert_valid_depth_vec(&got, data.nrows());
+    // The second arm also forwards to `_1d` (compile-time guarantee); still a valid depth vector.
+    let got_two = random_projection(&data, &data, 20, Dim::Two);
+    assert_valid_depth_vec(&got_two, data.nrows());
+}
+
+/// RNG pair — `random_tukey(…, Dim::Two)` forwards to `random_tukey_1d` (thread_rng, no public seed).
+/// Verified STRUCTURALLY (len + [0,1]); no `assert_eq!` possible.
+#[test]
+fn dispatch_random_tukey_is_valid() {
+    use fdars_core::depth::random_tukey;
+    let data = dispatch_fixture(6, 12);
+    let got = random_tukey(&data, &data, 20, Dim::Two);
+    assert_valid_depth_vec(&got, data.nrows());
+    let got_one = random_tukey(&data, &data, 20, Dim::One);
+    assert_valid_depth_vec(&got_one, data.nrows());
+}

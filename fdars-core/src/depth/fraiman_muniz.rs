@@ -1,5 +1,6 @@
 //! Fraiman-Muniz depth measures.
 
+use crate::dim::Dim;
 use crate::matrix::FdMatrix;
 use crate::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFraimanMuniz};
 
@@ -36,6 +37,24 @@ pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -
     let state = SortedReferenceState::from_reference(data_ori);
     let streaming = StreamingFraimanMuniz::new(state, scale);
     streaming.depth_batch(data_obj)
+}
+
+/// Compute Fraiman-Muniz depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`fraiman_muniz_1d`]. The `dim` argument makes caller intent explicit and
+/// provides a single future seam should a real 2D specialization ever be needed.
+///
+/// # Arguments
+/// * `data_obj` - Data to compute depth for
+/// * `data_ori` - Reference data
+/// * `scale` - Whether to scale the depth values
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn fraiman_muniz(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => fraiman_muniz_1d(data_obj, data_ori, scale),
+    }
 }
 
 /// Compute Fraiman-Muniz depth for 2D functional data (surfaces).

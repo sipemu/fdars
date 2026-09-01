@@ -31,15 +31,15 @@ pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
 pub use dispatch::{functional_boxplot, functional_depth, DepthMethod, FunctionalBoxplotResult};
 pub use erl::extreme_rank_length_depth_1d;
 pub use extremal::extremal_depth_1d;
-pub use fraiman_muniz::{fraiman_muniz_1d, fraiman_muniz_2d};
+pub use fraiman_muniz::{fraiman_muniz, fraiman_muniz_1d, fraiman_muniz_2d};
 pub use half_region::{half_region_depth_1d, modified_half_region_depth_1d};
 pub use hypo_epi::{epigraph_index_1d, hypograph_index_1d, modified_hypograph_index_1d};
 pub use linf::linfinity_depth_1d;
-pub use modal::{modal_1d, modal_2d};
+pub use modal::{modal, modal_1d, modal_2d};
 pub use random_projection::{
-    random_projection_1d, random_projection_1d_seeded, random_projection_2d,
+    random_projection, random_projection_1d, random_projection_1d_seeded, random_projection_2d,
 };
-pub use random_tukey::{random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d};
+pub use random_tukey::{random_tukey, random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d};
 pub use rpd::{rpd_depth_1d, rpd_depth_1d_seeded};
 pub use spatial::{
     functional_spatial_1d, functional_spatial_2d, kernel_functional_spatial_1d,

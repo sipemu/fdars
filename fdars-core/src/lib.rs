@@ -86,6 +86,7 @@ pub mod cv;
 pub mod density_fda;
 pub mod depth;
 pub mod detrend;
+pub mod dim;
 pub mod distance;
 pub(crate) mod distributions;
 pub mod famm;
@@ -587,15 +588,19 @@ pub use metric::{
 };
 
 // Re-export depth measure functions
+// Re-export the shared dimensionality selector for the unified depth/fdata dispatchers.
+pub use dim::Dim;
+
 pub use depth::{
-    band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz_1d,
-    fraiman_muniz_2d, functional_boxplot, functional_depth, functional_spatial_1d,
-    functional_spatial_2d, half_region_depth_1d, hypograph_index_1d, kernel_functional_spatial_1d,
-    kernel_functional_spatial_2d, linfinity_depth_1d, modal_1d, modal_2d, modified_band_1d,
-    modified_epigraph_index_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
-    random_projection_1d, random_projection_1d_seeded, random_projection_2d, random_tukey_1d,
-    random_tukey_1d_seeded, random_tukey_2d, total_variation_depth_1d, DepthMethod,
-    FunctionalBoxplotResult, TvdMssResult,
+    band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz,
+    fraiman_muniz_1d, fraiman_muniz_2d, functional_boxplot, functional_depth,
+    functional_spatial_1d, functional_spatial_2d, half_region_depth_1d, hypograph_index_1d,
+    kernel_functional_spatial_1d, kernel_functional_spatial_2d, linfinity_depth_1d, modal,
+    modal_1d, modal_2d, modified_band_1d, modified_epigraph_index_1d,
+    modified_half_region_depth_1d, modified_hypograph_index_1d, random_projection,
+    random_projection_1d, random_projection_1d_seeded, random_projection_2d, random_tukey,
+    random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d, total_variation_depth_1d,
+    DepthMethod, FunctionalBoxplotResult, TvdMssResult,
 };
 
 // Re-export outlier detection functions
@@ -616,8 +621,8 @@ pub use utility::{
 // Re-export functional data operation types and functions
 pub use fdata::{
     center_1d, depth_based_median, deriv_1d, deriv_2d, functional_covariance, functional_std,
-    functional_variance, geometric_median_1d, geometric_median_2d, mean_1d, mean_2d, norm_lp_1d,
-    normalize, normalize_with_argvals, trim_mean, Deriv2DResult, NormalizationMethod,
+    functional_variance, geometric_median_1d, geometric_median_2d, mean, mean_1d, mean_2d,
+    norm_lp_1d, normalize, normalize_with_argvals, trim_mean, Deriv2DResult, NormalizationMethod,
 };
 
 // Re-export basis representation types and functions

@@ -1,5 +1,6 @@
 //! Modal depth measures.
 
+use crate::dim::Dim;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
@@ -37,6 +38,24 @@ pub fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
             depth / nori as f64
         })
         .collect()
+}
+
+/// Compute modal depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`modal_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// single future seam should a real 2D specialization ever be needed.
+///
+/// # Arguments
+/// * `data_obj` - Data to compute depth for
+/// * `data_ori` - Reference data
+/// * `h` - Bandwidth parameter
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn modal(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => modal_1d(data_obj, data_ori, h),
+    }
 }
 
 /// Compute modal depth for 2D functional data.
