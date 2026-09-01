@@ -48,19 +48,19 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MAT-01 | TBD | Pending |
-| JUL-01 | TBD | Pending |
-| TDY-01 | TBD | Pending |
-| PYX-01 | TBD | Pending |
-| RPT-01 | TBD | Pending |
-| RPT-02 | TBD | Pending |
-| RPT-03 | TBD | Pending |
+| MAT-01 | Phase 52 | Pending |
+| JUL-01 | Phase 52 | Pending |
+| TDY-01 | Phase 52 | Pending |
+| PYX-01 | Phase 52 | Pending |
+| RPT-01 | Phase 53 | Pending |
+| RPT-02 | Phase 53 | Pending |
+| RPT-03 | Phase 53 | Pending |
 
 **Coverage:**
 - v0.31.0 requirements: 7 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 7 ⚠️
+- Mapped to phases: 7 (Phase 52: 4 surveys · Phase 53: 3 consolidation)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-01*
-*Last updated: 2026-09-01 after initial definition*
+*Last updated: 2026-09-02 after roadmap creation (phases 52–53 mapped)*

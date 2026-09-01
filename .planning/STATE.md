@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.31.0
 milestone_name: Multi-Ecosystem Gap Audit
 status: planning
-last_updated: "2026-09-01T21:55:47.583Z"
-last_activity: 2026-09-01
+last_updated: "2026-09-02T00:00:00.000Z"
+last_activity: 2026-09-02
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -17,53 +17,36 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-30)
+See: .planning/PROJECT.md (updated 2026-09-01)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library — with both parity backlogs exhausted, v0.30.0 pivots from breadth to depth: profile the whole crate, then land behavior-preserving improvements across hot-path performance, code duplication, additive API consistency, and benchmark coverage.
-**Current focus:** Phase 48 — Parallelism-Gap Closure (feature-gated rayon in newer subsystems; shares Phase 47's perf harness)
+**Core value:** Produce an evidence-backed picture of what fdars is missing relative to four fresh reference ecosystems (MATLAB FDA, Julia FDA, tidyfun/refund, Python-beyond-scikit-fda), turned into a single prioritized, de-duplicated, GSD-ready backlog — so future milestones target the highest-leverage net-new capability work first.
+**Current focus:** Phase 52 — Ecosystem Surveys (four independent parallel surveys)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-09-01 — Milestone v0.31.0 started
+Phase: 52 of 53 (Ecosystem Surveys)
+Plan: 0 of 4 in current phase
+Status: Ready to plan
+Last activity: 2026-09-02 — Roadmap created (2 phases, 7 requirements, 100% coverage)
 
-### Phase 46 outcomes (feed downstream phases)
+Progress: [░░░░░░░░░░] 0%
 
-- **PROF-01** (→ Phase 47 ✓/51): top hot paths `face_covariance` (984ms), `fem_smooth` (452ms), `frechet_anova` (133ms); top allocation `fts::dpca` (42MB churn). All 9 subsystems ranked with file:line anchors.
-- **PROF-02** (→ Phase 49): top dedup = χ²/F survival (2 independent gamma kernels, `inference/dist.rs:99` vs `spm/chi_squared.rs:164`); then permutation loops, seeded-RNG, SVD sign-fix.
-- **PROF-03** (→ Phase 50): 4 Config structs missing `Default`; non-seedable `fanova`; breaking items deferred to APIB-01.
+## Milestone Roadmap (v0.31.0)
 
-### Phase 47 outcomes (PERF-01/02)
-
-- **face_covariance −80.7% wall-time** (983.8→189.8ms) via kernel-weight-table precompute (OPT-E) — PERF-01 headline.
-- **fts::dpca −54% allocations** (17,739→8,139 blocks) via eigenvector index-sort (OPT-A) — PERF-02 headline.
-- OPT-B/C/D: fsvd/ssvd/functional_acf FdMatrix↔DMatrix copy removals. OPT-F: fem_smooth clone removal; O(N³) solve documented+deferred.
-- Permanent artifacts (feed Phase 51 BENCH-02): `benches/perf_hotpaths.rs`, `tests/equivalence_phase47.rs` (6 golden tests, rel 1e-12), `tests/alloc_audit_dpca.rs`, `PERF-RESULTS.md`.
-- All behavior-preserving (golden 1e-12), no signature changes, no new dependency, suite + clippy `--all-targets` green, code review clean.
-- **Frechet_anova (133ms, PROF-01 #4) and co_cluster inits are noted PERF-03 parallelism candidates for Phase 48.**
-
-## Milestone Roadmap (v0.30.0)
-
-Six phases, 13 requirements — the first internally-driven implementation milestone. **Measure-first:** Phase 46 (PROF) is a hard prerequisite whose three ranked inventories drive the implementation phases. Behavior-preserving (numeric outputs unchanged or provably-equivalent within tolerance, proven by tests + before/after criterion benchmarks). Additive/non-breaking API only (deprecate, never remove — protects R/WASM bindings + 28 examples). No new crate dependency (profiling uses existing dev-deps: criterion, feature-gated `dhat-heap`). Phase numbering continues from v0.29.0 (43/44/45) → Phase 46+.
+Two phases, 7 requirements — the next-yardstick gap audit now that both prior parity backlogs (scikit-fda v0.14.0, R core v0.18.0) are exhausted. **Audit-only** (report + backlog, zero `fdars-core/src/` edits). Mirrors the v0.14.0 / v0.18.0 audit shape: parallel enumeration/parity surveys, then a consolidated report + ranked backlog + completeness gate. Phase numbering continues from v0.30.0 (ended at 51) → Phase 52.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 46 — Whole-Crate Profiling & Measurement | PROF-01, PROF-02, PROF-03 | Ranked hot-path target list (N×M-scaled, v0.19–v0.29 subsystems prioritized) + duplication inventory (file:line anchors) + API-inconsistency inventory (canonical form per item). **Hard prerequisite** for 47–50. Audit-only: zero behavior-changing src edits. |
-| 47 — Hot-Path & Allocation Performance | PERF-01, PERF-02 | Optimize top-ranked compute-bound paths + allocation hotspots (FdMatrix↔DMatrix copies, per-iteration allocs). Before/after criterion + dhat-heap allocation profile + equivalence tests. Consumes PROF-01. |
-| 48 — Parallelism-Gap Closure | PERF-03 | Close feature-gated rayon gaps in newer subsystems via `parallel.rs` macros; equivalence-tested vs sequential (ON/OFF); payback-threshold N guard where small-input regression possible. Depends on 46 (+ 47 shares harness). |
-| 49 — Code Consolidation / Dedup | CONS-01, CONS-02 | Factor duplicated numerical machinery (FPCA scoring, Cholesky/ridge, Simpson/quadrature, χ²/F survival, SVD sign-fix) + statistical-test scaffolding (permutation loops, seeded-RNG) into shared `pub(crate)` helpers; migrate all call sites; behavior unchanged. Consumes PROF-02. |
-| 50 — Additive API-Surface Consolidation | API-01, API-02, API-03 | Unified alternatives for inconsistent config/result patterns + redundant functions; `#[deprecated]` old forms (never remove); tighten crate-root re-exports; 28 examples + R/WASM bindings pass with deprecation warnings only. Consumes PROF-03. |
-| 51 — Benchmark Coverage & Regression Guards | BENCH-01, BENCH-02 | New `[[bench]]` entries for unbenchmarked modules (`fts`/`frechet`/`boosting_regression`/`coclustering`/`fem_smoothing`/`density_fda`/`inference`/`fpca_variants`/`face`); commit PERF-proof benches as regression guards with documented before/after. BENCH-02 depends on 47/48. |
+| 52 — Ecosystem Surveys | MAT-01, JUL-01, TDY-01, PYX-01 | Four mutually-independent surveys (parallel plans): enumerate versioned capability surface → map fdars present/partial/absent → de-dup vs shipped + `BACKLOG.md` + `R-BACKLOG.md` → emit net-new gap list. TDY-01 refund-only-if-not-in-v0.18.0; PYX-01 excludes scikit-fda. Audit-only. |
+| 53 — Consolidation & Backlog | RPT-01, RPT-02, RPT-03 | Depends on all four surveys. RPT-01 report (`GAP-AUDIT-REPORT.md`: methodology, per-ecosystem findings, cross-ecosystem convergence, reverse-parity strengths) → RPT-02 ranked backlog (`GAP-BACKLOG.md`: value/√effort, promotion-ready blocks) → RPT-03 de-dup + completeness gate (gate LAST). Audit-only. |
 
-**Execution order (dependency-driven):** 46 → 47 → 48 → 49 → 50 → 51. Phase 46 gates all implementation phases (PROF-01→PERF, PROF-02→CONS, PROF-03→API). 47 precedes 48 (both PERF, shared harness). 49 and 50 each depend only on 46 and are otherwise independent of each other. 51 is last so BENCH-02's regression guards follow the PERF phases.
+**Execution order (dependency-driven):** 52 → 53. Phase 52's four survey gap-lists are the raw material Phase 53 merges/ranks/de-dups. Within 53 the internal order is RPT-01 → RPT-02 → RPT-03 (gate last).
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 84 (across v0.14.0–v0.29.0)
+- Total plans completed: 95 (across v0.14.0–v0.30.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -72,14 +55,14 @@ Six phases, 13 requirements — the first internally-driven implementation miles
 | Phase | Milestone | Plans |
 |-------|-----------|-------|
 | 01–09 | v0.14.0 | 21 |
-| 10–42 | v0.15.0–v0.28.0 | 52 |
-| 43–45 | v0.29.0 | 11 |
-| 46–51 | v0.30.0 | TBD |
+| 10–45 | v0.15.0–v0.29.0 | 63 |
+| 46–51 | v0.30.0 | 23 |
+| 52–53 | v0.31.0 | 0/7 (TBD) |
 
 **Recent Trend:**
 
-- Last milestone: v0.29.0 phases 43–45 (11 plans) — milestone audit PASSED 12/12, archived. Exhausted the R-parity backlog.
-- Trend: v0.30.0 is a **different shape** — measure-first performance/consolidation pass (not a feature-add milestone). Phase 46 profiling gates the rest; plan counts TBD until the ranked inventories exist.
+- Last milestone: v0.30.0 phases 46–51 (23 plans) — audit **tech_debt** 13/13, archived. First internally-driven perf/consolidation pass.
+- Trend: v0.31.0 returns to **audit shape** (like v0.14.0 / v0.18.0) — a fresh external gap survey producing a report + backlog, zero code. Deliverables not features; plan sizing is document-scoped.
 
 *Updated after each plan completion*
 
@@ -89,57 +72,42 @@ Six phases, 13 requirements — the first internally-driven implementation miles
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-Relevant to current work (v0.30.0):
+Relevant to current work (v0.31.0):
 
-- **v0.30.0 pivots from external gap-audit to an internal performance/consolidation pass** — both parity backlogs (scikit-fda + R) are exhausted; profiling evidence replaces an external yardstick for prioritization.
-- **Measure-first:** Phase 46 whole-crate profiling produces three ranked inventories (hot-path targets, duplication, API inconsistencies) before any implementation. No PERF/CONS/API phase is plannable until 46 lands its evidence.
-- **Behavior-preserving:** numeric outputs unchanged or provably-equivalent within documented tolerance; every change proven by existing tests + before/after criterion benchmarks (equivalence tests where a split/optimized path exists).
-- **Additive/non-breaking API only:** API consolidation adds a unified alternative + `#[deprecated]` on the old form — never removes an existing public signature (protects R/WASM bindings, 28 examples, external callers). The breaking removal sweep is deferred (APIB-01, future 1.0-readiness milestone).
-- **No new crate dependency** carries forward — profiling uses existing dev-deps only (criterion, feature-gated `dhat-heap`).
-- **Phase numbering continues** from v0.29.0 (ended at Phase 45) → v0.30.0 starts at Phase 46. No reset.
-- **13 requirements → 6 phases** (fine granularity): PROF (46), PERF hot-path+alloc (47), PERF parallelism (48), CONS (49), API (50), BENCH (51). All 13 mapped, no orphans.
-
-Conventions carried from prior milestones (relevant to implementation):
-
-- Column-major `FdMatrix` (`src/matrix.rs`), `Result<T, FdarError>` on all public fns, feature-gated rayon (`iter_maybe_parallel!` etc.), per-thread RNG seeding `StdRng::seed_from_u64(seed + k)` — Phase 48 parallelism + Phase 49 CONS-02 seeded-RNG consolidation must preserve determinism.
-- Full clippy gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code; a plain `-p ... -D warnings` false-greens — MEMORY.md pointer). Relevant to Phase 51 bench code.
-- `TMPDIR=/home/simonm/.cache/fdars-bench-tmp` required for build/doctest/bench linking; /tmp tmpfs exhaustion causes bogus "No space left" (MEMORY.md pointer) — this milestone runs criterion benches heavily.
-- `target/` grows to 100+GB and fills /home; `rm -rf target/debug/{incremental,examples}` frees ~108G if example LINK fails (MEMORY.md pointer) — relevant since Phase 50 must build the 28 examples.
+- **Next-yardstick audit** — both prior parity backlogs (scikit-fda v0.14.0, R core v0.18.0) are exhausted, so v0.31.0 measures fdars against four *fresh* ecosystems: MATLAB FDA, Julia FDA, tidyfun/refund, Python-beyond-scikit-fda.
+- **Audit-only fence** — zero `fdars-core/src/` edits across the whole milestone; deliverables are markdown documents in `.planning/research/`.
+- **Distinct filenames** — new deliverables are `GAP-AUDIT-REPORT.md` and `GAP-BACKLOG.md`. Do NOT overwrite the existing `AUDIT-REPORT.md` / `BACKLOG.md` (v0.14.0) or `R-AUDIT-REPORT.md` / `R-BACKLOG.md` (v0.18.0).
+- **Hard de-dup rule** — net-new gaps only: every backlog item must be verified absent from shipped fdars AND absent from both prior backlogs. Value is in net-new gaps only.
+- **No git tag / no crate publish** — crate is unchanged; a `v*` tag would publish a phantom version (audit-milestone convention — MEMORY.md pointer `audit-milestone-no-git-tag`).
+- **Scope exclusions** — no plotting/visualization parity, no data/IO parity; no re-audit of scikit-fda or the core R FDA ecosystem (refund only where NOT captured in v0.18.0; PYX-01 excludes scikit-fda).
+- **Phase numbering continues** — v0.30.0 ended at Phase 51 → v0.31.0 starts at Phase 52. No reset.
+- **7 requirements → 2 phases** (fine granularity, mirroring the v0.14.0/v0.18.0 audit shape): four independent surveys as parallel plans in Phase 52; RPT-01/02/03 consolidation as sequenced plans in Phase 53. All 7 mapped, no orphans.
 
 ### Pending Todos
 
-- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** — preserved from the removed `.beads` issue tracker (issue `fdars-j75`). Relevant to Phase 50: the R-binding call sites are one of the "must still pass" surfaces (API-03).
+- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — not this milestone (audit-only, no code); carried forward.
 
 ### Blockers/Concerns
 
-- Local main is ahead of origin/HEAD → harness worktrees may fork the wrong base; GSD phases fall back to sequential no-worktree dispatch (MEMORY.md pointer). Prior milestones (v0.26.0–v0.29.0) executed phases inline (not via gsd-executor subagents) for this reason. v0.30.0's phases are largely sequential by dependency anyway (46 gates all).
-- Executor subagents trip the 600s stream watchdog on long fdars cargo builds; `--no-verify` commits leave fmt drift → run `cargo fmt` per commit + a whole-crate sweep at milestone end (MEMORY.md pointers). **Especially relevant this milestone** — criterion bench compiles are long.
-- /tmp tmpfs exhaustion + `target/` filling /home (see Decisions above) — both bite harder in a bench-heavy milestone; free space before running full `cargo bench`.
-- **Governor/CPU-pinning caveat (from v0.14.0 audit):** multi-thread criterion cells were flagged LOW-CONFIDENCE with the governor unpinned. Phase 46/47/48 benchmark evidence should note environment (governor, RAYON_NUM_THREADS) to keep before/after comparisons honest.
-- **Audit-milestone-no-git-tag pointer:** Phase 46 (PROF) is profiling-only. But v0.30.0 overall ships real code — the crate release (version bump + publish + tag) remains a deferred operator step (REL-01), not part of these phases.
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260822-pvk | Update README: link Python package pyfda, note R package outdated | 2026-08-22 | 0c634e55 | [260822-pvk-update-readme-link-python-package-pyfda-](./quick/260822-pvk-update-readme-link-python-package-pyfda-/) |
-| 260823-bds | Remove unused .beads issue tracker + stale AGENTS.md | 2026-08-23 | 198b5566 | [260823-bds-remove-beads-issue-tracker](./quick/260823-bds-remove-beads-issue-tracker/) |
-| 260901-wxm | Make new release v0.30.0 (bump 0.29.0→0.30.0, changelog, tag+publish) | 2026-09-01 | 96673410 | [260901-wxm-make-new-release-v0-30-0](./quick/260901-wxm-make-new-release-v0-30-0/) |
+- Local `main` and `origin/main` are in sync post-v0.30.0 release; prior worktree-base-divergence blocker is currently quiescent. GSD phases have executed inline (not via gsd-executor subagents) in recent milestones — an audit milestone is document-only so subagent build-watchdog issues do not apply.
+- **De-dup rigor is the main risk this milestone** — the value gate is "genuinely net-new". Every candidate gap must be checked against the shipped-capabilities list (PROJECT.md Validated section, 40+ entries) AND both prior backlogs before it earns a `GAP-BACKLOG.md` row. RPT-03 is the formal gate.
 
 ## Deferred Items
 
-Both parity backlogs (scikit-fda + R) are **exhausted** — no further ranked external-parity items remain. **REL-01 is now done** (v0.30.0 released 2026-09-01 — see Release status below). Deferred beyond v0.30.0: **APIB-01** (breaking removal of the functions/configs deprecated this milestone — a future 1.0-readiness / breaking release).
+Items acknowledged and deferred, most recent first:
 
-Advisory tech-debt carried forward (not necessarily v0.30.0 work, but some may surface in PROF-02/PROF-03 inventories): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files remain `draft` (Nyquist TODO); intentional R-baseline divergences documented in rustdoc across prior milestones.
-
-**Release status:** `fdars-core` **0.30.0 published to crates.io** (tag `v0.30.0`, 2026-09-01, via quick task 260901-wxm) — folds in the v0.29.0 + v0.30.0 development work. Prior published: 0.29.0 (tag `v0.29.0`, 2026-08-30) and 0.28.0 (tag `v0.28.0`, 2026-08-23). Local `main` and `origin/main` are now in sync (the 102-commit backlog was pushed with the release).
+| Category | Item | Status | Deferred At | Milestone |
+|----------|------|--------|-------------|-----------|
+| Release | REL-01 done — `fdars-core` 0.30.0 published (tag `v0.30.0`, 2026-09-01) | Done | v0.30.0 | v0.30.0 |
+| API-breaking | APIB-01 — breaking removal of the 6 `#[deprecated]` forms from v0.30.0 | Deferred | v0.30.0 | future 1.0-readiness |
+| Implementation | Implementing any gap found in this audit — drawn top-first from `GAP-BACKLOG.md` | Deferred | v0.31.0 | future milestone |
 
 ## Session Continuity
 
-Last session: 2026-08-30T20:15:00.000Z
-Stopped at: Phase 51 complete — all phases complete
+Last session: 2026-09-02T00:00:00.000Z
+Stopped at: v0.31.0 roadmap + STATE created — 2 phases (52 Surveys, 53 Consolidation), 7 requirements mapped 100%
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase: `/gsd-plan-phase 52`
