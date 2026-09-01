@@ -135,6 +135,10 @@ harness = false
 name = "fpca_variants_benchmarks"   # Phase 51 BENCH-01 — fpca_variants::fpca_der coverage
 harness = false
 
+[[bench]]
+name = "face_benchmarks"   # Phase 51 BENCH-01 — irreg_fdata::mface_covariance coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
