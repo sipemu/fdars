@@ -329,3 +329,46 @@ pub use self::boost_fofr::boost_fofr;
 pub use self::boost_fosr::boost_fosr;
 pub use self::gamlss::gamlss_fosr;
 pub use self::stability::stability_selection;
+
+#[cfg(test)]
+mod tests {
+    use super::{BayesianConfig, BoostingConfig, StabilityConfig};
+
+    #[test]
+    fn config_defaults_match_documented_values() {
+        assert_eq!(
+            BoostingConfig::default(),
+            BoostingConfig {
+                mstop: 100,
+                nu: 0.1,
+                nbasis: 10,
+                order: 4,
+                lfd_order: 2,
+                lambda: 1.0,
+                ncomp_x: 3,
+                seed: 0,
+            }
+        );
+        assert_eq!(
+            BayesianConfig::default(),
+            BayesianConfig {
+                ncomp: 4,
+                tau2: 100.0,
+                ig_a0: 0.001,
+                ig_b0: 0.001,
+                n_iter: 400,
+                burn_in: 200,
+                thin: 1,
+                seed: 0,
+            }
+        );
+        assert_eq!(
+            StabilityConfig::default(),
+            StabilityConfig {
+                n_resamples: 100,
+                pi_thr: 0.9,
+                seed: 0,
+            }
+        );
+    }
+}
