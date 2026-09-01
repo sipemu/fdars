@@ -65,7 +65,7 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 - [x] **Phase 48: Parallelism-Gap Closure** - Close feature-gated rayon parallelism gaps in the newer subsystems, equivalence-tested with payback-threshold guards (completed 2026-08-31)
 - [x] **Phase 49: Code Consolidation / Dedup** - Factor duplicated numerical + statistical-test machinery into shared `pub(crate)` helpers; migrate all call sites, behavior unchanged (completed 2026-08-31)
 - [x] **Phase 50: Additive API-Surface Consolidation** - Unify inconsistent config/result patterns and redundant public functions via unified alternatives + `#[deprecated]`; zero breakage to existing callers (completed 2026-09-01)
-- [ ] **Phase 51: Benchmark Coverage & Regression Guards** - Add criterion benches for the currently-unbenchmarked new modules and commit the PERF-proof benches as permanent regression guards
+- [x] **Phase 51: Benchmark Coverage & Regression Guards** - Add criterion benches for the currently-unbenchmarked new modules and commit the PERF-proof benches as permanent regression guards (completed 2026-09-01)
 
 **Execution order (dependency-driven):** Phase 46 is a **hard prerequisite** for 47–50 — its ranked outputs (PROF-01 → PERF, PROF-02 → CONS, PROF-03 → API) are what make those phases plannable. 47 → 48 are both PERF work and share the perf-benchmark harness (47 first for the highest-leverage compute/allocation wins, then 48's parallelism). 49 (CONS) and 50 (API) each depend only on Phase 46 and are otherwise independent of the PERF phases and of each other — they may be planned in either order after 46. Phase 51 runs last: BENCH-01 (new-module coverage) is largely independent, but BENCH-02 (regression guards for the PERF wins) depends on 47/48 landing first, so the whole benchmark-coverage phase is placed at the end.
 
@@ -182,10 +182,12 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
   3. The full clippy gate (`cargo clippy --all-targets --features linalg,parallel -- -D warnings`, which lints bench code) stays green with the new bench entries; no new crate dependency.
 
 **Plans**: 4 plans
-- [ ] 51-01-PLAN.md — TRACER: benches/inference_benchmarks.rs (t_perm_test) + prove the full add-bench → register → build → clippy → fmt → commit pipeline (wave 1)
-- [ ] 51-02-PLAN.md — BENCH-01 expansion: fts::ftsm, frechet::frechet_global_reg, boosting_regression::boost_fosr, coclustering::co_cluster_select (wave 2)
-- [ ] 51-03-PLAN.md — BENCH-01 expansion: fem_smoothing::fem_smooth_gcv, density_fda::lqd_fpca, fpca_variants::fpca_der, irreg_fdata::mface_covariance (wave 3)
-- [ ] 51-04-PLAN.md — BENCH-02: BENCH-RESULTS.md consolidated regression-guard ledger + confirm PERMANENT perf benches + alloc_audit guards intact (wave 4)
+
+- [x] 51-01-PLAN.md — TRACER: benches/inference_benchmarks.rs (t_perm_test) + prove the full add-bench → register → build → clippy → fmt → commit pipeline (wave 1)
+- [x] 51-02-PLAN.md — BENCH-01 expansion: fts::ftsm, frechet::frechet_global_reg, boosting_regression::boost_fosr, coclustering::co_cluster_select (wave 2)
+- [x] 51-03-PLAN.md — BENCH-01 expansion: fem_smoothing::fem_smooth_gcv, density_fda::lqd_fpca, fpca_variants::fpca_der, irreg_fdata::mface_covariance (wave 3)
+- [x] 51-04-PLAN.md — BENCH-02: BENCH-RESULTS.md consolidated regression-guard ledger + confirm PERMANENT perf benches + alloc_audit guards intact (wave 4)
+
 **UI hint**: no
 
 ## Progress
@@ -200,6 +202,6 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 | 48. Parallelism-Gap Closure | 3/3 | Complete    | 2026-08-31 |
 | 49. Code Consolidation / Dedup | 5/4 | Complete    | 2026-08-31 |
 | 50. Additive API-Surface Consolidation | 3/3 | Complete    | 2026-09-01 |
-| 51. Benchmark Coverage & Regression Guards | 0/4 | Not started | - |
+| 51. Benchmark Coverage & Regression Guards | 4/4 | Complete    | 2026-09-01 |
 
 All phases through v0.29.0 are shipped and archived under `milestones/`.

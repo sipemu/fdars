@@ -32,8 +32,8 @@ Requirements for milestone v0.30.0. Each maps to a roadmap phase. **Measure-firs
 
 ### Benchmark Coverage (BENCH)
 
-- [ ] **BENCH-01**: New criterion benchmarks (registered as `[[bench]]` entries) cover the currently-unbenchmarked new modules: `fts`, `frechet`, `boosting_regression`, `coclustering`, `fem_smoothing`, `density_fda`, `inference`, `fpca_variants`, `face`.
-- [ ] **BENCH-02**: The benchmarks used to prove PERF-01/02/03 wins are committed as permanent regression guards, with the before/after numbers documented, so future changes can detect regressions.
+- [x] **BENCH-01**: New criterion benchmarks (registered as `[[bench]]` entries) cover the currently-unbenchmarked new modules: `fts`, `frechet`, `boosting_regression`, `coclustering`, `fem_smoothing`, `density_fda`, `inference`, `fpca_variants`, `face`.
+- [x] **BENCH-02**: The benchmarks used to prove PERF-01/02/03 wins are committed as permanent regression guards, with the before/after numbers documented, so future changes can detect regressions.
 
 ## Future Requirements
 
@@ -77,8 +77,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | API-01 | Phase 50 | Complete |
 | API-02 | Phase 50 | Complete |
 | API-03 | Phase 50 | Complete |
-| BENCH-01 | Phase 51 | Pending |
-| BENCH-02 | Phase 51 | Pending |
+| BENCH-01 | Phase 51 | Complete |
+| BENCH-02 | Phase 51 | Complete |
 
 **Coverage:**
 
