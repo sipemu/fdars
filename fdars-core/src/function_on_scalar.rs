@@ -1062,6 +1062,8 @@ mod tests {
 
     // ----- FANOVA tests -----
 
+    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
+    #[allow(deprecated)]
     #[test]
     fn test_fanova_two_groups() {
         let n = 40;
@@ -1094,6 +1096,8 @@ mod tests {
         );
     }
 
+    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
+    #[allow(deprecated)]
     #[test]
     fn test_fanova_no_effect() {
         let n = 40;
@@ -1122,6 +1126,8 @@ mod tests {
         );
     }
 
+    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
+    #[allow(deprecated)]
     #[test]
     fn test_fanova_three_groups() {
         let n = 30;
@@ -1148,6 +1154,8 @@ mod tests {
         assert_eq!(res.n_groups, 3);
     }
 
+    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
+    #[allow(deprecated)]
     #[test]
     fn test_fanova_invalid_input() {
         let data = FdMatrix::zeros(10, 50);

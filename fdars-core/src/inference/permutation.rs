@@ -377,6 +377,8 @@ mod tests {
         assert_eq!(r1, r2);
     }
 
+    // Cross-checks the OLD (deprecated) `fanova` decision vs f_perm_test — pins the old path.
+    #[allow(deprecated)]
     #[test]
     fn f_perm_agrees_with_fanova_decision() {
         use crate::function_on_scalar::fanova;

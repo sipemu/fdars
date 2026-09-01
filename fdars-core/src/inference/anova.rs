@@ -185,6 +185,8 @@ pub fn oneway_anova_vstat(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(deprecated)]
+    // import of the deprecated `fanova`; the tests below pin its old behavior
     use crate::function_on_scalar::fanova;
     use crate::test_helpers::uniform_grid;
 
@@ -224,6 +226,8 @@ mod tests {
         (mat, groups)
     }
 
+    // Cross-checks the OLD (deprecated) `fanova` decision vs vstat — pins the old path on purpose.
+    #[allow(deprecated)]
     #[test]
     fn vstat_rejects_separated_groups_agrees_with_fanova() {
         let argvals = uniform_grid(30);
@@ -245,6 +249,8 @@ mod tests {
         );
     }
 
+    // Cross-checks the OLD (deprecated) `fanova` decision vs vstat — pins the old path on purpose.
+    #[allow(deprecated)]
     #[test]
     fn vstat_fails_to_reject_pooled_groups_agrees_with_fanova() {
         let argvals = uniform_grid(30);

@@ -5,7 +5,7 @@
 //! - FPC-based regression (`fosr_fpc`) matching R's fda.usc approach
 //! - Functional ANOVA (`fanova`) for group comparisons
 
-use fdars_core::function_on_scalar::{fanova, fosr, fosr_fpc, predict_fosr};
+use fdars_core::function_on_scalar::{fanova_seeded, fosr, fosr_fpc, predict_fosr};
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
 
@@ -80,7 +80,7 @@ fn main() {
 
     // ── 3. Functional ANOVA ───────────────────────────────────────────────
     println!("\n=== Functional ANOVA (2 groups, 500 permutations) ===");
-    let anova = fanova(&data, &groups, 500).unwrap();
+    let anova = fanova_seeded(&data, &groups, 500, 42).unwrap();
     println!("  Number of groups: {}", anova.n_groups);
     println!("  Global F-statistic: {:.4}", anova.global_statistic);
     println!("  Permutation p-value: {:.4}", anova.p_value);

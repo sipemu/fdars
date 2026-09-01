@@ -411,7 +411,7 @@ mod scalar_on_function {
 
 mod function_on_scalar {
     use super::*;
-    use fdars_core::{fanova, fosr, predict_fosr};
+    use fdars_core::{fanova_seeded, fosr, predict_fosr};
 
     /// Generate data where y_i(t) = x_i * β(t) + ε(t), β(t) = sin(2πt).
     fn gen_fosr_data(n: usize, m: usize, seed: u64) -> (FdMatrix, FdMatrix, Vec<f64>) {
@@ -540,7 +540,7 @@ mod function_on_scalar {
 
         let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
 
-        let result = fanova(&data, &groups, 199).unwrap();
+        let result = fanova_seeded(&data, &groups, 199, 42).unwrap();
         assert!(
             result.p_value < 0.05,
             "FANOVA p-value {} should be < 0.05 for distinct groups",
@@ -573,7 +573,7 @@ mod function_on_scalar {
 
         let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
 
-        let result = fanova(&data, &groups, 199).unwrap();
+        let result = fanova_seeded(&data, &groups, 199, 42).unwrap();
         assert!(
             result.p_value > 0.01,
             "FANOVA p-value {} false positive on null data",

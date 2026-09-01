@@ -378,7 +378,10 @@ pub use fof_regression::{
     FofReConfig, FofReResult, FofResult,
 };
 
-// Re-export function-on-scalar regression types
+// Re-export function-on-scalar regression types.
+// `fanova` is deprecated (delegates to `fanova_seeded`) but must stay re-exported for external
+// back-compat; this compiler warns on re-exporting a deprecated item, so allow it on this line only.
+#[allow(deprecated)]
 pub use function_on_scalar::{
     fanova, fanova_seeded, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
 };
