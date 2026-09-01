@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-08-30)
 Phase: Milestone v0.30.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-09-01 — Milestone v0.30.0 completed and archived
+Last activity: 2026-09-01 — Released fdars-core v0.30.0 to crates.io (quick task 260901-wxm)
 
 ### Phase 46 outcomes (feed downstream phases)
 
@@ -129,14 +129,15 @@ Conventions carried from prior milestones (relevant to implementation):
 |---|-------------|------|--------|-----------|
 | 260822-pvk | Update README: link Python package pyfda, note R package outdated | 2026-08-22 | 0c634e55 | [260822-pvk-update-readme-link-python-package-pyfda-](./quick/260822-pvk-update-readme-link-python-package-pyfda-/) |
 | 260823-bds | Remove unused .beads issue tracker + stale AGENTS.md | 2026-08-23 | 198b5566 | [260823-bds-remove-beads-issue-tracker](./quick/260823-bds-remove-beads-issue-tracker/) |
+| 260901-wxm | Make new release v0.30.0 (bump 0.29.0→0.30.0, changelog, tag+publish) | 2026-09-01 | 96673410 | [260901-wxm-make-new-release-v0-30-0](./quick/260901-wxm-make-new-release-v0-30-0/) |
 
 ## Deferred Items
 
-Both parity backlogs (scikit-fda + R) are **exhausted** — no further ranked external-parity items remain. Deferred beyond v0.30.0: **APIB-01** (breaking removal of the functions/configs deprecated this milestone — a future 1.0-readiness / breaking release) and **REL-01** (crate version bump + `cargo publish` + tag folding in v0.29.0 + v0.30.0 — deferred operator ship-time step).
+Both parity backlogs (scikit-fda + R) are **exhausted** — no further ranked external-parity items remain. **REL-01 is now done** (v0.30.0 released 2026-09-01 — see Release status below). Deferred beyond v0.30.0: **APIB-01** (breaking removal of the functions/configs deprecated this milestone — a future 1.0-readiness / breaking release).
 
 Advisory tech-debt carried forward (not necessarily v0.30.0 work, but some may surface in PROF-02/PROF-03 inventories): weakened MEWMA test assertion; `fix_svd_signs` NaN no-op; over-broad Phase 11 test name; prior VALIDATION.md files remain `draft` (Nyquist TODO); intentional R-baseline divergences documented in rustdoc across prior milestones.
 
-**Release status:** `fdars-core` **0.28.0 published to crates.io** (tag `v0.28.0`, 2026-08-23). v0.29.0's additive code (REG-06/REP-02/CLUS-02) is unreleased; v0.30.0 will fold it into the next crate release (REL-01, operator-driven).
+**Release status:** `fdars-core` **0.30.0 published to crates.io** (tag `v0.30.0`, 2026-09-01, via quick task 260901-wxm) — folds in the v0.29.0 + v0.30.0 development work. Prior published: 0.29.0 (tag `v0.29.0`, 2026-08-30) and 0.28.0 (tag `v0.28.0`, 2026-08-23). Local `main` and `origin/main` are now in sync (the 102-commit backlog was pushed with the release).
 
 ## Session Continuity
 
