@@ -111,6 +111,10 @@ harness = false
 name = "fts_benchmarks"   # Phase 51 BENCH-01 — fts::ftsm coverage
 harness = false
 
+[[bench]]
+name = "frechet_benchmarks"   # Phase 51 BENCH-01 — frechet::frechet_global_reg coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
