@@ -107,6 +107,10 @@ harness = false
 name = "inference_benchmarks"   # Phase 51 BENCH-01 — inference::t_perm_test coverage
 harness = false
 
+[[bench]]
+name = "fts_benchmarks"   # Phase 51 BENCH-01 — fts::ftsm coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
