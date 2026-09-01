@@ -115,7 +115,8 @@ pub struct BayesianConfig {
 impl Default for BayesianConfig {
     /// Weakly-informative defaults per Jiang et al. (2025): `tau2 = 100.0`,
     /// `IG(0.001, 0.001)`, with `ncomp = 4`, `n_iter = 400`, `burn_in = 200`,
-    /// `thin = 1`, `seed = 0` (mirrors `bayesian::tests::default_config`).
+    /// `thin = 1` (these mirror `bayesian::tests::default_config`), and `seed = 0`
+    /// as the deterministic default (the test config uses its own seed).
     fn default() -> Self {
         Self {
             ncomp: 4,
