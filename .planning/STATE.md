@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.30.0
 milestone_name: Performance & Consolidation Pass
-current_phase: 50
-current_phase_name: Additive API-Surface Consolidation
+current_phase: 51
+current_phase_name: Benchmark Coverage & Regression Guards
 status: planning
-stopped_at: Phase 49 complete, ready to plan Phase 50
-last_updated: "2026-08-31T19:41:01.419Z"
-last_activity: 2026-08-31
-last_activity_desc: Phase 49 complete, transitioned to Phase 50
-state_head: a9f9b9b3975d70bd40aa6f891275886caa5776fe
+stopped_at: Phase 50 complete, ready to plan Phase 51
+last_updated: "2026-09-01T19:53:19.635Z"
+last_activity: 2026-09-01
+last_activity_desc: Phase 50 complete, transitioned to Phase 51
+state_head: 6e53b59da55eca8cb1e950b15d5c1c653ab971f4
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 16
-  completed_plans: 16
-  percent: 67
+  completed_phases: 5
+  total_plans: 19
+  completed_plans: 19
+  percent: 83
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-30)
 
 ## Current Position
 
-Phase: 50 of 51 (Additive API-Surface Consolidation)
+Phase: 51 of 51 (Benchmark Coverage & Regression Guards)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-31 — Phase 49 complete, transitioned to Phase 50
+Last activity: 2026-09-01 — Phase 50 complete, transitioned to Phase 51
 
 Progress: [███░░░░░░░] 33%
 
@@ -143,7 +143,7 @@ Advisory tech-debt carried forward (not necessarily v0.30.0 work, but some may s
 ## Session Continuity
 
 Last session: 2026-08-30T20:15:00.000Z
-Stopped at: Phase 49 complete, ready to plan Phase 50
+Stopped at: Phase 50 complete, ready to plan Phase 51
 Resume file: None
 
 ## Operator Next Steps

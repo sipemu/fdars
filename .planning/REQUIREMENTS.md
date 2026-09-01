@@ -26,9 +26,9 @@ Requirements for milestone v0.30.0. Each maps to a roadmap phase. **Measure-firs
 
 ### API Surface Consolidation — additive only (API)
 
-- [ ] **API-01**: Inconsistent config/result patterns identified in PROF-03 gain unified alternatives; the previous forms are marked `#[deprecated]` with a `note` pointing to the replacement; both the deprecated and unified paths continue to compile and pass tests.
-- [ ] **API-02**: Redundant public functions gain a single canonical entry point; superseded functions are marked `#[deprecated]` (never removed); the crate-root re-export surface is tightened accordingly. No existing public signature is changed.
-- [ ] **API-03**: `cargo build` / `cargo test`, the 28 examples, and the R/WASM binding call sites all still pass after the API work with deprecation warnings only — zero breakage to existing callers.
+- [x] **API-01**: Inconsistent config/result patterns identified in PROF-03 gain unified alternatives; the previous forms are marked `#[deprecated]` with a `note` pointing to the replacement; both the deprecated and unified paths continue to compile and pass tests.
+- [x] **API-02**: Redundant public functions gain a single canonical entry point; superseded functions are marked `#[deprecated]` (never removed); the crate-root re-export surface is tightened accordingly. No existing public signature is changed.
+- [x] **API-03**: `cargo build` / `cargo test`, the 28 examples, and the R/WASM binding call sites all still pass after the API work with deprecation warnings only — zero breakage to existing callers.
 
 ### Benchmark Coverage (BENCH)
 
@@ -74,9 +74,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PERF-03 | Phase 48 | Complete |
 | CONS-01 | Phase 49 | Complete |
 | CONS-02 | Phase 49 | Complete |
-| API-01 | Phase 50 | Pending |
-| API-02 | Phase 50 | Pending |
-| API-03 | Phase 50 | Pending |
+| API-01 | Phase 50 | Complete |
+| API-02 | Phase 50 | Complete |
+| API-03 | Phase 50 | Complete |
 | BENCH-01 | Phase 51 | Pending |
 | BENCH-02 | Phase 51 | Pending |
 

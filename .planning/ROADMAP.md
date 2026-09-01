@@ -64,7 +64,7 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 - [x] **Phase 47: Hot-Path & Allocation Performance** - Optimize the top-ranked compute-bound paths and allocation hotspots with before/after benchmark + equivalence proof
 - [x] **Phase 48: Parallelism-Gap Closure** - Close feature-gated rayon parallelism gaps in the newer subsystems, equivalence-tested with payback-threshold guards (completed 2026-08-31)
 - [x] **Phase 49: Code Consolidation / Dedup** - Factor duplicated numerical + statistical-test machinery into shared `pub(crate)` helpers; migrate all call sites, behavior unchanged (completed 2026-08-31)
-- [ ] **Phase 50: Additive API-Surface Consolidation** - Unify inconsistent config/result patterns and redundant public functions via unified alternatives + `#[deprecated]`; zero breakage to existing callers
+- [x] **Phase 50: Additive API-Surface Consolidation** - Unify inconsistent config/result patterns and redundant public functions via unified alternatives + `#[deprecated]`; zero breakage to existing callers (completed 2026-09-01)
 - [ ] **Phase 51: Benchmark Coverage & Regression Guards** - Add criterion benches for the currently-unbenchmarked new modules and commit the PERF-proof benches as permanent regression guards
 
 **Execution order (dependency-driven):** Phase 46 is a **hard prerequisite** for 47–50 — its ranked outputs (PROF-01 → PERF, PROF-02 → CONS, PROF-03 → API) are what make those phases plannable. 47 → 48 are both PERF work and share the perf-benchmark harness (47 first for the highest-leverage compute/allocation wins, then 48's parallelism). 49 (CONS) and 50 (API) each depend only on Phase 46 and are otherwise independent of the PERF phases and of each other — they may be planned in either order after 46. Phase 51 runs last: BENCH-01 (new-module coverage) is largely independent, but BENCH-02 (regression guards for the PERF wins) depends on 47/48 landing first, so the whole benchmark-coverage phase is placed at the end.
@@ -164,9 +164,9 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
 
 **Plans**: 3 plans
 
-- [ ] 50-01-PLAN.md — TRACER: additive `impl Default` for BoostingConfig/BayesianConfig/StabilityConfig (item #1; NOT StlConfig — already derives Default) + prove the full additive+examples+wasm+clippy gate pipeline (API-01/API-03)
-- [ ] 50-02-PLAN.md — `fanova_seeded` (keeps the LCG) + `fanova` as a `#[deprecated]` seed=42 shim + bit-identical golden (equivalence_phase50.rs) + caller migration/hygiene (item #2; API-01/02/03)
-- [ ] 50-03-PLAN.md — `Dim` enum (src/dim.rs) + 5 unified dispatchers (4 depth + fdata mean) + `#[deprecated]` the 5 `_2d` shims only + item #3 doc-only vocab note + whole-phase gate (item #4/#3; API-01/02/03)
+- [x] 50-01-PLAN.md — TRACER: additive `impl Default` for BoostingConfig/BayesianConfig/StabilityConfig (item #1; NOT StlConfig — already derives Default) + prove the full additive+examples+wasm+clippy gate pipeline (API-01/API-03)
+- [x] 50-02-PLAN.md — `fanova_seeded` (keeps the LCG) + `fanova` as a `#[deprecated]` seed=42 shim + bit-identical golden (equivalence_phase50.rs) + caller migration/hygiene (item #2; API-01/02/03)
+- [x] 50-03-PLAN.md — `Dim` enum (src/dim.rs) + 5 unified dispatchers (4 depth + fdata mean) + `#[deprecated]` the 5 `_2d` shims only + item #3 doc-only vocab note + whole-phase gate (item #4/#3; API-01/02/03)
 
 **UI hint**: no
 
@@ -195,7 +195,7 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 | 47. Hot-Path & Allocation Performance | 4/4 | ✓ Complete | 2026-08-31 |
 | 48. Parallelism-Gap Closure | 3/3 | Complete    | 2026-08-31 |
 | 49. Code Consolidation / Dedup | 5/4 | Complete    | 2026-08-31 |
-| 50. Additive API-Surface Consolidation | 0/TBD | Not started | - |
+| 50. Additive API-Surface Consolidation | 3/3 | Complete    | 2026-09-01 |
 | 51. Benchmark Coverage & Regression Guards | 0/TBD | Not started | - |
 
 All phases through v0.29.0 are shipped and archived under `milestones/`.
