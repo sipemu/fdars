@@ -591,6 +591,9 @@ pub use metric::{
 // Re-export the shared dimensionality selector for the unified depth/fdata dispatchers.
 pub use dim::Dim;
 
+// The deprecated `_2d` shims are still re-exported for back-compat (API-03); re-exporting a
+// deprecated item emits a deprecation warning, so allow it on this back-compat re-export block.
+#[allow(deprecated)]
 pub use depth::{
     band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz,
     fraiman_muniz_1d, fraiman_muniz_2d, functional_boxplot, functional_depth,
@@ -618,7 +621,9 @@ pub use utility::{
     pcvm_statistic, rp_stat, RpStatResult,
 };
 
-// Re-export functional data operation types and functions
+// Re-export functional data operation types and functions.
+// `mean_2d` is a deprecated back-compat shim (API-03); allow the deprecation on this re-export block.
+#[allow(deprecated)]
 pub use fdata::{
     center_1d, depth_based_median, deriv_1d, deriv_2d, functional_covariance, functional_std,
     functional_variance, geometric_median_1d, geometric_median_2d, mean, mean_1d, mean_2d,

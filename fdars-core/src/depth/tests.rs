@@ -317,6 +317,7 @@ fn test_kfsd_2d_range() {
 
 // ============== 2D delegation tests ==============
 
+#[allow(deprecated)]
 #[test]
 fn test_fraiman_muniz_2d_delegates() {
     let n = 10;
@@ -327,6 +328,7 @@ fn test_fraiman_muniz_2d_delegates() {
     assert_eq!(depths_1d, depths_2d);
 }
 
+#[allow(deprecated)]
 #[test]
 fn test_modal_2d_delegates() {
     let n = 10;
@@ -347,6 +349,7 @@ fn test_functional_spatial_2d_delegates() {
     assert_eq!(depths_1d, depths_2d);
 }
 
+#[allow(deprecated)]
 #[test]
 fn test_random_projection_2d_returns_valid() {
     let n = 10;

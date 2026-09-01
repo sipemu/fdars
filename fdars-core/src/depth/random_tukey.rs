@@ -53,6 +53,10 @@ pub fn random_tukey(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize, dim:
 }
 
 /// Compute random Tukey depth for 2D functional data.
+#[deprecated(
+    since = "0.30.0",
+    note = "redundant with `random_tukey(…, Dim::Two)`; body just forwards to `random_tukey_1d`"
+)]
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_tukey_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_tukey_1d(data_obj, data_ori, nproj)

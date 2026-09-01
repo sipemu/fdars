@@ -79,6 +79,10 @@ pub fn random_projection(
 }
 
 /// Compute random projection depth for 2D functional data.
+#[deprecated(
+    since = "0.30.0",
+    note = "redundant with `random_projection(…, Dim::Two)`; body just forwards to `random_projection_1d`"
+)]
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn random_projection_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_projection_1d(data_obj, data_ori, nproj)

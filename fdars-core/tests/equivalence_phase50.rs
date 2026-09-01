@@ -205,3 +205,63 @@ fn dispatch_random_tukey_is_valid() {
     let got_one = random_tukey(&data, &data, 20, Dim::One);
     assert_valid_depth_vec(&got_one, data.nrows());
 }
+
+// ── plan 50-03 Task 2: `==_2d` goldens (deterministic) + structural checks vs the now-deprecated
+// `_2d` shims (RNG). These test fns exercise the deprecated `_2d` shims deliberately to pin that the
+// unified dispatcher and the deprecated shim agree, so `#[allow(deprecated)]` is required. ─────────
+
+/// DETERMINISTIC pair — `modal(…, Dim::Two)` is bit-identical to the deprecated `modal_2d(…)`.
+#[allow(deprecated)]
+#[test]
+fn dispatch_modal_equals_2d() {
+    use fdars_core::depth::{modal, modal_2d};
+    let data = dispatch_fixture(6, 12);
+    let h = 0.5;
+    assert_eq!(modal(&data, &data, h, Dim::Two), modal_2d(&data, &data, h));
+}
+
+/// DETERMINISTIC pair — `fraiman_muniz(…, Dim::Two)` is bit-identical to the deprecated
+/// `fraiman_muniz_2d(…)`.
+#[allow(deprecated)]
+#[test]
+fn dispatch_fraiman_muniz_equals_2d() {
+    use fdars_core::depth::{fraiman_muniz, fraiman_muniz_2d};
+    let data = dispatch_fixture(6, 12);
+    for scale in [true, false] {
+        assert_eq!(
+            fraiman_muniz(&data, &data, scale, Dim::Two),
+            fraiman_muniz_2d(&data, &data, scale)
+        );
+    }
+}
+
+/// DETERMINISTIC pair — `mean(…, Dim::Two)` is bit-identical to the deprecated `mean_2d(…)`.
+#[allow(deprecated)]
+#[test]
+fn dispatch_mean_equals_2d() {
+    use fdars_core::fdata::{mean, mean_2d};
+    let data = dispatch_fixture(6, 12);
+    assert_eq!(mean(&data, Dim::Two), mean_2d(&data));
+}
+
+/// RNG pair — the deprecated `random_projection_2d(…)` produces a valid depth vector (len + [0,1]),
+/// mirroring the dispatcher; no `assert_eq!` possible (thread_rng, no public seed).
+#[allow(deprecated)]
+#[test]
+fn dispatch_random_projection_2d_is_valid() {
+    use fdars_core::depth::random_projection_2d;
+    let data = dispatch_fixture(6, 12);
+    let got = random_projection_2d(&data, &data, 20);
+    assert_valid_depth_vec(&got, data.nrows());
+}
+
+/// RNG pair — the deprecated `random_tukey_2d(…)` produces a valid depth vector (len + [0,1]),
+/// mirroring the dispatcher; no `assert_eq!` possible (thread_rng, no public seed).
+#[allow(deprecated)]
+#[test]
+fn dispatch_random_tukey_2d_is_valid() {
+    use fdars_core::depth::random_tukey_2d;
+    let data = dispatch_fixture(6, 12);
+    let got = random_tukey_2d(&data, &data, 20);
+    assert_valid_depth_vec(&got, data.nrows());
+}

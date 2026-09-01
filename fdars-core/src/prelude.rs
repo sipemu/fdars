@@ -27,7 +27,10 @@ pub use crate::classification::{ClassifCvResult, ClassifFit, ClassifMethod, Clas
 // Explainability
 pub use crate::explain_generic::{FpcPredictor, TaskType};
 
-// Depth functions
+// Depth functions.
+// `fraiman_muniz_2d` / `modal_2d` are deprecated back-compat shims (API-03); allow the deprecation
+// on this prelude re-export block.
+#[allow(deprecated)]
 pub use crate::depth::{
     band_1d, fraiman_muniz_1d, fraiman_muniz_2d, functional_spatial_1d, functional_spatial_2d,
     modal_1d, modal_2d, modified_band_1d, random_projection_1d, random_tukey_1d, rpd_depth_1d,

@@ -58,6 +58,10 @@ pub fn fraiman_muniz(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool, dim:
 }
 
 /// Compute Fraiman-Muniz depth for 2D functional data (surfaces).
+#[deprecated(
+    since = "0.30.0",
+    note = "redundant with `fraiman_muniz(…, Dim::Two)`; body just forwards to `fraiman_muniz_1d`"
+)]
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn fraiman_muniz_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
     // Same implementation as 1D - iterate over all grid points

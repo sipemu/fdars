@@ -199,6 +199,10 @@ pub fn mean(data: &FdMatrix, dim: Dim) -> Vec<f64> {
 /// Compute the mean function for 2D surfaces.
 ///
 /// Data is stored as n x (m1*m2) matrix where each row is a flattened surface.
+#[deprecated(
+    since = "0.30.0",
+    note = "redundant with `mean(…, Dim::Two)`; body just forwards to `mean_1d`"
+)]
 pub fn mean_2d(data: &FdMatrix) -> Vec<f64> {
     // Same computation as 1D - just compute pointwise mean
     mean_1d(data)
@@ -1090,6 +1094,7 @@ mod tests {
         assert!(mean_1d(&FdMatrix::zeros(0, 0)).is_empty());
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_mean_2d_delegates() {
         let data = vec![1.0, 3.0, 2.0, 4.0];

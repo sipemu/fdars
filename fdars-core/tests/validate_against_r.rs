@@ -2275,6 +2275,7 @@ fn test_random_tukey_rank_correlation() {
     );
 }
 
+#[allow(deprecated)]
 #[test]
 fn test_2d_delegates_to_1d_fm() {
     let d: StandardData = load_json("data", "standard_50x101");
@@ -2506,6 +2507,7 @@ fn test_geometric_median_robust_to_outlier() {
     }
 }
 
+#[allow(deprecated)]
 #[test]
 fn test_2d_mean_valid() {
     let d: StandardData = load_json("data", "standard_50x101");
