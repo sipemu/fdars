@@ -1,5 +1,23 @@
 # Milestones
 
+## v0.30.0 Performance & Consolidation Pass (Shipped: 2026-09-01)
+
+**Phases completed:** 6 phases, 23 plans, 12 tasks
+
+**Key accomplishments:**
+
+- End-to-end throwaway-probe pipeline proven on fpca_variants::fsvd — 4 criterion cells + a dhat allocation probe feed the first grounded row of PROF-01, with baseline suite green and zero src edits.
+- All 9 reuse-first subsystems profiled — face_covariance (984ms) and fem_smooth (452ms) top the compute-bound ranking, fts::dpca (42MB churn) tops allocations — then every throwaway probe removed and the full suite proven green.
+- Ranked, anchored duplication inventory: χ²/F survival kernels (2 impls) is the top dedup target; permutation loops, seeded-RNG, and SVD sign-fix follow; simpsons/Cholesky/FPCA-scoring confirmed already consolidated.
+- Ranked API-inconsistency inventory: 4 configs missing Default and a non-seedable fanova are the top additive-safe targets; field renames and bulk _1d/_2d unification classified breaking and deferred.
+- PROF-00 index ties the three ranked inventories to their consumer phases; crate-wide zero-behavior-change gate passes (suite green, clippy --all-targets clean) and 46-VALIDATION.md is signed off.
+- fts::dpca allocation cut 54% (17,739→8,139 blocks) via index-sort eigenvector materialization, behavior-preserving (golden 1e-12), with the permanent proof pipeline (bench + golden + dhat + ledger) established end-to-end.
+- fsvd/ssvd/functional_acf now build their eigen matrices via DMatrix::from_fn (no Vec staging + no m×m copy); functional_acf also precomputes sqrt(w). Byte-equivalent, proven by pre-edit golden captures at rel 1e-12.
+- cov_irreg precomputes per-observation Gaussian kernel-weight tables (w_s/w_t) once instead of recomputing them per (s,t) grid cell — ~98% fewer exp() calls, cutting face_covariance wall-time 80.7% (983.8→189.8ms) with byte-equivalent output.
+- fem_smooth builds phi_t_phi and a_mat in a single assembly pass (drops the phi_t_phi.clone() N×N copy), byte-equivalent; the O(N³) Cholesky/GCV bottleneck is documented+deferred; PERF-RESULTS.md consolidated and Phase 47 validation signed off.
+
+---
+
 ## v0.29.0 Boosting/Bayesian, FEM/PDE & Co-Clustering (Shipped: 2026-08-30)
 
 **Phases completed:** 3 phases, 11 plans, 3 tasks

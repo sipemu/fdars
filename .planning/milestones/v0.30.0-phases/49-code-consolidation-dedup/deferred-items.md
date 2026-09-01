@@ -5,7 +5,7 @@
 - **File:** `fdars-core/src/parallel.rs:172` (test module)
 - **Lint:** `clippy::useless_vec` — `let vec = vec![1.0_f64, 2.0, 3.0, 4.0, 5.0];` → suggests array.
 - **Surfaces only under:** `cargo clippy --all-targets --no-default-features --features linalg -- -D warnings`
-- **Status:** Pre-existing (confirmed by stashing all 49-05 changes — warning persists without them).
+- **Status:** acknowledged
   Last commit to `parallel.rs` is `bc7baefa`, unrelated to Phase 49. The CI-representative gate
   (`--features linalg,parallel --all-targets`, per project MEMORY) is CLEAN.
 - **Decision:** Out of scope for 49-05 (seeded-RNG gap-closure touches only 5 files, none is
@@ -26,3 +26,4 @@
   omitting it would silently disable the golden tests in CI — real regression risk for a doc-only tidy.
 - **Decision:** DEFER to the future breaking/1.0-readiness cleanup (APIB-01). At that point either
   feature-gate the module or replace the forwarders with in-crate `#[cfg(test)]` unit tests.
+  status: acknowledged

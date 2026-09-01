@@ -365,6 +365,42 @@ fdars' first standalone functional-inference surface: a new `fdars-core/src/infe
 
 ---
 
+## Milestone: v0.30.0 — Performance & Consolidation Pass
+
+**Shipped:** 2026-09-01
+**Phases:** 6 (46–51) | **Plans:** 23
+
+### What Was Built
+Measure-first depth pass — the first internally-driven milestone. Phase 46 profiled the whole crate into three ranked inventories (hot-path, dedup, API). Phase 47: face_covariance −80.7% wall + dpca −54% alloc blocks (bit-identical, golden 1e-12). Phase 48: frechet_anova 9.9× + co_cluster 6.4× thread-scaling with payback guards. Phase 49: χ²/gamma → `distributions.rs`, `seed_for_thread`, `permutation_pvalue`, SVD sign-core — all call sites migrated, −358 LOC, bit-identical. Phase 50: 3 `Default` impls, `fanova_seeded`, `Dim` + 5 dispatchers, 6 `#[deprecated]` — fully additive (28 examples + wasm compile). Phase 51: 9 new module benches + BENCH-RESULTS.md guard ledger.
+
+### What Worked
+- **Measure-first paid off** — every 47–51 target traced to a PROF-01/02/03 inventory row; no cold-path optimization.
+- **Golden-capture-then-change** (capture bit-identical reference from current code BEFORE the edit, assert after) made behavior-preservation mechanical and caught nothing regressing — reused across 47/48/49/50.
+- **Adversarial verify caught real gaps** — the Phase-49 verifier found 5 same-contract RNG sites the plan's `files_modified` scoping missed; gap-closure completed "every call site migrated".
+- **Research corrected naive plans** — Phase 49 research proved one χ²/gamma kernel diverges catastrophically in the far tail (→ share primitives, split tail wrappers); Phase 50 research shrank the `_1d/2d` dispatch scope from "30+ fns" to 5.
+
+### What Was Inefficient
+- **Executor interruptions** — an executor hit an API rate-limit mid-run (plan 50-02/51-01) leaving uncommitted work; reconciliation-on-resume (verify gates green, then commit) recovered cleanly but cost a cycle.
+- **A stray all-`pending` `.planning/state.json` projection artifact** kept reappearing and needed removal each time.
+- **Plan-check found a real golden-mechanism blocker** (RNG dispatchers can't `assert_eq!` under `thread_rng`) — caught pre-execution, but the plan initially over-claimed determinism.
+
+### Patterns Established
+- **`seed_for_thread(seed, k)`** — one home for the per-thread determinism contract.
+- **`permutation_pvalue`** — parallel-map → collect Result → sequential strict-`>` reduce (order-independent).
+- **Additive deprecation** — add canonical form, make old a `#[deprecated]` delegating shim, migrate non-pinning callers, `#[allow(deprecated)]` the pin-tests. `pub use` of deprecated items DOES warn on rustc 1.97 → allow the re-export block.
+- **Documented soft guards** (criterion baseline-compare) + deterministic hard guards (alloc_audit) — no flaky wall-time asserts under an unpinned governor.
+
+### Key Lessons
+- Verifier "every call site migrated" is stronger than a plan's `files_modified` scope — trust the goal-backward check to find scoping misses.
+- For a bench-heavy milestone, `TMPDIR` + `target/debug` cleanup discipline is load-bearing; the CI-representative gate is `--features linalg,parallel --all-targets`.
+- Keep the audit/perf milestone tag-free: crate stays 0.29.0, version bump + publish + tag is the deferred REL-01 operator step (a `v*` tag would trigger a phantom crates.io publish).
+
+### Cost Observations
+- Executed largely via dispatched subagents (researcher/planner/checker/executor/verifier) with inline reconciliation on interrupts; phases sequential by dependency (worktree-base-divergence memory).
+- Notable: reconciliation-on-resume (verify-then-commit an interrupted executor's uncommitted work) avoided duplicate execution twice.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
