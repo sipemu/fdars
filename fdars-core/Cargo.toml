@@ -119,6 +119,10 @@ harness = false
 name = "boosting_regression_benchmarks"   # Phase 51 BENCH-01 — boosting_regression::boost_fosr coverage
 harness = false
 
+[[bench]]
+name = "coclustering_benchmarks"   # Phase 51 BENCH-01 — coclustering::co_cluster_select coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
