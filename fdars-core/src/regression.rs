@@ -1,6 +1,30 @@
 //! Regression functions for functional data.
 //!
 //! This module provides functional PCA, PLS, and ridge regression.
+//!
+//! # Canonical result-field vocabulary (API-01)
+//!
+//! [`FpcaResult`] defines the canonical vocabulary reused across the crate's FPCA-based
+//! result structs:
+//!
+//! | Field | Meaning |
+//! |-------|---------|
+//! | `scores` | FPC scores, `n × ncomp` (observations projected onto the component basis) |
+//! | `rotation` | Loadings / eigenfunctions, `m × ncomp` (the component basis) |
+//! | `mean` | Estimated mean function, length `m` |
+//! | `weights` | Integration weights for the functional inner product, length `m` |
+//! | `singular_values` | Singular values of the centered data (component scale) |
+//! | `centered` | The mean-centered data, `n × m` |
+//!
+//! Response-carrying result structs (e.g. [`crate::fts::FtsmResult`],
+//! [`crate::boosting_regression::BoostFosrResult`], and the FOSR result types) expose the
+//! fitted response under the field name `fitted`; this is the accepted canonical name for a
+//! fitted-response field across the crate (the historical `fitted_values` spelling is *not*
+//! introduced). No field is renamed here — the cross-model unification layer is provided by
+//! the [`crate::explain_generic::FpcPredictor`] trait, which abstracts over the concrete
+//! result structs so callers need not depend on any single struct's field names. Any future
+//! field *rename* would be a breaking change and is deferred to the 1.0-readiness milestone
+//! (APIB-01).
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
