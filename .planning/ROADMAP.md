@@ -162,7 +162,12 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
   3. `cargo build` / `cargo test`, the **28 examples**, and the R/WASM binding call sites all still pass with **deprecation warnings only** — zero breakage to existing callers.
   4. No new crate dependency is introduced.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+- [ ] 50-01-PLAN.md — TRACER: additive `impl Default` for BoostingConfig/BayesianConfig/StabilityConfig (item #1; NOT StlConfig — already derives Default) + prove the full additive+examples+wasm+clippy gate pipeline (API-01/API-03)
+- [ ] 50-02-PLAN.md — `fanova_seeded` (keeps the LCG) + `fanova` as a `#[deprecated]` seed=42 shim + bit-identical golden (equivalence_phase50.rs) + caller migration/hygiene (item #2; API-01/02/03)
+- [ ] 50-03-PLAN.md — `Dim` enum (src/dim.rs) + 5 unified dispatchers (4 depth + fdata mean) + `#[deprecated]` the 5 `_2d` shims only + item #3 doc-only vocab note + whole-phase gate (item #4/#3; API-01/02/03)
+
 **UI hint**: no
 
 ### Phase 51: Benchmark Coverage & Regression Guards
