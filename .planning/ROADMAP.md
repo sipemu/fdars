@@ -95,10 +95,10 @@ Milestone audit: **tech_debt** (13/13 requirements satisfied, 6/6 phases verifie
 **Plans**: 4 plans (one parallel plan per ecosystem — MAT-01, JUL-01, TDY-01, PYX-01; mutually independent)
 
 Plans:
-- [ ] 52-01: MATLAB FDA survey (MAT-01) — Ramsay `fda` MATLAB toolbox + PACE (MATLAB)
-- [ ] 52-02: Julia FDA survey (JUL-01) — JuliaStats / functional-data packages (modern/perf-oriented patterns)
-- [ ] 52-03: tidyfun/refund (R) survey (TDY-01) — tidyfun representation/workflow slice + refund not-in-v0.18.0
-- [ ] 52-04: Python-beyond-scikit-fda survey (PYX-01) — FDApy / tslearn / sktime + other Python FDA/ML libs
+- [ ] 52-01-PLAN.md: MATLAB FDA survey (MAT-01) — Ramsay `fda` MATLAB toolbox + PACE (MATLAB) → `survey-matlab.md`
+- [ ] 52-02-PLAN.md: Julia FDA survey (JUL-01) — JuliaStats / functional-data packages (modern/perf-oriented patterns) → `survey-julia.md`
+- [ ] 52-03-PLAN.md: tidyfun/refund (R) survey (TDY-01) — tidyfun representation/workflow slice + refund not-in-v0.18.0 → `survey-tidyfun.md`
+- [ ] 52-04-PLAN.md: Python-beyond-scikit-fda survey (PYX-01) — FDApy / tslearn / sktime + other Python FDA/ML libs → `survey-pyx.md`
 
 ### Phase 53: Consolidation & Backlog
 **Goal**: The four per-ecosystem gap lists are merged into a single cross-ecosystem gap report, a value-ranked GSD-ready backlog is produced, and a de-dup + completeness gate confirms every backlog item is genuinely net-new and every surveyed gap is accounted for.
