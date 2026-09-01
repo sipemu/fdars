@@ -181,7 +181,11 @@ Milestone audit PASSED 12/12 requirements. Full detail: [milestones/v0.29.0-ROAD
   2. The benchmarks used to prove the PERF-01/02/03 wins are **committed as permanent regression guards**, with the before/after numbers documented so future changes can detect regressions.
   3. The full clippy gate (`cargo clippy --all-targets --features linalg,parallel -- -D warnings`, which lints bench code) stays green with the new bench entries; no new crate dependency.
 
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 51-01-PLAN.md — TRACER: benches/inference_benchmarks.rs (t_perm_test) + prove the full add-bench → register → build → clippy → fmt → commit pipeline (wave 1)
+- [ ] 51-02-PLAN.md — BENCH-01 expansion: fts::ftsm, frechet::frechet_global_reg, boosting_regression::boost_fosr, coclustering::co_cluster_select (wave 2)
+- [ ] 51-03-PLAN.md — BENCH-01 expansion: fem_smoothing::fem_smooth_gcv, density_fda::lqd_fpca, fpca_variants::fpca_der, irreg_fdata::mface_covariance (wave 3)
+- [ ] 51-04-PLAN.md — BENCH-02: BENCH-RESULTS.md consolidated regression-guard ledger + confirm PERMANENT perf benches + alloc_audit guards intact (wave 4)
 **UI hint**: no
 
 ## Progress
@@ -196,6 +200,6 @@ Phases execute in numeric order: 46 → 47 → 48 → 49 → 50 → 51. (46 gate
 | 48. Parallelism-Gap Closure | 3/3 | Complete    | 2026-08-31 |
 | 49. Code Consolidation / Dedup | 5/4 | Complete    | 2026-08-31 |
 | 50. Additive API-Surface Consolidation | 3/3 | Complete    | 2026-09-01 |
-| 51. Benchmark Coverage & Regression Guards | 0/TBD | Not started | - |
+| 51. Benchmark Coverage & Regression Guards | 0/4 | Not started | - |
 
 All phases through v0.29.0 are shipped and archived under `milestones/`.
