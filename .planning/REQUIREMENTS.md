@@ -1,73 +1,76 @@
-# Requirements: fdars v0.32.0 — Global Alignment Kernel & Kernel Clustering
+# Requirements: fdars v0.33.0 — Shapelet Transform & Classification
 
 **Defined:** 2026-09-02
-**Core Value:** Add a PSD Global Alignment Kernel for curve sets and the kernel machinery it unlocks — clustering natively on curves and enabling external precomputed-kernel SVMs via an exported Gram matrix. Promotes GAP-01 (top-ranked, score 3.00) from the v0.31.0 `GAP-BACKLOG.md`.
+**Core Value:** Add interpretable, discovery-based shapelet classification for curves/time series — discover discriminative subsequences, transform curves into a distance-feature space, and classify. Promotes GAP-02 (score 2.89, the only backlog gap corroborated across three reference libraries: sktime, pyts, tslearn) from the v0.31.0 `GAP-BACKLOG.md`.
 
 ## Milestone Requirements
 
-Requirements for v0.32.0. Each maps to a roadmap phase. Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking, no new crate dependency. Reference baseline: tslearn@0.9.0 (`gak`, `cdist_gak`, `sigma_gak`, `KernelKMeans`); Cuturi 2011 (Triangular GAK).
+Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking, no new crate dependency. New `src/shapelet/` submodule. Discovery-based (Ye & Keogh 2009; Hills–Lines 2014; sktime `ShapeletTransformClassifier`, pyts `ShapeletTransform`) — **not** learning-shapelets (deferred). Strict compile-time dependency chain: distance core → discovery → transform → classifier.
 
-### GAK Kernel Core
+**Resolved design decisions (from research):** bundled classifier defaults to **kNN** (`fclassif_knn_fit`, canonical Hills/Lines; avoids the FPCA-on-distance-features oddity of LDA), with LDA selectable via a `ShapeletClassifier` config enum. Quality measure defaults to **information gain**, with **F-statistic** selectable (`QualityMeasure` enum; reuses existing `pub(crate) integrated_f_statistic`). Early-abandon exposed as an explicit `best_so_far` parameter. Defaults follow sktime (`max_candidates`≈10000, `max_shapelets`≈min(10·n, 1000), min length 3); z-normalization uses population std (ddof=0, pyts convention) — divergences documented.
 
-- [x] **GAK-01**: User can compute the pairwise GAK similarity between two curves via a log-domain (log-sum-exp) forward DP over the alignment lattice, using a triangular local Gaussian kernel with bandwidth σ. Log-domain is mandatory — the raw-product recursion underflows to 0/NaN for series longer than ~50 points.
-- [x] **GAK-02**: The GAK similarity is normalized by `sqrt(k(x,x)·k(y,y))` to yield a valid similarity in `[0,1]` with unit self-similarity (`k(x,x)=1`). Normalization is mandatory for positive-semi-definiteness — unnormalized GAK silently breaks kernel-SVM.
-- [x] **GAK-03**: User can compute an n×n GAK Gram matrix over a curve set (`cdist_gak`-equivalent), guaranteed symmetric and PSD with unit diagonal, parallelized via the existing `iter_maybe_parallel!` machinery under the `parallel` feature.
-- [x] **GAK-04**: User can auto-select the GAK bandwidth σ from a curve set via the median-distance heuristic (`sigma_gak`-equivalent), so a sensible kernel width is available without manual tuning.
+### Shapelet Distance Core
 
-### Gram-Matrix Export (external precomputed-kernel SVM)
+- [ ] **SHP-01**: User/internal code can z-normalize a length-L window or shapelet slice (subtract mean, divide by population std) with a constant-window guard (std≈0 → zero vector, no NaN). Per-window normalization — the correctness foundation for scale/offset-invariant matching.
+- [ ] **SHP-02**: User/internal code can compute the shapelet-to-curve distance `sdist(S,T) = min over sliding windows of ‖z(window) − z(S)‖₂`, with an explicit `best_so_far` early-abandon parameter (inner loop breaks when the partial sum exceeds `best_so_far`). Returns the min distance (and best-match offset for interpretability).
 
-- [x] **GAK-05**: User can export a training Gram matrix (n_train × n_train, symmetric PSD, unit diagonal) suitable for a precomputed-kernel SVM (`SVC(kernel='precomputed')` convention).
-- [x] **GAK-06**: User can export a prediction Gram matrix (n_test × n_train) whose entries use the correct cross-normalization against the stored training self-kernels, so an external SVM trained on GAK-05 can score new curves in the same feature space. A split train/predict API prevents the silent self-kernel-normalization bug.
+### Discovery & Ranking
 
-### Kernel-k-means Clustering
+- [ ] **SHP-03**: User can discover candidate shapelets from a labeled training curve set — enumerate candidate subsequences across a configurable length range, either exhaustively or via deterministic contracted/random sampling bounded by `max_candidates` (seeded via `seed_for_thread` for reproducibility).
+- [ ] **SHP-04**: Each candidate is scored by discriminative quality — **information gain** on the optimal distance-split threshold (orderline sort + midpoint scan) by default, or the **F-statistic** alternative, selectable via a `QualityMeasure` enum.
+- [ ] **SHP-05**: The discovery selects the top-K shapelets by quality with **self-similarity pruning** — candidates from the same series whose position range overlaps an already-selected shapelet are discarded, yielding a non-redundant `ShapeletSet`.
 
-- [x] **GAK-07**: User can cluster a curve set with kernel-k-means through the GAK kernel — assignments computed from Gram-matrix kernel distances (no explicit centroid curve), with `n_init` random-partition restarts, empty-cluster recovery, and deterministic per-restart RNG seeding (`seed + restart_idx`).
-- [x] **GAK-08**: User can assign new (out-of-sample) curves to a fitted kernel-k-means model via a `predict` path that reuses the same GAK kernel and normalization as the fit.
+### Shapelet Transform
+
+- [ ] **SHP-06**: User can transform a curve set through a fitted `ShapeletSet` into an n×K distance-feature matrix (`X[i,j] = sdist(shapelet_j, curve_i)`), applying the identical shapelets and z-normalization to training and out-of-sample curves (transform consistency — `transform(train)` reproduces the fit-time distances).
+
+### Bundled Classifier
+
+- [ ] **SHP-07**: User can fit an end-to-end `ShapeletTransformClassifier` (discover → transform → classify via an existing fdars classifier — kNN default, LDA optional) and `predict` labels for new curves, reusing the stored shapelets + inner classifier. Matches sktime's `ShapeletTransformClassifier` pipeline.
 
 ## Future Requirements
 
 Deferred to a later milestone; tracked but not in this roadmap.
 
-### Native kernel machines
+### Learning shapelets
 
-- **SVM-01**: A native in-crate kernel-SVM classifier (SMO/QP solver) consuming the GAK kernel directly, removing the external-SVM round-trip. Deferred — much larger than "effort S"; the exported Gram matrix (GAK-05/06) covers the use case in the interim.
+- **LSH-01**: Gradient-learned shapelets (tslearn `LearningShapelets` / Grabocka 2014) — shapelets as model parameters optimized by SGD through a soft-min distance. Deferred; requires a differentiable distance (ties to GAP-08 autodiff core).
 
-### Kernel-method breadth
+### Shapelet breadth
 
-- **KRN-01**: Additional curve kernels (e.g. RBF-on-features, other alignment kernels) and kernel-SVM/kernel-PCA consumers reusing the GAK Gram infrastructure.
+- **SHP-BREADTH**: Multivariate/multi-dimensional shapelets, DTW-based shapelet distance, and ROCKET-style convolutional-kernel alternatives — future.
 
 ## Out of Scope
 
-Explicitly excluded for v0.32.0. Documented to prevent scope creep.
+Explicitly excluded for v0.33.0.
 
 | Feature | Reason |
 |---------|--------|
-| Native kernel-SVM classifier | Out of the promoted GAP-01 scope; deferred to SVM-01. The Gram-matrix export (GAK-05/06) is the realistic interpretation of "kernel-SVM glue" and delivers the capability without an in-crate SVM. |
-| GPU / batched-broadcast GAK kernels | fdars targets a portable CPU/WASM numeric core (recorded OOS-01 in `GAP-BACKLOG.md`). |
-| Other GAP-BACKLOG items (GAP-02/03/05/06/07/08) | Shapelets, k-Shape, FOptDes, PEER, wavelet regression, differentiable core — carry forward to future milestones, drawn top-first. |
-| Triangular band-width truncation as a required parameter | The Cuturi triangular constraint may be exposed as an optional optimization, but the milestone ships the full (untruncated) log-domain DP first; a mandatory band parameter is not required for correctness. |
+| Learning-shapelets (gradient) | Different paradigm needing autodiff through the distance; deferred to LSH-01 (ties to GAP-08). This milestone is discovery-based only. |
+| GPU / batched acceleration | fdars targets a portable CPU/WASM numeric core (recorded OOS-01 in `GAP-BACKLOG.md`). |
+| SAX / PAA / symbolic & imaging representations | Recorded OOS-02; time-series-ML representations, not the shapelet-numeric method. |
+| Native RotationForest (sktime's inner classifier) | fdars reuses its existing kNN/LDA classifiers on the distance features; a new ensemble learner is out of scope. |
+| Other GAP-BACKLOG items (GAP-03/05/06/07/08) | k-Shape, FOptDes, PEER, wavelet regression, differentiable core — carry forward, drawn top-first. |
 
 ## Traceability
 
-Mapped during roadmap creation (2026-09-02). Three-phase dependency spine: 54 (kernel core) → 55 (Gram export) → 56 (kernel-k-means).
+Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GAK-01 | Phase 54 | Complete |
-| GAK-02 | Phase 54 | Complete |
-| GAK-03 | Phase 54 | Complete |
-| GAK-04 | Phase 54 | Complete |
-| GAK-05 | Phase 55 | Complete |
-| GAK-06 | Phase 55 | Complete |
-| GAK-07 | Phase 56 | Complete |
-| GAK-08 | Phase 56 | Complete |
+| SHP-01 | TBD | Pending |
+| SHP-02 | TBD | Pending |
+| SHP-03 | TBD | Pending |
+| SHP-04 | TBD | Pending |
+| SHP-05 | TBD | Pending |
+| SHP-06 | TBD | Pending |
+| SHP-07 | TBD | Pending |
 
 **Coverage:**
-
-- Milestone requirements: 8 total
-- Mapped to phases: 8 ✓ (Phase 54: GAK-01/02/03/04 · Phase 55: GAK-05/06 · Phase 56: GAK-07/08)
-- Unmapped: 0 ✓ (no orphans, no duplicates)
+- Milestone requirements: 7 total
+- Mapped to phases: 0 (roadmap pending)
+- Unmapped: 7 ⚠️
 
 ---
 *Requirements defined: 2026-09-02*
-*Last updated: 2026-09-02 after roadmap creation (traceability populated)*
+*Last updated: 2026-09-02 after initial definition*
