@@ -1,19 +1,19 @@
-# Research Summary: Global Alignment Kernel + Kernel-K-Means + Gram-Matrix Export (v0.32.0)
+# Research Summary: Shapelet Transform & Classification (v0.33.0)
 
 **Project:** fdars-core (Rust functional-data-analysis library)
-**Milestone:** v0.32.0 — GAK kernel implementation + kernel-k-means clustering + Gram-matrix export for external SVM
+**Milestone:** v0.33.0 — Shapelet Transform & Bundled Classifier (GAP-02)
 **Researched:** 2026-09-02
-**Confidence:** HIGH (mathematical spec from primary sources, API verified against tslearn@0.9.0 and Cuturi 2011, architecture patterns validated against codebase)
+**Confidence:** HIGH
 
 ---
 
 ## Executive Summary
 
-fdars v0.32.0 adds three interconnected deliverables: a Global Alignment Kernel (GAK) for time-series similarity in log-domain, kernel-k-means clustering operating purely on precomputed Gram matrices, and Gram-matrix export for external precomputed-kernel SVM workflows. The research converges on a critical finding: **all three features can be implemented entirely using the existing dependency stack** — no new crates required. The architecture is additive and non-breaking, placing GAK in `src/metric/gak.rs` (sibling to `soft_dtw.rs`) and kernel-k-means in `src/kernel_kmeans.rs` (top-level, like `clustering.rs`).
+v0.33.0 implements discovery-based shapelet transform with a bundled classifier — a proven time-series feature engineering technique that converts functional curves into discriminative distance-feature matrices suitable for standard classifiers. The approach is non-breaking (new `src/shapelet/` submodule only), requires **zero new external dependencies**, builds entirely on existing fdars primitives, and follows a strict 4-phase implementation sequence (compile-time dependency chain).
 
-The research identifies two mandatory implementation decisions that must be nailed from the start: **log-domain accumulation is non-negotiable** (raw products underflow to zero for series longer than ~50 samples, a known deficiency in tslearn 0.9.0), and **triangular normalization is required for positive semi-definiteness** (raw unnormalized GAK is not PSD and breaks kernel-SVM silently). Beyond these core constraints, the implementation is straightforward — it reuses the 2-row rolling-buffer DP pattern from existing `soft_dtw.rs`, mirrors the pairwise-matrix parallelism from `metric/mod.rs`, and follows fdars conventions for config structs, result types, and deterministic seeding.
+**Core recommendation:** Implement phases 57–60 sequentially in order; no reordering or parallelization is possible. The algorithm is well-established (Ye & Keogh 2009; Hills/Lines 2014); the primary risk is per-window z-normalization correctness — this must be verified early with offset/scale-invariance tests.
 
-Roadmap risks are well-characterized: floating-point asymmetry can produce non-symmetric Gram matrices, wrong sigma selection degenerates the Gram to near-identity or near-constant, and kernel-k-means requires n_init restarts + empty-cluster recovery (no k-means++ initialization, since GAK values are similarities not distances). All pitfalls have low-cost recovery strategies embedded in the test suite.
+**Estimated effort:** L (Low) for a mature codebase, reflecting that classification and distance infrastructure already exist. The novelty is discovery machinery and transform logic (~800 LOC across four files), not building new classification from scratch.
 
 ---
 
@@ -21,100 +21,110 @@ Roadmap risks are well-characterized: floating-point asymmetry can produce non-s
 
 ### Recommended Stack
 
-**No new dependencies required.** All three v0.32.0 deliverables build entirely on fdars' existing stack: Rust 1.81+, nalgebra, rayon (optional), rand, and the column-major `FdMatrix` type. rustfft is irrelevant (GAK is pure O(n·m) DP, not FFT-based). faer and linalg features are not involved in the GAK/kernel-k-means path — both algorithms operate on scalar `f64` arithmetic and Gram matrix entries.
-
-**Core technologies used by v0.32.0:**
-- **Rust (1.81 MSRV)** — All implementation; MSRV stays unchanged
-- **nalgebra 0.33** — Not used by GAK core
-- **rayon 1.10** — Parallelizes Gram-matrix row-pair loops via `iter_maybe_parallel!`
-- **rand 0.8** — Seeds reproducible restarts in kernel-k-means
-- **FdMatrix** — Gram matrix output type
-- **`softmin3` pattern from `soft_dtw.rs`** — Reused for log-sum-exp stabilization
+**No new dependencies required.** All deliverables build on existing fdars stack: Rust 1.81+ (MSRV), nalgebra/rayon/rand (existing), FdMatrix, classification module. Z-normalization, sliding-window distance, candidate generation, and information-gain scoring are all pure `f64` arithmetic over slices. MSRV remains 1.81; implementation is data-efficient.
 
 ### Expected Features
 
-**Must have (table stakes, v0.32.0):**
-1. Log-domain GAK recursion — unnormalized kernel via DP in log-space; avoids underflow for series > ~50
-2. Normalized GAK kernel — triangular normalization guarantees PSD for kernel machines
-3. Gram-matrix builders — `gak_gram_train()` (n×n) and `gak_gram_test()` (n_test×n_train)
-4. Kernel-k-means — `kernel_kmeans()` with n_init restarts and empty-cluster recovery
-5. Cluster prediction — `KernelKMeansResult::predict()` for new curves
-6. Configuration structs — `GakConfig`, `KernelKMeansConfig` following fdars conventions
-7. Sigma heuristic — `gak_sigma_median()` for automatic bandwidth selection
-8. Series-length validation — guard against invalid series length ratios
+**Table stakes (must ship v0.33.0):**
+- Per-window z-normalization helper
+- Sliding-window minimum z-normalized Euclidean distance (sdist core primitive)
+- Candidate generation (exhaustive + contracted modes)
+- Information gain quality measure with optimal split threshold search
+- Self-similarity pruning
+- ShapeletTransformFit result struct for out-of-sample use
+- shapelet_transform_fit + shapelet_transform APIs
+- ShapeletTransformClassifier end-to-end pipeline
+- ShapeletConfig struct with standard fdars conventions
+- Result<T, FdarError> error handling throughout
 
-**Should have (low-cost differentiators):**
-- Rayon parallelism on Gram-matrix computation
-- Optional triangular band constraint
-- Deterministic seeding for reproducible clustering
-- `#[must_use]` annotations
-- Serde support via `#[cfg_attr]`
+**Differentiators (v0.33.x, not blockers):**
+- Early-abandon optimization (2–8× speedup; critical for large datasets)
+- F-statistic quality measure (better for class imbalance)
+- Rayon parallelism over candidates
+- Serde persistence
+- Configurable inner classifier
+- predict_proba posteriors
 
-**Defer to v0.33+:**
-- Native kernel SVM (requires QP solver)
-- Multivariate curve support
-- Kernel PCA via GAK
-- Online/streaming kernel-k-means
-- Wavelet/FFT backend
+**Out of scope (deferred):**
+- Learning-shapelets (requires AD; GAP-08)
+- GPU acceleration
+- Multivariate shapelet transform
+- DTW-based distance
 
 ### Architecture Approach
 
-GAK integrates cleanly with zero breaking changes. **Module placement:** GAK in `src/metric/gak.rs` (sibling to `soft_dtw.rs`), kernel-k-means in `src/kernel_kmeans.rs` (top-level, like `clustering.rs`).
+**New `src/shapelet/` submodule with four strictly-ordered files:**
+1. **distance.rs** — z_normalize_window, shapelet_distance, Shapelet struct
+2. **discovery.rs** — ShapeletConfig, candidate enumeration, IG/F-stat scoring, self-similarity pruning
+3. **transform.rs** — ShapeletTransformFit, fit/predict paths
+4. **classifier.rs** — bundled STC, calls fclassif_lda_fit
 
-**Reuse from existing code:**
-- 2-row rolling-buffer from `soft_dtw_distance()` 
-- Log-sum-exp stabilization from `softmin3` pattern
-- Pairwise matrix parallelism from `self_distance_matrix()` / `cross_distance_matrix()`
-- Random seeding pattern from elastic-FPCA: `StdRng::seed_from_u64(seed + restart_idx)`
-- Config/result struct conventions (97 existing types)
+**Non-breaking:** Zero changes to existing modules. Shapelets are a feature-engineering consumer of classification, not an extension. FdMatrix is primary data carrier; column-major layout respected throughout.
 
-**New vs modified files:** Only 2 new files (`metric/gak.rs`, `kernel_kmeans.rs`); 2 minor modifications (`metric/mod.rs`, `lib.rs`). No existing public API changes.
+**Compile-time dependency chain (cannot reorder):**
+Phase 57 → Phase 58 → Phase 59 → Phase 60. Each phase must complete before the next begins.
 
 ### Critical Pitfalls (Top 5)
 
-1. **Log-domain accumulation mandatory** — Raw DP underflows for m > ~50; implement in log-space from day one
-2. **Only normalized triangular GAK is PSD** — Unnormalized form has negative eigenvalues, breaks kernel-SVM silently
-3. **Floating-point asymmetry breaks symmetry** — Different evaluation order produces `G[i,j] ≠ G[j,i]`; symmetrize by assignment
-4. **Wrong sigma silently degenerates Gram** — Too small → near-identity; too large → rank-1; provide heuristic + sensitivity test
-5. **Kernel-k-means needs n_init restarts** — GAK values are similarities (not distances), so k-means++ weighting inverted; use random uniform restarts
+1. **Per-window z-normalization (Phase 57 — CRITICAL CORRECTNESS)**
+   - Risk: Series-level normalization destroys shift/scale invariance
+   - Mitigation: z_normalize_window operates on window slices only; offset/scale-invariance tests verify
+   - Verification: shapelet_distance(s, x) == shapelet_distance(s, x+constant) == shapelet_distance(s, x*scale)
 
-All pitfalls have detection tests and low-cost recovery documented in PITFALLS.md.
+2. **Division by near-zero standard deviation (Phase 57 — CRITICAL STABILITY)**
+   - Risk: Constant windows cause division by ~0, producing NaN/Inf
+   - Mitigation: Clamp std to 1e-10 minimum
+   - Verification: Constant-window and near-constant tests must return finite results
+
+3. **Combinatorial blowup of candidates (Phase 58 — CRITICAL TRACTABILITY)**
+   - Risk: Naive enumeration is O(n·m²/2); intractable for real datasets
+   - Mitigation: max_candidates parameter (default 10,000) caps search via random sampling
+   - Verification: n=100, m=200, max_candidates=1000 returns in <10 seconds
+
+4. **Shapelet distance is minimum, not mean (Phase 57 — CRITICAL SEMANTICS)**
+   - Risk: Mean distance makes score depend on frequency, not presence
+   - Mitigation: Use strict min operator; known-motif recovery test
+   - Verification: Shapelet matching once in noise achieves sdist ≈ 0
+
+5. **Self-similarity pruning omission (Phase 58 — CRITICAL FEATURE QUALITY)**
+   - Risk: Top-K filled with shifted variants of same subsequence
+   - Mitigation: Greedy selection; skip overlapping candidates from same series
+   - Verification: max(correlation between columns) < 0.95; distinct source series check
 
 ---
 
 ## Implications for Roadmap
 
-**Suggested 3-phase decomposition:**
+### Phase 57: Shapelet Distance Core
+**Rationale:** Atomic primitive; all downstream depends on it. Establish correctness of z-norm and distance before discovery.
 
-### Phase 54: GAK Kernel Core
-**Rationale:** All downstream features depend on correct log-domain GAK. Resolve Pitfalls 1-4.
-**Delivers:** `gak()`, `logsumexp3`, `gak_sigma_median()`, `GakConfig`, comprehensive tests
-**Blocks:** Phase 55, 56
+### Phase 58: Discovery & Ranking
+**Rationale:** Builds on Phase 57. Introduces search strategy, quality scoring, and selection logic.
 
-### Phase 55: Gram-Matrix Export (SVM Glue)
-**Rationale:** Wraps proven kernel into SVM-export interface. Split train/predict API prevents normalization bugs.
-**Delivers:** `gak_gram_train()`, `gak_gram_test()`, parallel construction, rustdoc example
-**Depends on:** Phase 54
+### Phase 59: Shapelet Transform
+**Rationale:** Takes discovered shapelets; produces n×K feature matrix for training and out-of-sample.
 
-### Phase 56: Kernel-K-Means Clustering
-**Rationale:** Final consumer. Multi-restart seeding + empty-cluster recovery. Resolves Pitfalls 5-7.
-**Delivers:** `kernel_kmeans()`, `KernelKMeansResult`, `predict()`, `KernelKMeansConfig`
-**Depends on:** Phase 54, 55
+### Phase 60: Bundled ShapeletTransformClassifier
+**Rationale:** End-to-end pipeline: discover → transform → classify. User-facing API.
 
-### Phase Ordering Rationale
+**Phase Ordering:** Strict compile-time dependency chain; no reordering or parallelization possible. Grouping reflects algorithm structure (Distance → Discovery → Transform → Classifier).
 
-Phase 54 first (core kernel must work), Phase 55 second (mechanical API wrapping), Phase 56 third (clustering consumer). No algorithmic risk in Phase 55/56; all risk front-loaded into Phase 54.
+### OPEN DECISIONS FOR ROADMAPPER/PLANNER
 
-### Research Flags
+1. **Bundled classifier default** — kNN vs. LDA (Phase 60)
+   - Recommendation: kNN (canonical from literature; avoids FPCA-on-features weirdness)
+   - Action: Phase 60 planner picks k=1 or k=3; expose config enum for alternatives
 
-**Phases needing research during planning:**
-- **Phase 54:** Sigma heuristic sensitivity on real fdars curves — add phase-exit criterion
-- **Phase 56:** Kernel-k-means++ vs random restarts — lightweight experiment to decide
+2. **Quality measure** — InfoGain-only vs. InfoGain + F-statistic (Phase 58)
+   - Recommendation: Ship InfoGain as default; expose ShapeletConfig.scorer enum for F-statistic
+   - Action: Phase 58 planner implements InfoGain fully; F-stat is optional follow-on
 
-**Phases with standard patterns (skip research):**
-- **Phase 54:** DP, log-sum-exp, parallelism all reuse existing patterns
-- **Phase 55:** Mechanical API wrapping, mirrors existing structure
-- **Phase 56:** Config/result struct conventions well-established
+3. **Default configuration values** (Phase 58/60)
+   - min_len=3, max_len=m/2 (runtime resolve), n_shapelets=min(10*sqrt(n),1000), max_candidates=10_000, similarity_threshold=0.95, seed=42
+
+4. **Early-abandon API design** (Phase 57)
+   - Recommendation: Explicit best_so_far: Option<f64> parameter (testable, composable)
+   - Action: Phase 57 planner includes in signature
 
 ---
 
@@ -122,48 +132,42 @@ Phase 54 first (core kernel must work), Phase 55 second (mechanical API wrapping
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| **Stack** | HIGH | No new deps; all existing. Verified against Cargo.toml and soft-DTW patterns. |
-| **Features** | HIGH | Cuturi 2011 primary, tslearn@0.9.0 + scikit-learn official docs cross-checked. All table-stakes well-defined. |
-| **Architecture** | HIGH | Direct codebase reading. Zero conflicts. Module placement reasoning sound. |
-| **Pitfalls** | HIGH | Derived from math analysis, tslearn known bugs, scikit-learn SVC contract, fdars codebase. All have detection tests and recovery. |
-
-**Overall: HIGH**
+| Stack | HIGH | No new deps; all primitives verified in codebase. Non-invasive reuse. |
+| Features | HIGH | Algorithms peer-reviewed; spec mathematically precise. |
+| Architecture | HIGH | Submodule mirrors existing patterns. Four-phase chain is rigid. Non-breaking. |
+| Pitfalls | HIGH | 13 pitfalls sourced from literature + fdars constraints. Each has mitigation + verification hook. |
+| **Overall** | **HIGH** | Comprehensive, data-driven, grounded in peer-reviewed sources. Algorithm well-established. |
 
 ### Gaps to Address
 
-1. **Sigma heuristic on real fdars data** — Cuturi formula for normalized unit-variance series may not fit real FDA curves. Phase 54 planning includes sensitivity analysis on representative datasets.
+1. **F-statistic adaptation:** Phase 58 planner must verify integrated_f_statistic (full curves) adapts to 2-group scalar case or needs new implementation.
 
-2. **Kernel-k-means initialization** — Random uniform restarts (current plan) vs kernel-k-means++. Lightweight experiment during Phase 56 planning informs final choice.
+2. **Contracted search determinism on distributed machines:** Current seeding assumes single-process. Document assumption; flag for future distributed work.
 
-3. **Series-length ratio guard (2:1)** — Cuturi enforces this for TGAK. Phase 54 planning confirms whether hard guard or relax.
+3. **Multivariate scope:** v0.33.0 is 1D curves only. Explicitly document; defer multivariate design to v0.34+.
 
-4. **PSD eigenvalue test** — Propose nalgebra eigendecomposition; fdars doesn't currently use this. Phase 54 planning clarifies scope.
-
-All gaps non-blocking for roadmap. Phase planning makes final decisions.
+4. **Elastic distance choice:** Implementation uses z-normalized Euclidean. Document choice; note elastic alignment as preprocessing alternative.
 
 ---
 
 ## Sources
 
-### Primary (HIGH confidence)
+**Primary (HIGH confidence):**
+- STACK.md — Dependency audit (direct codebase read)
+- ARCHITECTURE.md — Integration design (direct codebase read)
+- PITFALLS.md — 13 pitfalls from Hills et al. 2014, Bagnall et al. 2017, source code
 
-- **Cuturi, M. (2011).** "Fast Global Alignment Kernels." ICML 2011. https://icml.cc/2011/papers/489_icmlpaper.pdf
-- **Dhillon, I., Guan, Y., Kulis, B. (2004).** "Kernel k-Means, Spectral Clustering and Normalized Cuts." KDD 2004.
-- **tslearn@0.9.0 official documentation.** https://tslearn.readthedocs.io/en/stable/
-- **scikit-learn SVC precomputed-kernel documentation.** https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
-- **fdars-core source code:** `src/metric/soft_dtw.rs`, `src/metric/mod.rs`, `src/clustering.rs`, `Cargo.toml`
+**Reference (MEDIUM–HIGH):**
+- sktime ShapeletTransformClassifier + RandomShapeletTransform (v0.30.0+)
+- pyts 0.13.x ShapeletTransform
 
-### Secondary (MEDIUM confidence)
-
-- **tslearn@0.9.0 source code (GitHub).** Log-domain DP, sigma heuristic implementation.
-- **R dtwclust package documentation.** GAK function, triangular band constraint.
-- **GAP-BACKLOG.md (v0.31.0).** GAP-01 scope.
-
-### Tertiary (LOW confidence)
-
-- Pattern inference from fdars modules (elastic alignment, classification).
+**Literature (HIGH):**
+- Ye & Keogh (2009). KDD 2009. Original shapelet distance definition.
+- Hills, Lines, Baranauskas, Mapp, Bagnall (2014). DMKD 28(4). Discovery, IG, self-similarity, time contract.
+- Lines & Bagnall (2012). IDEAL 2012. Alternative quality measures.
+- Bagnall et al. (2017). DMKD 31(3). Early-abandon importance; speed/accuracy trade-offs.
 
 ---
 
-*Research completed: 2026-09-02*
-*Status: Ready for roadmap creation*
+*Research synthesis completed: 2026-09-02*
+*Ready for roadmap generation: YES*

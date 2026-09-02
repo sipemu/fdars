@@ -1,383 +1,399 @@
-# Architecture Research — v0.32.0 GAK Integration
+# Architecture Research
 
-**Domain:** Rust functional-data-analysis library extension (GAK kernel + kernel clustering)
+**Domain:** Shapelet Transform & Classification — fdars-core v0.33.0
 **Researched:** 2026-09-02
-**Confidence:** HIGH — based on direct reading of all relevant source files (`soft_dtw.rs`, `metric/mod.rs`, `alignment/clustering.rs`, `clustering.rs`, `distance.rs`, `lib.rs`) and the v0.31.0 `GAP-BACKLOG.md` GAP-01 block.
+**Confidence:** HIGH
 
 ---
 
-## Module Placement Decision
+## Integration Decision: Module Placement
 
-**Place GAK in `src/metric/gak.rs` — a sibling of `soft_dtw.rs`, not a new top-level module.**
+**Decision: New top-level `src/shapelet/` submodule directory.**
 
 Rationale:
 
-1. `soft_dtw.rs` already owns the alignment-lattice DP that GAK reuses. Sibling placement makes the dependency explicit and keeps both variants together for future maintainers.
-2. The existing `metric/mod.rs` already declares ten submodules for specialized pairwise operations; `gak` is the eleventh — it fits the pattern exactly.
-3. A new `kernel/` top-level module would imply a broader kernel-methods subsystem (SVM, kernel regression, etc.) that is explicitly out of scope this milestone. Naming it `metric/gak.rs` is honest: GAK is a kernel that produces a similarity/distance matrix, consistent with what every sibling module does.
-4. Kernel-k-means lives in `src/kernel_kmeans.rs` at the top level (not inside `metric/`), because it is a clustering algorithm that consumes a Gram matrix — the same level as `clustering.rs` and `clustering_advanced.rs`. It is not itself a distance metric.
-5. Gram-matrix export is not a separate file — it is a function (`gak_gram_matrix`) that lives in `metric/gak.rs` and is re-exported from `lib.rs`, exactly as `soft_dtw_self_1d` / `soft_dtw_cross_1d` are today.
+- The shapelet pipeline has four distinct algorithmic layers (distance core, candidate enumeration, discovery/ranking, transform + classifier). At four files minimum, it crosses the 500-line file threshold immediately (shapelet distance + z-norm alone ~150 lines; discovery ~300 lines; bundled STC ~250 lines). Start as a multi-file submodule from day one.
+- Shapelets are a distinct algorithmic family (discriminative subsequences → distance features → classification) that does not belong inside `classification/`. The existing `classification/` module implements FPC-space classifiers; shapelets produce a feature matrix *consumed by* those classifiers, not implemented alongside them. Coupling shapelet transform logic into `classification/` would violate component separation and complicate future extension (e.g., GAP-03 k-Shape has a similar consumer relationship).
+- Every prior module of comparable scope in fdars uses the submodule pattern: `alignment/`, `depth/`, `spm/`, `seasonal/`, `elastic_regression/`. The shapelet module follows suit.
+- `classification/` is left **unmodified** — the bundled `ShapeletTransformClassifier` calls `fclassif_lda_fit` from there as a consumer, not a peer.
 
 ---
 
-## New vs Modified Files
+## System Overview
 
-### New Files
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         Public API Layer                                      │
+│  lib.rs re-exports: Shapelet, ShapeletConfig, ShapeletTransformConfig,       │
+│  ShapeletTransformFit, ShapeletClassifConfig, ShapeletClassifResult,         │
+│  ShapeletScorer, shapelet_transform_fit, shapelet_transform,                 │
+│  shapelet_classif_fit, shapelet_classif_predict                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                         src/shapelet/                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  ┌─────────────────┐   │
+│  │  distance.rs │  │  discovery.rs│  │transform.rs│  │  classifier.rs  │   │
+│  │  (sdist,     │  │  (enumerate, │  │  (fit +    │  │  (STC fit,      │   │
+│  │  z-norm      │  │  rank, prune │  │  transform │  │  predict,       │   │
+│  │  per window) │  │  candidates) │  │  matrix)   │  │  wraps classif/)│   │
+│  └──────┬───────┘  └──────┬───────┘  └─────┬──────┘  └────────┬────────┘   │
+│         │                 │                │                  │             │
+│         └─────────────────┴────────────────┴──────────────────┘             │
+│                           mod.rs (re-exports)                               │
+└──────────────────────────────────┬───────────────────────────────────────────┘
+                                   │
+          ┌────────────────────────┼────────────────────────┐
+          ▼                        ▼                        ▼
+  src/classification/       src/distance.rs           src/helpers.rs
+  fclassif_lda_fit()        cross_distance_matrix()   l2_distance()
+  ClassifFit, ClassifResult pairwise_distance_matrix()  (no z-norm today — new)
+  (consumed by STC,         iter_maybe_parallel! macro
+   not modified)            (via distance.rs internals)
 
-| File | What It Contains |
-|------|-----------------|
-| `src/metric/gak.rs` | `gak_distance` (pairwise scalar), `gak_gram_matrix` (n x n Gram), `gak_cross_gram` (n_train x n_test), `GakConfig` (sigma, triangular band, normalize flag), `gak_sigma_median` (bandwidth heuristic) |
-| `src/kernel_kmeans.rs` | `kernel_kmeans`, `KernelKMeansConfig`, `KernelKMeansResult` |
-
-### Modified Files
-
-| File | Change |
-|------|--------|
-| `src/metric/mod.rs` | Add `pub mod gak;` + re-export `gak_distance`, `gak_gram_matrix`, `gak_cross_gram`, `GakConfig`, `gak_sigma_median` |
-| `src/lib.rs` | `pub mod kernel_kmeans;` + top-level re-exports for all public items from both new modules |
-
-No other existing file changes. The public API of every existing function is untouched.
-
----
-
-## Reuse Map: What Comes from `soft_dtw.rs`
-
-The GAK forward DP is structurally identical to `soft_dtw_forward` with two substitutions:
-
-| Aspect | soft_dtw | GAK |
-|--------|----------|-----|
-| Local cost | `(x[i] - y[j])^2` (squared Euclidean) | `exp(-(x[i] - y[j])^2 / (2 * sigma^2))` (triangular kernel) |
-| Accumulation operator | `softmin3(r[i-1][j], r[i][j-1], r[i-1][j-1], gamma)` soft-MIN | `logsumexp3(r[i-1][j], r[i][j-1], r[i-1][j-1])` soft-MAX |
-| Final value | `r[n][m]` (alignment cost, low = similar) | `exp(r[n][m])` (alignment kernel value, high = similar) |
-| Log domain | Implicit (cost scale) | Explicit: accumulate in log space throughout; final = exp(log_gak) |
-| Diagonal constraint | Optional band fraction (Phase 12, v0.16.0) | Optional band fraction — same param type, same logic |
-
-**Directly reusable from `soft_dtw.rs` — same algorithm skeleton:**
-
-- The 2-row rolling-buffer DP structure in `soft_dtw_distance` (O(m) memory, `prev`/`curr` swap). GAK uses the same two-buffer approach in log space.
-- `pub(super) fn softmin3` demonstrates the stabilized log-sum-exp pattern GAK mirrors. GAK replaces it with `logsumexp3(a, b, c) = log(exp(a) + exp(b) + exp(c))` using the same max-subtraction stabilization trick.
-- `pub(super) fn self_distance_matrix` and `cross_distance_matrix` in `metric/mod.rs` — both `pub(super)`, directly usable by the sibling `gak.rs`.
-- The `iter_maybe_parallel!` macro import pattern.
-- Band-constraint wiring: the `band_frac: Option<f64>` parameter type and the `band_width = ceil(band_frac * m)` calculation, consistent with the banded elastic alignment added in Phase 12.
-
-**What GAK must add (not in `soft_dtw.rs`):**
-
-1. `logsumexp3(a, b, c)` — soft-MAX instead of soft-MIN; new private function sharing the stabilization idea.
-2. Triangular local kernel in log space: `log_cost(i, j) = -(x[i] - y[j])^2 / (2 * sigma^2)`.
-3. PSD normalization: `k_norm(x, y) = gak(x, y) / sqrt(gak(x, x) * gak(y, y))`. Diagonal terms computed and cached before the off-diagonal fill loop.
-4. Sigma bandwidth heuristic: `gak_sigma_median` — the tslearn default is `median(pairwise_L2) * sqrt(m)`. Uses `distance::l2_distance_matrix`.
-5. `GakConfig` config struct.
-
-**Not reused from `soft_dtw.rs`:**
-
-- `soft_dtw_forward`, `soft_dtw_backward`, `soft_dtw_accumulate_gradient` — backward/gradient machinery for the barycenter. GAK this milestone has no gradient requirement; these are not ported.
-- `SoftDtwBarycenterResult` / `soft_dtw_barycenter` — not needed.
-- `softmin3_val` — the backward-pass helper; not needed.
-
----
-
-## DP Implementation Note
-
-GAK forward DP in log space, 2-row rolling buffer:
-
-```
-// log_cost(i, j) = -(x[i-1] - y[j-1])^2 / (2 * sigma^2)
-// R[i][j] = log_cost(i, j) + logsumexp3(R[i-1][j], R[i][j-1], R[i-1][j-1])
-// GAK(x, y) = exp(R[n][m])
-// With band: skip (i,j) where |i - j| > band_width; set to f64::NEG_INFINITY
+          ▼
+  src/parallel.rs           src/matrix.rs              src/error.rs
+  iter_maybe_parallel!      FdMatrix, row_l2_sq()       FdarError
+  seed_for_thread()         row_to_buf()
 ```
 
-The optional Sakoe-Chiba band: cells outside the band are set to `f64::NEG_INFINITY` in log space (exp gives 0 contribution). `band_width = (band_frac * m.max(n)).ceil() as usize`. The `Option<f64>` parameter type matches `elastic_self_distance_matrix_with_band` / `elastic_cross_distance_matrix_with_band` exactly.
+---
+
+## Component Responsibilities
+
+| Component | File | Responsibility | New vs Existing |
+|-----------|------|----------------|-----------------|
+| Shapelet distance core | `src/shapelet/distance.rs` | Sliding-window z-normalized minimum Euclidean distance between a shapelet (subsequence) and a curve, with early-abandon. Also: z-normalize a window in place. | **New** |
+| Candidate enumeration | `src/shapelet/discovery.rs` | Generate all candidate subsequences of lengths `[min_len, max_len]` from training set; score each by information gain (binary class split on distance threshold) or F-statistic (multi-class); self-similarity pruning (remove candidates whose shapelet-distance to an already-selected shapelet is below a correlation threshold); select top-K. Random/contracted search: sample `max_candidates` candidates with `seed_for_thread` seeding. | **New** |
+| Shapelet transform | `src/shapelet/transform.rs` | Given a ranked list of `Shapelet` values, compute the n×K `FdMatrix` of minimum z-normalized distances from each curve to each shapelet. Both a fit-time path (returns `ShapeletTransformFit`) and a predict-time path (transform new curves using stored shapelets). | **New** |
+| Bundled STC | `src/shapelet/classifier.rs` | `ShapeletTransformClassifier`: wraps the full pipeline — calls `discovery.rs` then `transform.rs` then delegates to `fclassif_lda_fit` (from `src/classification/fit.rs`). `fit` returns `ShapeletClassifResult`; `predict` projects new curves through stored shapelets, then applies the stored `ClassifFit`. | **New** |
+| Module barrel | `src/shapelet/mod.rs` | `pub use` all public items; declares the four submodules. | **New** |
+| `classification/` module | `src/classification/` | FPC-space LDA/QDA/kNN/kernel/DD classifiers. **Consumed by but not modified for this milestone.** `fclassif_lda_fit` is the bundled STC's default downstream classifier. | **Existing — unmodified** |
+| `distance.rs` | `src/distance.rs` | `pairwise_distance_matrix`, `cross_distance_matrix` — reused for STC predict path (cross-distance from new curves to stored shapelets). | **Existing — unmodified** |
+| `helpers.rs` | `src/helpers.rs` | `l2_distance`, `seed_for_thread` (via `parallel.rs`). **No z-norm exists today** — z-normalize window logic is new in `src/shapelet/distance.rs`. | **Existing — unmodified** |
+| `matrix.rs` | `src/matrix.rs` | `FdMatrix`, `row_l2_sq`, `row_to_buf` — hot-path row access for shapelet distance inner loops. | **Existing — unmodified** |
+| `parallel.rs` | `src/parallel.rs` | `iter_maybe_parallel!`, `seed_for_thread` — candidate scan parallelism + deterministic RNG for contracted search. | **Existing — unmodified** |
+| `error.rs` | `src/error.rs` | `FdarError` — all new public functions return `Result<_, FdarError>`. | **Existing — unmodified** |
+
+---
+
+## Reuse Map
+
+### What is reused (no changes needed)
+
+| Existing item | Location | How shapelet code uses it |
+|---------------|----------|--------------------------|
+| `FdMatrix` | `matrix.rs` | Primary data carrier for training curves, transform output (n×K), shapelet storage |
+| `row_l2_sq(i, other, j)` | `matrix.rs` | Inner loop of `sdist` for raw squared Euclidean distance between windows |
+| `row_to_buf(row, buf)` | `matrix.rs` | Materialize a curve row into a stack buffer for window slicing |
+| `cross_distance_matrix` | `distance.rs` | STC predict path: compute n_new × K distances from new curves to K stored shapelets |
+| `iter_maybe_parallel!` | `parallel.rs` | Outer loop over candidate (curve, position, length) triples in the O(n·M²) candidate scan; outer loop over new curves in predict |
+| `seed_for_thread(seed, k)` | `parallel.rs` | Per-thread RNG for contracted/random shapelet search (same pattern as elastic alignment) |
+| `FdarError` | `error.rs` | Return type for all public functions |
+| `fclassif_lda_fit(data, y, None, ncomp)` | `classification/fit.rs` | Bundled STC fits LDA on the shapelet feature matrix; returns `ClassifFit` stored in `ShapeletClassifResult` |
+| `ClassifFit` | `classification/fit.rs` | Stored in `ShapeletClassifResult`; its `ClassifMethod::Lda` parameters are used directly in the STC predict path |
+| `ClassifResult` | `classification/mod.rs` | Embedded in `ShapeletClassifResult` for training accuracy, confusion matrix |
+
+### What is new (net-new code in `src/shapelet/`)
+
+| New item | Where | Purpose |
+|----------|-------|---------|
+| `z_normalize_window(slice) -> Vec<f64>` | `shapelet/distance.rs` | Z-normalize a subsequence (mean 0, std 1); handles near-zero std gracefully (returns zeros) |
+| `shapelet_distance(shapelet, curve) -> f64` | `shapelet/distance.rs` | Sliding-window min z-normalized Euclidean distance; early-abandon on running squared-diff sum exceeding current best |
+| `Shapelet` struct | `shapelet/distance.rs` | `{ values: Vec<f64>, source_curve: usize, start_pos: usize, length: usize, score: f64 }` |
+| Candidate generation | `shapelet/discovery.rs` | Enumerate all (curve i, position p, length l) triples for l in `[min_len, max_len]`; for contracted search, sample up to `max_candidates` using seeded RNG |
+| Information-gain scorer | `shapelet/discovery.rs` | For each candidate: compute distance to all n curves → 1-D split → binary entropy IG or F-statistic; pick optimal split threshold |
+| Self-similarity pruner | `shapelet/discovery.rs` | After ranking, greedily remove candidates whose shapelet-distance to any already-selected shapelet is below `similarity_threshold`; ensures diversity |
+| `ShapeletConfig` | `shapelet/discovery.rs` | Config for discovery: `min_len`, `max_len`, `n_shapelets` (K), `max_candidates` (contracted search), `similarity_threshold`, `scorer`, `seed: u64` |
+| `ShapeletScorer` enum | `shapelet/discovery.rs` | `InfoGain` / `FStat` |
+| `ShapeletTransformFit` | `shapelet/transform.rs` | Result of `shapelet_transform_fit`: `{ shapelets: Vec<Shapelet>, train_features: FdMatrix }` |
+| `shapelet_transform_fit(data, y, config) -> Result<ShapeletTransformFit, FdarError>` | `shapelet/transform.rs` | Discover shapelets then compute n×K feature matrix for training data |
+| `shapelet_transform(fit, new_data) -> Result<FdMatrix, FdarError>` | `shapelet/transform.rs` | Out-of-sample transform: compute n_new×K feature matrix from stored shapelets |
+| `ShapeletClassifConfig` | `shapelet/classifier.rs` | Config for bundled STC: `shapelet: ShapeletConfig`, `ncomp: usize` (for downstream LDA) |
+| `ShapeletClassifResult` | `shapelet/classifier.rs` | `{ transform: ShapeletTransformFit, classif: ClassifFit, training_accuracy: f64, n_classes: usize }` |
+| `shapelet_classif_fit(data, y, config) -> Result<ShapeletClassifResult, FdarError>` | `shapelet/classifier.rs` | Full pipeline: discover → transform → `fclassif_lda_fit` |
+| `shapelet_classif_predict(fit, new_data) -> Result<ClassifResult, FdarError>` | `shapelet/classifier.rs` | Project new curves through stored shapelets → LDA predict |
 
 ---
 
 ## Proposed Public API
 
-All signatures follow fdars conventions: `Result<T, FdarError>`, `#[must_use]` on expensive computations, config struct for multi-parameter functions, column-major `FdMatrix`.
-
-### `src/metric/gak.rs`
+All types derive `Debug, Clone, PartialEq`. Serde derives are conditional on `#[cfg_attr(feature = "serde", derive(...))]`. All expensive computations carry `#[must_use]`.
 
 ```rust
-/// Configuration for Global Alignment Kernel computation.
+// shapelet/discovery.rs
+
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[non_exhaustive]
-pub struct GakConfig {
-    /// Bandwidth (sigma > 0). Use gak_sigma_median() to auto-compute.
-    pub sigma: f64,
-    /// Sakoe-Chiba band as a fraction of series length (0 < f <= 1).
-    /// None = full alignment. Some(f) = restrict to band ceil(f * m).
-    pub band_frac: Option<f64>,
-    /// Normalize to produce a proper kernel in [0, 1].
-    /// k_norm(x,y) = gak(x,y) / sqrt(gak(x,x) * gak(y,y)).
-    /// Default: true (normalized GAK is PSD; raw is not guaranteed PSD).
-    pub normalize: bool,
-}
+pub enum ShapeletScorer { InfoGain, FStat }
 
-impl Default for GakConfig { ... }  // sigma=1.0, band_frac=None, normalize=true
-
-/// Median-heuristic sigma: median(pairwise_L2_distances) * sqrt(m).
-/// Equivalent to tslearn's default bandwidth. O(n^2) — call once.
-#[must_use]
-pub fn gak_sigma_median(data: &FdMatrix, argvals: &[f64]) -> f64;
-
-/// Scalar GAK value between two curves (public convenience wrapper).
-#[must_use]
-pub fn gak_distance(x: &[f64], y: &[f64], config: &GakConfig) -> f64;
-
-/// Compute the n x n symmetric GAK Gram matrix (training-set self-kernel).
-/// When config.normalize = true the result is a PSD kernel matrix K[i,j] in [0,1].
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn gak_gram_matrix(
-    data: &FdMatrix,
-    config: &GakConfig,
-) -> Result<FdMatrix, FdarError>;
-
-/// Compute the n_test x n_train cross-kernel matrix K(X_test, X_train).
-/// Feed to an external precomputed-kernel SVM alongside the training Gram matrix.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn gak_cross_gram(
-    test: &FdMatrix,
-    train: &FdMatrix,
-    config: &GakConfig,
-) -> Result<FdMatrix, FdarError>;
-```
-
-### `src/kernel_kmeans.rs`
-
-```rust
-use crate::metric::gak::{GakConfig, gak_gram_matrix, gak_cross_gram};
-
-/// Configuration for kernel k-means clustering via the GAK kernel.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[non_exhaustive]
-pub struct KernelKMeansConfig {
-    /// Number of clusters (k >= 1).
-    pub k: usize,
-    /// Maximum assignment iterations per run (default: 100).
-    pub max_iter: usize,
-    /// Number of random restarts; best inertia run is returned (default: 5).
-    pub n_init: usize,
-    /// Random seed for initialization (default: 42).
+pub struct ShapeletConfig {
+    pub min_len: usize,
+    pub max_len: usize,        // 0 = resolve to m at runtime
+    pub n_shapelets: usize,    // K
+    pub max_candidates: usize, // 0 = exhaustive
+    pub similarity_threshold: f64,
+    pub scorer: ShapeletScorer,
     pub seed: u64,
-    /// GAK kernel configuration.
-    pub gak: GakConfig,
 }
 
-impl Default for KernelKMeansConfig { ... }
+// shapelet/distance.rs
 
-/// Result of kernel k-means clustering.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct KernelKMeansResult {
-    /// Cluster label per observation (0-indexed, length n).
-    pub labels: Vec<usize>,
-    /// Within-cluster kernel objective value (lower is better).
-    pub inertia: f64,
-    /// Number of iterations in the winning run.
-    pub n_iter: usize,
-    /// Whether the winning run converged (labels stabilized).
-    pub converged: bool,
-    /// The GAK Gram matrix computed during fit (n x n).
-    /// Stored for use by predict without recomputation.
-    pub gram_train: FdMatrix,
-    /// Configuration snapshot used during fit.
-    pub config: KernelKMeansConfig,
+pub struct Shapelet {
+    pub values: Vec<f64>,      // z-normalized subsequence values
+    pub source_curve: usize,
+    pub start_pos: usize,
+    pub length: usize,
+    pub score: f64,            // discriminative score, higher = better
 }
 
-impl KernelKMeansResult {
-    /// Assign new curves to the nearest cluster in kernel space.
-    /// Computes gak_cross_gram(new_data, training_data, &self.config.gak)
-    /// internally; the training Gram matrix is stored in self.gram_train.
-    pub fn predict(
-        &self,
-        new_data: &FdMatrix,
-        train_data: &FdMatrix,
-    ) -> Result<Vec<usize>, FdarError>;
+// shapelet/transform.rs
+
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ShapeletTransformFit {
+    pub shapelets: Vec<Shapelet>,
+    pub train_features: FdMatrix, // n×K
 }
 
-/// Fit kernel k-means on a curve set using the GAK kernel.
-///
-/// Computes the n x n GAK Gram matrix once, then runs n_init random-partition
-/// restarts of the kernel k-means assignment loop, returning the run with
-/// lowest kernel inertia.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn kernel_kmeans(
+pub fn shapelet_transform_fit(
     data: &FdMatrix,
-    config: &KernelKMeansConfig,
-) -> Result<KernelKMeansResult, FdarError>;
+    y: &[usize],
+    config: &ShapeletConfig,
+) -> Result<ShapeletTransformFit, FdarError>;
+
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn shapelet_transform(
+    fit: &ShapeletTransformFit,
+    new_data: &FdMatrix,
+) -> Result<FdMatrix, FdarError>;  // n_new×K
+
+// shapelet/classifier.rs
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeletClassifConfig {
+    pub shapelet: ShapeletConfig,
+    pub ncomp: usize,  // FPC components for downstream LDA
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ShapeletClassifResult {
+    pub transform: ShapeletTransformFit,
+    pub classif: ClassifFit,       // from classification/fit.rs
+    pub training_accuracy: f64,
+    pub n_classes: usize,
+}
+
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn shapelet_classif_fit(
+    data: &FdMatrix,
+    y: &[usize],
+    config: &ShapeletClassifConfig,
+) -> Result<ShapeletClassifResult, FdarError>;
+
+pub fn shapelet_classif_predict(
+    fit: &ShapeletClassifResult,
+    new_data: &FdMatrix,
+) -> Result<ClassifResult, FdarError>;
 ```
-
----
-
-## Kernel K-Means Assignment Rule
-
-Standard kernel k-means operates purely on the Gram matrix K (no explicit feature map needed):
-
-```
-For each observation i, and each cluster c with index set C_c:
-
-objective(i, c) = K[i,i]
-                - (2 / |C_c|) * sum_{j in C_c} K[i,j]
-                + (1 / |C_c|^2) * sum_{j in C_c, l in C_c} K[j,l]
-
-label[i] = argmin_c  objective(i, c)
-```
-
-The third term (cluster kernel mean) is computed once per cluster per iteration and cached. Per-observation, per-cluster assignment is O(n * k). No cluster center vectors are stored — the algorithm is purely index-based on K.
-
-Initialization: random uniform partition across `n_init` restarts, seeded as `seed + restart_idx as u64`. The restart with lowest total inertia is returned. This does not reuse `kmeans_plusplus_init` from `clustering.rs` (that function operates on curve vectors with L2 distances, not on similarity-valued kernel matrices).
 
 ---
 
 ## Data Flow
 
-```
-curves: FdMatrix (n x m, column-major)
-    |
-    +-- gak_sigma_median(&data, &argvals)
-    |       uses: distance::l2_distance_matrix -> median -> * sqrt(m)
-    |       returns: f64 (suggested sigma for GakConfig)
-    |
-    +-- gak_gram_matrix(&data, &GakConfig)           [Gram export path]
-    |       |
-    |       +-- diagonal pass: gak_pair(xi, xi) for all i -> diag[i]
-    |       +-- upper triangle: gak_pair(xi, xj) for i < j
-    |       |       log-domain DP (2-row rolling buffer)
-    |       |       logsumexp3 accumulation
-    |       |       optional Sakoe-Chiba band
-    |       |       -> exp(R[n][m]) = unnormalized GAK value
-    |       +-- normalize: K[i,j] /= sqrt(diag[i] * diag[j])
-    |       returns: FdMatrix (n x n, PSD Gram matrix)
-    |
-    +-- kernel_kmeans(&data, &KernelKMeansConfig)    [Clustering path]
-            |
-            +-- calls gak_gram_matrix internally
-            +-- n_init restarts:
-            |       random partition -> assignment loop -> inertia
-            +-- returns best run as KernelKMeansResult
-            |       .labels: Vec<usize>
-            |       .gram_train: FdMatrix (stored)
-            |
-            +-- result.predict(&new_data, &train_data):
-                    gak_cross_gram(new_data, train_data, config)
-                    assignment by cross-kernel objective
-                    returns: Vec<usize>
+```text
+Training path:
+  curves (n×m FdMatrix) + labels (&[usize])
+      |
+      |  shapelet_transform_fit(data, y, config)
+      v
+  [Candidate enumeration — shapelet/discovery.rs]
+  For each (curve i, position p, length l) in [min_len..max_len]:
+    - Extract window: data row i, columns p..p+l
+    - z_normalize_window() -> shapelet_candidate values
+    - shapelet_distance(candidate, every other curve j) -> Vec<f64> of n distances
+    - Score by InfoGain / FStat on the (distances, y) split
+    - Track best split threshold per candidate
+      |
+      v
+  [Ranking + self-similarity pruning — shapelet/discovery.rs]
+  Sort candidates by score descending
+  Greedy select: skip if shapelet_distance(candidate, accepted[k]) < similarity_threshold
+  Retain top n_shapelets (K) -> Vec<Shapelet>
+      |
+      v
+  [Transform — shapelet/transform.rs]
+  For each selected shapelet s_k (k = 0..K):
+    For each training curve i (parallelized via iter_maybe_parallel!):
+      train_features[(i, k)] = shapelet_distance(s_k, curve_i)
+  -> n×K FdMatrix (train_features)
+      |
+  ShapeletTransformFit { shapelets: Vec<Shapelet>, train_features: FdMatrix }
+      |
+      |  (bundled STC path only — shapelet_classif_fit)
+      v
+  [Classification — shapelet/classifier.rs]
+  fclassif_lda_fit(&train_features, y, None, config.ncomp)
+  -> ClassifFit (LDA in shapelet-distance feature space, from classification/fit.rs)
+      |
+  ShapeletClassifResult { transform, classif, training_accuracy, n_classes }
 
-    [SVM export path — no fdars SVM, user-supplied]
-    gak_gram_matrix(&train, &config)?        -> K_train (n_train x n_train)
-    gak_cross_gram(&test, &train, &config)?  -> K_test  (n_test x n_train)
-    User passes both to external SVM (scikit-learn, libsvm, etc.)
+Prediction path:
+  new curves (n_new×m FdMatrix)
+      |
+  shapelet_transform(fit, new_data)
+      |  For each s_k, for each new curve i:
+      |    features[(i,k)] = shapelet_distance(s_k, new_data row i)
+      v
+  n_new×K FdMatrix (new_features)
+      |
+  [LDA predict on new_features via ClassifFit.method (ClassifMethod::Lda)]
+  -> ClassifResult { predicted, accuracy, confusion, n_classes, ncomp }
+```
+
+---
+
+## File Structure
+
+```text
+fdars-core/src/shapelet/
+├── mod.rs         # pub use all public items; declares 4 submodules
+├── distance.rs    # z_normalize_window, shapelet_distance (sdist with early-abandon),
+│                  # Shapelet struct
+├── discovery.rs   # ShapeletConfig, ShapeletScorer, candidate enumeration,
+│                  # scoring (InfoGain / FStat), self-similarity pruning
+├── transform.rs   # ShapeletTransformFit, shapelet_transform_fit, shapelet_transform
+└── classifier.rs  # ShapeletClassifConfig, ShapeletClassifResult,
+                   # shapelet_classif_fit, shapelet_classif_predict
+```
+
+`src/lib.rs` additions (two lines, additive only):
+
+```rust
+pub mod shapelet;
+pub use shapelet::{
+    Shapelet, ShapeletClassifConfig, ShapeletClassifResult, ShapeletConfig,
+    ShapeletScorer, ShapeletTransformFit,
+    shapelet_classif_fit, shapelet_classif_predict,
+    shapelet_transform, shapelet_transform_fit,
+};
 ```
 
 ---
 
 ## Dependency-Ordered Build Sequence
 
-Recommended implementation order within the phase (each step unblocks the next):
+The four files have a strict one-way dependency chain that determines phase order.
 
-**Step 1 — GAK pairwise kernel core (`src/metric/gak.rs`, kernel only)**
+**Phase 57 — Shapelet distance core** (`shapelet/distance.rs` + `shapelet/mod.rs` skeleton)
 
-Deliverables: `logsumexp3` (private), `gak_pair` (pub(crate) pairwise DP), `GakConfig` with defaults, `gak_distance` (public thin wrapper).
+Dependencies: `FdMatrix` (`matrix.rs`), `FdarError` (`error.rs`). No shapelet-internal dependency.
 
-Tests: `gak_pair(x, x, ...)` > 0 for any x; normalized result in (0, 1]; monotone decrease as sigma decreases (tighter bandwidth = lower similarity for non-identical pairs); band vs unbanded agree on diagonals.
+Deliverables: `z_normalize_window`, `shapelet_distance` (with early-abandon), `Shapelet` struct, `mod.rs` stub with `pub mod distance`. This is the atomic primitive all later phases consume.
 
-**Step 2 — Gram matrix builders and sigma heuristic (`src/metric/gak.rs`, matrix surface)**
+**Phase 58 — Discovery and ranking** (`shapelet/discovery.rs`)
 
-Deliverables: `gak_sigma_median` (reuses `distance::l2_distance_matrix`), `gak_gram_matrix` (parallel via `self_distance_matrix` + diagonal cache), `gak_cross_gram` (parallel via `cross_distance_matrix`). Wire into `metric/mod.rs` and `lib.rs`.
+Dependencies: Phase 57 (`shapelet_distance`, `Shapelet`); `iter_maybe_parallel!` + `seed_for_thread` (`parallel.rs`); `FdMatrix`, `FdarError`.
 
-Tests: symmetry of `gak_gram_matrix`; diagonal = 1.0 when `normalize = true`; positive-definiteness (attempt nalgebra Cholesky on a small n=5 result, expect Ok); `gak_cross_gram` shape (n_test x n_train).
+Deliverables: `ShapeletConfig`, `ShapeletScorer`, candidate enumeration (exhaustive + contracted), InfoGain/FStat scorers, self-similarity pruning. Returns `Vec<Shapelet>` from the discovery step. `mod.rs` gains `pub mod discovery`.
 
-**Step 3 — Kernel k-means (`src/kernel_kmeans.rs`)**
+**Phase 59 — Shapelet transform** (`shapelet/transform.rs`)
 
-Deliverables: `KernelKMeansConfig` with defaults, `KernelKMeansResult`, `kernel_kmeans` fitting function (calls `gak_gram_matrix`, multi-restart assignment loop), `KernelKMeansResult::predict`.
+Dependencies: Phase 58 (`Shapelet`, `ShapeletConfig`); `iter_maybe_parallel!`; `FdMatrix`, `FdarError`.
 
-Tests: two well-separated synthetic curve groups recovered with purity 1.0; `n_init > 1` returns reproducible labels (seeded); `predict` assigns a new curve to its correct group; `k > n` returns `FdarError::InvalidParameter`.
+Deliverables: `ShapeletTransformFit`, `shapelet_transform_fit` (calls Phase 58 then builds n×K matrix), `shapelet_transform` (predict path: builds n_new×K matrix from stored shapelets). `lib.rs` gets transform re-exports here. `mod.rs` gains `pub mod transform`.
 
-**Step 4 — Integration verification**
+**Phase 60 — Bundled ShapeletTransformClassifier** (`shapelet/classifier.rs`)
 
-- `cargo clippy --all-targets --features linalg,parallel -- -D warnings`
-- `cargo fmt --check`
-- `cargo test --features linalg,parallel`
-- Add a rustdoc example in `gak_gram_matrix` showing the SVM export handoff pattern.
+Dependencies: Phase 59 (`ShapeletTransformFit`, `shapelet_transform_fit`, `shapelet_transform`); `fclassif_lda_fit` + `ClassifFit` + `ClassifResult` from `src/classification/fit.rs` (existing, unmodified).
+
+Deliverables: `ShapeletClassifConfig`, `ShapeletClassifResult`, `shapelet_classif_fit`, `shapelet_classif_predict`. `lib.rs` gets final re-exports. Criterion benchmark added. `mod.rs` gains `pub mod classifier`.
 
 ---
 
-## Architectural Constraints Respected
+## Architectural Constraints and Non-Breaking Guarantees
 
-| Constraint | How GAK Respects It |
-|------------|---------------------|
-| Column-major `FdMatrix` | All inputs/outputs are `FdMatrix`; DP inner loop uses `data.row(i)` which calls `row_to_buf` |
-| `Result<T, FdarError>` everywhere | `gak_gram_matrix`, `gak_cross_gram`, `kernel_kmeans`, `predict` all return `Result` |
-| No new crate dependency | Only uses `rand` (already a dep) for seeded restart initialization; no new entries in `Cargo.toml` |
-| Additive/non-breaking | Zero changes to existing public signatures; only `pub mod gak` and `pub mod kernel_kmeans` additions |
-| MSRV 1.81 | No const generics, no `let ... else` patterns post-1.81, no stabilized features post-1.81 |
-| Parallel feature gate | Gram-matrix parallel dispatch via `iter_maybe_parallel!`; degrades to sequential if `parallel` feature is off |
-| `#[non_exhaustive]` on result types | All new result structs marked `#[non_exhaustive]` for forward compatibility |
-| Deterministic seeding | Restarts seeded as `StdRng::seed_from_u64(config.seed + restart as u64)` — same pattern as `alignment/clustering.rs` |
+**Additive/non-breaking:** All new code lives in a new `pub mod shapelet`. Zero changes to any existing public signature. The `classification/`, `distance.rs`, `helpers.rs`, `matrix.rs`, `parallel.rs`, and `error.rs` files are consumed as-is. No existing example, R binding, or WASM binding is affected.
+
+**WASM/R-binding safety:** `Shapelet`, `ShapeletTransformFit`, `ShapeletClassifResult`, and all config types are pure Rust structs with no threading primitives in the public surface. The `parallel` feature gate is respected via `iter_maybe_parallel!` — the same macro used in `distance.rs` and `classification/cv.rs`. No `Send + Sync` bounds are added to public API types (keeping WASM compatibility). The `seed_for_thread` pattern from `parallel.rs` is reused verbatim.
+
+**No new crate dependency:** z-normalization, sliding-window Euclidean distance, and candidate scoring are all pure arithmetic over `Vec<f64>` slices. InfoGain requires only entropy computation over class frequency counts — no external dependency. Contracted search uses `rand::rngs::StdRng` already in scope.
+
+**Deterministic seeding:** Contracted search follows the established pattern. The candidate shuffle (when `max_candidates > 0`) is done on a single-threaded index build before the parallel evaluation loop, so the shuffle is identical regardless of thread count. Per-thread sub-steps use `seed_for_thread(config.seed, k)`.
+
+**Column-major access correctness:** Shapelet distance inner loops access rows of `FdMatrix` (evaluation points along a curve). Row access in column-major layout is a stride pattern (stride = nrows). This is acceptable given that the outer parallelism is over candidates/curves rather than over evaluation points, and the windows are short (min_len to max_len). The `row_to_buf` helper can be used to materialize a row into a contiguous buffer before windowing if profiling reveals the stride access is a bottleneck.
+
+**`#[must_use]` discipline:** `shapelet_transform_fit`, `shapelet_transform`, `shapelet_classif_fit` are marked `#[must_use = "expensive computation whose result should not be discarded"]`. `shapelet_classif_predict` is not marked (callers inspect results immediately).
+
+---
+
+## Patterns to Follow
+
+### Pattern: Bundled pipeline delegates to existing classifier
+
+`shapelet_classif_fit` does not re-implement LDA. It calls `fclassif_lda_fit(&transform_fit.train_features, y, None, config.ncomp)` — the exact existing signature from `src/classification/fit.rs`. The `ShapeletClassifResult` stores the returned `ClassifFit` verbatim. `shapelet_classif_predict` calls `shapelet_transform` to get the n_new×K feature matrix, then applies the `ClassifFit`'s stored `ClassifMethod::Lda` parameters directly rather than re-running FPCA projection (the shapelet feature matrix is already the feature space — no further FPC projection is needed or appropriate).
+
+Why LDA as the default downstream classifier: sktime's `ShapeletTransformClassifier` defaults to rotation-forest; fdars has no rotation forest. LDA on the K-dimensional shapelet feature matrix is the most suitable existing classifier in `classification/` — it has stored parameters, a predict path, and `ClassifFit` implements `FpcPredictor` for future explainability hooks. The config struct is designed to be extended in a later milestone to accept a `ClassifMethod` enum if other classifiers are desired.
+
+### Pattern: Early-abandon in sdist inner loop
+
+`shapelet_distance` maintains a running squared Euclidean sum over each window position. When that partial sum exceeds the current best minimum distance found at prior starting positions, it breaks out of the inner window loop early (pruning the remaining comparison points for that position). This prunes O(length) work per candidate position on average when a bad match is detected early. The early-abandon does not change the final answer because the partial sum can only grow — once it exceeds the global best, no additional points can make this position win.
+
+### Pattern: Per-thread seeded RNG for contracted search
+
+When `config.max_candidates > 0`, the candidate triples (i, p, l) are shuffled using `StdRng::seed_from_u64(config.seed)` (single-threaded, before the parallel evaluation loop) then truncated to `max_candidates`. This gives a deterministic, reproducible candidate subset regardless of thread count. The subsequent parallel scoring loop over that fixed list uses `seed_for_thread(config.seed, k)` for any future per-candidate stochastic sub-steps, following the pattern from `elastic_align_pair` and `gmm_em`.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Accumulating in Linear (Non-Log) Space
+### Anti-Pattern: Z-normalizing full curves instead of windows
 
-**What people do:** Multiply local kernel values directly: `R[i][j] = cost(i,j) * (R[i-1][j] + R[i][j-1] + R[i-1][j-1])`.
+**What people do:** Apply z-normalization to the full curve before extracting sliding windows, normalizing relative to the whole curve's mean and std.
 
-**Why it's wrong:** For series of moderate length (m >= 50), local kernel values are < 1 and their product underflows to machine zero. The DP result becomes 0 for all pairs regardless of similarity.
+**Why it is wrong:** The canonical shapelet sdist (Ye & Keogh; Hills/Lines) normalizes each candidate window independently relative to that window's own statistics. Full-curve normalization discards local amplitude information and makes results incomparable with sktime/pyts reference implementations.
 
-**Do this instead:** Accumulate in log space throughout. Set `R[i][j] = log_cost(i,j) + logsumexp3(R[i-1][j], R[i][j-1], R[i-1][j-1])`. Call `exp` exactly once on `R[n][m]`. This mirrors `softmin3`'s `min_val` stabilization in `soft_dtw.rs`.
+**Do this instead:** `z_normalize_window` takes a `&[f64]` slice (the already-extracted window), computes mean and std over that slice only, and returns the normalized values. The caller extracts the window slice before calling.
 
-### Anti-Pattern 2: Computing Gram Matrix Without Caching Diagonal
+### Anti-Pattern: Allocating a full n×n distance matrix during discovery
 
-**What people do:** Compute `K[i,j] / sqrt(gak_pair(xi, xi) * gak_pair(xj, xj))` inline during the off-diagonal fill, calling `gak_pair(xi, xi)` O(n^2/2) times.
+**What people do:** Compute a full n×n shapelet-distance matrix for every candidate before scoring.
 
-**Why it's wrong:** `gak_pair(xi, xi)` is O(m) per call. Without caching, diagonal computation is O(n^2 * m) instead of O(n * m) — unnecessary n-fold slowdown.
+**Why it is wrong:** For 100 training curves and 10,000 candidates the intermediate storage is 80 MB per candidate at minimum — orders of magnitude too large. O(n_candidates × n²) memory is prohibitive.
 
-**Do this instead:** Pre-compute `diag[i] = gak_pair(xi, xi)` in a single O(n) pass before filling the upper triangle. Use `K[i,j] /= sqrt(diag[i] * diag[j])` in the normalization step.
+**Do this instead:** For each candidate, compute only a `Vec<f64>` of length n (one distance per training curve), score it, and discard it immediately. Only the final K winners are retained as `Vec<Shapelet>`.
 
-### Anti-Pattern 3: Applying k-means++ Initialization to Kernel K-Means
+### Anti-Pattern: Placing shapelet transform logic inside `classification/`
 
-**What people do:** Pass the Gram matrix to `kmeans_plusplus_init` from `clustering.rs`, treating K[i,j] as a distance.
+**What people do:** Add `shapelet_*` functions to `src/classification/` because the bundled STC eventually produces class labels.
 
-**Why it's wrong:** GAK values are similarities (higher = more similar). k-means++ uses D^2 weighting where D is a distance; inverting or negating K[i,j] to fake a distance produces pathological initialization that can seed all centers in the same cluster.
+**Why it is wrong:** The shapelet transform is a generic feature-engineering step (curves → distance features) useful beyond any single downstream classifier. Coupling it to `classification/` would require modifying `ClassifMethod` (a `#[non_exhaustive]` enum), breaking the non-exhaustive contract, and would prevent clean reuse with regression or clustering consumers in future milestones (e.g., shapelet features fed into `fregre_lm`).
 
-**Do this instead:** Random uniform partition restarts (`n_init` times). The kernel objective landscape is well-behaved enough that multiple random restarts consistently outperform a misapplied similarity-as-distance init.
+**Do this instead:** `src/shapelet/` is its own top-level domain module. `classification/` is a leaf dependency — consumed only by `shapelet/classifier.rs`.
 
-### Anti-Pattern 4: Placing `kernel_kmeans` Inside `metric/`
+### Anti-Pattern: Using `helpers::l2_distance` as the shapelet sdist
 
-**What people do:** Put `kernel_kmeans` in `src/metric/kernel_kmeans.rs` to keep all GAK-related code together.
+**What people do:** Call `helpers::l2_distance(window_a, window_b, weights)` inside the shapelet distance loop, reusing the existing weighted L2 functional distance.
 
-**Why it's wrong:** `metric/` is for pairwise distance/similarity functions that return `FdMatrix`. A clustering algorithm with config, result type, and `predict` method does not belong there — it belongs at the same level as `clustering.rs` and `clustering_advanced.rs`.
+**Why it is wrong:** `helpers::l2_distance` applies Simpson's integration weights — correct for continuous functional inner products over the full domain, but wrong for shapelet distance. Shapelets use plain unweighted squared Euclidean distance over the discrete window values. The weight assumption distorts the distance and breaks comparability with reference implementations.
 
-**Do this instead:** `src/kernel_kmeans.rs` at the top level, registered with `pub mod kernel_kmeans;` in `lib.rs`.
-
-### Anti-Pattern 5: Exposing an SVM Wrapper This Milestone
-
-**What people do:** Add a thin `kernel_svm` entry point that takes the Gram matrix and a label vector.
-
-**Why it's wrong:** Native kernel SVM is explicitly out of scope for v0.32.0. An SVM requires a QP solver, which would be a new heavy dependency. The correct boundary is: fdars produces the Gram and cross-Gram matrices; the user feeds them to an external library.
-
-**Do this instead:** `gak_gram_matrix` + `gak_cross_gram` with a rustdoc example showing the handoff. Document the precomputed-kernel interface expected by popular SVM libraries.
+**Do this instead:** `shapelet/distance.rs` implements its own inner loop with uniform weights (sum of squared differences, no integration weights). It does not call `helpers::l2_distance`.
 
 ---
 
 ## Sources
 
-- Direct reading: `fdars-core/src/metric/soft_dtw.rs` — alignment-lattice DP, `softmin3` stabilization, 2-row rolling buffer, parallel dispatch pattern
-- Direct reading: `fdars-core/src/metric/mod.rs` — submodule declaration pattern, `self_distance_matrix`, `cross_distance_matrix` helpers
-- Direct reading: `fdars-core/src/alignment/clustering.rs` — `KMedoidsConfig`, `kmeans_pp_init`, convergence loop, band-fraction parameter type
-- Direct reading: `fdars-core/src/clustering.rs` — `KmeansResult`, `kmeans_plusplus_init`, `KmeansResult::predict` pattern
-- Direct reading: `fdars-core/src/clustering_advanced.rs` — config struct pattern, `pub mod` registration
-- Direct reading: `fdars-core/src/lib.rs` — re-export conventions, `pub mod` declarations
-- `.planning/research/GAP-BACKLOG.md` GAP-01 block — reuse targets: `metric/soft_dtw.rs`, `distance.rs`, existing clustering
-- `.planning/PROJECT.md` v0.32.0 section — milestone scope, additive/non-breaking, no new crate dependency
-- `.planning/codebase/ARCHITECTURE.md` — layered modular-monolith pattern, column-major `FdMatrix`, `Result` conventions
-- Cuturi (2011), "Fast Global Alignment Kernels" (ICML) — algorithmic reference for log-domain DP and triangular kernel
-- tslearn@0.9.0 `tslearn/metrics/softdtw_fast.pyx` — reference for log-space accumulation and sigma-median heuristic
+- Hills, J., Lines, J., Baranauskas, E., Mapp, J., and Bagnall, A. (2014). Classification of time series by shapelet transformation. Data Mining and Knowledge Discovery, 28(4), 851-881. Canonical discovery algorithm reference.
+- Ye, L. and Keogh, E. (2009). Time series shapelets: a new primitive for data mining. ACM KDD 2009. Original shapelet distance definition.
+- sktime ShapeletTransformClassifier API (v0.33.x): transform-then-classify architecture, contracted search, self-similarity pruning conventions.
+- pyts@0.13.x ShapeletTransform: confirms window enumeration and InfoGain scorer convention.
+- fdars-core `src/classification/fit.rs` — `fclassif_lda_fit` exact signature: `(data: &FdMatrix, y: &[usize], scalar_covariates: Option<&FdMatrix>, ncomp: usize) -> Result<ClassifFit, FdarError>`
+- fdars-core `src/distance.rs` — `cross_distance_matrix` pattern for the predict path.
+- fdars-core `src/parallel.rs` — `iter_maybe_parallel!`, `seed_for_thread` macro/function conventions confirmed by direct source read.
 
 ---
 
-*Architecture research for: fdars v0.32.0 GAK + kernel clustering integration*
+*Architecture research for: fdars v0.33.0 Shapelet Transform and Classification*
 *Researched: 2026-09-02*

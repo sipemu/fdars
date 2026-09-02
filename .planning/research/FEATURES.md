@@ -1,272 +1,246 @@
-# Feature Research: GAK + Kernel-k-Means + Gram-Matrix Export (v0.32.0)
+# Feature Research: Shapelet Transform & Classification (v0.33.0)
 
-**Domain:** Global Alignment Kernel and kernel clustering for functional curve sets — Rust crate `fdars-core`
-**Milestone:** v0.32.0 (promotes GAP-01 from `GAP-BACKLOG.md`)
+**Domain:** Discovery-based shapelet transform + bundled classifier for functional curve/time-series data — Rust crate `fdars-core`
+**Milestone:** v0.33.0 (promotes GAP-02 from `GAP-BACKLOG.md`)
 **Researched:** 2026-09-02
-**Confidence:** HIGH — mathematical spec derived from Cuturi 2011 (primary), tslearn@0.9.0 API (cross-checked), Dhillon et al. 2004 kernel-k-means paper (cross-checked), scikit-learn SVC precomputed-kernel convention (HIGH confidence from official docs).
+**Confidence:** MEDIUM — mathematical spec derived from Ye & Keogh 2009 (primary paper; formulas reconstructed from survey literature), Hills/Lines/Bagnall 2014 shapelet transform (Springer DMKD; formulas from secondary survey sources), pyts@0.13.x source code (HIGH confidence for self-similarity pruning — actual code extracted), sktime RandomShapeletTransform API docs (HIGH confidence for parameters and API shape). No direct primary-paper PDF extraction succeeded; all formulas are cross-checked from ≥2 independent secondary sources.
+
+**In-scope:** discovery-based (Ye & Keogh; Hills/Lines shapelet transform). **Out-of-scope:** learning-shapelets / gradient approach (tslearn `ShapeletModel`, Grabocka 2014 — explicitly deferred in milestone context).
 
 ---
 
 ## Precise Mathematical Specification
 
-This section gives the exact math the planner must implement against. All claims are sourced from primary references; confidence level shown per claim.
+This section provides the exact formulas the planner must implement against. Claims are sourced and confidence-labelled per source hierarchy.
 
-### A. Triangular Global Alignment Kernel (TGAK)
+### A. Z-Normalization
 
-**Reference:** Cuturi (2011), "Fast Global Alignment Kernels," ICML. Implemented in tslearn@0.9.0 `tslearn.metrics.gak`.
-
-#### A.1 Local (Gaussian) Kernel
-
-Given two scalar observations `x_i` and `y_j` (or multivariate, with Euclidean norm):
+Before any distance computation, both the shapelet S and every candidate window W are z-normalized independently:
 
 ```
-phi(x_i, y_j; sigma) = exp( -||x_i - y_j||^2 / (2 * sigma^2) )
+z(x) = (x - mean(x)) / std(x)
 ```
 
-`sigma > 0` is the bandwidth parameter. This is the pointwise similarity used at each DP cell. (Confidence: HIGH — direct from tslearn doc formula.)
+where `mean(x)` is the arithmetic mean of the subsequence and `std(x)` is the sample standard deviation (ddof=0 is conventional in this literature; ddof=1 may also be used — implementations differ but ddof=0 is the more common choice in pyts and sktime). When `std(x) = 0` (constant subsequence), the normalized form is the zero vector.
 
-#### A.2 Unnormalized GAK — the Alignment Sum
-
-Let `x = (x_1, ..., x_n)` and `y = (y_1, ..., y_m)` be two time series / curve samples. Let `A(x, y)` be the set of all monotone alignment paths (causal, endpoint-anchored, each step moves right, down, or diagonally — the same lattice as DTW). The **unnormalized global alignment kernel** is:
-
-```
-k(x, y) = sum_{pi in A(x, y)}  product_{t=1}^{|pi|} phi(x_{pi_1(t)}, y_{pi_2(t)}; sigma)
-```
-
-This is a *sum* over paths, not a min — turning the DTW min-cost into a soft (log-sum-exp) accumulation. (Confidence: HIGH.)
-
-#### A.3 Dynamic Programming Recursion
-
-The standard DP fills an `(n+1) x (m+1)` accumulator `M`:
-
-```
-M[0][0] = 1
-M[i][0] = 0   for i >= 1
-M[0][j] = 0   for j >= 1
-M[i][j] = phi(x_i, y_j; sigma) * (M[i-1][j] + M[i-1][j-1] + M[i][j-1])   for i,j >= 1
-k(x, y) = M[n][m]
-```
-
-Note the three predecessors match DTW's three moves (up, diagonal, left). The result is the full accumulated path weight. (Confidence: HIGH — from the standard ICASSP/ICML recurrence; also confirmed by tslearn source comments.)
-
-#### A.4 Log-Domain Stable Recursion (REQUIRED for long series)
-
-The product of `phi` values underflows to zero for long series. The stable form operates in log-space. Define `L[i][j] = log M[i][j]`:
-
-```
-L[0][0] = 0
-L[i][0] = -inf   for i >= 1
-L[0][j] = -inf   for j >= 1
-L[i][j] = log_phi(i, j) + logsumexp(L[i-1][j], L[i-1][j-1], L[i][j-1])
-```
-
-where `log_phi(i, j) = log phi(x_i, y_j; sigma) = -||x_i - y_j||^2 / (2*sigma^2)` (a non-positive value, since phi in (0,1]).
-
-And `logsumexp(a, b, c) = max(a,b,c) + log(exp(a - max) + exp(b - max) + exp(c - max))`.
-
-The final unnormalized kernel in log-space is `L[n][m]`. To recover `k(x,y)` one would exponentiate, but normalization can be done entirely in log-space (see A.5). (Confidence: HIGH — tslearn confirms log-space re-execution to avoid overflow, this is the standard approach.)
-
-Note on the existing `softmin3` in `metric/soft_dtw.rs`: the soft-DTW softmin is `min - gamma * ln(sum(exp(...)))`. The GAK log-domain recursion uses `logsumexp` (no gamma weighting — effectively gamma = 1 in the max-entropy view). These are **different** recursions; the GAK implementation must NOT reuse `softmin3` directly; it uses a plain `logsumexp` accumulator.
-
-#### A.5 Triangular Band Constraint (the "T" in TGAK)
-
-The "Triangular" in TGAK refers to a position kernel `omega(i, j)` that is a **Toeplitz kernel with compact support of width T**:
-
-```
-omega(i, j) = 0   if |i - j| >= T
-omega(i, j) = 1   otherwise   (the triangular variant uses a flat-top or triangular shape)
-```
-
-When `|i - j| >= T` the cell contributes zero, so the DP only fills the `|i - j| < T` band — yielding O(T * min(n, m)) instead of O(n * m). This is the Sakoe-Chiba band constraint applied to the kernel accumulation. For `T = max(n, m)` (no constraint), the full matrix is filled. The dtwclust R package documents: "T is zero whenever the distance exceeds T." (Confidence: MEDIUM — documented in dtwclust and Cuturi 2011 abstract, but exact omega formula details are from the paper body not fully extracted.)
-
-**Default recommendation:** expose `band: Option<usize>` where `None` = full matrix (exact TGAK, O(n*m)) and `Some(T)` = banded (O(T*min(n,m))). The soft_dtw module's banding analogy is `karcher_mean_with_band`'s `band_frac: Option<f64>` parameter — use the same pattern.
-
-**Constraint on series length ratios:** TGAK is only valid when `max(n,m) / min(n,m) <= 2` (i.e., lengths within 2:1 ratio). The tslearn and dtwclust implementations enforce this. An `InvalidParameter` error should be returned when the ratio is violated.
-
-#### A.6 Normalized GAK (the valid similarity in [0, 1])
-
-The raw `k(x, y)` is not bounded. The **normalized GAK** is:
-
-```
-gak(x, y) = k(x, y) / sqrt(k(x, x) * k(y, y))
-```
-
-In log-space:
-
-```
-log_gak(x, y) = L[n][m] - 0.5 * (L_xx[n][n] + L_yy[m][m])
-gak(x, y) = exp(log_gak(x, y))
-```
-
-Properties:
-- `gak(x, x) = 1` for all x (self-similarity is always 1 after normalization).
-- `gak(x, y) in (0, 1]` for all x, y (since k(x,y) > 0 always, and by Cauchy-Schwarz `k(x,y) <= sqrt(k(x,x)*k(y,y))`).
-- The normalized GAK is a **valid PSD kernel** on time series. (Confidence: HIGH — from tslearn doc and standard kernel normalization theory.)
-
-This normalization is what makes GAK suitable for kernel machines: SVM, kernel-k-means, kernel PCA, etc.
+**Why z-normalization matters:** Without it, a shapelet that is simply a scaled version of another would be considered different. Z-normalization makes the distance scale-invariant and shift-invariant — the shapelet captures **shape** rather than amplitude or offset. This is the defining property of the approach (distinguishing it from raw Euclidean distance over subsequences). (Confidence: HIGH — universally described across Ye&Keogh 2009, Hills 2014, tslearn docs, sktime docs.)
 
 ---
 
-### B. Sigma Bandwidth Heuristic
+### B. Shapelet Distance (sdist) — Sliding-Window Minimum
 
-**Reference:** Cuturi (2011) original paper; tslearn `sigma_gak` function (tslearn@0.9.0).
+Given a shapelet S of length L and a time series T of length M (L ≤ M), the **shapelet distance** (sdist) is:
 
-The heuristic (from tslearn's `sigma_gak` docstring and confirmed by the Cuturi 2011 paper):
+```
+sdist(S, T) = min_{t = 0 .. M-L}  ||z(T[t : t+L]) - z(S)||_2
+```
 
-1. Draw `n_samples` (default 100) random **individual point pairs** from *different* time series in the dataset — i.e., sample point `x_i` from series `x` and point `y_j` from series `y` where `x != y`.
-2. Compute the pairwise squared Euclidean distances between these sampled points.
-3. Take the **median** of these pointwise squared distances to get `med_sq`.
-4. The suggested sigma is: `sigma = sqrt(med_sq) * sqrt(median_length)` where `median_length` is the median series length in the dataset.
+Expanded:
 
-Equivalently: `sigma = sqrt(med_sq * median_length)`.
+```
+sdist(S, T) = min_{t = 0 .. M-L}  sqrt( sum_{k=0}^{L-1} ( z(T[t+k]) - z(S[k]) )^2 )
+```
 
-Rationale: a GAK cell spans a sequence of `~median_length` pointwise distances; scaling by `sqrt(median_length)` accounts for the accumulation over the alignment path. (Confidence: MEDIUM — the textual description in tslearn docs confirms "median distance of different points ... scaled by the square root of the median length"; the exact formula above is the plausible implementation; the internal `_sigma_gak` reshapes and samples points. HIGH confidence for the general approach, MEDIUM for the exact formula details.)
+where:
+- `T[t : t+L]` is the length-L subsequence of T starting at position t.
+- `z(·)` applies z-normalization to a length-L vector.
+- `|| · ||_2` is the L2 (Euclidean) norm.
 
-**fdars function signature:** `sigma_gak(data: &FdMatrix, n_samples: usize, seed: u64) -> Result<f64, FdarError>`. Expose as a public utility, not tied to any config struct.
+The sliding window has `M - L + 1` positions. The minimum over all positions gives the closest match in shape between the shapelet and any contiguous segment of T. **No time-warping** — this is a straight L2 distance after z-normalization (not DTW). (Confidence: HIGH — exact formula confirmed across tslearn docs, multivariate shapelet transform paper ar5iv 1712.06428, and aeon RandomShapeletTransform docs.)
+
+**Implementation note:** The sqrt can be omitted during candidate evaluation (compare squared distances) since the minimum is order-preserving under sqrt. The sqrt is applied to produce the final output features. The minimum is computed incrementally over the sliding window; see early-abandon optimization in Section F.
+
+**Connection to fdars existing code:** `distance.rs` already has Euclidean distance primitives. The z-normalization pass is new but trivial (mean + std of a slice). `FdMatrix` row-access via `row_to_buf` provides zero-copy access to each curve row for the outer loop over training series.
 
 ---
 
-### C. Kernel K-Means on Curves
+### C. Candidate Generation
 
-**Reference:** Dhillon, Guan, Kulis (2004), "Kernel k-Means, Spectral Clustering and Normalized Cuts," KDD. Implemented in tslearn@0.9.0 `tslearn.clustering.KernelKMeans`.
-
-#### C.1 Objective
-
-Kernel k-means minimizes within-cluster variance in the RKHS (reproducing kernel Hilbert space) induced by the kernel `k`. Given an `n x n` Gram matrix `K` (where `K[i,j] = gak(x_i, x_j)`), the objective is:
+The complete candidate set for a training dataset of n series each of length M is:
 
 ```
-J(C_1, ..., C_K) = sum_{k=1}^{K} sum_{i in C_k} ||phi(x_i) - mu_k||_H^2
+Candidates = { (i, t, L) : i ∈ 0..n, t ∈ 0..M-L, L ∈ [min_len, max_len] }
 ```
 
-where `mu_k = (1/|C_k|) * sum_{j in C_k} phi(x_j)` is the centroid of cluster `k` in feature space H, and `phi` is the (implicit) feature map satisfying `<phi(x), phi(y)>_H = k(x, y)`.
-
-Expanding the squared norm using the kernel (no explicit feature map needed):
+The total count is:
 
 ```
-||phi(x_i) - mu_k||_H^2
-  = K[i,i]
-  - (2 / |C_k|) * sum_{j in C_k} K[i,j]
-  + (1 / |C_k|^2) * sum_{j in C_k} sum_{l in C_k} K[j,l]
+|Candidates| = n * sum_{L = min_len}^{max_len} (M - L + 1)
+             ≈ n * (max_len - min_len + 1) * M  [order of magnitude]
 ```
 
-The three terms are:
-- `K[i,i]`: self-kernel of point `i` (equals 1 after normalization, so this term is constant).
-- `(2 / |C_k|) * sum_{j in C_k} K[i,j]`: twice the mean kernel similarity of `x_i` to cluster members.
-- `(1 / |C_k|^2) * sum_{j,l in C_k} K[j,l]`: within-cluster mean kernel (constant per cluster across iterations).
+For n=100 series, M=300, min_len=3, max_len=300 this is approximately 100 × 298 × 150 ≈ 4.5 million candidates. Each candidate requires computing sdist against all n training series, making the naive full-enumeration search **O(n² · M³)** overall (n candidates × n series per candidate × M² distance operations per pair — counting the sliding window explicitly). (Confidence: MEDIUM — complexity cited consistently in survey literature as O(n²m³) with distance caching; original Ye&Keogh was O(n²m⁴) before caching.)
 
-(Confidence: HIGH — from Dhillon et al. 2004 and confirmed by the arxiv 2011.06461 kernel-k-means paper.)
-
-#### C.2 Assignment Step
-
-Assign each point `x_i` to the cluster `C_k` that minimizes the kernel distance:
-
-```
-argmin_k  [ -2/|C_k| * sum_{j in C_k} K[i,j]  +  1/|C_k|^2 * sum_{j,l in C_k} K[j,l] ]
-```
-
-(The `K[i,i]` term is constant and does not affect the argmin; with normalized GAK it is exactly 1.)
-
-The cluster-mean terms `(1/|C_k|^2) * sum K[j,l]` can be pre-computed once per iteration and reused for all `i`.
-
-#### C.3 Algorithm
-
-```
-Initialize cluster assignments z (random from 1..K, n_init restarts, pick best)
-Pre-compute K = GAK Gram matrix (n x n)  — done once, O(n^2) kernel evaluations
-Repeat until convergence or max_iter:
-    For each cluster k: compute within_k = (1/|C_k|^2) * sum_{j,l in C_k} K[j,l]
-    For each point i:
-        For each cluster k:
-            dist_k = K[i,i] - 2/|C_k| * sum_{j in C_k} K[i,j] + within_k
-        z_new[i] = argmin_k dist_k
-    If z_new == z: converged; break
-    z = z_new
-    Handle empty clusters: reassign to the point farthest from its current centroid
-Convergence: when no assignment changes between iterations (tol on inertia change also acceptable)
-```
-
-**n_init:** Run the full loop `n_init` times with different random initializations; keep the assignment with the lowest total `J`. (Confidence: HIGH — standard kernel-k-means; tslearn default is `n_init=1` but documents that it can be set higher.)
-
-**Empty cluster handling:** When a cluster loses all members, assign the point with the highest distance-to-centroid from any cluster to the empty cluster. This is the standard heuristic. (Confidence: MEDIUM — standard practice; tslearn does not document the specific heuristic in its API docs.)
-
-**Inertia / convergence:** The `inertia` is `J(C_1,...,C_K)`, the sum of kernel distances. Convergence when `|inertia_prev - inertia| < tol` or when assignments do not change. (Confidence: HIGH — matches tslearn `tol=1e-6` default.)
-
-#### C.4 Predict for New Points
-
-After fitting (Gram matrix `K_train` of shape `n_train x n_train` and cluster assignments `z`), predicting cluster for a new point `x_*` requires computing:
-
-```
-k_star[j] = gak(x_*, x_j)   for j = 1..n_train  (n_train kernel evaluations)
-dist_k(x_*) = 1  -  2/|C_k| * sum_{j in C_k} k_star[j]  +  within_k
-predicted_cluster = argmin_k dist_k(x_*)
-```
-
-The `within_k` terms come from the training Gram matrix and do not change. The fitted model must store `z`, `within_k` per cluster, and the training data (or at least the training rows, to compute `gak(x_*, x_j)`). (Confidence: HIGH — standard kernel-k-means prediction; confirmed from the structural requirement for kernel machines with precomputed kernels.)
-
-#### C.5 Result Type
-
-```rust
-pub struct KernelKmeansResult {
-    pub cluster: Vec<usize>,          // n assignments, 0-indexed
-    pub inertia: f64,                 // final J value
-    pub n_iter: usize,                // iterations taken
-    pub converged: bool,
-}
-```
-
-The fitted model (for predict) is a separate `KernelKmeansFit` struct (or `KernelKmeansResult` with the training data reference and `within_k` stored). The config follows the pattern of `GmmClusterConfig`:
-
-```rust
-pub struct KernelKmeansConfig {
-    pub n_clusters: usize,           // default 3
-    pub max_iter: usize,             // default 50, matches tslearn
-    pub tol: f64,                    // default 1e-6
-    pub n_init: usize,               // default 5 (higher than tslearn's 1 for safety)
-    pub sigma: f64,                  // GAK bandwidth; use sigma_gak() for "auto"
-    pub band: Option<usize>,         // triangular band (None = full matrix)
-    pub seed: u64,                   // RNG seed for reproducibility
-}
-```
+**Practical implication:** Full enumeration is tractable only for small datasets (n<50, M<100). For the fdars implementation, a **random sampling / contracted** approach must be the default, with full enumeration available via a flag (see Section G: Differentiators).
 
 ---
 
-### D. Gram-Matrix Export for External SVM
+### D. Shapelet Quality: Information Gain on the Distance Split
 
-**Reference:** scikit-learn `SVC(kernel='precomputed')` convention; confirmed from scikit-learn docs (all versions 1.4–1.9).
+After computing `d_i = sdist(S, T_i)` for every training series `T_i`, the quality of shapelet S is assessed by how well its distance distribution separates the class labels.
 
-#### D.1 The Convention
+#### D.1 Entropy
 
-When using a precomputed kernel with scikit-learn's SVC:
+For a binary classification problem (generalized below), the entropy of a set D is:
 
-- **Training:** pass a **symmetric `n_train x n_train`** Gram matrix to `svc.fit(K_train, y)`.
-- **Prediction:** pass an **`n_test x n_train`** matrix to `svc.predict(K_test_train)`, where `K_test_train[i, j] = k(x_test_i, x_train_j)`.
-- The SVC does **not** store raw data; it stores support vectors' indices into the training set.
-
-This convention is the de facto standard: sklearn's `SVC(kernel='precomputed')` is exactly what users plug fdars' Gram matrix into. (Confidence: HIGH — directly from scikit-learn docs for versions 1.4, 1.5, 1.6, 1.9.)
-
-#### D.2 fdars Functions Needed
-
-Two public functions:
-
-```rust
-// Symmetric n x n Gram matrix (for fitting an SVM)
-pub fn gak_gram_train(data: &FdMatrix, sigma: f64, band: Option<usize>)
-    -> Result<FdMatrix, FdarError>
-
-// n_test x n_train matrix (for SVM prediction on new data)
-pub fn gak_gram_test(
-    test_data: &FdMatrix,
-    train_data: &FdMatrix,
-    sigma: f64,
-    band: Option<usize>,
-) -> Result<FdMatrix, FdarError>
+```
+H(D) = -p * log2(p) - (1-p) * log2(1-p)
 ```
 
-Both return **normalized** GAK values (the `gak(x,y)` in [0,1]) by default — this is what makes the matrix PSD and suitable for kernel machines. The diagonal of `gak_gram_train` is all 1.0 (self-similarity = 1). (Confidence: HIGH.)
+where `p = |positive class| / |D|`. For multi-class problems, Shannon entropy:
 
-#### D.3 PSD Guarantee
+```
+H(D) = - sum_c  (|D_c| / |D|) * log2(|D_c| / |D|)
+```
 
-The normalized TGAK (with the triangular position kernel with compact support) is a PSD kernel. This is the main theoretical contribution of Cuturi (2011): the triangular constraint ensures the kernel is PSD, unlike certain non-normalized or non-triangular variants. fdars exports normalized values; callers using external SVMs benefit from the PSD guarantee automatically. (Confidence: HIGH — core result of the Cuturi 2011 paper.)
+where `|D_c|` is the number of series in class c. (Confidence: HIGH — standard Shannon entropy, universally used in shapelet literature.)
+
+#### D.2 Information Gain
+
+For a given split threshold `θ`, the distance distribution is divided into:
+
+```
+D_left  = { (d_i, y_i) : d_i <= θ }
+D_right = { (d_i, y_i) : d_i >  θ }
+```
+
+The information gain at threshold θ is:
+
+```
+IG(S, θ) = H(D) - ( |D_left|/|D| * H(D_left) + |D_right|/|D| * H(D_right) )
+```
+
+The quality of shapelet S is the **maximum IG over all possible split thresholds**:
+
+```
+quality(S) = max_{θ}  IG(S, θ)
+```
+
+#### D.3 Optimal Split Threshold Algorithm
+
+The optimal threshold is found by sorting the distance-label pairs and scanning midpoints:
+
+```
+Algorithm FindBestSplit(distances d[0..n-1], labels y[0..n-1]):
+    Sort pairs (d_i, y_i) by d_i ascending  → orderline
+    best_ig = 0.0
+    best_theta = d[0] - 1
+    
+    For t = 0 .. n-2:
+        theta = (d[t] + d[t+1]) / 2   # midpoint between consecutive values
+        ig = H(D) - ( (t+1)/n * H(D[0..t]) + (n-t-1)/n * H(D[t+1..n-1]) )
+        if ig > best_ig:
+            best_ig = ig
+            best_theta = theta
+    
+    Return best_ig, best_theta
+```
+
+The split points at class-label boundaries in the orderline are sufficient (IG only changes at class-transition points); efficient implementations skip adjacent same-class pairs. (Confidence: HIGH for the overall algorithm; MEDIUM for the midpoint convention — some implementations use the right edge rather than the midpoint.)
+
+**O(n log n)** per shapelet evaluation (dominated by sorting n distances). With n_candidates candidates, the total cost is O(n_candidates × n log n) for quality scoring, plus O(n_candidates × n × M) for the distance computations.
+
+---
+
+### E. Alternative Quality Measures
+
+The following alternatives to binary information gain are used in practice (Confidence: MEDIUM — sourced from pyts source, Lines & Bagnall 2012, aeon docs):
+
+**F-statistic (ANOVA):** Treats the distance distribution as a continuous feature and computes the one-way F-statistic against class labels. Used in pyts (`criterion='anova'`) and available in Lines & Bagnall (2012). Equivalent to running `scipy.stats.f_oneway` or sklearn `f_classif` on the distance vector. Higher = more discriminant. Advantage: O(n) computation, no sort needed (though sklearn's f_classif sorts internally).
+
+**Mutual Information:** Used in pyts (`criterion='mutual_info'`). sklearn's `mutual_info_classif` with `discrete_features=False`. Captures non-monotone class-distance relationships that IG on a single split may miss.
+
+**Kruskal-Wallis:** Non-parametric analog of F-statistic, listed in Lines & Bagnall (2012) but not commonly used in modern implementations.
+
+**fdars recommendation:** Implement **information gain** (binary IG) as default (matches sktime RandomShapeletTransform and the Hills 2014 paper); expose **F-statistic** as an enum variant for the quality measure config (`QualityMeasure::InformationGain` | `QualityMeasure::FStatistic`). Mutual information deferred (no sklearn dependency; would require implementing MI estimator).
+
+---
+
+### F. Selection: Top-K with Self-Similarity Pruning
+
+#### F.1 Top-K Selection
+
+Maintain a bounded priority queue (max-heap by quality) of size K. After scoring all candidates, return the K highest-quality shapelets. In the contracted / random-sampling variant, the priority queue is updated incrementally as batches of candidates are evaluated.
+
+#### F.2 Self-Similarity Pruning
+
+Two shapelets are **self-similar** if they come from the same training series and their position ranges overlap:
+
+```
+Shapelet A: (series i, start a, length L_a)   → covers [a, a + L_a)
+Shapelet B: (series i, start b, length L_b)   → covers [b, b + L_b)
+
+A and B are self-similar iff:
+    same_series(A, B) = true   AND
+    NOT ( a + L_a <= b  OR  b + L_b <= a )   [i.e., intervals overlap]
+```
+
+After selecting shapelet A for the top-K list, all other candidates from series i with overlapping position range are removed from consideration. This prevents the top-K from being dominated by slight shifts of the same subsequence from the same curve. (Confidence: HIGH — exact logic extracted from pyts@0.13.x source: `remaining_idx = np.logical_and( np.logical_or(sorted_start_idx >= end, sorted_end_idx <= start), remaining_idx )`.)
+
+**Algorithm:** Process candidates in descending quality order. When adding a candidate to the top-K:
+1. Add it.
+2. Mark all remaining candidates from the same series that overlap its position range as pruned.
+
+This is O(n_candidates) for the pruning pass per selected shapelet.
+
+---
+
+### G. The Transform and Out-of-Sample Prediction
+
+#### G.1 Shapelet Transform (fit)
+
+After selecting K shapelets `{S_1, ..., S_K}`, the **shapelet transform** maps the training dataset to an n × K feature matrix:
+
+```
+X_transformed[i, j] = sdist(S_j, T_i)   for i in 0..n, j in 0..K
+```
+
+Each row is a curve, each column is the distance to one shapelet. This is a standard dense matrix — column j is a discriminative 1D feature derived from the local shape proximity to shapelet j.
+
+#### G.2 Out-of-Sample Transform (predict)
+
+For a new curve T_new, apply the same K saved shapelets:
+
+```
+x_new[j] = sdist(S_j, T_new)   for j in 0..K
+```
+
+The saved shapelets (their z-normalized subsequence data + metadata) must be stored in the fit result. This is the only state needed for out-of-sample application. Then feed `x_new` (shape 1 × K) to the stored classifier.
+
+#### G.3 Bundled ShapeletTransformClassifier
+
+The end-to-end classifier chains the above:
+
+```
+fit(training_curves, labels):
+    1. Discover K shapelets (search + IG ranking + self-similarity pruning)
+    2. Compute X_train = shapelet_transform(training_curves)  [n × K]
+    3. Fit inner_classifier on (X_train, labels)
+    4. Store shapelets + inner_classifier
+
+predict(new_curves):
+    1. X_new = shapelet_transform(new_curves)  [m × K]
+    2. Return inner_classifier.predict(X_new)
+```
+
+The inner classifier reuses fdars' existing `classification/` module — any of LDA, kNN, kernel classifier, or QDA. This reuse is the primary reason the milestone is rated L-effort (the classifier itself already exists; the work is the discovery machinery). (Confidence: HIGH for the structure — directly from sktime ShapeletTransformClassifier `fit_transform → classifier.fit` pattern and the Hills 2014 paper description.)
+
+---
+
+### H. Complexity Summary
+
+| Operation | Complexity | Notes |
+|-----------|-----------|-------|
+| Full candidate generation | O(n × M × (M - min_len)) | All (series, position, length) triples |
+| sdist for one (shapelet, series) pair | O(M × L) | Sliding window of size M-L, each step O(L) |
+| Quality (IG) for one shapelet | O(n log n) | n distances, sort + scan |
+| Full exhaustive search | O(n² × M³) | All candidates × all training series × all windows |
+| With early abandon | O(n² × M² × avg_abandon) | avg_abandon < L in practice |
+| Contracted/random search | O(n_candidates × n × M) | n_candidates << total candidates |
+| Shapelet transform (fit, no search) | O(K × n × M) | K shapelets × n series |
+| Shapelet transform (predict) | O(K × m × M) | K shapelets × m test series |
+
+**Mitigation for tractability:** The random/contracted variant (default in fdars) draws at most `max_candidates` random (series, start, length) triples, limiting search to O(max_candidates × n × M). Empirically, 10,000 candidates gives accuracy comparable to full search (sktime default `n_shapelet_samples=10000`). (Confidence: MEDIUM — cited in contracted shapelet transform literature and sktime defaults.)
 
 ---
 
@@ -274,114 +248,134 @@ The normalized TGAK (with the triangular position kernel with compact support) i
 
 ### Table Stakes — Users Expect These
 
-These are the features that constitute the GAK capability; missing any one makes the deliverable incomplete.
+These features constitute the shapelet transform capability. Missing any one makes the milestone deliverable incomplete.
 
-| Feature | Why Expected | Complexity | Dependency on Existing Code |
-|---------|--------------|------------|-----------------------------|
-| `gak_distance(x, y, sigma, band)` — unnormalized log-GAK | Core primitive; all other features build on it | MEDIUM | Reuses log-sum-exp idea from `softmin3` (but NOT the same recursion); new `metric/gak.rs` |
-| Normalized `gak(x, y, sigma, band)` returning value in [0,1] | PSD kernel property; mandatory for kernel machines | LOW (atop unnormalized) | Calls `gak_distance` for `k(x,x)`, `k(y,y)`, `k(x,y)` |
-| Log-domain stable recursion (avoid underflow for long series) | Long series (n>50) will underflow in product space | MEDIUM | Must implement `logsumexp` 3-way — similar to `softmin3` but additive not min |
-| `gak_gram_train(data, sigma, band) -> FdMatrix` — symmetric n×n | Entire kernel-k-means and SVM glue require the Gram matrix | MEDIUM | Reuses `self_distance_matrix` from `metric/mod.rs` (renaming to kernel matrix) |
-| `gak_gram_test(test, train, sigma, band) -> FdMatrix` — n_test×n_train | SVM prediction requires this exact shape | LOW (atop gram_train pattern) | Reuses `cross_distance_matrix` from `metric/mod.rs` |
-| `kernel_kmeans_fd(data, config) -> Result<KernelKmeansFit, FdarError>` | The headline consumer of GAK; without it, GAK is just a metric variant | HIGH | Builds on `gak_gram_train`; cluster logic new (no existing kernel-k-means in clustering.rs) |
-| `KernelKmeansFit::predict(new_data) -> Result<Vec<usize>, FdarError>` | Clustering without prediction is not useful for ML workflows | MEDIUM | Stores training data + `within_k`; calls `gak_gram_test` internally |
-| `KernelKmeansConfig` struct | fdars convention for complex methods | LOW | Pattern identical to `GmmClusterConfig`, `ElasticConfig` |
-| Series-length-ratio guard (reject >2:1 ratio with `InvalidParameter`) | TGAK validity constraint documented by both Cuturi 2011 and dtwclust | LOW | New validation at function entry |
-| `KernelKmeansResult` / `KernelKmeansFit` with `Debug + Clone + PartialEq` | fdars convention for all public result types | LOW | Convention from 97 existing types |
+| Feature | Why Expected | Complexity | Implementation Notes |
+|---------|--------------|------------|----------------------|
+| Z-normalization of subsequences | Without it the "shape" distance becomes a scaled-amplitude distance; the entire algorithm's validity depends on this step | LOW | `fn znorm_slice(window: &[f64]) -> Vec<f64>`: subtract mean, divide by std; return zero-vec if std=0 |
+| `sdist(shapelet: &[f64], curve: &[f64]) -> f64` — sliding-window minimum z-normalized L2 | The atomic primitive; every other feature is built on it | LOW | Sliding window of length `shapelet.len()` over `curve`; z-normalize each window; compute squared L2; return sqrt of min; early-abandon optional |
+| Candidate generation over lengths `[min_len, max_len]` | The search space definition; must be configurable | LOW | Enumerate `(series_idx, start, length)` triples; for random/contracted mode, sample uniformly from this space |
+| Information gain quality measure with optimal split threshold | The standard discriminative scoring function from Ye & Keogh and Hills 2014; expected by every shapelet practitioner | MEDIUM | Sort n distances + labels into orderline; scan midpoints; compute IG = H(D) - weighted child entropies; O(n log n) per candidate |
+| Top-K selection with self-similarity pruning | Without pruning, top-K is filled by shifted variants of the same subsequence | MEDIUM | Max-heap of K; after inserting from series i at [start, start+L), mark overlapping candidates from series i as pruned; process in quality-descending order |
+| `ShapeletDiscovery::fit(data, labels, config) -> Result<ShapeletSet, FdarError>` | The fit API that runs candidate search + scoring + selection | HIGH | Outer loop: iterate candidates; inner loop: compute sdist against all n series; score; update top-K; return `ShapeletSet` |
+| `shapelet_transform(data: &FdMatrix, shapelets: &ShapeletSet) -> Result<FdMatrix, FdarError>` | The transform step — produces the n×K distance feature matrix for training | MEDIUM | For each (series, shapelet) pair: `sdist`; assemble into column-major FdMatrix of shape (n, K) |
+| Out-of-sample `shapelet_transform` on new data (same function, new FdMatrix) | Prediction requires re-applying saved shapelets to test series | LOW | Same function as above; shapelets stored in `ShapeletSet` struct |
+| `ShapeletTransformClassifier::fit(data, labels) -> Result<ShapeletTransformClassifierFit, FdarError>` | End-to-end bundled classifier matching sktime's `ShapeletTransformClassifier` | MEDIUM | Calls `ShapeletDiscovery::fit`, `shapelet_transform`, then `fclassif_*` from existing `classification/` |
+| `ShapeletTransformClassifierFit::predict(new_data) -> Result<Vec<usize>, FdarError>` | The predict method; transforms new data with stored shapelets, then routes to stored inner classifier | LOW | `shapelet_transform(new_data)` → `classifier.predict(...)` |
+| `ShapeletConfig` struct with `min_len`, `max_len`, `max_candidates`, `k_shapelets`, `quality`, `seed` | fdars convention for complex method configuration | LOW | Mirrors `GmmClusterConfig`, `ElasticConfig`; `serde`-gated |
+| `ShapeletSet` result type with shapelet data + series/position/length metadata + quality scores | Must store enough to reconstruct transform for new data | LOW | `Vec<Shapelet>` where `Shapelet { data: Vec<f64>, series_idx, start, length, quality, split_threshold }` |
+| `ShapeletTransformClassifierFit` storing `ShapeletSet` + inner classifier result | State needed for predict | LOW | Composite struct; the inner classifier result must be one of the existing fdars classifier result types |
+| `Debug + Clone + PartialEq` derives on all public result types | fdars convention across 97+ types | LOW | Standard — no exceptions |
+| `Result<T, FdarError>` on all public functions | fdars error-handling convention | LOW | Dimension checks at entry: curves same length, labels match, min_len ≤ max_len ≤ M, k_shapelets > 0 |
+| Inline tests: sdist correctness, IG computation, self-similarity pruning, transform shape, round-trip | Gates for correctness before shipping | MEDIUM | Synthetic small datasets where optimal shapelet is known analytically |
 
 ### Differentiators — Competitive Advantage
 
-These are not required to ship a correct GAK implementation, but they raise the quality bar and match tslearn's API.
+These features raise the quality bar and match reference-library behavior, but are not blockers for a correct v1 shapelet transform.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| `sigma_gak(data, n_samples, seed) -> Result<f64, FdarError>` | Removes manual bandwidth tuning; matches tslearn's `sigma_gak`; users can use `auto` | LOW | Sample `n_samples` random point pairs from different series; compute median of squared pointwise distances × sqrt(median series length); reproducible via `seed` |
-| `cdist_gak(data1, data2, sigma, band) -> Result<FdMatrix, FdarError>` | Pairwise cross-kernel matrix (n1×n2); needed for `gak_gram_test` and any cross-dataset kernel query | LOW (reuses `cross_distance_matrix`) | Wrapper that calls normalized `gak` over all pairs; `data2=None` → symmetric self-matrix |
-| Rayon parallelism for Gram matrix computation | n×n kernel evaluations are embarrassingly parallel; critical for n>100 | LOW | `iter_maybe_parallel!` over rows (same pattern as `soft_dtw_self_1d` and `soft_dtw_cross_1d`) |
-| `n_init` restarts in kernel-k-means | Reduces sensitivity to initialization; tslearn default is 1, but 5 is safer | LOW | Outer loop, pick minimum-inertia run |
-| Optional `band: Option<usize>` parameter (TGAK triangular constraint) | Trades exactness for speed: O(T·min(n,m)) vs O(n·m); mirrors `band_frac` in `karcher_mean_with_band` | MEDIUM | Band guard in the DP inner loop; same pattern as existing banded alignment |
-| Serde support on `KernelKmeansConfig` / `KernelKmeansFit` | Pipeline persistence; standard fdars convention under `serde` feature | LOW | `#[cfg_attr(feature = "serde", ...)]` — same as all other config/result types |
-| `#[must_use]` on `gak_gram_train`, `gak_gram_test`, `kernel_kmeans_fd` | fdars convention for expensive computations; 74+ functions already marked | LOW | One annotation per expensive function |
-| Criterion benchmark in `benches/` | fdars convention; measures Gram computation vs n (n ∈ {50, 200, 500}) | LOW | Follows existing bench patterns in BENCH-RESULTS.md |
+| Early-abandon optimization in sdist | Abandons distance computation as soon as running minimum exceeds current best-so-far; reduces O(M × L) to O(avg_abandon × L) per window in practice; critical for tractability in large M | MEDIUM | Maintain `best_so_far: f64`; in the inner z-norm + squared-diff loop, accumulate partial sum and break if partial_sum > best_so_far² (comparing before sqrt). Must z-normalize the full window first (z-norm requires full pass), so early abandon applies only to the Euclidean distance loop not the z-norm pass — still a meaningful win |
+| Contracted / random sampling mode (default) | Limits search to `max_candidates` random (series, start, length) triples; makes n=500, M=300 tractable in seconds; sktime's default (`n_shapelet_samples=10000`) | LOW | `ShapeletConfig.max_candidates: Option<usize>` where `None` = full enumeration, `Some(K)` = random sample; use `StdRng::seed_from_u64(seed)` for reproducibility |
+| F-statistic quality measure as `QualityMeasure::FStatistic` enum variant | Alternative to IG; simpler to compute (O(n), no sort); good for multiclass; pyts `criterion='anova'` | LOW | `fn f_stat_quality(distances: &[f64], labels: &[usize]) -> f64`: compute between-class and within-class variance; return F = between/within |
+| Rayon parallelism over candidate evaluation | Each candidate's sdist-against-all-training-series is independent; parallelism gives near-linear scaling for the discovery phase | LOW | `iter_maybe_parallel!(candidates).map(|c| score_candidate(c, data, labels)).collect()` — same pattern as existing parallel CV |
+| `#[must_use]` on `ShapeletDiscovery::fit`, `shapelet_transform`, `ShapeletTransformClassifier::fit` | fdars convention for expensive computations; 74+ functions already annotated | LOW | One attribute per expensive function |
+| Criterion benchmark in `benches/` | fdars convention; measures discovery time vs n and M; documents the tractability profile | LOW | Two-cell grid: (n=50, M=100), (n=100, M=200); both contracted (max_candidates=1000) and time (wall-clock for n=100 full enumeration) |
+| Serde support on `ShapeletConfig`, `ShapeletSet`, `ShapeletTransformClassifierFit` | Pipeline persistence — save fitted transform, reload for production predict; standard fdars `serde`-feature convention | LOW | `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` on all config/result types |
+| Configurable inner classifier (`InnerClassifier` enum or trait object) | Power users want to swap LDA / kNN / kernel without rewriting; matches sktime's `estimator` parameter | MEDIUM | `ShapeletConfig.classifier: InnerClassifierKind` enum (`Lda | Knn(usize) | Kernel`); dispatches to existing fdars classifiers |
+| `ShapeletTransformClassifierFit::predict_proba` (posterior probabilities) | Calibrated probabilities useful for ensembles and uncertainty estimation | MEDIUM | Only implementable if inner classifier supports it — LDA/QDA return posteriors natively; kNN proportional |
 
 ### Anti-Features — Explicitly Out of Scope
 
 | Anti-Feature | Why Requested | Why Excluded | What to Do Instead |
 |--------------|---------------|---------------|--------------------|
-| Native kernel SVM (SVC in fdars) | Logical next step after Gram-matrix export | Would require a quadratic programming solver (no QP crate currently used; adding one is a new heavy dependency and a separate large feature); violates the "no new crate dependency" convention and scope | Export the `n×n` Gram matrix via `gak_gram_train` and call scikit-learn / libsvm externally |
-| GPU / CUDA acceleration | GAK matrix computation is O(n²·n·m) flops — GPU would help at n>1000 | No GPU support exists anywhere in fdars; adding GPU is a new infrastructure story | Use the banded TGAK (`band: Some(T)`) to reduce to O(n²·T·m); rayon parallelism covers typical research-scale datasets |
-| Multidimensional (multivariate) curves | tslearn's gak supports `d`-dimensional series | The existing `FdMatrix` is 1D curves (n rows, m eval points); multivariate extension requires a different data representation (`FdCurveSet` or stacked FdMatrix) — out of scope for this milestone | Implement as a follow-on once `FdMatrix` multivariate support is addressed (if needed) |
-| Kernel PCA via GAK | Useful but not in the milestone scope (GAP-01 specifies kernel-k-means + SVM glue only) | Adds a new algorithm family; not part of the GAP-01 requirement | Gram matrix export enables external KernelPCA (sklearn) directly |
-| Non-normalized GAK as primary output | Some use-cases (similarity scoring without kernel machines) might want raw log-k | Raw kernel violates PSD property; log-scale output is not a similarity in [0,1] | Expose `gak_log_unnormalized` as `pub(crate)` for internal use; the public API is normalized |
-| Online / streaming kernel-k-means | Would require incremental Gram matrix update | Significantly more complex; the existing clustering.rs uses batch k-means exclusively | Use the batch `kernel_kmeans_fd` and re-fit when new data arrives |
+| Learning-shapelets (Grabocka 2014 / tslearn `ShapeletModel`) | Gradient-descent learned shapelets often achieve higher accuracy than discovery-based | Fundamentally different algorithm — requires automatic differentiation or manual gradient derivation, a separate optimization loop (SGD), and no reuse of the existing candidate-based infrastructure. Milestone context explicitly states "NOT tslearn learning-shapelets (deferred/out of scope)." | Implement as a future GAP item (differentiable FDA — GAP-08) once an AD-compatible Rust approach is decided |
+| GPU acceleration | Distance computation is embarrassingly parallel; GPU gives large speedup for n>1000 | fdars targets CPU/WASM; no GPU infrastructure exists anywhere in the crate | Use rayon CPU parallelism (differentiator above) + early abandon + contracted sampling — sufficient for research-scale datasets |
+| SAX / PAA / symbolic representations | Often discussed alongside shapelet methods; pyts has both | SAX/PAA are symbolic/imaging TS-ML representations, not functional numeric methods — explicitly recorded as OOS-02 in GAP-BACKLOG.md | Not applicable — different domain entirely |
+| DTW-based shapelet distance (replacing Euclidean with DTW) | Elastic distance may give better shape matching in some domains | Breaks the fixed-length window assumption; substantially more complex; the literature consensus is z-normalized Euclidean is sufficient (and orders of magnitude faster) | Apply elastic alignment (existing fdars `alignment/`) as a preprocessing step on the raw curves before shapelet transform if DTW-like invariance is needed |
+| Multivariate shapelet transform (per-channel distances) | Applicable to multivariate time series; in the literature (aeon `RandomShapeletTransform`) | `FdMatrix` is single-channel curves (n × M); multivariate extension requires a different data representation not yet decided — out of scope | Implement as a follow-on once multivariate `FdMatrix` / `FdCurveSet` representation is settled |
+| Native support for irregular-length series | Some datasets have varying-length series | Each sdist call requires shapelet length ≤ curve length; irregular lengths need per-curve length checks and more complex candidate generation | Apply `spline_interpolate` (existing in `helpers.rs`) to regularize lengths before shapelet discovery |
+| Shapelet ensemble (HIVE-COTE component) | Shapelet Transform Classifier is one component of the HIVE-COTE ensemble in sktime | Ensemble infrastructure would require a separate phase; far beyond the single-algorithm scope of v0.33.0 | Implement STC correctly; ensembling is a future milestone |
 
 ---
 
 ## Feature Dependencies
 
 ```
-sigma_gak()               (utility — standalone, no kernel dep)
+znorm_slice(window)           (new utility in helpers.rs)
     │
-    └──advises──> KernelKmeansConfig.sigma
-
-gak_distance_log()         (log-domain DP recursion — new metric/gak.rs)
-    │
-    ├──requires──> logsumexp3() helper (similar to softmin3 but additive)
-    │
-    └──powers──> gak()      (normalized, public)
-                    │
-                    ├──powers──> gak_gram_train()   (n×n self Gram matrix)
-                    │                │
-                    │                └──powers──> kernel_kmeans_fd()   (headline consumer)
-                    │                                │
-                    │                                └──returns──> KernelKmeansFit
-                    │                                                  │
-                    │                                                  └──predict()
-                    │                                                       │
-                    │                                                       └──requires──> gak_gram_test()
-                    │
-                    └──powers──> gak_gram_test()    (n_test×n_train cross Gram)
-                                     │
-                                     └──enables──> External SVM (scikit-learn SVC(kernel='precomputed'))
+    └──required-by──> sdist(shapelet, curve)    (new in shapelet/distance.rs)
+                           │
+                           ├──required-by──> ShapeletDiscovery::fit()
+                           │                     │
+                           │                     ├──requires──> info_gain_quality()
+                           │                     │                 │
+                           │                     │                 └──requires──> sort + entropy scan (std)
+                           │                     │
+                           │                     ├──requires──> self_similarity_prune()
+                           │                     │
+                           │                     └──returns──> ShapeletSet { Vec<Shapelet> }
+                           │                                         │
+                           └──required-by──> shapelet_transform()    │
+                                                 │                   │
+                                                 │◄──────────────────┘
+                                                 │
+                                                 ├──produces──> FdMatrix (n × K distance features)
+                                                 │
+                                                 └──consumed-by──> ShapeletTransformClassifier::fit()
+                                                                         │
+                                                                         ├──calls──> fclassif_* (existing classification/)
+                                                                         │
+                                                                         └──returns──> ShapeletTransformClassifierFit
+                                                                                             │
+                                                                                             └──predict()
+                                                                                                   │
+                                                                                                   └──calls──> shapelet_transform() + classifier.predict()
 ```
 
 ### Dependency Notes
 
-- **`gak_distance_log` requires `logsumexp3`:** The log-domain recursion is NOT the same as soft-DTW's `softmin3`. Soft-DTW computes `min - gamma*ln(...)` (soft minimum). GAK computes `ln(exp(a)+exp(b)+exp(c))` (log-sum-exp for a kernel sum). They share the log-sum-exp trick but serve opposite purposes. A new `logsumexp3` helper must be added — do NOT reuse `softmin3`.
-- **`kernel_kmeans_fd` requires the full training Gram matrix:** The entire `n×n` Gram matrix must be computed and held in memory during fitting. For n=1000 at f64, this is 8 MB — acceptable. For n=10000 it is 800 MB — document the memory scaling in the API docs.
-- **`KernelKmeansFit::predict` requires `gak_gram_test`:** The predict method must compute kernel similarities between new points and training points. The training data (or at minimum, all training rows) must be stored in the `KernelKmeansFit` struct to enable this. This is the only case in fdars where a result struct embeds a copy of the training data — document the memory implications.
-- **Series-length ratio guard applies to all GAK functions:** Every public function that calls the DP must check `max(n,m) / min(n,m) <= 2` and return `FdarError::InvalidParameter` if violated. Do not silently truncate.
+- **`sdist` requires `znorm_slice`:** z-normalization is a mandatory preprocessing step on every window. It must be applied to the shapelet once (pre-normalize before storage) and to each candidate window at query time. A constant window (std=0) must not produce NaN — return the zero vector.
+- **`ShapeletDiscovery::fit` requires `info_gain_quality`:** quality scoring is the inner-most function called for every candidate. Its performance dominates the discovery runtime for small M. Must be O(n log n) per call.
+- **`self_similarity_prune` is called inside `ShapeletDiscovery::fit`:** pruning must happen incrementally during selection, not as a post-processing step on the full top-K. Otherwise self-similar candidates fill the heap before non-similar ones are considered.
+- **`shapelet_transform` requires a `ShapeletSet`:** the transform function is stateless — it takes the curve data and the saved shapelets and produces the feature matrix. No fit state beyond the `ShapeletSet` is needed for the transform itself.
+- **`ShapeletTransformClassifierFit::predict` requires both `ShapeletSet` and the inner classifier fit result:** both must be stored in the composite result struct. The inner classifier must be one of the existing fdars classifier fit types (e.g., `ClassifFit` from `classification/fit.rs`).
+- **Contracted mode (`max_candidates: Some(K)`) is independent of `ShapeletDiscovery::fit`'s interface:** the same public function handles both modes; the internal sampling vs. enumeration is a config-controlled detail.
 
 ---
 
 ## MVP Definition
 
-### Launch With (v0.32.0)
+### Launch With (v0.33.0)
 
 Minimum viable for the milestone to ship:
 
-- [x] `gak_distance_log(x, y, sigma, band)` — log-domain DP recursion, the core primitive
-- [x] `gak(x, y, sigma, band)` — normalized kernel value in [0,1]
-- [x] `gak_gram_train(data, sigma, band)` — symmetric n×n Gram matrix
-- [x] `gak_gram_test(test_data, train_data, sigma, band)` — n_test×n_train matrix
-- [x] `kernel_kmeans_fd(data, config)` — kernel-k-means with `n_init` restarts
-- [x] `KernelKmeansFit::predict(new_data)` — assign new curves to trained clusters
-- [x] `KernelKmeansConfig` — config struct with `n_clusters`, `sigma`, `max_iter`, `tol`, `n_init`, `band`, `seed`
-- [x] `sigma_gak(data, n_samples, seed)` — bandwidth heuristic (differentiator but so low-effort it belongs in v1)
-- [x] Series-length-ratio validation and all `InvalidParameter` / `InvalidDimension` error paths
-- [x] Inline tests: log-domain vs product-space equivalence (small series), self-similarity = 1, Gram symmetry, kernel-k-means convergence smoke test
+- [ ] `znorm_slice(window: &[f64]) -> Vec<f64>` — z-normalization helper (std=0 → zero vec)
+- [ ] `sdist(shapelet: &[f64], curve: &[f64]) -> f64` — sliding-window minimum z-normalized Euclidean distance
+- [ ] `info_gain_quality(distances: &[f64], labels: &[usize]) -> (f64, f64)` — returns (best_ig, best_split_threshold); O(n log n) via sorting the orderline
+- [ ] `ShapeletDiscovery::fit(data: &FdMatrix, labels: &[usize], config: &ShapeletConfig) -> Result<ShapeletSet, FdarError>` — random/contracted candidate generation + IG scoring + top-K + self-similarity pruning
+- [ ] `shapelet_transform(data: &FdMatrix, shapelets: &ShapeletSet) -> Result<FdMatrix, FdarError>` — n×K distance feature matrix; works for both training and out-of-sample
+- [ ] `ShapeletTransformClassifier::fit(data, labels, config) -> Result<ShapeletTransformClassifierFit, FdarError>` — discover → transform → fit inner classifier (default: kNN with k=1 or LDA as configurable option)
+- [ ] `ShapeletTransformClassifierFit::predict(new_data: &FdMatrix) -> Result<Vec<usize>, FdarError>` — transform → classify
+- [ ] `ShapeletConfig { min_len, max_len, max_candidates, k_shapelets, quality: QualityMeasure, seed, classifier: InnerClassifierKind }` — all parameters with sensible defaults
+- [ ] `ShapeletSet { shapelets: Vec<Shapelet> }` where `Shapelet { data, series_idx, start, length, quality, split_threshold }`
+- [ ] All dimension validation error paths (`InvalidDimension`, `InvalidParameter`)
+- [ ] Inline tests: sdist (known-answer), IG (hand-computed 2-class split), self-similarity pruning (overlapping candidates removed), transform shape check (n × K), classifier round-trip (fit→predict on synthetic data)
 
-### Add After Validation (v0.32.x)
+### Add After Validation (v0.33.x)
 
-- [ ] Criterion benchmark (n × m grid for Gram computation, k-means convergence) — follow BENCH-RESULTS.md convention
-- [ ] Example file (`examples/gak_clustering.rs`) with a labeled dataset + cluster recovery check
-- [ ] Serde support for `KernelKmeansConfig` / `KernelKmeansFit` (already behind `cfg_attr` — trivial)
+- [ ] Early-abandon optimization in `sdist` — enables tractability for M > 200
+- [ ] F-statistic quality measure (`QualityMeasure::FStatistic`) — alternate criterion
+- [ ] Criterion benchmark (discovery time vs n; transform time vs K and M)
+- [ ] Example file `examples/shapelet_classification.rs`
+- [ ] Serde support on `ShapeletConfig`, `ShapeletSet`, `ShapeletTransformClassifierFit`
 
-### Future Consideration (v0.33+)
+### Future Consideration (v0.34+)
 
-- [ ] Multivariate curve support (requires `FdMatrix` multivariate representation decision)
-- [ ] Native kernel SVM (requires QP solver dependency decision)
-- [ ] Kernel PCA via GAK Gram matrix
+- [ ] Learning-shapelets (gradient-based, Grabocka 2014) — requires AD / differentiable FDA (GAP-08)
+- [ ] Multivariate shapelet transform — requires multivariate FdMatrix representation decision
+- [ ] Shapelet ensemble (HIVE-COTE component) — separate milestone
+- [ ] Dilated shapelet transform (RDST) — modern variant, separate milestone
 
 ---
 
@@ -389,51 +383,59 @@ Minimum viable for the milestone to ship:
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| `gak` normalized kernel | HIGH | MEDIUM | P1 — foundation |
-| `gak_gram_train` | HIGH | LOW (uses existing matrix helpers) | P1 — kernel-k-means depends on it |
-| `kernel_kmeans_fd` + `predict` | HIGH | HIGH | P1 — headline deliverable |
-| `gak_gram_test` | HIGH | LOW | P1 — SVM glue deliverable |
-| `sigma_gak` heuristic | MEDIUM | LOW | P1 — too cheap to defer |
-| Log-domain stability | HIGH | MEDIUM | P1 — correctness on realistic data |
-| Triangular band constraint | MEDIUM | MEDIUM | P2 — performance optimization |
-| Rayon parallelism for Gram | MEDIUM | LOW | P2 — follows existing pattern |
-| Criterion bench | LOW | LOW | P2 — fdars convention |
-| Native kernel SVM | HIGH | HIGH (new dependency) | P3 — out of scope this milestone |
+| `znorm_slice` + `sdist` | HIGH | LOW | P1 — foundational primitive; everything depends on it |
+| `info_gain_quality` + optimal split | HIGH | MEDIUM | P1 — quality scoring is the core of discovery |
+| Self-similarity pruning | HIGH | LOW | P1 — without it, top-K is meaningless |
+| `ShapeletDiscovery::fit` (contracted mode) | HIGH | HIGH | P1 — headline deliverable, discovery machinery |
+| `shapelet_transform` (fit + predict) | HIGH | MEDIUM | P1 — the transform step; prediction depends on it |
+| `ShapeletTransformClassifierFit::predict` | HIGH | LOW | P1 — the bundled end-to-end classifier |
+| `ShapeletConfig` struct | HIGH | LOW | P1 — fdars convention, needed for all above |
+| Early-abandon optimization | MEDIUM | MEDIUM | P2 — correctness ships without it; critical for performance |
+| F-statistic quality measure | MEDIUM | LOW | P2 — useful for multiclass; trivial once IG exists |
+| Rayon parallelism | MEDIUM | LOW | P2 — follows existing pattern; needed for n>100 datasets |
+| Criterion benchmark | LOW | LOW | P2 — fdars convention |
+| Learning-shapelets | HIGH | VERY HIGH | P3 — out of scope this milestone |
+| Multivariate support | MEDIUM | HIGH | P3 — blocked on representation decision |
+| GPU acceleration | LOW | VERY HIGH | P3 — out of scope entire crate |
 
 ---
 
 ## Competitor Feature Analysis
 
-| Feature | tslearn@0.9.0 | dtwclust (R) | fdars v0.32.0 Plan |
-|---------|---------------|--------------|-------------------|
-| Unnormalized GAK | `_log_unnormalized_gak` (internal) | `GAK(normalize=FALSE)` returns log | `gak_distance_log` (pub(crate) or pub) |
-| Normalized GAK | `gak(s1, s2, sigma)` | `GAK(normalize=TRUE)` | `gak(x, y, sigma, band)` |
-| Pairwise Gram matrix | `cdist_gak(dataset1, dataset2)` | `proxy::dist(X, method="gak")` | `gak_gram_train` / `gak_gram_test` |
-| Bandwidth heuristic | `sigma_gak(dataset, n_samples=100)` | `NULL` triggers built-in estimate | `sigma_gak(data, n_samples, seed)` |
-| Triangular band | implicit (window via `triangular` param) | `window.size` parameter | `band: Option<usize>` |
-| Kernel k-means | `KernelKMeans(kernel='gak')` | Not provided | `kernel_kmeans_fd(data, config)` |
-| SVM with GAK | `tslearn.svm.TimeSeriesSVC(kernel='gak')` | Not provided | Gram-matrix export only (no native SVM) |
-| Parallelism | `n_jobs` parameter | Single-threaded R | `iter_maybe_parallel!` under `parallel` feature |
-| Log-domain stability | Yes (re-executes in log if overflow) | Yes | Yes (always log-domain from the start) |
+| Feature | sktime `RandomShapeletTransform` | pyts `ShapeletTransform` | fdars v0.33.0 Plan |
+|---------|----------------------------------|--------------------------|-------------------|
+| Distance | z-normalized Euclidean (min over windows) | Min MSE over windows (equivalent) | `sdist` with z-normalization (explicit) |
+| Quality measure | Information gain (default) | Mutual info or ANOVA F-stat | IG (default) + F-stat (enum variant) |
+| Candidate selection | Random sample (n_shapelet_samples=10000) | All windows (or windowed) | Random/contracted (max_candidates config) |
+| Self-similarity pruning | `remove_self_similar=True` default | `remove_similar=True` default | Self-similarity pruning enabled by default |
+| Min/max shapelet length | `min_shapelet_length=3`, `max_shapelet_length=None` | `window_sizes='auto'` | `min_len=3`, `max_len=None` (→ M/2) |
+| Top-K | `max_shapelets=None` (→ `min(10*sqrt(n_timeseries)*n_classes, n_shapelet_samples)`) | `n_shapelets='auto'` | `k_shapelets` (explicit) |
+| Time contract | `time_limit_in_minutes=0` (disabled) | Not supported | `max_candidates: Option<usize>` |
+| Bundled classifier | Via `ShapeletTransformClassifier`; default RotationForest | Separate (transform only) | `ShapeletTransformClassifier`; configurable inner classifier from existing fdars |
+| Parallelism | `n_jobs` | `n_jobs` | `iter_maybe_parallel!` under `parallel` feature |
+| Serde | Not supported | Not supported | Under `serde` feature (fdars convention) |
+| Out-of-sample transform | `transform(X_test)` reusing fitted shapelets | `transform(X_test)` | `shapelet_transform(new_data, &shapelets)` |
 
 ---
 
 ## Sources
 
-- Cuturi, M. (2011). "Fast Global Alignment Kernels." Proceedings of the 28th ICML, 929–936. https://icml.cc/2011/papers/489_icmlpaper.pdf
-- Dhillon, I., Guan, Y., Kulis, B. (2004). "Kernel k-Means, Spectral Clustering and Normalized Cuts." KDD 2004. https://dl.acm.org/doi/10.1145/1014052.1014118
-- tslearn@0.9.0 `gak` API: https://tslearn.readthedocs.io/en/stable/gen_modules/metrics/tslearn.metrics.gak.html
-- tslearn@0.9.0 `sigma_gak` API: https://tslearn.readthedocs.io/en/stable/gen_modules/metrics/tslearn.metrics.sigma_gak.html
-- tslearn@0.9.0 `KernelKMeans` API: https://tslearn.readthedocs.io/en/stable/gen_modules/clustering/tslearn.clustering.KernelKMeans.html
-- tslearn@0.9.0 Kernel Methods user guide: https://tslearn.readthedocs.io/en/stable/user_guide/kernel.html
-- dtwclust R package `GAK` function: https://rdrr.io/cran/dtwclust/man/GAK.html
-- scikit-learn SVC precomputed kernel: https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
-- GAP-BACKLOG.md GAP-01 (v0.31.0): `.planning/research/GAP-BACKLOG.md`
+- Ye, L., Keogh, E. (2009). "Time series shapelets: a new primitive for data mining." KDD 2009. https://dl.acm.org/doi/10.1145/1557019.1557122
+- Hills, J., Lines, J., Baranauskas, E., Mapp, J., Bagnall, A. (2014). "Classification of time series by shapelet transformation." Data Mining and Knowledge Discovery 28(4), 851–881. https://link.springer.com/article/10.1007/s10618-013-0322-1
+- Lines, J., Bagnall, A. (2012). "Alternative quality measures for time series shapelets." Intelligent Data Engineering and Automated Learning – IDEAL 2012.
+- sktime `RandomShapeletTransform` API (v0.3x / aeon): https://www.aeon-toolkit.org/en/stable/api_reference/auto_generated/aeon.transformations.collection.shapelet_based.RandomShapeletTransform.html
+- sktime `ShapeletTransformClassifier` API: https://www.sktime.net/en/stable/api_reference/auto_generated/sktime.classification.shapelet_based.ShapeletTransformClassifier.html
+- pyts@0.13.x `ShapeletTransform` API docs: https://pyts.readthedocs.io/en/latest/generated/pyts.transformation.ShapeletTransform.html
+- pyts@0.13.x `ShapeletTransform` source (self-similarity pruning logic extracted): https://pyts.readthedocs.io/en/stable/_modules/pyts/transformation/shapelet_transform.html
+- tslearn@0.9.0 shapelets user guide (sdist formula): https://tslearn.readthedocs.io/en/stable/user_guide/shapelets.html
+- GENDIS paper (shapelet survey, sdist formula, complexity): https://arxiv.org/pdf/1910.12948
+- Multivariate shapelet transform paper (ar5iv 1712.06428, sdist formula confirmed): https://ar5iv.labs.arxiv.org/html/1712.06428
+- GAP-BACKLOG.md GAP-02 (v0.31.0): `.planning/research/GAP-BACKLOG.md`
 - survey-pyx.md PYX-01 (v0.31.0): `.planning/research/survey-pyx.md`
-- fdars-core `metric/soft_dtw.rs` (existing `softmin3`, `soft_dtw_distance`, pairwise matrix helpers): local codebase
-- fdars-core `metric/mod.rs` (existing `self_distance_matrix`, `cross_distance_matrix`): local codebase
-- fdars-core `clustering.rs` (existing `KmeansResult`, `KmeansConfig` pattern): local codebase
+- fdars-core `classification/` (existing LDA/QDA/kNN/kernel classifiers): local codebase
+- fdars-core `distance.rs` (existing distance primitives): local codebase
+- fdars-core `helpers.rs` (`znorm_slice` would be added here alongside existing helpers): local codebase
 
 ---
-*Feature research for: v0.32.0 Global Alignment Kernel + kernel-k-means + Gram-matrix export*
+*Feature research for: v0.33.0 Shapelet Transform & Classification (GAP-02)*
 *Researched: 2026-09-02*
