@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.35.0
 milestone_name: Optimal Experimental Design for Sparse FDA (FOptDes)
 status: planning
-last_updated: "2026-09-02T13:39:50.753Z"
+last_updated: "2026-09-02T15:00:00.000Z"
 last_activity: 2026-09-02
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,33 +19,34 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-09-02)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-03 (k-Shape clustering & Shape-Based Distance), the third-ranked item from the v0.31.0 `GAP-BACKLOG.md`.
-**Current focus:** Roadmap created for v0.34.0 (Phases 61–63). Next: `/gsd-plan-phase 61`.
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-05 (Optimal Experimental Design for Sparse FDA / FOptDes), rank 4 in the v0.31.0 `GAP-BACKLOG.md`.
+**Current focus:** Roadmap created for v0.35.0 (Phases 64–65). Next: `/gsd-plan-phase 64`.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 64 of 65 (Criterion Machinery Core) — not started
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-02 — Milestone v0.35.0 started
+Status: Ready to plan
+Last activity: 2026-09-02 — Roadmap created for v0.35.0 (Phases 64–65), 5 requirements mapped
 
-## Milestone Roadmap (v0.34.0)
+Progress: [░░░░░░░░░░] 0%
 
-Three phases, 5 requirements (KSH-01..05) — an implementation milestone promoting GAP-03 (score 2.12, M-effort), rounding out the curve-clustering family alongside v0.32.0's GAK kernel-k-means. Real `fdars-core/src/` changes: SBD in a new `src/metric/sbd.rs` (peer of `gak.rs`/`soft_dtw.rs`), k-Shape in a new top-level `src/kshape.rs` (peer of `kernel_kmeans.rs`), the SBD-k-medoids convenience a thin adapter at the bottom of `kshape.rs`. Additive/non-breaking, no new crate dependency; **publishes to crates.io on the `v0.34.0` tag**. All four researchers converged on a **strict sequential dependency chain** (SBD core → k-Shape fit+predict → SBD-k-medoids) that cannot be reordered or parallelized. Fine granularity + disjoint per-phase correctness gates → three phases. Phase numbering continues from v0.33.0 (ended at 60) → Phase 61.
+## Milestone Roadmap (v0.35.0)
+
+Two phases, 5 requirements (FOD-01..05) — an implementation milestone promoting GAP-05 (score 2.12, M-effort), the first drawing from the *design* front of the backlog, built directly on the shipped `pace_fpca` estimator. All new code lives in **ONE** new top-level file `src/optimal_design.rs` (peer of `kshape.rs`/`kernel_kmeans.rs`) plus additive `lib.rs`/`prelude.rs` re-exports. Additive/non-breaking, **no new crate dependency** (MSRV 1.81 preserved, `linalg` NOT required); **publishes to crates.io on the `v0.35.0` tag**. All four researchers converged (HIGH confidence) on a **strict sequential dependency chain** (criterion machinery core → greedy selection + integration) that cannot be reordered or parallelized — the greedy loop delegates entirely to the criterion evaluator. Fine granularity + a clean two-phase build (mirrors v0.34.0 SBD-core → k-Shape and the general criterion-primitive → greedy-wrapper precedent). Phase numbering continues from v0.34.0 (ended at 63) → Phase 64.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 61 — SBD Distance Core | KSH-01, KSH-02 | New `src/metric/sbd.rs`. FFT normalized-cross-correlation `sbd(x,y) -> (distance, shift)` + public n×n `sbd_distance_matrix`. Five make-or-break FFT/NCC gates: zero-pad to `next_power_of_two(2m−1)` (else circular wrap), explicit IFFT scale (rustfft unnormalized — divide by `fft_len`), coefficient-normalized NCC (÷ `‖x‖·‖y‖`), signed-lag extraction (not `fft_len − k` wrap), mandatory z-normalization. Verify: `sbd(x,x) ≈ 0`, symmetry, shifted-copy at correct shift, offset/scale invariance, constant-series guard, NCC ∈ [−1,1]. Pure `&[f64]` — no `to_dmatrix` in hot loop; `FftPlanner` is `!Send` → one per rayon task. |
-| 62 — k-Shape Clustering & Predict | KSH-03, KSH-04 | New top-level `src/kshape.rs`. `kshape_fd` (iterative SBD assignment + shape-extraction centroids, `n_init` restarts default 10, in-place empty-cluster recovery, deterministic per-restart seeding, non-increasing objective) + `KShapeResult::predict`. **Main algorithmic phase** — shape extraction is the only genuinely-new numerical piece: TOP eigenvector (largest eigenvalue; nalgebra `SymmetricEigen` returns ascending → take the last) of `M = Qᵀ Sᵀ S Q`, members shift-aligned + z-normalized, SIGN-fixed by correlation to members, centroid re-z-normalized. Everything else (restart loop, seeding, recovery, predict) mirrors `kernel_kmeans.rs`. Verify: two-shifted-motif recovery at high purity (centroid corr > 0.99), determinism (same seed = identical labels; seq == parallel), empty-cluster no-panic, inertia monotone, `predict(train) == cluster`. |
-| 63 — SBD-based k-medoids & Wrap-up | KSH-05 | `sbd_kmedoids` convenience at the bottom of `kshape.rs` (build SBD matrix → feed existing `kmedoids_from_distances`) — a REAL public deliverable, not just a doc example. Crate-root re-exports (`pub mod kshape`; `kshape_fd`, `KShapeConfig`, `KShapeResult`, `sbd_kmedoids`; `metric::{sbd, sbd_distance_matrix, SbdResult}`) + `prelude` additions + criterion benchmark. Deferred to the final phase to avoid partial public API exposure. Verify: SBD-matrix-not-L2 integration test + doctest; additive/non-breaking (28 examples + WASM + R unaffected); whole-crate fmt/clippy/test gates. |
+| 64 — Criterion Machinery Core | FOD-01, FOD-02, FOD-03 | New `src/optimal_design.rs`. Shared private `build_sigma_design` (p×p `Σ_d = Φ_d diag(λ) Φ_dᵀ + σ²I_p`, mirror `pace_fpca.rs:461–474`) + trajectory-reconstruction criterion (integrated Simpson-weighted BLUP-MSE, FOD-01) + FPC-score A-/D-optimality criterion (K×K posterior `Cov(ξ|Y_S) = Λ − Λ Φ_dᵀ Σ_d⁻¹ Φ_d Λ`, the `pace_fpca.rs:547–558` A_mat/Ω_i pattern, FOD-02) + public `#[must_use]` `design_criterion` evaluator with `DesignCriterion`/`OptimalityKind` enums (FOD-03). **NO greedy loop.** Make-or-break numerical gates (all known-answer testable): Σ_d assembly + σ²I ridge correct (shape `\|S\|×\|S\|`, not K×K); Simpson-weighted → `MSE(∅) ≈ Σ_k λ_k`, grid-invariant; score prior recovery `Cov(ξ|∅)=diag(λ)`; optimality sign — criterion monotone NON-increasing as points added; ridge-retry (`1e-8`) on near-singular Σ_d, never panic. Additive `lib.rs` re-export of enums + `design_criterion`. |
+| 65 — Greedy Selection & Integration | FOD-04, FOD-05 | Greedy sequential forward-selection `optimal_design(model, config)` wrapper (start empty, add the candidate that most reduces the criterion until budget `p`, FOD-04) + `OptDesConfig` (Default, no `#[non_exhaustive]`) / `OptDesResult` (`#[non_exhaustive]`, selected indices + argvals + achieved-criterion trace) + two-stage `&PaceFpcaResult` entry point (read-only, no re-estimation, FOD-05) + additive crate-root/prelude re-exports + criterion benchmark. Thin orchestration — no new math. Gates: greedy **determinism WITH and WITHOUT `--features parallel`** (parallel evaluate, sequential argmin, smallest-index tie-break); duplicate-candidate exclusion; monotone achieved-criterion trace; input validation (`budget==0`, `budget>\|grid\|`, off-grid candidate, `ncomp==0`, `sigma2<=0`); additive/non-breaking (28 examples + WASM + R unaffected); whole-crate fmt/`clippy --all-targets --features linalg,parallel`/test gates; module doctest + benchmark. |
 
-**Execution order (dependency-driven — strict chain):** 61 → 62 → 63. No reordering or parallelization is possible. Phase 61 front-loads the five FFT/NCC numerical make-or-break gates; Phase 62 is the main algorithmic phase (shape-extraction centroids); Phase 63 is the thin k-medoids adapter + crate-root re-exports + benchmark.
+**Execution order (dependency-driven — strict chain):** 64 → 65. No reordering or parallelization is possible — the greedy loop in Phase 65 delegates entirely to Phase 64's `design_criterion`. Phase 64 front-loads every numerical make-or-break gate; Phase 65 is a thin deterministic greedy wrapper + config/result types + re-exports + benchmark.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 101+ (across v0.14.0–v0.33.0)
+- Total plans completed: 105+ (across v0.14.0–v0.34.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -59,12 +60,13 @@ Three phases, 5 requirements (KSH-01..05) — an implementation milestone promot
 | 52–53 | v0.31.0 | 7 |
 | 54–56 | v0.32.0 | 3 |
 | 57–60 | v0.33.0 | 4 |
-| 61–63 | v0.34.0 | 0/TBD |
+| 61–63 | v0.34.0 | 3 |
+| 64–65 | v0.35.0 | 0/TBD |
 
 **Recent Trend:**
 
-- Last milestone: v0.33.0 phases 57–60 (4 plans) — audit PASSED 7/7, shipped `v0.33.0` (crate 0.32.0 → 0.33.0). Promoted GAP-02 (shapelets).
-- Trend: v0.34.0 stays in implementation shape — real code, normal test/clippy/fmt gates, crate publish on tag. Reuse-heavy (`rustfft`, `nalgebra` `SymmetricEigen`, the v0.33.0 `shapelet::z_normalize_window`, `kernel_kmeans.rs` patterns, `alignment::clustering::kmedoids_from_distances`), effort M for a mature codebase, ~2 new files (`metric/sbd.rs`, `kshape.rs`). Three phases driven by the strict SBD → k-Shape → k-medoids dependency chain, not padding.
+- Last milestone: v0.34.0 phases 61–63 (3 plans) — audit PASSED 5/5, shipped `v0.34.0` (crate 0.33.0 → 0.34.0). Promoted GAP-03 (k-Shape / SBD).
+- Trend: v0.35.0 stays in implementation shape — real code, normal test/clippy/fmt gates, crate publish on tag. Reuse-heavy (`pace_fpca.rs` Σ_yi/posterior-covariance machinery, `linalg::cholesky_solve`, `helpers::{simpsons_weights, linear_interp}`, `iter_maybe_parallel!`), effort M for a mature codebase, **ONE new file** (`optimal_design.rs`). Two phases driven by the strict criterion-core → greedy-wrapper dependency chain, not padding.
 
 *Updated after each plan completion*
 
@@ -74,32 +76,35 @@ Three phases, 5 requirements (KSH-01..05) — an implementation milestone promot
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-Relevant to current work (v0.34.0):
+Relevant to current work (v0.35.0):
 
-- **Implementation milestone, publishes on tag** — v0.34.0 makes real `fdars-core/src/` changes and **will** bump the crate version + publish to crates.io on the `v0.34.0` tag. Normal test/clippy/fmt gates apply. (audit-milestone-no-tag does NOT apply.)
-- **SBD in `src/metric/sbd.rs`, k-Shape in top-level `src/kshape.rs`** — SBD is a distance primitive (peer of `gak.rs`/`soft_dtw.rs`), reusable independently by k-medoids and future consumers; k-Shape is a full clustering algorithm (peer of `kernel_kmeans.rs`). One-way dependency: `kshape.rs` imports `metric::sbd`, never the reverse. Mirrors the v0.32.0 GAK→kernel-k-means precedent.
-- **`sbd` returns `(distance, optimal_shift)`** — the shift is mandatory: the centroid update shift-aligns members using the SBD-returned shift before shape extraction. Discarding the shift breaks convergence (Pitfall 7).
-- **Reuse-first, no new dependency** — `rustfft` (FFT NCCc, idiom from `fts/spectral.rs`/`seasonal/mod.rs`), `nalgebra` `SymmetricEigen` (shape-extraction eigenproblem), `shapelet::z_normalize_window`/`z_normalize_into` (v0.33.0, population std + `STD_EPS=1e-12` constant guard), `metric::self_distance_matrix`, `kernel_kmeans.rs` patterns (n_init, seeding, empty-cluster recovery, predict), `alignment::clustering::{kmedoids_from_distances, KMedoidsConfig, KMedoidsResult}`. No `Cargo.toml` dependency change; MSRV stays 1.81 (`SymmetricEigen` is nalgebra core, not behind `linalg`).
-- **FFT correctness contract (Phase 61, silent-correctness killers)** — zero-pad to `next_power_of_two(2m−1)` (a too-short FFT wraps cross-correlation circularly); rustfft IFFT is UNNORMALIZED → divide by `fft_len` explicitly; NCC is COEFFICIENT-normalized (÷ `‖x‖·‖y‖`, from the pre-FFT z-normed vectors), not count-normalized; signed-lag extraction (`shift = if idx ≤ m−1 { idx } else { idx − fft_len }`), not a `fft_len − k` wrap; z-normalize both series inside `sbd()` unconditionally; constant-series (std ≈ 0) → distance 1.0, shift 0.
-- **Shape-extraction centroid contract (Phase 62)** — centroid = TOP eigenvector (largest eigenvalue) of `M = Qᵀ Sᵀ S Q` with `Q = I − O/n_k` (mean-centering projection — skipping it silently degrades to k-means); nalgebra `SymmetricEigen` returns eigenvalues ascending → take the LAST column; members shift-aligned (SBD shift) + z-normalized before building `S`; SIGN-fix by `dot(v, mean_of_members) < 0 → negate` (NOT `dominant_sign_negative` from `regression.rs` — wrong convention); re-z-normalize the eigenvector before storing.
-- **`n_init` default 10** — fdars convention (matches `KernelKmeansConfig`), exceeds tslearn's 1; k-Shape is init-sensitive. Deterministic per-restart seeding `StdRng::seed_from_u64(seed.wrapping_add(restart as u64))`; best restart by inertia.
-- **In-place empty-cluster recovery** — farthest-point reassignment mirroring `kernel_kmeans.rs::recover_empty_clusters`; a documented divergence from tslearn's full-restart. Never panic on an empty cluster.
-- **`sbd_kmedoids` is a real public function** — the user explicitly chose KSH-05 as a public deliverable (thin convenience over `kmedoids_from_distances`), not merely a doc example. Lives at the bottom of `kshape.rs` (no dedicated module file).
-- **Crate-root re-exports deferred to Phase 63** — `pub mod kshape` + all public re-exports + `prelude` additions land only in the final phase, to avoid exposing a partial public API mid-milestone.
-- **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only the new `metric/sbd.rs` + `kshape.rs` + crate-root re-exports.
-- **Phase numbering continues** — v0.33.0 ended at Phase 60 → v0.34.0 starts at Phase 61. No reset.
-- **5 requirements → 3 phases** (fine granularity, strict dependency chain): Phase 61 KSH-01/02, Phase 62 KSH-03/04, Phase 63 KSH-05. All 5 mapped, no orphans, no duplicates.
+- **Implementation milestone, publishes on tag** — v0.35.0 makes real `fdars-core/src/` changes and **will** bump the crate version + publish to crates.io on the `v0.35.0` tag. Normal test/clippy/fmt gates apply. (audit-milestone-no-tag does NOT apply.)
+- **Two-stage workflow, no re-estimation** — FOptDes is a pure design step over a supplied, already-estimated `PaceFpcaResult` (eigenfunctions, eigenvalues, σ²). The design step never re-estimates the covariance surface — that would couple estimation into design and duplicate `pace_fpca`. Re-estimation is explicitly out of scope.
+- **ONE new file, `src/optimal_design.rs`** — self-contained algorithm (config + result + two enums + two public fns + ~3 private helpers, ~300 lines). Top-level peer of `kshape.rs`/`kernel_kmeans.rs`; not a submodule directory (no second-file primitive to separate). NOT under `metric/` (FOptDes is an experimental-design algorithm, not a distance metric).
+- **Criterion-evaluator → greedy-wrapper split** — `design_criterion` (Phase 64) is a pure, public, `#[must_use]` function that scores a caller-supplied index set; `optimal_design` (Phase 65) is a thin greedy forward-selection wrapper that delegates entirely to it. Keeps `design_criterion` independently useful (evaluate a hand-chosen/historical design against the PACE prior) and mirrors the sbd.rs → kshape.rs precedent.
+- **Both criteria share `build_sigma_design`** — trajectory-reconstruction (FOD-01) and score-prediction (FOD-02) both need `Σ_d = Φ_d diag(λ) Φ_dᵀ + σ²I_p`; a single shared private helper builds it (row-major, mirroring `pace_fpca.rs:461–474`), then each branch differs only in post-solve usage. Keeping both criteria in the core phase (64) lets the greedy wrapper stay pure orchestration.
+- **Reuse-first, no new dependency** — `pace_fpca::PaceFpcaResult` (read-only borrow of eigenfunctions/eigenvalues/sigma2/argvals/ncomp; Σ_yi assembly `461–474`, A_mat/Ω_i posterior-covariance pattern `547–558`, ridge-retry `480–490`), `linalg::cholesky_solve` (p×p solves, row-major — always available, NOT behind `linalg` feature), `helpers::simpsons_weights` (quadrature — pass `&model.argvals`), `helpers::linear_interp` (only if off-grid candidates ever needed; MVP constrains candidates to the work grid), `iter_maybe_parallel!` (parallel candidate sweep, no RNG — criterion is deterministic). No `Cargo.toml` change; MSRV stays 1.81.
+- **Trajectory criterion contract (Phase 64)** — integrated Simpson-weighted conditional BLUP-MSE `Σ_j w_j (Σ_k λ_k φ_k(t_j)² − φ_d(t_j)ᵀ Σ_d⁻¹ φ_d(t_j))`; MUST use `simpsons_weights(&model.argvals)` (never uniform 1.0/1/m — else grid-scale-wrong); quadratic form includes Ω off-diagonals; known-answer `MSE(∅) ≈ Σ_k λ_k` (grid-invariant).
+- **Score criterion contract (Phase 64)** — K×K posterior `Cov(ξ|Y_S) = Λ − Λ Φ_dᵀ Σ_d⁻¹ Φ_d Λ` via `cholesky_solve`; A-opt = `trace(Cov)`, D-opt = `log det(Cov)` (NEGATIVE — posterior eigenvalues ≤ prior λ_k; minimize log-det covariance = maximize information); known-answer `Cov(ξ|∅)=diag(λ)` → `A(∅)=Σλ_k`, `D(∅)=Σ log λ_k`. Missing the `diag(1/λ)` prior term / forgetting σ²I are the classic silent-singularity bugs.
+- **Optimality-sign / monotonicity gate** — Trajectory, A-opt, and D-opt must all be monotone NON-increasing as points are added (`criterion(S∪{t}) ≤ criterion(S) + 1e-12`). This guarantees the Phase 65 greedy loop minimizes (never maximizes) the objective. Assert in tests — O(1) overhead, catches make-or-break sign flips.
+- **Greedy determinism (Phase 65)** — parallelize candidate EVALUATION via `iter_maybe_parallel!`, but take a SEQUENTIAL argmin with smallest-index tie-break (rayon `min_by` is not stable). Two same-config calls → byte-identical `selected_indices`, and seq == parallel builds agree. Mirror the `pace_fpca.rs` determinism-test pattern. Exclude already-selected indices each step (no duplicate points).
+- **Candidates constrained to the work grid (MVP)** — every `config.candidate_grid` value must appear (within FP tolerance) in `model.argvals`; return `InvalidParameter` otherwise. Keeps criterion evaluation exact (index arithmetic, no interpolation). Off-grid interpolated candidates (via `linear_interp`) deferred to FOD-B5.
+- **Crate-root re-exports deferred to Phase 65** — Phase 64 additively re-exports the enums + `design_criterion`; the full surface (`pub mod optimal_design` + `optimal_design`/`OptDesConfig`/`OptDesResult` + `prelude`) + benchmark land in the final phase, to avoid exposing a partial public API mid-milestone.
+- **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only the new `optimal_design.rs` + additive `lib.rs`/`prelude.rs` re-exports.
+- **Phase numbering continues** — v0.34.0 ended at Phase 63 → v0.35.0 starts at Phase 64. No reset.
+- **5 requirements → 2 phases** (fine granularity, strict dependency chain): Phase 64 FOD-01/02/03, Phase 65 FOD-04/05. All 5 mapped, no orphans, no duplicates. (FOD-02 kept in the core phase so the greedy wrapper stays pure orchestration.)
 
 ### Pending Todos
 
-- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; the additive SBD/k-Shape surface should be exposed to R/WASM bindings in a follow-up, not this milestone.
+- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; the additive FOptDes surface should be exposed to R/WASM bindings in a follow-up, not this milestone.
 
 ### Blockers/Concerns
 
-- **Research flags (from SUMMARY.md)** — Phase 61 MEDIUM (FFT zero-padding / NCC normalization / lag indexing are numerical fundamentals; recommend `/gsd-plan-phase --research-phase 61` with known-answer tests cross-checked against tslearn/aeon); Phase 62 MEDIUM (shape-extraction eigenvector formulation, nalgebra ascending order, sign-fix criterion — `/gsd-plan-phase --research-phase 62`, two-group known-answer test before implementation); Phase 63 NONE (standard wrapper + re-exports + benchmark). Non-blocking for the roadmap.
-- **Approximate eigendecomposition for large m (>500)** — shape-extraction eigh is O(m³); for typical m ≤ 200 negligible. Deferred to a follow-up if profiling shows a bottleneck. No design impact now.
-- **1D-curves-only scope** — v0.34.0 is univariate curves only; multivariate SBD, variable-length series, and other clustering families (KSH-BREADTH) deferred. Document in rustdoc. Non-blocking.
-- Historical build/CI hazards (MEMORY.md) apply this implementation milestone: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds; prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; audit-milestone-no-tag does NOT apply (this ships code → tag as normal).
+- **Research flags (from SUMMARY.md)** — NEITHER phase needs a `--research-phase` pass (well-documented Ji & Müller 2017 / fdapace patterns; HIGH confidence). Both phases' numerical make-or-break gates warrant known-answer tests cross-checked against the formulas (Phase 64: Σ_yi assembly, score posterior covariance, Simpson-weighted integration, optimality sign; Phase 65: greedy determinism seq==parallel, duplicate exclusion). Non-blocking for the roadmap.
+- **O(G·p·cost) greedy blowup** — brute-force per-candidate re-solve is O(budget · G · K³); fine for typical G ≤ 51, K ≤ 5, budget ≤ 10 (seconds). Rank-1 Cholesky / Sherman-Morrison update (FOD-B4) deferred until profiling shows a bottleneck at large grids (m ≫ 200). Correctness first. No design impact now.
+- **Grid-constrained candidates only** — v0.35.0 MVP constrains candidate points to the model's work grid (exact index arithmetic, no interpolation). Non-grid candidates via eigenfunction interpolation (FOD-B5) deferred. Document in rustdoc. Non-blocking.
+- **`!Send` in the parallel sweep** — the candidate closure must capture only immutable references to the pre-computed `M_S`; each closure allocates its own local Σ_d/M copy (no shared mutable state). `PaceFpcaResult` is `Send + Sync`; no FFT/`FftPlanner` here. Verify `cargo build/test --features parallel` compiles. Non-blocking.
+- Historical build/CI hazards (MEMORY.md) apply this implementation milestone: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds (adding a benchmark grows `target/debug/`); prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; audit-milestone-no-tag does NOT apply (this ships code → tag as normal).
 
 ## Deferred Items
 
@@ -107,20 +112,20 @@ Items acknowledged and deferred, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
+| Optimal-design | FOD-BREADTH (FOD-B1 SR-criterion, FOD-B2 exhaustive/branch-and-bound, FOD-B3 CV-ridge selection, FOD-B4 rank-1 Cholesky update, FOD-B5 off-grid interpolated candidates) | Deferred | v0.35.0 | future milestone |
 | Shape-clustering | KSH-BREADTH (multivariate/variable-length SBD, hierarchical/other clustering families) | Deferred | v0.34.0 | future milestone |
 | Shapelets | LSH-01 (gradient learning-shapelets) — needs autodiff through the distance; ties to GAP-08 | Deferred | v0.33.0 | future milestone |
 | Shapelets | SHP-BREADTH (multivariate/DTW-shapelet/ROCKET) | Deferred | v0.33.0 | future milestone |
 | Kernel-methods | SVM-01 (native in-crate kernel-SVM / QP solver) — Gram export (GAK-05/06) covers the use case in the interim | Deferred | v0.32.0 | future milestone |
-| Kernel-methods | KRN-01 (additional curve kernels + kernel-PCA/SVM consumers reusing GAK Gram) | Deferred | v0.32.0 | future milestone |
-| Backlog | GAP-05/06/07/08 (FOptDes, PEER, wavelet regression, differentiable core) — carry forward, drawn top-first | Deferred | v0.32.0 | future milestones |
+| Backlog | GAP-06/07/08 (PEER/lpeer, wavelet regression, differentiable core) — carry forward, drawn top-first | Deferred | v0.32.0 | future milestones |
 | API-breaking | APIB-01 — breaking removal of the 6 `#[deprecated]` forms from v0.30.0 | Deferred | v0.30.0 | future 1.0-readiness |
 
 ## Session Continuity
 
-Last session: 2026-09-02T14:30:00.000Z
-Stopped at: Phase 63 complete — all phases complete
+Last session: 2026-09-02T15:00:00.000Z
+Stopped at: Roadmap created for v0.35.0 (Phases 64–65); 5 requirements (FOD-01..05) mapped, traceability updated
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with `/gsd-plan-phase 64`

@@ -46,16 +46,17 @@ Which phases cover which requirements. Filled during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FOD-01 | Phase 64 | Pending |
-| FOD-02 | Phase 64/65 | Pending |
+| FOD-02 | Phase 64 | Pending |
 | FOD-03 | Phase 64 | Pending |
 | FOD-04 | Phase 65 | Pending |
 | FOD-05 | Phase 65 | Pending |
 
 **Coverage:**
 - v0.35.0 requirements: 5 total
-- Mapped to phases: 5 (final mapping set by roadmapper)
+- Mapped to phases: 5 (Phase 64 = FOD-01/02/03; Phase 65 = FOD-04/05)
 - Unmapped: 0 ✓
+- Orphans: 0 ✓ · Duplicates: 0 ✓
 
 ---
 *Requirements defined: 2026-09-02*
-*Last updated: 2026-09-02 after initial definition (v0.35.0 FOptDes)*
+*Last updated: 2026-09-02 — traceability finalized by roadmapper (FOD-02 mapped to Phase 64; keeps both criteria in the core phase so the greedy wrapper stays pure orchestration)*
