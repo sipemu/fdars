@@ -580,11 +580,12 @@ pub use clustering_advanced::{
 
 // Re-export distance metric types and functions
 pub use metric::{
-    dtw_cross_1d, dtw_distance, dtw_self_1d, fourier_cross_1d, fourier_self_1d, hausdorff_3d,
-    hausdorff_cross_1d, hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d, hshift_cross_1d,
-    hshift_self_1d, lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d, soft_dtw_barycenter,
-    soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d, soft_dtw_div_self_1d,
-    soft_dtw_divergence, soft_dtw_self_1d, SoftDtwBarycenterResult,
+    dtw_cross_1d, dtw_distance, dtw_self_1d, fourier_cross_1d, fourier_self_1d, gak,
+    gak_gram_matrix, hausdorff_3d, hausdorff_cross_1d, hausdorff_cross_2d, hausdorff_self_1d,
+    hausdorff_self_2d, hshift_cross_1d, hshift_self_1d, lp_cross_1d, lp_cross_2d, lp_self_1d,
+    lp_self_2d, sigma_gak, soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance,
+    soft_dtw_div_cross_1d, soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d, GakConfig,
+    SoftDtwBarycenterResult,
 };
 
 // Re-export depth measure functions
