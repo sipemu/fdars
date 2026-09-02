@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.34.0
 milestone_name: k-Shape Clustering & Shape-Based Distance
 status: planning
-last_updated: "2026-09-02T12:00:21.032Z"
+last_updated: "2026-09-02T14:30:00.000Z"
 last_activity: 2026-09-02
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,34 +19,33 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-09-02)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-02 (discovery-based shapelet transform & classification), the second-ranked item from the v0.31.0 `GAP-BACKLOG.md`.
-**Current focus:** Roadmap created for v0.33.0 (Phases 57–60). Next: `/gsd-plan-phase 57`.
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-03 (k-Shape clustering & Shape-Based Distance), the third-ranked item from the v0.31.0 `GAP-BACKLOG.md`.
+**Current focus:** Roadmap created for v0.34.0 (Phases 61–63). Next: `/gsd-plan-phase 61`.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap created)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-02 — Milestone v0.34.0 started
+Status: Roadmap created — ready to plan Phase 61
+Last activity: 2026-09-02 — Roadmap created for v0.34.0 (Phases 61–63)
 
-## Milestone Roadmap (v0.33.0)
+## Milestone Roadmap (v0.34.0)
 
-Four phases, 7 requirements (SHP-01..07) — an implementation milestone promoting GAP-02, the only backlog gap corroborated across three reference libraries (sktime, pyts, tslearn). Real `fdars-core/src/` changes in a new `src/shapelet/` submodule, additive/non-breaking, no new crate dependency; **publishes to crates.io on the `v0.33.0` tag**. All four researchers converged on a **strict compile-time dependency chain** (distance core → discovery → transform → classifier) that cannot be reordered or parallelized — each of the four `src/shapelet/` files depends one-way on the previous, so phase boundaries mirror file boundaries. Fine granularity + disjoint per-phase correctness gates → four phases (not one phase / four plans). Phase numbering continues from v0.32.0 (ended at 56) → Phase 57.
+Three phases, 5 requirements (KSH-01..05) — an implementation milestone promoting GAP-03 (score 2.12, M-effort), rounding out the curve-clustering family alongside v0.32.0's GAK kernel-k-means. Real `fdars-core/src/` changes: SBD in a new `src/metric/sbd.rs` (peer of `gak.rs`/`soft_dtw.rs`), k-Shape in a new top-level `src/kshape.rs` (peer of `kernel_kmeans.rs`), the SBD-k-medoids convenience a thin adapter at the bottom of `kshape.rs`. Additive/non-breaking, no new crate dependency; **publishes to crates.io on the `v0.34.0` tag**. All four researchers converged on a **strict sequential dependency chain** (SBD core → k-Shape fit+predict → SBD-k-medoids) that cannot be reordered or parallelized. Fine granularity + disjoint per-phase correctness gates → three phases. Phase numbering continues from v0.33.0 (ended at 60) → Phase 61.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 57 — Shapelet Distance Core | SHP-01, SHP-02 | New `src/shapelet/distance.rs` + `mod.rs` skeleton. Per-window z-normalization (ddof=0, constant-window guard `std.max(1e-10)` → finite), `sdist` = **min** over sliding windows of z-normalized Euclidean distance with explicit `best_so_far` early-abandon, the `Shapelet` type. Pure `&[f64]` arithmetic, lowest risk — but two make-or-break gates: scale/offset-invariance (per-window norm) + known-motif recovery (min-not-mean). No `to_dmatrix` in the hot loop; use `row_to_buf` for row slices. |
-| 58 — Discovery & Ranking | SHP-03, SHP-04, SHP-05 | New `src/shapelet/discovery.rs` (`ShapeletConfig`, `QualityMeasure`). Candidate generation (exhaustive OR contracted/random via `max_candidates`, seeded), information-gain with **optimal split threshold** (orderline sort + all-gap scan) + F-statistic quality, top-K + self-similarity pruning → `ShapeletSet`. **HIGHEST-risk phase** (most pitfalls): combinatorial tractability (naive O(n²·M³) intractable — contract designed in from the start), deterministic seeding, `total_cmp` + `(series_idx, offset)` tie-break for float ties. |
-| 59 — Shapelet Transform | SHP-06 | New `src/shapelet/transform.rs` (`ShapeletTransformFit`, `shapelet_transform_fit`, `shapelet_transform`). Apply a fitted `ShapeletSet` → n×K distance-feature matrix (train + out-of-sample). Transform consistency: `transform(train)` reproduces fit-time distances within 1e-12; short-series guard → `Err(InvalidDimension)`; `all(is_finite())`. Crate-root transform re-exports land here. |
-| 60 — Bundled Classifier | SHP-07 | New `src/shapelet/classifier.rs` — `ShapeletTransformClassifier` fit (discover → transform → classify) + predict; **kNN default** (`fclassif_knn_fit`), LDA optional via config enum. `classification/` consumed unmodified. The crate-root `pub mod shapelet` + all re-exports are **deferred to this final phase** to avoid partial public API exposure. Train/test leakage discipline in doctest + integration test; criterion benchmark added. |
+| 61 — SBD Distance Core | KSH-01, KSH-02 | New `src/metric/sbd.rs`. FFT normalized-cross-correlation `sbd(x,y) -> (distance, shift)` + public n×n `sbd_distance_matrix`. Five make-or-break FFT/NCC gates: zero-pad to `next_power_of_two(2m−1)` (else circular wrap), explicit IFFT scale (rustfft unnormalized — divide by `fft_len`), coefficient-normalized NCC (÷ `‖x‖·‖y‖`), signed-lag extraction (not `fft_len − k` wrap), mandatory z-normalization. Verify: `sbd(x,x) ≈ 0`, symmetry, shifted-copy at correct shift, offset/scale invariance, constant-series guard, NCC ∈ [−1,1]. Pure `&[f64]` — no `to_dmatrix` in hot loop; `FftPlanner` is `!Send` → one per rayon task. |
+| 62 — k-Shape Clustering & Predict | KSH-03, KSH-04 | New top-level `src/kshape.rs`. `kshape_fd` (iterative SBD assignment + shape-extraction centroids, `n_init` restarts default 10, in-place empty-cluster recovery, deterministic per-restart seeding, non-increasing objective) + `KShapeResult::predict`. **Main algorithmic phase** — shape extraction is the only genuinely-new numerical piece: TOP eigenvector (largest eigenvalue; nalgebra `SymmetricEigen` returns ascending → take the last) of `M = Qᵀ Sᵀ S Q`, members shift-aligned + z-normalized, SIGN-fixed by correlation to members, centroid re-z-normalized. Everything else (restart loop, seeding, recovery, predict) mirrors `kernel_kmeans.rs`. Verify: two-shifted-motif recovery at high purity (centroid corr > 0.99), determinism (same seed = identical labels; seq == parallel), empty-cluster no-panic, inertia monotone, `predict(train) == cluster`. |
+| 63 — SBD-based k-medoids & Wrap-up | KSH-05 | `sbd_kmedoids` convenience at the bottom of `kshape.rs` (build SBD matrix → feed existing `kmedoids_from_distances`) — a REAL public deliverable, not just a doc example. Crate-root re-exports (`pub mod kshape`; `kshape_fd`, `KShapeConfig`, `KShapeResult`, `sbd_kmedoids`; `metric::{sbd, sbd_distance_matrix, SbdResult}`) + `prelude` additions + criterion benchmark. Deferred to the final phase to avoid partial public API exposure. Verify: SBD-matrix-not-L2 integration test + doctest; additive/non-breaking (28 examples + WASM + R unaffected); whole-crate fmt/clippy/test gates. |
 
-**Execution order (dependency-driven — strict chain):** 57 → 58 → 59 → 60. No reordering or parallelization is possible; each `src/shapelet/` file depends one-way on the previous. Phase 57 front-loads the two numerical make-or-break gates; Phase 58 is the highest-risk phase; 59 owns transform consistency; 60 owns the user-facing pipeline + crate-root re-exports.
+**Execution order (dependency-driven — strict chain):** 61 → 62 → 63. No reordering or parallelization is possible. Phase 61 front-loads the five FFT/NCC numerical make-or-break gates; Phase 62 is the main algorithmic phase (shape-extraction centroids); Phase 63 is the thin k-medoids adapter + crate-root re-exports + benchmark.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 98+ (across v0.14.0–v0.32.0)
+- Total plans completed: 101+ (across v0.14.0–v0.33.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -59,12 +58,13 @@ Four phases, 7 requirements (SHP-01..07) — an implementation milestone promoti
 | 46–51 | v0.30.0 | 23 |
 | 52–53 | v0.31.0 | 7 |
 | 54–56 | v0.32.0 | 3 |
-| 57–60 | v0.33.0 | 0/TBD |
+| 57–60 | v0.33.0 | 4 |
+| 61–63 | v0.34.0 | 0/TBD |
 
 **Recent Trend:**
 
-- Last milestone: v0.32.0 phases 54–56 (3 plans) — audit PASSED 8/8, shipped + tagged `v0.32.0`. First implementation milestone after three audit cycles; promoted GAP-01 (GAK).
-- Trend: v0.33.0 stays in implementation shape — real code, normal test/clippy/fmt gates, crate publish on tag. Reuse-heavy (builds on `matrix.rs`, `distance.rs`, `classification/`, `parallel.rs`), effort L for a mature codebase, ~800 LOC across four new files in `src/shapelet/`. Four phases (one file each) driven by the strict dependency chain, not padding.
+- Last milestone: v0.33.0 phases 57–60 (4 plans) — audit PASSED 7/7, shipped `v0.33.0` (crate 0.32.0 → 0.33.0). Promoted GAP-02 (shapelets).
+- Trend: v0.34.0 stays in implementation shape — real code, normal test/clippy/fmt gates, crate publish on tag. Reuse-heavy (`rustfft`, `nalgebra` `SymmetricEigen`, the v0.33.0 `shapelet::z_normalize_window`, `kernel_kmeans.rs` patterns, `alignment::clustering::kmedoids_from_distances`), effort M for a mature codebase, ~2 new files (`metric/sbd.rs`, `kshape.rs`). Three phases driven by the strict SBD → k-Shape → k-medoids dependency chain, not padding.
 
 *Updated after each plan completion*
 
@@ -74,36 +74,31 @@ Four phases, 7 requirements (SHP-01..07) — an implementation milestone promoti
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-Relevant to current work (v0.33.0):
+Relevant to current work (v0.34.0):
 
-- **Implementation milestone, publishes on tag** — v0.33.0 makes real `fdars-core/src/` changes and **will** bump the crate version + publish to crates.io on the `v0.33.0` tag. Normal test/clippy/fmt gates apply.
-- **New `src/shapelet/` submodule, not inside `classification/`** — shapelets are a feature-engineering family (curves → distance features → classification) that produces a matrix *consumed by* classifiers, not implemented alongside them. Placing them in `classification/` would break its `#[non_exhaustive]` `ClassifMethod` contract and block future non-classifier consumers. Four files: `distance.rs`, `discovery.rs`, `transform.rs`, `classifier.rs` + `mod.rs` barrel.
-- **Reuse-first, no new dependency** — reuses `FdMatrix`/`row_to_buf`/`row_l2_sq` (`matrix.rs`), `cross_distance_matrix` (`distance.rs`), `iter_maybe_parallel!` + `seed_for_thread` (`parallel.rs`), `fclassif_knn_fit`/`ClassifFit`/`ClassifResult` (`classification/fit.rs`), `FdarError` (`error.rs`). z-normalization + sliding-window Euclidean + IG are pure arithmetic. No new `Cargo.toml` entry.
-- **Discovery-based only** — Ye & Keogh 2009 + Hills–Lines 2014; **not** learning-shapelets (LSH-01, deferred; needs autodiff through the distance, ties to GAP-08).
-- **Bundled classifier defaults to kNN** — `fclassif_knn_fit` (canonical Hills/Lines; avoids the FPCA-on-distance-features oddity of LDA), with LDA selectable via a `ShapeletClassifier` config enum.
-- **Quality measure defaults to information gain with optimal split threshold** — orderline sort + all-n−1-gap midpoint scan (never a fixed threshold); F-statistic selectable via a `QualityMeasure` enum (better under class imbalance; reuses existing `pub(crate) integrated_f_statistic`, subject to a Phase-58 adaptation check for the 2-group scalar case).
-- **Per-window z-normalization is mandatory (Pitfall 1/2)** — normalize each length-L window independently (NOT the whole series); population std (ddof=0, pyts convention); clamp `std.max(1e-10)` so constant windows return a finite zero-ish vector. Scale/offset-invariance test must pass in Phase 57.
-- **`sdist` is the min, not mean (Pitfall 3)** — strict `fold(INFINITY, min)` over sliding windows; known-motif recovery test is the Phase-57/58 key integration gate.
-- **Early-abandon via explicit `best_so_far` (Pitfall 5)** — sequential inner loop short-circuits when the partial sum-of-squares exceeds `best_so_far`; answer identical to non-abandoned; window scan stays sequential (rayon only at the series/candidate level).
-- **Combinatorial contract designed in from the start (Pitfall 4)** — `max_candidates` contracted/random search with deterministic seeding; naive O(n²·M³) exhaustive is intractable and must never be the only path. Tractability test: n=100, m=200 returns in seconds.
-- **Self-similarity pruning (Pitfall 8)** — drop candidates whose source series + position range overlaps an already-selected shapelet; selected K span ≥ min(K, n_train) distinct series; no two transform columns correlate > ~0.95.
-- **Transform consistency (Pitfall 9)** — store shapelets already-z-normalized in `ShapeletTransformFit`; `transform` uses them verbatim (no re-discovery, no re-normalization against test statistics); `transform(train)` reproduces fit-time distances within 1e-12. Short-series guard → `Err(InvalidDimension)` (Pitfall 10).
-- **Deterministic ordering (Pitfall 11/13)** — `config.seed` threaded through; `total_cmp` + `(series_idx, start_offset)` tie-break (never `partial_cmp(...).unwrap()`); two same-seed fits produce identical shapelets + thresholds.
-- **Crate-root re-exports deferred to Phase 60** — `pub mod shapelet` + all public re-exports land only in the final phase, to avoid exposing a partial public API mid-milestone.
-- **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only the new `src/shapelet/` module + crate-root re-exports.
-- **Phase numbering continues** — v0.32.0 ended at Phase 56 → v0.33.0 starts at Phase 57. No reset.
-- **7 requirements → 4 phases** (fine granularity, strict dependency chain): Phase 57 SHP-01/02, Phase 58 SHP-03/04/05, Phase 59 SHP-06, Phase 60 SHP-07. All 7 mapped, no orphans, no duplicates.
+- **Implementation milestone, publishes on tag** — v0.34.0 makes real `fdars-core/src/` changes and **will** bump the crate version + publish to crates.io on the `v0.34.0` tag. Normal test/clippy/fmt gates apply. (audit-milestone-no-tag does NOT apply.)
+- **SBD in `src/metric/sbd.rs`, k-Shape in top-level `src/kshape.rs`** — SBD is a distance primitive (peer of `gak.rs`/`soft_dtw.rs`), reusable independently by k-medoids and future consumers; k-Shape is a full clustering algorithm (peer of `kernel_kmeans.rs`). One-way dependency: `kshape.rs` imports `metric::sbd`, never the reverse. Mirrors the v0.32.0 GAK→kernel-k-means precedent.
+- **`sbd` returns `(distance, optimal_shift)`** — the shift is mandatory: the centroid update shift-aligns members using the SBD-returned shift before shape extraction. Discarding the shift breaks convergence (Pitfall 7).
+- **Reuse-first, no new dependency** — `rustfft` (FFT NCCc, idiom from `fts/spectral.rs`/`seasonal/mod.rs`), `nalgebra` `SymmetricEigen` (shape-extraction eigenproblem), `shapelet::z_normalize_window`/`z_normalize_into` (v0.33.0, population std + `STD_EPS=1e-12` constant guard), `metric::self_distance_matrix`, `kernel_kmeans.rs` patterns (n_init, seeding, empty-cluster recovery, predict), `alignment::clustering::{kmedoids_from_distances, KMedoidsConfig, KMedoidsResult}`. No `Cargo.toml` dependency change; MSRV stays 1.81 (`SymmetricEigen` is nalgebra core, not behind `linalg`).
+- **FFT correctness contract (Phase 61, silent-correctness killers)** — zero-pad to `next_power_of_two(2m−1)` (a too-short FFT wraps cross-correlation circularly); rustfft IFFT is UNNORMALIZED → divide by `fft_len` explicitly; NCC is COEFFICIENT-normalized (÷ `‖x‖·‖y‖`, from the pre-FFT z-normed vectors), not count-normalized; signed-lag extraction (`shift = if idx ≤ m−1 { idx } else { idx − fft_len }`), not a `fft_len − k` wrap; z-normalize both series inside `sbd()` unconditionally; constant-series (std ≈ 0) → distance 1.0, shift 0.
+- **Shape-extraction centroid contract (Phase 62)** — centroid = TOP eigenvector (largest eigenvalue) of `M = Qᵀ Sᵀ S Q` with `Q = I − O/n_k` (mean-centering projection — skipping it silently degrades to k-means); nalgebra `SymmetricEigen` returns eigenvalues ascending → take the LAST column; members shift-aligned (SBD shift) + z-normalized before building `S`; SIGN-fix by `dot(v, mean_of_members) < 0 → negate` (NOT `dominant_sign_negative` from `regression.rs` — wrong convention); re-z-normalize the eigenvector before storing.
+- **`n_init` default 10** — fdars convention (matches `KernelKmeansConfig`), exceeds tslearn's 1; k-Shape is init-sensitive. Deterministic per-restart seeding `StdRng::seed_from_u64(seed.wrapping_add(restart as u64))`; best restart by inertia.
+- **In-place empty-cluster recovery** — farthest-point reassignment mirroring `kernel_kmeans.rs::recover_empty_clusters`; a documented divergence from tslearn's full-restart. Never panic on an empty cluster.
+- **`sbd_kmedoids` is a real public function** — the user explicitly chose KSH-05 as a public deliverable (thin convenience over `kmedoids_from_distances`), not merely a doc example. Lives at the bottom of `kshape.rs` (no dedicated module file).
+- **Crate-root re-exports deferred to Phase 63** — `pub mod kshape` + all public re-exports + `prelude` additions land only in the final phase, to avoid exposing a partial public API mid-milestone.
+- **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only the new `metric/sbd.rs` + `kshape.rs` + crate-root re-exports.
+- **Phase numbering continues** — v0.33.0 ended at Phase 60 → v0.34.0 starts at Phase 61. No reset.
+- **5 requirements → 3 phases** (fine granularity, strict dependency chain): Phase 61 KSH-01/02, Phase 62 KSH-03/04, Phase 63 KSH-05. All 5 mapped, no orphans, no duplicates.
 
 ### Pending Todos
 
-- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; the additive shapelet surface should be exposed to R/WASM bindings in a follow-up, not this milestone.
+- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; the additive SBD/k-Shape surface should be exposed to R/WASM bindings in a follow-up, not this milestone.
 
 ### Blockers/Concerns
 
-- **F-statistic 2-group adaptation** (research flag, Phase 58) — verify the existing `pub(crate) integrated_f_statistic` (full-curve) adapts to the 2-group scalar-distance case or needs a small new implementation. Non-blocking for the roadmap.
-- **Contracted-search determinism assumes single-process** (research flag, Phase 58) — current `seed_for_thread` seeding is single-machine; document the assumption, defer distributed reproducibility. Non-blocking.
-- **1D-curves-only scope** (research flag) — v0.33.0 is univariate curves only; multivariate/DTW-shapelet/ROCKET breadth (SHP-BREADTH) explicitly deferred. Document in rustdoc. Non-blocking.
-- **Elastic-distance choice** (research flag) — implementation uses z-normalized Euclidean; note elastic alignment as a preprocessing alternative. Non-blocking.
+- **Research flags (from SUMMARY.md)** — Phase 61 MEDIUM (FFT zero-padding / NCC normalization / lag indexing are numerical fundamentals; recommend `/gsd-plan-phase --research-phase 61` with known-answer tests cross-checked against tslearn/aeon); Phase 62 MEDIUM (shape-extraction eigenvector formulation, nalgebra ascending order, sign-fix criterion — `/gsd-plan-phase --research-phase 62`, two-group known-answer test before implementation); Phase 63 NONE (standard wrapper + re-exports + benchmark). Non-blocking for the roadmap.
+- **Approximate eigendecomposition for large m (>500)** — shape-extraction eigh is O(m³); for typical m ≤ 200 negligible. Deferred to a follow-up if profiling shows a bottleneck. No design impact now.
+- **1D-curves-only scope** — v0.34.0 is univariate curves only; multivariate SBD, variable-length series, and other clustering families (KSH-BREADTH) deferred. Document in rustdoc. Non-blocking.
 - Historical build/CI hazards (MEMORY.md) apply this implementation milestone: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds; prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; audit-milestone-no-tag does NOT apply (this ships code → tag as normal).
 
 ## Deferred Items
@@ -112,19 +107,20 @@ Items acknowledged and deferred, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
+| Shape-clustering | KSH-BREADTH (multivariate/variable-length SBD, hierarchical/other clustering families) | Deferred | v0.34.0 | future milestone |
 | Shapelets | LSH-01 (gradient learning-shapelets) — needs autodiff through the distance; ties to GAP-08 | Deferred | v0.33.0 | future milestone |
 | Shapelets | SHP-BREADTH (multivariate/DTW-shapelet/ROCKET) | Deferred | v0.33.0 | future milestone |
 | Kernel-methods | SVM-01 (native in-crate kernel-SVM / QP solver) — Gram export (GAK-05/06) covers the use case in the interim | Deferred | v0.32.0 | future milestone |
 | Kernel-methods | KRN-01 (additional curve kernels + kernel-PCA/SVM consumers reusing GAK Gram) | Deferred | v0.32.0 | future milestone |
-| Backlog | GAP-03/05/06/07/08 (k-Shape, FOptDes, PEER, wavelet regression, differentiable core) — carry forward, drawn top-first | Deferred | v0.32.0 | future milestones |
+| Backlog | GAP-05/06/07/08 (FOptDes, PEER, wavelet regression, differentiable core) — carry forward, drawn top-first | Deferred | v0.32.0 | future milestones |
 | API-breaking | APIB-01 — breaking removal of the 6 `#[deprecated]` forms from v0.30.0 | Deferred | v0.30.0 | future 1.0-readiness |
 
 ## Session Continuity
 
-Last session: 2026-09-02T00:00:00.000Z
-Stopped at: Phase 60 complete — all phases complete
+Last session: 2026-09-02T14:30:00.000Z
+Stopped at: Roadmap created for v0.34.0 (Phases 61–63)
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with `/gsd-plan-phase 61`

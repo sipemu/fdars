@@ -44,21 +44,21 @@ Explicitly excluded for v0.34.0.
 
 ## Traceability
 
-Populated during roadmap creation.
+Mapped during roadmap creation (2026-09-02). Every v1 requirement maps to exactly one phase — 100% coverage, no orphans, no duplicates.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| KSH-01 | TBD | Pending |
-| KSH-02 | TBD | Pending |
-| KSH-03 | TBD | Pending |
-| KSH-04 | TBD | Pending |
-| KSH-05 | TBD | Pending |
+| KSH-01 | Phase 61 | Pending |
+| KSH-02 | Phase 61 | Pending |
+| KSH-03 | Phase 62 | Pending |
+| KSH-04 | Phase 62 | Pending |
+| KSH-05 | Phase 63 | Pending |
 
 **Coverage:**
 - Milestone requirements: 5 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 5 ⚠️
+- Mapped to phases: 5 (Phase 61: KSH-01/02 · Phase 62: KSH-03/04 · Phase 63: KSH-05)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-02*
-*Last updated: 2026-09-02 after initial definition*
+*Last updated: 2026-09-02 after roadmap creation (traceability mapped, Phases 61–63)*
