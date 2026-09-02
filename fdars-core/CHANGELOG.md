@@ -5,6 +5,16 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0]
+
+### Added
+
+- **Shapelet distance core** (`shapelet`): a new `src/shapelet/` module for discovery-based shapelet analysis. `z_normalize_window`/`z_normalize_into` (per-window z-normalization, population std ddof=0, constant-window guard → zero vector, never NaN) and `shapelet_distance(shapelet_z, series, best_so_far) -> Result<(f64, usize), FdarError>` — the minimum over sliding windows of the z-normalized Euclidean distance, with an explicit `best_so_far` early-abandon parameter, returning `(distance, best-match offset)`. The `Shapelet` struct stores the z-normalized values plus provenance (source series/offset/length/quality). Scale- and offset-invariant matching (Ye & Keogh 2009).
+- **Shapelet discovery & ranking** (`shapelet`): `discover_shapelets(data, labels, config) -> Result<ShapeletSet, FdarError>` — candidate-subsequence generation across a length range (exhaustive or deterministic contracted/random sampling bounded by `max_candidates`, seeded), scored by discriminative quality via a `QualityMeasure` (`InfoGain` on the optimal distance-split threshold, default; or `FStatistic`), then top-K selection with self-similarity pruning (overlapping same-series candidates dropped) → a non-redundant `ShapeletSet`. `ShapeletDiscoveryConfig` (serde-gated) with sktime-compatible defaults. Reproducible: seeded sampling + `total_cmp` tie-break → byte-identical fits; sequential and `parallel` agree. Reference: sktime `RandomShapeletTransform`, pyts `ShapeletTransform`, Hills–Lines 2014.
+- **Shapelet transform** (`shapelet`): `shapelet_transform(&ShapeletSet, data) -> Result<FdMatrix, FdarError>` maps a curve set through a fitted `ShapeletSet` to an n×K distance-feature matrix. `shapelet_transform_fit(data, labels, config) -> Result<ShapeletTransformFit, FdarError>` discovers then transforms the training set; `ShapeletTransformFit::transform(new_data)` applies the identical stored shapelets/normalization out-of-sample (transform consistency within 1e-12).
+- **Bundled shapelet classifier** (`shapelet`): `shapelet_classifier_fit(data, labels, config) -> Result<ShapeletClassifierFit, FdarError>` — end-to-end discover → transform → classify pipeline; `ShapeletClassifier` selects the inner classifier (kNN default, per canonical Hills/Lines; LDA optional), reusing the existing `classification/` module on the n×K shapelet-distance features. `ShapeletClassifierFit::predict(new_data)` classifies new curves reusing the stored shapelets + inner classifier. Reference: sktime `ShapeletTransformClassifier`. A criterion `shapelet` benchmark is added.
+- All additive/non-breaking: existing public signatures unchanged; no new crate dependency (builds on `classification`, `distance`, `metric`, `parallel`, `FdMatrix`). Learning-shapelets (gradient) intentionally out of scope.
+
 ## [0.32.0]
 
 ### Added
