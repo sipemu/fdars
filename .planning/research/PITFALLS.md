@@ -1,6 +1,6 @@
 # Pitfalls Research
 
-**Domain:** k-Shape clustering + Shape-Based Distance (SBD) via FFT cross-correlation — Rust numerical FDA library (fdars-core v0.34.0)
+**Domain:** Optimal Experimental Design on PACE/BLUP sparse-FDA model (FOptDes) — Rust numerical FDA library (fdars-core v0.35.0)
 **Researched:** 2026-09-02
 **Confidence:** HIGH
 
@@ -8,494 +8,590 @@
 
 ## Critical Pitfalls
 
-### Pitfall 1: FFT Length Too Short — Circular Cross-Correlation Wraps and Corrupts Shifts
+### Pitfall 1: Wrong Σ_yi Assembly — Missing σ² Ridge or Misidentifying Who Carries Noise
 
 **What goes wrong:**
-The SBD between two series of length `n` is computed via the FFT of their cross-correlation. If the FFT is planned for length `n` (or any length < `2n - 1`), the linear cross-correlation wraps circularly — lags from the negative end alias onto lags at the positive end. The resulting NCC vector has wrong values at every lag, the argmax picks the wrong shift, and `sbd = 1 - max(NCC)` is silently incorrect. This is the most common FFT cross-correlation bug and is guaranteed to produce wrong results on any pair where the optimal shift is nonzero.
+The observation covariance matrix for curve i at selected points S is:
 
-The correct minimum FFT length for two series of length `n` is `2n - 1`. In practice, round up to the next power of two for efficiency:
 ```
-fft_len = (2 * n - 1).next_power_of_two()  // minimum 2n-1, rounded up
+Σ_yi = Φ_S diag(λ) Φ_Sᵀ + σ²I_{|S|}
 ```
-The existing ACF code in `seasonal/mod.rs` uses `(2 * n).next_power_of_two()` — this is safe (slightly larger than the minimum, not smaller). Use the same pattern.
+
+where Φ_S is |S|×K (eigenfunctions at selected times), λ is the K-vector of eigenvalues, and σ²
+is the scalar measurement-error variance. Two common errors:
+
+1. **Omitting σ²I entirely** — Σ_yi becomes rank-at-most-K (singular for |S| > K). Cholesky
+   fails. Prediction intervals collapse to zero. The Woodbury/Schur update formula blows up.
+
+2. **Adding σ² to the full covariance surface before calling this formula** — double-counting.
+   `pace_fpca.rs` comments explicitly warn: "Do NOT subtract σ² from the surface before
+   eigendecomposition — σ² enters only as the ridge term σ²I in Σ_yi." The same discipline
+   must hold here: eigenvalues λ and eigenfunctions Φ come from the PACE eigendecomposition of
+   the *smoothed* covariance (which already absorbed σ²); only the per-curve Σ_yi for the
+   design problem gets the +σ²I ridge.
+
+3. **Using the work-grid covariance matrix (m×m) instead of the observation covariance** — the
+   full m×m matrix is never assembled for the design step; only the |S|×|S| block at candidate
+   points is needed.
 
 **Why it happens:**
-Developers plan the FFT for the series length `n` (the natural "size of the data"). The cross-correlation of two length-`n` sequences has `2n - 1` meaningful lags; a length-`n` FFT discards half of them and wraps the rest. The rustfft API does not warn about this — it plans whatever length is requested.
+Developers conflate the PACE covariance surface (m×m smoothed bivariate covariance from
+`cov_irreg`) with the per-design-point covariance Σ_yi needed for BLUP/optimal-design math.
+The PACE paper uses consistent notation but the two matrices serve different roles.
 
 **How to avoid:**
-- Plan FFT and IFFT for `fft_len = (2 * n - 1).next_power_of_two()`.
-- Zero-pad both `x_znorm` and `y_znorm` to `fft_len` before FFT (append zeros, not prepend).
-- Validate with the shifted-copy test: `sbd(x, shift(x, k))` must achieve NCC = 1.0 (distance 0) at shift `k`, not at shift `k ± n`.
-- Mirror the existing `seasonal/mod.rs` ACF pattern which is correct: `let fft_len = (2 * n).next_power_of_two();`.
+- Copy the exact Σ_yi assembly from `pace_fpca.rs` lines 461–474: build Φ_S as |S|×K by
+  interpolating eigenfunctions at candidate times, then `Σ_S[row,col] = Σ_k φ_k(t_row) λ_k
+  φ_k(t_col)` plus δ_{row,col} σ²`.
+- Assert `sigma2 > 0` at the start of every design-criterion function (same guard as
+  `PaceFpcaConfig.sigma2` validation).
+- Add a test: with 1 design point and 1 eigenfunction, Σ_yi = λ φ(t)² + σ² is a scalar;
+  verify against hand-computed value.
 
 **Warning signs:**
-- `sbd(x, shift(x, k))` returns nonzero distance for any k ≠ 0.
-- The optimal shift returned by `sbd` is always 0 or always some wrap-around value near `fft_len - n`.
-- NCC vector has a noticeably asymmetric or multi-peaked shape for a simple shifted pair.
+- Cholesky fails immediately when |S| > K (singular Σ_yi without σ²I).
+- Predicted score variance is negative or the criterion is non-monotone as points are added.
+- `ComputationFailed` Cholesky errors on valid, non-degenerate inputs.
 
-**Phase to address:** Phase 61 (SBD distance core). The FFT length is determined at the point the FFT plan is created; this is the foundational numerical primitive.
-
-**Verification hook:**
-```rust
-// Shifted-copy test: SBD of a series with a shifted copy must be ~0.
-let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0];
-let shift_k = 3usize;
-let mut y = x.clone();
-y.rotate_right(shift_k);  // or build a time-shifted copy
-let (dist, s) = sbd(&x, &y).unwrap();
-assert!(dist < 1e-10, "sbd of shifted copy must be ~0, got {dist}");
-assert_eq!(s, shift_k as isize, "returned shift must equal the applied shift");
-```
+**Phase to address:** Phase 64 (core criterion evaluation — design-criterion function). Gate:
+verify Σ_yi values numerically against hand-computed formula for a 2-eigenfunction synthetic.
 
 ---
 
-### Pitfall 2: NCC Normalization by Count Instead of by Norms — SBD Is Wrong
+### Pitfall 2: Score Posterior Covariance — Inverting the Wrong Matrix
 
 **What goes wrong:**
-The normalized cross-correlation (NCC) in SBD is defined as the **coefficient-normalized** cross-correlation — divided by `‖x‖ · ‖y‖` (where `x` and `y` are the already-z-normalized series). This makes NCC bounded in `[-1, 1]` and the SBD formula `dist = 1 - max(NCC)` bounded in `[0, 2]`.
+The posterior covariance of scores given selected observations Y_S is:
 
-Three incorrect alternatives that silently produce wrong distances:
-
-1. **Biased count normalization:** divide each lag's cross-correlation sum by `n` (the biased estimator). This produces values with the same range as the unbiased version on average but is not bounded to `[-1, 1]` and differs from the Paparrizos & Gravano (2015) definition.
-2. **Unbiased count normalization:** divide by `n - |lag|`. Values near the extremes of the lag range (where only a few overlapping elements exist) blow up, producing NCC > 1 at large lags.
-3. **No normalization at all:** raw cross-correlation sums; distance is scale-dependent even after z-normalization because the L2 norms of different series are not exactly 1 post z-norm in finite-length arithmetic.
-
-The correct formula for the FFT-based NCC:
 ```
-cc_raw[s] = IFFT(FFT(x_znorm) · conj(FFT(y_znorm)))[s]   (with fft_len ≥ 2n−1)
-NCC[s]    = cc_raw[s] / (‖x_znorm‖₂ · ‖y_znorm‖₂)
-SBD(x,y)  = 1 − max_s NCC[s]
+Cov(ξ | Y_S) = (diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S)⁻¹
 ```
 
-The denominator `‖x_znorm‖₂ · ‖y_znorm‖₂` is computed from the original (pre-FFT) z-normalized vectors, not from the FFT output.
+This p×p matrix (p = ncomp) is cheap to invert for p ≤ 20. Two common errors:
+
+1. **Forgetting the prior term `diag(1/λ)`** — the matrix becomes σ⁻² Φ_Sᵀ Φ_S, which is rank
+   ≤ |S|. When |S| < K, it is singular. Even when |S| ≥ K, omitting the prior produces the
+   wrong formula (equivalent to uniform/improper prior on scores instead of the PACE Gaussian
+   prior).
+
+2. **Using the Woodbury identity in the wrong direction** — computing `Σ_yi^{-1}` via p×p
+   inversion is correct (Woodbury on the large n_i×n_i matrix), but some implementations
+   instead work with the big matrix and pay O(|S|³) per candidate. At |S| = m (work-grid
+   size, up to 51+ points), this is up to 1000× more expensive than the p×p version.
+
+3. **Recomputing from scratch vs. rank-1 update** — the greedy loop adds one point at a time.
+   If you recompute the full p×p inverse at each step by Cholesky-solving the p×p system, it
+   costs O(G · K³) per greedy step where G = number of candidates. If you instead track the
+   *running p×p matrix* M_S = diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S and do rank-1 updates
+   `M_{S∪{t}} = M_S + σ⁻² φ(t) φ(t)ᵀ`, each update is O(K²) and the new inverse follows
+   from the Sherman-Morrison formula in O(K²) as well. This is the efficient path but
+   correctness must be proven first.
 
 **Why it happens:**
-The biased and unbiased estimators are the standard statistical cross-correlation normalization; many signal-processing references use them. The coefficient normalization `‖x‖·‖y‖` is from the Pearson correlation definition applied to time-series shifts and is the specific form used by tslearn's `_normalized_cc`. Developers copy signal-processing references and miss this distinction.
+The Woodbury/matrix-inversion lemma has two equivalent forms; picking the wrong one (or forgetting
+the prior) silently produces a plausible-looking but incorrect matrix. No compile-time error flags
+this.
 
 **How to avoid:**
-- Compute `norm_x = x_znorm.iter().map(|v| v*v).sum::<f64>().sqrt()` and `norm_y` analogously before FFT.
-- Divide `cc_raw[s]` by `norm_x * norm_y` at every lag. Guard against the case where `norm_x * norm_y < 1e-10` (both series are constant — see Pitfall 3) by returning distance 1.0 in that case.
-- Do not use `n`, `fft_len`, or any lag-dependent denominator.
-- The IFFT output from rustfft is scaled by `fft_len` (rustfft does not divide by N on IFFT); divide the raw IFFT output by `fft_len` before applying the `‖x‖·‖y‖` normalization, or fold the `fft_len` scaling into the denominator.
+- Implement score-posterior covariance as the straightforward p×p Cholesky solve first:
+  assemble `M = diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S`, then invert via Cholesky. Verify against
+  the brute-force `Σ_yi^{-1}` Woodbury expansion on a 2-eigenfunction test case.
+- Known-answer check: with |S| = 0 (no observations), `Cov(ξ | ∅) = diag(λ)` (prior only);
+  verify the formula degenerates correctly (M = diag(1/λ), M^{-1} = diag(λ)).
+- Add rank-1 Sherman-Morrison update only after the brute-force version passes all tests,
+  with a side-by-side comparison assertion in tests.
 
 **Warning signs:**
-- NCC values outside `[-1, 1]` for any lag.
-- `sbd(x, x)` (self-distance) is not exactly 0.0 (it must be — NCC at lag 0 for a series with itself equals 1.0).
-- `sbd(x, y) ≠ sbd(y, x)` (asymmetry in the count-normalized variant due to the lag ordering).
+- A-optimality (trace of posterior covariance) *increases* when a point is added — this means
+  the formula is wrong (the trace must never increase; each new observation can only reduce or
+  maintain the posterior variance).
+- Posterior covariance is not positive definite (eigenvalues ≤ 0) even with reasonable inputs.
+- Score posterior variance equals prior variance diag(λ) even after adding points — omitted
+  Φ_Sᵀ Φ_S term.
 
-**Phase to address:** Phase 61 (SBD distance core).
-
-**Verification hook:**
-```rust
-// Self-distance must be exactly zero.
-let x = vec![1.0, 3.0, 2.0, 5.0, 4.0, 1.0];
-let (d_self, _) = sbd(&x, &x).unwrap();
-assert!(d_self.abs() < 1e-10, "sbd(x,x) must be 0, got {d_self}");
-
-// SBD symmetry: sbd(x,y) == sbd(y,x) up to floating point.
-let y = vec![2.0, 1.0, 4.0, 3.0, 0.0, 5.0];
-let (dxy, _) = sbd(&x, &y).unwrap();
-let (dyx, _) = sbd(&y, &x).unwrap();
-assert!((dxy - dyx).abs() < 1e-10, "sbd must be symmetric: {dxy} vs {dyx}");
-```
+**Phase to address:** Phase 64 (core criterion evaluation). Gate: monotone-decrease assertion
+on A-optimality trace; known-answer tests for |S|=0 and |S|=1 with analytic ground truth.
 
 ---
 
-### Pitfall 3: Z-Normalization Missing Before NCC — SBD Loses Shape Invariance
+### Pitfall 3: Integrated Prediction Variance — Missing Quadrature Weights or Mean Term
 
 **What goes wrong:**
-SBD requires both series to be **z-normalized before** computing the cross-correlation. Omitting the z-normalization step makes SBD sensitive to mean offset and amplitude — two series with the same shape but different offsets or scales return nonzero distance. The `1 - max(NCC)` formula is designed to measure shape similarity, which only works when the inputs have zero mean and unit-ish variance.
+The trajectory-reconstruction criterion is the integrated BLUP prediction MSE:
 
-The z-normalization must be applied to each series independently before NCC, even if the FdMatrix rows were normalized at a prior preprocessing stage (which may have used a different normalization or been applied to different data).
+```
+MSE(S) = ∫ Var(x̂(t) - x(t)) dt ≈ Σ_j w_j · Var(x̂(t_j) - x(t_j))
+```
 
-Specifically: use `z_normalize_window` (from `src/shapelet/distance.rs`, shipped in v0.33.0) on each series, which produces population-std normalization with the constant-window guard (`std ≤ 1e-12` → zero vector). Do not reuse any series-level normalization that was applied to the whole FdMatrix.
+where w_j are the Simpson weights from `helpers::simpsons_weights` over the work grid, and the
+pointwise prediction variance is:
+
+```
+Var(x̂(t_j) - x(t_j)) = φ(t_j)ᵀ Ω_S φ(t_j)
+```
+
+with Ω_S = Cov(ξ | Y_S) the posterior score covariance (pitfall 2). Three common errors:
+
+1. **Summing without weights** — `Σ_j Var(x̂(t_j))` instead of `Σ_j w_j · Var(x̂(t_j))`.
+   Produces the wrong value for non-uniform grids and fails to approximate the integral
+   for non-uniform work grids. Even for uniform grids, the result is off by a constant factor
+   equal to the grid spacing.
+
+2. **Omitting the mean-function term** — the BLUP prediction variance includes both score
+   uncertainty (through Ω_S) and any residual measurement noise not captured in the model.
+   In the PACE framework the correct integrated prediction variance is the weighted integral
+   of φ(t_j)ᵀ Ω_S φ(t_j), which already accounts for the full covariance structure via Ω_S.
+   If Ω_S is computed incorrectly (e.g., missing σ²I in Σ_yi), the integrated variance is
+   also wrong.
+
+3. **Not squaring the eigenfunction values** — computing `Σ_k Ω_S[k,k] φ_k(t_j)` (linear
+   combination) instead of `Σ_{k,l} Ω_S[k,l] φ_k(t_j) φ_l(t_j)` (quadratic form). The
+   off-diagonal terms of Ω_S are nonzero in general and must be included. This is the same
+   pattern as the confidence-band variance in `pace_fpca.rs` lines 562–576 — mirror that code.
 
 **Why it happens:**
-The `FdMatrix` used for clustering may already have been preprocessed. Developers assume "normalized input" means SBD can skip its own z-norm. In fact the SBD z-norm is an intrinsic part of the NCC computation, not a caller responsibility — both series must be independently z-normalized for each SBD call.
+Developers prototype with unweighted sums (simpler loop), then forget to add weights. The
+missing-weights version gives results that look numerically plausible but are dimensionally
+incorrect (units off by argvals-range / m).
 
 **How to avoid:**
-- Inside `sbd(x: &[f64], y: &[f64])`, always call `z_normalize_window(x)` and `z_normalize_window(y)` at the top of the function. Never trust the caller to have done this.
-- Reuse the v0.33.0 `shapelet::z_normalize_window` (or `z_normalize_into` for the allocation-free variant) — same convention, same `STD_EPS = 1e-12` constant-window guard.
-- The constant-window guard returns the zero vector for a constant series; in that case the cross-correlation is all zeros, `‖x‖·‖y‖ = 0`, and `sbd` should return distance 1.0 and shift 0 (documented policy).
+- Always call `simpsons_weights(&pace_result.argvals)` and store the result; never use a
+  uniform weight of `1.0` or `1.0/m`.
+- Mirror the confidence-band quadratic form in `pace_fpca.rs` exactly for the Ω_S quadratic
+  form — the code structure is identical.
+- Known-answer test: for a single-eigenfunction model with φ(t) = √2 sin(πt) on [0,1], the
+  prior integrated variance = λ · ∫ φ²(t) dt = λ · 1.0 (by L² orthonormality). With
+  Simpson weights on a 51-point grid, the integral should be ≈ 1.0 to within 1e-6. Adding
+  one observation at t* reduces it by λ² φ(t*)² / (λ φ(t*)² + σ²). Verify both against
+  analytic answers.
 
 **Warning signs:**
-- `sbd(x, x + constant)` returns nonzero for any nonzero constant.
-- `sbd(x, scale * x)` returns nonzero for any scale ≠ 1.
-- Clustering puts clearly similar-shaped but differently-offset curves in different clusters.
+- Integrated MSE for |S|=0 is not equal to `Σ_k λ_k` (total prior variance) when computed
+  correctly. (With Simpson weights on [0,1] and L²-orthonormal eigenfunctions, this identity
+  holds exactly in theory.)
+- Criterion value is proportional to m (grid size) instead of being grid-size–invariant.
+- Criterion does not converge as m increases.
 
-**Phase to address:** Phase 61 (SBD distance core).
-
-**Verification hook:**
-```rust
-let x = vec![1.0, 2.0, 3.0, 2.0, 1.0];
-// Offset invariance.
-let x_offset: Vec<f64> = x.iter().map(|v| v + 100.0).collect();
-let (d_off, _) = sbd(&x, &x_offset).unwrap();
-assert!(d_off < 1e-10, "SBD must be offset-invariant: {d_off}");
-// Scale invariance.
-let x_scaled: Vec<f64> = x.iter().map(|v| v * 50.0).collect();
-let (d_sc, _) = sbd(&x, &x_scaled).unwrap();
-assert!(d_sc < 1e-10, "SBD must be scale-invariant: {d_sc}");
-```
+**Phase to address:** Phase 64 (core criterion evaluation). Gate: identity check
+`MSE(∅) ≈ Σ_k λ_k` on a synthetic 2-eigenfunction dataset with orthonormal eigenfunctions.
 
 ---
 
-### Pitfall 4: Wrong Lag Extraction from FFT Output — fftshift Omission
+### Pitfall 4: Optimality-Sign Convention — Criterion Must Non-Increase as Points Are Added
 
 **What goes wrong:**
-The IFFT of `FFT(x) · conj(FFT(y))` produces the circular cross-correlation in standard FFT output ordering. Lag 0 is at index 0; positive lags `+s` are at indices `1, 2, ..., s`; negative lags `-s` are at indices `fft_len - s, ..., fft_len - 1`. Without applying `fftshift` (reordering to put lag 0 in the center), the `argmax` picks the wrong shift — specifically, a lag that corresponds to `fft_len - true_lag` rather than `true_lag` when the optimal shift is negative.
+Both A-optimality (trace of posterior covariance) and D-optimality (log-det of posterior
+covariance) must **decrease or stay flat** as design points are added — more information always
+reduces or maintains posterior uncertainty. In the greedy loop, the algorithm selects the point
+that **minimizes** the criterion. Two sign errors:
 
-For SBD the convention is: the returned shift `s` is the integer by which series `y` should be cyclically shifted (or equivalently, `x` advanced by `-s`) to maximally align with `x`. This shift is in the range `-(n-1) .. +(n-1)`. Extracting it requires converting the raw argmax index back to a signed lag:
-```
-raw_argmax = argmax(NCC over 0..fft_len)
-shift = if raw_argmax <= n-1 { raw_argmax as isize }
-        else { raw_argmax as isize - fft_len as isize }
-```
-(Only the first `n` and last `n-1` positions of the IFFT output correspond to meaningful lags; the middle positions are zero-padded artifacts.)
+1. **D-optimality sign flip** — `log det Cov(ξ|Y_S)` is always ≤ 0 (since all eigenvalues of
+   the posterior covariance are ≤ the prior eigenvalues λ_k ≤ some λ_max). Implementing
+   `+det` instead of `-log det`, or forgetting that minimizing log-det *increases* information
+   (D-optimal is max-det *information*, min-det *covariance*). The correct objective to
+   *minimize* is `log det Cov(ξ|Y_S)` (equivalently `-log det I(S)` where I is the
+   information matrix). Greedy *minimization* of this quantity is correct.
+
+2. **Monotonicity failure** — if the objective ever increases when a new point is selected, the
+   implementation has a bug. The mathematical property is: adding a point to S can only reduce
+   or maintain `trace Cov(ξ|Y_{S∪{t}}) ≤ trace Cov(ξ|Y_S)` and
+   `log det Cov(ξ|Y_{S∪{t}}) ≤ log det Cov(ξ|Y_S)` because the posterior covariance is a
+   decreasing-in-information semidefinite sequence.
+
+3. **Treating "larger = better" criterion as minimization** — some formulations express
+   D-optimality as maximizing the information (det of Fisher matrix). When translating from
+   such a reference, forgetting to negate produces a maximizer in the greedy loop, which
+   selects the *worst* point at each step.
 
 **Why it happens:**
-Developers compute `argmax(cc_raw)` without converting the raw FFT index to a signed lag. The bug is invisible when the optimal shift is 0 or when a small positive shift is the global optimum. It surfaces on data with large negative shifts or when the optimal alignment requires the second series to be left-shifted.
+D-optimality is expressed inconsistently across references — some maximize log-det information,
+some minimize log-det covariance. The sign convention is easy to flip when adapting formulae
+from different papers.
 
 **How to avoid:**
-- After IFFT, extract only the `2n - 1` meaningful lag positions: the first `n` elements (lags `0` to `n-1`) and the last `n-1` elements (lags `-(n-1)` to `-1`) of the `fft_len`-element IFFT output.
-- Apply the argmax over only those `2n - 1` values (not over the full `fft_len` buffer) to avoid picking a zero-pad artifact.
-- Convert the raw index to a signed shift using the formula above.
-- Test with negative shifts: `sbd(shift(x, +3), x)` must return shift `-3` (not `fft_len - 3`).
+- Define a single `DesignCriterion` enum: `AOpt` (minimize trace Cov) and `DOpt` (minimize
+  log-det Cov). Both are minimized by the greedy loop.
+- Add a monotone-decrease assertion as a test: run greedy selection for K+1 steps on a
+  synthetic dataset and assert `criterion[k+1] <= criterion[k] + 1e-12` for all k.
+- For D-optimality, verify: with |S|=0, log-det = Σ_k log λ_k. With |S|=m (full grid),
+  log-det approaches -∞ as σ²→0. Always log-det ≤ log-det at previous step.
 
 **Warning signs:**
-- `sbd(y_shifted_right, x)` returns a positive shift equal to `fft_len - k` rather than `-k`.
-- Applying the returned shift to re-align two series makes them more misaligned, not less.
-- Shift sign tests fail: expected `-3`, got `fft_len - 3`.
+- Any greedy step produces `criterion[k+1] > criterion[k]`.
+- With many design points, A-optimality criterion stays at the prior value (Σ_k λ_k).
+- D-optimality criterion is positive (would require all posterior eigenvalues > 1).
 
-**Phase to address:** Phase 61 (SBD distance core).
-
-**Verification hook:**
-```rust
-// Negative-shift test.
-let x = vec![0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0];
-let y = vec![0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 0.0];  // x shifted right by 2
-let (d, s) = sbd(&x, &y).unwrap();
-assert!(d < 1e-6, "sbd of shifted copy must be near 0: {d}");
-// Shift must be ±2, not fft_len - 2.
-assert!(s.abs() <= 3, "shift must be small, not a wrap-around: {s}");
-```
+**Phase to address:** Phase 64 (core criterion evaluation) and Phase 65 (greedy selection
+loop). Gate: monotone-decrease test on a 2-eigenfunction synthetic with both AOpt and DOpt.
 
 ---
 
-### Pitfall 5: Shape Extraction Centroid Is the Wrong Eigenvector (or No Eigenvector)
+### Pitfall 5: Near-Duplicate Candidate Points and σ²→0 — Rank Deficiency in Σ_yi
 
 **What goes wrong:**
-The k-Shape centroid is **not** the arithmetic mean of the aligned members. It is the **top eigenvector** of the matrix:
-```
-M = S^T · (I − (1/n) · 1·1^T) · S    (the "shape extraction" matrix)
-```
-where `S` is the `n × m` matrix of shift-aligned, z-normalized member curves (one row per cluster member). `M` is `m × m` symmetric positive semidefinite. The centroid is the eigenvector corresponding to the **largest eigenvalue** of `M`.
+When two candidate points t_a ≈ t_b are both in the selected set S, the rows of Φ_S become
+nearly identical (φ_k(t_a) ≈ φ_k(t_b) by continuity of eigenfunctions). Σ_yi becomes
+nearly singular — its smallest eigenvalue approaches σ², and the Cholesky factorization either
+fails or is numerically unreliable. Two related failure modes:
 
-Common wrong implementations:
+1. **Collinear candidates from a fine candidate grid** — if the candidate set is the full work
+   grid (51+ evenly spaced points), consecutive candidates at spacing h ≈ 0.02 may produce
+   near-duplicate eigenfunction rows. The PACE ridge stabilization in `pace_fpca.rs` (1e-8
+   retry) guards against this but the retry is a safety net, not a design choice.
 
-1. Using the arithmetic mean of `S` rows as the centroid (this is what k-means does; k-Shape does not).
-2. Using the bottom eigenvector (nalgebra's `symmetric_eigen()` returns eigenvalues in **ascending** order — taking index 0 gives the smallest, not the largest).
-3. Computing the SVD of `S` and taking the first right singular vector (this is the top eigenvector of `S^T S`, not of `S^T (I - 11^T/n) S` — the centering projection is missing).
-4. Computing eigenvalues of `S · S^T` (the `n × n` Gram, not the `m × m` shape matrix) and using the wrong eigenvector.
+2. **σ²→0 with exact duplicates** — if σ² is very small (e.g., 1e-6) and candidates include
+   exact work-grid duplicates, the diagonal of Σ_yi is dominated by the low-rank part
+   Φ_S diag(λ) Φ_Sᵀ and the ridge is invisible. The Cholesky encounters a near-zero diagonal
+   and returns ComputationFailed.
 
 **Why it happens:**
-The Rayleigh-quotient / top-eigenvector formulation is stated in Paparrizos & Gravano (2015) Eq. 1–4 but the centering projection `(I - 11^T/n)` is easy to skip — it looks like it just centers the rows, which a developer may do as a preprocessing step before building `M = S^T S`. But `S^T (I - 11^T/n) S ≠ S^T S` unless the rows of `S` already sum to zero, which they do not in general even after z-normalization (z-normalization makes population std ≈ 1 and mean ≈ 0, but the mean of the z-normalized column-wise matrix `S` is not exactly zero unless the rows are already mean-subtracted within each time index).
+The candidate set is often taken as the work grid for convenience, making consecutive selections
+inherently close. σ² is sometimes set small for "near-noiseless" scenarios, inadvertently
+removing the only regularization.
 
 **How to avoid:**
-- Build `M` as `S^T · P_orth · S` where `P_orth = I - (1/n) · ones · ones^T` is the centering projection.
-- Use `nalgebra::DMatrix::symmetric_eigen()` on `M`. Sort eigenvalues in **descending** order (negate the ascending order from nalgebra: index the last eigenvector, not the first). See `pace_fpca.rs:186-191` for the established ascending-to-descending sort pattern using `pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(Equal))`.
-- Take the eigenvector at the largest eigenvalue — column index corresponding to the largest eigenvalue after sorting.
-- After extracting the eigenvector, re-z-normalize it (see Pitfall 6).
+- **Do not allow duplicate candidate times in S.** Track selected indices; exclude already-
+  selected candidates from the greedy search at each step.
+- **Validate σ² > minimum floor** (e.g., 1e-8) at the design entry point — mirror the
+  `pace_fpca.rs` validation which requires `sigma2 > 0` strictly.
+- **Carry the same ridge-retry logic** from `pace_fpca.rs` (add 1e-8 and retry once) into
+  the criterion evaluation function, not just the BLUP solve.
+- **Thin candidate grids** when the work grid is fine: take every other point, or allow the
+  caller to supply a coarser candidate set.
 
 **Warning signs:**
-- Centroids converge to the mean curve (arithmetic average), not a shape representative.
-- Clusters do not improve after centroid update — the centroid step has no effect.
-- `centroid.dot(mean_of_members)` is near zero (centroid is orthogonal to members), which happens when the bottom eigenvector is used.
-- k-Shape applied to two obviously shifted-motif groups returns centroids that look like noise.
+- Cholesky fails for small σ² (< 1e-4) even for valid well-separated design points.
+- Greedy loop selects the same or adjacent time point twice.
+- Criterion does not improve after several steps despite valid starting conditions.
 
-**Phase to address:** Phase 62 (k-Shape fit — shape extraction centroid).
-
-**Verification hook:**
-```rust
-// Two-group shifted-motif recovery.
-// Group 0: 5 copies of [0,1,2,1,0,...] at offset 0.
-// Group 1: 5 copies of [0,0,1,2,1,...] (shifted right by 1).
-// After fit with n_clusters=2, centroids must correlate > 0.95 with the group prototype.
-let res = kshape_fd(&data, &KShapeConfig { n_clusters: 2, ..Default::default() }).unwrap();
-// Centroid 0 shape must resemble group prototype 0 (up to sign — see Pitfall 6).
-```
+**Phase to address:** Phase 64 (criterion evaluation — ridge-retry) and Phase 65 (greedy
+loop — duplicate exclusion). Gate: run greedy selection for m steps (full grid) and assert
+no index appears twice; verify Cholesky succeeds for σ² = 1e-4 on a 2-eigenfunction synthetic.
 
 ---
 
-### Pitfall 6: Sign Ambiguity of the Centroid Eigenvector — Inverted Centroid
+### Pitfall 6: Eigenfunctions at Candidate Points — Interpolation vs. Work-Grid Access
 
 **What goes wrong:**
-The top eigenvector of a symmetric matrix is unique up to sign: both `v` and `-v` are valid eigenvectors. When used as a k-Shape centroid, the wrong sign causes the centroid to be the **mirror image** of the cluster's representative shape. In the next iteration, member curves are SBD-aligned to an inverted centroid, the optimal shift is in the wrong direction, and the algorithm oscillates or converges to a degenerate solution.
+`PaceFpcaResult.eigenfunctions` is an m×K `FdMatrix` storing eigenfunction values on the
+**work grid** only (at indices 0..m-1 corresponding to `pace_result.argvals[0..m-1]`). A
+candidate point t* from a user-supplied set may not lie exactly on the work grid.
 
-The sign convention from the Paparrizos & Gravano paper and from tslearn's implementation: choose the sign of the eigenvector such that it correlates **positively** with the cluster members. Specifically, compute `dot(v, mean_of_S_rows)` — if it is negative, flip `v`.
+Two errors:
+
+1. **Direct index access instead of interpolation** — indexing `eigenfunctions[(j, k)]` where
+   `j` is an integer index into the work grid, then treating the grid index as if it were a
+   continuous time point. If the caller supplies candidate times that are off-grid, there is
+   no corresponding index.
+
+2. **Linear interpolation beyond the grid range** — `helpers::linear_interp` clamps or
+   extrapolates; candidate times outside `[argvals[0], argvals[m-1]]` produce undefined
+   extrapolated values that can be arbitrarily wrong.
 
 **Why it happens:**
-Nalgebra's `symmetric_eigen` returns eigenvectors with arbitrary sign. The existing `fix_svd_signs` / `dominant_sign_negative` infrastructure in `regression.rs` solves a similar problem for FPCA (make the dominant entry positive). But that convention is not the right one for k-Shape centroids — the dominant-entry rule may still produce a centroid that anti-correlates with most members if the dominant entry happens to be negative on the prototype curve.
+The prototype uses the work grid itself as the candidate set (integer indices 0..m-1), so
+direct array access works. When the API is later generalized to accept arbitrary candidate
+times, the same index-based access silently returns wrong values.
 
 **How to avoid:**
-- After extracting the top eigenvector `v`, compute the sum `dot_sum = Σ_i dot(S_row_i, v)`.
-- If `dot_sum < 0`, negate `v`: `v = -v`.
-- This is the tslearn convention and is equivalent to "the centroid correlates positively with the cluster mean."
-- Do **not** reuse `dominant_sign_negative` from `regression.rs` for this — it applies a different convention.
+- In the canonical design API, accept candidate times as `&[f64]` and interpolate
+  eigenfunctions at each candidate via `helpers::linear_interp(&pace_result.argvals,
+  &ef_col, t_candidate)` — exactly the pattern in `pace_fpca.rs` line 457.
+- Validate that all candidate times lie within the work grid range; return
+  `FdarError::InvalidParameter` for out-of-range candidates.
+- When candidates *are* the work grid, take the fast path: extract the column directly
+  from `eigenfunctions.column(k)` without interpolation. Document this optimization clearly.
 
 **Warning signs:**
-- Centroid looks like the "upside-down" version of the expected shape.
-- Inertia (sum of SBD to assigned centroid) is large even after convergence on a clean motif dataset.
-- Adding a sign-flip test that checks `dot(centroid, prototype) > 0` fails on synthetic data.
+- Design criterion computed from integer indices produces wrong values when candidate set
+  is a rescaled grid (e.g., [0.0, 0.1, 0.2] vs. work grid [0.0, 0.02, 0.04, ...]).
+- Off-grid candidate times silently return extrapolated eigenfunction values.
 
-**Phase to address:** Phase 62 (k-Shape fit — shape extraction centroid).
-
-**Verification hook:**
-```rust
-// After shape extraction for a cluster whose members all look like [0,1,2,1,0]:
-let centroid = shape_extract(&s_matrix).unwrap();
-let member_mean: Vec<f64> = /* arithmetic mean of S rows */;
-let dot: f64 = centroid.iter().zip(member_mean.iter()).map(|(a,b)| a*b).sum();
-assert!(dot > 0.0, "centroid must correlate positively with member mean, dot={dot}");
-```
+**Phase to address:** Phase 64 (criterion evaluation). Gate: compute criterion for a
+candidate set that is a strict *subset* of the work grid (off-grid relative to a coarser
+index space) and verify eigenfunctions are correctly interpolated.
 
 ---
 
-### Pitfall 7: Members Not Shift-Aligned to the Current Centroid Before Shape Extraction
+### Pitfall 7: Greedy Argmin Determinism — Ties Must Break Deterministically
 
 **What goes wrong:**
-The shape extraction matrix `M = S^T (I - 11^T/n) S` requires `S` to contain the shift-aligned versions of each member curve. "Shift-aligned" means each member `x_i` has been cyclically shifted by the optimal shift `s_i = argmax_s NCC(centroid, x_i)` from the previous SBD call.
+When two or more candidate points yield the same (or numerically indistinguishable) criterion
+value, the greedy selection is ambiguous. If the tie-breaking relies on iteration order of a
+HashMap, parallel rayon iteration order, or float comparison instability, the selected design
+is non-deterministic across runs or platforms.
 
-If the raw (unaligned) member curves are used to build `S`, the extracted centroid averages across time-misaligned curves and is meaningless — it captures phase noise, not shape. The algorithm will not converge.
+Two failure modes:
 
-This is a two-step per-member operation per iteration: (1) compute SBD to get the optimal shift `s_i`, (2) circularly shift the z-normalized member by `s_i` before inserting it as a row of `S`. The SBD step in the assignment phase gives the cluster label; the shift from that same SBD call must be stored and reused in the centroid update phase.
+1. **Parallel candidate sweep with rayon** — `iter_maybe_parallel!(candidates).map(...)
+   .min_by(...)` with rayon does not guarantee which tied minimum is returned; the result
+   depends on thread scheduling. This violates `pace_fpca.rs`'s determinism test pattern.
+
+2. **Float equality without tolerance** — two candidates may produce criterion values that
+   differ by 1e-16 due to floating-point ordering of operations. A strict `<` comparison
+   picks whichever appears first in a sequential sweep; this *is* deterministic but brittle —
+   a minor refactor of the inner loop can silently reorder candidates.
 
 **Why it happens:**
-The assignment step outputs `cluster[i]` (which cluster curve `i` belongs to). Developers use only the cluster label and discard the shift. The centroid update then uses the original FdMatrix rows, not the shifted versions.
+Developers parallelize the candidate sweep for speed and forget that `min_by` over a parallel
+iterator is not stable. The problem may not appear in tests (which use small grids where ties
+are unlikely) but surfaces in production with many candidates.
 
 **How to avoid:**
-- `sbd` must return both the distance and the optimal shift: `fn sbd(x: &[f64], y: &[f64]) -> Result<(f64, isize), FdarError>`.
-- During the assignment sweep, store `shifts[i] = s_i` alongside `cluster[i]`.
-- In the centroid update, for cluster `c`, collect all `i` with `cluster[i] == c`, z-normalize `data.row(i)`, circularly shift by `shifts[i]`, and insert as row `i` of `S`.
-- The circular shift is a cyclic rotation of the z-normalized row vector; it is not a padding operation.
+- **Sequential sweep first.** In Phase 65, implement the greedy candidate sweep sequentially
+  (not via rayon). Use `Iterator::enumerate().min_by(...)` on a sorted candidate list; ties
+  break by index (lower index wins). This is deterministic and fast for K ≤ 51 candidates.
+- **Parallelize only the criterion evaluation**, not the argmin. Collect all criterion values
+  into a `Vec`, then take the sequential `argmin` with index tie-breaking.
+- **Add a determinism test** (mirror `test_determinism` from `pace_fpca.rs`): run
+  `greedy_design(...)` twice on the same inputs; assert the selected point sequences are
+  identical via `assert_eq!`.
+- **Document** that parallel feature does not change the selected design, only the evaluation
+  speed.
 
 **Warning signs:**
-- After one iteration, centroids look like blurred or flat versions of the input curves (phase-averaging artifact).
-- Inertia decreases by less than 1% per iteration from the start, even on a clean two-group dataset.
-- Centroids are visually different from any individual member.
+- Selected design differs between two identical calls in the parallel build.
+- Design test fails intermittently with different selected point orderings.
+- `cargo test -- --test-threads=1` passes while `cargo test` fails (thread-scheduling flakiness).
 
-**Phase to address:** Phase 62 (k-Shape fit). The `sbd` signature in Phase 61 must expose the shift return value so Phase 62 can store it.
-
-**Verification hook:**
-- Run k-Shape on two clean groups of five identical shifted-motif curves each.
-- After convergence, check: `centroid_0.corr(prototype_0) > 0.99` and `centroid_1.corr(prototype_1) > 0.99`.
-- If alignment is broken, centroids will have much lower correlation with their prototypes.
+**Phase to address:** Phase 65 (greedy selection). Gate: determinism assertion on identical
+inputs; verify greedy output is identical with and without `--features parallel`.
 
 ---
 
-### Pitfall 8: Centroid Not Re-Z-Normalized After Shape Extraction
+### Pitfall 8: Greedy O(G·p·cost) Blowup — Correctness First, Then Efficiency
 
 **What goes wrong:**
-After extracting the top eigenvector `v` as the new centroid, `v` has arbitrary L2 norm (it is an eigenvector, normalized to unit L2 by the eigendecomposition). When `v` is used as the reference in the next iteration's SBD calls, the NCC formula divides by `‖centroid‖ · ‖member‖`. If `‖centroid‖ ≠ 1` (which it will not be in general as a unit L2 eigenvector), the NCC denominator is wrong, and the distances are miscalibrated.
+The greedy loop evaluates the design criterion at each of G candidate points for each of
+n_select greedy steps. If the criterion re-assembles Σ_yi from scratch at each evaluation,
+total cost is O(n_select · G · |S|²·K + K³). For G = 51, K = 5, n_select = 10, this is
+fully manageable (seconds). But if the candidate grid is large (G = 1000, K = 20,
+n_select = 50), naive re-evaluation becomes a bottleneck — and the temptation is to cache
+the intermediate matrices incorrectly.
 
-The paper and tslearn both z-normalize the extracted eigenvector before using it as the centroid in the next iteration. This is a separate z-normalization from the population-std normalization applied to the member curves — it is applied to the `m`-dimensional eigenvector itself.
+Two failure modes:
+
+1. **Incorrectly caching the Cholesky factor of Σ_yi across candidates** — Σ_yi depends on
+   which points S are selected, not the candidate being evaluated. The same Σ_yi is valid
+   for all G candidates at a given greedy step (since S is fixed at that step). Caching
+   across *greedy steps* is wrong; caching across *candidates within one step* is correct.
+
+2. **Implementing the rank-1 Sherman-Morrison update before the brute-force version is
+   verified** — the update formula is more complex and easy to get wrong. A subtle sign error
+   in the rank-1 update produces plausible-looking but wrong posterior covariances.
 
 **Why it happens:**
-The eigenvector is already L2-normalized to unit length by nalgebra, so the implementer assumes it is "normalized enough." But SBD z-normalization is population-std normalization (mean-zero, std-one), not L2-unit-norm normalization. These are different: a unit-L2 vector has `‖v‖ = 1` but may have nonzero mean and `std = 1/√m`.
+Performance anxiety drives optimization before correctness. The PACE `pace_fpca.rs` comment
+structure is a guide: correctness first, then optimization, each with benchmark evidence.
 
 **How to avoid:**
-- After extracting `v` as the top eigenvector, apply `z_normalize_window(&v)` to get the centroid for the next iteration.
-- Store the centroid already-normalized in the `KShapeResult::centroids` field (same convention as `Shapelet.values` in the shapelet module — stored pre-normalized).
+- **Milestone discipline:** implement correctness-first brute-force in Phase 64; benchmark
+  in Phase 65 if needed; add rank-1 updates only if benchmark shows a hotspot with G > 200.
+- **The correct caching structure:** at each greedy step, pre-compute `M_S =
+  diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S` once (K×K), then evaluate the criterion for each candidate t*
+  as a rank-1 update `M_{S∪{t*}} = M_S + σ⁻² φ(t*)φ(t*)ᵀ` without mutating M_S. This is
+  already O(K²) per candidate — fast enough for K ≤ 20, G ≤ 1000.
+- **Add a `#[must_use]` annotation** on the criterion function so the compiler warns if the
+  result is discarded in a loop (a subtle correctness check).
 
 **Warning signs:**
-- SBD distances to the centroid are systematically different from distances between two member curves of similar shape.
-- Inertia is not monotonically non-increasing across iterations (renormalization error perturbs the objective).
+- Criterion values at step k+1 are identical to step k (M_S was mutated instead of copied).
+- Benchmarks show that criterion evaluation scales as O(G²) rather than O(G·K²).
 
-**Phase to address:** Phase 62 (k-Shape fit — centroid update step).
-
-**Verification hook:**
-- After every centroid update, assert `mean(centroid).abs() < 1e-10` and `std(centroid) ≈ 1.0 ± 1e-6` before the next assignment step.
+**Phase to address:** Phase 64 (correctness) and Phase 65 (greedy — only optimize if
+benchmark evidence warrants).
 
 ---
 
-### Pitfall 9: Empty Cluster During k-Shape Iterations — Algorithm Panics or Produces Invalid State
+## Codebase Integration Pitfalls
+
+### Pitfall 9: Additive/Non-Breaking Constraint — R and WASM Bindings + 28 Examples
 
 **What goes wrong:**
-At any iteration, a cluster may lose all its members if SBD-distances pull every curve to other centroids. This happens most often when `k > number_of_natural_clusters` (the overpartitioned case) or when a centroid is initialized too close to another. Without a recovery mechanism, the centroid update for the empty cluster will:
-- Index into an empty slice → panic or undefined behavior.
-- Produce a NaN centroid (eigendecomposition of a zero matrix).
-- Leave the centroid unchanged (from the previous iteration), causing the cluster to stay empty forever.
+FOptDes is a new top-level module (`optimal_design.rs` or `optimal_design/`), but any change
+to re-exports in `src/lib.rs` or `src/prelude.rs` can break R bindings, WASM/JS bindings,
+or the 28 `[[example]]` entries if existing public names are shadowed, removed, or
+their signatures changed.
+
+Specific risks:
+- Adding a `use pace_fpca::PaceFpcaResult` re-export that conflicts with an existing
+  `use crate::pace_fpca::PaceFpcaResult` in calling code.
+- Changing `PaceFpcaResult` to add fields (breaks `#[non_exhaustive]`-based struct-update
+  syntax in callers — though `#[non_exhaustive]` already prevents callers from constructing
+  it, so *reading* new fields is safe).
+- Adding a function name that collides with an existing name in `prelude.rs`.
 
 **Why it happens:**
-k-Shape shares this failure mode with k-means but has no established "absorb the nearest point" recovery documented in the original paper. tslearn handles it by re-initializing the empty cluster's centroid to a random member from the dataset. The existing `kernel_kmeans.rs` uses the "farthest point from its current cluster" strategy.
+Milestone-v0.35.0 adds real code and a crates.io publish (unlike audit milestones). Every
+lib.rs edit risks a public-API change.
 
 **How to avoid:**
-- Mirror `kernel_kmeans.rs`'s `recover_empty_clusters` pattern: after each assignment step, identify empty clusters and reassign the point currently maximizing `sbd(point, assigned_centroid)` to the empty cluster.
-- Alternatively (and simpler to implement correctly): re-initialize the empty cluster centroid to a randomly selected data point (using the per-restart seed with the `seed + restart_idx` convention).
-- Guard the shape extraction: if `cluster_size[c] == 0`, skip the eigenvector computation for cluster `c` and log a warning or run the recovery.
-- Never panic on an empty cluster — return `FdarError::ComputationFailed` only if recovery fails after `max_iter` attempts.
+- Add `pub mod optimal_design;` and `pub use optimal_design::{...};` in `lib.rs`; never
+  modify or remove existing re-exports.
+- Run `cargo test -p fdars-core --features linalg` — all 28 examples and existing tests must
+  still compile and pass.
+- Check `cargo doc --features linalg` builds without errors (doc tests cover re-export
+  consistency).
+- Confirm no name collision: `grep -r "optimal_design\|foptdes\|greedy_design" fdars-core/src/`
+  before choosing function names.
 
 **Warning signs:**
-- `thread 'test' panicked at 'called Option::unwrap() on a None value'` during centroid update.
-- Final cluster assignments have some cluster label appearing zero times.
-- Inertia is `NaN` or `Inf` after one iteration.
+- Any existing doc-test fails after adding the new module.
+- `cargo test --examples` fails on an example unrelated to FOptDes.
 
-**Phase to address:** Phase 62 (k-Shape fit).
-
-**Verification hook:**
-```rust
-// k > natural clusters test (same as kernel_kmeans smoke test).
-let k = 4;  // but data has only 2 natural groups
-let res = kshape_fd(&data, &KShapeConfig { n_clusters: k, ..Default::default() }).unwrap();
-// Every cluster label in 0..k appears at least once.
-let mut sizes = vec![0usize; k];
-for &c in &res.cluster { sizes[c] += 1; }
-assert!(sizes.iter().all(|&s| s >= 1), "empty cluster survived: {sizes:?}");
-```
+**Phase to address:** Every phase (Phase 64, 65 both). Gate: run the full test suite including
+`--examples` before committing each phase.
 
 ---
 
-### Pitfall 10: Objective Non-Monotonicity — k-Shape Inertia Increases Mid-Run
+### Pitfall 10: Column-Major FdMatrix Indexing — Row vs. Column Off-by-One
 
 **What goes wrong:**
-k-Shape's objective (sum of SBD distances from each curve to its assigned centroid's SBD) is guaranteed to be non-increasing at the assignment step. The centroid update step, however, does not guarantee a decrease — specifically, if the centroid sign is flipped incorrectly (Pitfall 6), the alignment step in the next assignment uses an inverted centroid, producing larger SBD distances than before the update. The result is oscillation: the algorithm does not converge and `converged = false` is the permanent status.
+`FdMatrix` uses column-major layout: `element (row, col)` is at flat index `row + col * nrows`.
+The eigenfunctions matrix is `m × K` (m rows = work-grid points, K columns = components).
+Accessing eigenfunctions as if they were row-major produces transposed data.
 
-Also: if the `n_init` restarts are compared by total inertia but inertia is computed on a different (e.g., unaligned) basis across restarts, the best-restart selection is meaningless.
+In `pace_fpca.rs`, the eigenfunctions are accessed as `eigenfunctions[(j, k)]` where `j` is
+the work-grid index and `k` is the component. The FOptDes code must use the same convention.
+
+Specific mistake: building Φ_S as a local K×|S| matrix in *row-major* order (Rust's natural
+`Vec<Vec<f64>>` layout) and then multiplying it as if it were column-major. The matrix-vector
+product `Φ_S diag(λ) Φ_Sᵀ` gives the wrong result if Φ_S is transposed.
+
+**Why it happens:**
+Rust's `Vec<Vec<f64>>` is naturally row-major. When assembling a local matrix for the design
+problem, developers use `phi[k][j]` (component k, observation j) while the math uses
+`Φ_S[j,k]` (observation j, component k). The transposition silently computes
+`Φ_Sᵀ diag(λ) Φ_S` (K×K) instead of `Φ_S diag(λ) Φ_Sᵀ` (|S|×|S|).
 
 **How to avoid:**
-- Track inertia using SBD-to-assigned-centroid, computed **after** the assignment step with the current centroids (not before updating centroids). This is the standard k-means convergence check.
-- Convergence criterion: `|prev_inertia - inertia| / prev_inertia < tol` OR labels unchanged from the previous iteration (same `tol = 1e-4` and `max_iter = 300` defaults as `KernelKmeansConfig`).
-- Use a signed-label-based convergence check: if `new_cluster == old_cluster`, converge regardless of inertia change.
-- If inertia increases more than `tol` for 3+ consecutive iterations, this indicates a sign bug (Pitfall 6) — add a debug assertion.
+- Use the same local matrix layout as `pace_fpca.rs`: `phi_i[j * actual_ncomp + k]` (row-major,
+  observation index j is the outer loop, component k is the inner). When porting this layout
+  to FOptDes, `phi_s[j * K + k]` means "at design point j, component k".
+- For the Σ_yi assembly, mirror lines 461–474 of `pace_fpca.rs` verbatim and add a
+  `// FOptDes port of pace_fpca.rs:461-474` comment.
+- Add a shape-check assertion: for `|S|` design points and K components, Σ_yi must be |S|×|S|
+  (not K×K). If the assembled matrix has the wrong size, the Cholesky call fails with a
+  dimension error.
 
 **Warning signs:**
-- Inertia oscillates between two values and never decreases monotonically.
-- `converged = false` for all restarts even on clean synthetic data.
-- Best restart selected by `n_init` comparison has higher inertia than some other restart.
+- Σ_yi is K×K instead of |S|×|S| (wrong matrix assembled).
+- Criterion value is independent of σ² (transposed Φ_S drops the σ²I diagonal).
+- Criterion for |S|=1 is K² times the expected value (K×K instead of 1×1 sigma_yi).
 
-**Phase to address:** Phase 62 (k-Shape fit — convergence tracking).
-
-**Verification hook:**
-- On a clean two-group dataset with `n_init=1`, assert that inertia is strictly non-increasing across iterations (allow ≤ 1e-10 floating-point tolerance).
+**Phase to address:** Phase 64 (criterion evaluation). Gate: shape-assertion test confirming
+Σ_yi is |S|×|S| for |S| in {1, 2, 5}.
 
 ---
 
-### Pitfall 11: k-Shape n_init Restarts with Wrong Seeding — Non-Determinism or Identical Restarts
+### Pitfall 11: `!Send` Concerns for Parallelizing the Candidate Sweep
 
 **What goes wrong:**
-Two failure modes in the `n_init` restart loop:
+`iter_maybe_parallel!` from `parallel.rs` uses rayon when the `parallel` feature is enabled.
+If the greedy candidate sweep is parallelized via this macro, any state shared across the
+closure must be `Send + Sync`.
 
-1. **Identical restarts:** if all restarts use the same seed, they produce identical initializations and identical results. The multi-start provides no benefit.
-2. **Non-deterministic restarts:** if the seed is not threaded and the RNG is initialized from `rand::thread_rng()`, two calls with the same config return different results, breaking reproducibility.
+`PaceFpcaResult` derives `Clone` and contains only `Vec<f64>` and `FdMatrix` — both are
+`Send + Sync`. However, if the criterion closure captures a mutable reference (e.g., to a
+pre-computed matrix `M_S`) that is mutated per-candidate, the closure cannot be `Send`.
 
-The correct pattern (from `kernel_kmeans.rs`): restart `r` is seeded `StdRng::seed_from_u64(config.seed.wrapping_add(r as u64))`. This produces `n_init` distinct random initializations while remaining fully reproducible.
+The `FftPlanner` from `rustfft` (used in kshape.rs) is `!Send`. FOptDes does not use FFT,
+but if future refactoring moves any SBD/FFT helper into the candidate sweep, this breaks.
+
+The existing codebase's RNG concern (`StdRng::seed_from_u64(seed + k)`) is not relevant to
+FOptDes (no randomness needed in the greedy loop — the criterion is deterministic).
 
 **Why it happens:**
-Developers copy the `seed + r` pattern but use `seed + r` as an addition that can overflow for large seeds (fixed by `wrapping_add`), or they forget to thread `restart_idx` and use a constant seed.
+Developers parallelize the candidate sweep with rayon for speed, then capture `&mut M_S` in
+the closure without noticing that mutable closure captures are not `Send`.
 
 **How to avoid:**
-- `KShapeConfig` must include `seed: u64` and `n_init: usize` (both required for the restart loop).
-- Use `StdRng::seed_from_u64(config.seed.wrapping_add(restart as u64))` for restart `r`. Mirror the `kernel_kmeans.rs` convention verbatim.
-- Initialization: assign each curve to a random cluster `rng.gen_range(0..k)`, then run `ensure_no_empty_random` (same helper from `kernel_kmeans.rs`) to guarantee no cluster starts empty.
+- In the candidate sweep: compute `M_S` once (immutable, `Send`), then map over candidates
+  with closures that capture only immutable references to `M_S`. Each closure creates its
+  own `M_cand = M_S + σ⁻² φφᵀ` (a fresh local K×K copy) without mutating `M_S`.
+- Do not share mutable state across rayon worker closures — all per-candidate state must be
+  locally allocated.
+- Verify `Send` at compile time: the parallel build (`--features parallel`) must compile
+  without error. The `iter_maybe_parallel!` macro already requires the iterator items to be
+  `Send`.
 
 **Warning signs:**
-- Two calls with the same config return different `cluster` assignments.
-- `n_init=10` produces the same inertia as `n_init=1` (all restarts are identical).
-- `assert_eq!(a.cluster, b.cluster)` in the determinism test fails.
+- `cargo build --features parallel` fails with "`M_S` cannot be shared between threads
+  safely" or "closure may outlive the current function".
+- Adding rayon causes test failures not present in the sequential build.
 
-**Phase to address:** Phase 62 (k-Shape fit).
-
-**Verification hook:**
-```rust
-let cfg = KShapeConfig { seed: 42, n_init: 5, ..Default::default() };
-let a = kshape_fd(&data, &cfg).unwrap();
-let b = kshape_fd(&data, &cfg).unwrap();
-assert_eq!(a.cluster, b.cluster, "same seed must give identical labels");
-assert_eq!(a.inertia.to_bits(), b.inertia.to_bits());
-```
+**Phase to address:** Phase 65 (greedy loop). Gate: `cargo build --features parallel`
+passes; `cargo test --features parallel` passes.
 
 ---
 
-### Pitfall 12: IFFT Scale Factor Not Removed — NCC Values Off by fft_len
+### Pitfall 12: CI Gate — `--all-targets --features linalg,parallel` and fmt Drift
 
 **What goes wrong:**
-rustfft performs unnormalized IFFT: the output of `plan_fft_inverse(fft_len).process(buf)` is scaled by `fft_len`. The raw cross-correlation values in `buf` after IFFT are each `fft_len` times the true cross-correlation. If this scale factor is not divided out before computing the coefficient-normalized NCC (or if it is folded into the `‖x‖·‖y‖` denominator incorrectly), the NCC values are off by `fft_len` and the argmax picks the right index but the distance value `1 - max(NCC)` is meaningless.
+CI runs `cargo clippy --all-targets --features linalg,parallel -- -D warnings`. "All targets"
+includes test code, bench code, and examples. A public function added to `optimal_design.rs`
+that is only used in tests may generate an unused-function warning in the main target but not
+in a plain `cargo clippy -p fdars-core`. The CI gate catches this; a local check without
+`--all-targets` misses it.
 
-Concretely: if `fft_len = 32` and the true NCC max is `0.9`, the raw IFFT output gives `28.8` at that lag, and `1 - 28.8 / (‖x‖·‖y‖)` is a large negative number — which clips the returned SBD distance to a nonsensical value.
+The second CI hazard is fmt drift on `--no-verify` commits. `pace_fpca.rs` was committed with
+`--no-verify` in prior milestones (executor timeout); if the same happens here, CI's
+`cargo fmt --check` will fail even though clippy passes.
 
 **Why it happens:**
-The existing seasonal ACF code (`seasonal/mod.rs:374`) divides by `fft_len * n * var` — folding the IFFT scale into the normalization. For NCC the analogous step is dividing by `fft_len` (from the IFFT) and then by `‖x‖·‖y‖` (the coefficient normalization). Developers new to rustfft are aware of the FFT `1/n` convention in MATLAB/Python's `numpy.fft.ifft` and forget that rustfft does not include it.
+Long fdars builds (executor subagent stall, documented in MEMORY.md) push developers toward
+`--no-verify` commits. `cargo fmt` is then skipped, leaving unformatted code.
 
 **How to avoid:**
-- After `ifft.process(&mut buf)`, divide the `buf[s].re` values by `fft_len as f64` before applying the `‖x‖·‖y‖` normalization. Alternatively, fold the `fft_len` into the denominator: `ncc[s] = buf[s].re / (fft_len as f64 * norm_x * norm_y)`.
-- Add a `sbd(x, x)` self-distance test as the first smoke test — it will fail obviously if the IFFT scale is wrong (NCC will be `n` instead of `1.0`, and `1 - n = large negative`).
+- Run `cargo fmt -p fdars-core` before every commit, even `--no-verify` ones.
+- Run the full CI gate locally before final commit:
+  ```bash
+  cargo fmt --check -p fdars-core
+  cargo clippy --all-targets --features linalg,parallel -- -D warnings
+  cargo test -p fdars-core --features linalg
+  ```
+- Do not add `#[allow(dead_code)]` on public items — make them actually public and used in
+  doc examples, which serves as both documentation and dead-code prevention.
 
 **Warning signs:**
-- `sbd(x, x)` returns a large negative number or a number much greater than 1.
-- NCC values at any lag exceed 1.0 or are much less than -1.0.
+- CI fails on `fmt --check` but `clippy` passes locally.
+- Clippy warning about unused functions appears only in `--all-targets` mode.
 
-**Phase to address:** Phase 61 (SBD distance core).
-
-**Verification hook:**
-- Self-distance test (same as Pitfall 2 hook): `sbd(x, x)` must be `< 1e-10`.
-- NCC bounds test: for any pair `(x, y)`, `max(NCC) <= 1.0 + 1e-10` and `min(NCC) >= -1.0 - 1e-10`.
+**Phase to address:** Both phases (64, 65). Gate: local CI gate before phase completion.
 
 ---
 
-### Pitfall 13: SBD-Based k-Medoids Feeds Wrong Distance — SBD Is Not the Euclidean L2 Distance
+### Pitfall 13: /tmp and target/ Disk Pressure on Full Builds
 
 **What goes wrong:**
-The existing `kmedoids_from_distances` in `alignment/clustering.rs` takes a precomputed `FdMatrix` distance matrix and runs PAM-style k-medoids. Reusing this for SBD-based k-medoids is the correct architectural decision — but only if the SBD pairwise distance matrix is computed correctly (using FFT-NCC, not Euclidean or DTW distances).
+MEMORY.md records two disk-pressure failure modes specific to fdars:
 
-The failure mode: a developer computes the "distance matrix" using `distance.rs`'s `pairwise_distance_matrix` with an L2 metric and feeds it to `kmedoids_from_distances` instead of computing the `n × n` SBD pairwise matrix. The medoids are then L2-medoids, not SBD-medoids.
+1. **`/tmp` exhaustion blocks pre-commit hooks** — doc-test linkage uses a small `/tmp` tmpfs.
+   When `/tmp` is full, all commits fail with "No space left on device" even for
+   `--no-verify` bypasses of the slow hooks. The pre-commit hook itself fails before the
+   bypass takes effect.
 
-**Why it happens:**
-`pairwise_distance_matrix` is already in `distance.rs` and is easy to call. The developer may not realize that a new `sbd_distance_matrix` function is needed that uses the FFT-NCC path.
+2. **`target/` fills `/home` partition** — `target/` grows to 100+GB. When the home partition
+   fills, `cargo test` dies at the link step with "linking with cc failed" — not a code error.
+   The symptom is indistinguishable from a linker misconfiguration.
 
-**How to avoid:**
-- Implement `sbd_distance_matrix(data: &FdMatrix) -> Result<FdMatrix, FdarError>` as a wrapper that calls `sbd(row_i, row_j)` for all pairs and assembles the symmetric matrix.
-- Pass this matrix — not any L2/DTW matrix — to `kmedoids_from_distances`.
-- The doctest for SBD k-medoids must show the `sbd_distance_matrix` call explicitly so there is no ambiguity.
-
-**Warning signs:**
-- SBD k-medoids and L2 k-medoids produce identical results on data where SBD should differ (e.g., curves with same shape but different offsets).
-
-**Phase to address:** Phase 63 (SBD-based k-medoids integration).
-
-**Verification hook:**
-- Offset-invariance test: run SBD k-medoids on two groups of curves where group membership is shape-based (not amplitude-based). Purity must be > 0.9. L2 k-medoids on the same data should have purity < 0.7 (offset differences confuse L2 but not SBD).
-
----
-
-### Pitfall 14: Predict Uses Re-Estimated Normalization — Not Stored Centroids
-
-**What goes wrong:**
-Out-of-sample predict assigns each new curve to the fitted centroid minimizing SBD. The failure mode: predict re-z-normalizes or re-estimates the centroids from the test data (analogous to Shapelet Pitfall 9 for shapelets). The centroids must be used exactly as stored in `KShapeResult` — already z-normalized, no re-estimation.
-
-Additionally, the SBD in predict must use the stored centroids as `y` in `sbd(new_curve_znorm, centroid_stored)`. If the centroid is passed as `x` instead of `y`, the argmax shift has the wrong sign (the NCC is asymmetric in lag direction), though the distance value is correct. For predict, only the distance (not the shift) is needed, so the asymmetry does not matter for correctness of labels — but using `y = centroid` as the reference is the tslearn convention and should be followed for consistency.
-
-**Why it happens:**
-Same structural error as Pitfall 9 (shapelet transform consistency): the predict path independently "normalizes the centroid" rather than trusting the stored pre-normalized version.
+For FOptDes specifically: adding a new module with examples and benchmarks increases
+incremental build artifacts. If a benchmark (`[[bench]]`) is added in Phase 65, it adds
+another rustc artifact under `target/debug/`.
 
 **How to avoid:**
-- `KShapeResult::centroids` stores already-z-normalized centroid vectors (type `Vec<Vec<f64>>`).
-- `predict` iterates over centroids: `sbd(z_normalize_window(&new_row), &centroids[c])` for each `c`, assigns to argmin.
-- Never call `z_normalize_window` on a stored centroid inside predict.
-- Mirror `KernelKmeansResult::predict` design: stored state reused, no re-estimation.
+- Before any full `cargo test` or `cargo bench` run: check `df -h /tmp /home` and free space
+  if < 2GB.
+- To free target/: `rm -rf target/debug/{incremental,examples}` recovers ~108GB per MEMORY.md.
+- Use `cargo test -p fdars-core` (not workspace-wide) to minimize artifact accumulation.
+- If pre-commit hooks fail with "No space left": free /tmp first, then retry.
 
 **Warning signs:**
-- `predict(train_data)` returns different labels than the training-time `cluster` field.
-- `predict` on an exact copy of a training curve returns a different cluster than the fit result.
+- "No space left on device" during `cargo test` or commit hooks.
+- "linking with cc failed" on a green clippy check (disk full, not a code error).
+- Benchmark add causes a significant increase in `target/debug/` size.
 
-**Phase to address:** Phase 62 (k-Shape fit — predict method on `KShapeResult`).
-
-**Verification hook:**
-```rust
-// Exact-copy predict consistency.
-let res = kshape_fd(&data, &cfg).unwrap();
-let preds = res.predict(&data).unwrap();
-assert_eq!(preds, res.cluster, "predict on train data must reproduce training labels");
-```
+**Phase to address:** Both phases (64, 65), especially if benchmarks are added.
 
 ---
 
@@ -503,28 +599,11 @@ assert_eq!(preds, res.cluster, "predict on train data must reproduce training la
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Plan FFT for length `n` (not `2n−1`) | One less calculation | Circular wrap corrupts all shifts (Pitfall 1) — silently wrong | Never |
-| Use count normalization (divide by `n` or `n−|lag|`) instead of `‖x‖·‖y‖` | Simpler code | NCC not in [-1,1]; SBD formula wrong (Pitfall 2) | Never |
-| Use arithmetic mean as k-Shape centroid | Avoids eigendecomposition | Wrong algorithm — k-Shape degenerates to k-means on z-normalized data (Pitfall 5) | Never |
-| Skip the centering projection `(I - 11^T/n)` | Simpler matrix product | Wrong eigenvector; centroid does not capture shape (Pitfall 5) | Never |
-| Ignore eigenvector sign | No extra computation | Centroid may be inverted; algorithm oscillates (Pitfall 6) | Never |
-| Discard shift from SBD at assignment time | Half the state to track | Centroid update uses unaligned members (Pitfall 7) | Never |
-| Skip IFFT scale division | Simpler formula | NCC values off by `fft_len`; SBD is wrong (Pitfall 12) | Never |
-| Hard-code `n_init = 1` | Faster, simpler | k-Shape is highly sensitive to init; one restart often converges to a local minimum | Only in dev smoke tests, never shipped |
-| Re-use dominant_sign_negative from regression.rs for centroid sign | Less code | Wrong sign convention for k-Shape; may invert centroid (Pitfall 6) | Never — implement the correlation-based sign rule |
-
----
-
-## Performance Traps
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Allocating a new FFT plan per SBD call | Planner construction is ~100× more expensive than one FFT | Build `FftPlanner` + plans once; share via `Arc<dyn Fft>` across the pairwise loop | n > 20 curves |
-| Building `S` matrix by cloning FdMatrix rows without reuse | O(n·m) alloc per iteration × max_iter | Reuse a pre-allocated `n_cluster × m` buffer; only recompute the rows of the affected cluster | Large n, m |
-| Computing the full `n × n` SBD pairwise matrix for every k-Shape iteration | O(n²) SBD calls per iteration (each O(m log m)) | k-Shape does **not** need the full pairwise matrix — compute `sbd(curve_i, centroid_c)` per assignment sweep, which is O(n·k) SBD calls | n > 50, k > 3 |
-| `to_dmatrix()` inside the SBD hot loop | nalgebra matrix copy for every SBD pair | SBD distance is pure `&[f64]` arithmetic (FFT of slices); never call `to_dmatrix` in the SBD path | Every SBD call |
-| Sequential pairwise SBD distance matrix | O(n²) sequential FFTs | Use `iter_maybe_parallel!` at the pair level for the pairwise matrix function; each SBD call is independently parallelizable | n > 100 for distance matrix |
-| Allocating a new `Vec<Complex<f64>>` scratch buffer per SBD call | O(fft_len) alloc per pair, millions of times in clustering | Reuse a pre-allocated scratch buffer across SBD calls (pass as `&mut Vec<Complex<f64>>`) | n > 20 curves, tight loops |
+| Brute-force Σ_yi inversion (no rank-1 update) | Simpler, correct first pass | O(G·K³) per greedy step — bottleneck at K>20, G>200 | Acceptable in Phase 64; profile before optimizing in Phase 65 |
+| Sequential candidate sweep (no rayon) | Deterministic, no Send constraints | O(G·n_select·K²) total — fine for G≤51, n_select≤20 | Acceptable; parallelize only if benchmark shows >1s wall time |
+| Work grid = candidate set (no user-supplied candidates) | Avoids interpolation complexity | Limits design flexibility; callers cannot supply off-grid candidates | Acceptable for v0.35.0 MVP; generalizable in a later milestone |
+| Single σ² for all design criteria | Simpler API | Cannot model heteroskedastic measurement noise | Acceptable; PACE already enforces single σ² |
+| Skip criterion monotonicity assertion in release builds | Avoids O(n_select) extra cost | Hides criterion-direction bugs in production | Never — the assertion is O(1) overhead after the greedy loop and catches make-or-break correctness issues |
 
 ---
 
@@ -532,35 +611,35 @@ assert_eq!(preds, res.cluster, "predict on train data must reproduce training la
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| `shapelet::z_normalize_window` (v0.33.0) | Assume shapelet z-norm convention matches SBD z-norm | Both use population std (`ddof=0`) and `STD_EPS=1e-12` — reuse `z_normalize_window` directly; document the shared convention |
-| `alignment/clustering.rs` `kmedoids_from_distances` | Feed an L2 pairwise matrix instead of an SBD matrix | Implement `sbd_distance_matrix` using the SBD core and pass its output; the k-medoids PAM engine is distance-agnostic |
-| `FdMatrix` column-major row access | Iterate rows with `data[(i,j)]` inside the FFT loop — scattered memory access | Use `data.row(i)` to copy the row to a contiguous `Vec<f64>` before FFT; same pattern as `fourier.rs` |
-| `parallel.rs` `iter_maybe_parallel!` | Apply to the inner FFT buffer computation (inside one SBD call) | Parallelize at the outer level: across pairs in `sbd_distance_matrix`, or across curves in the assignment sweep; the FFT inner loop is sequential |
-| `rustfft` IFFT scale | Expect IFFT to divide by `fft_len` (numpy convention) | rustfft IFFT does not divide — divide manually by `fft_len` or fold into the NCC denominator (see Pitfall 12) |
-| nalgebra `symmetric_eigen` eigenvalue order | Assume descending order (largest first) | nalgebra returns ascending order — take the **last** sorted column, not the first; mirror the `pace_fpca.rs:191` descending-sort pattern |
-| `dominant_sign_negative` in `regression.rs` | Reuse for centroid sign fix | Wrong convention for k-Shape — implement a separate correlation-based sign rule: `if dot(v, mean_S_rows) < 0 { v = -v }` |
+| `PaceFpcaResult` eigenvalues | Using raw eigenvalues from `eigenfunctions` decomposition (pre-sign-fix) instead of `result.eigenvalues` | Always read `result.eigenvalues` and `result.eigenfunctions` from the returned `PaceFpcaResult`; never re-decompose |
+| `helpers::simpsons_weights` | Computing weights once from `&[0.0..1.0]` instead of from `pace_result.argvals` | Pass `&pace_result.argvals` directly; the weight sum equals the argvals range, not 1.0 |
+| `linalg::cholesky_solve` | Passing a column-major matrix as if it were row-major | `cholesky_solve` expects row-major (it uses `mat[i*d+j]`); local assembly of Σ_S must match |
+| `lib.rs` re-exports | Importing `pace_fpca::PaceFpcaResult` in `optimal_design.rs` without adding the path alias | Use `crate::pace_fpca::PaceFpcaResult` everywhere in the new module; add `pub use optimal_design::{...}` to `lib.rs` additively |
+| `FdMatrix.column(k)` | Using it to get a mutable reference for in-place update | `column()` returns `&[f64]`; for mutation, extract to a `Vec` and write back |
+
+---
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Re-assembling full m×m matrix in criterion loop | Criterion evaluation takes O(m²·K) per candidate instead of O(K²) | Assemble only the |S|×|S| Σ_S, not the full m×m covariance | Noticeable at m=100, K=10, G=100 |
+| Inverting K×K posterior covariance K times per greedy step | O(n_select · G · K³) total | Pre-compute M_S once per step; apply rank-1 update per candidate | Breaks at n_select=50, K=20 (>10⁶ flops per step) |
+| Collecting all criterion values in parallel then serial argmin | Allocates G-vector unnecessarily | Use `par_iter().enumerate().min_by(...)` with care for determinism | Negligible — only matters at G > 10,000 |
+| Computing Simpson weights inside the criterion loop | Redundant computation, O(m) per criterion call | Call `simpsons_weights` once at design entry; pass weights as a slice | No correctness issue; O(G · n_select · m) wasted ops at G=100, n_select=20, m=51 |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **FFT zero-padding:** FFT planned for `(2*n-1).next_power_of_two()`, not `n`. Shifted-copy test passes (Pitfall 1).
-- [ ] **NCC normalization:** coefficient-normalized by `‖x_znorm‖·‖y_znorm‖`, not by count. NCC bounded in `[-1,1]`. Self-distance test: `sbd(x,x) ≈ 0` (Pitfall 2).
-- [ ] **SBD z-normalization:** both series z-normalized inside `sbd()` unconditionally. Offset and scale invariance tests pass (Pitfall 3).
-- [ ] **Lag sign extraction:** argmax converted to signed lag using `if idx <= n-1 { idx } else { idx - fft_len }`. Negative-shift test passes (Pitfall 4).
-- [ ] **IFFT scale division:** raw IFFT output divided by `fft_len` before NCC computation. NCC values in `[-1,1]` (Pitfall 12).
-- [ ] **Shape extraction eigenvector:** top eigenvector of `S^T (I - 11^T/n) S`, not arithmetic mean, not `S^T S`. Centroid differs from member mean. Two-group recovery test passes (Pitfall 5).
-- [ ] **Eigenvalue order:** nalgebra ascending eigenvalue order reversed; centroid taken from last (largest) eigenvalue column. (Pitfall 5).
-- [ ] **Centroid sign fix:** `dot(centroid, mean_S_rows) > 0` enforced. Sign-flip test passes (Pitfall 6).
-- [ ] **Shift-alignment before shape extraction:** `shifts[i]` stored from SBD assignment; rows of `S` are circularly shifted z-normalized curves. Centroid correlation with prototype > 0.99 (Pitfall 7).
-- [ ] **Centroid re-z-normalized:** after eigenvector extraction, `z_normalize_window(centroid)` applied. Mean ≈ 0, std ≈ 1 assertion passes (Pitfall 8).
-- [ ] **Empty cluster recovery:** clusters that lose all members are reseeded. k > natural_clusters test does not panic and all cluster sizes ≥ 1 (Pitfall 9).
-- [ ] **Inertia non-increasing:** inertia check per iteration; convergence on label stability or tol. Two-group dataset converges in < 20 iterations (Pitfall 10).
-- [ ] **Determinism with n_init:** `seed.wrapping_add(restart)` seeding. Determinism test: two same-seed calls return identical labels and inertia (Pitfall 11).
-- [ ] **SBD k-medoids uses correct distance:** `sbd_distance_matrix` (FFT-NCC) fed to `kmedoids_from_distances`, not L2. Offset-invariance purity test passes (Pitfall 13).
-- [ ] **Predict consistency:** `predict(train_data) == res.cluster`. Stored centroids not re-normalized. Exact-copy test passes (Pitfall 14).
-- [ ] **No `to_dmatrix` in hot loop:** SBD is pure `&[f64]` slice arithmetic. No nalgebra conversion in `sbd()`.
-- [ ] **FFT planner reuse:** `FftPlanner` constructed once per `kshape_fd` call, not per SBD pair.
+- [ ] **Criterion monotonicity:** verify `criterion[k+1] <= criterion[k]` for all greedy steps — the loop may select a point but the objective check was skipped.
+- [ ] **|S|=0 prior recovery:** `MSE(∅) ≈ Σ_k λ_k` and `A-opt(∅) = Σ_k λ_k` — often passes by accident if σ² is wrong but compensating.
+- [ ] **Determinism with `--features parallel`:** must produce identical selected designs in both sequential and parallel builds — easy to skip this cross-build test.
+- [ ] **Eigenfunction interpolation off-grid:** if candidates are a strict subset of the work grid (not indices 0..m-1), interpolation is needed — a test with off-index candidates catches the missing interpolation.
+- [ ] **D-optimality sign:** `log det Cov(ξ|Y_S)` is negative (all posterior eigenvalues < prior); if the implementation returns a positive value, the sign convention is wrong.
+- [ ] **No duplicate candidates in S:** the greedy loop must exclude already-selected indices; easy to forget when using a flat candidate Vec without an exclusion mask.
+- [ ] **Full CI gate before merge:** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel`, `cargo test --features linalg` — the last two are often run but fmt is skipped after `--no-verify` commits.
+- [ ] **R + WASM bindings still compile:** run `cargo build --target wasm32-unknown-unknown` and verify R binding example code still compiles (smoke test).
 
 ---
 
@@ -568,17 +647,16 @@ assert_eq!(preds, res.cluster, "predict on train data must reproduce training la
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Wrong FFT length (circular wrap) | HIGH — all distances wrong | Change `fft_len` to `(2*n-1).next_power_of_two()`; rerun all SBD-dependent tests; one-line fix but all cached results are invalid |
-| Wrong NCC normalization | HIGH — all distances silently miscalibrated | Replace denominator with `fft_len * norm_x * norm_y`; one-line fix; rerun all SBD tests |
-| Missing z-normalization in `sbd()` | MEDIUM — wrong distances for non-centered data | Add `z_normalize_window` calls at top of `sbd()`; no API change |
-| Wrong lag sign extraction | MEDIUM — wrong shift on negative lags, correct distance | Fix the signed-lag conversion after argmax; one-line change; shift tests catch it |
-| Arithmetic mean instead of eigenvector | HIGH — wrong algorithm entirely | Rewrite shape extraction; no API change; results change completely |
-| Wrong eigenvector (e.g., bottom instead of top) | HIGH — wrong centroids | Fix the eigenvalue sort / column index; rerun recovery tests |
-| Missing sign fix | MEDIUM — oscillation / inverted centroids | Add `dot_sum < 0` flip; convergence tests catch it |
-| Missing shift-alignment | HIGH — centroid update is meaningless | Modify `sbd` to return shift; store `shifts[i]` in assignment loop; rewrite centroid update |
-| Missing centroid re-z-norm | LOW — calibration drift over iterations | Add `z_normalize_window` at end of centroid update; one-line fix |
-| No empty-cluster recovery | MEDIUM — panic or NaN in degenerate cases | Add recovery logic mirroring `kernel_kmeans.rs`; no API change |
-| IFFT scale not divided out | HIGH — NCC off by fft_len | Add `/fft_len as f64` after IFFT; one-line fix; self-distance test catches it immediately |
+| Wrong Σ_yi (missing σ²I) | LOW | Add `+= sigma2` to diagonal in assembly; re-run tests |
+| Wrong score posterior (missing prior term) | LOW | Add `diag(1/λ)` to M before inversion; verify known-answer test |
+| Missing quadrature weights | LOW | Multiply inner sum by `simpsons_weights`; check `MSE(∅) ≈ Σ_k λ_k` |
+| D-optimality sign flip | LOW | Negate objective or change greedy from argmax to argmin; verify monotone-decrease test |
+| Greedy selects duplicate points | LOW | Add exclusion mask `selected_indices.contains(&j)` in candidate loop |
+| Cholesky fails (near-singular Σ_yi) | MEDIUM | Add ridge-retry (mirror pace_fpca.rs); if still fails, validate σ² floor |
+| Non-determinism from rayon argmin | MEDIUM | Collect criterion Vec sequentially, then serial argmin — remove rayon from argmin step |
+| Column-major vs. row-major transposition | MEDIUM | Mirror pace_fpca.rs `phi_i[j * ncomp + k]` layout; add shape-check assertion |
+| fmt drift / CI failure | LOW | `cargo fmt -p fdars-core && git add -u && git commit --amend` (if pre-merge) |
+| disk pressure blocking build | MEDIUM | `rm -rf target/debug/{incremental,examples}` then retry |
 
 ---
 
@@ -586,36 +664,33 @@ assert_eq!(preds, res.cluster, "predict on train data must reproduce training la
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| P1: FFT zero-padding (circular wrap) | Phase 61 — SBD distance core | Shifted-copy test: `sbd(x, shift(x,k)) ≈ 0` at correct shift |
-| P2: NCC coefficient normalization | Phase 61 — SBD distance core | Self-distance test: `sbd(x,x) ≈ 0`; symmetry test: `sbd(x,y) == sbd(y,x)` |
-| P3: Z-normalization required in SBD | Phase 61 — SBD distance core | Offset and scale invariance tests |
-| P4: Lag sign extraction (fftshift) | Phase 61 — SBD distance core | Negative-shift test: expected shift sign matches applied shift |
-| P5: Wrong centroid (mean vs eigenvector) | Phase 62 — k-Shape fit, centroid update | Two-group shifted-motif recovery: centroid correlation > 0.99 with prototype |
-| P6: Eigenvector sign ambiguity | Phase 62 — k-Shape fit, centroid update | Sign-flip test: `dot(centroid, mean_S_rows) > 0` after every extraction |
-| P7: Shift-alignment before shape extraction | Phase 62 — k-Shape fit, centroid update | Centroid-member correlation test; inertia monotone-decrease check |
-| P8: Centroid re-z-normalization | Phase 62 — k-Shape fit, centroid update | Mean/std assertion after each centroid update step |
-| P9: Empty cluster recovery | Phase 62 — k-Shape fit | k > natural_clusters test; no panic; all sizes ≥ 1 |
-| P10: Objective monotonicity | Phase 62 — k-Shape fit, convergence | Inertia-per-iteration monotone-decrease check on two-group synthetic data |
-| P11: Determinism with n_init | Phase 62 — k-Shape fit | Two same-seed calls produce identical labels and inertia bits |
-| P12: IFFT scale factor | Phase 61 — SBD distance core | Self-distance and NCC-bounds tests |
-| P13: SBD k-medoids distance source | Phase 63 — SBD k-medoids | Offset-invariance purity test vs L2 k-medoids |
-| P14: Predict uses stored centroids | Phase 62 — k-Shape fit, predict | `predict(train) == res.cluster`; exact-copy predict test |
+| Wrong Σ_yi assembly (P1) | Phase 64 — criterion evaluation | Hand-computed Σ_yi for 1-point, 2-eigenfunction synthetic |
+| Wrong score posterior covariance (P2) | Phase 64 — criterion evaluation | Known-answer: `Cov(ξ|∅) = diag(λ)`; monotone-decrease on A-opt trace |
+| Missing quadrature weights (P3) | Phase 64 — criterion evaluation | `MSE(∅) ≈ Σ_k λ_k` identity; grid-size invariance check |
+| Optimality-sign convention (P4) | Phase 64 (definition) + Phase 65 (greedy) | Monotone-decrease assertion on both AOpt and DOpt over greedy steps |
+| Near-duplicate / σ²→0 singularity (P5) | Phase 64 (ridge-retry) + Phase 65 (dedup) | Greedy output has no duplicate indices; Cholesky succeeds for σ²=1e-4 |
+| Eigenfunction interpolation (P6) | Phase 64 — criterion evaluation | Off-grid candidate test; out-of-range candidate returns InvalidParameter |
+| Greedy argmin determinism (P7) | Phase 65 — greedy loop | Identical output for two identical calls; matches sequential vs. parallel build |
+| O(G·p·cost) blowup (P8) | Phase 65 — greedy loop | Benchmark on G=51, K=5, n_select=10; correctness before optimization |
+| Additive/non-breaking (P9) | Both phases | Existing test suite fully passes; `--examples` compiles |
+| Column-major indexing (P10) | Phase 64 — criterion evaluation | Shape-assertion: Σ_S is `|S|×|S|` not `K×K` |
+| Send constraints for rayon (P11) | Phase 65 — greedy loop | `cargo build --features parallel` passes; `cargo test --features parallel` |
+| CI gate / fmt drift (P12) | Both phases | Local CI gate before each phase commit |
+| Disk pressure (P13) | Both phases | `df -h` check before full builds; `rm -rf target/debug/{incremental,examples}` as needed |
 
 ---
 
 ## Sources
 
-- Paparrizos, J., Gravano, L. (2015). k-Shape: Efficient and Accurate Clustering of Time Series. *SIGMOD '15*. doi:10.1145/2723372.2737793. — Defines SBD (Eq. 1–4), shape extraction (Eq. 5–8), k-Shape algorithm. Primary correctness reference.
-- tslearn source: `tslearn/clustering/kshape.py` (`_normalized_cc`, `_sbd`, `_extract_shape`, `KShape.fit`) — Reference implementation for NCC formula, IFFT scale, sign fix, shift-alignment before shape extraction, centroid re-z-normalization.
-- rustfft documentation: `rustfft.rs-lang.github.io` — FFT/IFFT unnormalized convention; `FftPlanner` reuse pattern; `plan_fft_forward` / `plan_fft_inverse`.
-- fdars-core `src/seasonal/mod.rs:350` — Established `(2 * n).next_power_of_two()` zero-padding pattern for FFT-based ACF in this codebase; safe template for SBD.
-- fdars-core `src/kernel_kmeans.rs` — Empty-cluster recovery, n_init seeding (`seed.wrapping_add(restart)`), convergence check pattern, predict design, KernelKmeansConfig defaults.
-- fdars-core `src/regression.rs:197-244` — `dominant_sign_negative` / `fix_svd_signs` eigenvector sign convention (different from k-Shape sign rule — do not reuse).
-- fdars-core `src/pace_fpca.rs:186-191` — nalgebra ascending eigenvalue order pattern; descending sort for top eigenvector extraction.
-- fdars-core `src/shapelet/distance.rs` — `z_normalize_window` / `z_normalize_into` with `STD_EPS = 1e-12`; reusable directly for SBD z-normalization.
-- fdars-core `src/alignment/clustering.rs` — `kmedoids_from_distances` interface; `KMedoidsConfig` seeding convention; k-medoids integration scaffolding.
-- fdars-core `src/metric/fourier.rs` — `FftPlanner` reuse pattern across rows; established convention for sharing plans via `plan_fft_forward(m)` + `fft.as_ref()`.
+- `fdars-core/src/pace_fpca.rs` — BLUP formulas (Σ_yi assembly lines 461-474, Ω_i band variance lines 547-576, ridge-retry lines 480-490, σ² validation line 316-324)
+- `fdars-core/src/helpers.rs` — `simpsons_weights` API and quadrature convention
+- `fdars-core/src/linalg.rs` — `cholesky_solve` layout convention (row-major)
+- `fdars-core/src/matrix.rs` — `FdMatrix` column-major indexing contract
+- `fdars-core/src/parallel.rs` — `iter_maybe_parallel!` Send requirement
+- Project MEMORY.md — `/tmp` exhaustion, `target/` disk pressure, executor stall, `--no-verify` fmt drift, `--all-targets` CI gate
+- Yao, Müller & Wang (2005) JASA 100(470) — PACE BLUP formulas (§2.2, §3.2)
+- PACE@2.17 MATLAB `FOptDes` — reference implementation for criterion monotonicity and greedy selection convention
 
 ---
-*Pitfalls research for: k-Shape clustering + SBD via FFT cross-correlation (fdars-core v0.34.0, GAP-03)*
+*Pitfalls research for: Optimal Experimental Design on PACE/BLUP model (FOptDes), fdars-core v0.35.0*
 *Researched: 2026-09-02*

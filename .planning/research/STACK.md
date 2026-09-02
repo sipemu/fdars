@@ -1,329 +1,286 @@
-# Stack Research: k-Shape Clustering & Shape-Based Distance (v0.34.0)
+# Stack Research: Optimal Experimental Design for Sparse FDA (v0.35.0)
 
-**Domain:** Rust functional-data-analysis library — adding SBD (Shape-Based Distance) + k-Shape clustering to fdars-core
+**Domain:** Rust functional-data-analysis library — adding FOptDes (optimal sparse-measurement design) to fdars-core, built on the shipped `pace_fpca` estimator
 **Researched:** 2026-09-02
-**Confidence:** HIGH (codebase read = HIGH; tslearn source verified via GitHub API = MEDIUM cross-checked with web = MEDIUM-verified; algorithm paper cross-checked)
+**Confidence:** HIGH (codebase read = HIGH; fdapace R source read = HIGH; Ji–Müller 2017 formulas extracted from ar5iv HTML = MEDIUM cross-checked against BestDes_TR.R / BestDes_SR.R source = HIGH-verified)
 
 ---
 
 ## Dependency Verdict: NO NEW CRATE DEPENDENCIES REQUIRED
 
-All four v0.34.0 deliverables — SBD core, k-Shape fit, out-of-sample predict, and SBD-k-medoids — can be built entirely on the existing crate dependency set. This is the primary finding.
+All v0.35.0 deliverables — trajectory-reconstruction design, score-prediction design, and design-criterion evaluation — can be built entirely on the existing dependency set. This is the primary finding.
 
-Explicit confirmation per feature:
+Explicit confirmation per deliverable:
 
-| Feature | Required new dep? | Rationale |
-|---------|------------------|-----------|
-| FFT for NCC cross-correlation (SBD core) | NO | `rustfft` 6.2 is already a direct dependency; `FftPlanner::<f64>::new()` + `plan_fft_forward`/`plan_fft_inverse` already called in `src/fts/spectral.rs` and `src/seasonal/mod.rs` |
-| Z-normalization of full series | NO | `shapelet::z_normalize_window(&[f64]) -> Vec<f64>` shipped in v0.33.0 — exact per-slice z-norm needed by SBD |
-| Symmetric eigendecomposition for shape extraction | NO | `nalgebra::SymmetricEigen` already called in `src/fts/spectral.rs` (line 208: `nalgebra::SymmetricEigen::new(mat)`) — covers the `M = Q^T S Q` problem in shape extraction |
-| k-Shape n_init restarts + empty-cluster handling | NO | Direct mirror of `kernel_kmeans.rs` pattern (v0.32.0): `StdRng::seed_from_u64(config.seed.wrapping_add(restart as u64))`, farthest-point empty-cluster recovery, lowest-inertia restart kept |
-| Out-of-sample predict | NO | Same contract as `KernelKmeansResult::predict` (v0.32.0): assign new series to nearest centroid via SBD; no re-estimation |
-| SBD-based k-medoids | NO | `alignment::clustering::kmedoids_from_distances(&dist_mat, &config)` already accepts any precomputed distance matrix — plug SBD distance matrix in directly |
-| Pairwise distance matrix | NO | `src/distance.rs::pairwise_distance_matrix` + `cross_distance_matrix` reusable, or implement inline symmetric loop (upper-triangle fill) — same pattern used in `alignment/clustering.rs` |
-| RNG seeding | NO | `rand` 0.8 + `StdRng::seed_from_u64` pattern established in `clustering.rs`, `kernel_kmeans.rs` |
-| `linalg` / faer | NOT NEEDED | nalgebra 0.33 `SymmetricEigen` is sufficient for the sz×sz centroid matrix; no Cholesky/SVD path |
-| MSRV change | NONE | All code is `f64` arithmetic + existing crate APIs; MSRV stays at 1.81 |
+| Deliverable | Required new dep? | Rationale |
+|-------------|------------------|-----------|
+| Integrated BLUP prediction MSE criterion | NO | `cholesky_solve` + `simpsons_weights` cover the full computation; no matrix library beyond current use |
+| Greedy sequential design-point selection (trajectory) | NO | Repeated `cholesky_solve` on the growing p×p submatrix `Γ*(S,S)`; no rank-1 update required (R reference re-inverts each step; p is small, ≤ 20 design points) |
+| Score-prediction / A-optimality criterion | NO | Same `cholesky_solve` path; criterion is `C(S)ᵀ [Γ*(S,S)]⁻¹ C(S)` — one solve per candidate |
+| Quadrature for integrated prediction variance | NO | `simpsons_weights` already computes Simpson weights on any grid |
+| Eigenstructure input (`PaceFpcaResult`) | NO | `pace_fpca.rs` already produces `eigenvalues`, `eigenfunctions`, `sigma2`, `argvals` — passed by reference |
+| Covariance surface reconstruction (kernel G(s,t)) | NO | Reconstruct as `Σ_k λ_k φ_k(s)φ_k(t)` from `PaceFpcaResult` fields — pure arithmetic on existing `FdMatrix` |
+| Linear interpolation of eigenfunctions to candidate grid | NO | `helpers::linear_interp` already used in `pace_fpca.rs` for interpolating φ_k to observed times |
+| Parallelism for outer exhaustive-search variant | NO | `iter_maybe_parallel!` gates rayon on candidate-point sweeps |
+| `linalg` / faer | NOT NEEDED | All solves are on the p×p system (p ≤ 20); `linalg::cholesky_solve` (always available, no feature gate) is sufficient |
+| MSRV change | NONE | All operations are f64 arithmetic on existing types; MSRV remains 1.81 |
 
 ---
 
 ## Core Technologies
 
-### Primary Technologies (all existing deps — no changes to Cargo.toml)
+### Primary Technologies (all existing deps — zero Cargo.toml changes)
 
-| Technology | Version in Cargo.toml | Role in v0.34.0 | Existing Usage Anchor |
+| Technology | Version in Cargo.toml | Role in v0.35.0 | Existing Usage Anchor |
 |------------|----------------------|-----------------|----------------------|
 | Rust (MSRV 1.81) | 1.81 min / 1.97 dev | All implementation | Entire codebase |
-| rustfft | 6.2 | FFT forward/inverse for NCC computation in SBD | `src/fts/spectral.rs:42,142-143`; `src/seasonal/mod.rs:286-287,352-354` |
-| nalgebra | 0.33 | `SymmetricEigen` for M=Q^T·S·Q shape-extraction centroid step | `src/fts/spectral.rs:208`; `src/regression.rs` (SVD) |
-| rand | 0.8 | `StdRng::seed_from_u64(seed + restart)` for deterministic n_init restarts | `src/kernel_kmeans.rs:263`; `src/clustering.rs:584,773` |
+| nalgebra | 0.33 | `DMatrix::symmetric_eigen()` used inside `pace_fpca.rs` to produce the eigenstructure consumed by FOptDes; no direct nalgebra call needed in FOptDes itself | `src/pace_fpca.rs:187`; `src/regression.rs` |
+| rand | 0.8 | Not needed by FOptDes core (design is deterministic given `PaceFpcaResult`); used if a random-start exhaustive fallback is added | `src/kernel_kmeans.rs:263` |
+| rayon | 1.10 (optional, `parallel` feature) | Parallelize the candidate-point sweep in the greedy inner loop via `iter_maybe_parallel!` | `src/pace_fpca.rs:434` |
 
-### Supporting Existing Infrastructure
+### Reused Internal Primitives (HIGH confidence — direct codebase read)
 
-| Primitive | Location | v0.34.0 Role | Reuse Type |
+| Primitive | Location | v0.35.0 Role | Reuse Type |
 |-----------|----------|-------------|------------|
-| `z_normalize_window(&[f64]) -> Vec<f64>` | `src/shapelet/distance.rs` | Per-series z-normalization before SBD (the paper requires z-normalized input) | Direct call |
-| `z_normalize_into(src, dst)` | `src/shapelet/distance.rs` | In-place variant for hot-loop centroid normalization | Direct call |
-| `kmedoids_from_distances(dist_mat, config)` | `src/alignment/clustering.rs` | SBD-k-medoids: pass SBD distance matrix as a drop-in consumer | Direct call (no changes) |
-| `KMedoidsConfig` / `KMedoidsResult` | `src/alignment/clustering.rs` | Config + result types for SBD-k-medoids path | Direct reuse |
-| `FdMatrix` | `src/matrix.rs` | Input data container; all rows are curve observations | Existing type |
-| `FdarError` | `src/error.rs` | `Result<T, FdarError>` error handling throughout | Existing type |
-| `iter_maybe_parallel!` / `maybe_par_chunks_mut!` | `src/parallel.rs` | Gate rayon parallelism on pairwise SBD distance matrix computation | Existing macros |
-| `seed_for_thread(seed, k)` | `src/helpers.rs` | Per-restart RNG (alternative to inline `seed_from_u64`) | Existing helper |
+| `pace_fpca(data, config) -> PaceFpcaResult` | `src/pace_fpca.rs` | Prior input: caller runs `pace_fpca` once; FOptDes takes the result by reference | Caller-supplied, consumed by reference |
+| `PaceFpcaResult.eigenvalues: Vec<f64>` | `src/pace_fpca.rs:102` | λ_k values for covariance kernel reconstruction and criterion weighting | Field access |
+| `PaceFpcaResult.eigenfunctions: FdMatrix` | `src/pace_fpca.rs:105` | φ_k(t) values on the work grid; interpolated to candidate design points | Field access + `linear_interp` |
+| `PaceFpcaResult.sigma2: f64` | `src/pace_fpca.rs:117` | Ridge term σ² in Γ*(S,S) = G(S,S) + σ²I_p | Field access |
+| `PaceFpcaResult.argvals: Vec<f64>` | `src/pace_fpca.rs:115` | Work grid on which φ_k are defined; candidate design points are drawn from or mapped to this grid | Field access |
+| `helpers::simpsons_weights(grid: &[f64]) -> Vec<f64>` | `src/helpers.rs:76` | Quadrature weights for ∫ Var(x̂(t) \| U_S) dt — the integrated prediction MSE criterion | Direct call |
+| `helpers::linear_interp(grid, vals, t) -> f64` | `src/helpers.rs` | Interpolate φ_k(t_j) at candidate design points not on the work grid | Direct call (identical usage to `pace_fpca.rs:457`) |
+| `linalg::cholesky_solve(a, b, p) -> Result<Vec<f64>>` | `src/linalg.rs:131` | Solve Γ*(S,S) x = b for each criterion evaluation and for each candidate addition in the greedy loop | Direct call (same signature as in `pace_fpca.rs:493`) |
+| `linalg::cholesky_d(mat, d) -> Result<Vec<f64>>` | `src/linalg.rs:16` | Alternative Cholesky factor when the determinant / log-det is needed (D-optimality variant, if added later) | Direct call |
+| `linalg::cholesky_factor(a, p)` + `cholesky_forward_back(l, b, p)` | `src/linalg.rs:85,113` | Used internally by `cholesky_solve`; available if factoring once and solving multiple RHS is preferred (one factor, then k solves for k eigenfunctions) | Via `cholesky_solve` or direct |
+| `FdMatrix` | `src/matrix.rs` | Input format for functional data (not directly consumed by FOptDes, but `PaceFpcaResult.eigenfunctions` is an `FdMatrix`) | Existing type |
+| `FdarError` | `src/error.rs` | `Result<T, FdarError>` throughout | Existing type |
+| `iter_maybe_parallel!(0..n_candidates).map(...)` | `src/parallel.rs` | Parallelize criterion evaluation across all candidate grid points in greedy inner loop | Existing macro |
 
 ---
 
-## Reference Baseline — Pinned Version & Exact API
+## Algorithm: Linear Algebra Operations Required
 
-### tslearn@0.9.0 — `KShape` (verified via GitHub API on tslearn-team/tslearn `main`)
+This section specifies exactly what FOptDes must compute, derived from the Ji–Müller 2017 framework (verified against fdapace 0.5.9 `BestDes_TR.R` and `BestDes_SR.R` source).
 
-**Class signature (stable, from tslearn 0.9.0 docs):**
+### Shared Setup: Covariance Surface from Eigenstructure
 
-```python
-tslearn.clustering.KShape(
-    n_clusters=3,      # number of clusters
-    max_iter=100,      # maximum Lloyd iterations
-    tol=1e-06,         # inertia variation convergence threshold
-    n_init=1,          # restarts (NOTE: default is 1; fdars should use 10 like kernel_kmeans)
-    verbose=False,
-    random_state=None,
-    init='random'      # 'random' or ndarray of shape (n_clusters, ts_size, d)
-)
+FOptDes does **not** re-run covariance smoothing. It reconstructs the truncated-FPCA approximation from `PaceFpcaResult`:
+
+```
+G(s, t) ≈ Σ_{k=1}^{K} λ_k · φ_k(s) · φ_k(t)
 ```
 
-**fit(X, y=None)** — X shape `(n_ts, sz, d)`. Returns self with `.cluster_centers_`, `.labels_`, `.inertia_`, `.n_iter_`.
+For any set of candidate design points `t_1, ..., t_p` (drawn from `PaceFpcaResult.argvals` or interpolated), the p×p submatrix is:
 
-**predict(X)** — X shape `(n_ts, sz, d)`. Returns `labels` array shape `(n_ts,)`.
-
-**Post-fit attributes:** `cluster_centers_` shape `(n_clusters, sz, d)`, `norms_` (training norms), `norms_centroids_` (centroid norms), `labels_`, `inertia_`, `n_iter_`.
-
-**Module path:** `tslearn.clustering.KShape` — reference for the clustering API shape. Distance functions live in `tslearn.metrics`.
-
-### tslearn@0.9.0 — `cdist_normalized_cc` (verified: source read from tslearn/metrics/cycc.py via GitHub API)
-
-**Exact function signature:**
-
-```python
-cdist_normalized_cc(
-    dataset1,        # shape (n_ts1, sz, d)
-    dataset2,        # shape (n_ts2, sz, d)
-    norms1,          # shape (n_ts1,) — precomputed L2 norms; negative = compute lazily
-    norms2,          # shape (n_ts2,)
-    self_similarity  # bool — if True, only compute upper triangle (symmetric case)
-) -> dists           # shape (n_ts1, n_ts2) — max NCC values (NOT yet subtracted from 1)
+```
+Γ(S, S)[i,j] = G(t_i, t_j) = Σ_k λ_k · φ_k(t_i) · φ_k(t_j)
 ```
 
-**SBD distance** = `1.0 - cdist_normalized_cc(...)` (applied in `KShape._cross_dists`).
+The ridge-regularized version adds σ²I:
 
-### tslearn@0.9.0 — `normalized_cc` (the SBD kernel, from tslearn/metrics/cycc.py)
-
-This is the core NCC computation — the exact formula fdars must replicate:
-
-```python
-def normalized_cc(s1, s2, norm1=-1.0, norm2=-1.0):
-    sz = s1.shape[0]
-    n_bits = 1 + int(np.log2(2 * sz - 1))   # ceil(log2(2*sz - 1))
-    fft_sz = 2 ** n_bits                      # next power of two >= 2*sz - 1
-
-    denom = norm1 * norm2                      # precomputed L2 norms product
-    if denom < 1e-9: denom = np.inf           # guard: zero-norm series
-
-    cc = np.real(np.fft.ifft(
-        np.fft.fft(s1, fft_sz, axis=0) *
-        np.conj(np.fft.fft(s2, fft_sz, axis=0)),
-        axis=0,
-    ))                                         # length fft_sz, circular cross-corr
-    cc = np.vstack((cc[-(sz-1):], cc[:sz]))   # rearrange to linear lags: 2*sz-1 entries
-    norm_cc = cc.sum(axis=-1) / denom         # scalar (1D) or summed over d dims
-    return norm_cc                             # shape (2*sz - 1,); SBD uses max()
+```
+Γ*(S, S) = Γ(S, S) + σ² · I_p
 ```
 
-**Rust translation notes:**
+This is a p×p symmetric positive-definite matrix (p is the number of selected design points, at most 20 in practice).
 
-1. `fft_sz = (2 * sz - 1).next_power_of_two()` — exact Rust equivalent; rustfft handles arbitrary sizes but power-of-two is fastest.
-2. `FftPlanner::<f64>::new()` + `plan_fft_forward(fft_sz)` and `plan_fft_inverse(fft_sz)` — identical to `seasonal/mod.rs` lines 352–354.
-3. The `conj` multiply in frequency domain = pointwise `Complex { re: a.re*b.re + a.im*b.im, im: a.im*b.re - a.re*b.im }` (conjugate of s2 times s1).
-4. After IFFT, rearrange: take last `sz-1` elements followed by first `sz` elements of the `fft_sz`-length buffer — this gives the 2*sz-1 linear cross-correlation lags.
-5. Divide by `norm1 * norm2` (precomputed scalar norms of z-normalized series).
-6. **SBD** = `1.0 - norm_cc.iter().copied().fold(f64::NEG_INFINITY, f64::max)`.
-7. **Optimal shift** = `argmax(norm_cc) + 1 - sz` (converts 0-based index to lag in `[-(sz-1), sz-1]`).
+**Implementation:** Build `Γ*(S,S)` as a flat row-major `Vec<f64>` of length p²; compute by looping over k, accumulating `λ_k · φ_k(t_i) · φ_k(t_j)` with `φ_k` values from `linear_interp`, then add `σ²` to diagonal. No nalgebra DMatrix conversion needed.
 
-**fdars naming convention:** `sbd(s1: &[f64], s2: &[f64]) -> f64` for the distance; `ncc(s1: &[f64], s2: &[f64]) -> (f64, i64)` for `(max_ncc, optimal_shift)`.
+### Criterion 1: Trajectory-Recovery (Integrated BLUP Prediction MSE)
 
-### tslearn@0.9.0 — `y_shifted_sbd_vec` (centroid alignment step, from tslearn/metrics/cycc.py)
+Reference: `BestDes_TR.R::TRCri`, Ji–Müller 2017 §2.2.
 
-Aligns each cluster member to the current centroid before shape extraction:
+**Criterion value** (maximize R²_X, equivalently maximize the integrated quadratic form):
 
-```python
-# For each series in cluster: compute NCC, find argmax shift, circularly-shift the series
-idx = np.argmax(cc)
-shift = idx + 1 - sz    # lag: negative = shift left, positive = shift right
-if shift > 0:   dataset_shifted[i, shift:] = dataset[i, :-shift, :]
-elif shift < 0: dataset_shifted[i, :shift] = dataset[i, -shift:, :]
-else:           dataset_shifted[i] = dataset[i]
+```
+TRCri(S) = ∫_T γ(t, S)ᵀ · [Γ*(S,S)]⁻¹ · γ(t, S) dt
 ```
 
-**Rust translation:** shift a `Vec<f64>` slice in-place; truncation-fill (not wrap-around). Produces a new aligned copy per series in the cluster.
+where `γ(t, S)` is the p-vector of covariances between X(t) and the design observations U_S:
 
-### tslearn@0.9.0 — `KShape._shape_extraction` (centroid update, from tslearn/clustering/kshape.py)
-
-```python
-def _shape_extraction(self, X, k):
-    Xp = y_shifted_sbd_vec(centroid_k, cluster_members, ...)  # SBD-align
-    S = Xp.T @ Xp                          # sz × sz, symmetric positive semidefinite
-    Q = I_sz - ones(sz,sz) / sz            # centering matrix, symmetric
-    M = Q.T @ S @ Q                        # sz × sz, symmetric
-    _, vec = numpy.linalg.eigh(M)          # ascending eigenvalues; vec[:,-1] = top eigenvector
-    mu_k = vec[:, -1]                      # largest eigenvector
-    # Sign disambiguation: pick sign of mu_k that minimizes sum of SBD distances
-    dist_plus  = sum(norm(Xp - mu_k))
-    dist_minus = sum(norm(Xp + mu_k))
-    if dist_minus < dist_plus: mu_k *= -1
-    # After all clusters done: re-z-normalize centroids
+```
+γ(t, S)[i] = G(t, t_i) = Σ_k λ_k · φ_k(t) · φ_k(t_i)
 ```
 
-**Eigendecomposition assessment:** M is symmetric (Q is symmetric idempotent, S is symmetric PSD → M = Q S Q is symmetric). `numpy.linalg.eigh` is the symmetric eigensolver. **`nalgebra::SymmetricEigen::new(mat)`** is the exact Rust equivalent — already proven in `src/fts/spectral.rs` line 208 with the same pattern (build DMatrix, call SymmetricEigen, sort by eigenvalue descending). Use identical pattern: build `DMatrix<f64>` from M (sz×sz), call `SymmetricEigen::new`, pick the eigenvector with the largest eigenvalue.
+**Integral approximation** using the m-point work grid T with Simpson weights w:
 
-**Sign disambiguation:** compute sum of L2 distances of aligned cluster members to `+mu_k` vs `-mu_k`; pick the sign with lower total distance. Uses `FdMatrix::row_l2_sq` or inline L2 loop — no dep.
+```
+TRCri(S) ≈ Σ_{j=1}^{m} w_j · γ(t_j, S)ᵀ · [Γ*(S,S)]⁻¹ · γ(t_j, S)
+         = Σ_j w_j · v_j · v_j      (where v_j = [Γ*(S,S)]⁻¹/² γ(t_j, S))
+```
+
+**Efficient computation:** Factor `Γ*(S,S) = L Lᵀ` (Cholesky) once. For each work-grid point j, forward-solve `L v_j = γ(t_j, S)` (cost O(p²) per grid point). Integrate `Σ_j w_j ||v_j||²`. Total cost per candidate set evaluation: O(p³) for factorization + O(m·p²) for the forward solves.
+
+```
+// In Rust pseudocode:
+let l = cholesky_factor(&gamma_star_ss, p)?;                  // p×p lower factor
+let mut criterion = 0.0_f64;
+for j in 0..m {
+    let gamma_tj_s: Vec<f64> = (0..p).map(|i| g(t_j, t_i)).collect();
+    let v = cholesky_forward_back(&l, &gamma_tj_s, p);        // forward-back solve
+    criterion += w[j] * v.iter().map(|x| x * x).sum::<f64>();
+}
+```
+
+`linalg::cholesky_factor` + `linalg::cholesky_forward_back` are already `pub(crate)` in `src/linalg.rs` and cover this exactly.
+
+### Criterion 2: Score-Prediction (Posterior Score Variance / A-Optimality)
+
+Reference: `BestDes_SR.R::SRCri`, Ji–Müller 2017 §3.
+
+**Criterion value** (maximize scalar quadratic form using cross-covariance of scores to response):
+
+```
+SRCri(S) = C(S)ᵀ · [Γ*(S,S)]⁻¹ · C(S)
+```
+
+where `C(S)` is the p-vector of covariances between the response Y and design observations U_S. For the PACE score-prediction variant without an external response, this generalizes to minimizing the posterior variance of FPC score ξ_k given U_S:
+
+```
+Var(ξ_k | U_S) = λ_k - λ_k · φ_k(S)ᵀ · [Γ*(S,S)]⁻¹ · (λ_k · φ_k(S))
+               = λ_k · (1 - λ_k · φ_k(S)ᵀ · [Γ*(S,S)]⁻¹ · φ_k(S))
+```
+
+A-optimality minimizes the trace:
+
+```
+AOptCri(S) = Σ_k Var(ξ_k | U_S) = Σ_k λ_k · (1 - λ_k · φ_k(S)ᵀ · [Γ*(S,S)]⁻¹ · φ_k(S))
+```
+
+**Implementation:** For each component k, compute `[Γ*(S,S)]⁻¹ · (λ_k · φ_k(S))` via one `cholesky_solve` call. The criterion is a sum of p scalar dot products. Total cost: O(p³) factorization + O(K·p²) solves, where K is the number of FPC components.
+
+### Greedy Sequential Selection (both criteria)
+
+Reference: `BestDes_TR.R` sequential branch; Ji–Müller 2017 §2.3.
+
+Algorithm:
+1. Start with empty selected set `S = {}`.
+2. For iteration 1..=desired_p:
+   a. For each candidate point `t_c` not in S, form `S' = S ∪ {t_c}`.
+   b. Build `Γ*(S', S')` (size (|S|+1)×(|S|+1)) — rebuild from scratch (cheap for small p).
+   c. Evaluate criterion on S'.
+   d. Select `t_c` with highest criterion value; add to S.
+3. Return final S.
+
+**No rank-1 / Sherman-Morrison update required.** The fdapace reference re-inverts from scratch at each step (`solve(ridgeCov[design,design])`). For p ≤ 20 and p candidate additions per step, total cost is O(p³ · m · p) = O(p⁴ · m) — negligible for m ≤ 200 and p ≤ 20.
+
+**Optional optimization:** A Schur complement / rank-1 update can be applied if performance profiling reveals it as a hot path (unlikely for this parameter regime). The Sherman-Morrison-Woodbury formula for adding one row/column to an SPD inverse is:
+
+```
+[Γ*(S∪{c}, S∪{c})]⁻¹  (block matrix inverse)
+= block inversion of [[Γ*(S,S), g_c], [g_cᵀ, g_cc + σ²]]
+```
+
+where `g_c = γ(S, t_c)` and `g_cc = G(t_c, t_c)`. The Schur complement of the new point is `s_c = G(t_c, t_c) + σ² - g_cᵀ [Γ*(S,S)]⁻¹ g_c`. This is a standard block-matrix inversion — implementable via `cholesky_solve` on the existing p×p factor — but the reference does not use it and it is not needed for correctness or performance at this scale.
+
+### Exhaustive Search (non-sequential, small p)
+
+For small `p` (≤ 4), exhaustive search over all C(m, p) combinations is feasible and finds the global optimum. Implement as an optional mode: `is_sequential: bool` in config (default `true`). Exhaustive mode parallelized over all combinations via `iter_maybe_parallel!`.
 
 ---
 
-## Existing Primitives: Reuse Map
+## Existing Primitives: Complete Reuse Map
 
 ### Already Present in fdars-core (HIGH confidence — direct codebase read)
 
-| Primitive | Location | v0.34.0 Reuse |
+| Primitive | Location | v0.35.0 Reuse |
 |-----------|----------|--------------|
-| `FftPlanner::<f64>::new()` + `plan_fft_forward(n)` / `plan_fft_inverse(n)` | `src/fts/spectral.rs:42,143,308` | SBD NCC core — identical API call |
-| `(2*n).next_power_of_two()` pattern | `src/seasonal/mod.rs:350` | SBD FFT padding: `(2 * sz - 1).next_power_of_two()` |
-| `rustfft::num_complex::Complex<f64>` + buffer pattern | `src/fts/spectral.rs:150` | FFT buffer type for NCC |
-| `nalgebra::SymmetricEigen::new(mat)` | `src/fts/spectral.rs:208` | Shape-extraction eigenproblem (M = Q S Q) |
-| `DMatrix::from_fn(m, m, ...)` | `src/fts/spectral.rs:198` | Build M for shape extraction |
-| Eigenvector sign-alignment pattern | `src/fts/spectral.rs:224-236` | Sign disambiguation of mu_k (existing pattern; adapt for SBD-based sign test instead of largest-magnitude-entry rule) |
-| `z_normalize_window(slice: &[f64]) -> Vec<f64>` | `src/shapelet/distance.rs:114` | Pre-normalize series before SBD; z-normalize centroids after each centroid update |
-| `z_normalize_into(src, dst)` | `src/shapelet/distance.rs:57` | In-place variant for normalizing centroid buffers |
-| `kmedoids_from_distances(dist_mat, config)` | `src/alignment/clustering.rs` | SBD-k-medoids: pass `sbd_distance_matrix(data)` output directly |
-| `KMedoidsConfig` / `KMedoidsResult` | `src/alignment/clustering.rs` | Config + result types for SBD-k-medoids — no new types needed |
-| `StdRng::seed_from_u64(config.seed.wrapping_add(restart as u64))` | `src/kernel_kmeans.rs:263` | n_init restart seeding — copy verbatim |
-| Farthest-point empty-cluster recovery | `src/kernel_kmeans.rs:368,466` | Empty-cluster guard — copy the `ensure_no_empty_random` pattern adapted for SBD distances |
-| `iter_maybe_parallel!` | `src/parallel.rs` | Parallelize pairwise SBD distance matrix computation |
-| `FdMatrix::row_l2_sq` | `src/matrix.rs` | L2 norm for sign disambiguation in shape extraction |
-| `pub fn pairwise_distance_matrix` | `src/distance.rs` | Pairwise SBD distance matrix for `kmedoids` consumer |
+| `pace_fpca(data, config) -> Result<PaceFpcaResult>` | `src/pace_fpca.rs:266` | Caller produces the prior; FOptDes consumes `&PaceFpcaResult` |
+| `PaceFpcaResult` (eigenvalues, eigenfunctions, sigma2, argvals, ncomp) | `src/pace_fpca.rs:99` | All fields consumed directly by FOptDes design criterion |
+| `linalg::cholesky_solve(a, b, p)` | `src/linalg.rs:131` | Solve `Γ*(S,S) x = b` for each criterion evaluation — identical call signature to `pace_fpca.rs:493` |
+| `linalg::cholesky_factor(a, p)` | `src/linalg.rs:85` | Factor once, solve multiple RHS (one per work-grid point in TRCri) |
+| `linalg::cholesky_forward_back(l, b, p)` | `src/linalg.rs:113` | Forward-back solve after one factorization — avoids re-factoring per grid point |
+| `helpers::simpsons_weights(grid)` | `src/helpers.rs:76` | Quadrature for ∫ criterion(t) dt |
+| `helpers::linear_interp(grid, vals, t)` | `src/helpers.rs` | Evaluate φ_k at candidate design points; same call as `pace_fpca.rs:457` |
+| `iter_maybe_parallel!(range).map(...)` | `src/parallel.rs` | Parallelize inner greedy candidate sweep |
+| `FdMatrix` | `src/matrix.rs` | `eigenfunctions` field type; `(j, k)` column-major indexing used to access φ_k(t_j) |
+| `FdarError` | `src/error.rs` | Error type throughout |
+| `#[cfg_attr(feature = "serde", derive(...))]` | project-wide convention | Apply to `OptDesConfig` and `OptDesResult` |
+| `#[must_use]` | project-wide convention | Apply to `foptdes()` (expensive computation) |
 
-### To Be Written for v0.34.0
+### Not Required (confirmed absent from algorithm)
 
-| Primitive | Proposed Location | Notes |
-|-----------|-------------------|-------|
-| `sbd(s1: &[f64], s2: &[f64], fft_buf: &mut Vec<Complex<f64>>, planner: &mut FftPlanner<f64>) -> f64` | `src/kshape/sbd.rs` | Core SBD scalar; reuses caller-provided FFT planner + buffer (avoid re-planning per pair) |
-| `ncc_with_shift(s1, s2, ...) -> (f64, i64)` | `src/kshape/sbd.rs` | Returns `(max_ncc, optimal_shift)` — needed for the alignment step in shape extraction |
-| `sbd_distance_matrix(data: &FdMatrix) -> Vec<f64>` | `src/kshape/sbd.rs` | Symmetric upper-triangle pairwise matrix; gated via `iter_maybe_parallel!` |
-| `sbd_cross_distance_matrix(test, centroids) -> Vec<f64>` | `src/kshape/sbd.rs` | Cross-distance for assignment step and predict |
-| `shift_to_centroid(series_row, shift) -> Vec<f64>` | `src/kshape/sbd.rs` | Truncation-fill alignment; mirrors `y_shifted_sbd_vec` per-series step |
-| `shape_extraction(cluster_members_aligned: &FdMatrix, sz: usize) -> Vec<f64>` | `src/kshape/centroid.rs` | Build M=Q^T S Q, call `nalgebra::SymmetricEigen`, sign-disambiguate |
-| `KShapeConfig` | `src/kshape/mod.rs` | `n_clusters`, `n_init` (default 10, not tslearn's 1), `max_iter`, `tol`, `seed` |
-| `KShapeResult` struct + `predict(&self, data: &FdMatrix) -> Result<Vec<usize>>` | `src/kshape/mod.rs` | Carries `cluster_centers: FdMatrix`, `labels`, `inertia`, `iter`, `converged`, `n_init_best` |
-| `kshape_fd(data: &FdMatrix, config: &KShapeConfig) -> Result<KShapeResult, FdarError>` | `src/kshape/mod.rs` | Top-level entry point |
-
----
-
-## FFT-Size and Zero-Padding Specifics
-
-**Requirement:** Linear cross-correlation of two length-sz sequences requires a buffer of length `≥ 2*sz - 1`. Circular FFT convolution produces length-N results; to get linear cross-correlation, pad to `N ≥ 2*sz - 1` and discard the wrap-around.
-
-**Power-of-two padding (required for efficiency):**
-
-```rust
-let fft_sz = (2 * sz - 1).next_power_of_two();
-// Example: sz=100 → 2*100-1=199 → next_power_of_two=256
-// Example: sz=500 → 2*500-1=999 → next_power_of_two=1024
-// Example: sz=1000 → 2*1000-1=1999 → next_power_of_two=2048
-```
-
-`rustfft::FftPlanner` accepts arbitrary sizes (not restricted to power-of-two), but power-of-two is significantly faster due to the Cooley-Tukey radix-2 factorization. This is the same pattern already in `src/seasonal/mod.rs:350`.
-
-**Buffer layout for NCC rearrangement:**
-
-After IFFT into a length-`fft_sz` buffer (indices `0..fft_sz`):
-- The linear cross-correlation lags are at indices `0..sz` (non-negative lags) and `fft_sz-(sz-1)..fft_sz` (negative lags).
-- Rearrangement to `[-(sz-1), ..., -1, 0, 1, ..., sz-1]` order:
-  ```rust
-  // lags[0..sz-1] = buf[fft_sz-(sz-1)..fft_sz]   (negative lags)
-  // lags[sz-1..2*sz-1] = buf[0..sz]               (non-negative lags)
-  ```
-- `max_ncc = lags.iter().copied().fold(f64::NEG_INFINITY, f64::max)`
-- `argmax_idx` → `optimal_shift = argmax_idx as i64 + 1 - sz as i64` (lag in `[-(sz-1), sz-1]`)
-
-**Norm precomputation:** Compute `||s||_2` once per series at fit time (before the inner-loop pairwise computation). Store in a `Vec<f64>` of length n. For z-normalized inputs, `norm = sqrt(sz)` exactly (since z-norm has unit variance), but compute explicitly to match tslearn's robustness convention.
-
-**IFFT scaling:** `rustfft` does not normalize the IFFT output — divide by `fft_sz` after IFFT to get the correct cross-correlation values (standard FFT convention; numpy's `ifft` normalizes by default). The normalization by `norm1 * norm2` absorbs the scale, but the `fft_sz` factor must be divided out explicitly.
-
----
-
-## Eigendecomposition Specifics for Shape Extraction
-
-**Matrix M** is `sz × sz` where `sz` is the length of each z-normalized series. For typical time series (`sz` in 50–500):
-
-| sz | M size | nalgebra::SymmetricEigen cost |
-|----|--------|-------------------------------|
-| 50 | 50×50 | Negligible (<1 ms) |
-| 100 | 100×100 | ~1–5 ms |
-| 200 | 200×200 | ~5–20 ms |
-| 500 | 500×500 | ~100–500 ms — consider power method if slow |
-
-**`nalgebra::SymmetricEigen` correctness:** M = Q^T S Q where Q = I - 11^T/n_k (centering) and S = X_p^T X_p (gram of aligned cluster members). Both Q and S are symmetric (Q is idempotent-symmetric, S is PSD), so M is symmetric. `SymmetricEigen` computes all eigenvalues and eigenvectors. Take the eigenvector with the largest eigenvalue (sort descending, take index 0 — identical to `spectral.rs` lines 211–221).
-
-**Sign disambiguation** differs from the spectral.rs convention (which uses "largest-magnitude entry positive"). For k-Shape, use the tslearn convention: compare `sum_i ||x_p_i - mu_k||_2` vs `sum_i ||x_p_i + mu_k||_2`; negate mu_k if the minus version is smaller. This is mathematically cleaner and matches the reference.
-
-**No `linalg` feature needed:** `nalgebra::SymmetricEigen` is in nalgebra 0.33 core (not behind a faer gate). The shape-extraction path works under default features (MSRV 1.81).
+| Primitive | Why Not Needed |
+|-----------|---------------|
+| `rustfft::FftPlanner` | No FFT in FOptDes; criterion is a quadratic form, not a convolution |
+| `nalgebra::DMatrix::symmetric_eigen()` | Eigendecomposition already done by `pace_fpca`; FOptDes receives λ_k and φ_k as inputs |
+| `nalgebra::SVD` | No SVD path in criterion evaluation |
+| `faer` (linalg feature) | All solves are on p×p matrices (p ≤ 20); `linalg::cholesky_solve` is always available without the `linalg` feature gate |
+| `rand` / `StdRng` | Design is deterministic given the FPCA prior; random starts only if an optional random-exhaustive mode is added |
+| `statrs` / `rand_distr` | No distribution sampling needed |
+| `cov_irreg` / `mean_irreg` | FOptDes reuses `PaceFpcaResult` — no re-smoothing |
 
 ---
 
 ## Module Placement
 
 ```
-src/kshape/
-    mod.rs          — KShapeConfig, KShapeResult, kshape_fd() entry point, pub re-exports
-    sbd.rs          — sbd(), ncc_with_shift(), sbd_distance_matrix(), sbd_cross_distance_matrix(), shift_to_centroid()
-    centroid.rs     — shape_extraction() (the Q^T S Q eigenvector step)
+src/optimal_design.rs           — single top-level module (matches PROJECT.md description)
+    OptDesConfig                — n_design_pts, is_sequential, criterion, ridge, work_grid (optional override)
+    OptDesResult                — selected_pts: Vec<f64>, criterion_value: f64, r2: f64, r2adj: f64
+    DesignCriterion enum        — TrajectoryRecovery, ScorePrediction
+    foptdes(prior, config)      — top-level entry point
+    fn build_gamma_star_ss(...)  — assemble Γ*(S,S) from eigenstructure
+    fn tr_criterion(...)         — integrate BLUP prediction variance for TRCri
+    fn score_criterion(...)      — A-optimal score posterior variance for SRCri
+    fn greedy_sequential(...)    — iterative point addition
+    fn exhaustive_search(...)    — optional, gated on config.is_sequential=false + small p
 ```
 
 Crate-root re-export in `src/lib.rs`:
 ```rust
-pub mod kshape;
-pub use kshape::{kshape_fd, KShapeConfig, KShapeResult};
+pub mod optimal_design;
+pub use optimal_design::{foptdes, OptDesConfig, OptDesResult, DesignCriterion};
 ```
 
-Follows the pattern of `pub mod kernel_kmeans` (v0.32.0) and `pub mod shapelet` (v0.33.0).
+Follows the single-file pattern of `pace_fpca.rs` (one public module, no sub-directory needed given the algorithm is self-contained in ~300 lines).
 
 ---
 
-## Core Technologies Table
+## Reference Baseline — Pinned Version & Exact API
 
-| Technology | Version | Role in v0.34.0 | Change to Cargo.toml? |
-|------------|---------|-----------------|----------------------|
-| Rust (MSRV 1.81) | 1.81 min / 1.97 dev | All implementation | None |
-| rustfft | 6.2 | FFT forward/inverse for NCC in SBD; `FftPlanner::<f64>` + power-of-two padding | None — already a dep |
-| nalgebra | 0.33 | `SymmetricEigen::new(DMatrix)` for shape extraction centroid step | None — already a dep |
-| rand | 0.8 | `StdRng::seed_from_u64(seed + restart)` for n_init determinism | None — already a dep |
-| rayon | 1.10 (optional, `parallel` feature) | Parallelize pairwise SBD distance matrix via `iter_maybe_parallel!` | None — already a dep |
-| shapelet | existing, v0.33.0 | `z_normalize_window` + `z_normalize_into` for series pre-normalization | None — already in crate |
-| alignment::clustering | existing | `kmedoids_from_distances` for SBD-k-medoids consumer | None — already in crate |
-| kernel_kmeans | existing, v0.32.0 | n_init/restart/empty-cluster pattern to mirror exactly | None — already in crate |
+### fdapace@0.5.9 — `FOptDes` (R CRAN)
 
-### No New Dependencies
+**Function signature (from CRAN refman, fdapace 0.5.9):**
 
-```toml
-# Cargo.toml — NO CHANGES NEEDED for v0.34.0
-# All k-Shape + SBD deliverables build on the existing dependency set.
-# rustfft, nalgebra, rand, rayon are already declared.
+```r
+FOptDes(
+  Ly,              # list of observed values per subject
+  Lt,              # list of observation times per subject
+  Resp = NULL,     # scalar response vector (NULL → trajectory recovery mode)
+  p = 3,           # number of design points requested
+  optns = list(),  # FPCA options (bandwidth, ncomp, etc.)
+  isRegression = is.null(Resp),
+  isSequential = FALSE,   # FALSE = exhaustive search; TRUE = greedy sequential
+  RidgeCand = NULL        # ridge penalty candidates (NULL → CV selection)
+)
 ```
 
----
+**Return value:** list with `OptDes` (vector of p optimal grid points), `R2` (coefficient of determination at optimum), `R2adj`, `OptRidge`.
 
-## Alternatives Considered
+**Algorithm (from BestDes_TR.R source, verified):**
+1. Run `FPCA(Ly, Lt, optns)` internally to obtain covariance surface `Cov` and FPCA decomposition.
+2. Select ridge λ from `RidgeCand` by cross-validation (ensures `ridgeCov[design,design]` is PD for all candidate sets).
+3. `TRCri(design, Cov, ridge)`: compute `trapzRcpp(workGrid, diag(t(Cov[design,]) %*% solve(Cov[design,design] + λI) %*% Cov[design,]))`.
+4. Sequential or exhaustive search over candidate grid points maximizing `TRCri`.
 
-| Decision | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| FFT for NCC | `rustfft::FftPlanner` (already a dep) | `realfft` crate (real-input FFT) | New dep not justified; `rustfft` handles complex inputs and is already used in 3 modules |
-| Eigendecomposition | `nalgebra::SymmetricEigen` | Power iteration (hand-coded) | Only need top-1 eigenvector, but `SymmetricEigen` is already proven in the codebase; power iteration adds untested code for modest gain at typical sz ≤ 200 |
-| Eigendecomposition (large sz) | `nalgebra::SymmetricEigen` | `faer` thin SVD (via `linalg` feature) | `SymmetricEigen` is correct and sufficient for sz ≤ 500; faer path would require `linalg` feature gate, complicating MSRV to 1.84 |
-| n_init default | 10 (matching `kernel_kmeans.rs`) | 1 (tslearn's default) | k-Shape is as sensitive to local minima as kernel-k-means; 10 restarts matches fdars convention and improves robustness significantly |
-| Z-normalization | `shapelet::z_normalize_window` (already in crate) | Inline re-implementation | Avoiding code duplication; v0.33.0 already shipped exactly this helper |
-| SBD-k-medoids | Plug SBD distance matrix into `kmedoids_from_distances` | Separate KMedoidsKShape struct | `kmedoids_from_distances` explicitly designed to accept any distance matrix — zero new code needed for this deliverable |
-| Module name | `kshape/` | `clustering/kshape.rs` | The module has 3 logical sub-concerns (SBD math, centroid, clustering); a sub-directory matches the `shapelet/`, `metric/`, `alignment/` pattern |
+**Key difference from fdars v0.35.0 plan:** fdapace runs `FPCA` internally. In fdars, `pace_fpca` is already shipped and the caller passes `PaceFpcaResult`. This is the two-stage design — cleaner, avoids re-estimation, and matches the PROJECT.md spec exactly.
 
----
+**fdapace R² formula** (trajectory recovery):
+```
+R2 = TRCri(OptDes) / VarX
+where VarX = integral of diag(Cov) over workGrid (total functional variance)
+```
 
-## What NOT to Use
+**fdapace R²adj:**
+```
+R2adj = 1 - (1 - R2) * (m - 1) / (m - p - 1)
+where m = length(workGrid), p = number of design points
+```
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| Arbitrary FFT size (non-power-of-two) for NCC | rustfft is correct for arbitrary sizes but significantly slower for non-power-of-two; pairwise SBD on large datasets compounds the cost | `(2 * sz - 1).next_power_of_two()` — same pattern already in `seasonal/mod.rs:350` |
-| `nalgebra::SVD` for shape extraction | SVD of M is overkill; M is symmetric so `SymmetricEigen` is the correct and cheaper path | `nalgebra::SymmetricEigen::new(m_matrix)` |
-| `faer` for shape extraction | Would require `linalg` feature + MSRV 1.84; no measurable benefit for sz×sz matrices in the clustering hot path | `nalgebra::SymmetricEigen` (default features, MSRV 1.81) |
-| z-norm inside the SBD inner loop | If z-normalizing series on every pairwise call, you pay O(n²·sz) normalization; pre-normalize once at fit time | Pre-compute `z_normalize_window` for each series row once; cache norms |
-| `tslearn.preprocessing.TimeSeriesScalerMeanVariance` idiom applied per-centroid-update | tslearn z-normalizes centroids after each centroid update as a post-processing step; skipping this causes centroid drift and instability | Re-apply `z_normalize_window` to each centroid after each `shape_extraction` call — one line |
-| Adding a new `ndarray` or `faer` dependency | No 2D numerical array op in SBD or shape extraction requires a new matrix library; `nalgebra::DMatrix` + `Vec<f64>` cover it | Existing nalgebra DMatrix for the sz×sz M matrix; `Vec<f64>` for series buffers |
+### Reference Paper
+
+Ji, H. & Müller, H.-G. (2017). Optimal Designs for Longitudinal and Functional Data. *Journal of the Royal Statistical Society: Series B*, 79(3), 859–876. arXiv:1604.05375.
 
 ---
 
@@ -331,10 +288,11 @@ Follows the pattern of `pub mod kernel_kmeans` (v0.32.0) and `pub mod shapelet` 
 
 | Aspect | Recommendation |
 |--------|---------------|
-| Parallel pairwise SBD | YES — gate with `parallel` feature via `iter_maybe_parallel!` on the upper-triangle loop. Each `sbd(s_i, s_j)` call is independent. |
-| Does k-Shape path need `linalg`? | NO — `nalgebra::SymmetricEigen` is in nalgebra core, not behind faer gate. Works under default features. |
-| WASM compatibility | YES — pure `f64` arithmetic + rustfft (already WASM-compatible per existing uses); rayon is optional and off on WASM. |
-| `serde` feature | Follow `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` on `KShapeConfig` and `KShapeResult`; the `cluster_centers_` field (`FdMatrix`) already derives serde conditionally. |
+| Parallel inner greedy loop | YES — gate via `parallel` feature + `iter_maybe_parallel!` on the candidate sweep. Each candidate criterion evaluation is independent (no shared mutable state). |
+| `linalg` feature required? | NO — all solves use `linalg::cholesky_solve` from `src/linalg.rs`, which is always available (not behind the `linalg` Cargo feature gate). The `linalg` Cargo feature gates `faer` + `anofox-regression`, which FOptDes does not need. |
+| WASM compatibility | YES — pure f64 arithmetic; no FFT; rayon off on WASM. Same as `pace_fpca.rs`. |
+| `serde` feature | Apply `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` to `OptDesConfig` and `OptDesResult` following the project convention. |
+| MSRV 1.81 | PRESERVED — no post-1.81 stabilizations are used. All called functions (`cholesky_solve`, `simpsons_weights`, `linear_interp`, `iter_maybe_parallel!`) are stable on 1.81. |
 
 ---
 
@@ -342,28 +300,66 @@ Follows the pattern of `pub mod kernel_kmeans` (v0.32.0) and `pub mod shapelet` 
 
 | Scenario | Works? | Notes |
 |----------|--------|-------|
-| Default features (`parallel`) | YES | pairwise SBD parallelized; MSRV 1.81 |
-| No features (sequential) | YES | All loops sequential-compatible |
-| `linalg` feature | YES | k-Shape adds nothing to `linalg`; features orthogonal |
-| `serde` feature | YES | Add derive attributes to KShapeConfig / KShapeResult |
-| WASM (`js` feature) | YES | rustfft is WASM-compatible; rayon off on WASM |
-| Rust 1.81 (MSRV) | YES | No post-1.81 stabilizations needed; `SymmetricEigen` stable since nalgebra 0.30+ |
+| Default features (`parallel`) | YES | Greedy inner loop parallelized; MSRV 1.81 |
+| No features (sequential only) | YES | All loops sequential-compatible; `cholesky_solve` always available |
+| `linalg` feature | YES | FOptDes adds nothing to `linalg`; features are orthogonal |
+| `serde` feature | YES | Add derive attributes to OptDesConfig / OptDesResult |
+| WASM (`js` feature) | YES | No FFT, no blocking dependencies; rayon off on WASM |
+| Rust 1.81 (MSRV) | YES | No stabilizations post-1.81 required |
+
+---
+
+## Alternatives Considered
+
+| Decision | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Sherman-Morrison rank-1 update in greedy loop | Rebuild Γ*(S,S) from scratch each step | Apply Schur complement / block-matrix inversion to avoid re-factoring | p ≤ 20: re-factoring costs O(p³) ≈ 8000 ops — negligible. Rank-1 update code is complex and the fdapace reference does not use it. Add only if profiling flags it. |
+| faer for SPD solve | `linalg::cholesky_solve` (always available) | `faer` Cholesky (via `linalg` feature) | `faer` requires MSRV 1.84 and the `linalg` feature gate. There is no performance benefit for 20×20 systems. `linalg::cholesky_solve` is correct and already used in `pace_fpca.rs`. |
+| nalgebra DMatrix for Γ*(S,S) | Flat `Vec<f64>` row-major | `nalgebra::DMatrix` | `linalg::cholesky_solve` already accepts a flat row-major slice. Converting to DMatrix adds a copy and a type boundary for no benefit at p ≤ 20. |
+| Re-run `pace_fpca` internally (like fdapace) | Accept `&PaceFpcaResult` as prior | Run FPCA internally | Two-stage design is cleaner, avoids re-estimation overhead, and matches the PROJECT.md spec. The caller can choose any FPCA variant; FOptDes is a pure design step. |
+| Trapezoidal rule for criterion integration | `simpsons_weights` (existing, Simpson's rule) | Hand-coded trapezoid | `simpsons_weights` is already the project-wide quadrature standard (used in `pace_fpca.rs`, `regression.rs`, `fdata.rs`). Higher-order accuracy for the same grid size. |
+| Enumerate combinations via `itertools::combinations` | Hand-rolled combination iterator | `itertools` crate | New dependency not justified; a simple recursive/index-based combination enumerator for the exhaustive mode is ~20 lines of Rust, well within the pattern of other crate utilities. |
+
+---
+
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| Re-estimating the covariance surface in FOptDes | Doubles computation time; caller already has `PaceFpcaResult` | Accept `&PaceFpcaResult` — the two-stage architecture specified in PROJECT.md |
+| `nalgebra::symmetric_eigen()` in FOptDes | Eigendecomposition is already done; FOptDes consumes λ_k and φ_k from the prior | Direct field access on `PaceFpcaResult.eigenvalues` and `PaceFpcaResult.eigenfunctions` |
+| The `linalg` Cargo feature for SPD solve | Requires MSRV 1.84, breaks CRAN compatibility, not needed for p ≤ 20 | `linalg::cholesky_solve` from `src/linalg.rs` (always available, MSRV 1.81) |
+| `itertools` or `combinations` crate | New dependency for a simple loop | A hand-rolled index-based combination enumerator (20 lines) |
+| Storing Γ*(S,S) as a nalgebra `DMatrix` | Unnecessary type boundary; `cholesky_solve` takes `&[f64]` | Flat `Vec<f64>` row-major — identical to how `pace_fpca.rs` builds `sigma_yi` |
+| D-optimality (log-det criterion) as primary criterion | Harder to interpret; not what Ji–Müller 2017 target; fdapace implements A/R² only | Integrated BLUP prediction MSE (TRCri) and score A-optimality (SRCri) |
+
+---
+
+## Version Compatibility
+
+| Package | Version | Compatibility Notes |
+|---------|---------|---------------------|
+| nalgebra | 0.33 | Provides eigenstructure via `pace_fpca.rs`; not directly called by FOptDes |
+| `linalg::cholesky_solve` | always available (no feature gate) | Stable since the function was added; `cholesky_factor` + `cholesky_forward_back` are `pub(crate)` in `src/linalg.rs` |
+| `helpers::simpsons_weights` | always available | Stable since `src/helpers.rs` was first added; used project-wide |
+| `helpers::linear_interp` | always available | Stable; used in `pace_fpca.rs:457` |
+| Rust MSRV | 1.81 | No change — FOptDes uses only features stable on 1.81 |
 
 ---
 
 ## Sources
 
-- tslearn/metrics/cycc.py — `normalized_cc`, `cdist_normalized_cc`, `y_shifted_sbd_vec` exact source — fetched via GitHub API (gh api repos/tslearn-team/tslearn/contents/tslearn/metrics/cycc.py) — HIGH confidence (authoritative source, direct code read)
-- tslearn/clustering/kshape.py — `KShape` class: `__init__`, `_shape_extraction`, `_update_centroids`, `_assign`, `_fit_one_init`, `fit`, `predict` — fetched via GitHub API — HIGH confidence (authoritative source, direct code read)
-- tslearn 0.9.0 stable docs — `KShape` class signature and parameter descriptions — https://tslearn.readthedocs.io/en/stable/gen_modules/clustering/tslearn.clustering.KShape.html — MEDIUM confidence (verified via WebFetch)
-- Paparrizos & Gravano (2015) "k-Shape: Efficient and Accurate Clustering of Time Series" SIGMOD 2015 — abstract + algorithm structure confirmed via web search results + SIGMOD record PDF (abstract) — MEDIUM confidence (algorithm structure confirmed; NCC/SBD/Rayleigh-quotient/eigenvector verified; exact matrix formulas confirmed against tslearn source)
-- fdars-core/src/fts/spectral.rs — confirmed `rustfft::FftPlanner` + `nalgebra::SymmetricEigen` usage idiom, FFT planning API, eigenvector sign-alignment pattern — HIGH confidence (direct codebase read)
-- fdars-core/src/seasonal/mod.rs:350 — confirmed `(2*n).next_power_of_two()` FFT-padding pattern for cross-correlation — HIGH confidence (direct codebase read)
-- fdars-core/src/shapelet/distance.rs — confirmed `z_normalize_window` and `z_normalize_into` APIs (v0.33.0) — HIGH confidence (direct codebase read)
-- fdars-core/src/kernel_kmeans.rs — confirmed n_init restart seeding pattern, empty-cluster recovery idiom, predict method structure — HIGH confidence (direct codebase read)
-- fdars-core/src/alignment/clustering.rs — confirmed `kmedoids_from_distances(dist_mat, config)` API + `KMedoidsConfig` / `KMedoidsResult` types — HIGH confidence (direct codebase read)
+- fdapace 0.5.9 `R/FOptDes.R` — function signature, return values, ridge CV, criterion dispatch — fetched via rdrr.io — HIGH confidence (authoritative source, direct code read)
+- fdapace 0.5.9 `R/BestDes_TR.R` — `TRCri` matrix formula, greedy sequential algorithm, criterion computation — fetched via rdrr.io — HIGH confidence (authoritative source, direct code read)
+- fdapace 0.5.9 `R/BestDes_SR.R` — `SRCri` formula, scalar-response / A-optimality criterion, greedy algorithm — fetched via rdrr.io — HIGH confidence (authoritative source, direct code read)
+- Ji & Müller (2017) arXiv:1604.05375 (ar5iv HTML) — mathematical formulation of B(X(t)|U), prediction error variance, R²_X criterion, sequential selection rationale — extracted via WebFetch — MEDIUM confidence (HTML render of arxiv paper, formulas partially prose-described; cross-checked against fdapace source = HIGH-verified)
+- fdapace CRAN refman — `FOptDes` function signature and return values — https://cran.r-project.org/web/packages/fdapace/refman/fdapace.html — HIGH confidence (official CRAN documentation)
+- fdars-core/src/pace_fpca.rs — confirmed `PaceFpcaResult` fields (eigenvalues, eigenfunctions, sigma2, argvals, ncomp), `cholesky_solve` call signature, `linear_interp` usage pattern, `iter_maybe_parallel!` usage, ridge-retry logic — HIGH confidence (direct codebase read)
+- fdars-core/src/linalg.rs — confirmed `cholesky_solve(a, b, p)`, `cholesky_factor(a, p)`, `cholesky_forward_back(l, b, p)` are `pub(crate)`, always available (no feature gate), correct for row-major SPD inputs — HIGH confidence (direct codebase read)
+- fdars-core/src/helpers.rs — confirmed `simpsons_weights(argvals) -> Vec<f64>` and `linear_interp` signatures — HIGH confidence (direct codebase read)
+- fdars-core/Cargo.toml — confirmed MSRV = "1.81", nalgebra 0.33, `linalg` feature gates faer 0.23 (requires Rust 1.84), `parallel` feature gates rayon 1.10 — HIGH confidence (direct file read)
 
 ---
 
-*Stack research for: v0.34.0 k-Shape Clustering & Shape-Based Distance in fdars-core*
+*Stack research for: v0.35.0 Optimal Experimental Design for Sparse FDA (FOptDes) in fdars-core*
 *Researched: 2026-09-02*
