@@ -5,6 +5,15 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0]
+
+### Added
+
+- **Shape-Based Distance (SBD)** (`metric::sbd`): `sbd(x, y) -> Result<SbdResult, FdarError>` computes the shape-based distance via FFT normalized cross-correlation between z-normalized series — `SBD = 1 − max_w NCCc_w`, `NCCc_w = CC_w/(‖x‖·‖y‖)`, cross-correlation via FFT zero-padded to `next_power_of_two(2m−1)` — returning `SbdResult { distance, shift }` (the distance in `[0,2]` plus the signed optimal lag aligning the series). `sbd_distance_matrix(data) -> Result<FdMatrix, FdarError>` builds the symmetric n×n SBD matrix (parallel, one FFT planner per thread). Reuses the existing `rustfft` dependency and the v0.33.0 z-normalization; scale/offset-invariant, with a constant-series guard. Reference: tslearn `cdist_normalized_cc`; Paparrizos & Gravano 2015.
+- **k-Shape clustering** (`kshape`): `kshape_fd(data, config) -> Result<KShapeResult, FdarError>` — the k-Shape algorithm (Paparrizos & Gravano 2015): iterative SBD assignment + centroid refinement via **shape extraction** (the top eigenvector of the shift-aligned, mean-centered normalized covariance `M = QᵀSQ`, sign-corrected and re-z-normalized — not an arithmetic mean), with `n_init` random restarts (default 10), in-place empty-cluster recovery, and deterministic per-restart seeding. `KShapeConfig` (serde-gated, `Default`), `KShapeResult { centroids, cluster, inertia, iter, converged, n_init_best }` with `KShapeResult::predict(new_data)` for out-of-sample assignment. Reference: tslearn `KShape`.
+- **SBD-based k-medoids** (`kshape`): `sbd_kmedoids(data, config) -> Result<KMedoidsResult, FdarError>` — a convenience that builds the SBD distance matrix and clusters it with the existing `kmedoids_from_distances`, offering a shape-based clustering alternative to k-Shape.
+- All additive/non-breaking: existing public signatures unchanged; no new crate dependency (builds on `rustfft`, `nalgebra::SymmetricEigen`, the v0.33.0 `shapelet` z-normalization, and the existing clustering machinery). A `kshape` criterion benchmark is added.
+
 ## [0.33.0]
 
 ### Added
