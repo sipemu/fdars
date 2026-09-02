@@ -9,10 +9,10 @@ Requirements for v0.32.0. Each maps to a roadmap phase. Implementation milestone
 
 ### GAK Kernel Core
 
-- [ ] **GAK-01**: User can compute the pairwise GAK similarity between two curves via a log-domain (log-sum-exp) forward DP over the alignment lattice, using a triangular local Gaussian kernel with bandwidth σ. Log-domain is mandatory — the raw-product recursion underflows to 0/NaN for series longer than ~50 points.
-- [ ] **GAK-02**: The GAK similarity is normalized by `sqrt(k(x,x)·k(y,y))` to yield a valid similarity in `[0,1]` with unit self-similarity (`k(x,x)=1`). Normalization is mandatory for positive-semi-definiteness — unnormalized GAK silently breaks kernel-SVM.
-- [ ] **GAK-03**: User can compute an n×n GAK Gram matrix over a curve set (`cdist_gak`-equivalent), guaranteed symmetric and PSD with unit diagonal, parallelized via the existing `iter_maybe_parallel!` machinery under the `parallel` feature.
-- [ ] **GAK-04**: User can auto-select the GAK bandwidth σ from a curve set via the median-distance heuristic (`sigma_gak`-equivalent), so a sensible kernel width is available without manual tuning.
+- [x] **GAK-01**: User can compute the pairwise GAK similarity between two curves via a log-domain (log-sum-exp) forward DP over the alignment lattice, using a triangular local Gaussian kernel with bandwidth σ. Log-domain is mandatory — the raw-product recursion underflows to 0/NaN for series longer than ~50 points.
+- [x] **GAK-02**: The GAK similarity is normalized by `sqrt(k(x,x)·k(y,y))` to yield a valid similarity in `[0,1]` with unit self-similarity (`k(x,x)=1`). Normalization is mandatory for positive-semi-definiteness — unnormalized GAK silently breaks kernel-SVM.
+- [x] **GAK-03**: User can compute an n×n GAK Gram matrix over a curve set (`cdist_gak`-equivalent), guaranteed symmetric and PSD with unit diagonal, parallelized via the existing `iter_maybe_parallel!` machinery under the `parallel` feature.
+- [x] **GAK-04**: User can auto-select the GAK bandwidth σ from a curve set via the median-distance heuristic (`sigma_gak`-equivalent), so a sensible kernel width is available without manual tuning.
 
 ### Gram-Matrix Export (external precomputed-kernel SVM)
 
@@ -53,16 +53,17 @@ Mapped during roadmap creation (2026-09-02). Three-phase dependency spine: 54 (k
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GAK-01 | Phase 54 | Pending |
-| GAK-02 | Phase 54 | Pending |
-| GAK-03 | Phase 54 | Pending |
-| GAK-04 | Phase 54 | Pending |
+| GAK-01 | Phase 54 | Complete |
+| GAK-02 | Phase 54 | Complete |
+| GAK-03 | Phase 54 | Complete |
+| GAK-04 | Phase 54 | Complete |
 | GAK-05 | Phase 55 | Pending |
 | GAK-06 | Phase 55 | Pending |
 | GAK-07 | Phase 56 | Pending |
 | GAK-08 | Phase 56 | Pending |
 
 **Coverage:**
+
 - Milestone requirements: 8 total
 - Mapped to phases: 8 ✓ (Phase 54: GAK-01/02/03/04 · Phase 55: GAK-05/06 · Phase 56: GAK-07/08)
 - Unmapped: 0 ✓ (no orphans, no duplicates)

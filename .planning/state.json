@@ -1,23 +1,28 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.31.0 — Multi-Ecosystem Gap Audit",
+  "milestone": "v0.32.0 — Global Alignment Kernel & Kernel Clustering",
   "phases": [
     {
-      "number": "52",
-      "name": "Ecosystem Surveys",
+      "number": "54",
+      "name": "GAK Kernel Core",
       "status": "complete"
     },
     {
-      "number": "53",
-      "name": "Consolidation & Backlog",
-      "status": "complete"
+      "number": "55",
+      "name": "Gram-Matrix Export",
+      "status": "pending"
+    },
+    {
+      "number": "56",
+      "name": "Kernel-k-means Clustering",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 55)",
+    "reason": "Phase 55 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-02T06:50:05.651Z"
+  "updated_at": "2026-09-02T07:52:46.006Z"
 }
