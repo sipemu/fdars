@@ -16,13 +16,13 @@
     {
       "number": "56",
       "name": "Kernel-k-means Clustering",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 56)",
-    "reason": "Phase 56 of 3 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-02T08:00:16.749Z"
+  "updated_at": "2026-09-02T08:08:26.272Z"
 }

@@ -21,8 +21,8 @@ Requirements for v0.32.0. Each maps to a roadmap phase. Implementation milestone
 
 ### Kernel-k-means Clustering
 
-- [ ] **GAK-07**: User can cluster a curve set with kernel-k-means through the GAK kernel — assignments computed from Gram-matrix kernel distances (no explicit centroid curve), with `n_init` random-partition restarts, empty-cluster recovery, and deterministic per-restart RNG seeding (`seed + restart_idx`).
-- [ ] **GAK-08**: User can assign new (out-of-sample) curves to a fitted kernel-k-means model via a `predict` path that reuses the same GAK kernel and normalization as the fit.
+- [x] **GAK-07**: User can cluster a curve set with kernel-k-means through the GAK kernel — assignments computed from Gram-matrix kernel distances (no explicit centroid curve), with `n_init` random-partition restarts, empty-cluster recovery, and deterministic per-restart RNG seeding (`seed + restart_idx`).
+- [x] **GAK-08**: User can assign new (out-of-sample) curves to a fitted kernel-k-means model via a `predict` path that reuses the same GAK kernel and normalization as the fit.
 
 ## Future Requirements
 
@@ -59,8 +59,8 @@ Mapped during roadmap creation (2026-09-02). Three-phase dependency spine: 54 (k
 | GAK-04 | Phase 54 | Complete |
 | GAK-05 | Phase 55 | Complete |
 | GAK-06 | Phase 55 | Complete |
-| GAK-07 | Phase 56 | Pending |
-| GAK-08 | Phase 56 | Pending |
+| GAK-07 | Phase 56 | Complete |
+| GAK-08 | Phase 56 | Complete |
 
 **Coverage:**
 
