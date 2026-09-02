@@ -102,6 +102,7 @@ pub mod gmm;
 pub mod helpers;
 pub mod inference;
 pub mod irreg_fdata;
+pub mod kernel_kmeans;
 pub mod landmark;
 pub mod metric;
 pub mod outliers;
@@ -570,6 +571,9 @@ pub use clustering::{
     calinski_harabasz, calinski_harabasz_from_distances, fuzzy_cmeans_fd, kmeans_fd,
     silhouette_score, silhouette_score_from_distances, FuzzyCmeansResult, KmeansResult,
 };
+
+// Re-export kernel-k-means clustering (GAK-backed, no centroid)
+pub use kernel_kmeans::{kernel_kmeans_fd, KernelKmeansConfig, KernelKmeansResult};
 
 // Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{
