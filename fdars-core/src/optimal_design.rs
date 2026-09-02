@@ -23,6 +23,10 @@
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
+// Import the factor/forward-back pair directly rather than `cholesky_solve`:
+// the trajectory criterion factors Σ_d once (O(p³)) and then solves the m grid-point
+// right-hand-sides via `cholesky_forward_back` (O(p²) each), amortizing the single
+// factorization instead of re-factoring O(m) times as `cholesky_solve` would.
 use crate::linalg::{cholesky_factor, cholesky_forward_back, log_det_from_cholesky};
 use crate::pace_fpca::PaceFpcaResult;
 
@@ -48,9 +52,13 @@ pub enum OptimalityKind {
     /// A-optimality: trace of the posterior score covariance `Cov(ξ | Y_S)`.
     /// Empty design returns `Σ_k λ_k`.
     A,
-    /// D-optimality: log-determinant of the posterior score covariance. The value
-    /// is NEGATIVE for an informative design (posterior eigenvalues ≤ prior λ_k)
-    /// and is returned un-negated. Empty design returns `Σ_k log λ_k`.
+    /// D-optimality: log-determinant of the posterior score covariance,
+    /// `Σ_k log(posterior eigenvalues)`, returned un-negated. Adding design points
+    /// shrinks the posterior covariance, so this value is monotone NON-INCREASING:
+    /// `log det Cov(ξ | Y_S) ≤ log det Λ = Σ_k log λ_k`. Its SIGN is not fixed — it
+    /// depends on the eigenvalue scale (e.g. `λ = [2, 1]` gives an empty-design value
+    /// of `ln 2 ≈ +0.693`, positive). Do NOT assume it is negative, and do NOT negate
+    /// it. Empty design returns `Σ_k log λ_k`.
     D,
 }
 
@@ -102,6 +110,14 @@ pub fn design_criterion(
         return Err(FdarError::InvalidParameter {
             parameter: "model.sigma2",
             message: format!("sigma2 must be > 0; got {}", model.sigma2),
+        });
+    }
+    if m < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "model.argvals",
+            message: format!(
+                "argvals must have length >= 2 (a trajectory integral / Simpson quadrature is undefined for m < 2); got {m}"
+            ),
         });
     }
     for &idx in selected {
@@ -160,6 +176,37 @@ fn factor_sigma_design_with_retry(mut sigma_d: Vec<f64>, p: usize) -> Result<Vec
             cholesky_factor(&sigma_d, p).map_err(|_| FdarError::ComputationFailed {
                 operation: "optimal_design Sigma_d Cholesky",
                 detail: "Cholesky failed after 1e-8 ridge; sigma2 may be too small".into(),
+            })
+        }
+    }
+}
+
+/// Cholesky-factor the `K×K` posterior covariance `Cov` with a single ridge-retry
+/// on failure, mirroring [`factor_sigma_design_with_retry`].
+///
+/// The Schur-complement `Cov = Λ − A_mat` is positive-definite in exact arithmetic,
+/// but FP cancellation (especially after a ridge-adjusted `Σ_d`) can make it fail the
+/// Cholesky diagonal test. On failure we add a tiny `1e-8`-scaled diagonal ridge and
+/// retry once, keeping D-opt as robust as A-opt. Never panics.
+fn factor_posterior_cov_with_retry(mut cov: Vec<f64>, ncomp: usize) -> Result<Vec<f64>, FdarError> {
+    match cholesky_factor(&cov, ncomp) {
+        Ok(l) => Ok(l),
+        Err(_) => {
+            // Ridge scaled to the covariance magnitude, matching the `1e-8` convention
+            // used for the Σ_d retry (there the scale is implicitly ~O(1)).
+            let scale: f64 = (0..ncomp)
+                .map(|k| cov[k * ncomp + k].abs())
+                .fold(0.0_f64, f64::max)
+                .max(1.0);
+            let ridge = 1e-8 * scale;
+            for i in 0..ncomp {
+                cov[i * ncomp + i] += ridge;
+            }
+            cholesky_factor(&cov, ncomp).map_err(|_| FdarError::ComputationFailed {
+                operation: "optimal_design D-optimality log-det",
+                detail: "posterior covariance Cholesky failed after ridge; \
+                         model may be near-degenerate"
+                    .into(),
             })
         }
     }
@@ -304,11 +351,15 @@ fn score_criterion(
             Ok(tr)
         }
         OptimalityKind::D => {
-            // log det(Cov) via Cholesky; NEGATIVE for an informative design. Do NOT negate.
-            let l_cov = cholesky_factor(&cov, ncomp).map_err(|_| FdarError::ComputationFailed {
-                operation: "optimal_design D-optimality log-det",
-                detail: "posterior covariance Cholesky failed; matrix not positive-definite".into(),
-            })?;
+            // log det(Cov) via Cholesky. Returned un-negated and monotone
+            // non-increasing (its sign depends on the eigenvalue scale). Do NOT negate.
+            //
+            // Mirror the Σ_d ridge-retry: the Schur complement Cov is PD in exact
+            // arithmetic, but when Σ_d was itself ridge-adjusted (tiny sigma2), FP
+            // cancellation in `(λ_k : 0) − A_mat` can push a diagonal entry to
+            // (near-)zero and make the Cholesky fail. A tiny ridge rescues it so D-opt
+            // succeeds wherever A-opt does. Never panics.
+            let l_cov = factor_posterior_cov_with_retry(cov, ncomp)?;
             Ok(log_det_from_cholesky(&l_cov, ncomp))
         }
     }
@@ -426,10 +477,50 @@ mod tests {
 
     #[test]
     fn test_ridge_retry() {
-        // Near-singular regime: sigma2 = 1e-12 → Cholesky of Σ_d may fail → ridge-retry.
-        let model = synthetic_model_params(51, vec![2.0, 1.0], 1e-12);
-        let res = design_criterion(&model, &[10, 20, 30], DesignCriterion::Trajectory);
-        assert!(res.is_ok(), "expected Ok after ridge-retry, got {res:?}");
+        // Force Σ_d genuinely non-PD so the FIRST cholesky_factor fails and only the
+        // 1e-8 ridge-retry rescues it. Duplicating a design index makes two rows of Σ_d
+        // identical → Σ_d is rank-1 + σ²I. Its second Cholesky pivot is
+        // ((a+σ²)² − a²)/(a+σ²) ≈ 2·σ² for small σ². With σ² = 1e-13 this pivot is
+        // ~2e-13 ≤ the 1e-12 cholesky_factor threshold, so the first factorization
+        // FAILS; the 1e-8 ridge lifts the pivot to ~1e-8 and the retry succeeds.
+        // (Duplicate indices are explicitly tolerated per `design_criterion` docs.)
+        let model = synthetic_model_params(51, vec![2.0, 1.0], 1e-13);
+        let res = design_criterion(&model, &[10, 10], DesignCriterion::Trajectory);
+        assert!(
+            res.is_ok(),
+            "ridge-retry should rescue near-singular Σ_d: {res:?}"
+        );
+        // Sanity: without the retry this input is non-PD. Confirm the raw factorization
+        // does fail, so the test genuinely exercises the retry branch (it would fail
+        // to reach Ok if the retry were removed).
+        let sigma_d = build_sigma_design(&model, &[10, 10]);
+        assert!(
+            crate::linalg::cholesky_factor(&sigma_d, 2).is_err(),
+            "test precondition: raw Σ_d must be non-PD so the retry branch is exercised"
+        );
+    }
+
+    #[test]
+    fn test_validation_grid_too_small() {
+        // m = 1: a Simpson quadrature / trajectory integral is undefined. Construct the
+        // model directly (synthetic_model_params divides by m-1, so it can't build m=1).
+        let model = PaceFpcaResult {
+            mean: vec![0.0; 1],
+            eigenvalues: vec![2.0, 1.0],
+            eigenfunctions: FdMatrix::from_column_major(vec![1.0, 0.5], 1, 2).unwrap(),
+            scores: FdMatrix::zeros(1, 2),
+            fitted: FdMatrix::zeros(1, 1),
+            fitted_lower: FdMatrix::zeros(1, 1),
+            fitted_upper: FdMatrix::zeros(1, 1),
+            argvals: vec![0.0],
+            sigma2: 0.5,
+            ncomp: 2,
+        };
+        let res = design_criterion(&model, &[], DesignCriterion::Trajectory);
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { parameter, .. }) if parameter == "model.argvals"),
+            "m<2 must be rejected with InvalidParameter(model.argvals), got {res:?}"
+        );
     }
 
     // ---- Score branch (FOD-02) ----
