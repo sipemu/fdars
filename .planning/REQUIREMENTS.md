@@ -9,10 +9,10 @@ Audit-only. Every requirement is a **deliverable document**, not `fdars-core/src
 
 ### Ecosystem Surveys
 
-- [ ] **MAT-01**: Survey MATLAB FDA — enumerate the Ramsay `fda` MATLAB toolbox + PACE (MATLAB) capability surface (versioned), map fdars present/partial/absent against it, and produce a de-duplicated net-new gap list for MATLAB FDA.
-- [ ] **JUL-01**: Survey Julia FDA — enumerate the JuliaStats / functional-data package capability surface (versioned), map fdars present/partial/absent against it, and produce a de-duplicated net-new gap list for Julia FDA (capturing modern/performance-oriented patterns as candidate gaps).
-- [ ] **TDY-01**: Survey tidyfun/refund (R) — enumerate the tidyfun data-representation & workflow slice plus refund methods **not already captured in v0.18.0** (versioned), map fdars present/partial/absent against it, and produce a de-duplicated net-new gap list.
-- [ ] **PYX-01**: Survey Python-beyond-scikit-fda — enumerate FDApy / tslearn / sktime functional components + other Python FDA/ML libs (versioned), map fdars present/partial/absent against them, and produce a de-duplicated net-new gap list (excluding scikit-fda, covered by v0.14.0).
+- [x] **MAT-01**: Survey MATLAB FDA — enumerate the Ramsay `fda` MATLAB toolbox + PACE (MATLAB) capability surface (versioned), map fdars present/partial/absent against it, and produce a de-duplicated net-new gap list for MATLAB FDA.
+- [x] **JUL-01**: Survey Julia FDA — enumerate the JuliaStats / functional-data package capability surface (versioned), map fdars present/partial/absent against it, and produce a de-duplicated net-new gap list for Julia FDA (capturing modern/performance-oriented patterns as candidate gaps).
+- [x] **TDY-01**: Survey tidyfun/refund (R) — enumerate the tidyfun data-representation & workflow slice plus refund methods **not already captured in v0.18.0** (versioned), map fdars present/partial/absent against it, and produce a de-duplicated net-new gap list.
+- [x] **PYX-01**: Survey Python-beyond-scikit-fda — enumerate FDApy / tslearn / sktime functional components + other Python FDA/ML libs (versioned), map fdars present/partial/absent against them, and produce a de-duplicated net-new gap list (excluding scikit-fda, covered by v0.14.0).
 
 ### Consolidation & Backlog
 
@@ -48,15 +48,16 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MAT-01 | Phase 52 | Pending |
-| JUL-01 | Phase 52 | Pending |
-| TDY-01 | Phase 52 | Pending |
-| PYX-01 | Phase 52 | Pending |
+| MAT-01 | Phase 52 | Complete |
+| JUL-01 | Phase 52 | Complete |
+| TDY-01 | Phase 52 | Complete |
+| PYX-01 | Phase 52 | Complete |
 | RPT-01 | Phase 53 | Pending |
 | RPT-02 | Phase 53 | Pending |
 | RPT-03 | Phase 53 | Pending |
 
 **Coverage:**
+
 - v0.31.0 requirements: 7 total
 - Mapped to phases: 7 (Phase 52: 4 surveys · Phase 53: 3 consolidation)
 - Unmapped: 0 ✓
