@@ -26,7 +26,7 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### Bundled Classifier
 
-- [ ] **SHP-07**: User can fit an end-to-end `ShapeletTransformClassifier` (discover → transform → classify via an existing fdars classifier — kNN default, LDA optional) and `predict` labels for new curves, reusing the stored shapelets + inner classifier. Matches sktime's `ShapeletTransformClassifier` pipeline.
+- [x] **SHP-07**: User can fit an end-to-end `ShapeletTransformClassifier` (discover → transform → classify via an existing fdars classifier — kNN default, LDA optional) and `predict` labels for new curves, reusing the stored shapelets + inner classifier. Matches sktime's `ShapeletTransformClassifier` pipeline.
 
 ## Future Requirements
 
@@ -64,7 +64,7 @@ Mapped during roadmap creation (2026-09-02). Every v0.33.0 requirement maps to e
 | SHP-04 | Phase 58 | Complete |
 | SHP-05 | Phase 58 | Complete |
 | SHP-06 | Phase 59 | Complete |
-| SHP-07 | Phase 60 | Pending |
+| SHP-07 | Phase 60 | Complete |
 
 **Coverage:**
 

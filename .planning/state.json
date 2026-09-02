@@ -21,13 +21,13 @@
     {
       "number": "60",
       "name": "Bundled ShapeletTransformClassifier",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 60)",
-    "reason": "Phase 60 of 4 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-02T09:35:39.358Z"
+  "updated_at": "2026-09-02T11:44:12.942Z"
 }
