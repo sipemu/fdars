@@ -230,3 +230,51 @@ use crate::linalg::{cholesky_factor, cholesky_forward_back, log_det_from_cholesk
 _Reviewed: 2026-09-02T23:30:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
+
+---
+
+## Resolution
+
+**Fix commit:** `2fdaa9bb760afa69be8ce2e038ca26fa07c88345`
+`fix(64): correct D-opt sign doc, add m>=2 guard, ridge-retry posterior Cholesky, real ridge test (code review)`
+
+All 4 warnings + 1 info resolved in `fdars-core/src/optimal_design.rs` (single-file change, 103 insertions / 12 deletions).
+
+- **WR-01 — RESOLVED.** Rewrote the `OptimalityKind::D` doc and the inline D-opt
+  comment. They no longer claim the value is "NEGATIVE for an informative design."
+  New text states D-opt returns `Σ_k log(posterior eigenvalues)`, is monotone
+  NON-INCREASING as points are added, and its SIGN depends on the eigenvalue scale
+  (with the `λ = [2, 1] → +0.693` example). Code unchanged (still un-negated).
+
+- **WR-02 — RESOLVED.** Added an `m < 2` entry-point guard (alongside the
+  sigma2 / ncomp / index-range guards) returning
+  `InvalidParameter { parameter: "model.argvals", .. }`. New test
+  `test_validation_grid_too_small` builds a model with `m = 1` (constructed directly,
+  since `synthetic_model_params` divides by `m-1`) and asserts the exact variant.
+
+- **WR-03 — RESOLVED.** Added helper `factor_posterior_cov_with_retry`, mirroring
+  `factor_sigma_design_with_retry`: on a failed posterior-covariance Cholesky it adds a
+  `1e-8 · scale` diagonal ridge (scale = max |diag|, ≥ 1) and retries once, else returns
+  `ComputationFailed` — never panics. D-opt now succeeds wherever A-opt does. The D-opt
+  branch calls this helper instead of a bare `cholesky_factor`.
+
+- **WR-04 — RESOLVED.** `test_ridge_retry` now forces Σ_d genuinely non-PD by
+  duplicating a design index (`selected = [10, 10]`, tolerated per docs) with
+  `sigma2 = 1e-13`. The two identical rows make Σ_d rank-1 + σ²I; its second Cholesky
+  pivot ≈ 2·σ² ≈ 2e-13 ≤ the 1e-12 threshold, so the FIRST factorization fails and only
+  the 1e-8 ridge rescues it. The test asserts `Ok(..)` AND asserts the raw
+  `cholesky_factor(&Σ_d, 2)` is `Err(..)` as a precondition — so it now fails if the
+  retry branch is removed.
+
+- **IN-01 — RESOLVED (comment only, no behavior change).** Added a comment at the
+  `use crate::linalg::{...}` import explaining the deliberate factor-once /
+  forward-back-many choice over `cholesky_solve` (amortizes the O(p³) factorization
+  across the m trajectory solves instead of re-factoring O(m) times).
+
+**Gates (all green):**
+- `cargo fmt -p fdars-core` — clean
+- `cargo test -p fdars-core --features linalg optimal_design` — 15 passed, 0 failed
+- `cargo clippy -p fdars-core --all-targets --features linalg,parallel -- -D warnings` — clean
+- `cargo test -p fdars-core --features linalg,parallel` — 2672 (lib) + integration all passed, 0 failed
+
+No findings were declined.
