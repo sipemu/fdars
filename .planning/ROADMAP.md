@@ -94,7 +94,7 @@ Milestone audit PASSED 7/7 requirements. Full detail: [milestones/v0.33.0-ROADMA
 
 - [x] **Phase 61: SBD Distance Core** - FFT normalized-cross-correlation Shape-Based Distance `sbd(x,y) -> (distance, shift)` + public n×n `sbd_distance_matrix`; new `src/metric/sbd.rs` (KSH-01/02) (completed 2026-09-02)
 - [x] **Phase 62: k-Shape Clustering & Predict** - `kshape_fd` (SBD assignment + shape-extraction centroids, n_init restarts, empty-cluster recovery, deterministic seeding) + `KShapeResult::predict`; new `src/kshape.rs` (KSH-03/04) (completed 2026-09-02)
-- [ ] **Phase 63: SBD-based k-medoids & Wrap-up** - `sbd_kmedoids` convenience over the existing `kmedoids_from_distances`; crate-root re-exports + `prelude` + criterion benchmark (KSH-05)
+- [x] **Phase 63: SBD-based k-medoids & Wrap-up** - `sbd_kmedoids` convenience over the existing `kmedoids_from_distances`; crate-root re-exports + `prelude` + criterion benchmark (KSH-05) (completed 2026-09-02)
 
 ## Phase Details
 
@@ -149,7 +149,7 @@ Phases execute in numeric order: 61 → 62 → 63. Phase 62 cannot begin before 
 |-------|-----------|----------------|--------|-----------|
 | 61. SBD Distance Core | v0.34.0 | 1/1 | Complete    | 2026-09-02 |
 | 62. k-Shape Clustering & Predict | v0.34.0 | 1/1 | Complete    | 2026-09-02 |
-| 63. SBD-based k-medoids & Wrap-up | v0.34.0 | 0/TBD | Not started | - |
+| 63. SBD-based k-medoids & Wrap-up | v0.34.0 | 1/1 | Complete    | 2026-09-02 |
 
 ## Status
 

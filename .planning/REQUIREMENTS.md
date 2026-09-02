@@ -21,7 +21,7 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### SBD-based k-medoids
 
-- [ ] **KSH-05**: User can cluster a curve set with k-medoids over the SBD distance (`sbd_kmedoids`) — a convenience that builds the SBD distance matrix (KSH-02) and feeds it to the existing `kmedoids_from_distances`, returning the standard k-medoids result (medoid indices + labels). An alternative shape-based clustering consumer distinct from k-Shape.
+- [x] **KSH-05**: User can cluster a curve set with k-medoids over the SBD distance (`sbd_kmedoids`) — a convenience that builds the SBD distance matrix (KSH-02) and feeds it to the existing `kmedoids_from_distances`, returning the standard k-medoids result (medoid indices + labels). An alternative shape-based clustering consumer distinct from k-Shape.
 
 ## Future Requirements
 
@@ -52,7 +52,7 @@ Mapped during roadmap creation (2026-09-02). Every v1 requirement maps to exactl
 | KSH-02 | Phase 61 | Complete |
 | KSH-03 | Phase 62 | Complete |
 | KSH-04 | Phase 62 | Complete |
-| KSH-05 | Phase 63 | Pending |
+| KSH-05 | Phase 63 | Complete |
 
 **Coverage:**
 
