@@ -1,5 +1,20 @@
 # Milestones
 
+## v0.33.0 Shapelet Transform & Classification (Shipped: 2026-09-02)
+
+**Phases completed:** 4 phases (57–60), 4 plans. Milestone audit PASSED 7/7 requirements. Promoted GAP-02 (score 2.89, the only backlog gap corroborated across sktime + pyts + tslearn) from the v0.31.0 `GAP-BACKLOG.md`. Discovery-based shapelet transform (Ye & Keogh / Hills–Lines / sktime STC) — learning-shapelets deferred. New `src/shapelet/` submodule (strict compile-time dependency chain 57→58→59→60).
+
+**Key accomplishments:**
+
+- **Phase 57 — Shapelet Distance Core (SHP-01/02):** `src/shapelet/distance.rs` — per-window z-normalization (population std, constant-window guard, never NaN), `shapelet_distance` = min over sliding windows of z-normalized Euclidean with explicit `best_so_far` early-abandon; scale/offset-invariant to 1e-10; the `Shapelet` type (z-normed values + provenance).
+- **Phase 58 — Discovery & Ranking (SHP-03/04/05):** `src/shapelet/discovery.rs` — candidate generation (exhaustive or seeded `max_candidates`-contracted), quality via `QualityMeasure` (information gain on the optimal distance-split threshold, default; or F-statistic), top-K selection with self-similarity pruning → `ShapeletSet`; byte-identical across runs (seed + `total_cmp` tie-break), sequential==parallel. Reference: sktime `RandomShapeletTransform`, pyts.
+- **Phase 59 — Shapelet Transform (SHP-06):** `src/shapelet/transform.rs` — `shapelet_transform` (n×K distance features) + `shapelet_transform_fit` (discover+transform) + `ShapeletTransformFit::transform` (out-of-sample), transform consistency within 1e-12.
+- **Phase 60 — Bundled Classifier (SHP-07):** `src/shapelet/classifier.rs` — end-to-end `shapelet_classifier_fit` (discover → transform → classify; kNN default, LDA optional via `ShapeletClassifier`) + `ShapeletClassifierFit::predict`, reusing the existing `classification/` module; finalized crate-root re-exports; criterion `shapelet` bench. Reference: sktime `ShapeletTransformClassifier`.
+
+**Verification:** additive/non-breaking, no new crate dependency. Whole-crate gates green — `cargo fmt --check` clean, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean, 2638 lib tests + 192 doctests pass (26 new shapelet tests). Crate bumped 0.32.0 → 0.33.0 + CHANGELOG. Phase 60 was authored by its execution agent then finished inline by the orchestrator after an account session limit killed the agent pre-commit (no code rewrite). **Deferred (operator ship-time step):** `git tag v0.33.0` + push → crates.io publish via `release.yml`.
+
+---
+
 ## v0.32.0 Global Alignment Kernel & Kernel Clustering (Shipped: 2026-09-02)
 
 **Phases completed:** 3 phases (54–56), 3 plans. Milestone audit PASSED 8/8 requirements. First implementation milestone after three audit/consolidation cycles; promoted GAP-01 (top-ranked, score 3.00) from the v0.31.0 `GAP-BACKLOG.md`.
