@@ -1,133 +1,120 @@
-# fdars AUDIT Milestone — Research Summary
+# Research Summary: Global Alignment Kernel + Kernel-K-Means + Gram-Matrix Export (v0.32.0)
 
-**Project:** fdars (Functional Data Analysis for Rust)  
-**Milestone:** AUDIT (v0.14.0)  
-**Domain:** Performance auditing + feature-parity gap analysis (Rust library vs Python reference)  
-**Researched:** 2026-08-07  
-**Confidence:** HIGH (direct codebase analysis + official documentation)
+**Project:** fdars-core (Rust functional-data-analysis library)
+**Milestone:** v0.32.0 — GAK kernel implementation + kernel-k-means clustering + Gram-matrix export for external SVM
+**Researched:** 2026-09-02
+**Confidence:** HIGH (mathematical spec from primary sources, API verified against tslearn@0.9.0 and Cuturi 2011, architecture patterns validated against codebase)
 
 ---
 
 ## Executive Summary
 
-The fdars AUDIT milestone has two intertwined deliverables: (1) a performance audit characterizing hot paths across the codebase with concrete measurements and (2) a feature-parity gap analysis against scikit-fda 0.10.1 to prioritize capability gaps by user value. The audit must be conducted with disciplined methodology to avoid common pitfalls (debug-mode benchmarking, API-name counting, missing accuracy parity checks) that can invalidate findings.
+fdars v0.32.0 adds three interconnected deliverables: a Global Alignment Kernel (GAK) for time-series similarity in log-domain, kernel-k-means clustering operating purely on precomputed Gram matrices, and Gram-matrix export for external precomputed-kernel SVM workflows. The research converges on a critical finding: **all three features can be implemented entirely using the existing dependency stack** — no new crates required. The architecture is additive and non-breaking, placing GAK in `src/metric/gak.rs` (sibling to `soft_dtw.rs`) and kernel-k-means in `src/kernel_kmeans.rs` (top-level, like `clustering.rs`).
 
-**Recommended approach:** Conduct the audit in phases that separate concerns: static analysis of hot paths first (which functions scale badly and why), then benchmark confirmation (measure wall-clock and instruction counts with proper feature-flag control), then allocation profiling (isolate copy vs compute overhead), and finally gap analysis with a capability taxonomy (not name counting). This ordering minimizes wasted work and ensures early findings are validated before complex measurements begin.
+The research identifies two mandatory implementation decisions that must be nailed from the start: **log-domain accumulation is non-negotiable** (raw products underflow to zero for series longer than ~50 samples, a known deficiency in tslearn 0.9.0), and **triangular normalization is required for positive semi-definiteness** (raw unnormalized GAK is not PSD and breaks kernel-SVM silently). Beyond these core constraints, the implementation is straightforward — it reuses the 2-row rolling-buffer DP pattern from existing `soft_dtw.rs`, mirrors the pairwise-matrix parallelism from `metric/mod.rs`, and follows fdars conventions for config structs, result types, and deterministic seeding.
 
-**Key risks and mitigations:** The codebase has documented performance anti-patterns (FdMatrix→DMatrix round-trip copies, O(N²·M²) elastic alignment without auto-banding, sequential CV folds), but naïve benchmarking in debug mode or without large-input variants can hide these. The gap analysis risks inflating backlog with out-of-scope features (plotting, sklearn API) unless a design-goal filter is applied first. The recovery cost for these mistakes is MEDIUM-to-HIGH (re-running benchmarks, re-triaging gaps), so prevention is critical.
+Roadmap risks are well-characterized: floating-point asymmetry can produce non-symmetric Gram matrices, wrong sigma selection degenerates the Gram to near-identity or near-constant, and kernel-k-means requires n_init restarts + empty-cluster recovery (no k-means++ initialization, since GAK values are similarities not distances). All pitfalls have low-cost recovery strategies embedded in the test suite.
 
 ---
 
 ## Key Findings
 
-### Recommended Audit Stack
+### Recommended Stack
 
-The performance audit toolkit is mature and well-understood. All components are already compatible with fdars' ecosystem (Rust 1.81+, Linux dev environment).
+**No new dependencies required.** All three v0.32.0 deliverables build entirely on fdars' existing stack: Rust 1.81+, nalgebra, rayon (optional), rand, and the column-major `FdMatrix` type. rustfft is irrelevant (GAK is pure O(n·m) DP, not FFT-based). faer and linalg features are not involved in the GAK/kernel-k-means path — both algorithms operate on scalar `f64` arithmetic and Gram matrix entries.
 
-**Core measurement tools (must use):**
-- **criterion 0.5.1** — Already in repo; statistical wall-clock benchmarking with throughput curves. Add large-input variants and proper black_box wrapping.
-- **cargo-flamegraph 0.6.13** — Zero-code-change CPU sampling profiler. Fastest way to identify top 3 hot functions.
-- **iai-callgrind 0.16.1** — Deterministic instruction-count CI regression tracking for top 5 hot functions.
-- **dhat-rs 0.3.3** — In-process heap allocation profiling. Essential for confirming FdMatrix→DMatrix copy cost.
+**Core technologies used by v0.32.0:**
+- **Rust (1.81 MSRV)** — All implementation; MSRV stays unchanged
+- **nalgebra 0.33** — Not used by GAK core
+- **rayon 1.10** — Parallelizes Gram-matrix row-pair loops via `iter_maybe_parallel!`
+- **rand 0.8** — Seeds reproducible restarts in kernel-k-means
+- **FdMatrix** — Gram matrix output type
+- **`softmin3` pattern from `soft_dtw.rs`** — Reused for log-sum-exp stabilization
 
-**Measurement discipline:**
-- Always run `cargo bench --features linalg`. Also run with `RAYON_NUM_THREADS=1` to isolate parallelism benefit.
-- Benchmark with large inputs (n=200–1000, m=100–500). Small inputs mask O(n²) and O(m³) scaling.
-- Run each benchmark twice, confirm within ±5% variance. Use `--save-baseline` for before/after comparison.
+### Expected Features
 
-### Expected Gaps (Feature Parity Analysis)
+**Must have (table stakes, v0.32.0):**
+1. Log-domain GAK recursion — unnormalized kernel via DP in log-space; avoids underflow for series > ~50
+2. Normalized GAK kernel — triangular normalization guarantees PSD for kernel machines
+3. Gram-matrix builders — `gak_gram_train()` (n×n) and `gak_gram_test()` (n_test×n_train)
+4. Kernel-k-means — `kernel_kmeans()` with n_init restarts and empty-cluster recovery
+5. Cluster prediction — `KernelKMeansResult::predict()` for new curves
+6. Configuration structs — `GakConfig`, `KernelKMeansConfig` following fdars conventions
+7. Sigma heuristic — `gak_sigma_median()` for automatic bandwidth selection
+8. Series-length validation — guard against invalid series length ratios
 
-**Highest-impact gaps (expected by users migrating from scikit-fda):**
+**Should have (low-cost differentiators):**
+- Rayon parallelism on Gram-matrix computation
+- Optional triangular band constraint
+- Deterministic seeding for reproducible clustering
+- `#[must_use]` annotations
+- Serde support via `#[cfg_attr]`
 
-1. **Smoothing module** — Nadaraya-Watson, basis smoothing with CV. Single highest-impact missing area.
-2. **Public Lp norm / distance + pairwise matrix** — Required by kNN, k-means, agglomerative clustering.
-3. **Functional k-means** — Most-used clustering; fdars has only GMM.
-4. **FPLS + FPLSRegression** — Companion to FPCA; expected by R/Python users.
-5. **Shift + landmark registration** — Simpler alternatives to elastic; users want cheaper method first.
-6. **kNN + Kernel regression** — Basic baselines expected alongside linear model.
-7. **Statistical inference (ANOVA, Hotelling T²)** — No hypothesis testing at all.
+**Defer to v0.33+:**
+- Native kernel SVM (requires QP solver)
+- Multivariate curve support
+- Kernel PCA via GAK
+- Online/streaming kernel-k-means
+- Wavelet/FFT backend
 
-**Out-of-scope (deliberately not ported):**
-- Plotting / visualization — fdars is numeric only
-- sklearn pipeline API — Rust trait composition is more idiomatic
-- DataFrame IO, pandas integration
+### Architecture Approach
 
-### Architecture: Performance Hot-Spot Map
+GAK integrates cleanly with zero breaking changes. **Module placement:** GAK in `src/metric/gak.rs` (sibling to `soft_dtw.rs`), kernel-k-means in `src/kernel_kmeans.rs` (top-level, like `clustering.rs`).
 
-**Tier 1: Elastic alignment (O(N²·M²) or O(N²·M·r) banded)**
-- `src/alignment/pairwise.rs` + `karcher_mean()`: Pairwise DP warping
-- Anti-pattern: `karcher_mean()` defaults to `band = None`, full O(M²) per pair. For M=200, N=100, K=30: 120 billion ops without band; 7× reduction with 15% band.
+**Reuse from existing code:**
+- 2-row rolling-buffer from `soft_dtw_distance()` 
+- Log-sum-exp stabilization from `softmin3` pattern
+- Pairwise matrix parallelism from `self_distance_matrix()` / `cross_distance_matrix()`
+- Random seeding pattern from elastic-FPCA: `StdRng::seed_from_u64(seed + restart_idx)`
+- Config/result struct conventions (97 existing types)
 
-**Tier 2: FPCA / SVD round-trip copies (O(N·M) allocation per call)**
-- `src/regression.rs:fdata_to_pc_1d()`: Calls `centered.clone()` then `to_dmatrix()` — two N×M copies before SVD.
-- `src/elastic_fpca.rs`: Pattern repeated 7 times. At N=500, M=200: 800 KB per call; 5.6 MB for one elastic-FPCA.
+**New vs modified files:** Only 2 new files (`metric/gak.rs`, `kernel_kmeans.rs`); 2 minor modifications (`metric/mod.rs`, `lib.rs`). No existing public API changes.
 
-**Tier 3: Parallelism gaps (easy wins)**
-- `src/classification/cv.rs:fclassif_cv()`: Fold loop sequential; folds independent.
-- `src/elastic_fpca.rs`: Inner O(N) loops sequential.
-- `src/streaming_depth/`: Batch queries sequential but independent.
+### Critical Pitfalls (Top 5)
 
-### Critical Pitfalls to Avoid
+1. **Log-domain accumulation mandatory** — Raw DP underflows for m > ~50; implement in log-space from day one
+2. **Only normalized triangular GAK is PSD** — Unnormalized form has negative eigenvalues, breaks kernel-SVM silently
+3. **Floating-point asymmetry breaks symmetry** — Different evaluation order produces `G[i,j] ≠ G[j,i]`; symmetrize by assignment
+4. **Wrong sigma silently degenerates Gram** — Too small → near-identity; too large → rank-1; provide heuristic + sensitivity test
+5. **Kernel-k-means needs n_init restarts** — GAK values are similarities (not distances), so k-means++ weighting inverted; use random uniform restarts
 
-1. **Debug mode benchmarking** — 5–50× slower; hidden in binary path. First step: confirm `/release/`.
-2. **Missing large-input variants** — n ≤ 20 masks O(n²) scaling. Add variants at n=200–1000.
-3. **API-name counting** — Gap count inflates 2–3×. Build capability matrix, not name list.
-4. **Ignoring allocation vs compute** — SVD slow because copy dominates. Run dhat on hot paths.
-5. **Feature-flag confusion** — Ridge benchmark unmarked for `--features linalg` gives wrong conclusion.
-6. **Linker flakiness** — Bus errors in test harness are infrastructure, not code failures.
-7. **Vague backlog items** — "Improve X" is not actionable. Every item needs function, cost, cause, fix, severity, effort.
-8. **Treating scikit-fda as gospel** — "scikit-fda has X" ≠ "fdars must have X". Apply design-goal filter.
+All pitfalls have detection tests and low-cost recovery documented in PITFALLS.md.
 
 ---
 
 ## Implications for Roadmap
 
-### Phase 1: Static Hot-Path Analysis
-**Rationale:** Define priority list with zero cost.  
-**Delivers:** O(N²)/O(M²) operations list, allocation hotspots, parallelism gaps.  
-**Research phase?** No.
+**Suggested 3-phase decomposition:**
 
-### Phase 2: Benchmark Confirmation (Large Inputs + Feature Matrix)
-**Rationale:** Validate hot paths are hot at production scale.  
-**Delivers:** Criterion results with feature column, flamegraphs, large-input variants, baseline.  
-**Discipline:** `cargo bench --features linalg`, `RAYON_NUM_THREADS=1`, black_box, ±5% variance.  
-**Research phase?** No.
+### Phase 54: GAK Kernel Core
+**Rationale:** All downstream features depend on correct log-domain GAK. Resolve Pitfalls 1-4.
+**Delivers:** `gak()`, `logsumexp3`, `gak_sigma_median()`, `GakConfig`, comprehensive tests
+**Blocks:** Phase 55, 56
 
-### Phase 3: Allocation Audit (dhat-rs Profiling)
-**Rationale:** Separate allocation from compute cost for top-3 paths.  
-**Delivers:** dhat profiles, allocation hotspot ranking, allocation % of wall-clock.  
-**Research phase?** No.
+### Phase 55: Gram-Matrix Export (SVM Glue)
+**Rationale:** Wraps proven kernel into SVM-export interface. Split train/predict API prevents normalization bugs.
+**Delivers:** `gak_gram_train()`, `gak_gram_test()`, parallel construction, rustdoc example
+**Depends on:** Phase 54
 
-### Phase 4: nalgebra vs faer Comparison (Optional)
-**Rationale:** If Phase 2 shows SVD > 30% and Phase 3 shows copy not bottleneck, benchmark faer.  
-**Delivers:** Faer speedup, conversion cost, crossover point, integration ROI.  
-**Scope:** Only if triggered by Phase 2. Else skip.  
-**Research phase?** No.
-
-### Phase 5: Gap Analysis (Feature-Parity + Accuracy Verification)
-**Rationale:** Map scikit-fda 0.10.1 against fdars capabilities with design-goal filter.  
-**Delivers:** Capability matrix, relevance filter applied, accuracy verification, complexity tags.  
-**Research phase?** Optional — check if `.planning/codebase/STRUCTURE.md` exists; if not, 2–3 day research phase needed.
-
-### Phase 6: Prioritized Backlog (Final Report)
-**Rationale:** Convert findings to GSD-ready backlog, ranked by value.  
-**Delivers:** Top-10 perf optimizations + top-10 gap items, all with function/cost/cause/fix/severity/effort, evidence artifacts.  
-**Value framework:** P1 (blocks real use), P2 (impairs workload), P3 (nice to have). Effort: S/M/L. Rank by `value / sqrt(effort)`.  
-**Research phase?** No.
+### Phase 56: Kernel-K-Means Clustering
+**Rationale:** Final consumer. Multi-restart seeding + empty-cluster recovery. Resolves Pitfalls 5-7.
+**Delivers:** `kernel_kmeans()`, `KernelKMeansResult`, `predict()`, `KernelKMeansConfig`
+**Depends on:** Phase 54, 55
 
 ### Phase Ordering Rationale
 
-1. Static analysis first (costs nothing; defines priority)
-2. Benchmark second (validates static; measurement discipline critical)
-3. Allocation audit third (only profiles candidates; avoids profiling everything)
-4. faer comparison optional (only if triggered; no speculative optimization)
-5. Gap analysis after perf understood (roadmapper needs context on perf urgency)
-6. Backlog last (aggregates findings; no rework if earlier phases refined priority)
+Phase 54 first (core kernel must work), Phase 55 second (mechanical API wrapping), Phase 56 third (clustering consumer). No algorithmic risk in Phase 55/56; all risk front-loaded into Phase 54.
 
 ### Research Flags
 
-- **Phase 1–4, 6:** No research phase.
-- **Phase 5:** Conditional research phase if API reconciliation incomplete. Check `.planning/codebase/STRUCTURE.md` first.
+**Phases needing research during planning:**
+- **Phase 54:** Sigma heuristic sensitivity on real fdars curves — add phase-exit criterion
+- **Phase 56:** Kernel-k-means++ vs random restarts — lightweight experiment to decide
+
+**Phases with standard patterns (skip research):**
+- **Phase 54:** DP, log-sum-exp, parallelism all reuse existing patterns
+- **Phase 55:** Mechanical API wrapping, mirrors existing structure
+- **Phase 56:** Config/result struct conventions well-established
 
 ---
 
@@ -135,65 +122,48 @@ The performance audit toolkit is mature and well-understood. All components are 
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Tools verified against official docs (docs.rs). Criterion 0.5, iai-callgrind 0.16.1, dhat 0.3.3 are stable. Known linker issue documented. |
-| Architecture | HIGH | Hot-spot map from direct fdars source analysis. Anti-patterns verified in code. Complexity follows Golub/Van Loan, Srivastava/Klassen, López-Pintado. |
-| Features | MEDIUM | scikit-fda v0.10.1 API verified against official docs. fdars coverage from codebase map. Gap interpretation depends on "equivalent" definition — apply capability filter carefully. |
-| Pitfalls | HIGH | Derived from Rust benchmarking best practices (Criterion book, Rust Performance Book) + fdars-specific issues (criterion linker, feature-flag matrix). Pitfalls 1,2,5,9,18 in existing CONCERNS.md. |
+| **Stack** | HIGH | No new deps; all existing. Verified against Cargo.toml and soft-DTW patterns. |
+| **Features** | HIGH | Cuturi 2011 primary, tslearn@0.9.0 + scikit-learn official docs cross-checked. All table-stakes well-defined. |
+| **Architecture** | HIGH | Direct codebase reading. Zero conflicts. Module placement reasoning sound. |
+| **Pitfalls** | HIGH | Derived from math analysis, tslearn known bugs, scikit-learn SVC contract, fdars codebase. All have detection tests and recovery. |
 
-**Overall:** HIGH — Well-grounded in verified sources (official docs, code analysis, published papers).
+**Overall: HIGH**
 
 ### Gaps to Address
 
-1. **Numerical accuracy parity** — Audit measures performance/counts features but cannot verify numerical accuracy. CONCERNS.md flags B-spline CV, elastic alignment as fragile. Phase 5 must include spot-check against scikit-fda on reference datasets.
+1. **Sigma heuristic on real fdars data** — Cuturi formula for normalized unit-variance series may not fit real FDA curves. Phase 54 planning includes sensitivity analysis on representative datasets.
 
-2. **Real-world workload characterization** — Assumes n=200–1000, m=100–500. Not validated against actual fdars users. If production workloads differ, priority may shift. Phase 2 documents assumptions; post-audit collect telemetry.
+2. **Kernel-k-means initialization** — Random uniform restarts (current plan) vs kernel-k-means++. Lightweight experiment during Phase 56 planning informs final choice.
 
-3. **faer stability** — Recommend faer 0.23 as SVD alternative, but faer younger than nalgebra. Adoption risk not quantified. Phase 4 (if triggered) must include maintenance-burden assessment.
+3. **Series-length ratio guard (2:1)** — Cuturi enforces this for TGAK. Phase 54 planning confirms whether hard guard or relax.
 
-4. **Rayon overhead** — Audit measures parallelism benefit via RAYON_NUM_THREADS sweep but not overhead (pool spinup, work-stealing). Phase 2 must include threshold analysis: at what n does overhead get paid back?
+4. **PSD eigenvalue test** — Propose nalgebra eigendecomposition; fdars doesn't currently use this. Phase 54 planning clarifies scope.
+
+All gaps non-blocking for roadmap. Phase planning makes final decisions.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- criterion 0.5.1 docs (docs.rs, June 2026)
-- iai-callgrind 0.16.1 docs (docs.rs, July 2025)
-- dhat-rs 0.3.3 docs (docs.rs, June 2026)
-- flamegraph 0.6.13 (crates.io, June 2026)
-- Rust Performance Book (nnethercote.github.io/perf-book)
-- Direct fdars-core source analysis (2026-08-07)
-- Golub & Van Loan, "Matrix Computations" (4th ed.)
-- Srivastava & Klassen, "Functional and Shape Data Analysis"
+
+- **Cuturi, M. (2011).** "Fast Global Alignment Kernels." ICML 2011. https://icml.cc/2011/papers/489_icmlpaper.pdf
+- **Dhillon, I., Guan, Y., Kulis, B. (2004).** "Kernel k-Means, Spectral Clustering and Normalized Cuts." KDD 2004.
+- **tslearn@0.9.0 official documentation.** https://tslearn.readthedocs.io/en/stable/
+- **scikit-learn SVC precomputed-kernel documentation.** https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
+- **fdars-core source code:** `src/metric/soft_dtw.rs`, `src/metric/mod.rs`, `src/clustering.rs`, `Cargo.toml`
 
 ### Secondary (MEDIUM confidence)
-- scikit-fda 0.10.1 API reference (fda.readthedocs.io)
-- scikit-fda GitHub releases
-- Gendignoux 2024, "Optimizing Rayon workloads"
-- López-Pintado & Romo (2009), Band Depth complexity
-- Sakoe & Chiba (1978), DP band constraint theory
 
-### Tertiary (VALIDATION NEEDED)
-- Real-world fdars usage patterns (n/m ranges)
-- faer 0.23 stability / maintenance
-- Criterion 0.5 linker issue frequency (environment-specific)
+- **tslearn@0.9.0 source code (GitHub).** Log-domain DP, sigma heuristic implementation.
+- **R dtwclust package documentation.** GAK function, triangular band constraint.
+- **GAP-BACKLOG.md (v0.31.0).** GAP-01 scope.
+
+### Tertiary (LOW confidence)
+
+- Pattern inference from fdars modules (elastic alignment, classification).
 
 ---
 
-## Ready for Roadmap
-
-Audit research complete. Four detailed research documents (STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md) provide foundations; this SUMMARY distills key findings and phase structure.
-
-**Roadmapper should:**
-1. Use Phase 1–6 as suggested decomposition (tailor per priorities)
-2. Flag Phase 5 for conditional research phase if codebase mapping incomplete
-3. Apply design-goal filter (out-of-scope: plotting, sklearn API) during gap prioritization
-4. Use value-based ranking framework (value / sqrt(effort)) for backlog ordering
-
-**Expected audit timeline:** 4–6 weeks (static analysis + benchmarking + profiling + gap analysis, sequential or parallel per team capacity).
-
----
-
-*Research completed: 2026-08-07*  
-*Synthesized by: GSD Research Synthesizer*  
-*Ready for roadmap: YES*
+*Research completed: 2026-09-02*
+*Status: Ready for roadmap creation*

@@ -1,437 +1,383 @@
-# Architecture Research — Performance Hot-Spot Map
+# Architecture Research — v0.32.0 GAK Integration
 
-**Domain:** Functional Data Analysis (Rust library, fdars-core v0.14.0)
-**Researched:** 2026-08-07
-**Confidence:** HIGH (derived from direct source analysis of the codebase)
-
----
-
-## Purpose
-
-This document maps the algorithmic cost structure of fdars-core so that the
-performance audit can aim static analysis and benchmarks at the true hot paths.
-Each section identifies a computational subsystem, gives its complexity in N
-(number of curves) and M (grid resolution), characterises the dominant cost
-driver, and assigns an audit priority.
+**Domain:** Rust functional-data-analysis library extension (GAK kernel + kernel clustering)
+**Researched:** 2026-09-02
+**Confidence:** HIGH — based on direct reading of all relevant source files (`soft_dtw.rs`, `metric/mod.rs`, `alignment/clustering.rs`, `clustering.rs`, `distance.rs`, `lib.rs`) and the v0.31.0 `GAP-BACKLOG.md` GAP-01 block.
 
 ---
 
-## Component Boundaries and Cost Map
+## Module Placement Decision
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│  AUDIT PRIORITY MAP                                                      │
-│                                                                          │
-│  HIGH   alignment/        elastic DP  O(N·M²) Karcher / O(N²·M²) dist  │
-│         elastic_fpca.rs   7× SVD+copy per elastic-FPCA call             │
-│         regression.rs     FdMatrix→DMatrix copy before every SVD        │
-│                                                                          │
-│  MED    depth/            band/BD  O(N²·M) pairwise; FM/MBD O(N·M·logN)│
-│         spm/mfpca.rs      stacked SVD on wide matrix                    │
-│         classification/cv K-fold FPCA re-computed per fold              │
-│         clustering.rs     k-means assignment O(K·N·M) per iteration     │
-│                                                                          │
-│  LOW    smoothing.rs      kernel smoother O(n·M) per curve, already //  │
-│         basis/            P-spline normal-eq once, then O(n·B) per curve│
-│         seasonal/         FFT O(M log M), rustfft already optimised     │
-└─────────────────────────────────────────────────────────────────────────┘
+**Place GAK in `src/metric/gak.rs` — a sibling of `soft_dtw.rs`, not a new top-level module.**
+
+Rationale:
+
+1. `soft_dtw.rs` already owns the alignment-lattice DP that GAK reuses. Sibling placement makes the dependency explicit and keeps both variants together for future maintainers.
+2. The existing `metric/mod.rs` already declares ten submodules for specialized pairwise operations; `gak` is the eleventh — it fits the pattern exactly.
+3. A new `kernel/` top-level module would imply a broader kernel-methods subsystem (SVM, kernel regression, etc.) that is explicitly out of scope this milestone. Naming it `metric/gak.rs` is honest: GAK is a kernel that produces a similarity/distance matrix, consistent with what every sibling module does.
+4. Kernel-k-means lives in `src/kernel_kmeans.rs` at the top level (not inside `metric/`), because it is a clustering algorithm that consumes a Gram matrix — the same level as `clustering.rs` and `clustering_advanced.rs`. It is not itself a distance metric.
+5. Gram-matrix export is not a separate file — it is a function (`gak_gram_matrix`) that lives in `metric/gak.rs` and is re-exported from `lib.rs`, exactly as `soft_dtw_self_1d` / `soft_dtw_cross_1d` are today.
+
+---
+
+## New vs Modified Files
+
+### New Files
+
+| File | What It Contains |
+|------|-----------------|
+| `src/metric/gak.rs` | `gak_distance` (pairwise scalar), `gak_gram_matrix` (n x n Gram), `gak_cross_gram` (n_train x n_test), `GakConfig` (sigma, triangular band, normalize flag), `gak_sigma_median` (bandwidth heuristic) |
+| `src/kernel_kmeans.rs` | `kernel_kmeans`, `KernelKMeansConfig`, `KernelKMeansResult` |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `src/metric/mod.rs` | Add `pub mod gak;` + re-export `gak_distance`, `gak_gram_matrix`, `gak_cross_gram`, `GakConfig`, `gak_sigma_median` |
+| `src/lib.rs` | `pub mod kernel_kmeans;` + top-level re-exports for all public items from both new modules |
+
+No other existing file changes. The public API of every existing function is untouched.
+
+---
+
+## Reuse Map: What Comes from `soft_dtw.rs`
+
+The GAK forward DP is structurally identical to `soft_dtw_forward` with two substitutions:
+
+| Aspect | soft_dtw | GAK |
+|--------|----------|-----|
+| Local cost | `(x[i] - y[j])^2` (squared Euclidean) | `exp(-(x[i] - y[j])^2 / (2 * sigma^2))` (triangular kernel) |
+| Accumulation operator | `softmin3(r[i-1][j], r[i][j-1], r[i-1][j-1], gamma)` soft-MIN | `logsumexp3(r[i-1][j], r[i][j-1], r[i-1][j-1])` soft-MAX |
+| Final value | `r[n][m]` (alignment cost, low = similar) | `exp(r[n][m])` (alignment kernel value, high = similar) |
+| Log domain | Implicit (cost scale) | Explicit: accumulate in log space throughout; final = exp(log_gak) |
+| Diagonal constraint | Optional band fraction (Phase 12, v0.16.0) | Optional band fraction — same param type, same logic |
+
+**Directly reusable from `soft_dtw.rs` — same algorithm skeleton:**
+
+- The 2-row rolling-buffer DP structure in `soft_dtw_distance` (O(m) memory, `prev`/`curr` swap). GAK uses the same two-buffer approach in log space.
+- `pub(super) fn softmin3` demonstrates the stabilized log-sum-exp pattern GAK mirrors. GAK replaces it with `logsumexp3(a, b, c) = log(exp(a) + exp(b) + exp(c))` using the same max-subtraction stabilization trick.
+- `pub(super) fn self_distance_matrix` and `cross_distance_matrix` in `metric/mod.rs` — both `pub(super)`, directly usable by the sibling `gak.rs`.
+- The `iter_maybe_parallel!` macro import pattern.
+- Band-constraint wiring: the `band_frac: Option<f64>` parameter type and the `band_width = ceil(band_frac * m)` calculation, consistent with the banded elastic alignment added in Phase 12.
+
+**What GAK must add (not in `soft_dtw.rs`):**
+
+1. `logsumexp3(a, b, c)` — soft-MAX instead of soft-MIN; new private function sharing the stabilization idea.
+2. Triangular local kernel in log space: `log_cost(i, j) = -(x[i] - y[j])^2 / (2 * sigma^2)`.
+3. PSD normalization: `k_norm(x, y) = gak(x, y) / sqrt(gak(x, x) * gak(y, y))`. Diagonal terms computed and cached before the off-diagonal fill loop.
+4. Sigma bandwidth heuristic: `gak_sigma_median` — the tslearn default is `median(pairwise_L2) * sqrt(m)`. Uses `distance::l2_distance_matrix`.
+5. `GakConfig` config struct.
+
+**Not reused from `soft_dtw.rs`:**
+
+- `soft_dtw_forward`, `soft_dtw_backward`, `soft_dtw_accumulate_gradient` — backward/gradient machinery for the barycenter. GAK this milestone has no gradient requirement; these are not ported.
+- `SoftDtwBarycenterResult` / `soft_dtw_barycenter` — not needed.
+- `softmin3_val` — the backward-pass helper; not needed.
+
+---
+
+## DP Implementation Note
+
+GAK forward DP in log space, 2-row rolling buffer:
+
+```
+// log_cost(i, j) = -(x[i-1] - y[j-1])^2 / (2 * sigma^2)
+// R[i][j] = log_cost(i, j) + logsumexp3(R[i-1][j], R[i][j-1], R[i-1][j-1])
+// GAK(x, y) = exp(R[n][m])
+// With band: skip (i,j) where |i - j| > band_width; set to f64::NEG_INFINITY
+```
+
+The optional Sakoe-Chiba band: cells outside the band are set to `f64::NEG_INFINITY` in log space (exp gives 0 contribution). `band_width = (band_frac * m.max(n)).ceil() as usize`. The `Option<f64>` parameter type matches `elastic_self_distance_matrix_with_band` / `elastic_cross_distance_matrix_with_band` exactly.
+
+---
+
+## Proposed Public API
+
+All signatures follow fdars conventions: `Result<T, FdarError>`, `#[must_use]` on expensive computations, config struct for multi-parameter functions, column-major `FdMatrix`.
+
+### `src/metric/gak.rs`
+
+```rust
+/// Configuration for Global Alignment Kernel computation.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct GakConfig {
+    /// Bandwidth (sigma > 0). Use gak_sigma_median() to auto-compute.
+    pub sigma: f64,
+    /// Sakoe-Chiba band as a fraction of series length (0 < f <= 1).
+    /// None = full alignment. Some(f) = restrict to band ceil(f * m).
+    pub band_frac: Option<f64>,
+    /// Normalize to produce a proper kernel in [0, 1].
+    /// k_norm(x,y) = gak(x,y) / sqrt(gak(x,x) * gak(y,y)).
+    /// Default: true (normalized GAK is PSD; raw is not guaranteed PSD).
+    pub normalize: bool,
+}
+
+impl Default for GakConfig { ... }  // sigma=1.0, band_frac=None, normalize=true
+
+/// Median-heuristic sigma: median(pairwise_L2_distances) * sqrt(m).
+/// Equivalent to tslearn's default bandwidth. O(n^2) — call once.
+#[must_use]
+pub fn gak_sigma_median(data: &FdMatrix, argvals: &[f64]) -> f64;
+
+/// Scalar GAK value between two curves (public convenience wrapper).
+#[must_use]
+pub fn gak_distance(x: &[f64], y: &[f64], config: &GakConfig) -> f64;
+
+/// Compute the n x n symmetric GAK Gram matrix (training-set self-kernel).
+/// When config.normalize = true the result is a PSD kernel matrix K[i,j] in [0,1].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gak_gram_matrix(
+    data: &FdMatrix,
+    config: &GakConfig,
+) -> Result<FdMatrix, FdarError>;
+
+/// Compute the n_test x n_train cross-kernel matrix K(X_test, X_train).
+/// Feed to an external precomputed-kernel SVM alongside the training Gram matrix.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gak_cross_gram(
+    test: &FdMatrix,
+    train: &FdMatrix,
+    config: &GakConfig,
+) -> Result<FdMatrix, FdarError>;
+```
+
+### `src/kernel_kmeans.rs`
+
+```rust
+use crate::metric::gak::{GakConfig, gak_gram_matrix, gak_cross_gram};
+
+/// Configuration for kernel k-means clustering via the GAK kernel.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct KernelKMeansConfig {
+    /// Number of clusters (k >= 1).
+    pub k: usize,
+    /// Maximum assignment iterations per run (default: 100).
+    pub max_iter: usize,
+    /// Number of random restarts; best inertia run is returned (default: 5).
+    pub n_init: usize,
+    /// Random seed for initialization (default: 42).
+    pub seed: u64,
+    /// GAK kernel configuration.
+    pub gak: GakConfig,
+}
+
+impl Default for KernelKMeansConfig { ... }
+
+/// Result of kernel k-means clustering.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct KernelKMeansResult {
+    /// Cluster label per observation (0-indexed, length n).
+    pub labels: Vec<usize>,
+    /// Within-cluster kernel objective value (lower is better).
+    pub inertia: f64,
+    /// Number of iterations in the winning run.
+    pub n_iter: usize,
+    /// Whether the winning run converged (labels stabilized).
+    pub converged: bool,
+    /// The GAK Gram matrix computed during fit (n x n).
+    /// Stored for use by predict without recomputation.
+    pub gram_train: FdMatrix,
+    /// Configuration snapshot used during fit.
+    pub config: KernelKMeansConfig,
+}
+
+impl KernelKMeansResult {
+    /// Assign new curves to the nearest cluster in kernel space.
+    /// Computes gak_cross_gram(new_data, training_data, &self.config.gak)
+    /// internally; the training Gram matrix is stored in self.gram_train.
+    pub fn predict(
+        &self,
+        new_data: &FdMatrix,
+        train_data: &FdMatrix,
+    ) -> Result<Vec<usize>, FdarError>;
+}
+
+/// Fit kernel k-means on a curve set using the GAK kernel.
+///
+/// Computes the n x n GAK Gram matrix once, then runs n_init random-partition
+/// restarts of the kernel k-means assignment loop, returning the run with
+/// lowest kernel inertia.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn kernel_kmeans(
+    data: &FdMatrix,
+    config: &KernelKMeansConfig,
+) -> Result<KernelKMeansResult, FdarError>;
 ```
 
 ---
 
-## Component Responsibilities
+## Kernel K-Means Assignment Rule
 
-| Component | File(s) | Responsibility |
-|-----------|---------|----------------|
-| FPCA engine | `src/regression.rs:fdata_to_pc_1d()` | Full SVD on N×M weighted matrix; returns FpcaResult |
-| Elastic FPCA | `src/elastic_fpca.rs` | Vertical / horizontal / joint FPCA after alignment; 7 SVD calls with copies |
-| Elastic alignment (pairwise) | `src/alignment/pairwise.rs` | Pairwise DP warp, SRSF distance, distance matrices |
-| Karcher mean | `src/alignment/karcher.rs` | Iterative alignment-and-mean; inner loop is O(N) DP warps per iteration |
-| DP core | `src/alignment/mod.rs:dp_alignment_core_banded()` | M×M grid fill; banded variant exists but requires opt-in |
-| Depth measures | `src/depth/` | Band BD O(N²·M), FM/MBD O(N·M·log N) via sorted columns |
-| MFPCA | `src/spm/mfpca.rs` | SVD on horizontally stacked N×(sum M_p) matrix |
-| Classification CV | `src/classification/cv.rs` | K-fold loop, FPCA re-run per fold |
-| Clustering | `src/clustering.rs` | k-means assignment + centroid O(K·N·M) per iteration |
-| P-spline / B-spline | `src/basis/pspline.rs`, `basis/bspline.rs` | Normal-equation solve once; per-curve solve is O(n·B²) |
-| Kernel smoothing | `src/smoothing.rs` | Nadaraya-Watson / local-linear per output point; rayon-parallelised |
-| FdMatrix ↔ DMatrix copy | `src/matrix.rs:to_dmatrix()` | Full N×M copy into nalgebra heap allocation |
+Standard kernel k-means operates purely on the Gram matrix K (no explicit feature map needed):
 
----
+```
+For each observation i, and each cluster c with index set C_c:
 
-## Architectural Patterns
+objective(i, c) = K[i,i]
+                - (2 / |C_c|) * sum_{j in C_c} K[i,j]
+                + (1 / |C_c|^2) * sum_{j in C_c, l in C_c} K[j,l]
 
-### Pattern 1: FdMatrix-to-DMatrix Round-Trip (Dense Copy Before Every SVD)
+label[i] = argmin_c  objective(i, c)
+```
 
-**What:** `fdata_to_pc_1d()` in `src/regression.rs` builds a weighted copy of
-the centered matrix (`weighted.clone()` followed by `weighted.to_dmatrix()`),
-then calls `SVD::new(...)`. This is two allocations of size N×M before any
-factorisation work begins. In `src/elastic_fpca.rs` this pattern is repeated
-for all seven SVD call sites (lines 122, 214, 317, 399, 483, 584, 930).
+The third term (cluster kernel mean) is computed once per cluster per iteration and cached. Per-observation, per-cluster assignment is O(n * k). No cluster center vectors are stored — the algorithm is purely index-based on K.
 
-**Complexity of the copy:** O(N·M) time and memory per SVD call.
-At N=500 curves × M=200 points, that is 100 000 f64 values (800 KB) copied on
-every FPCA invocation.
-
-**When to use (acceptable):** Once at fitting time if the result is cached. The
-`FpcaResult::project()` method avoids re-running SVD, which is the correct
-pattern already followed by downstream callers.
-
-**Problem:** The copy is unnecessary when nalgebra works on column-major data
-and FdMatrix is already column-major. A zero-copy path via
-`DMatrix::from_column_slice` (which `to_dmatrix()` already uses internally)
-eliminates the intermediate `weighted` clone. Alternatively, switching to
-`faer`'s `Mat` (already a dev dependency) or a randomised/truncated SVD would
-remove the full-decomposition cost entirely when only `ncomp << min(N,M)`
-components are needed.
-
-**Audit action:** Grep all `to_dmatrix()` call sites and verify each one is
-preceded by a necessary transformation (weighting, centering) rather than a
-redundant clone. Count the total allocation budget per FPCA call.
+Initialization: random uniform partition across `n_init` restarts, seeded as `seed + restart_idx as u64`. The restart with lowest total inertia is returned. This does not reuse `kmeans_plusplus_init` from `clustering.rs` (that function operates on curve vectors with L2 distances, not on similarity-valued kernel matrices).
 
 ---
 
-### Pattern 2: Full O(M²) DP Grid Per Pairwise Alignment
+## Data Flow
 
-**What:** `dp_alignment_core_banded()` (`src/alignment/mod.rs`, line 567) fills
-an M×M DP grid with a coprime-neighbourhood of 35 possible moves. Without a
-band the cost is O(M²) per pair.
+```
+curves: FdMatrix (n x m, column-major)
+    |
+    +-- gak_sigma_median(&data, &argvals)
+    |       uses: distance::l2_distance_matrix -> median -> * sqrt(m)
+    |       returns: f64 (suggested sigma for GakConfig)
+    |
+    +-- gak_gram_matrix(&data, &GakConfig)           [Gram export path]
+    |       |
+    |       +-- diagonal pass: gak_pair(xi, xi) for all i -> diag[i]
+    |       +-- upper triangle: gak_pair(xi, xj) for i < j
+    |       |       log-domain DP (2-row rolling buffer)
+    |       |       logsumexp3 accumulation
+    |       |       optional Sakoe-Chiba band
+    |       |       -> exp(R[n][m]) = unnormalized GAK value
+    |       +-- normalize: K[i,j] /= sqrt(diag[i] * diag[j])
+    |       returns: FdMatrix (n x n, PSD Gram matrix)
+    |
+    +-- kernel_kmeans(&data, &KernelKMeansConfig)    [Clustering path]
+            |
+            +-- calls gak_gram_matrix internally
+            +-- n_init restarts:
+            |       random partition -> assignment loop -> inertia
+            +-- returns best run as KernelKMeansResult
+            |       .labels: Vec<usize>
+            |       .gram_train: FdMatrix (stored)
+            |
+            +-- result.predict(&new_data, &train_data):
+                    gak_cross_gram(new_data, train_data, config)
+                    assignment by cross-kernel objective
+                    returns: Vec<usize>
 
-**Complexity:**
-
-| Operation | Complexity |
-|-----------|------------|
-| Single pair alignment (unbanded) | O(M²) |
-| Single pair alignment (banded, radius r) | O(M·r) |
-| Karcher mean, K iterations | O(K·N·M²) unbanded, O(K·N·M·r) banded |
-| Self-distance matrix (N curves) | O(N²·M²) / O(N²·M·r) banded |
-| Cross-distance matrix (N1 × N2) | O(N1·N2·M²) / O(N1·N2·M·r) banded |
-
-At M=200, N=100, K=30, the unbanded Karcher mean requires ≈ 120 000 000 000
-elementary operations. With a 15% band (r≈30) this drops 7× to ≈ 18 000 000 000.
-
-**Existing mitigation:** `elastic_align_pair_banded`, `karcher_mean_banded`,
-`elastic_self_distance_matrix_banded`, and `elastic_cross_distance_matrix_banded`
-are all exposed. The thread-local `DP_SCRATCH` eliminates per-call heap
-allocation for the DP grid (correctly reuses across rayon worker threads).
-
-**Gap:** The banded variants require the caller to pass `band_frac`; there is no
-auto-selection heuristic. For Karcher-mean-based pipelines (elastic FPCA, elastic
-regression) the Karcher step calls `align_srsf_pair_banded` through
-`iter_maybe_parallel!` but `band` is propagated from the caller — the default
-unlocked path in `karcher_mean()` passes `band = None`. SRSF computation itself
-(`srsf_transform`) is O(N·M) and not a bottleneck.
-
-**Audit action:** Profile `dp_grid_solve_banded` call count and total wall time
-under realistic (N=100, M=200) inputs. Verify the thread-local scratch pad is
-actually eliminating allocator round-trips under the benchmark harness.
-
----
-
-### Pattern 3: O(N²·M) Pairwise Depth
-
-**What:** Band Depth (`src/depth/band.rs:band_1d`) checks all C(N,2) pairs for
-containment across all M time points. Modified Band Depth (`modified_band_1d`)
-uses `SortedReferenceState` (sorted columns) to reduce per-query cost from
-O(N·M) to O(M·log N). Fraiman-Muniz depth uses the same sorted-column structure.
-
-**Complexity:**
-
-| Measure | Build | Per-query | Total (N queries against N references) |
-|---------|-------|-----------|----------------------------------------|
-| FM / MBD (sorted) | O(N·M·log N) | O(M·log N) | O(N·M·log N) |
-| BD (full reference) | O(N·M) | O(N·M) with early exit | O(N²·M) worst case |
-| Random projection depth | O(nproj·N·M) | O(nproj·log N) | O(nproj·N·M) |
-| Spatial depth | O(N·M) | O(N·M) | O(N²·M) |
-
-**Parallelism:** `iter_maybe_parallel!` covers the outer (query) loop in BD
-(`src/depth/band.rs`, line 66), and `maybe_par_chunks_mut_enumerate!` covers
-random projection pre-computation. FM and MBD dispatch through
-`StreamingDepth::depth_batch()`, which is not parallelised at the batch level —
-queries are processed sequentially over the query matrix in
-`streaming_depth/fraiman_muniz.rs` and `streaming_depth/mbd.rs`.
-
-**Audit action:** Check whether `StreamingDepth::depth_batch()` implementations
-use `iter_maybe_parallel!` for the outer query loop or are purely sequential.
-The batch can be trivially parallelised since each query is independent.
-
----
-
-### Pattern 4: Classification CV — FPCA Re-Run Per Fold
-
-**What:** `fclassif_cv()` (`src/classification/cv.rs`) runs K folds sequentially.
-Inside each fold `cv_fold_predict()` calls `fdata_to_pc_1d()` on the training
-set, which re-does full SVD from scratch. For nfold=10, N=200, M=100 this means
-10 separate SVD calls on (180 × 100) matrices.
-
-**Complexity:** O(nfold · N · M · min(N,M)) total, dominated by the SVD inside
-each fold.
-
-**Gap:** The folds are executed sequentially (plain `for fold in 0..nfold` loop,
-line 76). There is no parallelism over folds. Since folds are independent, they
-could be parallelised with `iter_maybe_parallel!`.
-
-**Audit action:** Confirm folds run sequentially. Quantify wall-time cost via
-the classification benchmark. This is a straightforward `iter_maybe_parallel!`
-insertion with a caveat about thread-safe RNG seeding (already handled by the
-`seed + k` pattern used elsewhere in the codebase).
-
----
-
-### Pattern 5: Elastic FPCA — Sequential N-Loops Without Rayon
-
-**What:** `src/elastic_fpca.rs` contains seven SVD calls with copies (see Pattern
-1 above) and multiple sequential `for i in 0..n` loops in helper functions such
-as `shooting_vectors_from_psis()` (line 701), `build_augmented_srsfs()` (line
-720), and `center_matrix()` (line 734). None of these inner O(N) loops use
-`iter_maybe_parallel!`.
-
-**Complexity driver:** Each of the seven SVD sites operates on a matrix whose
-dimensions range from N×M (amplitude FPCA) to N×(M+1) (augmented SRSF FPCA) to
-N×(2M) (joint FPCA). At N=500, M=200 a joint SVD is on a 500×400 matrix. Full
-SVD of an n×m matrix is O(n·m·min(n,m)); for the joint case that is
-O(500·400·400) ≈ 80 billion ops before the copy overhead.
-
-**Audit action:** Count the sequential N-loops in elastic_fpca.rs that could be
-replaced with `iter_maybe_parallel!` and estimate the speedup. For the SVD sites
-specifically, evaluate whether a covariance-eigendecomposition path (O(M²·N +
-M³) via a pre-computed covariance matrix, much cheaper when N < M) is
-applicable.
-
----
-
-### Pattern 6: P-Spline — Normal-Equation Solve Per Curve
-
-**What:** `pspline_fit_1d()` (`src/basis/pspline.rs`, line 66) correctly computes
-the Gram matrix B^T B and penalised inverse once for all N curves, then solves
-a cheap O(B²) system per curve. The per-curve `DMatrix` allocations (`DVector`
-and `DMatrix` temporaries) accumulate when N is large.
-
-**Complexity:**
-
-| Step | Cost |
-|------|------|
-| B-spline basis matrix (M × B) | O(M·B·order) |
-| B^T B (B × B) | O(M·B²) |
-| Pseudoinverse (SVD of B × B) | O(B³) |
-| Per-curve solve (B vector multiply) | O(B²) |
-| Total for N curves | O(M·B² + N·B²) |
-
-B is typically 15–40 (number of B-spline bases), so the solve is fast. The
-dominant cost for large N is the N·B² term, but at B=30 and N=1000 this is
-only ~1 million ops — not a bottleneck. The per-curve `DVector::from_vec`
-heap allocation is mildly wasteful but unlikely to be measurable.
-
-**Audit action:** LOW priority. Note the `DMatrix` allocation pattern for
-completeness; no change needed unless profiling reveals it.
-
----
-
-### Pattern 7: GMM Clustering Sequential Inner Loops
-
-**What:** `clustering.rs` uses `maybe_par_chunks_mut_enumerate!` for the
-assignment step (line 161) and `slice_maybe_parallel!` for the centroid update
-(line 251), but the outer iteration loop and convergence check are sequential.
-Distance computation per observation is O(K·M) (K cluster centroids, M points),
-making the full assignment pass O(N·K·M) per iteration, parallelised over N.
-
-**Gap:** The fuzzy c-means variant (`fuzzy_cmeans_fd` at line 854 via
-`iter_maybe_parallel!`) is parallelised. Verify the hard k-means assignment
-parallel path reaches the assignment step correctly — the inner loop over K is
-still sequential within each chunk.
-
-**Audit action:** LOW–MED. Parallelism exists; confirm it is effective at
-realistic K values. Profile under N=500, K=5, M=200.
-
----
-
-## Data Flow: Performance Cost Drivers
-
-```text
-Input FdMatrix (N rows = curves, M cols = grid points)
-         │
-         ├──► fdata_to_pc_1d()            COST: O(N·M·min(N,M)) SVD
-         │         │  weighted.clone()     COST: O(N·M) alloc + copy
-         │         │  to_dmatrix()         COST: O(N·M) alloc + copy
-         │         │  nalgebra::SVD::new() COST: O(N·M·min(N,M)) Bidiagonal+QR
-         │         └► FpcaResult           BENEFIT: cached — reuse via .project()
-         │
-         ├──► karcher_mean() / elastic_self_distance_matrix()
-         │         │  srsf_transform()     COST: O(N·M) — cheap
-         │         │  iter_maybe_parallel! over N pairs or N×N pairs
-         │         │  dp_alignment_core_banded() per pair  COST: O(M²) or O(M·r)
-         │         └► KarcherMeanResult    COST TOTAL: O(K·N·M²) or O(N²·M²)
-         │
-         ├──► band_1d() / modified_band_1d()
-         │         │  FullReferenceState::from_reference()   COST: O(N·M)
-         │         │  bd_one_inner() for each query          COST: O(N·M) + early exit
-         │         └► depths Vec<f64>      COST TOTAL: O(N²·M) worst case
-         │
-         ├──► elastic_fpca variants (vert/horiz/joint)
-         │         │  karcher_mean()       COST: O(K·N·M²)
-         │         │  7× SVD with copies   COST: 7 × O(N·M·min(N,M)) + 7 × O(N·M) copies
-         │         └► result structs       NOTE: no parallelism on inner N-loops
-         │
-         └──► fclassif_cv()
-                   │  for fold in 0..K    SEQUENTIAL over K folds
-                   │  fdata_to_pc_1d()    COST: O(N·M·min(N,M)) per fold
-                   └► error_rate          COST TOTAL: O(K_folds·N·M·min(N,M))
+    [SVM export path — no fdars SVM, user-supplied]
+    gak_gram_matrix(&train, &config)?        -> K_train (n_train x n_train)
+    gak_cross_gram(&test, &train, &config)?  -> K_test  (n_test x n_train)
+    User passes both to external SVM (scikit-learn, libsvm, etc.)
 ```
 
 ---
 
-## Scaling Behaviour Summary
+## Dependency-Ordered Build Sequence
 
-| Subsystem | Dominant Complexity | Scales Badly With | Parallelised |
-|-----------|---------------------|-------------------|--------------|
-| FPCA (regression.rs) | O(N·M·min(N,M)) | large M (M→N column space) | No — SVD is single-threaded in nalgebra |
-| Elastic alignment pairwise | O(M²) per pair | M (grid resolution) | Outer N loop: yes via iter_maybe_parallel! |
-| Karcher mean | O(K·N·M²) | M and iteration count K | N inner loop: yes; K loop: no |
-| Elastic distance matrix | O(N²·M²) | Both N and M | Outer N loop: yes |
-| Elastic FPCA | O(K·N·M²) + 7·O(N·M²) SVD | N, M | Inner N-loops: no |
-| Band Depth | O(N²·M) | N | Outer query loop: yes |
-| MBD / FM depth | O(N·M·log N) build + O(M·log N) query | N·M | Batch queries: no |
-| Classification CV | O(nfold·N·M·min(N,M)) | nfold and M | Folds loop: no |
-| k-means clustering | O(iters·N·K·M) | K and M | Assignment step: yes |
-| P-spline fit | O(M·B² + N·B²) | N (for large N only) | No (but fast in practice) |
+Recommended implementation order within the phase (each step unblocks the next):
+
+**Step 1 — GAK pairwise kernel core (`src/metric/gak.rs`, kernel only)**
+
+Deliverables: `logsumexp3` (private), `gak_pair` (pub(crate) pairwise DP), `GakConfig` with defaults, `gak_distance` (public thin wrapper).
+
+Tests: `gak_pair(x, x, ...)` > 0 for any x; normalized result in (0, 1]; monotone decrease as sigma decreases (tighter bandwidth = lower similarity for non-identical pairs); band vs unbanded agree on diagonals.
+
+**Step 2 — Gram matrix builders and sigma heuristic (`src/metric/gak.rs`, matrix surface)**
+
+Deliverables: `gak_sigma_median` (reuses `distance::l2_distance_matrix`), `gak_gram_matrix` (parallel via `self_distance_matrix` + diagonal cache), `gak_cross_gram` (parallel via `cross_distance_matrix`). Wire into `metric/mod.rs` and `lib.rs`.
+
+Tests: symmetry of `gak_gram_matrix`; diagonal = 1.0 when `normalize = true`; positive-definiteness (attempt nalgebra Cholesky on a small n=5 result, expect Ok); `gak_cross_gram` shape (n_test x n_train).
+
+**Step 3 — Kernel k-means (`src/kernel_kmeans.rs`)**
+
+Deliverables: `KernelKMeansConfig` with defaults, `KernelKMeansResult`, `kernel_kmeans` fitting function (calls `gak_gram_matrix`, multi-restart assignment loop), `KernelKMeansResult::predict`.
+
+Tests: two well-separated synthetic curve groups recovered with purity 1.0; `n_init > 1` returns reproducible labels (seeded); `predict` assigns a new curve to its correct group; `k > n` returns `FdarError::InvalidParameter`.
+
+**Step 4 — Integration verification**
+
+- `cargo clippy --all-targets --features linalg,parallel -- -D warnings`
+- `cargo fmt --check`
+- `cargo test --features linalg,parallel`
+- Add a rustdoc example in `gak_gram_matrix` showing the SVM export handoff pattern.
+
+---
+
+## Architectural Constraints Respected
+
+| Constraint | How GAK Respects It |
+|------------|---------------------|
+| Column-major `FdMatrix` | All inputs/outputs are `FdMatrix`; DP inner loop uses `data.row(i)` which calls `row_to_buf` |
+| `Result<T, FdarError>` everywhere | `gak_gram_matrix`, `gak_cross_gram`, `kernel_kmeans`, `predict` all return `Result` |
+| No new crate dependency | Only uses `rand` (already a dep) for seeded restart initialization; no new entries in `Cargo.toml` |
+| Additive/non-breaking | Zero changes to existing public signatures; only `pub mod gak` and `pub mod kernel_kmeans` additions |
+| MSRV 1.81 | No const generics, no `let ... else` patterns post-1.81, no stabilized features post-1.81 |
+| Parallel feature gate | Gram-matrix parallel dispatch via `iter_maybe_parallel!`; degrades to sequential if `parallel` feature is off |
+| `#[non_exhaustive]` on result types | All new result structs marked `#[non_exhaustive]` for forward compatibility |
+| Deterministic seeding | Restarts seeded as `StdRng::seed_from_u64(config.seed + restart as u64)` — same pattern as `alignment/clustering.rs` |
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Redundant FdMatrix Clones Before SVD
+### Anti-Pattern 1: Accumulating in Linear (Non-Log) Space
 
-**What happens:** `fdata_to_pc_1d()` calls `centered.clone()` to create
-`weighted`, then `weighted.to_dmatrix()` to create the nalgebra matrix. That is
-two complete N×M copies before SVD starts. In `elastic_fpca.rs` the same pattern
-appears 7 times.
+**What people do:** Multiply local kernel values directly: `R[i][j] = cost(i,j) * (R[i-1][j] + R[i][j-1] + R[i-1][j-1])`.
 
-**Why it's wrong:** At N=500, M=200, each copy is 800 KB; 7 copies in one
-elastic-FPCA call = 5.6 MB of allocation and memcpy overhead before any linear
-algebra begins.
+**Why it's wrong:** For series of moderate length (m >= 50), local kernel values are < 1 and their product underflows to machine zero. The DP result becomes 0 for all pairs regardless of similarity.
 
-**Do this instead:** Apply the weight scaling in-place or during the copy-to-DMatrix
-step. Use `DMatrix::from_fn(n, m, |i, j| centered[(i,j)] * sqrt_weights[j])` to
-merge the scale and copy into a single pass. For SVD, consider whether the
-covariance approach (B = X^T X, eigendecompose B) halves the work when M < N.
+**Do this instead:** Accumulate in log space throughout. Set `R[i][j] = log_cost(i,j) + logsumexp3(R[i-1][j], R[i][j-1], R[i-1][j-1])`. Call `exp` exactly once on `R[n][m]`. This mirrors `softmin3`'s `min_val` stabilization in `soft_dtw.rs`.
 
-### Anti-Pattern 2: Karcher Mean Without Band
+### Anti-Pattern 2: Computing Gram Matrix Without Caching Diagonal
 
-**What happens:** `karcher_mean()` passes `band = None` to
-`align_srsf_pair_banded()`, using the full O(M²) DP grid for every pair on every
-iteration.
+**What people do:** Compute `K[i,j] / sqrt(gak_pair(xi, xi) * gak_pair(xj, xj))` inline during the off-diagonal fill, calling `gak_pair(xi, xi)` O(n^2/2) times.
 
-**Why it's wrong:** For M=200, N=100, K=30 iterations, this is 30 × 100 × 40 000
-= 120 million elementary cell evaluations per iteration step. The banded variant
-reduces this by ~7× at 15% band with negligible accuracy loss on nearly-diagonal
-warps.
+**Why it's wrong:** `gak_pair(xi, xi)` is O(m) per call. Without caching, diagonal computation is O(n^2 * m) instead of O(n * m) — unnecessary n-fold slowdown.
 
-**Do this instead:** Select a default band (e.g. `band_frac = 0.2`) for the
-high-level `karcher_mean()` API and document the accuracy trade-off. Expose the
-current unbounded path only when `band_frac = 0.0` or `None` is explicitly
-requested.
+**Do this instead:** Pre-compute `diag[i] = gak_pair(xi, xi)` in a single O(n) pass before filling the upper triangle. Use `K[i,j] /= sqrt(diag[i] * diag[j])` in the normalization step.
 
-### Anti-Pattern 3: Sequential Folds in Classification CV
+### Anti-Pattern 3: Applying k-means++ Initialization to Kernel K-Means
 
-**What happens:** The fold loop in `fclassif_cv()` runs `for fold in 0..nfold`
-with a full `fdata_to_pc_1d()` SVD inside each iteration. Folds are fully
-independent.
+**What people do:** Pass the Gram matrix to `kmeans_plusplus_init` from `clustering.rs`, treating K[i,j] as a distance.
 
-**Why it's wrong:** On a machine with 8 cores, 10 folds takes 10× the single-fold
-wall time instead of ~2×.
+**Why it's wrong:** GAK values are similarities (higher = more similar). k-means++ uses D^2 weighting where D is a distance; inverting or negating K[i,j] to fake a distance produces pathological initialization that can seed all centers in the same cluster.
 
-**Do this instead:** Wrap the fold iteration in `iter_maybe_parallel!(0..nfold)`.
-The RNG is not used in the fold loop body (fold assignment is done before the
-loop), so there is no seeding hazard. Each fold creates its own `fdata_to_pc_1d`
-context with no shared mutable state.
+**Do this instead:** Random uniform partition restarts (`n_init` times). The kernel objective landscape is well-behaved enough that multiple random restarts consistently outperform a misapplied similarity-as-distance init.
 
-### Anti-Pattern 4: Non-Parallel depth_batch in Streaming Depth
+### Anti-Pattern 4: Placing `kernel_kmeans` Inside `metric/`
 
-**What happens:** `StreamingDepth::depth_batch()` implementations in
-`streaming_depth/fraiman_muniz.rs` and `streaming_depth/mbd.rs` process query
-curves sequentially via a plain iterator over the query matrix rows.
+**What people do:** Put `kernel_kmeans` in `src/metric/kernel_kmeans.rs` to keep all GAK-related code together.
 
-**Why it's wrong:** FM and MBD are trivially parallel across queries — each row
-is independent given the pre-built reference state.
+**Why it's wrong:** `metric/` is for pairwise distance/similarity functions that return `FdMatrix`. A clustering algorithm with config, result type, and `predict` method does not belong there — it belongs at the same level as `clustering.rs` and `clustering_advanced.rs`.
 
-**Do this instead:** Implement `depth_batch()` using `iter_maybe_parallel!` over
-the query rows. The `SortedReferenceState` is immutable after construction and
-safe to share across threads (`&self` borrow only).
+**Do this instead:** `src/kernel_kmeans.rs` at the top level, registered with `pub mod kernel_kmeans;` in `lib.rs`.
 
----
+### Anti-Pattern 5: Exposing an SVM Wrapper This Milestone
 
-## Priority Order for the Audit
+**What people do:** Add a thin `kernel_svm` entry point that takes the Gram matrix and a label vector.
 
-The following sequence minimises effort while maximising coverage of the highest
-expected gains.
+**Why it's wrong:** Native kernel SVM is explicitly out of scope for v0.32.0. An SVM requires a QP solver, which would be a new heavy dependency. The correct boundary is: fdars produces the Gram and cross-Gram matrices; the user feeds them to an external library.
 
-1. **Elastic alignment / Karcher / distance matrices** (`src/alignment/`) —
-   O(N²·M²) without banding is the most likely source of 10–100× slowdowns at
-   real data sizes. Static analysis to confirm band is not auto-enabled; benchmark
-   to quantify.
-
-2. **FPCA SVD copies** (`src/regression.rs`, `src/elastic_fpca.rs`) — the
-   FdMatrix→DMatrix round-trip pattern appears 8 times across the codebase. Static
-   analysis counts copies per call; benchmark `fdata_to_pc_1d` at N=100/500/1000
-   vs M=50/200 to separate SVD cost from copy cost.
-
-3. **Elastic FPCA sequential N-loops** (`src/elastic_fpca.rs`) — 7 SVD calls
-   plus unparallelised O(N) helpers. Audit for `iter_maybe_parallel!` insertion
-   opportunities in the phase-FPCA shooting-vector and augmented-SRSF loops.
-
-4. **Classification CV folds** (`src/classification/cv.rs`) — trivial
-   parallelisation opportunity; benchmark nfold=10 with and without parallel
-   iteration.
-
-5. **Depth batch parallelism** (`src/streaming_depth/`) — `depth_batch` is
-   sequential for FM and MBD; the fix is one macro insertion.
-
-6. **Band Depth scaling** (`src/depth/band.rs`) — the O(N²·M) cost is
-   structural; audit the outer-loop parallelism and consider whether random
-   projection depth (`random_projection_1d`) should be the recommended default
-   for large N.
-
-7. **Clustering and GMM** (`src/clustering.rs`) — parallelism exists; audit
-   whether the assignment-step chunk size is appropriate and whether per-iteration
-   allocation pressure is visible.
-
-8. **P-spline / B-spline / smoothing** — LOW priority; complexity is well-bounded
-   and smoothing is already parallelised.
-
----
-
-## Integration Points
-
-### External Library Boundaries
-
-| Boundary | Integration | Performance Note |
-|----------|-------------|------------------|
-| FdMatrix → nalgebra DMatrix | `to_dmatrix()` / `from_dmatrix()` in `src/matrix.rs` | Full O(N·M) copy; zero-copy path would require unsafe or owned storage hand-off |
-| nalgebra SVD | `nalgebra::SVD::new(matrix, true, true)` | Full bidiagonal reduction + QR iteration; single-threaded; no truncation support |
-| faer (linalg feature) | Used only in `src/linalg.rs:cholesky_d()` and `anofox-regression` for ridge; not used for FPCA SVD | faer supports truncated/randomised SVD — candidate for FPCA replacement |
-| rayon thread pool | `iter_maybe_parallel!`, `slice_maybe_parallel!`, `maybe_par_chunks_mut_enumerate!` | 5 macros in `parallel.rs`, 185 call sites; disabled by default in tests |
-
-### Internal Module Boundaries
-
-| Boundary | Communication | Audit Note |
-|----------|---------------|------------|
-| alignment/ → regression.rs | `fdata_to_pc_1d()` called from elastic_fpca for phase FPCA | Both sites trigger the SVD-copy anti-pattern |
-| depth/ → streaming_depth/ | All depth measure functions delegate to StreamingDepth trait impls | Parallelism gap is in the trait impls, not the depth module itself |
-| classification/cv.rs → regression.rs | `fdata_to_pc_1d()` called once per fold | Sequential fold loop is the bottleneck, not the SVD itself |
-| spm/mfpca.rs → matrix.rs | Horizontally stacks variables then calls `stacked.to_dmatrix()` for a single wide SVD | Matrix size is N × sum(M_p); at 5 variables × M=200 this is a 500×1000 SVD |
+**Do this instead:** `gak_gram_matrix` + `gak_cross_gram` with a rustdoc example showing the handoff. Document the precomputed-kernel interface expected by popular SVM libraries.
 
 ---
 
 ## Sources
 
-- Direct source analysis of `fdars-core/src/` (2026-08-07)
-- `.planning/codebase/ARCHITECTURE.md` — documented anti-patterns and module map
-- `.planning/codebase/STACK.md` — nalgebra 0.33, faer 0.23, rayon 1.10 versions
-- Golub & Van Loan, "Matrix Computations" (4th ed.) — SVD complexity O(n·m·min(n,m))
-- Srivastava & Klassen, "Functional and Shape Data Analysis" — SRSF DP alignment O(M²)
-- Sakoe & Chiba (1978) — DTW band constraint O(M·r)
-- López-Pintado & Romo (2009) — Band Depth complexity analysis
+- Direct reading: `fdars-core/src/metric/soft_dtw.rs` — alignment-lattice DP, `softmin3` stabilization, 2-row rolling buffer, parallel dispatch pattern
+- Direct reading: `fdars-core/src/metric/mod.rs` — submodule declaration pattern, `self_distance_matrix`, `cross_distance_matrix` helpers
+- Direct reading: `fdars-core/src/alignment/clustering.rs` — `KMedoidsConfig`, `kmeans_pp_init`, convergence loop, band-fraction parameter type
+- Direct reading: `fdars-core/src/clustering.rs` — `KmeansResult`, `kmeans_plusplus_init`, `KmeansResult::predict` pattern
+- Direct reading: `fdars-core/src/clustering_advanced.rs` — config struct pattern, `pub mod` registration
+- Direct reading: `fdars-core/src/lib.rs` — re-export conventions, `pub mod` declarations
+- `.planning/research/GAP-BACKLOG.md` GAP-01 block — reuse targets: `metric/soft_dtw.rs`, `distance.rs`, existing clustering
+- `.planning/PROJECT.md` v0.32.0 section — milestone scope, additive/non-breaking, no new crate dependency
+- `.planning/codebase/ARCHITECTURE.md` — layered modular-monolith pattern, column-major `FdMatrix`, `Result` conventions
+- Cuturi (2011), "Fast Global Alignment Kernels" (ICML) — algorithmic reference for log-domain DP and triangular kernel
+- tslearn@0.9.0 `tslearn/metrics/softdtw_fast.pyx` — reference for log-space accumulation and sigma-median heuristic
 
 ---
 
-*Architecture research for: fdars-core performance audit*
-*Researched: 2026-08-07*
+*Architecture research for: fdars v0.32.0 GAK + kernel clustering integration*
+*Researched: 2026-09-02*

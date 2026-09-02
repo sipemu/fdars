@@ -1,452 +1,341 @@
 # Pitfalls Research
 
-**Domain:** Performance auditing and feature-parity gap analysis — Rust numerical library (fdars) vs Python reference (scikit-fda)
-**Researched:** 2026-08-07
+**Domain:** GAK kernel + kernel-k-means + Gram-matrix export — Rust numerical FDA library (fdars-core v0.32.0)
+**Researched:** 2026-09-02
 **Confidence:** HIGH
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Benchmarking in Debug Mode
+### Pitfall 1: GAK Raw Recursion Underflows to Zero — Log-Domain Is Mandatory
 
 **What goes wrong:**
-Criterion benchmarks are run without `--release`, or `cargo bench` is run inside an IDE terminal that injects `CARGO_PROFILE=dev`. Numbers look real (wall-clock, throughput) but are 5–50× slower than release. The audit then flags hot paths that are not actually hot, and misses the real bottlenecks.
+The GAK forward recursion accumulates products of `exp(-cost)` terms along every alignment path. For a pair of time series of length m=100, the path length is roughly 2m steps, each contributing a factor `exp(-d²/σ²)`. For moderate σ and any real-valued series, the product of 200 such factors underflows `f64` to 0.0. The kernel then returns 0.0 for all pairs, the Gram matrix is the zero matrix, and kernel-k-means silently assigns all curves to cluster 0.
 
 **Why it happens:**
-`cargo bench` defaults to the `bench` profile (which is release), but developers who call `cargo test --bench` or use IDE run buttons may get debug builds. The mismatch is invisible unless you inspect the binary path in Criterion's output header.
+The direct recursion mirrors the soft-DTW recursion in `metric/soft_dtw.rs` — which sums costs (works fine) — but the GAK recursion multiplies probabilities (catastrophic underflow). Developers porting from soft-DTW to GAK copy the structure and forget that GAK is a sum of exponentials over paths, not a sum of costs.
+
+The triangular GAK from Cuturi (2011) defines:
+```
+k_GA(x, y) = Σ_{π ∈ A(m,m)} exp( -Σ_{(i,j)∈π} (x_i - y_j)²/σ² )
+```
+The inner exponential is always < 1, so the sum-of-products underflows unless computed in log domain.
 
 **How to avoid:**
-Always run: `cargo bench --release -p fdars-core --features linalg 2>&1 | head -5` and confirm the binary path contains `/release/`. Add this as the first line of the benchmark-confirmation phase procedure. Record the rustc version and profile in every benchmark result table.
+Implement the forward pass entirely in log-space. Define `log_R[i][j]` where `R[i][j] = log(sum of all path probabilities reaching (i,j))`. The recursion becomes:
+```
+log_R[i][j] = log_cost(i,j) + log_sum_exp(log_R[i-1][j], log_R[i][j-1], log_R[i-1][j-1])
+```
+where `log_cost(i,j) = -(x[i]-y[j])² / σ²` and `log_sum_exp` uses the standard max-shift trick. The final kernel value is `exp(log_R[n][m])`. This mirrors what `softmin3` does in `metric/soft_dtw.rs` — the pattern is already in the codebase, apply it to the addition-in-log-space case.
 
 **Warning signs:**
-- Criterion shows throughput < 1 MB/s for simple matrix ops
-- SVD on a 50×50 matrix takes > 10 ms
-- The `/target/debug/` path appears in Criterion HTML report URL
+- `gak(x, y)` returns exactly `0.0` for any pair of series of length > 50
+- The Gram matrix has all-zero off-diagonal entries
+- kernel-k-means assigns every curve to the same cluster regardless of σ
 
 **Phase to address:**
-Benchmark Confirmation phase — include a mandatory build-mode verification step in the phase plan before recording any numbers.
+Phase 54 (GAK kernel core) — the log-domain recursion must be the implementation path from day one. A `test_gak_no_underflow` test with m=200 series at a realistic σ must pass before the phase closes.
 
 ---
 
-### Pitfall 2: Benchmarking Without `--features linalg` When Ridge/Faer Paths Are Being Timed
+### Pitfall 2: GAK Is Only PSD in Its Triangular (Normalized) Form — Raw GAK Breaks Kernel Machines
 
 **What goes wrong:**
-The `linalg` feature gates faer-based ridge regression and Cholesky solvers. Without it, those code paths fall back to a slower path or are absent. A benchmark omitting `--features linalg` correctly measures the non-linalg path but wrongly represents performance for users who do enable it — and vice versa. Comparing the two as if they are equivalent inflates or deflates gaps.
+Raw (un-normalized) GAK `k_GA(x, y)` is not positive semi-definite. The Gram matrix may have negative eigenvalues. Feeding a non-PSD Gram to an external kernel-SVM (`SVC(kernel='precomputed')` in scikit-learn or equivalent) produces undefined optimization behavior: the SVM solver may diverge, report a support vector count of n (all points), return wrong predictions, or silently succeed with systematically biased outputs. Because scikit-learn does not check PSD by default, the failure is invisible.
+
+The _triangular_ variant (Cuturi 2011, Section 3) normalizes by the geometric mean of self-kernels:
+```
+k̂_GA(x, y) = k_GA(x, y) / sqrt(k_GA(x,x) · k_GA(y,y))
+```
+This is the form with a PSD guarantee, and it is what tslearn@0.9.0 exposes as `gak()`.
 
 **Why it happens:**
-The feature-flag matrix (`default=["parallel"]`, optional `linalg`, `serde`, `js`) means the compiled binary is not the same across feature combinations. Developers forget that criterion benchmarks compiled without `linalg` literally do not call the faer code paths.
+The normalization step looks optional (the raw kernel "works" for clustering with implicit feature-space distances), so implementers skip it to avoid computing the diagonal self-kernels. The PSD property is only guaranteed for the normalized form.
 
 **How to avoid:**
-Run benchmarks for each relevant feature combination and tag results explicitly. The audit's benchmark table must have a `features` column. Minimum required runs: `--features ""`, `--features linalg`, `--features linalg,parallel`. Never merge results across feature sets.
+Always normalize: after computing the n×n log-domain Gram, divide each `G[i][j]` by `sqrt(G[i][i] * G[j][j])` (all in log space: `log_G_norm[i][j] = log_G[i][j] - 0.5*log_G[i][i] - 0.5*log_G[j][j]`, then exp). The diagonal becomes exactly 1.0 by construction. Expose only the normalized form in the public API for the Gram export; document explicitly that the un-normalized value is an internal intermediate.
+
+Provide a post-construction PSD verification test: compute the minimum eigenvalue of the Gram (via nalgebra's symmetric eigendecomposition) and assert it is ≥ −ε for small ε (e.g. 1e-8). This is a one-time check in the test suite, not a runtime guard.
 
 **Warning signs:**
-- A benchmark result for `ridge_regression_fit` that doesn't mention which features were active
-- Criterion output that doesn't show the feature flags used (check: `rustc --print cfg` inside the bench binary, or just document explicitly in the result table)
+- The Gram matrix diagonal is not all-ones
+- `G[i][j] > G[i][i]` or `G[i][j] > G[j][j]` for any pair (impossible after normalization since k̂ ∈ [0,1])
+- Any off-diagonal entry is > 1.0 or < 0.0
+- Minimum eigenvalue of Gram is strongly negative (< −1e-6)
 
 **Phase to address:**
-Benchmark Confirmation phase — the phase plan must enumerate the feature-flag matrix for each benchmark target.
+Phase 54 (GAK kernel core) — normalization is part of the kernel definition, not an option. The PSD eigenvalue check is a required test. Phase 55 (Gram export) must document that the exported matrix is the normalized form.
 
 ---
 
-### Pitfall 3: Missing `std::hint::black_box` Allows Dead-Code Elimination
+### Pitfall 3: Floating-Point Asymmetry Makes the Gram Matrix Non-Symmetric
 
 **What goes wrong:**
-The Rust compiler (and LLVM) can prove that a benchmark's computation has no observable effect and eliminate it entirely. The benchmark then measures near-zero time — appearing to show the function is extremely fast — when in fact it never ran.
+The normalized GAK should satisfy `k̂(x, y) = k̂(y, x)` exactly, but floating-point arithmetic may produce `G[i][j] ≠ G[j][i]` at the ULP level (last bit differs) due to different evaluation orders in the forward recursion. This asymmetry is enough to cause scikit-learn's `SVC(kernel='precomputed')` to raise a `ValueError: kernel matrix is not symmetric` (when it checks), or silently produce wrong results (when it doesn't).
 
 **Why it happens:**
-When writing a quick benchmark directly against fdars functions that return `f64` or `Vec<f64>`, it is tempting to write `let _ = heavy_function(data)` without wrapping inputs or outputs in `black_box`. Criterion's `iter` closure provides some protection but does not guarantee elimination is blocked for all compiler optimization levels.
+In the log-domain recursion, evaluating `gak(x, y)` follows the path (i increases outer, j increases inner) while `gak(y, x)` follows the transposed path. Even though the underlying computation is mathematically identical, floating-point addition is non-associative, so results differ at ~1e-15 precision.
 
 **How to avoid:**
-Wrap benchmark inputs in `criterion::black_box(input)` and consume outputs via `criterion::black_box(result)`. For the existing 8 criterion benchmarks in fdars, audit each one to confirm `black_box` is present on both input and output sides. When adding new benchmarks in the Benchmark Confirmation phase, make this a code-review criterion.
+After computing the upper triangle via the `pairwise_distance_matrix` pattern (see `distance.rs`), explicitly symmetrize: `G[j][i] = G[i][j]` (assign the already-computed value, do not recompute). The `pairwise_distance_matrix` helper in `distance.rs` already does this correctly — mirror that pattern exactly for the Gram computation. Add a test that asserts `(G - G.T).abs().max() < 1e-14` for the returned Gram.
 
 **Warning signs:**
-- Benchmark time < 10 ns for any matrix operation on n > 10
-- Build with `--emit=llvm-ir` and search for the function name — if absent, it was eliminated
-- Criterion shows 0% variance (too good to be true)
+- `G[i][j] != G[j][i]` at bit level (detectable with `assert_eq!(G[(i,j)].to_bits(), G[(j,i)].to_bits())`)
+- scikit-learn raises `ValueError: kernel matrix is not symmetric`
+- Eigendecomposition reports complex eigenvalues (indicates severe asymmetry)
 
 **Phase to address:**
-Benchmark Confirmation phase — review existing benchmarks first; flag any missing `black_box` as a benchmark correctness issue before recording results.
+Phase 54 (GAK kernel core) — enforce symmetry by assignment, not recomputation. Add a symmetry assertion test.
 
 ---
 
-### Pitfall 4: Unrepresentative Input Sizes (Microbenchmark Mismatch)
+### Pitfall 4: Wrong σ Choice Makes the Gram Matrix Degenerate
 
 **What goes wrong:**
-The existing 8 criterion benchmarks use small inputs convenient for fast CI. The audit records their numbers and draws conclusions about scalability. But fdars' real workloads involve n=500–5,000 curves and m=100–1,000 evaluation points. Small-input benchmarks are dominated by fixed overhead (thread pool spinup, allocation setup) and miss the O(n²) or O(m³) growth that matters.
+GAK has a bandwidth parameter σ. If σ is too small relative to the typical inter-series cost, all off-diagonal kernel values underflow to 0.0 even in log space (`log_G[i][j]` → −∞), and the Gram matrix is near-identity. If σ is too large, all kernel values saturate to 1.0, and the Gram matrix is near-constant (rank-1, all rows equal). Both cases make kernel-k-means assign all points to one cluster regardless of initialization, and make the Gram useless for a downstream SVM.
 
 **Why it happens:**
-Small inputs run fast in CI without timeouts. Nobody updates them as the library matures.
+Users copy σ from a paper or from tslearn defaults without adapting to their data scale. tslearn's default σ is `sigma = np.sqrt(m)` (square root of series length), based on a heuristic from Cuturi (2011) for normalized unit-variance series. fdars users operating on FDA curves with different amplitude scales will produce very different cost magnitudes.
 
 **How to avoid:**
-For each benchmark, add a large-input variant at a realistic workload size. Specifically: elastic alignment at n=200 (O(n²) concern), FPCA/SVD at m=500 (O(m³) concern), basis CV at n=50 curves × 100 points (quadrature cost). Record results for both small and large inputs and note which scaling regime each falls into. The Static Hot-Path Analysis phase should determine "realistic workload" definitions before the Benchmark Confirmation phase runs.
+Expose σ as a required explicit parameter (do not default-hide it). Document the Cuturi heuristic in the docstring: for zero-mean, unit-variance series of length m, start with `σ = sqrt(m)`. Provide a companion function `gak_sigma_heuristic(data) -> f64` that computes the median pairwise DTW distance on a subsample and sets `σ = sqrt(median_dtw)` — this is the tslearn `unnormalized_gak` auto-bandwidth recipe. Add a σ-sensitivity sanity-check test: verify that with a reasonable σ, the Gram has off-diagonal entries in (0.1, 0.9) rather than all-near-0 or all-near-1.
 
 **Warning signs:**
-- All existing benchmarks use n ≤ 20 or m ≤ 50
-- Benchmark results show linear scaling in n where the algorithm is O(n²)
-- No benchmark covers elastic alignment at n > 50
+- All off-diagonal Gram entries are < 0.01 (σ too small) or all > 0.99 (σ too large)
+- Gram eigenvalue spectrum is {1, 1, ..., 1, n-k} (near-identity) or {n, 0, 0, ..., 0} (rank-1)
+- kernel-k-means converges in 1 iteration regardless of n_init
 
 **Phase to address:**
-Static Hot-Path Analysis (define workload targets) → Benchmark Confirmation (run at those sizes).
+Phase 54 (GAK kernel core) — the σ-sensitivity test and the heuristic helper must be delivered in this phase. Phase 55 (Gram export) must document the sensitivity behavior clearly.
 
 ---
 
-### Pitfall 5: Ignoring Allocation Cost vs CPU Cost
+### Pitfall 5: Diagonal Self-Kernel Dominance Causing Over-Normalization NaN
 
 **What goes wrong:**
-The audit reports "SVD takes 12 ms" but the majority of that time is memory allocation: the `FdMatrix → nalgebra::DMatrix` copy described in ARCHITECTURE.md and CONCERNS.md. A fix that removes the copy would halve the time, but the audit missed this because it only measured wall-clock time without heap profiling. Future implementers then try to optimize the SVD algorithm itself instead.
+If a series `x` is very long and the bandwidth σ is large, the self-kernel `k_GA(x,x)` can become extremely large (many alignment paths, all with cost ≈ 0 since every diagonal element aligns perfectly). In log space `log_G[i][i]` may be very large positive. Normalization computes `G[i][j] / sqrt(G[i][i] * G[j][j])`, which is 0.0/0.0 if two very different series have G[i][j]=0 (underflow) and G[i][i], G[j][j] are large but finite. In log space the analogous failure is `log(0) - large_positive = -inf - large_positive = NaN` or `-Inf`.
 
 **Why it happens:**
-Wall-clock benchmarks do not distinguish CPU from allocator. The known issue (dense matrix reconstruction, DMatrix round-trips) is documented in CONCERNS.md but easy to overlook when reading numbers.
+The log-normalization `log_G_norm = log_G[i][j] - 0.5*(log_G[i][i] + log_G[j][j])` is undefined when `log_G[i][j] = -Inf` and the denominator is finite positive — the result is `-Inf`, which exponentiates to `0.0` correctly. The true failure is when `log_G[i][i]` is `+Inf` (self-kernel overflow even in log space), which only happens for extraordinarily long series; treat as a recoverable edge case by clamping.
 
 **How to avoid:**
-Augment Criterion benchmarks with `dhat` or `cargo-heaptrack` for the top-3 hottest paths. At minimum, add a comment in the benchmark recording the expected allocation pattern (e.g., "allocates 1 DMatrix per call, O(n*m) bytes"). Static analysis should flag all `DMatrix::from_column_slice` and `FdMatrix::from_column_major` call sites as allocation hotspots before benchmark confirmation.
+In log-domain normalization: if `log_G[i][i]` is `+Inf` for any i (detectable), return `Err(FdarError::ComputationFailed)` with a message indicating σ is too large relative to series length. If `log_G[i][j] == -Inf` and both diagonals are finite, the normalized result is `0.0` — this is mathematically correct and must not produce NaN. Add an explicit `if log_numer == f64::NEG_INFINITY { 0.0 } else { (log_numer).exp() }` guard. Test the edge case: two completely dissimilar series should produce a normalized GAK near 0 but not NaN.
 
 **Warning signs:**
-- Benchmark time is dominated by a single `unsafe` copy or `clone`
-- `cargo-flamegraph` shows allocator (`jemalloc`/`ptmalloc`) consuming > 20% of samples
-- CONCERNS.md already notes this pattern — if the audit doesn't address it, it has missed something documented
+- Any NaN in the returned Gram matrix
+- `k̂(x, x) != 1.0` for any series (self-normalized kernel must be exactly 1.0)
+- `k̂(x, y) > 1.0` for any pair
 
 **Phase to address:**
-Static Hot-Path Analysis — include allocation analysis as a required deliverable alongside CPU-path analysis.
+Phase 54 (GAK kernel core) — add `assert!(!gram[(i,j)].is_nan())` as a post-condition check in debug mode. Add a test with dissimilar series to confirm NaN-free behavior.
 
 ---
 
-### Pitfall 6: Warm vs. Cold Cache Invalidation
+### Pitfall 6: Kernel-K-Means Empty-Cluster Crash or Silent Degeneration
 
 **What goes wrong:**
-Criterion runs each benchmark multiple times to stabilize variance. After the first few iterations, CPU L2/L3 caches are warm with the working data. For fdars' real use case (called once per batch from R or WASM), the cold-cache cost matters and is 2–5× higher than the warm measurement.
+Kernel-k-means minimizes a kernel-induced objective in feature space. Unlike Euclidean k-means, there is no explicit centroid curve. The assignment step uses kernel evaluations:
+```
+c*(i) = argmin_c [ k̂(x_i, x_i) - (2/|C_c|) Σ_{j∈C_c} k̂(x_i, x_j) + (1/|C_c|²) Σ_{j,l∈C_c} k̂(x_j, x_l) ]
+```
+If a cluster becomes empty at any iteration, the `1/|C_c|` terms produce divide-by-zero. The existing k-means in `clustering.rs` handles empty clusters by re-seeding from the dataset, but kernel-k-means has no centroid to reseed from — the naive re-seeding strategy must use the precomputed Gram matrix directly (assign the most distant point to the empty cluster).
 
 **Why it happens:**
-Criterion is designed for throughput measurement and naturally warms the cache. Cold-cache measurement requires flushing caches manually (mmap tricks, or re-allocating data each iteration at a cost that must be subtracted).
+Developers port Euclidean k-means logic without recognizing that the "centroid re-seeding" step requires a centroid curve (which does not exist in kernel space). The cluster-sum terms `Σ_{j,l∈C_c} k̂(x_j, x_l)` are precomputed from the Gram; empty-cluster detection is straightforward but the recovery differs fundamentally from Euclidean k-means.
 
 **How to avoid:**
-Note in every benchmark result whether it reflects warm or cold cache. For the audit, warm-cache numbers are acceptable as the primary comparison metric — just add a note that first-call latency may be higher for large inputs. If a function is specifically called once per session (e.g., `fregre_lm` in a WASM pipeline), flag it as a cold-cache concern in the backlog item.
+Before each assignment step, check that no cluster is empty. If a cluster empties: assign it the data point currently furthest from its assigned cluster center (using kernel distances from the Gram). This requires a "furthest-from-assigned-center" metric computed from the Gram. Document the recovery strategy in the code. Add a test with n=k (forced-tight scenario) that verifies no panic and valid output.
 
 **Warning signs:**
-- Benchmark result for a large-input path seems implausibly fast vs. theoretical memory bandwidth
-- Flamegraph shows no cache-miss stalls despite large matrix sizes
+- Divide-by-zero or NaN in objective after any iteration
+- `KernelKMeansResult.cluster` has fewer distinct labels than `k`
+- Algorithm converges in 1 iteration with all points in one cluster
 
 **Phase to address:**
-Benchmark Confirmation — add a "cache regime" column to the results table (warm/cold/N/A).
+Phase 56 (kernel-k-means) — empty-cluster handling is a required feature, not an edge case. The test must force an empty cluster scenario (use k > natural cluster count) and verify recovery.
 
 ---
 
-### Pitfall 7: Noisy Machine / Missing Baseline Variance Control
+### Pitfall 7: Kernel-K-Means Non-Convergence and Missing N-Init Restarts
 
 **What goes wrong:**
-Benchmarks are run on a laptop with background processes (IDE, browser, compiling other crates). Criterion reports ±15% variance and the audit treats the mean as authoritative. A "30% speedup" finding later turns out to be within noise.
+Kernel-k-means is not guaranteed to converge to the global optimum; it finds a local minimum of the kernel objective. A single random initialization routinely lands in a poor local minimum, especially for well-separated clusters in feature space that happen to be nearby in the random initialization. The result: algorithm converges but produces clusters that look nothing like the true structure.
+
+The existing `kmeans_fd` in `clustering.rs` supports a single seed; users wanting multiple restarts call it themselves. For kernel-k-means this is harder because the Gram is precomputed — multiple restarts reuse the same Gram (cheap) but the initialization must be drawn from the Gram entries. Kernel-k-means++ initialization (analogous to k-means++) selects initial cluster assignments proportional to kernel distances from already-selected seeds, which requires reading rows of the Gram.
 
 **Why it happens:**
-Developers bench on whatever machine they have. Criterion's outlier detection helps but does not prevent systematic interference from OS scheduling.
+Developers implement one restart and declare the algorithm done. The n_init=1 problem is invisible on small toy datasets that happen to work.
 
 **How to avoid:**
-Before the Benchmark Confirmation phase runs, close non-essential processes. Run each benchmark at least twice in separate `cargo bench` invocations and confirm the means are within ±5%. If Criterion reports > 10% variance on a measurement, mark that result as LOW CONFIDENCE in the audit report and do not use it to justify a backlog priority. Optionally use `cpupower` (Linux) to disable frequency scaling during the benchmark run.
+Expose `n_init: usize` in `KernelKMeansConfig` with default 10 (matching tslearn's default). Implement kernel-k-means++ initialization: select first assignment uniformly at random, then each subsequent seed with probability proportional to `min_c k̂(x_i, x_i) - 2*k̂(x_i, x_c) + k̂(x_c, x_c)` for already-selected centers. Run all restarts, keep the best by kernel objective value. Use the `StdRng::seed_from_u64(seed + run as u64)` pattern (already established for elastic-FPCA and gmm) for deterministic multi-restart seeding.
 
 **Warning signs:**
-- Criterion "change" reports between two identical runs show > 5% difference
-- Standard deviation > 10% of mean in Criterion output
+- n_init=1 in the config struct
+- Two runs with different seeds produce very different cluster assignments on the same data
+- Algorithm always converges in ≤ 3 iterations (likely stuck at initialization)
 
 **Phase to address:**
-Benchmark Confirmation — add a variance threshold to the phase acceptance criteria.
+Phase 56 (kernel-k-means) — n_init with ≥ 10 restarts and kernel-k-means++ init are non-negotiable. A deterministic-seed test (same seed → same result) must pass.
 
 ---
 
-### Pitfall 8: Linker/Toolchain Flakiness Masking Real Test Failures
+### Pitfall 8: Test-Matrix Orientation / Normalization Mismatch Silently Degrades Prediction
 
 **What goes wrong:**
-This environment currently produces criterion/doctest linker "bus errors" unrelated to fdars code. If the audit runs `cargo test` and sees failures, it may misclassify linker-flakiness failures as code bugs, inflating the apparent defect count. Conversely, if the flakiness causes the test run to abort, real failures may be hidden.
+When using the Gram matrix for a precomputed-kernel SVM, the training phase uses an n_train × n_train symmetric PSD Gram. The prediction (test) phase requires an n_test × n_train matrix where entry `[i, j] = k̂(x_test_i, x_train_j)`. A common mistake is to:
+1. Compute an (n_train + n_test) × (n_train + n_test) full Gram and slice incorrectly
+2. Compute the test-train Gram transposed (n_train × n_test instead of n_test × n_train)
+3. Use a different σ for the test-train Gram than for the training Gram
+4. Forget to normalize the test-train entries by the training-set self-kernels (using `k_GA(x_test_i, x_test_i)` and `k_GA(x_train_j, x_train_j)` rather than only training-set diagonals)
+
+All four produce wrong SVM predictions with no error — scikit-learn's `SVC.predict()` accepts any matrix of the right shape.
 
 **Why it happens:**
-Linker bus errors on Linux can arise from memory-mapped file limits (`vm.max_map_count`), toolchain mismatches between the system linker and the Rust toolchain, or from doctest infrastructure bugs in Criterion 0.5 (a known issue). These are infrastructure failures, not fdars failures.
+The training Gram and the test-train Gram are computed separately, often by different calls or at different times. The normalization for the test matrix must use the training-set self-kernels `k̂(x_test_i, x_train_j) = k_GA(x_test_i, x_train_j) / sqrt(k_GA(x_test_i, x_test_i) * k_GA(x_train_j, x_train_j))`. Forgetting that the test-set self-kernels are needed for normalization is the most common mistake.
 
 **How to avoid:**
-Before recording any test-failure count, run `cargo test -p fdars-core --features linalg -- --test-threads=1 2>&1 | grep -E "^(test |FAILED|error)"` and distinguish: (a) `FAILED` lines naming a specific test = code failure, (b) `error: process didn't exit successfully` without a test name = toolchain/linker failure. Only category (a) counts toward the audit's defect list. Document the environment's known linker issue explicitly in the audit report's methodology section.
+Expose two separate functions matching the two phases:
+- `gak_gram_train(data, sigma) -> GakGramResult` — returns the n×n training Gram plus the precomputed diagonal self-kernels `diag_self_kernels: Vec<f64>`
+- `gak_gram_predict(test_data, train_self_kernels, sigma) -> FdMatrix` — computes the n_test × n_train prediction matrix, normalizing by test-set self-kernels (computed internally) and the provided training-set self-kernels
+
+This API makes it impossible to forget the training-set self-kernels because they are part of the result struct. Document in the docstring: "Pass `GakGramResult.diag_self_kernels` to `gak_gram_predict` — using different self-kernels for normalization will silently degrade accuracy." Add an integration test that trains a kernel-SVM with the training Gram and scores predictions against a known-correct reference.
 
 **Warning signs:**
-- `cargo bench` or `cargo test --doc` exits with a signal (bus error, segfault) rather than a failed test count
-- The failure disappears on `--test-threads=1` or with `RUSTFLAGS=-C link-arg=-fuse-ld=lld`
-- The failure is in Criterion harness infrastructure, not in fdars code
+- A single `gak_gram(data)` function that returns only the matrix (no self-kernels)
+- Prediction accuracy is far lower than expected (e.g., worse than random) despite correct training
+- The test-train matrix has shape (n_train, n_test) rather than (n_test, n_train)
 
 **Phase to address:**
-All phases involving test execution — include a "distinguish infrastructure failures from code failures" checklist item.
+Phase 55 (Gram export) — the split `gak_gram_train` / `gak_gram_predict` API is the design; do not expose a single monolithic function.
 
 ---
 
-### Pitfall 9: Counting API Names Instead of Capabilities in Parity Analysis
+### Pitfall 9: O(n² · m²) Pairwise Cost With Redundant Self-Kernel Recomputation
 
 **What goes wrong:**
-The gap analysis counts scikit-fda's public function names and compares them 1:1 against fdars exports. This produces a large-looking gap (fdars has 40 public functions, scikit-fda has 120) that is mostly noise: scikit-fda has separate functions for fit/predict/transform/inverse_transform that fdars bundles into one call returning a result struct. The audit then recommends "add 80 functions" when the capability already exists under a different shape.
+The naive Gram computation calls `gak(x_i, x_j)` for all n² pairs. The forward recursion is O(m²) per pair (the DP table is m×m), so the full Gram is O(n² · m²). For n=500 curves of length m=100, this is 500² × 100² = 25 × 10⁸ operations — already slow at ~25 billion FLOPs. If the diagonal self-kernels `gak(x_i, x_i)` are recomputed naively as part of the upper-triangle loop, they are computed once (correctly). But if the normalization step then re-calls `gak(x_i, x_i)` a second time for each pair, the diagonal cost doubles unnecessarily.
+
+Additionally, the O(n²) pairs must be parallelized. The existing `pairwise_distance_matrix` in `distance.rs` already parallelizes the upper-triangle via `iter_maybe_parallel!` — the GAK Gram must use the same pattern, not a nested loop.
 
 **Why it happens:**
-API surface is easy to enumerate programmatically. Capability mapping requires understanding what each function does.
+Developers compute the upper-triangle and diagonal separately without caching. The normalization step is written as a post-processing loop that calls `gak(x, x)` again.
 
 **How to avoid:**
-Structure the parity analysis as a capability matrix, not a function-count comparison. Group by user task: "smooth a set of curves", "compute FPCA", "classify new curves", etc. For each task, determine: (a) can scikit-fda do this? (b) can fdars do this? Accept that fdars may accomplish the same task via a different call shape. Treat builder structs + a single function call as equivalent to scikit-fda's `fit()/transform()` pattern. Document the mapping explicitly.
+1. Precompute all n diagonal self-kernels in a parallel loop before the upper-triangle phase.
+2. Reuse the `pairwise_distance_matrix` helper pattern for the upper triangle.
+3. Normalization uses the precomputed diagonal vector — no additional kernel evaluations.
+4. Cache the `row(i)` materializations (as done in `soft_dtw_self_1d`) to avoid repeated `FdMatrix::row()` calls in the inner loop.
+
+The implementation ordering is: `self_kernels[i] = gak_log(row_i, row_i)` for all i (parallel), then upper-triangle `gram[i][j] = exp(gak_log(row_i, row_j) - 0.5*(self_kernels[i] + self_kernels[j]))` (parallel), then symmetrize. This is three passes, not one, but each pass is embarrassingly parallel.
 
 **Warning signs:**
-- Gap count is > 50 items before any capability grouping
-- The gap list includes entries like "fdars missing `BasisFDA.fit()`" when `fdata_to_basis()` exists
-- Parity matrix has a row per scikit-fda class name rather than per user task
+- Two separate `gak()` call sites for the diagonal (one in the upper-triangle loop, one in normalization)
+- Gram computation time scales as n² × m² without the O(n) diagonal precompute saving
+- `FdMatrix::row()` called O(n²) times total instead of O(n) times (materializing the same row repeatedly)
 
 **Phase to address:**
-Gap Analysis phase — define the capability taxonomy before beginning enumeration.
+Phase 54 (GAK kernel core) for the log-domain computation; Phase 55 (Gram export) for the parallelized Gram construction. A criterion benchmark must measure Gram construction time at n=100 and n=200 to verify O(n²) scaling.
 
 ---
 
-### Pitfall 10: Treating "scikit-fda has X" as "fdars must have X"
+### Pitfall 10: Exp-of-Naive-DTW Kernel Is NOT GAK and NOT PSD
 
 **What goes wrong:**
-scikit-fda is a Python library targeting data scientists who write scripts, use matplotlib, and call sklearn pipelines. fdars is a Rust numeric crate targeting performance-sensitive systems and language bindings (R, WASM). Features that make sense in scikit-fda — sklearn-compatible estimator API, matplotlib plot methods, pandas DataFrame integration — are irrelevant anti-features for fdars. An audit that counts these as gaps inflates the backlog with low-value work and misleads prioritization.
+A tempting shortcut is to compute DTW distance `d_DTW(x,y)` and return `exp(-d_DTW(x,y)² / σ²)` as the kernel. This "Gaussian DTW kernel" looks like a kernel, is always in [0,1], and has k(x,x)=1, but it is **not positive semi-definite**. The Gram matrix will have negative eigenvalues, breaking kernel-SVM. The `soft_dtw_divergence` in `metric/soft_dtw.rs` has similar structure — it is also not PSD.
+
+The GAK is specifically designed to be PSD by summing over all alignment paths (not using a single best-path distance). This is the fundamental difference between GAK and "exp(-DTW)".
 
 **Why it happens:**
-It is easier to enumerate everything scikit-fda has than to evaluate each item against fdars' stated purpose.
+`exp(-d²)` is the Gaussian (RBF) kernel recipe applied naively to DTW distance. It works for Euclidean distance because the Euclidean distance is Hilbert-embeddable. DTW distance is not.
 
 **How to avoid:**
-Before the gap analysis, write a one-page "design goal filter": what kinds of capabilities are in scope for fdars (numeric algorithms, memory layout, correctness) vs. out of scope (plotting, sklearn API compatibility, DataFrame IO). Apply this filter explicitly to every gap finding. The PROJECT.md already establishes this: "Plotting/visualization parity with scikit-fda — a numeric Rust library does not need matplotlib-style output; treat as low-priority."
+Do not use soft-DTW distance as input to a Gaussian kernel. The GAK forward recursion must sum over paths, not return a single minimum-cost path. The fact that `soft_dtw.rs` already implements a path-sum in log domain (softmin3) does not mean the soft-DTW value itself is a valid kernel — it is a distance, not a path-sum kernel. Document this distinction explicitly in the `gak` module docstring.
 
 **Warning signs:**
-- Gap items reference matplotlib, seaborn, or sklearn pipeline interfaces
-- A gap item is "fdars has no `plot()` method"
-- Gap items outnumber the actual algorithm categories in scikit-fda by 2:1
+- The GAK implementation calls `soft_dtw_distance` and applies `(-x).exp()` to the result
+- The Gram matrix minimum eigenvalue is < −0.01
+- The implementation has O(m) cost per pair (a single-path recursion) rather than O(m²) (the full DP table)
 
 **Phase to address:**
-Gap Analysis phase — apply design-goal filter as a required pre-step before the analysis begins.
+Phase 54 (GAK kernel core) — the implementation must follow the O(m²) DP-table path-sum, not the O(m) path-min of soft-DTW. Code review must confirm the recursion sums contributions from all three predecessors, not minimizes.
 
 ---
 
-### Pitfall 11: Missing That fdars Already Has a Capability Under a Different Name
+### Pitfall 11: Column-Major FdMatrix Row Access in the Inner Loop Is the Hot Path
 
 **What goes wrong:**
-scikit-fda has `FPCATransformer.fit_transform()`. The analyst doesn't find `fit_transform` in fdars exports and marks it as a gap. fdars actually provides `fdata_to_pc_1d()` which computes and returns scores directly. The gap is a naming mismatch, not a missing capability.
+`FdMatrix` stores data column-major. Accessing row i requires either `data.row(i)` (which allocates a Vec<f64>) or `data.row_to_buf(i, buf)` (which fills a pre-allocated buffer). The GAK forward DP accesses both `x[i]` and `y[j]` in a nested loop — if both series are taken as `data.row(i)` Vec allocations, the Gram computation allocates O(n) Vecs, each of size m. For n=500, m=100 this is 500 Vec<f64> allocations of 800 bytes each — manageable, but the pattern is already established in `soft_dtw_self_1d`: pre-collect all rows into `Vec<Vec<f64>>` before the parallel upper-triangle loop.
 
 **Why it happens:**
-fdars uses domain-idiomatic naming (FDA jargon, Rust conventions) rather than sklearn-style method names. An analyst reading scikit-fda docs without deep fdars knowledge will miss these correspondences.
+Developers call `data.row(i)` inside the closure passed to `pairwise_distance_matrix`, triggering allocation inside the rayon parallel scope. Under parallel execution this is safe but slower than necessary.
 
 **How to avoid:**
-Build the capability matrix from both sides: for each scikit-fda capability, search fdars by description/behavior rather than name. Use the `.planning/codebase/STRUCTURE.md` module map as the fdars side of the search. For any gap candidate, explicitly write: "searched fdars for: [what it does]. Closest match: [fdars function]. Verdict: [equivalent / partial / missing]." Partial matches should be a separate backlog category from missing.
+Mirror the pattern from `soft_dtw_self_1d`: `let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();` before the parallel upper-triangle closure. The closure then takes `&rows[i]` — no allocation in the hot path. This is already the established convention in `metric/soft_dtw.rs`; apply it to the GAK implementation.
 
 **Warning signs:**
-- Gap items use scikit-fda class/method names verbatim without a "searched for equivalent in fdars" note
-- The gap list does not distinguish "capability absent" from "API shape differs"
+- `data.row(i)` called inside the parallel closure (inside `pairwise_distance_matrix`)
+- Memory profiling shows O(n²) allocations during Gram construction (should be O(n))
+- Criterion shows high allocation variance for Gram construction
 
 **Phase to address:**
-Gap Analysis phase — require explicit "fdars equivalent search" for every gap candidate.
+Phase 54 (GAK kernel core) — collect rows before the parallel loop. The criterion benchmark for Gram construction will surface this if allocation cost is significant.
 
 ---
 
-### Pitfall 12: Ignoring Numerical Accuracy Parity vs. Mere Feature Presence
-
-**What goes wrong:**
-fdars implements FPCA, elastic alignment, and B-spline smoothing — same as scikit-fda. The analyst marks these as "present, no gap." But fdars' B-spline CV had a silent correctness bug (GH #33, fixed in v0.14.0) that produced wrong n_basis selection. If the audit does not check numerical accuracy, correctness gaps are invisible.
-
-**Why it happens:**
-Parity analyses default to "does the function exist?" because correctness verification requires test data and reference outputs.
-
-**How to avoid:**
-For the top-10 most-used capability areas, include a numerical accuracy check: run fdars and scikit-fda on the same small dataset and compare outputs within a tolerance. This is not full validation — it is a smoke-test for systematic discrepancies. Use the existing CONCERNS.md "Known Bugs" list as the starting point for which areas have correctness risk. Flag any capability as "present but accuracy not verified" rather than just "present."
-
-**Warning signs:**
-- Parity matrix has only ✓/✗ columns with no accuracy note
-- Known buggy areas (elastic alignment level encoding, basis CV) are marked ✓ without a "fixed in v0.14.0, needs verification" note
-- No test data or reference output is attached to any gap finding
-
-**Phase to address:**
-Gap Analysis phase — add an "accuracy verified?" column to the parity matrix.
-
----
-
-### Pitfall 13: Ranking Gaps by Ease Instead of User Value
-
-**What goes wrong:**
-The backlog sorts findings by implementation effort: easy wins first. This produces a backlog that front-loads cosmetic improvements (add a `Display` impl, add a convenience wrapper) and defers the high-value, high-effort items (elastic alignment at scale, functional-on-functional regression). Users and stakeholders then see months of activity with no meaningful improvement.
-
-**Why it happens:**
-Effort is visible and objective. Value requires user research or domain judgment.
-
-**How to avoid:**
-Use a 2×2 matrix: value vs. effort. Populate "value" from: (a) GitHub issues and user pain points, (b) algorithm coverage gaps (things scikit-fda has that genuinely block fdars use cases), (c) known performance bottlenecks at realistic scales (O(n²) elastic alignment is a concrete blocker at n > 1,000). Rank the backlog by `value / sqrt(effort)` as a simple heuristic. Explicitly mark any convenience item as "low value" even if it is easy.
-
-**Warning signs:**
-- The top 5 backlog items are all "add `impl Display` / add `From` conversion / rename parameter"
-- No item in the top 10 addresses a known O(n²) or O(m³) bottleneck
-- Effort column is present but value column is absent
-
-**Phase to address:**
-Consolidated Audit Report + Prioritized Backlog phase — include a value-estimation step before ranking.
-
----
-
-### Pitfall 14: Letting Plotting and IO Features Inflate the Gap Count
-
-**What goes wrong:**
-scikit-fda has extensive plotting integration (`FDataGrid.plot()`, `FDataBasis.plot()`, various `Visualization` classes) and pandas/DataFrame IO. An uncritical gap analysis counts all of these, inflating the gap from ~20 meaningful algorithm items to ~60 total. The report then looks alarming, and stakeholders ask why fdars is "so far behind."
-
-**Why it happens:**
-The comparison is done at the API-surface level without filtering for relevance to fdars' design goals.
-
-**How to avoid:**
-Apply the PROJECT.md exclusion explicitly: plotting and visualization are out of scope. IO helpers (DataFrame round-trips) are out of scope unless fdars explicitly targets that workflow. In the parity matrix, add a "Relevance" column with values: In-Scope Algorithm, In-Scope API Ergonomics, Out-of-Scope (plotting), Out-of-Scope (IO). Report gap counts separately for in-scope vs. out-of-scope.
-
-**Warning signs:**
-- More than 20% of gap items relate to visualization or IO
-- Gap count drops dramatically when filtering to "numeric algorithm" items only
-
-**Phase to address:**
-Gap Analysis phase — apply relevance filter before finalizing the parity matrix.
-
----
-
-### Pitfall 15: Findings Too Vague to Action in the Backlog
-
-**What goes wrong:**
-A backlog item reads: "Improve elastic alignment performance." No function name, no current measurement, no target, no suggested approach. A future implementer opens it and must redo the audit to understand what to do.
-
-**Why it happens:**
-Audit findings are written at the analytical level ("this is slow") without translating into implementation tasks.
-
-**How to avoid:**
-Every backlog item must include: (1) the specific function or code path, (2) the measured or estimated current cost, (3) the root cause (from the audit), (4) the suggested fix approach, and (5) the expected benefit. Use the CONCERNS.md format as a model: it has "Problem / Files / Cause / Improvement path" for every bottleneck. Backlog items that cannot be filled out this way are not ready to promote.
-
-**Warning signs:**
-- Backlog item has < 3 sentences of description
-- No function name or file path in the item
-- No "current state" measurement attached
-
-**Phase to address:**
-Prioritized Backlog phase — gate each item on a completeness checklist before finalizing.
-
----
-
-### Pitfall 16: No Severity/Effort Estimate on Backlog Items
-
-**What goes wrong:**
-All findings are listed flat. `/gsd-new-milestone` promoter cannot tell which items to bundle into a sprint and which require a full milestone. Future milestones are either under-scoped (a single easy item) or over-scoped (a bundle of hard items that misses the deadline).
-
-**Why it happens:**
-Severity and effort estimation feels speculative and is skipped to save time.
-
-**How to avoid:**
-Use a 3-level scale for each dimension:
-- Severity: P1 (blocks meaningful use), P2 (impairs real workloads), P3 (nice to have)
-- Effort: S (< 1 week), M (1–3 weeks), L (> 3 weeks)
-
-Each backlog item must have both fields. The Severity definition must be anchored to fdars' actual user base (R and WASM consumers, performance-sensitive pipelines) not hypothetical users. The O(n²) elastic alignment issue at n=1,000 is P1 for users with large corpora; a missing `Display` impl is P3.
-
-**Warning signs:**
-- Backlog has > 20 items with no relative ordering
-- No item is explicitly labeled P1
-- All items cluster at the same effort level
-
-**Phase to address:**
-Prioritized Backlog phase — severity/effort tagging is a required field, not optional.
-
----
-
-### Pitfall 17: No Reproducible Evidence Attached to Findings
-
-**What goes wrong:**
-A performance finding says "SVD is slow." The evidence is "I ran the benchmark and it seemed slow." No command, no output, no environment. A future implementer cannot reproduce the finding, cannot verify whether a fix helps, and cannot be confident the finding was real.
-
-**Why it happens:**
-Audit findings are written from memory after running experiments. The raw output is not saved.
-
-**How to avoid:**
-For every performance finding: save the full `cargo bench` output (Criterion HTML or text output) to a file in `.planning/research/bench/` and reference it in the backlog item. For every gap finding: save the scikit-fda API reference URL and the fdars source location that was checked. For correctness findings: save the test case that reproduces the discrepancy. This is the "reproducible evidence" requirement.
-
-**Warning signs:**
-- Backlog items reference "the benchmark" without naming which benchmark or what it showed
-- No `.planning/research/bench/` directory exists after the Benchmark Confirmation phase
-- Gap findings cite scikit-fda features without a URL or version number
-
-**Phase to address:**
-Benchmark Confirmation phase (bench evidence) + Gap Analysis phase (gap evidence) — require evidence artifacts as phase deliverables.
-
----
-
-### Pitfall 18: Feature-Flag Matrix Confusion (parallel / linalg / serde / js)
-
-**What goes wrong:**
-The static analysis or benchmark run uses default features (`parallel` enabled, `linalg` disabled). The audit concludes that a hot path "lacks parallelism" when in fact `iter_maybe_parallel!` is already there — it just compiled out because `--features parallel` was not explicitly passed alongside `--features linalg`. Or conversely, a finding claims ridge regression is fast without realizing the non-linalg fallback path was measured.
-
-**Why it happens:**
-Cargo's feature system means the same source file compiles differently depending on features. The 5 parallel macros in `parallel.rs` are a no-op under `cfg(not(feature="parallel"))`. It is easy to forget this when reading benchmark output.
-
-**How to avoid:**
-Create a benchmark matrix table at the start of the Benchmark Confirmation phase:
-
-| Feature set | What it tests |
-|-------------|--------------|
-| `--features ""` | Sequential, no linalg (WASM / minimal build) |
-| `--features parallel` | Default (most users) |
-| `--features linalg` | Ridge/Cholesky paths, sequential |
-| `--features linalg,parallel` | Full capability build |
-
-Run at least `--features parallel` and `--features linalg,parallel` for every benchmark. Tag all results with the feature set used. In static analysis, note which code paths exist only under `linalg` and which only under `parallel`.
-
-**Warning signs:**
-- A benchmark result for a function that uses `iter_maybe_parallel!` doesn't note the `parallel` feature state
-- Static analysis says "this function is sequential" for a function whose hot loop is wrapped in `iter_maybe_parallel!`
-
-**Phase to address:**
-Static Hot-Path Analysis (identify feature-gated paths) + Benchmark Confirmation (run all relevant feature combinations).
-
----
-
-## Audit-Specific Technical Debt Patterns
-
-Shortcuts that seem reasonable during the audit but create misleading conclusions.
+## Technical Debt Patterns
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Single feature-flag run for all benchmarks | Faster benchmark phase | Results only valid for one feature combination; misleads parity and perf findings | Never for the primary audit; acceptable for quick sanity checks if flagged |
-| Reusing existing 8 benchmarks without large-input variants | No new code to write | Masks O(n²) and O(m³) scaling issues at realistic sizes | Never — at minimum add one large-input variant per hot path |
-| Counting scikit-fda API names directly | Automatable, fast | 2–3× inflated gap count; pollutes backlog with out-of-scope items | Never without a relevance filter applied afterward |
-| Skipping numerical accuracy check for "existing" capabilities | Saves time | Misses silent correctness gaps like GH #33 (B-spline CV) | Never for capabilities flagged as fragile in CONCERNS.md |
-| Vague backlog items ("improve X") | Writes quickly | Not actionable; forces re-audit before implementation | Never — all items must pass the completeness checklist |
-| Recording benchmark numbers from a single run | Fast | High variance; findings may reverse on re-run | Never — require 2 independent runs within ±5% before recording |
+| Expose raw (un-normalized) GAK in public API | Simpler initial implementation | Non-PSD kernel breaks kernel-SVM; all downstream code is wrong | Never — normalization is part of the GAK definition |
+| Single n_init=1 for kernel-k-means | Fewer restart runs, faster tests | Routinely finds poor local minima; tests pass on toy data, fail on real data | Never for production; acceptable for a debug/profiling mode if labelled |
+| Recompute diagonal self-kernels in normalization loop | Code is simpler (one pass) | 2× diagonal work; O(n) redundant O(m²) DP evaluations | Never — pre-compute diagonals in one pass |
+| Monolithic `gak_gram()` returning only the matrix | Simpler API surface | Users cannot compute test-train Gram with correct normalization (no access to training self-kernels) | Never if the Gram is intended for precomputed-kernel SVM |
+| Use `exp(-soft_dtw_divergence)` as the kernel | Reuses existing code | Not PSD; breaks kernel-SVM silently | Never |
+| Skip PSD verification test | One less test to write | PSD failures are invisible until a downstream SVM diverges | Never — the eigenvalue test is the only guard |
 
 ---
 
 ## Integration Gotchas
 
-Specific to the fdars audit context — interactions between tools and the codebase.
-
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Criterion 0.5 + doctest harness | Criterion 0.5 has a known linker issue with doctests on some Linux configurations; `cargo test --doc` may bus-error | Run `cargo test -p fdars-core --lib --features linalg` first; isolate doctest failures separately |
-| scikit-fda API scrape | Scraping `scikit-fda.readthedocs.io` without pinning a version may mix stable and dev API | Pin to the latest stable release tag (check `scikit-fda.__version__` in PyPI); document version in the gap matrix |
-| nalgebra SVD vs faer Cholesky | Both are used for different operations; a static analysis that conflates them will misattribute bottlenecks | Trace each hot path to its specific linear algebra call: `nalgebra::SVD` (FPCA) vs faer `Cholesky` (ridge, gated by `linalg`) |
-| `--features linalg` requires Rust 1.84 | Running on Rust 1.81 with `--features linalg` fails at compile time | Check `rustc --version` before the benchmark phase; document which Rust version was used |
-| cargo-flamegraph on Linux | Requires `perf` permissions; may fail without `echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid` | Document this requirement in the benchmark phase plan; use `--root` or adjust perf paranoia level |
+| scikit-learn `SVC(kernel='precomputed')` | Pass n_test×n_test matrix for prediction instead of n_test×n_train | Prediction matrix must be n_test×n_train; columns index training points |
+| scikit-learn `SVC(kernel='precomputed')` | Use different σ for train Gram and test-train Gram | σ is a hyperparameter of the kernel function — must be identical for train and predict |
+| scikit-learn `SVC(kernel='precomputed')` | Normalize test-train entries using test-set self-kernels instead of training-set self-kernels (wrong) | Test-train normalization uses `sqrt(k(x_test_i, x_test_i) * k(x_train_j, x_train_j))` — both parties' self-kernels | 
+| tslearn `gak()` reference | tslearn returns a scalar; fdars exports a Gram matrix — the comparison is `tslearn.gak(x, y, sigma) == gram[(i,j)]` | Compute tslearn pairwise and compare element-by-element, not function-by-function |
+| rayon + FdMatrix::row() inside closure | Allocates Vec<f64> per row inside parallel scope | Pre-collect rows: `let rows = (0..n).map(|i| data.row(i)).collect::<Vec<_>>()` before the closure |
 
 ---
 
-## Performance Traps Specific to This Audit
-
-Patterns where the measurement itself is misleading.
+## Performance Traps
 
 | Trap | Symptoms | Prevention | Notes |
 |------|----------|------------|-------|
-| Measuring `FdMatrix::row()` in isolation | Appears O(1); misses that callers call it in an O(n) loop making total O(n*m) | Measure at the call-site loop level, not the primitive | The `row_to_buf` variant avoids allocation; check callers use it |
-| Benchmarking small n for elastic alignment | O(n²) looks linear for n ≤ 20 | Add n=50, 100, 200 variants to confirm quadratic growth | Sakoe-Chiba band (v0.14.0) may change the slope |
-| SVD benchmark without the copy overhead | Extracting just the `nalgebra::SVD::new()` call misses the `FdMatrix→DMatrix` conversion cost that dominates | Benchmark the full function call including data prep | CONCERNS.md already flags this; the benchmark must reproduce it |
-| Rayon overhead on small n | Small-n benchmarks with `--features parallel` appear slower than sequential; analysts conclude "parallelism is broken" | Always test at the threshold size where rayon helps (n ≈ 100+) | CONCERNS.md notes parallel overhead for n < ~100 |
+| O(n² · m²) without parallelism | n=200, m=100 takes > 10s on a single core | Use `pairwise_distance_matrix` parallel pattern; full Gram should scale as O(n²·m²/threads) | Benchmark at n=100, n=200; expect ≈ 4× improvement with 4 threads |
+| Redundant diagonal self-kernel computation | Gram construction time ≈ 2× theoretical minimum | Precompute all self-kernels in one parallel pass before upper-triangle | Self-kernel `gak(x,x)` is cheaper than `gak(x,y)` (all diagonal = 0) but still O(m²) |
+| `data.row()` allocations inside parallel loop | High allocation variance in criterion output | Collect all rows before the parallel closure | Already the established pattern in `soft_dtw_self_1d` |
+| kernel-k-means rebuilding cluster-sum terms from scratch each iteration | O(n²·k) per iteration instead of O(n·k) with incremental updates | Precompute intra-cluster kernel sums; update incrementally on assignment change | Acceptable for first implementation; optimize only if benchmark shows needed |
+| n_init=10 restarts with fresh Gram per restart | Recomputes Gram 10 times | Gram is fixed for all restarts — compute once, reuse | The Gram depends only on data and σ, not on cluster assignments |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-Items that appear complete in the audit but are missing critical pieces.
-
-- [ ] **Benchmark results table:** Includes feature-flag column, Rust version, machine spec, and 2-run variance check — verify these fields are present before finalizing the report
-- [ ] **Parity matrix:** Has a "Relevance" filter applied (in-scope algorithm vs. out-of-scope plotting/IO) — verify gap count drops when filtering to in-scope only
-- [ ] **Parity matrix:** Has an "fdars equivalent searched" note for every gap item — verify no item is "gap" solely because the name doesn't match
-- [ ] **Parity matrix:** Has an "accuracy verified?" column — verify fragile areas from CONCERNS.md are not marked ✓ without a verification note
-- [ ] **Backlog items:** Every item has function name, current cost, root cause, fix approach, severity, and effort — verify using the completeness checklist
-- [ ] **Backlog items:** Evidence artifact (bench output or gap reference) is linked — verify `.planning/research/bench/` exists and is non-empty
-- [ ] **Test failure triage:** Infrastructure failures (linker bus errors) are separated from code failures — verify the methodology section documents this distinction
-- [ ] **Build mode verification:** Every benchmark result is tagged with `--release`, features used, and rustc version — verify by checking Criterion output headers
+- [ ] **GAK kernel core:** Log-domain recursion verified — `gak(x, y)` returns non-zero values for series of length m=200. Verify: `assert!(gram[(0,1)] > 1e-10)`.
+- [ ] **GAK kernel core:** Normalization verified — diagonal of returned Gram is all-ones. Verify: `assert!((gram[(i,i)] - 1.0).abs() < 1e-12)` for all i.
+- [ ] **GAK kernel core:** PSD verified — minimum eigenvalue of Gram ≥ −1e-8. Verify: compute eigendecomposition via nalgebra, assert on `min_eigenvalue`.
+- [ ] **GAK kernel core:** Symmetry verified — `gram[(i,j)] == gram[(j,i)]` exactly (by assignment, not recomputation). Verify: `assert_eq!(gram[(i,j)].to_bits(), gram[(j,i)].to_bits())`.
+- [ ] **GAK kernel core:** No NaN or Inf in Gram for any realistic input. Verify: `assert!(gram.data.iter().all(|&x| x.is_finite()))`.
+- [ ] **GAK kernel core:** Known-value regression test against tslearn — feed a small n=5, m=10 dataset through both implementations and compare to < 1e-6.
+- [ ] **Gram export:** `gak_gram_train` result contains `diag_self_kernels` for use in `gak_gram_predict`. Verify: field is present in the result struct.
+- [ ] **Gram export:** `gak_gram_predict` produces an n_test × n_train matrix, not n_train × n_test. Verify: `assert_eq!(pred_gram.shape(), (n_test, n_train))`.
+- [ ] **Gram export:** Prediction matrix entries are in [0, 1]. Verify: `assert!(pred_gram[(i,j)] >= 0.0 && pred_gram[(i,j)] <= 1.0)` for all entries.
+- [ ] **Kernel-k-means:** n_init ≥ 10 restarts implemented. Verify: `KernelKMeansConfig { n_init: 10, .. }` is the default.
+- [ ] **Kernel-k-means:** Empty-cluster recovery implemented. Verify: test with k > natural cluster count does not panic.
+- [ ] **Kernel-k-means:** Deterministic seeding verified. Verify: two calls with same seed produce identical `cluster` assignments.
+- [ ] **Kernel-k-means:** No explicit centroid curve in result (kernel-k-means has no centroid). Verify: `KernelKMeansResult` does not have a `centers: FdMatrix` field (would be misleading).
+- [ ] **σ sensitivity:** σ-sensitivity test passes — with Cuturi heuristic σ, off-diagonal Gram entries are in (0.05, 0.95). Verify: assert on min/max off-diagonal.
 
 ---
 
@@ -454,13 +343,13 @@ Items that appear complete in the audit but are missing critical pieces.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Benchmarks run in debug mode | LOW | Rerun with `--release`; results available in < 1 hour |
-| Wrong feature flags on benchmarks | LOW | Rerun with correct feature matrix; update results table |
-| Inflated gap count from API-name counting | MEDIUM | Apply capability taxonomy retroactively; re-review ~60 items and collapse to ~20 meaningful groups |
-| Vague backlog items | MEDIUM | Return to audit artifacts and fill completeness fields; requires re-reading source code per item |
-| Missing `black_box` in benchmarks | LOW | Add `black_box` wrappers; rebuild and rerun |
-| Infrastructure failures counted as code failures | LOW | Re-triage failure list; likely removes 3–5 items from the defect count |
-| Accuracy gaps missed | HIGH | Requires running fdars + scikit-fda on reference datasets; may find correctness issues requiring code changes (out of audit scope) |
+| Log-domain not implemented (all zeros) | LOW | Rewrite the DP core to operate in log-space; add the underflow test; no API changes needed |
+| Non-PSD Gram shipped | HIGH | Must add normalization; if normalization changes the API (no self-kernels in result), a breaking change is needed — fix in Phase 54 before Phase 55 ships |
+| Gram asymmetry | LOW | Add explicit `gram[(j,i)] = gram[(i,j)]` assignment after upper-triangle loop; rerun tests |
+| Wrong test-train matrix orientation | MEDIUM | Fix `gak_gram_predict` orientation; add integration test with a known-correct SVM prediction; no Gram-train changes needed |
+| Empty cluster crash in kernel-k-means | LOW | Add empty-cluster detection and furthest-point recovery before the assignment loop; no API changes |
+| n_init=1 producing poor clusters | LOW | Add n_init to config struct; wrap existing loop in an outer restart loop; keep best by objective |
+| NaN from self-kernel normalization edge case | LOW | Add the `log_numer == NEG_INFINITY → 0.0` guard; NaN test reveals the gap immediately |
 
 ---
 
@@ -468,36 +357,34 @@ Items that appear complete in the audit but are missing critical pieces.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Debug mode benchmarks | Benchmark Confirmation | Build mode check is first line of phase procedure |
-| Wrong feature flags | Benchmark Confirmation | Feature matrix table is a required phase artifact |
-| Missing `black_box` | Benchmark Confirmation | Code review of existing benchmarks before recording results |
-| Unrepresentative input sizes | Static Hot-Path Analysis (define sizes) + Benchmark Confirmation (run them) | Large-input variant present for each hot path |
-| Ignoring allocation cost | Static Hot-Path Analysis | Allocation hotspot list is a required deliverable |
-| Warm vs. cold cache | Benchmark Confirmation | Cache regime column in results table |
-| Noisy machine | Benchmark Confirmation | ±5% variance threshold; 2-run requirement |
-| Linker flakiness masking failures | All test-execution phases | Infrastructure vs. code failure triage documented in methodology |
-| API-name counting | Gap Analysis | Capability taxonomy defined before enumeration begins |
-| "scikit-fda has X → must have X" | Gap Analysis | Design-goal filter applied before analysis |
-| Missed equivalent under different name | Gap Analysis | "Searched fdars for equivalent" field required per gap item |
-| Missing accuracy parity | Gap Analysis | "Accuracy verified?" column in parity matrix |
-| Effort-over-value ranking | Prioritized Backlog | Value estimation step before ranking |
-| Plotting/IO inflating gap count | Gap Analysis | Relevance filter; separate gap counts for in-scope vs. out-of-scope |
-| Vague backlog items | Prioritized Backlog | Completeness checklist gates each item |
-| Missing severity/effort | Prioritized Backlog | Both fields required; definitions anchored to fdars user base |
-| Missing evidence artifacts | Benchmark Confirmation + Gap Analysis | `.planning/research/bench/` non-empty; URLs in gap items |
-| Feature-flag matrix confusion | Static Hot-Path Analysis + Benchmark Confirmation | Feature matrix table; feature-gated path annotations in static analysis |
+| Log-domain not implemented (underflow) | Phase 54 — GAK kernel core | `test_gak_no_underflow`: m=200 series, assert off-diagonal > 1e-10 |
+| Non-PSD (raw GAK, no normalization) | Phase 54 — GAK kernel core | `test_gak_psd`: eigendecomposition, assert min_eigenvalue ≥ −1e-8 |
+| Floating-point asymmetry | Phase 54 — GAK kernel core | `test_gak_symmetry`: assert bit-exact equality of G[i][j] and G[j][i] |
+| Exp-of-DTW shortcut (wrong kernel) | Phase 54 — GAK kernel core | Code review: confirm DP table is O(m²), not O(m); PSD test also catches this |
+| Wrong σ (degenerate Gram) | Phase 54 — GAK kernel core | `test_gak_sigma_sensitivity`: Cuturi heuristic σ, assert off-diagonal in (0.05, 0.95) |
+| Diagonal self-kernel NaN/overflow | Phase 54 — GAK kernel core | `test_gak_unit_diagonal`: assert all G[i][i] == 1.0; `test_gak_no_nan`: assert all finite |
+| Known-value regression vs tslearn | Phase 54 — GAK kernel core | `test_gak_vs_tslearn_reference`: hard-coded reference values from tslearn@0.9.0 |
+| Redundant self-kernel recomputation | Phase 55 — Gram export | Criterion benchmark: confirm no 2× overhead vs theoretical minimum |
+| Wrong test-train matrix orientation | Phase 55 — Gram export | `test_gram_predict_shape`: assert (n_test, n_train); integration SVM accuracy test |
+| Missing training self-kernels in API | Phase 55 — Gram export | API review: `GakGramResult` must include `diag_self_kernels` field |
+| Empty-cluster crash in kernel-k-means | Phase 56 — kernel-k-means | `test_kernel_kmeans_empty_cluster`: k > natural clusters, assert no panic, valid output |
+| n_init=1 local-minimum problem | Phase 56 — kernel-k-means | `test_kernel_kmeans_n_init`: assert n_init=10 default; multi-restart result ≥ single-restart quality |
+| Deterministic seeding missing | Phase 56 — kernel-k-means | `test_kernel_kmeans_deterministic`: two calls same seed → identical assignments |
+| Row allocation in parallel loop | Phase 54 and 55 | Code review: `data.row()` must not appear inside the parallel closure |
 
 ---
 
 ## Sources
 
-- Codebase knowledge: `.planning/codebase/CONCERNS.md` (performance bottlenecks, known bugs, fragile areas)
-- Codebase knowledge: `.planning/codebase/ARCHITECTURE.md` (DMatrix round-trip pattern, parallel macro system)
-- Project scope: `.planning/PROJECT.md` (audit constraints, out-of-scope plotting/IO, baseline decisions)
-- Known environment issue: Criterion 0.5 linker bus errors documented in environment context
-- Domain knowledge: Rust benchmarking best practices (criterion `black_box`, release mode, feature-flag matrix)
-- Domain knowledge: API parity analysis methodology (capability vs. name counting, design-goal filtering)
+- Cuturi, M. (2011). "Fast Global Alignment Kernels." ICML. — Primary GAK reference; Section 3 defines the triangular/normalized form and the PSD proof.
+- Cuturi, M. & Blondel, M. (2017). "Soft-DTW: a Differentiable Loss Function for Time-Series." ICML. — Already cited in `metric/soft_dtw.rs`; the soft-min log-domain pattern is reused for GAK.
+- tslearn@0.9.0 `gak` implementation — Reference for triangular normalization, σ heuristic, and cross-validation patterns.
+- fdars-core `metric/soft_dtw.rs` — Existing log-domain `softmin3` and DP structure that GAK reuses.
+- fdars-core `distance.rs` — `pairwise_distance_matrix` parallel upper-triangle pattern that Gram export reuses.
+- fdars-core `clustering.rs` — `kmeans_fd` empty-cluster handling and k-means++ init as pattern references for kernel-k-means.
+- scikit-learn `SVC(kernel='precomputed')` documentation — training vs prediction matrix shape/normalization contract.
+- `.planning/codebase/ARCHITECTURE.md` — Existing anti-patterns (dense matrix copy, unvalidated slice access, NaN inconsistency) that the GAK implementation must not replicate.
 
 ---
-*Pitfalls research for: fdars AUDIT milestone — performance auditing and scikit-fda parity analysis*
-*Researched: 2026-08-07*
+*Pitfalls research for: fdars v0.32.0 — GAK kernel + kernel-k-means + Gram-matrix export*
+*Researched: 2026-09-02*

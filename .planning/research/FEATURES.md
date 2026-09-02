@@ -1,741 +1,439 @@
-# Feature Research: scikit-fda API Surface vs fdars Gap Analysis
+# Feature Research: GAK + Kernel-k-Means + Gram-Matrix Export (v0.32.0)
 
-**Domain:** Functional Data Analysis (FDA) library — numeric Rust crate vs Python reference
-**Researched:** 2026-08-07
-**Confidence:** MEDIUM (official docs verified at scikit-fda 0.10.1 stable; fdars coverage from codebase map)
-
----
-
-## Purpose
-
-This document maps scikit-fda's complete public API surface so the roadmap gap analysis can determine what fdars is missing, partially implements, or deliberately does not need. scikit-fda 0.10.1 is the agreed sole baseline.
-
-Coverage is organized by area: Representation, Preprocessing (Smoothing + Registration + Dimensionality Reduction), Exploratory Analysis, Machine Learning, Inference, and Misc/Infrastructure.
+**Domain:** Global Alignment Kernel and kernel clustering for functional curve sets — Rust crate `fdars-core`
+**Milestone:** v0.32.0 (promotes GAP-01 from `GAP-BACKLOG.md`)
+**Researched:** 2026-09-02
+**Confidence:** HIGH — mathematical spec derived from Cuturi 2011 (primary), tslearn@0.9.0 API (cross-checked), Dhillon et al. 2004 kernel-k-means paper (cross-checked), scikit-learn SVC precomputed-kernel convention (HIGH confidence from official docs).
 
 ---
 
-## Area 1: Representation
+## Precise Mathematical Specification
 
-### scikit-fda Public API
+This section gives the exact math the planner must implement against. All claims are sourced from primary references; confidence level shown per claim.
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `FData` | Abstract base with shared interface (evaluate, arithmetic, derivatives) |
-| `FDataGrid` | Discretized representation on a common evaluation grid; supports arithmetic, finite-difference derivatives, integration, inner products |
-| `FDataBasis` | Parametric representation as linear combination of basis functions; analytical derivatives |
-| `FDataIrregular` | Sparse/irregularly sampled observations per curve (added v0.10.0); covariance estimation |
-| `BSplineBasis` | B-spline basis (R→R) |
-| `FourierBasis` | Fourier (trigonometric) basis (R→R) |
-| `MonomialBasis` | Monomial/polynomial basis (R→R) |
-| `ConstantBasis` | Constant (intercept) basis (R→R) |
-| `CustomBasis` | Arbitrary user-supplied basis functions |
-| `TensorBasis` | Tensor product of 1D bases (Rn→R multivariate domain) |
-| `FiniteElementBasis` | Finite element basis (Rn→R, irregular meshes) |
-| `VectorValuedBasis` | Stack of bases for vector-valued output (Rn→Rm) |
-| `SplineInterpolation` | Spline interpolation for evaluating FDataGrid at off-grid points |
-| `BoundaryExtrapolation` | Extrapolation: repeat boundary value |
-| `ExceptionExtrapolation` | Extrapolation: raise on out-of-domain query |
-| `FillExtrapolation` | Extrapolation: fill with constant |
-| `PeriodicExtrapolation` | Extrapolation: wrap periodically |
-| `MinimizeMixedEffectsConverter` | Convert FDataIrregular → FDataBasis via mixed effects (optimization) |
-| `EMMixedEffectsConverter` | Convert FDataIrregular → FDataBasis via EM algorithm |
-| `FDataGrid.to_basis()` | Convert grid representation to basis representation |
+### A. Triangular Global Alignment Kernel (TGAK)
 
-### fdars Current Status
+**Reference:** Cuturi (2011), "Fast Global Alignment Kernels," ICML. Implemented in tslearn@0.9.0 `tslearn.metrics.gak`.
 
-fdars uses a flat `FdMatrix` (column-major `Vec<f64>`) as its core data structure — it is a discretized grid equivalent without an object-oriented functional data type. There is no:
-- Named FDataGrid/FDataBasis type distinction
-- Basis system hierarchy (BSpline, Fourier, Monomial, etc.) as first-class objects
-- Irregular/sparse functional data type (only `irreg_fdata/` module for some ops)
-- Formal extrapolation/interpolation layer
-- Grid-to-basis conversion pipeline
+#### A.1 Local (Gaussian) Kernel
 
-The `function_on_scalar_2d.rs` uses a tensor-product concept internally, and `basis` modules exist, but they are not exposed as composable basis-type objects.
+Given two scalar observations `x_i` and `y_j` (or multivariate, with Euclidean norm):
 
-### Categorization
+```
+phi(x_i, y_j; sigma) = exp( -||x_i - y_j||^2 / (2 * sigma^2) )
+```
 
-**Table Stakes (any FDA library needs):**
-- Discretized representation (grid) — fdars has FdMatrix, partial coverage
-- B-spline basis — partial (internal use in smoothing/alignment)
-- Fourier basis — partial (used in spectral ops)
-- Grid-to-basis conversion — gap
-- Spline interpolation at arbitrary query points — gap (fdars evaluates at stored grid only)
-- Extrapolation policies — gap
+`sigma > 0` is the bandwidth parameter. This is the pointwise similarity used at each DP cell. (Confidence: HIGH — direct from tslearn doc formula.)
 
-**Differentiators:**
-- FDataIrregular with covariance estimation — gap; scikit-fda only added this in v0.10.0
-- FiniteElementBasis — advanced; unlikely needed in v1 of gap-filling
-- VectorValuedBasis — advanced; relevant for multivariate functional data
-- Mixed-effects irregular→basis conversion (EM, optimization) — advanced
+#### A.2 Unnormalized GAK — the Alignment Sum
 
-**Anti-features for a numeric Rust crate:**
-- Python-style object hierarchy with `__repr__`, `__getitem__` magic methods — Rust idiomatic API is preferable; do not replicate the Python class hierarchy literally
+Let `x = (x_1, ..., x_n)` and `y = (y_1, ..., y_m)` be two time series / curve samples. Let `A(x, y)` be the set of all monotone alignment paths (causal, endpoint-anchored, each step moves right, down, or diagonally — the same lattice as DTW). The **unnormalized global alignment kernel** is:
 
-**Porting complexity:** HIGH overall. A first-class `FDataGrid`/`FDataBasis` type system with composable basis objects is an architectural refactor of fdars' data layer, not an additive feature.
+```
+k(x, y) = sum_{pi in A(x, y)}  product_{t=1}^{|pi|} phi(x_{pi_1(t)}, y_{pi_2(t)}; sigma)
+```
 
----
+This is a *sum* over paths, not a min — turning the DTW min-cost into a soft (log-sum-exp) accumulation. (Confidence: HIGH.)
 
-## Area 2: Preprocessing — Smoothing
+#### A.3 Dynamic Programming Recursion
 
-### scikit-fda Public API
+The standard DP fills an `(n+1) x (m+1)` accumulator `M`:
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `KernelSmoother` | Non-parametric kernel smoothing; hat matrix is pluggable |
-| `NadarayaWatsonHatMatrix` | Nadaraya-Watson kernel smoother strategy |
-| `LocalLinearRegressionHatMatrix` | Local linear regression smoother strategy |
-| `KNeighborsHatMatrix` | k-nearest-neighbor smoother strategy |
-| `BasisSmoother` | Penalized basis expansion smoother (penalizes derivatives via `LinearDifferentialOperator`) |
-| `SmoothingParameterSearch` | Grid search over smoothing parameters (like sklearn GridSearchCV) |
-| `LinearSmootherLeaveOneOutScorer` | LOO-CV scorer for linear smoothers |
-| `LinearSmootherGeneralizedCVScorer` | GCV scorer for linear smoothers |
-| `akaike_information_criterion` | AIC bandwidth selection criterion |
-| `finite_prediction_error` | FPE criterion |
-| `shibata` | Shibata's selector |
-| `rice` | Rice's selector |
-| `MissingValuesInterpolation` | Impute missing values in functional data |
+```
+M[0][0] = 1
+M[i][0] = 0   for i >= 1
+M[0][j] = 0   for j >= 1
+M[i][j] = phi(x_i, y_j; sigma) * (M[i-1][j] + M[i-1][j-1] + M[i][j-1])   for i,j >= 1
+k(x, y) = M[n][m]
+```
 
-### fdars Current Status
+Note the three predecessors match DTW's three moves (up, diagonal, left). The result is the full accumulated path weight. (Confidence: HIGH — from the standard ICASSP/ICML recurrence; also confirmed by tslearn source comments.)
 
-fdars does not expose a standalone smoothing module. Basis expansion is used internally in several modules (alignment, detrending) but not as a standalone, user-facing smoother with CV bandwidth selection. No Nadaraya-Watson, local linear regression, or k-NN smoothers as public API.
+#### A.4 Log-Domain Stable Recursion (REQUIRED for long series)
 
-### Categorization
+The product of `phi` values underflows to zero for long series. The stable form operates in log-space. Define `L[i][j] = log M[i][j]`:
 
-**Table Stakes:**
-- Kernel smoothing (Nadaraya-Watson) — gap
-- Basis smoothing with penalty — gap (internal use only; not exposed)
-- CV bandwidth selection (LOO, GCV) — gap
+```
+L[0][0] = 0
+L[i][0] = -inf   for i >= 1
+L[0][j] = -inf   for j >= 1
+L[i][j] = log_phi(i, j) + logsumexp(L[i-1][j], L[i-1][j-1], L[i][j-1])
+```
 
-**Differentiators:**
-- Local linear regression smoother — gap; moderately advanced
-- Multiple CV criteria (AIC, FPE, Shibata, Rice) — gap; useful for auto-tuning
-- Missing value imputation for functional data — gap
+where `log_phi(i, j) = log phi(x_i, y_j; sigma) = -||x_i - y_j||^2 / (2*sigma^2)` (a non-positive value, since phi in (0,1]).
 
-**Anti-features:**
-- None specific to smoothing; all of these are numerically implementable and appropriate for a Rust crate
+And `logsumexp(a, b, c) = max(a,b,c) + log(exp(a - max) + exp(b - max) + exp(c - max))`.
 
-**Porting complexity:** MEDIUM. Nadaraya-Watson and basis smoothers are numerically straightforward given fdars' matrix infrastructure. The pluggable hat-matrix pattern is an API design choice. CV bandwidth selection requires a scoring loop.
+The final unnormalized kernel in log-space is `L[n][m]`. To recover `k(x,y)` one would exponentiate, but normalization can be done entirely in log-space (see A.5). (Confidence: HIGH — tslearn confirms log-space re-execution to avoid overflow, this is the standard approach.)
+
+Note on the existing `softmin3` in `metric/soft_dtw.rs`: the soft-DTW softmin is `min - gamma * ln(sum(exp(...)))`. The GAK log-domain recursion uses `logsumexp` (no gamma weighting — effectively gamma = 1 in the max-entropy view). These are **different** recursions; the GAK implementation must NOT reuse `softmin3` directly; it uses a plain `logsumexp` accumulator.
+
+#### A.5 Triangular Band Constraint (the "T" in TGAK)
+
+The "Triangular" in TGAK refers to a position kernel `omega(i, j)` that is a **Toeplitz kernel with compact support of width T**:
+
+```
+omega(i, j) = 0   if |i - j| >= T
+omega(i, j) = 1   otherwise   (the triangular variant uses a flat-top or triangular shape)
+```
+
+When `|i - j| >= T` the cell contributes zero, so the DP only fills the `|i - j| < T` band — yielding O(T * min(n, m)) instead of O(n * m). This is the Sakoe-Chiba band constraint applied to the kernel accumulation. For `T = max(n, m)` (no constraint), the full matrix is filled. The dtwclust R package documents: "T is zero whenever the distance exceeds T." (Confidence: MEDIUM — documented in dtwclust and Cuturi 2011 abstract, but exact omega formula details are from the paper body not fully extracted.)
+
+**Default recommendation:** expose `band: Option<usize>` where `None` = full matrix (exact TGAK, O(n*m)) and `Some(T)` = banded (O(T*min(n,m))). The soft_dtw module's banding analogy is `karcher_mean_with_band`'s `band_frac: Option<f64>` parameter — use the same pattern.
+
+**Constraint on series length ratios:** TGAK is only valid when `max(n,m) / min(n,m) <= 2` (i.e., lengths within 2:1 ratio). The tslearn and dtwclust implementations enforce this. An `InvalidParameter` error should be returned when the ratio is violated.
+
+#### A.6 Normalized GAK (the valid similarity in [0, 1])
+
+The raw `k(x, y)` is not bounded. The **normalized GAK** is:
+
+```
+gak(x, y) = k(x, y) / sqrt(k(x, x) * k(y, y))
+```
+
+In log-space:
+
+```
+log_gak(x, y) = L[n][m] - 0.5 * (L_xx[n][n] + L_yy[m][m])
+gak(x, y) = exp(log_gak(x, y))
+```
+
+Properties:
+- `gak(x, x) = 1` for all x (self-similarity is always 1 after normalization).
+- `gak(x, y) in (0, 1]` for all x, y (since k(x,y) > 0 always, and by Cauchy-Schwarz `k(x,y) <= sqrt(k(x,x)*k(y,y))`).
+- The normalized GAK is a **valid PSD kernel** on time series. (Confidence: HIGH — from tslearn doc and standard kernel normalization theory.)
+
+This normalization is what makes GAK suitable for kernel machines: SVM, kernel-k-means, kernel PCA, etc.
 
 ---
 
-## Area 3: Preprocessing — Registration / Alignment
+### B. Sigma Bandwidth Heuristic
 
-### scikit-fda Public API
+**Reference:** Cuturi (2011) original paper; tslearn `sigma_gak` function (tslearn@0.9.0).
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `LeastSquaresShiftRegistration` | Shift-only alignment by minimizing LS criterion |
-| `FisherRaoElasticRegistration` | Full elastic alignment via SRSF/Fisher-Rao metric |
-| `landmark_shift_registration` | Align curves by shifting to match a landmark |
-| `landmark_shift_deltas` | Compute shift deltas for landmark registration |
-| `landmark_elastic_registration` | Elastic landmark registration (non-linear warping) |
-| `landmark_elastic_registration_warping` | Return the warping function used in landmark elastic reg |
-| `invert_warping` | Invert a warping function |
-| `normalize_warping` | Normalize a warping function to [0,1] |
-| `AmplitudePhaseDecomposition` | Validate registration: decompose amplitude vs phase variation |
-| `LeastSquares` | Registration validation via LS criterion |
-| `SobolevLeastSquares` | Registration validation via Sobolev-penalized LS |
-| `PairwiseCorrelation` | Registration validation via pairwise correlation |
+The heuristic (from tslearn's `sigma_gak` docstring and confirmed by the Cuturi 2011 paper):
 
-### fdars Current Status
+1. Draw `n_samples` (default 100) random **individual point pairs** from *different* time series in the dataset — i.e., sample point `x_i` from series `x` and point `y_j` from series `y` where `x != y`.
+2. Compute the pairwise squared Euclidean distances between these sampled points.
+3. Take the **median** of these pointwise squared distances to get `med_sq`.
+4. The suggested sigma is: `sigma = sqrt(med_sq) * sqrt(median_length)` where `median_length` is the median series length in the dataset.
 
-fdars has strong elastic registration coverage in `src/alignment/`:
-- Elastic curve registration (`elastic_align_pair`)
-- Elastic shape analysis, SRSF framework
-- Elastic FPCA, elastic regression
+Equivalently: `sigma = sqrt(med_sq * median_length)`.
 
-**Gaps identified:**
-- `LeastSquaresShiftRegistration` (shift-only) — gap
-- `landmark_shift_registration` and related landmark utilities — gap
-- Registration quality validation classes (AmplitudePhaseDecomposition, SobolevLeastSquares, PairwiseCorrelation) — gap
-- `invert_warping`, `normalize_warping` utilities — partial/unclear
+Rationale: a GAK cell spans a sequence of `~median_length` pointwise distances; scaling by `sqrt(median_length)` accounts for the accumulation over the alignment path. (Confidence: MEDIUM — the textual description in tslearn docs confirms "median distance of different points ... scaled by the square root of the median length"; the exact formula above is the plausible implementation; the internal `_sigma_gak` reshapes and samples points. HIGH confidence for the general approach, MEDIUM for the exact formula details.)
 
-### Categorization
-
-**Table Stakes:**
-- Shift registration — gap; simpler than elastic but widely expected
-- Landmark registration — gap; standard FDA preprocessing step
-
-**Differentiators:**
-- Fisher-Rao elastic registration (SRSF) — fdars has this
-- Registration validation / quality metrics — gap; useful for assessing registration quality
-
-**Anti-features:** None; all relevant for a numeric library.
-
-**Porting complexity:** LOW for shift/landmark registration. Registration validation is MEDIUM (requires amplitude-phase decomposition math).
+**fdars function signature:** `sigma_gak(data: &FdMatrix, n_samples: usize, seed: u64) -> Result<f64, FdarError>`. Expose as a public utility, not tied to any config struct.
 
 ---
 
-## Area 4: Preprocessing — Dimensionality Reduction & Feature Construction
+### C. Kernel K-Means on Curves
 
-### scikit-fda Public API
+**Reference:** Dhillon, Guan, Kulis (2004), "Kernel k-Means, Spectral Clustering and Normalized Cuts," KDD. Implemented in tslearn@0.9.0 `tslearn.clustering.KernelKMeans`.
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `FPCA` | Functional PCA; sklearn transformer interface; supports regularization via `LinearDifferentialOperator` |
-| `FPLS` | Functional PLS (partial least squares); added v0.9.1 |
-| `DiffusionMap` | Functional diffusion maps; manifold learning; added v0.10.0 |
-| `MaximaHunting` | Variable selection by identifying maxima of relevance measure |
-| `RecursiveMaximaHunting` | Iterative maxima hunting with multiple correction strategies |
-| `RKHSVariableSelection` | Variable selection via RKHS-based relevance |
-| `MinimumRedundancyMaximumRelevance` | mRMR variable selection for functional data |
-| `FDAFeatureUnion` | Combine multiple FDA feature transformers (like sklearn FeatureUnion) |
-| `PerClassTransformer` | Apply different transformers per class label |
-| `LocalAveragesTransformer` | Compute local averages on intervals as features |
-| `OccupationMeasureTransformer` | Measure time spent in value ranges as features |
-| `NumberCrossingsTransformer` | Count crossings of a threshold as features |
-| `modified_epigraph_index` | Functional feature: modified epigraph index |
-| `local_averages` | Functional feature: local averages |
-| `occupation_measure` | Functional feature: occupation measure |
-| `number_crossings` | Functional feature: threshold crossing count |
+#### C.1 Objective
 
-### fdars Current Status
+Kernel k-means minimizes within-cluster variance in the RKHS (reproducing kernel Hilbert space) induced by the kernel `k`. Given an `n x n` Gram matrix `K` (where `K[i,j] = gak(x_i, x_j)`), the objective is:
 
-fdars has FPCA (`FpcaResult`, `fdata_to_pc_1d`) and uses it extensively as the projection step before classification and regression. No standalone FPLS, DiffusionMap, or variable selection. No feature construction transformers.
+```
+J(C_1, ..., C_K) = sum_{k=1}^{K} sum_{i in C_k} ||phi(x_i) - mu_k||_H^2
+```
 
-### Categorization
+where `mu_k = (1/|C_k|) * sum_{j in C_k} phi(x_j)` is the centroid of cluster `k` in feature space H, and `phi` is the (implicit) feature map satisfying `<phi(x), phi(y)>_H = k(x, y)`.
 
-**Table Stakes:**
-- FPCA — fdars has this (solid coverage)
-- FPLS — gap; expected companion to FPCA for supervised reduction
+Expanding the squared norm using the kernel (no explicit feature map needed):
 
-**Differentiators:**
-- DiffusionMap — gap; manifold-based reduction; less common
-- MaximaHunting / RecursiveMaximaHunting — gap; point-selection approach useful for interpretability
-- mRMR variable selection — gap; advanced
-- Feature construction transformers (local averages, occupation measure, crossings) — gap; useful for pipeline-based workflows
+```
+||phi(x_i) - mu_k||_H^2
+  = K[i,i]
+  - (2 / |C_k|) * sum_{j in C_k} K[i,j]
+  + (1 / |C_k|^2) * sum_{j in C_k} sum_{l in C_k} K[j,l]
+```
 
-**Anti-features:**
-- `FDAFeatureUnion` / `PerClassTransformer` are scikit-learn pipeline plumbing — equivalent in Rust would be trait composition, not a direct port; don't replicate the Python API shape
+The three terms are:
+- `K[i,i]`: self-kernel of point `i` (equals 1 after normalization, so this term is constant).
+- `(2 / |C_k|) * sum_{j in C_k} K[i,j]`: twice the mean kernel similarity of `x_i` to cluster members.
+- `(1 / |C_k|^2) * sum_{j,l in C_k} K[j,l]`: within-cluster mean kernel (constant per cluster across iterations).
 
-**Porting complexity:** MEDIUM for FPLS (PLS math is well-understood). HIGH for DiffusionMap. MEDIUM for feature construction transformers. LOW-MEDIUM for variable selection.
+(Confidence: HIGH — from Dhillon et al. 2004 and confirmed by the arxiv 2011.06461 kernel-k-means paper.)
 
----
+#### C.2 Assignment Step
 
-## Area 5: Exploratory Analysis — Depth & Outlier Detection
+Assign each point `x_i` to the cluster `C_k` that minimizes the kernel distance:
 
-### scikit-fda Public API
+```
+argmin_k  [ -2/|C_k| * sum_{j in C_k} K[i,j]  +  1/|C_k|^2 * sum_{j,l in C_k} K[j,l] ]
+```
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `IntegratedDepth` | Fraiman-Muniz integrated depth |
-| `BandDepth` | Band depth (López-Pintado & Romo) |
-| `ModifiedBandDepth` | Modified band depth (faster, approximation) |
-| `DistanceBasedDepth` | Depth based on distance to center |
-| `OutlyingnessBasedDepth` | Depth = 1 / (1 + outlyingness) |
-| `ProjectionDepth` | Depth via random projections |
-| `SimplicialDepth` | Simplicial depth (multivariate, less common for FDA) |
-| `StahelDonohoOutlyingness` | Stahel-Donoho outlyingness measure (multivariate) |
-| `BoxplotOutlierDetector` | Detect outliers using functional boxplot |
-| `MSPlotOutlierDetector` | Magnitude-shape plot outlier detector |
-| `directional_outlyingness_stats` | Compute directional outlyingness statistics |
+(The `K[i,i]` term is constant and does not affect the argmin; with normalized GAK it is exactly 1.)
 
-### fdars Current Status
+The cluster-mean terms `(1/|C_k|^2) * sum K[j,l]` can be pre-computed once per iteration and reused for all `i`.
 
-fdars has strong depth coverage in `src/depth/`:
-- Fraiman-Muniz depth
-- Modal depth
-- Band depth (standard + modified)
-- Random projection depth
-- Streaming depth variants in `src/streaming_depth/`
-- SPM-based outlier detection in `src/spm/`
+#### C.3 Algorithm
 
-**Gaps:**
-- `DistanceBasedDepth` — unclear; likely gap
-- `OutlyingnessBasedDepth` — gap
-- `SimplicialDepth` — gap (unusual for FDA; low priority)
-- `StahelDonohoOutlyingness` — gap
-- `MSPlotOutlierDetector` — fdars has SPM outlier detection; MS-plot specifically may be gap
-- `directional_outlyingness_stats` — gap
+```
+Initialize cluster assignments z (random from 1..K, n_init restarts, pick best)
+Pre-compute K = GAK Gram matrix (n x n)  — done once, O(n^2) kernel evaluations
+Repeat until convergence or max_iter:
+    For each cluster k: compute within_k = (1/|C_k|^2) * sum_{j,l in C_k} K[j,l]
+    For each point i:
+        For each cluster k:
+            dist_k = K[i,i] - 2/|C_k| * sum_{j in C_k} K[i,j] + within_k
+        z_new[i] = argmin_k dist_k
+    If z_new == z: converged; break
+    z = z_new
+    Handle empty clusters: reassign to the point farthest from its current centroid
+Convergence: when no assignment changes between iterations (tol on inertia change also acceptable)
+```
 
-### Categorization
+**n_init:** Run the full loop `n_init` times with different random initializations; keep the assignment with the lowest total `J`. (Confidence: HIGH — standard kernel-k-means; tslearn default is `n_init=1` but documents that it can be set higher.)
 
-**Table Stakes:**
-- Fraiman-Muniz / Integrated depth — fdars has this
-- Band depth / Modified band depth — fdars has this
-- Functional boxplot outlier detection — fdars has this via SPM
-- Random projection depth — fdars has this
+**Empty cluster handling:** When a cluster loses all members, assign the point with the highest distance-to-centroid from any cluster to the empty cluster. This is the standard heuristic. (Confidence: MEDIUM — standard practice; tslearn does not document the specific heuristic in its API docs.)
 
-**Differentiators:**
-- MS-plot (MagnitudeShapePlot) outlier detector — partial gap; important for functional outlier diagnosis
-- Directional outlyingness — gap
-- SimplicialDepth / StahelDonoho — gap; less commonly required
+**Inertia / convergence:** The `inertia` is `J(C_1,...,C_K)`, the sum of kernel distances. Convergence when `|inertia_prev - inertia| < tol` or when assignments do not change. (Confidence: HIGH — matches tslearn `tol=1e-6` default.)
 
-**Anti-features:** None; depth measures are core numeric operations.
+#### C.4 Predict for New Points
 
-**Porting complexity:** LOW-MEDIUM (most depth measures are straightforward numerical integrals or combinatorics).
+After fitting (Gram matrix `K_train` of shape `n_train x n_train` and cluster assignments `z`), predicting cluster for a new point `x_*` requires computing:
 
----
+```
+k_star[j] = gak(x_*, x_j)   for j = 1..n_train  (n_train kernel evaluations)
+dist_k(x_*) = 1  -  2/|C_k| * sum_{j in C_k} k_star[j]  +  within_k
+predicted_cluster = argmin_k dist_k(x_*)
+```
 
-## Area 6: Exploratory Analysis — Summary Statistics & Visualization
+The `within_k` terms come from the training Gram matrix and do not change. The fitted model must store `z`, `within_k` per cluster, and the training data (or at least the training rows, to compute `gak(x_*, x_j)`). (Confidence: HIGH — standard kernel-k-means prediction; confirmed from the structural requirement for kernel machines with precomputed kernels.)
 
-### scikit-fda Public API
+#### C.5 Result Type
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `mean` | Functional mean (pointwise) |
-| `gmean` | Geometric mean |
-| `trim_mean` | Trimmed mean (depth-based trimming) |
-| `depth_based_median` | Deepest function as median |
-| `geometric_median` | Geometric (Fréchet) median |
-| `fisher_rao_karcher_mean` | Fisher-Rao Riemannian mean (elastic mean) |
-| `cov` | Functional covariance (bivariate function) |
-| `var` | Functional variance |
-| `std` | Functional standard deviation |
-| `GraphPlot` | Plot functional data as curves |
-| `ScatterPlot` | Scatter plot of functional data |
-| `ParametricPlot` | Parametric (phase-space) plot |
-| `Boxplot` | Functional boxplot |
-| `SurfaceBoxplot` | Boxplot for surface (2D domain) functional data |
-| `Outliergram` | Outliergram visualization |
-| `MagnitudeShapePlot` | MS-plot for outlier diagnosis |
-| `ClusterPlot` | Visualize clustering results |
-| `ClusterMembershipLinesPlot` | Soft membership visualization |
-| `ClusterMembershipPlot` | Membership as color-coded plot |
-| `FPCAPlot` | Plot FPCA components |
+```rust
+pub struct KernelKmeansResult {
+    pub cluster: Vec<usize>,          // n assignments, 0-indexed
+    pub inertia: f64,                 // final J value
+    pub n_iter: usize,                // iterations taken
+    pub converged: bool,
+}
+```
 
-### fdars Current Status
+The fitted model (for predict) is a separate `KernelKmeansFit` struct (or `KernelKmeansResult` with the training data reference and `within_k` stored). The config follows the pattern of `GmmClusterConfig`:
 
-fdars has functional mean, covariance, and related statistics as internal helpers but these may not all be exposed as distinct public functions. Depth-based median via deepest-curve concept is present in depth module. Fisher-Rao Karcher mean is not exposed separately (elastic mean available via alignment).
-
-All visualization classes (GraphPlot, Boxplot, MagnitudeShapePlot, etc.) are Python/matplotlib-based.
-
-### Categorization
-
-**Table Stakes (numeric):**
-- Functional mean, variance, std — partial; verify public API exposure
-- Trimmed mean — partial
-- Depth-based median — partial
-- Functional covariance (as a function, not just a matrix) — gap
-
-**Differentiators:**
-- Geometric median / Fréchet mean — gap
-- Fisher-Rao Karcher mean — gap as standalone function (elastic alignment achieves it but not named as such)
-- `geometric_mean` of curves — gap
-
-**Anti-features (visualization layer — explicitly out of scope per PROJECT.md):**
-- `GraphPlot`, `ScatterPlot`, `ParametricPlot`, `Boxplot`, `SurfaceBoxplot`, `Outliergram`, `MagnitudeShapePlot`, `ClusterPlot`, `FPCAPlot` — fdars is a Rust numeric library; matplotlib-dependent visualization is Python-specific. Deliberate non-goal. Consumers can plot results using their own plotting tools.
-
-**Porting complexity:** LOW for statistics. Visualization — NOT to be ported.
+```rust
+pub struct KernelKmeansConfig {
+    pub n_clusters: usize,           // default 3
+    pub max_iter: usize,             // default 50, matches tslearn
+    pub tol: f64,                    // default 1e-6
+    pub n_init: usize,               // default 5 (higher than tslearn's 1 for safety)
+    pub sigma: f64,                  // GAK bandwidth; use sigma_gak() for "auto"
+    pub band: Option<usize>,         // triangular band (None = full matrix)
+    pub seed: u64,                   // RNG seed for reproducibility
+}
+```
 
 ---
 
-## Area 7: Machine Learning — Classification
+### D. Gram-Matrix Export for External SVM
 
-### scikit-fda Public API
+**Reference:** scikit-learn `SVC(kernel='precomputed')` convention; confirmed from scikit-learn docs (all versions 1.4–1.9).
 
-| Class | Purpose |
-|-------|---------|
-| `KNeighborsClassifier` | Functional kNN with any functional metric (Lp, Fisher-Rao, etc.) |
-| `RadiusNeighborsClassifier` | Fixed-radius neighbor classifier |
-| `NearestCentroid` | Classify by closest class centroid |
-| `DTMClassifier` | Distance-to-trimmed-means; outlier-robust |
-| `MaximumDepthClassifier` | Assign to class with maximum depth |
-| `DDClassifier` | Depth-vs-depth plot classifier |
-| `DDGClassifier` | Generalized DD classifier (polynomial/any classifier in DD space) |
-| `LogisticRegression` | Functional logistic regression |
-| `QuadraticDiscriminantAnalysis` | Functional QDA |
+#### D.1 The Convention
 
-No explicit LDA class — scikit-fda achieves LDA behavior via `NearestCentroid` with Mahalanobis distance.
+When using a precomputed kernel with scikit-learn's SVC:
 
-### fdars Current Status
+- **Training:** pass a **symmetric `n_train x n_train`** Gram matrix to `svc.fit(K_train, y)`.
+- **Prediction:** pass an **`n_test x n_train`** matrix to `svc.predict(K_test_train)`, where `K_test_train[i, j] = k(x_test_i, x_train_j)`.
+- The SVC does **not** store raw data; it stores support vectors' indices into the training set.
 
-fdars has: LDA, QDA, kNN, kernel classifier, DD classifier — all fitting in FPC score space. No `RadiusNeighbors`, `NearestCentroid` as named public API, no `DTMClassifier`, no `DDGClassifier` (generalized DD). Functional logistic regression exists.
+This convention is the de facto standard: sklearn's `SVC(kernel='precomputed')` is exactly what users plug fdars' Gram matrix into. (Confidence: HIGH — directly from scikit-learn docs for versions 1.4, 1.5, 1.6, 1.9.)
 
-**Gaps:**
-- `RadiusNeighborsClassifier` — gap
-- `NearestCentroid` — gap (LDA in FPC space is similar but not identical)
-- `DTMClassifier` (distance-to-trimmed-means) — gap; useful for robust classification
-- `DDGClassifier` (generalized DD with arbitrary classifier in DD space) — gap
+#### D.2 fdars Functions Needed
 
-### Categorization
+Two public functions:
 
-**Table Stakes:**
-- kNN classifier with functional metric — fdars has this
-- Depth-based classifiers (MaximumDepth, DD) — fdars has these
-- Logistic regression — fdars has this
-- QDA — fdars has this
+```rust
+// Symmetric n x n Gram matrix (for fitting an SVM)
+pub fn gak_gram_train(data: &FdMatrix, sigma: f64, band: Option<usize>)
+    -> Result<FdMatrix, FdarError>
 
-**Differentiators:**
-- `DTMClassifier` — gap; outlier-robust; moderately complex
-- `DDGClassifier` — gap; generalization that allows any classifier in DD space; LOW porting complexity
-- `RadiusNeighborsClassifier` — gap; LOW complexity, minor utility gain
+// n_test x n_train matrix (for SVM prediction on new data)
+pub fn gak_gram_test(
+    test_data: &FdMatrix,
+    train_data: &FdMatrix,
+    sigma: f64,
+    band: Option<usize>,
+) -> Result<FdMatrix, FdarError>
+```
 
-**Anti-features:** None specific to classification.
+Both return **normalized** GAK values (the `gak(x,y)` in [0,1]) by default — this is what makes the matrix PSD and suitable for kernel machines. The diagonal of `gak_gram_train` is all 1.0 (self-similarity = 1). (Confidence: HIGH.)
 
-**Porting complexity:** LOW for NearestCentroid, RadiusNeighbors. MEDIUM for DTMClassifier. LOW for DDGClassifier.
+#### D.3 PSD Guarantee
+
+The normalized TGAK (with the triangular position kernel with compact support) is a PSD kernel. This is the main theoretical contribution of Cuturi (2011): the triangular constraint ensures the kernel is PSD, unlike certain non-normalized or non-triangular variants. fdars exports normalized values; callers using external SVMs benefit from the PSD guarantee automatically. (Confidence: HIGH — core result of the Cuturi 2011 paper.)
 
 ---
 
-## Area 8: Machine Learning — Regression
-
-### scikit-fda Public API
-
-| Class | Purpose |
-|-------|---------|
-| `LinearRegression` | Scalar-on-function and function-on-scalar in one unified class; accepts functional predictors and responses; supports `LinearDifferentialOperator` regularization |
-| `HistoricalLinearRegression` | Function-on-function regression using only past values as predictors (causal) |
-| `KNeighborsRegressor` | Functional kNN regression |
-| `RadiusNeighborsRegressor` | Fixed-radius kNN regression |
-| `KernelRegression` | Functional kernel regression (Nadaraya-Watson style, scalar response) |
-| `FPCARegression` | Project to FPCA scores, then OLS |
-| `FPLSRegression` | Project to FPLS scores, then OLS |
-
-scikit-fda does **not** have a general function-on-function regression — only the historical (causal) variant.
-
-### fdars Current Status
-
-fdars has: scalar-on-function linear (`fregre_lm`), functional logistic, FPCA-based regression, elastic regression. No kNN regressor, no kernel regression, no HistoricalLinearRegression, no FPLS regression.
-
-**Gaps:**
-- `KNeighborsRegressor` / `RadiusNeighborsRegressor` — gap
-- `KernelRegression` — gap (Nadaraya-Watson for regression)
-- `HistoricalLinearRegression` — gap; causal FDA regression model
-- `FPLSRegression` — gap (requires FPLS first)
-- `LinearRegression` with function-on-scalar direction (vectorial response) — partial; `function_on_scalar_2d.rs` covers 2D FOSR but not the general sklearn-compatible interface
-
-### Categorization
-
-**Table Stakes:**
-- Scalar-on-function linear regression — fdars has this
-- kNN regression — gap; expected given kNN classification exists
-- Kernel regression — gap; standard non-parametric baseline
-
-**Differentiators:**
-- HistoricalLinearRegression — gap; moderately advanced; unique to FDA
-- FPLSRegression — gap; requires FPLS implementation first
-- Function-on-scalar with regularization (unified interface) — partial gap
-
-**Anti-features:** None.
-
-**Porting complexity:** LOW for kNN/kernel regression. MEDIUM for HistoricalLinearRegression (requires careful causal indexing). MEDIUM for FPLSRegression (depends on FPLS).
-
----
-
-## Area 9: Machine Learning — Clustering
-
-### scikit-fda Public API
-
-| Class | Purpose |
-|-------|---------|
-| `KMeans` | Functional k-means with functional metrics |
-| `FuzzyCMeans` | Fuzzy c-means for functional data |
-| `NearestNeighbors` | Unsupervised neighbor search (for index building) |
-| `AgglomerativeClustering` | Hierarchical clustering using functional distance matrix |
-
-### fdars Current Status
-
-fdars has GMM clustering (`GmmClusterConfig`). No k-means, fuzzy c-means, or hierarchical clustering exposed.
-
-**Gaps:**
-- `KMeans` — gap; most common clustering baseline
-- `FuzzyCMeans` — gap (fdars has GMM which is a soft assignment method; fuzzy c-means is different)
-- `AgglomerativeClustering` — gap
-- `NearestNeighbors` (unsupervised) — gap
-
-### Categorization
-
-**Table Stakes:**
-- Functional k-means — gap; expected baseline
-- Fuzzy c-means — fdars has GMM as an alternative; fuzzy c-means is a gap
-
-**Differentiators:**
-- AgglomerativeClustering — gap; requires functional distance matrix; MEDIUM complexity
-
-**Anti-features:** None.
-
-**Porting complexity:** MEDIUM for k-means (requires functional mean and distance). LOW for fuzzy c-means if k-means is done first. MEDIUM for agglomerative (needs linkage logic on top of distance matrix).
-
----
-
-## Area 10: Inference (Statistical Testing)
-
-### scikit-fda Public API
-
-| Function | Purpose |
-|----------|---------|
-| `oneway_anova` | One-way functional ANOVA (asymptotic) |
-| `v_sample_stat` | V-statistic for functional ANOVA |
-| `v_asymptotic_stat` | Asymptotic V-statistic |
-| `hotelling_t2` | Functional Hotelling T² test (two-sample mean comparison) |
-| `hotelling_test_ind` | Independent-sample Hotelling test |
-
-### fdars Current Status
-
-No statistical inference / hypothesis testing module in fdars.
-
-### Categorization
-
-**Table Stakes:**
-- Functional ANOVA — gap; expected for any complete FDA toolkit
-- Hotelling T² — gap; two-sample test is a standard need
-
-**Differentiators:** None — these are core statistical tests.
-
-**Anti-features:** None.
-
-**Porting complexity:** MEDIUM (requires functional inner products and asymptotic distribution computation; well-documented in literature).
-
----
-
-## Area 11: Metrics & Norms
-
-### scikit-fda Public API
-
-| Class / Function | Purpose |
-|-----------------|---------|
-| `LpNorm` | Lp norm for functional data (p=1,2,∞) |
-| `LpDistance` | Lp distance |
-| `MahalanobisDistance` | Mahalanobis distance via covariance |
-| `NormInducedMetric` | Metric induced by any norm |
-| `PairwiseMetric` | Compute full pairwise distance matrix |
-| `TransformationMetric` | Apply transform then compute metric |
-| `lp_norm` | Functional Lp norm (function) |
-| `lp_distance` | Functional Lp distance (function) |
-| `angular_distance` | Angular distance between functions |
-| `fisher_rao_distance` | Fisher-Rao geodesic distance |
-| `fisher_rao_amplitude_distance` | Fisher-Rao amplitude component |
-| `fisher_rao_phase_distance` | Fisher-Rao phase component |
-| `inner_product` | L2 inner product |
-| `inner_product_matrix` | Gram matrix of inner products |
-| `cosine_similarity` | Cosine similarity |
-| `cosine_similarity_matrix` | Pairwise cosine similarity matrix |
-
-### fdars Current Status
-
-fdars computes L2 inner products (via Simpson weights), Mahalanobis distance (in QDA), elastic/Fisher-Rao distances (in alignment module). `lp_norm` and `lp_distance` are not exposed as standalone public functions. No `PairwiseMetric` abstraction for computing distance matrices.
-
-**Gaps:**
-- Standalone `lp_norm`, `lp_distance` — gap; useful utilities
-- `angular_distance`, `cosine_similarity` — gap
-- `PairwiseMetric` (distance matrix computation) — gap; required for kNN and agglomerative clustering
-- `TransformationMetric` — gap; low priority
-
-### Categorization
-
-**Table Stakes:**
-- Lp norms/distances — gap as standalone public API
-- Pairwise distance matrix computation — gap; required by kNN and clustering
-- Fisher-Rao distance — fdars has via alignment
-
-**Differentiators:**
-- `TransformationMetric` — gap; low priority; composable but niche
-
-**Anti-features:** None.
-
-**Porting complexity:** LOW for Lp norms and distance matrix. MEDIUM for angular/cosine when applied to functional data with integration weights.
-
----
-
-## Area 12: Infrastructure — Datasets, Covariances, Operators, Regularization
-
-### scikit-fda Public API
-
-**Covariance functions (for Gaussian process generation):**
-`Brownian`, `Exponential`, `Gaussian` (RBF), `Matern`, `Linear`, `Polynomial`, `WhiteNoise`, `Covariance` (base)
-
-**Operators:**
-`Identity`, `LinearDifferentialOperator` (e.g., penalize second derivative), `SRSF` (square-root slope function)
-
-**Regularization:**
-`L2Regularization` (Tikhonov/ridge, used with `LinearDifferentialOperator` in regression/smoothing/FPCA)
-
-**Datasets (fetch):**
-`fetch_aemet`, `fetch_gait`, `fetch_growth`, `fetch_handwriting`, `fetch_mco`, `fetch_medflies`, `fetch_nox`, `fetch_octane`, `fetch_phoneme`, `fetch_tecator`, `fetch_weather`, `fetch_bone_density`, `fetch_cran`, `fetch_ucr`
-
-**Data generation:**
-`make_gaussian`, `make_gaussian_process`, `make_sinusoidal_process`, `make_multimodal_samples`, `make_multimodal_landmarks`, `make_random_warping`, `make_sde_trajectories` (Itô SDE via Euler-Maruyama/Milstein, added v0.10.0)
-
-**Scoring metrics (sklearn-compatible):**
-`explained_variance_score`, `mean_absolute_error`, `mean_absolute_percentage_error`, `mean_squared_error`, `mean_squared_log_error`, `r2_score`
-
-### fdars Current Status
-
-fdars has 28 examples and data embedded in test fixtures. No named benchmark datasets as `fetch_*` functions. No formal Gaussian process simulation module (though some test data generation exists). `LinearDifferentialOperator` concept used internally in smoothing but not exposed as a user-facing operator object. `SRSF` operator is implemented internally in elastic module.
-
-**Gaps:**
-- Named benchmark dataset loaders (`fetch_*`) — gap; important for reproducible benchmarking and user onboarding
-- Gaussian process data generation with named covariance kernels — gap
-- SDE trajectory generation — gap (advanced)
-- `LinearDifferentialOperator` as a user-facing composable operator — gap
-- Scoring functions as a public utility module — gap; consumers can compute themselves
-
-### Categorization
-
-**Table Stakes:**
-- A few standard benchmark datasets — gap; important for user onboarding and reproducibility
-- Basic data generation (sinusoidal, Gaussian process) — gap for public API
-
-**Differentiators:**
-- `LinearDifferentialOperator` as composable operator for penalties — gap; important enabler for penalized smoothing/FPCA
-- SDE trajectory generation — gap; advanced; low priority initially
-- Named covariance kernels (Matern, Brownian, etc.) — gap; useful for simulation studies
-
-**Anti-features:**
-- Mirroring all 14 `fetch_*` datasets by re-hosting data in a Rust crate — licensing and binary size concerns; instead, expose a loader API that reads user-provided files in standard formats (CSV, npy)
-
-**Porting complexity:** LOW for data generation helpers. MEDIUM for `LinearDifferentialOperator` abstraction. LOW for scoring utilities.
-
----
-
-## Feature Landscape Summary
-
-### Table Stakes (Any Serious FDA Library Must Have)
-
-| Feature | fdars Status | Complexity to Add | Gap Priority |
-|---------|-------------|-------------------|--------------|
-| Discretized functional data representation (grid) | Partial (`FdMatrix`) | HIGH — requires type refactor | P2 |
-| Basis systems as composable objects (BSpline, Fourier, Monomial) | Partial (internal) | HIGH — architectural | P2 |
-| Grid-to-basis conversion | Gap | HIGH | P2 |
-| Spline interpolation at arbitrary query points | Gap | MEDIUM | P2 |
-| Kernel smoothing (Nadaraya-Watson) | Gap | MEDIUM | P1 |
-| Basis smoothing with derivative penalty | Gap (internal only) | MEDIUM | P1 |
-| CV bandwidth selection (LOO/GCV) | Gap | MEDIUM | P2 |
-| Shift registration | Gap | LOW | P1 |
-| Landmark registration | Gap | LOW-MEDIUM | P1 |
-| Registration quality validation | Gap | MEDIUM | P2 |
-| FPCA as standalone transformer | Partial (embedded in regression) | LOW | P1 |
-| FPLS | Gap | MEDIUM | P1 |
-| Depth: IntegratedDepth, BandDepth, ModifiedBandDepth | Present | — | Done |
-| Depth: ProjectionDepth | Present | — | Done |
-| Outlier detection (MS-plot, boxplot) | Partial (SPM-based) | LOW | P2 |
-| Functional mean, var, std (public API) | Partial | LOW | P1 |
-| Trimmed mean, depth-based median | Partial | LOW | P1 |
-| Functional covariance (as bivariate function) | Gap | MEDIUM | P2 |
-| kNN classifier with functional metric | Present | — | Done |
-| Depth-based classifiers (MaxDepth, DD) | Present | — | Done |
-| Logistic regression | Present | — | Done |
-| QDA | Present | — | Done |
-| DTMClassifier | Gap | MEDIUM | P2 |
-| DDGClassifier | Gap | LOW | P2 |
-| Scalar-on-function linear regression | Present | — | Done |
-| kNN regression | Gap | LOW | P1 |
-| Kernel regression | Gap | MEDIUM | P1 |
-| HistoricalLinearRegression | Gap | MEDIUM | P2 |
-| FPLSRegression | Gap (depends on FPLS) | MEDIUM | P2 |
-| Functional k-means | Gap | MEDIUM | P1 |
-| Fuzzy c-means | Gap | MEDIUM | P2 |
-| Functional ANOVA (oneway) | Gap | MEDIUM | P2 |
-| Hotelling T² test | Gap | MEDIUM | P2 |
-| Lp norms/distances (public functions) | Gap (internal only) | LOW | P1 |
-| Pairwise distance matrix | Gap | LOW | P1 |
-| Standard benchmark datasets (fetch_*) | Gap | LOW-MEDIUM | P2 |
-| Gaussian process data generation | Gap | LOW | P2 |
-
-### Differentiators (Advanced / Less Common)
-
-| Feature | fdars Status | Notes |
-|---------|-------------|-------|
-| Elastic/SRSF registration (FisherRaoElasticRegistration) | Present | Strong coverage |
-| Elastic regression & FPCA | Present | Differentiator fdars has |
-| GMM clustering | Present | scikit-fda uses k-means/fuzzy; fdars has GMM |
-| Streaming depth measures | Present | Not in scikit-fda |
-| Model explainability (PDP, SHAP, LIME, ALE) | Present | Not in scikit-fda |
-| SPM / control charts | Present | Not in scikit-fda |
-| Seasonal decomposition (STL) | Present | Not in scikit-fda |
-| Irregular FDA (FDataIrregular) | Partial | scikit-fda added v0.10.0; fdars has basic module |
-| DiffusionMap dimensionality reduction | Gap | Added in scikit-fda v0.10.0; manifold learning |
-| Variable selection (MaximaHunting, mRMR) | Gap | Useful for interpretable FDA |
-| Feature construction transformers | Gap | Pipeline utilities; lower priority |
-| SDE trajectory generation | Gap | Advanced simulation |
-| LinearDifferentialOperator (composable) | Gap | Key enabler for penalized methods |
-| Mixed-effects irregular→basis conversion | Gap | Advanced preprocessing |
-| AgglomerativeClustering | Gap | Straightforward with distance matrix |
-| SimplicialDepth | Gap | Less common; low priority |
-
-### Anti-Features (Deliberately Out of Scope for fdars)
-
-| Feature | Why It Exists in scikit-fda | Why fdars Should Not Chase It | Alternative |
-|---------|----------------------------|-------------------------------|-------------|
-| matplotlib visualization (`GraphPlot`, `Boxplot`, `MagnitudeShapePlot`, etc.) | Python ecosystem standard; FDA users expect plotting in the same library | fdars is a numeric Rust library; no graphics runtime; PROJECT.md explicitly lists as out-of-scope | Expose numeric results (depth values, FPCA scores, cluster labels) that consumers can plot using their preferred tools |
-| sklearn pipeline API (`.fit()`, `.transform()`, `Pipeline`, `GridSearchCV`) | Python ecosystem convention; enables composability with sklearn | Rust equivalent is trait composition; a literal sklearn API clone is unidiomatic and brittle | Design Rust traits (e.g., `FdaTransformer`) that are idiomatic and composable within Rust's type system |
-| Python-style `__repr__`, `__getitem__`, `__add__` magic methods on data types | Python convention | Implement Rust standard traits (`Display`, `Index`, `Add`) idiomatically instead | Rust operator overloading and trait impls |
-| `fetch_*` dataset loaders that bundle data in the library | Convenience for Python users; datasets packaged with PyPI distribution | Binary data in a Rust crate inflates crate size; licensing concerns; CRAN-distributed data has its own terms | Document where to obtain datasets; provide loader functions that accept file paths or standard formats |
-| `PerClassTransformer` / `FDAFeatureUnion` pipeline metaclasses | Scikit-learn pipeline conventions | Rust generics and trait bounds express this more naturally without Python metaclass machinery | Trait-based transformer composition |
+## Feature Landscape
+
+### Table Stakes — Users Expect These
+
+These are the features that constitute the GAK capability; missing any one makes the deliverable incomplete.
+
+| Feature | Why Expected | Complexity | Dependency on Existing Code |
+|---------|--------------|------------|-----------------------------|
+| `gak_distance(x, y, sigma, band)` — unnormalized log-GAK | Core primitive; all other features build on it | MEDIUM | Reuses log-sum-exp idea from `softmin3` (but NOT the same recursion); new `metric/gak.rs` |
+| Normalized `gak(x, y, sigma, band)` returning value in [0,1] | PSD kernel property; mandatory for kernel machines | LOW (atop unnormalized) | Calls `gak_distance` for `k(x,x)`, `k(y,y)`, `k(x,y)` |
+| Log-domain stable recursion (avoid underflow for long series) | Long series (n>50) will underflow in product space | MEDIUM | Must implement `logsumexp` 3-way — similar to `softmin3` but additive not min |
+| `gak_gram_train(data, sigma, band) -> FdMatrix` — symmetric n×n | Entire kernel-k-means and SVM glue require the Gram matrix | MEDIUM | Reuses `self_distance_matrix` from `metric/mod.rs` (renaming to kernel matrix) |
+| `gak_gram_test(test, train, sigma, band) -> FdMatrix` — n_test×n_train | SVM prediction requires this exact shape | LOW (atop gram_train pattern) | Reuses `cross_distance_matrix` from `metric/mod.rs` |
+| `kernel_kmeans_fd(data, config) -> Result<KernelKmeansFit, FdarError>` | The headline consumer of GAK; without it, GAK is just a metric variant | HIGH | Builds on `gak_gram_train`; cluster logic new (no existing kernel-k-means in clustering.rs) |
+| `KernelKmeansFit::predict(new_data) -> Result<Vec<usize>, FdarError>` | Clustering without prediction is not useful for ML workflows | MEDIUM | Stores training data + `within_k`; calls `gak_gram_test` internally |
+| `KernelKmeansConfig` struct | fdars convention for complex methods | LOW | Pattern identical to `GmmClusterConfig`, `ElasticConfig` |
+| Series-length-ratio guard (reject >2:1 ratio with `InvalidParameter`) | TGAK validity constraint documented by both Cuturi 2011 and dtwclust | LOW | New validation at function entry |
+| `KernelKmeansResult` / `KernelKmeansFit` with `Debug + Clone + PartialEq` | fdars convention for all public result types | LOW | Convention from 97 existing types |
+
+### Differentiators — Competitive Advantage
+
+These are not required to ship a correct GAK implementation, but they raise the quality bar and match tslearn's API.
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| `sigma_gak(data, n_samples, seed) -> Result<f64, FdarError>` | Removes manual bandwidth tuning; matches tslearn's `sigma_gak`; users can use `auto` | LOW | Sample `n_samples` random point pairs from different series; compute median of squared pointwise distances × sqrt(median series length); reproducible via `seed` |
+| `cdist_gak(data1, data2, sigma, band) -> Result<FdMatrix, FdarError>` | Pairwise cross-kernel matrix (n1×n2); needed for `gak_gram_test` and any cross-dataset kernel query | LOW (reuses `cross_distance_matrix`) | Wrapper that calls normalized `gak` over all pairs; `data2=None` → symmetric self-matrix |
+| Rayon parallelism for Gram matrix computation | n×n kernel evaluations are embarrassingly parallel; critical for n>100 | LOW | `iter_maybe_parallel!` over rows (same pattern as `soft_dtw_self_1d` and `soft_dtw_cross_1d`) |
+| `n_init` restarts in kernel-k-means | Reduces sensitivity to initialization; tslearn default is 1, but 5 is safer | LOW | Outer loop, pick minimum-inertia run |
+| Optional `band: Option<usize>` parameter (TGAK triangular constraint) | Trades exactness for speed: O(T·min(n,m)) vs O(n·m); mirrors `band_frac` in `karcher_mean_with_band` | MEDIUM | Band guard in the DP inner loop; same pattern as existing banded alignment |
+| Serde support on `KernelKmeansConfig` / `KernelKmeansFit` | Pipeline persistence; standard fdars convention under `serde` feature | LOW | `#[cfg_attr(feature = "serde", ...)]` — same as all other config/result types |
+| `#[must_use]` on `gak_gram_train`, `gak_gram_test`, `kernel_kmeans_fd` | fdars convention for expensive computations; 74+ functions already marked | LOW | One annotation per expensive function |
+| Criterion benchmark in `benches/` | fdars convention; measures Gram computation vs n (n ∈ {50, 200, 500}) | LOW | Follows existing bench patterns in BENCH-RESULTS.md |
+
+### Anti-Features — Explicitly Out of Scope
+
+| Anti-Feature | Why Requested | Why Excluded | What to Do Instead |
+|--------------|---------------|---------------|--------------------|
+| Native kernel SVM (SVC in fdars) | Logical next step after Gram-matrix export | Would require a quadratic programming solver (no QP crate currently used; adding one is a new heavy dependency and a separate large feature); violates the "no new crate dependency" convention and scope | Export the `n×n` Gram matrix via `gak_gram_train` and call scikit-learn / libsvm externally |
+| GPU / CUDA acceleration | GAK matrix computation is O(n²·n·m) flops — GPU would help at n>1000 | No GPU support exists anywhere in fdars; adding GPU is a new infrastructure story | Use the banded TGAK (`band: Some(T)`) to reduce to O(n²·T·m); rayon parallelism covers typical research-scale datasets |
+| Multidimensional (multivariate) curves | tslearn's gak supports `d`-dimensional series | The existing `FdMatrix` is 1D curves (n rows, m eval points); multivariate extension requires a different data representation (`FdCurveSet` or stacked FdMatrix) — out of scope for this milestone | Implement as a follow-on once `FdMatrix` multivariate support is addressed (if needed) |
+| Kernel PCA via GAK | Useful but not in the milestone scope (GAP-01 specifies kernel-k-means + SVM glue only) | Adds a new algorithm family; not part of the GAP-01 requirement | Gram matrix export enables external KernelPCA (sklearn) directly |
+| Non-normalized GAK as primary output | Some use-cases (similarity scoring without kernel machines) might want raw log-k | Raw kernel violates PSD property; log-scale output is not a similarity in [0,1] | Expose `gak_log_unnormalized` as `pub(crate)` for internal use; the public API is normalized |
+| Online / streaming kernel-k-means | Would require incremental Gram matrix update | Significantly more complex; the existing clustering.rs uses batch k-means exclusively | Use the batch `kernel_kmeans_fd` and re-fit when new data arrives |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Basis systems (BSpline, Fourier, Monomial)
-    └──requires──> Grid-to-basis conversion
-    └──enables──>  Basis smoothing with penalty
-    └──enables──>  LinearDifferentialOperator as operator
-                       └──enables──> Penalized FPCA
-                       └──enables──> Penalized smoothing/regression
+sigma_gak()               (utility — standalone, no kernel dep)
+    │
+    └──advises──> KernelKmeansConfig.sigma
 
-FPLS
-    └──requires──> FPCA infrastructure (already present)
-    └──enables──>  FPLSRegression
-
-Lp distance / Pairwise distance matrix
-    └──requires──> Integration weights (already present)
-    └──enables──>  kNN regression
-    └──enables──>  Functional k-means
-    └──enables──>  AgglomerativeClustering
-
-Functional k-means
-    └──requires──> Functional mean (already present)
-    └──requires──> Lp distance
-
-Functional ANOVA / Hotelling T²
-    └──requires──> Functional mean (already present)
-    └──requires──> Functional covariance
-
-Shift registration
-    └──no dependencies beyond FdMatrix
-    └──enables──>  Landmark registration (shift variant)
-
-HistoricalLinearRegression
-    └──requires──> Scalar-on-function regression infrastructure (present)
-
-Outlier detection (MS-plot)
-    └──requires──> Depth measures (present)
-    └──requires──> Directional outlyingness stats
+gak_distance_log()         (log-domain DP recursion — new metric/gak.rs)
+    │
+    ├──requires──> logsumexp3() helper (similar to softmin3 but additive)
+    │
+    └──powers──> gak()      (normalized, public)
+                    │
+                    ├──powers──> gak_gram_train()   (n×n self Gram matrix)
+                    │                │
+                    │                └──powers──> kernel_kmeans_fd()   (headline consumer)
+                    │                                │
+                    │                                └──returns──> KernelKmeansFit
+                    │                                                  │
+                    │                                                  └──predict()
+                    │                                                       │
+                    │                                                       └──requires──> gak_gram_test()
+                    │
+                    └──powers──> gak_gram_test()    (n_test×n_train cross Gram)
+                                     │
+                                     └──enables──> External SVM (scikit-learn SVC(kernel='precomputed'))
 ```
+
+### Dependency Notes
+
+- **`gak_distance_log` requires `logsumexp3`:** The log-domain recursion is NOT the same as soft-DTW's `softmin3`. Soft-DTW computes `min - gamma*ln(...)` (soft minimum). GAK computes `ln(exp(a)+exp(b)+exp(c))` (log-sum-exp for a kernel sum). They share the log-sum-exp trick but serve opposite purposes. A new `logsumexp3` helper must be added — do NOT reuse `softmin3`.
+- **`kernel_kmeans_fd` requires the full training Gram matrix:** The entire `n×n` Gram matrix must be computed and held in memory during fitting. For n=1000 at f64, this is 8 MB — acceptable. For n=10000 it is 800 MB — document the memory scaling in the API docs.
+- **`KernelKmeansFit::predict` requires `gak_gram_test`:** The predict method must compute kernel similarities between new points and training points. The training data (or at minimum, all training rows) must be stored in the `KernelKmeansFit` struct to enable this. This is the only case in fdars where a result struct embeds a copy of the training data — document the memory implications.
+- **Series-length ratio guard applies to all GAK functions:** Every public function that calls the DP must check `max(n,m) / min(n,m) <= 2` and return `FdarError::InvalidParameter` if violated. Do not silently truncate.
 
 ---
 
-## Biggest Likely Gaps for fdars (Gap Analysis Head Start)
+## MVP Definition
 
-Ranked by expected impact on a user migrating from scikit-fda:
+### Launch With (v0.32.0)
 
-1. **Smoothing module** — Nadaraya-Watson, basis smoothing, CV bandwidth selection. Any real FDA workflow starts with smoothing raw data. This is the highest-impact missing area.
+Minimum viable for the milestone to ship:
 
-2. **Public Lp norm/distance functions + pairwise distance matrix** — These are required by kNN regression, k-means clustering, and agglomerative clustering. Unblocking this unblocks a chain of other features.
+- [x] `gak_distance_log(x, y, sigma, band)` — log-domain DP recursion, the core primitive
+- [x] `gak(x, y, sigma, band)` — normalized kernel value in [0,1]
+- [x] `gak_gram_train(data, sigma, band)` — symmetric n×n Gram matrix
+- [x] `gak_gram_test(test_data, train_data, sigma, band)` — n_test×n_train matrix
+- [x] `kernel_kmeans_fd(data, config)` — kernel-k-means with `n_init` restarts
+- [x] `KernelKmeansFit::predict(new_data)` — assign new curves to trained clusters
+- [x] `KernelKmeansConfig` — config struct with `n_clusters`, `sigma`, `max_iter`, `tol`, `n_init`, `band`, `seed`
+- [x] `sigma_gak(data, n_samples, seed)` — bandwidth heuristic (differentiator but so low-effort it belongs in v1)
+- [x] Series-length-ratio validation and all `InvalidParameter` / `InvalidDimension` error paths
+- [x] Inline tests: log-domain vs product-space equivalence (small series), self-similarity = 1, Gram symmetry, kernel-k-means convergence smoke test
 
-3. **Functional k-means clustering** — Scikit-fda's most-used clustering method; fdars has only GMM. Gap is wide and high visibility.
+### Add After Validation (v0.32.x)
 
-4. **FPLS + FPLSRegression** — Companion to FPCA/FPCARegression; expected by users coming from R/Python FDA ecosystems.
+- [ ] Criterion benchmark (n × m grid for Gram computation, k-means convergence) — follow BENCH-RESULTS.md convention
+- [ ] Example file (`examples/gak_clustering.rs`) with a labeled dataset + cluster recovery check
+- [ ] Serde support for `KernelKmeansConfig` / `KernelKmeansFit` (already behind `cfg_attr` — trivial)
 
-5. **Shift registration + landmark registration** — The SRSF elastic registration exists but the simpler shift/landmark methods are missing; users often want the cheaper method first.
+### Future Consideration (v0.33+)
 
-6. **kNN regression + Kernel regression** — Simpler regression baselines expected alongside the linear model.
+- [ ] Multivariate curve support (requires `FdMatrix` multivariate representation decision)
+- [ ] Native kernel SVM (requires QP solver dependency decision)
+- [ ] Kernel PCA via GAK Gram matrix
 
-7. **Statistical inference (ANOVA, Hotelling T²)** — No hypothesis testing at all; significant gap for a scientific computing library.
+---
 
-8. **FPCA as a standalone public transformer** — Currently embedded inside regression result types; should be extractable and usable independently in any pipeline.
+## Feature Prioritization Matrix
 
-9. **Standard benchmark dataset loaders** — Critical for reproducibility, examples, and user onboarding. Low implementation cost.
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| `gak` normalized kernel | HIGH | MEDIUM | P1 — foundation |
+| `gak_gram_train` | HIGH | LOW (uses existing matrix helpers) | P1 — kernel-k-means depends on it |
+| `kernel_kmeans_fd` + `predict` | HIGH | HIGH | P1 — headline deliverable |
+| `gak_gram_test` | HIGH | LOW | P1 — SVM glue deliverable |
+| `sigma_gak` heuristic | MEDIUM | LOW | P1 — too cheap to defer |
+| Log-domain stability | HIGH | MEDIUM | P1 — correctness on realistic data |
+| Triangular band constraint | MEDIUM | MEDIUM | P2 — performance optimization |
+| Rayon parallelism for Gram | MEDIUM | LOW | P2 — follows existing pattern |
+| Criterion bench | LOW | LOW | P2 — fdars convention |
+| Native kernel SVM | HIGH | HIGH (new dependency) | P3 — out of scope this milestone |
 
-10. **Representation layer formalization** — The `FdMatrix` + separate domain-specific usage is workable but not as discoverable as scikit-fda's `FDataGrid`/`FDataBasis` distinction; medium-term architectural work.
+---
+
+## Competitor Feature Analysis
+
+| Feature | tslearn@0.9.0 | dtwclust (R) | fdars v0.32.0 Plan |
+|---------|---------------|--------------|-------------------|
+| Unnormalized GAK | `_log_unnormalized_gak` (internal) | `GAK(normalize=FALSE)` returns log | `gak_distance_log` (pub(crate) or pub) |
+| Normalized GAK | `gak(s1, s2, sigma)` | `GAK(normalize=TRUE)` | `gak(x, y, sigma, band)` |
+| Pairwise Gram matrix | `cdist_gak(dataset1, dataset2)` | `proxy::dist(X, method="gak")` | `gak_gram_train` / `gak_gram_test` |
+| Bandwidth heuristic | `sigma_gak(dataset, n_samples=100)` | `NULL` triggers built-in estimate | `sigma_gak(data, n_samples, seed)` |
+| Triangular band | implicit (window via `triangular` param) | `window.size` parameter | `band: Option<usize>` |
+| Kernel k-means | `KernelKMeans(kernel='gak')` | Not provided | `kernel_kmeans_fd(data, config)` |
+| SVM with GAK | `tslearn.svm.TimeSeriesSVC(kernel='gak')` | Not provided | Gram-matrix export only (no native SVM) |
+| Parallelism | `n_jobs` parameter | Single-threaded R | `iter_maybe_parallel!` under `parallel` feature |
+| Log-domain stability | Yes (re-executes in log if overflow) | Yes | Yes (always log-domain from the start) |
 
 ---
 
 ## Sources
 
-- [scikit-fda API Reference (stable 0.10.1)](https://fda.readthedocs.io/en/stable/apilist.html)
-- [scikit-fda Registration docs](https://fda.readthedocs.io/en/latest/modules/preprocessing/registration.html)
-- [scikit-fda Feature Construction docs](https://fda.readthedocs.io/en/stable/modules/preprocessing/feature_construction.html)
-- [scikit-fda Representation docs](https://fda.readthedocs.io/en/latest/modules/representation.html)
-- [scikit-fda GitHub Releases](https://github.com/GAA-UAM/scikit-fda/releases)
-- [scikit-fda paper (arXiv:2211.02566)](https://arxiv.org/abs/2211.02566)
-- fdars codebase: `.planning/codebase/ARCHITECTURE.md` (2026-08-07)
-- fdars milestone: `.planning/PROJECT.md` (v0.14.0 audit milestone)
+- Cuturi, M. (2011). "Fast Global Alignment Kernels." Proceedings of the 28th ICML, 929–936. https://icml.cc/2011/papers/489_icmlpaper.pdf
+- Dhillon, I., Guan, Y., Kulis, B. (2004). "Kernel k-Means, Spectral Clustering and Normalized Cuts." KDD 2004. https://dl.acm.org/doi/10.1145/1014052.1014118
+- tslearn@0.9.0 `gak` API: https://tslearn.readthedocs.io/en/stable/gen_modules/metrics/tslearn.metrics.gak.html
+- tslearn@0.9.0 `sigma_gak` API: https://tslearn.readthedocs.io/en/stable/gen_modules/metrics/tslearn.metrics.sigma_gak.html
+- tslearn@0.9.0 `KernelKMeans` API: https://tslearn.readthedocs.io/en/stable/gen_modules/clustering/tslearn.clustering.KernelKMeans.html
+- tslearn@0.9.0 Kernel Methods user guide: https://tslearn.readthedocs.io/en/stable/user_guide/kernel.html
+- dtwclust R package `GAK` function: https://rdrr.io/cran/dtwclust/man/GAK.html
+- scikit-learn SVC precomputed kernel: https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
+- GAP-BACKLOG.md GAP-01 (v0.31.0): `.planning/research/GAP-BACKLOG.md`
+- survey-pyx.md PYX-01 (v0.31.0): `.planning/research/survey-pyx.md`
+- fdars-core `metric/soft_dtw.rs` (existing `softmin3`, `soft_dtw_distance`, pairwise matrix helpers): local codebase
+- fdars-core `metric/mod.rs` (existing `self_distance_matrix`, `cross_distance_matrix`): local codebase
+- fdars-core `clustering.rs` (existing `KmeansResult`, `KmeansConfig` pattern): local codebase
 
 ---
-
-*Feature research for: FDA library capability gap analysis (fdars vs scikit-fda 0.10.1)*
-*Researched: 2026-08-07*
-*Confidence: MEDIUM — scikit-fda API verified against official docs; fdars coverage inferred from codebase map*
+*Feature research for: v0.32.0 Global Alignment Kernel + kernel-k-means + Gram-matrix export*
+*Researched: 2026-09-02*
