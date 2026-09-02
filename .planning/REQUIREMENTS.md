@@ -49,24 +49,24 @@ Explicitly excluded for v0.32.0. Documented to prevent scope creep.
 
 ## Traceability
 
-Populated during roadmap creation.
+Mapped during roadmap creation (2026-09-02). Three-phase dependency spine: 54 (kernel core) → 55 (Gram export) → 56 (kernel-k-means).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GAK-01 | TBD | Pending |
-| GAK-02 | TBD | Pending |
-| GAK-03 | TBD | Pending |
-| GAK-04 | TBD | Pending |
-| GAK-05 | TBD | Pending |
-| GAK-06 | TBD | Pending |
-| GAK-07 | TBD | Pending |
-| GAK-08 | TBD | Pending |
+| GAK-01 | Phase 54 | Pending |
+| GAK-02 | Phase 54 | Pending |
+| GAK-03 | Phase 54 | Pending |
+| GAK-04 | Phase 54 | Pending |
+| GAK-05 | Phase 55 | Pending |
+| GAK-06 | Phase 55 | Pending |
+| GAK-07 | Phase 56 | Pending |
+| GAK-08 | Phase 56 | Pending |
 
 **Coverage:**
 - Milestone requirements: 8 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 8 ⚠️
+- Mapped to phases: 8 ✓ (Phase 54: GAK-01/02/03/04 · Phase 55: GAK-05/06 · Phase 56: GAK-07/08)
+- Unmapped: 0 ✓ (no orphans, no duplicates)
 
 ---
 *Requirements defined: 2026-09-02*
-*Last updated: 2026-09-02 after initial definition*
+*Last updated: 2026-09-02 after roadmap creation (traceability populated)*
