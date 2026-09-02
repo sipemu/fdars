@@ -5,6 +5,15 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0]
+
+### Added
+
+- **Global Alignment Kernel (GAK)** (`metric::gak`): a positive-semi-definite Triangular Global Alignment Kernel (Cuturi 2011) for curve sets, built atop the existing soft-DTW alignment machinery. `gak(x: &[f64], y: &[f64], sigma: f64) -> f64` returns the normalized pairwise similarity in `[0,1]` (unit self-similarity) computed via a **log-domain** (log-sum-exp) forward DP — mandatory for numerical stability, as the raw-product recursion underflows to zero for series longer than ~50 points. `gak_gram_matrix(data: &FdMatrix, config: &GakConfig) -> Result<FdMatrix, FdarError>` builds an n×n Gram matrix that is symmetric by assignment (bit-exact) and PSD (unit diagonal), parallelized under the `parallel` feature. `sigma_gak(data: &FdMatrix) -> f64` provides a median-distance bandwidth heuristic. `GakConfig { sigma: Option<f64> }` (serde-gated) selects an explicit or auto σ. Reference baseline: tslearn@0.9.0 `gak`/`cdist_gak`/`sigma_gak`.
+- **GAK Gram-matrix export for external precomputed-kernel SVM** (`metric::gak`): `gak_gram_train(data, config) -> Result<GakGramTrain, FdarError>` produces a training Gram (n_train × n_train, PSD, unit diagonal) plus the stored training self-kernels and resolved σ; `gak_gram_predict(&GakGramTrain, new_data) -> Result<FdMatrix, FdarError>` produces an n_test × n_train prediction Gram cross-normalized against the **stored** training self-kernels — matching the `sklearn SVC(kernel='precomputed')` convention. The split train/predict API prevents the silent self-kernel-normalization bug. fdars ships no SVM of its own; the exported Gram is fed to an external precomputed-kernel classifier.
+- **Kernel-k-means clustering on curves** (`kernel_kmeans`): `kernel_kmeans_fd(data, config) -> Result<KernelKmeansResult, FdarError>` clusters a curve set through the GAK kernel using the kernel trick (feature-space assignment, **no explicit centroid curve**), with `n_init` random-partition restarts, empty-cluster recovery, and deterministic per-restart seeding. `KernelKmeansConfig { n_clusters, n_init, max_iter, tol, seed, gak }` (serde-gated, `Default`: n_init=10, max_iter=300, tol=1e-4). `KernelKmeansResult::predict(&FdMatrix)` assigns out-of-sample curves reusing the fitted σ/normalization via `gak_gram_predict`. Reference baseline: tslearn@0.9.0 `KernelKMeans`.
+- All additive/non-breaking: existing public signatures are unchanged; no new crate dependency (builds on `metric::soft_dtw`, `distance`, and the existing clustering machinery).
+
 ## [0.22.0]
 
 ### Added
