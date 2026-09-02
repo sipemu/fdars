@@ -1,28 +1,23 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.34.0 — k-Shape Clustering & Shape-Based Distance",
+  "milestone": "v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)",
   "phases": [
     {
-      "number": "61",
-      "name": "SBD Distance Core",
-      "status": "complete"
+      "number": "64",
+      "name": "Criterion Machinery Core",
+      "status": "pending"
     },
     {
-      "number": "62",
-      "name": "k-Shape Clustering & Predict",
-      "status": "complete"
-    },
-    {
-      "number": "63",
-      "name": "SBD-based k-medoids & Wrap-up",
-      "status": "complete"
+      "number": "65",
+      "name": "Greedy Selection & Integration",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 64 of 2 · 50% · executing"
   },
-  "updated_at": "2026-09-02T13:03:19.554Z"
+  "updated_at": "2026-09-02T21:17:28.459Z"
 }

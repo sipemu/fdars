@@ -2,15 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.35.0
 milestone_name: Optimal Experimental Design for Sparse FDA (FOptDes)
-status: planning
-last_updated: "2026-09-02T15:00:00.000Z"
+current_phase: 64
+status: executing
+stopped_at: Roadmap created for v0.35.0 (Phases 64–65); 5 requirements (FOD-01..05) mapped, traceability updated
+last_updated: "2026-09-02T21:17:28.447Z"
 last_activity: 2026-09-02
+last_activity_desc: Phase 64 marked complete
+state_head: 644125f60959b865fc174a1f3005409852037a48
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 50
+current_phase_name: Criterion Machinery Core
 ---
 
 # Project State
@@ -20,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-02)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-05 (Optimal Experimental Design for Sparse FDA / FOptDes), rank 4 in the v0.31.0 `GAP-BACKLOG.md`.
-**Current focus:** Roadmap created for v0.35.0 (Phases 64–65). Next: `/gsd-plan-phase 64`.
+**Current focus:** Phase 64 — Criterion Machinery Core
 
 ## Current Position
 
-Phase: 64 of 65 (Criterion Machinery Core) — not started
-Plan: —
-Status: Ready to plan
-Last activity: 2026-09-02 — Roadmap created for v0.35.0 (Phases 64–65), 5 requirements mapped
+Phase: 64 — COMPLETE
+Plan: 1 of 2
+Status: Phase 64 complete
+Last activity: 2026-09-02 — Phase 64 marked complete
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -105,6 +110,7 @@ Relevant to current work (v0.35.0):
 - **Grid-constrained candidates only** — v0.35.0 MVP constrains candidate points to the model's work grid (exact index arithmetic, no interpolation). Non-grid candidates via eigenfunction interpolation (FOD-B5) deferred. Document in rustdoc. Non-blocking.
 - **`!Send` in the parallel sweep** — the candidate closure must capture only immutable references to the pre-computed `M_S`; each closure allocates its own local Σ_d/M copy (no shared mutable state). `PaceFpcaResult` is `Send + Sync`; no FFT/`FftPlanner` here. Verify `cargo build/test --features parallel` compiles. Non-blocking.
 - Historical build/CI hazards (MEMORY.md) apply this implementation milestone: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds (adding a benchmark grows `target/debug/`); prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; audit-milestone-no-tag does NOT apply (this ships code → tag as normal).
+- Pre-existing serde build break (NOT v0.35.0): fdars-core/src/shapelet/classifier.rs ShapeletTransformClassifier (Phase 60, commit ea39c623) derives serde but embeds ClassifFit which lacks serde derives -> cargo build --features serde fails (E0277 x4). Independent of FOptDes; Phase 64 new types are serde-clean. Candidate GSD-ready backlog fix: add serde-gated derives to ClassifFit + fitted sub-structs.
 
 ## Deferred Items
 
