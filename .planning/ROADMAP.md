@@ -75,7 +75,7 @@ Milestone audit PASSED 7/7 requirements. Outcome: 7 ranked net-new gaps (top: GA
 **Phase shape (three phases — dependency spine):** The four researchers converged on a strictly sequential build: GAK kernel core → Gram-matrix export → kernel-k-means. Three small phases (rather than one phase / three plans) were chosen because the milestone is `granularity: fine`, each phase has a distinct set of correctness gates (Phase 54 front-loads all algorithmic risk — log-domain stability, PSD-ness, symmetry, σ-degeneracy, NaN; Phase 55 owns the train/predict split-normalization contract; Phase 56 owns restart/empty-cluster/seeding), and disjoint verification checkpoints match the fine-grained v0.14.0/v0.18.0-era convention. The phases are not thin: Phase 54 alone resolves 7+ named pitfalls. All algorithmic risk is in Phase 54; 55/56 are mechanical wrapping + a standard clustering loop.
 
 - [x] **Phase 54: GAK Kernel Core** - Log-domain PSD Global Alignment Kernel with σ heuristic (GAK-01/02/03/04) (completed 2026-09-02)
-- [ ] **Phase 55: Gram-Matrix Export (external precomputed-kernel SVM)** - Split train/predict Gram matrices with correct cross-normalization (GAK-05/06)
+- [x] **Phase 55: Gram-Matrix Export (external precomputed-kernel SVM)** - Split train/predict Gram matrices with correct cross-normalization (GAK-05/06) (completed 2026-09-02)
 - [ ] **Phase 56: Kernel-k-means Clustering** - Cluster curve sets through GAK with restarts, empty-cluster recovery, and out-of-sample predict (GAK-07/08)
 
 ## Phase Details
@@ -131,7 +131,7 @@ Phases execute in numeric order: 54 → 55 → 56. All algorithmic risk is front
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 54. GAK Kernel Core | v0.32.0 | 1/1 | Complete    | 2026-09-02 |
-| 55. Gram-Matrix Export | v0.32.0 | 0/TBD | Not started | - |
+| 55. Gram-Matrix Export | v0.32.0 | 1/1 | Complete    | 2026-09-02 |
 | 56. Kernel-k-means Clustering | v0.32.0 | 0/TBD | Not started | - |
 
 ## Status

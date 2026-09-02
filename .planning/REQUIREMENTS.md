@@ -16,8 +16,8 @@ Requirements for v0.32.0. Each maps to a roadmap phase. Implementation milestone
 
 ### Gram-Matrix Export (external precomputed-kernel SVM)
 
-- [ ] **GAK-05**: User can export a training Gram matrix (n_train × n_train, symmetric PSD, unit diagonal) suitable for a precomputed-kernel SVM (`SVC(kernel='precomputed')` convention).
-- [ ] **GAK-06**: User can export a prediction Gram matrix (n_test × n_train) whose entries use the correct cross-normalization against the stored training self-kernels, so an external SVM trained on GAK-05 can score new curves in the same feature space. A split train/predict API prevents the silent self-kernel-normalization bug.
+- [x] **GAK-05**: User can export a training Gram matrix (n_train × n_train, symmetric PSD, unit diagonal) suitable for a precomputed-kernel SVM (`SVC(kernel='precomputed')` convention).
+- [x] **GAK-06**: User can export a prediction Gram matrix (n_test × n_train) whose entries use the correct cross-normalization against the stored training self-kernels, so an external SVM trained on GAK-05 can score new curves in the same feature space. A split train/predict API prevents the silent self-kernel-normalization bug.
 
 ### Kernel-k-means Clustering
 
@@ -57,8 +57,8 @@ Mapped during roadmap creation (2026-09-02). Three-phase dependency spine: 54 (k
 | GAK-02 | Phase 54 | Complete |
 | GAK-03 | Phase 54 | Complete |
 | GAK-04 | Phase 54 | Complete |
-| GAK-05 | Phase 55 | Pending |
-| GAK-06 | Phase 55 | Pending |
+| GAK-05 | Phase 55 | Complete |
+| GAK-06 | Phase 55 | Complete |
 | GAK-07 | Phase 56 | Pending |
 | GAK-08 | Phase 56 | Pending |
 
