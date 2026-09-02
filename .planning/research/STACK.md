@@ -1,283 +1,302 @@
-# Stack Research: Shapelet Transform & Classification (v0.33.0)
+# Stack Research: k-Shape Clustering & Shape-Based Distance (v0.34.0)
 
-**Domain:** Rust functional-data-analysis library — adding discovery-based shapelet transform + bundled ShapeletTransformClassifier to fdars-core
+**Domain:** Rust functional-data-analysis library — adding SBD (Shape-Based Distance) + k-Shape clustering to fdars-core
 **Researched:** 2026-09-02
-**Confidence:** MEDIUM (sktime/pyts APIs verified via official docs; algorithm cross-checked via published paper abstracts; codebase read HIGH confidence)
+**Confidence:** HIGH (codebase read = HIGH; tslearn source verified via GitHub API = MEDIUM cross-checked with web = MEDIUM-verified; algorithm paper cross-checked)
 
 ---
 
 ## Dependency Verdict: NO NEW CRATE DEPENDENCIES REQUIRED
 
-All four v0.33.0 deliverables — shapelet-distance core, discovery & ranking, shapelet transform, and bundled ShapeletTransformClassifier — can be built entirely on the existing stack. This is the primary finding.
+All four v0.34.0 deliverables — SBD core, k-Shape fit, out-of-sample predict, and SBD-k-medoids — can be built entirely on the existing crate dependency set. This is the primary finding.
 
 Explicit confirmation per feature:
 
 | Feature | Required new dep? | Rationale |
 |---------|------------------|-----------|
-| Z-normalization of subsequences | NO | `fdata::NormalizationMethod::CurveStandardize` already implements per-row z-norm (subtract mean, divide by std) via `row_normalize(..., RowNorm::Standardize)`. For a subsequence slice a thin inline helper suffices — same arithmetic. |
-| Squared Euclidean distance (sliding window min) | NO | `FdMatrix::row_l2_sq` computes inline squared L2 without allocation. For subsequence pairs: plain scalar loop over slice indices. |
-| Early-abandon distance | NO | Pure scalar `f64` arithmetic with a running `best_so_far` bound — no dep needed. |
-| Candidate subsequence generation | NO | Iterate `(start, length)` pairs over training curve rows; no container dep needed. |
-| Information gain scoring | NO | Binary class entropy = `-p*ln(p) - (1-p)*ln(1-p)` using `f64::ln`; no dep. For multi-class: same. |
-| F-statistic scoring (ANOVA alternative) | NO | `function_on_scalar::integrated_f_statistic` already exists as `pub(crate)` — the exact pattern is present. |
-| Self-similarity pruning | NO | Sort shapelets by position/series index; prune overlapping windows in a single pass — pure logic. |
-| Shapelet transform (n×K distance matrix) | NO | `FdMatrix` (existing column-major matrix) is the output type. |
-| Parallelism over candidate evaluation | NO | `iter_maybe_parallel!` macro from `parallel.rs` gates `rayon` (already a dep). |
-| Bundled classifier (kNN on K distance features) | NO | `knn_classify_from_distances(&dist_mat, y, k_nn)` exists in `classification/knn.rs` — accepts a precomputed distance matrix; the n×K feature matrix can be used directly with `euclidean_distance_matrix` from `distance.rs`. |
-| RNG seeding | NO | `rand` 0.8 + `StdRng::seed_from_u64(seed)` pattern already in the codebase. |
-| `linalg` / faer | NOT NEEDED | No SVD, Cholesky, or matrix factorization in the shapelet path. |
-| MSRV change | NONE | All code is plain `f64` arithmetic; MSRV stays at 1.81. |
+| FFT for NCC cross-correlation (SBD core) | NO | `rustfft` 6.2 is already a direct dependency; `FftPlanner::<f64>::new()` + `plan_fft_forward`/`plan_fft_inverse` already called in `src/fts/spectral.rs` and `src/seasonal/mod.rs` |
+| Z-normalization of full series | NO | `shapelet::z_normalize_window(&[f64]) -> Vec<f64>` shipped in v0.33.0 — exact per-slice z-norm needed by SBD |
+| Symmetric eigendecomposition for shape extraction | NO | `nalgebra::SymmetricEigen` already called in `src/fts/spectral.rs` (line 208: `nalgebra::SymmetricEigen::new(mat)`) — covers the `M = Q^T S Q` problem in shape extraction |
+| k-Shape n_init restarts + empty-cluster handling | NO | Direct mirror of `kernel_kmeans.rs` pattern (v0.32.0): `StdRng::seed_from_u64(config.seed.wrapping_add(restart as u64))`, farthest-point empty-cluster recovery, lowest-inertia restart kept |
+| Out-of-sample predict | NO | Same contract as `KernelKmeansResult::predict` (v0.32.0): assign new series to nearest centroid via SBD; no re-estimation |
+| SBD-based k-medoids | NO | `alignment::clustering::kmedoids_from_distances(&dist_mat, &config)` already accepts any precomputed distance matrix — plug SBD distance matrix in directly |
+| Pairwise distance matrix | NO | `src/distance.rs::pairwise_distance_matrix` + `cross_distance_matrix` reusable, or implement inline symmetric loop (upper-triangle fill) — same pattern used in `alignment/clustering.rs` |
+| RNG seeding | NO | `rand` 0.8 + `StdRng::seed_from_u64` pattern established in `clustering.rs`, `kernel_kmeans.rs` |
+| `linalg` / faer | NOT NEEDED | nalgebra 0.33 `SymmetricEigen` is sufficient for the sz×sz centroid matrix; no Cholesky/SVD path |
+| MSRV change | NONE | All code is `f64` arithmetic + existing crate APIs; MSRV stays at 1.81 |
 
 ---
 
-## Out of Scope: Learning Shapelets
+## Core Technologies
 
-**tslearn `LearningShapelets` (gradient-based) is explicitly NOT in scope for v0.33.0.**
+### Primary Technologies (all existing deps — no changes to Cargo.toml)
 
-tslearn@0.9.0 ships two distinct shapelet families:
+| Technology | Version in Cargo.toml | Role in v0.34.0 | Existing Usage Anchor |
+|------------|----------------------|-----------------|----------------------|
+| Rust (MSRV 1.81) | 1.81 min / 1.97 dev | All implementation | Entire codebase |
+| rustfft | 6.2 | FFT forward/inverse for NCC computation in SBD | `src/fts/spectral.rs:42,142-143`; `src/seasonal/mod.rs:286-287,352-354` |
+| nalgebra | 0.33 | `SymmetricEigen` for M=Q^T·S·Q shape-extraction centroid step | `src/fts/spectral.rs:208`; `src/regression.rs` (SVD) |
+| rand | 0.8 | `StdRng::seed_from_u64(seed + restart)` for deterministic n_init restarts | `src/kernel_kmeans.rs:263`; `src/clustering.rs:584,773` |
 
-| tslearn class | Approach | In scope? |
-|---------------|----------|-----------|
-| `ShapeletModel` (alias: `LearningShapelets`) | Gradient descent on shapelet parameters embedded in a differentiable transform + logistic loss; requires autodiff | **NO** — deferred (GAP-08 autodiff is a separate, much larger effort) |
-| (no direct equivalent) | Discovery-based: enumerate candidates, score by information gain, select top-K | **YES** — this is v0.33.0 |
+### Supporting Existing Infrastructure
 
-The discovery approach is the basis of Hills/Lines/Bagnall (2014) and is what sktime's `RandomShapeletTransform` and pyts's `ShapeletTransform` implement. It requires no gradient machinery.
+| Primitive | Location | v0.34.0 Role | Reuse Type |
+|-----------|----------|-------------|------------|
+| `z_normalize_window(&[f64]) -> Vec<f64>` | `src/shapelet/distance.rs` | Per-series z-normalization before SBD (the paper requires z-normalized input) | Direct call |
+| `z_normalize_into(src, dst)` | `src/shapelet/distance.rs` | In-place variant for hot-loop centroid normalization | Direct call |
+| `kmedoids_from_distances(dist_mat, config)` | `src/alignment/clustering.rs` | SBD-k-medoids: pass SBD distance matrix as a drop-in consumer | Direct call (no changes) |
+| `KMedoidsConfig` / `KMedoidsResult` | `src/alignment/clustering.rs` | Config + result types for SBD-k-medoids path | Direct reuse |
+| `FdMatrix` | `src/matrix.rs` | Input data container; all rows are curve observations | Existing type |
+| `FdarError` | `src/error.rs` | `Result<T, FdarError>` error handling throughout | Existing type |
+| `iter_maybe_parallel!` / `maybe_par_chunks_mut!` | `src/parallel.rs` | Gate rayon parallelism on pairwise SBD distance matrix computation | Existing macros |
+| `seed_for_thread(seed, k)` | `src/helpers.rs` | Per-restart RNG (alternative to inline `seed_from_u64`) | Existing helper |
 
 ---
 
-## Reference Baselines — Pinned Versions & Exact APIs
+## Reference Baseline — Pinned Version & Exact API
 
-### 1. sktime `ShapeletTransformClassifier` + `RandomShapeletTransform`
+### tslearn@0.9.0 — `KShape` (verified via GitHub API on tslearn-team/tslearn `main`)
 
-**Version:** sktime stable (≥ 0.30.0). The `ShapeletTransformClassifier` wraps `RandomShapeletTransform` + `RotationForest` (default estimator). Verified via https://www.sktime.net/en/stable/.
-
-#### `RandomShapeletTransform` (the transform component)
+**Class signature (stable, from tslearn 0.9.0 docs):**
 
 ```python
-RandomShapeletTransform(
-    n_shapelet_samples=10000,   # candidate shapelets to evaluate
-    max_shapelets=None,          # K retained; default = min(10 * n_instances, 1000)
-    min_shapelet_length=3,       # minimum subsequence length
-    max_shapelet_length=None,    # None = series length
-    remove_self_similar=True,    # prune overlapping candidates from same series
-    time_limit_in_minutes=0.0,   # 0 = no time budget
-    contract_max_n_shapelet_samples=inf,
-    n_jobs=1,
-    parallel_backend=None,
-    batch_size=100,
-    random_state=None
-)
-```
-
-- **Scoring criterion:** information gain (binary or multiclass entropy split). Candidates are abandoned early if their maximum achievable IG cannot beat the current K-th best (early-abandon bound).
-- **Transform output:** `n_series × K` matrix of minimum sliding-window distances from each series to each retained shapelet.
-- **Fit produces:** `shapelets_` list; `transform(X)` returns the feature matrix.
-
-#### `ShapeletTransformClassifier`
-
-```python
-ShapeletTransformClassifier(
-    n_shapelet_samples=10000,
-    max_shapelets=None,
-    max_shapelet_length=None,
-    estimator=None,              # default: RotationForest
-    transform_limit_in_minutes=0,
-    time_limit_in_minutes=0,
-    contract_max_n_shapelet_samples=inf,
-    save_transformed_data=False,
-    n_jobs=1,
-    batch_size=100,
-    random_state=None
-)
-```
-
-- Pipeline: `RandomShapeletTransform.fit_transform(X_train, y)` → `estimator.fit(X_transformed, y)`.
-- `predict(X_test)`: `RandomShapeletTransform.transform(X_test)` → `estimator.predict(X_transformed)`.
-
-**fdars counterpart naming convention:** `ShapeletTransformClassifier` → `ShapeletTransformClassifier` struct with `fit` + `predict` methods matching this pipeline shape.
-
-### 2. pyts `ShapeletTransform` (pyts@0.13.x)
-
-**Version:** pyts 0.13.0 (PyPI stable as of the v0.31.0 audit). Verified via https://pyts.readthedocs.io/en/latest/.
-
-```python
-pyts.transformation.ShapeletTransform(
-    n_shapelets='auto',      # int or 'auto' → n_timestamps // 2
-    criterion='mutual_info', # 'mutual_info' or 'anova' (F-score)
-    window_sizes='auto',     # array-like or 'auto'
-    window_steps=None,       # stride; None → 1
-    remove_similar=True,
-    sort=False,
-    verbose=0,
+tslearn.clustering.KShape(
+    n_clusters=3,      # number of clusters
+    max_iter=100,      # maximum Lloyd iterations
+    tol=1e-06,         # inertia variation convergence threshold
+    n_init=1,          # restarts (NOTE: default is 1; fdars should use 10 like kernel_kmeans)
+    verbose=False,
     random_state=None,
-    n_jobs=None
+    init='random'      # 'random' or ndarray of shape (n_clusters, ts_size, d)
 )
 ```
 
-- `fit(X, y)` → self; `transform(X)` → `X_new` shape `(n_samples, n_shapelets)`.
-- Post-fit attributes: `shapelets_` (array of shapelet values), `indices_` (n_shapelets × 3 array: `[series_index, start, length]`), `scores_`.
-- Two scoring criteria: mutual information (default) and F-statistic via ANOVA. The fdars implementation uses **F-statistic** as the primary discriminative score (simpler, no class-probability estimation; consistent with the `integrated_f_statistic` helper already in the codebase).
+**fit(X, y=None)** — X shape `(n_ts, sz, d)`. Returns self with `.cluster_centers_`, `.labels_`, `.inertia_`, `.n_iter_`.
 
-**Key difference from sktime:** pyts requires explicit `window_sizes`; sktime uses `n_shapelet_samples` + random length sampling. fdars v0.33.0 follows the sktime random-sampling model (more practical for varying-length curves), with window sizes drawn uniformly from `[min_shapelet_length, max_shapelet_length]`.
+**predict(X)** — X shape `(n_ts, sz, d)`. Returns `labels` array shape `(n_ts,)`.
 
-### 3. tslearn `LearningShapelets` — NOT IN SCOPE
+**Post-fit attributes:** `cluster_centers_` shape `(n_clusters, sz, d)`, `norms_` (training norms), `norms_centroids_` (centroid norms), `labels_`, `inertia_`, `n_iter_`.
+
+**Module path:** `tslearn.clustering.KShape` — reference for the clustering API shape. Distance functions live in `tslearn.metrics`.
+
+### tslearn@0.9.0 — `cdist_normalized_cc` (verified: source read from tslearn/metrics/cycc.py via GitHub API)
+
+**Exact function signature:**
 
 ```python
-# tslearn@0.9.0 — DEFERRED; do not implement in v0.33.0
-tslearn.shapelets.LearningShapelets(
-    n_shapelets_per_size={...},
-    max_iter=10000,
-    batch_size=256,
-    optimizer='sgd',
-    weight_regularizer=0.01,
-    shapelet_length=0.1,
-    verbose_level=0,
-    scale=False,
-    random_state=None,
-    total_lengths=...
-)
+cdist_normalized_cc(
+    dataset1,        # shape (n_ts1, sz, d)
+    dataset2,        # shape (n_ts2, sz, d)
+    norms1,          # shape (n_ts1,) — precomputed L2 norms; negative = compute lazily
+    norms2,          # shape (n_ts2,)
+    self_similarity  # bool — if True, only compute upper triangle (symmetric case)
+) -> dists           # shape (n_ts1, n_ts2) — max NCC values (NOT yet subtracted from 1)
 ```
 
-Requires backpropagation through shapelet distances → deferred to GAP-08 (differentiable FDA core, score 1.73). Do not attempt in v0.33.0.
+**SBD distance** = `1.0 - cdist_normalized_cc(...)` (applied in `KShape._cross_dists`).
+
+### tslearn@0.9.0 — `normalized_cc` (the SBD kernel, from tslearn/metrics/cycc.py)
+
+This is the core NCC computation — the exact formula fdars must replicate:
+
+```python
+def normalized_cc(s1, s2, norm1=-1.0, norm2=-1.0):
+    sz = s1.shape[0]
+    n_bits = 1 + int(np.log2(2 * sz - 1))   # ceil(log2(2*sz - 1))
+    fft_sz = 2 ** n_bits                      # next power of two >= 2*sz - 1
+
+    denom = norm1 * norm2                      # precomputed L2 norms product
+    if denom < 1e-9: denom = np.inf           # guard: zero-norm series
+
+    cc = np.real(np.fft.ifft(
+        np.fft.fft(s1, fft_sz, axis=0) *
+        np.conj(np.fft.fft(s2, fft_sz, axis=0)),
+        axis=0,
+    ))                                         # length fft_sz, circular cross-corr
+    cc = np.vstack((cc[-(sz-1):], cc[:sz]))   # rearrange to linear lags: 2*sz-1 entries
+    norm_cc = cc.sum(axis=-1) / denom         # scalar (1D) or summed over d dims
+    return norm_cc                             # shape (2*sz - 1,); SBD uses max()
+```
+
+**Rust translation notes:**
+
+1. `fft_sz = (2 * sz - 1).next_power_of_two()` — exact Rust equivalent; rustfft handles arbitrary sizes but power-of-two is fastest.
+2. `FftPlanner::<f64>::new()` + `plan_fft_forward(fft_sz)` and `plan_fft_inverse(fft_sz)` — identical to `seasonal/mod.rs` lines 352–354.
+3. The `conj` multiply in frequency domain = pointwise `Complex { re: a.re*b.re + a.im*b.im, im: a.im*b.re - a.re*b.im }` (conjugate of s2 times s1).
+4. After IFFT, rearrange: take last `sz-1` elements followed by first `sz` elements of the `fft_sz`-length buffer — this gives the 2*sz-1 linear cross-correlation lags.
+5. Divide by `norm1 * norm2` (precomputed scalar norms of z-normalized series).
+6. **SBD** = `1.0 - norm_cc.iter().copied().fold(f64::NEG_INFINITY, f64::max)`.
+7. **Optimal shift** = `argmax(norm_cc) + 1 - sz` (converts 0-based index to lag in `[-(sz-1), sz-1]`).
+
+**fdars naming convention:** `sbd(s1: &[f64], s2: &[f64]) -> f64` for the distance; `ncc(s1: &[f64], s2: &[f64]) -> (f64, i64)` for `(max_ncc, optimal_shift)`.
+
+### tslearn@0.9.0 — `y_shifted_sbd_vec` (centroid alignment step, from tslearn/metrics/cycc.py)
+
+Aligns each cluster member to the current centroid before shape extraction:
+
+```python
+# For each series in cluster: compute NCC, find argmax shift, circularly-shift the series
+idx = np.argmax(cc)
+shift = idx + 1 - sz    # lag: negative = shift left, positive = shift right
+if shift > 0:   dataset_shifted[i, shift:] = dataset[i, :-shift, :]
+elif shift < 0: dataset_shifted[i, :shift] = dataset[i, -shift:, :]
+else:           dataset_shifted[i] = dataset[i]
+```
+
+**Rust translation:** shift a `Vec<f64>` slice in-place; truncation-fill (not wrap-around). Produces a new aligned copy per series in the cluster.
+
+### tslearn@0.9.0 — `KShape._shape_extraction` (centroid update, from tslearn/clustering/kshape.py)
+
+```python
+def _shape_extraction(self, X, k):
+    Xp = y_shifted_sbd_vec(centroid_k, cluster_members, ...)  # SBD-align
+    S = Xp.T @ Xp                          # sz × sz, symmetric positive semidefinite
+    Q = I_sz - ones(sz,sz) / sz            # centering matrix, symmetric
+    M = Q.T @ S @ Q                        # sz × sz, symmetric
+    _, vec = numpy.linalg.eigh(M)          # ascending eigenvalues; vec[:,-1] = top eigenvector
+    mu_k = vec[:, -1]                      # largest eigenvector
+    # Sign disambiguation: pick sign of mu_k that minimizes sum of SBD distances
+    dist_plus  = sum(norm(Xp - mu_k))
+    dist_minus = sum(norm(Xp + mu_k))
+    if dist_minus < dist_plus: mu_k *= -1
+    # After all clusters done: re-z-normalize centroids
+```
+
+**Eigendecomposition assessment:** M is symmetric (Q is symmetric idempotent, S is symmetric PSD → M = Q S Q is symmetric). `numpy.linalg.eigh` is the symmetric eigensolver. **`nalgebra::SymmetricEigen::new(mat)`** is the exact Rust equivalent — already proven in `src/fts/spectral.rs` line 208 with the same pattern (build DMatrix, call SymmetricEigen, sort by eigenvalue descending). Use identical pattern: build `DMatrix<f64>` from M (sz×sz), call `SymmetricEigen::new`, pick the eigenvector with the largest eigenvalue.
+
+**Sign disambiguation:** compute sum of L2 distances of aligned cluster members to `+mu_k` vs `-mu_k`; pick the sign with lower total distance. Uses `FdMatrix::row_l2_sq` or inline L2 loop — no dep.
 
 ---
 
-## Existing Primitives: Present vs. To-Be-Written
+## Existing Primitives: Reuse Map
 
 ### Already Present in fdars-core (HIGH confidence — direct codebase read)
 
-| Primitive | Location | API | Reuse Type |
-|-----------|----------|-----|------------|
-| Per-row z-normalization (full curves) | `src/fdata.rs` | `normalize(data, NormalizationMethod::CurveStandardize)` → `FdMatrix` | Adapt for subsequence slices inline |
-| Pointwise row mean + std | `src/fdata.rs:row_normalize` | `RowNorm::Standardize`: `mean = sum/m`, `std = sqrt(sum_sq/(m-1))`, safe denom | Copy pattern for subsequence slice |
-| Squared row L2 (no alloc) | `src/matrix.rs` | `FdMatrix::row_l2_sq(row_a, other, row_b) -> f64` | Direct reuse where shapes match; for subsequences use inline scalar loop |
-| Symmetric distance matrix loop (upper triangle + parallel) | `src/distance.rs` | `pairwise_distance_matrix(n, dist_fn)` + `euclidean_distance_matrix` | Reuse for training-set Euclidean distance on the n×K feature matrix |
-| Cross distance matrix | `src/distance.rs` | `cross_distance_matrix(n_new, n_train, dist_fn)` | Reuse for predict path |
-| kNN from precomputed distance matrix | `src/classification/knn.rs` | `knn_classify_from_distances(dist_mat, y, k_nn) -> ClassifResult` | Direct — the bundled STC classifier backend |
-| kNN Euclidean (feature space) | `src/classification/fit.rs` | `fclassif_knn_fit(data, y, None, ncomp, k_nn) -> ClassifFit` | Alternative: pass n×K feature matrix as `data` with `ncomp = K` |
-| F-statistic scoring (1D scalar response) | `src/function_on_scalar.rs` | `pub(crate) integrated_f_statistic(data, groups, labels)` | Adapt pattern for scalar distance split |
-| Parallel macro | `src/parallel.rs` | `iter_maybe_parallel!` / `slice_maybe_parallel!` | Gate candidate evaluation loop |
-| Per-thread RNG seeding | widespread | `StdRng::seed_from_u64(seed + thread_id as u64)` | Direct reuse |
-| `FdMatrix` as output type | `src/matrix.rs` | Column-major `FdMatrix::zeros(n, K)` | The n×K shapelet-distance feature matrix |
+| Primitive | Location | v0.34.0 Reuse |
+|-----------|----------|--------------|
+| `FftPlanner::<f64>::new()` + `plan_fft_forward(n)` / `plan_fft_inverse(n)` | `src/fts/spectral.rs:42,143,308` | SBD NCC core — identical API call |
+| `(2*n).next_power_of_two()` pattern | `src/seasonal/mod.rs:350` | SBD FFT padding: `(2 * sz - 1).next_power_of_two()` |
+| `rustfft::num_complex::Complex<f64>` + buffer pattern | `src/fts/spectral.rs:150` | FFT buffer type for NCC |
+| `nalgebra::SymmetricEigen::new(mat)` | `src/fts/spectral.rs:208` | Shape-extraction eigenproblem (M = Q S Q) |
+| `DMatrix::from_fn(m, m, ...)` | `src/fts/spectral.rs:198` | Build M for shape extraction |
+| Eigenvector sign-alignment pattern | `src/fts/spectral.rs:224-236` | Sign disambiguation of mu_k (existing pattern; adapt for SBD-based sign test instead of largest-magnitude-entry rule) |
+| `z_normalize_window(slice: &[f64]) -> Vec<f64>` | `src/shapelet/distance.rs:114` | Pre-normalize series before SBD; z-normalize centroids after each centroid update |
+| `z_normalize_into(src, dst)` | `src/shapelet/distance.rs:57` | In-place variant for normalizing centroid buffers |
+| `kmedoids_from_distances(dist_mat, config)` | `src/alignment/clustering.rs` | SBD-k-medoids: pass `sbd_distance_matrix(data)` output directly |
+| `KMedoidsConfig` / `KMedoidsResult` | `src/alignment/clustering.rs` | Config + result types for SBD-k-medoids — no new types needed |
+| `StdRng::seed_from_u64(config.seed.wrapping_add(restart as u64))` | `src/kernel_kmeans.rs:263` | n_init restart seeding — copy verbatim |
+| Farthest-point empty-cluster recovery | `src/kernel_kmeans.rs:368,466` | Empty-cluster guard — copy the `ensure_no_empty_random` pattern adapted for SBD distances |
+| `iter_maybe_parallel!` | `src/parallel.rs` | Parallelize pairwise SBD distance matrix computation |
+| `FdMatrix::row_l2_sq` | `src/matrix.rs` | L2 norm for sign disambiguation in shape extraction |
+| `pub fn pairwise_distance_matrix` | `src/distance.rs` | Pairwise SBD distance matrix for `kmedoids` consumer |
 
-### To Be Written for v0.33.0
+### To Be Written for v0.34.0
 
-| Primitive | Where | Notes |
-|-----------|-------|-------|
-| `z_normalize_slice(s: &[f64]) -> Vec<f64>` | `src/shapelet/core.rs` (new) | Inline per-subsequence z-norm: mean + sample std; zero-std guard (return zeros). 10-line function. |
-| `shapelet_min_distance(shapelet: &[f64], curve_row: &[f64]) -> f64` | `src/shapelet/core.rs` | Sliding-window minimum z-normalized squared Euclidean distance with early-abandon. Core hot-path. |
-| `generate_candidates(data: &FdMatrix, min_len, max_len, n_samples, seed) -> Vec<Shapelet>` | `src/shapelet/discovery.rs` (new) | Random (series, start, length) sampling from training curves. Returns `Vec<Shapelet>` where `Shapelet { values: Vec<f64>, series: usize, start: usize, length: usize }`. |
-| `score_candidate(shapelet, data, y, n_classes) -> f64` | `src/shapelet/discovery.rs` | F-statistic or information gain on the split of per-curve minimum distances. Inline entropy/F computation — no dep. |
-| `prune_self_similar(candidates: Vec<Shapelet>, threshold) -> Vec<Shapelet>` | `src/shapelet/discovery.rs` | Remove shapelets from the same series with overlapping windows. |
-| `ShapeletTransform` struct + `fit` + `transform` | `src/shapelet/transform.rs` (new) | Fit: discover → rank → prune; transform: compute n×K distance matrix for any curve set. |
-| `ShapeletTransformClassifier` struct + `fit` + `predict` | `src/shapelet/classifier.rs` (new) | Bundles `ShapeletTransform` + kNN (or LDA) classifier; matches sktime STC pipeline shape. |
-| `ShapeletConfig` | `src/shapelet/mod.rs` (new) | Config struct: `n_shapelet_samples`, `max_shapelets`, `min_shapelet_length`, `max_shapelet_length`, `remove_self_similar`, `seed`, `k_nn`. |
+| Primitive | Proposed Location | Notes |
+|-----------|-------------------|-------|
+| `sbd(s1: &[f64], s2: &[f64], fft_buf: &mut Vec<Complex<f64>>, planner: &mut FftPlanner<f64>) -> f64` | `src/kshape/sbd.rs` | Core SBD scalar; reuses caller-provided FFT planner + buffer (avoid re-planning per pair) |
+| `ncc_with_shift(s1, s2, ...) -> (f64, i64)` | `src/kshape/sbd.rs` | Returns `(max_ncc, optimal_shift)` — needed for the alignment step in shape extraction |
+| `sbd_distance_matrix(data: &FdMatrix) -> Vec<f64>` | `src/kshape/sbd.rs` | Symmetric upper-triangle pairwise matrix; gated via `iter_maybe_parallel!` |
+| `sbd_cross_distance_matrix(test, centroids) -> Vec<f64>` | `src/kshape/sbd.rs` | Cross-distance for assignment step and predict |
+| `shift_to_centroid(series_row, shift) -> Vec<f64>` | `src/kshape/sbd.rs` | Truncation-fill alignment; mirrors `y_shifted_sbd_vec` per-series step |
+| `shape_extraction(cluster_members_aligned: &FdMatrix, sz: usize) -> Vec<f64>` | `src/kshape/centroid.rs` | Build M=Q^T S Q, call `nalgebra::SymmetricEigen`, sign-disambiguate |
+| `KShapeConfig` | `src/kshape/mod.rs` | `n_clusters`, `n_init` (default 10, not tslearn's 1), `max_iter`, `tol`, `seed` |
+| `KShapeResult` struct + `predict(&self, data: &FdMatrix) -> Result<Vec<usize>>` | `src/kshape/mod.rs` | Carries `cluster_centers: FdMatrix`, `labels`, `inertia`, `iter`, `converged`, `n_init_best` |
+| `kshape_fd(data: &FdMatrix, config: &KShapeConfig) -> Result<KShapeResult, FdarError>` | `src/kshape/mod.rs` | Top-level entry point |
 
 ---
 
-## Bundled Classifier: Which fdars Classifier to Wrap
+## FFT-Size and Zero-Padding Specifics
 
-**Recommendation: kNN on the K distance features.**
+**Requirement:** Linear cross-correlation of two length-sz sequences requires a buffer of length `≥ 2*sz - 1`. Circular FFT convolution produces length-N results; to get linear cross-correlation, pad to `N ≥ 2*sz - 1` and discard the wrap-around.
 
-Rationale:
-1. **Direct primitive:** `knn_classify_from_distances(dist_mat, y, k_nn)` already accepts a precomputed n×n matrix. For the shapelet feature case, the n×K shapelet-distance matrix is a tabular Euclidean feature space — pass it through `euclidean_distance_matrix` first, then classify. Alternatively, call `fclassif_knn_fit` directly with the n×K feature matrix as `data` (treating each distance feature as a "channel") — `ncomp = K` bypasses FPCA and uses the raw features.
-2. **Precedent:** sktime's `ShapeletTransformClassifier` defaults to RotationForest, but kNN is the classic shapelet paper classifier (Ye & Keogh 2009; Hills/Lines 2014). pyts does not bundle a classifier — it is a transform only.
-3. **Simplicity:** kNN on the Euclidean distance over the K-feature space requires no hyperparameter tuning beyond `k`. LDA and QDA are alternatives if the caller wants them — expose `ClassifMethod` as a config enum field.
-
-**Concrete wiring:**
+**Power-of-two padding (required for efficiency):**
 
 ```rust
-// In ShapeletTransformClassifier::fit():
-let feature_matrix: FdMatrix = self.transform.fit_transform(&data, y)?;  // n × K
-// kNN on raw distance features (no FPCA; ncomp = K bypasses FPCA reduction):
-self.classif_fit = fclassif_knn_fit(&feature_matrix, y, None, feature_matrix.ncols(), k_nn)?;
-
-// In ShapeletTransformClassifier::predict():
-let feature_matrix: FdMatrix = self.transform.transform(&new_data)?;  // n_new × K
-// predict_from_scores uses stored training_scores from ClassifMethod::Knn
+let fft_sz = (2 * sz - 1).next_power_of_two();
+// Example: sz=100 → 2*100-1=199 → next_power_of_two=256
+// Example: sz=500 → 2*500-1=999 → next_power_of_two=1024
+// Example: sz=1000 → 2*1000-1=1999 → next_power_of_two=2048
 ```
 
-The `fclassif_knn_fit` path stores `ClassifMethod::Knn { training_scores, training_labels, k, n_classes }`, so `predict_from_scores` on a new observation's K-dim feature vector works with no extra code.
+`rustfft::FftPlanner` accepts arbitrary sizes (not restricted to power-of-two), but power-of-two is significantly faster due to the Cooley-Tukey radix-2 factorization. This is the same pattern already in `src/seasonal/mod.rs:350`.
 
-**Expose alternatives via `ShapeletConfig.classifier: ShapeletClassifier` enum:** `Knn { k: usize }` (default) | `Lda` | `Qda`. This matches the user-extensibility model of sktime's `estimator` parameter without requiring an external trait object.
+**Buffer layout for NCC rearrangement:**
+
+After IFFT into a length-`fft_sz` buffer (indices `0..fft_sz`):
+- The linear cross-correlation lags are at indices `0..sz` (non-negative lags) and `fft_sz-(sz-1)..fft_sz` (negative lags).
+- Rearrangement to `[-(sz-1), ..., -1, 0, 1, ..., sz-1]` order:
+  ```rust
+  // lags[0..sz-1] = buf[fft_sz-(sz-1)..fft_sz]   (negative lags)
+  // lags[sz-1..2*sz-1] = buf[0..sz]               (non-negative lags)
+  ```
+- `max_ncc = lags.iter().copied().fold(f64::NEG_INFINITY, f64::max)`
+- `argmax_idx` → `optimal_shift = argmax_idx as i64 + 1 - sz as i64` (lag in `[-(sz-1), sz-1]`)
+
+**Norm precomputation:** Compute `||s||_2` once per series at fit time (before the inner-loop pairwise computation). Store in a `Vec<f64>` of length n. For z-normalized inputs, `norm = sqrt(sz)` exactly (since z-norm has unit variance), but compute explicitly to match tslearn's robustness convention.
+
+**IFFT scaling:** `rustfft` does not normalize the IFFT output — divide by `fft_sz` after IFFT to get the correct cross-correlation values (standard FFT convention; numpy's `ifft` normalizes by default). The normalization by `norm1 * norm2` absorbs the scale, but the `fft_sz` factor must be divided out explicitly.
+
+---
+
+## Eigendecomposition Specifics for Shape Extraction
+
+**Matrix M** is `sz × sz` where `sz` is the length of each z-normalized series. For typical time series (`sz` in 50–500):
+
+| sz | M size | nalgebra::SymmetricEigen cost |
+|----|--------|-------------------------------|
+| 50 | 50×50 | Negligible (<1 ms) |
+| 100 | 100×100 | ~1–5 ms |
+| 200 | 200×200 | ~5–20 ms |
+| 500 | 500×500 | ~100–500 ms — consider power method if slow |
+
+**`nalgebra::SymmetricEigen` correctness:** M = Q^T S Q where Q = I - 11^T/n_k (centering) and S = X_p^T X_p (gram of aligned cluster members). Both Q and S are symmetric (Q is idempotent-symmetric, S is PSD), so M is symmetric. `SymmetricEigen` computes all eigenvalues and eigenvectors. Take the eigenvector with the largest eigenvalue (sort descending, take index 0 — identical to `spectral.rs` lines 211–221).
+
+**Sign disambiguation** differs from the spectral.rs convention (which uses "largest-magnitude entry positive"). For k-Shape, use the tslearn convention: compare `sum_i ||x_p_i - mu_k||_2` vs `sum_i ||x_p_i + mu_k||_2`; negate mu_k if the minus version is smaller. This is mathematically cleaner and matches the reference.
+
+**No `linalg` feature needed:** `nalgebra::SymmetricEigen` is in nalgebra 0.33 core (not behind a faer gate). The shape-extraction path works under default features (MSRV 1.81).
 
 ---
 
 ## Module Placement
 
 ```
-src/shapelet/
-    mod.rs          — ShapeletConfig, public re-exports, crate-root pub use
-    core.rs         — z_normalize_slice, shapelet_min_distance (hot path)
-    discovery.rs    — generate_candidates, score_candidate, prune_self_similar
-    transform.rs    — ShapeletTransform struct (fit, transform, shapelets_)
-    classifier.rs   — ShapeletTransformClassifier struct (fit, predict)
+src/kshape/
+    mod.rs          — KShapeConfig, KShapeResult, kshape_fd() entry point, pub re-exports
+    sbd.rs          — sbd(), ncc_with_shift(), sbd_distance_matrix(), sbd_cross_distance_matrix(), shift_to_centroid()
+    centroid.rs     — shape_extraction() (the Q^T S Q eigenvector step)
 ```
 
-Crate-root re-export in `src/lib.rs` follows the `pub use shapelet::*` pattern matching `pub use metric::soft_dtw::*` etc.
+Crate-root re-export in `src/lib.rs`:
+```rust
+pub mod kshape;
+pub use kshape::{kshape_fd, KShapeConfig, KShapeResult};
+```
+
+Follows the pattern of `pub mod kernel_kmeans` (v0.32.0) and `pub mod shapelet` (v0.33.0).
 
 ---
 
-## Core Technologies Used by v0.33.0 Features
+## Core Technologies Table
 
-| Technology | Version in Cargo.toml | Role in v0.33.0 | Change? |
-|------------|----------------------|-----------------|---------|
+| Technology | Version | Role in v0.34.0 | Change to Cargo.toml? |
+|------------|---------|-----------------|----------------------|
 | Rust (MSRV 1.81) | 1.81 min / 1.97 dev | All implementation | None |
-| nalgebra | 0.33 | Not in shapelet path | None |
-| rayon | 1.10 (optional, `parallel` feature) | Parallel candidate evaluation loop | None (reuse `iter_maybe_parallel!`) |
-| rand | 0.8 | Random candidate sampling (`generate_candidates`) | None |
-| rustfft | 6.2 | **Not used** — shapelet distance is pure sliding Euclidean | None |
-| faer | 0.23 (`linalg` feature) | **Not used** — no matrix factorization in shapelet path | None |
-| statrs | existing | **Not used** — entropy is 2-line inline; F-stat is inline | None |
-| FdMatrix | `src/matrix.rs` | n×K shapelet-feature matrix output type | None |
+| rustfft | 6.2 | FFT forward/inverse for NCC in SBD; `FftPlanner::<f64>` + power-of-two padding | None — already a dep |
+| nalgebra | 0.33 | `SymmetricEigen::new(DMatrix)` for shape extraction centroid step | None — already a dep |
+| rand | 0.8 | `StdRng::seed_from_u64(seed + restart)` for n_init determinism | None — already a dep |
+| rayon | 1.10 (optional, `parallel` feature) | Parallelize pairwise SBD distance matrix via `iter_maybe_parallel!` | None — already a dep |
+| shapelet | existing, v0.33.0 | `z_normalize_window` + `z_normalize_into` for series pre-normalization | None — already in crate |
+| alignment::clustering | existing | `kmedoids_from_distances` for SBD-k-medoids consumer | None — already in crate |
+| kernel_kmeans | existing, v0.32.0 | n_init/restart/empty-cluster pattern to mirror exactly | None — already in crate |
 
 ### No New Dependencies
 
 ```toml
-# Cargo.toml — NO CHANGES NEEDED for v0.33.0
-# All shapelet deliverables build on the existing dependency set.
+# Cargo.toml — NO CHANGES NEEDED for v0.34.0
+# All k-Shape + SBD deliverables build on the existing dependency set.
+# rustfft, nalgebra, rand, rayon are already declared.
 ```
-
----
-
-## Key Algorithm Details
-
-### Z-Normalized Euclidean Distance (the shapelet distance)
-
-For a shapelet `s` of length `L` and a subsequence `t[p..p+L]` of a curve `t`:
-
-1. Z-normalize `s` to zero mean, unit variance (pre-computed at shapelet extraction time, once).
-2. Slide over `t`: for each position `p` in `[0, len(t) - L]`:
-   a. Z-normalize `t[p..p+L]` in O(L) by computing mean + std online.
-   b. Compute squared Euclidean distance between normalized `s` and normalized window.
-   c. Early-abandon: maintain `best_so_far`; exit inner loop as soon as accumulated distance exceeds `best_so_far`.
-3. Return `sqrt(min_sq_dist)`.
-
-**Early-abandon implementation:** accumulate `sum_sq` term-by-term; break when `sum_sq > best_so_far_sq`. This gives O(1) amortized improvement over the naive O(L) inner loop when candidates are poor (common in large candidate sets). Matches the bound used in Hills/Lines 2014 and implemented in sktime's `RandomShapeletTransform`.
-
-**Z-normalization note:** `NormalizationMethod::CurveStandardize` in `fdata.rs` normalizes complete rows of `FdMatrix`. For sliding-window subsequences, the z-normalization is applied inline to a `&[f64]` slice — a 10-line helper `z_normalize_slice(s: &[f64]) -> Vec<f64>` in `shapelet/core.rs`. No dep needed.
-
-### Discriminative Scoring
-
-**Primary criterion: F-statistic** on the vector of minimum-distances `d_i` (one per training curve).
-
-Split the training distances at each candidate threshold `τ` (try `n` thresholds, one between each adjacent pair of sorted distances). For each split, compute the one-way F-statistic between the two groups (curves with `d_i ≤ τ` vs `d_i > τ`). Take the maximum F over all thresholds as the candidate's score.
-
-The `pointwise_f_statistic` / `integrated_f_statistic` code in `function_on_scalar.rs` implements the same ANOVA arithmetic for full curves — the scalar version for a split is a direct simplification (2-group, 1-dimensional) writable in ~15 lines without touching that function. Keep it inline in `discovery.rs`.
-
-**Alternative: information gain** (sktime default, `mutual_info` in pyts): binary entropy `H = -p*log(p) - (1-p)*log(1-p)` evaluated at each candidate split; `IG = H(parent) - (n_left/n)*H(left) - (n_right/n)*H(right)`. 10-line inline; no dep. Expose as `ScoringCriterion::InformationGain | FStatistic` in `ShapeletConfig`.
-
----
-
-## Feature-Flag Considerations
-
-| Aspect | Recommendation |
-|--------|---------------|
-| Parallel candidate evaluation | YES — gate with `parallel` feature via `iter_maybe_parallel!` on the candidate batch loop. Each candidate's distance computation is independent. |
-| Does shapelet path need `linalg`? | NO — no matrix factorization. Works under default features. |
-| WASM compatibility | YES — pure `f64` arithmetic; rayon is optional and off on WASM. |
-| `serde` feature | Result structs follow `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` convention; no new serde work needed. |
-| Pre-z-normalizing shapelets at discovery | YES — z-normalize each retained shapelet once at fit time; store normalized values in `ShapeletTransform::shapelets_`. Avoids re-normalizing on each transform call. |
 
 ---
 
@@ -285,12 +304,13 @@ The `pointwise_f_statistic` / `integrated_f_statistic` code in `function_on_scal
 
 | Decision | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Bundled classifier backend | kNN (`fclassif_knn_fit`) | LDA (`fclassif_lda_fit`) | LDA assumes Gaussian class-conditional; shapelet-distance features are not Gaussian in general. kNN is the canonical choice in the shapelet literature. LDA available as opt-in via config enum. |
-| Discriminative scoring | F-statistic (primary), IG (secondary) | Mutual information only | F-statistic is simpler (no probability estimation), already has infrastructure in `function_on_scalar.rs`. IG is also provided to match sktime/pyts defaults. |
-| Z-normalization for subsequences | Inline slice helper in `shapelet/core.rs` | Reuse `fdata::normalize` on a single-row `FdMatrix` | Would allocate a 1×L `FdMatrix` per window per candidate — unacceptable O(n·m·L) allocation overhead. Inline slice is allocation-free. |
-| Module location | `src/shapelet/` (new submodule directory) | Extend `src/classification/` | Shapelets span transform + classifier — a dedicated submodule matches the `metric/`, `alignment/`, `depth/` pattern. |
-| Shapelet storage in transform | Pre-normalized `Vec<f64>` per shapelet | Raw subsequence + normalize at transform time | Pre-normalizing at fit time avoids repeated z-norm on the same shapelet across every `transform` call. |
-| Learning shapelets | NOT included | tslearn `LearningShapelets` | Requires gradient-based optimization through the shapelet distance function — deferred to GAP-08 (differentiable FDA core). Out of scope v0.33.0. |
+| FFT for NCC | `rustfft::FftPlanner` (already a dep) | `realfft` crate (real-input FFT) | New dep not justified; `rustfft` handles complex inputs and is already used in 3 modules |
+| Eigendecomposition | `nalgebra::SymmetricEigen` | Power iteration (hand-coded) | Only need top-1 eigenvector, but `SymmetricEigen` is already proven in the codebase; power iteration adds untested code for modest gain at typical sz ≤ 200 |
+| Eigendecomposition (large sz) | `nalgebra::SymmetricEigen` | `faer` thin SVD (via `linalg` feature) | `SymmetricEigen` is correct and sufficient for sz ≤ 500; faer path would require `linalg` feature gate, complicating MSRV to 1.84 |
+| n_init default | 10 (matching `kernel_kmeans.rs`) | 1 (tslearn's default) | k-Shape is as sensitive to local minima as kernel-k-means; 10 restarts matches fdars convention and improves robustness significantly |
+| Z-normalization | `shapelet::z_normalize_window` (already in crate) | Inline re-implementation | Avoiding code duplication; v0.33.0 already shipped exactly this helper |
+| SBD-k-medoids | Plug SBD distance matrix into `kmedoids_from_distances` | Separate KMedoidsKShape struct | `kmedoids_from_distances` explicitly designed to accept any distance matrix — zero new code needed for this deliverable |
+| Module name | `kshape/` | `clustering/kshape.rs` | The module has 3 logical sub-concerns (SBD math, centroid, clustering); a sub-directory matches the `shapelet/`, `metric/`, `alignment/` pattern |
 
 ---
 
@@ -298,11 +318,23 @@ The `pointwise_f_statistic` / `integrated_f_statistic` code in `function_on_scal
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| tslearn `LearningShapelets` / gradient approach | Requires autodiff through a non-differentiable argmin operation; deferred to GAP-08 | Discovery-based: enumerate, score, select |
-| `fdata::normalize` for per-window z-norm | Allocates a full `FdMatrix` row per window — prohibitive in the inner loop | Inline `z_normalize_slice(&[f64]) -> Vec<f64>` in `shapelet/core.rs` |
-| `rustfft` / FFT for shapelet distance | Shapelet distance is a short-window Euclidean operation, not a frequency-domain computation. FFT would be relevant only for k-Shape SBD (GAP-03, separate milestone). | Plain sliding-window Euclidean |
-| `faer` or `nalgebra` for feature matrix operations | The n×K shapelet-distance matrix requires no SVD/Cholesky — only `FdMatrix` arithmetic | `FdMatrix::zeros(n, K)` filled by scalar assignment |
-| Adding an external information-gain library | Entropy is a 3-line inline function; no dep justified | Inline `binary_entropy(p: f64) -> f64 = -p*ln(p)-(1-p)*ln(1-p)` with zero-guard |
+| Arbitrary FFT size (non-power-of-two) for NCC | rustfft is correct for arbitrary sizes but significantly slower for non-power-of-two; pairwise SBD on large datasets compounds the cost | `(2 * sz - 1).next_power_of_two()` — same pattern already in `seasonal/mod.rs:350` |
+| `nalgebra::SVD` for shape extraction | SVD of M is overkill; M is symmetric so `SymmetricEigen` is the correct and cheaper path | `nalgebra::SymmetricEigen::new(m_matrix)` |
+| `faer` for shape extraction | Would require `linalg` feature + MSRV 1.84; no measurable benefit for sz×sz matrices in the clustering hot path | `nalgebra::SymmetricEigen` (default features, MSRV 1.81) |
+| z-norm inside the SBD inner loop | If z-normalizing series on every pairwise call, you pay O(n²·sz) normalization; pre-normalize once at fit time | Pre-compute `z_normalize_window` for each series row once; cache norms |
+| `tslearn.preprocessing.TimeSeriesScalerMeanVariance` idiom applied per-centroid-update | tslearn z-normalizes centroids after each centroid update as a post-processing step; skipping this causes centroid drift and instability | Re-apply `z_normalize_window` to each centroid after each `shape_extraction` call — one line |
+| Adding a new `ndarray` or `faer` dependency | No 2D numerical array op in SBD or shape extraction requires a new matrix library; `nalgebra::DMatrix` + `Vec<f64>` cover it | Existing nalgebra DMatrix for the sz×sz M matrix; `Vec<f64>` for series buffers |
+
+---
+
+## Feature-Flag Considerations
+
+| Aspect | Recommendation |
+|--------|---------------|
+| Parallel pairwise SBD | YES — gate with `parallel` feature via `iter_maybe_parallel!` on the upper-triangle loop. Each `sbd(s_i, s_j)` call is independent. |
+| Does k-Shape path need `linalg`? | NO — `nalgebra::SymmetricEigen` is in nalgebra core, not behind faer gate. Works under default features. |
+| WASM compatibility | YES — pure `f64` arithmetic + rustfft (already WASM-compatible per existing uses); rayon is optional and off on WASM. |
+| `serde` feature | Follow `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` on `KShapeConfig` and `KShapeResult`; the `cluster_centers_` field (`FdMatrix`) already derives serde conditionally. |
 
 ---
 
@@ -310,28 +342,28 @@ The `pointwise_f_statistic` / `integrated_f_statistic` code in `function_on_scal
 
 | Scenario | Works? | Notes |
 |----------|--------|-------|
-| Default features (`parallel`) | YES | `iter_maybe_parallel!` parallelizes candidate evaluation; MSRV 1.81 |
-| No features (sequential) | YES | All loops are sequential-compatible |
-| `linalg` feature | YES | Shapelet adds nothing to `linalg`; features are orthogonal |
-| `serde` feature | YES | Add derive attributes to `ShapeletTransform`, `ShapeletTransformClassifier`, config/result structs |
-| WASM (`js` feature) | YES | Pure `f64` arithmetic; rayon is off on WASM |
-| Rust 1.81 (MSRV) | YES | No post-1.81 stabilizations needed |
+| Default features (`parallel`) | YES | pairwise SBD parallelized; MSRV 1.81 |
+| No features (sequential) | YES | All loops sequential-compatible |
+| `linalg` feature | YES | k-Shape adds nothing to `linalg`; features orthogonal |
+| `serde` feature | YES | Add derive attributes to KShapeConfig / KShapeResult |
+| WASM (`js` feature) | YES | rustfft is WASM-compatible; rayon off on WASM |
+| Rust 1.81 (MSRV) | YES | No post-1.81 stabilizations needed; `SymmetricEigen` stable since nalgebra 0.30+ |
 
 ---
 
 ## Sources
 
-- sktime stable docs — `ShapeletTransformClassifier`, `RandomShapeletTransform` class signatures and parameter descriptions — https://www.sktime.net/en/stable/api_reference/auto_generated/sktime.classification.shapelet_based.ShapeletTransformClassifier.html — MEDIUM confidence (verified against official sktime.net stable docs via WebFetch)
-- sktime stable docs — `RandomShapeletTransform` details — https://www.sktime.net/en/stable/api_reference/auto_generated/sktime.transformations.panel.shapelet_transform.RandomShapeletTransform.html — MEDIUM confidence
-- pyts 0.13.0 docs — `ShapeletTransform` class signature, parameters, fit/transform contract — https://pyts.readthedocs.io/en/latest/generated/pyts.transformation.ShapeletTransform.html — MEDIUM confidence
-- Hills, J., Lines, J., Baranauskas, E. et al. (2014) "Classification of time series by shapelet transformation" — Data Mining and Knowledge Discovery. DOI: 10.1007/s10618-013-0322-1. Via search result abstracts — MEDIUM confidence (algorithm structure confirmed; early-abandon + information gain + z-norm Euclidean)
-- fdars-core/src/fdata.rs — confirmed `NormalizationMethod::CurveStandardize` / `row_normalize` / `RowNorm::Standardize` implementation — HIGH confidence (direct codebase read)
-- fdars-core/src/matrix.rs — confirmed `row_l2_sq`, `row_to_buf`, `row_dot` hot-path methods — HIGH confidence (direct codebase read)
-- fdars-core/src/classification/knn.rs — confirmed `knn_classify_from_distances(dist_mat, y, k_nn)` API + `fclassif_knn_fit` fit/predict path — HIGH confidence (direct codebase read)
-- fdars-core/src/function_on_scalar.rs — confirmed `pub(crate) integrated_f_statistic` exists, arithmetic pattern for F-statistic directly applicable — HIGH confidence (direct codebase read)
-- fdars-core/src/distance.rs — confirmed `pairwise_distance_matrix`, `euclidean_distance_matrix`, `cross_distance_matrix` API — HIGH confidence (direct codebase read)
+- tslearn/metrics/cycc.py — `normalized_cc`, `cdist_normalized_cc`, `y_shifted_sbd_vec` exact source — fetched via GitHub API (gh api repos/tslearn-team/tslearn/contents/tslearn/metrics/cycc.py) — HIGH confidence (authoritative source, direct code read)
+- tslearn/clustering/kshape.py — `KShape` class: `__init__`, `_shape_extraction`, `_update_centroids`, `_assign`, `_fit_one_init`, `fit`, `predict` — fetched via GitHub API — HIGH confidence (authoritative source, direct code read)
+- tslearn 0.9.0 stable docs — `KShape` class signature and parameter descriptions — https://tslearn.readthedocs.io/en/stable/gen_modules/clustering/tslearn.clustering.KShape.html — MEDIUM confidence (verified via WebFetch)
+- Paparrizos & Gravano (2015) "k-Shape: Efficient and Accurate Clustering of Time Series" SIGMOD 2015 — abstract + algorithm structure confirmed via web search results + SIGMOD record PDF (abstract) — MEDIUM confidence (algorithm structure confirmed; NCC/SBD/Rayleigh-quotient/eigenvector verified; exact matrix formulas confirmed against tslearn source)
+- fdars-core/src/fts/spectral.rs — confirmed `rustfft::FftPlanner` + `nalgebra::SymmetricEigen` usage idiom, FFT planning API, eigenvector sign-alignment pattern — HIGH confidence (direct codebase read)
+- fdars-core/src/seasonal/mod.rs:350 — confirmed `(2*n).next_power_of_two()` FFT-padding pattern for cross-correlation — HIGH confidence (direct codebase read)
+- fdars-core/src/shapelet/distance.rs — confirmed `z_normalize_window` and `z_normalize_into` APIs (v0.33.0) — HIGH confidence (direct codebase read)
+- fdars-core/src/kernel_kmeans.rs — confirmed n_init restart seeding pattern, empty-cluster recovery idiom, predict method structure — HIGH confidence (direct codebase read)
+- fdars-core/src/alignment/clustering.rs — confirmed `kmedoids_from_distances(dist_mat, config)` API + `KMedoidsConfig` / `KMedoidsResult` types — HIGH confidence (direct codebase read)
 
 ---
 
-*Stack research for: v0.33.0 Shapelet Transform & Classification in fdars-core*
+*Stack research for: v0.34.0 k-Shape Clustering & Shape-Based Distance in fdars-core*
 *Researched: 2026-09-02*

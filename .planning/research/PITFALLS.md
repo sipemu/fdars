@@ -1,6 +1,6 @@
 # Pitfalls Research
 
-**Domain:** Discovery-based shapelet transform + shapelet-based classifier — Rust numerical FDA library (fdars-core v0.33.0)
+**Domain:** k-Shape clustering + Shape-Based Distance (SBD) via FFT cross-correlation — Rust numerical FDA library (fdars-core v0.34.0)
 **Researched:** 2026-09-02
 **Confidence:** HIGH
 
@@ -8,399 +8,494 @@
 
 ## Critical Pitfalls
 
-### Pitfall 1: Per-Window Z-Normalization Applied Only Once to the Whole Series
+### Pitfall 1: FFT Length Too Short — Circular Cross-Correlation Wraps and Corrupts Shifts
 
 **What goes wrong:**
-The z-normalization in shapelet distance is *per window*, applied independently to every length-L sliding window before computing the Euclidean distance to the (also z-normalized) shapelet. Normalizing the whole series once at the start — or normalizing each curve once and reusing it — produces an algorithm that is sensitive to scale and offset, breaks translation invariance, and returns distances that are meaningless relative to a correctly normalized baseline. Shapelets will appear everywhere or nowhere depending on the absolute magnitude of the input series.
+The SBD between two series of length `n` is computed via the FFT of their cross-correlation. If the FFT is planned for length `n` (or any length < `2n - 1`), the linear cross-correlation wraps circularly — lags from the negative end alias onto lags at the positive end. The resulting NCC vector has wrong values at every lag, the argmax picks the wrong shift, and `sbd = 1 - max(NCC)` is silently incorrect. This is the most common FFT cross-correlation bug and is guaranteed to produce wrong results on any pair where the optimal shift is nonzero.
 
-The correct formula for the distance from shapelet `s` (length L, pre-normalized) to a window `w[t..t+L]` from series `x` is:
+The correct minimum FFT length for two series of length `n` is `2n - 1`. In practice, round up to the next power of two for efficiency:
 ```
-znorm(v) = (v - mean(v)) / max(std(v), ε)
-d(s, w) = euclidean(znorm(s), znorm(w[t..t+L]))
+fft_len = (2 * n - 1).next_power_of_two()  // minimum 2n-1, rounded up
 ```
-Both the shapelet and every candidate window are normalized *independently* at the time of comparison — not the whole series up front.
+The existing ACF code in `seasonal/mod.rs` uses `(2 * n).next_power_of_two()` — this is safe (slightly larger than the minimum, not smaller). Use the same pattern.
 
 **Why it happens:**
-Z-normalization of time series is standard preprocessing (e.g. `functional_std`, `impute_missing_values` in `fdata.rs`), so developers apply the crate's existing series-level normalization pass and assume it covers the shapelet case. It does not. The per-window requirement is unique to shapelet distance and is easy to miss in papers that describe it in passing as "z-normalized" without explicitly saying "per window."
+Developers plan the FFT for the series length `n` (the natural "size of the data"). The cross-correlation of two length-`n` sequences has `2n - 1` meaningful lags; a length-`n` FFT discards half of them and wraps the rest. The rustfft API does not warn about this — it plans whatever length is requested.
 
 **How to avoid:**
-- `shapelet_distance` must call `znorm_window` (a private helper) inside the sliding-window loop on every `&x[t..t+L]` slice — never on the full series.
-- The shapelet candidate itself is normalized once at generation time and stored already normalized.
-- Guard against constant windows (std < ε) by clamping: `std = std.max(1e-10)` — never `std.max(0.0)` (that still divides by nearly-zero).
-- Add a doctest that shows a shifted copy of a series produces the same distance as the original (offset-invariance proof).
+- Plan FFT and IFFT for `fft_len = (2 * n - 1).next_power_of_two()`.
+- Zero-pad both `x_znorm` and `y_znorm` to `fft_len` before FFT (append zeros, not prepend).
+- Validate with the shifted-copy test: `sbd(x, shift(x, k))` must achieve NCC = 1.0 (distance 0) at shift `k`, not at shift `k ± n`.
+- Mirror the existing `seasonal/mod.rs` ACF pattern which is correct: `let fft_len = (2 * n).next_power_of_two();`.
 
 **Warning signs:**
-- Distance matrix has suspiciously high variance across series of different scales.
-- Shapelets discovered from large-valued series never match small-valued ones.
-- Unit test: two series differing only by a constant offset have identical shapelet distances → if this fails, per-window normalization is broken.
+- `sbd(x, shift(x, k))` returns nonzero distance for any k ≠ 0.
+- The optimal shift returned by `sbd` is always 0 or always some wrap-around value near `fft_len - n`.
+- NCC vector has a noticeably asymmetric or multi-peaked shape for a simple shifted pair.
 
-**Phase to address:** Phase 57 (shapelet-distance core). This is the foundation; every downstream step inherits the bug if it is wrong here.
+**Phase to address:** Phase 61 (SBD distance core). The FFT length is determined at the point the FFT plan is created; this is the foundational numerical primitive.
 
 **Verification hook:**
+```rust
+// Shifted-copy test: SBD of a series with a shifted copy must be ~0.
+let x = vec![1.0, 2.0, 3.0, 4.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0];
+let shift_k = 3usize;
+let mut y = x.clone();
+y.rotate_right(shift_k);  // or build a time-shifted copy
+let (dist, s) = sbd(&x, &y).unwrap();
+assert!(dist < 1e-10, "sbd of shifted copy must be ~0, got {dist}");
+assert_eq!(s, shift_k as isize, "returned shift must equal the applied shift");
 ```
-// offset-invariance test
+
+---
+
+### Pitfall 2: NCC Normalization by Count Instead of by Norms — SBD Is Wrong
+
+**What goes wrong:**
+The normalized cross-correlation (NCC) in SBD is defined as the **coefficient-normalized** cross-correlation — divided by `‖x‖ · ‖y‖` (where `x` and `y` are the already-z-normalized series). This makes NCC bounded in `[-1, 1]` and the SBD formula `dist = 1 - max(NCC)` bounded in `[0, 2]`.
+
+Three incorrect alternatives that silently produce wrong distances:
+
+1. **Biased count normalization:** divide each lag's cross-correlation sum by `n` (the biased estimator). This produces values with the same range as the unbiased version on average but is not bounded to `[-1, 1]` and differs from the Paparrizos & Gravano (2015) definition.
+2. **Unbiased count normalization:** divide by `n - |lag|`. Values near the extremes of the lag range (where only a few overlapping elements exist) blow up, producing NCC > 1 at large lags.
+3. **No normalization at all:** raw cross-correlation sums; distance is scale-dependent even after z-normalization because the L2 norms of different series are not exactly 1 post z-norm in finite-length arithmetic.
+
+The correct formula for the FFT-based NCC:
+```
+cc_raw[s] = IFFT(FFT(x_znorm) · conj(FFT(y_znorm)))[s]   (with fft_len ≥ 2n−1)
+NCC[s]    = cc_raw[s] / (‖x_znorm‖₂ · ‖y_znorm‖₂)
+SBD(x,y)  = 1 − max_s NCC[s]
+```
+
+The denominator `‖x_znorm‖₂ · ‖y_znorm‖₂` is computed from the original (pre-FFT) z-normalized vectors, not from the FFT output.
+
+**Why it happens:**
+The biased and unbiased estimators are the standard statistical cross-correlation normalization; many signal-processing references use them. The coefficient normalization `‖x‖·‖y‖` is from the Pearson correlation definition applied to time-series shifts and is the specific form used by tslearn's `_normalized_cc`. Developers copy signal-processing references and miss this distinction.
+
+**How to avoid:**
+- Compute `norm_x = x_znorm.iter().map(|v| v*v).sum::<f64>().sqrt()` and `norm_y` analogously before FFT.
+- Divide `cc_raw[s]` by `norm_x * norm_y` at every lag. Guard against the case where `norm_x * norm_y < 1e-10` (both series are constant — see Pitfall 3) by returning distance 1.0 in that case.
+- Do not use `n`, `fft_len`, or any lag-dependent denominator.
+- The IFFT output from rustfft is scaled by `fft_len` (rustfft does not divide by N on IFFT); divide the raw IFFT output by `fft_len` before applying the `‖x‖·‖y‖` normalization, or fold the `fft_len` scaling into the denominator.
+
+**Warning signs:**
+- NCC values outside `[-1, 1]` for any lag.
+- `sbd(x, x)` (self-distance) is not exactly 0.0 (it must be — NCC at lag 0 for a series with itself equals 1.0).
+- `sbd(x, y) ≠ sbd(y, x)` (asymmetry in the count-normalized variant due to the lag ordering).
+
+**Phase to address:** Phase 61 (SBD distance core).
+
+**Verification hook:**
+```rust
+// Self-distance must be exactly zero.
+let x = vec![1.0, 3.0, 2.0, 5.0, 4.0, 1.0];
+let (d_self, _) = sbd(&x, &x).unwrap();
+assert!(d_self.abs() < 1e-10, "sbd(x,x) must be 0, got {d_self}");
+
+// SBD symmetry: sbd(x,y) == sbd(y,x) up to floating point.
+let y = vec![2.0, 1.0, 4.0, 3.0, 0.0, 5.0];
+let (dxy, _) = sbd(&x, &y).unwrap();
+let (dyx, _) = sbd(&y, &x).unwrap();
+assert!((dxy - dyx).abs() < 1e-10, "sbd must be symmetric: {dxy} vs {dyx}");
+```
+
+---
+
+### Pitfall 3: Z-Normalization Missing Before NCC — SBD Loses Shape Invariance
+
+**What goes wrong:**
+SBD requires both series to be **z-normalized before** computing the cross-correlation. Omitting the z-normalization step makes SBD sensitive to mean offset and amplitude — two series with the same shape but different offsets or scales return nonzero distance. The `1 - max(NCC)` formula is designed to measure shape similarity, which only works when the inputs have zero mean and unit-ish variance.
+
+The z-normalization must be applied to each series independently before NCC, even if the FdMatrix rows were normalized at a prior preprocessing stage (which may have used a different normalization or been applied to different data).
+
+Specifically: use `z_normalize_window` (from `src/shapelet/distance.rs`, shipped in v0.33.0) on each series, which produces population-std normalization with the constant-window guard (`std ≤ 1e-12` → zero vector). Do not reuse any series-level normalization that was applied to the whole FdMatrix.
+
+**Why it happens:**
+The `FdMatrix` used for clustering may already have been preprocessed. Developers assume "normalized input" means SBD can skip its own z-norm. In fact the SBD z-norm is an intrinsic part of the NCC computation, not a caller responsibility — both series must be independently z-normalized for each SBD call.
+
+**How to avoid:**
+- Inside `sbd(x: &[f64], y: &[f64])`, always call `z_normalize_window(x)` and `z_normalize_window(y)` at the top of the function. Never trust the caller to have done this.
+- Reuse the v0.33.0 `shapelet::z_normalize_window` (or `z_normalize_into` for the allocation-free variant) — same convention, same `STD_EPS = 1e-12` constant-window guard.
+- The constant-window guard returns the zero vector for a constant series; in that case the cross-correlation is all zeros, `‖x‖·‖y‖ = 0`, and `sbd` should return distance 1.0 and shift 0 (documented policy).
+
+**Warning signs:**
+- `sbd(x, x + constant)` returns nonzero for any nonzero constant.
+- `sbd(x, scale * x)` returns nonzero for any scale ≠ 1.
+- Clustering puts clearly similar-shaped but differently-offset curves in different clusters.
+
+**Phase to address:** Phase 61 (SBD distance core).
+
+**Verification hook:**
+```rust
 let x = vec![1.0, 2.0, 3.0, 2.0, 1.0];
-let x_shifted = x.iter().map(|v| v + 100.0).collect::<Vec<_>>();
-assert!((shapelet_dist(&s, &x) - shapelet_dist(&s, &x_shifted)).abs() < 1e-10);
-// scale-invariance test
-let x_scaled = x.iter().map(|v| v * 50.0).collect::<Vec<_>>();
-assert!((shapelet_dist(&s, &x) - shapelet_dist(&s, &x_scaled)).abs() < 1e-10);
+// Offset invariance.
+let x_offset: Vec<f64> = x.iter().map(|v| v + 100.0).collect();
+let (d_off, _) = sbd(&x, &x_offset).unwrap();
+assert!(d_off < 1e-10, "SBD must be offset-invariant: {d_off}");
+// Scale invariance.
+let x_scaled: Vec<f64> = x.iter().map(|v| v * 50.0).collect();
+let (d_sc, _) = sbd(&x, &x_scaled).unwrap();
+assert!(d_sc < 1e-10, "SBD must be scale-invariant: {d_sc}");
 ```
 
 ---
 
-### Pitfall 2: Division by Near-Zero Standard Deviation in Z-Normalization
+### Pitfall 4: Wrong Lag Extraction from FFT Output — fftshift Omission
 
 **What goes wrong:**
-Any window that is exactly or nearly constant (all values equal, or a ramp with tiny variation relative to f64 precision) has `std ≈ 0`. Dividing by it produces `±Inf` or `NaN`. One `NaN` in the distance matrix contaminates the info-gain ranking for every shapelet — the whole discovery loop silently produces `NaN` scores, and the top-K selection returns garbage.
+The IFFT of `FFT(x) · conj(FFT(y))` produces the circular cross-correlation in standard FFT output ordering. Lag 0 is at index 0; positive lags `+s` are at indices `1, 2, ..., s`; negative lags `-s` are at indices `fft_len - s, ..., fft_len - 1`. Without applying `fftshift` (reordering to put lag 0 in the center), the `argmax` picks the wrong shift — specifically, a lag that corresponds to `fft_len - true_lag` rather than `true_lag` when the optimal shift is negative.
 
-This is especially common at series boundaries: a window sliding past the end of a short series may be padded with zeros (if the implementation uses zero-padding instead of clamping), turning a real window into an almost-constant one. It also hits synthetic datasets used in unit tests (constant baseline + a single spike).
+For SBD the convention is: the returned shift `s` is the integer by which series `y` should be cyclically shifted (or equivalently, `x` advanced by `-s`) to maximally align with `x`. This shift is in the range `-(n-1) .. +(n-1)`. Extracting it requires converting the raw argmax index back to a signed lag:
+```
+raw_argmax = argmax(NCC over 0..fft_len)
+shift = if raw_argmax <= n-1 { raw_argmax as isize }
+        else { raw_argmax as isize - fft_len as isize }
+```
+(Only the first `n` and last `n-1` positions of the IFFT output correspond to meaningful lags; the middle positions are zero-padded artifacts.)
 
 **Why it happens:**
-The `FdMatrix` column-major layout means row slices are non-contiguous; a hand-written sliding-window loop that computes mean/std over a raw index range can accidentally sum zeros from uninitialized memory if the bounds are off-by-one. The standard deviation formula also involves a subtraction-of-squares that cancels to near-zero for nearly-constant windows in f64 arithmetic — even when the true std is nonzero.
+Developers compute `argmax(cc_raw)` without converting the raw FFT index to a signed lag. The bug is invisible when the optimal shift is 0 or when a small positive shift is the global optimum. It surfaces on data with large negative shifts or when the optimal alignment requires the second series to be left-shifted.
 
 **How to avoid:**
-- Always clamp: `let std_clamped = std.max(1e-10);` — the threshold 1e-10 matches the tolerance used in the existing `svd_equivalence` integration test convention in this codebase.
-- Separately track whether a window was clamped; if more than X% of windows are clamped for a given series, consider returning a `FdarError::InvalidParameter` or at minimum a doc-noted caveat.
-- Never use zero-padding when the window overruns the series — use `InvalidDimension` guard at candidate generation to reject shapelets longer than the shortest series.
-- Use a two-pass mean/std (compute mean first, then std from deviations) rather than the single-pass `E[X²] - E[X]²` formula, which is numerically unstable for nearly-constant sequences.
+- After IFFT, extract only the `2n - 1` meaningful lag positions: the first `n` elements (lags `0` to `n-1`) and the last `n-1` elements (lags `-(n-1)` to `-1`) of the `fft_len`-element IFFT output.
+- Apply the argmax over only those `2n - 1` values (not over the full `fft_len` buffer) to avoid picking a zero-pad artifact.
+- Convert the raw index to a signed shift using the formula above.
+- Test with negative shifts: `sbd(shift(x, +3), x)` must return shift `-3` (not `fft_len - 3`).
 
 **Warning signs:**
-- `shapelet_transform` returns a matrix containing `NaN` or `Inf`.
-- Info-gain scores are `NaN` for all candidates.
-- Adding a check `assert!(result.iter().all(|v| v.is_finite()))` to the transform catches this at test time.
+- `sbd(y_shifted_right, x)` returns a positive shift equal to `fft_len - k` rather than `-k`.
+- Applying the returned shift to re-align two series makes them more misaligned, not less.
+- Shift sign tests fail: expected `-3`, got `fft_len - 3`.
 
-**Phase to address:** Phase 57 (shapelet-distance core), same function as Pitfall 1.
+**Phase to address:** Phase 61 (SBD distance core).
 
 **Verification hook:**
-- Constant-window test: `x = vec![5.0; 20]`, any shapelet; distance must be finite.
-- Nearly-constant test: `x = vec![5.0; 20]` with one element perturbed by `1e-15`; distance must be finite.
-
----
-
-### Pitfall 3: Shapelet Distance Is the Minimum, Not Mean or Sum
-
-**What goes wrong:**
-The sliding-window minimum is definitional to shapelet distance:
-```
-sdist(s, x) = min_{t=0..m-L} euclidean(znorm(s), znorm(x[t..t+L]))
-```
-Using the mean or sum of window distances makes the measure sensitive to how often the shapelet pattern appears, not whether it appears at all. Shapelets that occur once in the middle of a series are correctly detected by min; they are drowned out by non-matching windows under mean.
-
-**Why it happens:**
-`rayon`/`iter_maybe_parallel!` over windows with `.sum()` or `.map().collect::<Vec<_>>().iter().sum()` is a natural reflex for "compute something over all windows." Switching to `.fold(f64::INFINITY, f64::min)` or `.reduce_with(f64::min)` is the correct pattern but requires conscious intent.
-
-**How to avoid:**
-- Implement the inner loop as `windows.map(|w| znorm_euclidean(s, w)).fold(f64::INFINITY, f64::min)`.
-- For early-abandon (see Pitfall 5), track a running best and short-circuit.
-- Unit test: a series containing the shapelet pattern once in a sea of noise → `sdist` must be ~0 (within normalization tolerance); the mean would be large.
-
-**Warning signs:**
-- Shapelet classifier accuracy barely above random on a dataset with a clear discriminative motif.
-- Known-motif recovery test fails: synthetic dataset `class_0 = noise`, `class_1 = noise + known_pattern at random offset` — the shapelet equal to `known_pattern` must achieve `sdist ≈ 0` for `class_1` and `sdist > threshold` for `class_0`.
-
-**Phase to address:** Phase 57 (shapelet-distance core).
-
-**Verification hook (known-motif recovery):**
 ```rust
-// class_0: 50 curves of pure N(0,1) noise, length 100
-// class_1: 50 curves with known_pattern (length 10) inserted at random offset
-// shapelet = known_pattern (z-normalized)
-// after discovery: top shapelet must achieve mean sdist < 0.2 on class_1
-//                  and mean sdist > 1.5 on class_0
+// Negative-shift test.
+let x = vec![0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+let y = vec![0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0, 0.0];  // x shifted right by 2
+let (d, s) = sbd(&x, &y).unwrap();
+assert!(d < 1e-6, "sbd of shifted copy must be near 0: {d}");
+// Shift must be ±2, not fft_len - 2.
+assert!(s.abs() <= 3, "shift must be small, not a wrap-around: {s}");
 ```
 
 ---
 
-### Pitfall 4: Combinatorial Blowup — Naive All-Subsequences-All-Lengths Is Intractable
+### Pitfall 5: Shape Extraction Centroid Is the Wrong Eigenvector (or No Eigenvector)
 
 **What goes wrong:**
-For n training curves of length m, the number of candidate shapelets (all subsequences across all lengths from `min_len` to `max_len`) is:
+The k-Shape centroid is **not** the arithmetic mean of the aligned members. It is the **top eigenvector** of the matrix:
 ```
-n * Σ_{L=min_len}^{max_len} (m - L + 1) ≈ n * m² / 2
+M = S^T · (I − (1/n) · 1·1^T) · S    (the "shape extraction" matrix)
 ```
-For n=200, m=500, this is ~25 million candidates. The full `sdist` computation for each candidate against all n series is O(m) per series, making the naive discovery O(n² * m³) in the worst case. At m=500, this does not complete in human time — it takes hours or days.
+where `S` is the `n × m` matrix of shift-aligned, z-normalized member curves (one row per cluster member). `M` is `m × m` symmetric positive semidefinite. The centroid is the eigenvector corresponding to the **largest eigenvalue** of `M`.
 
-Without a time contract or candidate sampling, the `fit` function never returns on any real-world dataset. This is the most common reason shapelet implementations are judged "unusable" in practice.
+Common wrong implementations:
+
+1. Using the arithmetic mean of `S` rows as the centroid (this is what k-means does; k-Shape does not).
+2. Using the bottom eigenvector (nalgebra's `symmetric_eigen()` returns eigenvalues in **ascending** order — taking index 0 gives the smallest, not the largest).
+3. Computing the SVD of `S` and taking the first right singular vector (this is the top eigenvector of `S^T S`, not of `S^T (I - 11^T/n) S` — the centering projection is missing).
+4. Computing eigenvalues of `S · S^T` (the `n × n` Gram, not the `m × m` shape matrix) and using the wrong eigenvector.
 
 **Why it happens:**
-The algorithm description in Hills et al. (2014) and the original Ye & Keogh paper present the complete search as the formal definition. Practitioners reading papers implement the complete search first. The time contract (sampling candidates uniformly until a wall-clock budget is exhausted) was added to sktime's `ShapeletTransformClassifier` specifically because the complete search is intractable.
+The Rayleigh-quotient / top-eigenvector formulation is stated in Paparrizos & Gravano (2015) Eq. 1–4 but the centering projection `(I - 11^T/n)` is easy to skip — it looks like it just centers the rows, which a developer may do as a preprocessing step before building `M = S^T S`. But `S^T (I - 11^T/n) S ≠ S^T S` unless the rows of `S` already sum to zero, which they do not in general even after z-normalization (z-normalization makes population std ≈ 1 and mean ≈ 0, but the mean of the z-normalized column-wise matrix `S` is not exactly zero unless the rows are already mean-subtracted within each time index).
 
 **How to avoid:**
-- Add a `time_contract_minutes: Option<f64>` (or `max_candidates: Option<usize>`) parameter to the discovery function. Enforce at the outer candidate loop.
-- Sample candidate lengths uniformly from `[min_len, max_len]` rather than enumerating all lengths exhaustively.
-- Default to a sensible contract (e.g. `max_candidates = 10_000` or `time_contract_minutes = 5.0`).
-- Document the default contract in the function's rustdoc so users know it is not an exhaustive search.
-- Return the actual number of candidates evaluated in the `ShapeletFitResult` so the caller can tell if the contract was hit.
+- Build `M` as `S^T · P_orth · S` where `P_orth = I - (1/n) · ones · ones^T` is the centering projection.
+- Use `nalgebra::DMatrix::symmetric_eigen()` on `M`. Sort eigenvalues in **descending** order (negate the ascending order from nalgebra: index the last eigenvector, not the first). See `pace_fpca.rs:186-191` for the established ascending-to-descending sort pattern using `pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(Equal))`.
+- Take the eigenvector at the largest eigenvalue — column index corresponding to the largest eigenvalue after sorting.
+- After extracting the eigenvector, re-z-normalize it (see Pitfall 6).
 
 **Warning signs:**
-- `fit` call does not return after 30+ seconds on n=50, m=200 in a test.
-- Benchmark shows super-quadratic scaling when doubling m.
+- Centroids converge to the mean curve (arithmetic average), not a shape representative.
+- Clusters do not improve after centroid update — the centroid step has no effect.
+- `centroid.dot(mean_of_members)` is near zero (centroid is orthogonal to members), which happens when the bottom eigenvector is used.
+- k-Shape applied to two obviously shifted-motif groups returns centroids that look like noise.
 
-**Phase to address:** Phase 58 (discovery & ranking). The contract must be designed into the candidate-loop API from the start, not bolted on later.
+**Phase to address:** Phase 62 (k-Shape fit — shape extraction centroid).
 
 **Verification hook:**
-- Tractability test: n=100, m=200, `time_contract_minutes=0.1` → `fit` must return within ~10 seconds (contract + overhead).
-- Contract-hit flag in result: `result.contract_hit == true` when the budget is exhausted before all candidates are evaluated.
-
----
-
-### Pitfall 5: No Early-Abandon in the Sliding-Window Distance Scan
-
-**What goes wrong:**
-For a shapelet of length L and a series of length m, the sliding-window loop performs (m-L+1) z-normalized Euclidean distance computations. Each takes O(L) time. Without early-abandon, even a hopeless distance computation (already larger than the current best by the first 5 points) runs to completion. Early-abandon is the primary constant-factor speedup for the inner loop.
-
-At discovery time, each candidate shapelet is evaluated against all n series; the expected speedup from early-abandon is 2–8× depending on data, which is the difference between 5 minutes and 40 minutes on medium datasets.
-
-**Why it happens:**
-The idiomatic Rust approach — `windows.map(|w| dist(s, w)).fold(INFINITY, min)` — does not naturally early-abandon. Adding early-abandon requires tracking a running best and breaking out of the inner loop early. Rayon iterators do not support break; early-abandon requires a sequential inner loop with an explicit `break` or a custom accumulator.
-
-**How to avoid:**
-- The inner z-normalized distance computation must be a sequential loop (not a rayon parallel map) that accumulates partial sum-of-squares and short-circuits when the partial sum already exceeds `current_best²`.
-- Note: z-normalization complicates early-abandon because the mean/std of the window must be known before any distance term can be computed. The standard fix is to compute mean/std in a first pass (O(L)), then accumulate the Euclidean distance in a second pass with early-abandon.
-- The outer loop over windows (for a fixed shapelet vs. a fixed series) can remain sequential for cache-friendliness.
-- Rayon parallelism applies at the level of series (outer: all n series) or candidate shapelets (outer: all candidates), not within the window scan.
-
-**Warning signs:**
-- Inner-loop profiling shows near-100% utilization with no early returns.
-- Removing the early-abandon condition does not change runtime — the condition is never firing, meaning the threshold is set too loosely or the bound is computed incorrectly.
-
-**Phase to address:** Phase 57 (shapelet-distance core) — the `shapelet_distance` function must expose a `best_so_far: f64` parameter for early-abandon from the start, or the API must be revisited in Phase 58 when discovery calls it in a loop.
-
-**Verification hook:**
-- Compare `shapelet_distance` runtime with and without early-abandon on a dataset where the shapelet is not present (worst case for early-abandon); expect 2× or better.
-
----
-
-### Pitfall 6: Information Gain Computed Without Optimal Split Threshold
-
-**What goes wrong:**
-The discriminative power of a shapelet is measured by the information gain (or F-statistic) of the binary split on the distance distribution. The split threshold must be the *optimal* one — searched over the ordered distance values. Using a fixed threshold (e.g., the median, or 0.5) instead of optimizing yields consistently poor shapelet quality scores, causing genuinely discriminative shapelets to be ranked low and weak ones to be ranked high.
-
-The optimal threshold search scans all n-1 gaps in the sorted distance vector, computes the two-class entropy (or F-statistic) for each, and picks the threshold that maximizes information gain. This is O(n log n) per candidate (sorting) + O(n) for the scan.
-
-**Why it happens:**
-Information gain in decision trees is normally computed against a fixed split target (class label). The shapelet case is different: the "feature" (distance) and its "split" (threshold) are jointly optimized. Developers familiar with decision tree IG but not shapelet-specific IG often skip the threshold search and use a heuristic.
-
-**How to avoid:**
-- Implement `best_ig(distances: &[f64], labels: &[usize]) -> (f64, f64)` (returns `(info_gain, optimal_threshold)`) that sorts by distance, scans all n-1 gaps, and returns the max.
-- Never use a fixed threshold in the ranking step.
-- Return the optimal threshold alongside the quality score in the candidate struct so it can be reused at transform time (the transform is `sdist(s, x)` which needs no threshold — but the threshold is needed if building a decision stump on top).
-
-**Warning signs:**
-- Top-ranked shapelets change drastically depending on a threshold hyperparameter.
-- Known-motif recovery test (Pitfall 3) fails even though the correct shapelet has low sdist on the target class.
-- Random permutation of the distance vector produces similar IG scores to the real vector (sign that no meaningful split was found).
-
-**Phase to address:** Phase 58 (discovery & ranking).
-
-**Verification hook:**
-- Synthetic dataset: two classes differ by a known pattern. After ranking, `best_ig` for the true shapelet must be near `max_entropy` (log2 of class count); a random candidate must score near 0. Validate by comparing `ig_score` between known-discriminative and known-random shapelets.
-
----
-
-### Pitfall 7: Training-Set Leakage — Quality Computed on Data Used for Final Classifier
-
-**What goes wrong:**
-If shapelet quality (info-gain) is computed on the full training set and the shapelet-transform features are then used to train a classifier on the same training set, there is no leakage *in the shapelet quality step* — the quality measure is a univariate score, not a model. However, there is a subtler leakage risk: if the shapelet quality evaluation loop also tunes the internal classifier's hyperparameters (e.g., runs nested CV to tune kNN's k), the whole pipeline overfits.
-
-The more common mistake is reporting accuracy on the training set after `fit` to "check the pipeline works" and treating it as a generalization estimate. The transform + classifier is memorizing the training set via the selected shapelets, which were chosen specifically to separate training classes.
-
-**Why it happens:**
-The `ShapeletTransformClassifier::fit` → `.predict(train_data)` evaluation is a natural smoke test during development. The result looks plausible (high accuracy) and is misread as generalization performance.
-
-**How to avoid:**
-- The `fit` function must only receive the training split; never pass test data into `fit`.
-- Document explicitly that shapelet quality is computed on training data only (this is correct by the Hills/Lines STC design).
-- In unit tests and doctests, always evaluate on a held-out test split, not the training split.
-- The example in the rustdoc must use `train_data`/`test_data` splits, not the full dataset.
-
-**Warning signs:**
-- Accuracy on `predict(train_data)` is 100% or near it.
-- Accuracy on held-out test data is much lower than training accuracy (>20% gap on typical datasets).
-
-**Phase to address:** Phase 60 (bundled `ShapeletTransformClassifier`). The split discipline must be enforced in the doctest and example.
-
-**Verification hook:**
-- Integration test: train on 80% split, predict on 20% held-out; accuracy must be above chance. Training-set accuracy must not be reported as generalization accuracy anywhere in tests.
-
----
-
-### Pitfall 8: Self-Similarity Pruning Omission — Top-K Is Redundant
-
-**What goes wrong:**
-Without self-similarity pruning, the top-K shapelets are almost always dominated by slight variants of the same subsequence from the same training series. If series `i` contributes the best shapelet at offset `t`, then offset `t+1` from the same series is nearly as good (all z-normalized Euclidean distances differ by one step). The top-K list collapses to K copies of one series' best region, and the transformed feature matrix has K near-identical columns — it carries no more information than one column and wastes computation.
-
-**Why it happens:**
-Self-similarity pruning requires tracking which training series and position each selected shapelet came from, then rejecting candidates whose *source series* is already represented in the selected set (or whose distance to an already-selected shapelet is below a threshold). Developers implementing the quality-sorted selection loop forget to add this bookkeeping.
-
-**How to avoid:**
-- After sorting candidates by quality, greedily select: add a candidate only if its source series index has not already contributed a shapelet to the selected set (Hills et al. 2014 rule: at most one shapelet per series, or at most one per non-overlapping position).
-- Alternatively, compute mutual distance between candidate shapelets and reject if `sdist(s_candidate, s_already_selected) < ε` for any already-selected shapelet.
-- Store `(series_idx, start_offset)` in the candidate struct from the start.
-
-**Warning signs:**
-- The shapelet transform feature matrix has near-identical (correlation > 0.99) columns.
-- `cargo clippy` clean but classifier accuracy does not improve with K > 2 even on well-separated datasets.
-
-**Phase to address:** Phase 58 (discovery & ranking).
-
-**Verification hook:**
-- Post-selection correlation check: `max_{i≠j} corr(transform_col_i, transform_col_j) < 0.95` on any dataset with at least two natural classes.
-- Series-diversity check: the selected K shapelets must come from at least `min(K, n_train)` distinct training series.
-
----
-
-### Pitfall 9: Transform Inconsistency — Test Transform Uses Different Shapelets or Re-Normalizes
-
-**What goes wrong:**
-The out-of-sample `transform` must apply the *exact* shapelets discovered during `fit` — same sequences, same length, same pre-stored z-normalization. Two failure modes:
-1. The transform recomputes shapelets from the test data (completely wrong — shapelets must be fixed from training).
-2. The transform applies a different normalization to the shapelet itself on each call (e.g., re-normalizes against the test series statistics instead of using the stored normalization from fitting).
-
-Either failure makes `train_transform ≠ test_transform` in distribution, corrupting the downstream classifier.
-
-**Why it happens:**
-In a pure-function codebase (no mutable state after fit), it is tempting to keep the shapelet discovery logic and the transform logic as one combined function. Separating them cleanly requires storing the fitted shapelets in the result struct. If the shapelet is stored un-normalized and re-normalized at transform time using the test series' statistics, the bug is introduced.
-
-The existing `FpcaResult::project` pattern in `regression.rs` is the correct model: store the fitting artifacts (mean, rotation) immutably, then apply them in a `project` call. Apply the same pattern here.
-
-**How to avoid:**
-- Store shapelets as already-z-normalized `Vec<Vec<f64>>` in `ShapeletFitResult` (analogous to `FpcaResult`'s `rotation`/`mean`).
-- `transform(&self, data: &FdMatrix) -> Result<FdMatrix, FdarError>` uses `self.shapelets` directly — no re-discovery, no re-normalization.
-- Add a train/test consistency test: transform the training data using `fit_result.transform(train_data)` and compare column-by-column to the distances stored during fitting (these must match within floating-point tolerance).
-
-**Warning signs:**
-- `transform(train_data)` produces different values than those implicitly computed during `fit`.
-- `ShapeletFitResult` does not contain the shapelet sequences — they are re-computed on each call.
-
-**Phase to address:** Phase 59 (shapelet transform), which is where `transform` is implemented against the `ShapeletFitResult` struct.
-
-**Verification hook (train/test consistency):**
 ```rust
-let fit = shapelet_discover(&train_data, &labels, config)?;
-let train_features = fit.transform(&train_data)?;
-let test_features  = fit.transform(&test_data)?;
-// re-transforming train must exactly reproduce the training distances
-let train_features2 = fit.transform(&train_data)?;
-assert!(train_features.approx_eq(&train_features2, 1e-12));
-// columns of train_features must match stored distances in fit
-for (k, s) in fit.shapelets.iter().enumerate() {
-    for i in 0..n_train {
-        assert!((train_features[(i,k)] - shapelet_distance(s, train_data.row(i))).abs() < 1e-12);
-    }
-}
+// Two-group shifted-motif recovery.
+// Group 0: 5 copies of [0,1,2,1,0,...] at offset 0.
+// Group 1: 5 copies of [0,0,1,2,1,...] (shifted right by 1).
+// After fit with n_clusters=2, centroids must correlate > 0.95 with the group prototype.
+let res = kshape_fd(&data, &KShapeConfig { n_clusters: 2, ..Default::default() }).unwrap();
+// Centroid 0 shape must resemble group prototype 0 (up to sign — see Pitfall 6).
 ```
 
 ---
 
-### Pitfall 10: Test Series Shorter Than a Shapelet — No Defined Policy
+### Pitfall 6: Sign Ambiguity of the Centroid Eigenvector — Inverted Centroid
 
 **What goes wrong:**
-If a test series has length `m_test < L` (shapelet length), the sliding-window loop has zero valid windows. The function must not panic (no index-out-of-bounds in the `&x[t..t+L]` slice) and must return a defined value rather than `NaN` or `INFINITY` silently.
+The top eigenvector of a symmetric matrix is unique up to sign: both `v` and `-v` are valid eigenvectors. When used as a k-Shape centroid, the wrong sign causes the centroid to be the **mirror image** of the cluster's representative shape. In the next iteration, member curves are SBD-aligned to an inverted centroid, the optimal shift is in the wrong direction, and the algorithm oscillates or converges to a degenerate solution.
 
-Common options: (a) return `FdarError::InvalidDimension`, (b) return `f64::NAN` (bad — see Pitfall 2), (c) return `f64::INFINITY` (signals "no match" — can be used if documented). The `InvalidDimension` path is most consistent with the fdars `Result<T, FdarError>` convention.
+The sign convention from the Paparrizos & Gravano paper and from tslearn's implementation: choose the sign of the eigenvector such that it correlates **positively** with the cluster members. Specifically, compute `dot(v, mean_of_S_rows)` — if it is negative, flip `v`.
 
 **Why it happens:**
-During fitting, the minimum shapelet length is bounded by `min(m_train_i)`, but at prediction time the user may pass shorter series. The sliding-window loop's range `0..m-L+1` wraps to an empty iterator in Rust rather than panicking, but the fold over an empty iterator returns `f64::INFINITY` — which silently becomes an outlier column in the feature matrix.
+Nalgebra's `symmetric_eigen` returns eigenvectors with arbitrary sign. The existing `fix_svd_signs` / `dominant_sign_negative` infrastructure in `regression.rs` solves a similar problem for FPCA (make the dominant entry positive). But that convention is not the right one for k-Shape centroids — the dominant-entry rule may still produce a centroid that anti-correlates with most members if the dominant entry happens to be negative on the prototype curve.
 
 **How to avoid:**
-- In `transform`, check at the start that every row of `data` has `ncols >= min(shapelet_lengths)`.
-- Return `FdarError::InvalidDimension { parameter: "data.ncols", expected: min_len, actual: ncols }` if the check fails.
-- Document the policy in the rustdoc for `transform`.
+- After extracting the top eigenvector `v`, compute the sum `dot_sum = Σ_i dot(S_row_i, v)`.
+- If `dot_sum < 0`, negate `v`: `v = -v`.
+- This is the tslearn convention and is equivalent to "the centroid correlates positively with the cluster mean."
+- Do **not** reuse `dominant_sign_negative` from `regression.rs` for this — it applies a different convention.
 
 **Warning signs:**
-- `transform` on shorter series returns a row of all-INFINITY distances without error.
-- Test matrix has INFINITY values that silently produce NaN in a downstream dot product.
+- Centroid looks like the "upside-down" version of the expected shape.
+- Inertia (sum of SBD to assigned centroid) is large even after convergence on a clean motif dataset.
+- Adding a sign-flip test that checks `dot(centroid, prototype) > 0` fails on synthetic data.
 
-**Phase to address:** Phase 59 (shapelet transform).
+**Phase to address:** Phase 62 (k-Shape fit — shape extraction centroid).
 
 **Verification hook:**
-- Test: pass a series of length `min_shapelet_len - 1` to `transform`; expect `Err(FdarError::InvalidDimension)`.
-
----
-
-### Pitfall 11: Classifier Determinism — Seed Not Threaded Through
-
-**What goes wrong:**
-If candidate sampling uses random selection (time-contract mode, which is the default for tractability — see Pitfall 4), the set of selected shapelets changes across runs with different seeds. If the seed is not exposed as a parameter and stored in the fit result, the pipeline is non-reproducible: two calls to `fit` on the same data return different shapelets, different transforms, and different classifier weights.
-
-The fdars convention is per-thread deterministic seeding: `StdRng::seed_from_u64(seed + k as u64)`. If the candidate sampling loop uses a thread-local RNG without a user-supplied seed, reproducibility is broken.
-
-**Why it happens:**
-The existing per-thread seeding pattern (documented in `CLAUDE.md`) applies to rayon worker threads, not to a top-level caller seed. When the candidate sampling is sequential (not rayon-parallel), there is no thread-local RNG — the developer must explicitly thread the seed.
-
-**How to avoid:**
-- `ShapeletConfig` must include `seed: u64` (default: `42` or a well-known constant).
-- The candidate sampling loop uses `rand::SeedableRng::seed_from_u64(config.seed)` to produce a deterministic shuffle/sample.
-- Store `seed` in `ShapeletFitResult` so users can reproduce the exact fit.
-- If candidate generation is parallelized, use `StdRng::seed_from_u64(config.seed + thread_idx as u64)` — the existing pattern in `parallel.rs`.
-
-**Warning signs:**
-- Two calls to `fit` with the same input and config return different shapelets.
-- `ShapeletFitResult` does not record which seed was used.
-
-**Phase to address:** Phase 58 (discovery & ranking) — where the random candidate-sampling loop lives.
-
-**Verification hook (determinism test):**
 ```rust
-let cfg = ShapeletConfig { seed: 42, max_candidates: 1000, ..Default::default() };
-let fit1 = shapelet_discover(&data, &labels, cfg.clone())?;
-let fit2 = shapelet_discover(&data, &labels, cfg.clone())?;
-assert_eq!(fit1.shapelets, fit2.shapelets);
+// After shape extraction for a cluster whose members all look like [0,1,2,1,0]:
+let centroid = shape_extract(&s_matrix).unwrap();
+let member_mean: Vec<f64> = /* arithmetic mean of S rows */;
+let dot: f64 = centroid.iter().zip(member_mean.iter()).map(|(a,b)| a*b).sum();
+assert!(dot > 0.0, "centroid must correlate positively with member mean, dot={dot}");
 ```
 
 ---
 
-### Pitfall 12: Class Imbalance Biases Information Gain Toward the Majority Class
+### Pitfall 7: Members Not Shift-Aligned to the Current Centroid Before Shape Extraction
 
 **What goes wrong:**
-Information gain is not class-size-invariant. On an imbalanced training set (e.g. 90/10 split), the prior entropy is low (~0.47 bits) and a shapelet that perfectly separates the 10% minority class achieves less IG than one that splits the majority class — even if the minority-class shapelet is the genuinely discriminative feature. The result is that the top-K selected shapelets capture majority-class variation, not discriminative minority-class shape.
+The shape extraction matrix `M = S^T (I - 11^T/n) S` requires `S` to contain the shift-aligned versions of each member curve. "Shift-aligned" means each member `x_i` has been cyclically shifted by the optimal shift `s_i = argmax_s NCC(centroid, x_i)` from the previous SBD call.
+
+If the raw (unaligned) member curves are used to build `S`, the extracted centroid averages across time-misaligned curves and is meaningless — it captures phase noise, not shape. The algorithm will not converge.
+
+This is a two-step per-member operation per iteration: (1) compute SBD to get the optimal shift `s_i`, (2) circularly shift the z-normalized member by `s_i` before inserting it as a row of `S`. The SBD step in the assignment phase gives the cluster label; the shift from that same SBD call must be stored and reused in the centroid update phase.
 
 **Why it happens:**
-The IG formula treats all training examples equally. Imbalanced datasets with common shapes shared by the majority class will produce many high-IG candidates that exploit majority-class homogeneity, not inter-class separability.
+The assignment step outputs `cluster[i]` (which cluster curve `i` belongs to). Developers use only the cluster label and discard the shift. The centroid update then uses the original FdMatrix rows, not the shifted versions.
 
 **How to avoid:**
-- Document that the default IG ranking assumes balanced classes.
-- Optionally support F-statistic (ANOVA-style) as an alternative quality measure: `quality: QualityMeasure { InfoGain | FStatistic }` in `ShapeletConfig`.
-- The F-statistic is less sensitive to imbalance and is used in some sktime variants.
-- Alternatively, allow class weights in the IG computation (weight each class by `1 / class_size`).
-- Minimum viable: document the limitation clearly; do not silently use IG on imbalanced data without warning.
+- `sbd` must return both the distance and the optimal shift: `fn sbd(x: &[f64], y: &[f64]) -> Result<(f64, isize), FdarError>`.
+- During the assignment sweep, store `shifts[i] = s_i` alongside `cluster[i]`.
+- In the centroid update, for cluster `c`, collect all `i` with `cluster[i] == c`, z-normalize `data.row(i)`, circularly shift by `shifts[i]`, and insert as row `i` of `S`.
+- The circular shift is a cyclic rotation of the z-normalized row vector; it is not a padding operation.
 
 **Warning signs:**
-- On an imbalanced dataset, all top-K shapelets come from the majority class.
-- Minority-class `sdist` distributions overlap entirely with majority class.
+- After one iteration, centroids look like blurred or flat versions of the input curves (phase-averaging artifact).
+- Inertia decreases by less than 1% per iteration from the start, even on a clean two-group dataset.
+- Centroids are visually different from any individual member.
 
-**Phase to address:** Phase 58 (discovery & ranking) — expose `QualityMeasure` enum alongside IG.
+**Phase to address:** Phase 62 (k-Shape fit). The `sbd` signature in Phase 61 must expose the shift return value so Phase 62 can store it.
 
 **Verification hook:**
-- Test: 90/10 imbalanced synthetic dataset with a discriminative motif in the 10% class. F-statistic must rank the true motif higher than IG on this dataset.
+- Run k-Shape on two clean groups of five identical shifted-motif curves each.
+- After convergence, check: `centroid_0.corr(prototype_0) > 0.99` and `centroid_1.corr(prototype_1) > 0.99`.
+- If alignment is broken, centroids will have much lower correlation with their prototypes.
 
 ---
 
-### Pitfall 13: Float Ties in Min-Distance and Ranking Produce Non-Deterministic Order
+### Pitfall 8: Centroid Not Re-Z-Normalized After Shape Extraction
 
 **What goes wrong:**
-Two candidate shapelets can have exactly equal quality scores (IG or F-stat) in f64 due to identical training distributions. When sorted, their relative order is implementation-defined — this produces different top-K selections across platforms or Rust versions, breaking the determinism guarantee even with a fixed seed.
+After extracting the top eigenvector `v` as the new centroid, `v` has arbitrary L2 norm (it is an eigenvector, normalized to unit L2 by the eigendecomposition). When `v` is used as the reference in the next iteration's SBD calls, the NCC formula divides by `‖centroid‖ · ‖member‖`. If `‖centroid‖ ≠ 1` (which it will not be in general as a unit L2 eigenvector), the NCC denominator is wrong, and the distances are miscalibrated.
 
-Similarly, two windows in the sliding-window loop can produce equal distances; taking the first-minimum vs. last-minimum changes the stored threshold for that candidate.
+The paper and tslearn both z-normalize the extracted eigenvector before using it as the centroid in the next iteration. This is a separate z-normalization from the population-std normalization applied to the member curves — it is applied to the `m`-dimensional eigenvector itself.
 
 **Why it happens:**
-Rust's `sort_by` on `f64` is not stable for NaN (it violates total order), and a naive `.sort_by(|a, b| a.partial_cmp(b).unwrap())` panics on NaN. Even with NaN-free data, equal floats sort non-deterministically under parallel sort.
+The eigenvector is already L2-normalized to unit length by nalgebra, so the implementer assumes it is "normalized enough." But SBD z-normalization is population-std normalization (mean-zero, std-one), not L2-unit-norm normalization. These are different: a unit-L2 vector has `‖v‖ = 1` but may have nonzero mean and `std = 1/√m`.
 
 **How to avoid:**
-- Sort quality scores using a stable sort with a tie-break by `(series_idx, start_offset)` — both are deterministic.
-- For the sliding-window minimum, always take the first minimum (lowest offset) on ties: `if d < best { best = d; best_offset = t; }` — strict less-than, not `<=`.
-- Never use `partial_cmp(...).unwrap()` — use `total_cmp` (stable since Rust 1.62): `a.total_cmp(b)`.
+- After extracting `v` as the top eigenvector, apply `z_normalize_window(&v)` to get the centroid for the next iteration.
+- Store the centroid already-normalized in the `KShapeResult::centroids` field (same convention as `Shapelet.values` in the shapelet module — stored pre-normalized).
 
 **Warning signs:**
-- Test with a duplicate-quality candidate set produces different output on different runs.
-- Compilation warning about non-total `Ord` for `f64`.
+- SBD distances to the centroid are systematically different from distances between two member curves of similar shape.
+- Inertia is not monotonically non-increasing across iterations (renormalization error perturbs the objective).
 
-**Phase to address:** Phase 58 (discovery & ranking).
+**Phase to address:** Phase 62 (k-Shape fit — centroid update step).
 
 **Verification hook:**
-- Determinism test (covers both Pitfall 11 and 13): run `fit` twice with same seed, assert `fit1.shapelets == fit2.shapelets` and `fit1.thresholds == fit2.thresholds`.
+- After every centroid update, assert `mean(centroid).abs() < 1e-10` and `std(centroid) ≈ 1.0 ± 1e-6` before the next assignment step.
+
+---
+
+### Pitfall 9: Empty Cluster During k-Shape Iterations — Algorithm Panics or Produces Invalid State
+
+**What goes wrong:**
+At any iteration, a cluster may lose all its members if SBD-distances pull every curve to other centroids. This happens most often when `k > number_of_natural_clusters` (the overpartitioned case) or when a centroid is initialized too close to another. Without a recovery mechanism, the centroid update for the empty cluster will:
+- Index into an empty slice → panic or undefined behavior.
+- Produce a NaN centroid (eigendecomposition of a zero matrix).
+- Leave the centroid unchanged (from the previous iteration), causing the cluster to stay empty forever.
+
+**Why it happens:**
+k-Shape shares this failure mode with k-means but has no established "absorb the nearest point" recovery documented in the original paper. tslearn handles it by re-initializing the empty cluster's centroid to a random member from the dataset. The existing `kernel_kmeans.rs` uses the "farthest point from its current cluster" strategy.
+
+**How to avoid:**
+- Mirror `kernel_kmeans.rs`'s `recover_empty_clusters` pattern: after each assignment step, identify empty clusters and reassign the point currently maximizing `sbd(point, assigned_centroid)` to the empty cluster.
+- Alternatively (and simpler to implement correctly): re-initialize the empty cluster centroid to a randomly selected data point (using the per-restart seed with the `seed + restart_idx` convention).
+- Guard the shape extraction: if `cluster_size[c] == 0`, skip the eigenvector computation for cluster `c` and log a warning or run the recovery.
+- Never panic on an empty cluster — return `FdarError::ComputationFailed` only if recovery fails after `max_iter` attempts.
+
+**Warning signs:**
+- `thread 'test' panicked at 'called Option::unwrap() on a None value'` during centroid update.
+- Final cluster assignments have some cluster label appearing zero times.
+- Inertia is `NaN` or `Inf` after one iteration.
+
+**Phase to address:** Phase 62 (k-Shape fit).
+
+**Verification hook:**
+```rust
+// k > natural clusters test (same as kernel_kmeans smoke test).
+let k = 4;  // but data has only 2 natural groups
+let res = kshape_fd(&data, &KShapeConfig { n_clusters: k, ..Default::default() }).unwrap();
+// Every cluster label in 0..k appears at least once.
+let mut sizes = vec![0usize; k];
+for &c in &res.cluster { sizes[c] += 1; }
+assert!(sizes.iter().all(|&s| s >= 1), "empty cluster survived: {sizes:?}");
+```
+
+---
+
+### Pitfall 10: Objective Non-Monotonicity — k-Shape Inertia Increases Mid-Run
+
+**What goes wrong:**
+k-Shape's objective (sum of SBD distances from each curve to its assigned centroid's SBD) is guaranteed to be non-increasing at the assignment step. The centroid update step, however, does not guarantee a decrease — specifically, if the centroid sign is flipped incorrectly (Pitfall 6), the alignment step in the next assignment uses an inverted centroid, producing larger SBD distances than before the update. The result is oscillation: the algorithm does not converge and `converged = false` is the permanent status.
+
+Also: if the `n_init` restarts are compared by total inertia but inertia is computed on a different (e.g., unaligned) basis across restarts, the best-restart selection is meaningless.
+
+**How to avoid:**
+- Track inertia using SBD-to-assigned-centroid, computed **after** the assignment step with the current centroids (not before updating centroids). This is the standard k-means convergence check.
+- Convergence criterion: `|prev_inertia - inertia| / prev_inertia < tol` OR labels unchanged from the previous iteration (same `tol = 1e-4` and `max_iter = 300` defaults as `KernelKmeansConfig`).
+- Use a signed-label-based convergence check: if `new_cluster == old_cluster`, converge regardless of inertia change.
+- If inertia increases more than `tol` for 3+ consecutive iterations, this indicates a sign bug (Pitfall 6) — add a debug assertion.
+
+**Warning signs:**
+- Inertia oscillates between two values and never decreases monotonically.
+- `converged = false` for all restarts even on clean synthetic data.
+- Best restart selected by `n_init` comparison has higher inertia than some other restart.
+
+**Phase to address:** Phase 62 (k-Shape fit — convergence tracking).
+
+**Verification hook:**
+- On a clean two-group dataset with `n_init=1`, assert that inertia is strictly non-increasing across iterations (allow ≤ 1e-10 floating-point tolerance).
+
+---
+
+### Pitfall 11: k-Shape n_init Restarts with Wrong Seeding — Non-Determinism or Identical Restarts
+
+**What goes wrong:**
+Two failure modes in the `n_init` restart loop:
+
+1. **Identical restarts:** if all restarts use the same seed, they produce identical initializations and identical results. The multi-start provides no benefit.
+2. **Non-deterministic restarts:** if the seed is not threaded and the RNG is initialized from `rand::thread_rng()`, two calls with the same config return different results, breaking reproducibility.
+
+The correct pattern (from `kernel_kmeans.rs`): restart `r` is seeded `StdRng::seed_from_u64(config.seed.wrapping_add(r as u64))`. This produces `n_init` distinct random initializations while remaining fully reproducible.
+
+**Why it happens:**
+Developers copy the `seed + r` pattern but use `seed + r` as an addition that can overflow for large seeds (fixed by `wrapping_add`), or they forget to thread `restart_idx` and use a constant seed.
+
+**How to avoid:**
+- `KShapeConfig` must include `seed: u64` and `n_init: usize` (both required for the restart loop).
+- Use `StdRng::seed_from_u64(config.seed.wrapping_add(restart as u64))` for restart `r`. Mirror the `kernel_kmeans.rs` convention verbatim.
+- Initialization: assign each curve to a random cluster `rng.gen_range(0..k)`, then run `ensure_no_empty_random` (same helper from `kernel_kmeans.rs`) to guarantee no cluster starts empty.
+
+**Warning signs:**
+- Two calls with the same config return different `cluster` assignments.
+- `n_init=10` produces the same inertia as `n_init=1` (all restarts are identical).
+- `assert_eq!(a.cluster, b.cluster)` in the determinism test fails.
+
+**Phase to address:** Phase 62 (k-Shape fit).
+
+**Verification hook:**
+```rust
+let cfg = KShapeConfig { seed: 42, n_init: 5, ..Default::default() };
+let a = kshape_fd(&data, &cfg).unwrap();
+let b = kshape_fd(&data, &cfg).unwrap();
+assert_eq!(a.cluster, b.cluster, "same seed must give identical labels");
+assert_eq!(a.inertia.to_bits(), b.inertia.to_bits());
+```
+
+---
+
+### Pitfall 12: IFFT Scale Factor Not Removed — NCC Values Off by fft_len
+
+**What goes wrong:**
+rustfft performs unnormalized IFFT: the output of `plan_fft_inverse(fft_len).process(buf)` is scaled by `fft_len`. The raw cross-correlation values in `buf` after IFFT are each `fft_len` times the true cross-correlation. If this scale factor is not divided out before computing the coefficient-normalized NCC (or if it is folded into the `‖x‖·‖y‖` denominator incorrectly), the NCC values are off by `fft_len` and the argmax picks the right index but the distance value `1 - max(NCC)` is meaningless.
+
+Concretely: if `fft_len = 32` and the true NCC max is `0.9`, the raw IFFT output gives `28.8` at that lag, and `1 - 28.8 / (‖x‖·‖y‖)` is a large negative number — which clips the returned SBD distance to a nonsensical value.
+
+**Why it happens:**
+The existing seasonal ACF code (`seasonal/mod.rs:374`) divides by `fft_len * n * var` — folding the IFFT scale into the normalization. For NCC the analogous step is dividing by `fft_len` (from the IFFT) and then by `‖x‖·‖y‖` (the coefficient normalization). Developers new to rustfft are aware of the FFT `1/n` convention in MATLAB/Python's `numpy.fft.ifft` and forget that rustfft does not include it.
+
+**How to avoid:**
+- After `ifft.process(&mut buf)`, divide the `buf[s].re` values by `fft_len as f64` before applying the `‖x‖·‖y‖` normalization. Alternatively, fold the `fft_len` into the denominator: `ncc[s] = buf[s].re / (fft_len as f64 * norm_x * norm_y)`.
+- Add a `sbd(x, x)` self-distance test as the first smoke test — it will fail obviously if the IFFT scale is wrong (NCC will be `n` instead of `1.0`, and `1 - n = large negative`).
+
+**Warning signs:**
+- `sbd(x, x)` returns a large negative number or a number much greater than 1.
+- NCC values at any lag exceed 1.0 or are much less than -1.0.
+
+**Phase to address:** Phase 61 (SBD distance core).
+
+**Verification hook:**
+- Self-distance test (same as Pitfall 2 hook): `sbd(x, x)` must be `< 1e-10`.
+- NCC bounds test: for any pair `(x, y)`, `max(NCC) <= 1.0 + 1e-10` and `min(NCC) >= -1.0 - 1e-10`.
+
+---
+
+### Pitfall 13: SBD-Based k-Medoids Feeds Wrong Distance — SBD Is Not the Euclidean L2 Distance
+
+**What goes wrong:**
+The existing `kmedoids_from_distances` in `alignment/clustering.rs` takes a precomputed `FdMatrix` distance matrix and runs PAM-style k-medoids. Reusing this for SBD-based k-medoids is the correct architectural decision — but only if the SBD pairwise distance matrix is computed correctly (using FFT-NCC, not Euclidean or DTW distances).
+
+The failure mode: a developer computes the "distance matrix" using `distance.rs`'s `pairwise_distance_matrix` with an L2 metric and feeds it to `kmedoids_from_distances` instead of computing the `n × n` SBD pairwise matrix. The medoids are then L2-medoids, not SBD-medoids.
+
+**Why it happens:**
+`pairwise_distance_matrix` is already in `distance.rs` and is easy to call. The developer may not realize that a new `sbd_distance_matrix` function is needed that uses the FFT-NCC path.
+
+**How to avoid:**
+- Implement `sbd_distance_matrix(data: &FdMatrix) -> Result<FdMatrix, FdarError>` as a wrapper that calls `sbd(row_i, row_j)` for all pairs and assembles the symmetric matrix.
+- Pass this matrix — not any L2/DTW matrix — to `kmedoids_from_distances`.
+- The doctest for SBD k-medoids must show the `sbd_distance_matrix` call explicitly so there is no ambiguity.
+
+**Warning signs:**
+- SBD k-medoids and L2 k-medoids produce identical results on data where SBD should differ (e.g., curves with same shape but different offsets).
+
+**Phase to address:** Phase 63 (SBD-based k-medoids integration).
+
+**Verification hook:**
+- Offset-invariance test: run SBD k-medoids on two groups of curves where group membership is shape-based (not amplitude-based). Purity must be > 0.9. L2 k-medoids on the same data should have purity < 0.7 (offset differences confuse L2 but not SBD).
+
+---
+
+### Pitfall 14: Predict Uses Re-Estimated Normalization — Not Stored Centroids
+
+**What goes wrong:**
+Out-of-sample predict assigns each new curve to the fitted centroid minimizing SBD. The failure mode: predict re-z-normalizes or re-estimates the centroids from the test data (analogous to Shapelet Pitfall 9 for shapelets). The centroids must be used exactly as stored in `KShapeResult` — already z-normalized, no re-estimation.
+
+Additionally, the SBD in predict must use the stored centroids as `y` in `sbd(new_curve_znorm, centroid_stored)`. If the centroid is passed as `x` instead of `y`, the argmax shift has the wrong sign (the NCC is asymmetric in lag direction), though the distance value is correct. For predict, only the distance (not the shift) is needed, so the asymmetry does not matter for correctness of labels — but using `y = centroid` as the reference is the tslearn convention and should be followed for consistency.
+
+**Why it happens:**
+Same structural error as Pitfall 9 (shapelet transform consistency): the predict path independently "normalizes the centroid" rather than trusting the stored pre-normalized version.
+
+**How to avoid:**
+- `KShapeResult::centroids` stores already-z-normalized centroid vectors (type `Vec<Vec<f64>>`).
+- `predict` iterates over centroids: `sbd(z_normalize_window(&new_row), &centroids[c])` for each `c`, assigns to argmin.
+- Never call `z_normalize_window` on a stored centroid inside predict.
+- Mirror `KernelKmeansResult::predict` design: stored state reused, no re-estimation.
+
+**Warning signs:**
+- `predict(train_data)` returns different labels than the training-time `cluster` field.
+- `predict` on an exact copy of a training curve returns a different cluster than the fit result.
+
+**Phase to address:** Phase 62 (k-Shape fit — predict method on `KShapeResult`).
+
+**Verification hook:**
+```rust
+// Exact-copy predict consistency.
+let res = kshape_fd(&data, &cfg).unwrap();
+let preds = res.predict(&data).unwrap();
+assert_eq!(preds, res.cluster, "predict on train data must reproduce training labels");
+```
 
 ---
 
@@ -408,13 +503,15 @@ Rust's `sort_by` on `f64` is not stable for NaN (it violates total order), and a
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Skip time contract; enumerate all candidates | Simpler loop, no config parameter | Unusable on any real dataset; discovery never returns | Never — always add the contract |
-| Single-pass std formula `E[X²]-E[X]²` | One pass over window | Numerical instability for nearly-constant windows → NaN cascade | Never in a numerical library |
-| Store shapelets un-normalized | Smaller struct | Re-normalization at transform time introduces bugs (Pitfall 9) | Never |
-| Fixed threshold (e.g. median) for IG | No threshold search | Wrong ranking, poor shapelet selection | Never |
-| Series-level normalization only | Simpler preprocessing | Breaks shapelet distance semantics (Pitfall 1) | Never |
-| No self-similarity pruning | Simpler selection loop | Redundant features, poor classifier accuracy | Only in a prototype/smoke test, never shipped |
-| Hard-code seed=0 | Reproducible output | User cannot vary the search; masks non-determinism bugs | Never — expose seed in config |
+| Plan FFT for length `n` (not `2n−1`) | One less calculation | Circular wrap corrupts all shifts (Pitfall 1) — silently wrong | Never |
+| Use count normalization (divide by `n` or `n−|lag|`) instead of `‖x‖·‖y‖` | Simpler code | NCC not in [-1,1]; SBD formula wrong (Pitfall 2) | Never |
+| Use arithmetic mean as k-Shape centroid | Avoids eigendecomposition | Wrong algorithm — k-Shape degenerates to k-means on z-normalized data (Pitfall 5) | Never |
+| Skip the centering projection `(I - 11^T/n)` | Simpler matrix product | Wrong eigenvector; centroid does not capture shape (Pitfall 5) | Never |
+| Ignore eigenvector sign | No extra computation | Centroid may be inverted; algorithm oscillates (Pitfall 6) | Never |
+| Discard shift from SBD at assignment time | Half the state to track | Centroid update uses unaligned members (Pitfall 7) | Never |
+| Skip IFFT scale division | Simpler formula | NCC values off by `fft_len`; SBD is wrong (Pitfall 12) | Never |
+| Hard-code `n_init = 1` | Faster, simpler | k-Shape is highly sensitive to init; one restart often converges to a local minimum | Only in dev smoke tests, never shipped |
+| Re-use dominant_sign_negative from regression.rs for centroid sign | Less code | Wrong sign convention for k-Shape; may invert centroid (Pitfall 6) | Never — implement the correlation-based sign rule |
 
 ---
 
@@ -422,11 +519,12 @@ Rust's `sort_by` on `f64` is not stable for NaN (it violates total order), and a
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| O(n·m³) naive complete search | `fit` hangs after >30s on n=50, m=200 | Time contract + candidate sampling from the start | Any real dataset, m>100 |
-| No early-abandon in window scan | Inner loop never exits early; profiler shows full L iterations always | Sequential inner loop with running-best short-circuit | Constant effect; 2–8× slowdown vs. early-abandon |
-| Rayon parallelism in the window-scan inner loop | rayon overhead exceeds compute for small L windows | Parallelize at the series or candidate level, not the window level | L < ~200 (rayon task overhead dominates) |
-| Materializing all candidate windows as owned `Vec<Vec<f64>>` | Heap allocation per window × millions of windows = GC pressure | Operate on slices; z-normalize into a fixed-length stack buffer | n=100, m=500, any L → ~50M allocations |
-| `to_dmatrix()` conversion for shapelet distance | nalgebra matrix copy per distance call | Keep distance in raw `&[f64]` slice arithmetic; never call `to_dmatrix` in the hot loop | Every candidate × every series × every window |
+| Allocating a new FFT plan per SBD call | Planner construction is ~100× more expensive than one FFT | Build `FftPlanner` + plans once; share via `Arc<dyn Fft>` across the pairwise loop | n > 20 curves |
+| Building `S` matrix by cloning FdMatrix rows without reuse | O(n·m) alloc per iteration × max_iter | Reuse a pre-allocated `n_cluster × m` buffer; only recompute the rows of the affected cluster | Large n, m |
+| Computing the full `n × n` SBD pairwise matrix for every k-Shape iteration | O(n²) SBD calls per iteration (each O(m log m)) | k-Shape does **not** need the full pairwise matrix — compute `sbd(curve_i, centroid_c)` per assignment sweep, which is O(n·k) SBD calls | n > 50, k > 3 |
+| `to_dmatrix()` inside the SBD hot loop | nalgebra matrix copy for every SBD pair | SBD distance is pure `&[f64]` arithmetic (FFT of slices); never call `to_dmatrix` in the SBD path | Every SBD call |
+| Sequential pairwise SBD distance matrix | O(n²) sequential FFTs | Use `iter_maybe_parallel!` at the pair level for the pairwise matrix function; each SBD call is independently parallelizable | n > 100 for distance matrix |
+| Allocating a new `Vec<Complex<f64>>` scratch buffer per SBD call | O(fft_len) alloc per pair, millions of times in clustering | Reuse a pre-allocated scratch buffer across SBD calls (pass as `&mut Vec<Complex<f64>>`) | n > 20 curves, tight loops |
 
 ---
 
@@ -434,31 +532,35 @@ Rust's `sort_by` on `f64` is not stable for NaN (it violates total order), and a
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| `classification/` existing classifiers | Pass raw `FdMatrix` (curves) to an existing FPC-based classifier | Pass `transform(data)` result (n×K distances) to a classifier that accepts Euclidean features; kNN on Euclidean distances is the standard bundled choice |
-| `metric/lp.rs` z-normalized distance | Reuse `lp_cross_1d` with p=2 for shapelet distance | `lp_cross_1d` integrates over `argvals` (L2 functional norm); shapelet distance is discrete Euclidean on z-normalized windows — different function, must not reuse |
-| `FdMatrix` row access | Iterate columns (contiguous) for performance | Shapelet windows are row slices (non-contiguous in column-major layout); use `row_to_buf` to copy a row slice before z-normalizing to avoid scattered reads in the inner loop |
-| `parallel.rs` macros | Apply `iter_maybe_parallel!` to the window-scan loop | Window scan must be sequential for early-abandon; apply `iter_maybe_parallel!` only to the outer series loop or outer candidate loop |
-| `distance.rs` `pairwise_distance_matrix` | Reuse for shapelet candidate pairwise distances (self-similarity pruning) | Valid for small K (comparing selected shapelets to each other); not valid for the main discovery loop (different semantics) |
+| `shapelet::z_normalize_window` (v0.33.0) | Assume shapelet z-norm convention matches SBD z-norm | Both use population std (`ddof=0`) and `STD_EPS=1e-12` — reuse `z_normalize_window` directly; document the shared convention |
+| `alignment/clustering.rs` `kmedoids_from_distances` | Feed an L2 pairwise matrix instead of an SBD matrix | Implement `sbd_distance_matrix` using the SBD core and pass its output; the k-medoids PAM engine is distance-agnostic |
+| `FdMatrix` column-major row access | Iterate rows with `data[(i,j)]` inside the FFT loop — scattered memory access | Use `data.row(i)` to copy the row to a contiguous `Vec<f64>` before FFT; same pattern as `fourier.rs` |
+| `parallel.rs` `iter_maybe_parallel!` | Apply to the inner FFT buffer computation (inside one SBD call) | Parallelize at the outer level: across pairs in `sbd_distance_matrix`, or across curves in the assignment sweep; the FFT inner loop is sequential |
+| `rustfft` IFFT scale | Expect IFFT to divide by `fft_len` (numpy convention) | rustfft IFFT does not divide — divide manually by `fft_len` or fold into the NCC denominator (see Pitfall 12) |
+| nalgebra `symmetric_eigen` eigenvalue order | Assume descending order (largest first) | nalgebra returns ascending order — take the **last** sorted column, not the first; mirror the `pace_fpca.rs:191` descending-sort pattern |
+| `dominant_sign_negative` in `regression.rs` | Reuse for centroid sign fix | Wrong convention for k-Shape — implement a separate correlation-based sign rule: `if dot(v, mean_S_rows) < 0 { v = -v }` |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Shapelet distance:** Per-window z-normalization verified with offset-invariance and scale-invariance tests — not series-level normalization.
-- [ ] **Constant-window guard:** `std.max(1e-10)` clamping in z-norm helper; constant-window test passes.
-- [ ] **Min semantics:** Sliding-window fold uses strict minimum; known-motif recovery test passes (Pitfall 3 hook).
-- [ ] **Time contract:** `max_candidates` or `time_contract_minutes` parameter present; tractability test passes (Pitfall 4 hook).
-- [ ] **Early-abandon:** Inner distance loop short-circuits; benchmark confirms speedup vs. no-abandon.
-- [ ] **Optimal threshold search:** `best_ig` scans all n-1 gaps; no fixed-threshold fallback.
-- [ ] **Self-similarity pruning:** Selected shapelets span distinct source series; column-correlation check passes.
-- [ ] **Transform consistency:** `transform(train_data)` matches distances computed during `fit`; train/test consistency test passes.
-- [ ] **Short-series guard:** `transform` returns `Err(InvalidDimension)` if any series shorter than min shapelet length.
-- [ ] **Seed threading:** `ShapeletConfig::seed` present; determinism test passes (two calls, same output).
-- [ ] **NaN/Inf guard:** `transform` result passes `all(|v| v.is_finite())` assertion on all test inputs.
-- [ ] **Stable sort with tie-break:** Candidate ranking uses `total_cmp` + `(series_idx, offset)` tie-break; no `partial_cmp(...).unwrap()`.
-- [ ] **No `to_dmatrix` in hot loop:** Shapelet distance is pure `&[f64]` arithmetic; no nalgebra conversion.
-- [ ] **Leakage discipline:** Rustdoc example uses train/test split; training-set accuracy not presented as generalization.
-- [ ] **Shapelets stored normalized:** `ShapeletFitResult.shapelets` contains z-normalized sequences; transform never re-normalizes against test data.
+- [ ] **FFT zero-padding:** FFT planned for `(2*n-1).next_power_of_two()`, not `n`. Shifted-copy test passes (Pitfall 1).
+- [ ] **NCC normalization:** coefficient-normalized by `‖x_znorm‖·‖y_znorm‖`, not by count. NCC bounded in `[-1,1]`. Self-distance test: `sbd(x,x) ≈ 0` (Pitfall 2).
+- [ ] **SBD z-normalization:** both series z-normalized inside `sbd()` unconditionally. Offset and scale invariance tests pass (Pitfall 3).
+- [ ] **Lag sign extraction:** argmax converted to signed lag using `if idx <= n-1 { idx } else { idx - fft_len }`. Negative-shift test passes (Pitfall 4).
+- [ ] **IFFT scale division:** raw IFFT output divided by `fft_len` before NCC computation. NCC values in `[-1,1]` (Pitfall 12).
+- [ ] **Shape extraction eigenvector:** top eigenvector of `S^T (I - 11^T/n) S`, not arithmetic mean, not `S^T S`. Centroid differs from member mean. Two-group recovery test passes (Pitfall 5).
+- [ ] **Eigenvalue order:** nalgebra ascending eigenvalue order reversed; centroid taken from last (largest) eigenvalue column. (Pitfall 5).
+- [ ] **Centroid sign fix:** `dot(centroid, mean_S_rows) > 0` enforced. Sign-flip test passes (Pitfall 6).
+- [ ] **Shift-alignment before shape extraction:** `shifts[i]` stored from SBD assignment; rows of `S` are circularly shifted z-normalized curves. Centroid correlation with prototype > 0.99 (Pitfall 7).
+- [ ] **Centroid re-z-normalized:** after eigenvector extraction, `z_normalize_window(centroid)` applied. Mean ≈ 0, std ≈ 1 assertion passes (Pitfall 8).
+- [ ] **Empty cluster recovery:** clusters that lose all members are reseeded. k > natural_clusters test does not panic and all cluster sizes ≥ 1 (Pitfall 9).
+- [ ] **Inertia non-increasing:** inertia check per iteration; convergence on label stability or tol. Two-group dataset converges in < 20 iterations (Pitfall 10).
+- [ ] **Determinism with n_init:** `seed.wrapping_add(restart)` seeding. Determinism test: two same-seed calls return identical labels and inertia (Pitfall 11).
+- [ ] **SBD k-medoids uses correct distance:** `sbd_distance_matrix` (FFT-NCC) fed to `kmedoids_from_distances`, not L2. Offset-invariance purity test passes (Pitfall 13).
+- [ ] **Predict consistency:** `predict(train_data) == res.cluster`. Stored centroids not re-normalized. Exact-copy test passes (Pitfall 14).
+- [ ] **No `to_dmatrix` in hot loop:** SBD is pure `&[f64]` slice arithmetic. No nalgebra conversion in `sbd()`.
+- [ ] **FFT planner reuse:** `FftPlanner` constructed once per `kshape_fd` call, not per SBD pair.
 
 ---
 
@@ -466,16 +568,17 @@ Rust's `sort_by` on `f64` is not stable for NaN (it violates total order), and a
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Wrong z-normalization (series-level) | HIGH — all downstream results wrong | Rewrite `znorm_window` helper; re-run all tests; the fix is local but invalidates any previously cached results |
-| Missing constant-window guard | LOW — one-line fix | Add `std.max(1e-10)` to `znorm_window`; all existing tests still pass |
-| Mean instead of min | HIGH — wrong semantics | Rewrite the fold; re-validate known-motif recovery test |
-| No time contract | MEDIUM — API addition | Add `max_candidates` to `ShapeletConfig` with a default; no breaking change if `ShapeletConfig` uses `..Default::default()` construction |
-| No early-abandon | LOW — optimization only, not correctness | Add running-best parameter to inner loop; no API change |
-| Leakage in IG | MEDIUM — re-rank candidates | Switch from full-set IG to per-fold IG or add held-out validation; results change but API does not |
-| No self-similarity pruning | MEDIUM — selection logic rewrite | Add source-series tracking to candidate struct; rewrite selection loop |
-| Transform inconsistency | HIGH — correctness bug | Ensure shapelets are stored normalized in `ShapeletFitResult`; fix `transform` to use stored sequences; re-run all integration tests |
-| Missing short-series guard | LOW — one check + return Err | Add dimension check at start of `transform` |
-| Non-determinism (no seed) | MEDIUM — API addition | Add `seed: u64` to `ShapeletConfig`; update all call sites |
+| Wrong FFT length (circular wrap) | HIGH — all distances wrong | Change `fft_len` to `(2*n-1).next_power_of_two()`; rerun all SBD-dependent tests; one-line fix but all cached results are invalid |
+| Wrong NCC normalization | HIGH — all distances silently miscalibrated | Replace denominator with `fft_len * norm_x * norm_y`; one-line fix; rerun all SBD tests |
+| Missing z-normalization in `sbd()` | MEDIUM — wrong distances for non-centered data | Add `z_normalize_window` calls at top of `sbd()`; no API change |
+| Wrong lag sign extraction | MEDIUM — wrong shift on negative lags, correct distance | Fix the signed-lag conversion after argmax; one-line change; shift tests catch it |
+| Arithmetic mean instead of eigenvector | HIGH — wrong algorithm entirely | Rewrite shape extraction; no API change; results change completely |
+| Wrong eigenvector (e.g., bottom instead of top) | HIGH — wrong centroids | Fix the eigenvalue sort / column index; rerun recovery tests |
+| Missing sign fix | MEDIUM — oscillation / inverted centroids | Add `dot_sum < 0` flip; convergence tests catch it |
+| Missing shift-alignment | HIGH — centroid update is meaningless | Modify `sbd` to return shift; store `shifts[i]` in assignment loop; rewrite centroid update |
+| Missing centroid re-z-norm | LOW — calibration drift over iterations | Add `z_normalize_window` at end of centroid update; one-line fix |
+| No empty-cluster recovery | MEDIUM — panic or NaN in degenerate cases | Add recovery logic mirroring `kernel_kmeans.rs`; no API change |
+| IFFT scale not divided out | HIGH — NCC off by fft_len | Add `/fft_len as f64` after IFFT; one-line fix; self-distance test catches it immediately |
 
 ---
 
@@ -483,33 +586,36 @@ Rust's `sort_by` on `f64` is not stable for NaN (it violates total order), and a
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| P1: Per-window z-norm | Phase 57 — shapelet-distance core | Offset-invariance + scale-invariance unit tests in `shapelet/mod.rs` |
-| P2: Division by ~0 std | Phase 57 — shapelet-distance core | Constant-window and near-constant-window unit tests |
-| P3: Min semantics | Phase 57 — shapelet-distance core | Known-motif recovery test (synthetic class_0/class_1 dataset) |
-| P4: Combinatorial blowup | Phase 58 — discovery & ranking | Tractability test: n=100, m=200, contract=0.1min returns in time |
-| P5: No early-abandon | Phase 57 — shapelet-distance core | Benchmark: early-abandon vs. no-abandon on non-matching shapelet |
-| P6: Fixed threshold IG | Phase 58 — discovery & ranking | Synthetic IG validation: known-discriminative shapelet achieves high IG |
-| P7: Training-set leakage | Phase 60 — bundled classifier | Rustdoc example uses train/test split; test evaluates on held-out data only |
-| P8: Self-similarity omission | Phase 58 — discovery & ranking | Column-correlation check + series-diversity check on selected shapelets |
-| P9: Transform inconsistency | Phase 59 — shapelet transform | Train/test consistency test: `transform(train) == stored distances` |
-| P10: Short-series policy | Phase 59 — shapelet transform | Unit test: series shorter than min shapelet → `Err(InvalidDimension)` |
-| P11: Non-determinism | Phase 58 — discovery & ranking | Determinism test: two same-seed fits produce identical shapelets |
-| P12: Class imbalance | Phase 58 — discovery & ranking | F-statistic path; imbalanced dataset test shows true motif ranked higher |
-| P13: Float ties | Phase 58 — discovery & ranking | Tie-break sort test: duplicate-score candidates produce deterministic order |
+| P1: FFT zero-padding (circular wrap) | Phase 61 — SBD distance core | Shifted-copy test: `sbd(x, shift(x,k)) ≈ 0` at correct shift |
+| P2: NCC coefficient normalization | Phase 61 — SBD distance core | Self-distance test: `sbd(x,x) ≈ 0`; symmetry test: `sbd(x,y) == sbd(y,x)` |
+| P3: Z-normalization required in SBD | Phase 61 — SBD distance core | Offset and scale invariance tests |
+| P4: Lag sign extraction (fftshift) | Phase 61 — SBD distance core | Negative-shift test: expected shift sign matches applied shift |
+| P5: Wrong centroid (mean vs eigenvector) | Phase 62 — k-Shape fit, centroid update | Two-group shifted-motif recovery: centroid correlation > 0.99 with prototype |
+| P6: Eigenvector sign ambiguity | Phase 62 — k-Shape fit, centroid update | Sign-flip test: `dot(centroid, mean_S_rows) > 0` after every extraction |
+| P7: Shift-alignment before shape extraction | Phase 62 — k-Shape fit, centroid update | Centroid-member correlation test; inertia monotone-decrease check |
+| P8: Centroid re-z-normalization | Phase 62 — k-Shape fit, centroid update | Mean/std assertion after each centroid update step |
+| P9: Empty cluster recovery | Phase 62 — k-Shape fit | k > natural_clusters test; no panic; all sizes ≥ 1 |
+| P10: Objective monotonicity | Phase 62 — k-Shape fit, convergence | Inertia-per-iteration monotone-decrease check on two-group synthetic data |
+| P11: Determinism with n_init | Phase 62 — k-Shape fit | Two same-seed calls produce identical labels and inertia bits |
+| P12: IFFT scale factor | Phase 61 — SBD distance core | Self-distance and NCC-bounds tests |
+| P13: SBD k-medoids distance source | Phase 63 — SBD k-medoids | Offset-invariance purity test vs L2 k-medoids |
+| P14: Predict uses stored centroids | Phase 62 — k-Shape fit, predict | `predict(train) == res.cluster`; exact-copy predict test |
 
 ---
 
 ## Sources
 
-- Hills, J., Lines, J., Baranauskas, E., Mapp, J., Bagnall, A. (2014). Classification of time series by shapelet transformation. *Data Mining and Knowledge Discovery*, 28(4), 851–881. — Reference algorithm for discovery, ranking, self-similarity pruning, time contract.
-- Ye, L., Keogh, E. (2009). Time series shapelets: a new primitive for data mining. *KDD '09*. — Original shapelet paper: defines min-over-windows, z-normalization requirement.
-- sktime `ShapeletTransformClassifier` source — time contract convention, `max_shapelets_to_store`, candidate sampling under a contract.
-- pyts `ShapeletTransform` — threshold search, IG ranking, self-similarity via `remove_similar_shapelets`.
-- Bagnall, A., Lines, J., Bostrom, A., Large, J., Keogh, E. (2017). The great time series classification bake off. *Data Mining and Knowledge Discovery*, 31(3), 606–660. — Accuracy vs. speed trade-offs for shapelet methods; documents early-abandon importance.
-- fdars-core `src/metric/lp.rs`, `src/distance.rs`, `src/matrix.rs` — codebase integration constraints (row vs. column access, no `to_dmatrix` in hot loop, `iter_maybe_parallel!` placement).
-- fdars-core `src/parallel.rs` — per-thread seed convention `StdRng::seed_from_u64(seed + k as u64)`.
-- fdars `CLAUDE.md` — project conventions: `Result<T, FdarError>`, no panics on input validation, `#[must_use]` on expensive computations.
+- Paparrizos, J., Gravano, L. (2015). k-Shape: Efficient and Accurate Clustering of Time Series. *SIGMOD '15*. doi:10.1145/2723372.2737793. — Defines SBD (Eq. 1–4), shape extraction (Eq. 5–8), k-Shape algorithm. Primary correctness reference.
+- tslearn source: `tslearn/clustering/kshape.py` (`_normalized_cc`, `_sbd`, `_extract_shape`, `KShape.fit`) — Reference implementation for NCC formula, IFFT scale, sign fix, shift-alignment before shape extraction, centroid re-z-normalization.
+- rustfft documentation: `rustfft.rs-lang.github.io` — FFT/IFFT unnormalized convention; `FftPlanner` reuse pattern; `plan_fft_forward` / `plan_fft_inverse`.
+- fdars-core `src/seasonal/mod.rs:350` — Established `(2 * n).next_power_of_two()` zero-padding pattern for FFT-based ACF in this codebase; safe template for SBD.
+- fdars-core `src/kernel_kmeans.rs` — Empty-cluster recovery, n_init seeding (`seed.wrapping_add(restart)`), convergence check pattern, predict design, KernelKmeansConfig defaults.
+- fdars-core `src/regression.rs:197-244` — `dominant_sign_negative` / `fix_svd_signs` eigenvector sign convention (different from k-Shape sign rule — do not reuse).
+- fdars-core `src/pace_fpca.rs:186-191` — nalgebra ascending eigenvalue order pattern; descending sort for top eigenvector extraction.
+- fdars-core `src/shapelet/distance.rs` — `z_normalize_window` / `z_normalize_into` with `STD_EPS = 1e-12`; reusable directly for SBD z-normalization.
+- fdars-core `src/alignment/clustering.rs` — `kmedoids_from_distances` interface; `KMedoidsConfig` seeding convention; k-medoids integration scaffolding.
+- fdars-core `src/metric/fourier.rs` — `FftPlanner` reuse pattern across rows; established convention for sharing plans via `plan_fft_forward(m)` + `fft.as_ref()`.
 
 ---
-*Pitfalls research for: discovery-based shapelet transform + classifier (fdars-core v0.33.0, GAP-02)*
+*Pitfalls research for: k-Shape clustering + SBD via FFT cross-correlation (fdars-core v0.34.0, GAP-03)*
 *Researched: 2026-09-02*
