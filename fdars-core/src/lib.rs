@@ -109,6 +109,7 @@ pub mod outliers;
 pub mod regression;
 pub mod scalar_on_function;
 pub mod seasonal;
+pub mod shapelet;
 pub mod simulation;
 pub mod smoothing;
 pub mod streaming_depth;
