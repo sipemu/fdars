@@ -54,23 +54,23 @@ Explicitly excluded for v0.33.0.
 
 ## Traceability
 
-Populated during roadmap creation.
+Mapped during roadmap creation (2026-09-02). Every v0.33.0 requirement maps to exactly one phase — 100% coverage, no orphans, no duplicates. Phases 57–60 form a strict compile-time dependency chain (distance core → discovery → transform → classifier).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SHP-01 | TBD | Pending |
-| SHP-02 | TBD | Pending |
-| SHP-03 | TBD | Pending |
-| SHP-04 | TBD | Pending |
-| SHP-05 | TBD | Pending |
-| SHP-06 | TBD | Pending |
-| SHP-07 | TBD | Pending |
+| SHP-01 | Phase 57 | Pending |
+| SHP-02 | Phase 57 | Pending |
+| SHP-03 | Phase 58 | Pending |
+| SHP-04 | Phase 58 | Pending |
+| SHP-05 | Phase 58 | Pending |
+| SHP-06 | Phase 59 | Pending |
+| SHP-07 | Phase 60 | Pending |
 
 **Coverage:**
 - Milestone requirements: 7 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 7 ⚠️
+- Mapped to phases: 7 (Phase 57: SHP-01/02 · Phase 58: SHP-03/04/05 · Phase 59: SHP-06 · Phase 60: SHP-07)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-02*
-*Last updated: 2026-09-02 after initial definition*
+*Last updated: 2026-09-02 after roadmap creation (traceability populated, Phases 57–60)*
