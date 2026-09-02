@@ -449,6 +449,14 @@ pub use classification::{
     ClassifFit, ClassifMethod, ClassifResult,
 };
 
+// Re-export shapelet transform & classification types (finalized public surface)
+pub use shapelet::{
+    discover_shapelets, shapelet_classifier_fit, shapelet_distance, shapelet_transform,
+    shapelet_transform_fit, z_normalize_into, z_normalize_window, QualityMeasure, Shapelet,
+    ShapeletClassifier, ShapeletClassifierConfig, ShapeletClassifierFit, ShapeletDiscoveryConfig,
+    ShapeletSet, ShapeletTransformFit,
+};
+
 // Re-export conformal prediction types
 pub use conformal::{
     conformal_classif, conformal_elastic_logistic, conformal_elastic_pcr,

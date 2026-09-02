@@ -24,6 +24,12 @@ pub use crate::boosting_regression::{BayesianFosrResult, BoostFosrResult};
 // Classification
 pub use crate::classification::{ClassifCvResult, ClassifFit, ClassifMethod, ClassifResult};
 
+// Shapelet transform & classification
+pub use crate::shapelet::{
+    shapelet_classifier_fit, ShapeletClassifier, ShapeletClassifierConfig, ShapeletClassifierFit,
+    ShapeletDiscoveryConfig, ShapeletSet, ShapeletTransformFit,
+};
+
 // Explainability
 pub use crate::explain_generic::{FpcPredictor, TaskType};
 
