@@ -16,9 +16,9 @@ Audit-only. Every requirement is a **deliverable document**, not `fdars-core/src
 
 ### Consolidation & Backlog
 
-- [ ] **RPT-01**: Consolidated multi-ecosystem gap report (`GAP-AUDIT-REPORT.md`) — methodology, per-ecosystem findings, cross-ecosystem overlap/convergence analysis (which gaps recur across ecosystems), and a reverse-parity strengths sweep (where fdars leads these ecosystems).
-- [ ] **RPT-02**: Ranked, GSD-ready backlog (`GAP-BACKLOG.md`) — every net-new gap scored by value/effort (consistent with the v0.14.0/v0.18.0 `value/√effort` convention), sorted, and expressed as a promotion-ready item block (candidate requirement/phase, effort estimate, reference baseline, rationale).
-- [ ] **RPT-03**: De-dup & completeness gate — verify every backlog item is genuinely net-new (not shipped in fdars, not already in `BACKLOG.md` or `R-BACKLOG.md`) and that every surveyed capability gap is either ranked in `GAP-BACKLOG.md` or explicitly recorded as out-of-scope with reasoning. Deliverables written with **zero `fdars-core/src/` edits**.
+- [x] **RPT-01**: Consolidated multi-ecosystem gap report (`GAP-AUDIT-REPORT.md`) — methodology, per-ecosystem findings, cross-ecosystem overlap/convergence analysis (which gaps recur across ecosystems), and a reverse-parity strengths sweep (where fdars leads these ecosystems).
+- [x] **RPT-02**: Ranked, GSD-ready backlog (`GAP-BACKLOG.md`) — every net-new gap scored by value/effort (consistent with the v0.14.0/v0.18.0 `value/√effort` convention), sorted, and expressed as a promotion-ready item block (candidate requirement/phase, effort estimate, reference baseline, rationale).
+- [x] **RPT-03**: De-dup & completeness gate — verify every backlog item is genuinely net-new (not shipped in fdars, not already in `BACKLOG.md` or `R-BACKLOG.md`) and that every surveyed capability gap is either ranked in `GAP-BACKLOG.md` or explicitly recorded as out-of-scope with reasoning. Deliverables written with **zero `fdars-core/src/` edits**.
 
 ## Future Requirements
 
@@ -52,9 +52,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | JUL-01 | Phase 52 | Complete |
 | TDY-01 | Phase 52 | Complete |
 | PYX-01 | Phase 52 | Complete |
-| RPT-01 | Phase 53 | Pending |
-| RPT-02 | Phase 53 | Pending |
-| RPT-03 | Phase 53 | Pending |
+| RPT-01 | Phase 53 | Complete |
+| RPT-02 | Phase 53 | Complete |
+| RPT-03 | Phase 53 | Complete |
 
 **Coverage:**
 

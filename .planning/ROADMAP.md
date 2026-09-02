@@ -78,7 +78,7 @@ Milestone audit: **tech_debt** (13/13 requirements satisfied, 6/6 phases verifie
 - **Scope exclusions** — no plotting/visualization parity, no data/IO parity; no re-audit of scikit-fda or the core R FDA ecosystem (refund only where NOT captured in v0.18.0).
 
 - [x] **Phase 52: Ecosystem Surveys** - Enumerate, map, and de-dup net-new gaps against MATLAB FDA, Julia FDA, tidyfun/refund, and Python-beyond-scikit-fda (four independent parallel surveys) (completed 2026-09-02)
-- [ ] **Phase 53: Consolidation & Backlog** - Merge the four survey gap-lists into a single cross-ecosystem gap report, a value-ranked GSD-ready backlog, and pass a de-dup + completeness gate
+- [x] **Phase 53: Consolidation & Backlog** - Merge the four survey gap-lists into a single cross-ecosystem gap report, a value-ranked GSD-ready backlog, and pass a de-dup + completeness gate (completed 2026-09-02)
 
 ## Phase Details
 
@@ -121,9 +121,9 @@ Plans:
 
 Plans:
 
-- [ ] 53-01: Consolidated multi-ecosystem gap report (RPT-01) — `GAP-AUDIT-REPORT.md`: methodology, per-ecosystem findings, cross-ecosystem convergence, reverse-parity strengths
-- [ ] 53-02: Ranked GSD-ready backlog (RPT-02) — `GAP-BACKLOG.md`: value/√effort ranking, promotion-ready item blocks
-- [ ] 53-03: De-dup & completeness gate (RPT-03) — verify every item net-new vs shipped + `BACKLOG.md` + `R-BACKLOG.md`; every gap ranked or out-of-scope-with-reason
+- [x] 53-01: Consolidated multi-ecosystem gap report (RPT-01) — `GAP-AUDIT-REPORT.md`: methodology, per-ecosystem findings, cross-ecosystem convergence, reverse-parity strengths
+- [x] 53-02: Ranked GSD-ready backlog (RPT-02) — `GAP-BACKLOG.md`: value/√effort ranking, promotion-ready item blocks
+- [x] 53-03: De-dup & completeness gate (RPT-03) — verify every item net-new vs shipped + `BACKLOG.md` + `R-BACKLOG.md`; every gap ranked or out-of-scope-with-reason
 
 ## Progress
 
@@ -135,6 +135,6 @@ Phases through **v0.30.0 are shipped and archived** under `milestones/`. The cra
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 52. Ecosystem Surveys | v0.31.0 | 4/4 | Complete    | 2026-09-02 |
-| 53. Consolidation & Backlog | v0.31.0 | 0/3 | Not started | - |
+| 53. Consolidation & Backlog | v0.31.0 | 3/3 | Complete    | 2026-09-02 |
 
 Next: `/gsd-plan-phase 52`
