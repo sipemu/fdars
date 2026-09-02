@@ -79,7 +79,7 @@ Milestone audit PASSED 8/8 requirements. Full detail: [milestones/v0.32.0-ROADMA
 
 - [x] **Phase 57: Shapelet Distance Core** - Per-window z-normalization + min sliding-window z-normalized Euclidean `sdist` with early-abandon and the `Shapelet` type (SHP-01/02) (completed 2026-09-02)
 - [x] **Phase 58: Discovery & Ranking** - Candidate generation (exhaustive + contracted/seeded), information-gain / F-statistic quality scoring, top-K + self-similarity pruning → `ShapeletSet` (SHP-03/04/05) (completed 2026-09-02)
-- [ ] **Phase 59: Shapelet Transform** - Apply a fitted `ShapeletSet` → n×K distance-feature matrix for training and out-of-sample curves, with transform consistency (SHP-06)
+- [x] **Phase 59: Shapelet Transform** - Apply a fitted `ShapeletSet` → n×K distance-feature matrix for training and out-of-sample curves, with transform consistency (SHP-06) (completed 2026-09-02)
 - [ ] **Phase 60: Bundled ShapeletTransformClassifier** - End-to-end `fit` (discover → transform → classify; kNN default, LDA optional) + `predict`; crate-root re-exports (SHP-07)
 
 ## Phase Details
@@ -150,7 +150,7 @@ Phases execute in numeric order: 57 → 58 → 59 → 60. Each `src/shapelet/` f
 |-------|-----------|----------------|--------|-----------|
 | 57. Shapelet Distance Core | v0.33.0 | 1/1 | Complete    | 2026-09-02 |
 | 58. Discovery & Ranking | v0.33.0 | 1/1 | Complete    | 2026-09-02 |
-| 59. Shapelet Transform | v0.33.0 | 0/TBD | Not started | - |
+| 59. Shapelet Transform | v0.33.0 | 1/1 | Complete    | 2026-09-02 |
 | 60. Bundled ShapeletTransformClassifier | v0.33.0 | 0/TBD | Not started | - |
 
 ## Status

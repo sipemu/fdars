@@ -22,7 +22,7 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### Shapelet Transform
 
-- [ ] **SHP-06**: User can transform a curve set through a fitted `ShapeletSet` into an n×K distance-feature matrix (`X[i,j] = sdist(shapelet_j, curve_i)`), applying the identical shapelets and z-normalization to training and out-of-sample curves (transform consistency — `transform(train)` reproduces the fit-time distances).
+- [x] **SHP-06**: User can transform a curve set through a fitted `ShapeletSet` into an n×K distance-feature matrix (`X[i,j] = sdist(shapelet_j, curve_i)`), applying the identical shapelets and z-normalization to training and out-of-sample curves (transform consistency — `transform(train)` reproduces the fit-time distances).
 
 ### Bundled Classifier
 
@@ -63,7 +63,7 @@ Mapped during roadmap creation (2026-09-02). Every v0.33.0 requirement maps to e
 | SHP-03 | Phase 58 | Complete |
 | SHP-04 | Phase 58 | Complete |
 | SHP-05 | Phase 58 | Complete |
-| SHP-06 | Phase 59 | Pending |
+| SHP-06 | Phase 59 | Complete |
 | SHP-07 | Phase 60 | Pending |
 
 **Coverage:**
