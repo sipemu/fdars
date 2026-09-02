@@ -143,6 +143,10 @@ harness = false
 name = "shapelet"   # Phase 60 SHP-07 — shapelet_classifier_fit pipeline coverage
 harness = false
 
+[[bench]]
+name = "kshape"   # Phase 63 KSH-05 — sbd_distance_matrix + kshape_fd pipeline coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"

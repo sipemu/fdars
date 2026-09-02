@@ -585,6 +585,9 @@ pub use clustering::{
 // Re-export kernel-k-means clustering (GAK-backed, no centroid)
 pub use kernel_kmeans::{kernel_kmeans_fd, KernelKmeansConfig, KernelKmeansResult};
 
+// Re-export k-Shape clustering + SBD-backed k-medoids (v0.34.0 finalized surface)
+pub use kshape::{kshape_fd, sbd_kmedoids, KShapeConfig, KShapeResult};
+
 // Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{
     align_cluster_fd, dbscan_fd, funfem_cluster, kcfc_cluster, AlignClusterConfig,
@@ -597,9 +600,10 @@ pub use metric::{
     dtw_cross_1d, dtw_distance, dtw_self_1d, fourier_cross_1d, fourier_self_1d, gak,
     gak_gram_matrix, gak_gram_predict, gak_gram_train, hausdorff_3d, hausdorff_cross_1d,
     hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d, hshift_cross_1d, hshift_self_1d,
-    lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d, sigma_gak, soft_dtw_barycenter,
-    soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d, soft_dtw_div_self_1d,
-    soft_dtw_divergence, soft_dtw_self_1d, GakConfig, GakGramTrain, SoftDtwBarycenterResult,
+    lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d, sbd, sbd_distance_matrix, sigma_gak,
+    soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d,
+    soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d, GakConfig, GakGramTrain,
+    SbdResult, SoftDtwBarycenterResult,
 };
 
 // Re-export depth measure functions

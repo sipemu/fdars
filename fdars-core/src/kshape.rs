@@ -51,9 +51,10 @@
 //! centroids are used as-is, so `predict(train_data)` reproduces the training
 //! labels.
 
+use crate::alignment::{kmedoids_from_distances, KMedoidsConfig, KMedoidsResult};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::metric::sbd::sbd;
+use crate::metric::sbd::{sbd, sbd_distance_matrix};
 use crate::shapelet::z_normalize_window;
 use nalgebra::{DMatrix, SymmetricEigen};
 use rand::prelude::*;
@@ -336,6 +337,60 @@ pub fn kshape_fd(data: &FdMatrix, config: &KShapeConfig) -> Result<KShapeResult,
         converged,
         n_init_best: restart_idx,
     })
+}
+
+/// Cluster a curve set with **k-medoids over the Shape-Based Distance**.
+///
+/// A shape-based clustering path distinct from [`kshape_fd`]: instead of
+/// estimating shape-extraction centroids, this builds the full n×n SBD distance
+/// matrix ([`sbd_distance_matrix`]) and feeds it to the existing
+/// [`kmedoids_from_distances`] solver. The returned medoids are *actual input
+/// series* (indices into `data`), which makes the result directly
+/// interpretable. Because the backend distance is SBD, the clustering is
+/// invariant to amplitude scaling and circular phase shift — unlike an L2- or
+/// DTW-backed k-medoids.
+///
+/// Reuses [`KMedoidsConfig`] / [`KMedoidsResult`] unchanged.
+///
+/// # Errors
+/// Propagates any error from [`sbd_distance_matrix`] (e.g. empty `data`) or from
+/// [`kmedoids_from_distances`] (`config.k < 1`, `config.k > n`).
+///
+/// # Examples
+/// ```
+/// use fdars_core::{sbd_kmedoids, sbd_distance_matrix, KMedoidsConfig, FdMatrix};
+/// use fdars_core::alignment::kmedoids_from_distances;
+///
+/// // Two shape groups: rising ramps vs. falling ramps (column-major FdMatrix).
+/// let rows = [
+///     vec![0.0, 1.0, 2.0, 3.0, 4.0],
+///     vec![0.1, 1.1, 2.0, 3.1, 3.9],
+///     vec![4.0, 3.0, 2.0, 1.0, 0.0],
+///     vec![3.9, 3.1, 2.0, 0.9, 0.1],
+/// ];
+/// let (n, m) = (4, 5);
+/// let mut flat = vec![0.0; n * m];
+/// for (i, r) in rows.iter().enumerate() {
+///     for (j, &v) in r.iter().enumerate() {
+///         flat[i + j * n] = v; // column-major
+///     }
+/// }
+/// let data = FdMatrix::from_slice(&flat, n, m).unwrap();
+///
+/// let cfg = KMedoidsConfig { k: 2, ..Default::default() };
+/// let res = sbd_kmedoids(&data, &cfg).unwrap();
+/// assert_eq!(res.labels.len(), 4);
+/// assert_eq!(res.medoid_indices.len(), 2);
+///
+/// // Equivalent to the explicit SBD-matrix → k-medoids flow:
+/// let dist = sbd_distance_matrix(&data).unwrap();
+/// let manual = kmedoids_from_distances(&dist, &cfg).unwrap();
+/// assert_eq!(res.labels, manual.labels);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn sbd_kmedoids(data: &FdMatrix, config: &KMedoidsConfig) -> Result<KMedoidsResult, FdarError> {
+    let dist = sbd_distance_matrix(data)?;
+    kmedoids_from_distances(&dist, config)
 }
 
 /// Outcome of a single random-partition restart.
@@ -887,5 +942,91 @@ mod tests {
             res.predict(&wrong),
             Err(FdarError::InvalidDimension { .. })
         ));
+    }
+
+    #[test]
+    fn test_sbd_kmedoids_recovers_groups() {
+        // Two shifted-shape groups → k-medoids over SBD recovers them at high
+        // purity, proving it uses the shape-invariant SBD matrix (an L2/DTW
+        // backend would be fooled by the circular shifts).
+        let (data, truth) = shifted_groups(7);
+        let cfg = KMedoidsConfig {
+            k: 2,
+            max_iter: 100,
+            seed: 3,
+        };
+        let res = sbd_kmedoids(&data, &cfg).unwrap();
+        assert_eq!(res.labels.len(), 16);
+        assert_eq!(res.medoid_indices.len(), 2);
+        let p = purity(&res.labels, &truth, 2);
+        assert!(p >= 0.9, "SBD k-medoids purity {p} too low (< 0.9)");
+    }
+
+    #[test]
+    fn test_sbd_kmedoids_uses_sbd_matrix() {
+        // sbd_kmedoids == manual composition sbd_distance_matrix + kmedoids_from_distances
+        // (same seed → identical labels and medoids).
+        let (data, _) = shifted_groups(5);
+        let cfg = KMedoidsConfig {
+            k: 2,
+            max_iter: 100,
+            seed: 42,
+        };
+        let res = sbd_kmedoids(&data, &cfg).unwrap();
+        let dist = sbd_distance_matrix(&data).unwrap();
+        let manual = kmedoids_from_distances(&dist, &cfg).unwrap();
+        assert_eq!(
+            res.labels, manual.labels,
+            "labels must match manual composition"
+        );
+        assert_eq!(
+            res.medoid_indices, manual.medoid_indices,
+            "medoids must match manual composition"
+        );
+        assert_eq!(
+            res.total_within_distance.to_bits(),
+            manual.total_within_distance.to_bits()
+        );
+    }
+
+    #[test]
+    fn test_sbd_kmedoids_validation() {
+        let (data, _) = shifted_groups(1);
+        // k = 0 → error (propagated from kmedoids_from_distances).
+        let cfg0 = KMedoidsConfig {
+            k: 0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            sbd_kmedoids(&data, &cfg0),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        // k > n → error.
+        let cfg_big = KMedoidsConfig {
+            k: 999,
+            ..Default::default()
+        };
+        assert!(matches!(
+            sbd_kmedoids(&data, &cfg_big),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    /// Crate-root re-exports for the full v0.34.0 SBD + k-Shape surface resolve.
+    ///
+    /// Uses `crate::` paths (the same items published at the crate root); a full
+    /// external `use fdars_core::{...}` resolution is additionally covered by the
+    /// `sbd_kmedoids` doctest, which is compiled as an out-of-crate binary.
+    #[test]
+    fn test_kshape_reexports() {
+        use crate::{
+            kshape_fd, sbd, sbd_distance_matrix, sbd_kmedoids, KMedoidsConfig, KMedoidsResult,
+            KShapeConfig, KShapeResult, SbdResult,
+        };
+        // Reference each item so an unresolved name fails to compile.
+        let _f: fn(&FdMatrix, &KShapeConfig) -> Result<KShapeResult, FdarError> = kshape_fd;
+        let _k: fn(&FdMatrix, &KMedoidsConfig) -> Result<KMedoidsResult, FdarError> = sbd_kmedoids;
+        let _s: fn(&[f64], &[f64]) -> Result<SbdResult, FdarError> = sbd;
+        let _m: fn(&FdMatrix) -> Result<FdMatrix, FdarError> = sbd_distance_matrix;
     }
 }

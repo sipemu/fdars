@@ -43,7 +43,12 @@ pub use crate::depth::{
 };
 
 // Metric functions
-pub use crate::metric::{dtw_distance, lp_cross_1d, lp_self_1d};
+pub use crate::metric::{
+    dtw_distance, lp_cross_1d, lp_self_1d, sbd, sbd_distance_matrix, SbdResult,
+};
+
+// k-Shape clustering + SBD-backed k-medoids
+pub use crate::kshape::{kshape_fd, sbd_kmedoids, KShapeConfig, KShapeResult};
 
 // Smoothing
 pub use crate::smoothing::{CvCriterion, OptimBandwidthResult};
