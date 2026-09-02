@@ -103,6 +103,7 @@ pub mod helpers;
 pub mod inference;
 pub mod irreg_fdata;
 pub mod kernel_kmeans;
+pub mod kshape;
 pub mod landmark;
 pub mod metric;
 pub mod outliers;
