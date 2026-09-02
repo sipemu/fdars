@@ -253,6 +253,27 @@ pub fn sigma_gak(data: &FdMatrix) -> f64 {
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn gak_gram_matrix(data: &FdMatrix, config: &GakConfig) -> Result<FdMatrix, FdarError> {
+    let (gram, _diag_log, _sigma, _rows) = build_train_gram(data, config)?;
+    Ok(gram)
+}
+
+/// Resolve σ + validate, then build the normalized symmetric-by-assignment PSD
+/// n×n Gram together with the per-curve diagonal self-log-kernels and the σ
+/// actually used.
+///
+/// Shared core of [`gak_gram_matrix`] (which discards the diagonals) and
+/// [`gak_gram_train`] (which stores them for split train/predict normalization).
+/// Factoring this keeps the two Gram builders bit-identical and avoids
+/// recomputing the O(n) diagonal.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `data` is empty (no curves or no points).
+/// - [`FdarError::InvalidParameter`] if the resolved σ is not `> 0`.
+#[allow(clippy::type_complexity)]
+fn build_train_gram(
+    data: &FdMatrix,
+    config: &GakConfig,
+) -> Result<(FdMatrix, Vec<f64>, f64, Vec<Vec<f64>>), FdarError> {
     let n = data.nrows();
     let m = data.ncols();
     if n == 0 || m == 0 {
@@ -309,7 +330,204 @@ pub fn gak_gram_matrix(data: &FdMatrix, config: &GakConfig) -> Result<FdMatrix, 
             idx += 1;
         }
     }
-    Ok(gram)
+    Ok((gram, diag_log, sigma, rows))
+}
+
+/// Result of [`gak_gram_train`]: a training GAK Gram plus everything needed to
+/// cross-normalize an out-of-sample prediction Gram against the **training**
+/// self-kernels.
+///
+/// Consumed by [`gak_gram_predict`]. The `gram` is the n_train × n_train
+/// normalized, symmetric-by-assignment, PSD kernel matrix with a unit diagonal —
+/// directly usable as `SVC(kernel='precomputed')` training input. The
+/// per-training-curve unnormalized log self-kernels (`log_self`) are kept
+/// `pub(crate)`; they are the internal contract that makes the split-normalized
+/// prediction impossible to get wrong (Cuturi triangular normalization needs the
+/// *training* diagonals, never test-only self-kernels).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct GakGramTrain {
+    /// n_train × n_train normalized GAK Gram (PSD, unit diagonal, symmetric).
+    pub gram: FdMatrix,
+    /// Per-training-curve unnormalized log self-kernels `loggak(x_i, x_i, sigma)`,
+    /// used to cross-normalize the prediction Gram. Kept `pub(crate)`; read via
+    /// [`GakGramTrain::log_self`].
+    pub(crate) log_self: Vec<f64>,
+    /// The bandwidth σ actually used (resolved from the config, possibly via the
+    /// median heuristic). Prediction reuses this exact value.
+    pub sigma: f64,
+    /// Training curves (one `Vec<f64>` per row), retained so that
+    /// [`gak_gram_predict`] can evaluate the cross-kernel `loggak(test, train)`.
+    /// Kept `pub(crate)` — an internal contract, not part of the public surface.
+    pub(crate) train_rows: Vec<Vec<f64>>,
+}
+
+impl GakGramTrain {
+    /// The per-training-curve unnormalized log self-kernels used for
+    /// cross-normalizing a prediction Gram.
+    #[must_use]
+    pub fn log_self(&self) -> &[f64] {
+        &self.log_self
+    }
+}
+
+/// Build a **training** GAK Gram matrix for an external precomputed-kernel SVM.
+///
+/// Returns a [`GakGramTrain`] whose `gram` is the n_train × n_train normalized,
+/// PSD, symmetric-by-assignment Gram (unit diagonal) — directly consumable as
+/// `SVC(kernel='precomputed')` training input — together with the resolved σ and
+/// the per-training-curve log self-kernels needed to cross-normalize a later
+/// prediction Gram ([`gak_gram_predict`]).
+///
+/// The bandwidth comes from `config.sigma` when `Some`, otherwise from the median
+/// heuristic ([`sigma_gak`]). Diagonal self-log-kernels are computed once (O(n));
+/// the Gram build shares its core with [`gak_gram_matrix`], so the two are
+/// bit-identical.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `data` is empty (no curves or no points).
+/// - [`FdarError::InvalidParameter`] if the resolved σ is not `> 0`.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{gak_gram_train, gak_gram_predict, GakConfig, FdMatrix};
+/// // Three training curves, two eval points each (column-major).
+/// let train = FdMatrix::from_slice(
+///     &[0.0, 1.0, 5.0,  0.0, 1.0, 5.0],
+///     3, 2,
+/// ).unwrap();
+/// let fit = gak_gram_train(&train, &GakConfig::with_sigma(1.0)).unwrap();
+/// assert_eq!(fit.gram.shape(), (3, 3));
+///
+/// // Score two new curves against the fitted training set.
+/// let test = FdMatrix::from_slice(&[0.0, 5.0,  0.0, 5.0], 2, 2).unwrap();
+/// let k_test = gak_gram_predict(&fit, &test).unwrap();
+/// assert_eq!(k_test.shape(), (2, 3)); // n_test × n_train
+///
+/// // External precomputed-kernel SVM handoff (no Python dependency here):
+/// //   from sklearn.svm import SVC
+/// //   svc = SVC(kernel='precomputed').fit(fit.gram, y_train)
+/// //   preds = svc.predict(k_test)   # k_test is n_test × n_train
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gak_gram_train(data: &FdMatrix, config: &GakConfig) -> Result<GakGramTrain, FdarError> {
+    let (gram, log_self, sigma, train_rows) = build_train_gram(data, config)?;
+    Ok(GakGramTrain {
+        gram,
+        log_self,
+        sigma,
+        train_rows,
+    })
+}
+
+/// Build an out-of-sample **prediction** GAK Gram against a fitted training set.
+///
+/// Returns an **n_test × n_train** matrix (rows = new/test curves, cols =
+/// training curves) whose entry `(t, j)` is the triangular-normalized GAK
+/// `exp(loggak(x_test_t, x_train_j, σ) - 0.5·(loggak(x_test_t, x_test_t, σ) +
+/// log_self_train[j]))`. This matches the `SVC(kernel='precomputed')` prediction
+/// contract `K[t, j] = kernel(test_t, train_j)`; passing the transpose silently
+/// degrades an external SVM.
+///
+/// The bandwidth σ and the training self-kernels come from `train` (the stored
+/// [`GakGramTrain::sigma`] and [`GakGramTrain::log_self`]) — never recomputed from
+/// the test set alone — so the prediction lives in the *same* feature space as the
+/// training Gram. Test self-log-kernels are computed once (O(n_test)). Every entry
+/// lies in `[0, 1]`. The cross-matrix rows are computed in parallel under the
+/// `parallel` feature via `iter_maybe_parallel!`; the kernel is order-independent
+/// and uses no RNG, so sequential and parallel builds are bit-identical.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `new_data` is empty, or if its evaluation
+///   grid width (`ncols`) differs from the training set's.
+/// - [`FdarError::InvalidParameter`] if `train.sigma` is not `> 0`.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{gak_gram_train, gak_gram_predict, GakConfig, FdMatrix};
+/// let train = FdMatrix::from_slice(&[0.0, 1.0, 5.0,  0.0, 1.0, 5.0], 3, 2).unwrap();
+/// let fit = gak_gram_train(&train, &GakConfig::with_sigma(1.0)).unwrap();
+/// let test = FdMatrix::from_slice(&[0.0, 5.0,  0.0, 5.0], 2, 2).unwrap();
+/// let k = gak_gram_predict(&fit, &test).unwrap();
+/// assert_eq!(k.shape(), (2, 3));
+/// // A test curve identical to training curve 0 scores ≈ 1 in column 0.
+/// assert!((k[(0, 0)] - 1.0).abs() < 1e-9);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gak_gram_predict(train: &GakGramTrain, new_data: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    let n_train = train.train_rows.len();
+    debug_assert_eq!(
+        train.log_self.len(),
+        n_train,
+        "log_self length must equal n_train"
+    );
+    debug_assert_eq!(
+        train.gram.nrows(),
+        n_train,
+        "training Gram row count must equal n_train"
+    );
+
+    let n_test = new_data.nrows();
+    let m_test = new_data.ncols();
+    let sigma = train.sigma;
+
+    if n_test == 0 || m_test == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data",
+            expected: "non-empty matrix (nrows > 0, ncols > 0)".to_string(),
+            actual: format!("{n_test}x{m_test}"),
+        });
+    }
+    if sigma.is_nan() || sigma <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "sigma",
+            message: format!("stored training bandwidth must be > 0, got {sigma}"),
+        });
+    }
+
+    // The cross-kernel loggak(test, train) requires matching evaluation-grid
+    // widths (same #cols) between the test and training curves.
+    let m_train = train.train_rows.first().map_or(0, Vec::len);
+    if m_test != m_train {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data.ncols",
+            expected: format!("{m_train} (training evaluation-grid width)"),
+            actual: format!("{m_test}"),
+        });
+    }
+
+    // Pre-collect test rows once (avoid repeated row materializations).
+    let test_rows: Vec<Vec<f64>> = (0..n_test).map(|t| new_data.row(t)).collect();
+
+    // Test self-log-kernels: computed once (O(n_test)), reused across all columns.
+    let test_self: Vec<f64> = iter_maybe_parallel!(0..n_test)
+        .map(|t| loggak(&test_rows[t], &test_rows[t], sigma))
+        .collect();
+
+    // n_test × n_train cross-Gram. Rows are independent → parallelize over test
+    // curves; entry (t, j) uses the STORED training diagonal train.log_self[j]
+    // (never a test-only self-kernel), so prediction lives in the training
+    // feature space. Order-independent + no RNG → seq == par bit-for-bit.
+    let row_blocks: Vec<Vec<f64>> = iter_maybe_parallel!(0..n_test)
+        .map(|t| {
+            let mut row = vec![0.0; n_train];
+            for j in 0..n_train {
+                let log_xy = loggak(&test_rows[t], &train.train_rows[j], sigma);
+                row[j] = normalize_log(log_xy, test_self[t], train.log_self[j]);
+            }
+            row
+        })
+        .collect();
+
+    // Scatter into a column-major n_test × n_train FdMatrix.
+    let mut out = FdMatrix::zeros(n_test, n_train);
+    for (t, row) in row_blocks.iter().enumerate() {
+        for (j, &v) in row.iter().enumerate() {
+            out[(t, j)] = v;
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -565,6 +783,178 @@ mod tests {
         assert!(matches!(
             gak_gram_matrix(&data, &GakConfig::with_sigma(0.0)),
             Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    // --- Phase 55: Gram-matrix export (GAK-05/06) -------------------------
+
+    /// GAK-05: train Gram is n×n, symmetric, unit diagonal, PSD.
+    #[test]
+    fn test_gram_train_shape_psd() {
+        let rows: Vec<Vec<f64>> = (0..8)
+            .map(|i| {
+                (0..50)
+                    .map(|k| (k as f64 * 0.15 + i as f64 * 0.4).sin() + 0.1 * i as f64)
+                    .collect()
+            })
+            .collect();
+        let data = matrix_from_rows(&rows);
+        let fit = gak_gram_train(&data, &GakConfig::with_sigma(2.0)).unwrap();
+        let n = data.nrows();
+        assert_eq!(fit.gram.shape(), (n, n));
+        assert_eq!(fit.log_self().len(), n);
+        assert!(fit.sigma > 0.0);
+        // Unit diagonal + symmetry (bit-exact).
+        for i in 0..n {
+            assert!((fit.gram[(i, i)] - 1.0).abs() < 1e-12);
+            for j in 0..n {
+                assert_eq!(fit.gram[(i, j)].to_bits(), fit.gram[(j, i)].to_bits());
+            }
+        }
+        // PSD: min eigenvalue ≥ −1e-8.
+        let eig = fit.gram.to_dmatrix().symmetric_eigenvalues();
+        let min_eig = eig.iter().cloned().fold(f64::INFINITY, f64::min);
+        assert!(min_eig >= -1e-8, "min eig {min_eig} < -1e-8 (not PSD)");
+    }
+
+    /// GAK-06: predict Gram is exactly n_test × n_train (n_test ≠ n_train so a
+    /// transpose would fail this assert).
+    #[test]
+    fn test_gram_predict_shape() {
+        let train_rows: Vec<Vec<f64>> = (0..5)
+            .map(|i| (0..30).map(|k| ((k + i) as f64 * 0.2).sin()).collect())
+            .collect();
+        let train = matrix_from_rows(&train_rows);
+        let fit = gak_gram_train(&train, &GakConfig::with_sigma(1.5)).unwrap();
+
+        // n_test = 3 ≠ n_train = 5.
+        let test_rows: Vec<Vec<f64>> = (0..3)
+            .map(|i| (0..30).map(|k| ((k + i) as f64 * 0.25).cos()).collect())
+            .collect();
+        let test = matrix_from_rows(&test_rows);
+        let k = gak_gram_predict(&fit, &test).unwrap();
+        assert_eq!(k.shape(), (3, 5), "predict Gram must be n_test × n_train");
+    }
+
+    /// GAK-06: every entry ∈ [0,1]; a test curve identical to a training curve
+    /// gives ≈ 1.0 in that column.
+    #[test]
+    fn test_gram_predict_normalized() {
+        let train_rows: Vec<Vec<f64>> = (0..4)
+            .map(|i| (0..40).map(|k| ((k + i * 3) as f64 * 0.1).sin()).collect())
+            .collect();
+        let train = matrix_from_rows(&train_rows);
+        let fit = gak_gram_train(&train, &GakConfig::with_sigma(1.0)).unwrap();
+
+        // Test set: row 0 is an exact copy of training curve 2; row 1 is novel.
+        let test_rows = vec![
+            train_rows[2].clone(),
+            (0..40).map(|k| (k as f64 * 0.07).cos()).collect(),
+        ];
+        let test = matrix_from_rows(&test_rows);
+        let k = gak_gram_predict(&fit, &test).unwrap();
+        let (nt, ntr) = k.shape();
+        for t in 0..nt {
+            for j in 0..ntr {
+                let v = k[(t, j)];
+                assert!(v.is_finite(), "non-finite ({t},{j}) = {v}");
+                assert!((0.0..=1.0 + 1e-12).contains(&v), "({t},{j}) = {v} ∉ [0,1]");
+            }
+        }
+        // Identical curve → ≈ 1.0 in its column.
+        assert!(
+            (k[(0, 2)] - 1.0).abs() < 1e-9,
+            "identical test curve should score ≈1 in col 2, got {}",
+            k[(0, 2)]
+        );
+    }
+
+    /// GAK-06: predict(train, train_data) reproduces train.gram within 1e-12 —
+    /// proves the stored-diagonal cross-normalization matches the training Gram.
+    #[test]
+    fn test_gram_predict_reproduces_train() {
+        let rows: Vec<Vec<f64>> = (0..6)
+            .map(|i| (0..45).map(|k| ((k + i * 2) as f64 * 0.13).sin()).collect())
+            .collect();
+        let data = matrix_from_rows(&rows);
+        let fit = gak_gram_train(&data, &GakConfig::with_sigma(1.8)).unwrap();
+        let k = gak_gram_predict(&fit, &data).unwrap();
+        let n = data.nrows();
+        assert_eq!(k.shape(), (n, n));
+        for i in 0..n {
+            for j in 0..n {
+                assert!(
+                    (k[(i, j)] - fit.gram[(i, j)]).abs() < 1e-12,
+                    "predict({i},{j})={} vs train={}",
+                    k[(i, j)],
+                    fit.gram[(i, j)]
+                );
+            }
+        }
+    }
+
+    /// GAK-06: prediction uses train.sigma even when new_data's own median σ
+    /// would differ. Predicting the training data with the fitted (explicit-σ)
+    /// model must reproduce the train Gram; a different σ would not.
+    #[test]
+    fn test_gram_predict_sigma_consistency() {
+        // Training data on a small amplitude scale.
+        let train_rows: Vec<Vec<f64>> = (0..5)
+            .map(|i| (0..40).map(|k| ((k + i) as f64 * 0.1).sin()).collect())
+            .collect();
+        let train = matrix_from_rows(&train_rows);
+        // Fit with an explicit σ far from what sigma_gak would pick on either set.
+        let explicit_sigma = 3.7;
+        let fit = gak_gram_train(&train, &GakConfig::with_sigma(explicit_sigma)).unwrap();
+        assert!((fit.sigma - explicit_sigma).abs() < 1e-15);
+
+        // A test set on a very different amplitude scale (its own median σ differs).
+        let test_rows: Vec<Vec<f64>> = (0..3)
+            .map(|i| {
+                (0..40)
+                    .map(|k| ((k + i) as f64 * 0.1).sin() * 50.0)
+                    .collect()
+            })
+            .collect();
+        let test = matrix_from_rows(&test_rows);
+        let sigma_test = sigma_gak(&test);
+        assert!(
+            (sigma_test - explicit_sigma).abs() > 1.0,
+            "test set's own σ ({sigma_test}) should differ from train σ"
+        );
+
+        // Predict must use fit.sigma. Cross-check by manual computation with
+        // fit.sigma vs a wrong σ: only fit.sigma reproduces the entries.
+        let k = gak_gram_predict(&fit, &test).unwrap();
+        let t0 = test.row(0);
+        let tr0 = train.row(0);
+        let expected = {
+            let log_xy = loggak(&t0, &tr0, explicit_sigma);
+            let log_xx = loggak(&t0, &t0, explicit_sigma);
+            normalize_log(log_xy, log_xx, fit.log_self()[0])
+        };
+        assert!(
+            (k[(0, 0)] - expected).abs() < 1e-12,
+            "predict did not use train.sigma: got {}, expected {expected}",
+            k[(0, 0)]
+        );
+    }
+
+    #[test]
+    fn test_gram_predict_empty_and_grid_errors() {
+        let train = matrix_from_rows(&[vec![0.0, 1.0, 2.0], vec![1.0, 2.0, 3.0]]);
+        let fit = gak_gram_train(&train, &GakConfig::with_sigma(1.0)).unwrap();
+        // Empty test set.
+        let empty = FdMatrix::zeros(0, 0);
+        assert!(matches!(
+            gak_gram_predict(&fit, &empty),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        // Grid-width mismatch (train m=3, test m=2).
+        let bad = matrix_from_rows(&[vec![0.0, 1.0]]);
+        assert!(matches!(
+            gak_gram_predict(&fit, &bad),
+            Err(FdarError::InvalidDimension { .. })
         ));
     }
 }

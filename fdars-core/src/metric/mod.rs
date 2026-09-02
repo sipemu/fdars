@@ -138,7 +138,9 @@ pub use basis_coef::{basis_coef_cross_1d, basis_coef_self_1d};
 pub use deriv::{deriv_cross_1d, deriv_self_1d};
 pub use dtw::{dtw_cross_1d, dtw_distance, dtw_self_1d};
 pub use fourier::{fourier_cross_1d, fourier_self_1d};
-pub use gak::{gak, gak_gram_matrix, sigma_gak, GakConfig};
+pub use gak::{
+    gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, sigma_gak, GakConfig, GakGramTrain,
+};
 pub use hausdorff::{
     hausdorff_3d, hausdorff_cross_1d, hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d,
 };
