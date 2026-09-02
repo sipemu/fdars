@@ -23,7 +23,7 @@
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
-use crate::linalg::{cholesky_factor, cholesky_forward_back};
+use crate::linalg::{cholesky_factor, cholesky_forward_back, log_det_from_cholesky};
 use crate::pace_fpca::PaceFpcaResult;
 
 /// Which design criterion to evaluate.
@@ -229,15 +229,89 @@ fn trajectory_criterion(model: &PaceFpcaResult, selected: &[usize]) -> Result<f6
     Ok(mse)
 }
 
-/// Score criterion (FOD-02) placeholder — real posterior-covariance math
-/// (A = trace, D = log-det) lands in plan 64-02. This stub only lets the file
-/// compile with the [`DesignCriterion::Score`] arm wired; it is NOT tested here.
+/// Score criterion (FOD-02): A- or D-optimal summary of the K×K posterior FPC
+/// score covariance `Cov(ξ | Y_S) = Λ − Λ Φ_dᵀ Σ_d⁻¹ Φ_d Λ`.
 fn score_criterion(
-    _model: &PaceFpcaResult,
-    _selected: &[usize],
-    _kind: OptimalityKind,
+    model: &PaceFpcaResult,
+    selected: &[usize],
+    kind: OptimalityKind,
 ) -> Result<f64, FdarError> {
-    Ok(0.0)
+    let ncomp = model.ncomp;
+    let p = selected.len();
+
+    // Empty-set fast path: no information → posterior = prior = diag(λ).
+    if p == 0 {
+        return match kind {
+            OptimalityKind::A => Ok(model.eigenvalues.iter().take(ncomp).sum()),
+            OptimalityKind::D => {
+                let mut s = 0.0_f64;
+                for &lam in model.eigenvalues.iter().take(ncomp) {
+                    if lam <= 0.0 {
+                        return Err(FdarError::ComputationFailed {
+                            operation: "optimal_design D-optimality",
+                            detail: "non-positive eigenvalue in prior".into(),
+                        });
+                    }
+                    s += lam.ln();
+                }
+                Ok(s)
+            }
+        };
+    }
+
+    // Factor Σ_d once, then solve Σ_d x_k = Φ_d[:,k] per component (forward/back).
+    let l = factor_sigma_design_with_retry(build_sigma_design(model, selected), p)?;
+    let phi_d = build_phi_d(model, selected); // p × ncomp, row-major
+
+    // sigma_inv_phi_lam[j,k] = λ_k · (Σ_d⁻¹ Φ_d[:,k])[j]  (mirror pace_fpca.rs:525–545).
+    let mut sigma_inv_phi_lam = vec![0.0_f64; p * ncomp];
+    let mut phi_col = vec![0.0_f64; p];
+    for k in 0..ncomp {
+        for (i, c) in phi_col.iter_mut().enumerate() {
+            *c = phi_d[i * ncomp + k];
+        }
+        let sol = cholesky_forward_back(&l, &phi_col, p);
+        for j in 0..p {
+            sigma_inv_phi_lam[j * ncomp + k] = model.eigenvalues[k] * sol[j];
+        }
+    }
+
+    // A_mat[k,l] = λ_k · Σ_j Φ_d[j,k] · sigma_inv_phi_lam[j,l]  (pace_fpca.rs:547–558).
+    let mut a_mat = vec![0.0_f64; ncomp * ncomp];
+    for k in 0..ncomp {
+        for l in 0..ncomp {
+            let mut s = 0.0_f64;
+            for j in 0..p {
+                s += phi_d[j * ncomp + k] * sigma_inv_phi_lam[j * ncomp + l];
+            }
+            a_mat[k * ncomp + l] = model.eigenvalues[k] * s;
+        }
+    }
+
+    // Posterior covariance Cov[k,l] = (k==l ? λ_k : 0) − A_mat[k,l].
+    let mut cov = vec![0.0_f64; ncomp * ncomp];
+    for k in 0..ncomp {
+        for l in 0..ncomp {
+            let prior = if k == l { model.eigenvalues[k] } else { 0.0 };
+            cov[k * ncomp + l] = prior - a_mat[k * ncomp + l];
+        }
+    }
+
+    match kind {
+        OptimalityKind::A => {
+            // trace(Cov) = Σ_k Cov[k,k].
+            let tr: f64 = (0..ncomp).map(|k| cov[k * ncomp + k]).sum();
+            Ok(tr)
+        }
+        OptimalityKind::D => {
+            // log det(Cov) via Cholesky; NEGATIVE for an informative design. Do NOT negate.
+            let l_cov = cholesky_factor(&cov, ncomp).map_err(|_| FdarError::ComputationFailed {
+                operation: "optimal_design D-optimality log-det",
+                detail: "posterior covariance Cholesky failed; matrix not positive-definite".into(),
+            })?;
+            Ok(log_det_from_cholesky(&l_cov, ncomp))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -356,5 +430,95 @@ mod tests {
         let model = synthetic_model_params(51, vec![2.0, 1.0], 1e-12);
         let res = design_criterion(&model, &[10, 20, 30], DesignCriterion::Trajectory);
         assert!(res.is_ok(), "expected Ok after ridge-retry, got {res:?}");
+    }
+
+    // ---- Score branch (FOD-02) ----
+
+    #[test]
+    fn test_score_a_empty_set() {
+        let model = synthetic_model(51);
+        let a = design_criterion(&model, &[], DesignCriterion::Score(OptimalityKind::A)).unwrap();
+        // A(∅) = Σ_k λ_k = 3.0
+        assert!((a - 3.0).abs() < 1e-10, "A(∅) = {a}, expected 3.0");
+    }
+
+    #[test]
+    fn test_score_d_empty_set() {
+        let model = synthetic_model(51);
+        let d = design_criterion(&model, &[], DesignCriterion::Score(OptimalityKind::D)).unwrap();
+        // D(∅) = ln(2.0) + ln(1.0) = ln 2
+        let expected = 2.0_f64.ln();
+        assert!(
+            (d - expected).abs() < 1e-10,
+            "D(∅) = {d}, expected {expected}"
+        );
+    }
+
+    #[test]
+    fn test_score_prior_recovery() {
+        let model = synthetic_model(51);
+        let a = design_criterion(&model, &[], DesignCriterion::Score(OptimalityKind::A)).unwrap();
+        let expected_a: f64 = model.eigenvalues.iter().sum();
+        assert!(
+            (a - expected_a).abs() < 1e-10,
+            "a={a} expected_a={expected_a}"
+        );
+
+        let d = design_criterion(&model, &[], DesignCriterion::Score(OptimalityKind::D)).unwrap();
+        let expected_d: f64 = model.eigenvalues.iter().map(|&lam| lam.ln()).sum();
+        assert!(
+            (d - expected_d).abs() < 1e-10,
+            "d={d} expected_d={expected_d}"
+        );
+    }
+
+    #[test]
+    fn test_monotonicity_a_opt() {
+        let model = synthetic_model(51);
+        let s0 =
+            design_criterion(&model, &[10], DesignCriterion::Score(OptimalityKind::A)).unwrap();
+        let s1 =
+            design_criterion(&model, &[10, 30], DesignCriterion::Score(OptimalityKind::A)).unwrap();
+        assert!(s1 <= s0 + 1e-12, "s1={s1} s0={s0}");
+    }
+
+    #[test]
+    fn test_monotonicity_d_opt() {
+        let model = synthetic_model(51);
+        let s0 =
+            design_criterion(&model, &[10], DesignCriterion::Score(OptimalityKind::D)).unwrap();
+        let s1 =
+            design_criterion(&model, &[10, 30], DesignCriterion::Score(OptimalityKind::D)).unwrap();
+        assert!(s1 <= s0 + 1e-12, "s1={s1} s0={s0}");
+    }
+
+    #[test]
+    fn test_enum_dispatch() {
+        let model = synthetic_model(51);
+        let traj = design_criterion(&model, &[10], DesignCriterion::Trajectory).unwrap();
+        let a = design_criterion(&model, &[10], DesignCriterion::Score(OptimalityKind::A)).unwrap();
+        let d = design_criterion(&model, &[10], DesignCriterion::Score(OptimalityKind::D)).unwrap();
+        assert!(
+            traj.is_finite() && a.is_finite() && d.is_finite(),
+            "traj={traj} a={a} d={d}"
+        );
+        // Route-correctness. NOTE: when eigenfunctions are orthonormal w.r.t. the
+        // integration weights, the integrated trajectory MSE equals trace(Cov(ξ)),
+        // so Trajectory ≡ A-optimality is an exact algebraic identity — not a
+        // dispatch bug. We assert that identity (proving Trajectory runs the real
+        // integral, not a stub) AND that D (log-det, a distinct code path) yields a
+        // value distinct from both, confirming all three variants route separately.
+        assert!(
+            (traj - a).abs() < 1e-9,
+            "orthonormal identity broken: traj={traj} a={a}"
+        );
+        assert!(
+            (d - a).abs() > 1e-9,
+            "D failed to route separately: d={d} a={a}"
+        );
+        assert!(
+            d < a,
+            "D-opt (log-det) should be below A-opt (trace) here: d={d} a={a}"
+        );
     }
 }
