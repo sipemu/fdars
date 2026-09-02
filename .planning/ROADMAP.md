@@ -19,7 +19,7 @@
 - ✅ **v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression** — Phases 41–42 (shipped 2026-08-23) — [archive](milestones/v0.28.0-ROADMAP.md)
 - ✅ **v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering** — Phases 43–45 (shipped 2026-08-30) — [archive](milestones/v0.29.0-ROADMAP.md)
 - ✅ **v0.30.0 — Performance & Consolidation Pass** — Phases 46–51 (shipped 2026-09-01) — [archive](milestones/v0.30.0-ROADMAP.md)
-- 🚧 **v0.31.0 — Multi-Ecosystem Gap Audit** — Phases 52–53 (in progress)
+- ✅ **v0.31.0 — Multi-Ecosystem Gap Audit** — Phases 52–53 (shipped 2026-09-02) — [archive](milestones/v0.31.0-ROADMAP.md)
 
 ## Phases
 
@@ -27,16 +27,6 @@
 
 - Integer phases (1, 2, 3, …): Planned milestone work — numbering continues across milestones (never resets)
 - Decimal phases (52.1, 52.2): Urgent insertions (marked with INSERTED)
-
-<details>
-<summary>✅ v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression (Phases 41–42) — SHIPPED 2026-08-23</summary>
-
-- [x] Phase 41: Spectral Functional Time Series (FTS-03, 2 plans) — new `fts/spectral.rs` (`spectral_density`, `dpca`, `dpca_reconstruct`) + `simulation.rs` (`sim_fvarma`, `sim_farma`)
-- [x] Phase 42: Object-Data Fréchet Regression (FRE-02, 3 plans) — new `frechet/spaces/` + generic `frechet_*_space` solvers
-
-Full detail: [milestones/v0.28.0-ROADMAP.md](milestones/v0.28.0-ROADMAP.md)
-
-</details>
 
 <details>
 <summary>✅ v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering (Phases 43–45) — SHIPPED 2026-08-30</summary>
@@ -61,80 +51,24 @@ First internally-driven milestone (both parity backlogs exhausted): measure-firs
 - [x] Phase 50: Additive API-Surface Consolidation (API-01/02/03, 3 plans) — 3 Default impls, fanova_seeded, Dim + 5 dispatchers, 6 #[deprecated]; 28 examples + wasm compile
 - [x] Phase 51: Benchmark Coverage & Regression Guards (BENCH-01/02, 4 plans) — 9 new module benches + BENCH-RESULTS.md ledger
 
-Milestone audit: **tech_debt** (13/13 requirements satisfied, 6/6 phases verified passed, cross-phase integration SOUND; deferred: REL-01 version bump/publish, APIB-01 breaking removals, Nyquist validate-phase reconciliation for 49/50/51). Full detail: [milestones/v0.30.0-ROADMAP.md](milestones/v0.30.0-ROADMAP.md)
+Milestone audit: **tech_debt** (13/13 requirements satisfied, 6/6 phases verified passed). Full detail: [milestones/v0.30.0-ROADMAP.md](milestones/v0.30.0-ROADMAP.md)
 
 </details>
 
-### 🚧 v0.31.0 — Multi-Ecosystem Gap Audit (In Progress)
+<details>
+<summary>✅ v0.31.0 — Multi-Ecosystem Gap Audit (Phases 52–53) — SHIPPED 2026-09-02</summary>
 
-**Milestone Goal:** Map fdars' functionality gaps against four fresh reference ecosystems — MATLAB FDA, Julia FDA, tidyfun/refund (R), and Python-beyond-scikit-fda — and produce a single prioritized, de-duplicated, GSD-ready backlog for future implementation milestones. Both prior parity backlogs (scikit-fda v0.14.0, R core v0.18.0) are exhausted; this is the next-yardstick audit.
+Next-yardstick audit (both prior parity backlogs exhausted): map fdars against four fresh ecosystems and produce a single ranked, de-duplicated, GSD-ready backlog. **Audit-only** — zero `fdars-core/src/` edits, no crate change, no git tag.
 
-**Audit fences (apply to every phase):**
+- [x] Phase 52: Ecosystem Surveys (MAT-01/JUL-01/TDY-01/PYX-01, 4 plans) — capability-first surveys of MATLAB FDA, Julia FDA, tidyfun/refund, Python-beyond-scikit-fda → four `survey-*.md` with net-new gap lists (completed 2026-09-02)
+- [x] Phase 53: Consolidation & Backlog (RPT-01/02/03, 3 plans) — `GAP-AUDIT-REPORT.md` + ranked `GAP-BACKLOG.md` (7 net-new, value/√effort) + RPT-03 completeness gate PASS (completed 2026-09-02)
 
-- **Audit-only** — zero `fdars-core/src/` edits across the entire milestone. Deliverables are markdown documents only.
-- **Net-new gaps only** — hard de-dup against shipped fdars capabilities AND both prior backlogs (`BACKLOG.md` v0.14.0, `R-BACKLOG.md` v0.18.0). Anything fdars already ships or that already sits in a prior backlog is excluded.
-- **No git tag / no crate publish** — the crate is unchanged; a `v*` tag would publish a phantom version (project convention for audit milestones).
-- **Distinct filenames** — new deliverables land in `.planning/research/` as `GAP-AUDIT-REPORT.md` and `GAP-BACKLOG.md`. Do NOT overwrite the existing `AUDIT-REPORT.md` / `BACKLOG.md` / `R-AUDIT-REPORT.md` / `R-BACKLOG.md`.
-- **Scope exclusions** — no plotting/visualization parity, no data/IO parity; no re-audit of scikit-fda or the core R FDA ecosystem (refund only where NOT captured in v0.18.0).
+Milestone audit PASSED 7/7 requirements. Outcome: 7 ranked net-new gaps (top: GAK, shapelets) + 3 recorded out-of-scope; headline = fdars is exceptionally comprehensive, cross-ecosystem convergence LOW. Deliverables in `.planning/research/GAP-AUDIT-REPORT.md` + `GAP-BACKLOG.md`. Full detail: [milestones/v0.31.0-ROADMAP.md](milestones/v0.31.0-ROADMAP.md)
 
-- [x] **Phase 52: Ecosystem Surveys** - Enumerate, map, and de-dup net-new gaps against MATLAB FDA, Julia FDA, tidyfun/refund, and Python-beyond-scikit-fda (four independent parallel surveys) (completed 2026-09-02)
-- [x] **Phase 53: Consolidation & Backlog** - Merge the four survey gap-lists into a single cross-ecosystem gap report, a value-ranked GSD-ready backlog, and pass a de-dup + completeness gate (completed 2026-09-02)
+</details>
 
-## Phase Details
+## Status
 
-### Phase 52: Ecosystem Surveys
+All milestones through **v0.31.0 are shipped and archived** under `milestones/`. The crate remains at version 0.30.0 — v0.31.0 was audit-only (no crate change, no version bump, no git tag). Next implementation milestone should promote top items from `.planning/research/GAP-BACKLOG.md` via `/gsd-review-backlog`.
 
-**Goal**: Four fresh reference ecosystems are surveyed capability-first, fdars is mapped present/partial/absent against each, and each survey emits a de-duplicated net-new gap list — the raw material Phase 53 consolidates.
-**Depends on**: Nothing (first phase of milestone; prior milestones shipped)
-**Requirements**: MAT-01, JUL-01, TDY-01, PYX-01
-**Success Criteria** (what must be TRUE):
-
-  1. Each of the four ecosystems has a versioned capability inventory (package + version pinned) organized capability-first, recorded in `.planning/research/GAP-AUDIT-REPORT.md`.
-  2. Each inventory has an fdars present/partial/absent parity mapping, with an explicit "searched fdars for:" note per absent/partial row (mapped by capability, not API name).
-  3. Each survey emits a net-new gap list where every listed gap is verified absent from shipped fdars AND absent from both `BACKLOG.md` (v0.14.0) and `R-BACKLOG.md` (v0.18.0).
-  4. The TDY-01 survey covers refund methods ONLY where not already captured in v0.18.0, and the PYX-01 survey explicitly excludes scikit-fda (covered by v0.14.0).
-  5. All four surveys complete with zero `fdars-core/src/` edits (audit-only fence verified).
-
-**Plans**: 4 plans (one parallel plan per ecosystem — MAT-01, JUL-01, TDY-01, PYX-01; mutually independent)
-
-Plans:
-
-- [x] 52-01-PLAN.md: MATLAB FDA survey (MAT-01) — Ramsay `fda` MATLAB toolbox + PACE (MATLAB) → `survey-matlab.md`
-- [x] 52-02-PLAN.md: Julia FDA survey (JUL-01) — JuliaStats / functional-data packages (modern/perf-oriented patterns) → `survey-julia.md`
-- [x] 52-03-PLAN.md: tidyfun/refund (R) survey (TDY-01) — tidyfun representation/workflow slice + refund not-in-v0.18.0 → `survey-tidyfun.md`
-- [x] 52-04-PLAN.md: Python-beyond-scikit-fda survey (PYX-01) — FDApy / tslearn / sktime + other Python FDA/ML libs → `survey-pyx.md`
-
-### Phase 53: Consolidation & Backlog
-
-**Goal**: The four per-ecosystem gap lists are merged into a single cross-ecosystem gap report, a value-ranked GSD-ready backlog is produced, and a de-dup + completeness gate confirms every backlog item is genuinely net-new and every surveyed gap is accounted for.
-**Depends on**: Phase 52 (all four surveys must be complete — this phase merges/ranks/de-dups their outputs)
-**Requirements**: RPT-01, RPT-02, RPT-03
-**Success Criteria** (what must be TRUE):
-
-  1. `.planning/research/GAP-AUDIT-REPORT.md` contains methodology, per-ecosystem findings, a cross-ecosystem overlap/convergence analysis (which gaps recur across ≥2 ecosystems), and a reverse-parity strengths sweep (where fdars leads these ecosystems).
-  2. `.planning/research/GAP-BACKLOG.md` contains N ranked net-new items sorted strictly non-increasing by `score = value / √effort` (consistent with v0.14.0/v0.18.0), each a promotion-ready block with candidate requirement/phase, effort estimate, reference baseline, and rationale.
-  3. Every `GAP-BACKLOG.md` item is verified genuinely net-new — absent from shipped fdars, from `BACKLOG.md`, and from `R-BACKLOG.md` (de-dup gate PASS).
-  4. Every surveyed capability gap from Phase 52 is either ranked in `GAP-BACKLOG.md` or explicitly recorded as out-of-scope with reasoning (completeness gate PASS).
-  5. Both deliverables are written with zero `fdars-core/src/` edits, use the distinct `GAP-*` filenames (existing audit reports/backlogs untouched), and no git tag is created.
-
-**Plans**: 3 plans (RPT-01 report, then RPT-02 backlog, then RPT-03 de-dup + completeness gate — internal order: gate last)
-
-Plans:
-
-- [x] 53-01: Consolidated multi-ecosystem gap report (RPT-01) — `GAP-AUDIT-REPORT.md`: methodology, per-ecosystem findings, cross-ecosystem convergence, reverse-parity strengths
-- [x] 53-02: Ranked GSD-ready backlog (RPT-02) — `GAP-BACKLOG.md`: value/√effort ranking, promotion-ready item blocks
-- [x] 53-03: De-dup & completeness gate (RPT-03) — verify every item net-new vs shipped + `BACKLOG.md` + `R-BACKLOG.md`; every gap ranked or out-of-scope-with-reason
-
-## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 52 → 53
-
-Phases through **v0.30.0 are shipped and archived** under `milestones/`. The crate remains at version 0.29.0 — the v0.30.0 version bump + `cargo publish` + tag is the deferred operator ship step (REL-01). **v0.31.0 is audit-only: no crate change, no version bump, no git tag.**
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 52. Ecosystem Surveys | v0.31.0 | 4/4 | Complete    | 2026-09-02 |
-| 53. Consolidation & Backlog | v0.31.0 | 3/3 | Complete    | 2026-09-02 |
-
-Next: `/gsd-plan-phase 52`
+Next: `/gsd-new-milestone`

@@ -1,0 +1,23 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v0.31.0 — Multi-Ecosystem Gap Audit",
+  "phases": [
+    {
+      "number": "52",
+      "name": "Ecosystem Surveys",
+      "status": "complete"
+    },
+    {
+      "number": "53",
+      "name": "Consolidation & Backlog",
+      "status": "complete"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
+  },
+  "updated_at": "2026-09-02T06:50:05.651Z"
+}

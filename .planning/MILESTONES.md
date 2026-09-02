@@ -1,5 +1,15 @@
 # Milestones
 
+## v0.31.0 Multi-Ecosystem Gap Audit (Shipped: 2026-09-02)
+
+**Phases completed:** 2 phases, 7 plans, 0 tasks
+
+**Key accomplishments:**
+
+- (none recorded)
+
+---
+
 ## v0.30.0 Performance & Consolidation Pass (Shipped: 2026-09-01)
 
 **Phases completed:** 6 phases, 23 plans, 12 tasks
