@@ -16,9 +16,9 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### Discovery & Ranking
 
-- [ ] **SHP-03**: User can discover candidate shapelets from a labeled training curve set — enumerate candidate subsequences across a configurable length range, either exhaustively or via deterministic contracted/random sampling bounded by `max_candidates` (seeded via `seed_for_thread` for reproducibility).
-- [ ] **SHP-04**: Each candidate is scored by discriminative quality — **information gain** on the optimal distance-split threshold (orderline sort + midpoint scan) by default, or the **F-statistic** alternative, selectable via a `QualityMeasure` enum.
-- [ ] **SHP-05**: The discovery selects the top-K shapelets by quality with **self-similarity pruning** — candidates from the same series whose position range overlaps an already-selected shapelet are discarded, yielding a non-redundant `ShapeletSet`.
+- [x] **SHP-03**: User can discover candidate shapelets from a labeled training curve set — enumerate candidate subsequences across a configurable length range, either exhaustively or via deterministic contracted/random sampling bounded by `max_candidates` (seeded via `seed_for_thread` for reproducibility).
+- [x] **SHP-04**: Each candidate is scored by discriminative quality — **information gain** on the optimal distance-split threshold (orderline sort + midpoint scan) by default, or the **F-statistic** alternative, selectable via a `QualityMeasure` enum.
+- [x] **SHP-05**: The discovery selects the top-K shapelets by quality with **self-similarity pruning** — candidates from the same series whose position range overlaps an already-selected shapelet are discarded, yielding a non-redundant `ShapeletSet`.
 
 ### Shapelet Transform
 
@@ -60,9 +60,9 @@ Mapped during roadmap creation (2026-09-02). Every v0.33.0 requirement maps to e
 |-------------|-------|--------|
 | SHP-01 | Phase 57 | Complete |
 | SHP-02 | Phase 57 | Complete |
-| SHP-03 | Phase 58 | Pending |
-| SHP-04 | Phase 58 | Pending |
-| SHP-05 | Phase 58 | Pending |
+| SHP-03 | Phase 58 | Complete |
+| SHP-04 | Phase 58 | Complete |
+| SHP-05 | Phase 58 | Complete |
 | SHP-06 | Phase 59 | Pending |
 | SHP-07 | Phase 60 | Pending |
 
