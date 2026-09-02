@@ -1,5 +1,19 @@
 # Milestones
 
+## v0.34.0 k-Shape Clustering & Shape-Based Distance (Shipped: 2026-09-02)
+
+**Phases completed:** 3 phases (61–63), 3 plans. Milestone audit PASSED 5/5 requirements. Promoted GAP-03 (score 2.12, M-effort) from the v0.31.0 `GAP-BACKLOG.md`, rounding out the curve-clustering family alongside v0.32.0's GAK kernel-k-means. Strict compile-time dependency chain (61→62→63); mirrors the GAK→kernel-k-means precedent.
+
+**Key accomplishments:**
+
+- **Phase 61 — SBD Distance Core (KSH-01/02):** new `src/metric/sbd.rs` — `sbd(x,y) -> (distance, signed shift)` via FFT normalized cross-correlation (z-norm, zero-pad to `next_power_of_two(2m−1)`, explicit IFFT `/fft_len`, coefficient-normalized NCC, distance ∈ [0,2]) + `sbd_distance_matrix` (symmetric, parallel, one FFT planner per thread). Reuses `rustfft` + v0.33.0 z-norm; scale/offset-invariant with constant-series guard. Reference: tslearn `cdist_normalized_cc`.
+- **Phase 62 — k-Shape Clustering & Predict (KSH-03/04):** new `src/kshape.rs` — `kshape_fd` iterative SBD assignment + **shape-extraction** centroids (top eigenvector of the shift-aligned mean-centered normalized covariance `M = QᵀSQ`, `Q = I_m − O_m/m`, sign-fixed, re-z-normed — via `nalgebra::SymmetricEigen`), n_init=10 restarts, in-place empty-cluster recovery, deterministic seeding; `KShapeResult::predict` out-of-sample. Two shifted-shape groups recovered at purity 1.0. Reference: tslearn `KShape`, Paparrizos & Gravano 2015.
+- **Phase 63 — SBD-based k-medoids & Wrap-up (KSH-05):** `sbd_kmedoids` (SBD matrix → existing `kmedoids_from_distances`; proven == the manual composition), finalized crate-root re-exports + prelude for the full SBD/k-Shape surface, criterion `kshape` bench.
+
+**Verification:** additive/non-breaking, no new crate dependency. Whole-crate gates green — `cargo fmt --check` clean, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean, 2657 lib tests + 195 doctests pass (19 new: 8 SBD + 7 k-Shape + 4 k-medoids/re-export). Crate bumped 0.33.0 → **0.34.0** + CHANGELOG. **Deferred (operator ship-time step):** `git tag v0.34.0` + push → crates.io publish via `release.yml`.
+
+---
+
 ## v0.33.0 Shapelet Transform & Classification (Shipped: 2026-09-02)
 
 **Phases completed:** 4 phases (57–60), 4 plans. Milestone audit PASSED 7/7 requirements. Promoted GAP-02 (score 2.89, the only backlog gap corroborated across sktime + pyts + tslearn) from the v0.31.0 `GAP-BACKLOG.md`. Discovery-based shapelet transform (Ye & Keogh / Hills–Lines / sktime STC) — learning-shapelets deferred. New `src/shapelet/` submodule (strict compile-time dependency chain 57→58→59→60).
