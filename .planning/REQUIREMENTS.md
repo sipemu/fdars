@@ -16,8 +16,8 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### k-Shape Clustering
 
-- [ ] **KSH-03**: User can cluster a curve set with k-Shape (`kshape_fd`) — iterative SBD assignment + centroid refinement via shape extraction (top eigenvector of the shift-aligned, mean-centered normalized covariance, sign-fixed, re-z-normalized), with `n_init` random restarts (default 10), in-place empty-cluster recovery, deterministic per-restart seeding (`seed + restart_idx`), and a non-increasing objective to convergence/`max_iter`. Result carries centroids + labels + inertia + iterations.
-- [ ] **KSH-04**: User can assign new (out-of-sample) series to a fitted k-Shape model via `KShapeResult::predict`, computing SBD to each stored centroid (same z-normalization) and taking the argmin.
+- [x] **KSH-03**: User can cluster a curve set with k-Shape (`kshape_fd`) — iterative SBD assignment + centroid refinement via shape extraction (top eigenvector of the shift-aligned, mean-centered normalized covariance, sign-fixed, re-z-normalized), with `n_init` random restarts (default 10), in-place empty-cluster recovery, deterministic per-restart seeding (`seed + restart_idx`), and a non-increasing objective to convergence/`max_iter`. Result carries centroids + labels + inertia + iterations.
+- [x] **KSH-04**: User can assign new (out-of-sample) series to a fitted k-Shape model via `KShapeResult::predict`, computing SBD to each stored centroid (same z-normalization) and taking the argmin.
 
 ### SBD-based k-medoids
 
@@ -50,8 +50,8 @@ Mapped during roadmap creation (2026-09-02). Every v1 requirement maps to exactl
 |-------------|-------|--------|
 | KSH-01 | Phase 61 | Complete |
 | KSH-02 | Phase 61 | Complete |
-| KSH-03 | Phase 62 | Pending |
-| KSH-04 | Phase 62 | Pending |
+| KSH-03 | Phase 62 | Complete |
+| KSH-04 | Phase 62 | Complete |
 | KSH-05 | Phase 63 | Pending |
 
 **Coverage:**
