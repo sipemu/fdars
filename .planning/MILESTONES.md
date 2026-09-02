@@ -1,14 +1,16 @@
 # Milestones
 
-## v0.32.0 v0.32.0 (Shipped: 2026-09-02)
+## v0.32.0 Global Alignment Kernel & Kernel Clustering (Shipped: 2026-09-02)
 
-**Phases completed:** 3 phases, 3 plans, 0 tasks
+**Phases completed:** 3 phases (54–56), 3 plans. Milestone audit PASSED 8/8 requirements. First implementation milestone after three audit/consolidation cycles; promoted GAP-01 (top-ranked, score 3.00) from the v0.31.0 `GAP-BACKLOG.md`.
 
 **Key accomplishments:**
 
-- complete
-- Complete
-- complete
+- **Phase 54 — GAK Kernel Core (GAK-01/02/03/04):** new `metric/gak.rs` — Cuturi Triangular Global Alignment Kernel via a log-domain (log-sum-exp) forward DP atop the existing soft-DTW lattice; triangular normalization → PSD similarity in `[0,1]` with unit diagonal; `gak_gram_matrix` (symmetric-by-assignment, PSD, parallel); `sigma_gak` median-distance bandwidth heuristic. Reference: tslearn@0.9.0 `gak`.
+- **Phase 55 — Gram-Matrix Export (GAK-05/06):** split `gak_gram_train` (n×n, carries training self-kernels + σ) / `gak_gram_predict` (n_test×n_train, cross-normalized against stored training diagonals) for external `SVC(kernel='precomputed')` handoff — the split API closes the silent self-kernel-normalization bug. No native SVM (deferred SVM-01).
+- **Phase 56 — Kernel-k-means (GAK-07/08):** new `kernel_kmeans.rs` — kernel-trick clustering on the GAK Gram (no explicit centroid), `n_init` random-partition restarts, empty-cluster recovery, deterministic seeding, and out-of-sample `predict` reusing the fitted σ/normalization. Reference: tslearn@0.9.0 `KernelKMeans`.
+
+**Verification:** additive/non-breaking, no new crate dependency. Whole-crate gates green — `cargo fmt --check` clean, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` clean, 2612 lib tests + 186 doctests pass (25 new tests: 17 GAK + 8 kernel-k-means). Crate bumped 0.30.0 → 0.32.0 + CHANGELOG. **Deferred (operator ship-time step):** `git tag v0.32.0` + push → crates.io publish via `release.yml`.
 
 ---
 
