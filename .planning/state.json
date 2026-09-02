@@ -1,33 +1,28 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.34.0",
+  "milestone": "v0.34.0 — k-Shape Clustering & Shape-Based Distance",
   "phases": [
     {
-      "number": "57",
-      "name": "Shapelet Distance Core",
+      "number": "61",
+      "name": "SBD Distance Core",
       "status": "complete"
     },
     {
-      "number": "58",
-      "name": "Discovery & Ranking",
-      "status": "complete"
+      "number": "62",
+      "name": "k-Shape Clustering & Predict",
+      "status": "pending"
     },
     {
-      "number": "59",
-      "name": "Shapelet Transform",
-      "status": "complete"
-    },
-    {
-      "number": "60",
-      "name": "Bundled ShapeletTransformClassifier",
-      "status": "complete"
+      "number": "63",
+      "name": "SBD-based k-medoids & Wrap-up",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:discuss-phase",
-    "label": "Discuss the first phase",
-    "reason": "Project initialized — plan your first phase"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 62)",
+    "reason": "Phase 62 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-02T12:00:21.036Z"
+  "updated_at": "2026-09-02T12:47:04.323Z"
 }

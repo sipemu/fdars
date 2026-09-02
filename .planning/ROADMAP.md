@@ -92,7 +92,7 @@ Milestone audit PASSED 7/7 requirements. Full detail: [milestones/v0.33.0-ROADMA
 
 **Phase shape (three phases — a strict sequential dependency chain):** All four researchers converged on a rigid, non-reorderable, non-parallelizable build sequence — SBD distance core → k-Shape fit + predict → SBD-k-medoids + wrap-up — mirroring the v0.32.0 GAK→kernel-k-means precedent. SBD lands in a new `src/metric/sbd.rs` (peer of `gak.rs`/`soft_dtw.rs`); k-Shape in a new top-level `src/kshape.rs` (peer of `kernel_kmeans.rs`); the SBD-k-medoids convenience is a thin adapter at the bottom of `kshape.rs`. `granularity: fine` + disjoint per-phase correctness gates → three phases, each owning a distinct set of silent-correctness gates. **Phase 61** front-loads the five FFT/NCC numerical make-or-break gates (zero-pad to `next_power_of_two(2m−1)`, coefficient-normalized NCC, IFFT scale, signed-lag extraction, z-normalization) — every downstream step inherits any bug here. **Phase 62** is the main algorithmic phase — shape-extraction centroids (top eigenvector, sign fix, shift-alignment, re-z-norm) are the only genuinely-new numerical piece; everything else mirrors `kernel_kmeans.rs`. **Phase 63** is the thin SBD-k-medoids adapter + crate-root re-exports + benchmark. Reuse-first: `rustfft` (FFT), `nalgebra` `SymmetricEigen` (shape extraction), the v0.33.0 `shapelet::z_normalize_window`, existing `kernel_kmeans.rs` patterns, and `alignment::clustering::kmedoids_from_distances`. Multivariate SBD, variable-length series, and other clustering families (KSH-BREADTH) deferred.
 
-- [ ] **Phase 61: SBD Distance Core** - FFT normalized-cross-correlation Shape-Based Distance `sbd(x,y) -> (distance, shift)` + public n×n `sbd_distance_matrix`; new `src/metric/sbd.rs` (KSH-01/02)
+- [x] **Phase 61: SBD Distance Core** - FFT normalized-cross-correlation Shape-Based Distance `sbd(x,y) -> (distance, shift)` + public n×n `sbd_distance_matrix`; new `src/metric/sbd.rs` (KSH-01/02) (completed 2026-09-02)
 - [ ] **Phase 62: k-Shape Clustering & Predict** - `kshape_fd` (SBD assignment + shape-extraction centroids, n_init restarts, empty-cluster recovery, deterministic seeding) + `KShapeResult::predict`; new `src/kshape.rs` (KSH-03/04)
 - [ ] **Phase 63: SBD-based k-medoids & Wrap-up** - `sbd_kmedoids` convenience over the existing `kmedoids_from_distances`; crate-root re-exports + `prelude` + criterion benchmark (KSH-05)
 
@@ -147,7 +147,7 @@ Phases execute in numeric order: 61 → 62 → 63. Phase 62 cannot begin before 
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 61. SBD Distance Core | v0.34.0 | 0/TBD | Not started | - |
+| 61. SBD Distance Core | v0.34.0 | 1/1 | Complete    | 2026-09-02 |
 | 62. k-Shape Clustering & Predict | v0.34.0 | 0/TBD | Not started | - |
 | 63. SBD-based k-medoids & Wrap-up | v0.34.0 | 0/TBD | Not started | - |
 

@@ -11,8 +11,8 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### SBD Distance Core
 
-- [ ] **KSH-01**: User can compute the Shape-Based Distance between two series — `sbd(x, y) -> (distance, optimal_shift)`: z-normalize both, compute FFT normalized cross-correlation (coefficient-normalized by `‖x‖·‖y‖`, zero-padded to `next_power_of_two(2m−1)`, IFFT scaled), `distance = 1 − max_w NCCc_w` in `[0,2]`, and the optimal shift `w*`. Constant-series (std≈0) guard.
-- [ ] **KSH-02**: User can compute an n×n SBD distance matrix over a curve set (`sbd_distance_matrix`, public) — symmetric, zero diagonal, parallelized via `iter_maybe_parallel!` (each rayon task builds its own `FftPlanner`).
+- [x] **KSH-01**: User can compute the Shape-Based Distance between two series — `sbd(x, y) -> (distance, optimal_shift)`: z-normalize both, compute FFT normalized cross-correlation (coefficient-normalized by `‖x‖·‖y‖`, zero-padded to `next_power_of_two(2m−1)`, IFFT scaled), `distance = 1 − max_w NCCc_w` in `[0,2]`, and the optimal shift `w*`. Constant-series (std≈0) guard.
+- [x] **KSH-02**: User can compute an n×n SBD distance matrix over a curve set (`sbd_distance_matrix`, public) — symmetric, zero diagonal, parallelized via `iter_maybe_parallel!` (each rayon task builds its own `FftPlanner`).
 
 ### k-Shape Clustering
 
@@ -48,13 +48,14 @@ Mapped during roadmap creation (2026-09-02). Every v1 requirement maps to exactl
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| KSH-01 | Phase 61 | Pending |
-| KSH-02 | Phase 61 | Pending |
+| KSH-01 | Phase 61 | Complete |
+| KSH-02 | Phase 61 | Complete |
 | KSH-03 | Phase 62 | Pending |
 | KSH-04 | Phase 62 | Pending |
 | KSH-05 | Phase 63 | Pending |
 
 **Coverage:**
+
 - Milestone requirements: 5 total
 - Mapped to phases: 5 (Phase 61: KSH-01/02 · Phase 62: KSH-03/04 · Phase 63: KSH-05)
 - Unmapped: 0 ✓
