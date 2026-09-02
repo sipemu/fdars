@@ -1,28 +1,33 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.33.0",
+  "milestone": "v0.33.0 — Shapelet Transform & Classification",
   "phases": [
     {
-      "number": "54",
-      "name": "GAK Kernel Core",
+      "number": "57",
+      "name": "Shapelet Distance Core",
       "status": "complete"
     },
     {
-      "number": "55",
-      "name": "Gram-Matrix Export",
-      "status": "complete"
+      "number": "58",
+      "name": "Discovery & Ranking",
+      "status": "pending"
     },
     {
-      "number": "56",
-      "name": "Kernel-k-means Clustering",
-      "status": "complete"
+      "number": "59",
+      "name": "Shapelet Transform",
+      "status": "pending"
+    },
+    {
+      "number": "60",
+      "name": "Bundled ShapeletTransformClassifier",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:discuss-phase",
-    "label": "Discuss the first phase",
-    "reason": "Project initialized — plan your first phase"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 58)",
+    "reason": "Phase 58 of 4 — needs a plan"
   },
-  "updated_at": "2026-09-02T08:34:17.648Z"
+  "updated_at": "2026-09-02T09:19:13.168Z"
 }

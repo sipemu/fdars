@@ -77,7 +77,7 @@ Milestone audit PASSED 8/8 requirements. Full detail: [milestones/v0.32.0-ROADMA
 
 **Phase shape (four phases — a strict compile-time dependency chain):** All four researchers converged on a rigid, non-reorderable, non-parallelizable build sequence: distance core → discovery & ranking → transform → bundled classifier. Each of the four `src/shapelet/` files depends one-way on the previous, so the phase boundaries mirror the file boundaries exactly. Four phases (rather than one phase / four plans) fits `granularity: fine`, and each phase owns a distinct, disjoint set of correctness gates: Phase 57 front-loads the two make-or-break numerical gates (per-window z-normalization scale/offset-invariance; the min-not-mean semantics via known-motif recovery); Phase 58 is the highest-risk phase (most pitfalls — combinatorial tractability, optimal-split information gain, self-similarity pruning, deterministic seeding, float-tie ordering); Phase 59 owns transform consistency + the short-series guard; Phase 60 owns the end-to-end pipeline + train/test leakage discipline. The crate-root `pub mod shapelet` + re-exports are deferred to the final phase to avoid exposing a partial public API mid-milestone. Discovery-based only (Ye & Keogh 2009; Hills–Lines 2014); learning-shapelets (LSH-01) deferred.
 
-- [ ] **Phase 57: Shapelet Distance Core** - Per-window z-normalization + min sliding-window z-normalized Euclidean `sdist` with early-abandon and the `Shapelet` type (SHP-01/02)
+- [x] **Phase 57: Shapelet Distance Core** - Per-window z-normalization + min sliding-window z-normalized Euclidean `sdist` with early-abandon and the `Shapelet` type (SHP-01/02) (completed 2026-09-02)
 - [ ] **Phase 58: Discovery & Ranking** - Candidate generation (exhaustive + contracted/seeded), information-gain / F-statistic quality scoring, top-K + self-similarity pruning → `ShapeletSet` (SHP-03/04/05)
 - [ ] **Phase 59: Shapelet Transform** - Apply a fitted `ShapeletSet` → n×K distance-feature matrix for training and out-of-sample curves, with transform consistency (SHP-06)
 - [ ] **Phase 60: Bundled ShapeletTransformClassifier** - End-to-end `fit` (discover → transform → classify; kNN default, LDA optional) + `predict`; crate-root re-exports (SHP-07)
@@ -148,7 +148,7 @@ Phases execute in numeric order: 57 → 58 → 59 → 60. Each `src/shapelet/` f
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 57. Shapelet Distance Core | v0.33.0 | 0/TBD | Not started | - |
+| 57. Shapelet Distance Core | v0.33.0 | 1/1 | Complete    | 2026-09-02 |
 | 58. Discovery & Ranking | v0.33.0 | 0/TBD | Not started | - |
 | 59. Shapelet Transform | v0.33.0 | 0/TBD | Not started | - |
 | 60. Bundled ShapeletTransformClassifier | v0.33.0 | 0/TBD | Not started | - |

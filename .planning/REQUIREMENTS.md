@@ -11,8 +11,8 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### Shapelet Distance Core
 
-- [ ] **SHP-01**: User/internal code can z-normalize a length-L window or shapelet slice (subtract mean, divide by population std) with a constant-window guard (std≈0 → zero vector, no NaN). Per-window normalization — the correctness foundation for scale/offset-invariant matching.
-- [ ] **SHP-02**: User/internal code can compute the shapelet-to-curve distance `sdist(S,T) = min over sliding windows of ‖z(window) − z(S)‖₂`, with an explicit `best_so_far` early-abandon parameter (inner loop breaks when the partial sum exceeds `best_so_far`). Returns the min distance (and best-match offset for interpretability).
+- [x] **SHP-01**: User/internal code can z-normalize a length-L window or shapelet slice (subtract mean, divide by population std) with a constant-window guard (std≈0 → zero vector, no NaN). Per-window normalization — the correctness foundation for scale/offset-invariant matching.
+- [x] **SHP-02**: User/internal code can compute the shapelet-to-curve distance `sdist(S,T) = min over sliding windows of ‖z(window) − z(S)‖₂`, with an explicit `best_so_far` early-abandon parameter (inner loop breaks when the partial sum exceeds `best_so_far`). Returns the min distance (and best-match offset for interpretability).
 
 ### Discovery & Ranking
 
@@ -58,8 +58,8 @@ Mapped during roadmap creation (2026-09-02). Every v0.33.0 requirement maps to e
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SHP-01 | Phase 57 | Pending |
-| SHP-02 | Phase 57 | Pending |
+| SHP-01 | Phase 57 | Complete |
+| SHP-02 | Phase 57 | Complete |
 | SHP-03 | Phase 58 | Pending |
 | SHP-04 | Phase 58 | Pending |
 | SHP-05 | Phase 58 | Pending |
@@ -67,6 +67,7 @@ Mapped during roadmap creation (2026-09-02). Every v0.33.0 requirement maps to e
 | SHP-07 | Phase 60 | Pending |
 
 **Coverage:**
+
 - Milestone requirements: 7 total
 - Mapped to phases: 7 (Phase 57: SHP-01/02 · Phase 58: SHP-03/04/05 · Phase 59: SHP-06 · Phase 60: SHP-07)
 - Unmapped: 0 ✓
