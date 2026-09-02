@@ -22,10 +22,10 @@ current_phase_name: Consolidation & Backlog
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-01)
+See: .planning/PROJECT.md (updated 2026-09-02)
 
 **Core value:** Produce an evidence-backed picture of what fdars is missing relative to four fresh reference ecosystems (MATLAB FDA, Julia FDA, tidyfun/refund, Python-beyond-scikit-fda), turned into a single prioritized, de-duplicated, GSD-ready backlog — so future milestones target the highest-leverage net-new capability work first.
-**Current focus:** Phase 52 — Ecosystem Surveys (four independent parallel surveys)
+**Current focus:** Planning next milestone (`/gsd-new-milestone`) — candidate: promote top `GAP-BACKLOG.md` items into an implementation milestone.
 
 ## Current Position
 
