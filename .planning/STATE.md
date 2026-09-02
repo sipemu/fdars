@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.34.0
-milestone_name: k-Shape Clustering & Shape-Based Distance
-status: Awaiting next milestone
-stopped_at: Phase 63 complete — all phases complete
-last_updated: "2026-09-02T13:03:19.542Z"
+milestone: v0.35.0
+milestone_name: Optimal Experimental Design for Sparse FDA (FOptDes)
+status: planning
+last_updated: "2026-09-02T13:39:50.753Z"
 last_activity: 2026-09-02
-last_activity_desc: Milestone v0.34.0 completed and archived
-state_head: dbc519f49850cbc47d4772a15a329ade04795d9e
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
-current_phase: 63
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-02)
 
 ## Current Position
 
-Phase: Milestone v0.34.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-02 — Milestone v0.34.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-02 — Milestone v0.35.0 started
 
 ## Milestone Roadmap (v0.34.0)
 
