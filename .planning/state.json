@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.32.0 — Global Alignment Kernel & Kernel Clustering",
+  "milestone": "v0.33.0",
   "phases": [
     {
       "number": "54",
@@ -20,9 +20,9 @@
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-02T08:17:05.849Z"
+  "updated_at": "2026-09-02T08:34:17.648Z"
 }
