@@ -123,7 +123,9 @@ Milestone audit PASSED 5/5 requirements. Full detail: [milestones/v0.34.0-ROADMA
   3. Both criteria are **monotone non-increasing** as design points are added (more information never raises posterior uncertainty): adding any point to `indices` satisfies `criterion(S ∪ {t}) ≤ criterion(S) + 1e-12` for Trajectory, A-opt, and D-opt — the optimality-sign gate that guarantees the Phase 65 greedy loop minimizes (never maximizes) the objective.
   4. `design_criterion` is a public, `#[must_use]`, reusable evaluator (independent of any selection loop) exposing `DesignCriterion` (`Trajectory` | `Score`) and `OptimalityKind` (`A` | `D`) enums (both serde-gated), and it is numerically robust: candidate indices are validated in-range, σ² > 0 is asserted, a near-singular `Σ_d` triggers the `pace_fpca.rs` `1e-8` ridge-retry (returns `FdarError::ComputationFailed`, never panics), and no duplicate/near-duplicate index silently corrupts the result. Enums + `design_criterion` are additively re-exported from `lib.rs` (existing signatures untouched).
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 64-01-sigma-design-and-trajectory-PLAN.md — Wave 1: new `optimal_design.rs` with `build_sigma_design`, validation, ridge-retry, and the trajectory BLUP-MSE branch (FOD-01) with known-answer/grid-invariance/monotonicity tests
+- [ ] 64-02-score-criterion-and-reexport-PLAN.md — Wave 2: Score A-/D-optimality posterior-covariance branch (FOD-02), enum dispatch, and additive `lib.rs` re-export (FOD-03) with CI gates
 
 ### Phase 65: Greedy Selection & Integration
 
