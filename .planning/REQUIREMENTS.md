@@ -1,65 +1,61 @@
-# Requirements: fdars v0.34.0 — k-Shape Clustering & Shape-Based Distance
+# Requirements: fdars — v0.35.0 Optimal Experimental Design for Sparse FDA (FOptDes)
 
 **Defined:** 2026-09-02
-**Core Value:** Add shape-based curve clustering — the SBD (Shape-Based Distance) primitive and the k-Shape algorithm built on it — plus out-of-sample assignment and SBD as a distance backend for existing clustering. Promotes GAP-03 (score 2.12, M-effort) from the v0.31.0 `GAP-BACKLOG.md`, rounding out the curve-clustering family alongside v0.32.0's GAK kernel-k-means.
+**Core Value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-05 (optimal experimental design for sparse FDA / FOptDes), rank 4 in the v0.31.0 `GAP-BACKLOG.md`.
 
-## Milestone Requirements
+## Milestone v0.35.0 Requirements
 
-Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking, no new crate dependency. SBD in a new `src/metric/sbd.rs` (peer of `gak.rs`/`soft_dtw.rs`); k-Shape in a new top-level `src/kshape.rs` (peer of `kernel_kmeans.rs`) — mirroring the v0.32.0 GAK→kernel-k-means precedent. Reference: tslearn `KShape`; Paparrizos & Gravano 2015. Strict compile-time dependency chain: SBD core → k-Shape fit+predict → SBD-k-medoids.
+Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking (zero edits to existing public signatures; protects R + WASM bindings + 28 examples), normal test/clippy/fmt gates, **publishes to crates.io on the `v0.35.0` tag**. Reuse-first: no new crate dependency, MSRV 1.81 preserved, `linalg` feature not required. New code lives in a single new top-level module `fdars-core/src/optimal_design.rs` (peer of `kshape.rs`), plus additive `lib.rs`/`prelude.rs` re-exports. Reference baseline: PACE@2.17 / fdapace `FOptDes`; Ji & Müller (2017).
 
-**Resolved design decisions (from research):** `sbd` returns `(distance, optimal_shift)`. SBD = `1 − max_w NCCc_w`, `NCCc_w = CC_w/(‖x‖·‖y‖)` (coefficient-normalized), CC via FFT zero-padded to `next_power_of_two(2m−1)`, IFFT explicitly scaled (rustfft is unnormalized). Shape extraction = top eigenvector (largest eigenvalue, nalgebra `SymmetricEigen`) of `M = Qᵀ Sᵀ S Q` (`Q = I − O/n_k`, members shift-aligned + z-normalized), sign-fixed by SBD to members, centroid re-z-normalized. Empty-cluster recovery = in-place farthest-point reassignment (mirrors `kernel_kmeans.rs`; documented divergence from tslearn's full-restart). `n_init` default **10** (fdars convention, not tslearn's 1). `FftPlanner` is `!Send` → one per rayon task. `sbd_distance_matrix` is public.
+### Optimal Experimental Design (FOD)
 
-### SBD Distance Core
-
-- [x] **KSH-01**: User can compute the Shape-Based Distance between two series — `sbd(x, y) -> (distance, optimal_shift)`: z-normalize both, compute FFT normalized cross-correlation (coefficient-normalized by `‖x‖·‖y‖`, zero-padded to `next_power_of_two(2m−1)`, IFFT scaled), `distance = 1 − max_w NCCc_w` in `[0,2]`, and the optimal shift `w*`. Constant-series (std≈0) guard.
-- [x] **KSH-02**: User can compute an n×n SBD distance matrix over a curve set (`sbd_distance_matrix`, public) — symmetric, zero diagonal, parallelized via `iter_maybe_parallel!` (each rayon task builds its own `FftPlanner`).
-
-### k-Shape Clustering
-
-- [x] **KSH-03**: User can cluster a curve set with k-Shape (`kshape_fd`) — iterative SBD assignment + centroid refinement via shape extraction (top eigenvector of the shift-aligned, mean-centered normalized covariance, sign-fixed, re-z-normalized), with `n_init` random restarts (default 10), in-place empty-cluster recovery, deterministic per-restart seeding (`seed + restart_idx`), and a non-increasing objective to convergence/`max_iter`. Result carries centroids + labels + inertia + iterations.
-- [x] **KSH-04**: User can assign new (out-of-sample) series to a fitted k-Shape model via `KShapeResult::predict`, computing SBD to each stored centroid (same z-normalization) and taking the argmin.
-
-### SBD-based k-medoids
-
-- [x] **KSH-05**: User can cluster a curve set with k-medoids over the SBD distance (`sbd_kmedoids`) — a convenience that builds the SBD distance matrix (KSH-02) and feeds it to the existing `kmedoids_from_distances`, returning the standard k-medoids result (medoid indices + labels). An alternative shape-based clustering consumer distinct from k-Shape.
+- [ ] **FOD-01**: User can compute the trajectory-reconstruction design criterion for a given design point set — the integrated conditional (BLUP) prediction MSE of x̂(t), `trapz(diag(C_Sᵀ (C_SS + σ²I)⁻¹ C_S))` over the work grid, derived from a fitted `PaceFpcaResult` (φ_k, λ_k, σ²). Simpson-weighted (grid-invariant); known-answer `MSE(∅) ≈ Σ_k λ_k`.
+- [ ] **FOD-02**: User can compute the FPC-score-prediction design criterion for a given design point set — A-optimality (trace) and D-optimality (log-det) of the posterior score covariance `Cov(ξ | Y_S) = Λ − Λ Φ_Sᵀ (C_SS + σ²I)⁻¹ Φ_S Λ` (the `pace_fpca.rs:547–558` A_mat/Ω_i pattern generalized to a prospective design set). Known-answer `Cov(ξ | ∅) = diag(λ)`.
+- [ ] **FOD-03**: User can score any caller-supplied candidate design point set through a single public evaluation function (`design_criterion`), selecting the criterion (Trajectory | Score) and, for the score criterion, the optimality kind (A | D). Independently useful for evaluating a hand-chosen design.
+- [ ] **FOD-04**: User can obtain the optimal sparse design under a point budget via greedy sequential forward selection — start empty, add the candidate that most reduces the chosen criterion, until the budget `p` is reached. Deterministic (ties broken by smallest index; identical result with and without `--features parallel`); criterion monotone non-increasing across steps.
+- [ ] **FOD-05**: User can run the whole flow as a two-stage workflow — `optimal_design(model: &PaceFpcaResult, config: &OptDesConfig) -> Result<OptDesResult, FdarError>` consuming an already-estimated PACE model (no re-estimation), returning selected point indices, selected argvals, and the achieved-criterion trace. Additive crate-root + prelude re-exports (`OptDesConfig`, `OptDesResult`, `DesignCriterion`, `OptimalityKind`, `optimal_design`, `design_criterion`) and a criterion benchmark; additive/non-breaking (28 examples + WASM + R unaffected).
 
 ## Future Requirements
 
-Deferred to a later milestone; tracked but not in this roadmap.
+Deferred to future milestones. Tracked but not in this roadmap.
 
-### Shape-clustering breadth
+### Optimal Design Breadth (FOD-BREADTH)
 
-- **KSH-BREADTH**: Multivariate/multi-dimensional SBD, variable-length series handling (pre-regularization), and SBD plugged into hierarchical/other clustering families — future.
+- **FOD-B1**: Scalar-response (SR) design criterion — optimal design targeting a downstream scalar regression response (fdapace `BestDes_SR`), distinct from trajectory/score recovery.
+- **FOD-B2**: Exhaustive / branch-and-bound global search for tiny budgets (fdapace `isSequential=FALSE`) — optimal (not greedy) for very small designs.
+- **FOD-B3**: Cross-validated ridge selection for the criterion (fdapace `RidgeCand`), replacing the fixed `model.sigma2` ridge.
+- **FOD-B4**: Rank-1 Cholesky update optimization of the greedy inner loop (for large grids m ≫ 200 / large budgets), if profiling shows the brute-force per-candidate re-solve is a bottleneck.
+- **FOD-B5**: Non-grid candidate points via eigenfunction interpolation (`helpers::linear_interp`), relaxing the grid-constrained-candidate MVP.
 
 ## Out of Scope
 
-Explicitly excluded for v0.34.0.
+Explicitly excluded this milestone. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| Soft-DTW / elastic-distance clustering | Already ships (`metric/soft_dtw.rs`, `alignment::clustering`); k-Shape is a distinct shape-based inductive bias, not a replacement. |
-| GPU / batched acceleration | fdars targets a portable CPU/WASM numeric core (recorded OOS-01 in `GAP-BACKLOG.md`). |
-| Multivariate SBD | Blocked on a multivariate-series representation decision; single-variate this milestone. |
-| Other GAP-BACKLOG items (GAP-05/06/07/08) | FOptDes, PEER, wavelet regression, differentiable core — carry forward, drawn top-first. |
+| Re-estimating the FPCA model inside the design step | User chose the two-stage workflow — FOptDes is a pure design step over a supplied `PaceFpcaResult`; re-estimation couples estimation into design and duplicates `pace_fpca`. |
+| Scalar-response (SR) design criterion | Deferred to FOD-B1 — trajectory + score criteria are the table-stakes; SR targets a different (downstream-regression) objective. |
+| Exhaustive/global optimal search | Deferred to FOD-B2 — greedy sequential is the canonical, tractable PACE recommendation for p > 3; exhaustive is impractical for realistic grids. |
+| New crate dependency / `linalg` feature | Reuse-first convention — all math is expressible via existing `cholesky_solve` + `simpsons_weights`; a new dep would raise MSRV/build risk for zero benefit. |
+| Breaking changes to existing public signatures | Additive/non-breaking convention — protects R + WASM bindings + 28 examples; new surface only. |
 
 ## Traceability
 
-Mapped during roadmap creation (2026-09-02). Every v1 requirement maps to exactly one phase — 100% coverage, no orphans, no duplicates.
+Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| KSH-01 | Phase 61 | Complete |
-| KSH-02 | Phase 61 | Complete |
-| KSH-03 | Phase 62 | Complete |
-| KSH-04 | Phase 62 | Complete |
-| KSH-05 | Phase 63 | Complete |
+| FOD-01 | Phase 64 | Pending |
+| FOD-02 | Phase 64/65 | Pending |
+| FOD-03 | Phase 64 | Pending |
+| FOD-04 | Phase 65 | Pending |
+| FOD-05 | Phase 65 | Pending |
 
 **Coverage:**
-
-- Milestone requirements: 5 total
-- Mapped to phases: 5 (Phase 61: KSH-01/02 · Phase 62: KSH-03/04 · Phase 63: KSH-05)
+- v0.35.0 requirements: 5 total
+- Mapped to phases: 5 (final mapping set by roadmapper)
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-02*
-*Last updated: 2026-09-02 after roadmap creation (traceability mapped, Phases 61–63)*
+*Last updated: 2026-09-02 after initial definition (v0.35.0 FOptDes)*
