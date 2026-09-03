@@ -221,6 +221,27 @@ group.bench_function("optimal_design_score_d_budget5_m51", |b| {
 
 ---
 
+## Resolution
+
+**Fix commit:** `e1cd2a70` — `fix(65): reject degenerate duplicate candidates, true smallest-index tie-break, doc + D-opt bench (code review)`
+
+All four findings resolved. Gates re-run green: `cargo fmt`, `clippy --all-targets --features linalg,parallel -D warnings` (clean, covers bench), `build --benches`, module tests 32/32 both with and without `--features parallel` (determinism holds), full suite 2689 lib + all integration + 196 doctests, 0 failed.
+
+### CR-01 — RESOLVED (BLOCKER)
+Fixed via **validation-upfront + defense-in-depth** (both, not one-or-the-other):
+- After `map_candidates_to_indices`, the mapped indices are now `sort_unstable()` + `dedup()`ed into a distinct-candidate pool. A new guard rejects `config.budget > distinct_count` with `InvalidParameter { parameter: "config.candidate_grid", ... }` before any greedy work — so `candidate_grid=[0.0,0.0]`, budget=2 is now a clean validation error, consistent with the other guards. This also collapses near-duplicates (within the 1e-9 mapping tolerance) that land on the same argvals index.
+- The greedy fold's `.expect(...)` was replaced with `.ok_or_else(|| FdarError::InvalidParameter{...})?` so no path can panic even if a future change bypasses the guard.
+- Tests: `test_validation_duplicate_candidates` (exact `[0.0, 0.0]`, budget 2 → InvalidParameter) and `test_validation_distinct_fewer_than_budget` (3 values, 2 distinct after dedup, budget 3 → InvalidParameter).
+
+### WR-01 — RESOLVED (WARNING) — honored the LOCKED "smallest-index tie-break" decision
+Rather than weaken the doc to "first-in-grid-order", the **code was made to match the LOCKED contract**: the candidate pool is sorted ascending by argvals index once up front, so the sequential strict-`<` fold's first-minimum is genuinely the smallest argvals index regardless of `candidate_grid` ordering. Non-tie results are unchanged (argmin-by-value is order-independent). Doc at ~288 updated to state the ascending-sort guarantee; the inline fold comment updated to explain why first-minimum == smallest-argvals-index. Tests: `test_tiebreak_smallest_index_permutation_invariant` (ascending vs reversed grid → identical selection) and `test_tiebreak_symmetric_model_smallest_index` (constructs a genuine tie via a symmetric cos(πt) eigenfunction, lists the mirror index first, asserts the smaller index wins).
+
+### IN-01 — RESOLVED (INFO)
+`optimal_design`'s `# Errors` section now documents the propagated `model.argvals.len() < 2` (grid-too-small) `InvalidParameter` from `design_criterion`.
+
+### IN-02 — RESOLVED (INFO)
+Added two D-optimality bench cases mirroring the Score(A) cases: `design_criterion_score_d_p5_m51` and `optimal_design_score_d_budget5_m51`, exercising the distinct log-det / Cholesky-with-retry path. Bench inputs unchanged (tiny). Bench compiles and clippy is clean.
+
 _Reviewed: 2026-09-03T22:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
