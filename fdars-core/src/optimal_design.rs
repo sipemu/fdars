@@ -23,6 +23,7 @@
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
+use crate::iter_maybe_parallel;
 // Import the factor/forward-back pair directly rather than `cholesky_solve`:
 // the trajectory criterion factors Σ_d once (O(p³)) and then solves the m grid-point
 // right-hand-sides via `cholesky_forward_back` (O(p²) each), amortizing the single
@@ -134,6 +135,214 @@ pub fn design_criterion(
         DesignCriterion::Trajectory => trajectory_criterion(model, selected),
         DesignCriterion::Score(kind) => score_criterion(model, selected, kind),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Greedy selection wrapper (FOD-04 / FOD-05)
+// ---------------------------------------------------------------------------
+
+/// Configuration for the greedy [`optimal_design`] selector.
+///
+/// Carries a *single* [`DesignCriterion`] field — `Score(OptimalityKind)` already
+/// wraps the optimality kind, and `Trajectory` needs none, so no separate
+/// optimality field is required. NOT `#[non_exhaustive]`, so callers can build it
+/// with a struct literal (mirrors [`crate::pace_fpca::PaceFpcaConfig`]).
+///
+/// The empty-grid [`Default`] is a safe minimal placeholder; the empty grid is
+/// rejected at [`optimal_design`] call time, not at construction.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OptDesConfig {
+    /// Candidate design points. Every value must appear (within `1e-9`) in
+    /// `model.argvals`; each is mapped to its grid index before selection.
+    pub candidate_grid: Vec<f64>,
+    /// Number of design points to select (`p`). Must be `> 0` and
+    /// `<= candidate_grid.len()`.
+    pub budget: usize,
+    /// Criterion evaluated at every greedy step via [`design_criterion`].
+    pub criterion: DesignCriterion,
+}
+
+impl Default for OptDesConfig {
+    fn default() -> Self {
+        Self {
+            candidate_grid: vec![],
+            budget: 1,
+            criterion: DesignCriterion::Trajectory,
+        }
+    }
+}
+
+/// Result of greedy [`optimal_design`] selection.
+///
+/// `#[non_exhaustive]` for forward compatibility (mirrors
+/// [`crate::pace_fpca::PaceFpcaResult`]).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OptDesResult {
+    /// Grid indices (into `model.argvals`) of the selected design points, in
+    /// selection order. Length `== config.budget`; duplicate-free.
+    pub selected_indices: Vec<usize>,
+    /// `model.argvals` values at the selected indices, in selection order.
+    /// Length `== config.budget`.
+    pub selected_argvals: Vec<f64>,
+    /// Achieved criterion value after each greedy step. Length `== config.budget`;
+    /// monotone non-increasing (`trace[i+1] <= trace[i] + 1e-12`).
+    pub criterion_trace: Vec<f64>,
+}
+
+/// Map each `candidate_grid` value to its `model.argvals` grid index.
+///
+/// Uses an FP-tolerant position search (`|t - cand| < 1e-9`) so grid values
+/// computed as `i as f64 / (m-1) as f64` match a caller-supplied equivalent that
+/// may differ by a few ULPs. Preserves `candidate_grid` order.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if any candidate is not found in
+/// `argvals` within `1e-9`.
+fn map_candidates_to_indices(
+    candidate_grid: &[f64],
+    argvals: &[f64],
+) -> Result<Vec<usize>, FdarError> {
+    candidate_grid
+        .iter()
+        .map(|&cand| {
+            argvals
+                .iter()
+                .position(|&t| (t - cand).abs() < 1e-9)
+                .ok_or_else(|| FdarError::InvalidParameter {
+                    parameter: "config.candidate_grid",
+                    message: format!(
+                        "candidate {cand:.6} not found in model.argvals within tolerance 1e-9"
+                    ),
+                })
+        })
+        .collect()
+}
+
+/// Greedy sequential forward-selection of design points over a fitted PACE model.
+///
+/// Starting from the empty design, at each of `config.budget` steps this adds the
+/// not-yet-selected candidate index that most reduces `config.criterion` (evaluated
+/// through the Phase-64 [`design_criterion`]), until the budget is reached. The
+/// supplied [`PaceFpcaResult`] is consumed **read-only** — no re-estimation of the
+/// eigenstructure or `σ²` (the two-stage FOptDes contract, FOD-05).
+///
+/// # Determinism
+///
+/// Candidate *evaluation* is parallelized (`iter_maybe_parallel!`), but the argmin
+/// is a **sequential** fold over the collected `(index, value)` pairs with a
+/// smallest-index tie-break (never rayon `min_by`, which is not stable under ties).
+/// Two identical calls produce byte-identical `selected_indices` and
+/// `criterion_trace`, and the result is identical with and without the `parallel`
+/// feature.
+///
+/// # Guarantees
+///
+/// - `selected_indices.len() == config.budget`, duplicate-free.
+/// - `criterion_trace` is monotone non-increasing (inherited from
+///   [`design_criterion`]).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidParameter`] if `config.budget == 0`,
+/// `config.budget > config.candidate_grid.len()`, any candidate is not in
+/// `model.argvals` (within `1e-9`), `model.ncomp == 0`, or `model.sigma2 <= 0.0`.
+/// Propagates any [`FdarError`] raised by [`design_criterion`] during evaluation.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn optimal_design(
+    model: &PaceFpcaResult,
+    config: &OptDesConfig,
+) -> Result<OptDesResult, FdarError> {
+    // --- Validation (ASVS V5 input validation) — fail fast before any candidate work ---
+    if config.budget == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "config.budget",
+            message: "budget must be > 0".into(),
+        });
+    }
+    if config.budget > config.candidate_grid.len() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "config.budget",
+            message: format!(
+                "budget {} exceeds the number of candidate points {}",
+                config.budget,
+                config.candidate_grid.len()
+            ),
+        });
+    }
+    if model.ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "model.ncomp",
+            message: "ncomp must be > 0; the model has no FPC components".into(),
+        });
+    }
+    if model.sigma2 <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "model.sigma2",
+            message: format!("sigma2 must be > 0; got {}", model.sigma2),
+        });
+    }
+
+    // Map candidate_grid → argvals indices once (preserves candidate_grid order).
+    let candidate_indices = map_candidates_to_indices(&config.candidate_grid, &model.argvals)?;
+
+    let mut selected: Vec<usize> = Vec::with_capacity(config.budget);
+    let mut trace: Vec<f64> = Vec::with_capacity(config.budget);
+
+    for _step in 0..config.budget {
+        // Not-yet-selected candidates, in candidate_indices (== candidate_grid) order.
+        let remaining: Vec<usize> = candidate_indices
+            .iter()
+            .copied()
+            .filter(|idx| !selected.contains(idx))
+            .collect();
+
+        // PARALLEL evaluate: each closure captures only immutable refs and allocates
+        // its own `trial`. `PaceFpcaResult` is Send + Sync (all Vec<f64>/FdMatrix/
+        // usize/f64 fields), so this compiles under `--features parallel`.
+        #[cfg(feature = "parallel")]
+        use rayon::iter::ParallelIterator;
+        let scores: Vec<(usize, f64)> = iter_maybe_parallel!(remaining)
+            .map(|idx| {
+                let mut trial = selected.clone();
+                trial.push(idx);
+                let val = design_criterion(model, &trial, config.criterion.clone())?;
+                Ok::<(usize, f64), FdarError>((idx, val))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // SEQUENTIAL argmin over the collected, fixed-order `scores`. Strict `<`
+        // keeps the FIRST minimum → smallest-index tie-break (rayon `min_by` is NOT
+        // stable under ties, so it must not be used here).
+        let (best_idx, best_val) = scores
+            .into_iter()
+            .fold(None::<(usize, f64)>, |acc, (idx, val)| {
+                Some(match acc {
+                    None => (idx, val),
+                    Some((bi, bv)) => {
+                        if val < bv {
+                            (idx, val)
+                        } else {
+                            (bi, bv)
+                        }
+                    }
+                })
+            })
+            .expect("remaining is non-empty — guaranteed by budget <= candidate count");
+
+        selected.push(best_idx);
+        trace.push(best_val);
+    }
+
+    let selected_argvals = selected.iter().map(|&i| model.argvals[i]).collect();
+    Ok(OptDesResult {
+        selected_indices: selected,
+        selected_argvals,
+        criterion_trace: trace,
+    })
 }
 
 /// Assemble the `p×p` design covariance `Σ_d = Φ_d diag(λ) Φ_dᵀ + σ²I_p`
@@ -611,5 +820,218 @@ mod tests {
             d < a,
             "D-opt (log-det) should be below A-opt (trace) here: d={d} a={a}"
         );
+    }
+
+    // ---- Greedy selection wrapper (FOD-04 / FOD-05) ----
+
+    #[test]
+    fn test_optimal_design_basic() {
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 3,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r = optimal_design(&model, &config).unwrap();
+        assert_eq!(r.selected_indices.len(), 3);
+        assert_eq!(r.selected_argvals.len(), 3);
+        assert_eq!(r.criterion_trace.len(), 3);
+    }
+
+    #[test]
+    fn test_determinism_two_calls() {
+        // Doubles as the seq==parallel gate: run under BOTH default and
+        // `--features parallel`; the selection must be byte-identical either way.
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 3,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r1 = optimal_design(&model, &config).expect("first call");
+        let r2 = optimal_design(&model, &config).expect("second call");
+        assert_eq!(
+            r1.selected_indices, r2.selected_indices,
+            "selection must be deterministic"
+        );
+        assert_eq!(
+            r1.criterion_trace, r2.criterion_trace,
+            "trace must be deterministic"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_free() {
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 5,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r = optimal_design(&model, &config).unwrap();
+        let mut sorted = r.selected_indices.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(
+            sorted.len(),
+            r.selected_indices.len(),
+            "no index may appear twice: {:?}",
+            r.selected_indices
+        );
+    }
+
+    #[test]
+    fn test_monotone_trace() {
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 5,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r = optimal_design(&model, &config).unwrap();
+        for w in r.criterion_trace.windows(2) {
+            assert!(
+                w[1] <= w[0] + 1e-12,
+                "trace not monotone non-increasing: {:?}",
+                r.criterion_trace
+            );
+        }
+    }
+
+    #[test]
+    fn test_validation_budget_zero() {
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 0,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(matches!(res, Err(FdarError::InvalidParameter { .. })));
+    }
+
+    #[test]
+    fn test_validation_budget_exceeds_grid() {
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: vec![model.argvals[0], model.argvals[1]],
+            budget: 3,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(matches!(res, Err(FdarError::InvalidParameter { .. })));
+    }
+
+    #[test]
+    fn test_validation_off_grid_candidate() {
+        let model = synthetic_model(51);
+        // A value strictly between two grid points, well outside the 1e-9 tolerance.
+        let off_grid = model.argvals[0] + 0.5 / (51.0 - 1.0);
+        let config = OptDesConfig {
+            candidate_grid: vec![off_grid],
+            budget: 1,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(matches!(res, Err(FdarError::InvalidParameter { .. })));
+    }
+
+    #[test]
+    fn test_validation_ncomp_zero() {
+        // ncomp == 0 (empty eigenvalues). May be caught at entry or delegated to
+        // design_criterion — either way an InvalidParameter must surface.
+        let model = synthetic_model_params(51, vec![], 0.5);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 1,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(matches!(res, Err(FdarError::InvalidParameter { .. })));
+    }
+
+    #[test]
+    fn test_validation_sigma2_nonpositive() {
+        let model = synthetic_model_params(51, vec![2.0, 1.0], 0.0);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 1,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(matches!(res, Err(FdarError::InvalidParameter { .. })));
+    }
+
+    #[test]
+    fn test_trajectory_selects_informative_point() {
+        let model = synthetic_model(51);
+        let m = model.argvals.len();
+        // Compute the expected first index numerically: sequential smallest-index
+        // argmin of the single-point Trajectory criterion over ALL candidates.
+        let mut best: Option<(usize, f64)> = None;
+        for idx in 0..m {
+            let val = design_criterion(&model, &[idx], DesignCriterion::Trajectory).unwrap();
+            best = Some(match best {
+                None => (idx, val),
+                Some((bi, bv)) => {
+                    if val < bv {
+                        (idx, val)
+                    } else {
+                        (bi, bv)
+                    }
+                }
+            });
+        }
+        let expected_first = best.unwrap().0;
+
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 2,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r = optimal_design(&model, &config).unwrap();
+        assert_eq!(
+            r.selected_indices[0], expected_first,
+            "first greedy pick must equal the numerically-computed argmin"
+        );
+    }
+
+    #[test]
+    fn test_score_a_selects() {
+        let model = synthetic_model(51);
+        let config = OptDesConfig {
+            candidate_grid: model.argvals.clone(),
+            budget: 2,
+            criterion: DesignCriterion::Score(OptimalityKind::A),
+        };
+        let r = optimal_design(&model, &config).unwrap();
+        assert_eq!(r.selected_indices.len(), 2);
+        assert_eq!(r.criterion_trace.len(), 2);
+        for w in r.criterion_trace.windows(2) {
+            assert!(w[1] <= w[0] + 1e-12, "Score(A) trace not non-increasing");
+        }
+    }
+
+    #[test]
+    fn test_config_default() {
+        // Default constructs (empty grid, budget 1, Trajectory); the empty grid is
+        // caught at call time, NOT at construction.
+        let config = OptDesConfig::default();
+        assert_eq!(config.budget, 1);
+        assert!(config.candidate_grid.is_empty());
+        assert_eq!(config.criterion, DesignCriterion::Trajectory);
+        let model = synthetic_model(51);
+        let res = optimal_design(&model, &config);
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { .. })),
+            "empty grid + budget 1 must fail at call time (budget > grid.len())"
+        );
+    }
+
+    #[test]
+    fn test_prelude_reexport() {
+        // In-crate reachability placeholder. The external prelude/crate-root
+        // reachability is verified as a doctest in plan 65-02.
+        assert_eq!(OptDesConfig::default().budget, 1);
     }
 }
