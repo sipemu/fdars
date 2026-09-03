@@ -18,8 +18,59 @@
 //! design points are added, so the (future) greedy selector minimizes uncertainty.
 //!
 //! The mathematics follows Ji & Müller (2017) and the Yao–Müller–Wang (2005) PACE
-//! formulation already implemented in [`crate::pace_fpca`]. This module is the pure
-//! numerical core; the greedy selection wrapper is a separate concern.
+//! formulation already implemented in [`crate::pace_fpca`]. [`design_criterion`]
+//! is the pure numerical core; [`optimal_design`] wraps it in a deterministic
+//! greedy sequential forward-selection loop.
+//!
+//! # End-to-end example
+//!
+//! Fit a sparse PACE FPCA model, then greedily select informative design points:
+//!
+//! ```rust
+//! use fdars_core::irreg_fdata::IrregFdata;
+//! use fdars_core::pace_fpca::{pace_fpca, PaceFpcaConfig};
+//! use fdars_core::{optimal_design, DesignCriterion, OptDesConfig};
+//!
+//! // A handful of sparsely-sampled curves on [0, 1].
+//! let argvals_list = vec![
+//!     vec![0.1, 0.4, 0.7],
+//!     vec![0.0, 0.3, 0.6, 0.9],
+//!     vec![0.2, 0.5, 0.8],
+//!     vec![0.0, 0.25, 0.5, 0.75, 1.0],
+//!     vec![0.1, 0.5, 0.9],
+//!     vec![0.0, 0.4, 0.8],
+//! ];
+//! let values_list: Vec<Vec<f64>> = argvals_list
+//!     .iter()
+//!     .enumerate()
+//!     .map(|(i, ts)| ts.iter().map(|&t: &f64| (i as f64 + 1.0) * t.sin()).collect())
+//!     .collect();
+//! let data = IrregFdata::from_lists(&argvals_list, &values_list);
+//!
+//! // Fit PACE on a small work grid.
+//! let m = 21_usize;
+//! let pace_cfg = PaceFpcaConfig {
+//!     ncomp: 2,
+//!     bandwidth: 0.2,
+//!     sigma2: 0.01,
+//!     work_grid: (0..m).map(|i| i as f64 / (m - 1) as f64).collect(),
+//!     alpha: 0.05,
+//! };
+//! let model = pace_fpca(&data, &pace_cfg).unwrap();
+//!
+//! // Greedily select 2 design points over the fitted model (read-only).
+//! let config = OptDesConfig {
+//!     candidate_grid: model.argvals.clone(),
+//!     budget: 2,
+//!     criterion: DesignCriterion::Trajectory,
+//! };
+//! let result = optimal_design(&model, &config).unwrap();
+//!
+//! assert_eq!(result.selected_indices.len(), 2);
+//! assert_eq!(result.criterion_trace.len(), 2);
+//! let chosen: &[f64] = &result.selected_argvals;
+//! assert_eq!(chosen.len(), 2);
+//! ```
 
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;

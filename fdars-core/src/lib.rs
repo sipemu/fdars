@@ -589,8 +589,10 @@ pub use kernel_kmeans::{kernel_kmeans_fd, KernelKmeansConfig, KernelKmeansResult
 // Re-export k-Shape clustering + SBD-backed k-medoids (v0.34.0 finalized surface)
 pub use kshape::{kshape_fd, sbd_kmedoids, KShapeConfig, KShapeResult};
 
-// Re-export optimal experimental design criterion core (v0.35.0 FOptDes, Phase 64)
-pub use optimal_design::{design_criterion, DesignCriterion, OptimalityKind};
+// Re-export optimal experimental design — full public surface (v0.35.0 FOptDes, Phase 65)
+pub use optimal_design::{
+    design_criterion, optimal_design, DesignCriterion, OptDesConfig, OptDesResult, OptimalityKind,
+};
 
 // Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{

@@ -50,6 +50,11 @@ pub use crate::metric::{
 // k-Shape clustering + SBD-backed k-medoids
 pub use crate::kshape::{kshape_fd, sbd_kmedoids, KShapeConfig, KShapeResult};
 
+// Optimal experimental design (FOptDes, v0.35.0)
+pub use crate::optimal_design::{
+    design_criterion, optimal_design, DesignCriterion, OptDesConfig, OptDesResult, OptimalityKind,
+};
+
 // Smoothing
 pub use crate::smoothing::{CvCriterion, OptimBandwidthResult};
 

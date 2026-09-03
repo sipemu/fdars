@@ -147,6 +147,10 @@ harness = false
 name = "kshape"   # Phase 63 KSH-05 — sbd_distance_matrix + kshape_fd pipeline coverage
 harness = false
 
+[[bench]]
+name = "optimal_design"   # Phase 65 FOD-05 — design_criterion + optimal_design pipeline coverage
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"
