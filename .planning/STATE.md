@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.35.0
 milestone_name: Optimal Experimental Design for Sparse FDA (FOptDes)
-current_phase: 64
-status: executing
+current_phase: 65
+status: completed
 stopped_at: Roadmap created for v0.35.0 (Phases 64–65); 5 requirements (FOD-01..05) mapped, traceability updated
-last_updated: "2026-09-02T21:17:28.447Z"
-last_activity: 2026-09-02
-last_activity_desc: Phase 64 marked complete
-state_head: 644125f60959b865fc174a1f3005409852037a48
+last_updated: "2026-09-03T19:53:14.008Z"
+last_activity: 2026-09-03
+last_activity_desc: Phase 65 marked complete
+state_head: 55f9855f6253bdcf528ecf28e52341aad81fddac
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
-current_phase_name: Criterion Machinery Core
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
+  percent: 100
+current_phase_name: Greedy Selection & Integration
 ---
 
 # Project State
@@ -25,14 +25,14 @@ current_phase_name: Criterion Machinery Core
 See: .planning/PROJECT.md (updated 2026-09-02)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-05 (Optimal Experimental Design for Sparse FDA / FOptDes), rank 4 in the v0.31.0 `GAP-BACKLOG.md`.
-**Current focus:** Phase 64 — Criterion Machinery Core
+**Current focus:** Phase 65 — Greedy Selection & Integration
 
 ## Current Position
 
-Phase: 64 — COMPLETE
+Phase: 65 — COMPLETE
 Plan: 1 of 2
-Status: Phase 64 complete
-Last activity: 2026-09-02 — Phase 64 marked complete
+Status: Phase 65 complete
+Last activity: 2026-09-03 — Phase 65 marked complete
 
 Progress: [░░░░░░░░░░] 0%
 
