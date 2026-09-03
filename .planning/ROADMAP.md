@@ -139,7 +139,9 @@ Milestone audit PASSED 5/5 requirements. Full detail: [milestones/v0.34.0-ROADMA
   3. `OptDesConfig` (candidate grid, budget `p`, `DesignCriterion`, `OptimalityKind`; `Default` impl, no `#[non_exhaustive]`) and `OptDesResult` (`selected_indices`, `selected_argvals`, achieved-criterion trace; `#[non_exhaustive]`) follow the `PaceFpcaConfig`/`PaceFpcaResult` precedent (Debug/Clone/PartialEq + serde-gated derives), and input validation returns `Err(FdarError::...)` for `budget == 0`, `budget > candidate_grid.len()`, any candidate not in `model.argvals`, `model.ncomp == 0`, or `model.sigma2 <= 0`.
   4. The full FOptDes public surface is re-exported at the crate root additively (`pub mod optimal_design`; `optimal_design`, `design_criterion`, `OptDesConfig`, `OptDesResult`, `DesignCriterion`, `OptimalityKind`) with `prelude` additions, a module-level doctest demonstrates the end-to-end workflow (fit PACE → `optimal_design` → read `selected_argvals`), a criterion benchmark covers `design_criterion` + `optimal_design` (Trajectory and Score) on a representative grid/budget, and whole-crate gates pass: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and the full lib + doctest suite — 28 examples + WASM + R bindings unaffected, no existing public signature changed, no new crate dependency.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 65-01-greedy-loop-and-config-types-PLAN.md — Wave 1 (tracer): extend `optimal_design.rs` with `OptDesConfig`/`OptDesResult` + the deterministic greedy `optimal_design` loop + candidate→index mapping + validation + 13 inline tests (FOD-04, FOD-05 algorithmic half)
+- [ ] 65-02-reexports-doctest-benchmark-PLAN.md — Wave 2: additive `lib.rs`/`prelude.rs` full-surface re-exports + module-level end-to-end doctest + new criterion benchmark + `[[bench]]` stanza + whole-crate gates (FOD-05)
 
 ## Progress
 
@@ -149,7 +151,7 @@ Phases execute in numeric order: 64 → 65. Phase 65 cannot begin before Phase 6
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 64. Criterion Machinery Core | v0.35.0 | 0/TBD | Not started | - |
-| 65. Greedy Selection & Integration | v0.35.0 | 0/TBD | Not started | - |
+| 65. Greedy Selection & Integration | v0.35.0 | 0/2 | Not started | - |
 
 ## Status
 
