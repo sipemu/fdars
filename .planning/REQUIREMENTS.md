@@ -9,11 +9,11 @@ Implementation milestone — real `fdars-core/src/` changes, additive/non-breaki
 
 ### Optimal Experimental Design (FOD)
 
-- [ ] **FOD-01**: User can compute the trajectory-reconstruction design criterion for a given design point set — the integrated conditional (BLUP) prediction MSE of x̂(t), `trapz(diag(C_Sᵀ (C_SS + σ²I)⁻¹ C_S))` over the work grid, derived from a fitted `PaceFpcaResult` (φ_k, λ_k, σ²). Simpson-weighted (grid-invariant); known-answer `MSE(∅) ≈ Σ_k λ_k`.
-- [ ] **FOD-02**: User can compute the FPC-score-prediction design criterion for a given design point set — A-optimality (trace) and D-optimality (log-det) of the posterior score covariance `Cov(ξ | Y_S) = Λ − Λ Φ_Sᵀ (C_SS + σ²I)⁻¹ Φ_S Λ` (the `pace_fpca.rs:547–558` A_mat/Ω_i pattern generalized to a prospective design set). Known-answer `Cov(ξ | ∅) = diag(λ)`.
-- [ ] **FOD-03**: User can score any caller-supplied candidate design point set through a single public evaluation function (`design_criterion`), selecting the criterion (Trajectory | Score) and, for the score criterion, the optimality kind (A | D). Independently useful for evaluating a hand-chosen design.
-- [ ] **FOD-04**: User can obtain the optimal sparse design under a point budget via greedy sequential forward selection — start empty, add the candidate that most reduces the chosen criterion, until the budget `p` is reached. Deterministic (ties broken by smallest index; identical result with and without `--features parallel`); criterion monotone non-increasing across steps.
-- [ ] **FOD-05**: User can run the whole flow as a two-stage workflow — `optimal_design(model: &PaceFpcaResult, config: &OptDesConfig) -> Result<OptDesResult, FdarError>` consuming an already-estimated PACE model (no re-estimation), returning selected point indices, selected argvals, and the achieved-criterion trace. Additive crate-root + prelude re-exports (`OptDesConfig`, `OptDesResult`, `DesignCriterion`, `OptimalityKind`, `optimal_design`, `design_criterion`) and a criterion benchmark; additive/non-breaking (28 examples + WASM + R unaffected).
+- [x] **FOD-01**: User can compute the trajectory-reconstruction design criterion for a given design point set — the integrated conditional (BLUP) prediction MSE of x̂(t), `trapz(diag(C_Sᵀ (C_SS + σ²I)⁻¹ C_S))` over the work grid, derived from a fitted `PaceFpcaResult` (φ_k, λ_k, σ²). Simpson-weighted (grid-invariant); known-answer `MSE(∅) ≈ Σ_k λ_k`.
+- [x] **FOD-02**: User can compute the FPC-score-prediction design criterion for a given design point set — A-optimality (trace) and D-optimality (log-det) of the posterior score covariance `Cov(ξ | Y_S) = Λ − Λ Φ_Sᵀ (C_SS + σ²I)⁻¹ Φ_S Λ` (the `pace_fpca.rs:547–558` A_mat/Ω_i pattern generalized to a prospective design set). Known-answer `Cov(ξ | ∅) = diag(λ)`.
+- [x] **FOD-03**: User can score any caller-supplied candidate design point set through a single public evaluation function (`design_criterion`), selecting the criterion (Trajectory | Score) and, for the score criterion, the optimality kind (A | D). Independently useful for evaluating a hand-chosen design.
+- [x] **FOD-04**: User can obtain the optimal sparse design under a point budget via greedy sequential forward selection — start empty, add the candidate that most reduces the chosen criterion, until the budget `p` is reached. Deterministic (ties broken by smallest index; identical result with and without `--features parallel`); criterion monotone non-increasing across steps.
+- [x] **FOD-05**: User can run the whole flow as a two-stage workflow — `optimal_design(model: &PaceFpcaResult, config: &OptDesConfig) -> Result<OptDesResult, FdarError>` consuming an already-estimated PACE model (no re-estimation), returning selected point indices, selected argvals, and the achieved-criterion trace. Additive crate-root + prelude re-exports (`OptDesConfig`, `OptDesResult`, `DesignCriterion`, `OptimalityKind`, `optimal_design`, `design_criterion`) and a criterion benchmark; additive/non-breaking (28 examples + WASM + R unaffected).
 
 ## Future Requirements
 
@@ -45,11 +45,11 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOD-01 | Phase 64 | Pending |
-| FOD-02 | Phase 64 | Pending |
-| FOD-03 | Phase 64 | Pending |
-| FOD-04 | Phase 65 | Pending |
-| FOD-05 | Phase 65 | Pending |
+| FOD-01 | Phase 64 | Satisfied |
+| FOD-02 | Phase 64 | Satisfied |
+| FOD-03 | Phase 64 | Satisfied |
+| FOD-04 | Phase 65 | Satisfied |
+| FOD-05 | Phase 65 | Satisfied |
 
 **Coverage:**
 - v0.35.0 requirements: 5 total
