@@ -1,21 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.35.0
-milestone_name: Optimal Experimental Design for Sparse FDA (FOptDes)
-status: Awaiting next milestone
-stopped_at: Roadmap created for v0.35.0 (Phases 64–65); 5 requirements (FOD-01..05) mapped, traceability updated
-last_updated: "2026-09-03T19:59:14.507Z"
+milestone: v0.36.0
+milestone_name: PEER — Structured-Penalty & Longitudinal Scalar-on-Function Regression
+status: planning
+last_updated: "2026-09-03T21:07:08.749Z"
 last_activity: 2026-09-03
-last_activity_desc: Milestone v0.35.0 completed and archived
-state_head: 837efeaa1d32dfd220b6ee858e88be5398728fd3
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
-current_phase: 65
-current_phase_name: Greedy Selection & Integration
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -29,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-02)
 
 ## Current Position
 
-Phase: Milestone v0.35.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-03 — Milestone v0.35.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-03 — Milestone v0.36.0 started
 
 ## Milestone Roadmap (v0.35.0)
 
