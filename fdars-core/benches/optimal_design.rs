@@ -87,12 +87,34 @@ fn bench_optimal_design(c: &mut Criterion) {
 
     // Full greedy selection (Score A, budget 5, grid 51).
     let cfg_score = OptDesConfig {
-        candidate_grid,
+        candidate_grid: candidate_grid.clone(),
         budget: 5,
         criterion: DesignCriterion::Score(OptimalityKind::A),
     };
     group.bench_function("optimal_design_score_a_budget5_m51", |b| {
         b.iter(|| optimal_design(black_box(&model), black_box(&cfg_score)));
+    });
+
+    // design_criterion alone (Score D, 5 points). D-optimality takes a distinct
+    // log-det / Cholesky-with-retry path, so it is tracked separately from A.
+    group.bench_function("design_criterion_score_d_p5_m51", |b| {
+        b.iter(|| {
+            design_criterion(
+                black_box(&model),
+                black_box(&fixed_design),
+                black_box(DesignCriterion::Score(OptimalityKind::D)),
+            )
+        });
+    });
+
+    // Full greedy selection (Score D, budget 5, grid 51).
+    let cfg_score_d = OptDesConfig {
+        candidate_grid,
+        budget: 5,
+        criterion: DesignCriterion::Score(OptimalityKind::D),
+    };
+    group.bench_function("optimal_design_score_d_budget5_m51", |b| {
+        b.iter(|| optimal_design(black_box(&model), black_box(&cfg_score_d)));
     });
 
     group.finish();

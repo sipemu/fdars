@@ -206,6 +206,9 @@ pub fn design_criterion(
 pub struct OptDesConfig {
     /// Candidate design points. Every value must appear (within `1e-9`) in
     /// `model.argvals`; each is mapped to its grid index before selection.
+    /// Duplicate or near-duplicate values (two entries within `1e-9` of the same
+    /// `model.argvals` point) collapse onto a single distinct candidate, and
+    /// `budget` must not exceed the number of *distinct* on-grid points.
     pub candidate_grid: Vec<f64>,
     /// Number of design points to select (`p`). Must be `> 0` and
     /// `<= candidate_grid.len()`.
@@ -286,6 +289,9 @@ fn map_candidates_to_indices(
 /// Candidate *evaluation* is parallelized (`iter_maybe_parallel!`), but the argmin
 /// is a **sequential** fold over the collected `(index, value)` pairs with a
 /// smallest-index tie-break (never rayon `min_by`, which is not stable under ties).
+/// The candidate pool is sorted by ascending `model.argvals` index once up front,
+/// so a criterion tie deterministically resolves to the smallest argvals index
+/// regardless of the order in which `config.candidate_grid` values were supplied.
 /// Two identical calls produce byte-identical `selected_indices` and
 /// `criterion_trace`, and the result is identical with and without the `parallel`
 /// feature.
@@ -299,9 +305,13 @@ fn map_candidates_to_indices(
 /// # Errors
 ///
 /// Returns [`FdarError::InvalidParameter`] if `config.budget == 0`,
-/// `config.budget > config.candidate_grid.len()`, any candidate is not in
-/// `model.argvals` (within `1e-9`), `model.ncomp == 0`, or `model.sigma2 <= 0.0`.
-/// Propagates any [`FdarError`] raised by [`design_criterion`] during evaluation.
+/// `config.budget > config.candidate_grid.len()`, `config.budget` exceeds the
+/// number of *distinct* on-grid candidate points (duplicate or near-duplicate
+/// `candidate_grid` values that collapse onto the same `model.argvals` index),
+/// any candidate is not in `model.argvals` (within `1e-9`), `model.ncomp == 0`,
+/// or `model.sigma2 <= 0.0`. Also propagates the `model.argvals.len() < 2`
+/// (grid-too-small) [`FdarError::InvalidParameter`] raised by [`design_criterion`],
+/// and any other [`FdarError`] it may return during evaluation.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn optimal_design(
     model: &PaceFpcaResult,
@@ -337,14 +347,42 @@ pub fn optimal_design(
         });
     }
 
-    // Map candidate_grid → argvals indices once (preserves candidate_grid order).
-    let candidate_indices = map_candidates_to_indices(&config.candidate_grid, &model.argvals)?;
+    // Map candidate_grid → argvals indices once, then sort ASCENDING and dedupe.
+    // Sorting by argvals index makes a criterion tie deterministically resolve to
+    // the smallest argvals index (the LOCKED contract) regardless of the caller's
+    // candidate_grid ordering — argmin-by-value is order-independent for non-ties,
+    // so this ONLY changes tie behavior. Deduping folds exact/near-duplicate grid
+    // values (which map_candidates_to_indices can collapse onto the same index)
+    // into a single selectable candidate.
+    let candidate_indices = {
+        let mut v = map_candidates_to_indices(&config.candidate_grid, &model.argvals)?;
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+
+    // Guard: after collapsing duplicates, the pool of DISTINCT on-grid candidate
+    // points must still cover the budget. Without this, `candidate_grid = [0.0, 0.0]`
+    // with `budget = 2` would pass the raw-length guard above yet exhaust `remaining`
+    // mid-loop and panic. Reject it as a clean validation error instead.
+    if config.budget > candidate_indices.len() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "config.candidate_grid",
+            message: format!(
+                "budget {} exceeds the number of distinct on-grid candidate points {} \
+                 (duplicate or near-duplicate candidate_grid values collapse onto the \
+                 same model.argvals index)",
+                config.budget,
+                candidate_indices.len()
+            ),
+        });
+    }
 
     let mut selected: Vec<usize> = Vec::with_capacity(config.budget);
     let mut trace: Vec<f64> = Vec::with_capacity(config.budget);
 
     for _step in 0..config.budget {
-        // Not-yet-selected candidates, in candidate_indices (== candidate_grid) order.
+        // Not-yet-selected candidates, in ascending argvals-index order.
         let remaining: Vec<usize> = candidate_indices
             .iter()
             .copied()
@@ -365,9 +403,13 @@ pub fn optimal_design(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // SEQUENTIAL argmin over the collected, fixed-order `scores`. Strict `<`
-        // keeps the FIRST minimum → smallest-index tie-break (rayon `min_by` is NOT
-        // stable under ties, so it must not be used here).
+        // SEQUENTIAL argmin over the collected, ascending-index-ordered `scores`.
+        // Strict `<` keeps the FIRST minimum; because `remaining` is sorted by
+        // ascending argvals index, that first minimum IS the smallest-argvals-index
+        // tie-break (rayon `min_by` is NOT stable under ties, so it must not be used
+        // here). The `ok_or_else` is defense-in-depth: the distinct-candidate guard
+        // above already guarantees `remaining` is non-empty at every step, but we
+        // return a recoverable error rather than panic if a future change slips past it.
         let (best_idx, best_val) = scores
             .into_iter()
             .fold(None::<(usize, f64)>, |acc, (idx, val)| {
@@ -382,7 +424,12 @@ pub fn optimal_design(
                     }
                 })
             })
-            .expect("remaining is non-empty — guaranteed by budget <= candidate count");
+            .ok_or_else(|| FdarError::InvalidParameter {
+                parameter: "config.candidate_grid",
+                message: "distinct candidate pool exhausted before budget was reached \
+                          (no remaining candidates at a greedy step)"
+                    .into(),
+            })?;
 
         selected.push(best_idx);
         trace.push(best_val);
@@ -1084,5 +1131,121 @@ mod tests {
         // In-crate reachability placeholder. The external prelude/crate-root
         // reachability is verified as a doctest in plan 65-02.
         assert_eq!(OptDesConfig::default().budget, 1);
+    }
+
+    #[test]
+    fn test_validation_duplicate_candidates() {
+        let model = synthetic_model(51);
+        // Exact duplicate 0.0 collapses to a single distinct argvals index (0), so
+        // budget 2 exceeds the 1-point distinct pool → clean InvalidParameter, NOT a
+        // panic on the greedy fold's `.expect()`/`ok_or_else`.
+        let config = OptDesConfig {
+            candidate_grid: vec![0.0, 0.0],
+            budget: 2,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { parameter, .. }) if parameter == "config.candidate_grid"),
+            "duplicate candidates with budget > distinct count must be InvalidParameter, got {res:?}"
+        );
+    }
+
+    #[test]
+    fn test_validation_distinct_fewer_than_budget() {
+        let model = synthetic_model(51);
+        // Three grid VALUES but only two DISTINCT argvals indices after dedup
+        // (0.0 appears twice). budget 3 > distinct pool 2 → InvalidParameter.
+        let config = OptDesConfig {
+            candidate_grid: vec![model.argvals[0], model.argvals[10], model.argvals[0]],
+            budget: 3,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let res = optimal_design(&model, &config);
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { parameter, .. }) if parameter == "config.candidate_grid"),
+            "distinct-but-fewer-than-budget must be InvalidParameter, got {res:?}"
+        );
+    }
+
+    #[test]
+    fn test_tiebreak_smallest_index_permutation_invariant() {
+        // The greedy selection must be invariant to candidate_grid ordering: it maps
+        // to argvals indices and sorts ascending, so ties resolve to the smallest
+        // argvals index regardless of the caller's supplied order. Feed an UNSORTED
+        // grid and its sorted counterpart — the selected indices must be identical.
+        let model = synthetic_model(51);
+        let ascending: Vec<f64> = model.argvals.clone();
+        let mut shuffled = ascending.clone();
+        shuffled.reverse(); // maximally different candidate_grid order
+
+        let cfg_asc = OptDesConfig {
+            candidate_grid: ascending,
+            budget: 4,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let cfg_shuf = OptDesConfig {
+            candidate_grid: shuffled,
+            budget: 4,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r_asc = optimal_design(&model, &cfg_asc).unwrap();
+        let r_shuf = optimal_design(&model, &cfg_shuf).unwrap();
+        assert_eq!(
+            r_asc.selected_indices, r_shuf.selected_indices,
+            "selection must be invariant to candidate_grid ordering (smallest-index tie-break)"
+        );
+        assert_eq!(
+            r_asc.criterion_trace, r_shuf.criterion_trace,
+            "trace must be invariant to candidate_grid ordering"
+        );
+    }
+
+    #[test]
+    fn test_tiebreak_symmetric_model_smallest_index() {
+        // Construct a deliberate tie: with a single eigenfunction φ(t) = cos(π t) on
+        // [0, 1], the single-point criterion depends on t only through φ(t)², and
+        // φ is symmetric about t = 0.5, so grid indices j and (m-1-j) give an EXACTLY
+        // equal criterion value. The tie must resolve to the smaller argvals index.
+        let m = 51usize;
+        let mut model = synthetic_model_params(m, vec![2.0], 0.5);
+        // Overwrite the eigenfunction with a clean symmetric cos(π t), re-normalized.
+        let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let weights = simpsons_weights(&argvals);
+        let raw: Vec<f64> = argvals
+            .iter()
+            .map(|&t| (std::f64::consts::PI * t).cos())
+            .collect();
+        let norm = (0..m)
+            .map(|j| weights[j] * raw[j] * raw[j])
+            .sum::<f64>()
+            .sqrt();
+        let ef: Vec<f64> = raw.iter().map(|&v| v / norm).collect();
+        model.eigenfunctions = FdMatrix::from_column_major(ef, m, 1).unwrap();
+
+        // A symmetric pair of candidate indices j and its mirror; the mirror is listed
+        // FIRST in candidate_grid so that a "first-in-grid-order" tie-break would (wrongly)
+        // pick the larger index. A true smallest-index tie-break picks the smaller one.
+        let j = 10usize;
+        let mirror = m - 1 - j; // 40
+        assert!(mirror > j);
+        // Sanity: the two single-point criteria are genuinely equal.
+        let vj = design_criterion(&model, &[j], DesignCriterion::Trajectory).unwrap();
+        let vm = design_criterion(&model, &[mirror], DesignCriterion::Trajectory).unwrap();
+        assert!(
+            (vj - vm).abs() < 1e-12,
+            "expected a genuine tie: v[{j}]={vj} v[{mirror}]={vm}"
+        );
+
+        let config = OptDesConfig {
+            candidate_grid: vec![model.argvals[mirror], model.argvals[j]],
+            budget: 1,
+            criterion: DesignCriterion::Trajectory,
+        };
+        let r = optimal_design(&model, &config).unwrap();
+        assert_eq!(
+            r.selected_indices[0], j,
+            "tie must resolve to the smallest argvals index ({j}), not first-in-grid-order ({mirror})"
+        );
     }
 }
