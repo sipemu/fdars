@@ -1,5 +1,18 @@
 # Milestones
 
+## v0.35.0 Optimal Experimental Design for Sparse FDA (FOptDes) (Shipped: 2026-09-03)
+
+**Phases completed:** 2 phases, 4 plans, 0 tasks
+
+**Key accomplishments:**
+
+- complete
+- complete
+- complete
+- complete
+
+---
+
 ## v0.34.0 k-Shape Clustering & Shape-Based Distance (Shipped: 2026-09-02)
 
 **Phases completed:** 3 phases (61–63), 3 plans. Milestone audit PASSED 5/5 requirements. Promoted GAP-03 (score 2.12, M-effort) from the v0.31.0 `GAP-BACKLOG.md`, rounding out the curve-clustering family alongside v0.32.0's GAK kernel-k-means. Strict compile-time dependency chain (61→62→63); mirrors the GAK→kernel-k-means precedent.

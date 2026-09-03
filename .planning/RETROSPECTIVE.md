@@ -432,6 +432,40 @@ Four capability-first ecosystem surveys (`survey-{matlab,julia,tidyfun,pyx}.md`)
 
 ---
 
+## Milestone: v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)
+
+**Shipped:** 2026-09-03
+**Phases:** 2 | **Plans:** 4
+
+### What Was Built
+Optimal sparse-measurement design over an already-fitted PACE model, in one new file `src/optimal_design.rs`. Phase 64: shared `build_sigma_design` (p×p Σ_d + σ²I, ridge-retry) + Simpson-weighted trajectory-reconstruction BLUP-MSE (FOD-01) + A-/D-optimality posterior score-covariance (FOD-02) behind the public `#[must_use] design_criterion` with `DesignCriterion`/`OptimalityKind` enums (FOD-03). Phase 65: deterministic greedy forward-selection `optimal_design` (FOD-04) + `OptDesConfig`/`OptDesResult` + full crate-root/prelude re-exports + module doctest + criterion benchmark (FOD-05). Crate 0.34.0 → 0.35.0.
+
+### What Worked
+- **Front-loading every numerical make-or-break gate into Phase 64** (known-answer empty-set identities MSE(∅)=Σλ_k / A(∅)=Σλ_k / D(∅)=Σ log λ_k, monotonicity sign gate, ridge-retry) made the greedy wrapper in Phase 65 pure orchestration with zero new math — exactly as the roadmap predicted.
+- **One general-purpose implementation agent per phase** (plan→code→gates→`--no-verify` commit→SUMMARY) again dodged the executor-stall + slow-hook-timeout hazards cleanly; both phases landed green on the impl, with code-review the only fix round.
+- **Reuse-first paid off**: the exact `pace_fpca.rs` Σ_yi assembly + posterior-covariance patterns transcribed verbatim; no new dependency, MSRV held.
+- **Research → VALIDATION.md → planner → checker chain** produced tight, gate-lifting plans; both plan-checker passes were clean.
+
+### What Was Inefficient
+- Two genuine bugs slipped past the impl agent and were caught only by code review: a panic on degenerate duplicate `candidate_grid` values (Phase 65 blocker) and a tie-break that was "first-in-grid-order" rather than the documented "smallest-index". Both cheap to fix but argue for code-review being non-optional on any greedy/argmin code.
+- The trajectory ≡ A-optimality algebraic identity forced a test-contract correction mid-implementation (the original `test_enum_dispatch` assumed all three criteria distinct).
+
+### Patterns Established
+- **Criterion-evaluator → greedy-wrapper split** (public pure scorer + thin selection loop that delegates to it) mirrors sbd→kshape and generalizes for any "score a set, then greedily grow it" algorithm.
+- **Determinism contract for parallel argmin**: parallel-evaluate → collect (index,value) → sequential fold with strict `<` on an index-sorted pool = smallest-index tie-break, byte-identical seq==parallel.
+
+### Key Lessons
+- A `#[must_use]` on a `Result` needs a message string (bare form trips clippy `double_must_use` under `-D warnings`) — bit both phases.
+- "Smallest-index tie-break" is ambiguous unless the candidate pool is explicitly sorted by the index you mean — document AND enforce the ordering; don't assume the caller's grid is ascending.
+- Surfacing pre-existing tech debt (the `--features serde` build break in Phase 60's `shapelet/classifier.rs`) during a later milestone is valuable; recorded it as a STATE blocker + memory + audit tech-debt rather than letting a serde gate silently fail.
+
+### Cost Observations
+- Model mix: planning opus, research/verify/review sonnet, plan-check haiku; implementation via general-purpose (opus) agents.
+- Both phases: one impl agent + one code-review + one fix agent each; verifier + integration-checker at milestone close.
+- Notable: the slow full-suite pre-commit hook (2600+ tests) made `--no-verify` + manual gate runs mandatory throughout — unchanged from prior fdars milestones.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

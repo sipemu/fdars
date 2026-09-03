@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.35.0
 milestone_name: Optimal Experimental Design for Sparse FDA (FOptDes)
-current_phase: 65
-status: completed
+status: Awaiting next milestone
 stopped_at: Roadmap created for v0.35.0 (Phases 64–65); 5 requirements (FOD-01..05) mapped, traceability updated
-last_updated: "2026-09-03T19:53:14.008Z"
+last_updated: "2026-09-03T19:59:14.507Z"
 last_activity: 2026-09-03
-last_activity_desc: Phase 65 marked complete
-state_head: 55f9855f6253bdcf528ecf28e52341aad81fddac
+last_activity_desc: Milestone v0.35.0 completed and archived
+state_head: 837efeaa1d32dfd220b6ee858e88be5398728fd3
 progress:
   total_phases: 2
   completed_phases: 2
   total_plans: 4
   completed_plans: 4
   percent: 100
+current_phase: 65
 current_phase_name: Greedy Selection & Integration
 ---
 
@@ -29,12 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-02)
 
 ## Current Position
 
-Phase: 65 — COMPLETE
-Plan: 1 of 2
-Status: Phase 65 complete
-Last activity: 2026-09-03 — Phase 65 marked complete
-
-Progress: [░░░░░░░░░░] 0%
+Phase: Milestone v0.35.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-03 — Milestone v0.35.0 completed and archived
 
 ## Milestone Roadmap (v0.35.0)
 
@@ -134,4 +132,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 64`
+- Start the next milestone with /gsd-new-milestone
