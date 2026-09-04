@@ -277,7 +277,7 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 <!-- v0.37.0 in progress — WAV: Wavelet-Domain Functional Regression. Implementation milestone; promotes GAP-07 from GAP-BACKLOG.md. Phases 69+. Requirements refined in REQUIREMENTS.md. -->
 
-- [ ] **WAV — DWT primitive**: orthogonal discrete wavelet transform — Haar + Daubechies (db2–dbN) filters, periodic/symmetric boundary handling, multi-level forward/inverse decomposition.
+- [x] **WAV — DWT primitive**: orthogonal discrete wavelet transform — Haar + Daubechies (db2–db10) filters, periodic/symmetric boundary handling, multi-level forward/inverse decomposition. — Validated in Phase 69 (WAV-01/02, v0.37.0): new in-crate `wavelet/` module, perfect-reconstruction round-trip ≤1e-10 across families/levels/modes, 38 tests green, exports deferred to Phase 71.
 - [ ] **WAV — `wcr` wavelet-domain PCR/PLS**: scalar-on-function regression via PCR (and PLS) on wavelet coefficients.
 - [ ] **WAV — `wnet` wavelet-domain elastic-net**: lasso + ridge penalized regression on wavelet coefficients (reuses `additive.rs` coordinate-descent/soft-threshold).
 - [ ] **WAV — Prediction + diagnostics**: coefficient function, fitted values, out-of-sample predict, result-struct outputs, crate-root/prelude re-exports, module doctest.

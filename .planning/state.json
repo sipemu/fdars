@@ -1,12 +1,28 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.37.0",
-  "phases": [],
+  "milestone": "v0.37.0 — WAV: Wavelet-Domain Functional Regression",
+  "phases": [
+    {
+      "number": "69",
+      "name": "Discrete Wavelet Transform Primitive",
+      "status": "complete"
+    },
+    {
+      "number": "70",
+      "name": "Wavelet-Domain Regressors (`wcr` + `wnet`)",
+      "status": "pending"
+    },
+    {
+      "number": "71",
+      "name": "Prediction, Diagnostics & Integration",
+      "status": "pending"
+    }
+  ],
   "next": {
-    "command": "/gsd:discuss-phase",
-    "label": "Discuss the first phase",
-    "reason": "Project initialized — plan your first phase"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 70)",
+    "reason": "Phase 70 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-04T13:08:35.662Z"
+  "updated_at": "2026-09-04T19:57:07.553Z"
 }
