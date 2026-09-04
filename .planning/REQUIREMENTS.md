@@ -21,8 +21,8 @@ Requirements for v0.37.0. Each maps to exactly one roadmap phase. Strict depende
 
 ### Prediction & Integration
 
-- [ ] **WAV-05**: Out-of-sample prediction + diagnostics — `predict` on new curves for both `wcr` and `wnet` fitted results (self-consistent: re-passing training curves reproduces training fitted values within tolerance); coefficient-function + fitted-value accessors; standard result-struct outputs.
-- [ ] **WAV-06**: Integration — crate-root + prelude re-exports of the full public surface (DWT + `wcr` + `wnet` + config/result types + predict); a running end-to-end module doctest under `cargo test --doc`; additive/non-breaking (no changes to existing public signatures — R + WASM bindings + 28 examples unaffected).
+- [x] **WAV-05**: Out-of-sample prediction + diagnostics — `predict` on new curves for both `wcr` and `wnet` fitted results (self-consistent: re-passing training curves reproduces training fitted values within tolerance); coefficient-function + fitted-value accessors; standard result-struct outputs.
+- [x] **WAV-06**: Integration — crate-root + prelude re-exports of the full public surface (DWT + `wcr` + `wnet` + config/result types + predict); a running end-to-end module doctest under `cargo test --doc`; additive/non-breaking (no changes to existing public signatures — R + WASM bindings + 28 examples unaffected).
 
 ## Future Requirements (deferred)
 
@@ -57,8 +57,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | WAV-02 | Phase 69 | Complete |
 | WAV-03 | Phase 70 | Complete |
 | WAV-04 | Phase 70 | Complete |
-| WAV-05 | Phase 71 | Pending |
-| WAV-06 | Phase 71 | Pending |
+| WAV-05 | Phase 71 | Complete |
+| WAV-06 | Phase 71 | Complete |
 
 **Coverage:**
 

@@ -16,13 +16,13 @@
     {
       "number": "71",
       "name": "Prediction, Diagnostics & Integration",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 71)",
-    "reason": "Phase 71 of 3 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-04T20:46:54.396Z"
+  "updated_at": "2026-09-04T21:30:19.396Z"
 }

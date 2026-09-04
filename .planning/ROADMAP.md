@@ -33,7 +33,7 @@
 
 - [x] **Phase 69: Discrete Wavelet Transform Primitive** — Forward/inverse orthogonal DWT (Haar + Daubechies db2–dbN), multi-level, periodic + symmetric boundaries, arbitrary lengths (completed 2026-09-04)
 - [x] **Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`)** — PCR/PLS and elastic-net scalar-on-function regression on wavelet coefficients (Gaussian response) (completed 2026-09-04)
-- [ ] **Phase 71: Prediction, Diagnostics & Integration** — Out-of-sample `predict` for both fits, accessors, crate-root/prelude re-exports, end-to-end doctest
+- [x] **Phase 71: Prediction, Diagnostics & Integration** — Out-of-sample `predict` for both fits, accessors, crate-root/prelude re-exports, end-to-end doctest (completed 2026-09-04)
 
 <details>
 <summary>✅ v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68) — SHIPPED 2026-09-04</summary>
@@ -97,7 +97,8 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
 **Plans**: 1 plan
 
 Plans:
-- [ ] 71-01-PLAN.md — predict + accessors on WcrResult/WnetResult, full crate-root + prelude re-exports, end-to-end module doctest
+
+- [x] 71-01-PLAN.md — predict + accessors on WcrResult/WnetResult, full crate-root + prelude re-exports, end-to-end module doctest
 
 ## Progress
 
@@ -105,7 +106,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 69. Discrete Wavelet Transform Primitive | 2/2 | Complete    | 2026-09-04 |
 | 70. Wavelet-Domain Regressors (`wcr` + `wnet`) | 2/2 | Complete    | 2026-09-04 |
-| 71. Prediction, Diagnostics & Integration | 0/? | Not started | - |
+| 71. Prediction, Diagnostics & Integration | 1/1 | Complete    | 2026-09-04 |
 
 ## Status
 
