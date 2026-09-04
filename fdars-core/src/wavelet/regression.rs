@@ -534,6 +534,24 @@ pub fn wcr(data: &FdMatrix, y: &[f64], config: &WcrConfig) -> Result<WcrResult, 
     // onto the centered design recovers the exact, method-agnostic plain-dot β_coeff.
     let coeff_weights = recover_coeff_weights(&design, &fitted_values, intercept)?;
 
+    // Re-express the intercept in the affine coefficient-space convention so that
+    // `fitted_i == intercept + Σ_j design[i,j]·coeff_weights[j]` holds directly
+    // (matching `compute_fitted_affine`, and mirroring `wnet`'s intercept). The
+    // centered recovery above satisfies `fitted_i = intercept +
+    // Σ_j (design[i,j] − col_mean_j)·w_j`, so the affine intercept folds in the
+    // constant centering offset `Σ_j col_mean_j·w_j`. This makes `predict` (WAV-05)
+    // reproduce the stored `fitted_values` exactly. β(t) (the slope) is unchanged.
+    let (n_rows, p_cols) = design.shape();
+    let intercept = {
+        let offset: f64 = (0..p_cols)
+            .map(|j| {
+                let col_mean = design.column(j).iter().sum::<f64>() / n_rows as f64;
+                col_mean * coeff_weights[j]
+            })
+            .sum();
+        intercept - offset
+    };
+
     // β(t) via inverse DWT of the coefficient-space weights (shared seam).
     let beta_t = coeff_weights_to_beta_t(&coeff_weights, &layout)?;
 
@@ -555,6 +573,75 @@ pub fn wcr(data: &FdMatrix, y: &[f64], config: &WcrConfig) -> Result<WcrResult, 
         mode: config.mode,
         level: layout.levels(),
     })
+}
+
+impl WcrResult {
+    /// Predict the scalar response for new functional curves (WAV-05).
+    ///
+    /// Re-transforms each new curve into the wavelet-coefficient design using the
+    /// STORED fitted DWT configuration (`family` / `mode` / effective `level`), then
+    /// applies the affine coefficient-space map `ŷ = intercept + Σ_j design[i,j] ·
+    /// coeff_weights[j]`. Re-passing the training curves reproduces the stored
+    /// [`fitted_values`](WcrResult::fitted_values) exactly (up to float rounding).
+    ///
+    /// # Arguments
+    /// * `new` — functional predictor matrix (rows = curves) on the SAME evaluation
+    ///   grid as the training data (`new.ncols()` must equal the training grid length).
+    ///
+    /// # Errors
+    /// - [`FdarError::InvalidDimension`] if `new.ncols()` differs from the training
+    ///   grid length, or (defensively) if the re-transformed design width disagrees
+    ///   with the stored coefficient-space width.
+    /// - [`FdarError::InvalidParameter`] if the DWT rejects the stored family/level
+    ///   (surfaced from [`decompose_matrix`]).
+    #[must_use = "prediction result should not be discarded"]
+    pub fn predict(&self, new: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+        let train_m = self.beta_t.len();
+        if new.ncols() != train_m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new",
+                expected: format!("{train_m} columns (== training grid length)"),
+                actual: format!("{} columns", new.ncols()),
+            });
+        }
+        // Re-transform with the STORED fitted DWT config so the new-curve design
+        // matches the fit-time design exactly.
+        let (design, _layout) =
+            curves_to_coeff_design(new, self.family.clone(), self.mode, Some(self.level))?;
+        if design.ncols() != self.coeff_weights.len() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new",
+                expected: format!(
+                    "coefficient-space width {} (== stored coeff_weights)",
+                    self.coeff_weights.len()
+                ),
+                actual: format!("{} coefficients", design.ncols()),
+            });
+        }
+        Ok(compute_fitted_affine(
+            &design,
+            &self.coeff_weights,
+            self.intercept,
+        ))
+    }
+
+    /// The time-domain functional coefficient β(t) (length `m` = curve length).
+    #[must_use]
+    pub fn beta_t(&self) -> &[f64] {
+        &self.beta_t
+    }
+
+    /// The functional coefficient β(t) (crate-convention alias of [`beta_t`](WcrResult::beta_t)).
+    #[must_use]
+    pub fn coefficient_function(&self) -> &[f64] {
+        &self.beta_t
+    }
+
+    /// The fitted response values (length `n`).
+    #[must_use]
+    pub fn fitted_values(&self) -> &[f64] {
+        &self.fitted_values
+    }
 }
 
 // ===========================================================================
@@ -1422,6 +1509,58 @@ mod tests {
         let fit3 = wcr(&data3, &y3, &WcrConfig::default()).unwrap();
         assert!(fit3.ncomp <= 2);
         assert!(fit3.beta_t.iter().all(|x| x.is_finite()));
+    }
+
+    // --- wcr::predict + accessors (WAV-05) ---
+
+    #[test]
+    fn wcr_predict_reproduces_training_fitted() {
+        let (n, m) = (120usize, 32usize);
+        let data = spanning_design(n, m, 6100);
+        let y = pseudo_random(n, 6101);
+        let config = WcrConfig {
+            ncomp: 8,
+            ..Default::default()
+        };
+        let fit = wcr(&data, &y, &config).unwrap();
+        let preds = fit.predict(&data).unwrap();
+        assert_eq!(preds.len(), fit.fitted_values.len());
+        for (i, (&p, &f)) in preds.iter().zip(&fit.fitted_values).enumerate() {
+            assert!(
+                (p - f).abs() <= 1e-8,
+                "wcr predict[{i}] {p} != fitted {f} (|Δ| {})",
+                (p - f).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn wcr_predict_on_new_curves_is_finite_and_rejects_grid_mismatch() {
+        let (n, m) = (100usize, 32usize);
+        let data = spanning_design(n, m, 6200);
+        let y = pseudo_random(n, 6201);
+        let fit = wcr(
+            &data,
+            &y,
+            &WcrConfig {
+                ncomp: 6,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // Fresh same-m curves → finite predictions.
+        let fresh = spanning_design(40, m, 6202);
+        let preds = fit.predict(&fresh).unwrap();
+        assert_eq!(preds.len(), 40);
+        assert!(preds.iter().all(|x| x.is_finite()));
+
+        // Different ncols → InvalidDimension, never a panic.
+        let wrong = spanning_design(10, m + 8, 6203);
+        assert!(matches!(
+            fit.predict(&wrong),
+            Err(FdarError::InvalidDimension { .. })
+        ));
     }
 
     // ===================================================================
