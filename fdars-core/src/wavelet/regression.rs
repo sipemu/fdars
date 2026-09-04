@@ -553,6 +553,532 @@ pub fn wcr(data: &FdMatrix, y: &[f64], config: &WcrConfig) -> Result<WcrResult, 
     })
 }
 
+// ===========================================================================
+// wnet — wavelet-domain elastic-net scalar-on-function regressor (WAV-04)
+// ===========================================================================
+//
+// `wnet` is the sparse/elastic-net half of the wavelet-domain regressor pair.
+// It reuses the shared `curves_to_coeff_design` / `coeff_weights_to_beta_t`
+// seams above, but fits an **elastic-net** (L1 lasso + L2 ridge) directly on
+// the wavelet-coefficient design via a NEW thin per-coefficient coordinate-
+// descent adapter ([`elastic_net_cd`]), with a deterministic cross-validated λ
+// ([`wnet_cv_lambda`]). A sparse wavelet basis is exactly where L1 shrinkage
+// shines: localized signal concentrates in a few coefficients, and the L1
+// penalty drives the rest to exactly zero.
+//
+// The per-coefficient CD is modeled on the group-lasso soft-threshold PATTERN
+// in `scalar_on_function::additive` (partial-residual → coordinate update →
+// shrink) but is scalar-per-coefficient (elastic-net), not group-lasso.
+
+/// Configuration for [`wnet`].
+///
+/// The DWT parameters (`family`, `mode`, `level`) select the wavelet basis the
+/// curves are transformed into (same defaults as [`WcrConfig`]: db4 / periodic /
+/// auto-depth). `alpha` mixes L1 vs L2 (`alpha == 1` is pure lasso, `alpha == 0`
+/// is pure ridge), and the remaining fields drive the deterministic K-fold
+/// cross-validated λ search.
+///
+/// [`Default`] is db4 / periodic / auto-depth, `alpha == 0.5`, an auto geometric
+/// λ grid of 50 values, 5 folds, fixed seed 0, `max_iter == 1000`, `tol == 1e-6`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct WnetConfig {
+    /// Wavelet family for the DWT of each curve (default [`WaveletFamily::Daubechies(4)`]).
+    pub family: WaveletFamily,
+    /// Boundary handling for the DWT (default [`BoundaryMode::Periodic`]).
+    pub mode: BoundaryMode,
+    /// Explicit decomposition depth; `None` (default) uses the maximum useful level.
+    pub level: Option<usize>,
+    /// Elastic-net mixing parameter ∈ [0, 1]: `1.0` is pure L1 (lasso),
+    /// `0.0` is pure L2 (ridge). Default `0.5`.
+    pub alpha: f64,
+    /// Explicit λ grid to search. `None` (default) auto-builds a geometric grid.
+    pub lambda_grid: Option<Vec<f64>>,
+    /// Number of λ values in the auto geometric grid (used when `lambda_grid` is
+    /// `None`). Default `50`.
+    pub n_lambda: usize,
+    /// Number of cross-validation folds. Default `5`.
+    pub n_folds: usize,
+    /// Fixed RNG seed for the (deterministic) fold partition. Default `0`.
+    pub seed: u64,
+    /// Maximum coordinate-descent sweeps. Default `1000`.
+    pub max_iter: usize,
+    /// Coordinate-descent convergence tolerance (max |Δβ| per sweep). Default `1e-6`.
+    pub tol: f64,
+}
+
+impl Default for WnetConfig {
+    fn default() -> Self {
+        Self {
+            family: WaveletFamily::Daubechies(4),
+            mode: BoundaryMode::Periodic,
+            level: None,
+            alpha: 0.5,
+            lambda_grid: None,
+            n_lambda: 50,
+            n_folds: 5,
+            seed: 0,
+            max_iter: 1000,
+            tol: 1e-6,
+        }
+    }
+}
+
+/// Result of a [`wnet`] fit.
+///
+/// Carries the time-domain functional coefficient β(t), the sparse coefficient-
+/// space weights it was reconstructed from, the indices of the nonzero
+/// (selected) coefficients, the CV-selected λ, the elastic-net mixing `alpha`,
+/// fitted values / residuals, and the DWT configuration a future `predict`
+/// (Phase 71) needs to reproduce the transform.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct WnetResult {
+    /// Intercept α.
+    pub intercept: f64,
+    /// Time-domain functional coefficient β(t) (length `m` = curve length).
+    pub beta_t: Vec<f64>,
+    /// Fitted response values (length `n`).
+    pub fitted_values: Vec<f64>,
+    /// Residuals `y - ŷ` (length `n`).
+    pub residuals: Vec<f64>,
+    /// Coefficient-space functional coefficient (length `P` = total wavelet
+    /// coefficients) — sparse (many exact zeros).
+    pub coeff_weights: Vec<f64>,
+    /// Indices (into `coeff_weights`) of the nonzero/selected coefficients.
+    pub selected: Vec<usize>,
+    /// Cross-validation-selected λ.
+    pub lambda: f64,
+    /// Elastic-net mixing parameter used (`config.alpha`).
+    pub alpha: f64,
+    /// Wavelet family used for the DWT (for reproducing the transform in prediction).
+    pub family: WaveletFamily,
+    /// Boundary mode used for the DWT.
+    pub mode: BoundaryMode,
+    /// Effective decomposition depth used.
+    pub level: usize,
+}
+
+/// Soft-threshold operator `sign(z)·max(|z| - γ, 0)` (the L1 proximal step).
+#[inline]
+fn soft_threshold(z: f64, gamma: f64) -> f64 {
+    if z > gamma {
+        z - gamma
+    } else if z < -gamma {
+        z + gamma
+    } else {
+        0.0
+    }
+}
+
+/// SHARED CD ENGINE. Per-coefficient elastic-net coordinate descent on the raw
+/// wavelet-coefficient design.
+///
+/// Fits `min_β (1/2n)‖y - α - Xβ‖² + λ[α_mix‖β‖₁ + ½(1-α_mix)‖β‖²]` by cyclic
+/// coordinate descent. For coordinate `j`, the update uses the partial residual
+/// `r = y_centered - Σ_{k≠j} βₖ X_c,ₖ` (maintained via a running fitted vector for
+/// O(nP)/sweep), the coordinate gradient `z_j = (X_c,ⱼ · r)/n`, then applies the
+/// L1 soft-threshold with the L2-ridge denominator:
+/// `βⱼ = soft(z_j, λ·α_mix) / (‖X_c,ⱼ‖²/n + λ(1-α_mix))`.
+///
+/// Columns are centered internally (so the penalty is scale-consistent across
+/// coefficients only up to their own norm — we do NOT rescale to unit variance,
+/// keeping the coefficient-space geometry faithful to the DWT). The intercept is
+/// recovered as `mean(y) - Σ βⱼ·mean(Xⱼ)` on the un-centered column means.
+///
+/// Returns `(intercept, coeff_weights)` where `coeff_weights` has length `P`.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `y.len()` does not equal `design.nrows()`.
+/// - [`FdarError::InvalidParameter`] if `alpha` is outside `[0, 1]` or `lambda`
+///   is negative.
+pub(crate) fn elastic_net_cd(
+    design: &FdMatrix,
+    y: &[f64],
+    lambda: f64,
+    alpha: f64,
+    max_iter: usize,
+    tol: f64,
+) -> Result<(f64, Vec<f64>), FdarError> {
+    let (n, p) = design.shape();
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n} elements (== design rows)"),
+            actual: format!("{} elements", y.len()),
+        });
+    }
+    if !(0.0..=1.0).contains(&alpha) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("alpha must be in [0, 1], got {alpha}"),
+        });
+    }
+    if lambda < 0.0 || !lambda.is_finite() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!("lambda must be finite and >= 0, got {lambda}"),
+        });
+    }
+
+    let n_f = n as f64;
+    let mu_y = y.iter().sum::<f64>() / n_f;
+    let y_centered: Vec<f64> = y.iter().map(|&v| v - mu_y).collect();
+
+    // Per-column means and centered columns; precompute ‖X_c,ⱼ‖²/n.
+    let col_means: Vec<f64> = (0..p)
+        .map(|j| design.column(j).iter().sum::<f64>() / n_f)
+        .collect();
+    let mut xc = vec![0.0_f64; n * p]; // column-major, n × p
+    let mut col_norm_sq_over_n = vec![0.0_f64; p];
+    for j in 0..p {
+        let mu = col_means[j];
+        let mut norm_sq = 0.0;
+        let col = design.column(j);
+        for i in 0..n {
+            let v = col[i] - mu;
+            xc[i + j * n] = v;
+            norm_sq += v * v;
+        }
+        col_norm_sq_over_n[j] = norm_sq / n_f;
+    }
+
+    // Coefficients start at zero; the running fit tracks Σⱼ βⱼ X_c,ⱼ so a
+    // coordinate's partial residual is (y_centered - fit + βⱼ X_c,ⱼ) in O(n).
+    let mut beta = vec![0.0_f64; p];
+    let mut fit = vec![0.0_f64; n]; // Σⱼ βⱼ X_c,ⱼ
+    let l1 = lambda * alpha;
+    let l2 = lambda * (1.0 - alpha);
+
+    for _sweep in 0..max_iter {
+        let mut max_delta = 0.0_f64;
+        for j in 0..p {
+            let denom = col_norm_sq_over_n[j] + l2;
+            if denom <= 0.0 {
+                // Dead column (zero-variance) with no ridge: leave at zero.
+                if beta[j] != 0.0 {
+                    let old = beta[j];
+                    for i in 0..n {
+                        fit[i] -= old * xc[i + j * n];
+                    }
+                    max_delta = max_delta.max(old.abs());
+                    beta[j] = 0.0;
+                }
+                continue;
+            }
+            // z_j = (X_c,ⱼ · partial_residual)/n where
+            // partial_residual = y_centered - (fit - βⱼ X_c,ⱼ).
+            let old = beta[j];
+            let mut dot = 0.0;
+            for i in 0..n {
+                let r = y_centered[i] - fit[i] + old * xc[i + j * n];
+                dot += xc[i + j * n] * r;
+            }
+            let z = dot / n_f;
+            let new = soft_threshold(z, l1) / denom;
+            if new != old {
+                let diff = new - old;
+                for i in 0..n {
+                    fit[i] += diff * xc[i + j * n];
+                }
+                max_delta = max_delta.max(diff.abs());
+                beta[j] = new;
+            }
+        }
+        if max_delta < tol {
+            break;
+        }
+    }
+
+    // Intercept on un-centered column means: mu_y - Σ βⱼ·mean(Xⱼ).
+    let intercept = mu_y - (0..p).map(|j| beta[j] * col_means[j]).sum::<f64>();
+    Ok((intercept, beta))
+}
+
+/// Build the geometric λ grid used by [`wnet_cv_lambda`].
+///
+/// If `config.lambda_grid` is `Some`, that grid is returned verbatim (validated
+/// non-empty by the caller). Otherwise a log-spaced grid of `config.n_lambda`
+/// values from `λ_max` down to `λ_max · ε` (ε = 1e-3) is built, where `λ_max` is
+/// the smallest λ that zeroes every coefficient:
+/// `λ_max = max_j |X_c,ⱼ · y_centered| / (n · max(α, tiny))`.
+///
+/// The grid is returned in descending order (largest/sparsest λ first) so ties in
+/// CV-MSE naturally resolve toward the larger λ when scanned.
+fn build_lambda_grid(design: &FdMatrix, y: &[f64], config: &WnetConfig) -> Vec<f64> {
+    if let Some(grid) = &config.lambda_grid {
+        return grid.clone();
+    }
+    let (n, p) = design.shape();
+    let n_f = n as f64;
+    let mu_y = y.iter().sum::<f64>() / n_f;
+    let y_centered: Vec<f64> = y.iter().map(|&v| v - mu_y).collect();
+
+    // λ_max = max_j |X_c,ⱼ · y_centered| / (n·α_eff).
+    let alpha_eff = config.alpha.max(1e-3);
+    let mut max_corr = 0.0_f64;
+    for j in 0..p {
+        let mu = design.column(j).iter().sum::<f64>() / n_f;
+        let col = design.column(j);
+        let dot: f64 = (0..n).map(|i| (col[i] - mu) * y_centered[i]).sum();
+        max_corr = max_corr.max(dot.abs());
+    }
+    let lambda_max = (max_corr / (n_f * alpha_eff)).max(1e-8);
+
+    let n_lambda = config.n_lambda.max(1);
+    if n_lambda == 1 {
+        return vec![lambda_max];
+    }
+    let eps = 1e-3_f64;
+    let log_max = lambda_max.ln();
+    let log_min = (lambda_max * eps).ln();
+    let step = (log_max - log_min) / (n_lambda as f64 - 1.0);
+    (0..n_lambda)
+        .map(|k| (log_max - step * k as f64).exp())
+        .collect()
+}
+
+/// SHARED CV HELPER. Deterministic K-fold cross-validated λ selection for `wnet`.
+///
+/// Builds the geometric λ grid (or uses `config.lambda_grid`), partitions the `n`
+/// observations into `config.n_folds` folds via [`crate::cv::create_folds`] with
+/// the FIXED `config.seed` (so the partition — and therefore the selected λ — is
+/// identical across runs), computes CV-MSE per λ (fit [`elastic_net_cd`] on each
+/// training set, score on the held-out fold), and returns the λ minimizing
+/// CV-MSE. Ties (within a small epsilon) resolve toward the LARGER λ (sparser).
+///
+/// # Errors
+/// - [`FdarError::InvalidParameter`] if `config.n_folds < 2`, `config.alpha` is
+///   outside `[0, 1]`, or an explicit `lambda_grid` is empty.
+/// - [`FdarError::InvalidDimension`] if `y.len()` does not equal `design.nrows()`.
+pub(crate) fn wnet_cv_lambda(
+    design: &FdMatrix,
+    y: &[f64],
+    config: &WnetConfig,
+) -> Result<f64, FdarError> {
+    let (n, _p) = design.shape();
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n} elements (== design rows)"),
+            actual: format!("{} elements", y.len()),
+        });
+    }
+    if config.n_folds < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_folds",
+            message: format!("n_folds must be >= 2, got {}", config.n_folds),
+        });
+    }
+    if !(0.0..=1.0).contains(&config.alpha) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("alpha must be in [0, 1], got {}", config.alpha),
+        });
+    }
+    if let Some(grid) = &config.lambda_grid {
+        if grid.is_empty() {
+            return Err(FdarError::InvalidParameter {
+                parameter: "lambda_grid",
+                message: "explicit lambda_grid must be non-empty".to_string(),
+            });
+        }
+    }
+
+    let grid = build_lambda_grid(design, y, config);
+    let folds = crate::cv::create_folds(n, config.n_folds, config.seed);
+
+    // Precompute per-fold train/test index sets (shared across all λ).
+    let fold_sets: Vec<(Vec<usize>, Vec<usize>)> = (0..config.n_folds)
+        .map(|f| crate::cv::fold_indices(&folds, f))
+        .collect();
+
+    let mut best_lambda = grid[0];
+    let mut best_mse = f64::INFINITY;
+    let tie_eps = 1e-12;
+
+    for &lam in &grid {
+        let mut total_sse = 0.0_f64;
+        let mut scored = 0usize;
+        for (train_idx, test_idx) in &fold_sets {
+            if train_idx.is_empty() || test_idx.is_empty() {
+                continue;
+            }
+            let train_data = crate::cv::subset_rows(design, train_idx);
+            let train_y = crate::cv::subset_vec(y, train_idx);
+            let (intercept, beta) = elastic_net_cd(
+                &train_data,
+                &train_y,
+                lam,
+                config.alpha,
+                config.max_iter,
+                config.tol,
+            )?;
+            for &oi in test_idx {
+                let mut yhat = intercept;
+                for j in 0..design.ncols() {
+                    yhat += design[(oi, j)] * beta[j];
+                }
+                let e = y[oi] - yhat;
+                total_sse += e * e;
+                scored += 1;
+            }
+        }
+        if scored == 0 {
+            continue;
+        }
+        let mse = total_sse / scored as f64;
+        // Grid is descending (largest λ first). Strictly-less keeps the FIRST
+        // (larger) λ on a tie; the epsilon guards float noise so a marginally
+        // smaller MSE at a smaller λ does not override a near-equal larger λ.
+        if mse < best_mse - tie_eps {
+            best_mse = mse;
+            best_lambda = lam;
+        }
+    }
+
+    Ok(best_lambda)
+}
+
+// ---------------------------------------------------------------------------
+// wnet entry point
+// ---------------------------------------------------------------------------
+
+/// Fit the wavelet-domain elastic-net scalar-on-function regressor `wnet` (WAV-04).
+///
+/// Transforms every curve into its wavelet-coefficient vector (shared seam
+/// [`curves_to_coeff_design`]), selects a deterministic cross-validated λ
+/// ([`wnet_cv_lambda`]), refits the per-coefficient elastic-net
+/// ([`elastic_net_cd`]) at that λ on the full data, and reconstructs the
+/// time-domain functional coefficient β(t) via the inverse DWT (shared seam
+/// [`coeff_weights_to_beta_t`]).
+///
+/// Because a sparse wavelet basis concentrates localized signal in a few
+/// coefficients, the L1 penalty drives the rest to exactly zero — the nonzero
+/// indices are reported in [`WnetResult::selected`].
+///
+/// # Arguments
+/// * `data` — functional predictor matrix (n × m), one curve per row.
+/// * `y` — scalar response (length n).
+/// * `config` — DWT + elastic-net + CV configuration.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `data` has fewer than 3 rows, zero
+///   columns, or `y.len() != n`.
+/// - [`FdarError::InvalidParameter`] if `config.alpha ∉ [0, 1]`,
+///   `config.n_folds < 2`, an explicit `config.lambda_grid` is empty, or the DWT
+///   rejects the family/level (surfaced from [`decompose_matrix`]).
+/// - [`FdarError::ComputationFailed`] if the underlying transform fails.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResult, FdarError> {
+    let (n, m) = data.shape();
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows (observations)".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column (evaluation point)".to_string(),
+            actual: format!("{m} columns"),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n} elements (== data rows)"),
+            actual: format!("{} elements", y.len()),
+        });
+    }
+    if !(0.0..=1.0).contains(&config.alpha) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("alpha must be in [0, 1], got {}", config.alpha),
+        });
+    }
+    if config.n_folds < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_folds",
+            message: format!("n_folds must be >= 2, got {}", config.n_folds),
+        });
+    }
+    if let Some(grid) = &config.lambda_grid {
+        if grid.is_empty() {
+            return Err(FdarError::InvalidParameter {
+                parameter: "lambda_grid",
+                message: "explicit lambda_grid must be non-empty".to_string(),
+            });
+        }
+    }
+
+    // Curves -> coefficient design (shared seam). Surfaces DWT errors unchanged.
+    let (design, layout) =
+        curves_to_coeff_design(data, config.family.clone(), config.mode, config.level)?;
+
+    // Deterministic CV-selected λ, then refit on the full data at that λ.
+    let lambda = wnet_cv_lambda(&design, y, config)?;
+    let (intercept, coeff_weights) = elastic_net_cd(
+        &design,
+        y,
+        lambda,
+        config.alpha,
+        config.max_iter,
+        config.tol,
+    )?;
+
+    // Selected (nonzero) coefficients.
+    let selected: Vec<usize> = coeff_weights
+        .iter()
+        .enumerate()
+        .filter(|(_, &b)| b != 0.0)
+        .map(|(j, _)| j)
+        .collect();
+
+    // Fitted values via the plain coefficient-space dot: ŷ = intercept + X·β.
+    let fitted_values = compute_fitted_affine(&design, &coeff_weights, intercept);
+    let residuals: Vec<f64> = y
+        .iter()
+        .zip(&fitted_values)
+        .map(|(&yi, &yh)| yi - yh)
+        .collect();
+
+    // β(t) via inverse DWT of the coefficient-space weights (shared seam).
+    let beta_t = coeff_weights_to_beta_t(&coeff_weights, &layout)?;
+
+    Ok(WnetResult {
+        intercept,
+        beta_t,
+        fitted_values,
+        residuals,
+        coeff_weights,
+        selected,
+        lambda,
+        alpha: config.alpha,
+        family: config.family.clone(),
+        mode: config.mode,
+        level: layout.levels(),
+    })
+}
+
+/// Compute fitted values `ŷ = intercept + X β` (affine coefficient-space dot).
+fn compute_fitted_affine(design: &FdMatrix, coeffs: &[f64], intercept: f64) -> Vec<f64> {
+    let (n, p) = design.shape();
+    (0..n)
+        .map(|i| {
+            let mut yhat = intercept;
+            for j in 0..p {
+                yhat += design[(i, j)] * coeffs[j];
+            }
+            yhat
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -820,5 +1346,400 @@ mod tests {
             assert!(fit.fitted_values.iter().all(|x| x.is_finite()));
             assert!(fit.residuals.iter().all(|x| x.is_finite()));
         }
+    }
+
+    // ===================================================================
+    // wnet — wavelet-domain elastic-net regressor (WAV-04)
+    // ===================================================================
+
+    /// Build a synthetic sparse coefficient-space β (a handful of nonzero
+    /// coefficients, the rest exactly zero) plus the spanning full-rank design
+    /// and layout. Returns `(data, design, layout, beta_coeff, support)`.
+    fn sparse_wnet_problem(
+        n: usize,
+        m: usize,
+        seed0: u64,
+    ) -> (FdMatrix, FdMatrix, CoeffLayout, Vec<f64>, Vec<usize>) {
+        let data = spanning_design(n, m, seed0);
+        let family = WaveletFamily::Daubechies(4);
+        let mode = BoundaryMode::Periodic;
+        let (design, layout) = curves_to_coeff_design(&data, family, mode, None).unwrap();
+        let p = design.ncols();
+
+        // Localize β in a few coefficients spread across the bands.
+        let support: Vec<usize> = vec![0, 2, p / 2, p - 3]
+            .into_iter()
+            .filter(|&j| j < p)
+            .collect();
+        let mut beta_coeff = vec![0.0_f64; p];
+        // Give the true-support coefficients large, well-separated magnitudes so
+        // they clearly dominate the elastic-net solution.
+        let mags = [4.0, -3.5, 5.0, -4.5];
+        for (k, &j) in support.iter().enumerate() {
+            beta_coeff[j] = mags[k % mags.len()];
+        }
+        (data, design, layout, beta_coeff, support)
+    }
+
+    #[test]
+    fn wnet_elastic_net_cd_recovers_sparse_support() {
+        // Fixed-λ path (Task 1): a moderate λ produces a sparse solution whose
+        // nonzero coefficients concentrate on the true support.
+        let (n, m) = (256usize, 32usize);
+        let (_data, design, _layout, beta_coeff, support) = sparse_wnet_problem(n, m, 3000);
+        let p = design.ncols();
+
+        // y = intercept + X β (noiseless) — the localized signal.
+        let intercept_true = 0.5_f64;
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = intercept_true;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc
+            })
+            .collect();
+
+        // Moderate λ, alpha=0.9 (strongly L1) → sparse.
+        let (intercept, beta) = elastic_net_cd(&design, &y, 0.05, 0.9, 2000, 1e-8).unwrap();
+
+        assert!(intercept.is_finite());
+        assert!(beta.iter().all(|b| b.is_finite()));
+
+        let selected: Vec<usize> = beta
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b.abs() > 1e-8)
+            .map(|(j, _)| j)
+            .collect();
+
+        // True support is among the selected set.
+        for &j in &support {
+            assert!(
+                selected.contains(&j),
+                "true-support coeff {j} not selected (selected={selected:?})"
+            );
+        }
+        // The selected set is meaningfully sparse relative to P.
+        assert!(
+            selected.len() < p / 2,
+            "selection not sparse: |selected|={} of P={p}",
+            selected.len()
+        );
+    }
+
+    #[test]
+    fn wnet_fixed_lambda_end_to_end_finite() {
+        // Task 1 tracer: full wnet path (with CV under the hood) yields finite
+        // β(t)/fitted/coeff outputs on the localized-signal problem.
+        let (n, m) = (200usize, 32usize);
+        let (data, design, _layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 3100);
+        let p = design.ncols();
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.25;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc
+            })
+            .collect();
+
+        let config = WnetConfig {
+            n_lambda: 15,
+            n_folds: 4,
+            ..Default::default()
+        };
+        let fit = wnet(&data, &y, &config).unwrap();
+        assert_eq!(fit.beta_t.len(), m);
+        assert_eq!(fit.coeff_weights.len(), p);
+        assert!(fit.intercept.is_finite());
+        assert!(fit.beta_t.iter().all(|x| x.is_finite()));
+        assert!(fit.fitted_values.iter().all(|x| x.is_finite()));
+        assert!(fit.residuals.iter().all(|x| x.is_finite()));
+        assert!(fit.coeff_weights.iter().all(|x| x.is_finite()));
+        // selected indices match the nonzero coeff_weights.
+        for &j in &fit.selected {
+            assert!(fit.coeff_weights[j] != 0.0);
+        }
+    }
+
+    #[test]
+    fn wnet_default_config_is_db4_periodic_auto() {
+        let c = WnetConfig::default();
+        assert_eq!(c.family, WaveletFamily::Daubechies(4));
+        assert_eq!(c.mode, BoundaryMode::Periodic);
+        assert_eq!(c.level, None);
+        assert!((c.alpha - 0.5).abs() < 1e-15);
+        assert_eq!(c.lambda_grid, None);
+        assert_eq!(c.n_lambda, 50);
+        assert_eq!(c.n_folds, 5);
+        assert_eq!(c.seed, 0);
+    }
+
+    // --- Deterministic CV-λ (SC3) ---
+
+    #[test]
+    fn wnet_cv_lambda_is_deterministic_across_runs() {
+        let (n, m) = (200usize, 32usize);
+        let (data, design, _layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 3200);
+        let p = design.ncols();
+        // Add mild noise so CV-MSE is non-degenerate but λ still well-defined.
+        let noise = pseudo_random(n, 9999);
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.1;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc + 0.05 * noise[i]
+            })
+            .collect();
+
+        let config = WnetConfig {
+            alpha: 0.8,
+            n_lambda: 20,
+            n_folds: 5,
+            seed: 0,
+            ..Default::default()
+        };
+        let fit1 = wnet(&data, &y, &config).unwrap();
+        let fit2 = wnet(&data, &y, &config).unwrap();
+        assert_eq!(
+            fit1.lambda, fit2.lambda,
+            "CV-selected lambda differs across runs: {} vs {}",
+            fit1.lambda, fit2.lambda
+        );
+        // Also exercise the helper directly.
+        let l1 = wnet_cv_lambda(&design, &y, &config).unwrap();
+        let l2 = wnet_cv_lambda(&design, &y, &config).unwrap();
+        assert_eq!(l1, l2);
+    }
+
+    // --- β(t) recovery on SNR data (SC3) ---
+
+    #[test]
+    fn wnet_recovers_beta_t_on_snr_data() {
+        // Spanning full-rank design, moderate SNR: the fit at the CV λ must be
+        // non-degenerate and β(t) must track the injected β(t).
+        let (n, m) = (300usize, 32usize);
+        let (data, design, layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 3300);
+        let p = design.ncols();
+        let beta_t_true = coeff_weights_to_beta_t(&beta_coeff, &layout).unwrap();
+
+        // Signal variance vs noise: pick noise small relative to signal spread.
+        let signal: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.0;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc
+            })
+            .collect();
+        let sig_sd = {
+            let mean = signal.iter().sum::<f64>() / n as f64;
+            (signal.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / n as f64).sqrt()
+        };
+        let noise = pseudo_random(n, 4141);
+        let noise_scale = 0.05 * sig_sd; // ~20:1 SNR
+        let y: Vec<f64> = (0..n)
+            .map(|i| 0.3 + signal[i] + noise_scale * noise[i])
+            .collect();
+
+        let config = WnetConfig {
+            alpha: 0.7,
+            n_lambda: 30,
+            n_folds: 5,
+            ..Default::default()
+        };
+        let fit = wnet(&data, &y, &config).unwrap();
+
+        // Non-degenerate: not all-zero.
+        let nonzero = fit.coeff_weights.iter().filter(|&&b| b != 0.0).count();
+        assert!(nonzero > 0, "degenerate all-zero fit at CV lambda");
+
+        // β(t) tracks the injected β(t) within tolerance.
+        let e = rel_l2(&fit.beta_t, &beta_t_true);
+        assert!(
+            e < 0.35,
+            "wnet beta_t recovery rel L2 err {e} exceeds tolerance on SNR data"
+        );
+        assert!(fit.beta_t.iter().all(|x| x.is_finite()));
+        assert!(fit.fitted_values.iter().all(|x| x.is_finite()));
+    }
+
+    // --- Validation gate (SC4) ---
+
+    fn base_wnet_config() -> WnetConfig {
+        WnetConfig {
+            n_lambda: 10,
+            n_folds: 3,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn wnet_rejects_too_few_rows() {
+        let data = spanning_design(2, 32, 10);
+        let y = vec![0.0, 1.0];
+        assert!(matches!(
+            wnet(&data, &y, &base_wnet_config()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_zero_cols() {
+        // An empty-column matrix is rejected before any DWT.
+        let data = FdMatrix::zeros(5, 0);
+        let y = vec![0.0; 5];
+        assert!(matches!(
+            wnet(&data, &y, &base_wnet_config()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_mismatched_y_len() {
+        let data = spanning_design(10, 32, 11);
+        let y = vec![0.0; 9];
+        assert!(matches!(
+            wnet(&data, &y, &base_wnet_config()),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_alpha_out_of_range() {
+        let data = spanning_design(10, 32, 12);
+        let y = vec![0.0; 10];
+        let config = WnetConfig {
+            alpha: 1.5,
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        let config = WnetConfig {
+            alpha: -0.1,
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_too_few_folds() {
+        let data = spanning_design(10, 32, 13);
+        let y = vec![0.0; 10];
+        let config = WnetConfig {
+            n_folds: 1,
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_empty_lambda_grid() {
+        let data = spanning_design(10, 32, 14);
+        let y = vec![0.0; 10];
+        let config = WnetConfig {
+            lambda_grid: Some(vec![]),
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_surfaces_unsupported_family() {
+        let data = spanning_design(10, 32, 15);
+        let y = vec![0.0; 10];
+        let config = WnetConfig {
+            family: WaveletFamily::Daubechies(11),
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_surfaces_level_out_of_range() {
+        let data = spanning_design(10, 32, 16);
+        let y = vec![0.0; 10];
+        let config = WnetConfig {
+            level: Some(999),
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_finite_outputs_on_larger_snr_design() {
+        let (n, m) = (256usize, 48usize);
+        let (data, design, _layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 3400);
+        let p = design.ncols();
+        let noise = pseudo_random(n, 2727);
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.2;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc + 0.1 * noise[i]
+            })
+            .collect();
+
+        let config = WnetConfig {
+            alpha: 0.6,
+            n_lambda: 25,
+            n_folds: 5,
+            ..Default::default()
+        };
+        let fit = wnet(&data, &y, &config).unwrap();
+        assert!(fit.intercept.is_finite());
+        assert!(fit.lambda.is_finite());
+        assert!(fit.beta_t.iter().all(|x| x.is_finite()));
+        assert!(fit.fitted_values.iter().all(|x| x.is_finite()));
+        assert!(fit.residuals.iter().all(|x| x.is_finite()));
+        assert!(fit.coeff_weights.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn wnet_explicit_lambda_grid_is_used() {
+        // With a single-λ explicit grid, the CV selection must return that λ.
+        let (n, m) = (120usize, 32usize);
+        let (data, design, _layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 3500);
+        let p = design.ncols();
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.0;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc
+            })
+            .collect();
+        let config = WnetConfig {
+            lambda_grid: Some(vec![0.123]),
+            ..base_wnet_config()
+        };
+        let fit = wnet(&data, &y, &config).unwrap();
+        assert!((fit.lambda - 0.123).abs() < 1e-15);
     }
 }
