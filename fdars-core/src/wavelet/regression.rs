@@ -496,8 +496,12 @@ pub fn wcr(data: &FdMatrix, y: &[f64], config: &WcrConfig) -> Result<WcrResult, 
     // Coefficients form an abstract basis: use a uniform 0..P grid for integration.
     let argvals: Vec<f64> = (0..p).map(|j| j as f64).collect();
 
-    // Clamp effective ncomp to the fittable rank, mirroring fregre_lm / fregre_pls.
-    let ncomp = config.ncomp.min(n).min(p);
+    // Clamp effective ncomp to the fittable rank. The OLS design is `[1, scores]`
+    // (n × (ncomp + 1)), so `ols_solve` needs ncomp + 1 <= n, i.e. ncomp <= n - 1;
+    // otherwise a valid small-n call (e.g. default ncomp = 5 with n <= 5) would be
+    // rejected by ols_solve's `n < p` guard. `n >= 3` is enforced above, so
+    // `n.saturating_sub(1) >= 2`.
+    let ncomp = config.ncomp.min(n.saturating_sub(1)).min(p);
 
     // Fit in coefficient space: PCR or PLS yields reduced-rank scores, then OLS on
     // [1, scores] gives the intercept and fitted values.
@@ -692,8 +696,8 @@ fn soft_threshold(z: f64, gamma: f64) -> f64 {
 ///
 /// # Errors
 /// - [`FdarError::InvalidDimension`] if `y.len()` does not equal `design.nrows()`.
-/// - [`FdarError::InvalidParameter`] if `alpha` is outside `[0, 1]` or `lambda`
-///   is negative.
+/// - [`FdarError::InvalidParameter`] if `alpha` is outside `[0, 1]`, `lambda` is
+///   negative or non-finite, `tol` is negative or non-finite, or `max_iter == 0`.
 pub(crate) fn elastic_net_cd(
     design: &FdMatrix,
     y: &[f64],
@@ -720,6 +724,18 @@ pub(crate) fn elastic_net_cd(
         return Err(FdarError::InvalidParameter {
             parameter: "lambda",
             message: format!("lambda must be finite and >= 0, got {lambda}"),
+        });
+    }
+    if !tol.is_finite() || tol < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "tol",
+            message: format!("tol must be finite and >= 0, got {tol}"),
+        });
+    }
+    if max_iter == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: "max_iter must be >= 1".to_string(),
         });
     }
 
@@ -850,8 +866,9 @@ fn build_lambda_grid(design: &FdMatrix, y: &[f64], config: &WnetConfig) -> Vec<f
 /// CV-MSE. Ties (within a small epsilon) resolve toward the LARGER λ (sparser).
 ///
 /// # Errors
-/// - [`FdarError::InvalidParameter`] if `config.n_folds < 2`, `config.alpha` is
-///   outside `[0, 1]`, or an explicit `lambda_grid` is empty.
+/// - [`FdarError::InvalidParameter`] if `config.n_folds < 2`,
+///   `config.n_folds > n`, `config.alpha` is outside `[0, 1]`, or an explicit
+///   `lambda_grid` is empty.
 /// - [`FdarError::InvalidDimension`] if `y.len()` does not equal `design.nrows()`.
 pub(crate) fn wnet_cv_lambda(
     design: &FdMatrix,
@@ -870,6 +887,15 @@ pub(crate) fn wnet_cv_lambda(
         return Err(FdarError::InvalidParameter {
             parameter: "n_folds",
             message: format!("n_folds must be >= 2, got {}", config.n_folds),
+        });
+    }
+    if config.n_folds > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_folds",
+            message: format!(
+                "n_folds ({}) must not exceed the number of observations ({n})",
+                config.n_folds
+            ),
         });
     }
     if !(0.0..=1.0).contains(&config.alpha) {
@@ -968,8 +994,10 @@ pub(crate) fn wnet_cv_lambda(
 /// - [`FdarError::InvalidDimension`] if `data` has fewer than 3 rows, zero
 ///   columns, or `y.len() != n`.
 /// - [`FdarError::InvalidParameter`] if `config.alpha ∉ [0, 1]`,
-///   `config.n_folds < 2`, an explicit `config.lambda_grid` is empty, or the DWT
-///   rejects the family/level (surfaced from [`decompose_matrix`]).
+///   `config.n_folds < 2`, `config.n_folds > n`, `config.max_iter == 0`,
+///   `config.tol` is negative or non-finite, an explicit `config.lambda_grid`
+///   is empty, or the DWT rejects the family/level (surfaced from
+///   [`decompose_matrix`]).
 /// - [`FdarError::ComputationFailed`] if the underlying transform fails.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResult, FdarError> {
@@ -1005,6 +1033,27 @@ pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResul
         return Err(FdarError::InvalidParameter {
             parameter: "n_folds",
             message: format!("n_folds must be >= 2, got {}", config.n_folds),
+        });
+    }
+    if config.n_folds > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_folds",
+            message: format!(
+                "n_folds ({}) must not exceed the number of observations ({n})",
+                config.n_folds
+            ),
+        });
+    }
+    if config.max_iter == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: "max_iter must be >= 1".to_string(),
+        });
+    }
+    if !config.tol.is_finite() || config.tol < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "tol",
+            message: format!("tol must be finite and >= 0, got {}", config.tol),
         });
     }
     if let Some(grid) = &config.lambda_grid {
@@ -1348,6 +1397,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn wcr_small_n_default_config_succeeds() {
+        // CR-01 regression: default WcrConfig has ncomp = 5. With a small sample
+        // (n = 4), the old clamp `ncomp.min(n).min(p)` gave ncomp = 4, making the
+        // OLS design n × (n + 1) = 4 × 5 which ols_solve rejected (n < p). The fix
+        // clamps to `n - 1`, so the design stays overdetermined and the fit succeeds.
+        let (n, m) = (4usize, 32usize);
+        let data = spanning_design(n, m, 2468);
+        let y = pseudo_random(n, 1357);
+        let config = WcrConfig::default(); // ncomp = 5 > n
+        let fit = wcr(&data, &y, &config).unwrap();
+        // Effective ncomp clamped to n - 1 (= 3), never n.
+        assert!(fit.ncomp < n, "ncomp {} exceeds n - 1", fit.ncomp);
+        assert_eq!(fit.beta_t.len(), m);
+        assert!(fit.intercept.is_finite());
+        assert!(fit.beta_t.iter().all(|x| x.is_finite()));
+        assert!(fit.fitted_values.iter().all(|x| x.is_finite()));
+        assert!(fit.residuals.iter().all(|x| x.is_finite()));
+
+        // Also confirm the documented minimum n = 3 works under the default config.
+        let data3 = spanning_design(3, m, 2469);
+        let y3 = pseudo_random(3, 1358);
+        let fit3 = wcr(&data3, &y3, &WcrConfig::default()).unwrap();
+        assert!(fit3.ncomp <= 2);
+        assert!(fit3.beta_t.iter().all(|x| x.is_finite()));
+    }
+
     // ===================================================================
     // wnet — wavelet-domain elastic-net regressor (WAV-04)
     // ===================================================================
@@ -1643,6 +1719,93 @@ mod tests {
         };
         assert!(matches!(
             wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_too_many_folds() {
+        // WR-01: n_folds > n must be rejected rather than silently running fewer folds.
+        let data = spanning_design(10, 32, 130);
+        let y = vec![0.0; 10];
+        let config = WnetConfig {
+            n_folds: 11,
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        // The shared CV helper also rejects it directly.
+        let (design, _layout) = curves_to_coeff_design(
+            &data,
+            WaveletFamily::Daubechies(4),
+            BoundaryMode::Periodic,
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            wnet_cv_lambda(&design, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_negative_or_nan_tol() {
+        // WR-02: negative or NaN tol is rejected (both via the entry and the CD engine).
+        let data = spanning_design(10, 32, 131);
+        let y = pseudo_random(10, 5);
+        for bad in [-1e-6_f64, f64::NAN] {
+            let config = WnetConfig {
+                tol: bad,
+                ..base_wnet_config()
+            };
+            assert!(matches!(
+                wnet(&data, &y, &config),
+                Err(FdarError::InvalidParameter { .. })
+            ));
+        }
+        // elastic_net_cd rejects it directly too.
+        let (design, _layout) = curves_to_coeff_design(
+            &data,
+            WaveletFamily::Daubechies(4),
+            BoundaryMode::Periodic,
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            elastic_net_cd(&design, &y, 0.1, 0.5, 100, -1.0),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        assert!(matches!(
+            elastic_net_cd(&design, &y, 0.1, 0.5, 100, f64::NAN),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+    }
+
+    #[test]
+    fn wnet_rejects_zero_max_iter() {
+        // WR-03: max_iter == 0 would silently return an all-zero-coefficient model.
+        let data = spanning_design(10, 32, 132);
+        let y = pseudo_random(10, 6);
+        let config = WnetConfig {
+            max_iter: 0,
+            ..base_wnet_config()
+        };
+        assert!(matches!(
+            wnet(&data, &y, &config),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        // elastic_net_cd rejects it directly too.
+        let (design, _layout) = curves_to_coeff_design(
+            &data,
+            WaveletFamily::Daubechies(4),
+            BoundaryMode::Periodic,
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            elastic_net_cd(&design, &y, 0.1, 0.5, 0, 1e-6),
             Err(FdarError::InvalidParameter { .. })
         ));
     }
