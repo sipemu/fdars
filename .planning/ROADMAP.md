@@ -57,7 +57,9 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   2. The transform runs on arbitrary (non-power-of-2) signal lengths under both periodic and symmetric boundary modes without panicking, and both boundary modes independently satisfy the perfect-reconstruction round-trip.
   3. A known-answer Haar single-level decomposition matches the hand-computed (sum/difference over √2) approximation and detail coefficients.
   4. Invalid inputs (unsupported family/order, empty signal, level exceeding max decomposable depth) return a descriptive `FdarError` rather than panicking or producing NaN.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 69-01-PLAN.md — Wavelet module + db1–db10 filter tables + single-level analysis/synthesis engine (periodic + symmetric, arbitrary length); Haar known-answer + single-level round-trip gates
+- [ ] 69-02-PLAN.md — Multi-level Mallat pyramid (decompose/reconstruct, auto/explicit level), WaveletCoeffs result struct, FdMatrix batch path; full round-trip + non-power-of-2 + invalid-input gates
 
 ### Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`)
 **Goal**: Users can fit two wavelet-domain scalar-on-function regressors on Gaussian responses — `wcr` (PCR/PLS in wavelet-coefficient space) and `wnet` (elastic-net with cross-validated λ) — each transforming curves to wavelet coefficients via the Phase 69 DWT, then reusing fdars' existing FPCR/PLS and coordinate-descent machinery.
