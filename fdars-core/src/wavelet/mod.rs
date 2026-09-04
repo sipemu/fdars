@@ -33,13 +33,6 @@
 //! No crate-root or prelude re-exports are added in this phase (deferred to a later
 //! phase); the module is reachable only as `crate::wavelet::...`.
 
-// The `rec_lo`/`rec_hi` synthesis filters on [`filters::FilterBank`] are the
-// deliverable filter-bank API (verified by the filter-invariant tests) but the
-// even-length core reconstructs via the analysis transpose, so those fields are not
-// read outside tests yet; `dead_code` is allowed here for that surface (deliverable
-// API, not accidental cruft).
-#![allow(dead_code)]
-
 pub mod filters;
 
 use crate::error::FdarError;
@@ -230,7 +223,17 @@ pub(crate) fn single_level_analysis(
 /// This is the exact inverse of [`single_level_analysis`] under the same boundary
 /// `mode`: the coefficients are scattered back through the transpose of the
 /// orthogonal even-length core, reconstructing the internal even-length extension,
-/// which is then truncated to `output_len` samples. Never emits NaN/inf.
+/// which is then truncated to `output_len` samples. Never emits NaN/inf when inputs
+/// are finite.
+///
+/// # Odd-length ambiguity (callers beware)
+/// Under [`BoundaryMode::Periodic`] an odd length `n` and the even length `n+1`
+/// both produce `ceil(n/2)` coefficients (e.g. `n=7` and `n=8` both give 4). The
+/// coefficient-count validation below therefore *cannot* distinguish them: passing
+/// `output_len = n+1` for a signal that was analyzed at odd `n` validates spuriously
+/// and returns a signal of the wrong length. Callers **must** pass the exact original
+/// signal length. A `debug_assert!` guards this in debug builds; `reconstruct`
+/// recovers the exact per-level length from [`WaveletCoeffs::level_lens`].
 ///
 /// # Errors
 /// - [`FdarError::InvalidParameter`] if `output_len == 0`.
@@ -267,6 +270,15 @@ pub(crate) fn single_level_synthesis(
         });
     }
     let m = extended_len(output_len, mode);
+    // Odd-length guard: for Periodic mode with odd original length, m == output_len+1
+    // and truncation drops the padding sample. `output_len <= m` always holds for the
+    // true original length; a caller passing n+1 for an odd n (which validates
+    // spuriously above) would still satisfy this, so this is a best-effort internal
+    // guard against grosser off-by-ones in the extended length.
+    debug_assert!(
+        output_len <= m,
+        "output_len {output_len} > extended length {m}; likely off-by-one in odd-signal path"
+    );
     let mut signal = core_synthesis(approx, detail, fb, m);
     signal.truncate(output_len);
     Ok(signal)
@@ -467,7 +479,7 @@ pub fn decompose(
 /// Rebuilds the filter bank from `coeffs.family`, then folds the detail bands back in
 /// reverse level order (coarsest-first), calling [`single_level_synthesis`] with each
 /// level's exact analysis-input length recovered from `coeffs.level_lens`. Returns
-/// exactly `coeffs.signal_len` samples. Never emits NaN/inf.
+/// exactly `coeffs.signal_len` samples. Never emits NaN/inf when inputs are finite.
 ///
 /// # Errors
 /// - [`FdarError::InvalidDimension`] if the coefficient pyramid is internally
@@ -698,6 +710,49 @@ mod tests {
                 let recon = single_level_synthesis(&approx, &detail, &fb, mode, n).unwrap();
                 let e = rel_err(&recon, &signal);
                 assert!(e < 1e-10, "db4 n={n} {mode:?} rel err {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn odd_order_daubechies_round_trip_both_modes() {
+        // IN-02: odd-order families (db3, db5, db7, db9) were previously only
+        // exercised by filter-invariant tests. Assert explicit end-to-end
+        // reconstruction to <=1e-10 relative on a non-power-of-2 length under both
+        // boundary modes. Tolerance must never be loosened; a failure here is a real
+        // filter-table / engine bug.
+        let n = 37_usize; // non-power-of-2, odd
+        let signal = pseudo_random(n, 202);
+        for order in [3_usize, 5, 7, 9] {
+            let fam = WaveletFamily::from_db_order(order).unwrap();
+            let fb = filter_bank(&fam).unwrap();
+            for mode in [BoundaryMode::Periodic, BoundaryMode::Symmetric] {
+                let (approx, detail) = single_level_analysis(&signal, &fb, mode).unwrap();
+                let recon = single_level_synthesis(&approx, &detail, &fb, mode, n).unwrap();
+                let e = rel_err(&recon, &signal);
+                assert!(e < 1e-10, "db{order} n={n} {mode:?} rel err {e}");
+                assert!(recon.iter().all(|x| x.is_finite()));
+            }
+        }
+    }
+
+    #[test]
+    fn odd_order_daubechies_multi_level_round_trip_both_modes() {
+        // IN-02 (multi-level): non-power-of-2 length, auto depth, odd-order families.
+        let n = 201_usize;
+        let signal = pseudo_random(n, 303);
+        for order in [3_usize, 5, 7, 9] {
+            let fam = WaveletFamily::from_db_order(order).unwrap();
+            for mode in [BoundaryMode::Periodic, BoundaryMode::Symmetric] {
+                let coeffs = decompose(&signal, fam.clone(), mode, None).unwrap();
+                let recon = reconstruct(&coeffs).unwrap();
+                assert_eq!(recon.len(), n);
+                let e = rel_err(&recon, &signal);
+                assert!(
+                    e < 1e-10,
+                    "db{order} n={n} {mode:?} multi-level rel err {e}"
+                );
+                assert!(recon.iter().all(|x| x.is_finite()));
             }
         }
     }

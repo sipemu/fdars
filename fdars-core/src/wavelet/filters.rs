@@ -2,15 +2,26 @@
 //!
 //! Each Daubechies family `dbN` (N = number of vanishing moments) is defined by a
 //! single hardcoded analysis-lowpass filter `dec_lo` (length `2N`) in the standard
-//! orthonormal-DWT normalization used by PyWavelets (`wavedec`/`waverec`). The other
-//! three filters are derived programmatically from `dec_lo` — a single source of
-//! truth — so a sign/reversal mistake cannot arise from re-typing tables:
+//! orthonormal-DWT normalization (the `dec_lo` digits match PyWavelets to full f64
+//! precision). The other three filters are derived programmatically from `dec_lo` —
+//! a single source of truth — so a sign/reversal mistake cannot arise from re-typing
+//! tables:
 //!
 //! ```text
 //! dec_hi[k] = (-1)^k * dec_lo[L-1-k]     (quadrature mirror; L = filter length)
 //! rec_lo    = reverse(dec_lo)            (synthesis lowpass  = time-reverse of analysis)
 //! rec_hi    = reverse(dec_hi)            (synthesis highpass = time-reverse of analysis)
 //! ```
+//!
+//! **Sign convention.** The high-pass derivation above is the Mallat (1989)
+//! orthonormal-DWT convention (`dec_hi[k] = (-1)^k * dec_lo[L-1-k]`, positive sign at
+//! `k=0`), and synthesis is the time-reverse of analysis. This differs from
+//! PyWavelets, which uses `(-1)^(k+1)` and therefore emits a **highpass of opposite
+//! sign** in `dec_hi`/`rec_hi`. The two conventions are equally valid: the analysis
+//! and synthesis filters here form a matched adjoint pair, so the DWT is perfectly
+//! reconstructing and internally consistent regardless of the overall highpass sign.
+//! Downstream consumers of `dec_hi`/`rec_hi` that compare against a PyWavelets
+//! reference must account for this sign flip.
 //!
 //! These relations make analysis and synthesis an exact adjoint pair (perfect
 //! reconstruction), which the round-trip tests in [`crate::wavelet`] verify to
@@ -34,8 +45,18 @@ pub(crate) struct FilterBank {
     /// Analysis high-pass filter (`dec_hi`), length `L`. Quadrature mirror of `dec_lo`.
     pub dec_hi: Vec<f64>,
     /// Synthesis low-pass filter (`rec_lo`), length `L`. Time-reverse of `dec_lo`.
+    ///
+    /// Deliverable filter-bank API (verified by the filter-invariant tests); the
+    /// even-length core reconstructs via the analysis transpose, so this field is not
+    /// read outside tests yet — awaiting Phase 70 consumers.
+    #[allow(dead_code)]
     pub rec_lo: Vec<f64>,
     /// Synthesis high-pass filter (`rec_hi`), length `L`. Time-reverse of `dec_hi`.
+    ///
+    /// Deliverable filter-bank API (verified by the filter-invariant tests); the
+    /// even-length core reconstructs via the analysis transpose, so this field is not
+    /// read outside tests yet — awaiting Phase 70 consumers.
+    #[allow(dead_code)]
     pub rec_hi: Vec<f64>,
 }
 
