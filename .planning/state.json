@@ -1,28 +1,12 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68)",
-  "phases": [
-    {
-      "number": "66",
-      "name": "Core PEER Estimator & Penalty Families",
-      "status": "complete"
-    },
-    {
-      "number": "67",
-      "name": "Automatic λ Selection — GCV + REML",
-      "status": "complete"
-    },
-    {
-      "number": "68",
-      "name": "Longitudinal PEER, Prediction & Integration",
-      "status": "complete"
-    }
-  ],
+  "milestone": "v0.37.0",
+  "phases": [],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-04T11:11:27.326Z"
+  "updated_at": "2026-09-04T13:08:35.662Z"
 }
