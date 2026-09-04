@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.37.0
-milestone_name: "WAV: Wavelet-Domain Functional Regression"
-status: Awaiting next milestone
-stopped_at: Phase 71 complete — all phases complete
-last_updated: "2026-09-04T21:38:30.726Z"
-last_activity: 2026-09-04
-last_activity_desc: Milestone v0.37.0 completed and archived
-state_head: b1b4006ceb9cbabb09a5cc4011f278e7b3c3704f
+milestone: v0.38.0
+milestone_name: VEESA — Elastic Shape Explainability & Conformal Anomaly Detection
+status: planning
+last_updated: "2026-09-04T22:13:49.681Z"
+last_activity: 2026-09-05
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
-current_phase: 71
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 
 ## Current Position
 
-Phase: Milestone v0.37.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-04 — Milestone v0.37.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-05 — Milestone v0.38.0 started
 
 ## Milestone Roadmap (v0.37.0)
 
