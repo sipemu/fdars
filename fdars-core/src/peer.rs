@@ -96,7 +96,18 @@ pub struct PeerResult {
     /// Estimated coefficient function β(t), length m (on the argvals grid).
     pub beta: Vec<f64>,
     /// Intercept (= ȳ, the mean of the response vector).
+    ///
+    /// This is the centered-response mean, not the out-of-sample prediction
+    /// intercept. Prediction on a new curve x* uses
+    /// `ȳ + Σ_j (x*[j]·w[j] − w_bar[j])·β[j] = (ȳ − w_bar·β) + Σ_j x*[j]·w[j]·β[j]`,
+    /// so a predictor must combine `intercept` with [`w_bar`](Self::w_bar) and
+    /// `beta`. Storing `w_bar` here keeps that reconstruction exact (consumed by
+    /// out-of-sample prediction in a later phase).
     pub intercept: f64,
+    /// Column means of the Simpson-weighted design `W[i,j] = data[(i,j)]·w[j]`,
+    /// length m. Retained so out-of-sample prediction can reproduce the same
+    /// centering the fit used (see [`intercept`](Self::intercept)).
+    pub w_bar: Vec<f64>,
     /// Fitted values ŷ_i, length n.
     pub fitted_values: Vec<f64>,
     /// Effective degrees of freedom tr(H) = tr((W_c'W_c + λQ)^{-1} W_c'W_c).
@@ -141,11 +152,13 @@ pub fn peer(
     let (n, m) = data.shape();
 
     // --- Entry validation ---
-    if n == 0 {
+    if n < 2 {
+        // Centering collapses a single observation to β = 0 (all-zero design);
+        // require at least 2 so the fit is not silently degenerate.
         return Err(FdarError::InvalidDimension {
             parameter: "data",
-            expected: "at least 1 observation".to_string(),
-            actual: "0 rows".to_string(),
+            expected: "at least 2 observations".to_string(),
+            actual: format!("{n} rows"),
         });
     }
     if m < 3 {
@@ -167,6 +180,28 @@ pub fn peer(
             parameter: "y",
             expected: format!("{n}"),
             actual: format!("{}", y.len()),
+        });
+    }
+    // Non-finite inputs would propagate into finite-but-wrong normal equations,
+    // bypassing the post-solve β NaN guard — reject them explicitly.
+    if y.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: "response contains non-finite values (NaN/Inf)".to_string(),
+        });
+    }
+    if argvals.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals contains non-finite values (NaN/Inf)".to_string(),
+        });
+    }
+    // Simpson's weights assume a strictly increasing grid; a non-monotone grid
+    // yields negative weights that silently corrupt the design integral.
+    if argvals.windows(2).any(|w| w[1] <= w[0]) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals must be strictly increasing".to_string(),
         });
     }
 
@@ -239,6 +274,7 @@ pub fn peer(
     Ok(PeerResult {
         beta,
         intercept: y_bar,
+        w_bar,
         fitted_values,
         effective_df,
         lambda,
@@ -653,6 +689,85 @@ mod tests {
         assert!(
             res_dec.effective_df.is_finite(),
             "Decree effective_df is not finite"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Prediction-contract + hardened-validation tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_peer_stores_w_bar_for_prediction() {
+        // The stored w_bar must let an out-of-sample predictor reproduce the
+        // training fitted values exactly via ŷ = (ȳ − w_bar·β) + Σ_j x[j]·w[j]·β[j].
+        let (data, y, t, _) = make_fixture();
+        let (n, m) = data.shape();
+        let w = simpsons_weights(&t);
+        let config = PeerConfig {
+            penalty: PeerPenalty::Difference { order: 2 },
+            lambda: 1e-4,
+        };
+        let result = peer(&data, &y, &t, &config).expect("peer() should succeed");
+
+        assert_eq!(result.w_bar.len(), m, "w_bar length must equal m");
+
+        let base = result.intercept
+            - result
+                .w_bar
+                .iter()
+                .zip(&result.beta)
+                .map(|(wb, b)| wb * b)
+                .sum::<f64>();
+        for i in 0..n {
+            let pred = base
+                + (0..m)
+                    .map(|j| data[(i, j)] * w[j] * result.beta[j])
+                    .sum::<f64>();
+            assert!(
+                (pred - result.fitted_values[i]).abs() < 1e-9,
+                "prediction reconstruction mismatch at row {i}: {pred} vs {}",
+                result.fitted_values[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_peer_rejects_non_monotonic_argvals() {
+        let (data, y, t, _) = make_fixture();
+        let mut bad = t.clone();
+        bad.swap(0, 1); // first pair now decreasing
+        let config = PeerConfig::default();
+        let res = peer(&data, &y, &bad, &config);
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { .. })),
+            "non-monotonic argvals must be rejected, got {res:?}"
+        );
+    }
+
+    #[test]
+    fn test_peer_rejects_single_observation() {
+        let m = 5;
+        let t = uniform_grid(m);
+        let mut data = FdMatrix::zeros(1, m);
+        for j in 0..m {
+            data[(0, j)] = 1.0 + j as f64;
+        }
+        let y = vec![1.0];
+        let res = peer(&data, &y, &t, &PeerConfig::default());
+        assert!(
+            matches!(res, Err(FdarError::InvalidDimension { .. })),
+            "single observation must be rejected, got {res:?}"
+        );
+    }
+
+    #[test]
+    fn test_peer_rejects_non_finite_y() {
+        let (data, mut y, t, _) = make_fixture();
+        y[0] = f64::NAN;
+        let res = peer(&data, &y, &t, &PeerConfig::default());
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { .. })),
+            "non-finite y must be rejected, got {res:?}"
         );
     }
 }
