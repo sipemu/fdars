@@ -1,23 +1,12 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)",
-  "phases": [
-    {
-      "number": "64",
-      "name": "Criterion Machinery Core",
-      "status": "pending"
-    },
-    {
-      "number": "65",
-      "name": "Greedy Selection & Integration",
-      "status": "pending"
-    }
-  ],
+  "milestone": "v0.36.0",
+  "phases": [],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-03T19:59:14.529Z"
+  "updated_at": "2026-09-03T21:07:08.752Z"
 }
