@@ -52,7 +52,8 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
   2. A user can select the penalty family via a penalty-type parameter/enum, and the ridge/identity, 2nd-difference/roughness (reusing the existing `penalty_matrix` builder), and caller-supplied structured "decree" Q families each produce a well-formed fit without error.
   3. The structured/"decree" Q penalty produces a β(t) whose shape reflects the caller-supplied partitioned-domain structure (e.g. a partition boundary in Q yields a partition-aware β(t)), demonstrably different from the plain-roughness fit on the same data.
   4. A caller-supplied Q of the wrong dimension (or otherwise invalid penalty input) returns a descriptive `FdarError` rather than panicking, and fitting is stable (no NaN β(t)) across the three penalty families.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 66-01-core-peer-tracer-PLAN.md — public `peer()` estimator in new `src/peer.rs`: tracer β(t) recovery (Difference{2}) → all three penalty families (Ridge/Difference/Decree) → partition-aware Decree distinctness → wrong-dim/NaN error surface
 
 ### Phase 67: Automatic λ Selection — GCV + REML
 **Goal**: A user can have the PEER smoothing parameter λ chosen automatically — by GCV grid search (reusing the `penalized_solve` + GCV pattern) or by REML/mixed-model estimation (reusing `famm`) — selectable via config, matching refund's default, with an explicit λ honored when supplied.
@@ -80,7 +81,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 66. Core PEER Estimator & Penalty Families | 0/TBD | Not started | - |
+| 66. Core PEER Estimator & Penalty Families | 0/1 | Not started | - |
 | 67. Automatic λ Selection — GCV + REML | 0/TBD | Not started | - |
 | 68. Longitudinal PEER, Prediction & Integration | 0/TBD | Not started | - |
 
