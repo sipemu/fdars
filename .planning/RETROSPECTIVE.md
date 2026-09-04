@@ -500,6 +500,41 @@ Optimal sparse-measurement design over an already-fitted PACE model, in one new 
 
 ---
 
+## Milestone: v0.37.0 — WAV: Wavelet-Domain Functional Regression
+
+**Shipped:** 2026-09-04 (code-complete; crate tag/publish deferred to operator)
+**Phases:** 3 (69–71) | **Plans:** 5 | **Requirements:** WAV-01..WAV-06 (6/6)
+
+### What Was Built
+- **Phase 69** — a from-scratch in-crate discrete wavelet transform (`wavelet/`): Haar + Daubechies db2–db10 (single-source `dec_lo` tables, QMF-derived hi/synthesis filters), multi-level Mallat pyramid, periodic + symmetric boundaries, arbitrary (non-power-of-2) lengths, perfect reconstruction ≤1e-10; `FdMatrix` batch path. WAV-01/02.
+- **Phase 70** — `wcr` (PCR + PLS on per-curve concatenated wavelet-coefficient designs, reusing `fdata_to_pc_1d`/`fdata_to_pls_1d`) and `wnet` (new per-coefficient elastic-net coordinate-descent adapter with deterministic K-fold CV-λ + sparse-support recovery), both recovering β(t) via inverse DWT through shared `curves_to_coeff_design`/`coeff_weights_to_beta_t` seams. WAV-03/04.
+- **Phase 71** — `WcrResult::predict`/`WnetResult::predict` (re-transform new curves via the stored fitted DWT config, self-consistent ≤1e-8), β(t)/fitted accessors, full 14-symbol crate-root + prelude surface, running end-to-end module doctest. WAV-05/06.
+
+### What Worked
+- **Front-loading the make-or-break numerical risk** (Phase 69 DWT) retired perfect-reconstruction before any regressor built on it — the round-trip + hand-computed Haar known-answer gates caught two real bugs in-flight (an odd/symmetric-length synthesis-transpose architecture error, and mistyped db3/db7 coefficients), both fixed with **tolerances never loosened**.
+- **The recovery-test-design memory paid off preemptively**: every β(t)-recovery fixture used an n≫m spanning full-rank pseudo-random design from the start — no rank-deficient-fixture false failure this milestone (the v0.36.0 lesson stuck).
+- **Per-phase code-review gate** caught what green tests missed each phase: Phase 70's CR-01 (a real blocker — `wcr` with default `ncomp=5` errored for n≤5), plus input-validation gaps (`n_folds>n`, negative/NaN `tol`, `max_iter=0` silent degeneracy); Phase 71's affine-intercept field-doc correctness + a doctest that didn't actually witness self-consistency. All fixed inline.
+- **Per-plan general-purpose impl-agent pattern** (plan→code→out-of-band gates→`--no-verify` commit→SUMMARY) again dodged the executor-stall/hook-timeout hazard cleanly across all 5 plans — no stalls, no partial commits.
+
+### What Was Inefficient
+- The slow pre-commit hook (full ~2758-test suite, 30s timeout) forced `--no-verify` + manual gate runs on every commit throughout — unchanged fdars constraint; even the docs-only `phase.complete` planning commit tripped it.
+- `/home` reached 97% mid-milestone (target/ growth); had to free `target/debug/{incremental,examples}` (~54G) between phases to avoid a mid-build disk failure on the whole-crate Phase 71 gate.
+
+### Patterns Established
+- **Deferred public surface until the integration phase**: Phases 69/70 kept types `pub`/`pub(crate)` but added NO crate-root/prelude re-exports; Phase 71 promoted the whole 14-symbol surface at once — avoids exposing a partial API mid-milestone and makes the additive/non-breaking guarantee a single reviewable step.
+- **`predict` re-uses the stored fitted transform config** (family/mode/level) rather than re-deriving it — the seam that makes out-of-sample prediction self-consistent by construction.
+
+### Key Lessons
+- A single "wcr β(t) recovery" test passing at n=120 hid a total failure at n≤5 (the ncomp clamp) — **edge-of-domain sizes are their own test class**; the code-review gate, not the recovery test, caught it.
+- For a from-scratch numerical primitive, a **hand-computed known-answer anchor** (Haar sum/difference over √2) plus a perfect-reconstruction round-trip is the fastest way to localize a filter-coefficient or adjoint-direction bug — both bugs this milestone surfaced there first.
+
+### Cost Observations
+- Model mix: opus (planning), sonnet (execute/verify/review/integration), haiku (plan-check).
+- Per phase: smart-discuss (batch table, auto-accepted) → plan (opus) → plan-check (haiku) → per-plan impl agents → verifier → code-review → inline fix agent → transition. Whole-crate gate run only at the Phase 71 integration step.
+- Notable: 1 blocker + several validation gaps fixed across three code-review gates — each would have shipped a subtly-wrong or panic-prone public API otherwise.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

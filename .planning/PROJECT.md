@@ -275,12 +275,19 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ### Active
 
-<!-- v0.37.0 in progress — WAV: Wavelet-Domain Functional Regression. Implementation milestone; promotes GAP-07 from GAP-BACKLOG.md. Phases 69+. Requirements refined in REQUIREMENTS.md. -->
+<!-- Next milestone requirements land here (fresh REQUIREMENTS.md created by /gsd-new-milestone). Candidate: GAP-08 (differentiable/autodiff FDA core), or a new gap audit. -->
 
-- [x] **WAV — DWT primitive**: orthogonal discrete wavelet transform — Haar + Daubechies (db2–db10) filters, periodic/symmetric boundary handling, multi-level forward/inverse decomposition. — Validated in Phase 69 (WAV-01/02, v0.37.0): new in-crate `wavelet/` module, perfect-reconstruction round-trip ≤1e-10 across families/levels/modes, 38 tests green, exports deferred to Phase 71.
-- [x] **WAV — `wcr` wavelet-domain PCR/PLS**: scalar-on-function regression via PCR (and PLS) on wavelet coefficients. — Validated in Phase 70 (WAV-03, v0.37.0): both PCR and PLS recover β(t) <1e-6 on full-rank spanning designs; reuses `fdata_to_pc_1d` + `fdata_to_pls_1d`; new `wavelet/regression.rs`.
-- [x] **WAV — `wnet` wavelet-domain elastic-net**: lasso + ridge penalized regression on wavelet coefficients (per-coefficient coordinate-descent/soft-threshold adapter modeled on `additive.rs`). — Validated in Phase 70 (WAV-04, v0.37.0): sparse-support recovery + deterministic K-fold CV-λ; carries β(t)/intercept/fitted/selected-coeffs.
-- [x] **WAV — Prediction + diagnostics**: coefficient function, fitted values, out-of-sample predict, result-struct outputs, crate-root/prelude re-exports, module doctest. — Validated in Phase 71 (WAV-05/06, v0.37.0): `WcrResult::predict`/`WnetResult::predict` (self-consistent ≤1e-8) + `beta_t`/`coefficient_function`/`fitted_values` accessors + full 14-symbol crate-root+prelude surface + running module doctest; whole-crate 2794 lib + 199 doc tests green, clippy `--all-targets` clean, additive/non-breaking.
+_No active milestone — v0.37.0 WAV shipped 2026-09-04. Next: `/gsd-new-milestone`._
+
+<details>
+<summary>✅ v0.37.0 (shipped 2026-09-04) — WAV: Wavelet-Domain Functional Regression</summary>
+
+- [x] **WAV — DWT primitive**: orthogonal discrete wavelet transform — Haar + Daubechies (db2–db10) filters, periodic/symmetric boundary handling, multi-level forward/inverse decomposition. — Phase 69 (WAV-01/02): new in-crate `wavelet/` module, perfect-reconstruction round-trip ≤1e-10 across families/levels/modes, 38 tests green.
+- [x] **WAV — `wcr` wavelet-domain PCR/PLS**: scalar-on-function regression via PCR (and PLS) on wavelet coefficients. — Phase 70 (WAV-03): both PCR and PLS recover β(t) <1e-6 on full-rank spanning designs; reuses `fdata_to_pc_1d` + `fdata_to_pls_1d`; new `wavelet/regression.rs`.
+- [x] **WAV — `wnet` wavelet-domain elastic-net**: lasso + ridge penalized regression on wavelet coefficients (per-coefficient coordinate-descent/soft-threshold adapter modeled on `additive.rs`). — Phase 70 (WAV-04): sparse-support recovery + deterministic K-fold CV-λ; carries β(t)/intercept/fitted/selected-coeffs.
+- [x] **WAV — Prediction + diagnostics**: coefficient function, fitted values, out-of-sample predict, result-struct outputs, crate-root/prelude re-exports, module doctest. — Phase 71 (WAV-05/06): `WcrResult::predict`/`WnetResult::predict` (self-consistent ≤1e-8) + accessors + full 14-symbol crate-root+prelude surface + running module doctest; whole-crate 2794 lib + 199 doc tests green, clippy `--all-targets` clean, additive/non-breaking. **Operator ship step remaining:** crate bump 0.36.0→0.37.0 + `v0.37.0` tag + crates.io publish.
+
+</details>
 
 <details>
 <summary>v0.36.0 (shipped) — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression</summary>

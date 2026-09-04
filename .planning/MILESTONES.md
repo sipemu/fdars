@@ -1,5 +1,19 @@
 # Milestones
 
+## v0.37.0 WAV: Wavelet-Domain Functional Regression (Shipped: 2026-09-04)
+
+**Phases completed:** 3 phases, 5 plans, 16 tasks
+
+**Key accomplishments:**
+
+- Single-level orthonormal DWT engine (Haar + db2..db10) with exact-adjoint analysis/synthesis under periodic and symmetric boundaries, reconstructing any-length signals to ≤1e-10.
+- Multi-level Mallat pyramid (WaveletCoeffs / decompose / reconstruct) plus the FdMatrix batch path, reconstructing <=1e-10 for Haar+db2..db10 across >=2 levels, both boundary modes, and non-power-of-2 lengths
+- `wcr` scalar-on-function regressor fitting PCR or PLS on per-curve concatenated wavelet-coefficient designs, recovering beta(t) by inverse DWT — both paths recover a known beta(t) on a spanning full-rank design to <1e-6 rel L2.
+- Wavelet-domain elastic-net scalar-on-function regressor (WAV-04): per-coefficient L1+L2 coordinate descent with deterministic cross-validated lambda, reusing Plan 01's curves->coeff and inverse-DWT beta(t) seams.
+- Out-of-sample `predict` + coefficient/fitted accessors on `WcrResult`/`WnetResult`, the full wavelet surface re-exported at crate root and prelude, and a running end-to-end module doctest — the v0.37.0 WAV milestone is now code-complete.
+
+---
+
 ## v0.36.0 PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Shipped: 2026-09-04)
 
 **Phases completed:** 3 phases, 3 plans, 8 tasks

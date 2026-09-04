@@ -25,15 +25,22 @@
 - ✅ **v0.34.0 — k-Shape Clustering & Shape-Based Distance** — Phases 61–63 (shipped 2026-09-02) — [archive](milestones/v0.34.0-ROADMAP.md)
 - ✅ **v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)** — Phases 64–65 (shipped 2026-09-03) — [archive](milestones/v0.35.0-ROADMAP.md)
 - ✅ **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (shipped 2026-09-04) — [archive](milestones/v0.36.0-ROADMAP.md)
-- 🚧 **v0.37.0 — WAV: Wavelet-Domain Functional Regression** — Phases 69–71 (in progress) — promotes GAP-07
+- ✅ **v0.37.0 — WAV: Wavelet-Domain Functional Regression** — Phases 69–71 (shipped 2026-09-04) — [archive](milestones/v0.37.0-ROADMAP.md)
 
 ## Phases
 
-**Active milestone: v0.37.0 WAV — Wavelet-Domain Functional Regression (Phases 69–71)**
+<details>
+<summary>✅ v0.37.0 — WAV: Wavelet-Domain Functional Regression (Phases 69–71) — SHIPPED 2026-09-04</summary>
 
-- [x] **Phase 69: Discrete Wavelet Transform Primitive** — Forward/inverse orthogonal DWT (Haar + Daubechies db2–dbN), multi-level, periodic + symmetric boundaries, arbitrary lengths (completed 2026-09-04)
-- [x] **Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`)** — PCR/PLS and elastic-net scalar-on-function regression on wavelet coefficients (Gaussian response) (completed 2026-09-04)
-- [x] **Phase 71: Prediction, Diagnostics & Integration** — Out-of-sample `predict` for both fits, accessors, crate-root/prelude re-exports, end-to-end doctest (completed 2026-09-04)
+- [x] Phase 69: Discrete Wavelet Transform Primitive (2/2 plans) — WAV-01, WAV-02 — completed 2026-09-04
+- [x] Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`) (2/2 plans) — WAV-03, WAV-04 — completed 2026-09-04
+- [x] Phase 71: Prediction, Diagnostics & Integration (1/1 plans) — WAV-05, WAV-06 — completed 2026-09-04
+
+Shipped a from-scratch in-crate discrete wavelet transform (`wavelet/`: Haar + Daubechies db2–db10, multi-level Mallat pyramid, periodic + symmetric boundaries, arbitrary lengths, perfect reconstruction ≤1e-10) plus two Gaussian-response wavelet-domain scalar-on-function regressors — `wcr` (PCR/PLS in wavelet-coefficient space) and `wnet` (per-coefficient elastic-net with deterministic cross-validated λ and sparse-support recovery) — with out-of-sample `predict`, β(t)/fitted accessors, and the full 14-symbol surface re-exported at crate root + prelude with a running end-to-end module doctest. Additive/non-breaking, no new dependency; whole-crate 2794 lib + 199 doc tests green, clippy `--all-targets` clean. Audit PASSED 6/6; integration SOUND. Promotes GAP-07. Full detail: [milestones/v0.37.0-ROADMAP.md](milestones/v0.37.0-ROADMAP.md).
+
+**Ship step remaining (operator):** crate version bump 0.36.0 → 0.37.0 + `v0.37.0` git tag + crates.io publish (release.yml publishes on the tag). Deferred out of the autonomous run — the crate source is code-complete but still versioned 0.36.0.
+
+</details>
 
 <details>
 <summary>✅ v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68) — SHIPPED 2026-09-04</summary>
@@ -46,70 +53,10 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
 
 </details>
 
-## Phase Details
-
-### Phase 69: Discrete Wavelet Transform Primitive
-
-**Goal**: The crate can transform a signal (and back) via an orthogonal discrete wavelet transform — Haar (db1) and Daubechies db2–dbN, multi-level, with selectable boundary handling — as a reusable in-crate primitive that the wavelet-domain regressors build on.
-**Depends on**: Nothing new (first phase of milestone; reuses only `error.rs`/`FdMatrix` infrastructure). Foundational — must precede Phases 70 and 71.
-**Requirements**: WAV-01, WAV-02
-**Success Criteria** (what must be TRUE):
-
-  1. Forward→inverse round-trip reconstructs the input within numerical tolerance (e.g. ≤1e-10 relative) for Haar and Daubechies db2–dbN across multiple decomposition levels.
-  2. The transform runs on arbitrary (non-power-of-2) signal lengths under both periodic and symmetric boundary modes without panicking, and both boundary modes independently satisfy the perfect-reconstruction round-trip.
-  3. A known-answer Haar single-level decomposition matches the hand-computed (sum/difference over √2) approximation and detail coefficients.
-  4. Invalid inputs (unsupported family/order, empty signal, level exceeding max decomposable depth) return a descriptive `FdarError` rather than panicking or producing NaN.
-
-**Plans**: 2 plans
-
-- [x] 69-01-PLAN.md — Wavelet module + db1–db10 filter tables + single-level analysis/synthesis engine (periodic + symmetric, arbitrary length); Haar known-answer + single-level round-trip gates
-- [x] 69-02-PLAN.md — Multi-level Mallat pyramid (decompose/reconstruct, auto/explicit level), WaveletCoeffs result struct, FdMatrix batch path; full round-trip + non-power-of-2 + invalid-input gates
-
-### Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`)
-
-**Goal**: Users can fit two wavelet-domain scalar-on-function regressors on Gaussian responses — `wcr` (PCR/PLS in wavelet-coefficient space) and `wnet` (elastic-net with cross-validated λ) — each transforming curves to wavelet coefficients via the Phase 69 DWT, then reusing fdars' existing FPCR/PLS and coordinate-descent machinery.
-**Depends on**: Phase 69 (both regressors consume the DWT primitive). `wcr` and `wnet` are independent of each other.
-**Requirements**: WAV-03, WAV-04
-**Success Criteria** (what must be TRUE):
-
-  1. `wcr` fits via both PCR and PLS on wavelet coefficients and recovers a known coefficient function β(t) on synthetic data (spanning, full-rank predictor design) within tolerance; the result struct carries β(t), intercept, and fitted values.
-  2. `wnet` recovers a sparse coefficient pattern on synthetic data where the true signal is localized in a few wavelet coefficients — the selected/nonzero coefficients concentrate on the true support — and its result struct carries β(t), intercept, fitted values, and the selected coefficients.
-  3. `wnet` cross-validated λ selection is deterministic across runs and, at the selected λ, yields a non-degenerate fit that tracks the injected signal (β(t) recovery on synthetic SNR data).
-  4. Both regressors validate inputs (dimension/parameter mismatches → descriptive `FdarError`, never panic) and produce finite, NaN-free β(t) and fitted values.
-
-**Plans**: 2 plans
-
-- [x] 70-01-PLAN.md — `wcr` (PCR + PLS) on wavelet coefficients + shared curves→coeff-design & β(t)-reconstruction helpers (WAV-03)
-- [x] 70-02-PLAN.md — `wnet` per-coefficient elastic-net CD adapter + deterministic CV-λ + sparse-support recovery (WAV-04)
-
-### Phase 71: Prediction, Diagnostics & Integration
-
-**Goal**: Both fitted regressors predict on new curves and expose their coefficient function and fitted values; the full public wavelet surface (DWT + `wcr` + `wnet` + config/result types + `predict`) is reachable from the crate root and prelude, with a running end-to-end doctest — all additive and non-breaking.
-**Depends on**: Phase 70 (prediction and exports consume the fitted `wcr`/`wnet` results). Final phase of the chain.
-**Requirements**: WAV-05, WAV-06
-**Success Criteria** (what must be TRUE):
-
-  1. `predict` is self-consistent for both `wcr` and `wnet`: re-passing the training curves reproduces the training fitted values within tolerance, and prediction on new curves returns finite values.
-  2. Coefficient-function and fitted-value accessors return the expected outputs from both fitted result structs.
-  3. The full public surface (DWT forward/inverse, `wcr`, `wnet`, config/result types, `predict`) is reachable via both the crate root and `prelude`, and a running end-to-end module doctest passes under `cargo test --doc`.
-  4. The change is additive/non-breaking — no existing public signature changes; R + WASM bindings and all 28 examples remain unaffected (whole-crate `cargo test` + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` + `cargo fmt --check` green).
-
-**Plans**: 1 plan
-
-Plans:
-
-- [x] 71-01-PLAN.md — predict + accessors on WcrResult/WnetResult, full crate-root + prelude re-exports, end-to-end module doctest
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 69. Discrete Wavelet Transform Primitive | 2/2 | Complete    | 2026-09-04 |
-| 70. Wavelet-Domain Regressors (`wcr` + `wnet`) | 2/2 | Complete    | 2026-09-04 |
-| 71. Prediction, Diagnostics & Integration | 1/1 | Complete    | 2026-09-04 |
-
 ## Status
 
-Active milestone **v0.37.0 WAV** (Phases 69–71) — promotes GAP-07 (wavelet-domain functional regression) from `.planning/research/GAP-BACKLOG.md`. Strict dependency chain: DWT primitive (69) → wavelet-domain regressors `wcr`/`wnet` (70) → prediction + integration (71). Implementation milestone; publishes to crates.io on the `v0.37.0` tag (crate bump 0.36.0 → 0.37.0). After GAP-07, only GAP-08 (differentiable core) remains in the backlog.
+**v0.37.0 WAV shipped** (Phases 69–71) — promoted GAP-07 (wavelet-domain functional regression) from `.planning/research/GAP-BACKLOG.md`. After GAP-07, only **GAP-08** (differentiable / autodiff-compatible FDA core — invasive generics refactor, score 1.73, L-effort) remains in the backlog.
 
-Next: `/gsd-plan-phase 69`
+**Remaining operator ship step for v0.37.0:** bump crate `fdars-core` 0.36.0 → 0.37.0, tag `v0.37.0`, push → `release.yml` publishes to crates.io. (The autonomous run intentionally did not tag/publish; a `v0.37.0` tag on the un-bumped 0.36.0 crate would trigger a version-mismatched publish.)
+
+Next: `/gsd-new-milestone` (candidate: promote GAP-08, or a new gap audit).
