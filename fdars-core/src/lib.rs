@@ -108,6 +108,7 @@ pub mod landmark;
 pub mod metric;
 pub mod optimal_design;
 pub mod outliers;
+pub mod peer;
 pub mod regression;
 pub mod scalar_on_function;
 pub mod seasonal;
