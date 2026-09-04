@@ -77,7 +77,9 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   3. `wnet` cross-validated λ selection is deterministic across runs and, at the selected λ, yields a non-degenerate fit that tracks the injected signal (β(t) recovery on synthetic SNR data).
   4. Both regressors validate inputs (dimension/parameter mismatches → descriptive `FdarError`, never panic) and produce finite, NaN-free β(t) and fitted values.
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 70-01-PLAN.md — `wcr` (PCR + PLS) on wavelet coefficients + shared curves→coeff-design & β(t)-reconstruction helpers (WAV-03)
+- [ ] 70-02-PLAN.md — `wnet` per-coefficient elastic-net CD adapter + deterministic CV-λ + sparse-support recovery (WAV-04)
 
 ### Phase 71: Prediction, Diagnostics & Integration
 
