@@ -5,15 +5,15 @@ milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regr
 current_phase: 67
 current_phase_name: Automatic λ Selection — GCV + REML
 status: planning
-stopped_at: Phase 66 complete, ready to plan Phase 67
-last_updated: "2026-09-04T06:43:40.322Z"
+stopped_at: Completed 67-01-lambda-selection-tracer-PLAN.md
+last_updated: "2026-09-04T07:35:20.234Z"
 last_activity: 2026-09-04
 last_activity_desc: Phase 66 complete, transitioned to Phase 67
-state_head: ef9cdaf681aefdd8838ba965a7202662fea817bd
+state_head: 15e428edf1d270b2c905ef76ac3387fa92573ec3
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 1
+  total_plans: 2
   completed_plans: 1
   percent: 33
 ---
@@ -74,6 +74,11 @@ Three phases, 5 requirements (PER-01..PER-05) — an implementation milestone pr
 - Trend: v0.36.0 stays in implementation shape — real code, normal test/clippy/fmt gates, crate publish on tag. Reuse-heavy (`scalar_on_function/`, `function_on_scalar.rs` `penalized_solve` + GCV, `smooth_basis`/`function_on_scalar_2d` penalty builders, `famm::fit_scalar_mixed_model` REML EM, `regression.rs::fdata_to_pc_1d`, `linalg::cholesky_solve`, `helpers::simpsons_weights`), effort M for a mature codebase, likely ONE new file (`peer.rs`) or a small `peer/` submodule. Three phases driven by a strict core-estimator → λ-selection → longitudinal+prediction dependency chain, not padding.
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 67 P01 | 1060 | 4 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -93,6 +98,9 @@ Relevant to current work (v0.36.0):
 - **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only the new `peer` module + additive `lib.rs`/`prelude.rs` re-exports.
 - **Phase numbering continues** — v0.35.0 ended at Phase 65 → v0.36.0 starts at Phase 66. No reset.
 - **5 requirements → 3 phases** (fine granularity, strict dependency chain): Phase 66 PER-01/02, Phase 67 PER-03, Phase 68 PER-04/05. All 5 mapped, no orphans, no duplicates. (PER-01 core estimator and PER-02 penalty families paired since the penalty is a parameter of the estimator; PER-04 lpeer + PER-05 predict/exports paired as the longitudinal + integration layer.)
+- [Phase 67]: LambdaChoice.lambda replaces f64 in PeerConfig — both pins and selects lambda; Default=Gcv for reproducibility
+- [Phase 67]: REML EM uses eigendecomposition of Q (ascending sort), null→fixed α, range→random b; does NOT call famm::fit_scalar_mixed_model
+- [Phase 67]: REML-vs-GCV agreement test uses high-SNR fixture: REML correctly identifies small lambda for sin(πt) signal (large range-space component → large σ²_u)
 
 ### Pending Todos
 
@@ -122,8 +130,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-03T21:07:08.749Z
-Stopped at: Phase 66 complete, ready to plan Phase 67
+Last session: 2026-09-04T07:35:20.197Z
+Stopped at: Completed 67-01-lambda-selection-tracer-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -12,7 +12,7 @@ Implementation milestone — real `fdars-core/src/` code, additive/non-breaking 
 
 - [x] **PER-01**: User can fit structured-penalty scalar-on-function regression via a public `peer(...)` estimator that estimates the coefficient function β(t) using the partially-empirical-eigenvector decomposition (null-space + range-space of the penalty operator), returning a result struct with β(t), intercept, fitted values, and the selected/df diagnostics — distinct from plain FPCR/`pfr`.
 - [x] **PER-02**: User can choose the a-priori penalty structure from three families via a penalty-type parameter/enum: ridge/identity (classical), 2nd-difference/roughness (reusing the existing `penalty_matrix` builder), and a caller-supplied structured/"decree" Q matrix (partitioned-domain a-priori structure — PEER's signature feature).
-- [ ] **PER-03**: User can have the smoothing parameter λ chosen automatically by either GCV grid search (reusing the `penalized_solve` + GCV pattern) or REML/mixed-model estimation (reusing `famm`), selectable via config; an explicit λ is honored when supplied.
+- [x] **PER-03**: User can have the smoothing parameter λ chosen automatically by either GCV grid search (reusing the `penalized_solve` + GCV pattern) or REML/mixed-model estimation (reusing `famm`), selectable via config; an explicit λ is honored when supplied.
 - [ ] **PER-04**: User can fit longitudinal PEER via a public `lpeer(...)` estimator that extends PEER to repeated per-subject measurements with subject-level random effects, fitted through `famm::fit_scalar_mixed_model` (REML EM), returning a result struct with the (time-varying) coefficient function and variance components.
 - [ ] **PER-05**: User can predict on new curves out-of-sample from a fitted PEER/lpeer result (`predict`), access the coefficient function and fitted values, and reach the API from the crate root + prelude; a module doctest demonstrates the end-to-end workflow.
 
@@ -48,7 +48,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 |-------------|-------|--------|
 | PER-01 | Phase 66 | Complete |
 | PER-02 | Phase 66 | Complete |
-| PER-03 | Phase 67 | Pending |
+| PER-03 | Phase 67 | Complete |
 | PER-04 | Phase 68 | Pending |
 | PER-05 | Phase 68 | Pending |
 
