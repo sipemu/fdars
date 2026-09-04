@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.36.0
 milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68)"
-current_phase: 68
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 68 complete — all phases complete
-last_updated: "2026-09-04T09:02:21.968Z"
+last_updated: "2026-09-04T11:11:27.302Z"
 last_activity: 2026-09-04
-last_activity_desc: Phase 68 complete
-state_head: 04e73495195b8b1361d1de26af8234ca29e4c76e
+last_activity_desc: Milestone v0.36.0 completed and archived
+state_head: 604a1ba546d8dfb7033303d6223a56d7dda9f5f1
 progress:
   total_phases: 3
   completed_phases: 3
   total_plans: 3
   completed_plans: 3
   percent: 100
+current_phase: 68
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 
 ## Current Position
 
-Phase: 68
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-04 — Phase 68 complete
+Phase: Milestone v0.36.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-04 — Milestone v0.36.0 completed and archived
 
 ## Milestone Roadmap (v0.36.0)
 
@@ -136,4 +136,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 66`
+- Start the next milestone with /gsd-new-milestone

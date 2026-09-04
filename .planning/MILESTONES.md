@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.36.0 PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Shipped: 2026-09-04)
+
+**Phases completed:** 3 phases, 3 plans, 8 tasks
+
+**Key accomplishments:**
+
+- Shipped a public `peer()` structured-penalty scalar-on-function regression estimator with three a-priori penalty families, recovering a known β(t) on synthetic data.
+- GCV grid search and REML EM added to peer() via LambdaChoice enum, replacing PeerConfig.lambda: f64; both selectors deterministic; REML uses nalgebra::symmetric_eigen of Q with null/range partition; 19/19 peer tests green, full 2708-test suite clean
+
+---
+
 ## v0.35.0 Optimal Experimental Design for Sparse FDA (FOptDes) (Shipped: 2026-09-03)
 
 **Phases completed:** 2 phases, 4 plans, 0 tasks
