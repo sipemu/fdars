@@ -120,6 +120,7 @@ pub mod tolerance;
 pub mod utility;
 pub mod validation;
 pub mod warping;
+pub mod wavelet;
 pub mod wire;
 
 // Covariance kernels and Gaussian processes
