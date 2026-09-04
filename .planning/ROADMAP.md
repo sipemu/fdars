@@ -38,7 +38,7 @@
 Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-priori-penalty scalar-on-function regression — and its longitudinal variant `lpeer`, letting users inject prior signal structure into the coefficient-function penalty. Promotes **GAP-06** (score 2.12, M-effort) from the v0.31.0 `GAP-BACKLOG.md`. Reference baseline refund@0.1-38 (`peer`, `lpeer`). Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking (protects R + WASM bindings + 28 examples), no new crate dependency; likely a new top-level `peer.rs` (or `peer/` submodule). Strict dependency chain: core estimator + penalties → λ-selection → longitudinal extension + prediction/exports. Crate bumps 0.35.0 → **0.36.0**, published on the `v0.36.0` tag.
 
 - [x] **Phase 66: Core PEER Estimator & Penalty Families (PER-01, PER-02)** — the public `peer()` estimator with the partially-empirical-eigenvector decomposition and the three a-priori penalty families (ridge/identity, 2nd-difference/roughness, caller-supplied structured Q) (completed 2026-09-04)
-- [ ] **Phase 67: Automatic λ Selection — GCV + REML (PER-03)** — smoothing-parameter λ chosen automatically by GCV grid search or REML/mixed-model estimation, selectable via config; explicit λ honored when supplied
+- [x] **Phase 67: Automatic λ Selection — GCV + REML (PER-03)** — smoothing-parameter λ chosen automatically by GCV grid search or REML/mixed-model estimation, selectable via config; explicit λ honored when supplied (completed 2026-09-04)
 - [ ] **Phase 68: Longitudinal PEER, Prediction & Integration (PER-04, PER-05)** — the `lpeer()` longitudinal extension with subject-level random effects via `famm`, out-of-sample `predict`, crate-root + prelude re-exports, and an end-to-end module doctest
 
 ## Phase Details
@@ -73,7 +73,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 
 **Plans**: 0/1 plans executed
 
-- [ ] 67-01-lambda-selection-tracer-PLAN.md — tracer: evolve `PeerConfig.lambda` to `LambdaChoice` + wire `Fixed(λ)` end-to-end (Phase 66 tests migrated) → GCV grid-search selector → self-contained REML EM selector → full-suite/clippy/fmt phase gate
+- [x] 67-01-lambda-selection-tracer-PLAN.md — tracer: evolve `PeerConfig.lambda` to `LambdaChoice` + wire `Fixed(λ)` end-to-end (Phase 66 tests migrated) → GCV grid-search selector → self-contained REML EM selector → full-suite/clippy/fmt phase gate
 
 ### Phase 68: Longitudinal PEER, Prediction & Integration
 
@@ -94,7 +94,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 66. Core PEER Estimator & Penalty Families | 1/1 | Complete    | 2026-09-04 |
-| 67. Automatic λ Selection — GCV + REML | 0/1 | Planned    |  |
+| 67. Automatic λ Selection — GCV + REML | 1/1 | Complete    | 2026-09-04 |
 | 68. Longitudinal PEER, Prediction & Integration | 0/TBD | Not started | - |
 
 ## Status

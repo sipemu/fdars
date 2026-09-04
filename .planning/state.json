@@ -11,7 +11,7 @@
     {
       "number": "67",
       "name": "Automatic λ Selection — GCV + REML",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "68",
@@ -21,8 +21,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 67)",
-    "reason": "Phase 67 of 3 — needs a plan"
+    "label": "Advance to the next step (plan phase 68)",
+    "reason": "Phase 68 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-04T06:43:40.334Z"
+  "updated_at": "2026-09-04T07:43:32.192Z"
 }

@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.36.0
 milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression"
-current_phase: 67
-current_phase_name: Automatic λ Selection — GCV + REML
+current_phase: 68
+current_phase_name: Longitudinal PEER, Prediction & Integration
 status: planning
-stopped_at: Completed 67-01-lambda-selection-tracer-PLAN.md
-last_updated: "2026-09-04T07:35:20.234Z"
+stopped_at: Phase 67 complete, ready to plan Phase 68
+last_updated: "2026-09-04T07:43:32.182Z"
 last_activity: 2026-09-04
-last_activity_desc: Phase 66 complete, transitioned to Phase 67
-state_head: 15e428edf1d270b2c905ef76ac3387fa92573ec3
+last_activity_desc: Phase 67 complete, transitioned to Phase 68
+state_head: 38e6df42a16db5502b9c992b4dacc6603a676b59
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 2
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 
 ## Current Position
 
-Phase: 67 — Automatic λ Selection — GCV + REML
+Phase: 68 — Longitudinal PEER, Prediction & Integration
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-04 — Phase 66 complete, transitioned to Phase 67
+Last activity: 2026-09-04 — Phase 67 complete, transitioned to Phase 68
 
 ## Milestone Roadmap (v0.36.0)
 
@@ -131,7 +131,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-04T07:35:20.197Z
-Stopped at: Completed 67-01-lambda-selection-tracer-PLAN.md
+Stopped at: Phase 67 complete, ready to plan Phase 68
 Resume file: None
 
 ## Operator Next Steps
