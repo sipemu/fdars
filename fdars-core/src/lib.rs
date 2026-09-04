@@ -601,6 +601,12 @@ pub use peer::{
     lpeer, peer, LambdaChoice, LambdaMethod, LpeerResult, PeerConfig, PeerPenalty, PeerResult,
 };
 
+// Re-export wavelet DWT primitive + wavelet-domain regressors (v0.37.0 WAV, full surface)
+pub use wavelet::regression::{wcr, wnet, WcrConfig, WcrMethod, WcrResult, WnetConfig, WnetResult};
+pub use wavelet::{
+    decompose, decompose_matrix, max_level, reconstruct, BoundaryMode, WaveletCoeffs, WaveletFamily,
+};
+
 // Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{
     align_cluster_fd, dbscan_fd, funfem_cluster, kcfc_cluster, AlignClusterConfig,

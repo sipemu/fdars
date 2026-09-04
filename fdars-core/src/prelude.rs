@@ -108,3 +108,11 @@ pub use crate::coclustering::{CoClusterConfig, CoClusterResult, CoClusterSelectR
 pub use crate::peer::{
     lpeer, peer, LambdaChoice, LambdaMethod, LpeerResult, PeerConfig, PeerPenalty, PeerResult,
 };
+
+// Wavelet-domain regression (v0.37.0)
+pub use crate::wavelet::regression::{
+    wcr, wnet, WcrConfig, WcrMethod, WcrResult, WnetConfig, WnetResult,
+};
+pub use crate::wavelet::{
+    decompose, decompose_matrix, max_level, reconstruct, BoundaryMode, WaveletCoeffs, WaveletFamily,
+};
