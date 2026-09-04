@@ -62,7 +62,7 @@ New private helpers in `peer.rs`:
 - `select_lambda_gcv_peer(...) -> (f64, f64)` — GCV grid argmin (best λ, GCV at best), ties → smaller grid index.
 - `select_lambda_reml_peer(...) -> f64` — REML EM via `nalgebra::symmetric_eigen` of Q (null=fixed, range=random b~N(0,σ²_u I)), λ = σ²_e/σ²_u.
 
-Phase 66 test constructions migrated from `lambda: <f64>` to `lambda: LambdaChoice::Fixed(<f64>)` (8 explicit `PeerConfig{...}` literals + the module-header doctest). `PeerConfig::default()` call sites keep compiling but now default to `Gcv`.
+Phase 66 test constructions migrated from `lambda: <f64>` to `lambda: LambdaChoice::Fixed(<f64>)`: 7 direct literal fields + 2 `let lambda = 1.0;` bindings (feeding 4 shorthand literals) + the module-header doctest (see Task 1 acceptance criteria for the grep-verified line list). The 4 `PeerConfig::default()` call sites keep compiling but now default to `Gcv`; none needs value-adjustment.
 </artifacts_this_phase_produces>
 
 <execution_context>
@@ -88,7 +88,7 @@ Phase 66 test constructions migrated from `lambda: <f64>` to `lambda: LambdaChoi
     - `fdars-core/src/peer.rs:41-119` — PeerPenalty (derive + conditional-serde template to copy), PeerConfig (lambda: f64 to LambdaChoice), PeerResult (add two fields; note `#[non_exhaustive]` + `#[must_use]`).
     - `fdars-core/src/peer.rs:146-283` — peer() body; the lambda is read at line ~251 (`let lambda = config.lambda;`) and flows into `A = WtW + lambda*Q`, `cholesky_solve`, `compute_peer_trace_hat`, and the returned PeerResult.
     - `fdars-core/src/peer.rs:16-25` — module-header doctest constructing `PeerConfig { ..., lambda: 1.0 }`.
-    - `fdars-core/src/peer.rs:347-773` — the entire `#[cfg(test)] mod tests` block: the 8 `PeerConfig { ..., lambda: <f64> }` literals to migrate (see RESEARCH "Tests that must be mechanically updated" for the exact line list) and the `PeerConfig::default()` call sites (no code change, but their default lambda path now becomes Gcv — see note below).
+    - `fdars-core/src/peer.rs:347-773` — the entire `#[cfg(test)] mod tests` block: 7 direct `lambda: <f64>` literal fields (lines 403/430/474/496/515/606/708) + 2 `let lambda = 1.0;` bindings (533/634) feeding 4 `lambda,` shorthand literals (536/564/656/676) to migrate, plus the 4 `PeerConfig::default()` call sites (621/739/756/767 — no code change, but their default lambda path now becomes Gcv). See the reconciled list in this task's acceptance criteria for the exact enumeration.
   </read_first>
   <action>
 Add two public enums next to PeerPenalty, copying its exact derive attributes (`#[derive(Debug, Clone, PartialEq)]` plus `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]`):
@@ -98,15 +98,29 @@ Change `PeerConfig.lambda` from `f64` to `LambdaChoice`; update `impl Default fo
 
 Add two fields to `PeerResult`: `pub gcv: Option<f64>` (GCV score at the selected lambda; `None` when GCV did not run) and `pub lambda_method: LambdaMethod` (which path ran). Doc-comment both. `PeerResult.lambda` keeps its meaning (value actually used). PeerResult is already `#[non_exhaustive]`.
 
-In `peer()`, after `wtw`/`wty` are built and before the `A = WtW + lambda*Q` solve, introduce a dispatch that produces `(lambda, gcv, lambda_method)`. In THIS tracer task wire ONLY the `LambdaChoice::Fixed(lam)` arm: it maps to `(*lam, None, LambdaMethod::Fixed)`. For the `Gcv` and `Reml` arms, temporarily route them through the Fixed path using a placeholder lambda equal to the old default (`1.0`) so the code compiles and the tracer proves the API evolution end-to-end; leave a `Task 2/Task 3 wire selectors here` marker comment on those arms. Do NOT inline any grid/EM code in this task. Feed the resulting `lambda` into the existing solve/trace path unchanged, and populate the two new PeerResult fields from the dispatch.
+In `peer()`, after `wtw`/`wty` are built and before the `A = WtW + lambda*Q` solve, introduce a dispatch that produces `(lambda, gcv, lambda_method)`. The dispatch is a single Rust `match &config.lambda` expression with all three variant arms present so the API evolution compiles before any selector logic exists. In THIS tracer task the exact expression to write is: match `LambdaChoice::Fixed(lam)` to `(*lam, None, LambdaMethod::Fixed)`; and for `LambdaChoice::Gcv` and `LambdaChoice::Reml`, route BOTH through the Fixed path with a placeholder lambda equal to the old default (`1.0`) so the code compiles and the tracer proves the API evolution end-to-end. Concretely (Task 2 replaces the Gcv arm, Task 3 replaces the Reml arm):
 
-Mechanically migrate every `PeerConfig { ..., lambda: <f64>, ... }` literal in the test module to `lambda: LambdaChoice::Fixed(<f64>)` (the 8 occurrences listed in RESEARCH API Evolution). Migrate the module-header doctest the same way (`lambda: LambdaChoice::Fixed(1.0)`). The `PeerConfig::default()` call sites (`test_peer_argvals_mismatch`, `test_peer_rejects_single_observation`, `test_peer_rejects_non_monotonic_argvals`, `test_peer_rejects_non_finite_y`) rely only on the validation error path which fires before selection, so the default-to-Gcv change does not affect them — verify each still asserts an `Err(...)` and not a numeric lambda.
+  let (lambda, gcv, lambda_method) = match &config.lambda {
+      LambdaChoice::Fixed(lam) => (*lam, None, LambdaMethod::Fixed),
+      LambdaChoice::Gcv => (1.0, None, LambdaMethod::Fixed),  // PLACEHOLDER — Task 2 wires select_lambda_gcv_peer
+      LambdaChoice::Reml => (1.0, None, LambdaMethod::Fixed),  // PLACEHOLDER — Task 3 wires select_lambda_reml_peer
+  };
+
+Do NOT inline any grid/EM code in this task. Feed the resulting `lambda` (the placeholder `1.0` for Gcv/Reml, the real value for Fixed) into the existing solve/trace path unchanged, and populate the two new PeerResult fields from the dispatch tuple. The placeholder `1.0` must flow through `A = WtW + lambda*Q` and `cholesky_solve` so the tracer exercises the full data path end-to-end before selectors are added.
+
+Mechanically migrate the test module per the grep-verified list (see acceptance criteria for the full reconciled enumeration): (a) 7 direct `lambda: <f64>` literal fields → `lambda: LambdaChoice::Fixed(<f64>)` (lines 403/430/474/496/515/606/708); (b) the 2 `let lambda = 1.0;` local bindings (lines 533 and 634) → `let lambda = LambdaChoice::Fixed(1.0);` so the 4 downstream `PeerConfig { .., lambda }` shorthand literals (536/564/656/676) carry a `LambdaChoice` without touching the literals themselves; (c) the module-header doctest (line 23) → `lambda: LambdaChoice::Fixed(1.0)`. The 4 `PeerConfig::default()` call sites (`test_peer_argvals_mismatch` line 621, `test_peer_rejects_single_observation` 756, `test_peer_rejects_non_monotonic_argvals` 739, `test_peer_rejects_non_finite_y` 767) rely only on the validation error path which fires before selection, so the default-to-Gcv change does not affect them — verify each still asserts an `Err(...)` and not a numeric lambda; none relies on the old `lambda: 1.0` default value, so none needs adjustment.
   </action>
   <acceptance_criteria>
     - `LambdaChoice` and `LambdaMethod` enums exist with the specified variants, derives, conditional serde, and `Default = Gcv` for LambdaChoice.
-    - `PeerConfig.lambda: LambdaChoice`; `PeerConfig::default()` yields `LambdaChoice::Gcv`.
-    - `PeerResult` carries `gcv: Option<f64>` and `lambda_method: LambdaMethod`; a `Fixed` fit sets `gcv == None`, `lambda_method == LambdaMethod::Fixed`, and `lambda` equal to the supplied value bit-exact.
-    - All 12 Phase 66 tests compile and pass after mechanical migration; the module-header doctest compiles.
+    - `PeerConfig.lambda: LambdaChoice`; `PeerConfig::default()` yields `PeerConfig { penalty: PeerPenalty::Difference { order: 2 }, lambda: LambdaChoice::Gcv }` (penalty default unchanged; lambda now Gcv, replacing the old `lambda: 1.0`).
+    - The `peer()` dispatch is a `match &config.lambda` with all three arms present and compiling; in the tracer the `Gcv` and `Reml` arms return the placeholder `(1.0, None, LambdaMethod::Fixed)` and that placeholder `1.0` flows through the solve so a `Gcv`/`Reml` fit still returns a finite `PeerResult` (with `lambda == 1.0`, `lambda_method == LambdaMethod::Fixed`) end-to-end — no panic, no selector logic yet.
+    - `PeerResult` carries `gcv: Option<f64>` and `lambda_method: LambdaMethod`; a `Fixed(v)` fit sets `gcv == None`, `lambda_method == LambdaMethod::Fixed`, and `lambda == v` bit-exact.
+    - Reconciled test-migration list (grep-verified against `peer.rs`) — migrate exactly these:
+      - 7 direct literal sites `lambda: <f64>` → `lambda: LambdaChoice::Fixed(<f64>)`: `test_peer_difference_beta_recovery` (line 403, `1e-4`), `test_peer_result_shape` (430, `1e-4`), `test_peer_ridge_fits` (474, `1e-4`), `test_peer_decree_fits` (496, `1e-4`), `test_peer_difference_order_rejected` (515, `1e-4`), `test_peer_decree_wrong_dim` (606, `1.0`), `test_peer_stores_w_bar_for_prediction` (708, `1e-4`).
+      - 2 local-binding sites `let lambda = 1.0;` (lines 533 and 634) feed the `lambda,` field shorthand in 4 `PeerConfig { .., lambda }` literals (536 + 564 in `test_peer_decree_distinct_from_roughness`; 656 + 676 in `test_peer_no_nan_all_families`). Change each binding to `let lambda = LambdaChoice::Fixed(1.0);` so the shorthand `lambda,` field carries a `LambdaChoice` — do NOT edit the four literals themselves.
+      - 1 module-header doctest (line 23) `lambda: 1.0` → `lambda: LambdaChoice::Fixed(1.0)`.
+    - The 4 `PeerConfig::default()` sites — `test_peer_argvals_mismatch` (line 621), `test_peer_rejects_single_observation` (756), `test_peer_rejects_non_monotonic_argvals` (739), `test_peer_rejects_non_finite_y` (767) — need NO code change: each asserts an `Err(...)` from input validation that fires before λ selection, so the default flipping from `1.0` to `Gcv` does not change their outcome. Verify each still asserts `Err(FdarError::...)` and never inspects a numeric lambda. No test relies on the old `lambda: 1.0` default producing a numeric value, so no test needs value-adjustment for the default change.
+    - All tests in `#[cfg(test)] mod tests` compile and pass after migration; the module-header doctest compiles.
   </acceptance_criteria>
   <verify>
     <automated>cargo test -p fdars-core --features linalg,parallel peer:: -- --nocapture</automated>
@@ -176,15 +190,74 @@ Add tests: `test_peer_gcv_deterministic` (two Gcv runs yield a bit-exact `result
   <action>
 Add `use nalgebra::DMatrix;` to the top of `peer.rs` if not already present.
 
-Add a private `select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: usize) -> f64`:
-1. Eigendecompose Q: `DMatrix::from_row_slice(m, m, q).symmetric_eigen()` (Q is symmetric so row-major equals column-major). Build `idx_sorted` ascending by eigenvalue; `max_ev = max abs(eigenvalue)`; `tol = 1e-8 * max_ev.max(1.0)`. Partition into `null_idx` (abs(ev) < tol, fixed/unpenalized, count `s`) and `range_idx` (abs(ev) >= tol, random effect, count `r`). Document the tolerance choice.
-2. Edge — range-space empty (`r == 0`, zero-Q Decree): return a documented small fallback lambda (`1e-4`) — no random effect to estimate.
-3. Build `Z_null` (n*s) and `Z_range` (n*r) as `W_c * V_null` and `W_c * V_range` using `eigen.eigenvectors[(j, ev_idx)]` (see RESEARCH "Form the projected designs").
-4. Init deterministically: `y_var = sum((yc - ybar)^2) / (n-1).max(1)`; `sigma2_e = y_var.max(1e-12)`; `sigma2_u = (sigma2_e * 0.1).max(1e-12)`; `alpha = [0.0; s]` (OLS-init from Z_null when `s > 0` via `cholesky_solve` on `Z_null'Z_null`).
-5. EM loop, cap 100 iterations. E-step: form `ZtZ_range` (r*r), `M = ZtZ_range/sigma2_e + (1/sigma2_u)*I_r`, invert via Cholesky to get `Sigma_b`; `b_hat = Sigma_b * Z_range' * r_alpha / sigma2_e` where `r_alpha = yc - Z_null*alpha`. M-step: `sigma2_u = (b_hat'b_hat + tr(Sigma_b)) / r`; `sigma2_e = (norm2(r_alpha - Z_range*b_hat) + tr(Z_range Sigma_b Z_range')) / n` (compute `tr(Z_range Sigma_b Z_range') = tr(Sigma_b ZtZ_range)`). When `s > 0`, re-estimate `alpha` via a GLS/Woodbury update (per RESEARCH "GLS update of alpha"; add a 1e-10 diagonal ridge for stability); when `s == 0` skip the alpha-update and use `r_alpha = yc`. After each M-step clamp `sigma2_u = sigma2_u.max(1e-12)`, `sigma2_e = sigma2_e.max(1e-12)`. Break when `abs(delta sigma2_u) + abs(delta sigma2_e) < 1e-8 * (sigma2_u + sigma2_e)`.
-6. Return `(sigma2_e / sigma2_u).max(1e-15)`.
+Add a private `select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: usize) -> f64`. Implement it EXACTLY per the following step-by-step pseudocode (equations carried verbatim from RESEARCH "REML Path"; reuse the named helpers — do NOT call `famm::fit_scalar_mixed_model`):
 
-Guard all the RESEARCH edge cases: Ridge s=0 (skip GLS), zero-Q r=0 (fallback), sigma2_u toward 0 (clamp keeps lambda finite-large), non-negative variance components. NO RNG anywhere — determinism comes from the fixed init plus the fixed cap.
+  // --- STEP 1: eigendecompose Q (reuse the fpca_variants.rs symmetric_eigen pattern) ---
+  // q is m*m row-major; symmetric so row-major == column-major.
+  let eigen = nalgebra::DMatrix::from_row_slice(m, m, q).symmetric_eigen();
+  idx_sorted = (0..m) sorted ASCENDING by eigen.eigenvalues[i]      // null space first
+  max_ev = max over i of eigen.eigenvalues[i].abs()
+  tol = 1e-8 * max_ev.max(1.0)                                      // guards all-zero Q
+  null_idx  = { i in idx_sorted : eigen.eigenvalues[i].abs() <  tol }   // count s (fixed/unpenalized)
+  range_idx = { i in idx_sorted : eigen.eigenvalues[i].abs() >= tol }   // count r (random effect)
+
+  // --- STEP 2: edge — zero-Q Decree (range space empty) ---
+  if r == 0 { return 1e-4 }   // documented fallback λ: no random effect to estimate
+
+  // --- STEP 3: project designs into the eigenbasis (n*s and n*r, row-major) ---
+  // z_null[i*s + col]  = sum_j wc[(i,j)] * eigen.eigenvectors[(j, null_idx[col])]
+  // z_range[i*r + col] = sum_j wc[(i,j)] * eigen.eigenvectors[(j, range_idx[col])]
+
+  // --- STEP 4: deterministic init (NO RNG) ---
+  ybar = mean(yc)
+  y_var = sum_i (yc[i]-ybar)^2 / (n-1).max(1)
+  sigma2_e = y_var.max(1e-12)
+  sigma2_u = (sigma2_e * 0.1).max(1e-12)
+  alpha = [0.0; s]
+  if s > 0 { alpha = cholesky_solve(Z_null'Z_null (+1e-10 ridge on diag), Z_null'yc, s) }  // OLS init
+
+  // --- STEP 5: EM loop, fixed cap 100 iterations ---
+  ztZ_range = Z_range' Z_range        // r*r symmetric, built once (double loop, reuse across iters)
+  for _ in 0..100 {
+      su_old = sigma2_u; se_old = sigma2_e
+      r_alpha = if s > 0 { yc - Z_null*alpha } else { yc.clone() }   // length n
+
+      // E-step:  Σ_b = (I_r/σ²_u + ZtZ_range/σ²_e)^{-1}   (r*r)
+      big_m = ztZ_range / sigma2_e; for i in 0..r { big_m[i*r+i] += 1.0 / sigma2_u }
+      L = linalg::cholesky_factor(big_m, r)                          // r*r Cholesky
+      // Σ_b = M^{-1}: solve L Lᵀ x = e_col for each col via cholesky_forward_back; assemble r*r sigma_b
+      // trace_sigma_b = Σ_col sigma_b[col*r+col]   (accumulate diagonal during the r column solves)
+      rhs = Z_range' * r_alpha                                       // length r
+      b_hat = (sigma_b * rhs) / sigma2_e                             // length r  (Σ_b already = M^{-1})
+
+      // M-step:
+      // σ²_u = (b_hat'b_hat + tr(Σ_b)) / r
+      sigma2_u = (dot(b_hat,b_hat) + trace_sigma_b) / r as f64
+      // σ²_e = (‖r_alpha − Z_range·b_hat‖² + tr(Z_range Σ_b Z_range')) / n
+      // where tr(Z_range Σ_b Z_range') = tr(Σ_b · ZtZ_range) = Σ_a Σ_j sigma_b[a*r+j] * ztZ_range[j*r+a]
+      resid = r_alpha - Z_range*b_hat
+      tr_zsz = sum_{a,j} sigma_b[a*r+j] * ztZ_range[j*r+a]
+      sigma2_e = (dot(resid,resid) + tr_zsz) / n as f64
+
+      // GLS null-space update (only when s > 0), with 1e-10 diagonal ridge (guard):
+      if s > 0 {
+          // Σ⁻¹ via Woodbury: Σ⁻¹ = (1/σ²_e)(I_n − Z_range (σ²_e/σ²_u·I_r + ZtZ_range)^{-1} Z_range')
+          // Solve the s*s GLS system  (Z_null'Σ⁻¹Z_null + 1e-10·I_s) alpha = Z_null'Σ⁻¹ yc
+          // reusing linalg::cholesky_factor + cholesky_forward_back for both the r*r inner inverse
+          // and the s*s outer solve. (See RESEARCH "GLS update of α".)
+          alpha = <solved s-vector>
+      }
+
+      // clamps keep λ finite (σ²_u→0 ⇒ large-but-finite λ; σ²_u→∞ ⇒ λ→0):
+      sigma2_u = sigma2_u.max(1e-12)
+      sigma2_e = sigma2_e.max(1e-12)
+      if (sigma2_u - su_old).abs() + (sigma2_e - se_old).abs() < 1e-8 * (su_old + se_old) { break }
+  }
+
+  // --- STEP 6: return λ = σ²_e / σ²_u ---
+  return (sigma2_e / sigma2_u).max(1e-15)
+
+Reuse the crate helpers named above verbatim — `linalg::cholesky_factor` + `linalg::cholesky_forward_back` for every Cholesky inverse/solve (the r*r Σ_b, the s*s GLS, the r*r inner Woodbury inverse), and `nalgebra::DMatrix::symmetric_eigen` per the `fpca_variants.rs:473-488` precedent for the Q eigendecomposition. Do NOT call `famm::fit_scalar_mixed_model` (subject-grouped; incompatible). Guard all RESEARCH edge cases: Ridge s=0 (skip the GLS null-space update, use `r_alpha = yc`), zero-Q r=0 (documented fallback λ at STEP 2), σ²_u→0 (the 1e-12 clamp keeps λ finite-large), non-negative variance components (clamps). NO RNG anywhere — determinism comes from the fixed init plus the fixed 100-iteration cap.
 
 Replace the Task-1 placeholder `Reml` arm in the `peer()` dispatch: `LambdaChoice::Reml => { let lam = select_lambda_reml_peer(&wc, &yc, &q, m, n); (lam, None, LambdaMethod::Reml) }`.
 
