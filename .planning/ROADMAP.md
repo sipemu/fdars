@@ -71,7 +71,9 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
   3. When the user supplies an explicit λ, that value is used verbatim (no search runs) and appears unchanged in the result diagnostics.
   4. On synthetic data with a known signal-to-noise level, both selectors pick a λ in a sensible range (neither degenerate-zero nor over-smoothing to a flat β(t)), recovering the known β(t) within tolerance.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 67-01-lambda-selection-tracer-PLAN.md — tracer: evolve `PeerConfig.lambda` to `LambdaChoice` + wire `Fixed(λ)` end-to-end (Phase 66 tests migrated) → GCV grid-search selector → self-contained REML EM selector → full-suite/clippy/fmt phase gate
 
 ### Phase 68: Longitudinal PEER, Prediction & Integration
 
@@ -92,7 +94,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 66. Core PEER Estimator & Penalty Families | 1/1 | Complete    | 2026-09-04 |
-| 67. Automatic λ Selection — GCV + REML | 0/TBD | Not started | - |
+| 67. Automatic λ Selection — GCV + REML | 0/1 | Not started | - |
 | 68. Longitudinal PEER, Prediction & Integration | 0/TBD | Not started | - |
 
 ## Status
