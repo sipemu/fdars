@@ -582,7 +582,9 @@ pub fn lpeer(
     let fpca = crate::regression::fdata_to_pc_1d(data, ncomp, argvals)?;
     let scores = &fpca.scores; // n×ncomp FdMatrix (raw FPC scores)
 
-    // 4. Mixed-model fit over FPC scores (pass yc, not y — intercept = y_bar)
+    // 4. Mixed-model fit over FPC scores (pass yc, not y — intercept = y_bar).
+    //    This estimates the subject-level random effect: σ²_subject (between-subject)
+    //    and σ²_resid, plus a baseline (unpenalized) fixed-effect γ.
     let result =
         crate::famm::fit_scalar_mixed_model(&yc, &sm_dense, n_subjects, Some(scores), ncomp);
 
@@ -594,11 +596,80 @@ pub fn lpeer(
         });
     }
 
-    // 5. Back-project γ → β(t): beta[j] = Σ_k gamma[k] * rotation[(j, k)]
+    // 5. Apply the PEER structured penalty λQ in the FPC-score space via a
+    //    penalized-GLS re-solve, reusing the mixed model's variance components.
+    //    The random-intercept marginal covariance is Σ = σ²_e·I + σ²_u·ZZ'; for a
+    //    subject g of size n_g, (Σ⁻¹v)_i = (v_i − s_g·σ²_u/(σ²_e+n_g·σ²_u))/σ²_e
+    //    with s_g the subject sum of v. In score space the β-penalty λ·β'Qβ becomes
+    //    λ·γ'(Φ'QΦ)γ, so γ solves (SᵀΣ⁻¹S + λ·Φ'QΦ)γ = SᵀΣ⁻¹y_c. λ (Fixed/GCV/REML)
+    //    now genuinely regularizes β(t); it is not a mere label.
+    let su = result.sigma2_u;
+    let se = result.sigma2_eps;
+    // Per-subject observation counts (for the random-intercept shrinkage).
+    let mut gcnt = vec![0usize; n_subjects];
+    for &g in &sm_dense {
+        gcnt[g] += 1;
+    }
+    // Σ⁻¹ applied to a length-n vector.
+    let sigma_inv = |v: &[f64]| -> Vec<f64> {
+        let mut gsum = vec![0.0_f64; n_subjects];
+        for i in 0..n {
+            gsum[sm_dense[i]] += v[i];
+        }
+        (0..n)
+            .map(|i| {
+                let g = sm_dense[i];
+                let shrink = su / (se + gcnt[g] as f64 * su);
+                (v[i] - shrink * gsum[g]) / se
+            })
+            .collect::<Vec<f64>>()
+    };
+    // Σ⁻¹ S  (n×ncomp)
+    let mut sinv_s = vec![0.0_f64; n * ncomp];
+    for k in 0..ncomp {
+        let col: Vec<f64> = (0..n).map(|i| scores[(i, k)]).collect();
+        let sc = sigma_inv(&col);
+        for i in 0..n {
+            sinv_s[i * ncomp + k] = sc[i];
+        }
+    }
+    // A = Sᵀ Σ⁻¹ S  (ncomp×ncomp) and b = Sᵀ Σ⁻¹ y_c  (ncomp)
+    let sinv_yc = sigma_inv(&yc);
+    let mut a_mat = vec![0.0_f64; ncomp * ncomp];
+    let mut b_vec = vec![0.0_f64; ncomp];
+    for k in 0..ncomp {
+        for l in 0..ncomp {
+            a_mat[k * ncomp + l] = (0..n).map(|i| scores[(i, k)] * sinv_s[i * ncomp + l]).sum();
+        }
+        b_vec[k] = (0..n).map(|i| scores[(i, k)] * sinv_yc[i]).sum();
+    }
+    // P = Φ'QΦ  (ncomp×ncomp): penalty λ·β'Qβ expressed on the FPC coefficients.
+    // QΦ  (m×ncomp)
+    let mut q_phi = vec![0.0_f64; m * ncomp];
+    for i in 0..m {
+        for l in 0..ncomp {
+            q_phi[i * ncomp + l] = (0..m)
+                .map(|jj| q[i * m + jj] * fpca.rotation[(jj, l)])
+                .sum();
+        }
+    }
+    // A_pen = A + λ·Φ'QΦ
+    for k in 0..ncomp {
+        for l in 0..ncomp {
+            let p_kl: f64 = (0..m)
+                .map(|i| fpca.rotation[(i, k)] * q_phi[i * ncomp + l])
+                .sum();
+            a_mat[k * ncomp + l] += lambda * p_kl;
+        }
+    }
+    // Penalized-GLS coefficients; fall back to the unpenalized mixed-model γ on failure.
+    let gamma = cholesky_solve(&a_mat, &b_vec, ncomp).unwrap_or_else(|_| result.gamma.clone());
+
+    // 6. Back-project γ → β(t): beta[j] = Σ_k gamma[k] * rotation[(j, k)]
     let beta: Vec<f64> = (0..m)
         .map(|j| {
-            (0..ncomp.min(result.gamma.len()))
-                .map(|k| result.gamma[k] * fpca.rotation[(j, k)])
+            (0..ncomp.min(gamma.len()))
+                .map(|k| gamma[k] * fpca.rotation[(j, k)])
                 .sum()
         })
         .collect();
@@ -610,7 +681,7 @@ pub fn lpeer(
         });
     }
 
-    // 6. Fitted values (same formula as peer())
+    // 7. Fitted values (same formula as peer())
     let base = y_bar - w_bar.iter().zip(&beta).map(|(wb, b)| wb * b).sum::<f64>();
     let fitted_values: Vec<f64> = (0..n)
         .map(|i| base + (0..m).map(|j| data[(i, j)] * w[j] * beta[j]).sum::<f64>())
@@ -1116,6 +1187,17 @@ fn peer_predict_core(
             actual: format!("{}", argvals.len()),
         });
     }
+    // Simpson's weights assume a strictly increasing grid; a non-monotone grid
+    // yields negative weights that would silently corrupt the prediction.
+    if argvals.windows(2).any(|w| w[1] <= w[0]) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals must be strictly increasing".to_string(),
+        });
+    }
+    // w_bar always has length m for a well-formed fit result; assert in debug to
+    // catch a corrupted result before it silently truncates the base offset.
+    debug_assert_eq!(w_bar.len(), m, "w_bar length must equal beta length");
     let w = simpsons_weights(argvals);
     let base: f64 = intercept - w_bar.iter().zip(beta).map(|(wb, b)| wb * b).sum::<f64>();
     let preds: Vec<f64> = (0..n_new)
@@ -1923,6 +2005,34 @@ mod tests {
             max_err < 0.5,
             "lpeer β(t) recovery error vs sin(πt): {max_err} >= 0.5"
         );
+    }
+
+    #[test]
+    fn test_lpeer_lambda_regularizes() {
+        // λ must genuinely regularize β(t): a heavy structured penalty produces a
+        // materially different (smoother) coefficient function than a near-zero one.
+        let (data, y, t, subject_map, _) = make_lpeer_fixture();
+        let cfg_light = PeerConfig {
+            penalty: PeerPenalty::Difference { order: 2 },
+            lambda: LambdaChoice::Fixed(0.0),
+        };
+        let cfg_heavy = PeerConfig {
+            penalty: PeerPenalty::Difference { order: 2 },
+            lambda: LambdaChoice::Fixed(1e6),
+        };
+        let light = lpeer(&data, &y, &t, &subject_map, &cfg_light).expect("light λ fit");
+        let heavy = lpeer(&data, &y, &t, &subject_map, &cfg_heavy).expect("heavy λ fit");
+        let max_diff = light
+            .beta
+            .iter()
+            .zip(heavy.beta.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_diff > 1e-3,
+            "λ does not regularize β(t): max|β(λ=0) − β(λ=1e6)| = {max_diff} <= 1e-3"
+        );
+        assert!(heavy.beta.iter().all(|v| v.is_finite()));
     }
 
     #[test]
