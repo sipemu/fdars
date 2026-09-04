@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.36.0
-milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68)"
-status: Awaiting next milestone
-stopped_at: Phase 68 complete — all phases complete
-last_updated: "2026-09-04T11:11:27.302Z"
+milestone: v0.37.0
+milestone_name: "WAV: Wavelet-Domain Functional Regression (Phases 69+)"
+status: planning
+last_updated: "2026-09-04T13:08:35.659Z"
 last_activity: 2026-09-04
-last_activity_desc: Milestone v0.36.0 completed and archived
-state_head: 604a1ba546d8dfb7033303d6223a56d7dda9f5f1
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
-current_phase: 68
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 
 ## Current Position
 
-Phase: Milestone v0.36.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-04 — Milestone v0.36.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-04 — Milestone v0.37.0 started
 
 ## Milestone Roadmap (v0.36.0)
 
