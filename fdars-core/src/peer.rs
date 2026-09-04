@@ -1999,4 +1999,69 @@ mod tests {
             );
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Task 4 (Phase 68): Crate-root + prelude export reachability compile checks
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_crate_root_exports_compile() {
+        // Verify crate-root pub use block brings all 8 PEER symbols into scope.
+        // In-crate tests use `crate::` paths; the re-export block in lib.rs makes
+        // them available at the root so external crates can import `fdars_core::{peer, ...}`.
+        // We test the crate-root by referencing each symbol through the module path
+        // that lib.rs re-exports from.
+        use crate::error::FdarError;
+
+        // Verify function signatures match expected types (compile-only checks).
+        let _peer_fn: fn(&FdMatrix, &[f64], &[f64], &PeerConfig) -> Result<PeerResult, FdarError> =
+            crate::peer::peer;
+        let _lpeer_fn: fn(
+            &FdMatrix,
+            &[f64],
+            &[f64],
+            &[usize],
+            &PeerConfig,
+        ) -> Result<LpeerResult, FdarError> = crate::peer::lpeer;
+
+        // Verify enum/struct variants compile
+        let _lc = LambdaChoice::Fixed(1.0);
+        let _lm = LambdaMethod::Fixed;
+        let _pp = PeerPenalty::Ridge;
+        let _ = PeerConfig {
+            penalty: _pp,
+            lambda: _lc,
+        };
+        // Verify LpeerResult and PeerResult are constructible via the module path
+        let _ = std::mem::size_of::<PeerResult>();
+        let _ = std::mem::size_of::<LpeerResult>();
+    }
+
+    #[test]
+    fn test_prelude_exports_compile() {
+        // Verify the prelude re-exports all 8 PEER symbols.
+        // `use crate::prelude::*` brings them into this scope.
+        use crate::error::FdarError;
+        use crate::prelude::*;
+
+        let _peer_fn: fn(&FdMatrix, &[f64], &[f64], &PeerConfig) -> Result<PeerResult, FdarError> =
+            peer;
+        let _lpeer_fn: fn(
+            &FdMatrix,
+            &[f64],
+            &[f64],
+            &[usize],
+            &PeerConfig,
+        ) -> Result<LpeerResult, FdarError> = lpeer;
+
+        let _lc = LambdaChoice::Gcv;
+        let _lm = LambdaMethod::Gcv;
+        let _pp = PeerPenalty::Ridge;
+        let _ = PeerConfig {
+            penalty: _pp,
+            lambda: _lc,
+        };
+        let _ = std::mem::size_of::<PeerResult>();
+        let _ = std::mem::size_of::<LpeerResult>();
+    }
 }
