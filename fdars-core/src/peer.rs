@@ -13,15 +13,39 @@
 //!
 //! # Quick start
 //!
-//! ```no_run
+//! ```
 //! use fdars_core::matrix::FdMatrix;
 //! use fdars_core::peer::{peer, PeerConfig, PeerPenalty, LambdaChoice};
+//! use fdars_core::helpers::simpsons_weights;
 //!
-//! let data = FdMatrix::zeros(50, 40);
-//! let y = vec![0.0_f64; 50];
-//! let argvals: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
-//! let config = PeerConfig { penalty: PeerPenalty::Difference { order: 2 }, lambda: LambdaChoice::Fixed(1.0) };
-//! let _result = peer(&data, &y, &argvals, &config);
+//! // Tiny synthetic dataset: n=10 observations, m=5 evaluation points.
+//! let (n, m) = (10_usize, 5_usize);
+//! let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+//! let mut data = FdMatrix::zeros(n, m);
+//! let mut y = vec![0.0_f64; n];
+//! let true_beta: Vec<f64> = argvals.iter()
+//!     .map(|&t| (std::f64::consts::PI * t).sin()).collect();
+//! let w = simpsons_weights(&argvals);
+//! for i in 0..n {
+//!     for j in 0..m {
+//!         let xi = ((i * m + j) as f64 * 0.3).sin();
+//!         data[(i, j)] = xi;
+//!         y[i] += xi * true_beta[j] * w[j];
+//!     }
+//! }
+//! // Fit PEER with Ridge penalty and a fixed λ.
+//! let config = PeerConfig {
+//!     penalty: PeerPenalty::Ridge,
+//!     lambda: LambdaChoice::Fixed(1e-3),
+//! };
+//! let fit = peer(&data, &y, &argvals, &config).unwrap();
+//! assert_eq!(fit.beta.len(), m);
+//! assert!(fit.fitted_values.iter().all(|v| v.is_finite()));
+//! // Predict on training data — must reproduce fitted_values (self-consistency).
+//! let preds = fit.predict(&data, &argvals).unwrap();
+//! for (p, f) in preds.iter().zip(&fit.fitted_values) {
+//!     assert!((p - f).abs() < 1e-9);
+//! }
 //! ```
 
 use crate::error::FdarError;

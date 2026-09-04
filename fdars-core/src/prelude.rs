@@ -103,3 +103,8 @@ pub use crate::irreg_fdata::IrregFdata;
 
 // Co-clustering (funLBM latent block model)
 pub use crate::coclustering::{CoClusterConfig, CoClusterResult, CoClusterSelectResult};
+
+// PEER regression (v0.36.0)
+pub use crate::peer::{
+    lpeer, peer, LambdaChoice, LambdaMethod, LpeerResult, PeerConfig, PeerPenalty, PeerResult,
+};

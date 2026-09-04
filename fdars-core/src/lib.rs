@@ -595,6 +595,11 @@ pub use optimal_design::{
     design_criterion, optimal_design, DesignCriterion, OptDesConfig, OptDesResult, OptimalityKind,
 };
 
+// Re-export PEER regression types (v0.36.0)
+pub use peer::{
+    lpeer, peer, LambdaChoice, LambdaMethod, LpeerResult, PeerConfig, PeerPenalty, PeerResult,
+};
+
 // Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{
     align_cluster_fd, dbscan_fd, funfem_cluster, kcfc_cluster, AlignClusterConfig,
