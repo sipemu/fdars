@@ -46,17 +46,17 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PER-01 | TBD | Pending |
-| PER-02 | TBD | Pending |
-| PER-03 | TBD | Pending |
-| PER-04 | TBD | Pending |
-| PER-05 | TBD | Pending |
+| PER-01 | Phase 66 | Pending |
+| PER-02 | Phase 66 | Pending |
+| PER-03 | Phase 67 | Pending |
+| PER-04 | Phase 68 | Pending |
+| PER-05 | Phase 68 | Pending |
 
 **Coverage:**
 - v0.36.0 requirements: 5 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 5 ⚠️ (resolved at roadmap creation)
+- Mapped to phases: 5 ✓ (Phase 66: PER-01/02 · Phase 67: PER-03 · Phase 68: PER-04/05)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-03*
-*Last updated: 2026-09-03 after initial definition (v0.36.0 PEER milestone)*
+*Last updated: 2026-09-03 after roadmap creation (v0.36.0 PEER milestone — Phases 66–68)*

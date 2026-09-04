@@ -24,96 +24,68 @@
 - ✅ **v0.33.0 — Shapelet Transform & Classification** — Phases 57–60 (shipped 2026-09-02) — [archive](milestones/v0.33.0-ROADMAP.md)
 - ✅ **v0.34.0 — k-Shape Clustering & Shape-Based Distance** — Phases 61–63 (shipped 2026-09-02) — [archive](milestones/v0.34.0-ROADMAP.md)
 - ✅ **v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)** — Phases 64–65 (shipped 2026-09-03) — [archive](milestones/v0.35.0-ROADMAP.md)
+- 🚧 **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (in progress)
 
 ## Phases
 
 **Phase Numbering:**
 
 - Integer phases (1, 2, 3, …): Planned milestone work — numbering continues across milestones (never resets)
-- Decimal phases (64.1, 64.2): Urgent insertions (marked with INSERTED)
+- Decimal phases (66.1, 66.2): Urgent insertions (marked with INSERTED)
 
-<details>
-<summary>✅ v0.30.0 — Performance & Consolidation Pass (Phases 46–51) — SHIPPED 2026-09-01</summary>
+### v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68)
 
-First internally-driven milestone (both parity backlogs exhausted): measure-first, behavior-preserving depth work. Phase 46 profiling produced three ranked inventories driving 47–51.
+Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-priori-penalty scalar-on-function regression — and its longitudinal variant `lpeer`, letting users inject prior signal structure into the coefficient-function penalty. Promotes **GAP-06** (score 2.12, M-effort) from the v0.31.0 `GAP-BACKLOG.md`. Reference baseline refund@0.1-38 (`peer`, `lpeer`). Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking (protects R + WASM bindings + 28 examples), no new crate dependency; likely a new top-level `peer.rs` (or `peer/` submodule). Strict dependency chain: core estimator + penalties → λ-selection → longitudinal extension + prediction/exports. Crate bumps 0.35.0 → **0.36.0**, published on the `v0.36.0` tag.
 
-- [x] Phase 46: Whole-Crate Profiling & Measurement (PROF-01/02/03, 5 plans) — ranked hot-path/dedup/API inventories
-- [x] Phase 47: Hot-Path & Allocation Performance (PERF-01/02, 4 plans) — face_covariance −80.7% wall, dpca −54% alloc blocks; bit-identical
-- [x] Phase 48: Parallelism-Gap Closure (PERF-03, 3 plans) — frechet_anova 9.9×, co_cluster 6.4× thread-scaling; payback guards
-- [x] Phase 49: Code Consolidation / Dedup (CONS-01/02, 5 plans) — χ²/gamma → distributions.rs, seed_for_thread, permutation_pvalue, SVD sign-core; −358 LOC; bit-identical
-- [x] Phase 50: Additive API-Surface Consolidation (API-01/02/03, 3 plans) — 3 Default impls, fanova_seeded, Dim + 5 dispatchers, 6 #[deprecated]; 28 examples + wasm compile
-- [x] Phase 51: Benchmark Coverage & Regression Guards (BENCH-01/02, 4 plans) — 9 new module benches + BENCH-RESULTS.md ledger
+- [ ] **Phase 66: Core PEER Estimator & Penalty Families (PER-01, PER-02)** — the public `peer()` estimator with the partially-empirical-eigenvector decomposition and the three a-priori penalty families (ridge/identity, 2nd-difference/roughness, caller-supplied structured Q)
+- [ ] **Phase 67: Automatic λ Selection — GCV + REML (PER-03)** — smoothing-parameter λ chosen automatically by GCV grid search or REML/mixed-model estimation, selectable via config; explicit λ honored when supplied
+- [ ] **Phase 68: Longitudinal PEER, Prediction & Integration (PER-04, PER-05)** — the `lpeer()` longitudinal extension with subject-level random effects via `famm`, out-of-sample `predict`, crate-root + prelude re-exports, and an end-to-end module doctest
 
-Milestone audit: **tech_debt** (13/13 requirements satisfied, 6/6 phases verified passed). Full detail: [milestones/v0.30.0-ROADMAP.md](milestones/v0.30.0-ROADMAP.md)
+## Phase Details
 
-</details>
+### Phase 66: Core PEER Estimator & Penalty Families
+**Goal**: A user can fit structured-penalty scalar-on-function regression via a public `peer()` estimator that estimates the coefficient function β(t) through the partially-empirical-eigenvector decomposition (null-space + range-space of the penalty operator), choosing among three a-priori penalty families — the estimator that distinguishes PEER from plain FPCR/`pfr`.
+**Depends on**: Nothing (first phase of milestone; builds on shipped `scalar_on_function/`, `function_on_scalar.rs`, `smooth_basis.rs`)
+**Requirements**: PER-01, PER-02
+**Success Criteria** (what must be TRUE):
+  1. `peer()` recovers a known β(t) within tolerance on synthetic data where the response was generated from a specified coefficient function, and returns a result struct carrying β(t), intercept, fitted values, and df/selection diagnostics.
+  2. A user can select the penalty family via a penalty-type parameter/enum, and the ridge/identity, 2nd-difference/roughness (reusing the existing `penalty_matrix` builder), and caller-supplied structured "decree" Q families each produce a well-formed fit without error.
+  3. The structured/"decree" Q penalty produces a β(t) whose shape reflects the caller-supplied partitioned-domain structure (e.g. a partition boundary in Q yields a partition-aware β(t)), demonstrably different from the plain-roughness fit on the same data.
+  4. A caller-supplied Q of the wrong dimension (or otherwise invalid penalty input) returns a descriptive `FdarError` rather than panicking, and fitting is stable (no NaN β(t)) across the three penalty families.
+**Plans**: TBD
 
-<details>
-<summary>✅ v0.31.0 — Multi-Ecosystem Gap Audit (Phases 52–53) — SHIPPED 2026-09-02</summary>
+### Phase 67: Automatic λ Selection — GCV + REML
+**Goal**: A user can have the PEER smoothing parameter λ chosen automatically — by GCV grid search (reusing the `penalized_solve` + GCV pattern) or by REML/mixed-model estimation (reusing `famm`) — selectable via config, matching refund's default, with an explicit λ honored when supplied.
+**Depends on**: Phase 66 (λ selection wraps the core `peer()` penalized fit)
+**Requirements**: PER-03
+**Success Criteria** (what must be TRUE):
+  1. With GCV selected, `peer()` runs an automatic λ search over a grid and returns the selected λ (recorded in the result struct) that minimizes the GCV score; two runs on the same data pick the same λ (deterministic).
+  2. With REML selected, `peer()` fits λ via mixed-model estimation and returns a sensible positive λ on the same synthetic data, and the REML-selected and GCV-selected fits agree on β(t) within a documented tolerance.
+  3. When the user supplies an explicit λ, that value is used verbatim (no search runs) and appears unchanged in the result diagnostics.
+  4. On synthetic data with a known signal-to-noise level, both selectors pick a λ in a sensible range (neither degenerate-zero nor over-smoothing to a flat β(t)), recovering the known β(t) within tolerance.
+**Plans**: TBD
 
-Next-yardstick audit (both prior parity backlogs exhausted): map fdars against four fresh ecosystems and produce a single ranked, de-duplicated, GSD-ready backlog. **Audit-only** — zero `fdars-core/src/` edits, no crate change, no git tag.
+### Phase 68: Longitudinal PEER, Prediction & Integration
+**Goal**: A user can fit longitudinal PEER via a public `lpeer()` estimator that extends PEER to repeated per-subject measurements with subject-level random effects (fitted through `famm::fit_scalar_mixed_model`, REML EM), predict out-of-sample from a fitted PEER/lpeer result, and reach the whole surface from the crate root + prelude — demonstrated by an end-to-end module doctest.
+**Depends on**: Phase 67 (lpeer reuses PEER's penalty machinery and the REML λ-selection path; prediction consumes the fitted result)
+**Requirements**: PER-04, PER-05
+**Success Criteria** (what must be TRUE):
+  1. `lpeer()` fits repeated per-subject measurements with subject-level random effects and returns a result struct carrying the (time-varying) coefficient function and variance components; the estimated variance components are non-negative.
+  2. On synthetic longitudinal data with a known subject-random-effect structure, `lpeer()` recovers the coefficient function within tolerance and the fitted variance components track the injected between-subject variance.
+  3. Calling `predict` on new curves from a fitted `peer`/`lpeer` result yields fitted values that match the training-time fitted values when the training curves are re-passed (self-consistency), and produces finite predictions on genuinely new curves.
+  4. The full PEER/lpeer public surface (estimators, result structs, penalty enum, predict) is reachable from the crate root and the prelude, and a module doctest demonstrates the end-to-end fit → coefficient function → predict workflow and passes under `cargo test --doc`.
+**Plans**: TBD
 
-- [x] Phase 52: Ecosystem Surveys (MAT-01/JUL-01/TDY-01/PYX-01, 4 plans) — capability-first surveys of MATLAB FDA, Julia FDA, tidyfun/refund, Python-beyond-scikit-fda → four `survey-*.md` with net-new gap lists (completed 2026-09-02)
-- [x] Phase 53: Consolidation & Backlog (RPT-01/02/03, 3 plans) — `GAP-AUDIT-REPORT.md` + ranked `GAP-BACKLOG.md` (7 net-new, value/√effort) + RPT-03 completeness gate PASS (completed 2026-09-02)
+## Progress
 
-Milestone audit PASSED 7/7 requirements. Outcome: 7 ranked net-new gaps (top: GAK, shapelets) + 3 recorded out-of-scope; headline = fdars is exceptionally comprehensive, cross-ecosystem convergence LOW. Deliverables in `.planning/research/GAP-AUDIT-REPORT.md` + `GAP-BACKLOG.md`. Full detail: [milestones/v0.31.0-ROADMAP.md](milestones/v0.31.0-ROADMAP.md)
-
-</details>
-
-<details>
-<summary>✅ v0.32.0 — Global Alignment Kernel & Kernel Clustering (Phases 54–56) — SHIPPED 2026-09-02</summary>
-
-First implementation milestone after three audit/consolidation cycles: a PSD Global Alignment Kernel for curve sets + the kernel machinery it unlocks. Promoted GAP-01 (top-ranked, score 3.00). Strictly sequential dependency spine; all algorithmic risk front-loaded into Phase 54. Real `fdars-core/src/` changes, additive/non-breaking, no new dependency; crate bumped 0.30.0 → 0.32.0, published on the `v0.32.0` tag.
-
-- [x] Phase 54: GAK Kernel Core (GAK-01/02/03/04) — new `metric/gak.rs`; log-domain PSD Triangular GAK + `gak_gram_matrix` + `sigma_gak` (completed 2026-09-02)
-- [x] Phase 55: Gram-Matrix Export (GAK-05/06) — split `gak_gram_train`/`gak_gram_predict` for external precomputed-kernel SVM (completed 2026-09-02)
-- [x] Phase 56: Kernel-k-means Clustering (GAK-07/08) — new `kernel_kmeans.rs`; kernel-k-means on curves + out-of-sample `predict` (completed 2026-09-02)
-
-Milestone audit PASSED 8/8 requirements. Full detail: [milestones/v0.32.0-ROADMAP.md](milestones/v0.32.0-ROADMAP.md)
-
-</details>
-
-<details>
-<summary>✅ v0.33.0 — Shapelet Transform & Classification (Phases 57–60) — SHIPPED 2026-09-02</summary>
-
-Interpretable, discovery-based shapelet classification for curves. Promoted GAP-02 (score 2.89, the only backlog gap corroborated across sktime + pyts + tslearn). New `src/shapelet/` submodule along a strict compile-time dependency chain (distance core → discovery → transform → classifier). Real `fdars-core/src/` changes, additive/non-breaking, no new crate dependency; crate bumped 0.32.0 → 0.33.0, published on the `v0.33.0` tag.
-
-- [x] Phase 57: Shapelet Distance Core (SHP-01/02) — new `src/shapelet/distance.rs`; per-window z-normalization + min sliding-window `sdist` with early-abandon + the `Shapelet` type (completed 2026-09-02)
-- [x] Phase 58: Discovery & Ranking (SHP-03/04/05) — candidate generation (exhaustive + contracted/seeded), info-gain / F-statistic quality, top-K + self-similarity pruning → `ShapeletSet` (completed 2026-09-02)
-- [x] Phase 59: Shapelet Transform (SHP-06) — fitted `ShapeletSet` → n×K distance-feature matrix (train + out-of-sample), transform consistency (completed 2026-09-02)
-- [x] Phase 60: Bundled ShapeletTransformClassifier (SHP-07) — end-to-end `fit` (discover → transform → classify; kNN default, LDA optional) + `predict`; crate-root re-exports (completed 2026-09-02)
-
-Milestone audit PASSED 7/7 requirements. Full detail: [milestones/v0.33.0-ROADMAP.md](milestones/v0.33.0-ROADMAP.md)
-
-</details>
-
-<details>
-<summary>✅ v0.34.0 — k-Shape Clustering & Shape-Based Distance (Phases 61–63) — SHIPPED 2026-09-02</summary>
-
-Shape-based curve clustering — the SBD (Shape-Based Distance) primitive and the k-Shape algorithm built on it — plus out-of-sample assignment and SBD as a distance backend for existing k-medoids. Promoted GAP-03 (score 2.12, M-effort). Strict SBD → k-Shape → k-medoids dependency chain (non-reorderable). Real `fdars-core/src/` changes, additive/non-breaking, no new crate dependency; crate bumped 0.33.0 → 0.34.0, published on the `v0.34.0` tag.
-
-- [x] Phase 61: SBD Distance Core (KSH-01/02) — new `src/metric/sbd.rs`; FFT normalized-cross-correlation `sbd(x,y) -> (distance, shift)` + public n×n `sbd_distance_matrix` (completed 2026-09-02)
-- [x] Phase 62: k-Shape Clustering & Predict (KSH-03/04) — new top-level `src/kshape.rs`; `kshape_fd` (SBD assignment + shape-extraction centroids, n_init restarts, empty-cluster recovery, deterministic seeding) + `KShapeResult::predict` (completed 2026-09-02)
-- [x] Phase 63: SBD-based k-medoids & Wrap-up (KSH-05) — `sbd_kmedoids` convenience over the existing `kmedoids_from_distances`; crate-root re-exports + `prelude` + criterion benchmark (completed 2026-09-02)
-
-Milestone audit PASSED 5/5 requirements. Full detail: [milestones/v0.34.0-ROADMAP.md](milestones/v0.34.0-ROADMAP.md)
-
-</details>
-
-<details>
-<summary>✅ v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes) (Phases 64–65) — SHIPPED 2026-09-03</summary>
-
-Optimal sparse-measurement design over an already-fitted PACE model — choose the measurement locations that minimize PACE trajectory-reconstruction error or the posterior variance of predicted FPC scores. Promoted GAP-05 (score 2.12, M-effort), the first milestone drawing from the *design* front of the backlog. One new file `src/optimal_design.rs` (peer of `kshape.rs`/`kernel_kmeans.rs`), additive/non-breaking, no new crate dependency (MSRV 1.81, `linalg` not required); crate bumped 0.34.0 → 0.35.0, published on the `v0.35.0` tag.
-
-- [x] Phase 64: Criterion Machinery Core (FOD-01/02/03) — new `src/optimal_design.rs`; shared `build_sigma_design` + trajectory-reconstruction BLUP-MSE (Simpson-weighted) + A-/D-optimality posterior score-covariance + public `#[must_use] design_criterion` with `DesignCriterion`/`OptimalityKind` enums; 16 known-answer tests (completed 2026-09-03)
-- [x] Phase 65: Greedy Selection & Integration (FOD-04/05) — deterministic greedy forward-selection `optimal_design` (parallel-evaluate + sequential smallest-index tie-break) + `OptDesConfig`/`OptDesResult` + full crate-root/prelude re-exports + module doctest + criterion benchmark; 32 module tests (completed 2026-09-03)
-
-Milestone audit PASSED 5/5 requirements (2/2 phases verified passed; integration + E2E doctest verified). Tech debt noted: pre-existing `--features serde` build break in `shapelet/classifier.rs` (Phase 60), unrelated to FOptDes. Full detail: [milestones/v0.35.0-ROADMAP.md](milestones/v0.35.0-ROADMAP.md)
-
-</details>
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 66. Core PEER Estimator & Penalty Families | 0/TBD | Not started | - |
+| 67. Automatic λ Selection — GCV + REML | 0/TBD | Not started | - |
+| 68. Longitudinal PEER, Prediction & Integration | 0/TBD | Not started | - |
 
 ## Status
 
-All milestones through **v0.35.0 are shipped and archived** under `milestones/`. v0.35.0 promoted GAP-05 (Optimal Experimental Design for Sparse FDA / FOptDes) — the FOptDes public surface (`design_criterion`, `optimal_design`, `OptDesConfig`, `OptDesResult`, `DesignCriterion`, `OptimalityKind`) is live in `fdars-core::optimal_design` and the prelude. The remaining backlog items (GAP-06/07/08 — PEER/lpeer, wavelet regression, differentiable core) carry forward, drawn top-first.
+Milestones through **v0.35.0 are shipped and archived** under `milestones/`. **v0.36.0 (Phases 66–68)** is the active milestone — promoting GAP-06 (PEER / longitudinal PEER, structured-penalty scalar-on-function regression). 5 requirements (PER-01..PER-05) mapped across 3 phases along a strict dependency chain (core estimator + penalties → λ-selection → longitudinal + prediction/exports). Remaining backlog items (GAP-07 wavelet regression, GAP-08 differentiable core) carry forward, drawn top-first.
 
-Next: `/gsd-new-milestone`
+Next: `/gsd-plan-phase 66`
