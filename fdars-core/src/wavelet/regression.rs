@@ -1201,6 +1201,75 @@ pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResul
     })
 }
 
+impl WnetResult {
+    /// Predict the scalar response for new functional curves (WAV-05).
+    ///
+    /// Re-transforms each new curve into the wavelet-coefficient design using the
+    /// STORED fitted DWT configuration (`family` / `mode` / effective `level`), then
+    /// applies the affine coefficient-space map `ŷ = intercept + Σ_j design[i,j] ·
+    /// coeff_weights[j]`. Re-passing the training curves reproduces the stored
+    /// [`fitted_values`](WnetResult::fitted_values) exactly (up to float rounding).
+    ///
+    /// # Arguments
+    /// * `new` — functional predictor matrix (rows = curves) on the SAME evaluation
+    ///   grid as the training data (`new.ncols()` must equal the training grid length).
+    ///
+    /// # Errors
+    /// - [`FdarError::InvalidDimension`] if `new.ncols()` differs from the training
+    ///   grid length, or (defensively) if the re-transformed design width disagrees
+    ///   with the stored coefficient-space width.
+    /// - [`FdarError::InvalidParameter`] if the DWT rejects the stored family/level
+    ///   (surfaced from [`decompose_matrix`]).
+    #[must_use = "prediction result should not be discarded"]
+    pub fn predict(&self, new: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+        let train_m = self.beta_t.len();
+        if new.ncols() != train_m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new",
+                expected: format!("{train_m} columns (== training grid length)"),
+                actual: format!("{} columns", new.ncols()),
+            });
+        }
+        // Re-transform with the STORED fitted DWT config so the new-curve design
+        // matches the fit-time design exactly.
+        let (design, _layout) =
+            curves_to_coeff_design(new, self.family.clone(), self.mode, Some(self.level))?;
+        if design.ncols() != self.coeff_weights.len() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new",
+                expected: format!(
+                    "coefficient-space width {} (== stored coeff_weights)",
+                    self.coeff_weights.len()
+                ),
+                actual: format!("{} coefficients", design.ncols()),
+            });
+        }
+        Ok(compute_fitted_affine(
+            &design,
+            &self.coeff_weights,
+            self.intercept,
+        ))
+    }
+
+    /// The time-domain functional coefficient β(t) (length `m` = curve length).
+    #[must_use]
+    pub fn beta_t(&self) -> &[f64] {
+        &self.beta_t
+    }
+
+    /// The functional coefficient β(t) (crate-convention alias of [`beta_t`](WnetResult::beta_t)).
+    #[must_use]
+    pub fn coefficient_function(&self) -> &[f64] {
+        &self.beta_t
+    }
+
+    /// The fitted response values (length `n`).
+    #[must_use]
+    pub fn fitted_values(&self) -> &[f64] {
+        &self.fitted_values
+    }
+}
+
 /// Compute fitted values `ŷ = intercept + X β` (affine coefficient-space dot).
 fn compute_fitted_affine(design: &FdMatrix, coeffs: &[f64], intercept: f64) -> Vec<f64> {
     let (n, p) = design.shape();
@@ -2043,5 +2112,117 @@ mod tests {
         };
         let fit = wnet(&data, &y, &config).unwrap();
         assert!((fit.lambda - 0.123).abs() < 1e-15);
+    }
+
+    // --- wnet::predict + accessors (WAV-05) ---
+
+    #[test]
+    fn wnet_predict_reproduces_training_fitted() {
+        let (n, m) = (200usize, 32usize);
+        let (data, design, _layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 6300);
+        let p = design.ncols();
+        let noise = pseudo_random(n, 6301);
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.4;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc + 0.05 * noise[i]
+            })
+            .collect();
+        let config = WnetConfig {
+            alpha: 0.7,
+            n_lambda: 20,
+            n_folds: 5,
+            ..Default::default()
+        };
+        let fit = wnet(&data, &y, &config).unwrap();
+        let preds = fit.predict(&data).unwrap();
+        assert_eq!(preds.len(), fit.fitted_values.len());
+        for (i, (&pv, &f)) in preds.iter().zip(&fit.fitted_values).enumerate() {
+            assert!(
+                (pv - f).abs() <= 1e-8,
+                "wnet predict[{i}] {pv} != fitted {f} (|Δ| {})",
+                (pv - f).abs()
+            );
+        }
+    }
+
+    #[test]
+    fn wnet_predict_on_new_curves_is_finite_and_rejects_grid_mismatch() {
+        let (n, m) = (150usize, 32usize);
+        let (data, design, _layout, beta_coeff, _support) = sparse_wnet_problem(n, m, 6400);
+        let p = design.ncols();
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let mut acc = 0.2;
+                for j in 0..p {
+                    acc += design[(i, j)] * beta_coeff[j];
+                }
+                acc
+            })
+            .collect();
+        let fit = wnet(
+            &data,
+            &y,
+            &WnetConfig {
+                n_lambda: 12,
+                n_folds: 4,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // Fresh same-m curves → finite predictions.
+        let fresh = spanning_design(30, m, 6401);
+        let preds = fit.predict(&fresh).unwrap();
+        assert_eq!(preds.len(), 30);
+        assert!(preds.iter().all(|x| x.is_finite()));
+
+        // Different ncols → InvalidDimension, never a panic.
+        let wrong = spanning_design(10, m + 16, 6402);
+        assert!(matches!(
+            fit.predict(&wrong),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+    }
+
+    #[test]
+    fn accessors_return_stored_slices() {
+        let (n, m) = (100usize, 32usize);
+        let data = spanning_design(n, m, 6500);
+        let y = pseudo_random(n, 6501);
+
+        let wcr_fit = wcr(
+            &data,
+            &y,
+            &WcrConfig {
+                ncomp: 5,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(wcr_fit.beta_t(), wcr_fit.beta_t.as_slice());
+        assert_eq!(wcr_fit.coefficient_function(), wcr_fit.beta_t.as_slice());
+        assert_eq!(wcr_fit.beta_t().len(), m);
+        assert_eq!(wcr_fit.fitted_values(), wcr_fit.fitted_values.as_slice());
+        assert_eq!(wcr_fit.fitted_values().len(), n);
+
+        let wnet_fit = wnet(
+            &data,
+            &y,
+            &WnetConfig {
+                n_lambda: 10,
+                n_folds: 4,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(wnet_fit.beta_t(), wnet_fit.beta_t.as_slice());
+        assert_eq!(wnet_fit.coefficient_function(), wnet_fit.beta_t.as_slice());
+        assert_eq!(wnet_fit.beta_t().len(), m);
+        assert_eq!(wnet_fit.fitted_values(), wnet_fit.fitted_values.as_slice());
+        assert_eq!(wnet_fit.fitted_values().len(), n);
     }
 }
