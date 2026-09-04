@@ -4,18 +4,18 @@ milestone: v0.36.0
 milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression"
 current_phase: 68
 current_phase_name: Longitudinal PEER, Prediction & Integration
-status: planning
-stopped_at: Phase 67 complete, ready to plan Phase 68
-last_updated: "2026-09-04T07:43:32.182Z"
+status: complete
+stopped_at: Phase 68 Plan 01 complete — v0.36.0 milestone closed
+last_updated: "2026-09-04T08:30:00.000Z"
 last_activity: 2026-09-04
-last_activity_desc: Phase 67 complete, transitioned to Phase 68
-state_head: 38e6df42a16db5502b9c992b4dacc6603a676b59
+last_activity_desc: Phase 68 Plan 01 complete — lpeer, LpeerResult, predict, exports, doctests
+state_head: 23323843
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 67
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 ## Current Position
 
 Phase: 68 — Longitudinal PEER, Prediction & Integration
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-04 — Phase 67 complete, transitioned to Phase 68
+Plan: 01 (complete — all 3 plans done)
+Status: Milestone complete — ready for audit/archive
+Last activity: 2026-09-04 — Phase 68 Plan 01 complete, v0.36.0 milestone closed
 
 ## Milestone Roadmap (v0.36.0)
 
@@ -66,7 +66,7 @@ Three phases, 5 requirements (PER-01..PER-05) — an implementation milestone pr
 | 57–60 | v0.33.0 | 4 |
 | 61–63 | v0.34.0 | 3 |
 | 64–65 | v0.35.0 | 4 |
-| 66–68 | v0.36.0 | 0/TBD |
+| 66–68 | v0.36.0 | 3/3 |
 
 **Recent Trend:**
 
@@ -79,6 +79,7 @@ Three phases, 5 requirements (PER-01..PER-05) — an implementation milestone pr
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 67 P01 | 1060 | 4 tasks | 1 files |
+| Phase 68 P01 | ~2700 | 4 tasks | 3 files |
 
 ## Accumulated Context
 

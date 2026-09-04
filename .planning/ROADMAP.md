@@ -24,7 +24,7 @@
 - ✅ **v0.33.0 — Shapelet Transform & Classification** — Phases 57–60 (shipped 2026-09-02) — [archive](milestones/v0.33.0-ROADMAP.md)
 - ✅ **v0.34.0 — k-Shape Clustering & Shape-Based Distance** — Phases 61–63 (shipped 2026-09-02) — [archive](milestones/v0.34.0-ROADMAP.md)
 - ✅ **v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)** — Phases 64–65 (shipped 2026-09-03) — [archive](milestones/v0.35.0-ROADMAP.md)
-- 🚧 **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (in progress)
+- ✅ **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (milestone complete 2026-09-04)
 
 ## Phases
 
@@ -39,7 +39,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 
 - [x] **Phase 66: Core PEER Estimator & Penalty Families (PER-01, PER-02)** — the public `peer()` estimator with the partially-empirical-eigenvector decomposition and the three a-priori penalty families (ridge/identity, 2nd-difference/roughness, caller-supplied structured Q) (completed 2026-09-04)
 - [x] **Phase 67: Automatic λ Selection — GCV + REML (PER-03)** — smoothing-parameter λ chosen automatically by GCV grid search or REML/mixed-model estimation, selectable via config; explicit λ honored when supplied (completed 2026-09-04)
-- [ ] **Phase 68: Longitudinal PEER, Prediction & Integration (PER-04, PER-05)** — the `lpeer()` longitudinal extension with subject-level random effects via `famm`, out-of-sample `predict`, crate-root + prelude re-exports, and an end-to-end module doctest
+- [x] **Phase 68: Longitudinal PEER, Prediction & Integration (PER-04, PER-05)** — the `lpeer()` longitudinal extension with subject-level random effects via `famm`, out-of-sample `predict`, crate-root + prelude re-exports, and an end-to-end module doctest (completed 2026-09-04)
 
 ## Phase Details
 
