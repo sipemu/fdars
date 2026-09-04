@@ -49,6 +49,12 @@
 //!
 //!     assert_eq!(preds.len(), fitted.len());
 //!     assert_eq!(beta.len(), m);
+//!
+//!     // Self-consistency: predicting on the TRAINING curves reproduces the stored
+//!     // fitted values exactly (the affine intercept folds in the centering offset).
+//!     for (p, f) in preds.iter().zip(fitted) {
+//!         assert!((p - f).abs() < 1e-7, "predict diverges from fitted: {p} vs {f}");
+//!     }
 //!     Ok(())
 //! }
 //! ```
@@ -117,7 +123,15 @@ impl Default for WcrConfig {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct WcrResult {
-    /// Intercept α.
+    /// Affine intercept α such that
+    /// `ŷ_i = intercept + Σ_j design[i,j] · coeff_weights[j]` reproduces the fitted
+    /// values directly (matching the [`predict`](WcrResult::predict) formula and
+    /// `wnet`'s intercept convention).
+    ///
+    /// This is NOT the raw OLS intercept from the score regression: the centering
+    /// offset `Σ_j col_mean_j · coeff_weights[j]` has been folded in. Because of
+    /// this, manual reconstruction from the public fields uses the stored intercept
+    /// as-is (no re-centering needed).
     pub intercept: f64,
     /// Time-domain functional coefficient β(t) (length `m` = curve length).
     pub beta_t: Vec<f64>,
@@ -620,14 +634,21 @@ impl WcrResult {
     ///   grid as the training data (`new.ncols()` must equal the training grid length).
     ///
     /// # Errors
-    /// - [`FdarError::InvalidDimension`] if `new.ncols()` differs from the training
+    /// - [`FdarError::InvalidDimension`] with `parameter: "new"` if `new` has zero
+    ///   rows (no curves to predict), if `new.ncols()` differs from the training
     ///   grid length, or (defensively) if the re-transformed design width disagrees
     ///   with the stored coefficient-space width.
     /// - [`FdarError::InvalidParameter`] if the DWT rejects the stored family/level
     ///   (surfaced from [`decompose_matrix`]).
-    #[must_use = "prediction result should not be discarded"]
     pub fn predict(&self, new: &FdMatrix) -> Result<Vec<f64>, FdarError> {
         let train_m = self.beta_t.len();
+        if new.nrows() == 0 {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new",
+                expected: "at least 1 row (curve)".to_string(),
+                actual: "0 rows".to_string(),
+            });
+        }
         if new.ncols() != train_m {
             return Err(FdarError::InvalidDimension {
                 parameter: "new",
@@ -758,7 +779,10 @@ impl Default for WnetConfig {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct WnetResult {
-    /// Intercept α.
+    /// Affine intercept α such that
+    /// `ŷ_i = intercept + Σ_j design[i,j] · coeff_weights[j]` reproduces the fitted
+    /// values directly (the elastic-net affine intercept, matching the
+    /// [`predict`](WnetResult::predict) formula).
     pub intercept: f64,
     /// Time-domain functional coefficient β(t) (length `m` = curve length).
     pub beta_t: Vec<f64>,
@@ -1246,14 +1270,21 @@ impl WnetResult {
     ///   grid as the training data (`new.ncols()` must equal the training grid length).
     ///
     /// # Errors
-    /// - [`FdarError::InvalidDimension`] if `new.ncols()` differs from the training
+    /// - [`FdarError::InvalidDimension`] with `parameter: "new"` if `new` has zero
+    ///   rows (no curves to predict), if `new.ncols()` differs from the training
     ///   grid length, or (defensively) if the re-transformed design width disagrees
     ///   with the stored coefficient-space width.
     /// - [`FdarError::InvalidParameter`] if the DWT rejects the stored family/level
     ///   (surfaced from [`decompose_matrix`]).
-    #[must_use = "prediction result should not be discarded"]
     pub fn predict(&self, new: &FdMatrix) -> Result<Vec<f64>, FdarError> {
         let train_m = self.beta_t.len();
+        if new.nrows() == 0 {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new",
+                expected: "at least 1 row (curve)".to_string(),
+                actual: "0 rows".to_string(),
+            });
+        }
         if new.ncols() != train_m {
             return Err(FdarError::InvalidDimension {
                 parameter: "new",
@@ -1661,6 +1692,32 @@ mod tests {
             fit.predict(&wrong),
             Err(FdarError::InvalidDimension { .. })
         ));
+    }
+
+    #[test]
+    fn wcr_predict_on_zero_row_input_errors_naming_new_no_panic() {
+        let (n, m) = (100usize, 32usize);
+        let data = spanning_design(n, m, 6400);
+        let y = pseudo_random(n, 6401);
+        let fit = wcr(
+            &data,
+            &y,
+            &WcrConfig {
+                ncomp: 6,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // Zero-row input (correct ncols) → InvalidDimension naming "new", never a panic
+        // and never the internal "data" parameter surfaced from decompose_matrix.
+        let empty = FdMatrix::zeros(0, m);
+        match fit.predict(&empty) {
+            Err(FdarError::InvalidDimension { parameter, .. }) => {
+                assert_eq!(parameter, "new");
+            }
+            other => panic!("expected InvalidDimension naming \"new\", got {other:?}"),
+        }
     }
 
     // ===================================================================
@@ -2217,6 +2274,15 @@ mod tests {
             fit.predict(&wrong),
             Err(FdarError::InvalidDimension { .. })
         ));
+
+        // Zero-row input (correct ncols) → InvalidDimension naming "new", no panic.
+        let empty = FdMatrix::zeros(0, m);
+        match fit.predict(&empty) {
+            Err(FdarError::InvalidDimension { parameter, .. }) => {
+                assert_eq!(parameter, "new");
+            }
+            other => panic!("expected InvalidDimension naming \"new\", got {other:?}"),
+        }
     }
 
     #[test]
