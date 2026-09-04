@@ -87,7 +87,9 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
   3. Calling `predict` on new curves from a fitted `peer`/`lpeer` result yields fitted values that match the training-time fitted values when the training curves are re-passed (self-consistency), and produces finite predictions on genuinely new curves.
   4. The full PEER/lpeer public surface (estimators, result structs, penalty enum, predict) is reachable from the crate root and the prelude, and a module doctest demonstrates the end-to-end fit → coefficient function → predict workflow and passes under `cargo test --doc`.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 68-01-longitudinal-peer-prediction-tracer-PLAN.md — tracer: `PeerResult::predict` + shared `peer_predict_core` (self-consistency) → `lpeer()` + `LpeerResult` via `famm::fit_scalar_mixed_model` (β(t) recovery + variance tracking) → crate-root/prelude re-exports + running module/lpeer doctests → export-reachability compile checks + phase gate
 
 ## Progress
 
@@ -95,7 +97,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 |-------|----------------|--------|-----------|
 | 66. Core PEER Estimator & Penalty Families | 1/1 | Complete    | 2026-09-04 |
 | 67. Automatic λ Selection — GCV + REML | 1/1 | Complete    | 2026-09-04 |
-| 68. Longitudinal PEER, Prediction & Integration | 0/TBD | Not started | - |
+| 68. Longitudinal PEER, Prediction & Integration | 0/1 | Not started | - |
 
 ## Status
 
