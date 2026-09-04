@@ -466,6 +466,40 @@ Optimal sparse-measurement design over an already-fitted PACE model, in one new 
 
 ---
 
+## Milestone: v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression
+
+**Shipped:** 2026-09-04
+**Phases:** 3 (66–68) | **Plans:** 3 | **Requirements:** PER-01..PER-05 (5/5)
+
+### What Was Built
+- **Phase 66** — `peer()` structured-penalty scalar-on-function estimator (new `peer.rs`): penalized normal equations `(W_c'W_c + λQ)β = W_c'y_c`, three penalty families (Ridge / 2nd-difference / caller-supplied Decree Q). PER-01/02.
+- **Phase 67** — automatic λ selection: deterministic GCV grid + a **self-contained REML EM** (`symmetric_eigen` of Q, null/range partition — famm's subject-grouped fit is the wrong tool for a smoothing RE). `LambdaChoice` enum replaces the raw `lambda: f64`. PER-03.
+- **Phase 68** — longitudinal `lpeer()` (subject RE via `famm::fit_scalar_mixed_model`, penalty applied in FPC-score space so λ genuinely regularizes), `predict` for both result types, crate-root + prelude exports, running end-to-end doctest. PER-04/05.
+
+### What Worked
+- **Known-answer β(t) recovery as the tracer gate** caught a real numerical defect immediately: Phase 66's initial recovery test used a single-frequency phase-shifted sinusoid family (rank-2 design) that left β(t) unidentifiable — the estimator was correct, the *fixture* was degenerate. Fixed with a spanning pseudo-random design (n≫m). This pattern (a first-class recovery test that fails loudly on a bad design) paid off again in Phases 67/68.
+- **Per-phase code-review gate** surfaced one genuine critical each in Phases 66 and 68 that all green tests missed: Phase 66 stored no `w_bar` (out-of-sample prediction would have been biased — caught before Phase 68 needed it); Phase 68's `lpeer` ran λ-selection but discarded it (λ a dead label). Both fixed faithfully rather than documented-around.
+- **Orchestrator-finalizes-inline on executor drop**: the Phase 66 executor dropped at wrap-up before committing; verifying on-disk state + finishing inline (rather than re-dispatching) recovered cleanly and diagnosed the fixture bug in the same pass.
+
+### What Was Inefficient
+- Phase 67's plan needed one revision cycle (plan-checker flagged under-specified REML EM pseudocode + a vague dispatch match) — the initial plan was structurally sound but light on the hard numerics; the reviewer caught it before execution, so no rework downstream.
+- The recurring slow pre-commit hook again forced `--no-verify` + manual gate runs throughout (unchanged fdars constraint).
+
+### Patterns Established
+- **PEER penalty in reduced-basis space**: `Φ'QΦ` maps a grid-space structured penalty into FPC-score coefficients — reused for the longitudinal penalized-GLS re-solve. Likely reusable for any future basis-reduced structured-penalty estimator.
+- **Evolve a published-but-unshipped config in place**: `PeerConfig.lambda: f64` → `LambdaChoice` enum with mechanical test migration (crate unpublished until the tag), rather than adding a parallel field.
+
+### Key Lessons
+- A green test suite does not prove the *design* is faithful — the two criticals (missing `w_bar`, dead `lambda`) both passed all tests. The code-review gate is where "misleading but passing" gets caught; keep it non-optional even for well-tested numerical code.
+- For synthetic recovery tests, **design rank is the silent killer** — always use a full-rank (n≫m, spanning) predictor or the penalty, not the data, determines β.
+
+### Cost Observations
+- Model mix: opus (planning), sonnet (research/execute/verify/review), haiku (plan-check).
+- Per phase: research → plan (→1 revision on Ph67) → plan-check → one executor → verifier → code-review (+ inline fixes). Orchestrator finalized Ph66 inline after an executor drop.
+- Notable: three code-review gates, three criticals-or-equivalent fixed inline (w_bar, REML robustness, lpeer-λ) — each would have shipped a subtly-wrong public API otherwise.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
