@@ -94,7 +94,10 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   3. The full public surface (DWT forward/inverse, `wcr`, `wnet`, config/result types, `predict`) is reachable via both the crate root and `prelude`, and a running end-to-end module doctest passes under `cargo test --doc`.
   4. The change is additive/non-breaking — no existing public signature changes; R + WASM bindings and all 28 examples remain unaffected (whole-crate `cargo test` + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` + `cargo fmt --check` green).
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 71-01-PLAN.md — predict + accessors on WcrResult/WnetResult, full crate-root + prelude re-exports, end-to-end module doctest
 
 ## Progress
 
