@@ -22,8 +22,39 @@
 //! - [`curves_to_coeff_design`] — the curves → concatenated-coefficient-design seam.
 //! - [`coeff_weights_to_beta_t`] — the coefficient-weights → β(t) seam.
 //!
-//! No crate-root or prelude re-exports are added here (deferred to Phase 71); the
-//! module is reachable only as `crate::wavelet::regression::...`.
+//! ## End-to-end example (via the prelude, WAV-06)
+//!
+//! ```
+//! use fdars_core::prelude::*;
+//!
+//! fn main() -> Result<(), fdars_core::FdarError> {
+//!     // 6 curves of length 32 (a db4-decomposable grid), built deterministically.
+//!     let (n, m) = (6usize, 32usize);
+//!     let mut flat = vec![0.0_f64; n * m];
+//!     for i in 0..n {
+//!         for j in 0..m {
+//!             // A smooth, per-curve-varying fill (no RNG → deterministic doctest).
+//!             let t = j as f64 / m as f64;
+//!             flat[i + j * n] = ((i as f64 + 1.0) * t).sin() + 0.5 * (i as f64) * t;
+//!         }
+//!     }
+//!     let data = FdMatrix::from_column_major(flat, n, m)?;
+//!     let y: Vec<f64> = (0..n).map(|i| 1.0 + 0.3 * i as f64).collect();
+//!
+//!     // Fit the wavelet-domain PCR regressor, then predict + read the coefficients.
+//!     let fit = wcr(&data, &y, &WcrConfig::default())?;
+//!     let preds = fit.predict(&data)?;
+//!     let beta = fit.beta_t();
+//!     let fitted = fit.fitted_values();
+//!
+//!     assert_eq!(preds.len(), fitted.len());
+//!     assert_eq!(beta.len(), m);
+//!     Ok(())
+//! }
+//! ```
+//!
+//! The full wavelet surface (DWT primitives + `wcr`/`wnet` + config/result types)
+//! is re-exported at the crate root and via [`crate::prelude`] (Phase 71, WAV-06).
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
