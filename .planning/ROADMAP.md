@@ -32,7 +32,7 @@
 **Active milestone: v0.37.0 WAV — Wavelet-Domain Functional Regression (Phases 69–71)**
 
 - [x] **Phase 69: Discrete Wavelet Transform Primitive** — Forward/inverse orthogonal DWT (Haar + Daubechies db2–dbN), multi-level, periodic + symmetric boundaries, arbitrary lengths (completed 2026-09-04)
-- [ ] **Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`)** — PCR/PLS and elastic-net scalar-on-function regression on wavelet coefficients (Gaussian response)
+- [x] **Phase 70: Wavelet-Domain Regressors (`wcr` + `wnet`)** — PCR/PLS and elastic-net scalar-on-function regression on wavelet coefficients (Gaussian response) (completed 2026-09-04)
 - [ ] **Phase 71: Prediction, Diagnostics & Integration** — Out-of-sample `predict` for both fits, accessors, crate-root/prelude re-exports, end-to-end doctest
 
 <details>
@@ -78,8 +78,9 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   4. Both regressors validate inputs (dimension/parameter mismatches → descriptive `FdarError`, never panic) and produce finite, NaN-free β(t) and fitted values.
 
 **Plans**: 2 plans
-- [ ] 70-01-PLAN.md — `wcr` (PCR + PLS) on wavelet coefficients + shared curves→coeff-design & β(t)-reconstruction helpers (WAV-03)
-- [ ] 70-02-PLAN.md — `wnet` per-coefficient elastic-net CD adapter + deterministic CV-λ + sparse-support recovery (WAV-04)
+
+- [x] 70-01-PLAN.md — `wcr` (PCR + PLS) on wavelet coefficients + shared curves→coeff-design & β(t)-reconstruction helpers (WAV-03)
+- [x] 70-02-PLAN.md — `wnet` per-coefficient elastic-net CD adapter + deterministic CV-λ + sparse-support recovery (WAV-04)
 
 ### Phase 71: Prediction, Diagnostics & Integration
 
@@ -100,7 +101,7 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 69. Discrete Wavelet Transform Primitive | 2/2 | Complete    | 2026-09-04 |
-| 70. Wavelet-Domain Regressors (`wcr` + `wnet`) | 0/? | Not started | - |
+| 70. Wavelet-Domain Regressors (`wcr` + `wnet`) | 2/2 | Complete    | 2026-09-04 |
 | 71. Prediction, Diagnostics & Integration | 0/? | Not started | - |
 
 ## Status

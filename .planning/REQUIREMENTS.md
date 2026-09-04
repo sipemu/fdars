@@ -16,8 +16,8 @@ Requirements for v0.37.0. Each maps to exactly one roadmap phase. Strict depende
 
 ### Wavelet-Domain Regression (Gaussian response)
 
-- [ ] **WAV-03**: `wcr` — wavelet-domain PCR/PLS scalar-on-function regression: transform each curve to wavelet coefficients, then fit via PCR (and PLS) in the wavelet-coefficient space; returns a result struct with the coefficient function β(t), intercept, and fitted values. Reuses fdars' existing FPCR/PLS patterns (`scalar_on_function/`).
-- [ ] **WAV-04**: `wnet` — wavelet-domain elastic-net regression: lasso + ridge penalty on the wavelet coefficients via coordinate descent + soft-thresholding (reusing `scalar_on_function/additive.rs` GroupLasso machinery), with sparse coefficient recovery and cross-validated λ selection; returns a result struct with β(t), intercept, fitted values, and selected coefficients.
+- [x] **WAV-03**: `wcr` — wavelet-domain PCR/PLS scalar-on-function regression: transform each curve to wavelet coefficients, then fit via PCR (and PLS) in the wavelet-coefficient space; returns a result struct with the coefficient function β(t), intercept, and fitted values. Reuses fdars' existing FPCR/PLS patterns (`scalar_on_function/`).
+- [x] **WAV-04**: `wnet` — wavelet-domain elastic-net regression: lasso + ridge penalty on the wavelet coefficients via coordinate descent + soft-thresholding (reusing `scalar_on_function/additive.rs` GroupLasso machinery), with sparse coefficient recovery and cross-validated λ selection; returns a result struct with β(t), intercept, fitted values, and selected coefficients.
 
 ### Prediction & Integration
 
@@ -55,8 +55,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | WAV-01 | Phase 69 | Complete |
 | WAV-02 | Phase 69 | Complete |
-| WAV-03 | Phase 70 | Pending |
-| WAV-04 | Phase 70 | Pending |
+| WAV-03 | Phase 70 | Complete |
+| WAV-04 | Phase 70 | Complete |
 | WAV-05 | Phase 71 | Pending |
 | WAV-06 | Phase 71 | Pending |
 

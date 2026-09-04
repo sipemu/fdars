@@ -278,8 +278,8 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 <!-- v0.37.0 in progress — WAV: Wavelet-Domain Functional Regression. Implementation milestone; promotes GAP-07 from GAP-BACKLOG.md. Phases 69+. Requirements refined in REQUIREMENTS.md. -->
 
 - [x] **WAV — DWT primitive**: orthogonal discrete wavelet transform — Haar + Daubechies (db2–db10) filters, periodic/symmetric boundary handling, multi-level forward/inverse decomposition. — Validated in Phase 69 (WAV-01/02, v0.37.0): new in-crate `wavelet/` module, perfect-reconstruction round-trip ≤1e-10 across families/levels/modes, 38 tests green, exports deferred to Phase 71.
-- [ ] **WAV — `wcr` wavelet-domain PCR/PLS**: scalar-on-function regression via PCR (and PLS) on wavelet coefficients.
-- [ ] **WAV — `wnet` wavelet-domain elastic-net**: lasso + ridge penalized regression on wavelet coefficients (reuses `additive.rs` coordinate-descent/soft-threshold).
+- [x] **WAV — `wcr` wavelet-domain PCR/PLS**: scalar-on-function regression via PCR (and PLS) on wavelet coefficients. — Validated in Phase 70 (WAV-03, v0.37.0): both PCR and PLS recover β(t) <1e-6 on full-rank spanning designs; reuses `fdata_to_pc_1d` + `fdata_to_pls_1d`; new `wavelet/regression.rs`.
+- [x] **WAV — `wnet` wavelet-domain elastic-net**: lasso + ridge penalized regression on wavelet coefficients (per-coefficient coordinate-descent/soft-threshold adapter modeled on `additive.rs`). — Validated in Phase 70 (WAV-04, v0.37.0): sparse-support recovery + deterministic K-fold CV-λ; carries β(t)/intercept/fitted/selected-coeffs.
 - [ ] **WAV — Prediction + diagnostics**: coefficient function, fitted values, out-of-sample predict, result-struct outputs, crate-root/prelude re-exports, module doctest.
 
 <details>
