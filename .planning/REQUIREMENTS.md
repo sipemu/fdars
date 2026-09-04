@@ -53,18 +53,18 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WAV-01 | TBD | Pending |
-| WAV-02 | TBD | Pending |
-| WAV-03 | TBD | Pending |
-| WAV-04 | TBD | Pending |
-| WAV-05 | TBD | Pending |
-| WAV-06 | TBD | Pending |
+| WAV-01 | Phase 69 | Pending |
+| WAV-02 | Phase 69 | Pending |
+| WAV-03 | Phase 70 | Pending |
+| WAV-04 | Phase 70 | Pending |
+| WAV-05 | Phase 71 | Pending |
+| WAV-06 | Phase 71 | Pending |
 
 **Coverage:**
 - v1 requirements: 6 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 6 ⚠️ (resolved by roadmapper)
+- Mapped to phases: 6 (Phases 69–71)
+- Unmapped: 0 ✓ (100% coverage — no orphans, no duplicates)
 
 ---
 *Requirements defined: 2026-09-04*
-*Last updated: 2026-09-04 after initial definition (v0.37.0 WAV milestone start)*
+*Last updated: 2026-09-04 after roadmap creation (v0.37.0 WAV — Phases 69–71 mapped, 100% coverage)*
