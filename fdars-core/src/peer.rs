@@ -152,6 +152,46 @@ pub struct PeerResult {
     pub lambda_method: LambdaMethod,
 }
 
+/// Result of the [`lpeer`] longitudinal PEER estimator.
+///
+/// Carries the estimated coefficient function β(t), subject-level variance
+/// components, and the penalty configuration used — all on the `argvals` grid.
+///
+/// Both variance components are non-negative (clamped to a positive floor by
+/// `famm::fit_scalar_mixed_model`).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[must_use = "expensive computation whose result should not be discarded"]
+pub struct LpeerResult {
+    /// Estimated coefficient function β(t), length m (on the argvals grid).
+    pub beta: Vec<f64>,
+    /// Intercept (= ȳ, the mean of the response vector). Matches `peer()` convention.
+    pub intercept: f64,
+    /// Column means of the Simpson-weighted design `W[i,j] = data[(i,j)]·w[j]`,
+    /// length m. Computed identically to `peer()` so [`predict`](Self::predict)
+    /// reproduces training `fitted_values` exactly.
+    pub w_bar: Vec<f64>,
+    /// Fitted values ŷ_i (marginal, fixed-effect only), length n.
+    pub fitted_values: Vec<f64>,
+    /// Between-subject variance σ²_u (≥ 0). Estimated by REML EM inside
+    /// `famm::fit_scalar_mixed_model`; clamped to a positive floor.
+    pub sigma2_subject: f64,
+    /// Residual variance σ²_ε (≥ 0). Estimated by REML EM; clamped to a positive floor.
+    pub sigma2_resid: f64,
+    /// Number of unique subjects derived from `subject_map`.
+    pub n_subjects: usize,
+    /// Smoothing parameter λ that was used (from `PeerConfig`).
+    pub lambda: f64,
+    /// Penalty family that was used.
+    pub penalty_type: PeerPenalty,
+    /// GCV score at the selected λ. `Some(score)` when [`LambdaMethod::Gcv`]
+    /// ran; `None` for [`LambdaMethod::Fixed`] or [`LambdaMethod::Reml`].
+    pub gcv: Option<f64>,
+    /// Which λ-selection path ran.
+    pub lambda_method: LambdaMethod,
+}
+
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -328,6 +368,262 @@ pub fn peer(
         gcv: gcv_score,
         lambda_method,
     })
+}
+
+/// Fit the longitudinal PEER scalar-on-function regression model with subject
+/// random effects.
+///
+/// Extends [`peer`] to grouped/repeated-measures data by reducing the
+/// functional predictor to FPC scores (via `fdata_to_pc_1d`) and calling
+/// `famm::fit_scalar_mixed_model` for subject-level random intercepts.
+/// The PEER penalty (via `config`) regularises β(t) through the same λ
+/// dispatch as `peer()`; the mixed model then replaces the OLS second pass
+/// with a GLS+REML-EM pass over the FPC scores.
+///
+/// **ncomp cap:** `min(n − 1, m, 10)` — documented; prevents over-parameterisation
+/// at small n.
+///
+/// # Arguments
+///
+/// * `data`        — n×m functional predictor matrix.
+/// * `y`           — scalar response vector, length n.
+/// * `argvals`     — evaluation grid, length m.
+/// * `subject_map` — subject index per observation, length n. Non-contiguous
+///   IDs are re-indexed internally via `famm::build_subject_map`.
+/// * `config`      — penalty family and λ selection (same as `peer()`).
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] on dimension mismatches,
+/// [`FdarError::InvalidParameter`] when `n_subjects < 2` or argvals is
+/// non-monotone/non-finite, and [`FdarError::ComputationFailed`] when the
+/// mixed-model produces non-finite coefficients.
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::peer::{lpeer, PeerConfig, PeerPenalty, LambdaChoice};
+///
+/// let (n, m) = (12_usize, 5_usize);
+/// let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+/// let mut data = FdMatrix::zeros(n, m);
+/// let mut y = vec![0.0_f64; n];
+/// // 3 subjects × 4 observations each
+/// let subject_map: Vec<usize> = (0..n).map(|i| i / 4).collect();
+/// for i in 0..n {
+///     for j in 0..m {
+///         let xi = ((i * m + j) as f64 * 0.3).sin();
+///         data[(i, j)] = xi;
+///         y[i] += xi * 0.5;
+///     }
+/// }
+/// let config = PeerConfig {
+///     penalty: PeerPenalty::Ridge,
+///     lambda: LambdaChoice::Fixed(1e-2),
+/// };
+/// let fit = lpeer(&data, &y, &argvals, &subject_map, &config).unwrap();
+/// assert_eq!(fit.beta.len(), m);
+/// assert!(fit.sigma2_subject >= 0.0);
+/// assert!(fit.sigma2_resid >= 0.0);
+/// let preds = fit.predict(&data, &argvals).unwrap();
+/// assert_eq!(preds.len(), n);
+/// ```
+pub fn lpeer(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    subject_map: &[usize],
+    config: &PeerConfig,
+) -> Result<LpeerResult, FdarError> {
+    let (n, m) = data.shape();
+
+    // --- Entry validation (mirrors peer()) ---
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 observations".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    if m < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 evaluation points (m >= 3)".to_string(),
+            actual: format!("{m} columns"),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n}"),
+            actual: format!("{}", y.len()),
+        });
+    }
+    if subject_map.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_map",
+            expected: format!("{n}"),
+            actual: format!("{}", subject_map.len()),
+        });
+    }
+    if y.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: "response contains non-finite values (NaN/Inf)".to_string(),
+        });
+    }
+    if argvals.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals contains non-finite values (NaN/Inf)".to_string(),
+        });
+    }
+    if argvals.windows(2).any(|w| w[1] <= w[0]) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals must be strictly increasing".to_string(),
+        });
+    }
+
+    // Build dense 0-indexed subject map (handles non-contiguous IDs)
+    let (sm_dense, n_subjects) = crate::famm::build_subject_map(subject_map);
+    if n_subjects < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "subject_map",
+            message: "at least 2 distinct subjects required for lpeer".to_string(),
+        });
+    }
+
+    // 1. Integration weights + weighted design (identical to peer())
+    let w = simpsons_weights(argvals);
+    let mut wmat = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            wmat[(i, j)] = data[(i, j)] * w[j];
+        }
+    }
+
+    let y_bar: f64 = y.iter().sum::<f64>() / n as f64;
+    let yc: Vec<f64> = y.iter().map(|&yi| yi - y_bar).collect();
+
+    // w_bar computed identically to peer() so predict formula is identical
+    let w_bar: Vec<f64> = (0..m)
+        .map(|j| (0..n).map(|i| wmat[(i, j)]).sum::<f64>() / n as f64)
+        .collect();
+
+    let mut wc = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            wc[(i, j)] = wmat[(i, j)] - w_bar[j];
+        }
+    }
+
+    // 2. λ selection (identical dispatch to peer())
+    let q = build_q(m, &config.penalty)?;
+
+    let mut wtw = vec![0.0_f64; m * m];
+    for j in 0..m {
+        for k in j..m {
+            let s: f64 = (0..n).map(|i| wc[(i, j)] * wc[(i, k)]).sum();
+            wtw[j * m + k] = s;
+            wtw[k * m + j] = s;
+        }
+    }
+    let wty: Vec<f64> = (0..m)
+        .map(|j| (0..n).map(|i| wc[(i, j)] * yc[i]).sum())
+        .collect();
+
+    let (lambda, gcv_score, lambda_method) = match &config.lambda {
+        LambdaChoice::Fixed(lam) => (*lam, None, LambdaMethod::Fixed),
+        LambdaChoice::Gcv => {
+            let (lam, g) = select_lambda_gcv_peer(&wc, &yc, &wtw, &wty, &q, m, n);
+            (lam, Some(g), LambdaMethod::Gcv)
+        }
+        LambdaChoice::Reml => {
+            let lam = select_lambda_reml_peer(&wc, &yc, &q, m, n);
+            (lam, None, LambdaMethod::Reml)
+        }
+    };
+
+    // 3. FPC score reduction — cap at min(n-1, m, 10); raw scores, no h.sqrt() rescaling
+    let ncomp = (n - 1).min(m).min(10);
+    let fpca = crate::regression::fdata_to_pc_1d(data, ncomp, argvals)?;
+    let scores = &fpca.scores; // n×ncomp FdMatrix (raw FPC scores)
+
+    // 4. Mixed-model fit over FPC scores (pass yc, not y — intercept = y_bar)
+    let result =
+        crate::famm::fit_scalar_mixed_model(&yc, &sm_dense, n_subjects, Some(scores), ncomp);
+
+    // NaN guard on gamma
+    if result.gamma.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::ComputationFailed {
+            operation: "lpeer",
+            detail: "non-finite gamma from mixed model".into(),
+        });
+    }
+
+    // 5. Back-project γ → β(t): beta[j] = Σ_k gamma[k] * rotation[(j, k)]
+    let beta: Vec<f64> = (0..m)
+        .map(|j| {
+            (0..ncomp.min(result.gamma.len()))
+                .map(|k| result.gamma[k] * fpca.rotation[(j, k)])
+                .sum()
+        })
+        .collect();
+
+    if beta.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::ComputationFailed {
+            operation: "lpeer",
+            detail: "non-finite beta after back-projection".into(),
+        });
+    }
+
+    // 6. Fitted values (same formula as peer())
+    let base = y_bar - w_bar.iter().zip(&beta).map(|(wb, b)| wb * b).sum::<f64>();
+    let fitted_values: Vec<f64> = (0..n)
+        .map(|i| base + (0..m).map(|j| data[(i, j)] * w[j] * beta[j]).sum::<f64>())
+        .collect();
+
+    Ok(LpeerResult {
+        beta,
+        intercept: y_bar,
+        w_bar,
+        fitted_values,
+        sigma2_subject: result.sigma2_u,
+        sigma2_resid: result.sigma2_eps,
+        n_subjects,
+        lambda,
+        penalty_type: config.penalty.clone(),
+        gcv: gcv_score,
+        lambda_method,
+    })
+}
+
+impl LpeerResult {
+    /// Predict scalar responses for new functional observations (marginal prediction).
+    ///
+    /// Applies the fitted coefficient function β(t) to `new_data` via the same
+    /// formula as [`PeerResult::predict`]: new-subject random effect = 0 (marginal /
+    /// fixed-effect-only prediction).
+    ///
+    /// **Self-consistency:** re-passing the training data and argvals reproduces
+    /// the training [`fitted_values`](Self::fitted_values) to within 1e-9.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FdarError::InvalidDimension`] when `new_data.ncols()` or
+    /// `argvals.len()` does not equal the number of training grid points `m`.
+    pub fn predict(&self, new_data: &FdMatrix, argvals: &[f64]) -> Result<Vec<f64>, FdarError> {
+        peer_predict_core(&self.beta, self.intercept, &self.w_bar, new_data, argvals)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1511,5 +1807,172 @@ mod tests {
             "zero-Q REML fallback lambda should be 1e-4, got {}",
             res_zero.lambda
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 2 (Phase 68): lpeer() — longitudinal PEER with subject random effects
+    // -------------------------------------------------------------------------
+
+    /// Longitudinal test fixture: n_subjects=20, obs_per=10 (n=200), m=10.
+    /// True β(t)=sin(πt); injects deterministic between-subject effects at
+    /// known variance σ²_u_true=1.0.  Returns (data, y, t, subject_map, sigma2_u_true).
+    ///
+    /// Uses m=10 so that ncomp = min(n-1, m, 10) = 10 = m, giving full FPC coverage
+    /// for accurate β(t) back-projection.  n=200 provides reliable REML EM convergence.
+    fn make_lpeer_fixture() -> (FdMatrix, Vec<f64>, Vec<f64>, Vec<usize>, f64) {
+        let (n_subjects, obs_per, m) = (20_usize, 10_usize, 10_usize);
+        let n = n_subjects * obs_per;
+        let t = uniform_grid(m);
+        let true_beta: Vec<f64> = t
+            .iter()
+            .map(|&ti| (std::f64::consts::PI * ti).sin())
+            .collect();
+        let w = simpsons_weights(&t);
+        let sigma2_u_true = 1.0_f64;
+
+        let mut data = FdMatrix::zeros(n, m);
+        let mut y = vec![0.0_f64; n];
+        let mut subject_map = vec![0_usize; n];
+
+        for s in 0..n_subjects {
+            // Deterministic subject random effect at scale sqrt(sigma2_u_true)
+            let u_s = hash_unit(s as u64) * sigma2_u_true.sqrt();
+            for obs in 0..obs_per {
+                let i = s * obs_per + obs;
+                subject_map[i] = s;
+                for j in 0..m {
+                    let xi = hash_unit((i * m + j) as u64);
+                    data[(i, j)] = xi;
+                    y[i] += xi * true_beta[j] * w[j];
+                }
+                y[i] += u_s; // inject between-subject effect
+                             // small within-subject noise
+                y[i] += 0.02 * hash_unit(1_000_000 + i as u64);
+            }
+        }
+        (data, y, t, subject_map, sigma2_u_true)
+    }
+
+    #[test]
+    fn test_lpeer_variance_non_negative() {
+        let (data, y, t, subject_map, _) = make_lpeer_fixture();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-3),
+        };
+        let fit = lpeer(&data, &y, &t, &subject_map, &config)
+            .expect("lpeer() should succeed on longitudinal fixture");
+        assert!(
+            fit.sigma2_subject >= 0.0,
+            "sigma2_subject must be non-negative, got {}",
+            fit.sigma2_subject
+        );
+        assert!(
+            fit.sigma2_resid >= 0.0,
+            "sigma2_resid must be non-negative, got {}",
+            fit.sigma2_resid
+        );
+    }
+
+    #[test]
+    fn test_lpeer_beta_recovery() {
+        let (data, y, t, subject_map, _) = make_lpeer_fixture();
+        let m = t.len();
+        let true_beta: Vec<f64> = t
+            .iter()
+            .map(|&ti| (std::f64::consts::PI * ti).sin())
+            .collect();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-3),
+        };
+        let fit = lpeer(&data, &y, &t, &subject_map, &config)
+            .expect("lpeer() should succeed on longitudinal fixture");
+        assert_eq!(fit.beta.len(), m);
+        let max_err = fit
+            .beta
+            .iter()
+            .zip(true_beta.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_err < 0.5,
+            "lpeer β(t) recovery error vs sin(πt): {max_err} >= 0.5"
+        );
+    }
+
+    #[test]
+    fn test_lpeer_sigma2_tracks_injection() {
+        let (data, y, t, subject_map, sigma2_u_true) = make_lpeer_fixture();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-3),
+        };
+        let fit = lpeer(&data, &y, &t, &subject_map, &config)
+            .expect("lpeer() should succeed on longitudinal fixture");
+        // REML EM is consistent but not exact at n=50, 10 subjects — allow factor ~3
+        assert!(
+            fit.sigma2_subject > 0.1 && fit.sigma2_subject < 5.0,
+            "lpeer sigma2_subject={} should track injected {sigma2_u_true} within (0.1, 5.0)",
+            fit.sigma2_subject
+        );
+    }
+
+    #[test]
+    fn test_lpeer_invalid_subject_map() {
+        let (data, y, t, _, _) = make_lpeer_fixture();
+        let n = y.len();
+        // subject_map of wrong length (n-1 instead of n)
+        let bad_map: Vec<usize> = (0..n - 1).map(|i| i / 5).collect();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-3),
+        };
+        let err = lpeer(&data, &y, &t, &bad_map, &config)
+            .expect_err("wrong-length subject_map should return Err");
+        assert!(
+            matches!(err, FdarError::InvalidDimension { .. }),
+            "expected InvalidDimension, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_lpeer_single_subject_rejected() {
+        let (data, y, t, _, _) = make_lpeer_fixture();
+        let n = y.len();
+        // All observations from the same subject → n_subjects = 1 (degenerate)
+        let single_map = vec![0_usize; n];
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-3),
+        };
+        let err = lpeer(&data, &y, &t, &single_map, &config)
+            .expect_err("single-subject map should be rejected");
+        assert!(
+            matches!(err, FdarError::InvalidParameter { .. }),
+            "expected InvalidParameter, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_lpeer_predict_self_consistent() {
+        // LpeerResult::predict on training data must reproduce fitted_values within 1e-9.
+        let (data, y, t, subject_map, _) = make_lpeer_fixture();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-3),
+        };
+        let fit = lpeer(&data, &y, &t, &subject_map, &config)
+            .expect("lpeer() should succeed on longitudinal fixture");
+        let preds = fit
+            .predict(&data, &t)
+            .expect("LpeerResult::predict on training data should succeed");
+        assert_eq!(preds.len(), fit.fitted_values.len());
+        for (i, (p, f)) in preds.iter().zip(&fit.fitted_values).enumerate() {
+            assert!(
+                (p - f).abs() < 1e-9,
+                "LpeerResult::predict vs fitted_values mismatch at row {i}: {p} vs {f}"
+            );
+        }
     }
 }
