@@ -89,7 +89,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 
 **Plans**: 1 plan
 
-- [ ] 68-01-longitudinal-peer-prediction-tracer-PLAN.md — tracer: `PeerResult::predict` + shared `peer_predict_core` (self-consistency) → `lpeer()` + `LpeerResult` via `famm::fit_scalar_mixed_model` (β(t) recovery + variance tracking) → crate-root/prelude re-exports + running module/lpeer doctests → export-reachability compile checks + phase gate
+- [x] 68-01-longitudinal-peer-prediction-tracer-PLAN.md — tracer: `PeerResult::predict` + shared `peer_predict_core` (self-consistency) → `lpeer()` + `LpeerResult` via `famm::fit_scalar_mixed_model` (β(t) recovery + variance tracking) → crate-root/prelude re-exports + running module/lpeer doctests → export-reachability compile checks + phase gate
 
 ## Progress
 
@@ -97,7 +97,7 @@ Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-prio
 |-------|----------------|--------|-----------|
 | 66. Core PEER Estimator & Penalty Families | 1/1 | Complete    | 2026-09-04 |
 | 67. Automatic λ Selection — GCV + REML | 1/1 | Complete    | 2026-09-04 |
-| 68. Longitudinal PEER, Prediction & Integration | 0/1 | Not started | - |
+| 68. Longitudinal PEER, Prediction & Integration | 1/1 | Complete    | 2026-09-04 |
 
 ## Status
 

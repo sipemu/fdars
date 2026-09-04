@@ -1,15 +1,14 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.36.0
-milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression"
+milestone_name: "PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68)"
 current_phase: 68
-current_phase_name: Longitudinal PEER, Prediction & Integration
-status: complete
-stopped_at: Phase 68 Plan 01 complete — v0.36.0 milestone closed
-last_updated: "2026-09-04T08:30:00.000Z"
+status: completed
+stopped_at: Phase 68 complete — all phases complete
+last_updated: "2026-09-04T09:02:21.968Z"
 last_activity: 2026-09-04
-last_activity_desc: Phase 68 Plan 01 complete — lpeer, LpeerResult, predict, exports, doctests
-state_head: 23323843
+last_activity_desc: Phase 68 complete
+state_head: 04e73495195b8b1361d1de26af8234ca29e4c76e
 progress:
   total_phases: 3
   completed_phases: 3
@@ -29,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 
 ## Current Position
 
-Phase: 68 — Longitudinal PEER, Prediction & Integration
-Plan: 01 (complete — all 3 plans done)
-Status: Milestone complete — ready for audit/archive
-Last activity: 2026-09-04 — Phase 68 Plan 01 complete, v0.36.0 milestone closed
+Phase: 68
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-09-04 — Phase 68 complete
 
 ## Milestone Roadmap (v0.36.0)
 
@@ -132,7 +131,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-04T07:35:20.197Z
-Stopped at: Phase 67 complete, ready to plan Phase 68
+Stopped at: Phase 68 complete — all phases complete
 Resume file: None
 
 ## Operator Next Steps

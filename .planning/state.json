@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression",
+  "milestone": "v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68)",
   "phases": [
     {
       "number": "66",
@@ -16,13 +16,13 @@
     {
       "number": "68",
       "name": "Longitudinal PEER, Prediction & Integration",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 68)",
-    "reason": "Phase 68 of 3 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-04T07:43:32.192Z"
+  "updated_at": "2026-09-04T09:02:21.981Z"
 }
