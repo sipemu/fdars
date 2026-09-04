@@ -762,6 +762,73 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
 }
 
 // ---------------------------------------------------------------------------
+// Shared prediction helper
+// ---------------------------------------------------------------------------
+
+/// Shared prediction core for both `PeerResult` and `LpeerResult`.
+///
+/// Computes out-of-sample predictions via
+/// `ŷ*[i] = (intercept − w_bar·β) + Σ_j x*[i,j] · w[j] · β[j]`
+/// where `w = simpsons_weights(argvals)`.
+///
+/// Self-consistency: re-passing the training `data` and `argvals` reproduces
+/// the training `fitted_values` to within floating-point rounding (≤ 1e-9).
+fn peer_predict_core(
+    beta: &[f64],
+    intercept: f64,
+    w_bar: &[f64],
+    new_data: &FdMatrix,
+    argvals: &[f64],
+) -> Result<Vec<f64>, FdarError> {
+    let (n_new, m_new) = new_data.shape();
+    let m = beta.len();
+    if m_new != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "new_data",
+            expected: format!("{m} columns (training grid length)"),
+            actual: format!("{m_new}"),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    let w = simpsons_weights(argvals);
+    let base: f64 = intercept - w_bar.iter().zip(beta).map(|(wb, b)| wb * b).sum::<f64>();
+    let preds: Vec<f64> = (0..n_new)
+        .map(|i| {
+            base + (0..m)
+                .map(|j| new_data[(i, j)] * w[j] * beta[j])
+                .sum::<f64>()
+        })
+        .collect();
+    Ok(preds)
+}
+
+impl PeerResult {
+    /// Predict scalar responses for new functional observations.
+    ///
+    /// Applies the fitted PEER coefficient function β(t) to `new_data` via
+    /// `ŷ*[i] = (intercept − w_bar·β) + Σ_j x*[i,j] · w[j] · β[j]`
+    /// where `w = simpsons_weights(argvals)`.
+    ///
+    /// **Self-consistency:** re-passing the training data and training `argvals`
+    /// reproduces the training [`fitted_values`](Self::fitted_values) to within
+    /// floating-point rounding (≤ 1e-9 in absolute error per observation).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FdarError::InvalidDimension`] when `new_data.ncols()` or
+    /// `argvals.len()` does not equal the number of training grid points `m`.
+    pub fn predict(&self, new_data: &FdMatrix, argvals: &[f64]) -> Result<Vec<f64>, FdarError> {
+        peer_predict_core(&self.beta, self.intercept, &self.w_bar, new_data, argvals)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1330,6 +1397,86 @@ mod tests {
             "REML vs GCV beta disagreement: {beta_diff} >= 0.2 (lambdas: gcv={}, reml={})",
             res_gcv.lambda,
             res_reml.lambda
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 1 (Phase 68): PeerResult::predict — self-consistency, dim validation,
+    // and all-finite on fresh curves.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_peer_predict_self_consistent() {
+        // Re-pass training curves → predictions must equal fitted_values within 1e-9.
+        let (data, y, t, _) = make_fixture();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Difference { order: 2 },
+            lambda: LambdaChoice::Fixed(1e-4),
+        };
+        let result = peer(&data, &y, &t, &config).expect("peer() should succeed");
+        let preds = result
+            .predict(&data, &t)
+            .expect("predict on training data should succeed");
+        assert_eq!(preds.len(), result.fitted_values.len());
+        for (i, (p, f)) in preds.iter().zip(&result.fitted_values).enumerate() {
+            assert!(
+                (p - f).abs() < 1e-9,
+                "predict vs fitted_values mismatch at row {i}: {p} vs {f}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_predict_wrong_ncols() {
+        // new_data with wrong column count must yield FdarError::InvalidDimension.
+        let (data, y, t, _) = make_fixture();
+        let (_, m) = data.shape();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-4),
+        };
+        let result = peer(&data, &y, &t, &config).expect("peer() should succeed");
+
+        // Build a new_data matrix with m-1 columns (wrong ncols)
+        let mut bad_data = FdMatrix::zeros(5, m - 1);
+        for i in 0..5 {
+            for j in 0..(m - 1) {
+                bad_data[(i, j)] = hash_unit((i * m + j) as u64);
+            }
+        }
+        let err = result
+            .predict(&bad_data, &t[..m - 1])
+            .expect_err("wrong ncols should return Err");
+        assert!(
+            matches!(err, FdarError::InvalidDimension { .. }),
+            "expected InvalidDimension, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_predict_new_curves_finite() {
+        // Predict on fresh curves (offset by a large constant) — all results finite.
+        let (data, y, t, _) = make_fixture();
+        let (n, m) = data.shape();
+        let config = PeerConfig {
+            penalty: PeerPenalty::Ridge,
+            lambda: LambdaChoice::Fixed(1e-4),
+        };
+        let result = peer(&data, &y, &t, &config).expect("peer() should succeed");
+
+        // Build genuinely new curves: large constant shift from training data
+        let mut new_data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                new_data[(i, j)] = hash_unit((100_000 + i * m + j) as u64) + 10.0;
+            }
+        }
+        let preds = result
+            .predict(&new_data, &t)
+            .expect("predict on new curves should succeed");
+        assert!(
+            preds.iter().all(|v| v.is_finite()),
+            "predictions on fresh curves contain non-finite values"
         );
     }
 
