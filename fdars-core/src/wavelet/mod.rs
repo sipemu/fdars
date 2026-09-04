@@ -34,6 +34,7 @@
 //! phase); the module is reachable only as `crate::wavelet::...`.
 
 pub mod filters;
+pub mod regression;
 
 use crate::error::FdarError;
 use filters::FilterBank;
