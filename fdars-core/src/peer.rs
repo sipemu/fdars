@@ -597,7 +597,10 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
             big_m[diag * r + diag] += 1.0 / sigma2_u;
         }
 
-        // Cholesky of M; on failure keep old variances and continue
+        // Cholesky of the E-step matrix M. On failure the EM cannot advance, so
+        // restore the last stable variance components and stop — the function then
+        // returns λ = σ²_e/σ²_u from those last-good values (defined graceful
+        // fallback, never a panic or NaN; WR-03).
         let l_m = match cholesky_factor(&big_m, r) {
             Ok(l) => l,
             Err(_) => {
@@ -659,12 +662,18 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
         let resid_sq: f64 = resid.iter().map(|&v| v * v).sum();
         let sigma2_e_new = (resid_sq + tr_zsz) / n as f64;
 
+        // Clamp both variance components to a positive floor BEFORE they are used
+        // as divisors in the GLS block below — an unclamped σ²_e ≈ 0 would divide
+        // to Inf/NaN in the Woodbury solve (WR-02).
+        let sigma2_u_c = sigma2_u_new.max(1e-12);
+        let sigma2_e_c = sigma2_e_new.max(1e-12);
+
         // GLS null-space update (only when s > 0) using Woodbury identity
         // Sigma^{-1} = (1/sigma2_e)(I_n - Z_range * K^{-1} * Z_range')
         // where K = sigma2_e/sigma2_u * I_r + ZtZ_range  (r×r)
         if s > 0 {
             // Build K = ZtZ_range + (sigma2_e/sigma2_u)*I_r
-            let ratio = sigma2_e_new / sigma2_u_new.max(1e-12);
+            let ratio = sigma2_e_c / sigma2_u_c;
             let mut k_mat = ztz_range.clone();
             for diag in 0..r {
                 k_mat[diag * r + diag] += ratio;
@@ -688,7 +697,7 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
                         let zk: f64 = (0..r)
                             .map(|col| z_range[i * r + col] * kinv_zr_yc[col])
                             .sum();
-                        (yc[i] - zk) / sigma2_e_new
+                        (yc[i] - zk) / sigma2_e_c
                     })
                     .collect();
 
@@ -709,7 +718,7 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
                             let zk: f64 = (0..r)
                                 .map(|col| z_range[i * r + col] * kinv_zr_zn[col])
                                 .sum();
-                            (z_null[i * s + col_null] - zk) / sigma2_e_new
+                            (z_null[i * s + col_null] - zk) / sigma2_e_c
                         })
                         .collect();
 
@@ -734,11 +743,15 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
             }
         }
 
-        // Clamp variance components
-        sigma2_u = sigma2_u_new.max(1e-12);
-        sigma2_e = sigma2_e_new.max(1e-12);
+        // Commit the clamped variance components for this iteration.
+        sigma2_u = sigma2_u_c;
+        sigma2_e = sigma2_e_c;
 
-        let delta = (sigma2_u - su_old).abs() + (sigma2_e - se_old).abs();
+        // Measure convergence on the PRE-clamp M-step updates so a component
+        // resting on the 1e-12 floor two iterations running is not mistaken for
+        // genuine convergence (WR-01) — that would return λ = σ²_e/floor
+        // (extreme over-smoothing) instead of the REML optimum.
+        let delta = (sigma2_u_new - su_old).abs() + (sigma2_e_new - se_old).abs();
         if delta < 1e-8 * (su_old + se_old) {
             break;
         }
