@@ -37,51 +37,61 @@
 
 Add PEER (Partially Empirical Eigenvectors for Regression) — structured a-priori-penalty scalar-on-function regression — and its longitudinal variant `lpeer`, letting users inject prior signal structure into the coefficient-function penalty. Promotes **GAP-06** (score 2.12, M-effort) from the v0.31.0 `GAP-BACKLOG.md`. Reference baseline refund@0.1-38 (`peer`, `lpeer`). Implementation milestone — real `fdars-core/src/` changes, additive/non-breaking (protects R + WASM bindings + 28 examples), no new crate dependency; likely a new top-level `peer.rs` (or `peer/` submodule). Strict dependency chain: core estimator + penalties → λ-selection → longitudinal extension + prediction/exports. Crate bumps 0.35.0 → **0.36.0**, published on the `v0.36.0` tag.
 
-- [ ] **Phase 66: Core PEER Estimator & Penalty Families (PER-01, PER-02)** — the public `peer()` estimator with the partially-empirical-eigenvector decomposition and the three a-priori penalty families (ridge/identity, 2nd-difference/roughness, caller-supplied structured Q)
+- [x] **Phase 66: Core PEER Estimator & Penalty Families (PER-01, PER-02)** — the public `peer()` estimator with the partially-empirical-eigenvector decomposition and the three a-priori penalty families (ridge/identity, 2nd-difference/roughness, caller-supplied structured Q) (completed 2026-09-04)
 - [ ] **Phase 67: Automatic λ Selection — GCV + REML (PER-03)** — smoothing-parameter λ chosen automatically by GCV grid search or REML/mixed-model estimation, selectable via config; explicit λ honored when supplied
 - [ ] **Phase 68: Longitudinal PEER, Prediction & Integration (PER-04, PER-05)** — the `lpeer()` longitudinal extension with subject-level random effects via `famm`, out-of-sample `predict`, crate-root + prelude re-exports, and an end-to-end module doctest
 
 ## Phase Details
 
 ### Phase 66: Core PEER Estimator & Penalty Families
+
 **Goal**: A user can fit structured-penalty scalar-on-function regression via a public `peer()` estimator that estimates the coefficient function β(t) through the partially-empirical-eigenvector decomposition (null-space + range-space of the penalty operator), choosing among three a-priori penalty families — the estimator that distinguishes PEER from plain FPCR/`pfr`.
 **Depends on**: Nothing (first phase of milestone; builds on shipped `scalar_on_function/`, `function_on_scalar.rs`, `smooth_basis.rs`)
 **Requirements**: PER-01, PER-02
 **Success Criteria** (what must be TRUE):
+
   1. `peer()` recovers a known β(t) within tolerance on synthetic data where the response was generated from a specified coefficient function, and returns a result struct carrying β(t), intercept, fitted values, and df/selection diagnostics.
   2. A user can select the penalty family via a penalty-type parameter/enum, and the ridge/identity, 2nd-difference/roughness (reusing the existing `penalty_matrix` builder), and caller-supplied structured "decree" Q families each produce a well-formed fit without error.
   3. The structured/"decree" Q penalty produces a β(t) whose shape reflects the caller-supplied partitioned-domain structure (e.g. a partition boundary in Q yields a partition-aware β(t)), demonstrably different from the plain-roughness fit on the same data.
   4. A caller-supplied Q of the wrong dimension (or otherwise invalid penalty input) returns a descriptive `FdarError` rather than panicking, and fitting is stable (no NaN β(t)) across the three penalty families.
+
 **Plans**: 1 plan
-- [ ] 66-01-core-peer-tracer-PLAN.md — public `peer()` estimator in new `src/peer.rs`: tracer β(t) recovery (Difference{2}) → all three penalty families (Ridge/Difference/Decree) → partition-aware Decree distinctness → wrong-dim/NaN error surface
+
+- [x] 66-01-core-peer-tracer-PLAN.md — public `peer()` estimator in new `src/peer.rs`: tracer β(t) recovery (Difference{2}) → all three penalty families (Ridge/Difference/Decree) → partition-aware Decree distinctness → wrong-dim/NaN error surface
 
 ### Phase 67: Automatic λ Selection — GCV + REML
+
 **Goal**: A user can have the PEER smoothing parameter λ chosen automatically — by GCV grid search (reusing the `penalized_solve` + GCV pattern) or by REML/mixed-model estimation (reusing `famm`) — selectable via config, matching refund's default, with an explicit λ honored when supplied.
 **Depends on**: Phase 66 (λ selection wraps the core `peer()` penalized fit)
 **Requirements**: PER-03
 **Success Criteria** (what must be TRUE):
+
   1. With GCV selected, `peer()` runs an automatic λ search over a grid and returns the selected λ (recorded in the result struct) that minimizes the GCV score; two runs on the same data pick the same λ (deterministic).
   2. With REML selected, `peer()` fits λ via mixed-model estimation and returns a sensible positive λ on the same synthetic data, and the REML-selected and GCV-selected fits agree on β(t) within a documented tolerance.
   3. When the user supplies an explicit λ, that value is used verbatim (no search runs) and appears unchanged in the result diagnostics.
   4. On synthetic data with a known signal-to-noise level, both selectors pick a λ in a sensible range (neither degenerate-zero nor over-smoothing to a flat β(t)), recovering the known β(t) within tolerance.
+
 **Plans**: TBD
 
 ### Phase 68: Longitudinal PEER, Prediction & Integration
+
 **Goal**: A user can fit longitudinal PEER via a public `lpeer()` estimator that extends PEER to repeated per-subject measurements with subject-level random effects (fitted through `famm::fit_scalar_mixed_model`, REML EM), predict out-of-sample from a fitted PEER/lpeer result, and reach the whole surface from the crate root + prelude — demonstrated by an end-to-end module doctest.
 **Depends on**: Phase 67 (lpeer reuses PEER's penalty machinery and the REML λ-selection path; prediction consumes the fitted result)
 **Requirements**: PER-04, PER-05
 **Success Criteria** (what must be TRUE):
+
   1. `lpeer()` fits repeated per-subject measurements with subject-level random effects and returns a result struct carrying the (time-varying) coefficient function and variance components; the estimated variance components are non-negative.
   2. On synthetic longitudinal data with a known subject-random-effect structure, `lpeer()` recovers the coefficient function within tolerance and the fitted variance components track the injected between-subject variance.
   3. Calling `predict` on new curves from a fitted `peer`/`lpeer` result yields fitted values that match the training-time fitted values when the training curves are re-passed (self-consistency), and produces finite predictions on genuinely new curves.
   4. The full PEER/lpeer public surface (estimators, result structs, penalty enum, predict) is reachable from the crate root and the prelude, and a module doctest demonstrates the end-to-end fit → coefficient function → predict workflow and passes under `cargo test --doc`.
+
 **Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 66. Core PEER Estimator & Penalty Families | 0/1 | Not started | - |
+| 66. Core PEER Estimator & Penalty Families | 1/1 | Complete    | 2026-09-04 |
 | 67. Automatic λ Selection — GCV + REML | 0/TBD | Not started | - |
 | 68. Longitudinal PEER, Prediction & Integration | 0/TBD | Not started | - |
 
