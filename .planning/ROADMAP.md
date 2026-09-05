@@ -48,10 +48,10 @@
   3. A public out-of-sample transform (`prep_testing_data` equivalent) aligns new raw curves to the trained Karcher-mean template and projects them onto the trained joint-FPCA basis, returning scores in the trained coordinate system.
   4. Transforming the original training curves through the transform reproduces the training scores within tolerance (fit→transform round-trip), reusing the existing private `project_onto_eigenvectors` now exposed via this seam.
   5. All new public surface is additive/non-breaking (existing signatures unchanged); whole-crate `cargo test`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo fmt --check` pass.
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 72-01: TBD
+- [ ] 72-01-PLAN.md — jfPCA fit/transform seam: JfpcaModel + jfpca_fit + .transform() (tracer → numerical gates → error paths → doctest/full gates)
 
 #### Phase 73: VEESA Explainability Pipeline & Integration
 **Goal**: Users can explain any trained predictor over jfPCA scores via permutation feature importance and reconstruct interpretable principal directions, driven end-to-end from fit → transform → PFI.
@@ -115,7 +115,7 @@ Phases execute in numeric order: 72 → 73 → 74. Phase 73 depends on the Phase
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 72. jfPCA Fit/Transform Seam | v0.38.0 | 0/TBD | Not started | - |
+| 72. jfPCA Fit/Transform Seam | v0.38.0 | 0/1 | Not started | - |
 | 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 0/TBD | Not started | - |
 | 74. Elastic Conformal Anomaly Detection | v0.38.0 | 0/TBD | Not started | - |
 
