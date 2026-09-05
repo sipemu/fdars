@@ -73,6 +73,7 @@ pub(crate) mod test_helpers;
 
 pub mod alignment;
 pub mod andrews;
+pub mod autodiff;
 
 // Shared utility modules
 pub mod basis;
