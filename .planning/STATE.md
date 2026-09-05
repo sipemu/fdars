@@ -4,17 +4,17 @@ milestone: v0.38.0
 milestone_name: "VEESA: Elastic Shape Explainability & Conformal Anomaly Detection"
 current_phase: 73
 current_phase_name: VEESA Explainability Pipeline & Integration
-status: planning
-stopped_at: Phase 72 complete, ready to plan Phase 73
-last_updated: "2026-09-05T13:12:49.035Z"
+status: verifying
+stopped_at: Completed 73-01-veesa-explainability-pipeline-PLAN.md
+last_updated: "2026-09-05T18:33:19.130Z"
 last_activity: 2026-09-05
-last_activity_desc: Phase 72 complete, transitioned to Phase 73
-state_head: 5692923f5a94e9b75c1f6dbae961d1394f08114f
+last_activity_desc: Phase 73 execution started
+state_head: b7cb3440470c841ebff59f5a641fdd6f193b2ec9
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 2
+  completed_plans: 2
   percent: 33
 ---
 
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-05)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against reference ecosystems — this milestone brings fdars to parity with three Tucker-affiliated elastic-shape-analysis works (VEESA pipeline + elastic conformal anomaly detection), additively and reuse-first.
-**Current focus:** Phase 72 — jfPCA Fit/Transform Seam
+**Current focus:** Phase 73 — VEESA Explainability Pipeline & Integration
 
 ## Current Position
 
-Phase: 73 — VEESA Explainability Pipeline & Integration
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-05 — Phase 72 complete, transitioned to Phase 73
+Phase: 73 (VEESA Explainability Pipeline & Integration) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-09-05 — Phase 73 execution started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Milestone Roadmap (v0.38.0)
 
@@ -80,6 +80,7 @@ Three phases, 8 requirements (VEE-01..05, ECA-01..03) — an implementation mile
 |------|----------|-------|-------|
 | (none yet — v0.38.0) | — | — | — |
 | Phase 72 P01 | 18 | 4 tasks | 4 files |
+| Phase 73-veesa-explainability-pipeline-integration P01 | 50m | 5 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Relevant to current work (v0.38.0 VEESA):
 - **8 requirements → 3 phases** (fine granularity): Phase 72 VEE-01/02, Phase 73 VEE-03/04/05, Phase 74 ECA-01/02/03. All 8 mapped, no orphans, no duplicates. VEE group is a dependency chain (72→73); ECA group (74) is independent, sequenced last.
 - [Phase 72]: Added training_gammas/training_aligned to JfpcaModel to expose Karcher alignment output for exact round-trip scoring
 - [Phase 72]: score_training() method provides < 1e-8 round-trip via stored alignment; transform() uses align_to_target for out-of-sample curves
+- [Phase 73]: Stored karcher.mean_srsf (mu_q_centered) as JfpcaModel::mean_srsf field for exact c=0 principal-direction reconstruction
+- [Phase 73]: Used karcher_mean[0] as f0 anchor for srsf_inverse (augmented element encodes midpoint, not initial value)
 
 ### Pending Todos
 
@@ -126,8 +129,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-05T11:19:20.896Z
-Stopped at: Phase 72 complete, ready to plan Phase 73
+Last session: 2026-09-05T18:33:19.099Z
+Stopped at: Completed 73-01-veesa-explainability-pipeline-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
