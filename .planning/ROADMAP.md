@@ -123,7 +123,8 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   3. The full differentiable surface (Scalar/Dual, generic ops, gradient API) is reachable via crate-root and prelude re-exports.
   4. The module doctest runs green under `cargo test --doc`.
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 77-01-PLAN.md — grad multi-input gradient API + composed-objective demo (soft-DTW + FPCA scores, FD-checked) + crate-root/prelude re-exports + module doctest
 
 ## Progress
 
