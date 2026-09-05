@@ -35,7 +35,7 @@
 **Milestone Goal:** Close the specific capability gaps between fdars and three Tucker-affiliated elastic-shape-analysis works — the VEESA paper (Goode, Tucker & Ries, *J. Data Science*), the R package `sandialabs/veesa`, and arXiv 2504.01172 (elastic conformal anomaly detection) — additively and reuse-first, on top of fdars' existing jfPCA / elastic-distance / conformal machinery. Real `fdars-core/src/` code, additive/non-breaking (protects R + WASM bindings + 28 examples), **no new crate dependency**, normal test/clippy (`--all-targets --features linalg,parallel`)/fmt gates. Crate ships on the `v0.38.0` tag (deferred operator step, per the release-decoupling convention). Phase numbering continues from v0.37.0 (…71) → Phase 72 onward.
 
 - [x] **Phase 72: jfPCA Fit/Transform Seam** - Public jfPCA fit transformer + out-of-sample projection onto the trained joint-FPCA basis (completed 2026-09-05)
-- [ ] **Phase 73: VEESA Explainability Pipeline & Integration** - Model-agnostic PFI over jfPCA scores + principal-direction reconstruction, wired end-to-end with re-exports + doctest
+- [x] **Phase 73: VEESA Explainability Pipeline & Integration** - Model-agnostic PFI over jfPCA scores + principal-direction reconstruction, wired end-to-end with re-exports + doctest (completed 2026-09-05)
 - [ ] **Phase 74: Elastic Conformal Anomaly Detection** - Elastic nonconformity scores + inductive conformal p-values/flags catching magnitude and shape outliers
 
 #### Phase 72: jfPCA Fit/Transform Seam
@@ -128,7 +128,7 @@ Phases execute in numeric order: 72 → 73 → 74. Phase 73 depends on the Phase
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 72. jfPCA Fit/Transform Seam | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
-| 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 1/1 | In Progress|  |
+| 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
 | 74. Elastic Conformal Anomaly Detection | v0.38.0 | 0/TBD | Not started | - |
 
 ## Status
