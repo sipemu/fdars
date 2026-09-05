@@ -90,11 +90,11 @@ Plans:
   4. A `ConformalAnomalyResult` carries per-curve conformal p-values, nonconformity scores, boolean flags, and the calibrated threshold; the full surface is re-exported at crate root and in the prelude with a running module doctest.
   5. Additive/non-breaking — the existing `conformal_prediction_band` path is unchanged; whole-crate `cargo test`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo fmt --check` pass.
 
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
 
-- [ ] 74-01: TBD
+- [ ] 74-01-PLAN.md — Elastic conformal anomaly detection: extend NonConformityScore with elastic variants, add elastic_nonconformity + elastic_conformal_anomaly (inductive p-values/flags), ConformalAnomalyConfig/Result, re-exports + doctest
 
 <details>
 <summary>✅ v0.37.0 — WAV: Wavelet-Domain Functional Regression (Phases 69–71) — SHIPPED 2026-09-04</summary>
