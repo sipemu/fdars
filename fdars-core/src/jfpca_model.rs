@@ -528,7 +528,7 @@ mod tests {
             model.joint_result.eigenvalues.len(),
             "ncomp must equal joint_result.eigenvalues.len() (clamp check)"
         );
-        assert!(model.ncomp <= n - 1, "ncomp must be clamped to n-1");
+        assert!(model.ncomp < n, "ncomp must be clamped to n-1");
         // New fields: training gammas and aligned data stored correctly
         assert_eq!(
             model.training_gammas.shape(),
