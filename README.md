@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # Functional Data Analysis (FDA)
 
 [![Rust CI](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/sipemu/fdars/actions/workflows/rust-ci.yml)
@@ -22,15 +23,15 @@ High-performance Functional Data Analysis tools implemented in Rust, with Python
 |------|-------------|
 | **Core** | Simulation (KL expansion, GP with 8 kernels), functional operations, smoothing (NW, local polynomial, k-NN), spline interpolation, basis representations (B-spline, Fourier, P-spline) |
 | **Descriptive** | 8 depth measures + streaming online depth, functional summary statistics (variance, std, covariance, depth-based median, trimmed mean), 12 distance metrics (Lp, DTW, elastic, semimetrics, KL), LRT outlier detection |
-| **Regression** | Scalar-on-function (FPC, kernel, logistic, robust), function-on-scalar (FOSR, 2D FOSR, FANOVA), FPCA, PLS, ridge, mixed effects |
+| **Regression** | Scalar-on-function (FPC, kernel, logistic, robust), function-on-scalar (FOSR, 2D FOSR, FANOVA), FPCA, PLS, ridge, mixed effects; wavelet-domain regressors (`wcr`: PCR/PLS in wavelet space, `wnet`: elastic-net) |
 | **Classification** | LDA, QDA, k-NN, kernel, DD-classifier, conformal prediction sets; k-means, fuzzy c-means, GMM |
 | **Elastic Alignment** | SRSF/DP alignment, Karcher mean (1-D/N-D), TSRVF, Bayesian (pCN MCMC), closed curves, transfer alignment, partial matching, multi-resolution, generative models, geodesics, FPNS, lambda CV, peak persistence |
 | **Elastic Robust** | Karcher median, trimmed mean, SRVF outlier detection, elastic depth, shape CIs, diagnostics, warp statistics, phase box plots, shape analysis |
-| **Elastic Models** | Elastic FPCA, regression, PCR, logistic, scalar-on-shape (ScoSh), changepoint detection, elastic clustering |
+| **Elastic Models** | Elastic FPCA (vertical/horizontal/joint), jfPCA fit/transform seam (`jfpca_fit`/`JfpcaModel`/`.transform()`), elastic regression, PCR, logistic, scalar-on-shape (ScoSh), changepoint detection, elastic clustering |
 | **SPM** | T²/SPE Phase I/II, EWMA, MEWMA, CUSUM, adaptive EWMA, FRCC, profile monitoring; bootstrap/KDE limits, ARL, partial-domain, elastic SPM, iterative Phase I, Western Electric/Nelson rules |
-| **Explainability** | PDP/ICE, SHAP, ALE, LIME, Sobol, Friedman H, anchors, counterfactuals, prototype/criticism; influence diagnostics, VIF, calibration (ECE, Brier), saliency maps; `FpcPredictor` trait |
-| **Inference** | Tolerance bands (FPCA, conformal, Degras, exponential, elastic), conformal prediction (split, Jackknife+, CV+), equivalence testing (TOST) |
-| **Time Series** | Seasonal detection (FFT, ACF, Autoperiod, SAZED, Lomb-Scargle, SSA, matrix profile), detrending (polynomial, LOESS, STL) |
+| **Explainability** | PDP/ICE, SHAP, ALE, LIME, Sobol, Friedman H, anchors, counterfactuals, prototype/criticism; influence diagnostics, VIF, calibration (ECE, Brier), saliency maps; `FpcPredictor` trait; VEESA: model-agnostic permutation feature importance (`elastic_pfi`), principal-direction reconstruction (`JfpcaModel::principal_directions`), end-to-end `veesa_pipeline` |
+| **Inference** | Tolerance bands (FPCA, conformal, Degras, exponential, elastic), conformal prediction (split, Jackknife+, CV+), equivalence testing (TOST); inductive elastic conformal anomaly detection (`elastic_conformal_anomaly`, amplitude/phase/combined `NonConformityScore`) |
+| **Time Series** | Seasonal detection (FFT, ACF, Autoperiod, SAZED, Lomb-Scargle, SSA, matrix profile), detrending (polynomial, LOESS, STL); wavelet DWT (Haar + Daubechies db2–db10, multi-level Mallat pyramid via `decompose`/`reconstruct`) |
 | **Specialized** | Streaming depth (online O(log N)), irregular data (CSR, kernel estimation) |
 
 ## Installation
@@ -39,7 +40,7 @@ High-performance Functional Data Analysis tools implemented in Rust, with Python
 
 ```toml
 [dependencies]
-fdars-core = "0.16"
+fdars-core = "0.38"
 ```
 
 Or install from the repository:
@@ -72,13 +73,14 @@ devtools::install_github("sipemu/fdars-r")
 
 - `parallel` (default): Enable rayon-based parallel processing
 - `linalg`: Enable linear algebra features (faer, ridge regression) — requires Rust 1.84+
+- `serde`: Add `Serialize`/`Deserialize` to core types and enable JSON support
 - `js`: Enable WASM support with JS random number generation
 
 For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.16", default-features = false }
+fdars-core = { version = "0.38", default-features = false }
 ```
 
 ## Data Layout
