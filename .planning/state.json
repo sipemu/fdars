@@ -11,7 +11,7 @@
     {
       "number": "76",
       "name": "Differentiable Elastic Distance & FPCA Scores",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "77",
@@ -21,8 +21,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 76)",
-    "reason": "Phase 76 of 3 — needs a plan"
+    "label": "Advance to the next step (plan phase 77)",
+    "reason": "Phase 77 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-05T23:01:56.546Z"
+  "updated_at": "2026-09-05T23:44:14.576Z"
 }
