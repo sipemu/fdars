@@ -159,6 +159,14 @@ With the `parallel` feature (enabled by default), computationally intensive oper
 - **Python Package**: [https://github.com/sipemu/pyfda](https://github.com/sipemu/pyfda)
 - **R Package**: [https://sipemu.github.io/fdars/](https://sipemu.github.io/fdars/) (⚠️ outdated — lags the Rust core)
 
+### Guides (`documentation/`)
+
+- [Getting Started](documentation/GETTING-STARTED.md) — install, first program, running the examples
+- [Architecture](documentation/ARCHITECTURE.md) — `FdMatrix` layout, module map, error model, parallelism
+- [Configuration](documentation/CONFIGURATION.md) — Cargo feature flags, MSRV, build targets
+- [Development](documentation/DEVELOPMENT.md) — conventions, adding modules, local gates, CI
+- [Testing](documentation/TESTING.md) — test layout, run commands, benchmarks, coverage
+
 ## License
 
 MIT
