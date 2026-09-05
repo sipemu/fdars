@@ -344,12 +344,13 @@ pub use irreg_fdata::{face_covariance, face_trajectory, mface_covariance, MfaceC
 
 // Re-export tolerance band types
 pub use tolerance::{
-    conformal_prediction_band, elastic_tolerance_band, elastic_tolerance_band_with_config,
-    equivalence_test, equivalence_test_one_sample, exponential_family_tolerance_band,
-    fpca_tolerance_band, phase_tolerance_band, scb_mean_degras, BandType,
-    ElasticToleranceBandResult, ElasticToleranceConfig, EquivalenceBootstrap,
-    EquivalenceTestResult, ExponentialFamily, MultiplierDistribution, NonConformityScore,
-    PhaseToleranceBand, ToleranceBand,
+    conformal_prediction_band, elastic_conformal_anomaly, elastic_nonconformity,
+    elastic_tolerance_band, elastic_tolerance_band_with_config, equivalence_test,
+    equivalence_test_one_sample, exponential_family_tolerance_band, fpca_tolerance_band,
+    phase_tolerance_band, scb_mean_degras, BandType, ConformalAnomalyConfig,
+    ConformalAnomalyResult, ElasticToleranceBandResult, ElasticToleranceConfig,
+    EquivalenceBootstrap, EquivalenceTestResult, ExponentialFamily, MultiplierDistribution,
+    NonConformityScore, PhaseToleranceBand, ToleranceBand,
 };
 
 // Re-export functional inference types and two-sample tests

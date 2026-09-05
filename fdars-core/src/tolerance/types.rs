@@ -30,6 +30,31 @@ pub enum NonConformityScore {
     SupNorm,
     /// L2 norm: sqrt(sum (y(t) - center(t))^2)
     L2,
+    /// Amplitude elastic distance to a reference template (Fisher-Rao metric).
+    ///
+    /// Measures the L2 distance between the SRSFs after optimal elastic alignment,
+    /// capturing shape differences due to amplitude (vertical) variation.
+    /// Requires a reference template; not supported by [`conformal_prediction_band`].
+    ///
+    /// [`conformal_prediction_band`]: crate::tolerance::conformal_prediction_band
+    AmplitudeElastic,
+    /// Phase elastic distance to a reference template.
+    ///
+    /// Measures the geodesic distance of the optimal warping function from the
+    /// identity warp on the Hilbert sphere, capturing timing (horizontal) variation.
+    /// Requires a reference template; not supported by [`conformal_prediction_band`].
+    ///
+    /// [`conformal_prediction_band`]: crate::tolerance::conformal_prediction_band
+    PhaseElastic,
+    /// Combined elastic distance to a reference template.
+    ///
+    /// A genuine combination of amplitude and phase distances:
+    /// `sqrt(amplitude² + phase²)`, capturing both vertical and horizontal
+    /// shape variation. Requires a reference template; not supported by
+    /// [`conformal_prediction_band`].
+    ///
+    /// [`conformal_prediction_band`]: crate::tolerance::conformal_prediction_band
+    CombinedElastic,
 }
 
 /// Multiplier distribution for Degras SCB.

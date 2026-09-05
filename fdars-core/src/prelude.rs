@@ -88,7 +88,8 @@ pub use crate::spm::{
 
 // Tolerance bands
 pub use crate::tolerance::{
-    ElasticToleranceBandResult, ElasticToleranceConfig, PhaseToleranceBand, ToleranceBand,
+    ConformalAnomalyConfig, ConformalAnomalyResult, ElasticToleranceBandResult,
+    ElasticToleranceConfig, PhaseToleranceBand, ToleranceBand,
 };
 
 // Cross-validation

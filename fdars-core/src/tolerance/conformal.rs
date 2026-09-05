@@ -22,6 +22,9 @@ fn nonconformity_score(
             let ss: f64 = (0..m).map(|j| (data[(i, j)] - center[j]).powi(2)).sum();
             ss.sqrt()
         }
+        _ => unreachable!(
+            "elastic variants are rejected by the early guard in conformal_prediction_band"
+        ),
     }
 }
 
@@ -74,6 +77,16 @@ pub fn conformal_prediction_band(
     score_type: NonConformityScore,
     seed: u64,
 ) -> Option<ToleranceBand> {
+    // Elastic variants require a reference template — not supported by the band function.
+    if matches!(
+        score_type,
+        NonConformityScore::AmplitudeElastic
+            | NonConformityScore::PhaseElastic
+            | NonConformityScore::CombinedElastic
+    ) {
+        return None;
+    }
+
     let (n, m) = data.shape();
     if n < 4
         || m == 0
@@ -111,6 +124,9 @@ pub fn conformal_prediction_band(
     let half_width = match score_type {
         NonConformityScore::SupNorm => vec![q; m],
         NonConformityScore::L2 => vec![q / (m as f64).sqrt(); m],
+        _ => unreachable!(
+            "elastic variants are rejected by the early guard in conformal_prediction_band"
+        ),
     };
 
     Some(build_band(center, half_width))

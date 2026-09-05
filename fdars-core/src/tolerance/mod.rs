@@ -15,6 +15,7 @@
 //! - [`exponential_family_tolerance_band`] — Tolerance band for exponential family data
 
 mod conformal;
+mod conformal_anomaly;
 mod degras;
 mod elastic;
 mod equivalence;
@@ -28,6 +29,10 @@ mod tests;
 
 // Re-export all public items so lib.rs doesn't change
 pub use conformal::conformal_prediction_band;
+pub use conformal_anomaly::{
+    elastic_conformal_anomaly, elastic_nonconformity, ConformalAnomalyConfig,
+    ConformalAnomalyResult,
+};
 pub use degras::scb_mean_degras;
 pub use elastic::{
     elastic_tolerance_band, elastic_tolerance_band_with_config, phase_tolerance_band,
