@@ -87,7 +87,8 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   2. Dual arithmetic reproduces the analytical derivative of composed elementary functions to ≤1e-10 (known-answer tests).
   3. The `Scalar` trait is implemented for `f64`, so f64-instantiated generic code compiles and runs identically to the current numerics.
   4. The substrate adds no new crate dependency (in-crate dual numbers only) and existing f64 public signatures are untouched.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 75-01-PLAN.md — Scalar trait + forward-mode Dual substrate (op set, seed/extract, three-tier tests), registered in lib.rs, no new dependency
 
 ### Phase 76: Differentiable Elastic Distance & FPCA Scores
 **Goal**: The two scoped FDA operations — elastic distance and FPCA score projection — are generic over `Scalar`, so at `Dual` they yield exact forward-mode gradients w.r.t. a curve's input values, while at `f64` they reproduce the existing numerics.
