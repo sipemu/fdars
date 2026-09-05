@@ -37,6 +37,57 @@
 //! assert!((value - 9.0).abs() < 1e-12);
 //! assert!((deriv - 6.0).abs() < 1e-12);
 //! ```
+//!
+//! # Composing differentiable ops
+//!
+//! [`grad`] flows a gradient through a composition of the crate's
+//! `Scalar`-generic differentiable ops. Here one scalar objective composes a
+//! soft-DTW distance and an FPCA-score projection, then `grad` returns the
+//! objective value and its full gradient w.r.t. the input curve's samples.
+//!
+//! ```
+//! use fdars_core::prelude::*;
+//! use fdars_core::regression::fdata_to_pc_1d;
+//!
+//! // Small trained FPCA model (mirrors regression::fdata_to_pc_1d usage).
+//! let m = 10usize;
+//! let n = 12usize;
+//! let argvals: Vec<f64> = (0..m).map(|j| 0.1 + 0.8 * j as f64 / (m - 1) as f64).collect();
+//! let mut raw = vec![0.0f64; n * m];
+//! for i in 0..n {
+//!     for (j, &t) in argvals.iter().enumerate() {
+//!         let phase = i as f64 * 0.3;
+//!         raw[i + j * n] = (std::f64::consts::PI * t + phase).sin()
+//!             + 0.5 * (2.0 * std::f64::consts::PI * t).cos();
+//!     }
+//! }
+//! let data = FdMatrix::from_column_major(raw, n, m).unwrap();
+//! let fpca = fdata_to_pc_1d(&data, 2, &argvals).unwrap();
+//!
+//! // Objective: soft-DTW(curve, reference) + sum of squared FPCA scores.
+//! let reference: Vec<Dual> = argvals
+//!     .iter()
+//!     .map(|&t| Dual::constant((std::f64::consts::PI * t).sin()))
+//!     .collect();
+//! let curve: Vec<f64> = argvals
+//!     .iter()
+//!     .map(|&t| (std::f64::consts::PI * t).cos())
+//!     .collect();
+//!
+//! let objective = |c: &[Dual]| -> Dual {
+//!     let sdtw = soft_dtw_distance_generic(c, &reference, 0.1);
+//!     let scores = project_scores_generic(c, &fpca.mean, &fpca.rotation, &fpca.weights, 2);
+//!     let mut acc = Dual::constant(0.0);
+//!     for s in &scores {
+//!         acc += *s * *s;
+//!     }
+//!     sdtw + acc
+//! };
+//!
+//! let (value, gradient) = grad(objective, &curve);
+//! assert_eq!(gradient.len(), m);
+//! assert!(value.is_finite());
+//! ```
 
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -434,6 +485,143 @@ pub fn diff<F: Fn(Dual) -> Dual>(f: F, x: f64) -> (f64, f64) {
     f(Dual::seed(x)).extract()
 }
 
+/// Compute a scalar objective's value and its full gradient over an `m`-vector
+/// input, in `m` forward-mode passes (one per input).
+///
+/// This is the multi-input generalization of [`diff`]: for each input index
+/// `k`, it builds the argument vector where element `k` is
+/// [`Dual::seed`]ed (tangent `1.0`, the variable being differentiated) and every
+/// other element `j` is a [`Dual::constant`] (tangent `0.0`), runs `f`, and
+/// records the tangent of the result as `gradient[k]`. The primal `value` is
+/// identical across passes (only tangents differ), so it is captured once.
+///
+/// Returns `(value, gradient)` where `gradient.len() == x.len()`. An empty
+/// input yields `(f(&[]).value, Vec::new())`.
+///
+/// ```
+/// use fdars_core::autodiff::{grad, Dual, Scalar};
+///
+/// // f(x) = x0^2 + x1^2. Gradient = [2*x0, 2*x1]. At [3, 4]: value 25, grad [6, 8].
+/// let (value, gradient) = grad(|x| x[0] * x[0] + x[1] * x[1], &[3.0, 4.0]);
+/// assert!((value - 25.0).abs() < 1e-12);
+/// assert!((gradient[0] - 6.0).abs() < 1e-12);
+/// assert!((gradient[1] - 8.0).abs() < 1e-12);
+/// ```
+#[must_use]
+pub fn grad<F: Fn(&[Dual]) -> Dual>(f: F, x: &[f64]) -> (f64, Vec<f64>) {
+    let m = x.len();
+    if m == 0 {
+        return (f(&[]).value, Vec::new());
+    }
+    let mut gradient = vec![0.0; m];
+    let mut value = 0.0;
+    for k in 0..m {
+        let duals: Vec<Dual> = (0..m)
+            .map(|j| {
+                if j == k {
+                    Dual::seed(x[j])
+                } else {
+                    Dual::constant(x[j])
+                }
+            })
+            .collect();
+        let (v, t) = f(&duals).extract();
+        if k == 0 {
+            value = v;
+        }
+        gradient[k] = t;
+    }
+    (value, gradient)
+}
+
+/// Compute a vector-valued map's values and its full Jacobian over an `m`-vector
+/// input, in `m` forward-mode passes (one per input).
+///
+/// `f` returns a length-`n` `Vec<Dual>` (the outputs). Seeding input `k` in turn
+/// (as in [`grad`]) fills column `k` of the returned `n × m` Jacobian, where
+/// `jacobian[i][k] = d(output_i)/d(x[k])`. Output primal values are captured on
+/// the first pass.
+///
+/// Returns `(values, jacobian)` with `values.len() == n`, `jacobian.len() == n`,
+/// and each row of length `m`. An empty input yields `(values, empty rows)`.
+///
+/// ```
+/// use fdars_core::autodiff::{jacobian, Dual};
+///
+/// // f(x) = [x0*x1, x0 + x1]. J = [[x1, x0], [1, 1]]. At [2, 3]: [[3, 2], [1, 1]].
+/// let (values, j) = jacobian(|x| vec![x[0] * x[1], x[0] + x[1]], &[2.0, 3.0]);
+/// assert!((values[0] - 6.0).abs() < 1e-12);
+/// assert!((values[1] - 5.0).abs() < 1e-12);
+/// assert!((j[0][0] - 3.0).abs() < 1e-12 && (j[0][1] - 2.0).abs() < 1e-12);
+/// assert!((j[1][0] - 1.0).abs() < 1e-12 && (j[1][1] - 1.0).abs() < 1e-12);
+/// ```
+#[must_use]
+pub fn jacobian<F: Fn(&[Dual]) -> Vec<Dual>>(f: F, x: &[f64]) -> (Vec<f64>, Vec<Vec<f64>>) {
+    let m = x.len();
+    if m == 0 {
+        let outputs = f(&[]);
+        let values: Vec<f64> = outputs.iter().map(|d| d.value).collect();
+        let rows = values.len();
+        return (values, vec![Vec::new(); rows]);
+    }
+    let mut values: Vec<f64> = Vec::new();
+    let mut jac: Vec<Vec<f64>> = Vec::new();
+    for k in 0..m {
+        let duals: Vec<Dual> = (0..m)
+            .map(|j| {
+                if j == k {
+                    Dual::seed(x[j])
+                } else {
+                    Dual::constant(x[j])
+                }
+            })
+            .collect();
+        let outputs = f(&duals);
+        if k == 0 {
+            values = outputs.iter().map(|d| d.value).collect();
+            jac = vec![vec![0.0; m]; outputs.len()];
+        }
+        for (i, out) in outputs.iter().enumerate() {
+            jac[i][k] = out.tangent;
+        }
+    }
+    (values, jac)
+}
+
+/// Compute a scalar objective's value and its directional derivative along a
+/// supplied `direction`, in a SINGLE forward-mode pass.
+///
+/// Each input `j` is lifted to `Dual { value: x[j], tangent: direction[j] }`, so
+/// the returned tangent is `∇f(x) · direction`. Requires
+/// `direction.len() == x.len()` (checked with `debug_assert`).
+///
+/// ```
+/// use fdars_core::autodiff::{directional_derivative, Dual};
+///
+/// // f(x) = x0^2 + x1^2, ∇f = [2*x0, 2*x1]. At [1, 2] along [1, 0]: dir-deriv = 2.
+/// let (value, dd) = directional_derivative(|x| x[0] * x[0] + x[1] * x[1], &[1.0, 2.0], &[1.0, 0.0]);
+/// assert!((value - 5.0).abs() < 1e-12);
+/// assert!((dd - 2.0).abs() < 1e-12);
+/// ```
+#[must_use]
+pub fn directional_derivative<F: Fn(&[Dual]) -> Dual>(
+    f: F,
+    x: &[f64],
+    direction: &[f64],
+) -> (f64, f64) {
+    debug_assert_eq!(
+        direction.len(),
+        x.len(),
+        "direction length must match input length"
+    );
+    let duals: Vec<Dual> = x
+        .iter()
+        .zip(direction.iter())
+        .map(|(&value, &tangent)| Dual { value, tangent })
+        .collect();
+    f(&duals).extract()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -761,6 +949,174 @@ mod tests {
         assert_eq!(<f64 as Scalar>::one(), 1.0);
         assert_eq!(<f64 as Scalar>::from_f64(3.25), 3.25);
         assert_eq!(<f64 as Scalar>::infinity(), f64::INFINITY);
+    }
+
+    // ---------------------------------------------------------------------
+    // grad / jacobian / directional_derivative (DIF-04 SC #1).
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn grad_sum_of_squares_closed_form() {
+        // f(x) = sum(x_i^2), grad = [2*x_i]. At [1,2,3]: value 14, grad [2,4,6].
+        let (value, gradient) = grad(
+            |x| {
+                let mut acc = Dual::constant(0.0);
+                for &xi in x {
+                    acc += xi * xi;
+                }
+                acc
+            },
+            &[1.0, 2.0, 3.0],
+        );
+        assert_eq!(gradient.len(), 3);
+        assert!((value - 14.0).abs() <= 1e-12, "value {value} != 14.0");
+        for (g, expected) in gradient.iter().zip([2.0, 4.0, 6.0]) {
+            assert!((g - expected).abs() <= 1e-12, "grad {g} != {expected}");
+        }
+    }
+
+    #[test]
+    fn grad_single_input_agrees_with_diff() {
+        // Single-element input [3.0], f = x0^2 -> (9.0, [6.0]) matches diff.
+        let (value, gradient) = grad(|x| x[0] * x[0], &[3.0]);
+        assert_eq!(gradient.len(), 1);
+        assert!((value - 9.0).abs() <= 1e-12);
+        assert!((gradient[0] - 6.0).abs() <= 1e-12);
+        let (dv, dd) = diff(|x| x * x, 3.0);
+        assert!((value - dv).abs() <= 1e-12);
+        assert!((gradient[0] - dd).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn grad_empty_input_returns_constant() {
+        // m == 0: evaluate f once, empty gradient, never index x.
+        let (value, gradient) = grad(|_x| Dual::constant(7.0), &[]);
+        assert!((value - 7.0).abs() <= 1e-12);
+        assert!(gradient.is_empty());
+    }
+
+    #[test]
+    fn jacobian_known_answer() {
+        // f(x) = [x0*x1, x0 + x1]; J = [[x1, x0], [1, 1]]; at [2,3] -> [[3,2],[1,1]].
+        let (values, j) = jacobian(|x| vec![x[0] * x[1], x[0] + x[1]], &[2.0, 3.0]);
+        assert_eq!(values.len(), 2);
+        assert!((values[0] - 6.0).abs() <= 1e-12);
+        assert!((values[1] - 5.0).abs() <= 1e-12);
+        assert_eq!(j.len(), 2);
+        assert!((j[0][0] - 3.0).abs() <= 1e-12 && (j[0][1] - 2.0).abs() <= 1e-12);
+        assert!((j[1][0] - 1.0).abs() <= 1e-12 && (j[1][1] - 1.0).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn directional_derivative_projects_gradient() {
+        // f(x) = x0^2 + x1^2, grad [2*x0, 2*x1]. At [1,2] along [1,0]: dd = 2.
+        let (value, dd) =
+            directional_derivative(|x| x[0] * x[0] + x[1] * x[1], &[1.0, 2.0], &[1.0, 0.0]);
+        assert!((value - 5.0).abs() <= 1e-12);
+        assert!((dd - 2.0).abs() <= 1e-12);
+    }
+
+    // ---------------------------------------------------------------------
+    // Composed-objective demo + central finite-difference cross-check
+    // (DIF-04 SC #2): grad flows through soft_dtw + FPCA-score projection.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn grad_composed_objective_matches_finite_diff() {
+        use crate::matrix::FdMatrix;
+        use crate::metric::soft_dtw_distance_generic;
+        use crate::regression::{fdata_to_pc_1d, project_scores_generic};
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let m = 24usize;
+        let n = 40usize;
+        let ncomp = 3usize;
+        let gamma = 0.1_f64;
+        let lambda = 1.0_f64;
+
+        // Grid on [0.1, 0.9] avoids SRSF derivative zeros / degenerate points.
+        let argvals: Vec<f64> = (0..m)
+            .map(|j| 0.1 + 0.8 * j as f64 / (m - 1) as f64)
+            .collect();
+
+        // Spanning full-rank training set: seeded random combos of three basis
+        // functions with distinct coefficients (n >> m). Column-major FdMatrix.
+        let mut rng = StdRng::seed_from_u64(20260906);
+        let mut data = vec![0.0f64; n * m];
+        for i in 0..n {
+            let a: f64 = rng.gen_range(-1.0..1.0);
+            let b: f64 = rng.gen_range(-1.0..1.0);
+            let c: f64 = rng.gen_range(-1.0..1.0);
+            for (j, &t) in argvals.iter().enumerate() {
+                let v = a * (PI * t).sin() + b * (2.0 * PI * t).cos() + c * (3.0 * PI * t).sin();
+                data[i + j * n] = v;
+            }
+        }
+        let data = FdMatrix::from_column_major(data, n, m).unwrap();
+        let fpca = fdata_to_pc_1d(&data, ncomp, &argvals).unwrap();
+        let mean = fpca.mean.clone();
+        let rotation = fpca.rotation.clone();
+        let weights = fpca.weights.clone();
+
+        // Input curve + reference curve: further spanning combos, nonzero deriv.
+        let curve: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                0.7 * (PI * t).sin() - 0.4 * (2.0 * PI * t).cos() + 0.3 * (3.0 * PI * t).sin()
+            })
+            .collect();
+        let reference: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                0.2 * (PI * t).sin() + 0.5 * (2.0 * PI * t).cos() - 0.6 * (3.0 * PI * t).sin()
+            })
+            .collect();
+        let reference_duals: Vec<Dual> = reference.iter().map(|&r| Dual::constant(r)).collect();
+
+        // Composed scalar objective: soft-DTW (op 1) + lambda * sum(scores^2) (op 2).
+        let objective = |c: &[Dual]| -> Dual {
+            let sdtw = soft_dtw_distance_generic(c, &reference_duals, gamma);
+            let scores = project_scores_generic(c, &mean, &rotation, &weights, ncomp);
+            let mut acc = Dual::constant(0.0);
+            for s in &scores {
+                acc += *s * *s;
+            }
+            sdtw + Dual::constant(lambda) * acc
+        };
+
+        let (value, gradient) = grad(objective, &curve);
+        assert_eq!(gradient.len(), m);
+        assert!(value.is_finite(), "objective value not finite: {value}");
+        assert!(value > 0.0, "objective value not positive: {value}");
+
+        // f64 reference for composition parity + central finite differences.
+        let f64_obj = |c: &[f64]| -> f64 {
+            let d = soft_dtw_distance_generic::<f64>(c, &reference, gamma);
+            let sc = project_scores_generic::<f64>(c, &mean, &rotation, &weights, ncomp);
+            d + lambda * sc.iter().map(|s| s * s).sum::<f64>()
+        };
+
+        // Composition parity at f64.
+        assert!(
+            (value - f64_obj(&curve)).abs() < 1e-12,
+            "composition parity broke: {value}"
+        );
+
+        // Central FD (h = 1e-6) cross-check on every gradient component.
+        let h = 1e-6_f64;
+        for j in 0..m {
+            let mut plus = curve.clone();
+            let mut minus = curve.clone();
+            plus[j] += h;
+            minus[j] -= h;
+            let fd = (f64_obj(&plus) - f64_obj(&minus)) / (2.0 * h);
+            assert!(
+                (gradient[j] - fd).abs() < 1e-6,
+                "component {j}: AD {} vs FD {fd}",
+                gradient[j]
+            );
+        }
     }
 
     #[test]

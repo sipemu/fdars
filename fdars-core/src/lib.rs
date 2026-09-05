@@ -269,15 +269,15 @@ pub use covariance::{
 
 // Re-export alignment types and functions
 pub use alignment::{
-    align_to_target, alignment_quality, amplitude_distance, amplitude_self_distance_matrix,
-    bayesian_align_pair, compose_warps, curve_geodesic, curve_geodesic_nd, cut_dendrogram,
-    diagnose_alignment, diagnose_pairwise, elastic_align_pair, elastic_align_pair_closed,
-    elastic_align_pair_constrained, elastic_align_pair_multires, elastic_align_pair_nd,
-    elastic_align_pair_penalized, elastic_align_pair_with_landmarks, elastic_cross_distance_matrix,
-    elastic_cross_distance_matrix_banded, elastic_cross_distance_matrix_with_band,
-    elastic_decomposition, elastic_depth, elastic_distance, elastic_distance_closed,
-    elastic_distance_nd, elastic_outlier_detection, elastic_partial_match,
-    elastic_self_distance_matrix, elastic_self_distance_matrix_banded,
+    align_to_target, alignment_quality, amplitude_distance, amplitude_distance_at_warp_generic,
+    amplitude_self_distance_matrix, bayesian_align_pair, compose_warps, curve_geodesic,
+    curve_geodesic_nd, cut_dendrogram, diagnose_alignment, diagnose_pairwise, elastic_align_pair,
+    elastic_align_pair_closed, elastic_align_pair_constrained, elastic_align_pair_multires,
+    elastic_align_pair_nd, elastic_align_pair_penalized, elastic_align_pair_with_landmarks,
+    elastic_cross_distance_matrix, elastic_cross_distance_matrix_banded,
+    elastic_cross_distance_matrix_with_band, elastic_decomposition, elastic_depth,
+    elastic_distance, elastic_distance_closed, elastic_distance_nd, elastic_outlier_detection,
+    elastic_partial_match, elastic_self_distance_matrix, elastic_self_distance_matrix_banded,
     elastic_self_distance_matrix_with_band, gauss_model, hierarchical_from_distances, horiz_fpns,
     invert_warp, joint_gauss_model, karcher_covariance_nd, karcher_mean, karcher_mean_banded,
     karcher_mean_closed, karcher_mean_nd, karcher_mean_with_band, karcher_median,
@@ -581,6 +581,8 @@ pub use smoothing::{
 pub use regression::{
     fdata_to_pc_1d, fdata_to_pls_1d, project_scores_generic, FpcaResult, PlsResult,
 };
+// Re-export the forward-mode automatic-differentiation core (v0.39.0 DIF-04).
+pub use autodiff::{diff, directional_derivative, grad, jacobian, Dual, Scalar};
 // Re-export specialized FPCA variants (Phase 37)
 pub use fpca_variants::{
     cross_covariance, dynamical_correlation, fpca_der, fsvd, ssvd, FsvdResult,
@@ -635,9 +637,9 @@ pub use metric::{
     gak_gram_matrix, gak_gram_predict, gak_gram_train, hausdorff_3d, hausdorff_cross_1d,
     hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d, hshift_cross_1d, hshift_self_1d,
     lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d, sbd, sbd_distance_matrix, sigma_gak,
-    soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d,
-    soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d, GakConfig, GakGramTrain,
-    SbdResult, SoftDtwBarycenterResult,
+    soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_distance_generic,
+    soft_dtw_div_cross_1d, soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d, GakConfig,
+    GakGramTrain, SbdResult, SoftDtwBarycenterResult,
 };
 
 // Re-export depth measure functions

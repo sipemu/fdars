@@ -15,7 +15,10 @@ pub use crate::matrix::{FdCurveSet, FdMatrix};
 pub use crate::function_on_scalar::FosrResult;
 #[cfg(feature = "linalg")]
 pub use crate::regression::RidgeResult;
-pub use crate::regression::{FpcaResult, PlsResult};
+pub use crate::regression::{project_scores_generic, FpcaResult, PlsResult};
+
+// Forward-mode automatic-differentiation core (v0.39.0 DIF-04)
+pub use crate::autodiff::{diff, directional_derivative, grad, jacobian, Dual, Scalar};
 pub use crate::scalar_on_function::{FregreLmResult, FunctionalLogisticResult};
 
 // Boosting and Bayesian functional regression results (Phase 43 REG-06)
@@ -44,7 +47,8 @@ pub use crate::depth::{
 
 // Metric functions
 pub use crate::metric::{
-    dtw_distance, lp_cross_1d, lp_self_1d, sbd, sbd_distance_matrix, SbdResult,
+    dtw_distance, lp_cross_1d, lp_self_1d, sbd, sbd_distance_matrix, soft_dtw_distance_generic,
+    SbdResult,
 };
 
 // k-Shape clustering + SBD-backed k-medoids
@@ -96,6 +100,7 @@ pub use crate::tolerance::{
 pub use crate::cv::{CvMetrics, CvType};
 
 // Alignment
+pub use crate::alignment::amplitude_distance_at_warp_generic;
 pub use crate::alignment::{
     AlignmentOutput, AlignmentResult, BayesianAlignmentResult, ClosedKarcherMeanResult, Dendrogram,
     ElasticDepthResult, ElasticOutlierResult, FpnsResult, GenerativeModelResult, GeodesicPath,
