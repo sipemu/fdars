@@ -16,13 +16,13 @@
     {
       "number": "74",
       "name": "Elastic Conformal Anomaly Detection",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 74)",
-    "reason": "Phase 74 of 3 — needs a plan"
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-09-05T18:53:37.930Z"
+  "updated_at": "2026-09-05T19:54:06.234Z"
 }

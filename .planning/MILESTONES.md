@@ -1,5 +1,16 @@
 # Milestones
 
+## v0.38.0 VEESA: Elastic Shape Explainability & Conformal Anomaly Detection (Shipped: 2026-09-05)
+
+**Phases completed:** 3 phases, 3 plans, 0 tasks
+
+**Key accomplishments:**
+
+- Model-agnostic PFI over jfPCA PC scores + principal-direction reconstruction (amplitude/phase split) + end-to-end veesa_pipeline, all additive, with running doctests and full-suite gates green (2809 tests, +8 new).
+- Inductive conformal anomaly detector using Fisher-Rao amplitude + geodesic phase elastic distances, scoring functional curves against a Karcher-mean template with marginal validity guarantee.
+
+---
+
 ## v0.37.0 WAV: Wavelet-Domain Functional Regression (Shipped: 2026-09-04)
 
 **Phases completed:** 3 phases, 5 plans, 16 tasks
