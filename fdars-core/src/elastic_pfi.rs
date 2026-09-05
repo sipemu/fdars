@@ -372,7 +372,7 @@ mod tests {
             "importance length should equal ncomp"
         );
         assert!(
-            result.pfi.importance.len() > 0,
+            !result.pfi.importance.is_empty(),
             "importance should be non-empty"
         );
     }
