@@ -135,6 +135,7 @@ pub mod elastic;
 pub mod elastic_changepoint;
 pub mod elastic_explain;
 pub mod elastic_fpca;
+pub mod elastic_pfi;
 pub mod elastic_regression;
 pub mod explain;
 pub mod explain_generic;
@@ -507,6 +508,12 @@ pub use elastic_fpca::{
 
 // Re-export jfPCA fit/transform seam
 pub use jfpca_model::{jfpca_fit, JfpcaModel, JfpcaTransform};
+
+// Re-export VEESA explainability (Phase 73)
+pub use elastic_pfi::{
+    elastic_pfi, veesa_pipeline, ElasticPfiResult, PfiMetric, VeesaPipelineResult,
+};
+pub use jfpca_model::PrincipalDirections;
 
 // Re-export elastic regression types
 pub use elastic_regression::{

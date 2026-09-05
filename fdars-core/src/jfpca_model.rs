@@ -55,13 +55,35 @@
 //! # Ok::<(), fdars_core::FdarError>(())
 //! ```
 
-use crate::alignment::{align_to_target, karcher_mean, srsf_transform};
+use crate::alignment::{align_to_target, karcher_mean, srsf_inverse, srsf_transform};
 use crate::elastic_fpca::{
     build_augmented_srsfs, center_matrix, horiz_fpca, joint_fpca, shooting_vectors_from_psis,
     warps_to_normalized_psi, JointFpcaResult,
 };
 use crate::matrix::FdMatrix;
+use crate::warping::{exp_map_sphere, psi_to_gam};
 use crate::FdarError;
+
+/// Principal-direction curves at μ ± c·σⱼ for a chosen jfPCA component (VEE-04).
+///
+/// Created by [`JfpcaModel::principal_directions`].  Each row `i` of
+/// `amplitude_curves` / `phase_curves` corresponds to `c_values[i]`.
+///
+/// At `c = 0` the amplitude curve reproduces [`JfpcaModel::karcher_mean`]
+/// within 1e-10 (the make-or-break gate).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PrincipalDirections {
+    /// PC index (0-based).
+    pub pc_index: usize,
+    /// c multipliers supplied by the caller (length n_c).
+    pub c_values: Vec<f64>,
+    /// Amplitude (function-space) curves at each c value (n_c × m).
+    pub amplitude_curves: FdMatrix,
+    /// Phase (warping-function) curves at each c value (n_c × m).
+    pub phase_curves: FdMatrix,
+}
 
 /// Trained joint-FPCA model that stores the full basis for out-of-sample projection.
 ///
@@ -372,6 +394,92 @@ impl JfpcaModel {
             scores,
             aligned: self.training_aligned.clone(),
             warping: self.training_gammas.clone(),
+        })
+    }
+
+    /// Reconstruct amplitude and phase principal-direction curves (VEE-04).
+    ///
+    /// For each `c` in `c_values`, perturbs the `pc_index`-th joint-FPCA basis direction
+    /// by `c * σⱼ` (where `σⱼ = sqrt(eigenvalues[pc_index])`) and reconstructs both the
+    /// amplitude curve (via SRSF inversion) and the phase curve (via tangent-space
+    /// exponentiation + ψ→γ conversion).
+    ///
+    /// At `c = 0` the amplitude curve exactly reproduces [`JfpcaModel::karcher_mean`]
+    /// within 1e-10, and the phase curve is the identity warp on `argvals`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pc_index` — 0-based PC index. Must be `< self.ncomp`.
+    /// * `c_values` — Multiplier values (e.g. `&[-2.0, -1.0, 0.0, 1.0, 2.0]`).
+    ///
+    /// # Errors
+    ///
+    /// * [`FdarError::InvalidParameter`] if `pc_index >= self.ncomp` or `c_values` is empty.
+    pub fn principal_directions(
+        &self,
+        pc_index: usize,
+        c_values: &[f64],
+    ) -> Result<PrincipalDirections, FdarError> {
+        if pc_index >= self.ncomp {
+            return Err(FdarError::InvalidParameter {
+                parameter: "pc_index",
+                message: format!("pc_index={} must be < ncomp={}", pc_index, self.ncomp),
+            });
+        }
+        if c_values.is_empty() {
+            return Err(FdarError::InvalidParameter {
+                parameter: "c_values",
+                message: "must be non-empty".to_string(),
+            });
+        }
+
+        let m = self.argvals.len();
+        let n_c = c_values.len();
+        // σⱼ = sqrt(eigenvalue) — eigenvalue stores variance (σ²)
+        let sigma_j = self.eigenvalues[pc_index].sqrt();
+
+        // Normalized time grid [0, 1] for sphere operations
+        let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let domain = self.argvals[m - 1] - self.argvals[0];
+
+        let mut amplitude_curves = FdMatrix::zeros(n_c, m);
+        let mut phase_curves = FdMatrix::zeros(n_c, m);
+
+        for (ci, &c) in c_values.iter().enumerate() {
+            // ── Amplitude part ────────────────────────────────────────────────
+            // Perturb the mean SRSF along the amplitude eigenvector (first m elements).
+            let q_perturbed: Vec<f64> = (0..m)
+                .map(|l| self.mean_q[l] + c * sigma_j * self.vert_component[(pc_index, l)])
+                .collect();
+            // Recover f0 from the augmented (m-th) dimension.
+            // Pitfall 2: index m (the extra column), not m-1.
+            let aug_val = self.mean_q[m] + c * sigma_j * self.vert_component[(pc_index, m)];
+            let f0 = aug_val.signum() * aug_val * aug_val;
+            let amp = srsf_inverse(&q_perturbed, &self.argvals, f0);
+            for j in 0..m {
+                amplitude_curves[(ci, j)] = amp[j];
+            }
+
+            // ── Phase part ────────────────────────────────────────────────────
+            // Perturb mean_psi in tangent space, exponentiate onto the sphere,
+            // then convert ψ → γ (normalized [0,1]) and scale to argvals domain.
+            let v_perturbed: Vec<f64> = (0..m)
+                .map(|l| c * sigma_j * self.horiz_component[(pc_index, l)])
+                .collect();
+            // Pitfall 3: exp_map_sphere operates on the normalized time grid.
+            let psi_p = exp_map_sphere(&self.mean_psi, &v_perturbed, &time);
+            let gam = psi_to_gam(&psi_p, &time);
+            // Scale [0,1] warp back to the argvals domain.
+            for j in 0..m {
+                phase_curves[(ci, j)] = self.argvals[0] + gam[j] * domain;
+            }
+        }
+
+        Ok(PrincipalDirections {
+            pc_index,
+            c_values: c_values.to_vec(),
+            amplitude_curves,
+            phase_curves,
         })
     }
 

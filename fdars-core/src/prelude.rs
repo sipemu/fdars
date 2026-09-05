@@ -72,6 +72,10 @@ pub use crate::elastic_fpca::{HorizFpcaResult, JointFpcaResult, VertFpcaResult};
 pub use crate::elastic_regression::{
     ElasticLogisticResult, ElasticPcrResult, ElasticRegressionResult, ScalarOnShapeResult,
 };
+pub use crate::{
+    elastic_pfi, veesa_pipeline, ElasticPfiResult, PfiMetric, PrincipalDirections,
+    VeesaPipelineResult,
+};
 pub use crate::{jfpca_fit, JfpcaModel, JfpcaTransform};
 
 // Statistical Process Monitoring
