@@ -93,9 +93,14 @@ pub trait Scalar:
     /// `value == 0.0` with `p < 1.0` this may be `NaN`/`Inf`.
     fn powf(self, p: f64) -> Self;
     /// Absolute value. The tangent uses the subdifferential convention
-    /// `signum(value)`, so the derivative at exactly `0.0` is `0.0`.
+    /// `d/dx |v| = signum(v)`, with the honest at-zero selection
+    /// `signum(0) = 0`: at exactly `value == 0.0` the tangent is `0.0` (the
+    /// midpoint of the subdifferential `[-1, 1]`). The *value* is `v.abs()`
+    /// (bit-for-bit `f64` parity).
     fn abs(self) -> Self;
-    /// Sign (`-1`, `0`, or `1`). Constant almost everywhere, so tangent `0`.
+    /// Sign. Piecewise-constant, so the tangent is `0.0` everywhere. The
+    /// *value* is `f64::signum(v)` (`+1.0` at `+0.0`, `-1.0` at `-0.0`) to
+    /// preserve `f64` parity.
     fn signum(self) -> Self;
 }
 
@@ -159,8 +164,14 @@ impl Scalar for f64 {
 /// tangent to `1.0` with [`Dual::seed`], then [`extract`](Dual::extract) the
 /// `(value, derivative)` pair.
 ///
-/// `PartialOrd` compares the `value` field only (see the module-level docs).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Both `PartialEq` and `PartialOrd` compare the `value` (primal) field only,
+/// so equality and ordering agree on the "primal decides control flow"
+/// semantics (see the module-level docs). Two `Dual`s with equal value but
+/// different tangents therefore compare *equal* and *unordered-as-Equal*; this
+/// keeps `a == b ⟺ a.partial_cmp(&b) == Some(Equal)` — the std contract that a
+/// derived (both-field) `PartialEq` would violate against the value-only
+/// `PartialOrd`.
+#[derive(Debug, Clone, Copy)]
 pub struct Dual {
     /// The primal value of the computation.
     pub value: f64,
@@ -278,6 +289,17 @@ impl MulAssign for Dual {
     }
 }
 
+// Hand-written value-only equality, matching the value-only `PartialOrd` below.
+// Deriving `PartialEq` would compare the tangent too, breaking the std contract
+// `a == b ⟺ a.partial_cmp(&b) == Some(Equal)` for equal-value/different-tangent
+// Duals. Equality is primal-value-based (branch semantics).
+impl PartialEq for Dual {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
 // Hand-written value-only ordering. Do NOT `#[derive(PartialOrd)]`: derive would
 // use the tangent as a lexicographic tiebreaker, corrupting forward-mode branch
 // semantics (control flow must be decided by the primal value alone).
@@ -370,15 +392,23 @@ impl Scalar for Dual {
     }
     #[inline]
     fn abs(self) -> Self {
-        // Subdifferential convention: d/dx |v| = signum(v), with signum(0) = 0.
+        // Subdifferential convention: d/dx |v| = signum(v), with the honest
+        // at-zero selection signum(0) = 0 (f64::signum returns ±1 at zero, so
+        // special-case exact zero). Value stays v.abs() for f64 parity.
+        let sub = if self.value == 0.0 {
+            0.0
+        } else {
+            self.value.signum()
+        };
         Dual {
             value: self.value.abs(),
-            tangent: self.tangent * self.value.signum(),
+            tangent: self.tangent * sub,
         }
     }
     #[inline]
     fn signum(self) -> Self {
-        // Step function: derivative is 0 almost everywhere.
+        // Piecewise-constant: derivative is 0 everywhere. Value uses
+        // f64::signum for parity (returns ±1 at zero, only NaN yields NaN).
         Dual {
             value: self.value.signum(),
             tangent: 0.0,
@@ -565,6 +595,107 @@ mod tests {
         assert!(small < big);
     }
 
+    #[test]
+    fn dual_eq_is_value_only_and_consistent_with_ord() {
+        use std::cmp::Ordering;
+        // Equal value, different tangent: PartialEq (value-only) says equal,
+        // and this must agree with PartialOrd == Some(Equal) (std contract).
+        let a = Dual {
+            value: 1.0,
+            tangent: 0.5,
+        };
+        let b = Dual {
+            value: 1.0,
+            tangent: -7.0,
+        };
+        assert_eq!(a, b);
+        assert_eq!(a.partial_cmp(&b), Some(Ordering::Equal));
+        // Different value: not equal.
+        let c = Dual {
+            value: 2.0,
+            tangent: 0.5,
+        };
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn dual_abs_at_zero_tangent_is_zero() {
+        // HI-01: honest subdifferential selection signum(0) = 0, so abs of a
+        // Dual seeded at exactly 0.0 yields tangent 0.0 (not ±1 from f64::signum).
+        let r = Scalar::abs(Dual::seed(0.0));
+        assert_eq!(r.value, 0.0);
+        assert_eq!(r.tangent, 0.0);
+        // Negative-zero primal also selects the 0 subgradient.
+        let rn = Scalar::abs(Dual::seed(-0.0));
+        assert_eq!(rn.value, 0.0);
+        assert_eq!(rn.tangent, 0.0);
+    }
+
+    #[test]
+    fn dual_signum_tangent_is_zero_value_is_f64_signum() {
+        // Tangent is 0 everywhere; value preserves f64::signum parity (±1 at 0).
+        let rp = Scalar::signum(Dual::seed(3.0));
+        assert_eq!(rp.value, 1.0);
+        assert_eq!(rp.tangent, 0.0);
+        let rn = Scalar::signum(Dual::seed(-3.0));
+        assert_eq!(rn.value, -1.0);
+        assert_eq!(rn.tangent, 0.0);
+        // f64::signum returns +1.0 at +0.0 (value parity), tangent still 0.
+        let rz = Scalar::signum(Dual::seed(0.0));
+        assert_eq!(rz.value, 1.0);
+        assert_eq!(rz.tangent, 0.0);
+    }
+
+    // ---------------------------------------------------------------------
+    // Guard tests: lock documented singular-point behavior (LO-02, LO-03).
+    // These pin the "callers own range checking" contract so a future refactor
+    // (e.g. clamping a denominator) cannot silently change the singular result.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn dual_sqrt_at_zero_tangent_is_nonfinite() {
+        // LO-02: sqrt(0) tangent = 1/(2*0) diverges (non-finite).
+        let r = Scalar::sqrt(Dual::seed(0.0));
+        assert_eq!(r.value, 0.0);
+        assert!(
+            !r.tangent.is_finite(),
+            "tangent {} should be non-finite",
+            r.tangent
+        );
+    }
+
+    #[test]
+    fn dual_ln_at_zero_tangent_is_nonfinite() {
+        // LO-02: ln(0) value = -inf, tangent = 1/0 diverges (non-finite).
+        let r = Scalar::ln(Dual::seed(0.0));
+        assert!(r.value.is_infinite() && r.value < 0.0);
+        assert!(
+            !r.tangent.is_finite(),
+            "tangent {} should be non-finite",
+            r.tangent
+        );
+    }
+
+    #[test]
+    fn dual_powf_singular_and_linear_edges() {
+        // LO-03: powf(0, 0.5) tangent = 0.5 * 0^(-0.5) = Inf (documented divergence).
+        let r = Scalar::powf(Dual::seed(0.0), 0.5);
+        assert_eq!(r.value, 0.0);
+        assert!(
+            r.tangent.is_infinite(),
+            "tangent {} should be infinite",
+            r.tangent
+        );
+        // powf(0, 1.0) relies on 0^0 == 1.0, giving tangent 1*1*1 = 1 (d/dx x = 1).
+        let lin = Scalar::powf(Dual::seed(0.0), 1.0);
+        assert_eq!(lin.value, 0.0);
+        assert_eq!(lin.tangent, 1.0);
+        // Negative base with non-integer power: value and tangent both NaN.
+        let nan = Scalar::powf(Dual::seed(-2.0), 0.5);
+        assert!(nan.value.is_nan());
+        assert!(nan.tangent.is_nan());
+    }
+
     // ---------------------------------------------------------------------
     // Tier 2: central finite-difference cross-check, tolerance 1e-6.
     // ---------------------------------------------------------------------
@@ -634,9 +765,17 @@ mod tests {
 
     #[test]
     fn dual_constants() {
-        assert_eq!(<Dual as Scalar>::zero(), Dual::constant(0.0));
-        assert_eq!(<Dual as Scalar>::one(), Dual::constant(1.0));
-        assert_eq!(<Dual as Scalar>::from_f64(4.5), Dual::constant(4.5));
+        // `Dual`'s `PartialEq` is value-only, so assert both fields explicitly
+        // to genuinely verify the tangent is 0.0 for these constants.
+        let z = <Dual as Scalar>::zero();
+        assert_eq!(z.value, 0.0);
+        assert_eq!(z.tangent, 0.0);
+        let o = <Dual as Scalar>::one();
+        assert_eq!(o.value, 1.0);
+        assert_eq!(o.tangent, 0.0);
+        let c = <Dual as Scalar>::from_f64(4.5);
+        assert_eq!(c.value, 4.5);
+        assert_eq!(c.tangent, 0.0);
         let inf = <Dual as Scalar>::infinity();
         assert!(inf.value.is_infinite() && inf.value > 0.0);
         assert_eq!(inf.tangent, 0.0);
