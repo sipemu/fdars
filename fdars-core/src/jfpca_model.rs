@@ -181,16 +181,17 @@ pub fn jfpca_fit(
     max_iter: usize,
 ) -> Result<JfpcaModel, FdarError> {
     let (n, m) = data.shape();
-    if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m {
+    if n < 2 || m < 2 || ncomp < 1 || argvals.len() != m || max_iter < 1 {
         return Err(FdarError::InvalidDimension {
-            parameter: "data/argvals/ncomp",
-            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m".to_string(),
+            parameter: "data/argvals/ncomp/max_iter",
+            expected: "n >= 2, m >= 2, ncomp >= 1, argvals.len() == m, max_iter >= 1".to_string(),
             actual: format!(
-                "n={}, m={}, ncomp={}, argvals.len()={}",
+                "n={}, m={}, ncomp={}, argvals.len()={}, max_iter={}",
                 n,
                 m,
                 ncomp,
-                argvals.len()
+                argvals.len(),
+                max_iter
             ),
         });
     }
@@ -262,6 +263,7 @@ impl JfpcaModel {
     /// Returns [`FdarError::InvalidDimension`] when:
     /// - `new_curves.ncols() != self.argvals.len()` (grid mismatch)
     /// - `n_new < 1`
+    #[must_use = "expensive computation: transform returns out-of-sample scores; use the result"]
     pub fn transform(&self, new_curves: &FdMatrix) -> Result<JfpcaTransform, FdarError> {
         let (n_new, m_new) = new_curves.shape();
         let m = self.argvals.len();
@@ -326,8 +328,11 @@ impl JfpcaModel {
     ///
     /// # Errors
     ///
-    /// Returns [`FdarError::InvalidDimension`] when `training_aligned` has an
-    /// unexpected shape (should not occur on a well-formed model).
+    /// Returns [`FdarError::InvalidDimension`] when `training_aligned` or
+    /// `training_gammas` has an unexpected shape (should not occur on a
+    /// well-formed model, but the fields are public and may be mutated or
+    /// deserialized into an inconsistent state).
+    #[must_use = "expensive computation: score_training returns the round-trip scores; use the result"]
     pub fn score_training(&self) -> Result<JfpcaTransform, FdarError> {
         let m = self.argvals.len();
         let (n_tr, m_tr) = self.training_aligned.shape();
@@ -336,6 +341,14 @@ impl JfpcaModel {
                 parameter: "training_aligned columns",
                 expected: format!("== {} (argvals length)", m),
                 actual: format!("{}", m_tr),
+            });
+        }
+        let (n_gam, m_gam) = self.training_gammas.shape();
+        if n_gam != n_tr || m_gam != m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "training_gammas shape",
+                expected: format!("({}, {}) matching training_aligned/argvals", n_tr, m),
+                actual: format!("({}, {})", n_gam, m_gam),
             });
         }
 
