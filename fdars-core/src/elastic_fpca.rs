@@ -911,7 +911,7 @@ fn mean_tangent_vector(psis: &[Vec<f64>], mu_psi: &[f64], time: &[f64]) -> Vec<f
 }
 
 /// Build combined representation: [q_centered | c * shooting] for joint FPCA.
-fn build_combined_representation(
+pub(crate) fn build_combined_representation(
     q_centered: &FdMatrix,
     shooting: &FdMatrix,
     c: f64,

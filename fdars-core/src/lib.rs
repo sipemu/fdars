@@ -138,6 +138,7 @@ pub mod elastic_fpca;
 pub mod elastic_regression;
 pub mod explain;
 pub mod explain_generic;
+pub mod jfpca_model;
 pub mod multi_fdata;
 pub mod pace_fpca;
 pub mod pda;
@@ -503,6 +504,9 @@ pub use elastic_fpca::{
     horiz_fpca, horiz_fpca_from_alignment, joint_fpca, joint_fpca_from_alignment, vert_fpca,
     vert_fpca_from_alignment, HorizFpcaResult, JointFpcaResult, VertFpcaResult,
 };
+
+// Re-export jfPCA fit/transform seam
+pub use jfpca_model::{jfpca_fit, JfpcaModel, JfpcaTransform};
 
 // Re-export elastic regression types
 pub use elastic_regression::{
