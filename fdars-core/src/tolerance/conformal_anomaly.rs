@@ -154,6 +154,7 @@ pub struct ConformalAnomalyResult {
 /// [`CombinedElastic`]: NonConformityScore::CombinedElastic
 /// [`SupNorm`]: NonConformityScore::SupNorm
 /// [`L2`]: NonConformityScore::L2
+#[must_use = "expensive computation: elastic_nonconformity runs an elastic alignment; use the score"]
 pub fn elastic_nonconformity(
     curve: &[f64],
     template: &[f64],
@@ -277,7 +278,18 @@ pub fn elastic_conformal_anomaly(
 
     // ── Template resolution ───────────────────────────────────────────────────
     let template: Vec<f64> = match config.template.clone() {
-        Some(t) => t,
+        Some(t) => {
+            // A caller-supplied template MUST match the evaluation grid — otherwise
+            // srsf_transform silently returns a zero matrix and every score is wrong.
+            if t.len() != m {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "config.template",
+                    expected: format!("{m} elements (argvals.len())"),
+                    actual: format!("{}", t.len()),
+                });
+            }
+            t
+        }
         None => {
             let km = crate::alignment::karcher_mean(
                 calibration,
@@ -291,13 +303,14 @@ pub fn elastic_conformal_anomaly(
     };
 
     // ── Calibration scoring ───────────────────────────────────────────────────
+    // Propagate any scoring error explicitly — a silent NaN fallback would poison
+    // the threshold (NaN) and suppress every anomaly flag with no error signal.
     let calib_scores: Vec<f64> = (0..n_calib)
         .map(|i| {
             let curve = calibration.row(i);
             elastic_nonconformity(&curve, &template, argvals, config.lambda, config.variant)
-                .unwrap_or(f64::NAN)
         })
-        .collect();
+        .collect::<Result<Vec<f64>, FdarError>>()?;
 
     // ── Threshold ─────────────────────────────────────────────────────────────
     let mut sorted_calib = calib_scores.clone();
@@ -312,8 +325,7 @@ pub fn elastic_conformal_anomaly(
     for j in 0..n_test {
         let curve = test.row(j);
         let a_star =
-            elastic_nonconformity(&curve, &template, argvals, config.lambda, config.variant)
-                .unwrap_or(f64::NAN);
+            elastic_nonconformity(&curve, &template, argvals, config.lambda, config.variant)?;
 
         // p-value: (1 + #{calib_score >= a_star}) / (n_calib + 1)
         let count = calib_scores.iter().filter(|&&a| a >= a_star).count();
@@ -426,6 +438,26 @@ mod tests {
                 result
             );
         }
+    }
+
+    #[test]
+    fn test_conformal_anomaly_rejects_mismatched_template() {
+        // A caller-supplied template of the wrong length must be rejected up front,
+        // not silently zero-scored (CR-01 regression guard).
+        let t = uniform_grid(50);
+        let calibration = sim_fundata(20, &t, 3, EFunType::Fourier, EValType::Exponential, Some(1));
+        let test_data = sim_fundata(5, &t, 3, EFunType::Fourier, EValType::Exponential, Some(2));
+        let config = ConformalAnomalyConfig {
+            variant: NonConformityScore::CombinedElastic,
+            alpha: 0.1,
+            template: Some(uniform_grid(40)), // wrong length (40 != 50)
+            ..Default::default()
+        };
+        let result = elastic_conformal_anomaly(&calibration, &test_data, &t, &config);
+        assert!(
+            matches!(result, Err(FdarError::InvalidDimension { .. })),
+            "Expected InvalidDimension for mismatched template, got {result:?}"
+        );
     }
 
     #[test]
