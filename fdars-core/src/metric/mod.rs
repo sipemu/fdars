@@ -151,6 +151,7 @@ pub use lp::{lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d};
 pub use pca::{pca_cross_1d, pca_self_1d};
 pub use sbd::{sbd, sbd_distance_matrix, SbdResult};
 pub use soft_dtw::{
-    soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_div_cross_1d,
-    soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d, SoftDtwBarycenterResult,
+    soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance, soft_dtw_distance_generic,
+    soft_dtw_div_cross_1d, soft_dtw_div_self_1d, soft_dtw_divergence, soft_dtw_self_1d,
+    SoftDtwBarycenterResult,
 };

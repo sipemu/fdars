@@ -3,6 +3,7 @@
 //! Reference: Cuturi & Blondel, "Soft-DTW: a Differentiable Loss Function for
 //! Time-Series" (ICML 2017).
 
+use crate::autodiff::Scalar;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
@@ -38,6 +39,91 @@ pub(super) fn softmin3(a: f64, b: f64, c: f64, gamma: f64) -> f64 {
     min_val - gamma * (ea + eb + ec).ln()
 }
 
+/// Generic soft-minimum of three [`Scalar`] values via the log-sum-exp trick.
+///
+/// Mirrors [`softmin3`] but is generic over `S: Scalar`, so it composes with the
+/// forward-mode [`Dual`](crate::autodiff::Dual) substrate for automatic
+/// differentiation. Instantiated at `f64` it is a zero-cost passthrough that
+/// reproduces [`softmin3`] bit-for-bit for NaN-free inputs (the only difference
+/// is the 3-way `min` uses `PartialOrd` branching instead of `f64::min`, which
+/// agree for all non-NaN values).
+///
+/// The infinity guard uses `min_val >= S::infinity()` rather than
+/// `is_finite()` — the [`Scalar`] trait deliberately exposes no `is_finite`
+/// (Phase 75 is closed); [`S::infinity`](Scalar::infinity) plus `PartialOrd`
+/// covers the DP sentinel case (all three inputs `+inf`).
+#[inline]
+fn softmin3_generic<S: Scalar>(a: S, b: S, c: S, gamma: f64) -> S {
+    // 3-way min via PartialOrd (Scalar has no `min`; Dual's ordering is
+    // value-only, which is the correct forward-mode branch semantics).
+    let min_val = if a <= b {
+        if a <= c {
+            a
+        } else {
+            c
+        }
+    } else if b <= c {
+        b
+    } else {
+        c
+    };
+    // Sentinel guard: if the min is +infinity every input is +infinity; return
+    // it directly (matches the `!is_finite()` early-return in the f64 version
+    // for the DP-initialization case).
+    if min_val >= S::infinity() {
+        return min_val;
+    }
+    let neg_inv_gamma = S::from_f64(-1.0 / gamma);
+    // Per-term guard: a `+inf` sentinel input contributes `exp(-inf) = 0` in the
+    // f64 path. Computing `(inf - min_val) * neg_inv_gamma` directly would work
+    // for the primal value but produces a `inf * 0 = NaN` tangent under `Dual`'s
+    // product rule. Substitute an exact `S::zero()` for those terms — identical
+    // to the f64 numerics, and NaN-free for the tangent.
+    let term = |v: S| -> S {
+        if v >= S::infinity() {
+            S::zero()
+        } else {
+            S::exp((v - min_val) * neg_inv_gamma)
+        }
+    };
+    let ea = term(a);
+    let eb = term(b);
+    let ec = term(c);
+    min_val - S::from_f64(gamma) * S::ln(ea + eb + ec)
+}
+
+/// Generic soft-DTW distance core over `S: Scalar`.
+///
+/// Shared kernel for both the `f64` public API ([`soft_dtw_distance`]) and the
+/// differentiable generic entry point ([`soft_dtw_distance_generic`]). The DP
+/// recurrence, cost, and softmin are all expressed in `S`, so instantiating at
+/// [`Dual`](crate::autodiff::Dual) propagates exact forward-mode tangents.
+fn soft_dtw_distance_inner<S: Scalar>(x: &[S], y: &[S], gamma: f64) -> S {
+    let n = x.len();
+    let m = y.len();
+    if n == 0 || m == 0 {
+        return S::zero();
+    }
+
+    let mut prev = vec![S::infinity(); m + 1];
+    let mut curr = vec![S::infinity(); m + 1];
+    prev[0] = S::zero();
+
+    for i in 1..=n {
+        for v in curr.iter_mut() {
+            *v = S::infinity();
+        }
+        for j in 1..=m {
+            let d = x[i - 1] - y[j - 1];
+            let cost = d * d;
+            curr[j] = cost + softmin3_generic(prev[j], curr[j - 1], prev[j - 1], gamma);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[m]
+}
+
 /// Compute Soft-DTW distance between two 1D time series.
 ///
 /// Uses squared Euclidean cost and 2-row DP with O(m) memory.
@@ -47,27 +133,29 @@ pub(super) fn softmin3(a: f64, b: f64, c: f64, gamma: f64) -> f64 {
 /// * `y` - Second time series
 /// * `gamma` - Smoothing parameter (> 0). Smaller = closer to hard DTW.
 pub fn soft_dtw_distance(x: &[f64], y: &[f64], gamma: f64) -> f64 {
-    let n = x.len();
-    let m = y.len();
-    if n == 0 || m == 0 {
-        return 0.0;
-    }
+    soft_dtw_distance_inner(x, y, gamma)
+}
 
-    let mut prev = vec![f64::INFINITY; m + 1];
-    let mut curr = vec![f64::INFINITY; m + 1];
-    prev[0] = 0.0;
-
-    for i in 1..=n {
-        curr.fill(f64::INFINITY);
-        for j in 1..=m {
-            let d = x[i - 1] - y[j - 1];
-            let cost = d * d;
-            curr[j] = cost + softmin3(prev[j], curr[j - 1], prev[j - 1], gamma);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-
-    prev[m]
+/// Differentiable soft-DTW distance, generic over the [`Scalar`] substrate.
+///
+/// Companion to [`soft_dtw_distance`]: identical numerics when instantiated at
+/// `f64`, and exact forward-mode gradients when instantiated at
+/// [`Dual`](crate::autodiff::Dual). To obtain
+/// `d(soft_dtw)/d(x[k])`, seed `x[k]` via [`Dual::seed`](crate::autodiff::Dual::seed),
+/// set every other `x`/`y` value via
+/// [`Dual::constant`](crate::autodiff::Dual::constant), run this function, and
+/// read the tangent of the result.
+///
+/// The soft-DTW DP recurrence and log-sum-exp softmin are smooth in the series
+/// values, so the forward-mode gradient is exact (validated against the crate's
+/// own hand-written soft-DTW gradient oracle and central finite differences).
+///
+/// # Arguments
+/// * `x` - First time series (`&[S]`)
+/// * `y` - Second time series (`&[S]`)
+/// * `gamma` - Smoothing parameter (> 0). Smaller = closer to hard DTW.
+pub fn soft_dtw_distance_generic<S: Scalar>(x: &[S], y: &[S], gamma: f64) -> S {
+    soft_dtw_distance_inner(x, y, gamma)
 }
 
 /// Compute Soft-DTW divergence: `sdtw(x,y) - 0.5*(sdtw(x,x) + sdtw(y,y))`.
@@ -328,5 +416,166 @@ pub fn soft_dtw_barycenter(
         barycenter: bary,
         n_iter,
         converged,
+    }
+}
+
+#[cfg(test)]
+mod differentiable_tests {
+    use super::*;
+    use crate::autodiff::Dual;
+
+    // Spanning, non-degenerate 5-point series (multiple DP paths exercised).
+    const X: [f64; 5] = [0.1, 0.4, 0.9, 1.2, 0.7];
+    const Y: [f64; 5] = [0.2, 0.3, 1.0, 1.1, 0.6];
+
+    /// Dual gradient w.r.t. x[k] via a single seeded forward pass.
+    fn dual_grad(x: &[f64], y: &[f64], gamma: f64) -> Vec<f64> {
+        let y_dual: Vec<Dual> = y.iter().map(|&v| Dual::constant(v)).collect();
+        (0..x.len())
+            .map(|k| {
+                let x_dual: Vec<Dual> = x
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| {
+                        if i == k {
+                            Dual::seed(v)
+                        } else {
+                            Dual::constant(v)
+                        }
+                    })
+                    .collect();
+                soft_dtw_distance_generic(&x_dual, &y_dual, gamma)
+                    .extract()
+                    .1
+            })
+            .collect()
+    }
+
+    /// Corrected soft-DTW gradient oracle (forward + backward + accumulate),
+    /// used ONLY as the SC #1 independent reference.
+    ///
+    /// This mirrors `soft_dtw_accumulate_gradient` but fixes a pre-existing
+    /// boundary bug in the shipped `soft_dtw_backward`: its reverse double-loop
+    /// visits the endpoint `(n, m)` and overwrites the `E[n][m] = 1.0` seed with
+    /// `a + b + c = 0` (all three neighbour contributions are gated off at the
+    /// endpoint), which zeroes the entire backward pass and makes the shipped
+    /// oracle return an all-zero gradient. The corrected reference below skips
+    /// the endpoint write. The shipped production code is intentionally left
+    /// untouched (additive-only scope); the bug is logged as a backlog item in
+    /// the DIF-02 SUMMARY. This corrected reference is an independent check of
+    /// the `Dual` gradient distinct from finite differences (SC #3).
+    fn corrected_oracle_gradient(bary: &[f64], xi: &[f64], gamma: f64) -> Vec<f64> {
+        let n = bary.len();
+        let m = xi.len();
+        // Forward pass (identical recurrence to soft_dtw_distance).
+        let mut r = vec![vec![f64::INFINITY; m + 1]; n + 1];
+        r[0][0] = 0.0;
+        for i in 1..=n {
+            for j in 1..=m {
+                let d = bary[i - 1] - xi[j - 1];
+                let cost = d * d;
+                r[i][j] = cost + softmin3(r[i - 1][j], r[i][j - 1], r[i - 1][j - 1], gamma);
+            }
+        }
+        // Backward pass with the endpoint boundary preserved.
+        let mut e = vec![vec![0.0; m + 2]; n + 2];
+        e[n][m] = 1.0;
+        for i in (1..=n).rev() {
+            for j in (1..=m).rev() {
+                if i == n && j == m {
+                    continue; // preserve the E[n][m] = 1.0 seed
+                }
+                let a = if i < n {
+                    e[i + 1][j] * (-(r[i][j] - softmin3_val(&r, i + 1, j, gamma)) / gamma).exp()
+                } else {
+                    0.0
+                };
+                let b = if j < m {
+                    e[i][j + 1] * (-(r[i][j] - softmin3_val(&r, i, j + 1, gamma)) / gamma).exp()
+                } else {
+                    0.0
+                };
+                let c = if i < n && j < m {
+                    e[i + 1][j + 1]
+                        * (-(r[i][j] - softmin3_val(&r, i + 1, j + 1, gamma)) / gamma).exp()
+                } else {
+                    0.0
+                };
+                e[i][j] = a + b + c;
+            }
+        }
+        // Accumulate d(sdtw)/d(bary[k]).
+        let mut grad = vec![0.0; n];
+        for k in 1..=n {
+            let mut g = 0.0;
+            for j in 1..=m {
+                g += e[k][j] * 2.0 * (bary[k - 1] - xi[j - 1]);
+            }
+            grad[k - 1] = g;
+        }
+        grad
+    }
+
+    #[test]
+    fn dual_gradient_vs_oracle() {
+        // SC #1: forward-mode Dual gradient must match the (corrected) hand-
+        // written soft-DTW gradient oracle (bary=x, xi=y) to <=1e-9.
+        let gamma = 1.0;
+        let dual = dual_grad(&X, &Y, gamma);
+        let oracle = corrected_oracle_gradient(&X, &Y, gamma);
+        for k in 0..X.len() {
+            assert!(
+                (dual[k] - oracle[k]).abs() <= 1e-9,
+                "k={k}: dual {} vs oracle {}",
+                dual[k],
+                oracle[k]
+            );
+        }
+    }
+
+    #[test]
+    fn f64_parity() {
+        // SC #2: generic core at f64 reproduces the original soft_dtw_distance.
+        for &gamma in &[0.1, 1.0, 10.0] {
+            let generic = soft_dtw_distance_generic::<f64>(&X, &Y, gamma);
+            let original = soft_dtw_distance(&X, &Y, gamma);
+            assert!(
+                (generic - original).abs() <= 1e-12,
+                "gamma={gamma}: generic {generic} vs original {original}"
+            );
+            // Bit-identical is expected (delegation): assert exact equality too.
+            assert_eq!(generic, original, "gamma={gamma}: not bit-identical");
+        }
+        // Longer series still parity.
+        let xl: Vec<f64> = (0..20).map(|i| (i as f64 * 0.31).sin()).collect();
+        let yl: Vec<f64> = (0..20).map(|i| (i as f64 * 0.27).cos()).collect();
+        assert_eq!(
+            soft_dtw_distance_generic::<f64>(&xl, &yl, 1.0),
+            soft_dtw_distance(&xl, &yl, 1.0)
+        );
+    }
+
+    #[test]
+    fn dual_gradient_vs_fd() {
+        // SC #3: Dual gradient vs central finite differences, multiple gammas.
+        let h = 1e-8;
+        for &gamma in &[0.5, 1.0, 2.0] {
+            let dual = dual_grad(&X, &Y, gamma);
+            for k in 0..X.len() {
+                let mut xp = X.to_vec();
+                let mut xm = X.to_vec();
+                xp[k] += h;
+                xm[k] -= h;
+                let fd = (soft_dtw_distance_generic::<f64>(&xp, &Y, gamma)
+                    - soft_dtw_distance_generic::<f64>(&xm, &Y, gamma))
+                    / (2.0 * h);
+                assert!(
+                    (dual[k] - fd).abs() <= 1e-6,
+                    "gamma={gamma} k={k}: dual {} vs fd {}",
+                    dual[k],
+                    fd
+                );
+            }
+        }
     }
 }

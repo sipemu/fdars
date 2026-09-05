@@ -16,6 +16,7 @@ mod closed;
 mod clustering;
 mod constrained;
 mod diagnostics;
+mod differentiable;
 mod elastic_depth;
 mod fpns;
 mod generative;
@@ -60,6 +61,7 @@ pub use diagnostics::{
     diagnose_alignment, diagnose_pairwise, AlignmentDiagnostic, AlignmentDiagnosticSummary,
     DiagnosticConfig,
 };
+pub use differentiable::amplitude_distance_at_warp_generic;
 pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
