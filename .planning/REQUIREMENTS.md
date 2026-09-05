@@ -45,24 +45,22 @@ Real `fdars-core/src/` code. All additive/non-breaking, reuse-first, **no new cr
 
 ## Traceability
 
-Filled during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VEE-01 | TBD | Pending |
-| VEE-02 | TBD | Pending |
-| VEE-03 | TBD | Pending |
-| VEE-04 | TBD | Pending |
-| VEE-05 | TBD | Pending |
-| ECA-01 | TBD | Pending |
-| ECA-02 | TBD | Pending |
-| ECA-03 | TBD | Pending |
+| VEE-01 | Phase 72 | Pending |
+| VEE-02 | Phase 72 | Pending |
+| VEE-03 | Phase 73 | Pending |
+| VEE-04 | Phase 73 | Pending |
+| VEE-05 | Phase 73 | Pending |
+| ECA-01 | Phase 74 | Pending |
+| ECA-02 | Phase 74 | Pending |
+| ECA-03 | Phase 74 | Pending |
 
 **Coverage:**
 - v1 requirements: 8 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 8 ⚠️
+- Mapped to phases: 8 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-05*
-*Last updated: 2026-09-05 after initial definition*
+*Last updated: 2026-09-05 after roadmap creation (Phases 72–74 mapped)*

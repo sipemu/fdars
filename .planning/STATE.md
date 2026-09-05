@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.38.0
 milestone_name: VEESA — Elastic Shape Explainability & Conformal Anomaly Detection
 status: planning
-last_updated: "2026-09-04T22:13:49.681Z"
+last_updated: "2026-09-05T00:00:00.000Z"
 last_activity: 2026-09-05
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,35 +17,37 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-03)
+See: .planning/PROJECT.md (updated 2026-09-05)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems — this milestone promotes GAP-07 (wavelet-domain functional regression, `wcr`/`wnet`), rank 6 in the v0.31.0 `GAP-BACKLOG.md`.
-**Current focus:** Phase 69 — Discrete Wavelet Transform Primitive
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability gaps against reference ecosystems — this milestone brings fdars to parity with three Tucker-affiliated elastic-shape-analysis works (VEESA pipeline + elastic conformal anomaly detection), additively and reuse-first.
+**Current focus:** Phase 72 — jfPCA Fit/Transform Seam
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-09-05 — Milestone v0.38.0 started
+Phase: 72 of 74 (jfPCA Fit/Transform Seam)
+Plan: — of — (roadmap created; ready to plan)
+Status: Ready to plan
+Last activity: 2026-09-05 — Roadmap created (Phases 72–74, 8 requirements mapped)
 
-## Milestone Roadmap (v0.37.0)
+Progress: [░░░░░░░░░░] 0%
 
-Three phases, 6 requirements (WAV-01..WAV-06) — an implementation milestone promoting GAP-07 (score 1.73, L-effort), adding a discrete wavelet transform (DWT) primitive plus wavelet-domain regularized scalar-on-function regression (`wcr` PCR/PLS + `wnet` elastic-net), for spiky/localized functional predictors in a sparse wavelet basis. Gaussian response only (binomial deferred to WAV-F1). Reference baseline refund@0.1-38 (`wcr`, `wnet`); numeric-output parity is the goal, not basis-internal parity. Likely a new DWT module (`wavelet.rs` or `wavelet/`) + a `wavelet_regression.rs` (or `wcr`/`wnet` submodule) with additive crate-root/prelude re-exports. Additive/non-breaking (protects R + WASM bindings + 28 examples), **no new crate dependency**; **publishes to crates.io on the `v0.37.0` tag** (crate bump 0.36.0 → 0.37.0). Strict dependency chain: DWT primitive → wavelet-domain regressors (`wcr`, `wnet`) → prediction + integration. Fine granularity; the chain cannot be reordered (the DWT is foundational to both regressors; predict + exports consume the fitted regressors). Phase numbering continues from v0.36.0 (ended at 68) → Phase 69.
+## Milestone Roadmap (v0.38.0)
+
+Three phases, 8 requirements (VEE-01..05, ECA-01..03) — an implementation milestone closing the gaps against the VEESA paper (Goode, Tucker & Ries), the `sandialabs/veesa` R package, and arXiv 2504.01172 (elastic conformal anomaly detection). Additive/non-breaking, reuse-first, **no new crate dependency**. Two dependency groups: the VEE group (Phases 72→73) is a chain (fit/transform seam → explainability pipeline built on it); the ECA group (Phase 74) is fully independent and sequenced last. Phase numbering continues from v0.37.0 (ended at 71) → Phase 72. Fine granularity; 3 phases (one per requirement group) matches recent milestone shape (WAV/PEER).
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 69 — Discrete Wavelet Transform Primitive | WAV-01, WAV-02 | New in-crate DWT (crate has `rustfft` but no discrete wavelet transform). Forward/inverse orthogonal DWT — Haar (db1) + Daubechies db2–dbN filter families, multi-level decomposition, perfect reconstruction. Selectable periodic + symmetric boundary extension; handles arbitrary (non-power-of-2) lengths; descriptive `FdarError` on invalid inputs (never panic). Foundational — precedes Phases 70/71. Gates (known-answer testable): forward→inverse round-trip ≤1e-10 rel for Haar + db2–dbN across levels; both boundary modes reconstruct on non-power-of-2 lengths; Haar single-level matches hand-computed sum/difference-over-√2 coefficients; invalid family/order/level/empty → descriptive `FdarError`, no NaN. |
-| 70 — Wavelet-Domain Regressors (`wcr` + `wnet`) | WAV-03, WAV-04 | Two Gaussian-response wavelet-domain scalar-on-function regressors, each transforming curves to wavelet coefficients via the Phase 69 DWT. `wcr`: PCR/PLS in wavelet-coefficient space, reusing fdars' FPCR/PLS patterns (`scalar_on_function/`). `wnet`: elastic-net (lasso + ridge) via coordinate descent + soft-thresholding reusing `scalar_on_function/additive.rs` GroupLasso machinery, with sparse coefficient recovery + cross-validated λ. Both return β(t), intercept, fitted values (`wnet` also selected coefficients). `wcr`/`wnet` independent of each other once the DWT exists. Gates: `wcr` (PCR + PLS) recovers known β(t) on spanning full-rank synthetic data; `wnet` recovers sparse support + deterministic CV-λ + non-degenerate fit tracking injected signal; both validate inputs (→ `FdarError`, never panic) with finite/NaN-free outputs. |
-| 71 — Prediction, Diagnostics & Integration | WAV-05, WAV-06 | Out-of-sample `predict` on new curves for both `wcr` and `wnet` fitted results (self-consistent: re-passed training curves reproduce training fitted values within tolerance); coefficient-function + fitted-value accessors. Full crate-root + prelude re-exports of the public surface (DWT + `wcr` + `wnet` + config/result types + predict); running end-to-end module doctest under `cargo test --doc`. Additive/non-breaking. Gates: `predict` self-consistent + finite on new curves for both fits; accessors return expected outputs; full surface crate-root/prelude reachable; module doctest passes under `cargo test --doc`; whole-crate `cargo test` + `cargo clippy --all-targets --features linalg,parallel -- -D warnings` + `cargo fmt --check` green (R + WASM + 28 examples unaffected). |
+| 72 — jfPCA Fit/Transform Seam | VEE-01, VEE-02 | Public jfPCA **fit** transformer (stores Karcher-mean template, `mean_psi`, `vert_component`/`horiz_component`, `balance_c`, `argvals`; training scores reproduce `joint_fpca` within 1e-8) + public **out-of-sample transform** (`prep_testing_data` equivalent: align new curves to the trained template, project onto the trained joint-FPCA basis, scores in trained coords; fit→transform round-trip within tolerance). Reuses `elastic_fpca.rs` (`joint_fpca`/`vert_fpca`/`horiz_fpca`, `JointFpcaResult`, private `project_onto_eigenvectors` now exposed via this seam) + `alignment/` (Karcher-mean alignment). Foundational — Phase 73 consumes it. |
+| 73 — VEESA Explainability Pipeline & Integration | VEE-03, VEE-04, VEE-05 | **Model-agnostic PFI** over jfPCA PC scores (generic over any trained predictor / scoring closure, NOT tied to `elastic_pcr` — crate has no random forest, so PFI must be model-agnostic; reuses `elastic_explain.rs` permutation machinery; deterministic under seed; informative PC ranks above noise on known-signal design). **Principal-direction reconstruction** (functions at μ ± c·σⱼ per joint PC, split into amplitude + phase parts for plotting; `c=0` reproduces the jfPCA mean). **Cohesive pipeline + integration** (end-to-end fit → transform → PFI convenience path, full crate-root + prelude re-exports, running module doctest under `cargo test --doc`). Depends on Phase 72's seam. **UI hint**: yes (VEE-04 returns curves for plotting — rendering stays with the caller, VEE-F2 fence). |
+| 74 — Elastic Conformal Anomaly Detection | ECA-01, ECA-02, ECA-03 | **Elastic nonconformity scores** — extend `NonConformityScore` (`{SupNorm, L2}` → adds amplitude / phase / combined elastic variants scoring a curve vs a reference template; each non-negative, zero for an identical curve; reuses `amplitude_distance`/`phase_distance`/`elastic_distance`). **Inductive conformal anomaly detector** — calibrate on a reference/calibration set (template e.g. calibration Karcher mean) → per-curve conformal p-values + anomaly flags at level α (flag rate ≈ α on exchangeable clean data; injected magnitude AND shape outliers flagged). **Result type + integration** — `ConformalAnomalyResult` (p-values, scores, flags, calibrated threshold) + crate-root/prelude re-exports + module doctest. Additive: existing `conformal_prediction_band` path unchanged. **Independent of the VEE group** — can sequence anywhere. |
 
-**Execution order (dependency-driven — strict chain):** 69 → 70 → 71. No reordering: the DWT primitive (Phase 69) is foundational to both wavelet-domain regressors (Phase 70); prediction + integration/exports (Phase 71) consume the fitted regressors. Phase 69 front-loads the DWT numerical risk (perfect-reconstruction round-trip); Phase 70 adds the two regressors atop the shared DWT + reuse patterns; Phase 71 adds prediction, diagnostics, the public surface + doctest. `wcr` and `wnet` are independent of each other within Phase 70.
+**Execution order (dependency-driven):** 72 → 73 → 74. Phase 72 (fit/transform seam) is foundational to Phase 73 (explainability pipeline consumes the trained transform + PFI). Phase 74 (ECA) is fully independent of the VEE group and sequenced last for a clean linear order (could equally run first). All 8 requirements mapped, no orphans, no duplicates.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 108+ (across v0.14.0–v0.35.0)
+- Total plans completed: 111+ (across v0.14.0–v0.37.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -56,25 +58,22 @@ Three phases, 6 requirements (WAV-01..WAV-06) — an implementation milestone pr
 | 01–09 | v0.14.0 | 21 |
 | 10–45 | v0.15.0–v0.29.0 | 63 |
 | 46–51 | v0.30.0 | 23 |
-| 52–53 | v0.31.0 | 7 |
-| 54–56 | v0.32.0 | 3 |
-| 57–60 | v0.33.0 | 4 |
-| 61–63 | v0.34.0 | 3 |
-| 64–65 | v0.35.0 | 4 |
-| 66–68 | v0.36.0 | 3/3 |
-| 69–71 | v0.37.0 | 0/? (pending) |
+| 52–65 | v0.31.0–v0.35.0 | 21 |
+| 66–68 | v0.36.0 | 3 |
+| 69–71 | v0.37.0 | 5 |
+| 72–74 | v0.38.0 | 0/? (pending) |
 
 **Recent Trend:**
 
-- Last milestone: v0.36.0 phases 66–68 (3 plans) — audit PASSED 5/5, crate 0.35.0 → 0.36.0. Promoted GAP-06 (PEER / longitudinal PEER).
-- Trend: v0.37.0 stays in implementation shape — real code, normal test/clippy/fmt gates, crate publish on the `v0.37.0` tag. Reuse-heavy (`scalar_on_function/` FPCR/PLS for `wcr`, `scalar_on_function/additive.rs` GroupLasso coordinate-descent/soft-threshold for `wnet`, `linalg::cholesky_solve`, `helpers::simpsons_weights`, `regression.rs::fdata_to_pc_1d`), but WAV-01/02 add a genuinely new in-crate DWT primitive (no existing discrete wavelet transform to reuse). Effort L for a mature codebase; likely a new DWT module (`wavelet.rs`/`wavelet/`) + `wavelet_regression.rs`. Three phases driven by a strict DWT → regressors → prediction/integration dependency chain, not padding.
+- Last milestone: v0.37.0 WAV phases 69–71 (5 plans) — audit PASSED 6/6, integration SOUND; crate code-complete 0.36.0 → 0.37.0 (tag/publish deferred). Promoted GAP-07 (`wcr`/`wnet`).
+- Trend: v0.38.0 stays in implementation shape — real code, normal test/clippy/fmt gates. **Heavily reuse-first**: `elastic_fpca.rs` jfPCA machinery + private `project_onto_eigenvectors`, `alignment/` Karcher-mean + elastic distances, `elastic_explain.rs` permutation-importance, `tolerance/conformal.rs` conformal scaffolding + `NonConformityScore`. Lower net-new-code risk than WAV's from-scratch DWT — the core algorithms already exist; the work is exposing a fit→transform seam, a model-agnostic PFI generic, principal-direction reconstruction, and an elastic-distance conformal anomaly path. 3 phases driven by two requirement groups (VEE chain of 2 + independent ECA).
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
-| (none yet — v0.37.0) | — | — | — |
+| (none yet — v0.38.0) | — | — | — |
 
 ## Accumulated Context
 
@@ -82,30 +81,28 @@ Three phases, 6 requirements (WAV-01..WAV-06) — an implementation milestone pr
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
-Relevant to current work (v0.37.0 WAV):
+Relevant to current work (v0.38.0 VEESA):
 
-- **Implementation milestone, publishes on tag** — v0.37.0 makes real `fdars-core/src/` changes and **will** bump the crate version 0.36.0 → 0.37.0 + publish to crates.io on the `v0.37.0` tag. Normal test/clippy(`--all-targets --features linalg,parallel`)/fmt gates apply. (audit-milestone-no-tag does NOT apply.)
-- **New in-crate DWT primitive** — the crate has `rustfft` and a Morlet CWT (`seasonal/strength.rs`) but NO discrete orthogonal wavelet transform. WAV-01/02 build one from scratch (Haar/db1 + Daubechies db2–dbN filter banks, multi-level Mallat pyramid, periodic + symmetric boundary extension, arbitrary lengths). Perfect-reconstruction round-trip is the make-or-break numerical gate. No new crate dependency — implemented in-crate.
-- **`wcr` reuses FPCR/PLS; `wnet` reuses GroupLasso** — `wcr` transforms curves → wavelet coefficients, then fits via PCR (and PLS) in coefficient space reusing `scalar_on_function/` FPCR/PLS patterns + `regression.rs::fdata_to_pc_1d`. `wnet` applies lasso + ridge on wavelet coefficients via coordinate descent + soft-thresholding, reusing `scalar_on_function/additive.rs` GroupLasso machinery, with cross-validated λ. Numeric-output parity with refund `wcr`/`wnet` is the goal — NOT basis-internal parity with refund's `wavethresh`/`wmtsa` internals (documented divergences acceptable).
-- **Gaussian response only** — binomial/logistic (refund's `family` argument) deferred to WAV-F1. Keeps the numerical-gate surface bounded.
-- **DWT scope bounded** — Haar + Daubechies db2–dbN only; Symlets/Coiflets/biorthogonal families + wavelet packets deferred to WAV-F2; 2D/surface DWT deferred to WAV-F3.
-- **Reuse-first, no new dependency** — `scalar_on_function/` (FPCR/PLS for `wcr`), `scalar_on_function/additive.rs` (GroupLasso coordinate-descent/soft-threshold for `wnet`), `linalg::cholesky_solve`, `helpers::simpsons_weights`, `regression.rs::fdata_to_pc_1d`. No `Cargo.toml` change; MSRV stays 1.81 (confirm at plan time whether any faer/`linalg`-gated path is needed).
-- **Likely a new DWT module + `wavelet_regression.rs`** — DWT in `wavelet.rs` (or `wavelet/`); `wcr`/`wnet` in `wavelet_regression.rs` (or a `wcr`/`wnet` submodule). Peer of `kshape.rs`/`kernel_kmeans.rs`/`optimal_design.rs`. Additive crate-root/prelude re-exports of the full surface (DWT + `wcr` + `wnet` + config/result types + predict) land in the final phase (71) to avoid exposing a partial public API mid-milestone.
-- **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only the new wavelet module(s) + additive `lib.rs`/`prelude.rs` re-exports.
-- **Phase numbering continues** — v0.36.0 ended at Phase 68 → v0.37.0 starts at Phase 69. No reset.
-- **6 requirements → 3 phases** (fine granularity, strict dependency chain): Phase 69 WAV-01/02, Phase 70 WAV-03/04, Phase 71 WAV-05/06. All 6 mapped, no orphans, no duplicates. (WAV-01 forward/inverse DWT + WAV-02 boundary handling paired as the DWT primitive; WAV-03 `wcr` + WAV-04 `wnet` paired as the wavelet-domain regressor layer, independent of each other; WAV-05 predict + WAV-06 integration paired as the prediction/exposure layer.)
+- **Implementation milestone, ships on tag** — v0.38.0 makes real `fdars-core/src/` changes; crate bump + `v0.38.0` tag + crates.io publish is a deferred operator ship step (per the established release-decoupling convention; crate is 0.28.0 published with 0.29.0–0.37.0 unreleased). Normal test/clippy (`--all-targets --features linalg,parallel`)/fmt gates apply.
+- **Reuse-first, no new dependency** — do NOT re-implement: `elastic_fpca.rs` (`joint_fpca`/`vert_fpca`/`horiz_fpca`, `JointFpcaResult`, private `project_onto_eigenvectors`), `alignment/` (`amplitude_distance`/`phase_distance`/`elastic_distance`, `karcher_mean`), `elastic_explain.rs` (permutation-importance machinery), `tolerance/conformal.rs` (`conformal_prediction_band`, `NonConformityScore`). No `Cargo.toml` change.
+- **PFI is model-agnostic** — the crate has NO built-in random forest. The VEE-03 PFI layer must be generic over any trained predictor / scoring closure (matching VEESA's design), NOT tied to `elastic_pcr`. A native tree-ensemble learner is explicitly deferred (VEE-F1).
+- **jfPCA fit→transform contract** — VEE-01 exposes a reusable fit transformer on the `JointFpcaResult` family (stores template + eigen components + `balance_c` + `argvals`); VEE-02 exposes out-of-sample transform reusing the existing private `project_onto_eigenvectors`. Training-score reproduction (1e-8) and fit→transform round-trip are the make-or-break numerical gates.
+- **Elastic conformal extends, never breaks** — ECA-01 adds elastic variants to `NonConformityScore` (`{SupNorm, L2}` → + amplitude/phase/combined); the existing `conformal_prediction_band` path stays unchanged (additive-only, `#[non_exhaustive]` enum forward-compat).
+- **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only new modules/types + additive `lib.rs`/`prelude.rs` re-exports. Deprecate, never remove.
+- **Phase numbering continues** — v0.37.0 ended at Phase 71 → v0.38.0 starts at Phase 72. No reset.
+- **8 requirements → 3 phases** (fine granularity): Phase 72 VEE-01/02, Phase 73 VEE-03/04/05, Phase 74 ECA-01/02/03. All 8 mapped, no orphans, no duplicates. VEE group is a dependency chain (72→73); ECA group (74) is independent, sequenced last.
 
 ### Pending Todos
 
-- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; the additive wavelet surface (DWT + `wcr`/`wnet`) should be exposed to R/WASM bindings in a follow-up, not this milestone.
+- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; the additive VEESA + conformal-anomaly surface should be exposed to R/WASM bindings in a follow-up, not this milestone.
 
 ### Blockers/Concerns
 
-- **No research/SUMMARY.md** — research was intentionally skipped for this milestone (method well-scoped from the refund `wcr`/`wnet` baseline + a standard orthogonal DWT). Numerical make-or-break gates warrant known-answer tests: DWT perfect-reconstruction round-trip, Haar hand-computed coefficients, `wcr` β(t) recovery, `wnet` sparse-support recovery + deterministic CV-λ, `predict` self-consistency, module doctest under `cargo test --doc`. Non-blocking for the roadmap.
-- **DWT is genuinely new code** — unlike prior implementation milestones that mostly re-wired existing machinery, WAV-01/02 add a from-scratch filter-bank DWT (no in-crate discrete-wavelet code to reuse). Front-loaded as Phase 69 so the perfect-reconstruction numerical risk is retired before the regressors build on it. Beware boundary-mode edge cases (non-power-of-2 lengths, symmetric vs periodic extension) and Daubechies filter-coefficient correctness.
-- **`wnet` GroupLasso reuse fit** — confirm at plan time that `scalar_on_function/additive.rs`'s coordinate-descent/soft-threshold machinery accepts the wavelet-coefficient design (per-coefficient lasso + ridge, not group structure) without modification, else scope a thin additive adapter (still additive/non-breaking).
-- Historical build/CI hazards (MEMORY.md) apply this implementation milestone: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds; prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; per-phase impl-subagent pattern (plan→code→test→--no-verify commit→artifacts) dodged executor stalls on v0.32.0 GAK; audit-milestone-no-tag does NOT apply (this ships code → tag as normal).
-- Pre-existing serde build break (NOT v0.37.0): `fdars-core/src/shapelet/classifier.rs` `ShapeletTransformClassifier` (Phase 60, commit ea39c623) derives serde but embeds `ClassifFit` which lacks serde derives → `cargo build --features serde` fails. Independent of WAV; new wavelet types should be serde-clean (or serde-gated) if they derive serde. Candidate GSD-ready backlog fix: add serde-gated derives to `ClassifFit` + fitted sub-structs.
+- **No research/SUMMARY.md** — broad ecosystem research was intentionally skipped this milestone (the three source papers/repo + a codebase scan already pinned the gaps precisely). Non-blocking for the roadmap. Numerical make-or-break gates warrant known-answer tests: training-score reproduction (1e-8), fit→transform round-trip, PFI seed-determinism + known-signal PC ranking, principal-direction `c=0` reproduces the mean, elastic nonconformity zero-for-identical, marginal-validity flag rate ≈ α, injected magnitude+shape outliers flagged, module doctests under `cargo test --doc`.
+- **jfPCA transform correctness** — the private `project_onto_eigenvectors` must be exposed and driven correctly for out-of-sample curves (align to trained template first, then project onto trained basis). Confirm at plan time that alignment of new curves to the *trained* Karcher mean matches the training-time alignment convention exactly, else the round-trip gate fails.
+- **PFI generic surface** — confirm at plan time whether `elastic_explain.rs`'s permutation machinery can be lifted to a predictor-agnostic trait/closure without breaking its existing (`elastic_pcr`-specific) callers; if not, add a thin additive generic layer alongside (still additive/non-breaking).
+- Historical build/CI hazards (MEMORY.md) apply this implementation milestone: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds (`rm -rf target/debug/{incremental,examples}` to free space); prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; the per-phase impl-subagent pattern (plan→code→test→--no-verify commit→artifacts) dodged executor stalls on v0.32.0 GAK.
+- Pre-existing serde build break (NOT v0.38.0): `fdars-core/src/shapelet/classifier.rs` `ShapeletTransformClassifier` (Phase 60, commit ea39c623) embeds non-serde `ClassifFit` → `cargo build --features serde` fails. Independent of VEESA; new types should be serde-clean (or serde-gated) if they derive serde. Candidate GSD-ready backlog fix: add serde-gated derives to `ClassifFit`.
 
 ## Deferred Items
 
@@ -113,21 +110,19 @@ Items acknowledged and deferred, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
-| Backlog | GAP-08 (autodiff-compatible / differentiable FDA core — invasive generics refactor, score 1.73, L) — the last remaining backlog item after GAP-07 | Deferred | v0.36.0 | future milestone |
-| Wavelet-regression | WAV-F1 (binomial/logistic + GLM-family wavelet-domain regression — refund `family`); WAV-F2 (Symlets/Coiflets/biorthogonal families + wavelet packets); WAV-F3 (2D/surface DWT + regression) | Deferred | v0.37.0 | future milestone |
-| PEER | Non-Gaussian / GLM PEER families; basis-expansion PEER matching refund's exact internal `pentype`/basis representation | Deferred | v0.36.0 | future milestone |
-| Optimal-design | FOD-BREADTH (SR-criterion, exhaustive/branch-and-bound, CV-ridge, rank-1 Cholesky update, off-grid interpolated candidates) | Deferred | v0.35.0 | future milestone |
-| Shape-clustering | KSH-BREADTH (multivariate/variable-length SBD, hierarchical/other clustering families) | Deferred | v0.34.0 | future milestone |
-| Shapelets | LSH-01 (gradient learning-shapelets) — needs autodiff through the distance; ties to GAP-08 | Deferred | v0.33.0 | future milestone |
-| Kernel-methods | SVM-01 (native in-crate kernel-SVM / QP solver) — Gram export (GAK-05/06) covers the use case in the interim | Deferred | v0.32.0 | future milestone |
+| VEESA | VEE-F1 (native random-forest / tree-ensemble predictor — PFI kept model-agnostic instead); VEE-F2 (plotting/rendering of principal directions + PFI — VEE-04 returns curves, rendering is a caller concern) | Deferred | v0.38.0 | future milestone |
+| Conformal-anomaly | ECA-F1 (full conditional / Mondrian conformal anomaly detection — class-conditional validity; v1 covers the inductive marginal case) | Deferred | v0.38.0 | future milestone |
+| Backlog | GAP-08 (autodiff-compatible / differentiable FDA core — invasive generics refactor, score 1.73, L) — the last remaining v0.31.0 backlog item | Deferred | v0.36.0 | future milestone |
+| Wavelet-regression | WAV-F1 (binomial/logistic GLM-family); WAV-F2 (Symlets/Coiflets/biorthogonal + wavelet packets); WAV-F3 (2D/surface DWT) | Deferred | v0.37.0 | future milestone |
 | API-breaking | APIB-01 — breaking removal of the 6 `#[deprecated]` forms from v0.30.0 | Deferred | v0.30.0 | future 1.0-readiness |
 
 ## Session Continuity
 
-Last session: 2026-09-04T15:30:00.000Z
-Stopped at: Phase 71 complete — all phases complete
+Last session: 2026-09-05T00:00:00.000Z
+Stopped at: Roadmap created for v0.38.0 (Phases 72–74) — 8/8 requirements mapped, STATE + traceability updated
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with /gsd-plan-phase 72
+- Deferred crate-release steps (bump + tag + publish for v0.29.0–v0.38.0) remain an operator concern.

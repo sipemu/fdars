@@ -26,8 +26,63 @@
 - ✅ **v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)** — Phases 64–65 (shipped 2026-09-03) — [archive](milestones/v0.35.0-ROADMAP.md)
 - ✅ **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (shipped 2026-09-04) — [archive](milestones/v0.36.0-ROADMAP.md)
 - ✅ **v0.37.0 — WAV: Wavelet-Domain Functional Regression** — Phases 69–71 (shipped 2026-09-04) — [archive](milestones/v0.37.0-ROADMAP.md)
+- 🚧 **v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection** — Phases 72–74 (in progress)
 
 ## Phases
+
+### 🚧 v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection (Phases 72–74) — IN PROGRESS
+
+**Milestone Goal:** Close the specific capability gaps between fdars and three Tucker-affiliated elastic-shape-analysis works — the VEESA paper (Goode, Tucker & Ries, *J. Data Science*), the R package `sandialabs/veesa`, and arXiv 2504.01172 (elastic conformal anomaly detection) — additively and reuse-first, on top of fdars' existing jfPCA / elastic-distance / conformal machinery. Real `fdars-core/src/` code, additive/non-breaking (protects R + WASM bindings + 28 examples), **no new crate dependency**, normal test/clippy (`--all-targets --features linalg,parallel`)/fmt gates. Crate ships on the `v0.38.0` tag (deferred operator step, per the release-decoupling convention). Phase numbering continues from v0.37.0 (…71) → Phase 72 onward.
+
+- [ ] **Phase 72: jfPCA Fit/Transform Seam** - Public jfPCA fit transformer + out-of-sample projection onto the trained joint-FPCA basis
+- [ ] **Phase 73: VEESA Explainability Pipeline & Integration** - Model-agnostic PFI over jfPCA scores + principal-direction reconstruction, wired end-to-end with re-exports + doctest
+- [ ] **Phase 74: Elastic Conformal Anomaly Detection** - Elastic nonconformity scores + inductive conformal p-values/flags catching magnitude and shape outliers
+
+#### Phase 72: jfPCA Fit/Transform Seam
+**Goal**: Users can fit a reusable jfPCA transformer on training curves and project *new* out-of-sample curves onto the *trained* joint-FPCA basis, in the trained coordinate system.
+**Depends on**: Phase 71 (prior milestone); builds on shipped `elastic_fpca.rs` (`joint_fpca`/`vert_fpca`/`horiz_fpca`, `JointFpcaResult`, private `project_onto_eigenvectors`)
+**Requirements**: VEE-01, VEE-02
+**Success Criteria** (what must be TRUE):
+  1. A public jfPCA fit step returns a reusable transformer (a model object or `JointFpcaResult` extension) that stores the trained Karcher-mean template, `mean_psi`, joint eigenvector components (`vert_component`/`horiz_component`), `balance_c`, and `argvals`.
+  2. Training scores produced by the fit reproduce `joint_fpca`'s scores within 1e-8.
+  3. A public out-of-sample transform (`prep_testing_data` equivalent) aligns new raw curves to the trained Karcher-mean template and projects them onto the trained joint-FPCA basis, returning scores in the trained coordinate system.
+  4. Transforming the original training curves through the transform reproduces the training scores within tolerance (fit→transform round-trip), reusing the existing private `project_onto_eigenvectors` now exposed via this seam.
+  5. All new public surface is additive/non-breaking (existing signatures unchanged); whole-crate `cargo test`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo fmt --check` pass.
+**Plans**: TBD
+
+Plans:
+- [ ] 72-01: TBD
+
+#### Phase 73: VEESA Explainability Pipeline & Integration
+**Goal**: Users can explain any trained predictor over jfPCA scores via permutation feature importance and reconstruct interpretable principal directions, driven end-to-end from fit → transform → PFI.
+**Depends on**: Phase 72 (consumes the fit/transform seam)
+**Requirements**: VEE-03, VEE-04, VEE-05
+**Success Criteria** (what must be TRUE):
+  1. Model-agnostic permutation feature importance (PFI) computes per-PC importance for a caller-supplied trained predictor (generic over a predictor trait / scoring closure, not tied to `elastic_pcr`) by permuting each PC-score column and measuring degradation in a user-selected error metric, reusing `elastic_explain.rs` permutation machinery.
+  2. PFI is deterministic under a seed, and on a known-signal design the informative PC ranks above the noise PCs.
+  3. Principal-direction reconstruction returns functions at μ ± c·σⱼ along each joint PC, split into amplitude (warped-function) and phase (warping-function) parts suitable for plotting; `c = 0` reproduces the jfPCA mean function.
+  4. An end-to-end convenience path ties fit (align + jfPCA) → out-of-sample transform → PFI, with the full public surface re-exported at crate root and in the prelude.
+  5. A running end-to-end module doctest passes under `cargo test --doc`; whole-crate `cargo test`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo fmt --check` pass; additive/non-breaking.
+**Plans**: TBD
+**UI hint**: yes
+
+Plans:
+- [ ] 73-01: TBD
+
+#### Phase 74: Elastic Conformal Anomaly Detection
+**Goal**: Users can flag both magnitude and shape outliers in functional data via an inductive conformal anomaly detector that scores curves against a reference template using elastic distance.
+**Depends on**: Nothing within this milestone (independent of the VEE group; sequenced last for a clean linear execution order). Builds on shipped `tolerance/conformal.rs` (`conformal_prediction_band`, `NonConformityScore`) and `alignment/` distances.
+**Requirements**: ECA-01, ECA-02, ECA-03
+**Success Criteria** (what must be TRUE):
+  1. `NonConformityScore` (currently `{SupNorm, L2}`) is extended with elastic variants — amplitude distance, phase distance, and combined elastic distance — each scoring a curve against a reference template, non-negative and zero for a curve identical to the reference (reusing `amplitude_distance`/`phase_distance`/`elastic_distance`).
+  2. An inductive conformal anomaly detector calibrates elastic nonconformity scores on a reference/calibration set (against a template such as the calibration Karcher mean), then returns per-curve conformal p-values and anomaly flags at a chosen level α.
+  3. On exchangeable clean data the flag rate is approximately α (marginal validity), and injected magnitude and shape outliers are flagged.
+  4. A `ConformalAnomalyResult` carries per-curve conformal p-values, nonconformity scores, boolean flags, and the calibrated threshold; the full surface is re-exported at crate root and in the prelude with a running module doctest.
+  5. Additive/non-breaking — the existing `conformal_prediction_band` path is unchanged; whole-crate `cargo test`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo fmt --check` pass.
+**Plans**: TBD
+
+Plans:
+- [ ] 74-01: TBD
 
 <details>
 <summary>✅ v0.37.0 — WAV: Wavelet-Domain Functional Regression (Phases 69–71) — SHIPPED 2026-09-04</summary>
@@ -53,10 +108,23 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
 
 </details>
 
+## Progress
+
+**Execution Order (v0.38.0):**
+Phases execute in numeric order: 72 → 73 → 74. Phase 73 depends on the Phase 72 seam; Phase 74 (ECA) is independent of the VEE group and may be sequenced anywhere, placed last here for a clean linear order.
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 72. jfPCA Fit/Transform Seam | v0.38.0 | 0/TBD | Not started | - |
+| 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 0/TBD | Not started | - |
+| 74. Elastic Conformal Anomaly Detection | v0.38.0 | 0/TBD | Not started | - |
+
 ## Status
+
+**v0.38.0 VEESA in progress** (Phases 72–74) — closes the gaps against the VEESA paper + `sandialabs/veesa` R package + arXiv 2504.01172 (elastic conformal anomaly detection). Reuse-first on shipped `elastic_fpca.rs` / `alignment/` / `elastic_explain.rs` / `tolerance/conformal.rs`; no new crate dependency. VEE group (Phases 72–73) is a dependency chain; the ECA group (Phase 74) is independent.
 
 **v0.37.0 WAV shipped** (Phases 69–71) — promoted GAP-07 (wavelet-domain functional regression) from `.planning/research/GAP-BACKLOG.md`. After GAP-07, only **GAP-08** (differentiable / autodiff-compatible FDA core — invasive generics refactor, score 1.73, L-effort) remains in the backlog.
 
-**Remaining operator ship step for v0.37.0:** bump crate `fdars-core` 0.36.0 → 0.37.0, tag `v0.37.0`, push → `release.yml` publishes to crates.io. (The autonomous run intentionally did not tag/publish; a `v0.37.0` tag on the un-bumped 0.36.0 crate would trigger a version-mismatched publish.)
+**Remaining operator ship steps:** bump + tag + publish for each un-shipped crate version (v0.29.0–v0.38.0 sit unreleased against the 0.28.0-published crate); each `v*` tag triggers `release.yml` → crates.io. The autonomous runs intentionally do not tag/publish.
 
-Next: `/gsd-new-milestone` (candidate: promote GAP-08, or a new gap audit).
+Next: `/gsd-plan-phase 72`.
