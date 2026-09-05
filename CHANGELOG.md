@@ -5,6 +5,142 @@ All notable changes to `fdars-core` are documented here. This project adheres to
 non-breaking** — no existing public signature changed and no new crate dependency
 was added in this span.
 
+## [0.38.0] - 2026-09-05
+
+VEESA — Elastic Shape Explainability & Conformal Anomaly Detection (Phases 72–74).
+Closes the gaps against the VEESA paper (Goode, Tucker & Ries), the `sandialabs/veesa`
+R package, and arXiv 2504.01172 (elastic conformal anomaly detection). Reuse-first over
+the shipped jfPCA / elastic-distance / conformal machinery; no new dependency.
+
+### Added
+
+- **jfPCA fit/transform seam** — `jfpca_fit` returns a reusable `JfpcaModel` (stores the
+  trained Karcher-mean template, `mean_q`/`mean_psi`/`mean_srsf`, joint eigenvector
+  components, `balance_c`, `argvals`, eigenvalues, and the embedded `JointFpcaResult`);
+  training scores reproduce `joint_fpca` within 1e-8. `JfpcaModel::transform` projects new
+  out-of-sample curves onto the trained basis (aligns to the trained template via
+  `align_to_target`); `JfpcaModel::score_training` gives the exact training round-trip;
+  `JfpcaTransform` result. (VEE-01, VEE-02)
+- **Model-agnostic permutation feature importance** — `elastic_pfi` over jfPCA PC scores,
+  generic over any predictor closure `Fn(&FdMatrix) -> Vec<f64>`; `PfiMetric`
+  (Mse/Mae/Accuracy/Custom); deterministic under seed; `ElasticPfiResult`. (VEE-03)
+- **Principal-direction reconstruction** — `JfpcaModel::principal_directions` reconstructs
+  μ ± c·σⱼ split into amplitude and phase parts (`PrincipalDirections`); `c = 0` reproduces
+  the jfPCA mean. (VEE-04)
+- **VEESA pipeline** — `veesa_pipeline` ties fit → transform → PFI end-to-end
+  (`VeesaPipelineResult`). (VEE-05)
+- **Elastic conformal anomaly detection** — `NonConformityScore` extended with
+  `AmplitudeElastic` / `PhaseElastic` / `CombinedElastic`; `elastic_nonconformity` (scores a
+  curve against a reference template, non-negative, zero for an identical curve);
+  `elastic_conformal_anomaly` inductive detector (per-curve conformal p-values, anomaly flags
+  at level α, calibrated threshold — catches magnitude AND shape outliers);
+  `ConformalAnomalyConfig` / `ConformalAnomalyResult`. The existing `conformal_prediction_band`
+  path is unchanged. (ECA-01, ECA-02, ECA-03)
+
+## [0.37.0] - 2026-09-04
+
+WAV — Wavelet-Domain Functional Regression (Phases 69–71). Promotes GAP-07.
+
+### Added
+
+- **Discrete wavelet transform** — new `wavelet/` module: single-level orthonormal DWT
+  (Haar + Daubechies db2–db10) with exact-adjoint analysis/synthesis under periodic and
+  symmetric boundaries; multi-level Mallat pyramid (`WaveletCoeffs`, `decompose`,
+  `reconstruct`) plus the `FdMatrix` batch path; perfect reconstruction ≤1e-10 across
+  families, levels, boundary modes, and non-power-of-2 lengths.
+- **`wcr`** — wavelet-domain scalar-on-function regression (PCR or PLS on per-curve
+  concatenated wavelet-coefficient designs; β(t) recovered by inverse DWT); `WcrResult` with
+  out-of-sample `predict` + coefficient/fitted accessors.
+- **`wnet`** — wavelet-domain elastic-net scalar-on-function regression (per-coefficient
+  L1+L2 coordinate descent, deterministic cross-validated λ); `WnetResult` with `predict`.
+  Full crate-root + prelude re-exports and a running end-to-end module doctest.
+
+## [0.36.0] - 2026-09-04
+
+PEER — Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68).
+Promotes GAP-06. (Crate versions 0.36.0 and 0.37.0 were code-complete but not published
+separately — their code ships in the 0.38.0 crate release.)
+
+### Added
+
+- **`peer`** — structured-penalty scalar-on-function regression via the null-space/range-space
+  decomposition of the penalty operator; `PeerPenalty` families (Ridge, 2nd-difference,
+  caller-supplied Decree Q); `PeerResult` (β(t), intercept, fitted values, effective df,
+  diagnostics).
+- **Automatic λ selection** — `LambdaChoice` (Fixed / Gcv / Reml): deterministic GCV grid +
+  self-contained REML EM.
+- **`lpeer`** — longitudinal PEER with subject random effects (REML EM via `famm`);
+  `LpeerResult` with variance components. Out-of-sample `predict` on both; full re-exports +
+  doctest.
+
+## [0.35.0] - 2026-09-03
+
+Optimal Experimental Design for Sparse FDA (FOptDes, Phases 64–65). Promotes GAP-05.
+Crate bumped 0.34.0 → 0.35.0.
+
+### Added
+
+- **`design_criterion`** — evaluates a candidate design under `DesignCriterion::Trajectory`
+  (integrated BLUP-MSE) or `DesignCriterion::Score(A|D)` (FPC-score posterior covariance A-/
+  D-optimality); `OptimalityKind` enum. New `optimal_design.rs`.
+- **`optimal_design`** — deterministic greedy sequential forward selection over an estimated
+  `PaceFpcaResult` (read-only, no re-estimation); `OptDesConfig` / `OptDesResult`. Full
+  re-exports + doctest + criterion benchmark.
+
+## [0.34.0] - 2026-09-02
+
+k-Shape Clustering & Shape-Based Distance (Phases 61–63). Promotes GAP-03. Crate bumped
+0.33.0 → 0.34.0.
+
+### Added
+
+- **Shape-based distance** — `src/metric/sbd.rs`: `sbd` (FFT normalized cross-correlation →
+  distance + optimal shift, scale/offset-invariant) and `sbd_distance_matrix`.
+- **k-Shape clustering** — `src/kshape.rs`: `kshape_fd` (iterative SBD assignment +
+  shape-extraction centroids, `n_init` restarts, deterministic seeding) and
+  `KShapeResult::predict`.
+- **SBD k-medoids** — `sbd_kmedoids`. Full re-exports + criterion bench.
+
+## [0.33.0] - 2026-09-02
+
+Shapelet Transform & Classification (Phases 57–60). Promotes GAP-02 (discovery-based;
+learning-shapelets deferred). Crate bumped 0.32.0 → 0.33.0.
+
+### Added
+
+- **Shapelet distance core** — `src/shapelet/distance.rs`: per-window z-normalized
+  min-Euclidean with early-abandon; the `Shapelet` type.
+- **Discovery & ranking** — `src/shapelet/discovery.rs`: candidate generation + `QualityMeasure`
+  (information gain / F-statistic) + top-K selection with self-similarity pruning
+  (`ShapeletSet`); byte-deterministic.
+- **Shapelet transform** — `src/shapelet/transform.rs`: `shapelet_transform`,
+  `shapelet_transform_fit`, and out-of-sample `ShapeletTransformFit::transform`.
+- **Bundled classifier** — `src/shapelet/classifier.rs`: `shapelet_classifier_fit`
+  (discover → transform → classify; kNN default, LDA optional) + `ShapeletClassifierFit::predict`.
+  Criterion bench.
+
+## [0.32.0] - 2026-09-02
+
+Global Alignment Kernel & Kernel Clustering (Phases 54–56). Promotes GAP-01. First
+implementation milestone after three audit/consolidation cycles; crate bumped 0.30.0 → 0.32.0.
+
+### Added
+
+- **GAK kernel** — `metric/gak.rs`: Cuturi Triangular Global Alignment Kernel (log-domain
+  forward DP atop the soft-DTW lattice, PSD in [0,1] with unit diagonal); `gak_gram_matrix`;
+  `sigma_gak` median-distance bandwidth heuristic.
+- **Gram-matrix export** — `gak_gram_train` / `gak_gram_predict` (cross-normalized against the
+  stored training diagonals) for external `SVC(kernel='precomputed')` handoff.
+- **Kernel-k-means** — `kernel_kmeans.rs`: kernel-trick clustering on the GAK Gram,
+  `n_init` restarts, deterministic seeding, out-of-sample `predict`.
+
+## [0.31.0] - 2026-09-02
+
+Multi-Ecosystem Gap Audit (Phases 52–53). **No `fdars-core` code changes** — an audit-only
+milestone producing `.planning/research/GAP-AUDIT-REPORT.md` (MATLAB, Julia, tidyfun/refund,
+and Python-beyond-scikit-fda capability surveys) and a value-ranked `GAP-BACKLOG.md` (7
+net-new gaps, GAP-01…GAP-08). No crate version change and no git tag.
+
 ## [0.30.0] - 2026-09-01
 
 Covers the v0.30.0 development milestone (Performance & Consolidation Pass) — the
