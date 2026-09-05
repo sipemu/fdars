@@ -1,12 +1,28 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.38.0",
-  "phases": [],
+  "milestone": "v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection",
+  "phases": [
+    {
+      "number": "72",
+      "name": "jfPCA Fit/Transform Seam",
+      "status": "complete"
+    },
+    {
+      "number": "73",
+      "name": "VEESA Explainability Pipeline & Integration",
+      "status": "pending"
+    },
+    {
+      "number": "74",
+      "name": "Elastic Conformal Anomaly Detection",
+      "status": "pending"
+    }
+  ],
   "next": {
-    "command": "/gsd:discuss-phase",
-    "label": "Discuss the first phase",
-    "reason": "Project initialized — plan your first phase"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 73)",
+    "reason": "Phase 73 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-04T22:13:49.684Z"
+  "updated_at": "2026-09-05T13:12:49.065Z"
 }
