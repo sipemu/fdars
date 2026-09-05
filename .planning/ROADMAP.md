@@ -94,7 +94,7 @@ Plans:
 
 Plans:
 
-- [ ] 74-01-PLAN.md — Elastic conformal anomaly detection: extend NonConformityScore with elastic variants, add elastic_nonconformity + elastic_conformal_anomaly (inductive p-values/flags), ConformalAnomalyConfig/Result, re-exports + doctest
+- [x] 74-01-PLAN.md — Elastic conformal anomaly detection: extend NonConformityScore with elastic variants, add elastic_nonconformity + elastic_conformal_anomaly (inductive p-values/flags), ConformalAnomalyConfig/Result, re-exports + doctest
 
 <details>
 <summary>✅ v0.37.0 — WAV: Wavelet-Domain Functional Regression (Phases 69–71) — SHIPPED 2026-09-04</summary>
@@ -129,7 +129,7 @@ Phases execute in numeric order: 72 → 73 → 74. Phase 73 depends on the Phase
 |-------|-----------|----------------|--------|-----------|
 | 72. jfPCA Fit/Transform Seam | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
 | 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
-| 74. Elastic Conformal Anomaly Detection | v0.38.0 | 0/TBD | Not started | - |
+| 74. Elastic Conformal Anomaly Detection | v0.38.0 | 1/1 | In Progress|  |
 
 ## Status
 
