@@ -15,8 +15,8 @@ Real `fdars-core/src/` code. All additive/non-breaking, reuse-first, **no new cr
 
 ### VEESA Pipeline (VEE) — jfPCA fit/transform seam + model-agnostic explainability
 
-- [ ] **VEE-01**: A public jfPCA **fit** step produces a reusable transformer (a model object, or an extension of `JointFpcaResult`) that stores everything needed to project new curves — the trained Karcher-mean template, `mean_psi`, joint eigenvector components (`vert_component`/`horiz_component`), `balance_c`, and `argvals`. Training scores from the fit reproduce `joint_fpca`'s scores within 1e-8.
-- [ ] **VEE-02**: A public **out-of-sample transform** (`prep_testing_data` equivalent) aligns new raw curves to the *trained* Karcher-mean template and projects them onto the *trained* joint-FPCA basis, returning scores in the trained coordinate system. Transforming the original training curves reproduces the training scores within tolerance (fit→transform round-trip). Reuses the existing private `project_onto_eigenvectors`, now exposed via this seam.
+- [x] **VEE-01**: A public jfPCA **fit** step produces a reusable transformer (a model object, or an extension of `JointFpcaResult`) that stores everything needed to project new curves — the trained Karcher-mean template, `mean_psi`, joint eigenvector components (`vert_component`/`horiz_component`), `balance_c`, and `argvals`. Training scores from the fit reproduce `joint_fpca`'s scores within 1e-8.
+- [x] **VEE-02**: A public **out-of-sample transform** (`prep_testing_data` equivalent) aligns new raw curves to the *trained* Karcher-mean template and projects them onto the *trained* joint-FPCA basis, returning scores in the trained coordinate system. Transforming the original training curves reproduces the training scores within tolerance (fit→transform round-trip). Reuses the existing private `project_onto_eigenvectors`, now exposed via this seam.
 - [ ] **VEE-03**: **Model-agnostic permutation feature importance (PFI)** over jfPCA principal-component scores — computes importance for a caller-supplied trained predictor (generic over a predictor trait / scoring closure, not tied to `elastic_pcr`), by permuting each PC-score column and measuring the degradation in a user-selected error metric. Deterministic under a seed; on a known-signal design the informative PC ranks above noise PCs.
 - [ ] **VEE-04**: **Principal-direction reconstruction** for visualization — reconstruct functions at μ ± c·σⱼ along each joint PC and split the perturbation into its amplitude (warped-function) and phase (warping-function) parts, returning curves suitable for plotting/interpretation. `c = 0` reproduces the jfPCA mean function.
 - [ ] **VEE-05**: **Cohesive VEESA pipeline + integration** — an end-to-end convenience path tying fit (align + jfPCA) → out-of-sample transform → PFI, with full crate-root + prelude re-exports and a running end-to-end module doctest (`cargo test --doc`).
@@ -47,8 +47,8 @@ Real `fdars-core/src/` code. All additive/non-breaking, reuse-first, **no new cr
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VEE-01 | Phase 72 | Pending |
-| VEE-02 | Phase 72 | Pending |
+| VEE-01 | Phase 72 | Complete |
+| VEE-02 | Phase 72 | Complete |
 | VEE-03 | Phase 73 | Pending |
 | VEE-04 | Phase 73 | Pending |
 | VEE-05 | Phase 73 | Pending |
@@ -57,6 +57,7 @@ Real `fdars-core/src/` code. All additive/non-breaking, reuse-first, **no new cr
 | ECA-03 | Phase 74 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 8 total
 - Mapped to phases: 8 ✓
 - Unmapped: 0 ✓

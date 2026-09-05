@@ -1,15 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.38.0
-milestone_name: VEESA — Elastic Shape Explainability & Conformal Anomaly Detection
-status: planning
-last_updated: "2026-09-05T00:00:00.000Z"
+milestone_name: "VEESA: Elastic Shape Explainability & Conformal Anomaly Detection"
+current_phase: 72
+current_phase_name: jfPCA Fit/Transform Seam
+status: verifying
+stopped_at: Completed 72-01-jfpca-fit-transform-seam-PLAN.md
+last_updated: "2026-09-05T11:19:20.911Z"
 last_activity: 2026-09-05
+last_activity_desc: Phase 72 execution started
+state_head: ed3c7870b0f58d5946cacde1bdeb228657952f46
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-05)
 
 ## Current Position
 
-Phase: 72 of 74 (jfPCA Fit/Transform Seam)
-Plan: — of — (roadmap created; ready to plan)
-Status: Ready to plan
-Last activity: 2026-09-05 — Roadmap created (Phases 72–74, 8 requirements mapped)
+Phase: 72 (jfPCA Fit/Transform Seam) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-09-05 — Phase 72 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -74,6 +79,7 @@ Three phases, 8 requirements (VEE-01..05, ECA-01..03) — an implementation mile
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | (none yet — v0.38.0) | — | — | — |
+| Phase 72 P01 | 18 | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -91,6 +97,8 @@ Relevant to current work (v0.38.0 VEESA):
 - **Additive/non-breaking** — zero changes to existing public signatures (protects R + WASM bindings + 28 examples); only new modules/types + additive `lib.rs`/`prelude.rs` re-exports. Deprecate, never remove.
 - **Phase numbering continues** — v0.37.0 ended at Phase 71 → v0.38.0 starts at Phase 72. No reset.
 - **8 requirements → 3 phases** (fine granularity): Phase 72 VEE-01/02, Phase 73 VEE-03/04/05, Phase 74 ECA-01/02/03. All 8 mapped, no orphans, no duplicates. VEE group is a dependency chain (72→73); ECA group (74) is independent, sequenced last.
+- [Phase 72]: Added training_gammas/training_aligned to JfpcaModel to expose Karcher alignment output for exact round-trip scoring
+- [Phase 72]: score_training() method provides < 1e-8 round-trip via stored alignment; transform() uses align_to_target for out-of-sample curves
 
 ### Pending Todos
 
@@ -118,8 +126,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-05T00:00:00.000Z
-Stopped at: Roadmap created for v0.38.0 (Phases 72–74) — 8/8 requirements mapped, STATE + traceability updated
+Last session: 2026-09-05T11:19:20.896Z
+Stopped at: Completed 72-01-jfpca-fit-transform-seam-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
