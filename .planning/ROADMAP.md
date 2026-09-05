@@ -36,7 +36,9 @@
 Promotes **GAP-08** (score 1.73, L-effort) — the last remaining item in the v0.31.0 `GAP-BACKLOG.md`. Adds an in-crate forward-mode automatic-differentiation core (a `Scalar` trait + `Dual<T>` number) and makes a scoped subset of FDA operations (**elastic distance + FPCA scores**) generic over the scalar type, so exact gradients flow through arbitrary compositions into optimization/ML pipelines. Reference baseline: the Julia generic-programming idiom (ElasticFDA.jl + ForwardDiff). Additive/non-breaking (existing f64 signatures untouched; generic versions live alongside — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate dual numbers, forward-mode only). Ships to crates.io on the `v0.39.0` tag.
 
 - [x] **Phase 75: Scalar Trait & Forward-Mode Dual Substrate** — DIF-01 — the `Scalar` trait + `Dual<T>` number every generic op is written against; foundational, blocks 76 & 77 (completed 2026-09-06)
-- [ ] **Phase 76: Differentiable Elastic Distance & FPCA Scores** — DIF-02, DIF-03 — the two scoped ops made generic-over-`Scalar`; exact forward-mode gradients at `Dual`, f64 parity preserved
+- [ ] **Phase 76: Differentiable Elastic Distance & FPCA Scores** — DIF-02, DIF-03 — the two scoped ops made generic-over-`Scalar`; exact forward-mode gradients at `Dual`, f64 parity preserved — **2 plans** (Wave 1, parallel: disjoint code)
+  - [ ] 76-01-PLAN.md — DIF-02: `soft_dtw_distance_generic` (pilot, vs oracle+FD+f64-parity) + `amplitude_distance_at_warp_generic` (fixed-warp SRSF; warp-searched `elastic_distance` deferred — non-differentiable DP argmin)
+  - [ ] 76-02-PLAN.md — DIF-03: `project_scores_generic` FPCA score projection (analytic gradient rotation·weights ≤1e-12 + FD + f64-parity)
 - [ ] **Phase 77: Gradient API, Composition Demo & Integration** — DIF-04 — ergonomic `(value, gradient)`/Jacobian entry point + end-to-end composition example + crate-root/prelude re-exports + module doctest
 
 <details>
