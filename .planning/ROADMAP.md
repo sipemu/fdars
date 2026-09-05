@@ -70,12 +70,12 @@ Plans:
   4. An end-to-end convenience path ties fit (align + jfPCA) → out-of-sample transform → PFI, with the full public surface re-exported at crate root and in the prelude.
   5. A running end-to-end module doctest passes under `cargo test --doc`; whole-crate `cargo test`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo fmt --check` pass; additive/non-breaking.
 
-**Plans**: TBD
+**Plans**: 1 plan
 **UI hint**: yes
 
 Plans:
 
-- [ ] 73-01: TBD
+- [ ] 73-01-PLAN.md — Model-agnostic PFI (VEE-03), principal-direction reconstruction (VEE-04), and end-to-end veesa_pipeline + re-exports + doctest (VEE-05)
 
 #### Phase 74: Elastic Conformal Anomaly Detection
 
