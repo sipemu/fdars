@@ -1,28 +1,28 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection",
+  "milestone": "v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff)",
   "phases": [
     {
-      "number": "72",
-      "name": "jfPCA Fit/Transform Seam",
+      "number": "75",
+      "name": "Scalar Trait & Forward-Mode Dual Substrate",
       "status": "complete"
     },
     {
-      "number": "73",
-      "name": "VEESA Explainability Pipeline & Integration",
-      "status": "complete"
+      "number": "76",
+      "name": "Differentiable Elastic Distance & FPCA Scores",
+      "status": "pending"
     },
     {
-      "number": "74",
-      "name": "Elastic Conformal Anomaly Detection",
-      "status": "complete"
+      "number": "77",
+      "name": "Gradient API, Composition Demo & Integration",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 76)",
+    "reason": "Phase 76 of 3 — needs a plan"
   },
-  "updated_at": "2026-09-05T19:54:06.234Z"
+  "updated_at": "2026-09-05T23:01:56.546Z"
 }
