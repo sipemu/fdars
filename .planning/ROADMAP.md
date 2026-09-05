@@ -36,7 +36,7 @@
 
 - [x] **Phase 72: jfPCA Fit/Transform Seam** - Public jfPCA fit transformer + out-of-sample projection onto the trained joint-FPCA basis (completed 2026-09-05)
 - [x] **Phase 73: VEESA Explainability Pipeline & Integration** - Model-agnostic PFI over jfPCA scores + principal-direction reconstruction, wired end-to-end with re-exports + doctest (completed 2026-09-05)
-- [ ] **Phase 74: Elastic Conformal Anomaly Detection** - Elastic nonconformity scores + inductive conformal p-values/flags catching magnitude and shape outliers
+- [x] **Phase 74: Elastic Conformal Anomaly Detection** - Elastic nonconformity scores + inductive conformal p-values/flags catching magnitude and shape outliers (completed 2026-09-05)
 
 #### Phase 72: jfPCA Fit/Transform Seam
 
@@ -129,7 +129,7 @@ Phases execute in numeric order: 72 → 73 → 74. Phase 73 depends on the Phase
 |-------|-----------|----------------|--------|-----------|
 | 72. jfPCA Fit/Transform Seam | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
 | 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
-| 74. Elastic Conformal Anomaly Detection | v0.38.0 | 1/1 | In Progress|  |
+| 74. Elastic Conformal Anomaly Detection | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
 
 ## Status
 

@@ -23,9 +23,9 @@ Real `fdars-core/src/` code. All additive/non-breaking, reuse-first, **no new cr
 
 ### Elastic Conformal Anomaly Detection (ECA)
 
-- [ ] **ECA-01**: **Elastic nonconformity scores** — extend `NonConformityScore` (currently `{SupNorm, L2}`) with elastic variants scoring a curve against a reference template: amplitude distance, phase distance, and combined elastic distance (reusing `amplitude_distance`/`phase_distance`/`elastic_distance`). Each score is non-negative and zero for a curve identical to the reference.
-- [ ] **ECA-02**: **Inductive conformal anomaly detector** — calibrate elastic nonconformity scores on a reference/calibration set (against a template such as the calibration Karcher mean), then for new curves return conformal **p-values** and **anomaly flags** at a chosen level α. On exchangeable clean data the flag rate is approximately α (marginal validity); injected **magnitude** and **shape** outliers are flagged.
-- [ ] **ECA-03**: **Result type + integration** — a `ConformalAnomalyResult` (per-curve conformal p-values, nonconformity scores, boolean flags, and the calibrated threshold), crate-root + prelude re-exports, and a running module doctest. Additive/non-breaking; the existing `conformal_prediction_band` path is unchanged.
+- [x] **ECA-01**: **Elastic nonconformity scores** — extend `NonConformityScore` (currently `{SupNorm, L2}`) with elastic variants scoring a curve against a reference template: amplitude distance, phase distance, and combined elastic distance (reusing `amplitude_distance`/`phase_distance`/`elastic_distance`). Each score is non-negative and zero for a curve identical to the reference.
+- [x] **ECA-02**: **Inductive conformal anomaly detector** — calibrate elastic nonconformity scores on a reference/calibration set (against a template such as the calibration Karcher mean), then for new curves return conformal **p-values** and **anomaly flags** at a chosen level α. On exchangeable clean data the flag rate is approximately α (marginal validity); injected **magnitude** and **shape** outliers are flagged.
+- [x] **ECA-03**: **Result type + integration** — a `ConformalAnomalyResult` (per-curve conformal p-values, nonconformity scores, boolean flags, and the calibrated threshold), crate-root + prelude re-exports, and a running module doctest. Additive/non-breaking; the existing `conformal_prediction_band` path is unchanged.
 
 ## Future Requirements (deferred)
 
@@ -52,9 +52,9 @@ Real `fdars-core/src/` code. All additive/non-breaking, reuse-first, **no new cr
 | VEE-03 | Phase 73 | Complete |
 | VEE-04 | Phase 73 | Complete |
 | VEE-05 | Phase 73 | Complete |
-| ECA-01 | Phase 74 | Pending |
-| ECA-02 | Phase 74 | Pending |
-| ECA-03 | Phase 74 | Pending |
+| ECA-01 | Phase 74 | Complete |
+| ECA-02 | Phase 74 | Complete |
+| ECA-03 | Phase 74 | Complete |
 
 **Coverage:**
 
