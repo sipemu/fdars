@@ -578,7 +578,9 @@ pub use smoothing::{
 };
 
 // Re-export regression types
-pub use regression::{fdata_to_pc_1d, fdata_to_pls_1d, FpcaResult, PlsResult};
+pub use regression::{
+    fdata_to_pc_1d, fdata_to_pls_1d, project_scores_generic, FpcaResult, PlsResult,
+};
 // Re-export specialized FPCA variants (Phase 37)
 pub use fpca_variants::{
     cross_covariance, dynamical_correlation, fpca_der, fsvd, ssvd, FsvdResult,

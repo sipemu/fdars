@@ -26,6 +26,7 @@
 //! field *rename* would be a breaking change and is deferred to the 1.0-readiness milestone
 //! (APIB-01).
 
+use crate::autodiff::Scalar;
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
@@ -126,6 +127,25 @@ impl FpcaResult {
         Ok(scores)
     }
 
+    /// Differentiable projection of a single generic curve onto FPC scores.
+    ///
+    /// Generic-over-[`Scalar`] companion to [`project`](FpcaResult::project):
+    /// takes one curve as `&[S]` and returns its `ncomp` FPC scores as `Vec<S>`.
+    /// The trained `mean`, `rotation`, and `weights` stay `f64`, so instantiating
+    /// at [`Dual`](crate::autodiff::Dual) yields exact forward-mode gradients of
+    /// each score w.r.t. the input curve's sample values (see
+    /// [`project_scores_generic`] for the closed-form gradient).
+    #[must_use]
+    pub fn project_generic<S: Scalar>(&self, curve: &[S]) -> Vec<S> {
+        project_scores_generic(
+            curve,
+            &self.mean,
+            &self.rotation,
+            &self.weights,
+            self.rotation.ncols(),
+        )
+    }
+
     /// Reconstruct functional data from FPC scores.
     ///
     /// Computes the approximation of functional data using the first
@@ -192,6 +212,42 @@ impl FpcaResult {
         }
         Ok(recon)
     }
+}
+
+/// Project a single generic curve onto trained FPCA loadings, returning scores.
+///
+/// Differentiable, generic-over-[`Scalar`] companion to
+/// [`FpcaResult::project`]. `mean`, `rotation` (`m × ncomp`, column-major), and
+/// `weights` come from a trained [`FpcaResult`] and stay `f64`; only `curve` is
+/// generic. Instantiated at `f64` it reproduces the `project` scores; at
+/// [`Dual`](crate::autodiff::Dual) it yields exact forward-mode gradients.
+///
+/// The projection is **linear** in the curve values:
+/// `score_k = sum_j (curve[j] - mean[j]) * rotation[(j,k)] * weights[j]`, so the
+/// gradient is the constant `d(score_k)/d(curve[j]) = rotation[(j,k)] * weights[j]`.
+/// The `rotation[(j,k)] * weights[j]` product is folded into a single `f64`
+/// before lifting via [`S::from_f64`](Scalar::from_f64), so the analytic
+/// gradient is exactly that `f64` constant.
+#[must_use]
+pub fn project_scores_generic<S: Scalar>(
+    curve: &[S],
+    mean: &[f64],
+    rotation: &FdMatrix,
+    weights: &[f64],
+    ncomp: usize,
+) -> Vec<S> {
+    let m = curve.len();
+    let mut scores = vec![S::zero(); ncomp];
+    for (k, score) in scores.iter_mut().enumerate() {
+        let mut sum = S::zero();
+        for j in 0..m {
+            let centered = curve[j] - S::from_f64(mean[j]);
+            let w_rot = S::from_f64(rotation[(j, k)] * weights[j]);
+            sum += centered * w_rot;
+        }
+        *score = sum;
+    }
+    scores
 }
 
 /// Shared SVD/eigendecomposition sign-DECISION core (CONS-01).
@@ -1659,6 +1715,134 @@ mod tests {
                 assert!(
                     rel_diff < 0.10,
                     "score [{i},{k}] differs: coarse={s1:.4}, fine={s2:.4}, rel_diff={rel_diff:.4}"
+                );
+            }
+        }
+    }
+
+    // --------------------------------------------------------------------
+    // DIF-03: differentiable FPCA score projection.
+    // --------------------------------------------------------------------
+
+    /// Build n spanning full-rank curves (random combos of three basis
+    /// functions with distinct per-curve coefficients — NOT phase-shifted
+    /// copies of one sinusoid, which would be rank-deficient).
+    fn spanning_fpca(n: usize, m: usize, ncomp: usize, seed: u64) -> (FpcaResult, Vec<f64>) {
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+        let mut rng = StdRng::seed_from_u64(seed);
+        let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let a: f64 = rng.gen_range(-1.0..1.0);
+            let b: f64 = rng.gen_range(-1.0..1.0);
+            let c: f64 = rng.gen_range(-0.5..0.5);
+            for (j, &t) in argvals.iter().enumerate() {
+                data[(i, j)] =
+                    a * (PI * t).sin() + b * (2.0 * PI * t).cos() + c * (3.0 * PI * t).sin();
+            }
+        }
+        let fpca = fdata_to_pc_1d(&data, ncomp, &argvals).unwrap();
+        (fpca, argvals)
+    }
+
+    #[test]
+    fn fpca_score_gradient_dual() {
+        // SC #5 analytic: Dual gradient of score_k w.r.t. curve[j] must equal
+        // the closed form rotation[(j,k)] * weights[j] to <=1e-12.
+        use crate::autodiff::Dual;
+        let (fpca, argvals) = spanning_fpca(15, 40, 3, 7);
+        let m = argvals.len();
+        let ncomp = fpca.rotation.ncols();
+        // A fresh test curve not in the training set.
+        let curve: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 0.7 * (3.0 * PI * t).sin() + 0.4 * (PI * t).cos())
+            .collect();
+        for j in 0..m {
+            let curve_dual: Vec<Dual> = curve
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    if i == j {
+                        Dual::seed(v)
+                    } else {
+                        Dual::constant(v)
+                    }
+                })
+                .collect();
+            let scores = fpca.project_generic(&curve_dual);
+            for k in 0..ncomp {
+                let grad = scores[k].tangent;
+                let closed = fpca.rotation[(j, k)] * fpca.weights[j];
+                assert!(
+                    (grad - closed).abs() <= 1e-12,
+                    "j={j} k={k}: dual grad {grad} vs closed {closed}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fpca_score_generic_f64_parity() {
+        // SC #6: project_scores_generic::<f64> == FpcaResult::project (<=1e-12).
+        let (fpca, argvals) = spanning_fpca(15, 40, 3, 11);
+        let m = argvals.len();
+        let ncomp = fpca.rotation.ncols();
+        let curve: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 0.5 * (2.0 * PI * t).cos() + 0.3 * (PI * t).sin())
+            .collect();
+        let generic = fpca.project_generic(&curve);
+        let one_row = FdMatrix::from_column_major(curve.clone(), 1, m).unwrap();
+        let via_project = fpca.project(&one_row).unwrap();
+        for k in 0..ncomp {
+            assert!(
+                (generic[k] - via_project[(0, k)]).abs() <= 1e-12,
+                "k={k}: generic {} vs project {}",
+                generic[k],
+                via_project[(0, k)]
+            );
+        }
+    }
+
+    #[test]
+    fn fpca_score_gradient_vs_fd() {
+        // SC #5 FD: Dual gradient vs central finite differences (<=1e-6).
+        use crate::autodiff::Dual;
+        let (fpca, argvals) = spanning_fpca(15, 40, 3, 7);
+        let m = argvals.len();
+        let ncomp = fpca.rotation.ncols();
+        let curve: Vec<f64> = argvals
+            .iter()
+            .map(|&t| 0.7 * (3.0 * PI * t).sin() + 0.4 * (PI * t).cos())
+            .collect();
+        let h = 1e-8;
+        for j in 0..m {
+            let curve_dual: Vec<Dual> = curve
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    if i == j {
+                        Dual::seed(v)
+                    } else {
+                        Dual::constant(v)
+                    }
+                })
+                .collect();
+            let dual = fpca.project_generic(&curve_dual);
+            let mut cp = curve.clone();
+            let mut cm = curve.clone();
+            cp[j] += h;
+            cm[j] -= h;
+            let fp = fpca.project_generic::<f64>(&cp);
+            let fm = fpca.project_generic::<f64>(&cm);
+            for k in 0..ncomp {
+                let fd = (fp[k] - fm[k]) / (2.0 * h);
+                assert!(
+                    (dual[k].tangent - fd).abs() <= 1e-6,
+                    "j={j} k={k}: dual {} vs fd {fd}",
+                    dual[k].tangent
                 );
             }
         }
