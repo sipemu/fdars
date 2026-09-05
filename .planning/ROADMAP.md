@@ -35,7 +35,7 @@
 
 Promotes **GAP-08** (score 1.73, L-effort) — the last remaining item in the v0.31.0 `GAP-BACKLOG.md`. Adds an in-crate forward-mode automatic-differentiation core (a `Scalar` trait + `Dual<T>` number) and makes a scoped subset of FDA operations (**elastic distance + FPCA scores**) generic over the scalar type, so exact gradients flow through arbitrary compositions into optimization/ML pipelines. Reference baseline: the Julia generic-programming idiom (ElasticFDA.jl + ForwardDiff). Additive/non-breaking (existing f64 signatures untouched; generic versions live alongside — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate dual numbers, forward-mode only). Ships to crates.io on the `v0.39.0` tag.
 
-- [ ] **Phase 75: Scalar Trait & Forward-Mode Dual Substrate** — DIF-01 — the `Scalar` trait + `Dual<T>` number every generic op is written against; foundational, blocks 76 & 77
+- [x] **Phase 75: Scalar Trait & Forward-Mode Dual Substrate** — DIF-01 — the `Scalar` trait + `Dual<T>` number every generic op is written against; foundational, blocks 76 & 77 (completed 2026-09-06)
 - [ ] **Phase 76: Differentiable Elastic Distance & FPCA Scores** — DIF-02, DIF-03 — the two scoped ops made generic-over-`Scalar`; exact forward-mode gradients at `Dual`, f64 parity preserved
 - [ ] **Phase 77: Gradient API, Composition Demo & Integration** — DIF-04 — ergonomic `(value, gradient)`/Jacobian entry point + end-to-end composition example + crate-root/prelude re-exports + module doctest
 
@@ -79,38 +79,48 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
 ## Phase Details
 
 ### Phase 75: Scalar Trait & Forward-Mode Dual Substrate
+
 **Goal**: The numeric substrate exists — a `Scalar` trait plus a forward-mode `Dual<T>` number carrying value + tangent — that the differentiable subset is written against, with all arithmetic/transcendental ops the subset needs and gradient seed/extract helpers, verified against analytical derivatives.
 **Depends on**: Nothing (first phase of the milestone)
 **Requirements**: DIF-01
 **Success Criteria** (what must be TRUE):
+
   1. A user can construct a `Dual` value, seed one input's tangent to 1, run a composed expression using ±, ×, ÷, `sqrt`, `exp`, `ln`, `sin`, `cos`, `powf`, `abs`, and partial comparisons, and extract both the value and the derivative.
   2. Dual arithmetic reproduces the analytical derivative of composed elementary functions to ≤1e-10 (known-answer tests).
   3. The `Scalar` trait is implemented for `f64`, so f64-instantiated generic code compiles and runs identically to the current numerics.
   4. The substrate adds no new crate dependency (in-crate dual numbers only) and existing f64 public signatures are untouched.
+
 **Plans**: 1 plan
-- [ ] 75-01-PLAN.md — Scalar trait + forward-mode Dual substrate (op set, seed/extract, three-tier tests), registered in lib.rs, no new dependency
+
+- [x] 75-01-PLAN.md — Scalar trait + forward-mode Dual substrate (op set, seed/extract, three-tier tests), registered in lib.rs, no new dependency
 
 ### Phase 76: Differentiable Elastic Distance & FPCA Scores
+
 **Goal**: The two scoped FDA operations — elastic distance and FPCA score projection — are generic over `Scalar`, so at `Dual` they yield exact forward-mode gradients w.r.t. a curve's input values, while at `f64` they reproduce the existing numerics.
 **Depends on**: Phase 75 (both ops are written against the DIF-01 `Scalar` substrate)
 **Requirements**: DIF-02, DIF-03
 **Success Criteria** (what must be TRUE):
+
   1. A user can take the forward-mode gradient of the elastic (soft-DTW / amplitude+phase) distance w.r.t. a curve's values; it matches central finite differences AND the existing hand-written `soft_dtw` gradient.
   2. The f64 instantiation of the elastic-distance path reproduces the current `elastic_distance` / `amplitude_distance` outputs within 1e-12.
   3. A user can take the forward-mode gradient of FPC scores w.r.t. input-curve values; it matches central finite differences.
   4. The f64 instantiation of the FPCA score projection reproduces the existing FPCA scores within tolerance.
   5. Both generic paths live alongside the existing f64 functions (additive/non-breaking) with no new crate dependency.
+
 **Plans**: TBD
 
 ### Phase 77: Gradient API, Composition Demo & Integration
+
 **Goal**: An ergonomic public gradient entry point over the `Scalar`-generic subset ships, together with a worked end-to-end composition example, full crate-root + prelude re-exports, and a running module doctest — proving AD flows through arbitrary compositions of the differentiable ops.
 **Depends on**: Phase 76 (consumes the differentiable elastic-distance + FPCA-score ops)
 **Requirements**: DIF-04
 **Success Criteria** (what must be TRUE):
+
   1. A user can call one public `(value, gradient)` / directional-derivative / Jacobian entry point over the differentiable subset and get back both the objective value and its gradient.
   2. A worked example composes the differentiable ops into a single scalar objective and takes its gradient, demonstrating AD flowing through the composition end-to-end.
   3. The full differentiable surface (Scalar/Dual, generic ops, gradient API) is reachable via crate-root and prelude re-exports.
   4. The module doctest runs green under `cargo test --doc`.
+
 **Plans**: TBD
 
 ## Progress
@@ -120,7 +130,7 @@ Phases execute in numeric order: 75 → 76 → 77. This is a hard dependency cha
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 75. Scalar Trait & Forward-Mode Dual Substrate | v0.39.0 | 0/? | Not started | - |
+| 75. Scalar Trait & Forward-Mode Dual Substrate | v0.39.0 | 1/1 | Complete    | 2026-09-06 |
 | 76. Differentiable Elastic Distance & FPCA Scores | v0.39.0 | 0/? | Not started | - |
 | 77. Gradient API, Composition Demo & Integration | v0.39.0 | 0/? | Not started | - |
 
