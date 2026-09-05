@@ -45,42 +45,97 @@ use crate::jfpca_model::{jfpca_fit, JfpcaModel, JfpcaTransform};
 use crate::matrix::FdMatrix;
 use crate::FdarError;
 use rand::prelude::*;
+use std::sync::Arc;
 
 /// Metric used to evaluate prediction quality in [`elastic_pfi`].
 ///
-/// Higher metric = better prediction. Importance = baseline_metric - permuted_metric.
+/// Importance is always computed as `baseline_metric - permuted_metric`, which
+/// assumes a **higher-is-better** metric. Sign interpretation therefore depends
+/// on the metric:
 ///
-/// Note: `PfiMetric` does NOT implement `serde::{Serialize, Deserialize}` because
-/// the `Custom` variant contains a non-serializable `Box<dyn Fn>` closure.
+/// - For higher-is-better metrics ([`PfiMetric::Accuracy`], or a [`PfiMetric::Custom`]
+///   score), a **positive** importance means the component is informative
+///   (permuting it degrades the prediction).
+/// - For the loss metrics [`PfiMetric::Mse`] / [`PfiMetric::Mae`] (lower-is-better),
+///   an informative component yields a **negative** importance (permuting it raises
+///   the loss, so `baseline - permuted < 0`). Wrap the loss in a `Custom` closure
+///   that negates it if you want the positive-is-informative convention.
+///
+/// Note: `PfiMetric` does NOT derive `serde::{Serialize, Deserialize}` because the
+/// `Custom` variant holds a non-serializable closure. `Debug`, `Clone`, and
+/// `PartialEq` are provided via manual impls (two `Custom` variants always compare
+/// unequal — closures are not comparable).
 #[non_exhaustive]
 pub enum PfiMetric {
-    /// Mean squared error (higher = worse; negated for importance convention — use Accuracy/Custom
-    /// if you want a directly interpretable sign).
+    /// Mean squared error (a loss — lower is better).
     ///
-    /// Importance is computed as `baseline_mse - permuted_mse`, so a positive importance means
-    /// permuting the component *increases* MSE (i.e., the component matters).
+    /// Importance is `baseline_mse - permuted_mse`; since permuting an informative
+    /// component *increases* MSE, informative components have **negative** importance
+    /// under this metric. Use [`PfiMetric::Accuracy`] or a negated [`PfiMetric::Custom`]
+    /// for a directly-interpretable positive-is-informative sign.
     Mse,
-    /// Mean absolute error (same sign convention as Mse).
+    /// Mean absolute error (a loss — lower is better; same negative-for-informative
+    /// sign convention as [`PfiMetric::Mse`]).
     Mae,
     /// Classification accuracy: fraction of predictions where `round(pred) == y_true`.
-    /// Higher is better; permuting an informative component drops accuracy.
+    /// Higher is better; permuting an informative component drops accuracy, so
+    /// informative components have positive importance.
     Accuracy,
     /// Custom metric closure: `(y_true, y_pred) -> metric_value`.
     ///
     /// Convention: higher values mean a *better* prediction (importance = baseline - permuted).
     /// If your metric is a loss (lower = better), negate it inside the closure.
-    Custom(Box<dyn Fn(&[f64], &[f64]) -> f64 + Send + Sync>),
+    Custom(Arc<dyn Fn(&[f64], &[f64]) -> f64 + Send + Sync>),
+}
+
+impl std::fmt::Debug for PfiMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PfiMetric::Mse => write!(f, "Mse"),
+            PfiMetric::Mae => write!(f, "Mae"),
+            PfiMetric::Accuracy => write!(f, "Accuracy"),
+            PfiMetric::Custom(_) => write!(f, "Custom(<closure>)"),
+        }
+    }
+}
+
+impl Clone for PfiMetric {
+    fn clone(&self) -> Self {
+        match self {
+            PfiMetric::Mse => PfiMetric::Mse,
+            PfiMetric::Mae => PfiMetric::Mae,
+            PfiMetric::Accuracy => PfiMetric::Accuracy,
+            PfiMetric::Custom(f) => PfiMetric::Custom(Arc::clone(f)),
+        }
+    }
+}
+
+impl PartialEq for PfiMetric {
+    /// Non-`Custom` variants compare by discriminant; two `Custom` variants are
+    /// never equal (closures cannot be compared).
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (PfiMetric::Mse, PfiMetric::Mse)
+                | (PfiMetric::Mae, PfiMetric::Mae)
+                | (PfiMetric::Accuracy, PfiMetric::Accuracy)
+        )
+    }
 }
 
 /// Result of [`elastic_pfi`].
 ///
-/// `importance[k] = baseline_metric - mean_permuted_metric[k]`:
-/// positive means the k-th PC is informative (permuting it hurts the model).
+/// `importance[k] = baseline_metric - mean_permuted_metric[k]`. Sign
+/// interpretation depends on the metric direction — see [`PfiMetric`]: positive
+/// means informative for higher-is-better metrics ([`PfiMetric::Accuracy`] /
+/// score-style `Custom`), while for the loss metrics [`PfiMetric::Mse`] /
+/// [`PfiMetric::Mae`] informative PCs are negative.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ElasticPfiResult {
-    /// Metric drop per PC (length ncomp). Positive = informative.
+    /// Metric drop per PC (length ncomp). Sign per metric direction (see [`PfiMetric`]):
+    /// positive = informative for higher-is-better metrics; negative = informative for Mse/Mae.
     pub importance: Vec<f64>,
     /// Baseline metric (no permutation).
     pub baseline_metric: f64,
@@ -202,6 +257,16 @@ pub fn elastic_pfi(
 
     // Baseline metric — computed ONCE before the permutation loop.
     let baseline_pred = predict(scores);
+    // Validate the caller's closure returns one prediction per observation; a short
+    // vector would otherwise be silently truncated by the metric zip and divided by
+    // the full n, yielding wrong importance values.
+    if baseline_pred.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predict() output",
+            expected: format!("length {} (== scores.nrows())", n),
+            actual: format!("length {}", baseline_pred.len()),
+        });
+    }
     let baseline_metric = compute_metric(y, &baseline_pred, metric);
 
     // Single advancing RNG — mirrors the existing fpc_permutation_importance
@@ -448,7 +513,7 @@ mod tests {
             &y,
             // Predictor uses only PC 0: s[(i,0)]*2.0
             |s: &FdMatrix| -> Vec<f64> { (0..n).map(|i| s[(i, 0)] * 2.0).collect() },
-            &PfiMetric::Custom(Box::new(|y_true: &[f64], y_pred: &[f64]| {
+            &PfiMetric::Custom(Arc::new(|y_true: &[f64], y_pred: &[f64]| {
                 let n = y_true.len() as f64;
                 let mse = y_true
                     .iter()

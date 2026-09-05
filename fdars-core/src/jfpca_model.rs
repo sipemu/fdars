@@ -425,6 +425,7 @@ impl JfpcaModel {
     /// # Errors
     ///
     /// * [`FdarError::InvalidParameter`] if `pc_index >= self.ncomp` or `c_values` is empty.
+    #[must_use = "expensive computation: principal_directions returns reconstructed curves; use the result"]
     pub fn principal_directions(
         &self,
         pc_index: usize,
@@ -445,8 +446,10 @@ impl JfpcaModel {
 
         let m = self.argvals.len();
         let n_c = c_values.len();
-        // σⱼ = sqrt(eigenvalue) — eigenvalue stores variance (σ²)
-        let sigma_j = self.eigenvalues[pc_index].sqrt();
+        // σⱼ = sqrt(eigenvalue) — eigenvalue stores variance (σ²).
+        // Clamp at 0 first: floating-point rounding can make a near-zero eigenvalue
+        // slightly negative, and a raw .sqrt() there would propagate NaN into every curve.
+        let sigma_j = self.eigenvalues[pc_index].max(0.0).sqrt();
 
         // Normalized time grid [0, 1] for sphere operations
         let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
@@ -864,7 +867,7 @@ mod tests {
         // So deviation_raw / deviation_sqrt ≈ sqrt(eigenvalue).
         // We verify the observed deviation is CLOSER to the sqrt-scaled expectation
         // than to the raw-eigenvalue expectation.
-        let max_vert = (0..=m)
+        let max_vert = (0..m)
             .map(|l| model.vert_component[(pc_index, l)].abs())
             .fold(0.0f64, f64::max);
 
