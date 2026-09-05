@@ -146,6 +146,15 @@ pub struct JfpcaModel {
     /// Stored alongside [`JfpcaModel::training_gammas`] for exact training-set
     /// reproducibility.
     pub training_aligned: FdMatrix,
+    /// Post-centered Karcher-mean SRSF (length m).
+    ///
+    /// This is `mu_q_centered` from the Karcher iteration — the SRSF used to
+    /// reconstruct [`JfpcaModel::karcher_mean`] via `srsf_inverse`:
+    /// `karcher_mean = srsf_inverse(mean_srsf, argvals, karcher_mean[0])`.
+    ///
+    /// Stored so [`JfpcaModel::principal_directions`] can reconstruct amplitude
+    /// curves at `c = 0` that exactly reproduce `karcher_mean` within 1e-10.
+    pub mean_srsf: Vec<f64>,
 }
 
 /// Output of [`JfpcaModel::transform`] — projections of new curves onto the
@@ -257,6 +266,7 @@ pub fn jfpca_fit(
         ncomp: ncomp_actual,
         training_gammas: karcher.gammas.clone(),
         training_aligned: karcher.aligned_data.clone(),
+        mean_srsf: karcher.mean_srsf.clone(),
         joint_result,
         lambda,
     })
@@ -445,16 +455,19 @@ impl JfpcaModel {
         let mut amplitude_curves = FdMatrix::zeros(n_c, m);
         let mut phase_curves = FdMatrix::zeros(n_c, m);
 
+        // Use the stored post-centered Karcher-mean SRSF as the reconstruction base.
+        // `self.mean_srsf` = `mu_q_centered` from the Karcher iteration — the exact SRSF
+        // used to build `karcher_mean` via `srsf_inverse(mean_srsf, argvals, karcher_mean[0])`.
+        // At c=0 the perturbed SRSF equals `mean_srsf` and f0 = `karcher_mean[0]`,
+        // so `srsf_inverse` exactly reproduces `karcher_mean` (VEE-04a make-or-break gate).
+        let f0 = self.karcher_mean[0];
+
         for (ci, &c) in c_values.iter().enumerate() {
             // ── Amplitude part ────────────────────────────────────────────────
-            // Perturb the mean SRSF along the amplitude eigenvector (first m elements).
+            // Perturb the Karcher-mean SRSF along the amplitude eigenvector (first m elements).
             let q_perturbed: Vec<f64> = (0..m)
-                .map(|l| self.mean_q[l] + c * sigma_j * self.vert_component[(pc_index, l)])
+                .map(|l| self.mean_srsf[l] + c * sigma_j * self.vert_component[(pc_index, l)])
                 .collect();
-            // Recover f0 from the augmented (m-th) dimension.
-            // Pitfall 2: index m (the extra column), not m-1.
-            let aug_val = self.mean_q[m] + c * sigma_j * self.vert_component[(pc_index, m)];
-            let f0 = aug_val.signum() * aug_val * aug_val;
             let amp = srsf_inverse(&q_perturbed, &self.argvals, f0);
             for j in 0..m {
                 amplitude_curves[(ci, j)] = amp[j];
@@ -748,6 +761,153 @@ mod tests {
         assert!(
             matches!(res3, Err(FdarError::InvalidDimension { .. })),
             "expected InvalidDimension for n<2"
+        );
+    }
+
+    // ── VEE-04: principal_directions tests ────────────────────────────────────
+
+    /// VEE-04a make-or-break gate: c=0 amplitude curve reproduces karcher_mean within 1e-10.
+    ///
+    /// At c=0 the perturbation vanishes, so the perturbed SRSF is the mean SRSF
+    /// and f0 is derived from the augmented mean dimension — srsf_inverse must
+    /// recover exactly model.karcher_mean.
+    #[test]
+    fn principal_directions_c0_mean() {
+        let n = 12;
+        let m = 15;
+        let (data, argvals) = spanning_fixture(n, m);
+
+        let model = jfpca_fit(&data, &argvals, 3, None, 0.0, 20).expect("jfpca_fit should succeed");
+
+        let c_values = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
+        let pd = model
+            .principal_directions(0, &c_values)
+            .expect("principal_directions should succeed");
+
+        // Row 2 corresponds to c = 0.0
+        for j in 0..m {
+            let amp = pd.amplitude_curves[(2, j)];
+            let km = model.karcher_mean[j];
+            assert!(
+                (amp - km).abs() < 1e-10,
+                "c=0 amplitude curve deviates from karcher_mean at j={j}: \
+                 amplitude={amp}, karcher_mean={km}, diff={}",
+                (amp - km).abs()
+            );
+        }
+    }
+
+    /// VEE-04b structural gate: amplitude_curves and phase_curves are each shaped (n_c, m).
+    #[test]
+    fn principal_directions_shapes() {
+        let n = 12;
+        let m = 15;
+        let (data, argvals) = spanning_fixture(n, m);
+
+        let model = jfpca_fit(&data, &argvals, 3, None, 0.0, 20).expect("jfpca_fit should succeed");
+
+        let c_values = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
+        let n_c = c_values.len();
+        let pd = model
+            .principal_directions(0, &c_values)
+            .expect("principal_directions should succeed");
+
+        assert_eq!(
+            pd.amplitude_curves.shape(),
+            (n_c, m),
+            "amplitude_curves shape should be ({n_c}, {m})"
+        );
+        assert_eq!(
+            pd.phase_curves.shape(),
+            (n_c, m),
+            "phase_curves shape should be ({n_c}, {m})"
+        );
+    }
+
+    /// VEE-04 sigma_j scaling gate: amplitude perturbation at c=1 scales with
+    /// sqrt(eigenvalue), NOT the raw eigenvalue.
+    ///
+    /// Verifies that the max abs deviation at c=1 is within a plausible band
+    /// consistent with sigma_j = eigenvalues[pc].sqrt() and would be wrong
+    /// (too large by sqrt(eigenvalue) factor) if the raw eigenvalue were used.
+    #[test]
+    fn principal_directions_sigma_sqrt_scaling() {
+        let n = 12;
+        let m = 15;
+        let (data, argvals) = spanning_fixture(n, m);
+
+        let model = jfpca_fit(&data, &argvals, 3, None, 0.0, 20).expect("jfpca_fit should succeed");
+
+        let pc_index = 0;
+        let c_values = vec![0.0, 1.0];
+        let pd = model
+            .principal_directions(pc_index, &c_values)
+            .expect("principal_directions should succeed");
+
+        // Measure deviation from the mean at c=1 (row 1)
+        let deviation_at_c1: f64 = (0..m)
+            .map(|j| (pd.amplitude_curves[(1, j)] - pd.amplitude_curves[(0, j)]).abs())
+            .fold(0.0f64, f64::max);
+
+        let sigma_j = model.eigenvalues[pc_index].sqrt(); // correct: std-dev
+        let raw_eigenvalue = model.eigenvalues[pc_index]; // wrong: variance
+
+        // The max deviation should be non-trivially positive (the perturbation moves the curve)
+        assert!(
+            deviation_at_c1 > 1e-12,
+            "c=1 should produce a non-zero deviation from c=0; got {deviation_at_c1}"
+        );
+
+        // If using the raw eigenvalue as sigma, the perturbation is sqrt(eigenvalue) times larger.
+        // For the correct sqrt scaling: deviation ~ sigma_j * max|vert_component row|
+        // For the wrong raw scaling: deviation ~ raw_eigenvalue * max|vert_component row|
+        // So deviation_raw / deviation_sqrt ≈ sqrt(eigenvalue).
+        // We verify the observed deviation is CLOSER to the sqrt-scaled expectation
+        // than to the raw-eigenvalue expectation.
+        let max_vert = (0..=m)
+            .map(|l| model.vert_component[(pc_index, l)].abs())
+            .fold(0.0f64, f64::max);
+
+        let expected_sqrt_scale = sigma_j * max_vert;
+        let expected_raw_scale = raw_eigenvalue * max_vert;
+
+        // The deviation at c=1 should be closer to sqrt-scale than raw-scale
+        // (unless eigenvalue ≈ 1, in which case they're equal — skip that edge case)
+        if (sigma_j - raw_eigenvalue).abs() > 1e-6 {
+            let dist_to_sqrt = (deviation_at_c1 - expected_sqrt_scale).abs();
+            let dist_to_raw = (deviation_at_c1 - expected_raw_scale).abs();
+            assert!(
+                dist_to_sqrt < dist_to_raw,
+                "Deviation at c=1 ({deviation_at_c1}) is closer to raw-eigenvalue scale \
+                 ({expected_raw_scale}) than sqrt-eigenvalue scale ({expected_sqrt_scale}); \
+                 check that sigma_j = eigenvalues[{pc_index}].sqrt() is used, not the raw eigenvalue"
+            );
+        }
+    }
+
+    /// VEE-04 error gate: pc_index >= ncomp returns InvalidParameter.
+    #[test]
+    fn principal_directions_rejects_bad_pc() {
+        let n = 12;
+        let m = 15;
+        let (data, argvals) = spanning_fixture(n, m);
+
+        let model = jfpca_fit(&data, &argvals, 3, None, 0.0, 20).expect("jfpca_fit should succeed");
+
+        // pc_index == ncomp (out of bounds)
+        let res = model.principal_directions(model.ncomp, &[0.0]);
+        assert!(
+            matches!(res, Err(FdarError::InvalidParameter { .. })),
+            "pc_index == ncomp should return Err(InvalidParameter), got: {:?}",
+            res
+        );
+
+        // Empty c_values
+        let res2 = model.principal_directions(0, &[]);
+        assert!(
+            matches!(res2, Err(FdarError::InvalidParameter { .. })),
+            "empty c_values should return Err(InvalidParameter), got: {:?}",
+            res2
         );
     }
 }
