@@ -27,8 +27,17 @@
 - ✅ **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (shipped 2026-09-04) — [archive](milestones/v0.36.0-ROADMAP.md)
 - ✅ **v0.37.0 — WAV: Wavelet-Domain Functional Regression** — Phases 69–71 (shipped 2026-09-04) — [archive](milestones/v0.37.0-ROADMAP.md)
 - ✅ **v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection** — Phases 72–74 (shipped 2026-09-05) — [archive](milestones/v0.38.0-ROADMAP.md)
+- 🚧 **v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff)** — Phases 75–77 (in progress) — promotes GAP-08 (last v0.31.0 backlog item)
 
 ## Phases
+
+### 🚧 v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff) — Phases 75–77
+
+Promotes **GAP-08** (score 1.73, L-effort) — the last remaining item in the v0.31.0 `GAP-BACKLOG.md`. Adds an in-crate forward-mode automatic-differentiation core (a `Scalar` trait + `Dual<T>` number) and makes a scoped subset of FDA operations (**elastic distance + FPCA scores**) generic over the scalar type, so exact gradients flow through arbitrary compositions into optimization/ML pipelines. Reference baseline: the Julia generic-programming idiom (ElasticFDA.jl + ForwardDiff). Additive/non-breaking (existing f64 signatures untouched; generic versions live alongside — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate dual numbers, forward-mode only). Ships to crates.io on the `v0.39.0` tag.
+
+- [ ] **Phase 75: Scalar Trait & Forward-Mode Dual Substrate** — DIF-01 — the `Scalar` trait + `Dual<T>` number every generic op is written against; foundational, blocks 76 & 77
+- [ ] **Phase 76: Differentiable Elastic Distance & FPCA Scores** — DIF-02, DIF-03 — the two scoped ops made generic-over-`Scalar`; exact forward-mode gradients at `Dual`, f64 parity preserved
+- [ ] **Phase 77: Gradient API, Composition Demo & Integration** — DIF-04 — ergonomic `(value, gradient)`/Jacobian entry point + end-to-end composition example + crate-root/prelude re-exports + module doctest
 
 <details>
 <summary>✅ v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection (Phases 72–74) — SHIPPED 2026-09-05</summary>
@@ -67,23 +76,59 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
 
 </details>
 
+## Phase Details
+
+### Phase 75: Scalar Trait & Forward-Mode Dual Substrate
+**Goal**: The numeric substrate exists — a `Scalar` trait plus a forward-mode `Dual<T>` number carrying value + tangent — that the differentiable subset is written against, with all arithmetic/transcendental ops the subset needs and gradient seed/extract helpers, verified against analytical derivatives.
+**Depends on**: Nothing (first phase of the milestone)
+**Requirements**: DIF-01
+**Success Criteria** (what must be TRUE):
+  1. A user can construct a `Dual` value, seed one input's tangent to 1, run a composed expression using ±, ×, ÷, `sqrt`, `exp`, `ln`, `sin`, `cos`, `powf`, `abs`, and partial comparisons, and extract both the value and the derivative.
+  2. Dual arithmetic reproduces the analytical derivative of composed elementary functions to ≤1e-10 (known-answer tests).
+  3. The `Scalar` trait is implemented for `f64`, so f64-instantiated generic code compiles and runs identically to the current numerics.
+  4. The substrate adds no new crate dependency (in-crate dual numbers only) and existing f64 public signatures are untouched.
+**Plans**: TBD
+
+### Phase 76: Differentiable Elastic Distance & FPCA Scores
+**Goal**: The two scoped FDA operations — elastic distance and FPCA score projection — are generic over `Scalar`, so at `Dual` they yield exact forward-mode gradients w.r.t. a curve's input values, while at `f64` they reproduce the existing numerics.
+**Depends on**: Phase 75 (both ops are written against the DIF-01 `Scalar` substrate)
+**Requirements**: DIF-02, DIF-03
+**Success Criteria** (what must be TRUE):
+  1. A user can take the forward-mode gradient of the elastic (soft-DTW / amplitude+phase) distance w.r.t. a curve's values; it matches central finite differences AND the existing hand-written `soft_dtw` gradient.
+  2. The f64 instantiation of the elastic-distance path reproduces the current `elastic_distance` / `amplitude_distance` outputs within 1e-12.
+  3. A user can take the forward-mode gradient of FPC scores w.r.t. input-curve values; it matches central finite differences.
+  4. The f64 instantiation of the FPCA score projection reproduces the existing FPCA scores within tolerance.
+  5. Both generic paths live alongside the existing f64 functions (additive/non-breaking) with no new crate dependency.
+**Plans**: TBD
+
+### Phase 77: Gradient API, Composition Demo & Integration
+**Goal**: An ergonomic public gradient entry point over the `Scalar`-generic subset ships, together with a worked end-to-end composition example, full crate-root + prelude re-exports, and a running module doctest — proving AD flows through arbitrary compositions of the differentiable ops.
+**Depends on**: Phase 76 (consumes the differentiable elastic-distance + FPCA-score ops)
+**Requirements**: DIF-04
+**Success Criteria** (what must be TRUE):
+  1. A user can call one public `(value, gradient)` / directional-derivative / Jacobian entry point over the differentiable subset and get back both the objective value and its gradient.
+  2. A worked example composes the differentiable ops into a single scalar objective and takes its gradient, demonstrating AD flowing through the composition end-to-end.
+  3. The full differentiable surface (Scalar/Dual, generic ops, gradient API) is reachable via crate-root and prelude re-exports.
+  4. The module doctest runs green under `cargo test --doc`.
+**Plans**: TBD
+
 ## Progress
 
-**Execution Order (v0.38.0):**
-Phases execute in numeric order: 72 → 73 → 74. Phase 73 depends on the Phase 72 seam; Phase 74 (ECA) is independent of the VEE group and may be sequenced anywhere, placed last here for a clean linear order.
+**Execution Order (v0.39.0):**
+Phases execute in numeric order: 75 → 76 → 77. This is a hard dependency chain — DIF-01 (Phase 75) is the substrate DIF-02/DIF-03 (Phase 76) are generic over; DIF-04 (Phase 77) consumes the differentiable ops from Phase 76. Phase 75 must land first; Phase 77 must land last. Within Phase 76 the two ops (elastic distance, FPCA scores) are independent of each other (disjoint code areas: `metric/soft_dtw.rs`+`elastic_*` vs `regression.rs` FPCA) and may be planned/executed in either order.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 72. jfPCA Fit/Transform Seam | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
-| 73. VEESA Explainability Pipeline & Integration | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
-| 74. Elastic Conformal Anomaly Detection | v0.38.0 | 1/1 | Complete    | 2026-09-05 |
+| 75. Scalar Trait & Forward-Mode Dual Substrate | v0.39.0 | 0/? | Not started | - |
+| 76. Differentiable Elastic Distance & FPCA Scores | v0.39.0 | 0/? | Not started | - |
+| 77. Gradient API, Composition Demo & Integration | v0.39.0 | 0/? | Not started | - |
 
 ## Status
 
-**v0.38.0 VEESA shipped** (Phases 72–74, 2026-09-05) — closed the gaps against the VEESA paper + `sandialabs/veesa` R package + arXiv 2504.01172 (elastic conformal anomaly detection). Reuse-first on shipped `elastic_fpca.rs` / `alignment/` / `elastic_explain.rs` / `tolerance/conformal.rs`; no new crate dependency. Audit PASSED 8/8; integration SOUND; whole-crate 2821 lib + 203 doc tests green.
+**v0.39.0 DIFF planning** (Phases 75–77) — promotes **GAP-08** (score 1.73, L-effort), the last remaining item in the v0.31.0 `GAP-BACKLOG.md`. Adds an in-crate forward-mode autodiff core (`Scalar` trait + `Dual<T>`) and makes elastic distance + FPCA scores generic over the scalar type, so exact gradients compose through op chains. Reuse-first pilot: `metric/soft_dtw.rs` (existing hand-written gradient to validate against), `elastic_*`, `regression.rs` FPCA. Additive/non-breaking (existing f64 signatures untouched; generic versions alongside — protects R + WASM bindings + 28 examples), no new crate dependency, forward-mode only. Deferred: reverse-mode/VJP (DIF-F1), broadening beyond elastic+FPCA (DIF-F2), refactoring f64 hot-path signatures to be generic (DIF-F3). Ships to crates.io on the `v0.39.0` tag.
 
-**v0.37.0 WAV shipped** (Phases 69–71) — promoted GAP-07 (wavelet-domain functional regression) from `.planning/research/GAP-BACKLOG.md`. After GAP-07, only **GAP-08** (differentiable / autodiff-compatible FDA core — invasive generics refactor, score 1.73, L-effort) remains in the backlog.
+**v0.38.0 VEESA shipped** (Phases 72–74, 2026-09-05) — closed the gaps against the VEESA paper + `sandialabs/veesa` R package + arXiv 2504.01172 (elastic conformal anomaly detection). Audit PASSED 8/8; integration SOUND; whole-crate 2821 lib + 203 doc tests green.
 
 **Remaining operator ship steps:** bump + tag + publish for each un-shipped crate version (v0.29.0–v0.38.0 sit unreleased against the 0.28.0-published crate); each `v*` tag triggers `release.yml` → crates.io. The autonomous runs intentionally do not tag/publish.
 
-Next: `/gsd-new-milestone` (only GAP-08 remains in the backlog). Operator ship steps (bump/tag/publish v0.29.0–v0.38.0) remain deferred.
+Next: `/gsd-plan-phase 75`. After GAP-08 (this milestone), the v0.31.0 `GAP-BACKLOG.md` is exhausted — the following milestone will most likely be a crate-release-hardening / 1.0-readiness pass or a fresh audit.

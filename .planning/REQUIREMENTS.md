@@ -50,16 +50,16 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DIF-01 | TBD | Pending |
-| DIF-02 | TBD | Pending |
-| DIF-03 | TBD | Pending |
-| DIF-04 | TBD | Pending |
+| DIF-01 | Phase 75 | Pending |
+| DIF-02 | Phase 76 | Pending |
+| DIF-03 | Phase 76 | Pending |
+| DIF-04 | Phase 77 | Pending |
 
 **Coverage:**
 - v1 requirements: 4 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 4 ⚠️
+- Mapped to phases: 4 (Phase 75: DIF-01; Phase 76: DIF-02, DIF-03; Phase 77: DIF-04)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-06*
-*Last updated: 2026-09-06 after initial definition*
+*Last updated: 2026-09-06 after roadmap creation (phases 75–77 mapped)*
