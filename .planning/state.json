@@ -16,13 +16,13 @@
     {
       "number": "77",
       "name": "Gradient API, Composition Demo & Integration",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 77)",
-    "reason": "Phase 77 of 3 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-05T23:44:14.576Z"
+  "updated_at": "2026-09-06T00:08:05.899Z"
 }

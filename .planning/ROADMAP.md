@@ -39,7 +39,7 @@ Promotes **GAP-08** (score 1.73, L-effort) — the last remaining item in the v0
 - [x] **Phase 76: Differentiable Elastic Distance & FPCA Scores** — DIF-02, DIF-03 — the two scoped ops made generic-over-`Scalar`; exact forward-mode gradients at `Dual`, f64 parity preserved — **2 plans** (Wave 1, parallel: disjoint code) (completed 2026-09-06)
   - [ ] 76-01-PLAN.md — DIF-02: `soft_dtw_distance_generic` (pilot, vs oracle+FD+f64-parity) + `amplitude_distance_at_warp_generic` (fixed-warp SRSF; warp-searched `elastic_distance` deferred — non-differentiable DP argmin)
   - [ ] 76-02-PLAN.md — DIF-03: `project_scores_generic` FPCA score projection (analytic gradient rotation·weights ≤1e-12 + FD + f64-parity)
-- [ ] **Phase 77: Gradient API, Composition Demo & Integration** — DIF-04 — ergonomic `(value, gradient)`/Jacobian entry point + end-to-end composition example + crate-root/prelude re-exports + module doctest
+- [x] **Phase 77: Gradient API, Composition Demo & Integration** — DIF-04 — ergonomic `(value, gradient)`/Jacobian entry point + end-to-end composition example + crate-root/prelude re-exports + module doctest (completed 2026-09-06)
 
 <details>
 <summary>✅ v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection (Phases 72–74) — SHIPPED 2026-09-05</summary>
@@ -124,7 +124,8 @@ Shipped `peer()` (three penalty families: Ridge / 2nd-difference / caller-suppli
   4. The module doctest runs green under `cargo test --doc`.
 
 **Plans**: 1 plan
-- [ ] 77-01-PLAN.md — grad multi-input gradient API + composed-objective demo (soft-DTW + FPCA scores, FD-checked) + crate-root/prelude re-exports + module doctest
+
+- [x] 77-01-PLAN.md — grad multi-input gradient API + composed-objective demo (soft-DTW + FPCA scores, FD-checked) + crate-root/prelude re-exports + module doctest
 
 ## Progress
 
@@ -135,7 +136,7 @@ Phases execute in numeric order: 75 → 76 → 77. This is a hard dependency cha
 |-------|-----------|----------------|--------|-----------|
 | 75. Scalar Trait & Forward-Mode Dual Substrate | v0.39.0 | 1/1 | Complete    | 2026-09-06 |
 | 76. Differentiable Elastic Distance & FPCA Scores | v0.39.0 | 2/2 | Complete    | 2026-09-06 |
-| 77. Gradient API, Composition Demo & Integration | v0.39.0 | 0/? | Not started | - |
+| 77. Gradient API, Composition Demo & Integration | v0.39.0 | 1/1 | Complete    | 2026-09-06 |
 
 ## Status
 

@@ -21,7 +21,7 @@ Requirements for milestone v0.39.0. Each maps to a roadmap phase.
 - [x] **DIF-01**: In-crate `Scalar` trait + forward-mode `Dual<T>` number — dual carries value + tangent and implements the ops the differentiable subset needs (±, ×, ÷, `sqrt`, `exp`, `ln`, `sin`, `cos`, `powf`, `abs`, partial comparisons), plus gradient seed (set an input's tangent to 1) / extract helpers. Known-answer tests: dual arithmetic reproduces analytical derivatives of composed elementary functions to ≤1e-10. No new crate dependency.
 - [x] **DIF-02**: Differentiable elastic distance — a generic-over-`Scalar` elastic (soft-DTW / amplitude+phase) distance path. At `Dual` it yields exact forward-mode gradients of the distance w.r.t. a curve's values, validated vs central finite differences AND vs the existing hand-written `soft_dtw` gradient; at `f64` it reproduces the current `elastic_distance` / `amplitude_distance` numerics within 1e-12.
 - [x] **DIF-03**: Differentiable FPCA scores — a generic-over-`Scalar` FPCA score projection so gradients of FPC scores w.r.t. input-curve values flow through when instantiated at `Dual`; validated vs central finite differences; the `f64` instantiation reproduces the existing FPCA scores within tolerance.
-- [ ] **DIF-04**: Gradient API + composition demo + integration — an ergonomic public `(value, gradient)` / directional-derivative / Jacobian entry point over the `Scalar`-generic subset; a worked end-to-end example composing differentiable ops into a scalar objective and taking its gradient (proving AD flows through composition); full crate-root + prelude re-exports; a running module doctest under `cargo test --doc`.
+- [x] **DIF-04**: Gradient API + composition demo + integration — an ergonomic public `(value, gradient)` / directional-derivative / Jacobian entry point over the `Scalar`-generic subset; a worked end-to-end example composing differentiable ops into a scalar objective and taking its gradient (proving AD flows through composition); full crate-root + prelude re-exports; a running module doctest under `cargo test --doc`.
 
 ## Future Requirements
 
@@ -53,7 +53,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | DIF-01 | Phase 75 | Complete |
 | DIF-02 | Phase 76 | Complete |
 | DIF-03 | Phase 76 | Complete |
-| DIF-04 | Phase 77 | Pending |
+| DIF-04 | Phase 77 | Complete |
 
 **Coverage:**
 
