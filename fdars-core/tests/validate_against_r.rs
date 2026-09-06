@@ -3825,11 +3825,17 @@ fn test_soft_dtw_barycenter_vs_tslearn() {
     }
 
     let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
-    // Use a small max_iter: the shipped gradient-descent barycenter uses a fixed
-    // lr = 1/n and can diverge on these 50-point series with many iterations.
-    // 5 iterations is enough to show measurable movement from the pointwise mean
-    // while keeping the barycenter in the expected shape range.
-    let result = fdars_core::metric::soft_dtw_barycenter(&data, 1.0, 5, 1e-6);
+    // Phase 78: with the CORR-01 gradient fix plus the stable inverse-curvature
+    // barycenter step, this converges in ~16 iterations and stays bounded, so a
+    // realistic max_iter (50) is safe — the earlier fixed lr = 1/n step diverged
+    // here and had to be capped artificially.
+    let result = fdars_core::metric::soft_dtw_barycenter(&data, 1.0, 50, 1e-6);
+
+    assert!(
+        result.converged,
+        "barycenter must converge with the stable step (n_iter = {})",
+        result.n_iter
+    );
 
     // Barycenter of mildly shifted sinusoids should resemble sin(2πt)
     // with mean value near 0 and max amplitude near 1
@@ -3845,13 +3851,13 @@ fn test_soft_dtw_barycenter_vs_tslearn() {
         .map(|v| v.abs())
         .fold(0.0_f64, f64::max);
     assert!(
-        max_abs > 0.5,
-        "Barycenter max amplitude should be > 0.5, got {max_abs}"
+        (0.5..2.0).contains(&max_abs),
+        "Barycenter max amplitude should be in (0.5, 2.0) — resembling the unit \
+         sinusoids, not diverging — got {max_abs}"
     );
 
     // Tightening (CORR-01): barycenter must move measurably from pointwise mean.
-    // Buggy code (zero gradient): L2 = 0.0; correct gradient: L2 > 0.0.
-    // Threshold 1e-4 is conservative — tiny but strictly above zero.
+    // Buggy code (zero gradient): L2 = 0.0; correct gradient + stable step: L2 ~ 0.16.
     let l2_from_mean: f64 = result
         .barycenter
         .iter()
@@ -3860,9 +3866,9 @@ fn test_soft_dtw_barycenter_vs_tslearn() {
         .sum::<f64>()
         .sqrt();
     assert!(
-        l2_from_mean > 1e-4,
+        l2_from_mean > 0.05,
         "Barycenter must move from pointwise mean after CORR-01 fix \
-         (L2 = {l2_from_mean:.8}, expected > 1e-4)"
+         (L2 = {l2_from_mean:.8}, expected > 0.05)"
     );
 }
 

@@ -330,27 +330,56 @@ fn softmin3_val(r: &[Vec<f64>], i: usize, j: usize, gamma: f64) -> f64 {
 /// Accumulate the Soft-DTW gradient for one series into `grad`.
 ///
 /// Performs forward pass, backward pass, and double-loop gradient accumulation.
-fn soft_dtw_accumulate_gradient(bary: &[f64], xi: &[f64], gamma: f64, grad: &mut [f64]) {
+/// Accumulate both the soft-DTW gradient and the per-point soft-alignment weight
+/// `W[k] = sum_j E[k][j]` (total alignment mass landing on barycenter point `k`).
+///
+/// The weight is the diagonal curvature of the (quadratic-cost) soft-DTW objective:
+/// `d grad[k] / d bary[k] = 2 * W[k]`. `update_barycenter` uses it to take an
+/// inverse-curvature (per-coordinate Newton) step instead of a fixed global
+/// learning rate, which is what keeps the barycenter iteration stable — a fixed
+/// `lr` only appeared stable while the pre-CORR-01 backward pass returned an
+/// all-zero gradient (so the barycenter never moved). See CORR-01 / Phase 78.
+fn soft_dtw_accumulate_gradient_and_weight(
+    bary: &[f64],
+    xi: &[f64],
+    gamma: f64,
+    grad: &mut [f64],
+    weight: &mut [f64],
+) {
     let m = bary.len();
     let r = soft_dtw_forward(bary, xi, gamma);
     let e = soft_dtw_backward(bary, xi, &r, gamma);
     for k in 1..=m {
         let mut g = 0.0;
+        let mut w = 0.0;
         for j in 1..=xi.len() {
             g += e[k][j] * 2.0 * (bary[k - 1] - xi[j - 1]);
+            w += e[k][j];
         }
         grad[k - 1] += g;
+        weight[k - 1] += w;
     }
 }
 
-/// Apply one gradient descent step and check convergence.
+/// Apply one barycenter update step and check convergence.
+///
+/// Uses a per-coordinate inverse-curvature step `bary[k] -= grad[k] / (2 * W[k])`
+/// rather than a fixed global learning rate. Because `grad[k] = 2 * W[k] *
+/// (bary[k] - weighted_mean_k)`, this step sets `bary[k]` to the alignment-weighted
+/// mean of the target samples — the soft-DBA majorization-minimization update — so
+/// every coordinate stays within the convex hull of the data and the iteration
+/// cannot diverge. (The prior fixed `lr = 1/n` overshot the curvature and blew the
+/// barycenter up once CORR-01 made the gradient non-zero.) A proper global
+/// optimizer (L-BFGS / multi-restart for the non-convex objective) is future work.
 ///
 /// Returns `true` if the relative change is below `tol`.
-fn update_barycenter(bary: &mut [f64], grad: &[f64], lr: f64, tol: f64) -> bool {
+fn update_barycenter(bary: &mut [f64], grad: &[f64], weight: &[f64], tol: f64) -> bool {
     let mut max_change = 0.0_f64;
     let mut max_val = 0.0_f64;
-    for (b, &g) in bary.iter_mut().zip(grad.iter()) {
-        let update = lr * g;
+    for ((b, &g), &w) in bary.iter_mut().zip(grad.iter()).zip(weight.iter()) {
+        // Inverse-curvature (diagonal-Newton) step. Guard against a zero-weight
+        // point (no alignment mass) by leaving it unchanged.
+        let update = if w > 1e-12 { g / (2.0 * w) } else { 0.0 };
         *b -= update;
         max_change = max_change.max(update.abs());
         max_val = max_val.max(b.abs());
@@ -401,7 +430,6 @@ pub fn soft_dtw_barycenter(
 
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     let mut bary = init_barycenter_mean(&rows);
-    let lr = 1.0 / n as f64;
     let mut converged = false;
     let mut n_iter = 0;
 
@@ -409,11 +437,12 @@ pub fn soft_dtw_barycenter(
         n_iter = iter + 1;
 
         let mut grad = vec![0.0; m];
+        let mut weight = vec![0.0; m];
         for row in &rows {
-            soft_dtw_accumulate_gradient(&bary, row, gamma, &mut grad);
+            soft_dtw_accumulate_gradient_and_weight(&bary, row, gamma, &mut grad, &mut weight);
         }
 
-        if update_barycenter(&mut bary, &grad, lr, tol) {
+        if update_barycenter(&mut bary, &grad, &weight, tol) {
             converged = true;
             break;
         }
@@ -582,7 +611,14 @@ mod differentiable_tests {
         // SC#1(c): shipped accumulated gradient must match oracle and Dual within ~1e-6 relative tol.
         let n = X.len();
         let mut shipped_grad = vec![0.0; n];
-        soft_dtw_accumulate_gradient(&X, &Y, gamma, &mut shipped_grad);
+        let mut scratch_weight = vec![0.0; n];
+        soft_dtw_accumulate_gradient_and_weight(
+            &X,
+            &Y,
+            gamma,
+            &mut shipped_grad,
+            &mut scratch_weight,
+        );
 
         let oracle = corrected_oracle_gradient(&X, &Y, gamma);
         let dual = dual_grad(&X, &Y, gamma);

@@ -808,21 +808,46 @@ fn test_soft_dtw_barycenter_identical() {
         }
     }
     let data = FdMatrix::from_column_major(col_major, 5, m).unwrap();
-    // NOTE: for soft-DTW with finite gamma, the barycenter of identical series
-    // does NOT necessarily converge to the series itself.  The gradient of
-    // soft_dtw(bary, xi) w.r.t. bary at bary=xi is generally non-zero (the
-    // E matrix is non-trivially weighted across off-diagonal alignments even
-    // for identical series).  Therefore this test is NOT a zero-gradient
-    // regression guard.  We only verify structural correctness here.
     let result = soft_dtw_barycenter(&data, 1.0, 50, 1e-6);
     assert_eq!(
         result.barycenter.len(),
         m,
         "Barycenter should have length m={m}"
     );
+    // With the CORR-01 gradient fix the barycenter gradient of identical series
+    // is non-zero (soft-DTW aligns bary across off-diagonal weights), so this is
+    // NOT a zero-gradient guard — `_moves_from_mean` / `_shifted` cover that.
+    // What this guards is optimizer STABILITY: the inverse-curvature step must
+    // converge and keep the barycenter within the data's own amplitude.  The old
+    // fixed `lr = 1/n` step diverges to ~10x the data scale (maxabs ~10 on this
+    // sub-unit input) and never sets `converged`.
     assert!(
-        result.barycenter.iter().all(|v| v.is_finite()),
-        "Barycenter of identical series should be finite everywhere"
+        result.converged,
+        "identical-series barycenter must converge (n_iter = {})",
+        result.n_iter
+    );
+    let series_max = series.iter().cloned().fold(0.0_f64, |a, b| a.max(b.abs()));
+    let max_abs = result
+        .barycenter
+        .iter()
+        .cloned()
+        .fold(0.0_f64, |a, b| a.max(b.abs()));
+    assert!(
+        max_abs < 2.0 * series_max + 0.5,
+        "barycenter must stay within the data amplitude, not diverge \
+         (maxabs = {max_abs:.4}, series_max = {series_max:.4})"
+    );
+    let l2_from_series: f64 = result
+        .barycenter
+        .iter()
+        .zip(series.iter())
+        .map(|(b, s)| (b - s).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    assert!(
+        l2_from_series < 0.5,
+        "barycenter of identical series should stay close to the series \
+         (L2 = {l2_from_series:.4}, expected < 0.5)"
     );
 }
 
@@ -854,18 +879,36 @@ fn test_soft_dtw_barycenter_shifted() {
     let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
     let result = soft_dtw_barycenter(&data, 1.0, 100, 1e-6);
 
-    // Barycenter should be approximately sin(t)+1 (the middle)
+    // The stable inverse-curvature step converges on these vertically-shifted
+    // sinusoids; a broken step size would diverge and never set the flag.
+    assert!(
+        result.converged,
+        "shifted-series barycenter must converge (n_iter = {})",
+        result.n_iter
+    );
+
+    // Barycenter should be approximately sin(t)+1 (the middle of the shifts).
     let mean_val: f64 = result.barycenter.iter().sum::<f64>() / m as f64;
     assert!(
-        (mean_val - 1.0).abs() < 0.5,
+        (mean_val - 1.0).abs() < 0.2,
         "Barycenter mean should be ~1.0 (middle of shifts), got {mean_val}"
     );
 
-    // Tightening: the corrected gradient (CORR-01) must drive the barycenter
+    // Stay bounded within the data range [sin+0 .. sin+2] ⊂ [-1, 3] — the old
+    // divergent fixed-lr step blew this past ~10.
+    let max_abs = result
+        .barycenter
+        .iter()
+        .cloned()
+        .fold(0.0_f64, |a, b| a.max(b.abs()));
+    assert!(
+        max_abs < 4.0,
+        "barycenter must stay within the data range, not diverge (maxabs = {max_abs:.4})"
+    );
+
+    // Tightening: the corrected gradient (CORR-01) drives the barycenter
     // measurably away from the pointwise mean.  A zero-gradient (buggy) barycenter
-    // never moves, so L2 = 0.0 on buggy code; the correct gradient yields a
-    // non-trivial update.  Threshold 0.01 is safely above the buggy-code movement
-    // of 0.0 and well below the expected correct movement.
+    // never moves (L2 = 0.0); the correct gradient + stable step yields L2 ~ 1.0.
     let l2_from_mean: f64 = result
         .barycenter
         .iter()
@@ -874,8 +917,8 @@ fn test_soft_dtw_barycenter_shifted() {
         .sum::<f64>()
         .sqrt();
     assert!(
-        l2_from_mean > 0.01,
-        "Barycenter must move from pointwise mean after CORR-01 fix (L2 = {l2_from_mean:.6}, expected > 0.01)"
+        l2_from_mean > 0.1,
+        "Barycenter must move from pointwise mean after CORR-01 fix (L2 = {l2_from_mean:.6}, expected > 0.1)"
     );
 }
 
@@ -933,6 +976,19 @@ fn test_soft_dtw_barycenter_moves_from_mean() {
         "Barycenter must move from pointwise mean after CORR-01 fix \
          (L2 = {l2_from_mean:.6}, expected > 0.1). \
          If L2 = 0.0, the endpoint-seed bug is present."
+    );
+
+    // The stable inverse-curvature step keeps the barycenter within the unit
+    // amplitude of the input sinusoids; the old fixed-lr step diverged past ~10.
+    let max_abs = result
+        .barycenter
+        .iter()
+        .cloned()
+        .fold(0.0_f64, |a, b| a.max(b.abs()));
+    assert!(
+        max_abs < 2.0,
+        "barycenter must stay bounded within the data amplitude, not diverge \
+         (maxabs = {max_abs:.4})"
     );
 }
 
