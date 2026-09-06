@@ -1,5 +1,23 @@
 # Milestones
 
+## v0.39.0 DIFF: Differentiable FDA Core (Forward-Mode Autodiff) (Shipped: 2026-09-06)
+
+**Phases completed:** 3 phases (75–77), 4 plans. Milestone audit: 4/4 requirements, cross-phase integration INTEGRATED. Promoted **GAP-08** — the last v0.31.0 `GAP-BACKLOG.md` item (now exhausted). Additive/non-breaking, no new crate dependency, forward-mode only.
+
+**Key accomplishments:**
+
+- **DIF-01 (Phase 75):** in-crate `Scalar` trait + forward-mode `Dual{value,tangent}` substrate — full op set (±,×,÷,sqrt,exp,ln,sin,cos,powf,abs,value-only comparisons, `infinity`), seed/extract/`diff`, `impl Scalar for f64` (bit-for-bit parity); dual arithmetic reproduces analytical derivatives ≤1e-10. No new dependency.
+- **DIF-02 (Phase 76):** `soft_dtw_distance_generic` (gradient validated vs a corrected oracle + central finite differences ≤1e-6; f64 delegation bit-identical) + `amplitude_distance_at_warp_generic` (fixed-warp SRSF). The warp-*searched* `elastic_distance` intentionally deferred (discrete DP argmin non-differentiable).
+- **DIF-03 (Phase 76):** `project_scores_generic` / `FpcaResult::project_generic` FPCA score projection — `Dual` gradient matches the closed form `rotation·weights` ≤1e-12; f64 parity preserved.
+- **DIF-04 (Phase 77):** `grad`/`jacobian`/`directional_derivative` multi-input gradient API + an end-to-end composition demo (soft-DTW + FPCA scores, FD-checked) + full crate-root/prelude re-exports + a running module doctest — proving AD flows through arbitrary compositions.
+- Whole-crate gates green: 2859 lib + 209 doc tests (0 failed), clippy `--all-targets` clean, fmt clean.
+
+**Discovered (backlog):** a **pre-existing** `soft_dtw_backward` bug (returns an all-zero gradient → `soft_dtw_barycenter` silently descends on zero; present ≥ commit `6bd5c4ce`) — left unfixed under additive scope, logged for its own behavior-changing phase.
+
+**Ship step remaining (operator):** crate bump → 0.39.0 + `v0.39.0` tag + crates.io publish (deferred; Cargo.toml still 0.38.0). Nyquist VALIDATION.md files remain `draft`.
+
+---
+
 ## v0.38.0 VEESA: Elastic Shape Explainability & Conformal Anomaly Detection (Shipped: 2026-09-05)
 
 **Phases completed:** 3 phases, 3 plans, 0 tasks
