@@ -593,7 +593,11 @@ pub fn jacobian<F: Fn(&[Dual]) -> Vec<Dual>>(f: F, x: &[f64]) -> (Vec<f64>, Vec<
 ///
 /// Each input `j` is lifted to `Dual { value: x[j], tangent: direction[j] }`, so
 /// the returned tangent is `∇f(x) · direction`. Requires
-/// `direction.len() == x.len()` (checked with `debug_assert`).
+/// `direction.len() == x.len()` (asserted).
+///
+/// # Panics
+///
+/// Panics if `direction.len() != x.len()`.
 ///
 /// ```
 /// use fdars_core::autodiff::{directional_derivative, Dual};
@@ -609,7 +613,7 @@ pub fn directional_derivative<F: Fn(&[Dual]) -> Dual>(
     x: &[f64],
     direction: &[f64],
 ) -> (f64, f64) {
-    debug_assert_eq!(
+    assert_eq!(
         direction.len(),
         x.len(),
         "direction length must match input length"
