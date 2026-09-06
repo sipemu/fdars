@@ -45,21 +45,19 @@ Explicitly excluded from v0.40.0.
 
 ## Traceability
 
-Filled during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORR-01 | TBD | Pending |
-| CORR-02 | TBD | Pending |
-| BUILD-01 | TBD | Pending |
-| REL-01 | TBD | Pending |
-| REL-02 | TBD | Pending |
+| CORR-01 | Phase 78 | Pending |
+| CORR-02 | Phase 78 | Pending |
+| BUILD-01 | Phase 79 | Pending |
+| REL-01 | Phase 80 | Pending |
+| REL-02 | Phase 80 | Pending |
 
 **Coverage:**
 - v1 requirements: 5 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 5 ⚠️
+- Mapped to phases: 5 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-09-06*
-*Last updated: 2026-09-06 after initial definition*
+*Last updated: 2026-09-06 after roadmap creation (traceability mapped)*
