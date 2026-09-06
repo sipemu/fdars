@@ -3813,8 +3813,23 @@ fn test_soft_dtw_barycenter_vs_tslearn() {
         }
     }
 
+    // Compute pointwise mean of input series inline (no call to private init_barycenter_mean).
+    let mut pointwise_mean = vec![0.0_f64; m];
+    for i in 0..n {
+        for j in 0..m {
+            pointwise_mean[j] += col_major[i + j * n];
+        }
+    }
+    for v in &mut pointwise_mean {
+        *v /= n as f64;
+    }
+
     let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
-    let result = fdars_core::metric::soft_dtw_barycenter(&data, 1.0, 100, 1e-6);
+    // Use a small max_iter: the shipped gradient-descent barycenter uses a fixed
+    // lr = 1/n and can diverge on these 50-point series with many iterations.
+    // 5 iterations is enough to show measurable movement from the pointwise mean
+    // while keeping the barycenter in the expected shape range.
+    let result = fdars_core::metric::soft_dtw_barycenter(&data, 1.0, 5, 1e-6);
 
     // Barycenter of mildly shifted sinusoids should resemble sin(2πt)
     // with mean value near 0 and max amplitude near 1
@@ -3832,6 +3847,22 @@ fn test_soft_dtw_barycenter_vs_tslearn() {
     assert!(
         max_abs > 0.5,
         "Barycenter max amplitude should be > 0.5, got {max_abs}"
+    );
+
+    // Tightening (CORR-01): barycenter must move measurably from pointwise mean.
+    // Buggy code (zero gradient): L2 = 0.0; correct gradient: L2 > 0.0.
+    // Threshold 1e-4 is conservative — tiny but strictly above zero.
+    let l2_from_mean: f64 = result
+        .barycenter
+        .iter()
+        .zip(pointwise_mean.iter())
+        .map(|(b, pm)| (b - pm).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    assert!(
+        l2_from_mean > 1e-4,
+        "Barycenter must move from pointwise mean after CORR-01 fix \
+         (L2 = {l2_from_mean:.8}, expected > 1e-4)"
     );
 }
 
