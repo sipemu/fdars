@@ -51,7 +51,9 @@
   2. The existing `test_soft_dtw_barycenter_*` tests are tightened so they can no longer pass on an all-zero gradient.
   3. Every hand-written backward/gradient pass named in CORR-02 (`alignment/differentiable`, `autodiff`, `boosting_regression/gamlss`, `elastic_regression/logistic`, `explain_generic/counterfactual`, `regression`, `seasonal/mod`, `smooth_basis`, `metric/soft_dtw`) is audited and given a "clean" (with a one-line rationale) or "fixed" (with a regression test) disposition, all traceable in the phase artifact.
   4. Whole-crate gates stay green after the fixes: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo test` all pass; the change is behavior-preserving except for the intended `soft_dtw` gradient correction.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 78-01-PLAN.md — CORR-01: fix soft_dtw_backward endpoint-seed bug + SC#1 regression tests + tighten the three barycenter tests + update oracle doc comment
+- [ ] 78-02-PLAN.md — CORR-02: audit sweep of the 9 hand-written gradient passes + write 78-AUDIT.md disposition table
 
 ### Phase 79: Serde Feature Repair
 **Goal**: `cargo build --features serde` compiles cleanly again and cannot silently re-break.
