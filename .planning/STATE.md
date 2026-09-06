@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.39.0
-milestone_name: "DIFF: Differentiable FDA Core (Forward-Mode Autodiff)"
-status: Awaiting next milestone
-stopped_at: Phase 77 complete — all phases complete
-last_updated: "2026-09-06T17:55:52.021Z"
+milestone: v0.40.0
+milestone_name: Correctness & Release Hardening
+status: planning
+last_updated: "2026-09-06T19:38:51.408Z"
 last_activity: 2026-09-06
-last_activity_desc: Milestone v0.39.0 completed and archived
-state_head: f7cd35c9f305f7d220cf081fa40595002abac396
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
-current_phase: 77
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-05)
 
 ## Current Position
 
-Phase: Milestone v0.39.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-06 — Milestone v0.39.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-06 — Milestone v0.40.0 started
 
 ## Milestone Roadmap (v0.39.0)
 
