@@ -1,28 +1,12 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff)",
-  "phases": [
-    {
-      "number": "75",
-      "name": "Scalar Trait & Forward-Mode Dual Substrate",
-      "status": "complete"
-    },
-    {
-      "number": "76",
-      "name": "Differentiable Elastic Distance & FPCA Scores",
-      "status": "complete"
-    },
-    {
-      "number": "77",
-      "name": "Gradient API, Composition Demo & Integration",
-      "status": "complete"
-    }
-  ],
+  "milestone": "v0.40.0",
+  "phases": [],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-06T17:55:52.038Z"
+  "updated_at": "2026-09-06T19:38:51.410Z"
 }
