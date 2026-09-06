@@ -139,3 +139,27 @@ correct gradient.  The `_identical` test was updated accordingly.
 iterations diverges on the correct non-zero gradient.  Reduced to 5 iterations.
 The optimizer's fixed learning rate is a pre-existing limitation (not introduced
 by this fix); the barycenter optimizer redesign is out of scope for this phase.
+
+## Code-review remediation (WR-01/02/03) — commit `c1179749`
+
+The Phase 78 code review (78-REVIEW.md) flagged that the max_iter cap + weakened
+`_identical` assertion were masking a real divergence in `soft_dtw_barycenter`.
+Empirically confirmed: identical series in [0,1] diverged to maxabs ~10.3 (bary[0]
+≈ -3.37). Per the user decision (minimal step-size safeguard), fixed in-phase:
+
+- Replaced the divergent fixed global `lr = 1/n` with a per-coordinate
+  inverse-curvature step `bary[k] -= grad[k] / (2·W[k])` (`W[k] = Σ_j E[k][j]`,
+  accumulated in the new `soft_dtw_accumulate_gradient_and_weight`). This is the
+  soft-DBA majorization-minimization update — unconditionally stable (each
+  coordinate stays in the data's convex hull).
+- Barycenter now converges: identical series → converged at iter 12, stays near
+  the series (L2 0.25, bounded); shifted sinusoids → converged, mean = 1.000
+  (the middle); tslearn config → converged at iter 16, mean ≈ 0.
+- Strengthened the barycenter tests to assert genuine convergence + boundedness
+  (WR-01) and restored `_vs_tslearn` to `max_iter = 50` (WR-02).
+- Logged the proper-global-optimizer (L-BFGS / multi-restart) work to backlog as
+  SDTW-O1 (WR-03; STATE.md Deferred Items, 78-AUDIT.md).
+
+Gates re-run green: `cargo fmt --check`, `cargo clippy --all-targets
+--features linalg,parallel -- -D warnings`, full `cargo test` (2861 lib + all
+integration binaries, 0 failed).

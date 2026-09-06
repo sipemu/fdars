@@ -31,6 +31,23 @@ endpoint-seed defect (CORR-01).
   Regression test `soft_dtw_backward_nonzero_and_matches_oracle` asserts
   non-zero E matrix + oracle/Dual gradient match within 1e-6.
 
+## Follow-on finding (WR-03): barycenter optimizer divergence
+
+The corrected (non-zero) soft-DTW gradient exposed a **latent divergence** in
+`soft_dtw_barycenter`: its fixed global step `lr = 1/n` overshot the objective's
+curvature and blew the barycenter up to ~10x the data scale (the pre-CORR-01
+all-zero gradient had masked this — the barycenter never moved). Surfaced by the
+Phase 78 code review.
+
+**Resolved in-phase** (per the CONTEXT "fix small localized bugs in-phase"
+decision) with a per-coordinate inverse-curvature step
+`bary[k] -= grad[k] / (2·W[k])` (the soft-DBA majorization-minimization update),
+which keeps every coordinate inside the data's convex hull and cannot diverge —
+commit `c1179749`. The barycenter tests were strengthened to assert genuine
+convergence + boundedness (they had masked the divergence). A proper global
+optimizer (L-BFGS / multi-restart for the non-convex objective) is logged to the
+backlog as **SDTW-O1** (STATE.md Deferred Items).
+
 ---
 
 ## Summary

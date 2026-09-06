@@ -118,6 +118,7 @@ Items acknowledged and deferred, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
+| Soft-DTW-optimizer | SDTW-O1 — replace the `soft_dtw_barycenter` inverse-curvature / soft-DBA majorization-minimization step (added in Phase 78 to stop the fixed-`lr` divergence that CORR-01 exposed) with a proper global optimizer (L-BFGS and/or multi-restart) for the non-convex soft-DTW barycenter objective. The MM step is locally stable + converging but not globally optimal. Surfaced by v0.40.0 Phase 78 code review (WR-03). | Deferred | v0.40.0 | future milestone |
 | Differentiable-core | DIF-F1 (reverse-mode / VJP autodiff — needs a tape/graph engine); DIF-F2 (broaden the differentiable subset beyond elastic + FPCA — basis eval, inner products, SRSF/warping, other regressions); DIF-F3 (make existing f64 hot-path signatures themselves generic — breaking risk to R/WASM/examples) | Deferred | v0.39.0 | future milestone |
 | VEESA | VEE-F1 (native random-forest / tree-ensemble predictor); VEE-F2 (plotting/rendering of principal directions + PFI) | Deferred | v0.38.0 | future milestone |
 | Conformal-anomaly | ECA-F1 (full conditional / Mondrian conformal anomaly detection) | Deferred | v0.38.0 | future milestone |
