@@ -271,6 +271,13 @@ fn soft_dtw_backward(x: &[f64], y: &[f64], r: &[Vec<f64>], gamma: f64) -> Vec<Ve
 
     for i in (1..=n).rev() {
         for j in (1..=m).rev() {
+            // Preserve the E[n][m] = 1.0 endpoint seed: at (n, m) all three
+            // neighbour contributions (a, b, c) are gated off, so the
+            // unconditional write `e[i][j] = a + b + c` would overwrite the
+            // seed with 0.0 and zero the entire backward pass.
+            if i == n && j == m {
+                continue;
+            }
             // Contribution from (i+1, j): R[i+1][j] used R[i][j] via the "up" move
             let a = if i < n {
                 e[i + 1][j]
@@ -452,18 +459,17 @@ mod differentiable_tests {
     }
 
     /// Corrected soft-DTW gradient oracle (forward + backward + accumulate),
-    /// used ONLY as the SC #1 independent reference.
+    /// retained as an INDEPENDENT cross-check reference for the fixed
+    /// `soft_dtw_backward`.
     ///
-    /// This mirrors `soft_dtw_accumulate_gradient` but fixes a pre-existing
-    /// boundary bug in the shipped `soft_dtw_backward`: its reverse double-loop
-    /// visits the endpoint `(n, m)` and overwrites the `E[n][m] = 1.0` seed with
-    /// `a + b + c = 0` (all three neighbour contributions are gated off at the
-    /// endpoint), which zeroes the entire backward pass and makes the shipped
-    /// oracle return an all-zero gradient. The corrected reference below skips
-    /// the endpoint write. The shipped production code is intentionally left
-    /// untouched (additive-only scope); the bug is logged as a backlog item in
-    /// the DIF-02 SUMMARY. This corrected reference is an independent check of
-    /// the `Dual` gradient distinct from finite differences (SC #3).
+    /// Phase 78 (CORR-01) fixed the endpoint-seed bug in the shipped
+    /// `soft_dtw_backward` by inserting the same `if i == n && j == m {
+    /// continue; }` guard that this helper uses.  The two implementations are
+    /// now equivalent, but this function is kept as a structurally-independent
+    /// reimplementation: it is never called from production code, and
+    /// `soft_dtw_backward` does not delegate to it, so it remains a valid
+    /// independent cross-check alongside the Dual forward-mode path and
+    /// central finite differences (SC #3).
     fn corrected_oracle_gradient(bary: &[f64], xi: &[f64], gamma: f64) -> Vec<f64> {
         let n = bary.len();
         let m = xi.len();
@@ -553,6 +559,54 @@ mod differentiable_tests {
             soft_dtw_distance_generic::<f64>(&xl, &yl, 1.0),
             soft_dtw_distance(&xl, &yl, 1.0)
         );
+    }
+
+    /// SC#1(a)+(c): prove the fixed `soft_dtw_backward` returns a non-zero E matrix
+    /// and that the shipped gradient matches both `corrected_oracle_gradient` (the
+    /// independent reimplementation) and the Dual path within ~1e-6 relative
+    /// tolerance.  This test FAILS on the buggy code (endpoint seed zeroed) and
+    /// PASSES after the CORR-01 endpoint-skip guard is applied.
+    #[test]
+    fn soft_dtw_backward_nonzero_and_matches_oracle() {
+        let gamma = 1.0;
+
+        // SC#1(a): E matrix must be non-zero for non-identical input.
+        let r = soft_dtw_forward(&X, &Y, gamma);
+        let e = soft_dtw_backward(&X, &Y, &r, gamma);
+        let e_nonzero = e.iter().flatten().any(|&v| v.abs() > 1e-12);
+        assert!(
+            e_nonzero,
+            "E matrix must be non-zero after CORR-01 fix (all-zero indicates endpoint seed was zeroed)"
+        );
+
+        // SC#1(c): shipped accumulated gradient must match oracle and Dual within ~1e-6 relative tol.
+        let n = X.len();
+        let mut shipped_grad = vec![0.0; n];
+        soft_dtw_accumulate_gradient(&X, &Y, gamma, &mut shipped_grad);
+
+        let oracle = corrected_oracle_gradient(&X, &Y, gamma);
+        let dual = dual_grad(&X, &Y, gamma);
+
+        for k in 0..n {
+            // Relative tolerance with denominator guard.
+            let rel_oracle = (shipped_grad[k] - oracle[k]).abs() / oracle[k].abs().max(1e-12);
+            assert!(
+                rel_oracle <= 1e-6,
+                "k={k}: shipped grad {:.8} vs oracle {:.8} (rel err {:.2e} > 1e-6)",
+                shipped_grad[k],
+                oracle[k],
+                rel_oracle
+            );
+
+            let rel_dual = (shipped_grad[k] - dual[k]).abs() / dual[k].abs().max(1e-12);
+            assert!(
+                rel_dual <= 1e-6,
+                "k={k}: shipped grad {:.8} vs Dual {:.8} (rel err {:.2e} > 1e-6)",
+                shipped_grad[k],
+                dual[k],
+                rel_dual
+            );
+        }
     }
 
     #[test]
