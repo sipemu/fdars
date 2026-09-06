@@ -2,13 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.40.0
 milestone_name: Correctness & Release Hardening
-status: planning
-last_updated: "2026-09-06T20:10:00.000Z"
+current_phase: 78
+current_phase_name: Gradient Correctness — soft_dtw Fix & Backward-Pass Audit
+status: executing
+stopped_at: Roadmap created for v0.40.0 (3 phases, 5 requirements, 100% coverage)
+last_updated: "2026-09-06T20:48:20.111Z"
 last_activity: 2026-09-06
+last_activity_desc: Phase 78 execution started
+state_head: 5eb57278d4120fc7dc0ef9e3a56099feab9bdd74
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -24,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: Not started (roadmap complete, planning pending)
-Plan: —
-Status: Roadmap created — ready to plan Phase 78 (or 79; independent)
-Last activity: 2026-09-06 — Roadmap created for v0.40.0 (3 phases, 5 requirements, 100% coverage)
+Phase: 78 (Gradient Correctness — soft_dtw Fix & Backward-Pass Audit) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 78
+Last activity: 2026-09-06 — Phase 78 execution started
 
 ## Milestone Roadmap (v0.40.0)
 
