@@ -1,10 +1,81 @@
 # Changelog
 
 All notable changes to `fdars-core` are documented here. This project adheres to
-[Semantic Versioning](https://semver.org/). Entries in this span are additive and
-non-breaking with respect to public API signatures and dependencies, **except** where
-noted — the v0.40.0 soft-DTW barycenter correction changes convergence behavior
-intentionally (see [0.40.0] Changed below).
+[Semantic Versioning](https://semver.org/). Under the SemVer 0.x rule, breaking
+changes ship in MINOR bumps. **v0.41.0 is an explicitly breaking API-stabilization
+release** — it removes long-deprecated forms, seals a couple of internals, and
+tightens the public surface ahead of a future 1.0 (see [0.41.0] below; breaking is
+API *shape* only — no numeric/behavioral change). Earlier entries in this span
+(v0.40.0 and prior) remained additive and non-breaking with respect to public API
+signatures and dependencies, with one intentional exception: the v0.40.0 soft-DTW
+barycenter correction changes convergence behavior intentionally (see [0.40.0]
+Changed below).
+
+## [0.41.0] - 2026-09-07
+
+**BREAKING — 1.0 API Stabilization Pass.** This is the first breaking release after a
+long additive run. It settles the public API ahead of a future 1.0 by removing
+long-deprecated dimensional forms, sealing internals that were unintentionally public,
+marking forward-compatible enums/structs `#[non_exhaustive]`, and unifying naming.
+**Breaking is API *shape* only — there is no numeric or behavioral change** to any
+retained computation. **MSRV is unchanged** (1.81 for the crate, 1.84 for the `linalg`
+feature). See `documentation/STABILITY.md` for the semver + MSRV policy and
+`documentation/ROADMAP-TO-1.0.md` for the remaining 1.0 gap checklist.
+
+### Removed
+
+- **API-01 — deprecated dimensional forms removed.** The 6 long-deprecated `*_2d`/
+  legacy forms and their crate-root/prelude re-exports are gone:
+  - `mean_2d` → use `mean(…, Dim::Two)`
+  - `fanova` → use `fanova_seeded(…, 42)` (pass an explicit seed for determinism)
+  - `random_tukey_2d` → use `random_tukey(…, Dim::Two)`
+  - `random_projection_2d` → use `random_projection(…, Dim::Two)`
+  - `fraiman_muniz_2d` → use `fraiman_muniz(…, Dim::Two)`
+  - `modal_2d` → use `modal(…, Dim::Two)`
+
+### Changed
+
+#### Surface sealing (API-02)
+
+- `sort_nan_safe` and `solve_gaussian_pub` are now `pub(crate)` (they were
+  unintentionally `pub`). These were internal numerical helpers with no intended
+  external contract; there is no public replacement.
+
+#### `#[non_exhaustive]` (API-03)
+
+- `#[non_exhaustive]` added to 10 public enums — `PeerPenalty`, `LambdaChoice`,
+  `LambdaMethod`, `DesignCriterion`, `OptimalityKind`, `ExtrapolationPolicy`,
+  `ImputationMethod`, `SelectionCriterion`, `BasisType`, `BasisCriterion` — and to 2
+  result structs — `OptimBandwidthResult`, `KnnCvResult`.
+  - **Downstream impact:** exhaustive `match` on these enums now requires a wildcard
+    (`_ => …`) arm, and struct-literal construction of the two result structs from
+    outside the crate is no longer possible; use the constructing API and read fields.
+    This allows future variants/fields to be added without a breaking bump.
+
+#### Naming unification (API-04)
+
+- Renamed for casing/consistency:
+  - `funhddC_cluster` → `fun_hddc_cluster`
+  - `FosrResult2d` → `Fosr2dResult`
+  - `GmmResult` → `GmmFitResult`
+  - **Migration:** update call sites / type references to the new names (signatures
+    and semantics are unchanged).
+- Collapsed dimensional pairs into single dispatchers over a domain enum:
+  - `deriv_1d` / `deriv_2d` → `deriv(…, DerivDomain)` returning `DerivResult`.
+    **Migration:** call `deriv(&data, DerivDomain::OneD { argvals, nderiv })` and match
+    `DerivResult::OneD(m)` (or `DerivDomain::TwoD { … }` / `DerivResult::TwoD(…)`).
+  - `lp_self_1d` / `lp_cross_1d` / `lp_self_2d` / `lp_cross_2d` → `lp_self` / `lp_cross`
+    taking an `LpDomain`. **Migration:** call `lp_self(…, LpDomain::OneD { … })` (or
+    `LpDomain::TwoD { … }`) instead of the dimension-suffixed variants.
+
+### Added
+
+- **Stability documentation (API-04 / STAB deliverables):**
+  - `documentation/STABILITY.md` — the semver + MSRV policy (0.x breaking-in-minor
+    rule, feature-gate MSRV, deprecation approach).
+  - `documentation/ROADMAP-TO-1.0.md` — the remaining 1.0 gap checklist.
+- **New public types backing the collapsed APIs:** the `DerivDomain` and `LpDomain`
+  domain-selector enums and the `DerivResult` return type.
 
 ## [0.40.0] - 2026-09-07
 
