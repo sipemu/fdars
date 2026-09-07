@@ -18,7 +18,7 @@
 //! expected.
 //!
 //! Key function:
-//! - [`funhddC_cluster`] — fit the AkBk funHDDC model to functional data
+//! - [`fun_hddc_cluster`] — fit the AkBk funHDDC model to functional data
 
 use super::covariance::data_scaled_reg;
 use super::em::{compute_bic, compute_icl, hard_assignments, resp_to_membership};
@@ -543,7 +543,7 @@ fn run_one_em(
 ///
 /// ```no_run
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::gmm::subspace::{funhddC_cluster, FunHddcConfig};
+/// use fdars_core::gmm::subspace::{fun_hddc_cluster, FunHddcConfig};
 ///
 /// let mut cfg = FunHddcConfig::default();
 /// cfg.k = 2;
@@ -551,7 +551,7 @@ fn run_one_em(
 /// // Provide data and argvals ...
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn funhddC_cluster(
+pub fn fun_hddc_cluster(
     data: &FdMatrix,
     argvals: &[f64],
     config: &FunHddcConfig,
@@ -767,7 +767,7 @@ mod tests {
             seed: 42,
             ncomp_init: 8,
         };
-        let result = funhddC_cluster(&data, &argvals, &config).unwrap();
+        let result = fun_hddc_cluster(&data, &argvals, &config).unwrap();
         let ari = adjusted_rand_index(&labels, &result.cluster);
         assert!(ari >= 0.90, "Recovery ARI should be >= 0.90, got {ari:.4}");
     }
@@ -784,7 +784,7 @@ mod tests {
             seed: 42,
             ncomp_init: 8,
         };
-        let result = funhddC_cluster(&data, &argvals, &config).unwrap();
+        let result = fun_hddc_cluster(&data, &argvals, &config).unwrap();
         assert!(
             result.bic.is_finite(),
             "BIC should be finite, got {}",
@@ -814,8 +814,8 @@ mod tests {
             seed: 99,
             ncomp_init: 8,
         };
-        let r1 = funhddC_cluster(&data, &argvals, &config).unwrap();
-        let r2 = funhddC_cluster(&data, &argvals, &config).unwrap();
+        let r1 = fun_hddc_cluster(&data, &argvals, &config).unwrap();
+        let r2 = fun_hddc_cluster(&data, &argvals, &config).unwrap();
         assert_eq!(
             r1.cluster, r2.cluster,
             "Same seed must give identical cluster assignments"
@@ -830,7 +830,7 @@ mod tests {
             k: 2,
             ..Default::default()
         };
-        assert!(funhddC_cluster(&data, &argvals, &config).is_err());
+        assert!(fun_hddc_cluster(&data, &argvals, &config).is_err());
     }
 
     #[test]
@@ -841,7 +841,7 @@ mod tests {
             k: 0,
             ..Default::default()
         };
-        assert!(funhddC_cluster(&data, &argvals, &config).is_err());
+        assert!(fun_hddc_cluster(&data, &argvals, &config).is_err());
     }
 
     #[test]
@@ -852,7 +852,7 @@ mod tests {
             k: 5,
             ..Default::default()
         };
-        assert!(funhddC_cluster(&data, &argvals, &config).is_err());
+        assert!(fun_hddc_cluster(&data, &argvals, &config).is_err());
     }
 
     #[test]
@@ -864,7 +864,7 @@ mod tests {
             d_k: 10,
             ..Default::default()
         };
-        assert!(funhddC_cluster(&data, &argvals, &config).is_err());
+        assert!(fun_hddc_cluster(&data, &argvals, &config).is_err());
     }
 
     #[test]
@@ -875,6 +875,6 @@ mod tests {
             k: 2,
             ..Default::default()
         };
-        assert!(funhddC_cluster(&data, &argvals, &config).is_err());
+        assert!(fun_hddc_cluster(&data, &argvals, &config).is_err());
     }
 }

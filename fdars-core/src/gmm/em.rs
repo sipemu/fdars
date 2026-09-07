@@ -4,7 +4,7 @@ use super::covariance::{
     accumulate_diag_cov_weighted, accumulate_full_cov_weighted, identity_cov, regularize_cov,
 };
 use super::init::{init_params_from_assignments, kmeans_init_assignments};
-use super::{CovType, GmmResult};
+use super::{CovType, GmmFitResult};
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::linalg::{cholesky_d, log_det_from_cholesky, mahalanobis_sq};
@@ -266,7 +266,7 @@ pub(super) fn finalize_gmm(
     cov_type: CovType,
     iterations: usize,
     converged: bool,
-) -> GmmResult {
+) -> GmmFitResult {
     let (resp, log_likelihood) = e_step(features, &means, &covariances, &weights, k, d, cov_type);
     let n_params = count_params(k, d, cov_type);
     let bic = compute_bic(log_likelihood, n, n_params);
@@ -274,7 +274,7 @@ pub(super) fn finalize_gmm(
     let cluster = hard_assignments(&resp, n, k);
     let membership = resp_to_membership(&resp, n, k);
 
-    GmmResult {
+    GmmFitResult {
         cluster,
         membership,
         means,
@@ -301,7 +301,7 @@ pub(super) fn finalize_gmm(
 /// * `seed` — Random seed
 ///
 /// # Returns
-/// `GmmResult` with cluster assignments, membership, parameters, and model selection criteria.
+/// `GmmFitResult` with cluster assignments, membership, parameters, and model selection criteria.
 ///
 /// # Errors
 ///
@@ -316,7 +316,7 @@ pub fn gmm_em(
     max_iter: usize,
     tol: f64,
     seed: u64,
-) -> Result<GmmResult, FdarError> {
+) -> Result<GmmFitResult, FdarError> {
     let n = features.len();
     if n == 0 {
         return Err(FdarError::InvalidDimension {

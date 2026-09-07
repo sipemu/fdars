@@ -66,7 +66,7 @@ impl Grid2d {
 /// Result of 2D function-on-scalar regression.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct FosrResult2d {
+pub struct Fosr2dResult {
     /// Intercept surface beta_0(s,t), flattened column-major (length m1*m2).
     pub intercept: Vec<f64>,
     /// Coefficient surfaces beta_j(s,t), p x (m1*m2) matrix (row j = flattened beta_j).
@@ -92,7 +92,7 @@ pub struct FosrResult2d {
     pub grid: Grid2d,
 }
 
-impl FosrResult2d {
+impl Fosr2dResult {
     /// Reshape the j-th coefficient surface into an m1 x m2 matrix.
     ///
     /// # Panics
@@ -471,7 +471,7 @@ pub fn fosr_2d(
     grid: &Grid2d,
     lambda_s: f64,
     lambda_t: f64,
-) -> Result<FosrResult2d, FdarError> {
+) -> Result<Fosr2dResult, FdarError> {
     let (n, m_data) = data.shape();
     let p = predictors.ncols();
     let m1 = grid.m1();
@@ -596,7 +596,7 @@ pub fn fosr_2d(
         }
     }
 
-    Ok(FosrResult2d {
+    Ok(Fosr2dResult {
         intercept,
         beta: beta_out,
         fitted,
@@ -614,7 +614,7 @@ pub fn fosr_2d(
 /// Predict functional surfaces for new observations.
 ///
 /// # Arguments
-/// * `result` - Fitted [`FosrResult2d`]
+/// * `result` - Fitted [`Fosr2dResult`]
 /// * `new_predictors` - New scalar predictors (n_new x p)
 ///
 /// # Errors
@@ -623,7 +623,7 @@ pub fn fosr_2d(
 /// does not match the fitted model.
 #[must_use = "prediction result should not be discarded"]
 pub fn predict_fosr_2d(
-    result: &FosrResult2d,
+    result: &Fosr2dResult,
     new_predictors: &FdMatrix,
 ) -> Result<FdMatrix, FdarError> {
     let n_new = new_predictors.nrows();

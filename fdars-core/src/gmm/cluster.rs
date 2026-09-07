@@ -2,7 +2,7 @@
 
 use super::em::{e_step, gmm_em, hard_assignments, resp_to_membership};
 use super::init::build_features;
-use super::{CovType, GmmClusterResult, GmmResult};
+use super::{CovType, GmmClusterResult, GmmFitResult};
 use crate::basis::projection::ProjectionBasisType;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -16,8 +16,8 @@ pub(super) fn run_multiple_inits(
     tol: f64,
     n_init: usize,
     base_seed: u64,
-) -> Option<GmmResult> {
-    let mut best: Option<GmmResult> = None;
+) -> Option<GmmFitResult> {
+    let mut best: Option<GmmFitResult> = None;
     for init in 0..n_init.max(1) {
         let seed = base_seed.wrapping_add(init as u64 * 1000 + k as u64);
         if let Ok(result) = gmm_em(features, k, cov_type, max_iter, tol, seed) {
@@ -172,7 +172,7 @@ pub fn gmm_cluster(
 
     let mut bic_values = Vec::new();
     let mut icl_values = Vec::new();
-    let mut best_result: Option<GmmResult> = None;
+    let mut best_result: Option<GmmFitResult> = None;
     let mut best_criterion = f64::INFINITY;
 
     for &k in k_range {
@@ -224,7 +224,7 @@ pub fn predict_gmm(
     new_data: &FdMatrix,
     argvals: &[f64],
     new_covariates: Option<&FdMatrix>,
-    result: &GmmResult,
+    result: &GmmFitResult,
     nbasis: usize,
     basis_type: ProjectionBasisType,
     cov_weight: f64,

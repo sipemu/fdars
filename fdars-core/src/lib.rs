@@ -393,7 +393,7 @@ pub use fof_regression::{
 pub use function_on_scalar::{
     fanova_seeded, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
 };
-pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
+pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, Fosr2dResult, Grid2d};
 
 // Re-export scalar-on-function regression types
 pub use scalar_on_function::{
@@ -475,8 +475,8 @@ pub use conformal::{
 
 // Re-export GMM clustering types
 pub use gmm::{
-    funhddC_cluster, gmm_cluster, gmm_cluster_with_config, gmm_em, predict_gmm, CovType,
-    FunHddcConfig, FunHddcResult, GmmClusterConfig, GmmClusterResult, GmmResult,
+    fun_hddc_cluster, gmm_cluster, gmm_cluster_with_config, gmm_em, predict_gmm, CovType,
+    FunHddcConfig, FunHddcResult, GmmClusterConfig, GmmClusterResult, GmmFitResult,
 };
 
 // Re-export streaming depth types

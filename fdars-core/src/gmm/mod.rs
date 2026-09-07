@@ -36,7 +36,7 @@ pub enum CovType {
 /// Result from a single GMM fit with fixed K.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct GmmResult {
+pub struct GmmFitResult {
     /// Hard cluster assignments (length n)
     pub cluster: Vec<usize>,
     /// Posterior membership probabilities (n x K)
@@ -68,7 +68,7 @@ pub struct GmmResult {
 #[non_exhaustive]
 pub struct GmmClusterResult {
     /// Best GMM result (by BIC or ICL)
-    pub best: GmmResult,
+    pub best: GmmFitResult,
     /// BIC values for each K tried
     pub bic_values: Vec<(usize, f64)>,
     /// ICL values for each K tried
@@ -78,4 +78,4 @@ pub struct GmmClusterResult {
 // Re-export all public items
 pub use cluster::{gmm_cluster, gmm_cluster_with_config, predict_gmm, GmmClusterConfig};
 pub use em::gmm_em;
-pub use subspace::{funhddC_cluster, FunHddcConfig, FunHddcResult};
+pub use subspace::{fun_hddc_cluster, FunHddcConfig, FunHddcResult};
