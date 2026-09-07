@@ -91,10 +91,10 @@ Plans:
   2. Docs are refreshed to the new surface; whole-crate gates are green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, and a `--features serde` build.
   3. All 28 examples + doctests compile/pass against the new surface — the compile-time proof the breaking changes are complete.
   4. Release-readiness is verified and documented; the `git tag v0.41.0` push → crates.io publish is left as the final operator-driven step (this phase does not tag/publish).
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 85-01: Bump version + CHANGELOG `[0.41.0]` (breaking changes called out) + docs refresh + whole-crate gate verification
+- [ ] 85-01-PLAN.md — Bump version 0.40.0→0.41.0 + CHANGELOG `[0.41.0]` breaking entry + docs refresh + whole-crate release-readiness verification (no tag/publish)
 
 ## Progress
 
