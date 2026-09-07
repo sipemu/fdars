@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
-current_phase: 85
-status: completed
+status: Awaiting next milestone
 stopped_at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
-last_updated: "2026-09-07T13:44:34.540Z"
+last_updated: "2026-09-07T13:52:39.047Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 85 marked complete
-state_head: faa91e9deace5923bb03f9f53ea65c0cf6140eec
+last_activity_desc: Milestone v0.41.0 completed and archived
+state_head: 8d059338b3f1172dc814123bffc505604486b285
 progress:
   total_phases: 5
-  completed_phases: 5
+  completed_phases: 3
   total_plans: 9
   completed_plans: 9
+current_phase: 85
 current_phase_name: Release Preparation & Verification
 ---
 
@@ -28,12 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: 85 — COMPLETE
-Plan: 1 of 1
-Status: Phase 85 complete
-Last activity: 2026-09-07 — Phase 85 marked complete
-
-Progress: [░░░░░░░░░░] 0%
+Phase: Milestone v0.41.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-07 — Milestone v0.41.0 completed and archived
 
 ## Milestone Roadmap (v0.41.0)
 
@@ -122,4 +120,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Review the roadmap, then plan Phase 81 with `/gsd-plan-phase 81`
+- Start the next milestone with /gsd-new-milestone

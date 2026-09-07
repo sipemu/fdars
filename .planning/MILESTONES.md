@@ -1,5 +1,24 @@
 # Milestones
 
+## v0.41.0 1.0 API Stabilization Pass (Shipped: 2026-09-07)
+
+**Phases completed:** 5 phases (81–85), 9 plans. Milestone audit: 9/9 requirements satisfied, cross-phase integration INTEGRATED. The **first breaking milestone** after a long additive-only run (legitimate under 0.x). Release-ready — operator tag/publish pending.
+
+**Key accomplishments:**
+
+- **AUDIT-01:** Produced a ranked, user-approved breaking-change inventory (`81-AUDIT-INVENTORY.md`, `AUD-01`–`AUD-23`) across all four scopes (deprecated-form removal, accidental `pub` exposure, `#[non_exhaustive]` gaps, naming). User approved a reduced scope at the gate; the concrete Phase 82/83 change sets were drawn from it, deferred items routed to STAB-03.
+- **API-01:** Hard-removed the 6 deprecated forms (`mean_2d`, `fanova`, `random_tukey_2d`, `random_projection_2d`, `fraiman_muniz_2d`, `modal_2d`) + all re-exports; migrated every caller/test/doctest to `Dim`/`_seeded` (`fanova_seeded(…, 42)` preserving the legacy LCG bit-for-bit).
+- **API-02/03:** Sealed 2 accidentally-`pub` helpers to `pub(crate)`; added `#[non_exhaustive]` to 10 public enums + 2 result structs (0 catch-all match arms needed).
+- **API-04:** Renamed `funhddC_cluster`→`fun_hddc_cluster`, `FosrResult2d`→`Fosr2dResult`, `GmmResult`→`GmmFitResult`; collapsed `deriv_1d`/`deriv_2d` and `lp_self`/`lp_cross` `_1d`/`_2d` into grid-enum dispatchers (`DerivDomain`/`DerivResult`, `LpDomain`) routing to byte-identical private `_impl` bodies — code review confirmed no numeric change.
+- **STAB-01/02/03:** Authored `documentation/STABILITY.md` (semver + two-tier MSRV policy 1.81/1.84) and `documentation/ROADMAP-TO-1.0.md` (1.0 gap checklist enumerating every deferred item).
+- **REL-01:** Bumped 0.40.0 → 0.41.0, wrote the breaking-framed CHANGELOG `[0.41.0]` entry (root + crate-shipped changelog, the latter synced from a stale 0.34.0 during audit), refreshed docs; whole-crate gates green (2850 lib + doctests, clippy `--all-targets`, serde build, 28 examples, `cargo package`).
+
+**Known tech debt (→ STAB-03 / ROADMAP-TO-1.0.md):** the pre-existing `co_cluster`/`svd_sign` golden-test flake (fails under full parallel `cargo test`, passes in isolation; REL-01 verified with this documented caveat); deferred audit entries `AUD-09`/`AUD-12`/`AUD-13` (wire module, config-struct non_exhaustive) and `AUD-19`–`AUD-23` (optional naming).
+
+**Ship:** operator-driven — `git tag v0.41.0` → `git push origin v0.41.0` → `release.yml` publishes to crates.io. This milestone prepared + verified release-readiness only; NO tag/publish was performed. GSD auto-tag (`git.create_tag`) was disabled for this repo because `release.yml` couples tag-push to publish.
+
+---
+
 ## v0.40.0 Correctness & Release Hardening (Shipped: 2026-09-07)
 
 **Phases completed:** 3 phases (78–80), 5 plans. Milestone audit: 5/5 requirements satisfied, integration clean. Release-ready — operator tag/publish pending.

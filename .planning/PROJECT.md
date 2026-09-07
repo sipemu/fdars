@@ -8,22 +8,17 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.41.0 1.0 API Stabilization Pass
+## Current State
 
-**Goal:** The final breaking-API-cleanup milestone before a deliberate future 1.0 cut — audit the entire public surface, then land the breaking changes now while still in 0.x, plus produce the non-code stability deliverables that will govern the eventual 1.0. Ships as 0.41.0 (0.x → breaking changes permitted under semver).
+**Last shipped: v0.41.0 1.0 API Stabilization Pass — code-complete 2026-09-07** (5 phases 81–85, 9 plans; milestone audit PASSED 9/9 requirements, integration INTEGRATED). The first **breaking** milestone after a long additive-only run. **Next milestone: TBD** — start with `/gsd-new-milestone`. The governing forward-looking artifact is now `documentation/ROADMAP-TO-1.0.md` (the 1.0 gap checklist); the eventual **1.0-CUT** is the deferred terminal goal once that checklist clears.
 
-**Target work (breaking — code):**
-- **Remove the 6 deprecated forms (APIB-01)** — `mean_2d`, `fanova`, `random_tukey_2d`, `random_projection_2d`, `fraiman_muniz_2d`, `modal_2d` → their `Dim`/`_seeded` replacements; migrate internal callers, tests, and example 21.
-- **Prune the pub surface** — find + seal accidental/unintended public exposure (`pub` → `pub(crate)`, leaked helper types) to shrink what a future 1.0 must commit to.
-- **`#[non_exhaustive]` review** — correct coverage on public enums/result structs so post-1.0 additions stay non-breaking.
-- **Naming unification** — unify `_1d`/`_2d`/`_nd` suffix sprawl + config/result naming into consistent dispatchers (the largest, highest-risk item; touches many fns + all 28 examples + docs).
+**Operator ship step remaining:** `git tag v0.41.0` → `git push origin v0.41.0` → `release.yml` publishes to crates.io. This milestone prepared + verified release-readiness only. NOTE: GSD auto-tag (`git.create_tag`) is disabled for this repo because `release.yml` couples tag-push to an automatic crates.io publish — tag deliberately, on a disk-healthy machine after a clean full `cargo test`.
 
-**Target work (non-code deliverables):**
-- **Semver/stability policy** — documented policy (what "stable" means, deprecation process) governing the eventual 1.0.
-- **MSRV finalization** — review + pin the minimum-supported Rust version policy (1.81, 1.84-for-`linalg`).
-- **1.0 gap checklist** — what remains before a real 1.0 cut, scoping the next milestone.
+## Prior Milestone: v0.41.0 1.0 API Stabilization Pass — SHIPPED 2026-09-07
 
-**Structure:** Opens with an audit/inventory phase producing a ranked breaking-change list (**user approves the concrete list before any execution**), then per-category execution phases, then a policy/docs + ship phase. First **breaking** milestone — departs from the long additive-only run; legitimate under 0.x. No new crate dependency. Workspace is `fdars-core` only (external `fdars-r` is the R maintainer's concern; its `FdMatrix` migration stays a separate todo). All 28 examples + doctests updated (the compile-time proof the renames are complete). Gates: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, + a `--features serde` build guard. Phase numbering continues …80 → **Phase 81 onward**. No domain research (internal API audit).
+**Outcome:** Code-complete (5 phases 81–85, 9 plans; audit 9/9 requirements, integration INTEGRATED). The first breaking milestone after the additive run — API SHAPE only, no numeric/behavioral change. Removed the 6 deprecated forms (API-01); sealed 2 accidental-`pub` helpers + added `#[non_exhaustive]` to 10 enums + 2 result structs (API-02/03); renamed `funhddC_cluster`/`FosrResult2d`/`GmmResult` and collapsed `deriv`/`lp` `_1d`/`_2d` into grid-enum dispatchers (`DerivDomain`/`DerivResult`/`LpDomain`) routing to byte-identical private `_impl` bodies (API-04); authored `documentation/STABILITY.md` (semver + MSRV policy 1.81/1.84) and `documentation/ROADMAP-TO-1.0.md` (1.0 gap checklist) (STAB-01/02/03); bumped 0.40.0 → 0.41.0 + breaking CHANGELOG `[0.41.0]` (REL-01). Whole-crate gates green (2850 lib + doctests, clippy `--all-targets`, serde build, 28 examples, `cargo package`). **REL-01 verified with a documented caveat:** the pre-existing `co_cluster`/`svd_sign` golden flake (fails under full parallel `cargo test`, passes in isolation) is logged in ROADMAP-TO-1.0.md for a pre-1.0 fix. Deferred to STAB-03: `wire` module (AUD-09/13), config-struct non_exhaustive (AUD-12), optional naming (AUD-19–23). See [`milestones/v0.41.0-ROADMAP.md`](milestones/v0.41.0-ROADMAP.md).
+
+**Goal (as shipped):** Audit the entire public surface, then land the breaking cleanups now while still in 0.x, plus produce the non-code stability deliverables (semver policy, MSRV, 1.0 gap checklist) that will govern a deliberate future 1.0 cut. Ships as 0.41.0 (NOT 1.0). Opened with an audit/inventory phase whose ranked breaking-change list was **user-approved before any execution** (reduced scope allowed), then per-category execution phases, then policy/docs + a release-prep phase. No new crate dependency; `fdars-core` only. Phase numbering continued …80 → 81.
 
 ## Prior Milestone: v0.40.0 Correctness & Release Hardening — SHIPPED 2026-09-07
 
