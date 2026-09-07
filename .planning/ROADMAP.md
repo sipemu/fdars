@@ -18,7 +18,7 @@ v0.41.0 is fdars' **first breaking milestone** after a long additive-only run �
 - [x] **Phase 81: API Audit & Deprecated-Form Removal** - Produce the user-approved ranked breaking-change inventory; remove the 6 deprecated forms
 - [x] **Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage** - Seal accidental `pub` exposure and correct `#[non_exhaustive]` per the approved inventory
 - [x] **Phase 83: Naming Unification** - Unify `_1d`/`_2d`/`_nd` suffix sprawl + config/result naming into consistent dispatchers (largest, highest-risk)
-- [ ] **Phase 84: Stability Deliverables** - Semver/stability policy, MSRV finalization, and 1.0 gap checklist (non-code)
+- [x] **Phase 84: Stability Deliverables** - Semver/stability policy, MSRV finalization, and 1.0 gap checklist (non-code)
 - [ ] **Phase 85: Release Preparation & Verification** - Bump 0.40.0 → 0.41.0, CHANGELOG with breaking changes, docs refresh, whole-crate gates green
 
 ## Phase Details
@@ -106,5 +106,5 @@ Phases execute in numeric order: 81 → 82 → 83 → 84 → 85. Phase 81 (audit
 | 81. API Audit & Deprecated-Form Removal | 2/2 | ✓ Complete | 2026-09-07 |
 | 82. Public-Surface Sealing & Non-Exhaustive Coverage | 2/2 | ✓ Complete | 2026-09-07 |
 | 83. Naming Unification | 3/3 | ✓ Complete | 2026-09-07 |
-| 84. Stability Deliverables | 0/1 | Not started | - |
+| 84. Stability Deliverables | 1/1 | ✓ Complete | 2026-09-07 |
 | 85. Release Preparation & Verification | 0/1 | Not started | - |
