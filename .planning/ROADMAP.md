@@ -16,7 +16,7 @@ v0.41.0 is fdars' **first breaking milestone** after a long additive-only run �
 - Decimal phases (81.1, 81.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 81: API Audit & Deprecated-Form Removal** - Produce the user-approved ranked breaking-change inventory; remove the 6 deprecated forms
-- [ ] **Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage** - Seal accidental `pub` exposure and correct `#[non_exhaustive]` per the approved inventory
+- [x] **Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage** - Seal accidental `pub` exposure and correct `#[non_exhaustive]` per the approved inventory
 - [ ] **Phase 83: Naming Unification** - Unify `_1d`/`_2d`/`_nd` suffix sprawl + config/result naming into consistent dispatchers (largest, highest-risk)
 - [ ] **Phase 84: Stability Deliverables** - Semver/stability policy, MSRV finalization, and 1.0 gap checklist (non-code)
 - [ ] **Phase 85: Release Preparation & Verification** - Bump 0.40.0 → 0.41.0, CHANGELOG with breaking changes, docs refresh, whole-crate gates green
@@ -50,8 +50,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 82-01: Seal accidental `pub` exposure per approved inventory (API-02)
-- [ ] 82-02: Correct `#[non_exhaustive]` coverage on public enums/result structs (API-03)
+- [x] 82-01: Seal accidental `pub` exposure per approved inventory (API-02)
+- [x] 82-02: Correct `#[non_exhaustive]` coverage on public enums/result structs (API-03)
 
 ### Phase 83: Naming Unification
 **Goal**: The approved naming unification is applied — `_1d`/`_2d`/`_nd` suffix sprawl and config/result naming collapse into consistent dispatchers across the whole crate.
@@ -102,7 +102,7 @@ Phases execute in numeric order: 81 → 82 → 83 → 84 → 85. Phase 81 (audit
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 81. API Audit & Deprecated-Form Removal | 2/2 | ✓ Complete | 2026-09-07 |
-| 82. Public-Surface Sealing & Non-Exhaustive Coverage | 0/2 | Not started | - |
+| 82. Public-Surface Sealing & Non-Exhaustive Coverage | 2/2 | ✓ Complete | 2026-09-07 |
 | 83. Naming Unification | 0/1 | Not started | - |
 | 84. Stability Deliverables | 0/1 | Not started | - |
 | 85. Release Preparation & Verification | 0/1 | Not started | - |
