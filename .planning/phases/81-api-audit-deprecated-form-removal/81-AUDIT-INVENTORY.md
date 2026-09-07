@@ -103,7 +103,20 @@ The crate is already heavily covered (~330 occurrences). Gaps concentrate in **e
 
 ## Approval
 
-_(To be filled by the orchestrator after the user's decision at the Task 3 human-verify checkpoint. Record: date; APPROVED `AUD-NN` list; DEFERRED `AUD-NN` list and their route (e.g. STAB-03 / Phase 84); any user notes.)_
+**Approved:** 2026-09-07 (user, at the Phase 81 human-verify checkpoint).
+
+**APPROVED — proceed in Phases 82/83:**
+- Scope A (`AUD-01`–`AUD-06`) — deprecated-form removal, executed by plan 81-02 (informational; no approval was required).
+- Scope B (Phase 82 / API-02): `AUD-07` (seal `sort_nan_safe`), `AUD-08` (seal `solve_gaussian_pub`).
+- Scope C (Phase 82 / API-03): `AUD-10` (add `#[non_exhaustive]` to the 10 enums), `AUD-11` (add `#[non_exhaustive]` to `OptimBandwidthResult` + `KnnCvResult`).
+- Scope D (Phase 83 / API-04): `AUD-14` (`funhddC_cluster` → `fun_hddc_cluster`), `AUD-15` (`FosrResult2d` → `Fosr2dResult`), `AUD-16` (`GmmResult` → `GmmFitResult`), `AUD-17` (`deriv_1d`/`_2d` → `deriv(…, Dim)`), `AUD-18` (`lp_self`/`lp_cross` → `Dim` dispatchers).
+
+**DEFERRED — route to STAB-03 1.0 gap checklist (Phase 84), NOT forced into Phases 82/83:**
+- `AUD-09` + `AUD-13` — **`wire` module kept public** as a deliberate (currently-unwired) JS/R interchange seam; revisit/wire-up-or-seal before the 1.0 cut. (`AUD-13` non_exhaustive on `wire` structs is moot while `wire` stays public.)
+- `AUD-12` — config-struct `#[non_exhaustive]` deferred: breaks external `Config {..}` literals without a builder/`Default` path; the "seal configs + add construction escape hatch" work is scoped to STAB-03.
+- `AUD-19` (`geometric_median`), `AUD-20` (`hausdorff`), `AUD-21` (`functional_spatial`), `AUD-22` (lone-`_1d`/`_2d` suffix batch — the largest/highest-risk edit), `AUD-23` (`LpeerResult` → `LocalPeerResult`) — optional naming, deferred to STAB-03.
+
+**User notes:** Accepted orchestrator recommendations across all four decisions (Scope B/C core approved; `wire` kept public; configs deferred; naming = recommended-only). Reduced-scope approval exercised on naming (Phase 83 = `AUD-14`–`AUD-18` only).
 
 ---
 
