@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v0.40.0
 milestone_name: Correctness & Release Hardening
-current_phase: 79
-current_phase_name: Serde Feature Repair
-status: phase_complete
+current_phase: 80
+current_phase_name: Release Hardening & Ship v0.40.0
+status: planning
 stopped_at: Phase 79 complete, ready to plan Phase 80
-last_updated: "2026-09-07T00:00:00.000Z"
+last_updated: "2026-09-07T05:44:25.096Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 79 (BUILD-01) complete — serde derives added to 5 types, round-trip test green, full serde suite 2862 passed
-state_head: 02f4d652
+last_activity_desc: Phase 79 complete, transitioned to Phase 80
+state_head: 51abecc006a8a6bc054752b41ac74ce1940d5af1
 progress:
   total_phases: 3
   completed_phases: 2
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: 79 (Serde Feature Repair) — COMPLETE
-Plan: 1 of 1
-Status: Phase 79 complete; Phase 80 (Release Hardening & Ship v0.40.0) is next
-Last activity: 2026-09-07 — Phase 79 complete (BUILD-01 satisfied)
+Phase: 80 — Release Hardening & Ship v0.40.0
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-07 — Phase 79 complete, transitioned to Phase 80
 
 ## Milestone Roadmap (v0.40.0)
 
@@ -129,7 +129,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-06T20:10:00.000Z
-Stopped at: Phase 78 complete, ready to plan Phase 79
+Stopped at: Phase 79 complete, ready to plan Phase 80
 Resume file: None
 
 ## Operator Next Steps

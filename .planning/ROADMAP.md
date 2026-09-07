@@ -37,7 +37,7 @@
 **Milestone Goal:** Fix the correctness bugs and build breakage discovered during recent milestones, formally validate the outstanding v0.39.0 phases, then bump/tag/publish — folding the unpublished v0.39.0 forward-mode AD core plus these fixes into fdars' first crates.io release since v0.38.0. Implementation milestone — real `fdars-core/src/` changes scoped to fixes/hardening (no new algorithms); additive/non-breaking (protects R + WASM bindings + 28 examples); no new crate dependency; behavior-preserving except where correcting the acknowledged `soft_dtw` bug. Real code → this milestone **does** get a `v0.40.0` git tag. Phase numbering continues from v0.39.0 (…77) → **Phase 78 onward**.
 
 - [x] **Phase 78: Gradient Correctness — soft_dtw Fix & Backward-Pass Audit** - Fix the `soft_dtw_backward` endpoint-seed bug, add a regression test, and sweep every hand-written gradient pass for analogous boundary-seed defects (CORR-01, CORR-02) (completed 2026-09-07)
-- [ ] **Phase 79: Serde Feature Repair** - Restore `cargo build --features serde` by adding conditional serde derives to `ClassifFit` and embedded types, with a CI guard against re-breakage (BUILD-01)
+- [x] **Phase 79: Serde Feature Repair** - Restore `cargo build --features serde` by adding conditional serde derives to `ClassifFit` and embedded types, with a CI guard against re-breakage (BUILD-01) (completed 2026-09-07)
 - [ ] **Phase 80: Release Hardening & Ship v0.40.0** - Nyquist sign-off of phases 75/76/77, crate bump 0.38.0 → 0.40.0, CHANGELOG + docs refresh, all whole-crate gates green — release-ready for the operator `v0.40.0` tag → crates.io publish (REL-01, REL-02)
 
 ## Phase Details
@@ -73,7 +73,7 @@
 
 **Plans**: 1 plan
 
-- [ ] 79-01-PLAN.md — Add conditional serde derives to ClassifFit (+ embedded ClassifResult/ClassifMethod), NonConformityScore, JointFpcaResult; land a serde round-trip test; green both build configs
+- [x] 79-01-PLAN.md — Add conditional serde derives to ClassifFit (+ embedded ClassifResult/ClassifMethod), NonConformityScore, JointFpcaResult; land a serde round-trip test; green both build configs
 
 ### Phase 80: Release Hardening & Ship v0.40.0
 
@@ -128,7 +128,7 @@ Earlier milestones (v0.14.0–v0.36.0) are shipped and archived — see the Mile
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 78. Gradient Correctness — soft_dtw Fix & Backward-Pass Audit | v0.40.0 | 2/2 | Complete    | 2026-09-07 |
-| 79. Serde Feature Repair | v0.40.0 | 0/TBD | Not started | - |
+| 79. Serde Feature Repair | v0.40.0 | 1/1 | Complete    | 2026-09-07 |
 | 80. Release Hardening & Ship v0.40.0 | v0.40.0 | 0/TBD | Not started | - |
 
 ## Status

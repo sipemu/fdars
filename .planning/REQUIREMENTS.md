@@ -14,7 +14,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Build & Features
 
-- [ ] **BUILD-01**: `cargo build --features serde` compiles cleanly again (broken since Phase 60). `ClassifFit` and any types it embeds that currently lack serde support gain conditional `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]` derives, consistent with the crate's existing serde convention. A guard — a `--features serde` build/round-trip check runnable in CI — prevents silent re-breakage.
+- [x] **BUILD-01**: `cargo build --features serde` compiles cleanly again (broken since Phase 60). `ClassifFit` and any types it embeds that currently lack serde support gain conditional `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]` derives, consistent with the crate's existing serde convention. A guard — a `--features serde` build/round-trip check runnable in CI — prevents silent re-breakage.
 
 ### Release & Validation
 
@@ -49,7 +49,7 @@ Explicitly excluded from v0.40.0.
 |-------------|-------|--------|
 | CORR-01 | Phase 78 | Complete |
 | CORR-02 | Phase 78 | Complete |
-| BUILD-01 | Phase 79 | Pending |
+| BUILD-01 | Phase 79 | Complete |
 | REL-01 | Phase 80 | Pending |
 | REL-02 | Phase 80 | Pending |
 
