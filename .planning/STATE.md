@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.40.0
-milestone_name: Correctness & Release Hardening
-status: Awaiting next milestone
-stopped_at: Phase 80 complete — all phases complete
-last_updated: "2026-09-07T07:20:52.500Z"
+milestone: v0.41.0
+milestone_name: 1.0 API Stabilization Pass
+status: planning
+last_updated: "2026-09-07T07:57:46.930Z"
 last_activity: 2026-09-07
-last_activity_desc: Milestone v0.40.0 completed and archived
-state_head: 4edf0dbca933871cb3f0318592364a29403dab1f
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
-current_phase: 80
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: Milestone v0.40.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-07 — Milestone v0.40.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-07 — Milestone v0.41.0 started
 
 ## Milestone Roadmap (v0.40.0)
 
