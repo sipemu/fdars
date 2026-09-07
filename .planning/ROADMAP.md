@@ -88,7 +88,10 @@
   4. The whole-crate gates pass: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo test`.
   5. The final `git tag v0.40.0` push → crates.io publish via `release.yml` is documented in the phase SUMMARY as the operator-driven step, gated on all prior phases being green (the phase prepares and verifies release-readiness, it does not itself tag/publish).
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+- [ ] 80-01-PLAN.md — REL-01: lightweight Nyquist sign-off of phases 75/76/77 VALIDATION.md (draft → validated where coverage holds; record any gap)
+- [ ] 80-02-PLAN.md — REL-02: version bump 0.38.0 → 0.40.0, CHANGELOG [0.39.0]+[0.40.0], README/documentation refresh, whole-crate gates green, operator ship-steps in SUMMARY
 
 <details>
 <summary>✅ v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff) (Phases 75–77) — SHIPPED 2026-09-06</summary>
