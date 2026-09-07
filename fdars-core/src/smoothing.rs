@@ -333,7 +333,7 @@ fn solve_gaussian(a: &mut [f64], b: &mut [f64], p: usize) -> Vec<f64> {
 /// Public wrapper for use by other modules (e.g., `fregre_basis_cv`).
 /// `a` is a p×p matrix in row-major order, `b` is the RHS vector of length p.
 /// Both are modified in place.
-pub fn solve_gaussian_pub(a: &mut [f64], b: &mut [f64], p: usize) -> Vec<f64> {
+pub(crate) fn solve_gaussian_pub(a: &mut [f64], b: &mut [f64], p: usize) -> Vec<f64> {
     solve_gaussian(a, b, p)
 }
 
