@@ -62,10 +62,12 @@ Plans:
   2. All call sites, all 28 examples, and all doctests are updated to the new names; the crate compiles.
   3. The whole-crate test suite passes with no numeric/behavioral change — the breaking is limited to API shape.
   4. Whole-crate gates (fmt, `clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, `--features serde` build) are green.
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 83-01: Apply the approved naming unification (dispatchers), migrate call sites/examples/doctests
+- [ ] 83-01-PLAN.md — AUD-14/15/16 simple hard renames (funhddC_cluster→fun_hddc_cluster, FosrResult2d→Fosr2dResult, GmmResult→GmmFitResult)
+- [ ] 83-02-PLAN.md — AUD-17 deriv grid-enum collapse (deriv_1d/deriv_2d → deriv via DerivDomain/DerivResult)
+- [ ] 83-03-PLAN.md — AUD-18 lp grid-enum collapse (lp_self/cross_1d/2d → lp_self/lp_cross via LpDomain)
 
 ### Phase 84: Stability Deliverables
 **Goal**: The non-code stability deliverables that will govern the eventual 1.0 cut exist — semver/stability policy, a finalized MSRV policy, and a 1.0 gap checklist.
