@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
 status: Awaiting next milestone
-stopped_at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
+stopped_at: v0.41.0 milestone complete + archived (audit 9/9, integration INTEGRATED); awaiting /gsd-new-milestone
 last_updated: "2026-09-07T13:52:39.047Z"
 last_activity: 2026-09-07
 last_activity_desc: Milestone v0.41.0 completed and archived
 state_head: 8d059338b3f1172dc814123bffc505604486b285
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 5
   total_plans: 9
   completed_plans: 9
-current_phase: 85
-current_phase_name: Release Preparation & Verification
+current_phase: null
+current_phase_name: null
 ---
 
 # Project State
