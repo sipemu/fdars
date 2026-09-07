@@ -1,4 +1,4 @@
-use crate::fdata::deriv_1d;
+use crate::fdata::{deriv, DerivDomain, DerivResult};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
@@ -111,7 +111,11 @@ pub fn detect_peaks(
     // Compute first derivative
     let work_mat = FdMatrix::from_column_major(work_data.clone(), n, m)
         .expect("dimension invariant: data.len() == n * m");
-    let deriv1 = deriv_1d(&work_mat, argvals, 1).into_vec();
+    let DerivResult::OneD(deriv1_mat) = deriv(&work_mat, DerivDomain::OneD { argvals, nderiv: 1 })
+    else {
+        unreachable!("1D domain yields a 1D result");
+    };
+    let deriv1 = deriv1_mat.into_vec();
 
     // Compute data range for prominence normalization
     let data_range: f64 = {

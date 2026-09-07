@@ -147,7 +147,7 @@ pub fn cross_covariance(x: &FdMatrix, y: &FdMatrix) -> Result<FdMatrix, FdarErro
 /// FPCA of the *derivatives* of a functional sample.
 ///
 /// Differentiates each curve `nderiv` times (finite differences via
-/// [`crate::fdata::deriv_1d`]) and then runs the dense FPCA engine
+/// [`crate::fdata::deriv`]) and then runs the dense FPCA engine
 /// ([`fdata_to_pc_1d`]) on the differentiated sample. The returned [`FpcaResult`]
 /// (loadings, scores, mean, singular values) therefore describes the
 /// **differentiated process**. Passing `nderiv = 0` differentiates nothing and is
@@ -168,7 +168,7 @@ pub fn cross_covariance(x: &FdMatrix, y: &FdMatrix) -> Result<FdMatrix, FdarErro
 /// Returns [`FdarError`] for an empty matrix (`n == 0` or `m == 0`), an `argvals`
 /// length that does not match the number of evaluation points, `ncomp < 1`, or
 /// `nderiv > 0` with fewer than two columns (a numerical derivative needs ≥ 2
-/// points). Inputs are validated **before** calling `deriv_1d`, which otherwise
+/// points). Inputs are validated **before** calling `deriv`, which otherwise
 /// silently returns a zero matrix on malformed input.
 ///
 /// # Examples
@@ -193,7 +193,7 @@ pub fn fpca_der(
     nderiv: usize,
 ) -> Result<FpcaResult, FdarError> {
     let (n, m) = data.shape();
-    // Validate BEFORE calling deriv_1d (which silently returns zeros on bad input).
+    // Validate BEFORE calling deriv (which silently returns zeros on bad input).
     if n == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
@@ -228,8 +228,11 @@ pub fn fpca_der(
         });
     }
 
-    let deriv = fdata::deriv_1d(data, argvals, nderiv);
-    fdata_to_pc_1d(&deriv, ncomp, argvals)
+    let deriv_mat = match fdata::deriv(data, fdata::DerivDomain::OneD { argvals, nderiv }) {
+        fdata::DerivResult::OneD(m) => m,
+        _ => unreachable!("1D domain yields a 1D result"),
+    };
+    fdata_to_pc_1d(&deriv_mat, ncomp, argvals)
 }
 
 /// Dynamical (functional) correlation between two paired functional samples.
@@ -930,7 +933,16 @@ mod tests {
 
         // Reconstruct the centered differentiated curves from the leading PC:
         // deriv_centered ≈ scores[:,0] outer rotation[:,0].
-        let deriv = fdata::deriv_1d(&data, &argvals, 1);
+        let deriv = match fdata::deriv(
+            &data,
+            fdata::DerivDomain::OneD {
+                argvals: &argvals,
+                nderiv: 1,
+            },
+        ) {
+            fdata::DerivResult::OneD(m) => m,
+            _ => unreachable!("1D domain yields a 1D result"),
+        };
         // center derivative columns
         let dc = fdata::center_1d(&deriv);
         let mut sse = 0.0;

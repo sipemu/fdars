@@ -66,7 +66,15 @@ pub fn srsf_transform_nd(data: &FdCurveSet, argvals: &[f64]) -> FdCurveSet {
     let derivs: Vec<FdMatrix> = data
         .dims
         .iter()
-        .map(|dim_mat| crate::fdata::deriv_1d(dim_mat, argvals, 1))
+        .map(|dim_mat| {
+            match crate::fdata::deriv(
+                dim_mat,
+                crate::fdata::DerivDomain::OneD { argvals, nderiv: 1 },
+            ) {
+                crate::fdata::DerivResult::OneD(m) => m,
+                _ => unreachable!("1D domain yields a 1D result"),
+            }
+        })
         .collect();
 
     let mut result_dims: Vec<FdMatrix> = (0..d).map(|_| FdMatrix::zeros(n, m)).collect();

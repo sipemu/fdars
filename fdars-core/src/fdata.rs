@@ -798,30 +798,6 @@ pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
     }
 }
 
-/// Compute numerical derivative of functional data (parallelized over rows).
-///
-/// # Arguments
-/// * `data` - Functional data matrix (n x m)
-/// * `argvals` - Evaluation points
-/// * `nderiv` - Order of derivative
-///
-/// # Returns
-/// Derivative data matrix
-///
-/// # Examples
-///
-/// ```
-/// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::fdata::deriv_1d;
-///
-/// // Linear function f(t) = t on [0, 1], derivative should be ~1
-/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
-/// let data = FdMatrix::from_column_major(argvals.clone(), 1, 20).unwrap();
-/// let deriv = deriv_1d(&data, &argvals, 1);
-/// assert_eq!(deriv.shape(), (1, 20));
-/// // Interior points should have derivative close to 1.0
-/// assert!((deriv[(0, 10)] - 1.0).abs() < 0.1);
-/// ```
 /// Compute one derivative step: forward/central/backward differences written column-wise.
 fn deriv_1d_step(
     current: &FdMatrix,
@@ -859,7 +835,97 @@ fn deriv_1d_step(
     next
 }
 
-pub fn deriv_1d(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
+/// Domain specification for [`deriv`], carrying the dimension-specific grid and parameters.
+///
+/// - `OneD` selects 1D numerical differentiation on a single `argvals` grid at order `nderiv`.
+/// - `TwoD` selects 2D partial differentiation on separate `argvals_s`/`argvals_t` grids of
+///   sizes `m1`/`m2`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DerivDomain<'a> {
+    /// 1D differentiation on a single evaluation grid.
+    OneD {
+        /// Evaluation points (length m).
+        argvals: &'a [f64],
+        /// Order of the derivative.
+        nderiv: usize,
+    },
+    /// 2D partial differentiation on a tensor-product grid.
+    TwoD {
+        /// Grid points in the s direction (length m1).
+        argvals_s: &'a [f64],
+        /// Grid points in the t direction (length m2).
+        argvals_t: &'a [f64],
+        /// Grid size in the s direction.
+        m1: usize,
+        /// Grid size in the t direction.
+        m2: usize,
+    },
+}
+
+/// Result of [`deriv`], unifying the 1D and 2D output shapes.
+///
+/// - `OneD` holds the 1D derivative matrix.
+/// - `TwoD` holds the 2D partial-derivative bundle.
+/// - `None` represents the 2D bad-dimension guard case (no numeric data is invented).
+#[derive(Debug, Clone, PartialEq)]
+pub enum DerivResult {
+    /// 1D derivative matrix.
+    OneD(FdMatrix),
+    /// 2D partial derivatives (∂/∂s, ∂/∂t, ∂²/∂s∂t).
+    TwoD(Deriv2DResult),
+    /// Bad-dimension 2D input (the former 2D `None` case).
+    None,
+}
+
+/// Compute numerical derivatives of functional data (parallelized over rows).
+///
+/// A single dispatcher over the `DerivDomain` grid enum: `OneD` routes to 1D differentiation,
+/// `TwoD` routes to 2D partial differentiation. Numeric output is identical to the former
+/// suffixed 1D/2D differentiation functions.
+///
+/// # Arguments
+/// * `data` - Functional data matrix
+/// * `domain` - Grid specification (1D or 2D) with dimension-specific parameters
+///
+/// # Returns
+/// A [`DerivResult`]: `OneD(FdMatrix)` for 1D, `TwoD(Deriv2DResult)` for valid 2D input, or
+/// `None` for the 2D bad-dimension guard case.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::fdata::{deriv, DerivDomain, DerivResult};
+///
+/// // Linear function f(t) = t on [0, 1], derivative should be ~1
+/// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
+/// let data = FdMatrix::from_column_major(argvals.clone(), 1, 20).unwrap();
+/// let DerivResult::OneD(d) = deriv(&data, DerivDomain::OneD { argvals: &argvals, nderiv: 1 })
+/// else {
+///     panic!("expected 1D result");
+/// };
+/// assert_eq!(d.shape(), (1, 20));
+/// // Interior points should have derivative close to 1.0
+/// assert!((d[(0, 10)] - 1.0).abs() < 0.1);
+/// ```
+#[must_use]
+pub fn deriv(data: &FdMatrix, domain: DerivDomain<'_>) -> DerivResult {
+    match domain {
+        DerivDomain::OneD { argvals, nderiv } => {
+            DerivResult::OneD(deriv_1d_impl(data, argvals, nderiv))
+        }
+        DerivDomain::TwoD {
+            argvals_s,
+            argvals_t,
+            m1,
+            m2,
+        } => deriv_2d_impl(data, argvals_s, argvals_t, m1, m2)
+            .map(DerivResult::TwoD)
+            .unwrap_or(DerivResult::None),
+    }
+}
+
+fn deriv_1d_impl(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> FdMatrix {
     let (n, m) = data.shape();
     if n == 0 || m < 2 || argvals.len() != m {
         return FdMatrix::zeros(n, m);
@@ -941,7 +1007,7 @@ fn reassemble_colmajor(rows: &[Vec<f64>], n: usize, ncol: usize) -> FdMatrix {
 /// * `argvals_t` - Grid points in t direction (length m2)
 /// * `m1` - Grid size in s direction
 /// * `m2` - Grid size in t direction
-pub fn deriv_2d(
+fn deriv_2d_impl(
     data: &FdMatrix,
     argvals_s: &[f64],
     argvals_t: &[f64],
@@ -1155,7 +1221,15 @@ mod tests {
         let argvals = uniform_grid(21);
         let data = argvals.clone();
         let mat = FdMatrix::from_column_major(data, 1, 21).unwrap();
-        let deriv = deriv_1d(&mat, &argvals, 1);
+        let DerivResult::OneD(deriv) = deriv(
+            &mat,
+            DerivDomain::OneD {
+                argvals: &argvals,
+                nderiv: 1,
+            },
+        ) else {
+            panic!("expected 1D result");
+        };
         // Interior points should have derivative close to 1
         for j in 2..19 {
             assert!(
@@ -1171,7 +1245,15 @@ mod tests {
         let argvals = uniform_grid(51);
         let data: Vec<f64> = argvals.iter().map(|&x| x * x).collect();
         let mat = FdMatrix::from_column_major(data, 1, 51).unwrap();
-        let deriv = deriv_1d(&mat, &argvals, 1);
+        let DerivResult::OneD(deriv) = deriv(
+            &mat,
+            DerivDomain::OneD {
+                argvals: &argvals,
+                nderiv: 1,
+            },
+        ) else {
+            panic!("expected 1D result");
+        };
         // Check interior points
         for j in 5..45 {
             let expected = 2.0 * argvals[j];
@@ -1184,7 +1266,15 @@ mod tests {
 
     #[test]
     fn test_deriv_1d_invalid() {
-        let result = deriv_1d(&FdMatrix::zeros(0, 0), &[], 1);
+        let DerivResult::OneD(result) = deriv(
+            &FdMatrix::zeros(0, 0),
+            DerivDomain::OneD {
+                argvals: &[],
+                nderiv: 1,
+            },
+        ) else {
+            panic!("expected 1D result");
+        };
         assert!(result.is_empty() || result.as_slice().iter().all(|&x| x == 0.0));
     }
 
@@ -1260,7 +1350,17 @@ mod tests {
         }
 
         let mat = FdMatrix::from_column_major(data, n, ncol).unwrap();
-        let result = deriv_2d(&mat, &argvals_s, &argvals_t, m1, m2).unwrap();
+        let DerivResult::TwoD(result) = deriv(
+            &mat,
+            DerivDomain::TwoD {
+                argvals_s: &argvals_s,
+                argvals_t: &argvals_t,
+                m1,
+                m2,
+            },
+        ) else {
+            panic!("expected 2D result");
+        };
 
         // Check interior points for ∂f/∂s ≈ 2
         for si in 2..(m1 - 2) {
@@ -1328,7 +1428,17 @@ mod tests {
         }
 
         let mat = FdMatrix::from_column_major(data, n, ncol).unwrap();
-        let result = deriv_2d(&mat, &argvals_s, &argvals_t, m1, m2).unwrap();
+        let DerivResult::TwoD(result) = deriv(
+            &mat,
+            DerivDomain::TwoD {
+                argvals_s: &argvals_s,
+                argvals_t: &argvals_t,
+                m1,
+                m2,
+            },
+        ) else {
+            panic!("expected 2D result");
+        };
 
         // Check interior points for ∂f/∂s ≈ t
         for si in 3..(m1 - 3) {
@@ -1380,14 +1490,30 @@ mod tests {
     #[test]
     fn test_deriv_2d_invalid_input() {
         // Empty data
-        let result = deriv_2d(&FdMatrix::zeros(0, 0), &[], &[], 0, 0);
-        assert!(result.is_none());
+        let result = deriv(
+            &FdMatrix::zeros(0, 0),
+            DerivDomain::TwoD {
+                argvals_s: &[],
+                argvals_t: &[],
+                m1: 0,
+                m2: 0,
+            },
+        );
+        assert_eq!(result, DerivResult::None);
 
         // Mismatched dimensions
         let mat = FdMatrix::from_column_major(vec![1.0; 4], 1, 4).unwrap();
         let argvals = vec![0.0, 1.0];
-        let result = deriv_2d(&mat, &argvals, &[0.0, 0.5, 1.0], 2, 2);
-        assert!(result.is_none());
+        let result = deriv(
+            &mat,
+            DerivDomain::TwoD {
+                argvals_s: &argvals,
+                argvals_t: &[0.0, 0.5, 1.0],
+                m1: 2,
+                m2: 2,
+            },
+        );
+        assert_eq!(result, DerivResult::None);
     }
 
     // ============== 2D geometric median tests ==============
@@ -1692,7 +1818,15 @@ mod tests {
         // nderiv=0 returns the original data (0th derivative = identity)
         let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3).unwrap();
         let argvals = vec![0.0, 0.5, 1.0];
-        let result = deriv_1d(&data, &argvals, 0);
+        let DerivResult::OneD(result) = deriv(
+            &data,
+            DerivDomain::OneD {
+                argvals: &argvals,
+                nderiv: 0,
+            },
+        ) else {
+            panic!("expected 1D result");
+        };
         assert_eq!(result.shape(), data.shape());
         for i in 0..2 {
             for j in 0..3 {

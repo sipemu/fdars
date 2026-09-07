@@ -1,7 +1,7 @@
 //! SRSF (Square-Root Slope Function) transforms and warping utilities.
 
 use crate::error::FdarError;
-use crate::fdata::deriv_1d;
+use crate::fdata::{deriv, DerivDomain, DerivResult};
 use crate::helpers::{cumulative_trapz, linear_interp};
 use crate::matrix::FdMatrix;
 
@@ -39,12 +39,14 @@ pub fn srsf_transform(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
         return FdMatrix::zeros(n, m);
     }
 
-    let deriv = deriv_1d(data, argvals, 1);
+    let DerivResult::OneD(deriv_mat) = deriv(data, DerivDomain::OneD { argvals, nderiv: 1 }) else {
+        unreachable!("1D domain yields a 1D result");
+    };
 
     let mut result = FdMatrix::zeros(n, m);
     for i in 0..n {
         for j in 0..m {
-            let d = deriv[(i, j)];
+            let d = deriv_mat[(i, j)];
             result[(i, j)] = d.signum() * d.abs().sqrt();
         }
     }

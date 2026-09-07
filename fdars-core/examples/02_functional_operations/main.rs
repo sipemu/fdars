@@ -4,7 +4,9 @@
 //! derivatives, Lp norms, geometric median, inner products, and
 //! Simpson's rule integration.
 
-use fdars_core::fdata::{center_1d, deriv_1d, geometric_median_1d, mean_1d, norm_lp_1d};
+use fdars_core::fdata::{
+    center_1d, deriv, geometric_median_1d, mean_1d, norm_lp_1d, DerivDomain, DerivResult,
+};
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::utility::{inner_product, inner_product_matrix, integrate_simpson};
 
@@ -53,8 +55,24 @@ fn main() {
 
     // --- Section 3: Derivatives ---
     println!("\n--- Numerical Derivatives ---");
-    let first_deriv = deriv_1d(&mat, &t, 1);
-    let second_deriv = deriv_1d(&mat, &t, 2);
+    let DerivResult::OneD(first_deriv) = deriv(
+        &mat,
+        DerivDomain::OneD {
+            argvals: &t,
+            nderiv: 1,
+        },
+    ) else {
+        unreachable!("1D domain yields a 1D result");
+    };
+    let DerivResult::OneD(second_deriv) = deriv(
+        &mat,
+        DerivDomain::OneD {
+            argvals: &t,
+            nderiv: 2,
+        },
+    ) else {
+        unreachable!("1D domain yields a 1D result");
+    };
     // First derivative of first curve
     let d1_curve0: Vec<f64> = (0..first_deriv.ncols())
         .map(|j| first_deriv[(0, j)])

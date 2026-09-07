@@ -2518,9 +2518,18 @@ fn test_2d_deriv_valid() {
     }
     let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
 
-    let result = fdars_core::fdata::deriv_2d(&data, &s, &t, m1, m2);
-    assert!(result.is_some(), "2D derivative should succeed");
-    let res = result.unwrap();
+    let result = fdars_core::fdata::deriv(
+        &data,
+        fdars_core::fdata::DerivDomain::TwoD {
+            argvals_s: &s,
+            argvals_t: &t,
+            m1,
+            m2,
+        },
+    );
+    let fdars_core::fdata::DerivResult::TwoD(res) = result else {
+        panic!("2D derivative should succeed");
+    };
     assert_eq!(res.ds.nrows(), n);
     assert_eq!(res.dt.nrows(), n);
 }
