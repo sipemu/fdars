@@ -71,7 +71,9 @@
   3. A guard — a `--features serde` build/round-trip check runnable in CI — is in place to prevent silent re-breakage.
   4. The default-feature build and existing gates (`cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`) remain green; the change is additive/non-breaking.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 79-01-PLAN.md — Add conditional serde derives to ClassifFit (+ embedded ClassifResult/ClassifMethod), NonConformityScore, JointFpcaResult; land a serde round-trip test; green both build configs
 
 ### Phase 80: Release Hardening & Ship v0.40.0
 
