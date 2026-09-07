@@ -32,11 +32,11 @@ v0.41.0 is fdars' **first breaking milestone** after a long additive-only run �
   2. The inventory has been presented to and approved by the user — the concrete change sets consumed by Phases 82 and 83 are drawn from this approved list (the user may approve a reduced scope, especially for naming).
   3. The 6 deprecated forms (`mean_2d`, `fanova`, `random_tukey_2d`, `random_projection_2d`, `fraiman_muniz_2d`, `modal_2d`) and their crate-root/prelude re-exports are removed; all internal callers, unit tests, doctests, and example 21 are migrated to the `Dim`/`_seeded` replacements.
   4. The crate builds and all 28 examples compile after the deprecated-form removal; whole-crate gates (fmt, `clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, `--features serde` build) are green.
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 81-01: Whole-surface audit → ranked breaking-change inventory (four scopes) → present for user approval
-- [ ] 81-02: Remove the 6 deprecated forms + re-exports; migrate internal callers, tests, doctests, example 21
+- [ ] 81-01-PLAN.md — Whole-surface audit → ranked, ID-addressable breaking-change inventory (four scopes) → user-approval checkpoint (reduced scope allowed)
+- [ ] 81-02-PLAN.md — Hard-remove the 6 deprecated forms + all re-exports; migrate internal callers/doctests/tests/example-21 to `Dim`/`_seeded`; whole-crate gates green
 
 ### Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage
 **Goal**: The accidental/unintended public exposure and `#[non_exhaustive]` gaps identified in the approved AUDIT-01 inventory are corrected, shrinking and future-proofing what a 1.0 must commit to.
