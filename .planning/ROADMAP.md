@@ -77,10 +77,10 @@ Plans:
   1. A documented semver + API-stability policy exists in `documentation/` — the definition of "stable", the deprecation process, and the breaking-change policy governing the eventual 1.0.
   2. The MSRV policy is reviewed, pinned (1.81 crate / 1.84 for the `linalg` feature), documented, and consistent between `Cargo.toml` and the docs.
   3. A 1.0 gap checklist enumerating what remains before a real 1.0 cut (items deferred out of this milestone) exists and scopes the next milestone.
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 84-01: Author semver/stability policy + MSRV finalization + 1.0 gap checklist in `documentation/`
+- [ ] 84-01-PLAN.md — Author semver/stability policy (STABILITY.md, STAB-01/02) + 1.0 gap checklist (ROADMAP-TO-1.0.md, STAB-03) in `documentation/`
 
 ### Phase 85: Release Preparation & Verification
 **Goal**: The crate is bumped to 0.41.0, the CHANGELOG documents the breaking changes, docs are refreshed, and whole-crate release-readiness is verified (the operator tag/publish is the final external step).
