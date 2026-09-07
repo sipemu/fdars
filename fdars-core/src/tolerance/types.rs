@@ -24,6 +24,7 @@ pub enum BandType {
 
 /// Non-conformity score for conformal prediction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum NonConformityScore {
     /// Supremum norm: max_t |y(t) - center(t)|

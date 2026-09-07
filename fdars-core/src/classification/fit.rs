@@ -17,6 +17,7 @@ use super::cv::fclassif_cv;
 
 /// Classification method with stored parameters for prediction.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum ClassifMethod {
     /// Linear Discriminant Analysis.
@@ -45,6 +46,7 @@ pub enum ClassifMethod {
 
 /// A fitted classification model that retains FPCA components for explainability.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct ClassifFit {
     /// Classification result (predicted labels, accuracy, confusion matrix).

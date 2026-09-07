@@ -69,6 +69,7 @@ pub struct HorizFpcaResult {
 
 /// Result of joint (amplitude + phase) FPCA.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct JointFpcaResult {
     /// PC scores (n × ncomp).
