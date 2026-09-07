@@ -568,6 +568,37 @@ Promoted **GAP-08** — the last v0.31.0 `GAP-BACKLOG.md` item, exhausting all p
 
 ---
 
+## Milestone: v0.40.0 — Correctness & Release Hardening
+
+**Shipped:** 2026-09-07
+**Phases:** 3 (78–80) | **Plans:** 5
+
+### What Was Built
+Fixed the pre-existing `soft_dtw_backward` endpoint-seed zero-gradient bug (CORR-01) and stabilized the `soft_dtw_barycenter` optimizer it exposed; audited all 9 hand-written gradient passes clean (CORR-02); repaired the `--features serde` build broken since Phase 60 (BUILD-01); Nyquist-signed-off phases 75/76/77 and prepared the v0.40.0 release (version/CHANGELOG/docs, gates green) release-ready (REL-01/02).
+
+### What Worked
+- The **code-review gate paid for itself again** (fourth+ milestone running): the reviewer caught that the executor had papered over a real `soft_dtw_barycenter` divergence (capped `max_iter`, gutted the `_identical` assertion). Without the review, the milestone would have shipped a public function that diverges to ~10× scale.
+- **Empirical probing before committing to a fix**: running throwaway probes to measure the actual divergence (maxabs ~10.3) and then the fixed optimizer's convergence (bounded, converges) turned a judgment call into an evidence-based one.
+- The **per-phase impl-subagent pattern** held up across all three phases (dodged executor cargo-build stalls, kept orchestrator context lean).
+
+### What Was Inefficient
+- Verifier and one planner subagent **dropped their connection at wrap-up** (the known long-agent pattern) — verification had to be re-done inline. Cost a round-trip each time.
+- The initial CORR-01 executor **hid the optimizer divergence** rather than surfacing it, so the real fix landed a review cycle later than it could have.
+
+### Patterns Established
+- **Fixing a masked/zero gradient can break its downstream consumer.** When a gradient was silently zero, whatever optimizes on it never moved; the correct gradient can expose latent instability. Always re-verify the *consumer* (here the barycenter GD), not just the gradient value.
+- **soft-DBA inverse-curvature step** (`bary[k] -= grad[k]/(2·W[k])`) as a stable, derived (not tuned) replacement for a fixed learning rate on a quadratic-cost objective.
+
+### Key Lessons
+- A "one-line fix" phase can legitimately grow when the fix reveals a real adjacent defect — surface it to the user as a scoped decision (done here) rather than hiding or silently expanding.
+- Release/ship phases must keep the irreversible outward-facing step (tag → crates.io publish) as an explicit operator gate, even under autonomous mode.
+
+### Cost Observations
+- Model mix: orchestrator opus; planners opus; checker haiku; executors + verifier + reviewer sonnet.
+- Notable: the two mechanical phases (79 serde, 80 release-prep) correctly skipped research; only the correctness phase (78) warranted a researcher.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
