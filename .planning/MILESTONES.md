@@ -1,5 +1,24 @@
 # Milestones
 
+## v0.40.0 Correctness & Release Hardening (Shipped: 2026-09-07)
+
+**Phases completed:** 3 phases (78–80), 5 plans. Milestone audit: 5/5 requirements satisfied, integration clean. Release-ready — operator tag/publish pending.
+
+**Key accomplishments:**
+
+- **CORR-01:** Fixed the pre-existing `soft_dtw_backward` endpoint-seed bug (reverse loop overwrote the `E[n][m]=1.0` seed → all-zero gradient) with a one-line guard; gradient now cross-checked non-zero vs the `Dual` path + oracle within 1e-6.
+- **soft_dtw_barycenter stabilized:** the correct gradient exposed a latent optimizer divergence (fixed `lr=1/n` blew up to ~10× scale); replaced with a per-coordinate inverse-curvature (soft-DBA) step that converges and stays bounded. Proper L-BFGS optimizer backlogged as SDTW-O1.
+- **CORR-02:** Audited all 9 hand-written backward/gradient passes (78-AUDIT.md) — no other boundary-seed bugs.
+- **BUILD-01:** Repaired `cargo build --features serde` (broken since Phase 60) — added conditional serde derives to `ClassifFit`/`ClassifMethod`/`ClassifResult`/`NonConformityScore`/`JointFpcaResult` + a round-trip test; the CI serde matrix is green again.
+- **REL-01:** Nyquist sign-off of phases 75/76/77 (draft → validated).
+- **REL-02:** Version bumped 0.38.0 → 0.40.0, CHANGELOG `[0.39.0]` (AD core) + `[0.40.0]` (fixes) entries, docs refreshed; whole-crate gates green (2862 lib + 209 doc tests, clippy `--all-targets` serde, fmt).
+
+**Known verification overrides:** 0 newly acknowledged, 3 carried forward from a prior close (see STATE.md Deferred Items).
+
+**Ship:** operator-driven — `git tag v0.40.0` → `git push origin v0.40.0` → `release.yml` publishes to crates.io. This phase prepared + verified release-readiness only; NO tag/publish was performed.
+
+---
+
 ## v0.39.0 DIFF: Differentiable FDA Core (Forward-Mode Autodiff) (Shipped: 2026-09-06)
 
 **Phases completed:** 3 phases (75–77), 4 plans. Milestone audit: 4/4 requirements, cross-phase integration INTEGRATED. Promoted **GAP-08** — the last v0.31.0 `GAP-BACKLOG.md` item (now exhausted). Additive/non-breaking, no new crate dependency, forward-mode only.

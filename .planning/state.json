@@ -11,18 +11,18 @@
     {
       "number": "79",
       "name": "Serde Feature Repair",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "80",
       "name": "Release Hardening & Ship v0.40.0",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 79 of 3 · 33% · executing"
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-09-07T05:31:51.269Z"
+  "updated_at": "2026-09-07T07:20:52.511Z"
 }

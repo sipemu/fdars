@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.40.0
 milestone_name: Correctness & Release Hardening
-current_phase: 80
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 80 complete — all phases complete
-last_updated: "2026-09-07T07:17:58.427Z"
+last_updated: "2026-09-07T07:20:52.500Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 80 complete
-state_head: af62b9955ada1d0a77e72d3772cfab2eeacd48b4
+last_activity_desc: Milestone v0.40.0 completed and archived
+state_head: 4edf0dbca933871cb3f0318592364a29403dab1f
 progress:
   total_phases: 3
   completed_phases: 3
   total_plans: 5
   completed_plans: 5
   percent: 100
+current_phase: 80
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: 80
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-07 — Phase 80 complete
+Phase: Milestone v0.40.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-07 — Milestone v0.40.0 completed and archived
 
 ## Milestone Roadmap (v0.40.0)
 
@@ -133,14 +133,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-All 3 phases of v0.40.0 are complete and gates are green. To publish:
-
-```bash
-git tag v0.40.0
-git push origin v0.40.0
-
-# release.yml fires → cargo publish → fdars-core v0.40.0 live on crates.io
-
-```
-
-After publishing, run `/gsd-complete-milestone` to archive v0.40.0 and start the next cycle.
+- Start the next milestone with /gsd-new-milestone
