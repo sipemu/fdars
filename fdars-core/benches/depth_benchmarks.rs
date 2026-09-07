@@ -11,7 +11,7 @@ use fdars_core::depth::{
 use fdars_core::fdata::norm_lp_1d;
 use fdars_core::irreg_fdata::{norm_lp_irreg, IrregFdata};
 use fdars_core::matrix::FdMatrix;
-use fdars_core::metric::{dtw_self_1d, fourier_self_1d, hausdorff_self_1d, lp_self_1d};
+use fdars_core::metric::{dtw_self_1d, fourier_self_1d, hausdorff_self_1d, lp_self, LpDomain};
 use fdars_core::outliers::outliers_threshold_lrt;
 use fdars_core::streaming_depth::{
     SortedReferenceState, StreamingDepth, StreamingFraimanMuniz, StreamingMbd,
@@ -174,14 +174,23 @@ fn bench_fourier(c: &mut Criterion) {
 }
 
 fn bench_lp_distance(c: &mut Criterion) {
-    let mut group = c.benchmark_group("lp_self_1d");
+    let mut group = c.benchmark_group("lp_self");
     let m = 200;
     let n = 100;
     let data = generate_centered_data(n, m);
     let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
     for &p in &[1.0, 2.0, 3.0] {
         group.bench_with_input(BenchmarkId::new("p", p as i32), &p, |b, &p| {
-            b.iter(|| lp_self_1d(black_box(&data), black_box(&argvals), p, &[]))
+            b.iter(|| {
+                lp_self(
+                    black_box(&data),
+                    LpDomain::OneD {
+                        argvals: black_box(&argvals),
+                    },
+                    p,
+                    &[],
+                )
+            })
         });
     }
     group.finish();

@@ -44,7 +44,7 @@ pub use crate::depth::{
 
 // Metric functions
 pub use crate::metric::{
-    dtw_distance, lp_cross_1d, lp_self_1d, sbd, sbd_distance_matrix, soft_dtw_distance_generic,
+    dtw_distance, lp_cross, lp_self, sbd, sbd_distance_matrix, soft_dtw_distance_generic, LpDomain,
     SbdResult,
 };
 

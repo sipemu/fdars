@@ -1037,7 +1037,14 @@ fn test_lp_l2_distance_matrix() {
     }
 
     let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
-    let actual = fdars_core::metric::lp_self_1d(&sub_mat, &dat.argvals, 2.0, &[]);
+    let actual = fdars_core::metric::lp_self(
+        &sub_mat,
+        fdars_core::metric::LpDomain::OneD {
+            argvals: &dat.argvals,
+        },
+        2.0,
+        &[],
+    );
     // R's metric.lp uses trapezoidal; Rust uses Simpson's 1/3 — inherent integration gap ~6e-3
     assert_vec_close(actual.as_slice(), &exp.lp_l2.data, 6e-3, "lp_l2_distance");
 }
@@ -2849,7 +2856,15 @@ fn test_lp_cross_shape() {
     let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
     let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
 
-    let cross = fdars_core::metric::lp_cross_1d(&m1, &m2, &d.argvals, 2.0, &w);
+    let cross = fdars_core::metric::lp_cross(
+        &m1,
+        &m2,
+        fdars_core::metric::LpDomain::OneD {
+            argvals: &d.argvals,
+        },
+        2.0,
+        &w,
+    );
     assert_eq!(cross.nrows(), n1);
     assert_eq!(cross.ncols(), n2);
 }
@@ -5290,8 +5305,16 @@ fn test_lp_cross_values_vs_r() {
         let g1 = FdMatrix::from_column_major(g1_vec, n1, d.m).unwrap();
         let g2 = FdMatrix::from_column_major(g2_vec, n2, d.m).unwrap();
 
-        // Pass empty user_weights — lp_cross_1d computes Simpson's weights internally
-        let cross = fdars_core::metric::lp_cross_1d(&g1, &g2, &d.argvals, 2.0, &[]);
+        // Pass empty user_weights — lp_cross computes Simpson's weights internally
+        let cross = fdars_core::metric::lp_cross(
+            &g1,
+            &g2,
+            fdars_core::metric::LpDomain::OneD {
+                argvals: &d.argvals,
+            },
+            2.0,
+            &[],
+        );
         assert_eq!(cross.nrows(), n1);
         assert_eq!(cross.ncols(), n2);
 

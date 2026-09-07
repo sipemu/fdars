@@ -147,7 +147,7 @@ pub use hausdorff::{
 };
 pub use hshift::{hshift_cross_1d, hshift_self_1d};
 pub use kl::{kl_cross_1d, kl_self_1d};
-pub use lp::{lp_cross_1d, lp_cross_2d, lp_self_1d, lp_self_2d};
+pub use lp::{lp_cross, lp_self, LpDomain};
 pub use pca::{pca_cross_1d, pca_self_1d};
 pub use sbd::{sbd, sbd_distance_matrix, SbdResult};
 pub use soft_dtw::{

@@ -8,6 +8,77 @@ use rayon::iter::ParallelIterator;
 
 use super::{lp_weighted_distance, merge_weights};
 
+/// Domain specification for the Lp metric dispatchers [`lp_self`] / [`lp_cross`].
+///
+/// - `OneD` selects 1D functional data on a single `argvals` grid.
+/// - `TwoD` selects 2D surface data on separate `argvals_s`/`argvals_t` grids.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LpDomain<'a> {
+    /// 1D functional data on a single evaluation grid.
+    OneD {
+        /// Evaluation points for integration.
+        argvals: &'a [f64],
+    },
+    /// 2D surface data on a tensor-product grid.
+    TwoD {
+        /// Grid points in the s direction.
+        argvals_s: &'a [f64],
+        /// Grid points in the t direction.
+        argvals_t: &'a [f64],
+    },
+}
+
+/// Compute the Lp self-distance matrix (symmetric) for functional data.
+///
+/// A single dispatcher over the [`LpDomain`] grid enum: `OneD` routes to the 1D
+/// self-distance, `TwoD` to the 2D surface self-distance. Numeric output is identical to the
+/// former suffixed 1D/2D self-distance functions.
+///
+/// # Arguments
+/// * `data` - Functional data matrix
+/// * `domain` - Grid specification (1D or 2D)
+/// * `p` - Order of the norm
+/// * `user_weights` - Optional user weights (empty slice for none)
+#[must_use]
+pub fn lp_self(data: &FdMatrix, domain: LpDomain<'_>, p: f64, user_weights: &[f64]) -> FdMatrix {
+    match domain {
+        LpDomain::OneD { argvals } => lp_self_1d_impl(data, argvals, p, user_weights),
+        LpDomain::TwoD {
+            argvals_s,
+            argvals_t,
+        } => lp_self_2d_impl(data, argvals_s, argvals_t, p, user_weights),
+    }
+}
+
+/// Compute the Lp cross-distance matrix between two sets of functional data.
+///
+/// A single dispatcher over the [`LpDomain`] grid enum: `OneD` routes to the 1D
+/// cross-distance, `TwoD` to the 2D surface cross-distance. Numeric output is identical to the
+/// former suffixed 1D/2D cross-distance functions.
+///
+/// # Arguments
+/// * `data1` - First dataset matrix
+/// * `data2` - Second dataset matrix
+/// * `domain` - Grid specification (1D or 2D)
+/// * `p` - Order of the norm
+/// * `user_weights` - Optional user weights (empty slice for none)
+#[must_use]
+pub fn lp_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    domain: LpDomain<'_>,
+    p: f64,
+    user_weights: &[f64],
+) -> FdMatrix {
+    match domain {
+        LpDomain::OneD { argvals } => lp_cross_1d_impl(data1, data2, argvals, p, user_weights),
+        LpDomain::TwoD {
+            argvals_s,
+            argvals_t,
+        } => lp_cross_2d_impl(data1, data2, argvals_s, argvals_t, p, user_weights),
+    }
+}
+
 /// Compute Lp distance matrix between two sets of functional data.
 ///
 /// # Arguments
@@ -24,7 +95,7 @@ use super::{lp_weighted_distance, merge_weights};
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::lp_cross_1d;
+/// use fdars_core::metric::{lp_cross, LpDomain};
 ///
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
 /// let data1 = FdMatrix::from_column_major(
@@ -33,11 +104,11 @@ use super::{lp_weighted_distance, merge_weights};
 /// let data2 = FdMatrix::from_column_major(
 ///     (0..20).map(|i| (i as f64 * 0.2).cos()).collect(), 2, 10,
 /// ).unwrap();
-/// let dist = lp_cross_1d(&data1, &data2, &argvals, 2.0, &[]);
+/// let dist = lp_cross(&data1, &data2, LpDomain::OneD { argvals: &argvals }, 2.0, &[]);
 /// assert_eq!(dist.shape(), (3, 2));
 /// assert!(dist[(0, 0)] >= 0.0);
 /// ```
-pub fn lp_cross_1d(
+fn lp_cross_1d_impl(
     data1: &FdMatrix,
     data2: &FdMatrix,
     argvals: &[f64],
@@ -78,20 +149,20 @@ pub fn lp_cross_1d(
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::lp_self_1d;
+/// use fdars_core::metric::{lp_self, LpDomain};
 ///
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
 /// let data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     5, 10,
 /// ).unwrap();
-/// let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
+/// let dist = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &[]);
 /// assert_eq!(dist.shape(), (5, 5));
 /// // Diagonal should be zero, matrix should be symmetric
 /// assert!((dist[(0, 0)]).abs() < 1e-10);
 /// assert!((dist[(0, 1)] - dist[(1, 0)]).abs() < 1e-10);
 /// ```
-pub fn lp_self_1d(data: &FdMatrix, argvals: &[f64], p: f64, user_weights: &[f64]) -> FdMatrix {
+fn lp_self_1d_impl(data: &FdMatrix, argvals: &[f64], p: f64, user_weights: &[f64]) -> FdMatrix {
     let n = data.nrows();
     let n_points = data.ncols();
 
@@ -123,7 +194,7 @@ pub fn lp_self_1d(data: &FdMatrix, argvals: &[f64], p: f64, user_weights: &[f64]
 }
 
 /// Compute Lp distance for 2D functional data (surfaces).
-pub fn lp_cross_2d(
+fn lp_cross_2d_impl(
     data1: &FdMatrix,
     data2: &FdMatrix,
     argvals_s: &[f64],
@@ -157,7 +228,7 @@ pub fn lp_cross_2d(
 }
 
 /// Compute Lp self-distance matrix for 2D functional data (symmetric).
-pub fn lp_self_2d(
+fn lp_self_2d_impl(
     data: &FdMatrix,
     argvals_s: &[f64],
     argvals_t: &[f64],

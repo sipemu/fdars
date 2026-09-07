@@ -7,8 +7,8 @@
 
 use fdars_core::matrix::FdMatrix;
 use fdars_core::metric::{
-    dtw_self_1d, fourier_self_1d, hausdorff_self_1d, hshift_self_1d, lp_cross_1d, lp_self_1d,
-    soft_dtw_distance, soft_dtw_div_self_1d, soft_dtw_self_1d,
+    dtw_self_1d, fourier_self_1d, hausdorff_self_1d, hshift_self_1d, lp_cross, lp_self,
+    soft_dtw_distance, soft_dtw_div_self_1d, soft_dtw_self_1d, LpDomain,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 
@@ -59,18 +59,23 @@ fn main() {
     // --- Section 1: L2 pairwise distances ---
     // Self-distance functions return n x n matrices (symmetric with zero diagonal)
     println!("--- L2 Distance Matrix ---");
-    let l2_dists = lp_self_1d(&data, &t, 2.0, &empty_weights);
+    let l2_dists = lp_self(&data, LpDomain::OneD { argvals: &t }, 2.0, &empty_weights);
     println!("  Matrix size: {}x{}", l2_dists.nrows(), l2_dists.ncols());
     print_dist_matrix(&l2_dists, 5);
 
     // --- Section 2: L1 distances ---
     println!("\n--- L1 Distance Matrix ---");
-    let l1_dists = lp_self_1d(&data, &t, 1.0, &empty_weights);
+    let l1_dists = lp_self(&data, LpDomain::OneD { argvals: &t }, 1.0, &empty_weights);
     print_dist_matrix(&l1_dists, 5);
 
     // --- Section 3: L-infinity distances ---
     println!("\n--- L-inf Distance Matrix ---");
-    let linf_dists = lp_self_1d(&data, &t, f64::INFINITY, &empty_weights);
+    let linf_dists = lp_self(
+        &data,
+        LpDomain::OneD { argvals: &t },
+        f64::INFINITY,
+        &empty_weights,
+    );
     print_dist_matrix(&linf_dists, 5);
 
     // --- Section 4: Hausdorff distances ---
@@ -106,7 +111,13 @@ fn main() {
     }
     let data1 = FdMatrix::from_column_major(flat1, 5, m).unwrap();
     let data2 = FdMatrix::from_column_major(flat2, 5, m).unwrap();
-    let cross = lp_cross_1d(&data1, &data2, &t, 2.0, &empty_weights);
+    let cross = lp_cross(
+        &data1,
+        &data2,
+        LpDomain::OneD { argvals: &t },
+        2.0,
+        &empty_weights,
+    );
     println!(
         "  Cross-distance matrix: {}x{} (5 x 5)",
         cross.nrows(),

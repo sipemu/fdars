@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 fn test_lp_self_distance() {
     let data = FdMatrix::from_column_major(vec![0.0, 1.0, 1.0, 2.0], 2, 2).unwrap();
     let argvals = vec![0.0, 1.0];
-    let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
+    let dist = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &[]);
     assert!((dist[(0, 1)] - 1.0).abs() < 0.1);
 }
 
@@ -22,7 +22,7 @@ fn test_lp_self_symmetric() {
         }
     }
     let data = FdMatrix::from_column_major(flat, n, m).unwrap();
-    let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
+    let dist = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &[]);
     for i in 0..n {
         for j in 0..n {
             assert!(
@@ -40,7 +40,7 @@ fn test_lp_self_diagonal_zero() {
     let argvals = uniform_grid(m);
     let flat: Vec<f64> = (0..(n * m)).map(|i| i as f64 * 0.1).collect();
     let data = FdMatrix::from_column_major(flat, n, m).unwrap();
-    let dist = lp_self_1d(&data, &argvals, 2.0, &[]);
+    let dist = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &[]);
     for i in 0..n {
         assert!(dist[(i, i)].abs() < 1e-10, "Self-distance should be zero");
     }
@@ -56,7 +56,13 @@ fn test_lp_cross_shape() {
         .unwrap();
     let data2 = FdMatrix::from_column_major((0..(n2 * m)).map(|i| i as f64 * 0.2).collect(), n2, m)
         .unwrap();
-    let dist = lp_cross_1d(&data1, &data2, &argvals, 2.0, &[]);
+    let dist = lp_cross(
+        &data1,
+        &data2,
+        LpDomain::OneD { argvals: &argvals },
+        2.0,
+        &[],
+    );
     assert_eq!(dist.nrows(), n1);
     assert_eq!(dist.ncols(), n2);
 }
@@ -64,8 +70,8 @@ fn test_lp_cross_shape() {
 #[test]
 fn test_lp_invalid() {
     let empty = FdMatrix::zeros(0, 0);
-    assert!(lp_self_1d(&empty, &[], 2.0, &[]).is_empty());
-    assert!(lp_cross_1d(&empty, &empty, &[], 2.0, &[]).is_empty());
+    assert!(lp_self(&empty, LpDomain::OneD { argvals: &[] }, 2.0, &[]).is_empty());
+    assert!(lp_cross(&empty, &empty, LpDomain::OneD { argvals: &[] }, 2.0, &[]).is_empty());
 }
 
 #[test]
@@ -249,7 +255,15 @@ fn test_lp_2d_symmetric() {
         n_points,
     )
     .unwrap();
-    let dist = lp_self_2d(&data, &argvals_s, &argvals_t, 2.0, &[]);
+    let dist = lp_self(
+        &data,
+        LpDomain::TwoD {
+            argvals_s: &argvals_s,
+            argvals_t: &argvals_t,
+        },
+        2.0,
+        &[],
+    );
     for i in 0..n {
         for j in 0..n {
             assert!(
@@ -263,7 +277,16 @@ fn test_lp_2d_symmetric() {
 #[test]
 fn test_lp_2d_invalid() {
     let empty = FdMatrix::zeros(0, 0);
-    assert!(lp_self_2d(&empty, &[], &[], 2.0, &[]).is_empty());
+    assert!(lp_self(
+        &empty,
+        LpDomain::TwoD {
+            argvals_s: &[],
+            argvals_t: &[]
+        },
+        2.0,
+        &[]
+    )
+    .is_empty());
 }
 
 #[test]
@@ -536,7 +559,7 @@ fn test_hausdorff_cross_2d() {
 }
 
 #[test]
-fn test_lp_cross_2d() {
+fn test_lp_cross() {
     let n1 = 2;
     let n2 = 3;
     let m1 = 4;
@@ -560,7 +583,16 @@ fn test_lp_cross_2d() {
         n_points,
     )
     .unwrap();
-    let dist = lp_cross_2d(&data1, &data2, &argvals_s, &argvals_t, 2.0, &[]);
+    let dist = lp_cross(
+        &data1,
+        &data2,
+        LpDomain::TwoD {
+            argvals_s: &argvals_s,
+            argvals_t: &argvals_t,
+        },
+        2.0,
+        &[],
+    );
     assert_eq!(dist.nrows(), n1);
     assert_eq!(dist.ncols(), n2);
     for j in 0..n2 {
@@ -570,7 +602,16 @@ fn test_lp_cross_2d() {
         }
     }
     let user_weights: Vec<f64> = vec![1.0; n_points];
-    let dist_w = lp_cross_2d(&data1, &data2, &argvals_s, &argvals_t, 2.0, &user_weights);
+    let dist_w = lp_cross(
+        &data1,
+        &data2,
+        LpDomain::TwoD {
+            argvals_s: &argvals_s,
+            argvals_t: &argvals_t,
+        },
+        2.0,
+        &user_weights,
+    );
     assert_eq!(dist_w.nrows(), n1);
     assert_eq!(dist_w.ncols(), n2);
 }
@@ -590,7 +631,15 @@ fn test_lp_self_2d_with_user_weights() {
     )
     .unwrap();
     let user_weights: Vec<f64> = vec![2.0; n_points];
-    let dist = lp_self_2d(&data, &argvals_s, &argvals_t, 2.0, &user_weights);
+    let dist = lp_self(
+        &data,
+        LpDomain::TwoD {
+            argvals_s: &argvals_s,
+            argvals_t: &argvals_t,
+        },
+        2.0,
+        &user_weights,
+    );
     assert_eq!(dist.nrows(), n);
     assert_eq!(dist.ncols(), n);
     for i in 0..n {
@@ -617,7 +666,7 @@ fn test_nan_lp_no_panic() {
     data_vec[5] = f64::NAN;
     let data = FdMatrix::from_column_major(data_vec, 3, m).unwrap();
     let w = vec![1.0; m];
-    let dm = lp_self_1d(&data, &argvals, 2.0, &w);
+    let dm = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &w);
     assert_eq!(dm.nrows(), 3);
 }
 
@@ -627,7 +676,7 @@ fn test_n1_self_metric() {
     let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
     let data = FdMatrix::from_column_major(vec![1.0; m], 1, m).unwrap();
     let w = vec![1.0; m];
-    let dm = lp_self_1d(&data, &argvals, 2.0, &w);
+    let dm = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &w);
     assert_eq!(dm.shape(), (1, 1));
     assert!(dm[(0, 0)].abs() < 1e-12);
 }
@@ -657,7 +706,7 @@ fn test_non_uniform_lp() {
     ];
     let data = FdMatrix::from_column_major(data_vec, 2, m).unwrap();
     let w = vec![1.0; m];
-    let dm = lp_self_1d(&data, &argvals, 2.0, &w);
+    let dm = lp_self(&data, LpDomain::OneD { argvals: &argvals }, 2.0, &w);
     assert_eq!(dm.shape(), (2, 2));
     // Constant offset curves: distance should be > 0
     assert!(dm[(0, 1)] > 0.0);
