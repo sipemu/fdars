@@ -1,28 +1,12 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.40.0 — Correctness & Release Hardening",
-  "phases": [
-    {
-      "number": "78",
-      "name": "Gradient Correctness — soft_dtw Fix & Backward-Pass Audit",
-      "status": "complete"
-    },
-    {
-      "number": "79",
-      "name": "Serde Feature Repair",
-      "status": "complete"
-    },
-    {
-      "number": "80",
-      "name": "Release Hardening & Ship v0.40.0",
-      "status": "complete"
-    }
-  ],
+  "milestone": "v0.41.0",
+  "phases": [],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-07T07:20:52.511Z"
+  "updated_at": "2026-09-07T07:57:46.933Z"
 }
