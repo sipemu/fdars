@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
-current_phase: 82
+current_phase: 83
 status: completed
 stopped_at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
-last_updated: "2026-09-07T10:06:34.885Z"
+last_updated: "2026-09-07T11:50:26.348Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 82 marked complete
-state_head: c435d8634b9d850931f531395316153e2ed3d6e9
+last_activity_desc: Phase 83 marked complete
+state_head: 9465f9a02d221f1d5bf0baf0ed8fb43ca0d48f37
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-current_phase_name: Public-Surface Sealing & Non-Exhaustive Coverage
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 7
+current_phase_name: Naming Unification
 ---
 
 # Project State
@@ -24,14 +24,14 @@ current_phase_name: Public-Surface Sealing & Non-Exhaustive Coverage
 See: .planning/PROJECT.md (updated 2026-09-06)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone is a **1.0-readiness / API-stabilization** pass: audit the whole public surface, then land the breaking cleanups now while still in 0.x — producing a settled API + the stability deliverables (semver policy, MSRV, 1.0 gap checklist) that will govern a deliberate future 1.0 cut. Ships as **0.41.0** (NOT 1.0).
-**Current focus:** Phase 82 — Public-Surface Sealing & Non-Exhaustive Coverage
+**Current focus:** Phase 83 — Naming Unification
 
 ## Current Position
 
-Phase: 82 — COMPLETE
-Plan: 1 of 2
-Status: Phase 82 complete
-Last activity: 2026-09-07 — Phase 82 marked complete
+Phase: 83 — COMPLETE
+Plan: 1 of 3
+Status: Phase 83 complete
+Last activity: 2026-09-07 — Phase 83 marked complete
 
 Progress: [░░░░░░░░░░] 0%
 
