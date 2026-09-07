@@ -4,18 +4,18 @@ milestone: v0.40.0
 milestone_name: Correctness & Release Hardening
 current_phase: 79
 current_phase_name: Serde Feature Repair
-status: planning
-stopped_at: Phase 78 complete, ready to plan Phase 79
-last_updated: "2026-09-07T05:22:16.882Z"
+status: phase_complete
+stopped_at: Phase 79 complete, ready to plan Phase 80
+last_updated: "2026-09-07T00:00:00.000Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 78 complete, transitioned to Phase 79
-state_head: 4f490c09300512cb1d8c415a68adcd8e7301604b
+last_activity_desc: Phase 79 (BUILD-01) complete — serde derives added to 5 types, round-trip test green, full serde suite 2862 passed
+state_head: 02f4d652
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 33
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
+  percent: 67
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-06)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems. This milestone is a **correctness & release-hardening** pass: fix the bugs and build breakage found during recent milestones, formally validate the outstanding v0.39.0 phases, then bump/tag/publish fdars' first crates.io release since v0.38.0 (folding in the unpublished v0.39.0 forward-mode AD core).
-**Current focus:** Phase 78 — Gradient Correctness — soft_dtw Fix & Backward-Pass Audit
+**Current focus:** Phase 79 — Serde Feature Repair
 
 ## Current Position
 
-Phase: 79 — Serde Feature Repair
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-07 — Phase 78 complete, transitioned to Phase 79
+Phase: 79 (Serde Feature Repair) — COMPLETE
+Plan: 1 of 1
+Status: Phase 79 complete; Phase 80 (Release Hardening & Ship v0.40.0) is next
+Last activity: 2026-09-07 — Phase 79 complete (BUILD-01 satisfied)
 
 ## Milestone Roadmap (v0.40.0)
 
@@ -68,7 +68,7 @@ Three phases, 5 requirements (CORR-01/02, BUILD-01, REL-01/02) — a small fixup
 | 69–71 | v0.37.0 | 5 |
 | 72–74 | v0.38.0 | 3 |
 | 75–77 | v0.39.0 | 4 |
-| 78–80 | v0.40.0 | 0/TBD (pending) |
+| 78–80 | v0.40.0 | 3/TBD (78 complete, 79 complete, 80 pending) |
 
 **Recent Trend:**
 
@@ -80,7 +80,8 @@ Three phases, 5 requirements (CORR-01/02, BUILD-01, REL-01/02) — a small fixup
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
-| (none yet — v0.40.0) | — | — | — |
+| 78-01 (CORR-01/02) | — | 3 | soft_dtw + gradient audit |
+| 79-01 (BUILD-01) | — | 3 | serde derives on 5 types + round-trip test |
 
 ## Accumulated Context
 
