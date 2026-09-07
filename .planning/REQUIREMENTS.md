@@ -9,8 +9,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Correctness
 
-- [ ] **CORR-01**: `soft_dtw_backward` no longer overwrites the `E[n][m]=1.0` endpoint seed, so it returns a non-zero soft-alignment matrix and `soft_dtw_barycenter` genuinely refines the barycenter. A regression test asserts (a) `soft_dtw_backward`/`soft_dtw_accumulate_gradient` produce a non-zero gradient on non-identical input, and (b) `soft_dtw_barycenter` on non-identical curves converges to a barycenter measurably different from the pointwise mean — cross-checked against the v0.39.0 `Dual` gradient path / `corrected_oracle_gradient` reference (all within tolerance). The existing `test_soft_dtw_barycenter_*` tests are tightened so they can no longer pass on an all-zero gradient.
-- [ ] **CORR-02**: Every hand-written backward/gradient pass in the crate is audited for boundary-seed and analogous correctness bugs — at minimum `alignment/differentiable`, `autodiff`, `boosting_regression/gamlss`, `elastic_regression/logistic`, `explain_generic/counterfactual`, `regression`, `seasonal/mod`, `smooth_basis`, and `metric/soft_dtw`. Each pass is either confirmed correct (with a one-line rationale recorded in the phase artifact) or fixed with an accompanying regression test. The audit result is written up so the "clean vs fixed" disposition of every pass is traceable.
+- [x] **CORR-01**: `soft_dtw_backward` no longer overwrites the `E[n][m]=1.0` endpoint seed, so it returns a non-zero soft-alignment matrix and `soft_dtw_barycenter` genuinely refines the barycenter. A regression test asserts (a) `soft_dtw_backward`/`soft_dtw_accumulate_gradient` produce a non-zero gradient on non-identical input, and (b) `soft_dtw_barycenter` on non-identical curves converges to a barycenter measurably different from the pointwise mean — cross-checked against the v0.39.0 `Dual` gradient path / `corrected_oracle_gradient` reference (all within tolerance). The existing `test_soft_dtw_barycenter_*` tests are tightened so they can no longer pass on an all-zero gradient.
+- [x] **CORR-02**: Every hand-written backward/gradient pass in the crate is audited for boundary-seed and analogous correctness bugs — at minimum `alignment/differentiable`, `autodiff`, `boosting_regression/gamlss`, `elastic_regression/logistic`, `explain_generic/counterfactual`, `regression`, `seasonal/mod`, `smooth_basis`, and `metric/soft_dtw`. Each pass is either confirmed correct (with a one-line rationale recorded in the phase artifact) or fixed with an accompanying regression test. The audit result is written up so the "clean vs fixed" disposition of every pass is traceable.
 
 ### Build & Features
 
@@ -47,13 +47,14 @@ Explicitly excluded from v0.40.0.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORR-01 | Phase 78 | Pending |
-| CORR-02 | Phase 78 | Pending |
+| CORR-01 | Phase 78 | Complete |
+| CORR-02 | Phase 78 | Complete |
 | BUILD-01 | Phase 79 | Pending |
 | REL-01 | Phase 80 | Pending |
 | REL-02 | Phase 80 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 5 total
 - Mapped to phases: 5 ✓
 - Unmapped: 0

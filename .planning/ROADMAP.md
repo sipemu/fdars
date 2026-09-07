@@ -36,46 +36,56 @@
 
 **Milestone Goal:** Fix the correctness bugs and build breakage discovered during recent milestones, formally validate the outstanding v0.39.0 phases, then bump/tag/publish — folding the unpublished v0.39.0 forward-mode AD core plus these fixes into fdars' first crates.io release since v0.38.0. Implementation milestone — real `fdars-core/src/` changes scoped to fixes/hardening (no new algorithms); additive/non-breaking (protects R + WASM bindings + 28 examples); no new crate dependency; behavior-preserving except where correcting the acknowledged `soft_dtw` bug. Real code → this milestone **does** get a `v0.40.0` git tag. Phase numbering continues from v0.39.0 (…77) → **Phase 78 onward**.
 
-- [ ] **Phase 78: Gradient Correctness — soft_dtw Fix & Backward-Pass Audit** - Fix the `soft_dtw_backward` endpoint-seed bug, add a regression test, and sweep every hand-written gradient pass for analogous boundary-seed defects (CORR-01, CORR-02)
+- [x] **Phase 78: Gradient Correctness — soft_dtw Fix & Backward-Pass Audit** - Fix the `soft_dtw_backward` endpoint-seed bug, add a regression test, and sweep every hand-written gradient pass for analogous boundary-seed defects (CORR-01, CORR-02) (completed 2026-09-07)
 - [ ] **Phase 79: Serde Feature Repair** - Restore `cargo build --features serde` by adding conditional serde derives to `ClassifFit` and embedded types, with a CI guard against re-breakage (BUILD-01)
 - [ ] **Phase 80: Release Hardening & Ship v0.40.0** - Nyquist sign-off of phases 75/76/77, crate bump 0.38.0 → 0.40.0, CHANGELOG + docs refresh, all whole-crate gates green — release-ready for the operator `v0.40.0` tag → crates.io publish (REL-01, REL-02)
 
 ## Phase Details
 
 ### Phase 78: Gradient Correctness — soft_dtw Fix & Backward-Pass Audit
+
 **Goal**: Every hand-written backward/gradient pass in the crate produces a correct (non-zero, boundary-seeded) gradient — starting with the concrete `soft_dtw_backward` endpoint-seed fix and extending to a full audited sweep of the sibling gradient passes.
 **Depends on**: Nothing (independent of Phase 79)
 **Requirements**: CORR-01, CORR-02
 **Success Criteria** (what must be TRUE):
+
   1. `soft_dtw_backward` no longer overwrites the `E[n][m]=1.0` endpoint seed — on non-identical input it returns a non-zero soft-alignment matrix, and a new regression test asserts both a non-zero `soft_dtw_backward`/`soft_dtw_accumulate_gradient` gradient AND that `soft_dtw_barycenter` on non-identical curves converges to a barycenter measurably different from the pointwise mean, cross-checked against the v0.39.0 `Dual` path / `corrected_oracle_gradient` reference within tolerance.
   2. The existing `test_soft_dtw_barycenter_*` tests are tightened so they can no longer pass on an all-zero gradient.
   3. Every hand-written backward/gradient pass named in CORR-02 (`alignment/differentiable`, `autodiff`, `boosting_regression/gamlss`, `elastic_regression/logistic`, `explain_generic/counterfactual`, `regression`, `seasonal/mod`, `smooth_basis`, `metric/soft_dtw`) is audited and given a "clean" (with a one-line rationale) or "fixed" (with a regression test) disposition, all traceable in the phase artifact.
   4. Whole-crate gates stay green after the fixes: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo test` all pass; the change is behavior-preserving except for the intended `soft_dtw` gradient correction.
+
 **Plans**: 2 plans
-- [ ] 78-01-PLAN.md — CORR-01: fix soft_dtw_backward endpoint-seed bug + SC#1 regression tests + tighten the three barycenter tests + update oracle doc comment
-- [ ] 78-02-PLAN.md — CORR-02: audit sweep of the 9 hand-written gradient passes + write 78-AUDIT.md disposition table
+
+- [x] 78-01-PLAN.md — CORR-01: fix soft_dtw_backward endpoint-seed bug + SC#1 regression tests + tighten the three barycenter tests + update oracle doc comment
+- [x] 78-02-PLAN.md — CORR-02: audit sweep of the 9 hand-written gradient passes + write 78-AUDIT.md disposition table
 
 ### Phase 79: Serde Feature Repair
+
 **Goal**: `cargo build --features serde` compiles cleanly again and cannot silently re-break.
 **Depends on**: Nothing (independent of Phase 78)
 **Requirements**: BUILD-01
 **Success Criteria** (what must be TRUE):
+
   1. `cargo build --features serde` compiles cleanly (broken since Phase 60) — `ClassifFit` and any types it embeds that lacked serde support gain conditional `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]` derives consistent with the crate's existing serde convention.
   2. A `ClassifFit` (or embedding type) can round-trip through serde serialization/deserialization under `--features serde`.
   3. A guard — a `--features serde` build/round-trip check runnable in CI — is in place to prevent silent re-breakage.
   4. The default-feature build and existing gates (`cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`) remain green; the change is additive/non-breaking.
+
 **Plans**: TBD
 
 ### Phase 80: Release Hardening & Ship v0.40.0
+
 **Goal**: The crate is validated and release-ready — outstanding v0.39.0 phases formally signed off, version/CHANGELOG/docs updated, and all whole-crate gates green — so the operator's `v0.40.0` tag → crates.io publish is the only remaining step.
 **Depends on**: Phase 78, Phase 79 (validates + folds in all prior fixes; must land last)
 **Requirements**: REL-01, REL-02
 **Success Criteria** (what must be TRUE):
+
   1. Phases 75/76/77 `VALIDATION.md` are moved from `status: draft` to `validated` via the validate-phase flow, reflecting the green test suite; any genuine coverage gaps surfaced during sign-off are filled or explicitly recorded.
   2. `fdars-core` version is bumped 0.38.0 → 0.40.0 and `CHANGELOG.md` carries both the v0.39.0 (AD core) and v0.40.0 (this milestone) entries.
   3. README and tracked `documentation/` (the `docs/` dir is gitignored) are refreshed wherever they reference the version or the corrected `soft_dtw` behavior.
   4. The whole-crate gates pass: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, and `cargo test`.
   5. The final `git tag v0.40.0` push → crates.io publish via `release.yml` is documented in the phase SUMMARY as the operator-driven step, gated on all prior phases being green (the phase prepares and verifies release-readiness, it does not itself tag/publish).
+
 **Plans**: TBD
 
 <details>
@@ -115,7 +125,7 @@ Earlier milestones (v0.14.0–v0.36.0) are shipped and archived — see the Mile
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 78. Gradient Correctness — soft_dtw Fix & Backward-Pass Audit | v0.40.0 | 0/TBD | Not started | - |
+| 78. Gradient Correctness — soft_dtw Fix & Backward-Pass Audit | v0.40.0 | 2/2 | Complete    | 2026-09-07 |
 | 79. Serde Feature Repair | v0.40.0 | 0/TBD | Not started | - |
 | 80. Release Hardening & Ship v0.40.0 | v0.40.0 | 0/TBD | Not started | - |
 
