@@ -38,7 +38,7 @@
 
 - [x] **Phase 78: Gradient Correctness — soft_dtw Fix & Backward-Pass Audit** - Fix the `soft_dtw_backward` endpoint-seed bug, add a regression test, and sweep every hand-written gradient pass for analogous boundary-seed defects (CORR-01, CORR-02) (completed 2026-09-07)
 - [x] **Phase 79: Serde Feature Repair** - Restore `cargo build --features serde` by adding conditional serde derives to `ClassifFit` and embedded types, with a CI guard against re-breakage (BUILD-01) (completed 2026-09-07)
-- [ ] **Phase 80: Release Hardening & Ship v0.40.0** - Nyquist sign-off of phases 75/76/77, crate bump 0.38.0 → 0.40.0, CHANGELOG + docs refresh, all whole-crate gates green — release-ready for the operator `v0.40.0` tag → crates.io publish (REL-01, REL-02)
+- [x] **Phase 80: Release Hardening & Ship v0.40.0** - Nyquist sign-off of phases 75/76/77, crate bump 0.38.0 → 0.40.0, CHANGELOG + docs refresh, all whole-crate gates green — release-ready for the operator `v0.40.0` tag → crates.io publish (REL-01, REL-02) (completed 2026-09-07)
 
 ## Phase Details
 
@@ -90,8 +90,8 @@
 
 **Plans**: 2 plans
 
-- [ ] 80-01-PLAN.md — REL-01: lightweight Nyquist sign-off of phases 75/76/77 VALIDATION.md (draft → validated where coverage holds; record any gap)
-- [ ] 80-02-PLAN.md — REL-02: version bump 0.38.0 → 0.40.0, CHANGELOG [0.39.0]+[0.40.0], README/documentation refresh, whole-crate gates green, operator ship-steps in SUMMARY
+- [x] 80-01-PLAN.md — REL-01: lightweight Nyquist sign-off of phases 75/76/77 VALIDATION.md (draft → validated where coverage holds; record any gap)
+- [x] 80-02-PLAN.md — REL-02: version bump 0.38.0 → 0.40.0, CHANGELOG [0.39.0]+[0.40.0], README/documentation refresh, whole-crate gates green, operator ship-steps in SUMMARY
 
 <details>
 <summary>✅ v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff) (Phases 75–77) — SHIPPED 2026-09-06</summary>
@@ -132,7 +132,7 @@ Earlier milestones (v0.14.0–v0.36.0) are shipped and archived — see the Mile
 |-------|-----------|----------------|--------|-----------|
 | 78. Gradient Correctness — soft_dtw Fix & Backward-Pass Audit | v0.40.0 | 2/2 | Complete    | 2026-09-07 |
 | 79. Serde Feature Repair | v0.40.0 | 1/1 | Complete    | 2026-09-07 |
-| 80. Release Hardening & Ship v0.40.0 | v0.40.0 | 0/TBD | Not started | - |
+| 80. Release Hardening & Ship v0.40.0 | v0.40.0 | 2/2 | Complete    | 2026-09-07 |
 
 ## Status
 

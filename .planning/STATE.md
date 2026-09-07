@@ -3,13 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.40.0
 milestone_name: Correctness & Release Hardening
 current_phase: 80
-current_phase_name: Release Hardening & Ship v0.40.0
-status: complete
-stopped_at: Phase 80 complete — release-ready at v0.40.0; operator runs git tag v0.40.0
-last_updated: "2026-09-07T00:00:00.000Z"
+status: completed
+stopped_at: Phase 80 complete — all phases complete
+last_updated: "2026-09-07T07:17:58.427Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 80 complete — all gates green, operator ship steps documented
-state_head: 5d7d4720
+last_activity_desc: Phase 80 complete
+state_head: af62b9955ada1d0a77e72d3772cfab2eeacd48b4
 progress:
   total_phases: 3
   completed_phases: 3
@@ -29,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: 80 (Release Hardening & Ship v0.40.0) — COMPLETE
-Plan: 2 of 2
-Status: All 3 phases complete — release-ready at v0.40.0
-Last activity: 2026-09-07 — Phase 80 complete; operator runs git tag v0.40.0 to publish
+Phase: 80
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-09-07 — Phase 80 complete
 
 ## Milestone Roadmap (v0.40.0)
 
@@ -129,7 +128,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-06T20:10:00.000Z
-Stopped at: Phase 79 complete, ready to plan Phase 80
+Stopped at: Phase 80 complete — all phases complete
 Resume file: None
 
 ## Operator Next Steps
@@ -139,7 +138,9 @@ All 3 phases of v0.40.0 are complete and gates are green. To publish:
 ```bash
 git tag v0.40.0
 git push origin v0.40.0
+
 # release.yml fires → cargo publish → fdars-core v0.40.0 live on crates.io
+
 ```
 
 After publishing, run `/gsd-complete-milestone` to archive v0.40.0 and start the next cycle.

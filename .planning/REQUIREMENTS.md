@@ -18,8 +18,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Release & Validation
 
-- [ ] **REL-01**: Phases 75/76/77 `VALIDATION.md` are moved from `status: draft` to `validated` (Nyquist sign-off) via the validate-phase flow, reflecting the green test suite; any genuine coverage gaps surfaced during sign-off are filled or explicitly recorded.
-- [ ] **REL-02**: The crate is release-ready — `fdars-core` version bumped 0.38.0 → 0.40.0, `CHANGELOG.md` updated with the v0.39.0 (AD core) and v0.40.0 (this milestone) entries, README/`documentation/` refreshed where they reference version or the fixed behavior, and the whole-crate gates (`cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`) pass. Tag `v0.40.0` → crates.io publish via `release.yml` is the final operator-driven step (documented in the phase SUMMARY).
+- [x] **REL-01**: Phases 75/76/77 `VALIDATION.md` are moved from `status: draft` to `validated` (Nyquist sign-off) via the validate-phase flow, reflecting the green test suite; any genuine coverage gaps surfaced during sign-off are filled or explicitly recorded.
+- [x] **REL-02**: The crate is release-ready — `fdars-core` version bumped 0.38.0 → 0.40.0, `CHANGELOG.md` updated with the v0.39.0 (AD core) and v0.40.0 (this milestone) entries, README/`documentation/` refreshed where they reference version or the fixed behavior, and the whole-crate gates (`cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`) pass. Tag `v0.40.0` → crates.io publish via `release.yml` is the final operator-driven step (documented in the phase SUMMARY).
 
 ## Future Requirements
 
@@ -50,8 +50,8 @@ Explicitly excluded from v0.40.0.
 | CORR-01 | Phase 78 | Complete |
 | CORR-02 | Phase 78 | Complete |
 | BUILD-01 | Phase 79 | Complete |
-| REL-01 | Phase 80 | Pending |
-| REL-02 | Phase 80 | Pending |
+| REL-01 | Phase 80 | Complete |
+| REL-02 | Phase 80 | Complete |
 
 **Coverage:**
 
