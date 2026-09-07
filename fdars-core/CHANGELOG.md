@@ -5,6 +5,205 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0] - 2026-09-07
+
+**BREAKING — 1.0 API Stabilization Pass.** This is the first breaking release after a
+long additive run. It settles the public API ahead of a future 1.0 by removing
+long-deprecated dimensional forms, sealing internals that were unintentionally public,
+marking forward-compatible enums/structs `#[non_exhaustive]`, and unifying naming.
+**Breaking is API *shape* only — there is no numeric or behavioral change** to any
+retained computation. **MSRV is unchanged** (1.81 for the crate, 1.84 for the `linalg`
+feature). See `documentation/STABILITY.md` for the semver + MSRV policy and
+`documentation/ROADMAP-TO-1.0.md` for the remaining 1.0 gap checklist.
+
+### Removed
+
+- **API-01 — deprecated dimensional forms removed.** The 6 long-deprecated `*_2d`/
+  legacy forms and their crate-root/prelude re-exports are gone:
+  - `mean_2d` → use `mean(…, Dim::Two)`
+  - `fanova` → use `fanova_seeded(…, 42)` (pass an explicit seed for determinism)
+  - `random_tukey_2d` → use `random_tukey(…, Dim::Two)`
+  - `random_projection_2d` → use `random_projection(…, Dim::Two)`
+  - `fraiman_muniz_2d` → use `fraiman_muniz(…, Dim::Two)`
+  - `modal_2d` → use `modal(…, Dim::Two)`
+
+### Changed
+
+#### Surface sealing (API-02)
+
+- `sort_nan_safe` and `solve_gaussian_pub` are now `pub(crate)` (they were
+  unintentionally `pub`). These were internal numerical helpers with no intended
+  external contract; there is no public replacement.
+
+#### `#[non_exhaustive]` (API-03)
+
+- `#[non_exhaustive]` added to 10 public enums — `PeerPenalty`, `LambdaChoice`,
+  `LambdaMethod`, `DesignCriterion`, `OptimalityKind`, `ExtrapolationPolicy`,
+  `ImputationMethod`, `SelectionCriterion`, `BasisType`, `BasisCriterion` — and to 2
+  result structs — `OptimBandwidthResult`, `KnnCvResult`.
+  - **Downstream impact:** exhaustive `match` on these enums now requires a wildcard
+    (`_ => …`) arm, and struct-literal construction of the two result structs from
+    outside the crate is no longer possible; use the constructing API and read fields.
+    This allows future variants/fields to be added without a breaking bump.
+
+#### Naming unification (API-04)
+
+- Renamed for casing/consistency:
+  - `funhddC_cluster` → `fun_hddc_cluster`
+  - `FosrResult2d` → `Fosr2dResult`
+  - `GmmResult` → `GmmFitResult`
+  - **Migration:** update call sites / type references to the new names (signatures
+    and semantics are unchanged).
+- Collapsed dimensional pairs into single dispatchers over a domain enum:
+  - `deriv_1d` / `deriv_2d` → `deriv(…, DerivDomain)` returning `DerivResult`.
+    **Migration:** call `deriv(&data, DerivDomain::OneD { argvals, nderiv })` and match
+    `DerivResult::OneD(m)` (or `DerivDomain::TwoD { … }` / `DerivResult::TwoD(…)`).
+  - `lp_self_1d` / `lp_cross_1d` / `lp_self_2d` / `lp_cross_2d` → `lp_self` / `lp_cross`
+    taking an `LpDomain`. **Migration:** call `lp_self(…, LpDomain::OneD { … })` (or
+    `LpDomain::TwoD { … }`) instead of the dimension-suffixed variants.
+
+### Added
+
+- **Stability documentation (API-04 / STAB deliverables):**
+  - `documentation/STABILITY.md` — the semver + MSRV policy (0.x breaking-in-minor
+    rule, feature-gate MSRV, deprecation approach).
+  - `documentation/ROADMAP-TO-1.0.md` — the remaining 1.0 gap checklist.
+- **New public types backing the collapsed APIs:** the `DerivDomain` and `LpDomain`
+  domain-selector enums and the `DerivResult` return type.
+
+## [0.40.0] - 2026-09-07
+
+Release Hardening & Ship v0.40.0 (Phase 80). Folds in the unpublished v0.39.0
+forward-mode AD core and applies correctness / build fixes from Phases 78 and 79.
+
+### Fixed
+
+- **CORR-01 — soft-DTW backward endpoint-seed gradient bug**: `soft_dtw_backward`
+  previously overwrote the required `E[n][m] = 1` endpoint seed in its reverse loop,
+  producing an all-zero gradient for every call. All gradient-dependent code paths
+  (`soft_dtw_barycenter`, the generic autodiff path) now receive the correct gradient.
+  (Phase 78)
+- **BUILD-01 — serde feature build**: `cargo build --features serde` now compiles
+  cleanly. The build had been broken since Phase 60 due to `ShapeletTransformClassifier`
+  embedding a non-serde `ClassifFit`; serde derives have been added to `ClassifFit` and
+  all affected types. (Phase 79)
+
+### Changed
+
+- **soft-DTW barycenter convergence (intentional behavior change)**: `soft_dtw_barycenter`
+  now genuinely converges to the barycenter via an inverse-curvature optimizer step,
+  replacing the previous behavior of silently returning the pointwise mean on an all-zero
+  gradient. Output values will differ from prior versions wherever `soft_dtw_barycenter`
+  was called. (Phase 78, SDTW-O1 for a full L-BFGS optimizer is backlogged.)
+- **CORR-02 — gradient-pass audit**: All hand-written gradient implementations were
+  audited; no additional bugs were found beyond CORR-01. (Phase 78)
+
+## [0.39.0] - 2026-09-07
+
+Forward-Mode Automatic Differentiation Core (Phases 75–77). Code-complete but never
+published to crates.io; folded into this release.
+
+### Added
+
+- **Scalar trait + Dual number substrate (DIF-01)**: New `src/autodiff.rs` module
+  exports a generic `Scalar` trait and a `Dual<T>` value/tangent number type, enabling
+  forward-mode AD over arbitrary scalar types. Includes known-answer tests, central
+  finite-difference cross-checks, and f64-parity tests. (Phase 75)
+- **Differentiable elastic distance + FPCA scores (DIF-02, DIF-03)**: `soft_dtw_distance_generic`
+  is a fully generic soft-DTW distance instantiable with `Dual<f64>` for exact gradient
+  computation; `amplitude_distance_at_warp` likewise. FPCA score projection is now
+  differentiable via the generic `Scalar` interface — `∂score_k/∂curve[j]` equals the
+  analytic closed form `rotation[j,k] · weights[j]` to ≤1e-12. All three validation tiers
+  (oracle, finite-difference, f64-parity) are covered by inline tests. (Phase 76)
+- **Gradient API + composition demo (DIF-04)**: `grad(f, x)` returns `(value, gradient)`
+  for any scalar objective over `Vec<f64>`; `jacobian` provides the full Jacobian matrix.
+  A composition demo wires two Phase-76 differentiable ops into a single objective and
+  verifies the composed gradient against central finite differences (≤1e-6). Crate-root
+  and `prelude::*` re-exports for `Scalar`, `Dual`, `diff`, `grad`, and the generic
+  distance functions. Module doctest passes under `cargo test --doc`. (Phase 77)
+
+## [0.38.0] - 2026-09-05
+
+VEESA — Elastic Shape Explainability & Conformal Anomaly Detection (Phases 72–74).
+Closes the gaps against the VEESA paper (Goode, Tucker & Ries), the `sandialabs/veesa`
+R package, and arXiv 2504.01172 (elastic conformal anomaly detection). Reuse-first over
+the shipped jfPCA / elastic-distance / conformal machinery; no new dependency.
+
+### Added
+
+- **jfPCA fit/transform seam** — `jfpca_fit` returns a reusable `JfpcaModel` (stores the
+  trained Karcher-mean template, `mean_q`/`mean_psi`/`mean_srsf`, joint eigenvector
+  components, `balance_c`, `argvals`, eigenvalues, and the embedded `JointFpcaResult`);
+  training scores reproduce `joint_fpca` within 1e-8. `JfpcaModel::transform` projects new
+  out-of-sample curves onto the trained basis (aligns to the trained template via
+  `align_to_target`); `JfpcaModel::score_training` gives the exact training round-trip;
+  `JfpcaTransform` result. (VEE-01, VEE-02)
+- **Model-agnostic permutation feature importance** — `elastic_pfi` over jfPCA PC scores,
+  generic over any predictor closure `Fn(&FdMatrix) -> Vec<f64>`; `PfiMetric`
+  (Mse/Mae/Accuracy/Custom); deterministic under seed; `ElasticPfiResult`. (VEE-03)
+- **Principal-direction reconstruction** — `JfpcaModel::principal_directions` reconstructs
+  μ ± c·σⱼ split into amplitude and phase parts (`PrincipalDirections`); `c = 0` reproduces
+  the jfPCA mean. (VEE-04)
+- **VEESA pipeline** — `veesa_pipeline` ties fit → transform → PFI end-to-end
+  (`VeesaPipelineResult`). (VEE-05)
+- **Elastic conformal anomaly detection** — `NonConformityScore` extended with
+  `AmplitudeElastic` / `PhaseElastic` / `CombinedElastic`; `elastic_nonconformity` (scores a
+  curve against a reference template, non-negative, zero for an identical curve);
+  `elastic_conformal_anomaly` inductive detector (per-curve conformal p-values, anomaly flags
+  at level α, calibrated threshold — catches magnitude AND shape outliers);
+  `ConformalAnomalyConfig` / `ConformalAnomalyResult`. The existing `conformal_prediction_band`
+  path is unchanged. (ECA-01, ECA-02, ECA-03)
+
+## [0.37.0] - 2026-09-04
+
+WAV — Wavelet-Domain Functional Regression (Phases 69–71). Promotes GAP-07.
+
+### Added
+
+- **Discrete wavelet transform** — new `wavelet/` module: single-level orthonormal DWT
+  (Haar + Daubechies db2–db10) with exact-adjoint analysis/synthesis under periodic and
+  symmetric boundaries; multi-level Mallat pyramid (`WaveletCoeffs`, `decompose`,
+  `reconstruct`) plus the `FdMatrix` batch path; perfect reconstruction ≤1e-10 across
+  families, levels, boundary modes, and non-power-of-2 lengths.
+- **`wcr`** — wavelet-domain scalar-on-function regression (PCR or PLS on per-curve
+  concatenated wavelet-coefficient designs; β(t) recovered by inverse DWT); `WcrResult` with
+  out-of-sample `predict` + coefficient/fitted accessors.
+- **`wnet`** — wavelet-domain elastic-net scalar-on-function regression (per-coefficient
+  L1+L2 coordinate descent, deterministic cross-validated λ); `WnetResult` with `predict`.
+  Full crate-root + prelude re-exports and a running end-to-end module doctest.
+
+## [0.36.0] - 2026-09-04
+
+PEER — Structured-Penalty & Longitudinal Scalar-on-Function Regression (Phases 66–68).
+Promotes GAP-06. (Crate versions 0.36.0 and 0.37.0 were code-complete but not published
+separately — their code ships in the 0.38.0 crate release.)
+
+### Added
+
+- **`peer`** — structured-penalty scalar-on-function regression via the null-space/range-space
+  decomposition of the penalty operator; `PeerPenalty` families (Ridge, 2nd-difference,
+  caller-supplied Decree Q); `PeerResult` (β(t), intercept, fitted values, effective df,
+  diagnostics).
+- **Automatic λ selection** — `LambdaChoice` (Fixed / Gcv / Reml): deterministic GCV grid +
+  self-contained REML EM.
+- **`lpeer`** — longitudinal PEER with subject random effects (REML EM via `famm`);
+  `LpeerResult` with variance components. Out-of-sample `predict` on both; full re-exports +
+  doctest.
+
+## [0.35.0] - 2026-09-03
+
+Optimal Experimental Design for Sparse FDA (FOptDes, Phases 64–65). Promotes GAP-05.
+Crate bumped 0.34.0 → 0.35.0.
+
+### Added
+
+- **`design_criterion`** — evaluates a candidate design under `DesignCriterion::Trajectory`
+  (integrated BLUP-MSE) or `DesignCriterion::Score(A|D)` (FPC-score posterior covariance A-/
+  D-optimality); `OptimalityKind` enum. New `optimal_design.rs`.
+- **`optimal_design`** — deterministic greedy sequential forward selection over an estimated
+  `PaceFpcaResult` (read-only, no re-estimation); `OptDesConfig` / `OptDesResult`. Full
+  re-exports + doctest + criterion benchmark.
+
 ## [0.34.0]
 
 ### Added
