@@ -5,8 +5,8 @@
 //! `_1d` primitive (the 2D computation never diverged from the 1D one — both
 //! iterate the flattened column-major grid identically). The unified
 //! dispatchers take an explicit [`Dim`] argument so callers get one ergonomic
-//! `name(…, dim)` entry point, while the redundant `_2d` shims are retired via
-//! `#[deprecated]`.
+//! `name(…, dim)` entry point. The redundant `_2d` shims were deprecated in
+//! 0.30.0 and hard-removed in 0.41.0; use `name(…, Dim::Two)` instead.
 //!
 //! The enum is `#[non_exhaustive]` so future dimensionalities (or a genuinely
 //! divergent 2D path) can be added without a breaking change.

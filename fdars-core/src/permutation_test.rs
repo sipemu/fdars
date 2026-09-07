@@ -17,7 +17,7 @@
 //! (per-permutation reseeded `StdRng`, threshold-gated parallel,
 //! `(1+n_ge)/(1+n_perm)`). The advancing-single-RNG sites (`t_perm_test`,
 //! `f_perm_test`, `explain/importance`, `famm`) and the fixed-42 LCG site
-//! (`function_on_scalar::fanova`) are documented-and-excluded — migrating them
+//! (`function_on_scalar::fanova_seeded`) are documented-and-excluded — migrating them
 //! WOULD change their p-values.
 //!
 //! # Draw-application contract
