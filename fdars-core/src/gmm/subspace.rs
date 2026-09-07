@@ -665,7 +665,7 @@ pub fn fun_hddc_cluster(
         iterations,
         converged,
     ) = best.ok_or_else(|| FdarError::ComputationFailed {
-        operation: "funhddC_cluster",
+        operation: "fun_hddc_cluster",
         detail: "all EM restarts failed".to_string(),
     })?;
 
