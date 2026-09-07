@@ -47,7 +47,7 @@ Plans:
   2. `#[non_exhaustive]` coverage on public enums and result structs is corrected per the approved inventory so future field/variant additions stay non-breaking after 1.0.
   3. No numeric or behavioral output changes — the edits are visibility/attribute-only.
   4. Whole-crate gates (fmt, `clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, `--features serde` build) are green and all 28 examples compile.
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 82-01: Seal accidental `pub` exposure per approved inventory (API-02)
