@@ -2,43 +2,107 @@
 
 ## Milestones
 
-- ✅ **v0.14.0 — Performance & scikit-fda Gap Audit** — Phases 1–9 (shipped 2026-08-09) — [archive](milestones/v0.14.0-ROADMAP.md)
-- ✅ **v0.15.0 — Top-Backlog Quick Wins** — Phases 10–11 (shipped 2026-08-11) — [archive](milestones/v0.15.0-ROADMAP.md)
-- ✅ **v0.16.0 — Elastic Feasibility + Parity Quick Wins** — Phases 12–13 (shipped 2026-08-12, PR #40) — [archive](milestones/v0.16.0-ROADMAP.md)
-- ✅ **v0.17.0 — Registration Parity & Elastic-FPCA Performance** — Phases 14–15 (shipped 2026-08-12, PR #41) — [archive](milestones/v0.17.0-ROADMAP.md)
-- ✅ **v0.18.0 — R-Ecosystem Gap Audit** — Phases 16–19 (shipped 2026-08-15) — [archive](milestones/v0.18.0-ROADMAP.md)
-- ✅ **v0.19.0 — Functional Inference Suite** — Phases 20–21 (shipped 2026-08-16) — [archive](milestones/v0.19.0-ROADMAP.md)
-- ✅ **v0.20.0 — Table-Stakes Quick Wins** — Phases 22–23 (shipped 2026-08-16) — [archive](milestones/v0.20.0-ROADMAP.md)
-- ✅ **v0.21.0 — Functional Regression Completeness** — Phases 24–25 (shipped 2026-08-17) — [archive](milestones/v0.21.0-ROADMAP.md)
-- ✅ **v0.22.0 — PACE Sparse FPCA & Elastic Multinomial** — Phases 26–27 (shipped 2026-08-19) — [archive](milestones/v0.22.0-ROADMAP.md)
-- ✅ **v0.23.0 — Depth, Outliers & Interval Inference** — Phases 28–30 (shipped 2026-08-20) — [archive](milestones/v0.23.0-ROADMAP.md)
-- ✅ **v0.24.0 — Functional Regression & Clustering Breadth** — Phases 31–33 (shipped 2026-08-20) — [archive](milestones/v0.24.0-ROADMAP.md)
-- ✅ **v0.25.0 — Serial Dependence, Representation & Density Breadth** — Phases 34–36 (shipped 2026-08-21) — [archive](milestones/v0.25.0-ROADMAP.md)
-- ✅ **v0.26.0 — FPCA Breadth & Sparse Covariance** — Phases 37–38 (shipped 2026-08-21) — [archive](milestones/v0.26.0-ROADMAP.md)
-- ✅ **v0.27.0 — Functional Time Series & Fréchet Regression** — Phases 39–40 (shipped 2026-08-22) — [archive](milestones/v0.27.0-ROADMAP.md)
-- ✅ **v0.28.0 — Spectral Functional Time Series & Object-Data Fréchet Regression** — Phases 41–42 (shipped 2026-08-23) — [archive](milestones/v0.28.0-ROADMAP.md)
-- ✅ **v0.29.0 — Boosting/Bayesian Regression, FEM/PDE Smoothing & Functional Co-Clustering** — Phases 43–45 (shipped 2026-08-30) — [archive](milestones/v0.29.0-ROADMAP.md)
-- ✅ **v0.30.0 — Performance & Consolidation Pass** — Phases 46–51 (shipped 2026-09-01) — [archive](milestones/v0.30.0-ROADMAP.md)
-- ✅ **v0.31.0 — Multi-Ecosystem Gap Audit** — Phases 52–53 (shipped 2026-09-02) — [archive](milestones/v0.31.0-ROADMAP.md)
-- ✅ **v0.32.0 — Global Alignment Kernel & Kernel Clustering** — Phases 54–56 (shipped 2026-09-02) — [archive](milestones/v0.32.0-ROADMAP.md)
-- ✅ **v0.33.0 — Shapelet Transform & Classification** — Phases 57–60 (shipped 2026-09-02) — [archive](milestones/v0.33.0-ROADMAP.md)
-- ✅ **v0.34.0 — k-Shape Clustering & Shape-Based Distance** — Phases 61–63 (shipped 2026-09-02) — [archive](milestones/v0.34.0-ROADMAP.md)
-- ✅ **v0.35.0 — Optimal Experimental Design for Sparse FDA (FOptDes)** — Phases 64–65 (shipped 2026-09-03) — [archive](milestones/v0.35.0-ROADMAP.md)
-- ✅ **v0.36.0 — PEER: Structured-Penalty & Longitudinal Scalar-on-Function Regression** — Phases 66–68 (shipped 2026-09-04) — [archive](milestones/v0.36.0-ROADMAP.md)
-- ✅ **v0.37.0 — WAV: Wavelet-Domain Functional Regression** — Phases 69–71 (shipped 2026-09-04) — [archive](milestones/v0.37.0-ROADMAP.md)
-- ✅ **v0.38.0 — VEESA: Elastic Shape Explainability & Conformal Anomaly Detection** — Phases 72–74 (shipped 2026-09-05) — [archive](milestones/v0.38.0-ROADMAP.md)
-- ✅ **v0.39.0 — DIFF: Differentiable FDA Core (Forward-Mode Autodiff)** — Phases 75–77 (shipped 2026-09-06) — [archive](milestones/v0.39.0-ROADMAP.md)
-- ✅ **v0.40.0 — Correctness & Release Hardening** — Phases 78–80 (shipped 2026-09-07) — [archive](milestones/v0.40.0-ROADMAP.md)
+- ✅ **…v0.40.0 Correctness & Release Hardening** — Phases 78-80 (shipped 2026-09-07)
+- 🚧 **v0.41.0 1.0 API Stabilization Pass** — Phases 81-85 (in progress)
+
+## Overview
+
+v0.41.0 is fdars' **first breaking milestone** after a long additive-only run — legitimate under 0.x, where semver permits breaking changes. It opens with a whole-surface **audit** that produces a ranked, user-approved breaking-change inventory across four scopes (deprecated-form removal, accidental `pub` exposure, `#[non_exhaustive]` gaps, naming inconsistencies). The concrete change sets for the surface-sealing and naming-unification phases are **drawn from that approved list**, so those execution phases depend on the audit. The mechanical removal of the 6 already-specified deprecated forms rides in the audit phase (it does not depend on the findings). Then per-category execution phases land the breaking cleanups, a non-code phase produces the stability deliverables (semver policy, MSRV, 1.0 gap checklist) that will govern a deliberate future 1.0 cut, and a final release phase bumps 0.40.0 → 0.41.0, writes the CHANGELOG with breaking changes called out, and verifies release-readiness. Ships as **0.41.0** (NOT 1.0). All 28 examples + doctests are the compile-time proof the breaking changes are complete.
 
 ## Phases
 
-_No active milestone. v0.40.0 shipped 2026-09-07 — all prior milestone phase detail lives in `milestones/vX.Y.Z-ROADMAP.md`. Run `/gsd-new-milestone` to start the next milestone._
+**Phase Numbering:**
+- Integer phases: Planned milestone work (continuing from Phase 80 → **Phase 81 onward**)
+- Decimal phases (81.1, 81.2): Urgent insertions (marked with INSERTED)
 
-## Status
+- [ ] **Phase 81: API Audit & Deprecated-Form Removal** - Produce the user-approved ranked breaking-change inventory; remove the 6 deprecated forms
+- [ ] **Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage** - Seal accidental `pub` exposure and correct `#[non_exhaustive]` per the approved inventory
+- [ ] **Phase 83: Naming Unification** - Unify `_1d`/`_2d`/`_nd` suffix sprawl + config/result naming into consistent dispatchers (largest, highest-risk)
+- [ ] **Phase 84: Stability Deliverables** - Semver/stability policy, MSRV finalization, and 1.0 gap checklist (non-code)
+- [ ] **Phase 85: Release Preparation & Verification** - Bump 0.40.0 → 0.41.0, CHANGELOG with breaking changes, docs refresh, whole-crate gates green
 
-**v0.40.0 Correctness & Release Hardening — SHIPPED 2026-09-07 (release-ready; operator tag/publish pending).** Fixed the `soft_dtw_backward` zero-gradient bug + stabilized the barycenter optimizer (CORR-01), swept all hand-written gradient passes clean (CORR-02, Phase 78); repaired the `--features serde` build broken since Phase 60 (BUILD-01, Phase 79); Nyquist-signed-off phases 75/76/77 and bumped version/CHANGELOG/docs to 0.40.0 with all whole-crate gates green (REL-01/02, Phase 80). Milestone audit: 5/5 requirements satisfied, integration clean.
+## Phase Details
 
-**Ship:** `fdars-core` is at version 0.40.0 and release-ready. The final step is operator-driven: `git tag v0.40.0` → `git push origin v0.40.0` → `release.yml` runs `cargo publish` (folds the unpublished v0.39.0 forward-mode AD core + these fixes into fdars' first crates.io release since v0.38.0). Backlog: SDTW-O1 (proper L-BFGS/multi-restart soft-DTW barycenter optimizer).
+### Phase 81: API Audit & Deprecated-Form Removal
+**Goal**: The full public surface is audited into a ranked, user-approved breaking-change inventory, and the 6 already-specified deprecated forms are removed from the crate.
+**Depends on**: Nothing (first phase)
+**Requirements**: AUDIT-01, API-01
+**Success Criteria** (what must be TRUE):
+  1. A ranked breaking-change inventory exists covering all four scopes (deprecated-form removal, accidental `pub` exposure, `#[non_exhaustive]` gaps, naming inconsistencies), each entry listing location, proposed change, blast radius (internal callers, examples, doctests), and a value/risk rating.
+  2. The inventory has been presented to and approved by the user — the concrete change sets consumed by Phases 82 and 83 are drawn from this approved list (the user may approve a reduced scope, especially for naming).
+  3. The 6 deprecated forms (`mean_2d`, `fanova`, `random_tukey_2d`, `random_projection_2d`, `fraiman_muniz_2d`, `modal_2d`) and their crate-root/prelude re-exports are removed; all internal callers, unit tests, doctests, and example 21 are migrated to the `Dim`/`_seeded` replacements.
+  4. The crate builds and all 28 examples compile after the deprecated-form removal; whole-crate gates (fmt, `clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, `--features serde` build) are green.
+**Plans**: TBD
 
-**Next:** `/gsd-new-milestone`
+Plans:
+- [ ] 81-01: Whole-surface audit → ranked breaking-change inventory (four scopes) → present for user approval
+- [ ] 81-02: Remove the 6 deprecated forms + re-exports; migrate internal callers, tests, doctests, example 21
 
+### Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage
+**Goal**: The accidental/unintended public exposure and `#[non_exhaustive]` gaps identified in the approved AUDIT-01 inventory are corrected, shrinking and future-proofing what a 1.0 must commit to.
+**Depends on**: Phase 81 (change sets drawn from the approved inventory)
+**Requirements**: API-02, API-03
+**Success Criteria** (what must be TRUE):
+  1. Accidental/unintended public exposure from the approved inventory is sealed (`pub` → `pub(crate)`, removed re-exports, hidden leaked helper types); the public surface compiles and no in-crate, example, test, or doctest usage breaks.
+  2. `#[non_exhaustive]` coverage on public enums and result structs is corrected per the approved inventory so future field/variant additions stay non-breaking after 1.0.
+  3. No numeric or behavioral output changes — the edits are visibility/attribute-only.
+  4. Whole-crate gates (fmt, `clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, `--features serde` build) are green and all 28 examples compile.
+**Plans**: TBD
+
+Plans:
+- [ ] 82-01: Seal accidental `pub` exposure per approved inventory (API-02)
+- [ ] 82-02: Correct `#[non_exhaustive]` coverage on public enums/result structs (API-03)
+
+### Phase 83: Naming Unification
+**Goal**: The approved naming unification is applied — `_1d`/`_2d`/`_nd` suffix sprawl and config/result naming collapse into consistent dispatchers across the whole crate.
+**Depends on**: Phase 82 (surface sealed first; scope set by the approved inventory)
+**Requirements**: API-04
+**Success Criteria** (what must be TRUE):
+  1. The approved `_1d`/`_2d`/`_nd` suffix + config/result naming changes are applied and the surface exposes consistent dispatchers (scope as approved in AUDIT-01 — possibly reduced).
+  2. All call sites, all 28 examples, and all doctests are updated to the new names; the crate compiles.
+  3. The whole-crate test suite passes with no numeric/behavioral change — the breaking is limited to API shape.
+  4. Whole-crate gates (fmt, `clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, `--features serde` build) are green.
+**Plans**: TBD
+
+Plans:
+- [ ] 83-01: Apply the approved naming unification (dispatchers), migrate call sites/examples/doctests
+
+### Phase 84: Stability Deliverables
+**Goal**: The non-code stability deliverables that will govern the eventual 1.0 cut exist — semver/stability policy, a finalized MSRV policy, and a 1.0 gap checklist.
+**Depends on**: Phase 81 (approved inventory informs the gap checklist; can run alongside 82/83)
+**Requirements**: STAB-01, STAB-02, STAB-03
+**Success Criteria** (what must be TRUE):
+  1. A documented semver + API-stability policy exists in `documentation/` — the definition of "stable", the deprecation process, and the breaking-change policy governing the eventual 1.0.
+  2. The MSRV policy is reviewed, pinned (1.81 crate / 1.84 for the `linalg` feature), documented, and consistent between `Cargo.toml` and the docs.
+  3. A 1.0 gap checklist enumerating what remains before a real 1.0 cut (items deferred out of this milestone) exists and scopes the next milestone.
+**Plans**: TBD
+
+Plans:
+- [ ] 84-01: Author semver/stability policy + MSRV finalization + 1.0 gap checklist in `documentation/`
+
+### Phase 85: Release Preparation & Verification
+**Goal**: The crate is bumped to 0.41.0, the CHANGELOG documents the breaking changes, docs are refreshed, and whole-crate release-readiness is verified (the operator tag/publish is the final external step).
+**Depends on**: Phase 82, Phase 83, Phase 84 (validates and folds in all breaking changes + deliverables)
+**Requirements**: REL-01
+**Success Criteria** (what must be TRUE):
+  1. `fdars-core/Cargo.toml` is bumped 0.40.0 → 0.41.0 and a CHANGELOG `[0.41.0]` entry exists with the breaking changes (deprecated-form removal, surface sealing, non-exhaustive corrections, naming unification) explicitly called out.
+  2. Docs are refreshed to the new surface; whole-crate gates are green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, and a `--features serde` build.
+  3. All 28 examples + doctests compile/pass against the new surface — the compile-time proof the breaking changes are complete.
+  4. Release-readiness is verified and documented; the `git tag v0.41.0` push → crates.io publish is left as the final operator-driven step (this phase does not tag/publish).
+**Plans**: TBD
+
+Plans:
+- [ ] 85-01: Bump version + CHANGELOG `[0.41.0]` (breaking changes called out) + docs refresh + whole-crate gate verification
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 81 → 82 → 83 → 84 → 85. Phase 81 (audit + approval) must land first — Phases 82/83 draw their change sets from its approved inventory. Phase 84 (non-code deliverables) can run alongside 82/83 once the inventory is approved. Phase 85 lands last.
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 81. API Audit & Deprecated-Form Removal | 0/2 | Not started | - |
+| 82. Public-Surface Sealing & Non-Exhaustive Coverage | 0/2 | Not started | - |
+| 83. Naming Unification | 0/1 | Not started | - |
+| 84. Stability Deliverables | 0/1 | Not started | - |
+| 85. Release Preparation & Verification | 0/1 | Not started | - |

@@ -49,25 +49,23 @@ Deferred to a later, deliberate **1.0 cut** (governed by STAB-01/03):
 
 ## Traceability
 
-Filled during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUDIT-01 | TBD | Pending |
-| API-01 | TBD | Pending |
-| API-02 | TBD | Pending |
-| API-03 | TBD | Pending |
-| API-04 | TBD | Pending |
-| STAB-01 | TBD | Pending |
-| STAB-02 | TBD | Pending |
-| STAB-03 | TBD | Pending |
-| REL-01 | TBD | Pending |
+| AUDIT-01 | Phase 81 | Pending |
+| API-01 | Phase 81 | Pending |
+| API-02 | Phase 82 | Pending |
+| API-03 | Phase 82 | Pending |
+| API-04 | Phase 83 | Pending |
+| STAB-01 | Phase 84 | Pending |
+| STAB-02 | Phase 84 | Pending |
+| STAB-03 | Phase 84 | Pending |
+| REL-01 | Phase 85 | Pending |
 
 **Coverage:**
 - v1 requirements: 9 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 9 ⚠️
+- Mapped to phases: 9 (100%) ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-07*
-*Last updated: 2026-09-07 after initial definition*
+*Last updated: 2026-09-07 after roadmap creation (traceability filled, 9/9 mapped)*

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
 status: planning
-last_updated: "2026-09-07T07:57:46.930Z"
+last_updated: "2026-09-07T08:20:00.000Z"
 last_activity: 2026-09-07
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -19,35 +19,38 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-09-06)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems. This milestone is a **correctness & release-hardening** pass: fix the bugs and build breakage found during recent milestones, formally validate the outstanding v0.39.0 phases, then bump/tag/publish fdars' first crates.io release since v0.38.0 (folding in the unpublished v0.39.0 forward-mode AD core).
-**Current focus:** Phase 80 — Release Hardening & Ship v0.40.0
+**Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone is a **1.0-readiness / API-stabilization** pass: audit the whole public surface, then land the breaking cleanups now while still in 0.x — producing a settled API + the stability deliverables (semver policy, MSRV, 1.0 gap checklist) that will govern a deliberate future 1.0 cut. Ships as **0.41.0** (NOT 1.0).
+**Current focus:** Phase 81 — API Audit & Deprecated-Form Removal
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-09-07 — Milestone v0.41.0 started
+Phase: 81 of 85 (API Audit & Deprecated-Form Removal)
+Plan: — (roadmap just created; ready to plan Phase 81)
+Status: Ready to plan
+Last activity: 2026-09-07 — ROADMAP.md created (5 phases, 81–85; 9/9 requirements mapped)
 
-## Milestone Roadmap (v0.40.0)
+Progress: [░░░░░░░░░░] 0%
 
-Three phases, 5 requirements (CORR-01/02, BUILD-01, REL-01/02) — a small fixup/hardening milestone. Implementation milestone with real `fdars-core/src/` changes scoped to fixes/hardening (no new algorithms); additive/non-breaking (protects R + WASM bindings + 28 examples); no new crate dependency; behavior-preserving except where correcting the acknowledged `soft_dtw` bug. Real code → this milestone **does** get a `v0.40.0` git tag. Phase numbering continues from v0.39.0 (ended at 77) → Phase 78. Fine granularity, but the work compresses naturally to 3 phases (paired requirements + a final ship phase).
+## Milestone Roadmap (v0.41.0)
+
+Five phases, 9 requirements — the **first breaking milestone** after a long additive-only run (legitimate under 0.x). Real `fdars-core/src/` changes limited to API shape (names, visibility, exhaustiveness) — numeric outputs unchanged. No new crate dependency. Workspace is `fdars-core` only (external `fdars-r` migration is a separate todo, `fdars-j75`). All 28 examples + doctests updated (compile-time proof). Fine granularity; the risk spread (mechanical vs. large/high-risk naming vs. non-code docs) justifies distinct phases. Phase numbering continues from v0.40.0 (ended at 80) → **Phase 81**.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 78 — Gradient Correctness — soft_dtw Fix & Backward-Pass Audit | CORR-01, CORR-02 | **CORR-01:** concrete `soft_dtw_backward` endpoint-seed fix (`fdars-core/src/metric/soft_dtw.rs:262` — the reverse loop overwrites the `E[n][m]=1.0` seed with 0, zeroing the whole gradient; fix prototyped in that file's test `corrected_oracle_gradient`, ~line 467) + a regression test asserting non-zero gradient AND real barycenter movement vs the pointwise mean, cross-checked against the v0.39.0 `Dual` path; tighten existing `test_soft_dtw_barycenter_*` so they can't pass on an all-zero gradient. **CORR-02:** audit the ~10 sibling hand-written backward/gradient passes (`alignment/differentiable`, `autodiff`, `boosting_regression/gamlss`, `elastic_regression/logistic`, `explain_generic/counterfactual`, `regression`, `seasonal/mod`, `smooth_basis`, `metric/soft_dtw`) for analogous boundary-seed bugs — each disposed "clean" (one-line rationale) or "fixed" (+ regression test), all traceable. Behavior-preserving except the intended `soft_dtw` correction. Independent of Phase 79. |
-| 79 — Serde Feature Repair | BUILD-01 | Self-contained. `ClassifFit` (`fdars-core/src/classification/fit.rs:49`) lacks the `#[cfg_attr(feature = "serde", derive(...))]` the rest of the crate uses; add derives to it + any embedded non-serde types until `cargo build --features serde` compiles again (broken since Phase 60), plus a serde round-trip test and a CI-runnable `--features serde` guard against re-breakage. Additive/non-breaking. Independent of Phase 78. |
-| 80 — Release Hardening & Ship v0.40.0 | REL-01, REL-02 | **Must land last** — validates + folds in everything. **REL-01:** Nyquist sign-off of phases 75/76/77 `VALIDATION.md` (draft → validated) via the validate-phase flow; fill or record any coverage gaps. **REL-02:** crate bump 0.38.0 → 0.40.0, CHANGELOG (v0.39.0 AD core + v0.40.0), README/`documentation/` refresh (tracked docs live in `documentation/`; `docs/` is gitignored), whole-crate gates green. The actual `git tag v0.40.0` push → crates.io publish via `release.yml` is the final operator-driven step (documented in the SUMMARY, gated on all prior phases green) — the phase prepares + verifies release-readiness, it does not itself tag/publish. Depends on Phase 78 + Phase 79. |
+| 81 — API Audit & Deprecated-Form Removal | AUDIT-01, API-01 | **Opens the milestone, lands first.** AUDIT-01 produces the ranked breaking-change inventory across all four scopes (deprecated-form removal, accidental `pub` exposure, `#[non_exhaustive]` gaps, naming) → **presented for user approval**; Phases 82/83 change sets are drawn from the approved list. API-01 (remove the 6 deprecated forms → `Dim`/`_seeded` replacements; migrate callers/tests/doctests/example 21) is already fully specified, does NOT depend on the findings, and is low-risk/mechanical — rides in this phase. |
+| 82 — Public-Surface Sealing & Non-Exhaustive Coverage | API-02, API-03 | Both drawn from the approved AUDIT-01 inventory. API-02: seal accidental `pub` exposure (`pub` → `pub(crate)`, removed re-exports, hidden leaked helper types). API-03: correct `#[non_exhaustive]` on public enums/result structs. Visibility/attribute-only — no behavior change. Depends on Phase 81. |
+| 83 — Naming Unification | API-04 | The **largest, highest-risk** item (deferred as breaking back in v0.30.0). Unify `_1d`/`_2d`/`_nd` suffix sprawl + config/result naming into consistent dispatchers; touches many fns, all 28 examples, and docs. Exact scope set by the approved AUDIT-01 list (user may approve a reduced scope). Own phase. Depends on Phase 82. |
+| 84 — Stability Deliverables | STAB-01, STAB-02, STAB-03 | Non-code deliverables (share a phase): semver/API-stability policy in `documentation/` (STAB-01), MSRV finalization + pin (1.81 crate / 1.84 `linalg`), Cargo.toml↔docs consistency (STAB-02), 1.0 gap checklist scoping the next milestone (STAB-03). Depends on Phase 81 (inventory informs the checklist); can run alongside 82/83. |
+| 85 — Release Preparation & Verification | REL-01 | **Must land last.** Bump 0.40.0 → 0.41.0, CHANGELOG `[0.41.0]` with breaking changes explicitly called out, docs refresh, whole-crate gates green + `--features serde` build; all 28 examples + doctests pass. The `git tag v0.41.0` push → crates.io publish is the final operator-driven step (this phase prepares + verifies release-readiness only). Depends on Phases 82, 83, 84. |
 
-**Execution order:** 78 and 79 are independent (either order / parallelizable); 80 lands last. All 5 requirements mapped, no orphans, no duplicates.
+**Execution order:** 81 → 82 → 83 → 84 → 85. 81 first (audit + approval gate). 82/83 draw from the approved inventory; 84 can run alongside once approved. 85 last. All 9 requirements mapped, no orphans, no duplicates.
 
-**Gates (this implementation milestone):** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — use `--all-targets`, not a plain `-p` lint), `cargo test`. Plus a `--features serde` build/round-trip guard (Phase 79). Ships to crates.io on the operator `v0.40.0` tag (Phase 80 prepares + verifies release-readiness).
+**Gates (this breaking implementation milestone):** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — use `--all-targets`, not a plain `-p` lint), `cargo test`, plus a `--features serde` build guard. No new crate dependency. All 28 examples + doctests must compile/pass — the compile-time proof the breaking changes are complete.
 
 ## Performance Metrics
 
 **Velocity:**
-
-- Total plans completed: 111+ (across v0.14.0–v0.39.0)
+- Total plans completed: 116+ (across v0.14.0–v0.40.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -55,58 +58,44 @@ Three phases, 5 requirements (CORR-01/02, BUILD-01, REL-01/02) — a small fixup
 
 | Phase | Milestone | Plans |
 |-------|-----------|-------|
-| 01–09 | v0.14.0 | 21 |
-| 10–45 | v0.15.0–v0.29.0 | 63 |
+| 01–45 | v0.14.0–v0.29.0 | 84 |
 | 46–51 | v0.30.0 | 23 |
-| 52–65 | v0.31.0–v0.35.0 | 21 |
-| 66–68 | v0.36.0 | 3 |
-| 69–71 | v0.37.0 | 5 |
-| 72–74 | v0.38.0 | 3 |
-| 75–77 | v0.39.0 | 4 |
-| 78–80 | v0.40.0 | 5/5 (78 complete, 79 complete, 80 complete) |
+| 52–77 | v0.31.0–v0.39.0 | ~24 |
+| 78–80 | v0.40.0 | 5 |
+| 81–85 | v0.41.0 | 0/7 (planned) |
 
 **Recent Trend:**
-
-- Last milestone: v0.39.0 DIFF phases 75–77 (4 plans) — audit 4/4, integration INTEGRATED; crate code-complete (tag/publish deferred, now folded into v0.40.0).
-- Trend: v0.40.0 is a **fixup/hardening** milestone — lower net-new-code risk than a feature milestone. Real code changes but scoped to two concrete fixes (a known `soft_dtw` gradient bug + a known serde build break) plus an audited sweep and a validate-and-ship phase. Normal test/clippy/fmt gates.
+- Last milestone: v0.40.0 (phases 78–80, 5 plans) — audit 5/5, release-ready.
+- Trend: v0.41.0 is the **first breaking** milestone — API-shape-only changes (no numeric/behavioral change), but higher blast-radius risk (Phase 83 naming touches all 28 examples). Audit-gated: nothing breaking executes before the user approves the inventory.
 
 *Updated after each plan completion*
-**Per-Plan Metrics:**
-
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| 78-01 (CORR-01/02) | — | 3 | soft_dtw + gradient audit |
-| 79-01 (BUILD-01) | — | 3 | serde derives on 5 types + round-trip test |
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
+Decisions are logged in PROJECT.md Key Decisions table. Relevant to current work (v0.41.0):
 
-Relevant to current work (v0.40.0 Correctness & Release Hardening):
-
-- **Fixup/hardening milestone, not features** — all parity/gap backlogs are exhausted; scope is correctness + build repair + validation + ship. No new algorithms.
-- **CORR-01 = the acknowledged `soft_dtw_backward` endpoint-seed bug** — the reverse loop at `metric/soft_dtw.rs:262` overwrites the `E[n][m]=1.0` seed with 0, zeroing the whole gradient → `soft_dtw_barycenter` silently returns the pointwise mean without refining. Fix is prototyped in that file's `corrected_oracle_gradient` test (~line 467). Behavior-changing (that is the point) — but scoped to the endpoint-seed defect, NOT a redesign of the barycenter optimizer.
-- **CORR-01 + CORR-02 grouped** (Phase 78) — CORR-01 is the concrete fix + regression test; CORR-02 is the sweep of the ~10 sibling hand-written gradient passes for analogous boundary-seed bugs, each disposed clean/fixed and traceable.
-- **BUILD-01 self-contained** (Phase 79) — `ClassifFit` (`classification/fit.rs:49`) lacks the crate's conditional serde derives; add them + any embedded non-serde types until `cargo build --features serde` compiles, plus a CI guard. Independent of Phase 78.
-- **REL-01 + REL-02 grouped** (Phase 80) — Nyquist sign-off of 75/76/77 then bump/CHANGELOG/docs/gates; lands last because it validates + folds in the earlier fixes.
-- **This milestone gets a `v0.40.0` git tag** — real code changes (unlike audit milestones). The tag folds the unpublished v0.39.0 AD core + these fixes into fdars' first crates.io release since v0.38.0. Tag/publish is the final operator-driven step.
-- **Additive/non-breaking, no new crate dependency** — carried conventions. Fixes reuse existing machinery.
-- **Phase numbering continues** — v0.39.0 ended at Phase 77 → v0.40.0 starts at Phase 78. No reset.
-- **5 requirements → 3 phases** (fine granularity, compressed): Phase 78 CORR-01/02; Phase 79 BUILD-01; Phase 80 REL-01/02. All 5 mapped, no orphans, no duplicates. 78 and 79 independent; 80 last.
+- **First breaking milestone under 0.x** — departs from the long additive-only run; legitimate because the crate is still 0.x. Breaking limited to API shape (names, visibility, exhaustiveness); numeric outputs unchanged.
+- **Ships as 0.41.0, NOT 1.0** — settle the API under 0.x first; the actual 1.0 cut is a separate, governed commitment (per STAB-01/STAB-03).
+- **Audit-gated execution** — AUDIT-01 (Phase 81) produces a ranked inventory across four scopes, **user-approved before any execution phase runs**. API-02/03/04 change sets are drawn from the approved list; the user may approve a reduced scope (esp. naming).
+- **API-01 rides in the audit phase** — the 6 deprecated-form removals are already fully specified and independent of the audit findings; low-risk/mechanical.
+- **API-04 (naming) gets its own phase** — the largest, highest-risk item, deferred as breaking back in v0.30.0; touches many fns + all 28 examples + docs.
+- **STAB-01/02/03 share one non-code phase** (84) — docs/policy deliverables, no `fdars-core/src/` code.
+- **REL-01 lands last** (85) — prepares + verifies release-readiness; operator does the `v0.41.0` tag/publish.
+- **No new crate dependency; workspace is `fdars-core` only** — carried conventions; external `fdars-r` migration is separate (`fdars-j75`).
+- **Phase numbering continues** — v0.40.0 ended at Phase 80 → v0.41.0 starts at Phase 81. No reset.
+- **9 requirements → 5 phases:** 81 AUDIT-01/API-01; 82 API-02/03; 83 API-04; 84 STAB-01/02/03; 85 REL-01. All mapped, no orphans, no duplicates.
 
 ### Pending Todos
 
-- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; not this milestone.
+- **Migrate `fdars-r` R wrapper to use the `FdMatrix` API** (issue `fdars-j75`) — carried forward; separate package, out of `fdars-core` scope this milestone.
 
 ### Blockers/Concerns
 
-- **No research/SUMMARY.md** — intentional: this is a correctness/hardening pass on fdars' own code, not a feature/parity milestone, so no domain research was run. Non-blocking for the roadmap.
-- **CORR-01 is behavior-changing** — unlike every recent milestone's additive-only stance, the `soft_dtw` fix intentionally changes gradient/barycenter output. Scope guard: fix ONLY the endpoint-seed defect + validating test; do NOT redesign the barycenter algorithm. Existing `test_soft_dtw_barycenter_*` must be tightened so they can't pass on an all-zero gradient.
-- **CORR-02 sweep risk** — the audit may surface additional real bugs in the ~10 sibling gradient passes; each must be dispositioned clean/fixed and traceable. Budget for possible extra fix work inside Phase 78.
-- Historical build/CI hazards (MEMORY.md) apply: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); watch `/tmp` and `target/` disk pressure on full builds (`rm -rf target/debug/{incremental,examples}` to free space; doctests link in a small `/tmp` tmpfs — full → all commits fail with a bogus "No space left"); prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds; the per-phase impl-subagent pattern dodged executor stalls on recent milestones.
-- **serde build break is the BUILD-01 target** (`fdars-core/src/classification/fit.rs` `ClassifFit`; surfaced via `shapelet/classifier.rs` embedding it) — Phase 79 fixes it.
+- **No research/SUMMARY.md** — intentional: this is an internal API-audit/stabilization pass, not an ecosystem-parity milestone. Non-blocking for the roadmap.
+- **Breaking-change blast radius** — Phase 83 (naming) touches all 28 examples + docs; Phases 81–83 all break some external usage by design. Scope guard: nothing breaking executes before the AUDIT-01 inventory is user-approved; API shape only (no numeric/behavioral change).
+- Historical build/CI hazards (MEMORY.md) apply: run clippy with `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift); keep the `--features serde` build green (repaired in v0.40.0 — do not regress it); watch `/tmp` and `target/` disk pressure on full builds (`rm -rf target/debug/{incremental,examples}` to free space; doctests link in a small `/tmp` tmpfs); prefer inline execution + `commit --no-verify` after out-of-band gates if executor subagents stall on long cargo builds.
 
 ## Deferred Items
 
@@ -114,19 +103,17 @@ Items acknowledged and deferred, most recent first:
 
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
-| Soft-DTW-optimizer | SDTW-O1 — replace the `soft_dtw_barycenter` inverse-curvature / soft-DBA majorization-minimization step (added in Phase 78 to stop the fixed-`lr` divergence that CORR-01 exposed) with a proper global optimizer (L-BFGS and/or multi-restart) for the non-convex soft-DTW barycenter objective. The MM step is locally stable + converging but not globally optimal. Surfaced by v0.40.0 Phase 78 code review (WR-03). | Deferred | v0.40.0 | future milestone |
-| Differentiable-core | DIF-F1 (reverse-mode / VJP autodiff — needs a tape/graph engine); DIF-F2 (broaden the differentiable subset beyond elastic + FPCA — basis eval, inner products, SRSF/warping, other regressions); DIF-F3 (make existing f64 hot-path signatures themselves generic — breaking risk to R/WASM/examples) | Deferred | v0.39.0 | future milestone |
-| VEESA | VEE-F1 (native random-forest / tree-ensemble predictor); VEE-F2 (plotting/rendering of principal directions + PFI) | Deferred | v0.38.0 | future milestone |
-| Conformal-anomaly | ECA-F1 (full conditional / Mondrian conformal anomaly detection) | Deferred | v0.38.0 | future milestone |
-| Wavelet-regression | WAV-F1 (binomial/logistic GLM-family); WAV-F2 (Symlets/Coiflets/biorthogonal + wavelet packets); WAV-F3 (2D/surface DWT) | Deferred | v0.37.0 | future milestone |
-| API-breaking | APIB-01 — breaking removal of the 6 `#[deprecated]` forms from v0.30.0 | Deferred | v0.30.0 | future 1.0-readiness |
+| 1.0-cut | 1.0-CUT — bump to 1.0.0 and declare the public API stable, once the STAB-03 gap checklist is cleared | Deferred | v0.41.0 | future (deliberate 1.0 cut) |
+| fdars-r | `fdars-r` FdMatrix migration (issue `fdars-j75`) — migrate the external R wrapper to the `FdMatrix` API; separate package, out of `fdars-core` scope | Deferred | v0.41.0 | future milestone |
+| Soft-DTW-optimizer | SDTW-O1 — replace the `soft_dtw_barycenter` inverse-curvature / soft-DBA MM step with a proper global optimizer (L-BFGS / multi-restart) | Deferred | v0.40.0 | future milestone |
+| Differentiable-core | DIF-F1 (reverse-mode/VJP), DIF-F2 (broaden differentiable subset), DIF-F3 (generic f64 hot-path signatures) | Deferred | v0.39.0 | future milestone |
 
 ## Session Continuity
 
-Last session: 2026-09-06T20:10:00.000Z
-Stopped at: Phase 80 complete — all phases complete
+Last session: 2026-09-07T08:20:00.000Z
+Stopped at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review the roadmap, then plan Phase 81 with `/gsd-plan-phase 81`
