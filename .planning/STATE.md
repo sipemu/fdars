@@ -2,15 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
-status: planning
-last_updated: "2026-09-07T08:20:00.000Z"
+current_phase: 81
+current_phase_name: API Audit & Deprecated-Form Removal
+status: executing
+stopped_at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
+last_updated: "2026-09-07T08:44:21.042Z"
 last_activity: 2026-09-07
+last_activity_desc: Phase 81 execution started
+state_head: 5ad122b4ede68fec5f94af0c71b1a323da06aa82
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 7
+  total_plans: 2
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -24,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: 81 of 85 (API Audit & Deprecated-Form Removal)
-Plan: — (roadmap just created; ready to plan Phase 81)
-Status: Ready to plan
-Last activity: 2026-09-07 — ROADMAP.md created (5 phases, 81–85; 9/9 requirements mapped)
+Phase: 81 (API Audit & Deprecated-Form Removal) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 81
+Last activity: 2026-09-07 — Phase 81 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -50,6 +54,7 @@ Five phases, 9 requirements — the **first breaking milestone** after a long ad
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 116+ (across v0.14.0–v0.40.0)
 - Average duration: — min
 - Total execution time: — hours
@@ -65,6 +70,7 @@ Five phases, 9 requirements — the **first breaking milestone** after a long ad
 | 81–85 | v0.41.0 | 0/7 (planned) |
 
 **Recent Trend:**
+
 - Last milestone: v0.40.0 (phases 78–80, 5 plans) — audit 5/5, release-ready.
 - Trend: v0.41.0 is the **first breaking** milestone — API-shape-only changes (no numeric/behavioral change), but higher blast-radius risk (Phase 83 naming touches all 28 examples). Audit-gated: nothing breaking executes before the user approves the inventory.
 

@@ -390,11 +390,8 @@ pub use fof_regression::{
 };
 
 // Re-export function-on-scalar regression types.
-// `fanova` is deprecated (delegates to `fanova_seeded`) but must stay re-exported for external
-// back-compat; this compiler warns on re-exporting a deprecated item, so allow it on this line only.
-#[allow(deprecated)]
 pub use function_on_scalar::{
-    fanova, fanova_seeded, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
+    fanova_seeded, fosr, fosr_fpc, predict_fosr, FanovaResult, FosrFpcResult, FosrResult,
 };
 pub use function_on_scalar_2d::{fosr_2d, predict_fosr_2d, FosrResult2d, Grid2d};
 
@@ -646,19 +643,15 @@ pub use metric::{
 // Re-export the shared dimensionality selector for the unified depth/fdata dispatchers.
 pub use dim::Dim;
 
-// The deprecated `_2d` shims are still re-exported for back-compat (API-03); re-exporting a
-// deprecated item emits a deprecation warning, so allow it on this back-compat re-export block.
-#[allow(deprecated)]
 pub use depth::{
     band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz,
-    fraiman_muniz_1d, fraiman_muniz_2d, functional_boxplot, functional_depth,
-    functional_spatial_1d, functional_spatial_2d, half_region_depth_1d, hypograph_index_1d,
-    kernel_functional_spatial_1d, kernel_functional_spatial_2d, linfinity_depth_1d, modal,
-    modal_1d, modal_2d, modified_band_1d, modified_epigraph_index_1d,
-    modified_half_region_depth_1d, modified_hypograph_index_1d, random_projection,
-    random_projection_1d, random_projection_1d_seeded, random_projection_2d, random_tukey,
-    random_tukey_1d, random_tukey_1d_seeded, random_tukey_2d, total_variation_depth_1d,
-    DepthMethod, FunctionalBoxplotResult, TvdMssResult,
+    fraiman_muniz_1d, functional_boxplot, functional_depth, functional_spatial_1d,
+    functional_spatial_2d, half_region_depth_1d, hypograph_index_1d, kernel_functional_spatial_1d,
+    kernel_functional_spatial_2d, linfinity_depth_1d, modal, modal_1d, modified_band_1d,
+    modified_epigraph_index_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
+    random_projection, random_projection_1d, random_projection_1d_seeded, random_tukey,
+    random_tukey_1d, random_tukey_1d_seeded, total_variation_depth_1d, DepthMethod,
+    FunctionalBoxplotResult, TvdMssResult,
 };
 
 // Re-export outlier detection functions
@@ -677,12 +670,10 @@ pub use utility::{
 };
 
 // Re-export functional data operation types and functions.
-// `mean_2d` is a deprecated back-compat shim (API-03); allow the deprecation on this re-export block.
-#[allow(deprecated)]
 pub use fdata::{
     center_1d, depth_based_median, deriv_1d, deriv_2d, functional_covariance, functional_std,
-    functional_variance, geometric_median_1d, geometric_median_2d, mean, mean_1d, mean_2d,
-    norm_lp_1d, normalize, normalize_with_argvals, trim_mean, Deriv2DResult, NormalizationMethod,
+    functional_variance, geometric_median_1d, geometric_median_2d, mean, mean_1d, norm_lp_1d,
+    normalize, normalize_with_argvals, trim_mean, Deriv2DResult, NormalizationMethod,
 };
 
 // Re-export basis representation types and functions

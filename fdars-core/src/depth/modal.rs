@@ -57,13 +57,3 @@ pub fn modal(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, dim: Dim) -> Vec<
         Dim::One | Dim::Two => modal_1d(data_obj, data_ori, h),
     }
 }
-
-/// Compute modal depth for 2D functional data.
-#[deprecated(
-    since = "0.30.0",
-    note = "redundant with `modal(…, Dim::Two)`; body just forwards to `modal_1d`"
-)]
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn modal_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
-    modal_1d(data_obj, data_ori, h)
-}

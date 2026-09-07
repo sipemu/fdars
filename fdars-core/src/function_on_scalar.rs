@@ -885,39 +885,6 @@ pub fn fanova_seeded(
     })
 }
 
-/// Functional ANOVA: test whether groups have different mean curves.
-///
-/// Uses a permutation-based global test with the integrated F-statistic.
-///
-/// # Deprecated
-///
-/// This function uses a fixed permutation seed (42), so its p-value is not caller-controllable.
-/// Prefer [`fanova_seeded`], which accepts an explicit `seed`. `fanova(data, groups, n_perm)` is now
-/// a thin shim delegating to `fanova_seeded(data, groups, n_perm, 42)` — its output is unchanged.
-///
-/// # Arguments
-/// * `data` - Functional response matrix (n × m)
-/// * `groups` - Group labels for each observation (length n, integer-coded)
-/// * `n_perm` - Number of permutations for the global test
-///
-/// # Returns
-/// [`FanovaResult`] with group means, F-statistics, and permutation p-value
-///
-/// # Errors
-///
-/// Returns [`FdarError::InvalidDimension`] if `data` has zero columns,
-/// `groups.len()` does not match the number of rows in `data`, or `n < 3`.
-/// Returns [`FdarError::InvalidParameter`] if fewer than 2 distinct groups
-/// are present.
-#[deprecated(
-    since = "0.30.0",
-    note = "use `fanova_seeded` for reproducible permutation p-values; `fanova` delegates with the legacy fixed seed 42"
-)]
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn fanova(data: &FdMatrix, groups: &[usize], n_perm: usize) -> Result<FanovaResult, FdarError> {
-    fanova_seeded(data, groups, n_perm, 42)
-}
-
 impl FosrResult {
     /// Predict functional responses for new predictors. Delegates to [`predict_fosr`].
     pub fn predict(&self, new_predictors: &FdMatrix) -> FdMatrix {
