@@ -41,7 +41,7 @@ High-performance Functional Data Analysis tools implemented in Rust, with Python
 
 ```toml
 [dependencies]
-fdars-core = "0.40"
+fdars-core = "0.41"
 ```
 
 Or install from the repository:
@@ -81,7 +81,7 @@ For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.40", default-features = false }
+fdars-core = { version = "0.41", default-features = false }
 ```
 
 ## Data Layout
