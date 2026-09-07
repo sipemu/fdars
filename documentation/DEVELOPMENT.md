@@ -14,7 +14,7 @@ The repository is a minimal Cargo workspace with a single published member:
 fdars/
 ├── Cargo.toml              # Workspace root (resolver = "2", members = ["fdars-core"])
 ├── Cargo.lock              # Pinned dependency versions
-├── fdars-core/             # Published crate (fdars-core v0.38.0)
+├── fdars-core/             # Published crate (fdars-core v0.40.0)
 │   ├── Cargo.toml          # Package manifest — features, bench/example entries
 │   ├── src/
 │   │   ├── lib.rs          # Crate root: module declarations, clippy allows, root re-exports

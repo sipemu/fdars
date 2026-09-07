@@ -1,9 +1,61 @@
 # Changelog
 
 All notable changes to `fdars-core` are documented here. This project adheres to
-[Semantic Versioning](https://semver.org/). All entries below are **additive and
-non-breaking** — no existing public signature changed and no new crate dependency
-was added in this span.
+[Semantic Versioning](https://semver.org/). Entries in this span are additive and
+non-breaking with respect to public API signatures and dependencies, **except** where
+noted — the v0.40.0 soft-DTW barycenter correction changes convergence behavior
+intentionally (see [0.40.0] Changed below).
+
+## [0.40.0] - 2026-09-07
+
+Release Hardening & Ship v0.40.0 (Phase 80). Folds in the unpublished v0.39.0
+forward-mode AD core and applies correctness / build fixes from Phases 78 and 79.
+
+### Fixed
+
+- **CORR-01 — soft-DTW backward endpoint-seed gradient bug**: `soft_dtw_backward`
+  previously overwrote the required `E[n][m] = 1` endpoint seed in its reverse loop,
+  producing an all-zero gradient for every call. All gradient-dependent code paths
+  (`soft_dtw_barycenter`, the generic autodiff path) now receive the correct gradient.
+  (Phase 78)
+- **BUILD-01 — serde feature build**: `cargo build --features serde` now compiles
+  cleanly. The build had been broken since Phase 60 due to `ShapeletTransformClassifier`
+  embedding a non-serde `ClassifFit`; serde derives have been added to `ClassifFit` and
+  all affected types. (Phase 79)
+
+### Changed
+
+- **soft-DTW barycenter convergence (intentional behavior change)**: `soft_dtw_barycenter`
+  now genuinely converges to the barycenter via an inverse-curvature optimizer step,
+  replacing the previous behavior of silently returning the pointwise mean on an all-zero
+  gradient. Output values will differ from prior versions wherever `soft_dtw_barycenter`
+  was called. (Phase 78, SDTW-O1 for a full L-BFGS optimizer is backlogged.)
+- **CORR-02 — gradient-pass audit**: All hand-written gradient implementations were
+  audited; no additional bugs were found beyond CORR-01. (Phase 78)
+
+## [0.39.0] - 2026-09-07
+
+Forward-Mode Automatic Differentiation Core (Phases 75–77). Code-complete but never
+published to crates.io; folded into this release.
+
+### Added
+
+- **Scalar trait + Dual number substrate (DIF-01)**: New `src/autodiff.rs` module
+  exports a generic `Scalar` trait and a `Dual<T>` value/tangent number type, enabling
+  forward-mode AD over arbitrary scalar types. Includes known-answer tests, central
+  finite-difference cross-checks, and f64-parity tests. (Phase 75)
+- **Differentiable elastic distance + FPCA scores (DIF-02, DIF-03)**: `soft_dtw_distance_generic`
+  is a fully generic soft-DTW distance instantiable with `Dual<f64>` for exact gradient
+  computation; `amplitude_distance_at_warp` likewise. FPCA score projection is now
+  differentiable via the generic `Scalar` interface — `∂score_k/∂curve[j]` equals the
+  analytic closed form `rotation[j,k] · weights[j]` to ≤1e-12. All three validation tiers
+  (oracle, finite-difference, f64-parity) are covered by inline tests. (Phase 76)
+- **Gradient API + composition demo (DIF-04)**: `grad(f, x)` returns `(value, gradient)`
+  for any scalar objective over `Vec<f64>`; `jacobian` provides the full Jacobian matrix.
+  A composition demo wires two Phase-76 differentiable ops into a single objective and
+  verifies the composed gradient against central finite differences (≤1e-6). Crate-root
+  and `prelude::*` re-exports for `Scalar`, `Dual`, `diff`, `grad`, and the generic
+  distance functions. Module doctest passes under `cargo test --doc`. (Phase 77)
 
 ## [0.38.0] - 2026-09-05
 

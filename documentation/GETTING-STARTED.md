@@ -30,7 +30,7 @@ Or add to `Cargo.toml` manually:
 
 ```toml
 [dependencies]
-fdars-core = "0.38"
+fdars-core = "0.40"
 ```
 
 ### Feature flags
@@ -46,14 +46,14 @@ fdars-core = "0.38"
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.38", features = ["linalg"] }
+fdars-core = { version = "0.40", features = ["linalg"] }
 ```
 
 **WASM build (disables `parallel` and `linalg`):**
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.38", default-features = false, features = ["js"] }
+fdars-core = { version = "0.40", default-features = false, features = ["js"] }
 ```
 
 ## First Program
@@ -185,7 +185,7 @@ rustc --version  # should be >= 1.84.0
 Rayon (`parallel` feature) is incompatible with WASM targets. When targeting `wasm32-unknown-unknown`, always disable default features and add the `js` feature instead:
 
 ```toml
-fdars-core = { version = "0.38", default-features = false, features = ["js"] }
+fdars-core = { version = "0.40", default-features = false, features = ["js"] }
 ```
 
 **`serde` feature not enabled at build time**
@@ -193,7 +193,7 @@ fdars-core = { version = "0.38", default-features = false, features = ["js"] }
 The `Serialize`/`Deserialize` derives are gated behind the `serde` feature. If you need JSON serialisation of result types (e.g., `FpcaResult`, `FregreLmResult`), add:
 
 ```toml
-fdars-core = { version = "0.38", features = ["serde"] }
+fdars-core = { version = "0.40", features = ["serde"] }
 ```
 
 **Large `target/` directory**

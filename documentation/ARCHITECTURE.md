@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # fdars-core Architecture
 
-`fdars-core` (v0.38.0) is a pure-Rust functional data analysis (FDA) library. It provides
+`fdars-core` (v0.40.0) is a pure-Rust functional data analysis (FDA) library. It provides
 algorithm implementations across regression, classification, clustering, depth measures, elastic
 shape analysis, seasonal decomposition, statistical process monitoring (SPM), and model
 explainability. All code is in a single crate at `fdars-core/` within a workspace whose

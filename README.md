@@ -33,6 +33,7 @@ High-performance Functional Data Analysis tools implemented in Rust, with Python
 | **Inference** | Tolerance bands (FPCA, conformal, Degras, exponential, elastic), conformal prediction (split, Jackknife+, CV+), equivalence testing (TOST); inductive elastic conformal anomaly detection (`elastic_conformal_anomaly`, amplitude/phase/combined `NonConformityScore`) |
 | **Time Series** | Seasonal detection (FFT, ACF, Autoperiod, SAZED, Lomb-Scargle, SSA, matrix profile), detrending (polynomial, LOESS, STL); wavelet DWT (Haar + Daubechies db2–db10, multi-level Mallat pyramid via `decompose`/`reconstruct`) |
 | **Specialized** | Streaming depth (online O(log N)), irregular data (CSR, kernel estimation) |
+| **Autodiff** | Forward-mode differentiable core (`Scalar` trait + `Dual<T>` number); `soft_dtw_distance_generic` and FPCA score projection are differentiable via `Dual<f64>`; multi-input `grad`/`jacobian` API; gradient verified against closed-form and central finite differences |
 
 ## Installation
 
@@ -40,7 +41,7 @@ High-performance Functional Data Analysis tools implemented in Rust, with Python
 
 ```toml
 [dependencies]
-fdars-core = "0.38"
+fdars-core = "0.40"
 ```
 
 Or install from the repository:
@@ -80,7 +81,7 @@ For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.38", default-features = false }
+fdars-core = { version = "0.40", default-features = false }
 ```
 
 ## Data Layout
