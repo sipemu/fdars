@@ -19,7 +19,7 @@ v0.41.0 is fdars' **first breaking milestone** after a long additive-only run �
 - [x] **Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage** - Seal accidental `pub` exposure and correct `#[non_exhaustive]` per the approved inventory
 - [x] **Phase 83: Naming Unification** - Unify `_1d`/`_2d`/`_nd` suffix sprawl + config/result naming into consistent dispatchers (largest, highest-risk)
 - [x] **Phase 84: Stability Deliverables** - Semver/stability policy, MSRV finalization, and 1.0 gap checklist (non-code)
-- [ ] **Phase 85: Release Preparation & Verification** - Bump 0.40.0 → 0.41.0, CHANGELOG with breaking changes, docs refresh, whole-crate gates green
+- [x] **Phase 85: Release Preparation & Verification** - Bump 0.40.0 → 0.41.0, CHANGELOG with breaking changes, docs refresh, whole-crate gates green
 
 ## Phase Details
 
@@ -107,4 +107,4 @@ Phases execute in numeric order: 81 → 82 → 83 → 84 → 85. Phase 81 (audit
 | 82. Public-Surface Sealing & Non-Exhaustive Coverage | 2/2 | ✓ Complete | 2026-09-07 |
 | 83. Naming Unification | 3/3 | ✓ Complete | 2026-09-07 |
 | 84. Stability Deliverables | 1/1 | ✓ Complete | 2026-09-07 |
-| 85. Release Preparation & Verification | 0/1 | Not started | - |
+| 85. Release Preparation & Verification | 1/1 | ✓ Complete | 2026-09-07 |

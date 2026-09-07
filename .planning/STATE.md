@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
-current_phase: 84
+current_phase: 85
 status: completed
 stopped_at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
-last_updated: "2026-09-07T11:58:11.526Z"
+last_updated: "2026-09-07T13:44:34.540Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 84 marked complete
-state_head: 9bdae134a72cdf890f9de434780cb71fde6ec0f7
+last_activity_desc: Phase 85 marked complete
+state_head: faa91e9deace5923bb03f9f53ea65c0cf6140eec
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-current_phase_name: Stability Deliverables
+  completed_phases: 5
+  total_plans: 9
+  completed_plans: 9
+current_phase_name: Release Preparation & Verification
 ---
 
 # Project State
@@ -24,14 +24,14 @@ current_phase_name: Stability Deliverables
 See: .planning/PROJECT.md (updated 2026-09-06)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone is a **1.0-readiness / API-stabilization** pass: audit the whole public surface, then land the breaking cleanups now while still in 0.x — producing a settled API + the stability deliverables (semver policy, MSRV, 1.0 gap checklist) that will govern a deliberate future 1.0 cut. Ships as **0.41.0** (NOT 1.0).
-**Current focus:** Phase 84 — Stability Deliverables
+**Current focus:** Phase 85 — Release Preparation & Verification
 
 ## Current Position
 
-Phase: 84 — COMPLETE
+Phase: 85 — COMPLETE
 Plan: 1 of 1
-Status: Phase 84 complete
-Last activity: 2026-09-07 — Phase 84 marked complete
+Status: Phase 85 complete
+Last activity: 2026-09-07 — Phase 85 marked complete
 
 Progress: [░░░░░░░░░░] 0%
 
