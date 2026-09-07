@@ -2275,17 +2275,6 @@ fn test_random_tukey_rank_correlation() {
     );
 }
 
-#[allow(deprecated)]
-#[test]
-fn test_2d_delegates_to_1d_fm() {
-    let d: StandardData = load_json("data", "standard_50x101");
-    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
-
-    let d1 = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
-    let d2 = fdars_core::depth::fraiman_muniz_2d(&mat, &mat, true);
-    assert_eq!(d1, d2, "FM 2D should delegate to 1D");
-}
-
 #[test]
 fn test_2d_delegates_to_1d_spatial() {
     let d: StandardData = load_json("data", "standard_50x101");
@@ -2505,19 +2494,6 @@ fn test_geometric_median_robust_to_outlier() {
     for (j, &med_j) in median.iter().enumerate() {
         assert!(med_j.is_finite(), "Median should be finite at j={j}");
     }
-}
-
-#[allow(deprecated)]
-#[test]
-fn test_2d_mean_valid() {
-    let d: StandardData = load_json("data", "standard_50x101");
-    let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
-
-    let mean_1d = fdars_core::fdata::mean_1d(&mat);
-    let mean_2d = fdars_core::fdata::mean_2d(&mat);
-
-    // 2D mean should be same as 1D mean (it delegates)
-    assert_vec_close(&mean_1d, &mean_2d, 1e-12, "mean_1d_vs_2d");
 }
 
 #[test]

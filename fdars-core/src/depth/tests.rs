@@ -317,28 +317,6 @@ fn test_kfsd_2d_range() {
 
 // ============== 2D delegation tests ==============
 
-#[allow(deprecated)]
-#[test]
-fn test_fraiman_muniz_2d_delegates() {
-    let n = 10;
-    let m = 15;
-    let data = generate_centered_data(n, m);
-    let depths_1d = fraiman_muniz_1d(&data, &data, true);
-    let depths_2d = fraiman_muniz_2d(&data, &data, true);
-    assert_eq!(depths_1d, depths_2d);
-}
-
-#[allow(deprecated)]
-#[test]
-fn test_modal_2d_delegates() {
-    let n = 10;
-    let m = 15;
-    let data = generate_centered_data(n, m);
-    let depths_1d = modal_1d(&data, &data, 0.5);
-    let depths_2d = modal_2d(&data, &data, 0.5);
-    assert_eq!(depths_1d, depths_2d);
-}
-
 #[test]
 fn test_functional_spatial_2d_delegates() {
     let n = 10;
@@ -347,19 +325,6 @@ fn test_functional_spatial_2d_delegates() {
     let depths_1d = functional_spatial_1d(&data, &data, None);
     let depths_2d = functional_spatial_2d(&data, &data);
     assert_eq!(depths_1d, depths_2d);
-}
-
-#[allow(deprecated)]
-#[test]
-fn test_random_projection_2d_returns_valid() {
-    let n = 10;
-    let m = 15;
-    let data = generate_centered_data(n, m);
-    let depths = random_projection_2d(&data, &data, 20);
-    assert_eq!(depths.len(), n);
-    for d in &depths {
-        assert!(*d >= 0.0 && *d <= 1.0, "RP 2D depth should be in [0, 1]");
-    }
 }
 
 // ============== Golden-value regression tests ==============

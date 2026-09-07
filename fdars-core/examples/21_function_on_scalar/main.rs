@@ -3,7 +3,7 @@
 //! Predicts a functional response from scalar predictors using:
 //! - Penalized pointwise OLS (`fosr`) with automatic smoothing
 //! - FPC-based regression (`fosr_fpc`) matching R's fda.usc approach
-//! - Functional ANOVA (`fanova`) for group comparisons
+//! - Functional ANOVA (`fanova_seeded`) for group comparisons
 
 use fdars_core::function_on_scalar::{fanova_seeded, fosr, fosr_fpc, predict_fosr};
 use fdars_core::matrix::FdMatrix;

@@ -1,11 +1,11 @@
 //! Permanent golden-equivalence tests for Phase 50 (Additive API-Surface Consolidation).
 //!
-//! ADDITIVE / BEHAVIOR-PRESERVING phase: new seeded entry points are introduced alongside the
-//! existing functions, and the existing functions become `#[deprecated]` shims that delegate to the
-//! new seeded form with the LEGACY fixed seed. Each golden reference is the CURRENT (pre-change) f64
-//! output captured as a `const` from the code that shipped before the seeded API existed. The new
-//! seeded function called with the legacy seed, AND the deprecated shim, must reproduce every value
-//! **BIT-IDENTICALLY** — `assert_eq!`, NOT tolerance — because the shim performs the exact same
+//! ADDITIVE / BEHAVIOR-PRESERVING phase: new seeded entry points were introduced alongside the
+//! existing functions. The legacy delegation shims were later hard-removed (v0.41.0, API-01); the
+//! new seeded / `Dim`-dispatch forms remain and are pinned here. Each golden reference is the
+//! CURRENT (pre-change) f64 output captured as a `const` from the code that shipped before the
+//! seeded API existed. The new seeded function called with the legacy seed must reproduce every
+//! value **BIT-IDENTICALLY** — `assert_eq!`, NOT tolerance — because it performs the exact same
 //! arithmetic on the exact same RNG stream. The suite must pass under BOTH
 //! `--features linalg,parallel` AND `--no-default-features --features linalg`.
 //!
@@ -17,8 +17,8 @@
 //! so a bit-identical `p_value` from `fanova_seeded(…, 42)` proves the LCG stream is preserved.
 //! `global_statistic` is seed-INDEPENDENT (deterministic observed statistic).
 //!
-//! This file is the shared Wave-2 golden harness for Phase-50 plans; plan 50-03 appends its own
-//! goldens (the depth/fdata `_2d` shims) to it.
+//! This file is the shared Wave-2 golden harness for Phase-50 plans; plan 50-03 appended its own
+//! goldens (the depth/fdata `Dim`-dispatch forms) to it.
 
 #![allow(clippy::excessive_precision)]
 
@@ -26,9 +26,9 @@ use fdars_core::matrix::FdMatrix;
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 // FANOVA seedable-permutation goldens (API-01/API-02, plan 50-02). Captured from the CURRENT
-// (pre-change) `fanova(&data, &groups, n_perm)` with its hardcoded-42 LCG on the deterministic
-// fixture below (n_perm=199, matching the existing integration tests). `fanova_seeded(…, 42)` and
-// the `#[deprecated]` `fanova` shim must both reproduce these bits EXACTLY under BOTH feature configs.
+// (pre-change) legacy `fanova` (data, groups, n_perm) with its hardcoded-42 LCG on the deterministic
+// fixture below (n_perm=199, matching the existing integration tests). `fanova_seeded(…, 42)`
+// must reproduce these bits EXACTLY under BOTH feature configs.
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 
 const FANOVA_N_PERM: usize = 199;
@@ -62,23 +62,8 @@ fn fanova_fixture() -> (FdMatrix, Vec<usize>) {
     (data, groups)
 }
 
-/// The deprecated `fanova` shim MUST reproduce the CURRENT (pre-change) output bit-identically — it
-/// delegates to `fanova_seeded(…, 42)` with the legacy fixed seed. `#[allow(deprecated)]` because
-/// this test deliberately exercises the deprecated path to pin its output.
-#[allow(deprecated)]
-#[test]
-fn fanova_shim_seed42_bit_identical() {
-    use fdars_core::function_on_scalar::fanova;
-    let (data, groups) = fanova_fixture();
-    let r = fanova(&data, &groups, FANOVA_N_PERM).unwrap();
-    assert_eq!(r.global_statistic, FANOVA_GLOBAL_STATISTIC);
-    assert_eq!(r.p_value, FANOVA_P_VALUE_SEED42);
-    assert_eq!(r.n_perm, FANOVA_N_PERM);
-}
-
 /// `fanova_seeded(…, 42)` — the new seeded entry point with the legacy seed — must reproduce the
-/// SAME bits as the deprecated shim (the LCG stream is preserved verbatim). Not deprecated, so no
-/// `#[allow(deprecated)]` needed.
+/// CURRENT (pre-change) output bit-identically (the LCG stream is preserved verbatim).
 #[test]
 fn fanova_seeded_seed42_bit_identical() {
     use fdars_core::function_on_scalar::fanova_seeded;
@@ -106,13 +91,13 @@ fn fanova_seeded_different_seed_changes_pvalue_not_statistic() {
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 // UNIFIED `Dim` DISPATCH goldens (API-02, plan 50-03). Five unified dispatchers each forward to their
-// `_1d` primitive for both `Dim` arms (the `_2d` path never diverged). The 3 DETERMINISTIC dispatchers
-// (modal, fraiman_muniz, mean) assert BIT-IDENTICAL equality to BOTH `_1d` and `_2d`. The 2 RNG
-// dispatchers (random_projection, random_tukey) call `_1d` → `_seeded(…, None)` → `thread_rng()`
-// (fresh entropy, no public seed), so two calls are independent draws and `assert_eq!` would flake;
-// they are verified STRUCTURALLY instead (output length == n_obs AND every value ∈ [0,1]), mirroring
-// the existing `test_random_projection_2d_returns_valid` (depth/tests.rs). The dispatcher's forwarding
-// to `_1d` is a compile-time (single-arm `match`) guarantee, not a runtime one.
+// `_1d` primitive for both `Dim` arms (the 2D path never diverged). The 3 DETERMINISTIC dispatchers
+// (modal, fraiman_muniz, mean) assert BIT-IDENTICAL equality to the `_1d` primitive for both arms.
+// The 2 RNG dispatchers (random_projection, random_tukey) call `_1d` → `_seeded(…, None)` →
+// `thread_rng()` (fresh entropy, no public seed), so two calls are independent draws and
+// `assert_eq!` would flake; they are verified STRUCTURALLY instead (output length == n_obs AND
+// every value ∈ [0,1]). The dispatcher's forwarding to `_1d` is a compile-time (single-arm `match`)
+// guarantee, not a runtime one.
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 
 use fdars_core::Dim;
@@ -204,64 +189,4 @@ fn dispatch_random_tukey_is_valid() {
     assert_valid_depth_vec(&got, data.nrows());
     let got_one = random_tukey(&data, &data, 20, Dim::One);
     assert_valid_depth_vec(&got_one, data.nrows());
-}
-
-// ── plan 50-03 Task 2: `==_2d` goldens (deterministic) + structural checks vs the now-deprecated
-// `_2d` shims (RNG). These test fns exercise the deprecated `_2d` shims deliberately to pin that the
-// unified dispatcher and the deprecated shim agree, so `#[allow(deprecated)]` is required. ─────────
-
-/// DETERMINISTIC pair — `modal(…, Dim::Two)` is bit-identical to the deprecated `modal_2d(…)`.
-#[allow(deprecated)]
-#[test]
-fn dispatch_modal_equals_2d() {
-    use fdars_core::depth::{modal, modal_2d};
-    let data = dispatch_fixture(6, 12);
-    let h = 0.5;
-    assert_eq!(modal(&data, &data, h, Dim::Two), modal_2d(&data, &data, h));
-}
-
-/// DETERMINISTIC pair — `fraiman_muniz(…, Dim::Two)` is bit-identical to the deprecated
-/// `fraiman_muniz_2d(…)`.
-#[allow(deprecated)]
-#[test]
-fn dispatch_fraiman_muniz_equals_2d() {
-    use fdars_core::depth::{fraiman_muniz, fraiman_muniz_2d};
-    let data = dispatch_fixture(6, 12);
-    for scale in [true, false] {
-        assert_eq!(
-            fraiman_muniz(&data, &data, scale, Dim::Two),
-            fraiman_muniz_2d(&data, &data, scale)
-        );
-    }
-}
-
-/// DETERMINISTIC pair — `mean(…, Dim::Two)` is bit-identical to the deprecated `mean_2d(…)`.
-#[allow(deprecated)]
-#[test]
-fn dispatch_mean_equals_2d() {
-    use fdars_core::fdata::{mean, mean_2d};
-    let data = dispatch_fixture(6, 12);
-    assert_eq!(mean(&data, Dim::Two), mean_2d(&data));
-}
-
-/// RNG pair — the deprecated `random_projection_2d(…)` produces a valid depth vector (len + [0,1]),
-/// mirroring the dispatcher; no `assert_eq!` possible (thread_rng, no public seed).
-#[allow(deprecated)]
-#[test]
-fn dispatch_random_projection_2d_is_valid() {
-    use fdars_core::depth::random_projection_2d;
-    let data = dispatch_fixture(6, 12);
-    let got = random_projection_2d(&data, &data, 20);
-    assert_valid_depth_vec(&got, data.nrows());
-}
-
-/// RNG pair — the deprecated `random_tukey_2d(…)` produces a valid depth vector (len + [0,1]),
-/// mirroring the dispatcher; no `assert_eq!` possible (thread_rng, no public seed).
-#[allow(deprecated)]
-#[test]
-fn dispatch_random_tukey_2d_is_valid() {
-    use fdars_core::depth::random_tukey_2d;
-    let data = dispatch_fixture(6, 12);
-    let got = random_tukey_2d(&data, &data, 20);
-    assert_valid_depth_vec(&got, data.nrows());
 }

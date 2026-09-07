@@ -1082,16 +1082,6 @@ mod tests {
         assert!(mean_1d(&FdMatrix::zeros(0, 0)).is_empty());
     }
 
-    #[allow(deprecated)]
-    #[test]
-    fn test_mean_2d_delegates() {
-        let data = vec![1.0, 3.0, 2.0, 4.0];
-        let mat = FdMatrix::from_column_major(data, 2, 2).unwrap();
-        let mean1d = mean_1d(&mat);
-        let mean2d = mean_2d(&mat);
-        assert_eq!(mean1d, mean2d);
-    }
-
     // ============== Center tests ==============
 
     #[test]
