@@ -4,18 +4,18 @@ milestone: v0.40.0
 milestone_name: Correctness & Release Hardening
 current_phase: 80
 current_phase_name: Release Hardening & Ship v0.40.0
-status: planning
-stopped_at: Phase 79 complete, ready to plan Phase 80
-last_updated: "2026-09-07T05:44:25.096Z"
+status: complete
+stopped_at: Phase 80 complete — release-ready at v0.40.0; operator runs git tag v0.40.0
+last_updated: "2026-09-07T00:00:00.000Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 79 complete, transitioned to Phase 80
-state_head: 51abecc006a8a6bc054752b41ac74ce1940d5af1
+last_activity_desc: Phase 80 complete — all gates green, operator ship steps documented
+state_head: 5d7d4720
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-  percent: 67
+  completed_phases: 3
+  total_plans: 5
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-06)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against reference ecosystems. This milestone is a **correctness & release-hardening** pass: fix the bugs and build breakage found during recent milestones, formally validate the outstanding v0.39.0 phases, then bump/tag/publish fdars' first crates.io release since v0.38.0 (folding in the unpublished v0.39.0 forward-mode AD core).
-**Current focus:** Phase 79 — Serde Feature Repair
+**Current focus:** Phase 80 — Release Hardening & Ship v0.40.0
 
 ## Current Position
 
-Phase: 80 — Release Hardening & Ship v0.40.0
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-07 — Phase 79 complete, transitioned to Phase 80
+Phase: 80 (Release Hardening & Ship v0.40.0) — COMPLETE
+Plan: 2 of 2
+Status: All 3 phases complete — release-ready at v0.40.0
+Last activity: 2026-09-07 — Phase 80 complete; operator runs git tag v0.40.0 to publish
 
 ## Milestone Roadmap (v0.40.0)
 
@@ -68,7 +68,7 @@ Three phases, 5 requirements (CORR-01/02, BUILD-01, REL-01/02) — a small fixup
 | 69–71 | v0.37.0 | 5 |
 | 72–74 | v0.38.0 | 3 |
 | 75–77 | v0.39.0 | 4 |
-| 78–80 | v0.40.0 | 3/TBD (78 complete, 79 complete, 80 pending) |
+| 78–80 | v0.40.0 | 5/5 (78 complete, 79 complete, 80 complete) |
 
 **Recent Trend:**
 
@@ -134,4 +134,12 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with `/gsd-plan-phase 78` (or `79` — independent of 78).
+All 3 phases of v0.40.0 are complete and gates are green. To publish:
+
+```bash
+git tag v0.40.0
+git push origin v0.40.0
+# release.yml fires → cargo publish → fdars-core v0.40.0 live on crates.io
+```
+
+After publishing, run `/gsd-complete-milestone` to archive v0.40.0 and start the next cycle.
