@@ -63,6 +63,7 @@ use nalgebra::DMatrix;
 ///
 /// Selects the penalty matrix Q (m×m) entering the penalized normal equations
 /// `(W_c'W_c + λQ)β = W_c'y_c`.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PeerPenalty {
@@ -94,6 +95,7 @@ impl Default for PeerPenalty {
 ///
 /// The default is [`LambdaChoice::Gcv`] which automatically selects λ by
 /// minimising the GCV score over a fixed internal log-spaced grid.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LambdaChoice {
@@ -112,6 +114,7 @@ pub enum LambdaChoice {
 }
 
 /// Records which λ-selection path actually ran.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LambdaMethod {

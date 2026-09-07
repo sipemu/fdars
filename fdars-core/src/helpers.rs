@@ -879,6 +879,7 @@ pub fn gradient(y: &[f64], t: &[f64]) -> Vec<f64> {
 /// Used with [`fdata_interpolate_with_policy`] to give callers explicit control
 /// over out-of-range query handling instead of the silent boundary clamp that
 /// [`fdata_interpolate`] applies.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExtrapolationPolicy {
@@ -1010,6 +1011,7 @@ pub fn fdata_interpolate_with_policy(
 ///
 /// Leading or trailing NaN values (no neighbor on one side) are filled with
 /// the nearest valid value (boundary extension) for the `Linear` strategy.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImputationMethod {

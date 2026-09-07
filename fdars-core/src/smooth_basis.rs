@@ -18,6 +18,7 @@ use std::f64::consts::PI;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Basis type for penalized smoothing.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum BasisType {
     /// B-spline basis with given order (typically 4 for cubic).
@@ -1113,6 +1114,7 @@ fn compute_gcv(rss: f64, n_points: f64, edf: f64, m: usize) -> f64 {
 // ─── Nbasis Selection via CV ────────────────────────────────────────────────
 
 /// Criterion for nbasis selection.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BasisCriterion {
     /// Generalized cross-validation.

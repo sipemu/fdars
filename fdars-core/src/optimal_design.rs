@@ -87,6 +87,7 @@ use crate::pace_fpca::PaceFpcaResult;
 /// Dispatched by [`design_criterion`]. `Trajectory` scores reconstruction of the
 /// latent curve; `Score` scores recovery of the FPC scores under an A- or
 /// D-optimality summary.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DesignCriterion {
@@ -98,6 +99,7 @@ pub enum DesignCriterion {
 }
 
 /// Optimality kind for the [`DesignCriterion::Score`] criterion.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OptimalityKind {

@@ -264,6 +264,7 @@ pub struct MultiFregreLmResult {
 }
 
 /// Criterion used for model selection.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SelectionCriterion {
     /// Akaike Information Criterion
