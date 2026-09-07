@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.41.0
 milestone_name: 1.0 API Stabilization Pass
 current_phase: 81
-current_phase_name: API Audit & Deprecated-Form Removal
-status: executing
+status: completed
 stopped_at: ROADMAP.md + STATE.md created for v0.41.0 (5 phases 81–85); REQUIREMENTS.md traceability filled
-last_updated: "2026-09-07T08:44:21.042Z"
+last_updated: "2026-09-07T09:49:24.193Z"
 last_activity: 2026-09-07
-last_activity_desc: Phase 81 execution started
-state_head: 5ad122b4ede68fec5f94af0c71b1a323da06aa82
+last_activity_desc: Phase 81 marked complete
+state_head: 90840d902474bf9f75ea7d6588eefef84214fd89
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 0
+  completed_plans: 2
+current_phase_name: API Audit & Deprecated-Form Removal
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-06)
 
 ## Current Position
 
-Phase: 81 (API Audit & Deprecated-Form Removal) — EXECUTING
+Phase: 81 — COMPLETE
 Plan: 1 of 2
-Status: Executing Phase 81
-Last activity: 2026-09-07 — Phase 81 execution started
+Status: Phase 81 complete
+Last activity: 2026-09-07 — Phase 81 marked complete
 
 Progress: [░░░░░░░░░░] 0%
 
