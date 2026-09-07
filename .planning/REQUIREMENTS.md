@@ -51,15 +51,15 @@ Deferred to a later, deliberate **1.0 cut** (governed by STAB-01/03):
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUDIT-01 | Phase 81 | Pending |
-| API-01 | Phase 81 | Pending |
-| API-02 | Phase 82 | Pending |
-| API-03 | Phase 82 | Pending |
-| API-04 | Phase 83 | Pending |
-| STAB-01 | Phase 84 | Pending |
-| STAB-02 | Phase 84 | Pending |
-| STAB-03 | Phase 84 | Pending |
-| REL-01 | Phase 85 | Pending |
+| AUDIT-01 | Phase 81 | Complete |
+| API-01 | Phase 81 | Complete |
+| API-02 | Phase 82 | Complete |
+| API-03 | Phase 82 | Complete |
+| API-04 | Phase 83 | Complete |
+| STAB-01 | Phase 84 | Complete |
+| STAB-02 | Phase 84 | Complete |
+| STAB-03 | Phase 84 | Complete |
+| REL-01 | Phase 85 | Complete |
 
 **Coverage:**
 - v1 requirements: 9 total
