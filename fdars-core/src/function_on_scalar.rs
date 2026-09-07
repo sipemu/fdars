@@ -8,7 +8,7 @@
 //! # Methods
 //!
 //! - [`fosr`]: Penalized function-on-scalar regression (pointwise OLS + smoothing)
-//! - [`fanova`]: Functional ANOVA with permutation-based global test
+//! - [`fanova_seeded`]: Functional ANOVA with permutation-based global test
 //! - [`predict_fosr`]: Predict new curves from fitted model
 
 use crate::error::FdarError;
@@ -757,7 +757,7 @@ fn global_f_statistic(f_t: &[f64]) -> f64 {
 ///
 /// Shared core of the permutation-F machinery: computes group means, the
 /// pointwise F-statistic, and reduces it to the integrated (mean-over-grid)
-/// global statistic. Reused by [`fanova`] and by the inference module's
+/// global statistic. Reused by [`fanova_seeded`] and by the inference module's
 /// `f_perm_test` so the integrated-F math is defined in exactly one place.
 ///
 /// * `data` — Functional response matrix (n × m).
@@ -1029,8 +1029,7 @@ mod tests {
 
     // ----- FANOVA tests -----
 
-    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
-    #[allow(deprecated)]
+    // Pins the legacy seed-42 `fanova` behavior on purpose — keep the explicit seed 42.
     #[test]
     fn test_fanova_two_groups() {
         let n = 40;
@@ -1048,7 +1047,7 @@ mod tests {
             }
         }
 
-        let result = fanova(&data, &groups, 200);
+        let result = fanova_seeded(&data, &groups, 200, 42);
         assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.n_groups, 2);
@@ -1063,8 +1062,7 @@ mod tests {
         );
     }
 
-    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
-    #[allow(deprecated)]
+    // Pins the legacy seed-42 `fanova` behavior on purpose — keep the explicit seed 42.
     #[test]
     fn test_fanova_no_effect() {
         let n = 40;
@@ -1082,7 +1080,7 @@ mod tests {
             }
         }
 
-        let result = fanova(&data, &groups, 200);
+        let result = fanova_seeded(&data, &groups, 200, 42);
         assert!(result.is_ok());
         let res = result.unwrap();
         // Without group effect, p should be large
@@ -1093,8 +1091,7 @@ mod tests {
         );
     }
 
-    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
-    #[allow(deprecated)]
+    // Pins the legacy seed-42 `fanova` behavior on purpose — keep the explicit seed 42.
     #[test]
     fn test_fanova_three_groups() {
         let n = 30;
@@ -1115,21 +1112,20 @@ mod tests {
             }
         }
 
-        let result = fanova(&data, &groups, 200);
+        let result = fanova_seeded(&data, &groups, 200, 42);
         assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.n_groups, 3);
     }
 
-    // Pins the OLD (deprecated) `fanova` behavior on purpose — do NOT migrate to `fanova_seeded`.
-    #[allow(deprecated)]
+    // Pins the legacy seed-42 `fanova` behavior on purpose — keep the explicit seed 42.
     #[test]
     fn test_fanova_invalid_input() {
         let data = FdMatrix::zeros(10, 50);
         let groups = vec![0; 10]; // Only one group
-        assert!(fanova(&data, &groups, 100).is_err());
+        assert!(fanova_seeded(&data, &groups, 100, 42).is_err());
 
         let groups = vec![0; 5]; // Wrong length
-        assert!(fanova(&data, &groups, 100).is_err());
+        assert!(fanova_seeded(&data, &groups, 100, 42).is_err());
     }
 }

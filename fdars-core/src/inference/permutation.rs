@@ -195,7 +195,7 @@ pub fn t_perm_test(
 /// The k = 2 case of functional ANOVA: assembles a two-group problem from
 /// `data_a` (label 0) and `data_b` (label 1) and computes the integrated
 /// F-statistic via the shared `integrated_f_statistic` core (the same core used
-/// by [`crate::function_on_scalar::fanova`]). The permutation null relabels the
+/// by [`crate::function_on_scalar::fanova_seeded`]). The permutation null relabels the
 /// pooled group membership via a seeded Fisher–Yates shuffle; the p-value is
 /// `(#{perm >= observed} + 1) / (n_perm + 1)`.
 ///
@@ -377,11 +377,10 @@ mod tests {
         assert_eq!(r1, r2);
     }
 
-    // Cross-checks the OLD (deprecated) `fanova` decision vs f_perm_test — pins the old path.
-    #[allow(deprecated)]
+    // Cross-checks the legacy seed-42 `fanova` decision vs f_perm_test — pins the old path.
     #[test]
     fn f_perm_agrees_with_fanova_decision() {
-        use crate::function_on_scalar::fanova;
+        use crate::function_on_scalar::fanova_seeded;
         let argvals = uniform_grid(25);
         let a = make_sample(15, &argvals, 0.0, 111);
         let b = make_sample(15, &argvals, 5.0, 112);
@@ -399,7 +398,7 @@ mod tests {
             }
         }
         let groups: Vec<usize> = (0..(n_a + n_b)).map(|i| usize::from(i >= n_a)).collect();
-        let fa = fanova(&pooled, &groups, 199).unwrap();
+        let fa = fanova_seeded(&pooled, &groups, 199, 42).unwrap();
         let fp = f_perm_test(&a, &b, &argvals, 199, 42).unwrap();
         // Both should reject at 0.05.
         assert!(fa.p_value < 0.05);

@@ -1,7 +1,7 @@
 //! Asymptotic one-way functional ANOVA via the V-statistic.
 //!
 //! [`oneway_anova_vstat`] is the asymptotic counterpart to the existing
-//! permutation-based [`crate::function_on_scalar::fanova`]. It computes the
+//! permutation-based [`crate::function_on_scalar::fanova_seeded`]. It computes the
 //! functional one-way ANOVA V-statistic
 //!
 //! ```text
@@ -9,8 +9,8 @@
 //! ```
 //!
 //! (Simpson-weighted over the grid) and returns an asymptotic p-value via a
-//! scaled-χ² (Satterthwaite/Box) approximation of the V-null. `fanova` is left
-//! completely unchanged; this function is added alongside it.
+//! scaled-χ² (Satterthwaite/Box) approximation of the V-null. `fanova_seeded` is
+//! left completely unchanged; this function is added alongside it.
 
 use super::dist::chi_square_sf_df;
 use super::TestResult;
@@ -55,7 +55,7 @@ use crate::matrix::FdMatrix;
 /// The p-value is `P(χ²_d > V / β)` via the (crate-internal) real-df χ²
 /// survival function. This is an
 /// approximation; for exact size control the permutation form
-/// [`crate::function_on_scalar::fanova`] remains available and this function
+/// [`crate::function_on_scalar::fanova_seeded`] remains available and this function
 /// is designed to agree with it in reject/accept direction.
 ///
 /// Returns a [`TestResult`] with `statistic = V`, the asymptotic `p_value`, and
@@ -63,7 +63,7 @@ use crate::matrix::FdMatrix;
 ///
 /// # Errors
 ///
-/// Mirrors [`fanova`](crate::function_on_scalar::fanova)'s guards. Returns
+/// Mirrors [`fanova_seeded`](crate::function_on_scalar::fanova_seeded)'s guards. Returns
 /// [`FdarError::InvalidDimension`] if `data` has zero columns, `groups.len()`
 /// does not match the number of rows, `argvals.len()` does not match the
 /// column count, or `n < 3`. Returns [`FdarError::InvalidParameter`] if fewer
@@ -185,9 +185,9 @@ pub fn oneway_anova_vstat(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[allow(deprecated)]
-    // import of the deprecated `fanova`; the tests below pin its old behavior
-    use crate::function_on_scalar::fanova;
+    // `fanova_seeded(.., 42)` reproduces the legacy `fanova` permutation stream; the tests below
+    // pin that behavior.
+    use crate::function_on_scalar::fanova_seeded;
     use crate::test_helpers::uniform_grid;
 
     /// Deterministic pseudo-noise in [-1, 1].
@@ -226,8 +226,7 @@ mod tests {
         (mat, groups)
     }
 
-    // Cross-checks the OLD (deprecated) `fanova` decision vs vstat — pins the old path on purpose.
-    #[allow(deprecated)]
+    // Cross-checks the legacy seed-42 `fanova` decision vs vstat — pins the old path on purpose.
     #[test]
     fn vstat_rejects_separated_groups_agrees_with_fanova() {
         let argvals = uniform_grid(30);
@@ -241,7 +240,7 @@ mod tests {
             res.statistic
         );
         // Permutation fanova agrees in direction.
-        let f = fanova(&data, &groups, 499).unwrap();
+        let f = fanova_seeded(&data, &groups, 499, 42).unwrap();
         assert!(
             f.p_value < 0.05,
             "fanova should also reject separated groups, got p={}",
@@ -249,8 +248,7 @@ mod tests {
         );
     }
 
-    // Cross-checks the OLD (deprecated) `fanova` decision vs vstat — pins the old path on purpose.
-    #[allow(deprecated)]
+    // Cross-checks the legacy seed-42 `fanova` decision vs vstat — pins the old path on purpose.
     #[test]
     fn vstat_fails_to_reject_pooled_groups_agrees_with_fanova() {
         let argvals = uniform_grid(30);
@@ -263,7 +261,7 @@ mod tests {
             res.p_value,
             res.statistic
         );
-        let f = fanova(&data, &groups, 499).unwrap();
+        let f = fanova_seeded(&data, &groups, 499, 42).unwrap();
         assert!(
             f.p_value > 0.05,
             "fanova should also fail to reject pooled groups, got p={}",
