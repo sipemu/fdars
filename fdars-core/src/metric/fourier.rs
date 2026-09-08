@@ -1,5 +1,6 @@
 //! Fourier-based semimetric for functional data.
 
+use crate::dim::Dim;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
@@ -23,7 +24,7 @@ fn fft_coefficients_with_plan(data: &[f64], nfreq: usize, fft: &dyn rustfft::Fft
 }
 
 /// Compute semimetric based on Fourier coefficients for self-distances.
-pub fn fourier_self_1d(data: &FdMatrix, nfreq: usize) -> FdMatrix {
+pub(crate) fn fourier_self_1d(data: &FdMatrix, nfreq: usize) -> FdMatrix {
     let n = data.nrows();
     let m = data.ncols();
     if n == 0 || m == 0 {
@@ -46,7 +47,7 @@ pub fn fourier_self_1d(data: &FdMatrix, nfreq: usize) -> FdMatrix {
 }
 
 /// Compute semimetric based on Fourier coefficients for cross-distances.
-pub fn fourier_cross_1d(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize) -> FdMatrix {
+pub(crate) fn fourier_cross_1d(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
     let m = data1.ncols();
@@ -71,4 +72,22 @@ pub fn fourier_cross_1d(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize) -> FdM
             .sum::<f64>()
             .sqrt()
     })
+}
+
+/// Fourier-coefficient self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`fourier_self_1d`]; `dim` makes intent explicit.
+pub fn fourier_self(data: &FdMatrix, nfreq: usize, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => fourier_self_1d(data, nfreq),
+    }
+}
+
+/// Fourier-coefficient cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`fourier_cross_1d`]; `dim` makes intent explicit.
+pub fn fourier_cross(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => fourier_cross_1d(data1, data2, nfreq),
+    }
 }

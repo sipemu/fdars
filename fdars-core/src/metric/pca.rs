@@ -3,6 +3,7 @@
 //! Computes distances between functional observations in the space of
 //! principal component scores, retaining only the first `ncomp` components.
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use nalgebra::SVD;
@@ -86,16 +87,17 @@ fn score_distance(a: &[f64], b: &[f64]) -> f64 {
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::pca_self_1d;
+/// use fdars_core::metric::pca_self;
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 10,
 /// ).unwrap();
-/// let dist = pca_self_1d(&data, 2).unwrap();
+/// let dist = pca_self(&data, 2, Dim::One).unwrap();
 /// assert_eq!(dist.shape(), (5, 5));
 /// assert!(dist[(0, 0)].abs() < 1e-10);
 /// ```
-pub fn pca_self_1d(data: &FdMatrix, ncomp: usize) -> Result<FdMatrix, FdarError> {
+pub(crate) fn pca_self_1d(data: &FdMatrix, ncomp: usize) -> Result<FdMatrix, FdarError> {
     let n = data.nrows();
     let m = data.ncols();
 
@@ -165,7 +167,8 @@ pub fn pca_self_1d(data: &FdMatrix, ncomp: usize) -> Result<FdMatrix, FdarError>
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::pca_cross_1d;
+/// use fdars_core::metric::pca_cross;
+/// use fdars_core::dim::Dim;
 ///
 /// let data1 = FdMatrix::from_column_major(
 ///     (0..30).map(|i| (i as f64 * 0.1).sin()).collect(), 3, 10,
@@ -173,10 +176,10 @@ pub fn pca_self_1d(data: &FdMatrix, ncomp: usize) -> Result<FdMatrix, FdarError>
 /// let data2 = FdMatrix::from_column_major(
 ///     (0..20).map(|i| (i as f64 * 0.2).cos()).collect(), 2, 10,
 /// ).unwrap();
-/// let dist = pca_cross_1d(&data1, &data2, 2).unwrap();
+/// let dist = pca_cross(&data1, &data2, 2, Dim::One).unwrap();
 /// assert_eq!(dist.shape(), (3, 2));
 /// ```
-pub fn pca_cross_1d(
+pub(crate) fn pca_cross_1d(
     data1: &FdMatrix,
     data2: &FdMatrix,
     ncomp: usize,
@@ -224,4 +227,27 @@ pub fn pca_cross_1d(
     Ok(cross_distance_matrix(n1, n2, |i, j| {
         score_distance(&scores1[i], &scores2[j])
     }))
+}
+
+/// PCA-score self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`pca_self_1d`]; `dim` makes intent explicit.
+pub fn pca_self(data: &FdMatrix, ncomp: usize, dim: Dim) -> Result<FdMatrix, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => pca_self_1d(data, ncomp),
+    }
+}
+
+/// PCA-score cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`pca_cross_1d`]; `dim` makes intent explicit.
+pub fn pca_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    ncomp: usize,
+    dim: Dim,
+) -> Result<FdMatrix, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => pca_cross_1d(data1, data2, ncomp),
+    }
 }

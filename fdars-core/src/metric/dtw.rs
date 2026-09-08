@@ -1,5 +1,6 @@
 //! Dynamic Time Warping (DTW) distance.
 
+use crate::dim::Dim;
 use crate::matrix::FdMatrix;
 
 use super::{cross_distance_matrix, self_distance_matrix};
@@ -57,18 +58,19 @@ pub fn dtw_distance(x: &[f64], y: &[f64], p: f64, w: usize) -> f64 {
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::dtw_self_1d;
+/// use fdars_core::metric::dtw_self;
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     (0..40).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     4, 10,
 /// ).unwrap();
-/// let dist = dtw_self_1d(&data, 2.0, 10);
+/// let dist = dtw_self(&data, 2.0, 10, Dim::One);
 /// assert_eq!(dist.shape(), (4, 4));
 /// assert!((dist[(0, 0)]).abs() < 1e-10);
 /// assert!((dist[(0, 1)] - dist[(1, 0)]).abs() < 1e-10);
 /// ```
-pub fn dtw_self_1d(data: &FdMatrix, p: f64, w: usize) -> FdMatrix {
+pub(crate) fn dtw_self_1d(data: &FdMatrix, p: f64, w: usize) -> FdMatrix {
     let n = data.nrows();
     if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
@@ -78,7 +80,7 @@ pub fn dtw_self_1d(data: &FdMatrix, p: f64, w: usize) -> FdMatrix {
 }
 
 /// Compute DTW cross-distance matrix.
-pub fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdMatrix {
+pub(crate) fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
     if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
@@ -87,4 +89,22 @@ pub fn dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize) -> FdM
     let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
     let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
     cross_distance_matrix(n1, n2, |i, j| dtw_distance(&rows1[i], &rows2[j], p, w))
+}
+
+/// DTW self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`dtw_self_1d`]; `dim` makes intent explicit.
+pub fn dtw_self(data: &FdMatrix, p: f64, w: usize, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => dtw_self_1d(data, p, w),
+    }
+}
+
+/// DTW cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`dtw_cross_1d`]; `dim` makes intent explicit.
+pub fn dtw_cross(data1: &FdMatrix, data2: &FdMatrix, p: f64, w: usize, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => dtw_cross_1d(data1, data2, p, w),
+    }
 }

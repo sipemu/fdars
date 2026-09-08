@@ -4,6 +4,7 @@
 //! Time-Series" (ICML 2017).
 
 use crate::autodiff::Scalar;
+use crate::dim::Dim;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
@@ -173,7 +174,7 @@ pub fn soft_dtw_divergence(x: &[f64], y: &[f64], gamma: f64) -> f64 {
 ///
 /// Note: unlike true metrics, `sdtw(x, x) != 0` for finite gamma,
 /// so the diagonal is computed explicitly.
-pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
+pub(crate) fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     let n = data.nrows();
     if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
@@ -188,7 +189,7 @@ pub fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
 }
 
 /// Compute Soft-DTW cross-distance matrix (n1 x n2).
-pub fn soft_dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
+pub(crate) fn soft_dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
     if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
@@ -202,7 +203,7 @@ pub fn soft_dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMa
 }
 
 /// Compute Soft-DTW divergence self-distance matrix (symmetric n x n).
-pub fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
+pub(crate) fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     let n = data.nrows();
     if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
@@ -219,7 +220,7 @@ pub fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
 }
 
 /// Compute Soft-DTW divergence cross-distance matrix (n1 x n2).
-pub fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
+pub(crate) fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
     if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
@@ -237,6 +238,42 @@ pub fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) -> 
         let xy = soft_dtw_distance(&rows1[i], &rows2[j], gamma);
         xy - 0.5 * (self1[i] + self2[j])
     })
+}
+
+/// Soft-DTW self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`soft_dtw_self_1d`]; `dim` makes intent explicit.
+pub fn soft_dtw_self(data: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => soft_dtw_self_1d(data, gamma),
+    }
+}
+
+/// Soft-DTW cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`soft_dtw_cross_1d`]; `dim` makes intent explicit.
+pub fn soft_dtw_cross(data1: &FdMatrix, data2: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => soft_dtw_cross_1d(data1, data2, gamma),
+    }
+}
+
+/// Soft-DTW divergence self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`soft_dtw_div_self_1d`]; `dim` makes intent explicit.
+pub fn soft_dtw_div_self(data: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => soft_dtw_div_self_1d(data, gamma),
+    }
+}
+
+/// Soft-DTW divergence cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`soft_dtw_div_cross_1d`]; `dim` makes intent explicit.
+pub fn soft_dtw_div_cross(data1: &FdMatrix, data2: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => soft_dtw_div_cross_1d(data1, data2, gamma),
+    }
 }
 
 /// Full forward pass: returns the (n+1) x (m+1) R table needed for the backward pass.

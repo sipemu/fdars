@@ -1,5 +1,6 @@
 //! Horizontal shift semimetric for functional data.
 
+use crate::dim::Dim;
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
 
@@ -42,7 +43,7 @@ fn hshift_distance(x: &[f64], y: &[f64], weights: &[f64], max_shift: usize) -> f
 }
 
 /// Compute semimetric based on horizontal shift for self-distances.
-pub fn hshift_self_1d(data: &FdMatrix, argvals: &[f64], max_shift: usize) -> FdMatrix {
+pub(crate) fn hshift_self_1d(data: &FdMatrix, argvals: &[f64], max_shift: usize) -> FdMatrix {
     let n = data.nrows();
     let m = data.ncols();
     if n == 0 || m == 0 || argvals.len() != m {
@@ -56,7 +57,7 @@ pub fn hshift_self_1d(data: &FdMatrix, argvals: &[f64], max_shift: usize) -> FdM
 }
 
 /// Compute semimetric based on horizontal shift for cross-distances.
-pub fn hshift_cross_1d(
+pub(crate) fn hshift_cross_1d(
     data1: &FdMatrix,
     data2: &FdMatrix,
     argvals: &[f64],
@@ -74,4 +75,28 @@ pub fn hshift_cross_1d(
     cross_distance_matrix(n1, n2, |i, j| {
         hshift_distance(&rows1[i], &rows2[j], &weights, max_shift)
     })
+}
+
+/// H-shift self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`hshift_self_1d`]; `dim` makes intent explicit.
+pub fn hshift_self(data: &FdMatrix, argvals: &[f64], max_shift: usize, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => hshift_self_1d(data, argvals, max_shift),
+    }
+}
+
+/// H-shift cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`hshift_cross_1d`]; `dim` makes intent explicit.
+pub fn hshift_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    max_shift: usize,
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => hshift_cross_1d(data1, data2, argvals, max_shift),
+    }
 }

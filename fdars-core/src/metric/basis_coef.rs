@@ -5,6 +5,7 @@
 //! used as a semimetric.
 
 use crate::basis::{fdata_to_basis, ProjectionBasisType};
+use crate::dim::Dim;
 use crate::matrix::FdMatrix;
 
 use super::{cross_distance_matrix, self_distance_matrix};
@@ -49,17 +50,18 @@ fn row_euclidean_cross(mat1: &FdMatrix, i: usize, mat2: &FdMatrix, j: usize, nco
 /// ```
 /// use fdars_core::matrix::FdMatrix;
 /// use fdars_core::basis::ProjectionBasisType;
-/// use fdars_core::metric::basis_coef_self_1d;
+/// use fdars_core::metric::basis_coef_self;
+/// use fdars_core::dim::Dim;
 ///
 /// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
 /// let data = FdMatrix::from_column_major(
 ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 20,
 /// ).unwrap();
-/// let dist = basis_coef_self_1d(&data, &argvals, 7, ProjectionBasisType::Fourier);
+/// let dist = basis_coef_self(&data, &argvals, 7, ProjectionBasisType::Fourier, Dim::One);
 /// assert_eq!(dist.shape(), (5, 5));
 /// assert!(dist[(0, 0)].abs() < 1e-10);
 /// ```
-pub fn basis_coef_self_1d(
+pub(crate) fn basis_coef_self_1d(
     data: &FdMatrix,
     argvals: &[f64],
     nbasis: usize,
@@ -99,7 +101,8 @@ pub fn basis_coef_self_1d(
 /// ```
 /// use fdars_core::matrix::FdMatrix;
 /// use fdars_core::basis::ProjectionBasisType;
-/// use fdars_core::metric::basis_coef_cross_1d;
+/// use fdars_core::metric::basis_coef_cross;
+/// use fdars_core::dim::Dim;
 ///
 /// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
 /// let data1 = FdMatrix::from_column_major(
@@ -108,10 +111,10 @@ pub fn basis_coef_self_1d(
 /// let data2 = FdMatrix::from_column_major(
 ///     (0..40).map(|i| (i as f64 * 0.2).cos()).collect(), 2, 20,
 /// ).unwrap();
-/// let dist = basis_coef_cross_1d(&data1, &data2, &argvals, 7, ProjectionBasisType::Fourier);
+/// let dist = basis_coef_cross(&data1, &data2, &argvals, 7, ProjectionBasisType::Fourier, Dim::One);
 /// assert_eq!(dist.shape(), (3, 2));
 /// ```
-pub fn basis_coef_cross_1d(
+pub(crate) fn basis_coef_cross_1d(
     data1: &FdMatrix,
     data2: &FdMatrix,
     argvals: &[f64],
@@ -139,4 +142,35 @@ pub fn basis_coef_cross_1d(
     let nb = proj1.n_basis.min(proj2.n_basis);
 
     cross_distance_matrix(n1, n2, |i, j| row_euclidean_cross(coefs1, i, coefs2, j, nb))
+}
+
+/// Basis-coefficient self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`basis_coef_self_1d`]; `dim` makes intent explicit.
+pub fn basis_coef_self(
+    data: &FdMatrix,
+    argvals: &[f64],
+    nbasis: usize,
+    basis_type: ProjectionBasisType,
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => basis_coef_self_1d(data, argvals, nbasis, basis_type),
+    }
+}
+
+/// Basis-coefficient cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`basis_coef_cross_1d`]; `dim` makes intent explicit.
+pub fn basis_coef_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    nbasis: usize,
+    basis_type: ProjectionBasisType,
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => basis_coef_cross_1d(data1, data2, argvals, nbasis, basis_type),
+    }
 }

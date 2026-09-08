@@ -5,6 +5,7 @@
 //! re-normalized.  The symmetric KL divergence between two densities p and q is
 //! computed as (KL(p||q) + KL(q||p)) / 2.
 
+use crate::dim::Dim;
 use crate::matrix::FdMatrix;
 
 use super::{cross_distance_matrix, self_distance_matrix};
@@ -120,20 +121,21 @@ fn symmetric_kl(p: &[f64], q: &[f64], weights: &[f64]) -> f64 {
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::kl_self_1d;
+/// use fdars_core::metric::kl_self;
+/// use fdars_core::dim::Dim;
 ///
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
 /// let data = FdMatrix::from_column_major(
 ///     (0..30).map(|i| ((i as f64 * 0.1).sin()).abs() + 0.01).collect(),
 ///     3, 10,
 /// ).unwrap();
-/// let dist = kl_self_1d(&data, &argvals, 1e-10);
+/// let dist = kl_self(&data, &argvals, 1e-10, Dim::One);
 /// assert_eq!(dist.shape(), (3, 3));
 /// assert!(dist[(0, 0)].abs() < 1e-10);
 /// assert!((dist[(0, 1)] - dist[(1, 0)]).abs() < 1e-10);
 /// ```
 #[must_use]
-pub fn kl_self_1d(data: &FdMatrix, argvals: &[f64], epsilon: f64) -> FdMatrix {
+pub(crate) fn kl_self_1d(data: &FdMatrix, argvals: &[f64], epsilon: f64) -> FdMatrix {
     let n = data.nrows();
     let m = data.ncols();
 
@@ -158,7 +160,7 @@ pub fn kl_self_1d(data: &FdMatrix, argvals: &[f64], epsilon: f64) -> FdMatrix {
 
 /// Compute an n1 x n2 KL divergence matrix between two sets of functional curves.
 ///
-/// Each row of `data1` and `data2` is treated as a density (see [`kl_self_1d`]).
+/// Each row of `data1` and `data2` is treated as a density (see [`kl_self`]).
 ///
 /// # Arguments
 /// * `data1`   - First dataset matrix  (n1 rows x m columns)
@@ -173,7 +175,8 @@ pub fn kl_self_1d(data: &FdMatrix, argvals: &[f64], epsilon: f64) -> FdMatrix {
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::kl_cross_1d;
+/// use fdars_core::metric::kl_cross;
+/// use fdars_core::dim::Dim;
 ///
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
 /// let data1 = FdMatrix::from_column_major(
@@ -182,12 +185,17 @@ pub fn kl_self_1d(data: &FdMatrix, argvals: &[f64], epsilon: f64) -> FdMatrix {
 /// let data2 = FdMatrix::from_column_major(
 ///     (0..20).map(|i| ((i as f64 * 0.2).cos()).abs() + 0.01).collect(), 2, 10,
 /// ).unwrap();
-/// let dist = kl_cross_1d(&data1, &data2, &argvals, 1e-10);
+/// let dist = kl_cross(&data1, &data2, &argvals, 1e-10, Dim::One);
 /// assert_eq!(dist.shape(), (3, 2));
 /// assert!(dist[(0, 0)] >= 0.0);
 /// ```
 #[must_use]
-pub fn kl_cross_1d(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64], epsilon: f64) -> FdMatrix {
+pub(crate) fn kl_cross_1d(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    epsilon: f64,
+) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
     let m = data1.ncols();
@@ -214,4 +222,30 @@ pub fn kl_cross_1d(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64], epsilon:
     cross_distance_matrix(n1, n2, |i, j| {
         symmetric_kl(&densities1[i], &densities2[j], &weights)
     })
+}
+
+/// Symmetric KL self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`kl_self_1d`]; `dim` makes intent explicit.
+#[must_use]
+pub fn kl_self(data: &FdMatrix, argvals: &[f64], epsilon: f64, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => kl_self_1d(data, argvals, epsilon),
+    }
+}
+
+/// Symmetric KL cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`kl_cross_1d`]; `dim` makes intent explicit.
+#[must_use]
+pub fn kl_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    epsilon: f64,
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => kl_cross_1d(data1, data2, argvals, epsilon),
+    }
 }

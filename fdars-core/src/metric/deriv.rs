@@ -3,6 +3,7 @@
 //! Computes L2 distances between the k-th finite-difference derivatives
 //! of functional observations, using trapezoidal integration weights.
 
+use crate::dim::Dim;
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
 
@@ -87,17 +88,18 @@ fn finite_differences(data: &FdMatrix, argvals: &[f64], nderiv: usize) -> (FdMat
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::deriv_self_1d;
+/// use fdars_core::metric::deriv_self;
+/// use fdars_core::dim::Dim;
 ///
 /// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
 /// let data = FdMatrix::from_column_major(
 ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 20,
 /// ).unwrap();
-/// let dist = deriv_self_1d(&data, &argvals, 1, &[]);
+/// let dist = deriv_self(&data, &argvals, 1, &[], Dim::One);
 /// assert_eq!(dist.shape(), (5, 5));
 /// assert!(dist[(0, 0)].abs() < 1e-10);
 /// ```
-pub fn deriv_self_1d(
+pub(crate) fn deriv_self_1d(
     data: &FdMatrix,
     argvals: &[f64],
     nderiv: usize,
@@ -144,7 +146,8 @@ pub fn deriv_self_1d(
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::metric::deriv_cross_1d;
+/// use fdars_core::metric::deriv_cross;
+/// use fdars_core::dim::Dim;
 ///
 /// let argvals: Vec<f64> = (0..20).map(|i| i as f64 / 19.0).collect();
 /// let data1 = FdMatrix::from_column_major(
@@ -153,10 +156,10 @@ pub fn deriv_self_1d(
 /// let data2 = FdMatrix::from_column_major(
 ///     (0..40).map(|i| (i as f64 * 0.2).cos()).collect(), 2, 20,
 /// ).unwrap();
-/// let dist = deriv_cross_1d(&data1, &data2, &argvals, 1, &[]);
+/// let dist = deriv_cross(&data1, &data2, &argvals, 1, &[], Dim::One);
 /// assert_eq!(dist.shape(), (3, 2));
 /// ```
-pub fn deriv_cross_1d(
+pub(crate) fn deriv_cross_1d(
     data1: &FdMatrix,
     data2: &FdMatrix,
     argvals: &[f64],
@@ -188,4 +191,35 @@ pub fn deriv_cross_1d(
         }
         sum.sqrt()
     })
+}
+
+/// Derivative-weighted self-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`deriv_self_1d`]; `dim` makes intent explicit.
+pub fn deriv_self(
+    data: &FdMatrix,
+    argvals: &[f64],
+    nderiv: usize,
+    user_weights: &[f64],
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => deriv_self_1d(data, argvals, nderiv, user_weights),
+    }
+}
+
+/// Derivative-weighted cross-distance matrix via a unified [`Dim`] dispatch.
+///
+/// Both [`Dim`] arms forward to [`deriv_cross_1d`]; `dim` makes intent explicit.
+pub fn deriv_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    nderiv: usize,
+    user_weights: &[f64],
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => deriv_cross_1d(data1, data2, argvals, nderiv, user_weights),
+    }
 }
