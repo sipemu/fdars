@@ -20,7 +20,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 - [x] **NAME-01**: `geometric_median` is consolidated from its lone `_1d`/`_2d` suffix forms onto a single `Dim`-dispatched signature routing to byte-identical private `_impl` bodies. (AUD-19)
 - [x] **NAME-02**: The `hausdorff_*` family is consolidated onto a `Dim`-dispatched signature (byte-identical `_impl` bodies). (AUD-20)
 - [x] **NAME-03**: `functional_spatial_*` and `kernel_functional_spatial_*` are consolidated onto `Dim` dispatch (byte-identical `_impl` bodies). (AUD-21)
-- [ ] **NAME-04**: The large remaining batch of lone-`_1d`/`_2d` suffix functions across the crate is consolidated onto `Dim` dispatch, and **all 28 examples** + docs updated to the new surface (the highest-risk, highest-blast-radius edit — sequenced in its own phase). (AUD-22)
+- [x] **NAME-04**: The large remaining batch of lone-`_1d`/`_2d` suffix functions across the crate is consolidated onto `Dim` dispatch, and **all 28 examples** + docs updated to the new surface (the highest-risk, highest-blast-radius edit — sequenced in its own phase). (AUD-22)
 - [x] **NAME-05**: `LpeerResult` is renamed to `LocalPeerResult` (matching the `PeerResult` sibling), with all references, re-exports (`lib.rs`, `prelude.rs`), examples, and doctests updated. (AUD-23)
 
 ### Release
@@ -72,7 +72,7 @@ Deferred — remain on `documentation/ROADMAP-TO-1.0.md` after this milestone, b
 | NAME-01 | Phase 87 | Complete |
 | NAME-02 | Phase 87 | Complete |
 | NAME-03 | Phase 87 | Complete |
-| NAME-04 | Phase 88 | Pending |
+| NAME-04 | Phase 88 | Complete |
 | NAME-05 | Phase 87 | Complete |
 | REL-01 | Phase 89 | Pending |
 
