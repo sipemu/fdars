@@ -4,7 +4,7 @@
 //! likelihood ratio test (LRT) method with bootstrap thresholding,
 //! and confirms findings with depth-based measures.
 
-use fdars_core::depth::fraiman_muniz_1d;
+use fdars_core::depth::fraiman_muniz;
 use fdars_core::matrix::FdMatrix;
 use fdars_core::outliers::{detect_outliers_lrt, outliers_threshold_lrt};
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
@@ -92,7 +92,7 @@ fn main() {
 
     // --- Section 3: Depth-based confirmation ---
     println!("\n--- Depth-Based Confirmation (Fraiman-Muniz) ---");
-    let depths = fraiman_muniz_1d(&mat, &mat, true);
+    let depths = fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
     let mut ranked: Vec<(usize, f64)> = depths.iter().cloned().enumerate().collect();
     ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 

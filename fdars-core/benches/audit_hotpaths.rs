@@ -5,7 +5,7 @@
 //! Raw output saved to .planning/research/bench/ per D-06.
 //!
 //! **4-combo sentinel choice (D-04, A5 resolution):**
-//! `fdata_to_pc_1d` was the original candidate for the 4-combo feature-matrix
+//! `fdata_to_pc` was the original candidate for the 4-combo feature-matrix
 //! sentinel, but `center_columns` (regression.rs:167-181) uses plain sequential
 //! `for` loops and nalgebra SVD is always sequential — so FPCA produces near-
 //! identical timings for the `parallel` and non-`parallel` combos and is a poor
@@ -24,10 +24,10 @@ use fdars_core::alignment::{
     karcher_mean_banded,
 };
 use fdars_core::classification::fclassif_cv;
-use fdars_core::depth::fraiman_muniz_1d;
+use fdars_core::depth::fraiman_muniz;
 use fdars_core::elastic_fpca::{joint_fpca, vert_fpca};
 use fdars_core::matrix::FdMatrix;
-use fdars_core::regression::fdata_to_pc_1d;
+use fdars_core::regression::fdata_to_pc;
 use fdars_core::smoothing::nadaraya_watson;
 use fdars_core::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFraimanMuniz};
 use std::f64::consts::PI;
@@ -80,7 +80,7 @@ fn generate_smoothing_data(n: usize, m: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>)
 
 /// Sentinel D-03: FPCA / SVD module baseline.
 ///
-/// Benchmarks `fdata_to_pc_1d` at N=500, M=200 — the representative audit cell
+/// Benchmarks `fdata_to_pc` at N=500, M=200 — the representative audit cell
 /// for the regression/FPCA module.  This function is not parallel-gated
 /// (center_columns is sequential, nalgebra SVD is always sequential), so it
 /// serves as the per-module baseline but NOT the 4-combo discriminator.
@@ -94,7 +94,7 @@ fn bench_fpca_sentinel(c: &mut Criterion) {
     // Build input OUTSIDE b.iter() to avoid measuring the allocator
     let (data, argvals) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
-        b.iter(|| fdata_to_pc_1d(black_box(&data), black_box(5usize), black_box(&argvals)))
+        b.iter(|| fdata_to_pc(black_box(&data), black_box(5usize), black_box(&argvals)))
     });
 
     group.finish();
@@ -162,7 +162,7 @@ fn bench_elastic_sentinel(c: &mut Criterion) {
 
 /// Sentinel: Depth & distance module baseline.
 ///
-/// Benchmarks `fraiman_muniz_1d` at N=500, M=200 — the representative audit cell.
+/// Benchmarks `fraiman_muniz` at N=500, M=200 — the representative audit cell.
 /// O(n²·m) — tractable at N=500 (existing bench goes to N=2300 at M=200).
 fn bench_depth_sentinel(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_depth");
@@ -171,10 +171,17 @@ fn bench_depth_sentinel(c: &mut Criterion) {
     group.warm_up_time(std::time::Duration::from_secs(3));
 
     // Build input OUTSIDE b.iter()
-    // fraiman_muniz_1d takes (&FdMatrix, &FdMatrix, bool) and returns Vec<f64>
+    // fraiman_muniz takes (&FdMatrix, &FdMatrix, bool) and returns Vec<f64>
     let (data, _argvals) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
-        b.iter(|| black_box(fraiman_muniz_1d(black_box(&data), black_box(&data), true)))
+        b.iter(|| {
+            black_box(fraiman_muniz(
+                black_box(&data),
+                black_box(&data),
+                true,
+                fdars_core::dim::Dim::One,
+            ))
+        })
     });
 
     group.finish();
@@ -738,11 +745,11 @@ fn bench_p3_elastic_cross_banded(c: &mut Criterion) {
     group.finish();
 }
 
-/// Phase-4 FPCA full 6-cell grid — fdata_to_pc_1d at N∈{100,500,1000}×M∈{50,200}.
+/// Phase-4 FPCA full 6-cell grid — fdata_to_pc at N∈{100,500,1000}×M∈{50,200}.
 ///
 /// Expanded from the Plan-02 tracer (single N=500,M=200 cell) to the full 6-cell grid.
-/// All cells bench `fdata_to_pc_1d(data, ncomp=5, argvals)` with inputs built OUTSIDE
-/// `b.iter()` (cost of allocation not measured). `fdata_to_pc_1d` is sequential —
+/// All cells bench `fdata_to_pc(data, ncomp=5, argvals)` with inputs built OUTSIDE
+/// `b.iter()` (cost of allocation not measured). `fdata_to_pc` is sequential —
 /// `center_columns` (regression.rs:167) uses plain `for` loops and nalgebra SVD is
 /// always sequential — so timings are parallel-invariant across the `linalg` and
 /// `linalg,parallel` feature combos (Plan-03 run1 no-parallel invariance check).
@@ -767,7 +774,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
     let (data100_50, argvals100_50) = generate_curves(100, 50);
     group.bench_function("n100_m50", |b| {
         b.iter(|| {
-            fdata_to_pc_1d(
+            fdata_to_pc(
                 black_box(&data100_50),
                 black_box(5usize),
                 black_box(&argvals100_50),
@@ -779,7 +786,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
     let (data100_200, argvals100_200) = generate_curves(100, 200);
     group.bench_function("n100_m200", |b| {
         b.iter(|| {
-            fdata_to_pc_1d(
+            fdata_to_pc(
                 black_box(&data100_200),
                 black_box(5usize),
                 black_box(&argvals100_200),
@@ -791,7 +798,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
     let (data500_50, argvals500_50) = generate_curves(500, 50);
     group.bench_function("n500_m50", |b| {
         b.iter(|| {
-            fdata_to_pc_1d(
+            fdata_to_pc(
                 black_box(&data500_50),
                 black_box(5usize),
                 black_box(&argvals500_50),
@@ -803,7 +810,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
     let (data500_200, argvals500_200) = generate_curves(500, 200);
     group.bench_function("n500_m200", |b| {
         b.iter(|| {
-            fdata_to_pc_1d(
+            fdata_to_pc(
                 black_box(&data500_200),
                 black_box(5usize),
                 black_box(&argvals500_200),
@@ -815,7 +822,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
     let (data1000_50, argvals1000_50) = generate_curves(1000, 50);
     group.bench_function("n1000_m50", |b| {
         b.iter(|| {
-            fdata_to_pc_1d(
+            fdata_to_pc(
                 black_box(&data1000_50),
                 black_box(5usize),
                 black_box(&argvals1000_50),
@@ -828,7 +835,7 @@ fn bench_p4_fpca(c: &mut Criterion) {
     let (data1000_200, argvals1000_200) = generate_curves(1000, 200);
     group.bench_function("n1000_m200", |b| {
         b.iter(|| {
-            fdata_to_pc_1d(
+            fdata_to_pc(
                 black_box(&data1000_200),
                 black_box(5usize),
                 black_box(&argvals1000_200),
@@ -1027,7 +1034,7 @@ fn bench_p5_streaming_payback_n(c: &mut Criterion) {
     group.finish();
 }
 
-/// Build the Simpson-weighted, column-centered FdMatrix that `fdata_to_pc_1d` feeds to SVD.
+/// Build the Simpson-weighted, column-centered FdMatrix that `fdata_to_pc` feeds to SVD.
 ///
 /// Replicates the transformation at `regression.rs:284-296`:
 ///   1. Call `generate_curves(n, m)` to get `(data, argvals)`.
@@ -1076,7 +1083,7 @@ fn generate_weighted_input(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
 /// `set_global_parallelism(Par::Seq)` is called ONCE before the faer_seq group, outside
 /// `b.iter()`, so the sequential vs nalgebra comparison is apples-to-apples.
 ///
-/// AUDIT-ONLY: no modification to `fdars-core/src/`. The shipped `fdata_to_pc_1d` SVD path
+/// AUDIT-ONLY: no modification to `fdars-core/src/`. The shipped `fdata_to_pc` SVD path
 /// (`regression.rs:298`) is NOT changed — this bench is throwaway comparison infrastructure.
 #[cfg(feature = "linalg")]
 fn bench_p6_svd_comparison(c: &mut Criterion) {
@@ -1108,7 +1115,7 @@ fn bench_p6_svd_comparison(c: &mut Criterion) {
                 group.measurement_time(std::time::Duration::from_secs(20));
             }
             let (weighted, _argvals) = generate_weighted_input(n, m);
-            // Pre-build DMatrix OUTSIDE b.iter() — clone inside to match real fdata_to_pc_1d
+            // Pre-build DMatrix OUTSIDE b.iter() — clone inside to match real fdata_to_pc
             let dmatrix = weighted.to_dmatrix();
             group.bench_function(format!("n{n}_m{m}"), |b| {
                 b.iter(|| {

@@ -221,7 +221,7 @@ fn gamma_chi2_cdf_family_new_bit_identical() {
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 // SVD SIGN-FIX goldens (CONS-01, plan 49-02). The sign convention — "for each component k, make the
 // largest-|·| entry positive" — is consolidated into ONE pub(crate) decision core in regression.rs.
-// Two call sites gate their flips from it: fdata_to_pc_1d's fix_svd_signs (flips rotation AND scores
+// Two call sites gate their flips from it: fdata_to_pc's fix_svd_signs (flips rotation AND scores
 // in lockstep) and pace_fpca's eigendecompose_cov (flips eigenfunctions ONLY — no scores matrix at
 // that point). These goldens are the exact f64 bits produced by the CURRENT (pre-refactor) code and
 // MUST reproduce BIT-IDENTICALLY (assert_eq!) after the sign-decision core is extracted, under BOTH
@@ -326,7 +326,7 @@ const PACE_EIGENFUNCTIONS: [f64; 42] = [
     -1.6234975584071192,
 ];
 
-/// Deterministic FPCA fixture (5 curves × 8 points) driving `fdata_to_pc_1d` — the two-matrix
+/// Deterministic FPCA fixture (5 curves × 8 points) driving `fdata_to_pc` — the two-matrix
 /// (rotation + scores) sign-flip site.
 fn fpca_sign_fixture() -> (fdars_core::matrix::FdMatrix, Vec<f64>) {
     use fdars_core::matrix::FdMatrix;
@@ -379,9 +379,9 @@ fn pace_sign_fixture() -> (fdars_core::IrregFdata, fdars_core::PaceFpcaConfig) {
 
 #[test]
 fn svd_sign_fpca_two_matrix_bit_identical() {
-    use fdars_core::regression::fdata_to_pc_1d;
+    use fdars_core::regression::fdata_to_pc;
     let (data, argvals) = fpca_sign_fixture();
-    let fpca = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+    let fpca = fdata_to_pc(&data, 3, &argvals).unwrap();
 
     assert_eq!(fpca.rotation.shape(), (8, 3));
     assert_eq!(fpca.scores.shape(), (5, 3));

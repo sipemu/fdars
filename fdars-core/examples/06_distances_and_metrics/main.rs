@@ -7,8 +7,8 @@
 
 use fdars_core::matrix::FdMatrix;
 use fdars_core::metric::{
-    dtw_self_1d, fourier_self_1d, hausdorff_self, hshift_self_1d, lp_cross, lp_self,
-    soft_dtw_distance, soft_dtw_div_self_1d, soft_dtw_self_1d, LpDomain,
+    dtw_self, fourier_self, hausdorff_self, hshift_self, lp_cross, lp_self, soft_dtw_distance,
+    soft_dtw_div_self, soft_dtw_self, LpDomain,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 
@@ -85,17 +85,17 @@ fn main() {
 
     // --- Section 5: DTW distances ---
     println!("\n--- DTW Distance Matrix (p=2, window=5) ---");
-    let dtw_dists = dtw_self_1d(&data, 2.0, 5);
+    let dtw_dists = dtw_self(&data, 2.0, 5, fdars_core::dim::Dim::One);
     print_dist_matrix(&dtw_dists, 5);
 
     // --- Section 6: Fourier-based semimetric ---
     println!("\n--- Fourier Semimetric (5 frequencies) ---");
-    let fourier_dists = fourier_self_1d(&data, 5);
+    let fourier_dists = fourier_self(&data, 5, fdars_core::dim::Dim::One);
     print_dist_matrix(&fourier_dists, 5);
 
     // --- Section 7: Horizontal shift semimetric ---
     println!("\n--- Horizontal Shift Semimetric (max_shift=5) ---");
-    let hshift_dists = hshift_self_1d(&data, &t, 5);
+    let hshift_dists = hshift_self(&data, &t, 5, fdars_core::dim::Dim::One);
     print_dist_matrix(&hshift_dists, 5);
 
     // --- Section 8: Cross-distance matrix ---
@@ -133,7 +133,7 @@ fn main() {
 
     // --- Section 9: Soft-DTW distances ---
     println!("\n--- Soft-DTW Distance Matrix (gamma=1.0) ---");
-    let sdtw_dists = soft_dtw_self_1d(&data, 1.0);
+    let sdtw_dists = soft_dtw_self(&data, 1.0, fdars_core::dim::Dim::One);
     print_dist_matrix(&sdtw_dists, 5);
 
     // Gamma sweep: show how smoothing affects distances
@@ -147,7 +147,7 @@ fn main() {
 
     // Divergence: proper non-negative discrepancy
     println!("\n--- Soft-DTW Divergence Matrix (gamma=1.0) ---");
-    let sdtw_div = soft_dtw_div_self_1d(&data, 1.0);
+    let sdtw_div = soft_dtw_div_self(&data, 1.0, fdars_core::dim::Dim::One);
     print_dist_matrix(&sdtw_div, 5);
 
     // --- Section 10: Metric comparison ---

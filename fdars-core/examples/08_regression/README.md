@@ -6,8 +6,8 @@ Dimensionality reduction of functional data using Functional Principal Component
 
 ## API functions used
 
-- `regression::fdata_to_pc_1d()` — functional PCA (singular values, loadings, scores, mean)
-- `regression::fdata_to_pls_1d()` — PLS regression (weights, scores, loadings)
+- `regression::fdata_to_pc()` — functional PCA (singular values, loadings, scores, mean)
+- `regression::fdata_to_pls()` — PLS regression (weights, scores, loadings)
 - `utility::integrate_simpson()` — compute scalar response as integral of each curve
 - `helpers::extract_curves()` — extract individual curves for response construction
 

@@ -153,3 +153,18 @@ pub use soft_dtw::{
     soft_dtw_div_cross, soft_dtw_div_self, soft_dtw_divergence, soft_dtw_self,
     SoftDtwBarycenterResult,
 };
+
+// Crate-internal re-exports of the underlying `_1d` primitives. These remain
+// callable within the crate (notably the inline `#[cfg(test)]` modules that
+// pin bit-identity against the dispatchers) after the public surface
+// consolidated onto the `Dim`-dispatched entry points.
+pub(crate) use basis_coef::{basis_coef_cross_1d, basis_coef_self_1d};
+pub(crate) use deriv::{deriv_cross_1d, deriv_self_1d};
+pub(crate) use dtw::{dtw_cross_1d, dtw_self_1d};
+pub(crate) use fourier::{fourier_cross_1d, fourier_self_1d};
+pub(crate) use hshift::{hshift_cross_1d, hshift_self_1d};
+pub(crate) use kl::{kl_cross_1d, kl_self_1d};
+pub(crate) use pca::{pca_cross_1d, pca_self_1d};
+pub(crate) use soft_dtw::{
+    soft_dtw_cross_1d, soft_dtw_div_cross_1d, soft_dtw_div_self_1d, soft_dtw_self_1d,
+};

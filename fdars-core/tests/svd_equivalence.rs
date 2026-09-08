@@ -16,7 +16,7 @@
 //! inputs that the `bench_p6_svd_comparison` bench measures, confirming the two
 //! libraries agree before trusting the bench numbers.
 
-/// Build the Simpson-weighted, column-centered matrix that `fdata_to_pc_1d` feeds to SVD.
+/// Build the Simpson-weighted, column-centered matrix that `fdata_to_pc` feeds to SVD.
 ///
 /// Mirrors `generate_weighted_input` in `audit_hotpaths.rs` exactly — kept in sync.
 #[cfg(feature = "linalg")]

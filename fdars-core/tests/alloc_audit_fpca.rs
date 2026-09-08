@@ -1,6 +1,6 @@
 //! dhat allocation-profiling integration tests for Phase 4 FPCA/SVD audit.
 //!
-//! Three measurement cells: `fdata_to_pc_1d` (N=500,M=200), `vert_fpca` (N=100,M=50),
+//! Three measurement cells: `fdata_to_pc` (N=500,M=200), `vert_fpca` (N=100,M=50),
 //! and `joint_fpca` (N=100,M=50 with balance_c=Some(1.0) to bypass the golden-section
 //! optimizer).  All cells are gated under `#[cfg(feature = "dhat-heap")]`.
 //!
@@ -32,7 +32,7 @@ use fdars_core::elastic_fpca::{joint_fpca, vert_fpca};
 #[cfg(feature = "dhat-heap")]
 use fdars_core::matrix::FdMatrix;
 #[cfg(feature = "dhat-heap")]
-use fdars_core::regression::fdata_to_pc_1d;
+use fdars_core::regression::fdata_to_pc;
 #[cfg(feature = "dhat-heap")]
 use std::f64::consts::PI;
 
@@ -61,7 +61,7 @@ fn generate_test_curves(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
     (mat, argvals)
 }
 
-/// Count heap allocations for `fdata_to_pc_1d` at N=500, M=200.
+/// Count heap allocations for `fdata_to_pc` at N=500, M=200.
 ///
 /// Expected allocation profile (RESEARCH.md §4C):
 /// - `regression.rs:167`  `center_columns`  → FdMatrix::zeros(n, m)     — 800 KB
@@ -76,7 +76,7 @@ fn count_fpca_allocations_n500_m200() {
     // Build test data OUTSIDE the profiler — setup, not the measurement target.
     let (data, argvals) = generate_test_curves(500, 200);
     let _profiler = dhat::Profiler::builder().testing().build();
-    let _ = fdata_to_pc_1d(&data, 5, &argvals);
+    let _ = fdata_to_pc(&data, 5, &argvals);
     let stats = dhat::HeapStats::get();
     println!("Total heap blocks: {}", stats.total_blocks);
     println!("Total heap bytes: {}", stats.total_bytes);

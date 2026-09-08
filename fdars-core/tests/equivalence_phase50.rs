@@ -126,7 +126,7 @@ fn assert_valid_depth_vec(vec: &[f64], n_obs: usize) {
     }
 }
 
-/// DETERMINISTIC pair — `modal(…, Dim::One)` is bit-identical to `modal_1d(…)`.
+/// DETERMINISTIC pair — `modal(…, Dim::One)` is bit-identical to `modal(…, Dim::Two)`.
 #[test]
 fn dispatch_modal_equals_1d() {
     use fdars_core::depth::modal;
@@ -138,7 +138,7 @@ fn dispatch_modal_equals_1d() {
     assert_eq!(unified_one, unified_two);
 }
 
-/// DETERMINISTIC pair — `fraiman_muniz(…, Dim::Two)` is bit-identical to `fraiman_muniz_1d(…)`.
+/// DETERMINISTIC pair — `fraiman_muniz(…, Dim::One)` is bit-identical to `fraiman_muniz(…, Dim::Two)`.
 #[test]
 fn dispatch_fraiman_muniz_equals_1d() {
     use fdars_core::depth::fraiman_muniz;
@@ -150,7 +150,7 @@ fn dispatch_fraiman_muniz_equals_1d() {
     }
 }
 
-/// DETERMINISTIC pair — `mean(…, Dim::One)` is bit-identical to `mean_1d(…)`.
+/// DETERMINISTIC pair — `mean(…, Dim::One)` is bit-identical to `mean(…, Dim::Two)`.
 #[test]
 fn dispatch_mean_equals_1d() {
     use fdars_core::fdata::mean;
@@ -160,7 +160,7 @@ fn dispatch_mean_equals_1d() {
     assert_eq!(unified_one, unified_two);
 }
 
-/// RNG pair — `random_projection(…, Dim::One)` forwards to `random_projection_1d` (thread_rng, no
+/// RNG pair — `random_projection(…, Dim::One)` forwards to `random_projection` (thread_rng, no
 /// public seed). Verified STRUCTURALLY (len + [0,1]); no `assert_eq!` possible.
 #[test]
 fn dispatch_random_projection_is_valid() {
@@ -173,7 +173,7 @@ fn dispatch_random_projection_is_valid() {
     assert_valid_depth_vec(&got_two, data.nrows());
 }
 
-/// RNG pair — `random_tukey(…, Dim::Two)` forwards to `random_tukey_1d` (thread_rng, no public seed).
+/// RNG pair — `random_tukey(…, Dim::Two)` forwards to `random_tukey` (thread_rng, no public seed).
 /// Verified STRUCTURALLY (len + [0,1]); no `assert_eq!` possible.
 #[test]
 fn dispatch_random_tukey_is_valid() {

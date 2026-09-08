@@ -12,8 +12,8 @@ Basis representations reduce functional data to a finite set of coefficients, en
 - `basis::fourier_basis()` — evaluate Fourier basis on a grid
 - `basis::fdata_to_basis_1d()` — project data onto a basis
 - `basis::basis_to_fdata_1d()` — reconstruct data from coefficients
-- `basis::pspline_fit_1d()` — P-spline smoothing with penalty (returns GCV/AIC/BIC)
-- `basis::fourier_fit_1d()` — Fourier basis fitting
+- `basis::pspline_fit()` — P-spline smoothing with penalty (returns GCV/AIC/BIC)
+- `basis::fourier_fit()` — Fourier basis fitting
 - `basis::select_fourier_nbasis_gcv()` — automatic selection of Fourier basis dimension
 
 ## How to run

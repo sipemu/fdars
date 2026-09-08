@@ -5,12 +5,12 @@
 //! This integrates concepts from all previous examples into a cohesive
 //! analysis pipeline.
 
-use fdars_core::basis::pspline_fit_1d;
+use fdars_core::basis::pspline_fit;
 use fdars_core::clustering::{kmeans_fd, silhouette_score, KmeansResult};
-use fdars_core::depth::modified_band_1d;
+use fdars_core::depth::modified_band;
 use fdars_core::matrix::FdMatrix;
 use fdars_core::outliers::{detect_outliers_lrt, outliers_threshold_lrt};
-use fdars_core::regression::{fdata_to_pc_1d, FpcaResult};
+use fdars_core::regression::{fdata_to_pc, FpcaResult};
 use fdars_core::simulation::{add_error_pointwise, sim_fundata, EFunType, EValType};
 
 fn uniform_grid(m: usize) -> Vec<f64> {
@@ -64,7 +64,7 @@ fn generate_data(t: &[f64], m: usize, big_m: usize) -> (FdMatrix, usize, usize, 
 fn smooth_data(data: &FdMatrix, t: &[f64], n_total: usize, m: usize) -> FdMatrix {
     let nbasis = 20;
     let lambda = 0.1;
-    if let Some(pspline) = pspline_fit_1d(data, t, nbasis, lambda, 2) {
+    if let Some(pspline) = pspline_fit(data, t, nbasis, lambda, 2) {
         println!("  P-spline: nbasis={nbasis}, λ={lambda}");
         println!("  EDF: {:.1}, GCV: {:.6}", pspline.edf, pspline.gcv);
         let noise_reduction: f64 = data
@@ -162,7 +162,7 @@ fn print_depth_characterization(
     ncomp: usize,
     k: usize,
 ) {
-    let depths = modified_band_1d(clean_mat, clean_mat);
+    let depths = modified_band(clean_mat, clean_mat, fdars_core::dim::Dim::One);
 
     for c in 0..k {
         let cluster_depths: Vec<f64> = (0..n_clean)
@@ -227,7 +227,7 @@ fn main() {
     // Step 4: Functional PCA
     println!("\n--- Step 4: Functional PCA ---");
     let ncomp = 4;
-    if let Ok(fpca) = fdata_to_pc_1d(&clean_mat, ncomp, &t) {
+    if let Ok(fpca) = fdata_to_pc(&clean_mat, ncomp, &t) {
         let total_var: f64 = fpca.singular_values.iter().map(|s| s * s).sum();
         let mut cumvar = 0.0;
         for (k, sv) in fpca.singular_values.iter().enumerate() {

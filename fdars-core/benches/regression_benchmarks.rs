@@ -1,13 +1,13 @@
 //! Benchmarks for regression and FPCA methods
 //!
 //! Compares performance of:
-//! - FPCA (fdata_to_pc_1d) with varying n and m
+//! - FPCA (fdata_to_pc) with varying n and m
 //! - Functional linear regression (fregre_lm) with varying ncomp
 //! - Functional logistic regression with varying ncomp
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::matrix::FdMatrix;
-use fdars_core::regression::fdata_to_pc_1d;
+use fdars_core::regression::fdata_to_pc;
 use fdars_core::scalar_on_function::{fregre_lm, functional_logistic};
 use std::f64::consts::PI;
 
@@ -56,7 +56,7 @@ fn generate_logistic_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>, Vec<f64>) 
 }
 
 fn bench_fpca(c: &mut Criterion) {
-    let mut group = c.benchmark_group("fdata_to_pc_1d");
+    let mut group = c.benchmark_group("fdata_to_pc");
 
     for &n in &[50, 200] {
         for &m in &[50, 100] {
@@ -65,7 +65,7 @@ fn bench_fpca(c: &mut Criterion) {
             let label = format!("n{}_m{}", n, m);
 
             group.bench_with_input(BenchmarkId::new("params", &label), &label, |b, _| {
-                b.iter(|| fdata_to_pc_1d(black_box(&data), black_box(ncomp), black_box(&argvals)));
+                b.iter(|| fdata_to_pc(black_box(&data), black_box(ncomp), black_box(&argvals)));
             });
         }
     }

@@ -10,13 +10,13 @@ This shows how FDA methods compose into a coherent analysis pipeline.
 
 - `simulation::sim_fundata()` — generate synthetic functional data
 - `simulation::add_error_pointwise()` — add measurement noise
-- `basis::pspline_fit_1d()` — P-spline smoothing
+- `basis::pspline_fit()` — P-spline smoothing
 - `outliers::outliers_threshold_lrt()` — bootstrap outlier threshold
 - `outliers::detect_outliers_lrt()` — flag outliers
-- `regression::fdata_to_pc_1d()` — FPCA for dimensionality reduction
+- `regression::fdata_to_pc()` — FPCA for dimensionality reduction
 - `clustering::kmeans_fd()` — k-means clustering
 - `clustering::silhouette_score()` — clustering validation
-- `depth::modified_band_1d()` — depth-based characterization
+- `depth::modified_band()` — depth-based characterization
 
 ## How to run
 

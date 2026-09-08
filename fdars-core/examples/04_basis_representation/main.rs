@@ -6,7 +6,7 @@
 //! Fourier fitting with automatic basis selection.
 
 use fdars_core::basis::{
-    basis_to_fdata, bspline_basis, fdata_to_basis, fourier_basis, fourier_fit_1d, pspline_fit_1d,
+    basis_to_fdata, bspline_basis, fdata_to_basis, fourier_basis, fourier_fit, pspline_fit,
     select_fourier_nbasis_gcv, ProjectionBasisType,
 };
 use fdars_core::simulation::{add_error_pointwise, sim_fundata, EFunType, EValType};
@@ -100,7 +100,7 @@ fn main() {
     println!("\n--- P-spline Smoothing ---");
     let pspline_nbasis = 20;
     for lambda in [0.001, 0.01, 0.1, 1.0, 10.0] {
-        if let Some(result) = pspline_fit_1d(&noisy, &t, pspline_nbasis, lambda, 2) {
+        if let Some(result) = pspline_fit(&noisy, &t, pspline_nbasis, lambda, 2) {
             let err = rmse(result.fitted.as_slice(), &clean);
             println!(
                 "  λ={lambda:6.3}: RMSE={err:.6}, EDF={:.1}, GCV={:.6}, AIC={:.1}, BIC={:.1}",
@@ -112,7 +112,7 @@ fn main() {
     // --- Section 5: Fourier fitting ---
     println!("\n--- Fourier Fitting ---");
     for nb in [5, 9, 15, 21] {
-        if let Ok(result) = fourier_fit_1d(&noisy, &t, nb) {
+        if let Ok(result) = fourier_fit(&noisy, &t, nb) {
             let err = rmse(result.fitted.as_slice(), &clean);
             println!("  nbasis={nb:2}: RMSE={err:.6}, GCV={:.6}", result.gcv);
         }
@@ -122,7 +122,7 @@ fn main() {
     println!("\n--- Automatic Fourier Basis Selection (GCV) ---");
     let best_nb = select_fourier_nbasis_gcv(&noisy, &t, 3, 25);
     println!("  Selected nbasis: {best_nb}");
-    if let Ok(result) = fourier_fit_1d(&noisy, &t, best_nb) {
+    if let Ok(result) = fourier_fit(&noisy, &t, best_nb) {
         let err = rmse(result.fitted.as_slice(), &clean);
         println!("  RMSE with best nbasis: {err:.6}");
     }

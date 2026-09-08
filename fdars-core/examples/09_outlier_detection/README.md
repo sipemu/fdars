@@ -10,7 +10,7 @@ Three types of outliers are injected: magnitude shift, shape anomaly (high-frequ
 
 - `outliers::outliers_threshold_lrt()` — bootstrap calibration of the LRT threshold
 - `outliers::detect_outliers_lrt()` — flag outliers exceeding the threshold
-- `depth::fraiman_muniz_1d()` — depth-based confirmation of outlier status
+- `depth::fraiman_muniz()` — depth-based confirmation of outlier status
 
 ## How to run
 

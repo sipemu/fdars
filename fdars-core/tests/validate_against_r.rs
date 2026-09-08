@@ -756,7 +756,7 @@ fn test_fdata_mean() {
     let exp: FdataExpected = load_json("expected", "fdata_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::fdata::mean_1d(&mat);
+    let actual = fdars_core::fdata::mean(&mat, fdars_core::dim::Dim::One);
     assert_vec_close(&actual, &exp.mean, 1e-10, "fdata_mean");
 }
 
@@ -765,7 +765,7 @@ fn test_fdata_center() {
     let exp: FdataExpected = load_json("expected", "fdata_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::fdata::center_1d(&mat);
+    let actual = fdars_core::fdata::center(&mat, fdars_core::dim::Dim::One);
     assert_vec_close(actual.as_slice(), &exp.centered, 1e-10, "fdata_center");
 }
 
@@ -774,7 +774,7 @@ fn test_fdata_l2_norm() {
     let exp: FdataExpected = load_json("expected", "fdata_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = fdars_core::matrix::FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::fdata::norm_lp_1d(&mat, &dat.argvals, 2.0);
+    let actual = fdars_core::fdata::norm_lp(&mat, &dat.argvals, 2.0, fdars_core::dim::Dim::One);
     // R's norm.fdata uses trapezoidal; Rust uses Simpson's 1/3 — inherent integration gap ~4e-3
     assert_vec_close(&actual, &exp.norm_l2, 5e-3, "l2_norms");
 }
@@ -787,7 +787,7 @@ fn test_depth_fraiman_muniz() {
     let dat: StandardData = load_json("data", "standard_50x101");
     // R's depth.FM returns values in [0,1]; Rust with scale=true matches this.
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let actual = fdars_core::depth::fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
     assert_vec_close(&actual, &exp.fraiman_muniz, 1e-6, "fraiman_muniz");
 }
 
@@ -796,7 +796,7 @@ fn test_depth_band() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::depth::band_1d(&mat, &mat);
+    let actual = fdars_core::depth::band(&mat, &mat, fdars_core::dim::Dim::One);
     assert_vec_close(&actual, &exp.band, 1e-6, "band_depth");
 }
 
@@ -805,7 +805,7 @@ fn test_depth_modified_band() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::depth::modified_band_1d(&mat, &mat);
+    let actual = fdars_core::depth::modified_band(&mat, &mat, fdars_core::dim::Dim::One);
     assert_vec_close(&actual, &exp.modified_band, 1e-6, "modified_band_depth");
 }
 
@@ -814,7 +814,7 @@ fn test_depth_modified_epigraph() {
     let exp: DepthExpected = load_json("expected", "depth_expected");
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::depth::modified_epigraph_index_1d(&mat, &mat);
+    let actual = fdars_core::depth::modified_epigraph_index(&mat, &mat, fdars_core::dim::Dim::One);
     // Now matches R's roahd::MEI() using <= comparison
     assert_vec_close(&actual, &exp.modified_epigraph, 1e-6, "modified_epigraph");
 }
@@ -827,7 +827,7 @@ fn test_depth_modal() {
     // compare rankings rather than absolute values.
     let h = 0.178186; // R's auto-selected bandwidth for this data
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::depth::modal_1d(&mat, &mat, h);
+    let actual = fdars_core::depth::modal(&mat, &mat, h, fdars_core::dim::Dim::One);
     assert_ranking_correlated(&actual, &exp.modal, "modal_depth_ranking");
 }
 
@@ -957,7 +957,7 @@ fn test_pspline_fit() {
     let data = sine.y_noisy.clone();
 
     let data_mat = fdars_core::matrix::FdMatrix::from_column_major(data.clone(), n, m).unwrap();
-    let result = fdars_core::basis::pspline_fit_1d(&data_mat, &sine.x, 15, 0.01, 2).unwrap();
+    let result = fdars_core::basis::pspline_fit(&data_mat, &sine.x, 15, 0.01, 2).unwrap();
 
     // Knot placement differs between R and Rust → compare overall fit quality.
     // Both should produce smooth fits to the noisy sine data with similar RMSE.
@@ -1019,7 +1019,7 @@ fn test_fourier_fit() {
     let curve1: Vec<f64> = (0..m).map(|j| dat.data[j * dat.n]).collect();
 
     let curve1_mat = fdars_core::matrix::FdMatrix::from_column_major(curve1, n, m).unwrap();
-    let result = fdars_core::basis::fourier_fit_1d(&curve1_mat, &dat.argvals, 7).unwrap();
+    let result = fdars_core::basis::fourier_fit(&curve1_mat, &dat.argvals, 7).unwrap();
 
     // Fourier basis normalization differs → compare fitted values instead of coefficients
     assert_vec_close(
@@ -1107,7 +1107,7 @@ fn test_fourier_semimetric() {
     }
 
     let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
-    let actual = fdars_core::metric::fourier_self_1d(&sub_mat, 5);
+    let actual = fdars_core::metric::fourier_self(&sub_mat, 5, fdars_core::dim::Dim::One);
     // FFT normalization and Fourier coefficient extraction may differ
     // Compare rankings of the distance matrix
     assert_ranking_correlated(
@@ -1134,7 +1134,12 @@ fn test_hshift_semimetric() {
 
     let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
     let max_shift = m / 10;
-    let actual = fdars_core::metric::hshift_self_1d(&sub_mat, &dat.argvals, max_shift);
+    let actual = fdars_core::metric::hshift_self(
+        &sub_mat,
+        &dat.argvals,
+        max_shift,
+        fdars_core::dim::Dim::One,
+    );
     // Integration weights + shift algorithm details differ
     assert_ranking_correlated(
         actual.as_slice(),
@@ -1178,7 +1183,7 @@ fn test_fpca_svd() {
     let dat: RegressionData = load_json("data", "regression_30x51");
 
     let data_mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let result = fdars_core::regression::fdata_to_pc_1d(&data_mat, 3, &dat.argvals).unwrap();
+    let result = fdars_core::regression::fdata_to_pc(&data_mat, 3, &dat.argvals).unwrap();
 
     // With integration weights, singular values differ from R's unweighted SVD
     // by a factor related to grid spacing. Check structural properties instead.
@@ -1247,8 +1252,7 @@ fn test_pls() {
     let dat: RegressionData = load_json("data", "regression_30x51");
 
     let data_mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let result =
-        fdars_core::regression::fdata_to_pls_1d(&data_mat, &dat.y, 2, &dat.argvals).unwrap();
+    let result = fdars_core::regression::fdata_to_pls(&data_mat, &dat.y, 2, &dat.argvals).unwrap();
 
     // With integration weights, PLS scores differ from R's unweighted NIPALS.
     // Check structural properties instead of exact values.
@@ -1270,7 +1274,7 @@ fn test_outlier_depth_ranking() {
     let dat: OutlierData = load_json("data", "outliers_50x101");
 
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let depths = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, false);
+    let depths = fdars_core::depth::fraiman_muniz(&mat, &mat, false, fdars_core::dim::Dim::One);
 
     let mut indexed: Vec<(usize, f64)> = depths.iter().cloned().enumerate().collect();
     indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
@@ -1991,7 +1995,7 @@ fn test_streaming_fm_matches_batch_depth() {
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
     // Batch FM depth
-    let _batch = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let _batch = fdars_core::depth::fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
 
     // Streaming FM depth: compute for each curve against rest
     let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&mat);
@@ -2012,7 +2016,7 @@ fn test_streaming_mbd_matches_batch_depth() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let batch = fdars_core::depth::modified_band_1d(&mat, &mat);
+    let batch = fdars_core::depth::modified_band(&mat, &mat, fdars_core::dim::Dim::One);
 
     let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&mat);
     let streamer = fdars_core::streaming_depth::StreamingMbd::new(state);
@@ -2033,7 +2037,7 @@ fn test_streaming_bd_matches_batch_depth() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let batch = fdars_core::depth::band_1d(&mat, &mat);
+    let batch = fdars_core::depth::band(&mat, &mat, fdars_core::dim::Dim::One);
 
     let state = fdars_core::streaming_depth::FullReferenceState::from_reference(&mat);
     let streamer = fdars_core::streaming_depth::StreamingBd::new(state);
@@ -2053,7 +2057,7 @@ fn test_streaming_depth_ranking_correlation() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let batch = fdars_core::depth::modified_band_1d(&mat, &mat);
+    let batch = fdars_core::depth::modified_band(&mat, &mat, fdars_core::dim::Dim::One);
 
     let state = fdars_core::streaming_depth::SortedReferenceState::from_reference(&mat);
     let streamer = fdars_core::streaming_depth::StreamingMbd::new(state);
@@ -2127,7 +2131,7 @@ fn test_outliers_depth_ordering() {
 
     // Outliers should have low depth
     let _exp: OutliersExpected = load_json("expected", "outliers_expected");
-    let depths = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let depths = fdars_core::depth::fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
 
     let threshold = fdars_core::outliers::outliers_threshold_lrt(&mat, 200, 0.05, 0.15, 42, 0.99);
     let flags = fdars_core::outliers::detect_outliers_lrt(&mat, threshold, 0.15);
@@ -2245,7 +2249,7 @@ fn test_random_projection_rank_correlation() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let fm = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let fm = fdars_core::depth::fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
     // Use seeded RNG with 1000 projections for stable ranking
     let rp = fdars_core::depth::random_projection_1d_seeded(&mat, &mat, 1000, Some(42));
 
@@ -2260,7 +2264,7 @@ fn test_random_tukey_rank_correlation() {
 
     // Random Tukey (halfspace) depth: high-dimensional random projections
     // are inherently noisy without a fixed seed. Verify structural properties.
-    let tukey = fdars_core::depth::random_tukey_1d(&mat, &mat, 1000);
+    let tukey = fdars_core::depth::random_tukey(&mat, &mat, 1000, fdars_core::dim::Dim::One);
     assert_eq!(tukey.len(), d.n);
 
     // Values should be finite and in [0, 0.5]
@@ -2272,7 +2276,7 @@ fn test_random_tukey_rank_correlation() {
     }
 
     // The median curve (by FM) should have higher Tukey depth than the most extreme curves
-    let fm = fdars_core::depth::fraiman_muniz_1d(&mat, &mat, true);
+    let fm = fdars_core::depth::fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
     let deepest_fm = fm
         .iter()
         .enumerate()
@@ -2353,7 +2357,7 @@ fn test_auto_selection_valid() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let result = fdars_core::basis::select_basis_auto_1d(&mat, &d.argvals, 0, 5, 15, 1.0, false);
+    let result = fdars_core::basis::select_basis_auto(&mat, &d.argvals, 0, 5, 15, 1.0, false);
     assert_eq!(result.selections.len(), d.n);
     for sel in &result.selections {
         assert!(sel.nbasis >= 3);
@@ -2459,7 +2463,7 @@ fn test_equivalence_one_sample_property() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let center = fdars_core::fdata::mean_1d(&mat);
+    let center = fdars_core::fdata::mean(&mat, fdars_core::dim::Dim::One);
 
     // Test equivalence against the sample mean with large delta — should reject (equivalent)
     let result = fdars_core::equivalence_test_one_sample(
@@ -2485,7 +2489,7 @@ fn test_geometric_median_near_mean_symmetric() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let mean = fdars_core::fdata::mean_1d(&mat);
+    let mean = fdars_core::fdata::mean(&mat, fdars_core::dim::Dim::One);
     let median = fdars_core::fdata::geometric_median(
         &mat,
         &d.argvals,
@@ -2512,7 +2516,7 @@ fn test_geometric_median_robust_to_outlier() {
     let d: OutlierData = load_json("data", "outliers_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let _mean = fdars_core::fdata::mean_1d(&mat);
+    let _mean = fdars_core::fdata::mean(&mat, fdars_core::dim::Dim::One);
     let median = fdars_core::fdata::geometric_median(
         &mat,
         &d.argvals,
@@ -2909,7 +2913,7 @@ fn test_dtw_self_symmetric() {
         .collect();
     let sub = FdMatrix::from_column_major(sub_vec, n, d.m).unwrap();
 
-    let dm = fdars_core::metric::dtw_self_1d(&sub, 2.0, d.m);
+    let dm = fdars_core::metric::dtw_self(&sub, 2.0, d.m, fdars_core::dim::Dim::One);
     for i in 0..n {
         for j in (i + 1)..n {
             assert!(
@@ -2944,7 +2948,7 @@ fn test_dtw_cross_shape() {
     let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
     let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
 
-    let cross = fdars_core::metric::dtw_cross_1d(&m1, &m2, 2.0, d.m);
+    let cross = fdars_core::metric::dtw_cross(&m1, &m2, 2.0, d.m, fdars_core::dim::Dim::One);
     assert_eq!(cross.nrows(), n1);
     assert_eq!(cross.ncols(), n2);
 }
@@ -2973,7 +2977,7 @@ fn test_fourier_cross_shape() {
     let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
     let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
 
-    let cross = fdars_core::metric::fourier_cross_1d(&m1, &m2, 5);
+    let cross = fdars_core::metric::fourier_cross(&m1, &m2, 5, fdars_core::dim::Dim::One);
     assert_eq!(cross.nrows(), n1);
     assert_eq!(cross.ncols(), n2);
 }
@@ -3002,7 +3006,8 @@ fn test_hshift_cross_shape() {
     let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
     let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
 
-    let cross = fdars_core::metric::hshift_cross_1d(&m1, &m2, &d.argvals, 10);
+    let cross =
+        fdars_core::metric::hshift_cross(&m1, &m2, &d.argvals, 10, fdars_core::dim::Dim::One);
     assert_eq!(cross.nrows(), n1);
     assert_eq!(cross.ncols(), n2);
 }
@@ -3174,7 +3179,8 @@ fn test_soft_dtw_vs_tslearn_distance_matrix() {
     }
 
     let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
-    let actual = fdars_core::metric::soft_dtw_self_1d(&sub_mat, exp.soft_dtw.gamma);
+    let actual =
+        fdars_core::metric::soft_dtw_self(&sub_mat, exp.soft_dtw.gamma, fdars_core::dim::Dim::One);
 
     // Compare off-diagonal entries (diagonal is 0 in self_distance_matrix)
     let expected = &exp.soft_dtw.distance_matrix;
@@ -3211,7 +3217,11 @@ fn test_soft_dtw_vs_tslearn_divergence_matrix() {
     }
 
     let sub_mat = FdMatrix::from_column_major(sub_data, n_sub, m).unwrap();
-    let actual = fdars_core::metric::soft_dtw_div_self_1d(&sub_mat, exp.soft_dtw.gamma);
+    let actual = fdars_core::metric::soft_dtw_div_self(
+        &sub_mat,
+        exp.soft_dtw.gamma,
+        fdars_core::dim::Dim::One,
+    );
 
     let expected = &exp.soft_dtw.divergence_matrix;
     let mut max_rel = 0.0_f64;
@@ -4103,7 +4113,7 @@ fn test_r_gmm_clustering() {
     let data = FdMatrix::from_column_major(clust.data.clone(), clust.n, clust.m).unwrap();
 
     // Do FPCA to get 3 scores (same as R does)
-    let fpca = fdars_core::regression::fdata_to_pc_1d(&data, 3, &clust.argvals).unwrap();
+    let fpca = fdars_core::regression::fdata_to_pc(&data, 3, &clust.argvals).unwrap();
     let n = clust.n;
     let scores: Vec<Vec<f64>> = (0..n)
         .map(|i| (0..3).map(|k| fpca.scores[(i, k)]).collect())
@@ -4193,7 +4203,7 @@ fn test_r_classification_accuracy() {
 /// DD-classifier depth values: compare Fraiman-Muniz depths against R's depth.FM.
 ///
 /// R computes FM depth for each observation w.r.t. each class reference set.
-/// We compute the same depths directly via `fraiman_muniz_1d` and compare
+/// We compute the same depths directly via `fraiman_muniz` and compare
 /// element-wise against R's dd_depths (tol=0.05, same as FM depth test).
 #[test]
 fn test_r_dd_classifier_depths() {
@@ -4221,9 +4231,12 @@ fn test_r_dd_classifier_depths() {
     }
 
     // Compute Rust FM depths: all n observations w.r.t. each class reference
-    let rust_depths_c1 = fdars_core::depth::fraiman_muniz_1d(&data, &class_mats[0], true);
-    let rust_depths_c2 = fdars_core::depth::fraiman_muniz_1d(&data, &class_mats[1], true);
-    let rust_depths_c3 = fdars_core::depth::fraiman_muniz_1d(&data, &class_mats[2], true);
+    let rust_depths_c1 =
+        fdars_core::depth::fraiman_muniz(&data, &class_mats[0], true, fdars_core::dim::Dim::One);
+    let rust_depths_c2 =
+        fdars_core::depth::fraiman_muniz(&data, &class_mats[1], true, fdars_core::dim::Dim::One);
+    let rust_depths_c3 =
+        fdars_core::depth::fraiman_muniz(&data, &class_mats[2], true, fdars_core::dim::Dim::One);
 
     // Element-wise comparison against R's depths (tol=0.05, consistent with FM depth test)
     assert_vec_close(
@@ -4557,7 +4570,7 @@ fn test_r_gmm_model_selection() {
     let data = FdMatrix::from_column_major(clust.data.clone(), clust.n, clust.m).unwrap();
 
     // FPCA → 3 scores
-    let fpca = fdars_core::regression::fdata_to_pc_1d(&data, 3, &clust.argvals).unwrap();
+    let fpca = fdars_core::regression::fdata_to_pc(&data, 3, &clust.argvals).unwrap();
     let n = clust.n;
     let scores: Vec<Vec<f64>> = (0..n)
         .map(|i| (0..3).map(|k| fpca.scores[(i, k)]).collect())
@@ -5009,7 +5022,8 @@ fn test_random_projection_values_vs_r() {
 
     if let Some(r_vals) = exp.random_projection.as_array() {
         let r_depths: Vec<f64> = r_vals.iter().filter_map(|v| v.as_f64()).collect();
-        let rust_depths = fdars_core::depth::random_projection_1d(&mat, &mat, 50);
+        let rust_depths =
+            fdars_core::depth::random_projection(&mat, &mat, 50, fdars_core::dim::Dim::One);
 
         // RNG seeds differ between R and Rust, so values won't match exactly.
         // Use relaxed rank correlation since random projections are inherently stochastic.
@@ -5037,7 +5051,8 @@ fn test_random_tukey_values_vs_r() {
     if let Some(r_vals) = exp.random_tukey.as_array() {
         let r_depths: Vec<f64> = r_vals.iter().filter_map(|v| v.as_f64()).collect();
         // Use many projections for stable results (RNG seeds are incompatible)
-        let rust_depths = fdars_core::depth::random_tukey_1d(&mat, &mat, 500);
+        let rust_depths =
+            fdars_core::depth::random_tukey(&mat, &mat, 500, fdars_core::dim::Dim::One);
 
         // Random Tukey depth is highly sensitive to projection directions.
         // With incompatible RNGs, only statistical properties can be compared.

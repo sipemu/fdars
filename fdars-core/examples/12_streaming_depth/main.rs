@@ -5,7 +5,7 @@
 //! monitoring: the reference is built once, then each new curve is
 //! scored in O(m log n) rather than recomputing from scratch.
 
-use fdars_core::depth::{band_1d, fraiman_muniz_1d, modified_band_1d};
+use fdars_core::depth::{band, fraiman_muniz, modified_band};
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::streaming_depth::{
     FullReferenceState, RollingReference, SortedReferenceState, StreamingBd, StreamingDepth,
@@ -98,9 +98,9 @@ fn main() {
     // --- Section 5: Compare streaming vs batch ---
     println!("\n--- Streaming vs Batch Comparison ---");
     // Batch: combine reference + new, compute depth of new w.r.t. reference
-    let batch_mbd = modified_band_1d(&new_mat, &ref_mat);
-    let batch_fm = fraiman_muniz_1d(&new_mat, &ref_mat, true);
-    let batch_bd = band_1d(&new_mat, &ref_mat);
+    let batch_mbd = modified_band(&new_mat, &ref_mat, fdars_core::dim::Dim::One);
+    let batch_fm = fraiman_muniz(&new_mat, &ref_mat, true, fdars_core::dim::Dim::One);
+    let batch_bd = band(&new_mat, &ref_mat, fdars_core::dim::Dim::One);
 
     println!(
         "  {:>5} {:>12} {:>12} {:>12} {:>12} {:>12} {:>12}",

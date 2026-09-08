@@ -8,10 +8,10 @@ The geometric median is a robust alternative to the pointwise mean — it minimi
 
 ## API functions used
 
-- `fdata::mean_1d()` — pointwise mean across curves
-- `fdata::center_1d()` — subtract the mean from each curve
+- `fdata::mean()` — pointwise mean across curves
+- `fdata::center()` — subtract the mean from each curve
 - `fdata::deriv()` (with `DerivDomain`) — numerical differentiation (1st, 2nd, etc.)
-- `fdata::norm_lp_1d()` — Lp norms (L1, L2, L∞) per curve
+- `fdata::norm_lp()` — Lp norms (L1, L2, L∞) per curve
 - `fdata::geometric_median()` — robust central tendency
 - `utility::integrate_simpson()` — numerical integration using Simpson's rule
 - `utility::inner_product()` — inner product between two curves

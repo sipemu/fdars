@@ -6,8 +6,8 @@
 //! outlying curves in a dataset.
 
 use fdars_core::depth::{
-    band_1d, fraiman_muniz_1d, functional_spatial, modal_1d, modified_band_1d,
-    modified_epigraph_index_1d, random_projection_1d, random_tukey_1d,
+    band, fraiman_muniz, functional_spatial, modal, modified_band, modified_epigraph_index,
+    random_projection, random_tukey,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 
@@ -57,7 +57,7 @@ fn main() {
 
     // --- Section 1: Fraiman-Muniz depth ---
     println!("\n--- Fraiman-Muniz Depth ---");
-    let fm = fraiman_muniz_1d(&mat, &mat, true);
+    let fm = fraiman_muniz(&mat, &mat, true, fdars_core::dim::Dim::One);
     let fm_rank = rank_indices(&fm);
     println!(
         "  Deepest 3:  {:?} (depths: {:.4}, {:.4}, {:.4})",
@@ -76,35 +76,35 @@ fn main() {
 
     // --- Section 2: Band depth ---
     println!("\n--- Band Depth ---");
-    let bd = band_1d(&mat, &mat);
+    let bd = band(&mat, &mat, fdars_core::dim::Dim::One);
     let bd_rank = rank_indices(&bd);
     println!("  Deepest 3:  {:?}", &bd_rank[..3]);
     println!("  Shallowest 3: {:?}", &bd_rank[n - 3..]);
 
     // --- Section 3: Modified Band Depth ---
     println!("\n--- Modified Band Depth ---");
-    let mbd = modified_band_1d(&mat, &mat);
+    let mbd = modified_band(&mat, &mat, fdars_core::dim::Dim::One);
     let mbd_rank = rank_indices(&mbd);
     println!("  Deepest 3:  {:?}", &mbd_rank[..3]);
     println!("  Shallowest 3: {:?}", &mbd_rank[n - 3..]);
 
     // --- Section 4: Modal depth ---
     println!("\n--- Modal Depth (h=0.5) ---");
-    let modal = modal_1d(&mat, &mat, 0.5);
+    let modal = modal(&mat, &mat, 0.5, fdars_core::dim::Dim::One);
     let modal_rank = rank_indices(&modal);
     println!("  Deepest 3:  {:?}", &modal_rank[..3]);
     println!("  Shallowest 3: {:?}", &modal_rank[n - 3..]);
 
     // --- Section 5: Random projection depth ---
     println!("\n--- Random Projection Depth (50 projections) ---");
-    let rp = random_projection_1d(&mat, &mat, 50);
+    let rp = random_projection(&mat, &mat, 50, fdars_core::dim::Dim::One);
     let rp_rank = rank_indices(&rp);
     println!("  Deepest 3:  {:?}", &rp_rank[..3]);
     println!("  Shallowest 3: {:?}", &rp_rank[n - 3..]);
 
     // --- Section 6: Random Tukey depth ---
     println!("\n--- Random Tukey Depth (50 projections) ---");
-    let rt = random_tukey_1d(&mat, &mat, 50);
+    let rt = random_tukey(&mat, &mat, 50, fdars_core::dim::Dim::One);
     let rt_rank = rank_indices(&rt);
     println!("  Deepest 3:  {:?}", &rt_rank[..3]);
     println!("  Shallowest 3: {:?}", &rt_rank[n - 3..]);
@@ -118,7 +118,7 @@ fn main() {
 
     // --- Section 8: Modified Epigraph Index ---
     println!("\n--- Modified Epigraph Index ---");
-    let mei = modified_epigraph_index_1d(&mat, &mat);
+    let mei = modified_epigraph_index(&mat, &mat, fdars_core::dim::Dim::One);
     let mei_rank = rank_indices(&mei);
     println!("  Deepest 3:  {:?}", &mei_rank[..3]);
     println!("  Shallowest 3: {:?}", &mei_rank[n - 3..]);

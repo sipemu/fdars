@@ -3,7 +3,7 @@
 //! Demonstrates testing whether two functional groups are equivalent
 //! within a margin δ using the sup-norm and bootstrap methods.
 
-use fdars_core::fdata::mean_1d;
+use fdars_core::fdata::mean;
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::tolerance::{
     equivalence_test, equivalence_test_one_sample, EquivalenceBootstrap, MultiplierDistribution,
@@ -110,7 +110,7 @@ fn main() {
 
     // --- Section 4: One-sample test ---
     println!("\n--- Section 4: One-sample equivalence test ---");
-    let mu0 = mean_1d(&data1);
+    let mu0 = mean(&data1, fdars_core::dim::Dim::One);
     let r_one = equivalence_test_one_sample(
         &data1,
         &mu0,

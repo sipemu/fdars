@@ -8,7 +8,7 @@
 use fdars_core::basis::ProjectionBasisType;
 use fdars_core::gmm::{gmm_cluster, gmm_em, predict_gmm, CovType};
 use fdars_core::matrix::FdMatrix;
-use fdars_core::regression::fdata_to_pc_1d;
+use fdars_core::regression::fdata_to_pc;
 use std::f64::consts::PI;
 
 fn uniform_grid(m: usize) -> Vec<f64> {
@@ -40,7 +40,7 @@ fn main() {
 
     // ── 1. GMM on FPC scores ──────────────────────────────────────────────
     println!("=== GMM on FPC Scores ===");
-    let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
+    let fpca = fdata_to_pc(&data, 3, &t).unwrap();
     let scores: Vec<Vec<f64>> = (0..n)
         .map(|i| (0..3).map(|k| fpca.scores[(i, k)]).collect())
         .collect();

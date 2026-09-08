@@ -8,14 +8,14 @@ Different depth measures capture different notions of centrality — band-based 
 
 ## API functions used
 
-- `depth::fraiman_muniz_1d()` — integrated univariate depth
-- `depth::band_1d()` — band depth (proportion of bands containing the curve)
-- `depth::modified_band_1d()` — proportion-of-time within bands
-- `depth::modal_1d()` — kernel-based density depth
-- `depth::random_projection_1d()` — depth via random linear projections
-- `depth::random_tukey_1d()` — halfspace depth via random projections
+- `depth::fraiman_muniz()` — integrated univariate depth
+- `depth::band()` — band depth (proportion of bands containing the curve)
+- `depth::modified_band()` — proportion-of-time within bands
+- `depth::modal()` — kernel-based density depth
+- `depth::random_projection()` — depth via random linear projections
+- `depth::random_tukey()` — halfspace depth via random projections
 - `depth::functional_spatial()` — spatial (geometric) depth
-- `depth::modified_epigraph_index_1d()` — modified epigraph index
+- `depth::modified_epigraph_index()` — modified epigraph index
 
 ## How to run
 

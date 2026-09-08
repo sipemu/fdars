@@ -4,9 +4,7 @@
 //! derivatives, Lp norms, geometric median, inner products, and
 //! Simpson's rule integration.
 
-use fdars_core::fdata::{
-    center_1d, deriv, geometric_median, mean_1d, norm_lp_1d, DerivDomain, DerivResult,
-};
+use fdars_core::fdata::{center, deriv, geometric_median, mean, norm_lp, DerivDomain, DerivResult};
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::utility::{inner_product, inner_product_matrix, integrate_simpson};
 
@@ -34,19 +32,19 @@ fn main() {
 
     // --- Section 1: Mean function ---
     println!("--- Mean Function ---");
-    let mean = mean_1d(&mat);
-    println!("  Mean function length: {}", mean.len());
+    let mean_vals = mean(&mat, fdars_core::dim::Dim::One);
+    println!("  Mean function length: {}", mean_vals.len());
     println!(
         "  Mean at t=0.0: {:.4}, t=0.5: {:.4}, t=1.0: {:.4}",
-        mean[0],
-        mean[m / 2],
-        mean[m - 1]
+        mean_vals[0],
+        mean_vals[m / 2],
+        mean_vals[m - 1]
     );
 
     // --- Section 2: Centering ---
     println!("\n--- Centering ---");
-    let centered = center_1d(&mat);
-    let centered_mean = mean_1d(&centered);
+    let centered = center(&mat, fdars_core::dim::Dim::One);
+    let centered_mean = mean(&centered, fdars_core::dim::Dim::One);
     let max_residual = centered_mean
         .iter()
         .map(|x| x.abs())
@@ -95,9 +93,9 @@ fn main() {
 
     // --- Section 4: Lp norms ---
     println!("\n--- Lp Norms ---");
-    let l1_norms = norm_lp_1d(&mat, &t, 1.0);
-    let l2_norms = norm_lp_1d(&mat, &t, 2.0);
-    let linf_norms = norm_lp_1d(&mat, &t, f64::INFINITY);
+    let l1_norms = norm_lp(&mat, &t, 1.0, fdars_core::dim::Dim::One);
+    let l2_norms = norm_lp(&mat, &t, 2.0, fdars_core::dim::Dim::One);
+    let linf_norms = norm_lp(&mat, &t, f64::INFINITY, fdars_core::dim::Dim::One);
     println!(
         "  L1 norms (first 5): {:?}",
         l1_norms[..5]
@@ -125,7 +123,7 @@ fn main() {
     // making it more robust to outliers than the pointwise mean.
     println!("\n--- Geometric Median ---");
     let gmed = geometric_median(&mat, &t, None, 100, 1e-6, fdars_core::dim::Dim::One);
-    let mean_diff: f64 = mean
+    let mean_diff: f64 = mean_vals
         .iter()
         .zip(gmed.iter())
         .map(|(a, b)| (a - b).powi(2))
@@ -142,7 +140,7 @@ fn main() {
     // --- Section 6: Simpson's rule integration ---
     println!("\n--- Numerical Integration (Simpson's Rule) ---");
     // Integrate the mean function over [0, 1]
-    let integral = integrate_simpson(&mean, &t);
+    let integral = integrate_simpson(&mean_vals, &t);
     println!("  Integral of mean function over [0,1]: {integral:.6}");
     // Integrate a known function: sin(pi*t) over [0,1] should be 2/pi ≈ 0.6366
     let sin_vals: Vec<f64> = t
