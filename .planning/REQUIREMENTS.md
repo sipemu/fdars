@@ -59,25 +59,23 @@ Deferred — remain on `documentation/ROADMAP-TO-1.0.md` after this milestone, b
 
 ## Traceability
 
-Populated by the roadmapper during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEAL-01 | TBD | Pending |
-| SEAL-02 | TBD | Pending |
-| SEAL-03 | TBD | Pending |
-| NAME-01 | TBD | Pending |
-| NAME-02 | TBD | Pending |
-| NAME-03 | TBD | Pending |
-| NAME-04 | TBD | Pending |
-| NAME-05 | TBD | Pending |
-| REL-01 | TBD | Pending |
+| SEAL-01 | Phase 86 | Pending |
+| SEAL-02 | Phase 86 | Pending |
+| SEAL-03 | Phase 86 | Pending |
+| NAME-01 | Phase 87 | Pending |
+| NAME-02 | Phase 87 | Pending |
+| NAME-03 | Phase 87 | Pending |
+| NAME-04 | Phase 88 | Pending |
+| NAME-05 | Phase 87 | Pending |
+| REL-01 | Phase 89 | Pending |
 
 **Coverage:**
 - v1 requirements: 9 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 9 ⚠️
+- Mapped to phases: 9 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-09-07*
-*Last updated: 2026-09-07 after initial definition*
+*Last updated: 2026-09-07 after roadmap creation (traceability populated: 4 phases 86–89)*
