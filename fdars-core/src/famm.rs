@@ -17,7 +17,7 @@ use crate::linalg::{
     cholesky_forward_back as linalg_cholesky_forward_back,
 };
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -119,7 +119,7 @@ pub fn fmm(
 
     // Step 1: FPCA on pooled data
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, &argvals)?;
     let k = fpca.scores.ncols(); // actual number of components
 
     // Step 2: For each FPC score, fit scalar mixed model (parallelized)
@@ -955,7 +955,7 @@ impl Default for DenseFlmmConfig {
 ///
 /// # Parametrization note
 ///
-/// fdars formulates the model over FPC scores (reusing `fdata_to_pc_1d`) rather than
+/// fdars formulates the model over FPC scores (reusing `fdata_to_pc`) rather than
 /// over spline/basis coefficients as in R's `denseFLMM` package. Consequently
 /// variance components are per FPC component, not smoothed over the argument domain.
 ///
@@ -1010,7 +1010,7 @@ pub struct DenseFlmmResult {
 ///
 /// R's `denseFLMM` estimates eigenfunctions from raw covariance smoothing
 /// (gamm/bam REML over basis coefficients). fdars decomposes curves into
-/// FPC scores via `fdata_to_pc_1d`, then fits a per-component scalar mixed
+/// FPC scores via `fdata_to_pc`, then fits a per-component scalar mixed
 /// model — producing equivalent fixed-effect and random-effect functions but
 /// without the covariance-smoothing regularization step.
 ///
@@ -1082,7 +1082,7 @@ pub fn dense_flmm(
     let (subject_map, n_subjects) = build_subject_map(subject_ids);
 
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, config.ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, config.ncomp, &argvals)?;
     let k = fpca.scores.ncols();
 
     let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);

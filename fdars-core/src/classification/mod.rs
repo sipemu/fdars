@@ -12,7 +12,7 @@
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 
 pub mod cv;
 pub mod dd;
@@ -138,7 +138,7 @@ pub(crate) fn build_feature_matrix(
 ) -> Result<(FdMatrix, Vec<f64>, FdMatrix, Vec<f64>), FdarError> {
     let m = data.ncols();
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, &argvals)?;
     let n = data.nrows();
     let d_pc = fpca.scores.ncols();
     let d_cov = scalar_covariates.map_or(0, super::matrix::FdMatrix::ncols);

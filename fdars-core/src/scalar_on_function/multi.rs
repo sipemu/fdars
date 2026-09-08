@@ -15,7 +15,7 @@
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 use super::{compute_fitted, compute_r_squared, ols_solve, MultiFregreLmResult};
 
@@ -138,7 +138,7 @@ pub fn fregre_lm_multi(
 
     for &(data_k, argvals_k, ncomp_k) in predictors {
         let nc = ncomp_k.max(1).min(n - 1).min(data_k.ncols());
-        let fpca = fdata_to_pc_1d(data_k, nc, argvals_k)?;
+        let fpca = fdata_to_pc(data_k, nc, argvals_k)?;
         ncomp_vec.push(nc);
         fpcas.push(fpca);
     }

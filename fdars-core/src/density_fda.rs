@@ -71,7 +71,7 @@
 use crate::error::FdarError;
 use crate::helpers::{cumulative_trapz, linear_interp, trapz};
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 // ─── Result types ────────────────────────────────────────────────────────────
 
@@ -538,13 +538,13 @@ pub fn wasserstein_barycenter(
 /// Functional PCA of probability densities in LQD space.
 ///
 /// Transforms each density row to LQD space on a uniform quantile grid, assembles
-/// the resulting `FdMatrix`, and delegates to [`fdata_to_pc_1d`].  Returns the
+/// the resulting `FdMatrix`, and delegates to [`fdata_to_pc`].  Returns the
 /// FPCA result together with the fraction of variance explained (FVE) vector.
 ///
 /// **Algorithm:**
 /// 1. For each density row: `lqd_transform → ψᵢ` on the uniform t-grid.
 /// 2. Assemble the n × n_q LQD matrix.
-/// 3. Call `fdata_to_pc_1d` (existing SVD engine).
+/// 3. Call `fdata_to_pc` (existing SVD engine).
 /// 4. Compute FVE = cumsum(sv²) / sum(sv²).
 ///
 /// # Arguments
@@ -556,7 +556,7 @@ pub fn wasserstein_barycenter(
 ///
 /// # Errors
 ///
-/// Propagates errors from [`lqd_transform`] and [`fdata_to_pc_1d`].
+/// Propagates errors from [`lqd_transform`] and [`fdata_to_pc`].
 /// Returns [`FdarError::InvalidDimension`] for empty matrix or argvals mismatch.
 /// Returns [`FdarError::InvalidParameter`] when `ncomp == 0`.
 #[must_use = "expensive SVD computation — store or use the returned LqdFpcaResult"]
@@ -602,7 +602,7 @@ pub fn lqd_fpca(
     }
 
     // Delegate to existing FPCA engine
-    let fpca = fdata_to_pc_1d(&lqd_data, ncomp, &t_grid)?;
+    let fpca = fdata_to_pc(&lqd_data, ncomp, &t_grid)?;
 
     // FVE = cumsum(sv²) / sum(sv²)
     let sv_sq: Vec<f64> = fpca.singular_values.iter().map(|&s| s * s).collect();

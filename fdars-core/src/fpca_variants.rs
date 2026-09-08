@@ -10,7 +10,7 @@
 //! - [`ssvd`] — a sandwich-smoother / sparse-SVD FPCA path.
 //!
 //! All entry points are **additive and non-breaking**: they reuse the dense FPCA
-//! engine ([`crate::regression::fdata_to_pc_1d`]) and the covariance/derivative
+//! engine ([`crate::regression::fdata_to_pc`]) and the covariance/derivative
 //! helpers in [`crate::fdata`] / [`crate::covariance`] rather than introducing a
 //! new subsystem, and they add **no new crate dependency**. Every public function
 //! returns [`Result`] and validates its inputs up front (empty matrix, mismatched
@@ -21,7 +21,7 @@ use crate::error::FdarError;
 use crate::fdata;
 use crate::helpers::{gaussian_kernel, simpsons_weights};
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 use nalgebra::DMatrix;
 
 /// Result of a functional SVD ([`fsvd`]) between two paired functional samples.
@@ -148,10 +148,10 @@ pub fn cross_covariance(x: &FdMatrix, y: &FdMatrix) -> Result<FdMatrix, FdarErro
 ///
 /// Differentiates each curve `nderiv` times (finite differences via
 /// [`crate::fdata::deriv`]) and then runs the dense FPCA engine
-/// ([`fdata_to_pc_1d`]) on the differentiated sample. The returned [`FpcaResult`]
+/// ([`fdata_to_pc`]) on the differentiated sample. The returned [`FpcaResult`]
 /// (loadings, scores, mean, singular values) therefore describes the
 /// **differentiated process**. Passing `nderiv = 0` differentiates nothing and is
-/// exactly equivalent to `fdata_to_pc_1d(data, ncomp, argvals)`. A `nderiv` of 1
+/// exactly equivalent to `fdata_to_pc(data, ncomp, argvals)`. A `nderiv` of 1
 /// is the usual convention.
 ///
 /// # Divergence from `fdapace::FPCAder`
@@ -232,7 +232,7 @@ pub fn fpca_der(
         fdata::DerivResult::OneD(m) => m,
         _ => unreachable!("1D domain yields a 1D result"),
     };
-    fdata_to_pc_1d(&deriv_mat, ncomp, argvals)
+    fdata_to_pc(&deriv_mat, ncomp, argvals)
 }
 
 /// Dynamical (functional) correlation between two paired functional samples.
@@ -632,17 +632,17 @@ pub(crate) fn gaussian_smooth_cov(cov: &FdMatrix, argvals: &[f64], bandwidth: f6
 
 /// Sandwich-smoother / sparse-SVD FPCA path.
 ///
-/// An alternative to the raw thin-SVD FPCA ([`fdata_to_pc_1d`]) that estimates the
+/// An alternative to the raw thin-SVD FPCA ([`fdata_to_pc`]) that estimates the
 /// loadings/scores from a **smoothed** covariance surface. The empirical
 /// covariance is smoothed with a separable Gaussian kernel of the given
 /// `bandwidth`, then decomposed via the symmetric sandwich
 /// `W^{1/2}·Cov·W^{1/2}` (the same pattern used by the PACE FPCA path). Returns an
-/// [`FpcaResult`] with the same field conventions as [`fdata_to_pc_1d`], so the two
+/// [`FpcaResult`] with the same field conventions as [`fdata_to_pc`], so the two
 /// are directly comparable.
 ///
 /// A `bandwidth <= 1e-10` is treated as **no smoothing** (identity smoother): the
 /// empirical covariance is decomposed directly. In this dense limit the result
-/// agrees with [`fdata_to_pc_1d`] within a small tolerance (~1e-4 on the singular
+/// agrees with [`fdata_to_pc`] within a small tolerance (~1e-4 on the singular
 /// values). Note this special-case is required because the underlying
 /// [`gaussian_kernel`] returns `0` at zero bandwidth rather than an identity.
 ///
@@ -883,7 +883,7 @@ mod tests {
 
     #[test]
     fn test_fpca_der_nderiv0() {
-        // nderiv = 0 must equal fdata_to_pc_1d exactly.
+        // nderiv = 0 must equal fdata_to_pc exactly.
         let data = FdMatrix::from_column_major(
             (0..40)
                 .map(|i| (i as f64 * 0.13).sin() + (i as f64 * 0.02))
@@ -894,7 +894,7 @@ mod tests {
         .unwrap();
         let argvals: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
         let a = fpca_der(&data, 3, &argvals, 0).unwrap();
-        let b = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+        let b = fdata_to_pc(&data, 3, &argvals).unwrap();
         assert_eq!(a.singular_values.len(), b.singular_values.len());
         for k in 0..a.singular_values.len() {
             assert!(
@@ -1197,7 +1197,7 @@ mod tests {
     fn test_ssvd_dense_limit() {
         let (data, argvals) = sine_sample(8, 20, 5.0);
         let a = ssvd(&data, 3, &argvals, 1e-12).unwrap();
-        let b = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+        let b = fdata_to_pc(&data, 3, &argvals).unwrap();
         assert_eq!(a.singular_values.len(), b.singular_values.len());
         for k in 0..a.singular_values.len() {
             let rel = (a.singular_values[k] - b.singular_values[k]).abs()

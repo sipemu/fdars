@@ -2,7 +2,7 @@
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pls_1d;
+use crate::regression::fdata_to_pls;
 
 use super::{
     build_design_matrix, compute_fitted, compute_r_squared, ols_solve, PlsRegressionResult,
@@ -88,7 +88,7 @@ pub fn fregre_pls(
     }
 
     let ncomp = ncomp.min(n).min(m);
-    let pls = fdata_to_pls_1d(data, y, ncomp, argvals)?;
+    let pls = fdata_to_pls(data, y, ncomp, argvals)?;
 
     // Build design matrix: [1, pls_scores, scalar_covariates]
     let design = build_design_matrix(&pls.scores, ncomp, scalar_covariates, n);

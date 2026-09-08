@@ -2,7 +2,7 @@
 //!
 //! Fits `Y_i(t) = μ(t) + Σ_j x̃_ij · β_j(t) + ε_i(t)` where `x̃` are the
 //! mean-centered scalar predictors and `β_j(t)` are functional coefficients. The
-//! functional dimension is compressed with FPCA (`fdata_to_pc_1d`): the response
+//! functional dimension is compressed with FPCA (`fdata_to_pc`): the response
 //! is projected onto its top-`K` functional principal components, and for each
 //! component `k` the FPC scores are regressed on the predictors with a conjugate
 //! Normal / Inverse-Gamma Gibbs sampler. Each retained draw reconstructs the
@@ -31,14 +31,14 @@
 //! # Divergences from refund
 //!
 //! `refund`'s Bayesian FOSR uses spline basis priors with random effects; this
-//! implementation uses FPCA score compression (`fdata_to_pc_1d`) for simplicity and
+//! implementation uses FPCA score compression (`fdata_to_pc`) for simplicity and
 //! zero new dependencies. Pointwise credible bands only (no simultaneous bands).
 
 use super::{BayesianConfig, BayesianFosrResult};
 use crate::error::FdarError;
 use crate::linalg::{cholesky_factor, cholesky_forward_back, compute_xtx};
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Gamma, StandardNormal};
@@ -164,7 +164,7 @@ pub fn bayesian_fosr(
     }
 
     // ---- FPCA score compression of the response ----------------------------
-    let fpca = fdata_to_pc_1d(data, config.ncomp, argvals)?;
+    let fpca = fdata_to_pc(data, config.ncomp, argvals)?;
     let k = fpca.scores.ncols(); // actual components retained (≤ ncomp)
                                  // rotation: m_t × k loadings φ_k(t); scores: n × k ; mean: m_t response mean.
 

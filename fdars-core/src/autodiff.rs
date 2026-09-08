@@ -47,9 +47,9 @@
 //!
 //! ```
 //! use fdars_core::prelude::*;
-//! use fdars_core::regression::fdata_to_pc_1d;
+//! use fdars_core::regression::fdata_to_pc;
 //!
-//! // Small trained FPCA model (mirrors regression::fdata_to_pc_1d usage).
+//! // Small trained FPCA model (mirrors regression::fdata_to_pc usage).
 //! let m = 10usize;
 //! let n = 12usize;
 //! let argvals: Vec<f64> = (0..m).map(|j| 0.1 + 0.8 * j as f64 / (m - 1) as f64).collect();
@@ -62,7 +62,7 @@
 //!     }
 //! }
 //! let data = FdMatrix::from_column_major(raw, n, m).unwrap();
-//! let fpca = fdata_to_pc_1d(&data, 2, &argvals).unwrap();
+//! let fpca = fdata_to_pc(&data, 2, &argvals).unwrap();
 //!
 //! // Objective: soft-DTW(curve, reference) + sum of squared FPCA scores.
 //! let reference: Vec<Dual> = argvals
@@ -1029,7 +1029,7 @@ mod tests {
     fn grad_composed_objective_matches_finite_diff() {
         use crate::matrix::FdMatrix;
         use crate::metric::soft_dtw_distance_generic;
-        use crate::regression::{fdata_to_pc_1d, project_scores_generic};
+        use crate::regression::{fdata_to_pc, project_scores_generic};
         use rand::rngs::StdRng;
         use rand::{Rng, SeedableRng};
 
@@ -1058,7 +1058,7 @@ mod tests {
             }
         }
         let data = FdMatrix::from_column_major(data, n, m).unwrap();
-        let fpca = fdata_to_pc_1d(&data, ncomp, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &argvals).unwrap();
         let mean = fpca.mean.clone();
         let rotation = fpca.rotation.clone();
         let weights = fpca.weights.clone();

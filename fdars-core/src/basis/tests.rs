@@ -384,7 +384,7 @@ fn test_pspline_fit_1d_basic() {
         .collect();
     let data = make_matrix(&flat, n, m);
 
-    let result = pspline_fit_1d(&data, &t, 15, 1.0, 2);
+    let result = pspline_fit(&data, &t, 15, 1.0, 2);
     assert!(result.is_some());
 
     let res = result.unwrap();
@@ -410,8 +410,8 @@ fn test_pspline_fit_1d_smoothness() {
         .collect();
     let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-    let low_lambda = pspline_fit_1d(&data, &t, 15, 0.01, 2).unwrap();
-    let high_lambda = pspline_fit_1d(&data, &t, 15, 100.0, 2).unwrap();
+    let low_lambda = pspline_fit(&data, &t, 15, 0.01, 2).unwrap();
+    let high_lambda = pspline_fit(&data, &t, 15, 100.0, 2).unwrap();
 
     // Higher lambda should give lower edf (more smoothing)
     assert!(high_lambda.edf < low_lambda.edf);
@@ -421,7 +421,7 @@ fn test_pspline_fit_1d_smoothness() {
 fn test_pspline_fit_1d_invalid_input() {
     let t = uniform_grid(50);
     let empty = FdMatrix::zeros(0, 50);
-    let result = pspline_fit_1d(&empty, &t, 15, 1.0, 2);
+    let result = pspline_fit(&empty, &t, 15, 1.0, 2);
     assert!(result.is_none());
 }
 
@@ -437,7 +437,7 @@ fn test_fourier_fit_1d_sine_wave() {
     let raw = sine_wave(&t, 2.0);
     let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-    let result = fourier_fit_1d(&data, &t, 11);
+    let result = fourier_fit(&data, &t, 11);
     assert!(result.is_ok());
 
     let res = result.unwrap();
@@ -451,7 +451,7 @@ fn test_fourier_fit_1d_makes_nbasis_odd() {
     let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
     // Pass even nbasis
-    let result = fourier_fit_1d(&data, &t, 6);
+    let result = fourier_fit(&data, &t, 6);
     assert!(result.is_ok());
 
     // Should have been adjusted to odd
@@ -465,7 +465,7 @@ fn test_fourier_fit_1d_criteria() {
     let raw = sine_wave(&t, 2.0);
     let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
-    let result = fourier_fit_1d(&data, &t, 9).unwrap();
+    let result = fourier_fit(&data, &t, 9).unwrap();
 
     // All criteria should be finite
     assert!(result.gcv.is_finite());
@@ -480,7 +480,7 @@ fn test_fourier_fit_1d_invalid_nbasis() {
     let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
     // nbasis < 3 should return None
-    let result = fourier_fit_1d(&data, &t, 2);
+    let result = fourier_fit(&data, &t, 2);
     assert!(result.is_err());
 }
 
@@ -519,7 +519,7 @@ fn test_select_basis_auto_1d_returns_results() {
     let flat: Vec<f64> = (0..n).flat_map(|i| sine_wave(&t, 1.0 + i as f64)).collect();
     let data = make_matrix(&flat, n, m);
 
-    let result = select_basis_auto_1d(&data, &t, 0, 5, 15, 1.0, false);
+    let result = select_basis_auto(&data, &t, 0, 5, 15, 1.0, false);
 
     assert_eq!(result.selections.len(), n);
     for sel in &result.selections {
@@ -539,7 +539,7 @@ fn test_select_basis_auto_1d_seasonal_hint() {
     let raw = sine_wave(&t, 5.0);
     let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-    let result = select_basis_auto_1d(&data, &t, 0, 0, 0, -1.0, true);
+    let result = select_basis_auto(&data, &t, 0, 0, 0, -1.0, true);
 
     assert_eq!(result.selections.len(), 1);
     assert!(result.selections[0].seasonal_detected);
@@ -555,7 +555,7 @@ fn test_select_basis_auto_1d_non_seasonal() {
     let raw: Vec<f64> = vec![1.0; m];
     let data = FdMatrix::from_column_major(raw, n, m).unwrap();
 
-    let result = select_basis_auto_1d(&data, &t, 0, 0, 0, -1.0, true);
+    let result = select_basis_auto(&data, &t, 0, 0, 0, -1.0, true);
 
     // Constant data shouldn't be detected as seasonal
     assert!(!result.selections[0].seasonal_detected);
@@ -568,9 +568,9 @@ fn test_select_basis_auto_1d_criterion_options() {
     let data = FdMatrix::from_column_major(raw, 1, t.len()).unwrap();
 
     // Test all three criteria
-    let gcv_result = select_basis_auto_1d(&data, &t, 0, 0, 0, 1.0, false);
-    let aic_result = select_basis_auto_1d(&data, &t, 1, 0, 0, 1.0, false);
-    let bic_result = select_basis_auto_1d(&data, &t, 2, 0, 0, 1.0, false);
+    let gcv_result = select_basis_auto(&data, &t, 0, 0, 0, 1.0, false);
+    let aic_result = select_basis_auto(&data, &t, 1, 0, 0, 1.0, false);
+    let bic_result = select_basis_auto(&data, &t, 2, 0, 0, 1.0, false);
 
     assert_eq!(gcv_result.criterion, 0);
     assert_eq!(aic_result.criterion, 1);
@@ -583,7 +583,7 @@ fn test_nan_pspline_no_panic() {
     let mut y = sine_wave(&t, 2.0);
     y[10] = f64::NAN;
     let data = FdMatrix::from_column_major(y, 1, t.len()).unwrap();
-    let result = pspline_fit_1d(&data, &t, 10, 1.0, 2);
+    let result = pspline_fit(&data, &t, 10, 1.0, 2);
     // Should not panic; result may contain NaN
     assert!(result.is_some() || result.is_none());
 }
@@ -647,8 +647,8 @@ fn pspline_fit_gcv_beats_extremes() {
     let gcv_result = pspline_fit_gcv(&data, &t, 12, 2).unwrap();
 
     // GCV-selected lambda should produce lower or equal GCV than extremes
-    let low_lambda = pspline_fit_1d(&data, &t, 12, 1e-8, 2).unwrap();
-    let high_lambda = pspline_fit_1d(&data, &t, 12, 1e8, 2).unwrap();
+    let low_lambda = pspline_fit(&data, &t, 12, 1e-8, 2).unwrap();
+    let high_lambda = pspline_fit(&data, &t, 12, 1e8, 2).unwrap();
 
     assert!(gcv_result.gcv <= low_lambda.gcv + 1e-10);
     assert!(gcv_result.gcv <= high_lambda.gcv + 1e-10);

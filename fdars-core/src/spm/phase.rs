@@ -17,7 +17,7 @@
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 use super::control::{spe_control_limit, t2_control_limit, ControlLimit};
 use super::mfpca::{mfpca, MfpcaConfig, MfpcaResult};
@@ -293,7 +293,7 @@ pub fn spm_phase1(
     // The actual number of retained components may therefore be fewer than
     // config.ncomp; this is reflected in the chart's eigenvalues length.
     let ncomp = config.ncomp.min(n_tune - 1).min(m);
-    let fpca = fdata_to_pc_1d(&tune_data, ncomp, argvals)?;
+    let fpca = fdata_to_pc(&tune_data, ncomp, argvals)?;
     let actual_ncomp = fpca.scores.ncols();
 
     // Eigenvalues are computed as λ_l = s_l² / (n-1) where s_l is the l-th

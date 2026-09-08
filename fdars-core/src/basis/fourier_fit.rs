@@ -39,7 +39,7 @@ pub struct FourierFitResult {
 ///
 /// # Returns
 /// FourierFitResult with coefficients, fitted values, and model selection criteria
-pub fn fourier_fit_1d(
+pub fn fourier_fit(
     data: &FdMatrix,
     argvals: &[f64],
     nbasis: usize,
@@ -70,7 +70,7 @@ pub fn fourier_fit_1d(
     let btb = &b_mat.transpose() * &b_mat;
     let btb_inv = svd_pseudoinverse(&btb).ok_or_else(|| crate::FdarError::ComputationFailed {
         operation: "SVD pseudoinverse",
-        detail: "failed to compute pseudoinverse of B^T B in fourier_fit_1d; try reducing nbasis or check that argvals are sufficiently spread".to_string(),
+        detail: "failed to compute pseudoinverse of B^T B in fourier_fit; try reducing nbasis or check that argvals are sufficiently spread".to_string(),
     })?;
     let proj = &btb_inv * b_mat.transpose();
     let h_mat = &b_mat * &proj;
@@ -147,7 +147,7 @@ pub fn select_fourier_nbasis_gcv(
     // Test odd values only (1 constant + pairs of sin/cos)
     let mut nbasis = if min_nb % 2 == 0 { min_nb + 1 } else { min_nb };
     while nbasis <= max_nb {
-        if let Ok(result) = fourier_fit_1d(data, argvals, nbasis) {
+        if let Ok(result) = fourier_fit(data, argvals, nbasis) {
             if result.gcv < best_gcv && result.gcv.is_finite() {
                 best_gcv = result.gcv;
                 best_nbasis = nbasis;

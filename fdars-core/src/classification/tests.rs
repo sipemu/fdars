@@ -649,7 +649,7 @@ fn test_assign_folds_deterministic() {
 #[test]
 fn test_project_test_onto_fpca() {
     use super::cv::project_test_onto_fpca;
-    use crate::regression::fdata_to_pc_1d;
+    use crate::regression::fdata_to_pc;
 
     let n_train = 20;
     let m = 50;
@@ -657,7 +657,7 @@ fn test_project_test_onto_fpca() {
     let (data, _labels, _t) = generate_two_class_data(n_train / 2, m);
 
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(&data, ncomp, &argvals).unwrap();
+    let fpca = fdata_to_pc(&data, ncomp, &argvals).unwrap();
 
     // Create small "test" matrix
     let n_test = 5;

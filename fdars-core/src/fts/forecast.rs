@@ -2,7 +2,7 @@
 //!
 //! Forecasts future functional curves from a time-ordered curve series using an
 //! FPCA-based functional time-series model. A curve series is decomposed via the
-//! existing dense FPCA ([`crate::regression::fdata_to_pc_1d`]) into a mean curve,
+//! existing dense FPCA ([`crate::regression::fdata_to_pc`]) into a mean curve,
 //! FPC loadings, and a score-time-series; each retained FPC-score sequence is then
 //! modelled as an independent univariate AR(p) process (Yule-Walker estimation,
 //! AIC order selection) and forecast horizon by horizon, and the forecast scores
@@ -25,7 +25,7 @@
 //!
 //! * **No pre-smoothing.** `ftsa::ftsm` optionally smooths (kernel / P-spline)
 //!   before FPCA; this implementation operates on the raw input grid via dense
-//!   `fdata_to_pc_1d`. Users requiring pre-smoothed curves should smooth before
+//!   `fdata_to_pc`. Users requiring pre-smoothed curves should smooth before
 //!   calling [`ftsm`].
 //! * **User-provided `ncomp`.** `ftsa::ftsm` defaults to `order = 6`; here the
 //!   number of retained components is a required, validated parameter.
@@ -46,7 +46,7 @@ use super::{ArModelResult, FplsrResult, FtsmForecastResult, FtsmResult};
 use crate::error::FdarError;
 use crate::helpers::NUMERICAL_EPS;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 use crate::scalar_on_function::{fregre_pls, predict_fregre_pls};
 
 // ─── Input validation ────────────────────────────────────────────────────────
@@ -250,12 +250,12 @@ impl ArModel {
 /// Fit an FPCA-based functional time-series model over a time-ordered curve series.
 ///
 /// Decomposes `data` (rows = time-ordered curves, columns = evaluation points)
-/// via [`fdata_to_pc_1d`], retains the mean curve, FPC loadings, and the
+/// via [`fdata_to_pc`], retains the mean curve, FPC loadings, and the
 /// score-time-series, reconstructs fitted curves, and fits an independent
 /// univariate AR(p) model (Yule-Walker + AIC) to each FPC-score sequence.
 ///
 /// The number of retained components is `ncomp`, silently clamped by
-/// `fdata_to_pc_1d` to `min(ncomp, n, m)`; the effective value is stored in
+/// `fdata_to_pc` to `min(ncomp, n, m)`; the effective value is stored in
 /// [`FtsmResult::ncomp`].
 ///
 /// # Errors
@@ -285,7 +285,7 @@ pub fn ftsm(data: &FdMatrix, ncomp: usize, argvals: &[f64]) -> Result<FtsmResult
         });
     }
 
-    let fpca = fdata_to_pc_1d(data, ncomp, argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, argvals)?;
     let effective_ncomp = fpca.rotation.ncols();
     let fitted = fpca.reconstruct(&fpca.scores, effective_ncomp)?;
 

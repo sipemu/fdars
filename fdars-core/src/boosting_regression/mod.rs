@@ -91,7 +91,7 @@ impl Default for BoostingConfig {
 /// settings recommended by Jiang et al. (2025): `τ² = 100`, `IG(0.001, 0.001)`.
 ///
 /// **Divergence from refund:** refund's Bayesian FOSR uses spline basis priors;
-/// this implementation uses FPCA score compression via `fdata_to_pc_1d` for
+/// this implementation uses FPCA score compression via `fdata_to_pc` for
 /// simplicity and zero new dependencies.
 ///
 /// Construct via `BayesianConfig::default()`, then assign the fields you need (e.g. `let mut c = BayesianConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
@@ -215,7 +215,7 @@ pub struct BoostFosrResult {
 /// Functional predictors are compressed via FPCA score projection; the boosting
 /// core operates on the resulting scalar design matrices (bfpc variant).
 ///
-/// **Divergence from FDboost:** uses FPC score compression (`fdata_to_pc_1d`) rather
+/// **Divergence from FDboost:** uses FPC score compression (`fdata_to_pc`) rather
 /// than FDboost's `bsignal` B-spline joint expansion. Simpler and dependency-free.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -284,7 +284,7 @@ pub struct GamlssResult {
 /// Posterior summaries are computed from thinned post-burn-in draws. Credible bands
 /// are pointwise (not simultaneous) quantiles over the retained draws.
 ///
-/// **Divergence from refund:** uses FPCA score compression via `fdata_to_pc_1d`
+/// **Divergence from refund:** uses FPCA score compression via `fdata_to_pc`
 /// rather than spline basis priors. Pointwise credible bands only (no simultaneous bands).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

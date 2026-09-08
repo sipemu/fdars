@@ -1,7 +1,7 @@
 //! FPC-basis Hotelling-T² two-sample mean test.
 //!
 //! [`two_sample_mean_test`] projects both samples onto a shared FPC basis
-//! (fitted on the pooled data via [`crate::regression::fdata_to_pc_1d`]),
+//! (fitted on the pooled data via [`crate::regression::fdata_to_pc`]),
 //! forms the Hotelling-T² statistic on the difference of the two group
 //! score-means (reusing [`crate::spm::stats::hotelling_t2`]), and converts it
 //! to a p-value via the asymptotic chi-square(`ncomp`) upper tail.
@@ -10,7 +10,7 @@ use super::dist::chi_square_sf;
 use super::TestResult;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 use crate::spm::stats::hotelling_t2;
 
 /// Mean score vector (length ncomp) over the rows of a score matrix.
@@ -55,7 +55,7 @@ fn mean_scores(scores: &FdMatrix) -> Vec<f64> {
 /// zero column counts, if `argvals.len()` does not match the column count, or
 /// if either sample has fewer than 2 rows. Returns
 /// [`FdarError::InvalidParameter`] if `ncomp < 1`. Propagates errors from
-/// [`fdata_to_pc_1d`] / [`hotelling_t2`].
+/// [`fdata_to_pc`] / [`hotelling_t2`].
 pub fn two_sample_mean_test(
     data_a: &FdMatrix,
     data_b: &FdMatrix,
@@ -113,8 +113,8 @@ pub fn two_sample_mean_test(
     }
 
     // Fit a shared FPC basis on the pooled data.
-    let fpca = fdata_to_pc_1d(&pooled, ncomp, argvals)?;
-    // fdata_to_pc_1d clamps ncomp to min(n, m); use the realized component count.
+    let fpca = fdata_to_pc(&pooled, ncomp, argvals)?;
+    // fdata_to_pc clamps ncomp to min(n, m); use the realized component count.
     let eff_ncomp = fpca.singular_values.len();
 
     // Express both samples in the shared coordinate system.

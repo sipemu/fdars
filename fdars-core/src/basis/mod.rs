@@ -24,13 +24,13 @@ mod tests;
 // Re-exports — preserves the external API
 // ---------------------------------------------------------------------------
 
-pub use auto_select::{select_basis_auto_1d, BasisAutoSelectionResult, SingleCurveSelection};
+pub use auto_select::{select_basis_auto, BasisAutoSelectionResult, SingleCurveSelection};
 pub use basis_system::BasisSystem;
 pub use bspline::{bspline_basis, bspline_basis_from_knots, construct_bspline_knots};
 pub use constant::constant_basis;
 pub use exponential::exponential_basis;
 pub use fourier::{fourier_basis, fourier_basis_with_period};
-pub use fourier_fit::{fourier_fit_1d, select_fourier_nbasis_gcv, FourierFitResult};
+pub use fourier_fit::{fourier_fit, select_fourier_nbasis_gcv, FourierFitResult};
 pub use monomial::monomial_basis;
 pub use polygonal::polygonal_basis;
 pub use power::power_basis;
@@ -39,5 +39,5 @@ pub use projection::{
     ProjectionBasisType,
 };
 pub use pspline::{
-    difference_matrix, pspline_evaluate, pspline_fit_1d, pspline_fit_gcv, PsplineFitResult,
+    difference_matrix, pspline_evaluate, pspline_fit, pspline_fit_gcv, PsplineFitResult,
 };

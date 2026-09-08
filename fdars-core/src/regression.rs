@@ -82,14 +82,14 @@ impl FpcaResult {
     ///
     /// ```
     /// use fdars_core::matrix::FdMatrix;
-    /// use fdars_core::regression::fdata_to_pc_1d;
+    /// use fdars_core::regression::fdata_to_pc;
     ///
     /// let data = FdMatrix::from_column_major(
     ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
     ///     5, 10,
     /// ).unwrap();
     /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-    /// let fpca = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+    /// let fpca = fdata_to_pc(&data, 3, &argvals).unwrap();
     ///
     /// // Project the original data (scores should match)
     /// let scores = fpca.project(&data).unwrap();
@@ -166,14 +166,14 @@ impl FpcaResult {
     ///
     /// ```
     /// use fdars_core::matrix::FdMatrix;
-    /// use fdars_core::regression::fdata_to_pc_1d;
+    /// use fdars_core::regression::fdata_to_pc;
     ///
     /// let data = FdMatrix::from_column_major(
     ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
     ///     10, 10,
     /// ).unwrap();
     /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-    /// let fpca = fdata_to_pc_1d(&data, 5, &argvals).unwrap();
+    /// let fpca = fdata_to_pc(&data, 5, &argvals).unwrap();
     ///
     /// // Reconstruct using all 5 components
     /// let recon = fpca.reconstruct(&fpca.scores, 5).unwrap();
@@ -370,7 +370,7 @@ fn extract_pc_components(
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::regression::fdata_to_pc_1d;
+/// use fdars_core::regression::fdata_to_pc;
 ///
 /// // 5 curves, each evaluated at 10 points
 /// let data = FdMatrix::from_column_major(
@@ -378,13 +378,13 @@ fn extract_pc_components(
 ///     5, 10,
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let result = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+/// let result = fdata_to_pc(&data, 3, &argvals).unwrap();
 /// assert_eq!(result.scores.shape(), (5, 3));
 /// assert_eq!(result.rotation.shape(), (10, 3));
 /// assert_eq!(result.mean.len(), 10);
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn fdata_to_pc_1d(
+pub fn fdata_to_pc(
     data: &FdMatrix,
     ncomp: usize,
     argvals: &[f64],
@@ -536,7 +536,7 @@ impl PlsResult {
     ///
     /// ```
     /// use fdars_core::matrix::FdMatrix;
-    /// use fdars_core::regression::fdata_to_pls_1d;
+    /// use fdars_core::regression::fdata_to_pls;
     ///
     /// let x = FdMatrix::from_column_major(
     ///     (0..100).map(|i| (i as f64 * 0.1).sin()).collect(),
@@ -544,7 +544,7 @@ impl PlsResult {
     /// ).unwrap();
     /// let y: Vec<f64> = (0..10).map(|i| i as f64 * 0.5).collect();
     /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-    /// let pls = fdata_to_pls_1d(&x, &y, 3, &argvals).unwrap();
+    /// let pls = fdata_to_pls(&x, &y, 3, &argvals).unwrap();
     ///
     /// // Project the original data
     /// let scores = pls.project(&x).unwrap();
@@ -711,7 +711,7 @@ fn pls_nipals_step(
 /// or if `argvals.len() != m`.
 /// Returns [`FdarError::InvalidParameter`] if `ncomp` is zero.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn fdata_to_pls_1d(
+pub fn fdata_to_pls(
     data: &FdMatrix,
     y: &[f64],
     ncomp: usize,
@@ -953,7 +953,7 @@ mod tests {
         let ncomp = 3;
         let (data, t) = generate_test_fdata(n, m);
 
-        let result = fdata_to_pc_1d(&data, ncomp, &t);
+        let result = fdata_to_pc(&data, ncomp, &t);
         assert!(result.is_ok());
 
         let fpca = result.unwrap();
@@ -971,7 +971,7 @@ mod tests {
         let ncomp = 5;
         let (data, t) = generate_test_fdata(n, m);
 
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         // Singular values should be in decreasing order
         for i in 1..fpca.singular_values.len() {
@@ -988,7 +988,7 @@ mod tests {
         let m = 50;
         let (data, t) = generate_test_fdata(n, m);
 
-        let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
+        let fpca = fdata_to_pc(&data, 3, &t).unwrap();
 
         // Column means of centered data should be zero
         for j in 0..m {
@@ -1007,7 +1007,7 @@ mod tests {
         let (data, t) = generate_test_fdata(n, m);
 
         // Request more components than n - should cap at n
-        let fpca = fdata_to_pc_1d(&data, 20, &t).unwrap();
+        let fpca = fdata_to_pc(&data, 20, &t).unwrap();
         assert!(fpca.singular_values.len() <= n);
     }
 
@@ -1016,12 +1016,12 @@ mod tests {
         // Empty data
         let empty = FdMatrix::zeros(0, 50);
         let t50: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
-        let result = fdata_to_pc_1d(&empty, 3, &t50);
+        let result = fdata_to_pc(&empty, 3, &t50);
         assert!(result.is_err());
 
         // Zero components
         let (data, t) = generate_test_fdata(10, 50);
-        let result = fdata_to_pc_1d(&data, 0, &t);
+        let result = fdata_to_pc(&data, 0, &t);
         assert!(result.is_err());
     }
 
@@ -1033,7 +1033,7 @@ mod tests {
 
         // Use all components for perfect reconstruction
         let ncomp = n.min(m);
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         // Reconstruct: X_centered = scores * rotation^T
         for i in 0..n {
@@ -1070,7 +1070,7 @@ mod tests {
         let (data, t) = generate_test_fdata(n, m);
 
         // faer path (active under `linalg`)
-        let faer = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let faer = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         // Reference: reproduce the nalgebra path inline, running through the
         // identical center → sqrt(weights) scale → SVD → fix_svd_signs →
@@ -1141,7 +1141,7 @@ mod tests {
         // Create y with some relationship to x
         let y: Vec<f64> = (0..n).map(|i| (i as f64 / n as f64) + 0.1).collect();
 
-        let result = fdata_to_pls_1d(&x, &y, ncomp, &t);
+        let result = fdata_to_pls(&x, &y, ncomp, &t);
         assert!(result.is_ok());
 
         let pls = result.unwrap();
@@ -1158,7 +1158,7 @@ mod tests {
         let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
 
-        let pls = fdata_to_pls_1d(&x, &y, ncomp, &t).unwrap();
+        let pls = fdata_to_pls(&x, &y, ncomp, &t).unwrap();
 
         // Weight vectors should be approximately unit norm
         for k in 0..ncomp {
@@ -1180,12 +1180,12 @@ mod tests {
         let (x, t) = generate_test_fdata(10, 30);
 
         // Wrong y length
-        let result = fdata_to_pls_1d(&x, &[0.0; 5], 2, &t);
+        let result = fdata_to_pls(&x, &[0.0; 5], 2, &t);
         assert!(result.is_err());
 
         // Zero components
         let y = vec![0.0; 10];
-        let result = fdata_to_pls_1d(&x, &y, 0, &t);
+        let result = fdata_to_pls(&x, &y, 0, &t);
         assert!(result.is_err());
     }
 
@@ -1358,7 +1358,7 @@ mod tests {
         let m = 20;
         let data = FdMatrix::zeros(n, m);
         let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
-        let result = fdata_to_pc_1d(&data, 2, &t);
+        let result = fdata_to_pc(&data, 2, &t);
         // Should not panic; may return Ok with zero singular values
         if let Ok(res) = result {
             assert_eq!(res.scores.nrows(), n);
@@ -1376,7 +1376,7 @@ mod tests {
         // Single observation: centering leaves all zeros, SVD may return trivial result
         let data = FdMatrix::from_column_major(vec![1.0, 2.0, 3.0], 1, 3).unwrap();
         let t = vec![0.0, 0.5, 1.0];
-        let result = fdata_to_pc_1d(&data, 1, &t);
+        let result = fdata_to_pc(&data, 1, &t);
         // With n=1, centering leaves all zeros, so SVD may fail or return trivial result
         // Just ensure no panic
         let _ = result;
@@ -1390,7 +1390,7 @@ mod tests {
         let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
         let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
         let y = vec![5.0; n]; // Constant response
-        let result = fdata_to_pls_1d(&data, &y, 2, &t);
+        let result = fdata_to_pls(&data, &y, 2, &t);
         // Constant y → centering makes y all zeros, PLS may fail
         // Just ensure no panic
         let _ = result;
@@ -1404,7 +1404,7 @@ mod tests {
         let m = 30;
         let ncomp = 3;
         let (data, t) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         let new_data = FdMatrix::zeros(5, m);
         let scores = fpca.project(&new_data).unwrap();
@@ -1417,7 +1417,7 @@ mod tests {
         let m = 30;
         let ncomp = 3;
         let (data, t) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         // Projecting the training data should reproduce the original scores
         let scores = fpca.project(&data).unwrap();
@@ -1438,7 +1438,7 @@ mod tests {
     #[test]
     fn test_fpca_project_dimension_mismatch() {
         let (data, t) = generate_test_fdata(20, 30);
-        let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
+        let fpca = fdata_to_pc(&data, 3, &t).unwrap();
 
         let wrong_m = FdMatrix::zeros(5, 20); // wrong number of columns
         assert!(fpca.project(&wrong_m).is_err());
@@ -1452,7 +1452,7 @@ mod tests {
         let m = 30;
         let ncomp = 5;
         let (data, t) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         let recon = fpca.reconstruct(&fpca.scores, 3).unwrap();
         assert_eq!(recon.shape(), (n, m));
@@ -1464,7 +1464,7 @@ mod tests {
         let m = 30;
         let ncomp = n.min(m);
         let (data, t) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         // Full reconstruction should recover original data
         let recon = fpca.reconstruct(&fpca.scores, ncomp).unwrap();
@@ -1488,7 +1488,7 @@ mod tests {
         let m = 30;
         let ncomp = 5;
         let (data, t) = generate_test_fdata(n, m);
-        let fpca = fdata_to_pc_1d(&data, ncomp, &t).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &t).unwrap();
 
         let recon2 = fpca.reconstruct(&fpca.scores, 2).unwrap();
         let recon5 = fpca.reconstruct(&fpca.scores, 5).unwrap();
@@ -1499,7 +1499,7 @@ mod tests {
     #[test]
     fn test_fpca_reconstruct_invalid_ncomp() {
         let (data, t) = generate_test_fdata(10, 30);
-        let fpca = fdata_to_pc_1d(&data, 3, &t).unwrap();
+        let fpca = fdata_to_pc(&data, 3, &t).unwrap();
 
         // Zero components
         assert!(fpca.reconstruct(&fpca.scores, 0).is_err());
@@ -1516,7 +1516,7 @@ mod tests {
         let ncomp = 3;
         let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let pls = fdata_to_pls_1d(&x, &y, ncomp, &t).unwrap();
+        let pls = fdata_to_pls(&x, &y, ncomp, &t).unwrap();
 
         let new_x = FdMatrix::zeros(5, m);
         let scores = pls.project(&new_x).unwrap();
@@ -1530,7 +1530,7 @@ mod tests {
         let ncomp = 3;
         let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| (i as f64 / n as f64) + 0.1).collect();
-        let pls = fdata_to_pls_1d(&x, &y, ncomp, &t).unwrap();
+        let pls = fdata_to_pls(&x, &y, ncomp, &t).unwrap();
 
         // Projecting the training data should reproduce the original scores
         let scores = pls.project(&x).unwrap();
@@ -1552,7 +1552,7 @@ mod tests {
     fn test_pls_project_dimension_mismatch() {
         let (x, t) = generate_test_fdata(20, 30);
         let y: Vec<f64> = (0..20).map(|i| i as f64).collect();
-        let pls = fdata_to_pls_1d(&x, &y, 3, &t).unwrap();
+        let pls = fdata_to_pls(&x, &y, 3, &t).unwrap();
 
         let wrong_m = FdMatrix::zeros(5, 20); // wrong number of columns
         assert!(pls.project(&wrong_m).is_err());
@@ -1564,7 +1564,7 @@ mod tests {
         let m = 30;
         let (x, t) = generate_test_fdata(n, m);
         let y: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        let pls = fdata_to_pls_1d(&x, &y, 3, &t).unwrap();
+        let pls = fdata_to_pls(&x, &y, 3, &t).unwrap();
 
         // x_means should be stored and have correct length
         assert_eq!(pls.x_means.len(), m);
@@ -1586,7 +1586,7 @@ mod tests {
             })
             .collect();
         let data = FdMatrix::from_column_major(vals, n, m).unwrap();
-        let fpca = fdata_to_pc_1d(&data, 3, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, 3, &argvals).unwrap();
 
         // project the training data — should match original scores
         let projected = fpca.project(&data).unwrap();
@@ -1611,7 +1611,7 @@ mod tests {
         let data =
             FdMatrix::from_column_major((0..150).map(|i| (i as f64 * 0.1).sin()).collect(), 3, m)
                 .unwrap();
-        let fpca = fdata_to_pc_1d(&data, 2, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, 2, &argvals).unwrap();
 
         // Weights should exist and be positive
         assert_eq!(fpca.weights.len(), m);
@@ -1650,8 +1650,8 @@ mod tests {
 
         let (d1, t1) = make_data(41);
         let (d2, t2) = make_data(201);
-        let f1 = fdata_to_pc_1d(&d1, 2, &t1).unwrap();
-        let f2 = fdata_to_pc_1d(&d2, 2, &t2).unwrap();
+        let f1 = fdata_to_pc(&d1, 2, &t1).unwrap();
+        let f2 = fdata_to_pc(&d2, 2, &t2).unwrap();
 
         let total1: f64 = f1.singular_values.iter().map(|s| s * s).sum();
         let total2: f64 = f2.singular_values.iter().map(|s| s * s).sum();
@@ -1693,8 +1693,8 @@ mod tests {
         let (data1, t1) = make_data(51);
         let (data2, t2) = make_data(201);
 
-        let fpca1 = fdata_to_pc_1d(&data1, 2, &t1).unwrap();
-        let fpca2 = fdata_to_pc_1d(&data2, 2, &t2).unwrap();
+        let fpca1 = fdata_to_pc(&data1, 2, &t1).unwrap();
+        let fpca2 = fdata_to_pc(&data2, 2, &t2).unwrap();
 
         // Scores should be approximately the same (allow sign flip per component)
         for k in 0..2 {
@@ -1742,7 +1742,7 @@ mod tests {
                     a * (PI * t).sin() + b * (2.0 * PI * t).cos() + c * (3.0 * PI * t).sin();
             }
         }
-        let fpca = fdata_to_pc_1d(&data, ncomp, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &argvals).unwrap();
         (fpca, argvals)
     }
 

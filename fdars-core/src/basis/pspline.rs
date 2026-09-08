@@ -63,7 +63,7 @@ pub struct PsplineFitResult {
 }
 
 /// Fit P-splines to functional data.
-pub fn pspline_fit_1d(
+pub fn pspline_fit(
     data: &FdMatrix,
     argvals: &[f64],
     nbasis: usize,
@@ -149,7 +149,7 @@ pub fn pspline_fit_1d(
 
 /// Evaluate P-spline fit on a new grid using stored knot vector.
 ///
-/// Uses the B-spline coefficients and knot vector from [`pspline_fit_1d`]
+/// Uses the B-spline coefficients and knot vector from [`pspline_fit`]
 /// to evaluate the fitted curves at arbitrary evaluation points within
 /// the original domain.
 ///
@@ -219,7 +219,7 @@ pub fn pspline_fit_gcv(
     let mut best_gcv = f64::INFINITY;
 
     for &lambda in &lambdas {
-        if let Some(result) = pspline_fit_1d(data, argvals, nbasis, lambda, order) {
+        if let Some(result) = pspline_fit(data, argvals, nbasis, lambda, order) {
             if result.gcv.is_finite() && result.gcv < best_gcv {
                 best_gcv = result.gcv;
                 best = Some(result);
@@ -248,7 +248,7 @@ mod tests {
     fn pspline_stores_knots() {
         let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
         let data = sine_data(&t);
-        let result = pspline_fit_1d(&data, &t, 10, 0.001, 2).unwrap();
+        let result = pspline_fit(&data, &t, 10, 0.001, 2).unwrap();
         assert!(!result.knots.is_empty());
         assert_eq!(result.order, 4);
     }
@@ -257,7 +257,7 @@ mod tests {
     fn pspline_evaluate_on_original_grid() {
         let t: Vec<f64> = (0..50).map(|i| i as f64 / 49.0).collect();
         let data = sine_data(&t);
-        let result = pspline_fit_1d(&data, &t, 10, 0.001, 2).unwrap();
+        let result = pspline_fit(&data, &t, 10, 0.001, 2).unwrap();
         let eval = pspline_evaluate(&result, &t);
         // Should match fitted values closely
         for i in 0..data.nrows() {
@@ -276,7 +276,7 @@ mod tests {
     fn pspline_evaluate_on_finer_grid() {
         let t: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
         let data = sine_data(&t);
-        let result = pspline_fit_1d(&data, &t, 12, 0.001, 2).unwrap();
+        let result = pspline_fit(&data, &t, 12, 0.001, 2).unwrap();
 
         // Evaluate on a finer grid
         let t_fine: Vec<f64> = (0..200).map(|i| i as f64 / 199.0).collect();
@@ -304,7 +304,7 @@ mod tests {
         // Fit on 31-point grid in [1, 18] (non-[0,1] domain like growth data)
         let t: Vec<f64> = (0..31).map(|i| 1.0 + 17.0 * i as f64 / 30.0).collect();
         let data = sine_data(&t);
-        let result = pspline_fit_1d(&data, &t, 12, 1.0, 2).unwrap();
+        let result = pspline_fit(&data, &t, 12, 1.0, 2).unwrap();
 
         // Evaluate at original grid points — must match fitted exactly
         let eval_orig = pspline_evaluate(&result, &t);
@@ -355,7 +355,7 @@ mod tests {
         // Fit on [5, 15] (arbitrary non-[0,1] domain)
         let t: Vec<f64> = (0..40).map(|i| 5.0 + 10.0 * i as f64 / 39.0).collect();
         let data = sine_data(&t);
-        let result = pspline_fit_1d(&data, &t, 10, 1.0, 2).unwrap();
+        let result = pspline_fit(&data, &t, 10, 1.0, 2).unwrap();
 
         // Evaluate at midpoints between original grid points
         let t_mid: Vec<f64> = t.windows(2).map(|w| (w[0] + w[1]) / 2.0).collect();
@@ -383,7 +383,7 @@ mod tests {
         // Fit on fine grid, evaluate on coarser subset
         let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
         let data = sine_data(&t);
-        let result = pspline_fit_1d(&data, &t, 15, 0.0001, 2).unwrap();
+        let result = pspline_fit(&data, &t, 15, 0.0001, 2).unwrap();
 
         // Evaluate on every 10th point
         let t_coarse: Vec<f64> = (0..10).map(|i| i as f64 * 10.0 / 99.0).collect();

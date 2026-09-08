@@ -23,7 +23,7 @@
 //! use fdars_core::matrix::FdMatrix;
 //! use fdars_core::alignment::{karcher_mean, elastic_align_pair, AlignmentOutput};
 //! use fdars_core::spm::{spm_phase1, spm_monitor, SpmConfig};
-//! use fdars_core::regression::fdata_to_pc_1d;
+//! use fdars_core::regression::fdata_to_pc;
 //! use fdars_core::scalar_on_function::{fregre_lm, fregre_pls};
 //! use fdars_core::cv::{cv_fdata_with_metrics, regression_metrics};
 //! use fdars_core::distance::pairwise_distance_matrix;
@@ -31,7 +31,7 @@
 //!
 //! All public items are also re-exported at the crate root for convenience:
 //! ```rust,no_run
-//! use fdars_core::{FdMatrix, karcher_mean, spm_phase1, fdata_to_pc_1d};
+//! use fdars_core::{FdMatrix, karcher_mean, spm_phase1, fdata_to_pc};
 //! ```
 //!
 //! The [`prelude`] module provides the most commonly used types:
@@ -575,9 +575,7 @@ pub use smoothing::{
 };
 
 // Re-export regression types
-pub use regression::{
-    fdata_to_pc_1d, fdata_to_pls_1d, project_scores_generic, FpcaResult, PlsResult,
-};
+pub use regression::{fdata_to_pc, fdata_to_pls, project_scores_generic, FpcaResult, PlsResult};
 // Re-export the forward-mode automatic-differentiation core (v0.39.0 DIF-04).
 pub use autodiff::{diff, directional_derivative, grad, jacobian, Dual, Scalar};
 // Re-export specialized FPCA variants (Phase 37)
@@ -678,11 +676,10 @@ pub use fdata::{
 pub use basis::{
     basis_to_fdata, basis_to_fdata_1d, bspline_basis, bspline_basis_from_knots, constant_basis,
     construct_bspline_knots, difference_matrix, exponential_basis, fdata_to_basis,
-    fdata_to_basis_1d, fourier_basis, fourier_basis_with_period, fourier_fit_1d, monomial_basis,
-    polygonal_basis, power_basis, pspline_evaluate, pspline_fit_1d, pspline_fit_gcv,
-    select_basis_auto_1d, select_fourier_nbasis_gcv, BasisAutoSelectionResult,
-    BasisProjectionResult, BasisSystem, FourierFitResult, ProjectionBasisType, PsplineFitResult,
-    SingleCurveSelection,
+    fdata_to_basis_1d, fourier_basis, fourier_basis_with_period, fourier_fit, monomial_basis,
+    polygonal_basis, power_basis, pspline_evaluate, pspline_fit, pspline_fit_gcv,
+    select_basis_auto, select_fourier_nbasis_gcv, BasisAutoSelectionResult, BasisProjectionResult,
+    BasisSystem, FourierFitResult, ProjectionBasisType, PsplineFitResult, SingleCurveSelection,
 };
 
 // Re-export functional scoring metrics

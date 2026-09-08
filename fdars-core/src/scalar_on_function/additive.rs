@@ -21,7 +21,7 @@
 //! # R Baseline Divergences
 //!
 //! - **FAM:** R's `fdapace::FAM` uses PACE for FPC estimation; fdars uses
-//!   `fdata_to_pc_1d` (nalgebra SVD with Simpson's weights). R selects
+//!   `fdata_to_pc` (nalgebra SVD with Simpson's weights). R selects
 //!   per-component bandwidths by GCV; fdars does the same via `optim_bandwidth`.
 //!   No backfitting loop is used in either implementation because FPC
 //!   uncorrelatedness (Müller & Yao 2008) makes one pass equivalent to
@@ -53,7 +53,7 @@
 use super::nonparametric::{compute_pairwise_distances, gaussian_kernel, select_bandwidth_loo};
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 use crate::smoothing::{nadaraya_watson, optim_bandwidth, CvCriterion};
 
 // ---------------------------------------------------------------------------
@@ -246,7 +246,7 @@ fn resolve_ncomp_additive(
         // the GCV of the j-th component applied to the partial residual given
         // components 1..(j-1) already fit. Cap at min(n, m, 10) for speed.
         let cap = max_ncomp.clamp(1, 10);
-        let fpca_full = fdata_to_pc_1d(data, cap, argvals)?;
+        let fpca_full = fdata_to_pc(data, cap, argvals)?;
         let mu_y = y.iter().sum::<f64>() / n as f64;
         let mut best_ncomp = 1usize;
         let mut best_gcv = f64::INFINITY;
@@ -488,7 +488,7 @@ pub fn fam(
     )?;
 
     // Compute FPC scores
-    let fpca = fdata_to_pc_1d(data, ncomp, argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, argvals)?;
 
     // One-pass additive smooth
     let p_scalar = scalar_covariates.map_or(0, FdMatrix::ncols);
@@ -900,7 +900,7 @@ pub fn fregre_gsam(
     )?;
 
     // Compute FPC scores
-    let fpca = fdata_to_pc_1d(data, ncomp, argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, argvals)?;
 
     // One-pass additive smooth (identical path to fam — GSAM = FAM under Gaussian identity link)
     let p_scalar = scalar_covariates.map_or(0, FdMatrix::ncols);
@@ -1132,7 +1132,7 @@ pub struct HistoryIndexResult {
 ///
 /// # Algorithm
 ///
-/// 1. Run `fdata_to_pc_1d` on each predictor → score groups ξ^0, …, ξ^{P−1}.
+/// 1. Run `fdata_to_pc` on each predictor → score groups ξ^0, …, ξ^{P−1}.
 /// 2. Build design X = \[μ | ξ^0 | … | ξ^{P−1} | Z\] (Z = optional scalar
 ///    covariates).
 /// 3. If `config.lambda == 0.0`, 5-fold CV-select λ over a geometric grid from
@@ -1245,7 +1245,7 @@ pub fn variable_selection(
         let argvals = argvals_list[p];
         let (np, mp) = pred.shape();
         let k_p = ncomp_per.min(np.min(mp).saturating_sub(1).max(1));
-        let fpca_p = fdata_to_pc_1d(pred, k_p, argvals)?;
+        let fpca_p = fdata_to_pc(pred, k_p, argvals)?;
         let k_actual = fpca_p.scores.ncols();
         let group_scores: Vec<Vec<f64>> = (0..k_actual)
             .map(|k| (0..n).map(|i| fpca_p.scores[(i, k)]).collect())
@@ -2184,7 +2184,7 @@ mod tests {
         // Generate curves as sine waves with random phase proxy (deterministic)
         let data = make_sine_data(n, m, 1.0);
         // Extract scores by running FPCA; build y from known structure
-        let fpca = fdata_to_pc_1d(&data, 2, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, 2, &argvals).unwrap();
         let y: Vec<f64> = (0..n)
             .map(|i| {
                 let xi1 = fpca.scores[(i, 0)];
@@ -2443,7 +2443,7 @@ mod tests {
         let m = 16;
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
-        let fpca_ref = fdata_to_pc_1d(&data, 2, &argvals).unwrap();
+        let fpca_ref = fdata_to_pc(&data, 2, &argvals).unwrap();
         let y: Vec<f64> = (0..n)
             .map(|i| {
                 let xi1 = fpca_ref.scores[(i, 0)];
@@ -2706,7 +2706,7 @@ mod tests {
         let m = 12;
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
-        let fpca = fdata_to_pc_1d(&data, 1, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, 1, &argvals).unwrap();
         let y: Vec<f64> = (0..n)
             .map(|i| fpca.scores[(i, 0)] * 2.0 + (i as f64 * 0.31).sin() * 0.05)
             .collect();
@@ -2767,7 +2767,7 @@ mod tests {
         let m = 15;
         let argvals = uniform_grid(m);
         let data = make_sine_data(n, m, 1.0);
-        let fpca = fdata_to_pc_1d(&data, 1, &argvals).unwrap();
+        let fpca = fdata_to_pc(&data, 1, &argvals).unwrap();
 
         // Strong signal: y = 2 * xi_1 + very small noise
         let y_signal: Vec<f64> = (0..n)

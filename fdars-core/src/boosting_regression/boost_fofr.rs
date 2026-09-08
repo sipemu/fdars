@@ -1,7 +1,7 @@
 //! Component-wise gradient boosting for function-on-function regression (REG-06-02).
 //!
 //! Implements the **bfpc** (FPC-compression) variant of boosted FoFR: each functional
-//! predictor is compressed via `fdata_to_pc_1d` (truncated KL expansion), and the
+//! predictor is compressed via `fdata_to_pc` (truncated KL expansion), and the
 //! resulting FPC-score matrices serve as the design matrices for the boosting base-learners.
 //!
 //! # Model
@@ -22,7 +22,7 @@
 //!
 //! # Algorithm
 //!
-//! **Preprocessing:** Compute `FpcaResult_j = fdata_to_pc_1d(X_j, ncomp_x, argvals_j)` for
+//! **Preprocessing:** Compute `FpcaResult_j = fdata_to_pc(X_j, ncomp_x, argvals_j)` for
 //! each predictor `j`. Score matrices `S_j ∈ R^{n × K_j}` serve as base-learner designs.
 //!
 //! **Initialization:** `F̂_0(t) = Ȳ(t)` (pointwise column mean of Y, length m_y).
@@ -41,7 +41,7 @@
 //!
 //! FDboost's `bsignal` base-learner uses trapezoidal-rule integration over a B-spline basis
 //! for `β(s,t)` jointly, creating a full bivariate coefficient surface from a B-spline tensor
-//! product. The bfpc variant used here compresses via truncated KL expansion (`fdata_to_pc_1d`),
+//! product. The bfpc variant used here compresses via truncated KL expansion (`fdata_to_pc`),
 //! which is simpler to implement without new dependencies and is an accepted equivalent
 //! for smooth functional predictors. The reconstruction step `rotation · score_coefs` recovers
 //! the coefficient surface in the original functional data space.
@@ -55,7 +55,7 @@ use super::{BoostFofrResult, BoostingConfig};
 use crate::error::FdarError;
 use crate::linalg::{cholesky_factor, cholesky_forward_back};
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 // ---------------------------------------------------------------------------
 // Internal helper: S'u (K-vector) from column-major S (n × K) and u (&[f64] of length n)
@@ -164,7 +164,7 @@ struct ScoreLearner {
 ///
 /// # Divergences from FDboost
 ///
-/// Uses FPC score compression (`fdata_to_pc_1d`) rather than FDboost's `bsignal`
+/// Uses FPC score compression (`fdata_to_pc`) rather than FDboost's `bsignal`
 /// B-spline joint expansion for β(s,t). The bfpc truncated-KL variant is simpler
 /// to implement without new dependencies and equivalent for smooth functional predictors.
 /// Fixed `nu` and `mstop` (no line search or CV-based early stopping).
@@ -282,12 +282,12 @@ pub fn boost_fofr(
     let nu = config.nu;
 
     // ---- Preprocessing: compute FPC scores for each functional predictor ----
-    // For each predictor j, fdata_to_pc_1d compresses X_j (n × m_x) to
+    // For each predictor j, fdata_to_pc compresses X_j (n × m_x) to
     // FPC scores S_j (n × K_j) where K_j = min(ncomp_x, n-1, m_x).
     let mut fpca_x: Vec<FpcaResult> = Vec::with_capacity(p);
     for j in 0..p {
         let ncomp = config.ncomp_x.min(n - 1).min(x_data[j].ncols());
-        let fpca_j = fdata_to_pc_1d(x_data[j], ncomp, x_argvals[j]).map_err(|e| {
+        let fpca_j = fdata_to_pc(x_data[j], ncomp, x_argvals[j]).map_err(|e| {
             FdarError::ComputationFailed {
                 operation: "boost_fofr FPCA preprocessing",
                 detail: format!("predictor j={j}: {e:?}"),

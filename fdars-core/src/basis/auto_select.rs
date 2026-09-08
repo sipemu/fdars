@@ -271,7 +271,7 @@ fn search_pspline_basis(
 ///
 /// # Returns
 /// BasisAutoSelectionResult with per-curve selections
-pub fn select_basis_auto_1d(
+pub fn select_basis_auto(
     data: &FdMatrix,
     argvals: &[f64],
     criterion: i32,

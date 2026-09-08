@@ -40,7 +40,7 @@
 use crate::error::FdarError;
 use crate::function_on_scalar::{fosr, FosrResult};
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 use crate::spm::control::{t2_control_limit, ControlLimit};
 use crate::spm::stats::hotelling_t2;
 
@@ -269,7 +269,7 @@ pub fn profile_phase1(
     let beta_argvals: Vec<f64> = (0..beta_m)
         .map(|j| j as f64 / (beta_m - 1).max(1) as f64)
         .collect();
-    let beta_fpca = fdata_to_pc_1d(&beta_vecs, ncomp, &beta_argvals)?;
+    let beta_fpca = fdata_to_pc(&beta_vecs, ncomp, &beta_argvals)?;
     let actual_ncomp = beta_fpca.scores.ncols();
 
     // Eigenvalues

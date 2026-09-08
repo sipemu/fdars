@@ -7,7 +7,7 @@ use super::{
 use crate::cv::create_folds;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 
 // ---------------------------------------------------------------------------
 // fregre_lm: FPC-based functional linear model
@@ -72,7 +72,7 @@ pub fn fregre_lm(
     let ncomp = resolve_ncomp(ncomp, data, y, scalar_covariates, n, m)?;
 
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, &argvals)?;
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);
     let p_total = design.ncols();
     let (coeffs, hat_diag) = ols_solve(&design, y)?;

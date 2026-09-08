@@ -4,7 +4,7 @@ use super::{
 };
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 // ---------------------------------------------------------------------------
 // Functional logistic regression
@@ -233,7 +233,7 @@ pub fn functional_logistic(
 
     let ncomp = ncomp.min(n - 1).min(m);
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, &argvals)?;
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);
 
     let max_iter = if max_iter == 0 { 25 } else { max_iter };

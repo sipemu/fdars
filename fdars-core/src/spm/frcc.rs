@@ -46,7 +46,7 @@
 use crate::error::FdarError;
 use crate::function_on_scalar::{fosr, predict_fosr, FosrResult};
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 use super::control::{spe_control_limit, t2_control_limit, ControlLimit};
 use super::phase::{center_data, centered_reconstruct, split_indices};
@@ -331,7 +331,7 @@ pub fn frcc_phase1(
 
     // FPCA on calibration residuals
     let ncomp = config.ncomp.min(n_cal - 1).min(m);
-    let residual_fpca = fdata_to_pc_1d(&cal_residuals, ncomp, argvals)?;
+    let residual_fpca = fdata_to_pc(&cal_residuals, ncomp, argvals)?;
     let actual_ncomp = residual_fpca.scores.ncols();
 
     // Eigenvalues

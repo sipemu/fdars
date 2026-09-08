@@ -4,7 +4,7 @@ use super::{
 };
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 
 /// Maximum number of IRLS iterations.
 const MAX_ITER: usize = 100;
@@ -239,7 +239,7 @@ fn fregre_robust_irls(
 
     // Step 1: FPCA
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, &argvals)?;
 
     // Step 2: Build design matrix [1, scores, scalar_covariates]
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);

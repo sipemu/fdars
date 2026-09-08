@@ -21,7 +21,7 @@ use crate::distance::l2_distance_matrix;
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 use rand::prelude::*;
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -504,7 +504,7 @@ pub fn kcfc_cluster(
             let data_k = FdMatrix::from_column_major(col_major_k, n_k, m)?;
 
             // Fit FPCA (ncomp clamped internally to min(n_k, m))
-            match fdata_to_pc_1d(&data_k, config.ncomp, argvals) {
+            match fdata_to_pc(&data_k, config.ncomp, argvals) {
                 Ok(fpca) => {
                     fpca_models[ki] = Some(fpca);
                 }
@@ -585,7 +585,7 @@ pub fn kcfc_cluster(
 /// Configuration for funFEM discriminative-subspace clustering.
 ///
 /// funFEM applies the Fisher-EM algorithm to functional data: it first extracts
-/// global FPC scores via [`fdata_to_pc_1d`](crate::regression::fdata_to_pc_1d),
+/// global FPC scores via [`fdata_to_pc`](crate::regression::fdata_to_pc),
 /// then alternates between finding a discriminative subspace (maximising
 /// between-class vs within-class scatter) and running a GMM E/M step in that
 /// subspace.
@@ -741,8 +741,8 @@ pub fn funfem_cluster(
 
     let k = config.k;
 
-    // Step 1: Global FPC scores via fdata_to_pc_1d (clamps ncomp to min(n,m))
-    let fpca = fdata_to_pc_1d(data, config.ncomp, argvals)?;
+    // Step 1: Global FPC scores via fdata_to_pc (clamps ncomp to min(n,m))
+    let fpca = fdata_to_pc(data, config.ncomp, argvals)?;
     // scores: n x ncomp_eff (row-major semantics via FdMatrix indexing)
     let scores = &fpca.scores; // FdMatrix n x ncomp_eff
     let ncomp_eff = scores.ncols();
@@ -1908,7 +1908,7 @@ mod tests {
     #[test]
     fn test_kcfc_ncomp_zero_returns_err() {
         // ncomp == 0 must be caught at entry rather than silently assigning all
-        // curves to cluster 0 (which was the pre-fix behavior when fdata_to_pc_1d
+        // curves to cluster 0 (which was the pre-fix behavior when fdata_to_pc
         // returned Err and was swallowed by the degenerate-cluster arm).
         let m = 20;
         let (data, t, _) = two_tight_clusters(5, m);

@@ -18,7 +18,7 @@
 use crate::error::FdarError;
 use crate::linalg::{cholesky_factor, cholesky_forward_back, compute_xtx};
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 // ---------------------------------------------------------------------------
 // Result type
@@ -168,8 +168,8 @@ pub fn fof_regression(
     let ncomp_y = ncomp_y.min(n - 1).min(m_y);
 
     // --- FPCA on X and Y ---
-    let fpca_x = fdata_to_pc_1d(x_data, ncomp_x, x_argvals)?;
-    let fpca_y = fdata_to_pc_1d(y_data, ncomp_y, y_argvals)?;
+    let fpca_x = fdata_to_pc(x_data, ncomp_x, x_argvals)?;
+    let fpca_y = fdata_to_pc(y_data, ncomp_y, y_argvals)?;
 
     // --- Multivariate OLS: Y_scores = X_scores * B ---
     // Use projected scores (weighted inner product with eigenfunctions) rather
@@ -557,7 +557,7 @@ impl Default for FofReConfig {
 /// R's `pffr(y ~ pcre(x))` uses a penalized-spline GAMM (mgcv) backend with
 /// functional random effects represented in a spline basis. `fof_re_regression`
 /// instead uses the FPC-score parametrization: both X and Y are decomposed into
-/// FPC scores (`fdata_to_pc_1d`), and for each Y-score component a scalar linear
+/// FPC scores (`fdata_to_pc`), and for each Y-score component a scalar linear
 /// mixed model (REML EM, reusing `famm::fit_scalar_mixed_model`) is fitted with
 /// the X-scores as fixed-effect covariates and subject IDs as the grouping factor.
 /// No basis penalties are applied — this matches the locked design decision for
@@ -608,7 +608,7 @@ pub struct FofReResult {
 /// # Algorithm
 ///
 /// 1. **Double FPCA** (same as `fof_regression`): decompose X and Y into FPC
-///    scores via `fdata_to_pc_1d`.
+///    scores via `fdata_to_pc`.
 /// 2. **Per-Y-score mixed model** (new): for each Y-score component `l`,
 ///    fit `y_scores[:,l] = x_scores * γ_l + u_{subj(i),l} + ε_il` using
 ///    `famm::fit_scalar_mixed_model`. X-scores are passed directly as
@@ -738,8 +738,8 @@ pub fn fof_re_regression(
     let ncomp_y = config.ncomp_y.min(n - 1).min(m_y);
 
     // --- Step 1: Double FPCA ---
-    let fpca_x = fdata_to_pc_1d(x_data, ncomp_x, x_argvals)?;
-    let fpca_y = fdata_to_pc_1d(y_data, ncomp_y, y_argvals)?;
+    let fpca_x = fdata_to_pc(x_data, ncomp_x, x_argvals)?;
+    let fpca_y = fdata_to_pc(y_data, ncomp_y, y_argvals)?;
 
     // Project to score space using L²-weighted inner product
     let x_scores = fpca_x.project(x_data)?;

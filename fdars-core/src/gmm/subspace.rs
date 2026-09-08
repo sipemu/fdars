@@ -25,7 +25,7 @@ use super::em::{compute_bic, compute_icl, hard_assignments, resp_to_membership};
 use super::init::kmeans_init_assignments;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 use nalgebra::{DMatrix, SVD};
 use rand::prelude::*;
 
@@ -609,7 +609,7 @@ pub fn fun_hddc_cluster(
 
     // Global FPCA for initialisation features
     let ncomp_init = config.ncomp_init.min(n).min(m).max(1);
-    let fpca = fdata_to_pc_1d(data, ncomp_init, argvals)?;
+    let fpca = fdata_to_pc(data, ncomp_init, argvals)?;
     let score_mat = &fpca.scores;
     let d_feat = score_mat.ncols();
     let features: Vec<Vec<f64>> = (0..n)

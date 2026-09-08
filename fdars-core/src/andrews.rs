@@ -121,7 +121,7 @@ pub fn andrews_transform(data: &FdMatrix, n_grid: usize) -> Result<AndrewsResult
 /// Transform FPCA loadings to Andrews curves.
 ///
 /// Given a rotation matrix of shape m × ncomp (as produced by
-/// [`crate::regression::fdata_to_pc_1d`]), this function treats each of
+/// [`crate::regression::fdata_to_pc`]), this function treats each of
 /// the `ncomp` columns as an m-dimensional observation and computes its
 /// Andrews curve representation.  The result contains `ncomp` curves,
 /// each evaluated on `n_grid` points in \[−π, π\].

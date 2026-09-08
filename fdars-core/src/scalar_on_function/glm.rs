@@ -3,7 +3,7 @@
 //! Implements `functional_glm` — a scalar-on-function GLM that covers the four
 //! mainstream exponential-family distributions through a [`GlmFamily`] enum
 //! (canonical link + variance function per family).  The IRLS loop runs over
-//! Functional Principal Component (FPC) scores produced by [`fdata_to_pc_1d`],
+//! Functional Principal Component (FPC) scores produced by [`fdata_to_pc`],
 //! reusing the same weighted-normal-equations solver as [`functional_logistic`].
 //!
 //! # Supported families and canonical links
@@ -46,7 +46,7 @@ use super::{
 };
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, FpcaResult};
+use crate::regression::{fdata_to_pc, FpcaResult};
 
 // ---------------------------------------------------------------------------
 // GlmFamily methods — per-family link / variance / deviance / log-likelihood
@@ -555,7 +555,7 @@ pub fn functional_glm(
 
     let ncomp = ncomp.min(n - 1).min(m);
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(data, ncomp, &argvals)?;
+    let fpca = fdata_to_pc(data, ncomp, &argvals)?;
     let design = build_design_matrix(&fpca.scores, ncomp, scalar_covariates, n);
 
     let max_iter = if max_iter == 0 { 25 } else { max_iter };

@@ -403,7 +403,7 @@ pub fn peer(
 /// random effects.
 ///
 /// Extends [`peer`] to grouped/repeated-measures data by reducing the
-/// functional predictor to FPC scores (via `fdata_to_pc_1d`) and calling
+/// functional predictor to FPC scores (via `fdata_to_pc`) and calling
 /// `famm::fit_scalar_mixed_model` for subject-level random intercepts.
 /// The PEER penalty (via `config`) regularises β(t) through the same λ
 /// dispatch as `peer()`; the mixed model then replaces the OLS second pass
@@ -583,7 +583,7 @@ pub fn lpeer(
 
     // 3. FPC score reduction — cap at min(n-1, m, 10); raw scores, no h.sqrt() rescaling
     let ncomp = (n - 1).min(m).min(10);
-    let fpca = crate::regression::fdata_to_pc_1d(data, ncomp, argvals)?;
+    let fpca = crate::regression::fdata_to_pc(data, ncomp, argvals)?;
     let scores = &fpca.scores; // n×ncomp FdMatrix (raw FPC scores)
 
     // 4. Mixed-model fit over FPC scores (pass yc, not y — intercept = y_bar).

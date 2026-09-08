@@ -13,7 +13,7 @@
 //!
 //! ## Global FPCA reuse with block-score projection
 //!
-//! ONE global FPCA is computed via [`fdata_to_pc_1d`]. For a curve i in column-block l,
+//! ONE global FPCA is computed via [`fdata_to_pc`]. For a curve i in column-block l,
 //! the block score is the projection of Y_i **restricted to column-block l's argument points**
 //! onto the global FPC loadings restricted to those same points:
 //!
@@ -45,7 +45,7 @@ use rand::prelude::*;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -859,7 +859,7 @@ fn cem_single_fit(
 /// # Errors
 /// - [`FdarError::InvalidParameter`] if `config.ncomp < 1`, `n_row_blocks > n`, or `n_col_blocks > m`.
 /// - [`FdarError::InvalidDimension`] if `data` or `argvals` dimensions are inconsistent
-///   (propagated from [`fdata_to_pc_1d`]).
+///   (propagated from [`fdata_to_pc`]).
 /// - [`FdarError::ComputationFailed`] if all initializations fail (propagated from FPCA).
 ///
 /// # Example
@@ -928,8 +928,8 @@ pub fn co_cluster(
     let l_blocks = config.n_col_blocks;
 
     // --- Global FPCA ---
-    // fdata_to_pc_1d validates data/argvals dimensions and propagates its errors.
-    let fpca = fdata_to_pc_1d(data, config.ncomp, argvals)?;
+    // fdata_to_pc validates data/argvals dimensions and propagates its errors.
+    let fpca = fdata_to_pc(data, config.ncomp, argvals)?;
     // Read effective ncomp — may be < requested (clipped to min(n, m))
     let eff_ncomp = fpca.scores.ncols();
     let rotation = &fpca.rotation; // m × eff_ncomp
@@ -1338,7 +1338,7 @@ mod tests {
         seed: u64,
     ) -> (CoClusterResult, Vec<f64>) {
         let (n, m) = data.shape();
-        let fpca = fdata_to_pc_1d(data, ncomp, argvals).unwrap();
+        let fpca = fdata_to_pc(data, ncomp, argvals).unwrap();
         let eff_ncomp = fpca.scores.ncols();
 
         use crate::clustering::kmeans_fd;

@@ -3,8 +3,8 @@
 //! `wcr` transforms each functional predictor curve into its multi-level DWT
 //! coefficient pyramid (via the Phase 69 primitive), concatenates the bands into a
 //! single per-curve coefficient vector, and fits a scalar-on-function regression
-//! **in coefficient space** — either PCR (reusing [`crate::regression::fdata_to_pc_1d`])
-//! or PLS (reusing [`crate::regression::fdata_to_pls_1d`]). The fitted
+//! **in coefficient space** — either PCR (reusing [`crate::regression::fdata_to_pc`])
+//! or PLS (reusing [`crate::regression::fdata_to_pls`]). The fitted
 //! coefficient-space weights are then mapped back to the time-domain functional
 //! coefficient β(t) by the inverse DWT ([`crate::wavelet::reconstruct`]).
 //!
@@ -64,7 +64,7 @@
 
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::{fdata_to_pc_1d, fdata_to_pls_1d};
+use crate::regression::{fdata_to_pc, fdata_to_pls};
 use crate::wavelet::{decompose_matrix, reconstruct, BoundaryMode, WaveletCoeffs, WaveletFamily};
 
 /// Which coefficient-space fit `wcr` uses.
@@ -73,11 +73,11 @@ use crate::wavelet::{decompose_matrix, reconstruct, BoundaryMode, WaveletCoeffs,
 #[non_exhaustive]
 pub enum WcrMethod {
     /// Principal-component regression on the wavelet-coefficient design
-    /// (reuses [`crate::regression::fdata_to_pc_1d`]).
+    /// (reuses [`crate::regression::fdata_to_pc`]).
     #[default]
     Pcr,
     /// Partial-least-squares regression on the wavelet-coefficient design
-    /// (reuses [`crate::regression::fdata_to_pls_1d`]).
+    /// (reuses [`crate::regression::fdata_to_pls`]).
     Pls,
 }
 
@@ -552,12 +552,12 @@ pub fn wcr(data: &FdMatrix, y: &[f64], config: &WcrConfig) -> Result<WcrResult, 
     // [1, scores] gives the intercept and fitted values.
     let (scores, ncomp) = match config.method {
         WcrMethod::Pcr => {
-            let fpca = fdata_to_pc_1d(&design, ncomp, &argvals)?;
+            let fpca = fdata_to_pc(&design, ncomp, &argvals)?;
             let k = fpca.scores.ncols();
             (fpca.scores, k)
         }
         WcrMethod::Pls => {
-            let pls = fdata_to_pls_1d(&design, y, ncomp, &argvals)?;
+            let pls = fdata_to_pls(&design, y, ncomp, &argvals)?;
             let k = pls.scores.ncols();
             (pls.scores, k)
         }

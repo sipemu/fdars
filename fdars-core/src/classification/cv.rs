@@ -3,7 +3,7 @@
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc_1d;
+use crate::regression::fdata_to_pc;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
@@ -156,7 +156,7 @@ fn cv_fold_predict(
 ) -> Option<Vec<usize>> {
     let m = train_data.ncols();
     let argvals: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
-    let fpca = fdata_to_pc_1d(train_data, ncomp, &argvals).ok()?;
+    let fpca = fdata_to_pc(train_data, ncomp, &argvals).ok()?;
     match method {
         "lda" => {
             let predictions =
