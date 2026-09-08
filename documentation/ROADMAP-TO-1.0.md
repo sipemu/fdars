@@ -14,30 +14,32 @@ a one-line description and the milestone/scope where it belongs.
 
 ## API surface — deferred audit items
 
+**Update (v0.42.0):** all API-section items below (`AUD-09`/`AUD-12`/`AUD-13`/`AUD-19`–`AUD-23`) are **cleared** — sealed `wire`, `#[non_exhaustive]` configs, and the full `Dim`-dispatch naming unification shipped in v0.42.0.
+
 These are the naming/visibility items surfaced by the Phase 81 API audit and **deferred** (not
 forced into Phases 82/83) to the 1.0 gap.
 
-- [ ] **`AUD-09` + `AUD-13` — the `wire` module.** `pub mod wire` is a public-but-unwired
+- [x] **`AUD-09` + `AUD-13` — the `wire` module.** `pub mod wire` is a public-but-unwired
   JS/R interchange seam (24 public types, 0 re-exports). Before 1.0, decide to either **wire it
   up** as a supported interchange API or **seal it** `pub(crate)`. `AUD-13` (`#[non_exhaustive]`
   on the `wire` layer structs) is moot while `wire` stays public and is resolved by whichever
   path is chosen. *Scope: 1.0 milestone (API).*
-- [ ] **`AUD-12` — config-struct `#[non_exhaustive]` + construction path.** Add
+- [x] **`AUD-12` — config-struct `#[non_exhaustive]` + construction path.** Add
   `#[non_exhaustive]` to the ~22 public config structs, **paired with** a builder or
   `Default` + `..Default::default()` construction escape hatch so sealing them does not break
   external `Config { .. }` literals. This is feature work, not mechanical cleanup. *Scope: 1.0
   milestone (API).*
-- [ ] **`AUD-19` — `geometric_median` naming.** Consolidate the lone `_1d`/`_2d` suffix forms
+- [x] **`AUD-19` — `geometric_median` naming.** Consolidate the lone `_1d`/`_2d` suffix forms
   onto a `Dim`-dispatched signature. *Scope: 1.0 milestone (optional naming).*
-- [ ] **`AUD-20` — `hausdorff` naming.** Same `Dim`-dispatch consolidation for the
+- [x] **`AUD-20` — `hausdorff` naming.** Same `Dim`-dispatch consolidation for the
   `hausdorff_*` family. *Scope: 1.0 milestone (optional naming).*
-- [ ] **`AUD-21` — `functional_spatial` naming.** Consolidate
+- [x] **`AUD-21` — `functional_spatial` naming.** Consolidate
   `functional_spatial_*` / `kernel_functional_spatial_*` onto `Dim` dispatch. *Scope: 1.0
   milestone (optional naming).*
-- [ ] **`AUD-22` — the large lone-`_1d`/`_2d` suffix batch.** The biggest and highest-risk
+- [x] **`AUD-22` — the large lone-`_1d`/`_2d` suffix batch.** The biggest and highest-risk
   naming edit: the remaining lone-suffix functions across the crate **and all 28 examples**.
   *Scope: 1.0 milestone (optional naming — sequence carefully).*
-- [ ] **`AUD-23` — `LpeerResult` → `LocalPeerResult`.** Rename the result type for clarity and
+- [x] **`AUD-23` — `LpeerResult` → `LocalPeerResult`.** Rename the result type for clarity and
   to match the `PeerResult` sibling. *Scope: 1.0 milestone (optional naming).*
 
 ---

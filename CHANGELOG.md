@@ -11,6 +11,75 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [0.42.0] - 2026-09-08
+
+**BREAKING — 1.0 API Finalization Pass.** The second breaking release: it clears the
+entire **API section** of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`) —
+sealing the `wire` interchange surface, future-proofing every public config struct with
+`#[non_exhaustive]`, and finishing the `_1d`/`_2d` → `Dim`-dispatch naming unification.
+**Breaking is API *shape* only — there is no numeric or behavioral change** to any
+retained computation (every consolidated signature routes to a byte-identical private
+body; a code-review gate confirms no drift). **MSRV is unchanged** (1.81 for the crate,
+1.84 for the `linalg` feature). This is the last breaking pass before a deliberate future
+1.0 cut.
+
+### Changed
+
+#### Surface sealing — `wire` (SEAL-01 / AUD-09 + AUD-13)
+
+- The `wire` module is now `pub(crate)` (`pub mod wire` → `pub(crate) mod wire`). Its ~24
+  interchange types (`FdaData`, `LayerKey`, `Layer`, the `*Layer` structs, …) are no
+  longer reachable by external callers. There were no crate-root/prelude re-exports of
+  wire types, so no re-export removals were needed. `wire` was an unwired, unsupported
+  interchange surface with no JS/R consumer; it is sealed until bindings need it, at which
+  point it will be re-exposed deliberately.
+
+#### Config structs `#[non_exhaustive]` + construction idiom (SEAL-02 / SEAL-03 / AUD-12)
+
+- `#[non_exhaustive]` added to the **38** public `*Config` structs that did not already
+  carry it (of 66 total; 28 were already sealed). Fields can now be added post-1.0 without
+  a breaking bump.
+- **Downstream impact (construction idiom change):** external code can no longer construct
+  these configs with a struct literal — **not even functional-update `..Default::default()`
+  form** (Rust rejects any struct expression on a `#[non_exhaustive]` type from another
+  crate). All 38 already implement `Default`; construct them via
+  `let mut c = SomeConfig::default(); c.field = …;` and pass `c`. Each struct's docs show
+  the supported path.
+
+#### Naming unification — small families (NAME-01/02/03/05 / AUD-19/20/21/23)
+
+- `geometric_median_1d`/`_2d` → **`geometric_median(…, dim: Dim)`**.
+- `hausdorff_self_1d`/`_2d`, `hausdorff_cross_1d`/`_2d` → **`hausdorff_self(…, dim: Dim)`** /
+  **`hausdorff_cross(…, dim: Dim)`** (`hausdorff_3d` is unchanged — it takes point clouds).
+- `functional_spatial_1d`/`_2d` → **`functional_spatial(…, dim: Dim)`**;
+  `kernel_functional_spatial_1d`/`_2d` → **`kernel_functional_spatial(…, dim: Dim)`**.
+- `LpeerResult` → **`LocalPeerResult`** (matches the `PeerResult` sibling), incl. `lib.rs`/
+  `prelude.rs` re-exports.
+
+#### Naming unification — large suffix batch (NAME-04 / AUD-22)
+
+- **41** remaining lone `_1d` functions across `depth`, `metric`, and `fdata` are now
+  reached through a single `Dim`-dispatched public signature per family — e.g. `band`,
+  `hypograph_index`, `total_variation_depth`, `center`, `norm_lp`, and the metric
+  self/cross families `dtw_self`/`dtw_cross`, `fourier_self`/`fourier_cross`,
+  `pca_self`/`pca_cross`, `soft_dtw_self`/`soft_dtw_cross`, etc. Call the old `_1d` sites as
+  `name(…, Dim::One)`.
+- **5** genuinely-1D-only functions are plain-renamed to drop the now-meaningless `_1d`
+  suffix (no `Dim` parameter): **`fdata_to_pc`**, **`fdata_to_pls`**, **`fourier_fit`**,
+  **`pspline_fit`**, **`select_basis_auto`**.
+- Unchanged: the `*_2d` functions with no `_1d` sibling (`fosr_2d`, `predict_fosr_2d`,
+  `simpsons_weights_2d`), the `*_1d_seeded` RNG variants, and the R-interop shims
+  (`fdata_to_basis_1d`, `basis_to_fdata_1d`).
+
+### Migration
+
+- Replace struct-literal config construction with `Config::default()` + field assignment.
+- Replace a removed `name_1d(args)` call with `name(args, Dim::One)` (for consolidated
+  families) or the bare `name(args)` (for the 5 plain-renamed functions).
+- Rename `LpeerResult` → `LocalPeerResult`.
+- All 28 bundled examples and all doctests were migrated to the new surface and compile
+  against it — they are worked references for the new call forms.
+
 ## [0.41.0] - 2026-09-07
 
 **BREAKING — 1.0 API Stabilization Pass.** This is the first breaking release after a
