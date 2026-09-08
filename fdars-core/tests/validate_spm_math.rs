@@ -339,8 +339,8 @@ fn mfpca_roundtrip_reconstruction() {
     let config = {
         let mut __cfg1 = MfpcaConfig::default();
         __cfg1.ncomp = n - 1;
-        __cfg1.// use all available
-        weighted = true;
+        // use all available
+        __cfg1.weighted = true;
         __cfg1
     };
     let result = mfpca(&variables, &config).unwrap();
