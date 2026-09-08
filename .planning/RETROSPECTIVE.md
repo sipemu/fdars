@@ -636,6 +636,43 @@ Fixed the pre-existing `soft_dtw_backward` endpoint-seed zero-gradient bug (CORR
 
 ---
 
+## Milestone: v0.42.0 — 1.0 API Finalization
+
+**Shipped:** 2026-09-08 (code-complete; operator tag/publish deferred)
+**Phases:** 4 (86–89) | **Plans:** 4 | **Tasks:** 17
+
+### What Was Built
+The second breaking milestone, clearing the entire API section of the 1.0 checklist: sealed `wire` `pub(crate)` + `#[non_exhaustive]` on 38 config structs (86); consolidated the small `geometric_median`/`hausdorff_*`/`functional_spatial_*` families onto `Dim` dispatch + `LpeerResult`→`LocalPeerResult` (87); the large batch — 41 lone-`_1d` consolidations + 5 plain-renames across depth/metric/fdata + all 28 examples (88); version bump + breaking CHANGELOG + 1.0-checklist checkoff + full gates incl. `cargo package` (89). API-shape-only, byte-identical bodies, proven by 2857 passing tests each phase.
+
+### What Worked
+- **Byte-identical `_impl` + code-review gate** kept "no numeric change" honest across ~50 signature changes; every phase's full `cargo test` passed with zero drift.
+- **The `pub(crate)` visibility-flip mechanic** (Phase 88) shrank the blast radius enormously — internal callers of a downgraded `_1d` stay unchanged; only public re-exports + external callers move. Far less churn than an `_impl` rename.
+- **Delegating the huge, mechanical Phase 88 to a fresh-context impl agent** (edits + fast per-task `cargo build -p` + `--no-verify` commits) while the orchestrator ran the heavy full-gate suite inline — kept orchestrator context lean and dodged the subagent stall/kill on long cargo.
+- **Scripted, word-boundary-safe call-site rewriters** (balanced-paren arg parsing) made the mass migrations reliable and idempotent.
+- **Pausing for the genuine grey areas** (plain-rename vs Dim-dispatch for 1D-only functions) via AskUserQuestion — the right call, since it shaped the permanent 1.0 API.
+
+### What Was Inefficient
+- **`#[non_exhaustive]`'s true blast radius was under-scoped by the Phase 86 plan.** Sealing configs breaks *every external-crate struct expression* — including `..Default::default()` form (E0639) — so doctests/examples/tests/benches all needed migration (50 sites) that the plan hadn't anticipated. Surfaced only at the gate.
+- **Per-task `cargo build -p` misses test/bench-code lint.** Phase 88's impl agent gated on lib build; `clippy --all-targets` (CI's gate) later caught an unused test re-export. Always run `--all-targets` at phase end.
+- **Long combined gate runs got killed as background bash jobs** (twice) — had to split into per-gate foreground runs and route separate-feature/example builds to `/tmp` tmpfs to survive a 99%-full `/home`.
+- A RESEARCH signature error (`pca_cross` phantom `argvals`) slipped into the plan; caught by the impl agent against real source.
+
+### Patterns Established
+- **`pub(crate)` visibility-flip + `Dim` dispatcher** as the low-churn consolidation mechanic (over `_impl` renames) when internal callers are numerous.
+- **Fresh-context impl agent for large mechanical phases; orchestrator runs heavy gates inline** — the reliable division of labor given subagent cargo stalls.
+- **Non-exhaustive external construction idiom:** `Config::default()` + field assignment (documented, and now in the CHANGELOG as a breaking-idiom change).
+
+### Key Lessons
+- Sealing/consolidation "mechanical" work has a large *external-crate* compile blast radius (doctests + examples + integration tests + benches are all external) — enumerate those sites up front, not at the gate.
+- `#[non_exhaustive]` forbids functional-update construction from other crates; the escape hatch is `default()` + field-assign, not `..Default::default()`.
+- Run `clippy --all-targets` and route heavy/second-feature builds to tmpfs as standing practice on this repo.
+
+### Cost Observations
+- Model mix: opus (orchestrator + planners), sonnet (researchers/verifiers/reviewers + Phase 88 impl agent), haiku (plan-checkers).
+- Sessions: 1 autonomous run (all 4 phases + lifecycle).
+- Notable: the single fresh-context impl agent handled the ~250k-token Phase 88 mechanical batch without polluting orchestrator context — the key efficiency lever for the milestone's biggest phase.
+
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
