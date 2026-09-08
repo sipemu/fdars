@@ -5,13 +5,13 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::clustering::{calinski_harabasz, fuzzy_cmeans_fd, kmeans_fd, silhouette_score};
 use fdars_core::depth::{
-    band_1d, fraiman_muniz_1d, functional_spatial_1d, kernel_functional_spatial_1d,
-    modified_band_1d, random_projection_1d,
+    band_1d, fraiman_muniz_1d, functional_spatial, kernel_functional_spatial, modified_band_1d,
+    random_projection_1d,
 };
 use fdars_core::fdata::norm_lp_1d;
 use fdars_core::irreg_fdata::{norm_lp_irreg, IrregFdata};
 use fdars_core::matrix::FdMatrix;
-use fdars_core::metric::{dtw_self_1d, fourier_self_1d, hausdorff_self_1d, lp_self, LpDomain};
+use fdars_core::metric::{dtw_self_1d, fourier_self_1d, hausdorff_self, lp_self, LpDomain};
 use fdars_core::outliers::outliers_threshold_lrt;
 use fdars_core::streaming_depth::{
     SortedReferenceState, StreamingDepth, StreamingFraimanMuniz, StreamingMbd,
@@ -113,12 +113,19 @@ fn bench_random_projection(c: &mut Criterion) {
 }
 
 fn bench_functional_spatial(c: &mut Criterion) {
-    let mut group = c.benchmark_group("functional_spatial_1d");
+    let mut group = c.benchmark_group("functional_spatial");
     let t = 200;
     for &n in &[50, 200, 500] {
         let data = generate_centered_data(n, t);
         group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
-            b.iter(|| functional_spatial_1d(black_box(data), black_box(data), None))
+            b.iter(|| {
+                functional_spatial(
+                    black_box(data),
+                    black_box(data),
+                    None,
+                    fdars_core::dim::Dim::One,
+                )
+            })
         });
     }
     group.finish();
@@ -149,13 +156,20 @@ fn bench_dtw(c: &mut Criterion) {
 }
 
 fn bench_hausdorff(c: &mut Criterion) {
-    let mut group = c.benchmark_group("hausdorff_self_1d");
+    let mut group = c.benchmark_group("hausdorff_self");
     let m = 100;
     for &n in &[20, 50] {
         let data = generate_centered_data(n, m);
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
         group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
-            b.iter(|| hausdorff_self_1d(black_box(data), black_box(&argvals)))
+            b.iter(|| {
+                hausdorff_self(
+                    black_box(data),
+                    black_box(&argvals),
+                    None,
+                    fdars_core::dim::Dim::One,
+                )
+            })
         });
     }
     group.finish();
@@ -218,11 +232,12 @@ fn bench_kfsd(c: &mut Criterion) {
         let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
         group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
             b.iter(|| {
-                kernel_functional_spatial_1d(
+                kernel_functional_spatial(
                     black_box(data),
                     black_box(data),
-                    black_box(&argvals),
+                    Some(black_box(&argvals)),
                     0.5,
+                    fdars_core::dim::Dim::One,
                 )
             })
         });

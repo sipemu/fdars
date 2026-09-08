@@ -837,7 +837,12 @@ fn test_depth_functional_spatial() {
     let dat: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
     let argvals: Vec<f64> = (0..dat.m).map(|i| i as f64 / (dat.m - 1) as f64).collect();
-    let actual = fdars_core::depth::functional_spatial_1d(&mat, &mat, Some(&argvals));
+    let actual = fdars_core::depth::functional_spatial(
+        &mat,
+        &mat,
+        Some(&argvals),
+        fdars_core::dim::Dim::One,
+    );
     // FSD uses L2 norm with integration weights; R may differ in norm definition.
     // Verify ranking correlation is high.
     assert_ranking_correlated_tol(&actual, &exp.functional_spatial, 0.97, "functional_spatial");
@@ -850,7 +855,13 @@ fn test_depth_kernel_functional_spatial() {
     let h = 0.1850532;
     let argvals: Vec<f64> = (0..dat.m).map(|i| i as f64 / (dat.m - 1) as f64).collect();
     let mat = FdMatrix::from_slice(&dat.data, dat.n, dat.m).unwrap();
-    let actual = fdars_core::depth::kernel_functional_spatial_1d(&mat, &mat, &argvals, h);
+    let actual = fdars_core::depth::kernel_functional_spatial(
+        &mat,
+        &mat,
+        Some(&argvals),
+        h,
+        fdars_core::dim::Dim::One,
+    );
     // KFSD uses weighted L2 norm; Simpson's vs R's integration causes small differences.
     // Verify ranking correlation is high instead.
     assert_ranking_correlated_tol(
@@ -2287,8 +2298,8 @@ fn test_2d_delegates_to_1d_spatial() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let d1 = fdars_core::depth::functional_spatial_1d(&mat, &mat, None);
-    let d2 = fdars_core::depth::functional_spatial_2d(&mat, &mat);
+    let d1 = fdars_core::depth::functional_spatial(&mat, &mat, None, fdars_core::dim::Dim::One);
+    let d2 = fdars_core::depth::functional_spatial(&mat, &mat, None, fdars_core::dim::Dim::Two);
     assert_eq!(d1, d2, "Spatial 2D should delegate to 1D");
 }
 
@@ -2475,7 +2486,14 @@ fn test_geometric_median_near_mean_symmetric() {
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
     let mean = fdars_core::fdata::mean_1d(&mat);
-    let median = fdars_core::fdata::geometric_median_1d(&mat, &d.argvals, 100, 1e-6);
+    let median = fdars_core::fdata::geometric_median(
+        &mat,
+        &d.argvals,
+        None,
+        100,
+        1e-6,
+        fdars_core::dim::Dim::One,
+    );
 
     // For approximately symmetric data, median should be near mean
     let max_diff: f64 = mean
@@ -2495,7 +2513,14 @@ fn test_geometric_median_robust_to_outlier() {
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
     let _mean = fdars_core::fdata::mean_1d(&mat);
-    let median = fdars_core::fdata::geometric_median_1d(&mat, &d.argvals, 100, 1e-6);
+    let median = fdars_core::fdata::geometric_median(
+        &mat,
+        &d.argvals,
+        None,
+        100,
+        1e-6,
+        fdars_core::dim::Dim::One,
+    );
 
     // Median should exist and be finite
     for (j, &med_j) in median.iter().enumerate() {
@@ -2786,7 +2811,7 @@ fn test_hausdorff_self_symmetric() {
     let d: StandardData = load_json("data", "standard_50x101");
     let mat = FdMatrix::from_slice(&d.data, d.n, d.m).unwrap();
 
-    let dm = fdars_core::metric::hausdorff_self_1d(&mat, &d.argvals);
+    let dm = fdars_core::metric::hausdorff_self(&mat, &d.argvals, None, fdars_core::dim::Dim::One);
     for i in 0..d.n {
         for j in (i + 1)..d.n {
             assert!(
@@ -2826,7 +2851,8 @@ fn test_hausdorff_cross_shape() {
     let m1 = FdMatrix::from_column_major(d1_vec, n1, d.m).unwrap();
     let m2 = FdMatrix::from_column_major(d2_vec, n2, d.m).unwrap();
 
-    let cross = fdars_core::metric::hausdorff_cross_1d(&m1, &m2, &d.argvals);
+    let cross =
+        fdars_core::metric::hausdorff_cross(&m1, &m2, &d.argvals, None, fdars_core::dim::Dim::One);
     assert_eq!(cross.nrows(), n1);
     assert_eq!(cross.ncols(), n2);
 }
@@ -5260,7 +5286,8 @@ fn test_hausdorff_values_vs_r() {
             .collect();
         let sub = FdMatrix::from_column_major(sub_vec, k, d.m).unwrap();
 
-        let rust_dm = fdars_core::metric::hausdorff_self_1d(&sub, &d.argvals);
+        let rust_dm =
+            fdars_core::metric::hausdorff_self(&sub, &d.argvals, None, fdars_core::dim::Dim::One);
         assert_eq!(rust_dm.nrows(), k);
 
         // R computes pointwise sup-norm max|f1(t)-f2(t)|, while Rust uses 2D Hausdorff

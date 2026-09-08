@@ -7,7 +7,7 @@
 
 use fdars_core::matrix::FdMatrix;
 use fdars_core::metric::{
-    dtw_self_1d, fourier_self_1d, hausdorff_self_1d, hshift_self_1d, lp_cross, lp_self,
+    dtw_self_1d, fourier_self_1d, hausdorff_self, hshift_self_1d, lp_cross, lp_self,
     soft_dtw_distance, soft_dtw_div_self_1d, soft_dtw_self_1d, LpDomain,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
@@ -80,7 +80,7 @@ fn main() {
 
     // --- Section 4: Hausdorff distances ---
     println!("\n--- Hausdorff Distance Matrix ---");
-    let haus_dists = hausdorff_self_1d(&data, &t);
+    let haus_dists = hausdorff_self(&data, &t, None, fdars_core::dim::Dim::One);
     print_dist_matrix(&haus_dists, 5);
 
     // --- Section 5: DTW distances ---

@@ -8,7 +8,7 @@ Computing pairwise distance matrices between functional observations using vario
 
 - `metric::lp_self()` (with `LpDomain`) — pairwise Lp distances within a dataset
 - `metric::lp_cross()` (with `LpDomain`) — Lp distances between two datasets
-- `metric::hausdorff_self_1d()` — pairwise Hausdorff distances
+- `metric::hausdorff_self()` — pairwise Hausdorff distances
 - `metric::dtw_self_1d()` — Dynamic Time Warping distances
 - `metric::fourier_self_1d()` — Fourier-based semimetric
 - `metric::hshift_self_1d()` — horizontal shift semimetric

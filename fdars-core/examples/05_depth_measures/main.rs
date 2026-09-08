@@ -6,7 +6,7 @@
 //! outlying curves in a dataset.
 
 use fdars_core::depth::{
-    band_1d, fraiman_muniz_1d, functional_spatial_1d, modal_1d, modified_band_1d,
+    band_1d, fraiman_muniz_1d, functional_spatial, modal_1d, modified_band_1d,
     modified_epigraph_index_1d, random_projection_1d, random_tukey_1d,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
@@ -111,7 +111,7 @@ fn main() {
 
     // --- Section 7: Functional spatial depth ---
     println!("\n--- Functional Spatial Depth ---");
-    let fsd = functional_spatial_1d(&mat, &mat, None);
+    let fsd = functional_spatial(&mat, &mat, None, fdars_core::dim::Dim::One);
     let fsd_rank = rank_indices(&fsd);
     println!("  Deepest 3:  {:?}", &fsd_rank[..3]);
     println!("  Shallowest 3: {:?}", &fsd_rank[n - 3..]);

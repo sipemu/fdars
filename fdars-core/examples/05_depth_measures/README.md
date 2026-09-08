@@ -14,7 +14,7 @@ Different depth measures capture different notions of centrality — band-based 
 - `depth::modal_1d()` — kernel-based density depth
 - `depth::random_projection_1d()` — depth via random linear projections
 - `depth::random_tukey_1d()` — halfspace depth via random projections
-- `depth::functional_spatial_1d()` — spatial (geometric) depth
+- `depth::functional_spatial()` — spatial (geometric) depth
 - `depth::modified_epigraph_index_1d()` — modified epigraph index
 
 ## How to run

@@ -5,7 +5,7 @@
 //! Simpson's rule integration.
 
 use fdars_core::fdata::{
-    center_1d, deriv, geometric_median_1d, mean_1d, norm_lp_1d, DerivDomain, DerivResult,
+    center_1d, deriv, geometric_median, mean_1d, norm_lp_1d, DerivDomain, DerivResult,
 };
 use fdars_core::simulation::{sim_fundata, EFunType, EValType};
 use fdars_core::utility::{inner_product, inner_product_matrix, integrate_simpson};
@@ -124,7 +124,7 @@ fn main() {
     // The geometric median minimizes the sum of L2 distances to all curves,
     // making it more robust to outliers than the pointwise mean.
     println!("\n--- Geometric Median ---");
-    let gmed = geometric_median_1d(&mat, &t, 100, 1e-6);
+    let gmed = geometric_median(&mat, &t, None, 100, 1e-6, fdars_core::dim::Dim::One);
     let mean_diff: f64 = mean
         .iter()
         .zip(gmed.iter())
