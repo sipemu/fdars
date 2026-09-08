@@ -9,7 +9,7 @@
 ## Phases
 
 - [x] **Phase 86: Surface Sealing** - Seal the `wire` module `pub(crate)` and mark every public config struct `#[non_exhaustive]` with a `Default`/builder construction escape hatch (completed 2026-09-08)
-- [ ] **Phase 87: Targeted Renames** - Consolidate the small `Dim`-dispatch families (`geometric_median`, `hausdorff_*`, `functional_spatial_*`) and rename `LpeerResult` → `LocalPeerResult`
+- [x] **Phase 87: Targeted Renames** - Consolidate the small `Dim`-dispatch families (`geometric_median`, `hausdorff_*`, `functional_spatial_*`) and rename `LpeerResult` → `LocalPeerResult` (completed 2026-09-08)
 - [ ] **Phase 88: Large Suffix Batch** - Consolidate the large remaining lone-`_1d`/`_2d` suffix functions onto `Dim` dispatch and update all 28 examples + docs (highest blast radius)
 - [ ] **Phase 89: Release Preparation & Verification** - Bump 0.41.0 → 0.42.0, breaking-framed CHANGELOG, whole-crate gates green, ROADMAP-TO-1.0.md API items checked off
 
@@ -44,7 +44,8 @@
   4. The crate, all 28 examples, and all doctests compile against the consolidated signatures; a code-review gate confirms no numeric drift.
 
 **Plans**: 1 plan
-- [ ] 87-01-PLAN.md — NAME-05 LocalPeerResult rename (tracer) + NAME-01/02/03 Dim-dispatch consolidations + all ~35 caller updates and full gate set
+
+- [x] 87-01-PLAN.md — NAME-05 LocalPeerResult rename (tracer) + NAME-01/02/03 Dim-dispatch consolidations + all ~35 caller updates and full gate set
 
 ### Phase 88: Large Suffix Batch
 
@@ -78,7 +79,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 86. Surface Sealing | 1/1 | Complete    | 2026-09-08 |
-| 87. Targeted Renames | 0/? | Not started | - |
+| 87. Targeted Renames | 1/1 | Complete    | 2026-09-08 |
 | 88. Large Suffix Batch | 0/? | Not started | - |
 | 89. Release Preparation & Verification | 0/? | Not started | - |
 
