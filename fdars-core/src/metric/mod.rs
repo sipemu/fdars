@@ -173,6 +173,4 @@ pub(crate) use kl::{kl_cross_1d, kl_self_1d};
 #[cfg(test)]
 pub(crate) use pca::{pca_cross_1d, pca_self_1d};
 #[cfg(test)]
-pub(crate) use soft_dtw::{
-    soft_dtw_cross_1d, soft_dtw_div_cross_1d, soft_dtw_div_self_1d, soft_dtw_self_1d,
-};
+pub(crate) use soft_dtw::{soft_dtw_cross_1d, soft_dtw_div_self_1d, soft_dtw_self_1d};
