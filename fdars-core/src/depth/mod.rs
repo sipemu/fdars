@@ -52,11 +52,17 @@ pub(crate) use fraiman_muniz::fraiman_muniz_1d;
 pub(crate) use half_region::{half_region_depth_1d, modified_half_region_depth_1d};
 pub(crate) use hypo_epi::{epigraph_index_1d, hypograph_index_1d, modified_hypograph_index_1d};
 pub(crate) use linf::linfinity_depth_1d;
-pub(crate) use modal::modal_1d;
-pub(crate) use random_projection::random_projection_1d;
-pub(crate) use random_tukey::random_tukey_1d;
-pub(crate) use rpd::rpd_depth_1d;
 pub(crate) use tvd::total_variation_depth_1d;
+// Test-only: the Cat 1 primitives whose sole in-crate caller (besides their own
+// dispatcher) is the inline `#[cfg(test)]` bit-identity module.
+#[cfg(test)]
+pub(crate) use modal::modal_1d;
+#[cfg(test)]
+pub(crate) use random_projection::random_projection_1d;
+#[cfg(test)]
+pub(crate) use random_tukey::random_tukey_1d;
+#[cfg(test)]
+pub(crate) use rpd::rpd_depth_1d;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
