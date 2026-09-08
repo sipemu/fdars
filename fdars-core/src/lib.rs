@@ -643,13 +643,12 @@ pub use metric::{
 pub use dim::Dim;
 
 pub use depth::{
-    band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz,
-    fraiman_muniz_1d, functional_boxplot, functional_depth, functional_spatial,
-    half_region_depth_1d, hypograph_index_1d, kernel_functional_spatial, linfinity_depth_1d, modal,
-    modal_1d, modified_band_1d, modified_epigraph_index_1d, modified_half_region_depth_1d,
-    modified_hypograph_index_1d, random_projection, random_projection_1d,
-    random_projection_1d_seeded, random_tukey, random_tukey_1d, random_tukey_1d_seeded,
-    total_variation_depth_1d, DepthMethod, FunctionalBoxplotResult, TvdMssResult,
+    band, epigraph_index, extremal_depth, extreme_rank_length_depth, fraiman_muniz,
+    functional_boxplot, functional_depth, functional_spatial, half_region_depth, hypograph_index,
+    kernel_functional_spatial, linfinity_depth, modal, modified_band, modified_epigraph_index,
+    modified_half_region_depth, modified_hypograph_index, random_projection,
+    random_projection_1d_seeded, random_tukey, random_tukey_1d_seeded, rpd_depth,
+    total_variation_depth, DepthMethod, FunctionalBoxplotResult, TvdMssResult,
 };
 
 // Re-export outlier detection functions
@@ -669,10 +668,9 @@ pub use utility::{
 
 // Re-export functional data operation types and functions.
 pub use fdata::{
-    center_1d, depth_based_median, deriv, functional_covariance, functional_std,
-    functional_variance, geometric_median, mean, mean_1d, norm_lp_1d, normalize,
-    normalize_with_argvals, trim_mean, Deriv2DResult, DerivDomain, DerivResult,
-    NormalizationMethod,
+    center, depth_based_median, deriv, functional_covariance, functional_std, functional_variance,
+    geometric_median, mean, norm_lp, normalize, normalize_with_argvals, trim_mean, Deriv2DResult,
+    DerivDomain, DerivResult, NormalizationMethod,
 };
 
 // Re-export basis representation types and functions

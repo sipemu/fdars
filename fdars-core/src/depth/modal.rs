@@ -15,7 +15,7 @@ use rayon::iter::ParallelIterator;
 /// * `data_ori` - Reference data
 /// * `h` - Bandwidth parameter
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
+pub(crate) fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
     let n_points = data_obj.ncols();

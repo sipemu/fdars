@@ -18,19 +18,20 @@ use crate::streaming_depth::{SortedReferenceState, StreamingDepth, StreamingFrai
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::depth::fraiman_muniz_1d;
+/// use fdars_core::depth::fraiman_muniz;
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     5, 10,
 /// ).unwrap();
-/// let depths = fraiman_muniz_1d(&data, &data, true);
+/// let depths = fraiman_muniz(&data, &data, true, Dim::One);
 /// assert_eq!(depths.len(), 5);
 /// // Depths should be in [0, 1]
 /// assert!(depths.iter().all(|&d| d >= 0.0 && d <= 1.0 + 1e-10));
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
+pub(crate) fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: bool) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() == 0 || data_obj.ncols() == 0 {
         return Vec::new();
     }

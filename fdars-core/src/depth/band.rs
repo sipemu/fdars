@@ -1,5 +1,6 @@
 //! Band depth and related measures (BD, MBD, MEI).
 
+use crate::dim::Dim;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::streaming_depth::{
@@ -16,18 +17,19 @@ use rayon::iter::ParallelIterator;
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::depth::band_1d;
+/// use fdars_core::depth::band;
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     5, 10,
 /// ).unwrap();
-/// let depths = band_1d(&data, &data);
+/// let depths = band(&data, &data, Dim::One);
 /// assert_eq!(depths.len(), 5);
 /// assert!(depths.iter().all(|&d| d >= 0.0 && d <= 1.0 + 1e-10));
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
+pub(crate) fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {
         return Vec::new();
     }
@@ -40,7 +42,7 @@ pub fn band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
 ///
 /// MBD(x) = average over pairs of the proportion of the domain where x is inside the band.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
+pub(crate) fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     if data_obj.nrows() == 0 || data_ori.nrows() < 2 || data_obj.ncols() == 0 {
         return Vec::new();
     }
@@ -54,7 +56,7 @@ pub fn modified_band_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
 /// MEI measures the proportion of time a curve is below other curves.
 /// Matches R's `roahd::MEI()`: uses `<=` comparison with 0.5 adjustment for ties.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
+pub(crate) fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
     let n_points = data_obj.ncols();
@@ -86,4 +88,37 @@ pub fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> V
             total / nori as f64
         })
         .collect()
+}
+
+/// Compute Band Depth (BD) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`band_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn band(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => band_1d(data_obj, data_ori),
+    }
+}
+
+/// Compute Modified Band Depth (MBD) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`modified_band_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn modified_band(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => modified_band_1d(data_obj, data_ori),
+    }
+}
+
+/// Compute Modified Epigraph Index (MEI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`modified_epigraph_index_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn modified_epigraph_index(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => modified_epigraph_index_1d(data_obj, data_ori),
+    }
 }

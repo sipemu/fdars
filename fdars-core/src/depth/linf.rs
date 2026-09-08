@@ -4,6 +4,7 @@
 //! curves that are close (in max-pointwise-deviation) to all others are deep, far
 //! ones are shallow.
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -30,7 +31,10 @@ use rayon::iter::ParallelIterator;
 /// grids differ. A single reference curve (`nori = 1`) is valid — the self-distance
 /// is 0, giving depth 1.0.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn linfinity_depth_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+pub(crate) fn linfinity_depth_1d(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+) -> Result<Vec<f64>, FdarError> {
     let (nobj, nori, m) = (data_obj.nrows(), data_ori.nrows(), data_obj.ncols());
     if nobj == 0 || nori == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {
@@ -66,6 +70,21 @@ pub fn linfinity_depth_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Ve
         .collect();
 
     Ok(depths)
+}
+
+/// Compute L-infinity depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`linfinity_depth_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn linfinity_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => linfinity_depth_1d(data_obj, data_ori),
+    }
 }
 
 #[cfg(test)]

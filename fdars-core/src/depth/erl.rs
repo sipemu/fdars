@@ -6,6 +6,7 @@
 //! **self-depth** measure evaluated on the reference sample `data_ori`; `data_obj`
 //! is accepted for signature uniformity and must share the sample's grid.
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -57,7 +58,7 @@ fn column_ranks(data: &FdMatrix, col: usize) -> Vec<f64> {
 /// Returns [`FdarError::InvalidDimension`] if either matrix is empty, if their grids
 /// differ, or if the sample has fewer than 2 curves.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn extreme_rank_length_depth_1d(
+pub(crate) fn extreme_rank_length_depth_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
 ) -> Result<Vec<f64>, FdarError> {
@@ -127,6 +128,21 @@ pub fn extreme_rank_length_depth_1d(
         .collect();
 
     Ok(depths)
+}
+
+/// Compute Extreme Rank Length depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`extreme_rank_length_depth_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn extreme_rank_length_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => extreme_rank_length_depth_1d(data_obj, data_ori),
+    }
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@
 //! `nderiv`, and standard random projection depth is computed on the
 //! augmented representation.
 
+use crate::dim::Dim;
 use crate::matrix::FdMatrix;
 
 /// Compute RPD depth for 1D functional data.
@@ -23,19 +24,20 @@ use crate::matrix::FdMatrix;
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::depth::rpd_depth_1d;
+/// use fdars_core::depth::rpd_depth;
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     5, 10,
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let depths = rpd_depth_1d(&data, &data, &argvals, 50, 1);
+/// let depths = rpd_depth(&data, &data, &argvals, 50, 1, Dim::One);
 /// assert_eq!(depths.len(), 5);
 /// assert!(depths.iter().all(|&d| d >= 0.0));
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn rpd_depth_1d(
+pub(crate) fn rpd_depth_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
     argvals: &[f64],
@@ -43,6 +45,25 @@ pub fn rpd_depth_1d(
     nderiv: usize,
 ) -> Vec<f64> {
     rpd_depth_1d_seeded(data_obj, data_ori, argvals, nproj, nderiv, None)
+}
+
+/// Compute RPD depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`rpd_depth_1d`]. The `dim` argument makes caller intent explicit. Use
+/// [`rpd_depth_1d_seeded`] for reproducible results.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn rpd_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    argvals: &[f64],
+    nproj: usize,
+    nderiv: usize,
+    dim: Dim,
+) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => rpd_depth_1d(data_obj, data_ori, argvals, nproj, nderiv),
+    }
 }
 
 /// Compute RPD depth with optional seed for reproducibility.

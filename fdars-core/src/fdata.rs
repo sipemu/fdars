@@ -154,18 +154,19 @@ fn weiszfeld_iteration(data: &FdMatrix, weights: &[f64], max_iter: usize, tol: f
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::fdata::mean_1d;
+/// use fdars_core::fdata::mean;
+/// use fdars_core::dim::Dim;
 ///
 /// // 3 curves at 4 evaluation points
 /// let data = FdMatrix::from_column_major(
 ///     vec![1.0, 2.0, 3.0,  4.0, 5.0, 6.0,  7.0, 8.0, 9.0,  10.0, 11.0, 12.0],
 ///     3, 4,
 /// ).unwrap();
-/// let mean = mean_1d(&data);
+/// let mean = mean(&data, Dim::One);
 /// assert_eq!(mean.len(), 4);
 /// assert!((mean[0] - 2.0).abs() < 1e-10); // mean of [1, 2, 3]
 /// ```
-pub fn mean_1d(data: &FdMatrix) -> Vec<f64> {
+pub(crate) fn mean_1d(data: &FdMatrix) -> Vec<f64> {
     let (n, m) = data.shape();
     if n == 0 || m == 0 {
         return Vec::new();
@@ -208,18 +209,19 @@ pub fn mean(data: &FdMatrix, dim: Dim) -> Vec<f64> {
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::fdata::{center_1d, mean_1d};
+/// use fdars_core::fdata::{center, mean};
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     vec![1.0, 3.0, 2.0, 4.0, 3.0, 5.0], 2, 3,
 /// ).unwrap();
-/// let centered = center_1d(&data);
+/// let centered = center(&data, Dim::One);
 /// assert_eq!(centered.shape(), (2, 3));
 /// // Column means of centered data should be zero
-/// let means = mean_1d(&centered);
+/// let means = mean(&centered, Dim::One);
 /// assert!(means.iter().all(|m| m.abs() < 1e-10));
 /// ```
-pub fn center_1d(data: &FdMatrix) -> FdMatrix {
+pub(crate) fn center_1d(data: &FdMatrix) -> FdMatrix {
     let (n, m) = data.shape();
     if n == 0 || m == 0 {
         return FdMatrix::zeros(0, 0);
@@ -244,6 +246,21 @@ pub fn center_1d(data: &FdMatrix) -> FdMatrix {
     }
 
     centered
+}
+
+/// Center functional data by subtracting the mean function via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`center_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// single future seam should a real 2D specialization ever be needed.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+pub fn center(data: &FdMatrix, dim: Dim) -> FdMatrix {
+    match dim {
+        Dim::One | Dim::Two => center_1d(data),
+    }
 }
 
 /// Compute pointwise sample variance of functional data (Bessel-corrected, ddof = n-1).
@@ -756,7 +773,7 @@ fn curve_lp_normalize(data: &FdMatrix, argvals: &[f64], n: usize, m: usize, p: f
 ///
 /// # Returns
 /// Vector of Lp norms for each sample
-pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
+pub(crate) fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
     let (n, m) = data.shape();
     if n == 0 || m == 0 || argvals.len() != m {
         return Vec::new();
@@ -795,6 +812,23 @@ pub fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
                 integral.powf(1.0 / p)
             })
             .collect()
+    }
+}
+
+/// Compute Lp norm for each sample via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`norm_lp_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// single future seam should a real 2D specialization ever be needed.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `argvals` - Evaluation points for integration
+/// * `p` - Order of the norm (e.g., 2.0 for L2)
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+pub fn norm_lp(data: &FdMatrix, argvals: &[f64], p: f64, dim: Dim) -> Vec<f64> {
+    match dim {
+        Dim::One | Dim::Two => norm_lp_1d(data, argvals, p),
     }
 }
 

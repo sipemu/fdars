@@ -27,20 +27,32 @@ pub mod tvd;
 mod tests;
 
 // Re-export all public functions
-pub use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
+pub use band::{band, modified_band, modified_epigraph_index};
 pub use dispatch::{functional_boxplot, functional_depth, DepthMethod, FunctionalBoxplotResult};
-pub use erl::extreme_rank_length_depth_1d;
-pub use extremal::extremal_depth_1d;
-pub use fraiman_muniz::{fraiman_muniz, fraiman_muniz_1d};
-pub use half_region::{half_region_depth_1d, modified_half_region_depth_1d};
-pub use hypo_epi::{epigraph_index_1d, hypograph_index_1d, modified_hypograph_index_1d};
-pub use linf::linfinity_depth_1d;
-pub use modal::{modal, modal_1d};
-pub use random_projection::{random_projection, random_projection_1d, random_projection_1d_seeded};
-pub use random_tukey::{random_tukey, random_tukey_1d, random_tukey_1d_seeded};
-pub use rpd::{rpd_depth_1d, rpd_depth_1d_seeded};
+pub use erl::extreme_rank_length_depth;
+pub use extremal::extremal_depth;
+pub use fraiman_muniz::fraiman_muniz;
+pub use half_region::{half_region_depth, modified_half_region_depth};
+pub use hypo_epi::{epigraph_index, hypograph_index, modified_hypograph_index};
+pub use linf::linfinity_depth;
+pub use modal::modal;
+pub use random_projection::{random_projection, random_projection_1d_seeded};
+pub use random_tukey::{random_tukey, random_tukey_1d_seeded};
+pub use rpd::{rpd_depth, rpd_depth_1d_seeded};
 pub use spatial::{functional_spatial, kernel_functional_spatial};
-pub use tvd::{total_variation_depth_1d, TvdMssResult};
+pub use tvd::{total_variation_depth, TvdMssResult};
+
+// Crate-internal re-exports of the underlying `_1d` primitives. These remain
+// callable within the crate (notably `dispatch.rs` and inter-depth callers)
+// after the public surface consolidated onto the `Dim`-dispatched entry points.
+pub(crate) use band::{band_1d, modified_band_1d, modified_epigraph_index_1d};
+pub(crate) use erl::extreme_rank_length_depth_1d;
+pub(crate) use extremal::extremal_depth_1d;
+pub(crate) use fraiman_muniz::fraiman_muniz_1d;
+pub(crate) use half_region::{half_region_depth_1d, modified_half_region_depth_1d};
+pub(crate) use hypo_epi::{epigraph_index_1d, hypograph_index_1d, modified_hypograph_index_1d};
+pub(crate) use linf::linfinity_depth_1d;
+pub(crate) use tvd::total_variation_depth_1d;
 
 // ---------------------------------------------------------------------------
 // Shared helpers

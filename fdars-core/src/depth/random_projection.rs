@@ -19,18 +19,23 @@ use super::random_depth_core;
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::depth::random_projection_1d;
+/// use fdars_core::depth::random_projection;
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(),
 ///     5, 10,
 /// ).unwrap();
-/// let depths = random_projection_1d(&data, &data, 50);
+/// let depths = random_projection(&data, &data, 50, Dim::One);
 /// assert_eq!(depths.len(), 5);
 /// assert!(depths.iter().all(|&d| d >= 0.0));
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn random_projection_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
+pub(crate) fn random_projection_1d(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    nproj: usize,
+) -> Vec<f64> {
     random_projection_1d_seeded(data_obj, data_ori, nproj, None)
 }
 

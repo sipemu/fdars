@@ -3,6 +3,7 @@
 //! These are members of the roahd index-measure family, complementing the
 //! already-shipped Modified Epigraph Index (MEI).
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -32,7 +33,10 @@ use rayon::iter::ParallelIterator;
 /// Returns [`FdarError::InvalidDimension`] if `data_obj` or `data_ori` is empty,
 /// or if `data_ori` has fewer than 2 rows.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn hypograph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+pub(crate) fn hypograph_index_1d(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+) -> Result<Vec<f64>, FdarError> {
     let (nobj, nori, m) = (data_obj.nrows(), data_ori.nrows(), data_obj.ncols());
     if nobj == 0 || nori == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {
@@ -91,7 +95,10 @@ pub fn hypograph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Ve
 /// Returns [`FdarError::InvalidDimension`] if `data_obj` or `data_ori` is empty,
 /// or if `data_ori` has fewer than 2 rows.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+pub(crate) fn epigraph_index_1d(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+) -> Result<Vec<f64>, FdarError> {
     let (nobj, nori, m) = (data_obj.nrows(), data_ori.nrows(), data_obj.ncols());
     if nobj == 0 || nori == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {
@@ -149,7 +156,7 @@ pub fn epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Vec
 /// Returns [`FdarError::InvalidDimension`] if `data_obj` or `data_ori` is empty.
 /// Unlike HI/EI, a single reference curve (nori = 1) is mathematically valid for MHI.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn modified_hypograph_index_1d(
+pub(crate) fn modified_hypograph_index_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
 ) -> Result<Vec<f64>, FdarError> {
@@ -180,6 +187,51 @@ pub fn modified_hypograph_index_1d(
         .collect();
 
     Ok(depths)
+}
+
+/// Compute the Hypograph Index (HI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`hypograph_index_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn hypograph_index(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => hypograph_index_1d(data_obj, data_ori),
+    }
+}
+
+/// Compute the Epigraph Index (EI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`epigraph_index_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn epigraph_index(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => epigraph_index_1d(data_obj, data_ori),
+    }
+}
+
+/// Compute the Modified Hypograph Index (MHI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`modified_hypograph_index_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn modified_hypograph_index(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => modified_hypograph_index_1d(data_obj, data_ori),
+    }
 }
 
 #[cfg(test)]

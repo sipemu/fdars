@@ -6,6 +6,7 @@
 //! `data_ori`; `data_obj` is accepted for signature uniformity with the other depth
 //! measures and must share the sample's grid.
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
@@ -56,7 +57,10 @@ fn column_ranks(data: &FdMatrix, col: usize) -> Vec<f64> {
 /// Returns [`FdarError::InvalidDimension`] if either matrix is empty, if their grids
 /// differ, or if the sample has fewer than 3 curves (the R reference requires n ≥ 3).
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn extremal_depth_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+pub(crate) fn extremal_depth_1d(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+) -> Result<Vec<f64>, FdarError> {
     let (n, m) = (data_ori.nrows(), data_ori.ncols());
     if n == 0 || m == 0 || data_obj.nrows() == 0 || data_obj.ncols() == 0 {
         return Err(FdarError::InvalidDimension {
@@ -126,6 +130,21 @@ pub fn extremal_depth_1d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Result<Vec
     }
 
     Ok(depth)
+}
+
+/// Compute extremal depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`extremal_depth_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn extremal_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => extremal_depth_1d(data_obj, data_ori),
+    }
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@
 //! from above and from below — i.e. central curves.
 
 use crate::depth::{modified_epigraph_index_1d, modified_hypograph_index_1d};
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -37,7 +38,7 @@ use rayon::iter::ParallelIterator;
 /// or if `data_ori` has fewer than 2 reference curves (the global indicators are
 /// undefined for a single reference).
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn half_region_depth_1d(
+pub(crate) fn half_region_depth_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
 ) -> Result<Vec<f64>, FdarError> {
@@ -112,7 +113,7 @@ pub fn half_region_depth_1d(
 /// Returns [`FdarError::InvalidDimension`] if `data_obj` or `data_ori` is empty.
 /// A single reference curve (nori = 1) is mathematically valid for MHRD.
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn modified_half_region_depth_1d(
+pub(crate) fn modified_half_region_depth_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
 ) -> Result<Vec<f64>, FdarError> {
@@ -136,6 +137,36 @@ pub fn modified_half_region_depth_1d(
         .collect();
 
     Ok(depths)
+}
+
+/// Compute Half-Region Depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`half_region_depth_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn half_region_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => half_region_depth_1d(data_obj, data_ori),
+    }
+}
+
+/// Compute Modified Half-Region Depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`modified_half_region_depth_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn modified_half_region_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<Vec<f64>, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => modified_half_region_depth_1d(data_obj, data_ori),
+    }
 }
 
 #[cfg(test)]

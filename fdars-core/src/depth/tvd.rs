@@ -5,6 +5,7 @@
 //! component scores how central its first-difference (derivative) ranks are,
 //! weighted by each interval's contribution to the curve's total variation.
 
+use crate::dim::Dim;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -84,7 +85,7 @@ fn rank_slice(vals: &[f64]) -> Vec<f64> {
 /// Returns [`FdarError::InvalidDimension`] if either matrix is empty, if the grids
 /// differ, or if the sample has fewer than 3 curves (the R reference requires n ≥ 3).
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn total_variation_depth_1d(
+pub(crate) fn total_variation_depth_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
 ) -> Result<TvdMssResult, FdarError> {
@@ -166,6 +167,21 @@ pub fn total_variation_depth_1d(
 
     let (tvd, mss): (Vec<f64>, Vec<f64>) = pairs.into_iter().unzip();
     Ok(TvdMssResult { tvd, mss })
+}
+
+/// Compute Total Variation Depth (with MSS) for 1D or 2D functional data via a unified [`Dim`] dispatch.
+///
+/// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
+/// [`total_variation_depth_1d`]. The `dim` argument makes caller intent explicit.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn total_variation_depth(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    dim: Dim,
+) -> Result<TvdMssResult, FdarError> {
+    match dim {
+        Dim::One | Dim::Two => total_variation_depth_1d(data_obj, data_ori),
+    }
 }
 
 #[cfg(test)]

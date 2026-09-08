@@ -38,8 +38,8 @@ pub use crate::explain_generic::{FpcPredictor, TaskType};
 
 // Depth functions.
 pub use crate::depth::{
-    band_1d, fraiman_muniz_1d, functional_spatial, modal_1d, modified_band_1d,
-    random_projection_1d, random_tukey_1d, rpd_depth_1d,
+    band, fraiman_muniz, functional_spatial, modal, modified_band, random_projection, random_tukey,
+    rpd_depth,
 };
 
 // Metric functions

@@ -9,7 +9,7 @@ use super::random_depth_core;
 ///
 /// Takes the minimum over all random projections (more conservative than RP depth).
 #[must_use = "expensive computation whose result should not be discarded"]
-pub fn random_tukey_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
+pub(crate) fn random_tukey_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, nproj: usize) -> Vec<f64> {
     random_tukey_1d_seeded(data_obj, data_ori, nproj, None)
 }
 

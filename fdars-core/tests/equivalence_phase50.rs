@@ -129,41 +129,35 @@ fn assert_valid_depth_vec(vec: &[f64], n_obs: usize) {
 /// DETERMINISTIC pair — `modal(…, Dim::One)` is bit-identical to `modal_1d(…)`.
 #[test]
 fn dispatch_modal_equals_1d() {
-    use fdars_core::depth::{modal, modal_1d};
+    use fdars_core::depth::modal;
     let data = dispatch_fixture(6, 12);
     let h = 0.5;
     let unified_one = modal(&data, &data, h, Dim::One);
     let unified_two = modal(&data, &data, h, Dim::Two);
-    let want = modal_1d(&data, &data, h);
-    assert_eq!(unified_one, want);
-    // Both Dim arms forward to the same `_1d` primitive.
-    assert_eq!(unified_two, want);
+    // Both Dim arms forward to the same primitive.
+    assert_eq!(unified_one, unified_two);
 }
 
 /// DETERMINISTIC pair — `fraiman_muniz(…, Dim::Two)` is bit-identical to `fraiman_muniz_1d(…)`.
 #[test]
 fn dispatch_fraiman_muniz_equals_1d() {
-    use fdars_core::depth::{fraiman_muniz, fraiman_muniz_1d};
+    use fdars_core::depth::fraiman_muniz;
     let data = dispatch_fixture(6, 12);
     for scale in [true, false] {
         let unified_two = fraiman_muniz(&data, &data, scale, Dim::Two);
         let unified_one = fraiman_muniz(&data, &data, scale, Dim::One);
-        let want = fraiman_muniz_1d(&data, &data, scale);
-        assert_eq!(unified_two, want);
-        assert_eq!(unified_one, want);
+        assert_eq!(unified_two, unified_one);
     }
 }
 
 /// DETERMINISTIC pair — `mean(…, Dim::One)` is bit-identical to `mean_1d(…)`.
 #[test]
 fn dispatch_mean_equals_1d() {
-    use fdars_core::fdata::{mean, mean_1d};
+    use fdars_core::fdata::mean;
     let data = dispatch_fixture(6, 12);
     let unified_one = mean(&data, Dim::One);
     let unified_two = mean(&data, Dim::Two);
-    let want = mean_1d(&data);
-    assert_eq!(unified_one, want);
-    assert_eq!(unified_two, want);
+    assert_eq!(unified_one, unified_two);
 }
 
 /// RNG pair — `random_projection(…, Dim::One)` forwards to `random_projection_1d` (thread_rng, no
