@@ -11,7 +11,7 @@
 - [x] **Phase 86: Surface Sealing** - Seal the `wire` module `pub(crate)` and mark every public config struct `#[non_exhaustive]` with a `Default`/builder construction escape hatch (completed 2026-09-08)
 - [x] **Phase 87: Targeted Renames** - Consolidate the small `Dim`-dispatch families (`geometric_median`, `hausdorff_*`, `functional_spatial_*`) and rename `LpeerResult` → `LocalPeerResult` (completed 2026-09-08)
 - [x] **Phase 88: Large Suffix Batch** - Consolidate the large remaining lone-`_1d`/`_2d` suffix functions onto `Dim` dispatch and update all 28 examples + docs (highest blast radius) (completed 2026-09-08)
-- [ ] **Phase 89: Release Preparation & Verification** - Bump 0.41.0 → 0.42.0, breaking-framed CHANGELOG, whole-crate gates green, ROADMAP-TO-1.0.md API items checked off
+- [x] **Phase 89: Release Preparation & Verification** - Bump 0.41.0 → 0.42.0, breaking-framed CHANGELOG, whole-crate gates green, ROADMAP-TO-1.0.md API items checked off (completed 2026-09-08)
 
 ## Phase Details
 
@@ -83,7 +83,7 @@
 | 86. Surface Sealing | 1/1 | Complete    | 2026-09-08 |
 | 87. Targeted Renames | 1/1 | Complete    | 2026-09-08 |
 | 88. Large Suffix Batch | 1/1 | Complete    | 2026-09-08 |
-| 89. Release Preparation & Verification | 0/? | Not started | - |
+| 89. Release Preparation & Verification | 1/1 | Complete    | 2026-09-08 |
 
 **Execution order:** 86 → 87 → 88 → 89. 86 first (independent sealing). 87 then 88 sequence the naming work smallest-first, isolating the high-blast-radius suffix batch. 89 last (depends on all sealing + naming phases). All 9 requirements mapped, no orphans, no duplicates.
 

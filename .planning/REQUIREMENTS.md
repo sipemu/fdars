@@ -25,7 +25,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Release
 
-- [ ] **REL-01**: Crate version bumped 0.41.0 → 0.42.0; a breaking-framed `CHANGELOG.md` `[0.42.0]` entry (root + crate-shipped changelog) explicitly calling out the sealed `wire`/config surfaces and the renames; docs refreshed; whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, a `--features serde` build, all 28 examples + doctests, and `cargo package`. The `git tag v0.42.0` push → crates.io publish is the final operator-driven step (this milestone prepares + verifies release-readiness only). `documentation/ROADMAP-TO-1.0.md` updated to check off the cleared API items.
+- [x] **REL-01**: Crate version bumped 0.41.0 → 0.42.0; a breaking-framed `CHANGELOG.md` `[0.42.0]` entry (root + crate-shipped changelog) explicitly calling out the sealed `wire`/config surfaces and the renames; docs refreshed; whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, a `--features serde` build, all 28 examples + doctests, and `cargo package`. The `git tag v0.42.0` push → crates.io publish is the final operator-driven step (this milestone prepares + verifies release-readiness only). `documentation/ROADMAP-TO-1.0.md` updated to check off the cleared API items.
 
 ## Future Requirements
 
@@ -74,7 +74,7 @@ Deferred — remain on `documentation/ROADMAP-TO-1.0.md` after this milestone, b
 | NAME-03 | Phase 87 | Complete |
 | NAME-04 | Phase 88 | Complete |
 | NAME-05 | Phase 87 | Complete |
-| REL-01 | Phase 89 | Pending |
+| REL-01 | Phase 89 | Complete |
 
 **Coverage:**
 

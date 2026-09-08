@@ -21,13 +21,13 @@
     {
       "number": "89",
       "name": "Release Preparation & Verification",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 89)",
-    "reason": "Phase 89 of 4 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-08T21:09:45.745Z"
+  "updated_at": "2026-09-08T21:19:09.656Z"
 }
